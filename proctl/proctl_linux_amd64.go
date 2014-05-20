@@ -49,19 +49,14 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 }
 
 func (dbp *DebuggedProcess) Step() error {
-	return dbp.Exec(func() error {
-		return syscall.PtraceSingleStep(dbp.Pid)
-	})
+	return dbp.Exec(syscall.PtraceSingleStep(dbp.Pid))
 }
 
 func (dbp *DebuggedProcess) Continue() error {
-	return dbp.Exec(func() error {
-		return syscall.PtraceCont(dbp.Pid, 0)
-	})
+	return dbp.Exec(syscall.PtraceCont(dbp.Pid, 0))
 }
 
-func (dbp *DebuggedProcess) Exec(ptracefunc func() error) error {
-	err := ptracefunc()
+func (dbp *DebuggedProcess) Exec(err error) error {
 	if err != nil {
 		return err
 	}
