@@ -5,23 +5,24 @@ import (
 	"testing"
 )
 
-func StartTestProcess() (int, error) {
+func StartTestProcess() (*exec.Cmd, error) {
 	cmd := exec.Command("../fixtures/testprog")
 
 	err := cmd.Start()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return cmd.Process.Pid, nil
+	return cmd, nil
 }
 
 func TestStep(t *testing.T) {
-	pid, err := StartTestProcess()
+	cmd, err := StartTestProcess()
 	if err != nil {
 		t.Fatal("Starting test process:", err)
 	}
 
+	pid := cmd.Process.Pid
 	p, err := NewDebugProcess(pid)
 	if err != nil {
 		t.Fatal("NewDebugProcess():", err)
@@ -46,5 +47,31 @@ func TestStep(t *testing.T) {
 
 	if rip >= regs.PC() {
 		t.Errorf("Expected %#v to be greater than %#v", regs.PC(), rip)
+	}
+}
+
+func TestContinue(t *testing.T) {
+	cmd, err := StartTestProcess()
+	if err != nil {
+		t.Fatal("Starting test process:", err)
+	}
+
+	pid := cmd.Process.Pid
+	p, err := NewDebugProcess(pid)
+	if err != nil {
+		t.Fatal("NewDebugProcess():", err)
+	}
+
+	if p.ProcessState.Exited() {
+		t.Fatal("Process already exited")
+	}
+
+	err = p.Continue()
+	if err != nil {
+		t.Fatal("Continue():", err)
+	}
+
+	if !p.ProcessState.Exited() {
+		t.Fatal("Process did not continue")
 	}
 }

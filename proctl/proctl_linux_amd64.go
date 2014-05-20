@@ -7,9 +7,10 @@ import (
 )
 
 type DebuggedProcess struct {
-	Pid     int
-	Regs    *syscall.PtraceRegs
-	Process *os.Process
+	Pid          int
+	Regs         *syscall.PtraceRegs
+	Process      *os.Process
+	ProcessState *os.ProcessState
 }
 
 func NewDebugProcess(pid int) (*DebuggedProcess, error) {
@@ -23,15 +24,16 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 		return nil, err
 	}
 
-	debuggedProc := DebuggedProcess{
-		Pid:     pid,
-		Regs:    &syscall.PtraceRegs{},
-		Process: proc,
-	}
-
-	_, err = proc.Wait()
+	ps, err := proc.Wait()
 	if err != nil {
 		return nil, err
+	}
+
+	debuggedProc := DebuggedProcess{
+		Pid:          pid,
+		Regs:         &syscall.PtraceRegs{},
+		Process:      proc,
+		ProcessState: ps,
 	}
 
 	return &debuggedProc, nil
@@ -56,6 +58,22 @@ func (dbp *DebuggedProcess) Step() error {
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (dbp *DebuggedProcess) Continue() error {
+	err := syscall.PtraceCont(dbp.Pid, 0)
+	if err != nil {
+		return err
+	}
+
+	ps, err := dbp.Process.Wait()
+	if err != nil {
+		return err
+	}
+
+	dbp.ProcessState = ps
 
 	return nil
 }
