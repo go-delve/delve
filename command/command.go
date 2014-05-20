@@ -19,6 +19,10 @@ func DebugCommands() *Commands {
 	return &Commands{cmds}
 }
 
+func (c *Commands) Register(cmdstr string, cf cmdfunc) {
+	c.cmds[cmdstr] = cf
+}
+
 func (c *Commands) Find(cmdstr string) cmdfunc {
 	cmd, ok := c.cmds[cmdstr]
 	if !ok {
