@@ -54,10 +54,12 @@ func (dbp *DebuggedProcess) Step() error {
 		return err
 	}
 
-	_, err = dbp.Process.Wait()
+	ps, err := dbp.Process.Wait()
 	if err != nil {
 		return err
 	}
+
+	dbp.ProcessState = ps
 
 	return nil
 }
