@@ -48,9 +48,5 @@ func (t *term) promptForInput() (string, error) {
 		return "", err
 	}
 
-	return stripNewLine(line), nil
-}
-
-func stripNewLine(s string) string {
-	return strings.TrimSuffix(s, "\n")
+	return strings.TrimSuffix(line, "\n"), nil
 }
