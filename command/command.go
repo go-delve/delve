@@ -11,9 +11,11 @@ type Commands struct {
 	cmds map[string]cmdfunc
 }
 
+// Returns a Commands struct with default commands defined.
 func DebugCommands() *Commands {
 	cmds := map[string]cmdfunc{
 		"exit": exitFunc,
+		"":     nullCommand,
 	}
 
 	return &Commands{cmds}
@@ -29,10 +31,6 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc) {
 func (c *Commands) Find(cmdstr string) cmdfunc {
 	cmd, ok := c.cmds[cmdstr]
 	if !ok {
-		if cmdstr == "" {
-			return nullCommand
-		}
-
 		return noCmdAvailable
 	}
 
