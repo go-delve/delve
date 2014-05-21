@@ -37,3 +37,32 @@ func TestCommandRegister(t *testing.T) {
 		t.Fatal("wrong command output")
 	}
 }
+
+func TestCommandReplay(t *testing.T) {
+	cmds := Commands{make(map[string]cmdfunc)}
+	cmds.Register("foo", func() error { return fmt.Errorf("registered command") })
+	cmd := cmds.Find("foo")
+
+	err := cmd()
+	if err.Error() != "registered command" {
+		t.Fatal("wrong command output")
+	}
+
+	cmd = cmds.Find("")
+	err = cmd()
+	if err.Error() != "registered command" {
+		t.Fatal("wrong command output")
+	}
+}
+
+func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
+	var (
+		cmds = Commands{make(map[string]cmdfunc)}
+		cmd  = cmds.Find("")
+		err  = cmd()
+	)
+
+	if err != nil {
+		t.Error("Null command not returned", err)
+	}
+}
