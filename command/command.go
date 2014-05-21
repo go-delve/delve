@@ -1,3 +1,5 @@
+// Package command implements functions for responding to user
+// input and dispatching to appropriate backend commands.
 package command
 
 import (
@@ -21,6 +23,8 @@ func DebugCommands() *Commands {
 	return &Commands{cmds}
 }
 
+// Register custom commands. Expects cf to be a func of type cmdfunc,
+// returning only an error.
 func (c *Commands) Register(cmdstr string, cf cmdfunc) {
 	c.cmds[cmdstr] = cf
 }
