@@ -56,15 +56,15 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 
 // Steps through process.
 func (dbp *DebuggedProcess) Step() error {
-	return dbp.HandleResult(syscall.PtraceSingleStep(dbp.Pid))
+	return dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))
 }
 
 // Continue process until next breakpoint.
 func (dbp *DebuggedProcess) Continue() error {
-	return dbp.HandleResult(syscall.PtraceCont(dbp.Pid, 0))
+	return dbp.handleResult(syscall.PtraceCont(dbp.Pid, 0))
 }
 
-func (dbp *DebuggedProcess) HandleResult(err error) error {
+func (dbp *DebuggedProcess) handleResult(err error) error {
 	if err != nil {
 		return err
 	}
