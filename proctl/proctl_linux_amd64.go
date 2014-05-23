@@ -3,6 +3,8 @@
 package proctl
 
 import (
+	"debug/elf"
+	"debug/gosym"
 	"fmt"
 	"os"
 	"syscall"
@@ -15,16 +17,19 @@ type DebuggedProcess struct {
 	Regs         *syscall.PtraceRegs
 	Process      *os.Process
 	ProcessState *os.ProcessState
+	Executable   *elf.File
+	Symbols      []elf.Symbol
+	GoSymTable   *gosym.Table
 }
 
 // Returns a new DebuggedProcess struct with sensible defaults.
 func NewDebugProcess(pid int) (*DebuggedProcess, error) {
-	err := syscall.PtraceAttach(pid)
+	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return nil, err
 	}
 
-	proc, err := os.FindProcess(pid)
+	err = syscall.PtraceAttach(pid)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +46,26 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 		ProcessState: ps,
 	}
 
+	err = debuggedProc.LoadInformation()
+	if err != nil {
+		return nil, err
+	}
+
 	return &debuggedProc, nil
+}
+
+func (dbp *DebuggedProcess) LoadInformation() error {
+	err := dbp.findExecutable()
+	if err != nil {
+		return err
+	}
+
+	err = dbp.obtainGoSymbols()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Obtains register values from the debugged process.
@@ -56,7 +80,21 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 
 // Steps through process.
 func (dbp *DebuggedProcess) Step() error {
-	return dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))
+	err := dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))
+	if err != nil {
+		return fmt.Errorf("step failed: ", err.Error())
+	}
+
+	regs, err := dbp.Registers()
+	if err != nil {
+		return err
+	}
+
+	f := dbp.GoSymTable.PCToFunc(regs.PC())
+	l := f.LineTable.PCToLine(regs.PC())
+	fmt.Printf("Stopped at: %s:%d\n", f.Name, l)
+
+	return nil
 }
 
 // Continue process until next breakpoint.
@@ -75,6 +113,46 @@ func (dbp *DebuggedProcess) handleResult(err error) error {
 	}
 
 	dbp.ProcessState = ps
+
+	return nil
+}
+
+func (dbp *DebuggedProcess) findExecutable() error {
+	procpath := fmt.Sprintf("/proc/%d/exe", dbp.Pid)
+
+	f, err := os.Open(procpath)
+	if err != nil {
+		return err
+	}
+
+	elffile, err := elf.NewFile(f)
+	if err != nil {
+		return err
+	}
+
+	dbp.Executable = elffile
+
+	return nil
+}
+
+func (dbp *DebuggedProcess) obtainGoSymbols() error {
+	symdat, err := dbp.Executable.Section(".gosymtab").Data()
+	if err != nil {
+		return err
+	}
+
+	pclndat, err := dbp.Executable.Section(".gopclntab").Data()
+	if err != nil {
+		return err
+	}
+
+	pcln := gosym.NewLineTable(pclndat, dbp.Executable.Section(".text").Addr)
+	tab, err := gosym.NewTable(symdat, pcln)
+	if err != nil {
+		return err
+	}
+
+	dbp.GoSymTable = tab
 
 	return nil
 }

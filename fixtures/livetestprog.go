@@ -7,10 +7,11 @@ import (
 )
 
 func main() {
-	fmt.Println(os.Getpid())
+	pid := os.Getpid()
+	fmt.Println(pid)
 
 	time.Sleep(3 * time.Second)
 	for {
-		fmt.Println("Hello, world!")
+		fmt.Println(pid)
 	}
 }
