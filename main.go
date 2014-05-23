@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,11 @@ type term struct {
 }
 
 func main() {
+	// We must ensure here that we are running on the same thread during
+	// the execution of dbg. This is due to the fact that ptrace(2) expects
+	// all commands after PT_ATTACH to come from the same thread.
+	runtime.LockOSThread()
+
 	t := newTerm()
 
 	if len(os.Args) == 1 {
