@@ -91,14 +91,18 @@ func (dbp *DebuggedProcess) Break(fname string) (*BreakPoint, error) {
 	var (
 		int3 = []byte{'0', 'x', 'C', 'C'}
 		fn   = dbp.GoSymTable.LookupFunc(fname)
-		addr = uintptr(fn.LineTable.PC)
 	)
+
+	if fn == nil {
+		return nil, fmt.Errorf("No function named %s\n", fname)
+	}
 
 	_, ok := dbp.BreakPoints[fname]
 	if ok {
 		return nil, fmt.Errorf("Breakpoint already set")
 	}
 
+	addr := uintptr(fn.LineTable.PC)
 	_, err := syscall.PtracePokeData(dbp.Pid, addr, int3)
 	if err != nil {
 		return nil, err

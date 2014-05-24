@@ -158,3 +158,21 @@ func TestBreakPointIsSetOnlyOnce(t *testing.T) {
 		t.Fatal("Should not be able to add breakpoint twice")
 	}
 }
+
+func TestBreakPointWithNonExistantFunction(t *testing.T) {
+	cmd, err := StartTestProcess("testprog")
+	if err != nil {
+		t.Fatal("Starting test process:", err)
+	}
+
+	pid := cmd.Process.Pid
+	p, err := NewDebugProcess(pid)
+	if err != nil {
+		t.Fatal("NewDebugProcess():", err)
+	}
+
+	_, err = p.Break("foo")
+	if err == nil {
+		t.Fatal("Should not be able to break at non existant function")
+	}
+}
