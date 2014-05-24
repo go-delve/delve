@@ -20,6 +20,13 @@ type DebuggedProcess struct {
 	Executable   *elf.File
 	Symbols      []elf.Symbol
 	GoSymTable   *gosym.Table
+	BreakPoints  map[string]*BreakPoint
+}
+
+type BreakPoint struct {
+	FunctionName string
+	Line         int
+	Addr         uint64
 }
 
 // Returns a new DebuggedProcess struct with sensible defaults.
@@ -44,6 +51,7 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 		Regs:         &syscall.PtraceRegs{},
 		Process:      proc,
 		ProcessState: ps,
+		BreakPoints:  make(map[string]*BreakPoint),
 	}
 
 	err = debuggedProc.LoadInformation()
@@ -79,19 +87,32 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 }
 
 // Sets a breakpoint in the running process.
-func (dbp *DebuggedProcess) Break(fname string) error {
+func (dbp *DebuggedProcess) Break(fname string) (*BreakPoint, error) {
 	var (
-		breakpoint = []byte{'0', 'x', 'C', 'C'}
-		fn         = dbp.GoSymTable.LookupFunc(fname)
-		addr       = uintptr(fn.LineTable.PC)
+		int3 = []byte{'0', 'x', 'C', 'C'}
+		fn   = dbp.GoSymTable.LookupFunc(fname)
+		addr = uintptr(fn.LineTable.PC)
 	)
 
-	_, err := syscall.PtracePokeData(dbp.Pid, addr, breakpoint)
-	if err != nil {
-		return err
+	_, ok := dbp.BreakPoints[fname]
+	if ok {
+		return nil, fmt.Errorf("Breakpoint already set")
 	}
 
-	return nil
+	_, err := syscall.PtracePokeData(dbp.Pid, addr, int3)
+	if err != nil {
+		return nil, err
+	}
+
+	breakpoint := &BreakPoint{
+		FunctionName: fn.Name,
+		Line:         fn.LineTable.Line,
+		Addr:         fn.LineTable.PC,
+	}
+
+	dbp.BreakPoints[fname] = breakpoint
+
+	return breakpoint, nil
 }
 
 // Steps through process.
