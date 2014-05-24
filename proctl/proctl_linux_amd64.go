@@ -78,6 +78,22 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 	return dbp.Regs, nil
 }
 
+// Sets a breakpoint in the running process.
+func (dbp *DebuggedProcess) Break(fname string) error {
+	var (
+		breakpoint = []byte{'0', 'x', 'C', 'C'}
+		fn         = dbp.GoSymTable.LookupFunc(fname)
+		addr       = uintptr(fn.LineTable.PC)
+	)
+
+	_, err := syscall.PtracePokeData(dbp.Pid, addr, breakpoint)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Steps through process.
 func (dbp *DebuggedProcess) Step() error {
 	err := dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))

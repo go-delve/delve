@@ -14,8 +14,6 @@ func sayhi() {
 }
 
 func main() {
-	for {
-		sleepytime()
-		sayhi()
-	}
+	sleepytime()
+	sayhi()
 }

@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func StartTestProcess() (*exec.Cmd, error) {
-	cmd := exec.Command("../fixtures/testprog")
+func StartTestProcess(name string) (*exec.Cmd, error) {
+	cmd := exec.Command("../fixtures/" + name)
 
 	err := cmd.Start()
 	if err != nil {
@@ -18,7 +18,7 @@ func StartTestProcess() (*exec.Cmd, error) {
 }
 
 func TestAttachProcess(t *testing.T) {
-	cmd, err := StartTestProcess()
+	cmd, err := StartTestProcess("testprog")
 	if err != nil {
 		t.Fatal("Starting test process:", err)
 	}
@@ -32,10 +32,12 @@ func TestAttachProcess(t *testing.T) {
 	if !p.ProcessState.Sys().(syscall.WaitStatus).Stopped() {
 		t.Errorf("Process was not stopped correctly")
 	}
+
+	cmd.Process.Kill()
 }
 
 func TestStep(t *testing.T) {
-	cmd, err := StartTestProcess()
+	cmd, err := StartTestProcess("testprog")
 	if err != nil {
 		t.Fatal("Starting test process:", err)
 	}
@@ -71,7 +73,7 @@ func TestStep(t *testing.T) {
 }
 
 func TestContinue(t *testing.T) {
-	cmd, err := StartTestProcess()
+	cmd, err := StartTestProcess("continuetestprog")
 	if err != nil {
 		t.Fatal("Starting test process:", err)
 	}
@@ -94,4 +96,42 @@ func TestContinue(t *testing.T) {
 	if !p.ProcessState.Success() {
 		t.Fatal("Process did not exit successfully")
 	}
+}
+
+func TestBreakPoint(t *testing.T) {
+	cmd, err := StartTestProcess("testprog")
+	if err != nil {
+		t.Fatal("Starting test process:", err)
+	}
+
+	pid := cmd.Process.Pid
+	p, err := NewDebugProcess(pid)
+	if err != nil {
+		t.Fatal("NewDebugProcess():", err)
+	}
+
+	err = p.Break("main.sleepytime")
+	if err != nil {
+		t.Fatal("Break():", err)
+	}
+
+	sleepytimefunc := p.GoSymTable.LookupFunc("main.sleepytime")
+	sleepyaddr := sleepytimefunc.LineTable.PC
+
+	err = p.Continue()
+	if err != nil {
+		t.Fatal("Continue():", err)
+	}
+
+	regs, err := p.Registers()
+	if err != nil {
+		t.Fatal("Registers():", err)
+	}
+
+	pc := regs.PC()
+	if pc != sleepyaddr {
+		t.Fatal("Break not respected:\nPC:%d\nFN:%d\n", pc, sleepyaddr)
+	}
+
+	cmd.Process.Kill()
 }
