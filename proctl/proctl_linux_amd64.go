@@ -23,6 +23,9 @@ type DebuggedProcess struct {
 	BreakPoints  map[string]*BreakPoint
 }
 
+// Represents a single breakpoint. Stores information on the break
+// point include the byte of data that originally was stored at that
+// address.
 type BreakPoint struct {
 	FunctionName string
 	File         string
@@ -64,6 +67,8 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 	return &debuggedProc, nil
 }
 
+// Finds the executable from /proc/<pid>/exe and then
+// uses that to parse the Go symbol table.
 func (dbp *DebuggedProcess) LoadInformation() error {
 	err := dbp.findExecutable()
 	if err != nil {
@@ -225,6 +230,8 @@ func (dbp *DebuggedProcess) obtainGoSymbols() error {
 	return nil
 }
 
+// Converts a program counter value into a breakpoint, if one was set
+// for the function containing pc.
 func (dbp *DebuggedProcess) PCtoBP(pc uint64) (*BreakPoint, bool) {
 	_, _, fn := dbp.GoSymTable.PCToLine(pc)
 	bp, ok := dbp.BreakPoints[fn.Name]
