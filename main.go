@@ -81,6 +81,19 @@ func registerProcessCommands(cmds *command.Commands, proc *proctl.DebuggedProces
 		return nil
 	})
 
+	cmds.Register("clear", func(args ...string) error {
+		fname := args[0]
+		bp := proc.BreakPoints[fname]
+		err := proc.Clear(fname)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Breakpoint cleared at %#v for %s %s:%d\n", bp.Addr, bp.FunctionName, bp.File, bp.Line)
+
+		return nil
+	})
+
 	cmds.Register("break", func(args ...string) error {
 		fname := args[0]
 		bp, err := proc.Break(fname)
