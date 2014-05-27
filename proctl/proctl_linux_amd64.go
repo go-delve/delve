@@ -131,9 +131,8 @@ func (dbp *DebuggedProcess) Step() error {
 		return err
 	}
 
-	f := dbp.GoSymTable.PCToFunc(regs.PC())
-	l := f.LineTable.PCToLine(regs.PC())
-	fmt.Printf("Stopped at: %s:%d\n", f.Name, l)
+	f, l, fn := dbp.GoSymTable.PCToLine(regs.PC())
+	fmt.Printf("Stopped at: %s %s:%d\n", fn.Name, f, l)
 
 	return nil
 }
