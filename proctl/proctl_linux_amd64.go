@@ -94,20 +94,13 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 }
 
 // Sets a breakpoint in the running process.
-func (dbp *DebuggedProcess) Break(fname string) (*BreakPoint, error) {
+func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 	var (
-		int3 = []byte{'0', 'x', 'C', 'C'}
-		fn   = dbp.GoSymTable.LookupFunc(fname)
+		int3        = []byte{'0', 'x', 'C', 'C'}
+		f, l, fn    = dbp.GoSymTable.PCToLine(uint64(addr))
+		orginalData = make([]byte, 4)
 	)
 
-	if fn == nil {
-		return nil, fmt.Errorf("No function named %s\n", fname)
-	}
-
-	f, l, _ := dbp.GoSymTable.PCToLine(fn.Entry)
-
-	orginalData := make([]byte, 1)
-	addr := uintptr(fn.Entry)
 	_, err := syscall.PtracePeekData(dbp.Pid, addr, orginalData)
 	if err != nil {
 		return nil, err
@@ -122,30 +115,31 @@ func (dbp *DebuggedProcess) Break(fname string) (*BreakPoint, error) {
 		FunctionName: fn.Name,
 		File:         f,
 		Line:         l,
-		Addr:         fn.Entry,
+		Addr:         uint64(addr),
 		OriginalData: orginalData,
 	}
 
+	fname := fmt.Sprintf("%s:%d", f, l)
 	dbp.BreakPoints[fname] = breakpoint
 
 	return breakpoint, nil
 }
 
 // Clears a breakpoint.
-func (dbp *DebuggedProcess) Clear(fname string) error {
-	bp, ok := dbp.BreakPoints[fname]
+func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
+	bp, ok := dbp.PCtoBP(pc)
 	if !ok {
-		return fmt.Errorf("No breakpoint currently set for %s", fname)
+		return nil, fmt.Errorf("No breakpoint currently set for %s", bp.FunctionName)
 	}
 
 	err := dbp.restoreInstruction(bp.Addr, bp.OriginalData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	delete(dbp.BreakPoints, fmt.Sprintf("s:%d", bp.File, bp.Line))
 
-	return nil
+	return bp, nil
 }
 
 // Steps through process.
@@ -171,7 +165,7 @@ func (dbp *DebuggedProcess) Step() error {
 
 	// Restore breakpoint
 	if ok {
-		_, err := dbp.Break(bp.FunctionName)
+		_, err := dbp.Break(uintptr(bp.Addr))
 		if err != nil {
 			return err
 		}
@@ -250,8 +244,8 @@ func (dbp *DebuggedProcess) obtainGoSymbols() error {
 // Converts a program counter value into a breakpoint, if one was set
 // for the function containing pc.
 func (dbp *DebuggedProcess) PCtoBP(pc uint64) (*BreakPoint, bool) {
-	_, _, fn := dbp.GoSymTable.PCToLine(pc)
-	bp, ok := dbp.BreakPoints[fn.Name]
+	f, l, _ := dbp.GoSymTable.PCToLine(pc)
+	bp, ok := dbp.BreakPoints[fmt.Sprintf("%s:%d", f, l)]
 	return bp, ok
 }
 

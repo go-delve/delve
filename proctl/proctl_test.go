@@ -121,13 +121,13 @@ func TestBreakPoint(t *testing.T) {
 		t.Fatal("NewDebugProcess():", err)
 	}
 
-	_, err = p.Break("main.sleepytime")
+	sleepytimefunc := p.GoSymTable.LookupFunc("main.sleepytime")
+	sleepyaddr := sleepytimefunc.Entry
+
+	_, err = p.Break(uintptr(sleepyaddr))
 	if err != nil {
 		t.Fatal("Break():", err)
 	}
-
-	sleepytimefunc := p.GoSymTable.LookupFunc("main.sleepytime")
-	sleepyaddr := sleepytimefunc.Entry
 
 	err = p.Continue()
 	if err != nil {
@@ -174,7 +174,7 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 		t.Fatal("NewDebugProcess():", err)
 	}
 
-	_, err = p.Break("foo")
+	_, err = p.Break(uintptr(0))
 	if err == nil {
 		t.Fatal("Should not be able to break at non existant function")
 	}
@@ -192,7 +192,8 @@ func TestClearBreakPoint(t *testing.T) {
 		t.Fatal("NewDebugProcess():", err)
 	}
 
-	bp, err := p.Break("main.sleepytime")
+	fn := p.GoSymTable.LookupFunc("main.sleepytime")
+	bp, err := p.Break(uintptr(fn.Entry))
 	if err != nil {
 		t.Fatal("Break():", err)
 	}
@@ -202,7 +203,7 @@ func TestClearBreakPoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = p.Clear("main.sleepytime")
+	bp, err = p.Clear(fn.Entry)
 	if err != nil {
 		t.Fatal("Break():", err)
 	}

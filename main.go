@@ -83,8 +83,12 @@ func registerProcessCommands(cmds *command.Commands, proc *proctl.DebuggedProces
 
 	cmds.Register("clear", func(args ...string) error {
 		fname := args[0]
-		bp := proc.BreakPoints[fname]
-		err := proc.Clear(fname)
+		fn := proc.GoSymTable.LookupFunc(fname)
+		if fn == nil {
+			return fmt.Errorf("No function named %s", fname)
+		}
+
+		bp, err := proc.Clear(fn.Entry)
 		if err != nil {
 			return err
 		}
@@ -96,7 +100,12 @@ func registerProcessCommands(cmds *command.Commands, proc *proctl.DebuggedProces
 
 	cmds.Register("break", func(args ...string) error {
 		fname := args[0]
-		bp, err := proc.Break(fname)
+		fn := proc.GoSymTable.LookupFunc(fname)
+		if fn == nil {
+			return fmt.Errorf("No function named %s", fname)
+		}
+
+		bp, err := proc.Break(uintptr(fn.Entry))
 		if err != nil {
 			return err
 		}
