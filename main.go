@@ -47,8 +47,10 @@ func main() {
 			printStderrAndDie("Prompt for input failed.\n")
 		}
 
+		cmdstr, args := parseCommand(cmdstr)
+
 		cmd := cmds.Find(cmdstr)
-		err = cmd()
+		err = cmd(args...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
 		}
@@ -61,14 +63,30 @@ func printStderrAndDie(args ...interface{}) {
 }
 
 func registerProcessCommands(cmds *command.Commands, proc *proctl.DebuggedProcess) {
-	cmds.Register("step", proc.Step)
-	cmds.Register("continue", proc.Continue)
+	cmds.Register("step", command.CommandFunc(proc.Step))
+	cmds.Register("continue", command.CommandFunc(proc.Continue))
+	cmds.Register("break", func(args ...string) error {
+		fname := args[0]
+		bp, err := proc.Break(fname)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Breakpoint set at %#v for %s %s:%d\n", bp.Addr, bp.FunctionName, bp.File, bp.Line)
+
+		return nil
+	})
 }
 
 func newTerm() *term {
 	return &term{
 		stdin: bufio.NewReader(os.Stdin),
 	}
+}
+
+func parseCommand(cmdstr string) (string, []string) {
+	vals := strings.Split(cmdstr, " ")
+	return vals[0], vals[1:]
 }
 
 func (t *term) promptForInput() (string, error) {

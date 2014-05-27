@@ -24,7 +24,7 @@ func TestCommandDefault(t *testing.T) {
 func TestCommandRegister(t *testing.T) {
 	cmds := Commands{make(map[string]cmdfunc)}
 
-	cmds.Register("foo", func() error { return fmt.Errorf("registered command") })
+	cmds.Register("foo", func(args ...string) error { return fmt.Errorf("registered command") })
 
 	cmd := cmds.Find("foo")
 
@@ -40,7 +40,7 @@ func TestCommandRegister(t *testing.T) {
 
 func TestCommandReplay(t *testing.T) {
 	cmds := DebugCommands()
-	cmds.Register("foo", func() error { return fmt.Errorf("registered command") })
+	cmds.Register("foo", func(args ...string) error { return fmt.Errorf("registered command") })
 	cmd := cmds.Find("foo")
 
 	err := cmd()

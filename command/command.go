@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-type cmdfunc func() error
+type cmdfunc func(args ...string) error
 
 type Commands struct {
 	cmds map[string]cmdfunc
@@ -44,15 +44,21 @@ func (c *Commands) Find(cmdstr string) cmdfunc {
 	return cmd
 }
 
-func noCmdAvailable() error {
+func CommandFunc(fn func() error) cmdfunc {
+	return func(args ...string) error {
+		return fn()
+	}
+}
+
+func noCmdAvailable(args ...string) error {
 	return fmt.Errorf("command not available")
 }
 
-func exitFunc() error {
+func exitFunc(args ...string) error {
 	os.Exit(0)
 	return nil
 }
 
-func nullCommand() error {
+func nullCommand(args ...string) error {
 	return nil
 }

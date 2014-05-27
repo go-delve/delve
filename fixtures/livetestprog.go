@@ -6,12 +6,22 @@ import (
 	"time"
 )
 
+func printPid(pid int) {
+	fmt.Println(pid)
+}
+
+func sayhi() {
+	fmt.Println("hi")
+}
+
 func main() {
 	pid := os.Getpid()
-	fmt.Println(pid)
+	printPid(pid)
 
 	time.Sleep(3 * time.Second)
 	for {
-		fmt.Println(pid)
+		printPid(pid)
+		time.Sleep(3 * time.Millisecond)
+		sayhi()
 	}
 }
