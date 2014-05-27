@@ -135,7 +135,7 @@ func (dbp *DebuggedProcess) Step() error {
 
 	bp, ok := dbp.PCtoBP(regs.PC())
 	if ok {
-		err = dbp.restoreInstruction(regs.PC(), bp.OriginalData)
+		err = dbp.restoreInstruction(bp.Addr, bp.OriginalData)
 		if err != nil {
 			return err
 		}
