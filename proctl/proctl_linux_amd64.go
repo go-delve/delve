@@ -131,6 +131,23 @@ func (dbp *DebuggedProcess) Break(fname string) (*BreakPoint, error) {
 	return breakpoint, nil
 }
 
+// Clears a breakpoint.
+func (dbp *DebuggedProcess) Clear(fname string) error {
+	bp, ok := dbp.BreakPoints[fname]
+	if !ok {
+		return fmt.Errorf("No breakpoint currently set for %s", fname)
+	}
+
+	err := dbp.restoreInstruction(bp.Addr, bp.OriginalData)
+	if err != nil {
+		return err
+	}
+
+	dbp.BreakPoints[fname] = nil
+
+	return nil
+}
+
 // Steps through process.
 func (dbp *DebuggedProcess) Step() error {
 	regs, err := dbp.Registers()

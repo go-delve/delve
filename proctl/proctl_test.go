@@ -1,10 +1,21 @@
 package proctl
 
 import (
+	"bytes"
 	"os/exec"
 	"syscall"
 	"testing"
 )
+
+func dataAtAddr(pid int, addr uint64) ([]byte, error) {
+	data := make([]byte, 1)
+	_, err := syscall.PtracePeekData(pid, uintptr(addr), data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
 
 func StartTestProcess(name string) (*exec.Cmd, error) {
 	cmd := exec.Command("../fixtures/" + name)
@@ -166,5 +177,42 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 	_, err = p.Break("foo")
 	if err == nil {
 		t.Fatal("Should not be able to break at non existant function")
+	}
+}
+
+func TestClearBreakPoint(t *testing.T) {
+	cmd, err := StartTestProcess("testprog")
+	if err != nil {
+		t.Fatal("Starting test process:", err)
+	}
+
+	pid := cmd.Process.Pid
+	p, err := NewDebugProcess(pid)
+	if err != nil {
+		t.Fatal("NewDebugProcess():", err)
+	}
+
+	bp, err := p.Break("main.sleepytime")
+	if err != nil {
+		t.Fatal("Break():", err)
+	}
+
+	int3, err := dataAtAddr(pid, bp.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = p.Clear("main.sleepytime")
+	if err != nil {
+		t.Fatal("Break():", err)
+	}
+
+	data, err := dataAtAddr(pid, bp.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Equal(data, int3) {
+		t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
 	}
 }
