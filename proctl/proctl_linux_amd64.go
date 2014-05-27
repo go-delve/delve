@@ -25,8 +25,10 @@ type DebuggedProcess struct {
 
 type BreakPoint struct {
 	FunctionName string
+	File         string
 	Line         int
 	Addr         uint64
+	OriginalData []byte
 }
 
 // Returns a new DebuggedProcess struct with sensible defaults.
@@ -97,21 +99,26 @@ func (dbp *DebuggedProcess) Break(fname string) (*BreakPoint, error) {
 		return nil, fmt.Errorf("No function named %s\n", fname)
 	}
 
-	_, ok := dbp.BreakPoints[fname]
-	if ok {
-		return nil, fmt.Errorf("Breakpoint already set")
+	f, l, _ := dbp.GoSymTable.PCToLine(fn.Entry)
+
+	orginalData := make([]byte, 1)
+	addr := uintptr(fn.Entry)
+	_, err := syscall.PtracePeekData(dbp.Pid, addr, orginalData)
+	if err != nil {
+		return nil, err
 	}
 
-	addr := uintptr(fn.LineTable.PC)
-	_, err := syscall.PtracePokeData(dbp.Pid, addr, int3)
+	_, err = syscall.PtracePokeData(dbp.Pid, addr, int3)
 	if err != nil {
 		return nil, err
 	}
 
 	breakpoint := &BreakPoint{
 		FunctionName: fn.Name,
-		Line:         fn.LineTable.Line,
-		Addr:         fn.LineTable.PC,
+		File:         f,
+		Line:         l,
+		Addr:         fn.Entry,
+		OriginalData: orginalData,
 	}
 
 	dbp.BreakPoints[fname] = breakpoint
@@ -121,24 +128,43 @@ func (dbp *DebuggedProcess) Break(fname string) (*BreakPoint, error) {
 
 // Steps through process.
 func (dbp *DebuggedProcess) Step() error {
-	err := dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))
-	if err != nil {
-		return fmt.Errorf("step failed: ", err.Error())
-	}
-
 	regs, err := dbp.Registers()
 	if err != nil {
 		return err
 	}
 
+	bp, ok := dbp.PCtoBP(regs.PC())
+	if ok {
+		dbp.restoreInstruction(regs.PC(), bp.OriginalData)
+	}
+
+	err = dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))
+	if err != nil {
+		return fmt.Errorf("step failed: ", err.Error())
+	}
+
 	f, l, fn := dbp.GoSymTable.PCToLine(regs.PC())
 	fmt.Printf("Stopped at: %s %s:%d\n", fn.Name, f, l)
+
+	if ok {
+		_, err = dbp.Break(bp.FunctionName)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
 // Continue process until next breakpoint.
 func (dbp *DebuggedProcess) Continue() error {
+	// Stepping first will ensure we are able to continue
+	// past a breakpoint if that's currently where we are stopped.
+	err := dbp.Step()
+	if err != nil {
+		return err
+	}
+
 	return dbp.handleResult(syscall.PtraceCont(dbp.Pid, 0))
 }
 
@@ -195,4 +221,15 @@ func (dbp *DebuggedProcess) obtainGoSymbols() error {
 	dbp.GoSymTable = tab
 
 	return nil
+}
+
+func (dbp *DebuggedProcess) PCtoBP(pc uint64) (*BreakPoint, bool) {
+	_, _, fn := dbp.GoSymTable.PCToLine(pc)
+	bp, ok := dbp.BreakPoints[fn.Name]
+	return bp, ok
+}
+
+func (dbp *DebuggedProcess) restoreInstruction(pc uint64, data []byte) error {
+	_, err := syscall.PtracePokeData(dbp.Pid, uintptr(pc), data)
+	return err
 }

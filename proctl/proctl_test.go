@@ -116,7 +116,7 @@ func TestBreakPoint(t *testing.T) {
 	}
 
 	sleepytimefunc := p.GoSymTable.LookupFunc("main.sleepytime")
-	sleepyaddr := sleepytimefunc.LineTable.PC
+	sleepyaddr := sleepytimefunc.Entry
 
 	err = p.Continue()
 	if err != nil {
@@ -130,33 +130,25 @@ func TestBreakPoint(t *testing.T) {
 
 	pc := regs.PC()
 	if pc != sleepyaddr {
-		t.Fatal("Break not respected:\nPC:%d\nFN:%d\n", pc, sleepyaddr)
+		t.Fatalf("Break not respected:\nPC:%d\nFN:%d\n", pc, sleepyaddr)
+	}
+
+	err = p.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	regs, err = p.Registers()
+	if err != nil {
+		t.Fatal("Registers():", err)
+	}
+
+	pc = regs.PC()
+	if pc == sleepyaddr {
+		t.Fatalf("Step not respected:\nPC:%d\nFN:%d\n", pc, sleepyaddr)
 	}
 
 	cmd.Process.Kill()
-}
-
-func TestBreakPointIsSetOnlyOnce(t *testing.T) {
-	cmd, err := StartTestProcess("testprog")
-	if err != nil {
-		t.Fatal("Starting test process:", err)
-	}
-
-	pid := cmd.Process.Pid
-	p, err := NewDebugProcess(pid)
-	if err != nil {
-		t.Fatal("NewDebugProcess():", err)
-	}
-
-	_, err = p.Break("main.sleepytime")
-	if err != nil {
-		t.Fatal("Break():", err)
-	}
-
-	_, err = p.Break("main.sleepytime")
-	if err == nil {
-		t.Fatal("Should not be able to add breakpoint twice")
-	}
 }
 
 func TestBreakPointWithNonExistantFunction(t *testing.T) {
