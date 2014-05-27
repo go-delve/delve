@@ -143,7 +143,7 @@ func (dbp *DebuggedProcess) Clear(fname string) error {
 		return err
 	}
 
-	dbp.BreakPoints[fname] = nil
+	delete(dbp.BreakPoints, fmt.Sprintf("s:%d", bp.File, bp.Line))
 
 	return nil
 }
