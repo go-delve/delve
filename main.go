@@ -63,8 +63,24 @@ func printStderrAndDie(args ...interface{}) {
 }
 
 func registerProcessCommands(cmds *command.Commands, proc *proctl.DebuggedProcess) {
-	cmds.Register("step", command.CommandFunc(proc.Step))
 	cmds.Register("continue", command.CommandFunc(proc.Continue))
+	cmds.Register("step", func(args ...string) error {
+		err := proc.Step()
+		if err != nil {
+			return err
+		}
+
+		regs, err := proc.Registers()
+		if err != nil {
+			return err
+		}
+
+		f, l, _ := proc.GoSymTable.PCToLine(regs.PC())
+		fmt.Printf("Stopped at: %s:%d\n", f, l)
+
+		return nil
+	})
+
 	cmds.Register("break", func(args ...string) error {
 		fname := args[0]
 		bp, err := proc.Break(fname)

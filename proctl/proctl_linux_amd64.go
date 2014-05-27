@@ -135,7 +135,11 @@ func (dbp *DebuggedProcess) Step() error {
 
 	bp, ok := dbp.PCtoBP(regs.PC())
 	if ok {
-		dbp.restoreInstruction(regs.PC(), bp.OriginalData)
+		err = dbp.restoreInstruction(regs.PC(), bp.OriginalData)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	err = dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))
@@ -143,11 +147,9 @@ func (dbp *DebuggedProcess) Step() error {
 		return fmt.Errorf("step failed: ", err.Error())
 	}
 
-	f, l, fn := dbp.GoSymTable.PCToLine(regs.PC())
-	fmt.Printf("Stopped at: %s %s:%d\n", fn.Name, f, l)
-
+	// Restore breakpoint
 	if ok {
-		_, err = dbp.Break(bp.FunctionName)
+		_, err := dbp.Break(bp.FunctionName)
 		if err != nil {
 			return err
 		}
