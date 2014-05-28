@@ -137,7 +137,7 @@ func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
 		return nil, err
 	}
 
-	delete(dbp.BreakPoints, fmt.Sprintf("s:%d", bp.File, bp.Line))
+	delete(dbp.BreakPoints, fmt.Sprintf("%s:%d", bp.File, bp.Line))
 
 	return bp, nil
 }

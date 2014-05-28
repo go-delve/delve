@@ -216,4 +216,8 @@ func TestClearBreakPoint(t *testing.T) {
 	if bytes.Equal(data, int3) {
 		t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
 	}
+
+	if len(p.BreakPoints) != 0 {
+		t.Fatal("Breakpoint not removed internally")
+	}
 }
