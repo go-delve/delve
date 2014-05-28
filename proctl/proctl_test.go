@@ -140,7 +140,7 @@ func TestBreakPoint(t *testing.T) {
 	}
 
 	pc := regs.PC()
-	if pc != sleepyaddr {
+	if pc != sleepyaddr+1 {
 		t.Fatalf("Break not respected:\nPC:%d\nFN:%d\n", pc, sleepyaddr)
 	}
 

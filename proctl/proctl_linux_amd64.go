@@ -96,9 +96,9 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 // Sets a breakpoint in the running process.
 func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 	var (
-		int3        = []byte{'0', 'x', 'C', 'C'}
+		int3        = []byte{0xCC}
 		f, l, fn    = dbp.GoSymTable.PCToLine(uint64(addr))
-		orginalData = make([]byte, 4)
+		orginalData = make([]byte, 1)
 	)
 
 	_, err := syscall.PtracePeekData(dbp.Pid, addr, orginalData)
