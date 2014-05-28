@@ -178,6 +178,8 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 	if err == nil {
 		t.Fatal("Should not be able to break at non existant function")
 	}
+
+	cmd.Process.Kill()
 }
 
 func TestClearBreakPoint(t *testing.T) {
@@ -220,4 +222,6 @@ func TestClearBreakPoint(t *testing.T) {
 	if len(p.BreakPoints) != 0 {
 		t.Fatal("Breakpoint not removed internally")
 	}
+
+	cmd.Process.Kill()
 }
