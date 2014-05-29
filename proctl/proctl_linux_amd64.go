@@ -149,13 +149,16 @@ func (dbp *DebuggedProcess) Step() error {
 		return err
 	}
 
-	bp, ok := dbp.PCtoBP(regs.PC())
+	bp, ok := dbp.PCtoBP(regs.PC() - 1)
 	if ok {
-		err = dbp.restoreInstruction(bp.Addr, bp.OriginalData)
+		_, err = dbp.Clear(bp.Addr)
 		if err != nil {
 			return err
 		}
 
+		// Reset instruction pointer to our restored instruction.
+		regs.Rip -= 1
+		syscall.PtraceSetRegs(dbp.Pid, regs)
 	}
 
 	err = dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))

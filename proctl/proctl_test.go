@@ -124,11 +124,12 @@ func TestBreakPoint(t *testing.T) {
 	sleepytimefunc := p.GoSymTable.LookupFunc("main.sleepytime")
 	sleepyaddr := sleepytimefunc.Entry
 
-	_, err = p.Break(uintptr(sleepyaddr))
+	bp, err := p.Break(uintptr(sleepyaddr))
 	if err != nil {
 		t.Fatal("Break():", err)
 	}
 
+	breakpc := bp.Addr + 1
 	err = p.Continue()
 	if err != nil {
 		t.Fatal("Continue():", err)
@@ -140,8 +141,8 @@ func TestBreakPoint(t *testing.T) {
 	}
 
 	pc := regs.PC()
-	if pc != sleepyaddr+1 {
-		t.Fatalf("Break not respected:\nPC:%d\nFN:%d\n", pc, sleepyaddr)
+	if pc != breakpc {
+		t.Fatalf("Break not respected:\nPC:%d\nFN:%d\n", pc, breakpc)
 	}
 
 	err = p.Step()
@@ -155,8 +156,8 @@ func TestBreakPoint(t *testing.T) {
 	}
 
 	pc = regs.PC()
-	if pc == sleepyaddr {
-		t.Fatalf("Step not respected:\nPC:%d\nFN:%d\n", pc, sleepyaddr)
+	if pc == breakpc {
+		t.Fatalf("Step not respected:\nPC:%d\nFN:%d\n", pc, breakpc)
 	}
 
 	cmd.Process.Kill()
