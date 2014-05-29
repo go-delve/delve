@@ -143,7 +143,7 @@ func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
 }
 
 // Steps through process.
-func (dbp *DebuggedProcess) Step() error {
+func (dbp *DebuggedProcess) Step() (err error) {
 	regs, err := dbp.Registers()
 	if err != nil {
 		return err
@@ -151,6 +151,7 @@ func (dbp *DebuggedProcess) Step() error {
 
 	bp, ok := dbp.PCtoBP(regs.PC() - 1)
 	if ok {
+		// Clear the breakpoint so that we can continue execution.
 		_, err = dbp.Clear(bp.Addr)
 		if err != nil {
 			return err
@@ -162,19 +163,16 @@ func (dbp *DebuggedProcess) Step() error {
 		if err != nil {
 			return err
 		}
+
+		// Restore breakpoint now that we have passed it.
+		defer func() {
+			_, err = dbp.Break(uintptr(bp.Addr))
+		}()
 	}
 
 	err = dbp.handleResult(syscall.PtraceSingleStep(dbp.Pid))
 	if err != nil {
 		return fmt.Errorf("step failed: ", err.Error())
-	}
-
-	// Restore breakpoint
-	if ok {
-		_, err := dbp.Break(uintptr(bp.Addr))
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
