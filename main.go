@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"debug/gosym"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -99,13 +101,39 @@ func registerProcessCommands(cmds *command.Commands, proc *proctl.DebuggedProces
 	})
 
 	cmds.Register("break", func(args ...string) error {
-		fname := args[0]
-		fn := proc.GoSymTable.LookupFunc(fname)
+		var (
+			fn    *gosym.Func
+			pc    uint64
+			fname = args[0]
+		)
+
+		if strings.ContainsRune(fname, ':') {
+			fl := strings.Split(fname, ":")
+
+			f, err := filepath.Abs(fl[0])
+			if err != nil {
+				return err
+			}
+
+			l, err := strconv.Atoi(fl[1])
+			if err != nil {
+				return err
+			}
+
+			pc, fn, err = proc.GoSymTable.LineToPC(f, l)
+			if err != nil {
+				return err
+			}
+		} else {
+			fn = proc.GoSymTable.LookupFunc(fname)
+			pc = fn.Entry
+		}
+
 		if fn == nil {
 			return fmt.Errorf("No function named %s", fname)
 		}
 
-		bp, err := proc.Break(uintptr(fn.Entry))
+		bp, err := proc.Break(uintptr(pc))
 		if err != nil {
 			return err
 		}
