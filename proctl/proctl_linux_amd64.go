@@ -132,7 +132,7 @@ func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
 		return nil, fmt.Errorf("No breakpoint currently set for %s", bp.FunctionName)
 	}
 
-	err := dbp.restoreInstruction(bp.Addr, bp.OriginalData)
+	_, err := syscall.PtracePokeData(dbp.Pid, uintptr(bp.Addr), bp.OriginalData)
 	if err != nil {
 		return nil, err
 	}
@@ -250,9 +250,4 @@ func (dbp *DebuggedProcess) PCtoBP(pc uint64) (*BreakPoint, bool) {
 	f, l, _ := dbp.GoSymTable.PCToLine(pc)
 	bp, ok := dbp.BreakPoints[fmt.Sprintf("%s:%d", f, l)]
 	return bp, ok
-}
-
-func (dbp *DebuggedProcess) restoreInstruction(pc uint64, data []byte) error {
-	_, err := syscall.PtracePokeData(dbp.Pid, uintptr(pc), data)
-	return err
 }
