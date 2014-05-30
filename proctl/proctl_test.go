@@ -17,6 +17,15 @@ func dataAtAddr(pid int, addr uint64) ([]byte, error) {
 	return data, nil
 }
 
+func getRegisters(p *DebuggedProcess, t *testing.T) *syscall.PtraceRegs {
+	regs, err := p.Registers()
+	if err != nil {
+		t.Fatal("Registers():", err)
+	}
+
+	return regs
+}
+
 func StartTestProcess(name string) (*exec.Cmd, error) {
 	cmd := exec.Command("../fixtures/" + name)
 
@@ -59,11 +68,7 @@ func TestStep(t *testing.T) {
 		t.Fatal("NewDebugProcess():", err)
 	}
 
-	regs, err := p.Registers()
-	if err != nil {
-		t.Fatal("Registers():", err, pid)
-	}
-
+	regs := getRegisters(p, t)
 	rip := regs.PC()
 
 	err = p.Step()
@@ -71,10 +76,7 @@ func TestStep(t *testing.T) {
 		t.Fatal("Step():", err)
 	}
 
-	regs, err = p.Registers()
-	if err != nil {
-		t.Fatal("Registers():", err)
-	}
+	regs = getRegisters(p, t)
 
 	if rip >= regs.PC() {
 		t.Errorf("Expected %#v to be greater than %#v", regs.PC(), rip)
@@ -135,10 +137,7 @@ func TestBreakPoint(t *testing.T) {
 		t.Fatal("Continue():", err)
 	}
 
-	regs, err := p.Registers()
-	if err != nil {
-		t.Fatal("Registers():", err)
-	}
+	regs := getRegisters(p, t)
 
 	pc := regs.PC()
 	if pc != breakpc {
@@ -150,10 +149,7 @@ func TestBreakPoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	regs, err = p.Registers()
-	if err != nil {
-		t.Fatal("Registers():", err)
-	}
+	regs = getRegisters(p, t)
 
 	pc = regs.PC()
 	if pc == breakpc {
