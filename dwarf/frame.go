@@ -68,7 +68,7 @@ const (
 	DW_CFA_hi_user            = 0x3f       // op1: ULEB128 register, op2: BLOCK
 )
 
-// Parse take in data (a byte slice) and returns a slice of
+// Parse takes in data (a byte slice) and returns a slice of
 // CommonInformationEntry structures. Each CommonInformationEntry
 // has a slice of FrameDescriptorEntry structures.
 func Parse(data []byte) CommonEntries {
