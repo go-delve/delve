@@ -9,7 +9,13 @@ import (
 	"unicode/utf8"
 )
 
-type parsefunc func(*bytes.Buffer, CommonEntries, uint32) (parsefunc, CommonEntries, uint32)
+type parsefunc func(*parseContext) (parsefunc, *parseContext)
+
+type parseContext struct {
+	Buf     *bytes.Buffer
+	Entries CommonEntries
+	Length  uint32
+}
 
 type CommonEntries []*CommonInformationEntry
 
@@ -75,14 +81,15 @@ func Parse(data []byte) CommonEntries {
 	var (
 		length  uint32
 		entries CommonEntries
-		reader  = bytes.NewBuffer(data)
+		buf     = bytes.NewBuffer(data)
+		pctx    = &parseContext{Buf: buf, Entries: entries, Length: length}
 	)
 
-	for fn := parseLength; reader.Len() != 0; {
-		fn, entries, length = fn(reader, entries, length)
+	for fn := parseLength; buf.Len() != 0; {
+		fn, pctx = fn(pctx)
 	}
 
-	return entries
+	return pctx.Entries
 }
 
 // DecodeLEB128 decodes a Little Endian Base 128
@@ -118,126 +125,141 @@ func cieEntry(data []byte) bool {
 	return bytes.Equal(data, []byte{0xff, 0xff, 0xff, 0xff})
 }
 
-func parseLength(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
-	binary.Read(reader, binary.LittleEndian, &length)
+func parseLength(ctx *parseContext) (parsefunc, *parseContext) {
+	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Length)
 
-	if cieEntry(reader.Bytes()[0:4]) {
-		return parseCIEID, append(entries, &CommonInformationEntry{Length: length}), length
+	if cieEntry(ctx.Buf.Bytes()[0:4]) {
+		ctx.Entries = append(ctx.Entries, &CommonInformationEntry{Length: ctx.Length})
+		return parseCIEID, ctx
 	}
 
-	entry := entries[len(entries)-1]
-	entry.FrameDescriptorEntries = append(entry.FrameDescriptorEntries, &FrameDescriptorEntry{Length: length, CIE_pointer: entry})
+	entry := ctx.Entries[len(ctx.Entries)-1]
+	entry.FrameDescriptorEntries = append(entry.FrameDescriptorEntries, &FrameDescriptorEntry{Length: ctx.Length, CIE_pointer: entry})
 
-	return parseInitialLocation, entries, length
+	// We aren't reading the CIE pointer from this section so just move the cursor past it.
+	ctx.Buf.Next(4)
+
+	return parseInitialLocation, ctx
 }
 
-func parseInitialLocation(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
+func parseInitialLocation(ctx *parseContext) (parsefunc, *parseContext) {
 	var (
-		frameEntries = entries[len(entries)-1].FrameDescriptorEntries
+		frameEntries = ctx.Entries[len(ctx.Entries)-1].FrameDescriptorEntries
 		frame        = frameEntries[len(frameEntries)-1]
 	)
 
-	binary.Read(reader, binary.LittleEndian, &frame.InitialLocation)
+	binary.Read(ctx.Buf, binary.LittleEndian, &frame.InitialLocation)
+	ctx.Length -= 4
 
-	return parseAddressRange, entries, length - 4
+	return parseAddressRange, ctx
 }
 
-func parseAddressRange(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
+func parseAddressRange(ctx *parseContext) (parsefunc, *parseContext) {
 	var (
-		frameEntries = entries[len(entries)-1].FrameDescriptorEntries
+		frameEntries = ctx.Entries[len(ctx.Entries)-1].FrameDescriptorEntries
 		frame        = frameEntries[len(frameEntries)-1]
 	)
 
-	binary.Read(reader, binary.LittleEndian, &frame.AddressRange)
+	binary.Read(ctx.Buf, binary.LittleEndian, &frame.AddressRange)
+	ctx.Length -= 4
 
-	return parseFrameInstructions, entries, length - 4
+	return parseFrameInstructions, ctx
 }
 
-func parseFrameInstructions(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
+func parseFrameInstructions(ctx *parseContext) (parsefunc, *parseContext) {
 	var (
 		// The rest of this entry consists of the instructions
 		// so we can just grab all of the data from the buffer
 		// cursor to length.
-		buf          = make([]byte, length)
-		frameEntries = entries[len(entries)-1].FrameDescriptorEntries
+		buf          = make([]byte, ctx.Length)
+		frameEntries = ctx.Entries[len(ctx.Entries)-1].FrameDescriptorEntries
 		frame        = frameEntries[len(frameEntries)-1]
 	)
 
-	binary.Read(reader, binary.LittleEndian, &buf)
+	binary.Read(ctx.Buf, binary.LittleEndian, &buf)
 	frame.Instructions = buf
+	ctx.Length = 0
 
-	return parseLength, entries, 0
+	return parseLength, ctx
 }
 
-func parseCIEID(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
-	var entry = entries[len(entries)-1]
+func parseCIEID(ctx *parseContext) (parsefunc, *parseContext) {
+	var entry = ctx.Entries[len(ctx.Entries)-1]
 
-	binary.Read(reader, binary.LittleEndian, &entry.CIE_id)
+	binary.Read(ctx.Buf, binary.LittleEndian, &entry.CIE_id)
+	ctx.Length -= 4
 
-	return parseVersion, entries, length - 4
+	return parseVersion, ctx
 }
 
-func parseVersion(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
-	entry := entries[len(entries)-1]
+func parseVersion(ctx *parseContext) (parsefunc, *parseContext) {
+	entry := ctx.Entries[len(ctx.Entries)-1]
 
-	binary.Read(reader, binary.LittleEndian, &entry.Version)
+	binary.Read(ctx.Buf, binary.LittleEndian, &entry.Version)
+	ctx.Length -= 1
 
-	return parseAugmentation, entries, length - 1
+	return parseAugmentation, ctx
 }
 
-func parseAugmentation(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
+func parseAugmentation(ctx *parseContext) (parsefunc, *parseContext) {
 	var (
-		entry  = entries[len(entries)-1]
-		str, c = parseString(reader)
+		entry  = ctx.Entries[len(ctx.Entries)-1]
+		str, c = parseString(ctx.Buf)
 	)
 
 	entry.Augmentation = str
-	return parseCodeAlignmentFactor, entries, length - c
+	ctx.Length -= c
+
+	return parseCodeAlignmentFactor, ctx
 }
 
-func parseCodeAlignmentFactor(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
+func parseCodeAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
 	var (
-		entry  = entries[len(entries)-1]
-		caf, c = DecodeLEB128(reader)
+		entry  = ctx.Entries[len(ctx.Entries)-1]
+		caf, c = DecodeLEB128(ctx.Buf)
 	)
 
 	entry.CodeAlignmentFactor = caf
+	ctx.Length -= c
 
-	return parseDataAlignmentFactor, entries, length - c
+	return parseDataAlignmentFactor, ctx
 }
 
-func parseDataAlignmentFactor(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
+func parseDataAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
 	var (
-		entry  = entries[len(entries)-1]
-		daf, c = DecodeLEB128(reader)
+		entry  = ctx.Entries[len(ctx.Entries)-1]
+		daf, c = DecodeLEB128(ctx.Buf)
 	)
 
 	entry.DataAlignmentFactor = daf
+	ctx.Length -= c
 
-	return parseReturnAddressRegister, entries, length - c
+	return parseReturnAddressRegister, ctx
 }
 
-func parseReturnAddressRegister(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
-	entry := entries[len(entries)-1]
+func parseReturnAddressRegister(ctx *parseContext) (parsefunc, *parseContext) {
+	entry := ctx.Entries[len(ctx.Entries)-1]
 
-	binary.Read(reader, binary.LittleEndian, &entry.ReturnAddressRegister)
+	binary.Read(ctx.Buf, binary.LittleEndian, &entry.ReturnAddressRegister)
+	ctx.Length -= 1
 
-	return parseInitialInstructions, entries, length - 1
+	return parseInitialInstructions, ctx
 }
 
-func parseInitialInstructions(reader *bytes.Buffer, entries CommonEntries, length uint32) (parsefunc, CommonEntries, uint32) {
+func parseInitialInstructions(ctx *parseContext) (parsefunc, *parseContext) {
 	var (
 		// The rest of this entry consists of the instructions
 		// so we can just grab all of the data from the buffer
 		// cursor to length.
-		buf   = make([]byte, length)
-		entry = entries[len(entries)-1]
+		buf   = make([]byte, ctx.Length)
+		entry = ctx.Entries[len(ctx.Entries)-1]
 	)
 
-	binary.Read(reader, binary.LittleEndian, &buf)
+	binary.Read(ctx.Buf, binary.LittleEndian, &buf)
 	entry.InitialInstructions = buf
+	ctx.Length = 0
 
-	return parseLength, entries, 0
+	return parseLength, ctx
 }
 
 func parseString(data *bytes.Buffer) (string, uint32) {

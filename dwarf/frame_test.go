@@ -88,11 +88,11 @@ func TestParse(t *testing.T) {
 		t.Fatal("Frame entry does not point to parent CIE")
 	}
 
-	if fe.InitialLocation != 0x400c0000000000 {
-		t.Fatal("Initial location not parsed correctly")
+	if fe.InitialLocation != 0x400c00 {
+		t.Fatalf("Initial location not parsed correctly, got %#v", fe.InitialLocation)
 	}
 
-	if fe.AddressRange != 0xbc00000000 {
-		t.Fatal("Address range not parsed correctly")
+	if fe.AddressRange != 0x2b {
+		t.Fatalf("Address range not parsed correctly %#v\n%#v", fe.AddressRange, data[15:48])
 	}
 }
