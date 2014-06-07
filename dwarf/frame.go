@@ -14,6 +14,8 @@ type parsefunc func(*parseContext) (parsefunc, *parseContext)
 type parseContext struct {
 	Buf     *bytes.Buffer
 	Entries CommonEntries
+	Common  *CommonInformationEntry
+	Frame   *FrameDescriptorEntry
 	Length  uint32
 }
 
@@ -129,12 +131,13 @@ func parseLength(ctx *parseContext) (parsefunc, *parseContext) {
 	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Length)
 
 	if cieEntry(ctx.Buf.Bytes()[0:4]) {
-		ctx.Entries = append(ctx.Entries, &CommonInformationEntry{Length: ctx.Length})
+		ctx.Common = &CommonInformationEntry{Length: ctx.Length}
+		ctx.Entries = append(ctx.Entries, ctx.Common)
 		return parseCIEID, ctx
 	}
 
-	entry := ctx.Entries[len(ctx.Entries)-1]
-	entry.FrameDescriptorEntries = append(entry.FrameDescriptorEntries, &FrameDescriptorEntry{Length: ctx.Length, CIE_pointer: entry})
+	ctx.Frame = &FrameDescriptorEntry{Length: ctx.Length, CIE_pointer: ctx.Common}
+	ctx.Common.FrameDescriptorEntries = append(ctx.Common.FrameDescriptorEntries, ctx.Frame)
 
 	// We aren't reading the CIE pointer from this section so just move the cursor past it.
 	ctx.Buf.Next(4)
@@ -143,120 +146,88 @@ func parseLength(ctx *parseContext) (parsefunc, *parseContext) {
 }
 
 func parseInitialLocation(ctx *parseContext) (parsefunc, *parseContext) {
-	var (
-		frameEntries = ctx.Entries[len(ctx.Entries)-1].FrameDescriptorEntries
-		frame        = frameEntries[len(frameEntries)-1]
-	)
-
-	binary.Read(ctx.Buf, binary.LittleEndian, &frame.InitialLocation)
+	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Frame.InitialLocation)
 	ctx.Length -= 4
 
 	return parseAddressRange, ctx
 }
 
 func parseAddressRange(ctx *parseContext) (parsefunc, *parseContext) {
-	var (
-		frameEntries = ctx.Entries[len(ctx.Entries)-1].FrameDescriptorEntries
-		frame        = frameEntries[len(frameEntries)-1]
-	)
-
-	binary.Read(ctx.Buf, binary.LittleEndian, &frame.AddressRange)
+	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Frame.AddressRange)
 	ctx.Length -= 4
 
 	return parseFrameInstructions, ctx
 }
 
 func parseFrameInstructions(ctx *parseContext) (parsefunc, *parseContext) {
-	var (
-		// The rest of this entry consists of the instructions
-		// so we can just grab all of the data from the buffer
-		// cursor to length.
-		buf          = make([]byte, ctx.Length)
-		frameEntries = ctx.Entries[len(ctx.Entries)-1].FrameDescriptorEntries
-		frame        = frameEntries[len(frameEntries)-1]
-	)
+	// The rest of this entry consists of the instructions
+	// so we can just grab all of the data from the buffer
+	// cursor to length.
+	var buf = make([]byte, ctx.Length)
 
 	binary.Read(ctx.Buf, binary.LittleEndian, &buf)
-	frame.Instructions = buf
+	ctx.Frame.Instructions = buf
 	ctx.Length = 0
 
 	return parseLength, ctx
 }
 
 func parseCIEID(ctx *parseContext) (parsefunc, *parseContext) {
-	var entry = ctx.Entries[len(ctx.Entries)-1]
-
-	binary.Read(ctx.Buf, binary.LittleEndian, &entry.CIE_id)
+	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Common.CIE_id)
 	ctx.Length -= 4
 
 	return parseVersion, ctx
 }
 
 func parseVersion(ctx *parseContext) (parsefunc, *parseContext) {
-	entry := ctx.Entries[len(ctx.Entries)-1]
-
-	binary.Read(ctx.Buf, binary.LittleEndian, &entry.Version)
+	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Common.Version)
 	ctx.Length -= 1
 
 	return parseAugmentation, ctx
 }
 
 func parseAugmentation(ctx *parseContext) (parsefunc, *parseContext) {
-	var (
-		entry  = ctx.Entries[len(ctx.Entries)-1]
-		str, c = parseString(ctx.Buf)
-	)
+	var str, c = parseString(ctx.Buf)
 
-	entry.Augmentation = str
+	ctx.Common.Augmentation = str
 	ctx.Length -= c
 
 	return parseCodeAlignmentFactor, ctx
 }
 
 func parseCodeAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
-	var (
-		entry  = ctx.Entries[len(ctx.Entries)-1]
-		caf, c = DecodeLEB128(ctx.Buf)
-	)
+	var caf, c = DecodeLEB128(ctx.Buf)
 
-	entry.CodeAlignmentFactor = caf
+	ctx.Common.CodeAlignmentFactor = caf
 	ctx.Length -= c
 
 	return parseDataAlignmentFactor, ctx
 }
 
 func parseDataAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
-	var (
-		entry  = ctx.Entries[len(ctx.Entries)-1]
-		daf, c = DecodeLEB128(ctx.Buf)
-	)
+	var daf, c = DecodeLEB128(ctx.Buf)
 
-	entry.DataAlignmentFactor = daf
+	ctx.Common.DataAlignmentFactor = daf
 	ctx.Length -= c
 
 	return parseReturnAddressRegister, ctx
 }
 
 func parseReturnAddressRegister(ctx *parseContext) (parsefunc, *parseContext) {
-	entry := ctx.Entries[len(ctx.Entries)-1]
-
-	binary.Read(ctx.Buf, binary.LittleEndian, &entry.ReturnAddressRegister)
+	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Common.ReturnAddressRegister)
 	ctx.Length -= 1
 
 	return parseInitialInstructions, ctx
 }
 
 func parseInitialInstructions(ctx *parseContext) (parsefunc, *parseContext) {
-	var (
-		// The rest of this entry consists of the instructions
-		// so we can just grab all of the data from the buffer
-		// cursor to length.
-		buf   = make([]byte, ctx.Length)
-		entry = ctx.Entries[len(ctx.Entries)-1]
-	)
+	// The rest of this entry consists of the instructions
+	// so we can just grab all of the data from the buffer
+	// cursor to length.
+	var buf = make([]byte, ctx.Length)
 
 	binary.Read(ctx.Buf, binary.LittleEndian, &buf)
-	entry.InitialInstructions = buf
+	ctx.Common.InitialInstructions = buf
 	ctx.Length = 0
 
 	return parseLength, ctx
