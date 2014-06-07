@@ -94,9 +94,9 @@ func Parse(data []byte) CommonEntries {
 	return pctx.Entries
 }
 
-// DecodeLEB128 decodes a Little Endian Base 128
+// decodeULEB128 decodes a Little Endian Base 128
 // represented number.
-func DecodeLEB128(reader *bytes.Buffer) (uint64, uint32) {
+func decodeULEB128(reader *bytes.Buffer) (uint64, uint32) {
 	var (
 		result uint64
 		shift  uint64
@@ -196,7 +196,7 @@ func parseAugmentation(ctx *parseContext) (parsefunc, *parseContext) {
 }
 
 func parseCodeAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
-	var caf, c = DecodeLEB128(ctx.Buf)
+	var caf, c = decodeULEB128(ctx.Buf)
 
 	ctx.Common.CodeAlignmentFactor = caf
 	ctx.Length -= c
@@ -205,7 +205,7 @@ func parseCodeAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
 }
 
 func parseDataAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
-	var daf, c = DecodeLEB128(ctx.Buf)
+	var daf, c = decodeULEB128(ctx.Buf)
 
 	ctx.Common.DataAlignmentFactor = daf
 	ctx.Length -= c
