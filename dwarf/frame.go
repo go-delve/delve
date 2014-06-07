@@ -94,7 +94,7 @@ func Parse(data []byte) CommonEntries {
 	return pctx.Entries
 }
 
-// decodeULEB128 decodes a Little Endian Base 128
+// decodeULEB128 decodes an unsigned Little Endian Base 128
 // represented number.
 func decodeULEB128(buf *bytes.Buffer) (uint64, uint32) {
 	var (
