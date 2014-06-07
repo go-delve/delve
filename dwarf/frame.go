@@ -96,7 +96,7 @@ func Parse(data []byte) CommonEntries {
 
 // decodeULEB128 decodes a Little Endian Base 128
 // represented number.
-func decodeULEB128(reader *bytes.Buffer) (uint64, uint32) {
+func decodeULEB128(buf *bytes.Buffer) (uint64, uint32) {
 	var (
 		result uint64
 		shift  uint64
@@ -104,7 +104,7 @@ func decodeULEB128(reader *bytes.Buffer) (uint64, uint32) {
 	)
 
 	for {
-		b, err := reader.ReadByte()
+		b, err := buf.ReadByte()
 		if err != nil {
 			panic("Could not parse LEB128 value")
 		}
