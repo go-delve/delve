@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Dparker1990/dbg/command"
-	"github.com/Dparker1990/dbg/proctl"
+	"github.com/derekparker/dbg/command"
+	"github.com/derekparker/dbg/proctl"
 )
 
 type term struct {
