@@ -91,8 +91,4 @@ func TestParse(t *testing.T) {
 	if fe.InitialLocation != 0x400c00 {
 		t.Fatalf("Initial location not parsed correctly, got %#v", fe.InitialLocation)
 	}
-
-	if fe.AddressRange != 0x2b {
-		t.Fatalf("Address range not parsed correctly %#v\n%#v", fe.AddressRange, data[15:48])
-	}
 }
