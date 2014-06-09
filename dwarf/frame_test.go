@@ -9,7 +9,7 @@ import (
 )
 
 func grabDebugFrameSection(fp string, t *testing.T) []byte {
-	p, err := filepath.Abs("../fixtures/testprog")
+	p, err := filepath.Abs("../_fixtures/testprog")
 	if err != nil {
 		t.Fatal(err)
 	}
