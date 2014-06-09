@@ -32,11 +32,20 @@ func grabDebugFrameSection(fp string, t *testing.T) []byte {
 	return data
 }
 
-func TestdecodeULEB128(t *testing.T) {
+func TestDecodeULEB128(t *testing.T) {
 	var leb128 = bytes.NewBuffer([]byte{0xE5, 0x8E, 0x26})
 
 	n, c := decodeULEB128(leb128)
 	if n != 624485 {
+		t.Fatal("Number was not decoded properly, got: ", n, c)
+	}
+}
+
+func TestDecodeSLEB128(t *testing.T) {
+	sleb128 := bytes.NewBuffer([]byte{0x9b, 0xf1, 0x59})
+
+	n, c := decodeSLEB128(sleb128)
+	if n != -624485 {
 		t.Fatal("Number was not decoded properly, got: ", n, c)
 	}
 }
