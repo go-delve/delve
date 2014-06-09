@@ -29,7 +29,7 @@ type CommonInformationEntry struct {
 	Version                uint8
 	Augmentation           string
 	CodeAlignmentFactor    uint64
-	DataAlignmentFactor    uint64
+	DataAlignmentFactor    int64
 	ReturnAddressRegister  byte
 	InitialInstructions    []byte
 	FrameDescriptorEntries []*FrameDescriptorEntry
@@ -237,7 +237,7 @@ func parseCodeAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
 }
 
 func parseDataAlignmentFactor(ctx *parseContext) (parsefunc, *parseContext) {
-	var daf, c = decodeULEB128(ctx.Buf)
+	var daf, c = decodeSLEB128(ctx.Buf)
 
 	ctx.Common.DataAlignmentFactor = daf
 	ctx.Length -= c

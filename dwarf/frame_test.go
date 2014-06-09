@@ -83,8 +83,8 @@ func TestParse(t *testing.T) {
 		t.Fatal("Code Alignment Factor was not parsed correctly")
 	}
 
-	if ce.DataAlignmentFactor != 0x7c {
-		t.Fatal("Data Alignment Factor was not parsed correctly")
+	if ce.DataAlignmentFactor != -4 {
+		t.Fatalf("Data Alignment Factor was not parsed correctly got %#v", ce.DataAlignmentFactor)
 	}
 
 	fe := ce.FrameDescriptorEntries[0]
