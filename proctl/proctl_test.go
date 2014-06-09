@@ -3,6 +3,7 @@ package proctl
 import (
 	"bytes"
 	"os/exec"
+	"runtime"
 	"syscall"
 	"testing"
 )
@@ -29,7 +30,8 @@ func getRegisters(p *DebuggedProcess, t *testing.T) *syscall.PtraceRegs {
 }
 
 func withTestProcess(name string, t *testing.T, fn testfunc) {
-	cmd, err := StartTestProcess(name)
+	runtime.LockOSThread()
+	cmd, err := startTestProcess(name)
 	if err != nil {
 		t.Fatal("Starting test process:", err)
 	}
@@ -44,7 +46,7 @@ func withTestProcess(name string, t *testing.T, fn testfunc) {
 	fn(p)
 }
 
-func StartTestProcess(name string) (*exec.Cmd, error) {
+func startTestProcess(name string) (*exec.Cmd, error) {
 	cmd := exec.Command("../_fixtures/" + name)
 
 	err := cmd.Start()
@@ -65,6 +67,10 @@ func TestAttachProcess(t *testing.T) {
 
 func TestStep(t *testing.T) {
 	withTestProcess("testprog", t, func(p *DebuggedProcess) {
+		if p.ProcessState.Exited() {
+			t.Fatal("Process already exited")
+		}
+
 		regs := getRegisters(p, t)
 		rip := regs.PC()
 
