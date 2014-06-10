@@ -40,8 +40,8 @@ type CommonInformationEntry struct {
 type FrameDescriptorEntry struct {
 	Length          uint32
 	CIE_pointer     *CommonInformationEntry
-	InitialLocation uint64
-	AddressRange    uint64
+	InitialLocation uintptr
+	AddressRange    uintptr
 	Instructions    []byte
 }
 
