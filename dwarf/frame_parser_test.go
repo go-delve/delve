@@ -9,7 +9,7 @@ import (
 )
 
 func grabDebugFrameSection(fp string, t *testing.T) []byte {
-	p, err := filepath.Abs("../_fixtures/testprog")
+	p, err := filepath.Abs(fp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestParseString(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	data := grabDebugFrameSection("../fixtures/testprog", t)
+	data := grabDebugFrameSection("../_fixtures/testprog", t)
 	ce := Parse(data)[0]
 
 	if ce.Length != 16 {
