@@ -27,17 +27,17 @@ func main() {
 	t := newTerm()
 
 	if len(os.Args) == 1 {
-		printStderrAndDie("You must provide a pid\n")
+		die("You must provide a pid\n")
 	}
 
 	pid, err := strconv.Atoi(os.Args[1])
 	if err != nil {
-		printStderrAndDie(err)
+		die(err)
 	}
 
 	dbgproc, err := proctl.NewDebugProcess(pid)
 	if err != nil {
-		printStderrAndDie("Could not start debugging process:", err)
+		die("Could not start debugging process:", err)
 	}
 
 	cmds := command.DebugCommands()
@@ -46,7 +46,7 @@ func main() {
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
-			printStderrAndDie("Prompt for input failed.\n")
+			die("Prompt for input failed.\n")
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
@@ -59,7 +59,7 @@ func main() {
 	}
 }
 
-func printStderrAndDie(args ...interface{}) {
+func die(args ...interface{}) {
 	fmt.Fprint(os.Stderr, args)
 	os.Exit(1)
 }
