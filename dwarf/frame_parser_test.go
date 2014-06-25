@@ -2,35 +2,8 @@ package frame
 
 import (
 	"bytes"
-	"debug/elf"
-	"os"
-	"path/filepath"
 	"testing"
 )
-
-func grabDebugFrameSection(fp string, t *testing.T) []byte {
-	p, err := filepath.Abs(fp)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f, err := os.Open(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ef, err := elf.NewFile(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	data, err := ef.Section(".debug_frame").Data()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return data
-}
 
 func TestDecodeULEB128(t *testing.T) {
 	var leb128 = bytes.NewBuffer([]byte{0xE5, 0x8E, 0x26})
@@ -38,6 +11,10 @@ func TestDecodeULEB128(t *testing.T) {
 	n, c := decodeULEB128(leb128)
 	if n != 624485 {
 		t.Fatal("Number was not decoded properly, got: ", n, c)
+	}
+
+	if c != 3 {
+		t.Fatal("Count not returned correctly")
 	}
 }
 
@@ -60,19 +37,18 @@ func TestParseString(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	data := grabDebugFrameSection("../_fixtures/testprog", t)
-	ce := Parse(data)[0]
+	var (
+		data = grabDebugFrameSection("../_fixtures/testprog", t)
+		fe   = Parse(data)[0]
+		ce   = fe.CIE
+	)
 
 	if ce.Length != 16 {
-		t.Fatal("Length was not parsed correctly")
-	}
-
-	if ce.CIE_id != 0xffffffff {
-		t.Fatal("CIE id was not parsed correctly")
+		t.Error("Length was not parsed correctly, got ", ce.Length)
 	}
 
 	if ce.Version != 0x3 {
-		t.Fatalf("Version was not parsed correctly expected %#v got %#v, data was %#v", 0x3, ce.Version, data[0:40])
+		t.Fatalf("Version was not parsed correctly expected %#v got %#v", 0x3, ce.Version)
 	}
 
 	if ce.Augmentation != "" {
@@ -87,17 +63,8 @@ func TestParse(t *testing.T) {
 		t.Fatalf("Data Alignment Factor was not parsed correctly got %#v", ce.DataAlignmentFactor)
 	}
 
-	fe := ce.FrameDescriptorEntries[0]
-
 	if fe.Length != 32 {
-		t.Fatal("Length was not parsed correctly")
+		t.Fatal("Length was not parsed correctly, got ", fe.Length)
 	}
 
-	if fe.CIE_pointer != ce {
-		t.Fatal("Frame entry does not point to parent CIE")
-	}
-
-	if fe.InitialLocation != 0x0 {
-		t.Fatalf("Initial location not parsed correctly, got %#v", fe.InitialLocation)
-	}
 }

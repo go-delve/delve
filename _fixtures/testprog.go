@@ -9,13 +9,13 @@ func sleepytime() {
 	time.Sleep(time.Millisecond)
 }
 
-func sayhi() {
+func helloworld() {
 	fmt.Println("Hello, World!")
 }
 
 func main() {
 	for {
 		sleepytime()
-		sayhi()
+		helloworld()
 	}
 }
