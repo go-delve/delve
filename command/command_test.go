@@ -3,6 +3,8 @@ package command
 import (
 	"fmt"
 	"testing"
+
+	"github.com/derekparker/dbg/proctl"
 )
 
 func TestCommandDefault(t *testing.T) {
@@ -11,7 +13,7 @@ func TestCommandDefault(t *testing.T) {
 		cmd  = cmds.Find("non-existant-command")
 	)
 
-	err := cmd()
+	err := cmd(nil)
 	if err == nil {
 		t.Fatal("cmd() did not default")
 	}
@@ -21,35 +23,18 @@ func TestCommandDefault(t *testing.T) {
 	}
 }
 
-func TestCommandRegister(t *testing.T) {
-	cmds := Commands{make(map[string]cmdfunc)}
-
-	cmds.Register("foo", func(args ...string) error { return fmt.Errorf("registered command") })
-
-	cmd := cmds.Find("foo")
-
-	err := cmd()
-	if err == nil {
-		t.Fatal("cmd was not found")
-	}
-
-	if err.Error() != "registered command" {
-		t.Fatal("wrong command output")
-	}
-}
-
 func TestCommandReplay(t *testing.T) {
 	cmds := DebugCommands()
-	cmds.Register("foo", func(args ...string) error { return fmt.Errorf("registered command") })
+	cmds.Register("foo", func(p *proctl.DebuggedProcess, args ...string) error { return fmt.Errorf("registered command") })
 	cmd := cmds.Find("foo")
 
-	err := cmd()
+	err := cmd(nil)
 	if err.Error() != "registered command" {
 		t.Fatal("wrong command output")
 	}
 
 	cmd = cmds.Find("")
-	err = cmd()
+	err = cmd(nil)
 	if err.Error() != "registered command" {
 		t.Fatal("wrong command output")
 	}
@@ -59,7 +44,7 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
 		cmds = DebugCommands()
 		cmd  = cmds.Find("")
-		err  = cmd()
+		err  = cmd(nil)
 	)
 
 	if err != nil {
