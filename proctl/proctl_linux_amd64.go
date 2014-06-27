@@ -24,7 +24,7 @@ type DebuggedProcess struct {
 }
 
 // Represents a single breakpoint. Stores information on the break
-// point include the byte of data that originally was stored at that
+// point including the byte of data that originally was stored at that
 // address.
 type BreakPoint struct {
 	FunctionName string
