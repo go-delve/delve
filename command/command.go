@@ -24,7 +24,7 @@ func DebugCommands() *Commands {
 	cmds := map[string]cmdfunc{
 		"exit":     exitFunc,
 		"continue": cont,
-		"break":    br,
+		"break":    breakpoint,
 		"step":     step,
 		"clear":    clear,
 		"":         nullCommand,
@@ -111,7 +111,7 @@ func clear(p *proctl.DebuggedProcess, args ...string) error {
 	return nil
 }
 
-func br(p *proctl.DebuggedProcess, args ...string) error {
+func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
 	var (
 		fn    *gosym.Func
 		pc    uint64
