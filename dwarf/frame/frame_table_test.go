@@ -1,8 +1,7 @@
-package frame
+package frame_test
 
 import (
 	"debug/elf"
-	"debug/gosym"
 	"encoding/binary"
 	"os"
 	"path/filepath"
@@ -10,57 +9,49 @@ import (
 	"testing"
 
 	"github.com/derekparker/dbg/_helper"
+	"github.com/derekparker/dbg/dwarf/_helper"
+	"github.com/derekparker/dbg/dwarf/frame"
 	"github.com/derekparker/dbg/proctl"
 )
 
 var testfile string
 
 func init() {
-	testfile, _ = filepath.Abs("../_fixtures/testprog")
+	testfile, _ = filepath.Abs("../../_fixtures/testprog")
 }
 
-func parseGoSym(t *testing.T, exe *elf.File) *gosym.Table {
-	symdat, err := exe.Section(".gosymtab").Data()
+func grabDebugFrameSection(fp string, t *testing.T) []byte {
+	p, err := filepath.Abs(fp)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	pclndat, err := exe.Section(".gopclntab").Data()
+	f, err := os.Open(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	pcln := gosym.NewLineTable(pclndat, exe.Section(".text").Addr)
-	tab, err := gosym.NewTable(symdat, pcln)
+	ef, err := elf.NewFile(f)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return tab
-}
-
-func gosymData(t *testing.T) *gosym.Table {
-	f, err := os.Open(testfile)
+	data, err := ef.Section(".debug_frame").Data()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	e, err := elf.NewFile(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return parseGoSym(t, e)
+	return data
 }
 
 func TestFindReturnAddress(t *testing.T) {
 	var (
 		dbframe = grabDebugFrameSection(testfile, t)
-		fdes    = Parse(dbframe)
-		gsd     = gosymData(t)
+		fdes    = frame.Parse(dbframe)
+		gsd     = dwarfhelper.GosymData(testfile, t)
 	)
 
-	helper.WithTestProcess("testprog", t, func(p *proctl.DebuggedProcess) {
+	helper.WithTestProcess("../../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
 		testsourcefile := testfile + ".go"
 		start, _, err := gsd.LineToPC(testsourcefile, 9)
 		if err != nil {

@@ -38,7 +38,7 @@ func WithTestProcess(name string, t *testing.T, fn testfunc) {
 }
 
 func startTestProcess(name string) (*exec.Cmd, error) {
-	cmd := exec.Command("../_fixtures/" + name)
+	cmd := exec.Command(name)
 
 	err := cmd.Start()
 	if err != nil {

@@ -36,8 +36,12 @@ type FrameDescriptionEntry struct {
 	Instructions []byte
 }
 
+func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
+	return executeDwarfProgramUntilPC(fde, pc)
+}
+
 func (fde *FrameDescriptionEntry) ReturnAddressOffset(pc uint64) int64 {
-	frame := executeDwarfProgram(fde, pc)
+	frame := fde.EstablishFrame(pc)
 	return frame.cfa.offset
 }
 
