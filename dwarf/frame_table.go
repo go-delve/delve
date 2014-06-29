@@ -113,7 +113,7 @@ var fnlookup = map[byte]instruction{
 }
 
 // Unwind the stack to find the return address register.
-func unwind(fde *FrameDescriptionEntry, pc uint64) uint64 {
+func executeDwarfProgram(fde *FrameDescriptionEntry, pc uint64) *FrameContext {
 	frame := &FrameContext{
 		address:       pc,
 		cie:           fde.CIE,
@@ -129,7 +129,7 @@ func unwind(fde *FrameDescriptionEntry, pc uint64) uint64 {
 	dwarfexec(frame, fde.CIE.InitialInstructions)
 	dwarfexec(frame, fde.Instructions)
 
-	return uint64(frame.cfa.offset)
+	return frame
 }
 
 // Execute dwarf instructions.

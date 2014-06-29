@@ -82,17 +82,22 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		fde, err := fdes.FDEForPC(start)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		end, _, err := gsd.LineToPC(testsourcefile, 19)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		ret, err := fdes.FindReturnAddressOffset(start)
+		ret := fde.ReturnAddressOffset(start)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		addr := regs.Rsp + ret
+		addr := uint64(int64(regs.Rsp) + ret)
 		data := make([]byte, 8)
 
 		syscall.PtracePeekText(p.Pid, uintptr(addr), data)
