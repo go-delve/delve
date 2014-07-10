@@ -40,7 +40,7 @@ func TestDebugLinePrologueParser(t *testing.T) {
 		prologue = dbl.Prologue
 	)
 
-	if prologue.Length != uint32(59802) {
+	if prologue.Length != uint32(59807) {
 		t.Fatal("Length was not parsed correctly", prologue.Length)
 	}
 

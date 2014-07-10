@@ -9,14 +9,15 @@ import (
 )
 
 type StateMachine struct {
-	Dbl        *DebugLineInfo
-	File       string
-	Line       int
-	Address    uint64
-	Column     uint
-	IsStmt     bool
-	BasicBlock bool
-	EndSeq     bool
+	Dbl             *DebugLineInfo
+	File            string
+	Line            int
+	Address         uint64
+	Column          uint
+	IsStmt          bool
+	BasicBlock      bool
+	EndSeq          bool
+	LastWasStandard bool
 }
 
 type opcodefn func(*StateMachine, *bytes.Buffer)
@@ -59,31 +60,70 @@ var extendedopcodes = map[byte]opcodefn{
 	DW_LINE_define_file:  definefile,
 }
 
+func newStateMachine(dbl *DebugLineInfo) *StateMachine {
+	return &StateMachine{Dbl: dbl, File: dbl.FileNames[0].Name, Line: 1}
+}
+
 // Returns the filename, line number and PC for the next executable line in
 // the traced program.
 func (dbl *DebugLineInfo) NextLocAfterPC(pc uint64) (string, int, uint64) {
 	var (
-		sm  = &StateMachine{Dbl: dbl, File: dbl.FileNames[0].Name}
+		sm  = newStateMachine(dbl)
 		buf = bytes.NewBuffer(dbl.Instructions)
 	)
 
-	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-		switch {
-		case b == 0:
-			execExtendedOpcode(sm, b, buf)
-		case b < dbl.Prologue.OpcodeBase:
-			execStandardOpcode(sm, b, buf)
-		default:
-			execSpecialOpcode(sm, b)
-		}
+	executeUntilPC(sm, buf, pc)
 
-		if sm.Address > pc {
-			advanceline(sm, buf)
+	return sm.File, sm.Line, sm.Address
+}
+
+func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) (string, int, uint64) {
+	var (
+		sm  = newStateMachine(dbl)
+		buf = bytes.NewBuffer(dbl.Instructions)
+	)
+
+	executeUntilPC(sm, buf, pc)
+	line := sm.Line
+
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+
+		if sm.Line > line {
 			break
 		}
 	}
 
 	return sm.File, sm.Line, sm.Address
+}
+
+func executeUntilPC(sm *StateMachine, buf *bytes.Buffer, pc uint64) {
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+
+		if sm.Address > pc {
+			if sm.LastWasStandard {
+				b, err = buf.ReadByte()
+				if err != nil {
+					panic(err)
+				}
+
+				findAndExecOpcode(sm, buf, b)
+			}
+			break
+		}
+	}
+}
+
+func findAndExecOpcode(sm *StateMachine, buf *bytes.Buffer, b byte) {
+	switch {
+	case b == 0:
+		execExtendedOpcode(sm, b, buf)
+	case b < sm.Dbl.Prologue.OpcodeBase:
+		execStandardOpcode(sm, b, buf)
+	default:
+		execSpecialOpcode(sm, b)
+	}
 }
 
 func execSpecialOpcode(sm *StateMachine, instr byte) {
@@ -99,6 +139,7 @@ func execSpecialOpcode(sm *StateMachine, instr byte) {
 	sm.Line += int(sm.Dbl.Prologue.LineBase + int8(decoded%sm.Dbl.Prologue.LineRange))
 	sm.Address += uint64(decoded / sm.Dbl.Prologue.LineRange)
 	sm.BasicBlock = false
+	sm.LastWasStandard = false
 }
 
 func execExtendedOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
@@ -108,6 +149,7 @@ func execExtendedOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
 	if !ok {
 		panic(fmt.Sprintf("Encountered unknown standard opcode %#v\n", b))
 	}
+	sm.LastWasStandard = false
 
 	fn(sm, buf)
 }
@@ -117,6 +159,7 @@ func execStandardOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
 	if !ok {
 		panic(fmt.Sprintf("Encountered unknown standard opcode %#v\n", instr))
 	}
+	sm.LastWasStandard = true
 
 	fn(sm, buf)
 }

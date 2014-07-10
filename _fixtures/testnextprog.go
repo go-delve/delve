@@ -13,15 +13,21 @@ func helloworld() {
 	fmt.Println("Hello, World!")
 }
 
-func main() {
-	i := 1
+func testnext() {
+	j := 1
 
-	for {
-		i += i * (i ^ 3) / 100
+	for i := 0; i <= 1; i++ {
+		j += j * (j ^ 3) / 100
 
-		sleepytime()
 		helloworld()
+	}
 
-		i--
+	helloworld()
+}
+
+func main() {
+	for {
+		sleepytime()
+		testnext()
 	}
 }

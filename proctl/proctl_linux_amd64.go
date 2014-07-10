@@ -5,6 +5,7 @@ package proctl
 import (
 	"debug/elf"
 	"debug/gosym"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"syscall"
@@ -200,10 +201,34 @@ func (dbp *DebuggedProcess) Next() error {
 		return err
 	}
 
-	_, _, addr := dbp.DebugLine.NextLocAfterPC(pc)
-	_, err = dbp.Break(uintptr(addr))
-	if err != nil {
-		return err
+	_, l, _ := dbp.GoSymTable.PCToLine(pc)
+	fde, _ := dbp.FrameEntries.FDEForPC(pc)
+	_, nl, addr := dbp.DebugLine.NextLocAfterPC(pc)
+
+	if !fde.AddressRange.Cover(addr) {
+		offset := fde.ReturnAddressOffset(pc)
+		addr = dbp.ReturnAddressFromOffset(offset)
+	}
+
+	if nl < l {
+		// We are likely in a loop, set a breakpoint at the
+		// first instruction following the loop.
+		_, _, loopaddr := dbp.DebugLine.LoopExitLocation(pc)
+		_, ok := dbp.PCtoBP(loopaddr)
+		if !ok {
+			_, err = dbp.Break(uintptr(loopaddr))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	_, ok := dbp.PCtoBP(addr)
+	if !ok {
+		_, err = dbp.Break(uintptr(addr))
+		if err != nil {
+			return err
+		}
 	}
 
 	err = dbp.Continue()
@@ -315,4 +340,23 @@ func (dbp *DebuggedProcess) PCtoBP(pc uint64) (*BreakPoint, bool) {
 	f, l, _ := dbp.GoSymTable.PCToLine(pc)
 	bp, ok := dbp.BreakPoints[fmt.Sprintf("%s:%d", f, l)]
 	return bp, ok
+}
+
+// Takes an offset from RSP and returns the address of the
+// instruction the currect function is going to return to.
+func (dbp *DebuggedProcess) ReturnAddressFromOffset(offset int64) uint64 {
+	regs, err := dbp.Registers()
+	if err != nil {
+		panic("Could not obtain register values")
+	}
+
+	// TODO: the return address should be looked up in the line
+	// table, and check whether the line value for that entry is
+	// negative. If it is, we are likely in a loop, so we should
+	// search backwards though the table until we find a matching
+	// line number, and use that address.
+	retaddr := int64(regs.Rsp) + offset
+	data := make([]byte, 8)
+	syscall.PtracePeekText(dbp.Pid, uintptr(retaddr), data)
+	return binary.LittleEndian.Uint64(data)
 }

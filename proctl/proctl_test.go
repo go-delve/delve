@@ -177,10 +177,14 @@ func TestNext(t *testing.T) {
 	testcases := []struct {
 		begin, end int
 	}{
+		{17, 19},
+		{19, 20},
 		{20, 22},
-		{22, 23},
-		{23, 25},
-		{25, 20},
+		{22, 20},
+		{20, 22},
+		{22, 25},
+		{25, 26},
+		{26, 30},
 	}
 
 	fp, err := filepath.Abs("../_fixtures/testnextprog.go")

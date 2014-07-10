@@ -14,12 +14,6 @@ import (
 	"github.com/derekparker/dbg/proctl"
 )
 
-var testfile string
-
-func init() {
-	testfile, _ = filepath.Abs("../../_fixtures/testprog")
-}
-
 func grabDebugFrameSection(fp string, t *testing.T) []byte {
 	p, err := filepath.Abs(fp)
 	if err != nil {
@@ -46,14 +40,15 @@ func grabDebugFrameSection(fp string, t *testing.T) []byte {
 
 func TestFindReturnAddress(t *testing.T) {
 	var (
-		dbframe = grabDebugFrameSection(testfile, t)
-		fdes    = frame.Parse(dbframe)
-		gsd     = dwarfhelper.GosymData(testfile, t)
+		testfile, _ = filepath.Abs("../../_fixtures/testnextprog")
+		dbframe     = grabDebugFrameSection(testfile, t)
+		fdes        = frame.Parse(dbframe)
+		gsd         = dwarfhelper.GosymData(testfile, t)
 	)
 
-	helper.WithTestProcess("../../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
+	helper.WithTestProcess(testfile, t, func(p *proctl.DebuggedProcess) {
 		testsourcefile := testfile + ".go"
-		start, _, err := gsd.LineToPC(testsourcefile, 9)
+		start, _, err := gsd.LineToPC(testsourcefile, 22)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,11 +73,6 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		end, _, err := gsd.LineToPC(testsourcefile, 19)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		ret := fde.ReturnAddressOffset(start)
 		if err != nil {
 			t.Fatal(err)
@@ -94,8 +84,9 @@ func TestFindReturnAddress(t *testing.T) {
 		syscall.PtracePeekText(p.Pid, uintptr(addr), data)
 		addr = binary.LittleEndian.Uint64(data)
 
+		end := uint64(0x400dff)
 		if addr != end {
-			t.Fatalf("return address not found correctly, expected %#v got %#v", end, ret)
+			t.Fatalf("return address not found correctly, expected %#v got %#v", end, addr)
 		}
 	})
 }

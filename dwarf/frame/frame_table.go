@@ -156,20 +156,9 @@ func (frame *FrameContext) ExecuteUntilPC(instructions []byte) {
 	for frame.loc <= frame.address && frame.buf.Len() > 0 {
 		executeDwarfInstruction(frame)
 	}
-}
-
-func (frame *FrameContext) NextLocation() uint64 {
-	loc := frame.loc
-
-	for frame.buf.Len() > 0 {
-		executeDwarfInstruction(frame)
-
-		if frame.loc > loc {
-			return frame.loc
-		}
-	}
-
-	return 0
+	// TODO: Why is this necessary?
+	executeDwarfInstruction(frame)
+	executeDwarfInstruction(frame)
 }
 
 func executeDwarfInstruction(frame *FrameContext) {
