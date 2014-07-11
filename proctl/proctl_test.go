@@ -185,6 +185,7 @@ func TestNext(t *testing.T) {
 		{22, 25},
 		{25, 26},
 		{26, 30},
+		{30, 31},
 	}
 
 	fp, err := filepath.Abs("../_fixtures/testnextprog.go")

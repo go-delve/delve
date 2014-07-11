@@ -8,6 +8,13 @@ import (
 	"github.com/derekparker/dbg/dwarf/util"
 )
 
+type Location struct {
+	File    string
+	Line    int
+	Address uint64
+	Delta   int
+}
+
 type StateMachine struct {
 	Dbl             *DebugLineInfo
 	File            string
@@ -18,6 +25,7 @@ type StateMachine struct {
 	BasicBlock      bool
 	EndSeq          bool
 	LastWasStandard bool
+	LastDelta       int
 }
 
 type opcodefn func(*StateMachine, *bytes.Buffer)
@@ -66,18 +74,7 @@ func newStateMachine(dbl *DebugLineInfo) *StateMachine {
 
 // Returns the filename, line number and PC for the next executable line in
 // the traced program.
-func (dbl *DebugLineInfo) NextLocAfterPC(pc uint64) (string, int, uint64) {
-	var (
-		sm  = newStateMachine(dbl)
-		buf = bytes.NewBuffer(dbl.Instructions)
-	)
-
-	executeUntilPC(sm, buf, pc)
-
-	return sm.File, sm.Line, sm.Address
-}
-
-func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) (string, int, uint64) {
+func (dbl *DebugLineInfo) NextLocAfterPC(pc uint64) *Location {
 	var (
 		sm  = newStateMachine(dbl)
 		buf = bytes.NewBuffer(dbl.Instructions)
@@ -85,6 +82,33 @@ func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) (string, int, uint64) {
 
 	executeUntilPC(sm, buf, pc)
 	line := sm.Line
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+
+		if sm.Line > line {
+			break
+		}
+	}
+
+	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
+}
+
+func (dbl *DebugLineInfo) LocationInfoForPC(pc uint64) *Location {
+	var (
+		sm  = newStateMachine(dbl)
+		buf = bytes.NewBuffer(dbl.Instructions)
+	)
+
+	executeUntilPC(sm, buf, pc)
+
+	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
+}
+
+func (dbl *DebugLineInfo) LoopEntryLocation(line int) *Location {
+	var (
+		sm  = newStateMachine(dbl)
+		buf = bytes.NewBuffer(dbl.Instructions)
+	)
 
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
@@ -94,23 +118,46 @@ func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) (string, int, uint64) {
 		}
 	}
 
-	return sm.File, sm.Line, sm.Address
+	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
 }
 
-func executeUntilPC(sm *StateMachine, buf *bytes.Buffer, pc uint64) {
+func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) *Location {
+	var (
+		line int
+		sm   = newStateMachine(dbl)
+		buf  = bytes.NewBuffer(dbl.Instructions)
+	)
+
+	executeUntilPC(sm, buf, pc)
+	line = sm.Line
+
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
 
-		if sm.Address > pc {
-			if sm.LastWasStandard {
-				b, err = buf.ReadByte()
-				if err != nil {
-					panic(err)
-				}
-
-				findAndExecOpcode(sm, buf, b)
-			}
+		if sm.Line > line {
 			break
+		}
+	}
+
+	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
+}
+
+func executeUntilPC(sm *StateMachine, buf *bytes.Buffer, pc uint64) {
+	var line int
+
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+
+		if line != 0 && sm.Line > line {
+			break
+		}
+
+		if sm.Address == pc {
+			if !sm.LastWasStandard {
+				break
+			}
+
+			line = sm.Line
 		}
 	}
 }
@@ -136,7 +183,8 @@ func execSpecialOpcode(sm *StateMachine, instr byte) {
 		sm.IsStmt = true
 	}
 
-	sm.Line += int(sm.Dbl.Prologue.LineBase + int8(decoded%sm.Dbl.Prologue.LineRange))
+	sm.LastDelta = int(sm.Dbl.Prologue.LineBase + int8(decoded%sm.Dbl.Prologue.LineRange))
+	sm.Line += sm.LastDelta
 	sm.Address += uint64(decoded / sm.Dbl.Prologue.LineRange)
 	sm.BasicBlock = false
 	sm.LastWasStandard = false
@@ -174,8 +222,9 @@ func advancepc(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func advanceline(sm *StateMachine, buf *bytes.Buffer) {
-	l, _ := util.DecodeSLEB128(buf)
-	sm.Line += int(l)
+	line, _ := util.DecodeSLEB128(buf)
+	sm.Line += int(line)
+	sm.LastDelta = int(line)
 }
 
 func setfile(sm *StateMachine, buf *bytes.Buffer) {

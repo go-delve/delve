@@ -21,13 +21,13 @@ func TestNextLocAfterPC(t *testing.T) {
 		pc, _, _ = gosym.LineToPC(testfile+".go", 20)
 	)
 
-	f, l, _ := dbl.NextLocAfterPC(pc)
+	loc := dbl.NextLocAfterPC(pc)
 
-	if f != testfile+".go" {
-		t.Fatal("File not returned correctly", f)
+	if loc.File != testfile+".go" {
+		t.Fatal("File not returned correctly", loc.File)
 	}
 
-	if l != 22 {
-		t.Fatal("Line not returned correctly", l)
+	if loc.Line != 22 {
+		t.Fatal("Line not returned correctly", loc.Line)
 	}
 }

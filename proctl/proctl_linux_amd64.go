@@ -3,6 +3,7 @@
 package proctl
 
 import (
+	"bytes"
 	"debug/elf"
 	"debug/gosym"
 	"encoding/binary"
@@ -38,6 +39,16 @@ type BreakPoint struct {
 	Line         int
 	Addr         uint64
 	OriginalData []byte
+}
+
+type BreakPointExistsError struct {
+	file string
+	line int
+	addr uintptr
+}
+
+func (bpe BreakPointExistsError) Error() string {
+	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
 }
 
 // Returns a new DebuggedProcess struct with sensible defaults.
@@ -122,6 +133,10 @@ func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 		return nil, err
 	}
 
+	if bytes.Equal(originalData, int3) {
+		return nil, BreakPointExistsError{f, l, addr}
+	}
+
 	_, err = syscall.PtracePokeData(dbp.Pid, addr, int3)
 	if err != nil {
 		return nil, err
@@ -196,47 +211,41 @@ func (dbp *DebuggedProcess) Step() (err error) {
 
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
+	addrs := make([]uint64, 0, 3)
 	pc, err := dbp.CurrentPC()
 	if err != nil {
 		return err
 	}
 
-	_, l, _ := dbp.GoSymTable.PCToLine(pc)
-	fde, _ := dbp.FrameEntries.FDEForPC(pc)
-	_, nl, addr := dbp.DebugLine.NextLocAfterPC(pc)
-
-	if !fde.AddressRange.Cover(addr) {
-		offset := fde.ReturnAddressOffset(pc)
-		addr = dbp.ReturnAddressFromOffset(offset)
+	fde, err := dbp.FrameEntries.FDEForPC(pc)
+	if err != nil {
+		return err
 	}
 
-	if nl < l {
-		// We are likely in a loop, set a breakpoint at the
-		// first instruction following the loop.
-		_, _, loopaddr := dbp.DebugLine.LoopExitLocation(pc)
-		_, ok := dbp.PCtoBP(loopaddr)
-		if !ok {
-			_, err = dbp.Break(uintptr(loopaddr))
-			if err != nil {
+	loc := dbp.DebugLine.NextLocAfterPC(pc - 1)
+	if !fde.AddressRange.Cover(loc.Address) {
+		// Next line is outside current frame, use return addr.
+		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+		loc = dbp.DebugLine.LocationInfoForPC(addr)
+	}
+	addrs = append(addrs, loc.Address)
+
+	if loc.Delta < 0 {
+		// We are likely in a loop, set breakpoints at entry and exit.
+		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
+		exit := dbp.DebugLine.LoopExitLocation(pc - 1)
+		addrs = append(addrs, entry.Address, exit.Address)
+	}
+
+	for _, addr := range addrs {
+		if _, err := dbp.Break(uintptr(addr)); err != nil {
+			if _, ok := err.(BreakPointExistsError); !ok {
 				return err
 			}
 		}
 	}
 
-	_, ok := dbp.PCtoBP(addr)
-	if !ok {
-		_, err = dbp.Break(uintptr(addr))
-		if err != nil {
-			return err
-		}
-	}
-
-	err = dbp.Continue()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return dbp.Continue()
 }
 
 // Continue process until next breakpoint.
