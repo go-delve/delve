@@ -24,6 +24,7 @@ func DebugCommands() *Commands {
 	cmds := map[string]cmdfunc{
 		"exit":     exitFunc,
 		"continue": cont,
+		"next":     next,
 		"break":    breakpoint,
 		"step":     step,
 		"clear":    clear,
@@ -79,6 +80,23 @@ func cont(p *proctl.DebuggedProcess, ars ...string) error {
 
 func step(p *proctl.DebuggedProcess, args ...string) error {
 	err := p.Step()
+	if err != nil {
+		return err
+	}
+
+	regs, err := p.Registers()
+	if err != nil {
+		return err
+	}
+
+	f, l, _ := p.GoSymTable.PCToLine(regs.PC())
+	fmt.Printf("Stopped at: %s:%d\n", f, l)
+
+	return nil
+}
+
+func next(p *proctl.DebuggedProcess, args ...string) error {
+	err := p.Next()
 	if err != nil {
 		return err
 	}
