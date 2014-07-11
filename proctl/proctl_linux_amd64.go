@@ -217,12 +217,14 @@ func (dbp *DebuggedProcess) Next() error {
 		return err
 	}
 
+	pc-- // account for breakpoint instruction
+
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
 		return err
 	}
 
-	loc := dbp.DebugLine.NextLocAfterPC(pc - 1)
+	loc := dbp.DebugLine.NextLocAfterPC(pc)
 	if !fde.AddressRange.Cover(loc.Address) {
 		// Next line is outside current frame, use return addr.
 		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
@@ -233,7 +235,7 @@ func (dbp *DebuggedProcess) Next() error {
 	if loc.Delta < 0 {
 		// We are likely in a loop, set breakpoints at entry and exit.
 		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
-		exit := dbp.DebugLine.LoopExitLocation(pc - 1)
+		exit := dbp.DebugLine.LoopExitLocation(pc)
 		addrs = append(addrs, entry.Address, exit.Address)
 	}
 
