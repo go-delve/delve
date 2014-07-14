@@ -6,7 +6,6 @@ package frame
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 
 	"github.com/derekparker/dbg/dwarf/util"
 )
@@ -44,7 +43,7 @@ func cieEntry(data []byte) bool {
 func parseLength(ctx *parseContext) parsefunc {
 	var fn parsefunc
 
-	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Length)
+	ctx.Length = binary.LittleEndian.Uint32(ctx.Buf.Next(4))
 	cieid := ctx.Buf.Next(4)
 
 	if cieEntry(cieid) {
@@ -63,7 +62,7 @@ func parseLength(ctx *parseContext) parsefunc {
 }
 
 func parseInitialLocation(ctx *parseContext) parsefunc {
-	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Frame.AddressRange.begin)
+	ctx.Frame.AddressRange.begin = binary.LittleEndian.Uint64(ctx.Buf.Next(8))
 
 	ctx.Length -= 8
 
@@ -71,7 +70,7 @@ func parseInitialLocation(ctx *parseContext) parsefunc {
 }
 
 func parseAddressRange(ctx *parseContext) parsefunc {
-	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Frame.AddressRange.end)
+	ctx.Frame.AddressRange.end = binary.LittleEndian.Uint64(ctx.Buf.Next(8))
 
 	ctx.Length -= 8
 
@@ -82,17 +81,18 @@ func parseFrameInstructions(ctx *parseContext) parsefunc {
 	// The rest of this entry consists of the instructions
 	// so we can just grab all of the data from the buffer
 	// cursor to length.
-	var buf = make([]byte, ctx.Length)
-
-	io.ReadFull(ctx.Buf, buf)
-	ctx.Frame.Instructions = buf
+	ctx.Frame.Instructions = ctx.Buf.Next(int(ctx.Length))
 	ctx.Length = 0
 
 	return parseLength
 }
 
 func parseVersion(ctx *parseContext) parsefunc {
-	binary.Read(ctx.Buf, binary.LittleEndian, &ctx.Common.Version)
+	version, err := ctx.Buf.ReadByte()
+	if err != nil {
+		panic(err)
+	}
+	ctx.Common.Version = version
 	ctx.Length -= 1
 
 	return parseAugmentation
@@ -137,10 +137,7 @@ func parseInitialInstructions(ctx *parseContext) parsefunc {
 	// The rest of this entry consists of the instructions
 	// so we can just grab all of the data from the buffer
 	// cursor to length.
-	var buf = make([]byte, ctx.Length)
-
-	binary.Read(ctx.Buf, binary.LittleEndian, &buf)
-	ctx.Common.InitialInstructions = buf
+	ctx.Common.InitialInstructions = ctx.Buf.Next(int(ctx.Length))
 	ctx.Length = 0
 
 	return parseLength

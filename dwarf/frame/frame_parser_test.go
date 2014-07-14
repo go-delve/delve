@@ -3,6 +3,7 @@ package frame_test
 import (
 	"testing"
 
+	"github.com/davecheney/profile"
 	"github.com/derekparker/dbg/dwarf/frame"
 )
 
@@ -37,4 +38,14 @@ func TestParse(t *testing.T) {
 		t.Fatal("Length was not parsed correctly, got ", fe.Length)
 	}
 
+}
+
+func BenchmarkParse(b *testing.B) {
+	defer profile.Start(profile.CPUProfile).Stop()
+	data := grabDebugFrameSection("../../_fixtures/testprog", nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		frame.Parse(data)
+	}
 }
