@@ -1,9 +1,6 @@
 package util
 
-import (
-	"bytes"
-	"unicode/utf8"
-)
+import "bytes"
 
 // DecodeULEB128 decodes an unsigned Little Endian Base 128
 // represented number.
@@ -67,36 +64,10 @@ func DecodeSLEB128(buf *bytes.Buffer) (int64, uint32) {
 }
 
 func ParseString(data *bytes.Buffer) (string, uint32) {
-	var (
-		size uint32
-		str  []rune
-		strb []byte
-	)
-
-	for {
-		b, err := data.ReadByte()
-		if err != nil {
-			panic("parseString(): Could not read byte")
-		}
-		size++
-
-		if b == 0x0 {
-			if size == 1 {
-				return "", size
-			}
-
-			break
-		}
-
-		strb = append(strb, b)
-
-		if utf8.FullRune(strb) {
-			r, _ := utf8.DecodeRune(strb)
-			str = append(str, r)
-			size++
-			strb = strb[0:0]
-		}
+	str, err := data.ReadString(0x0)
+	if err != nil {
+		panic("Could not parse string")
 	}
 
-	return string(str), size
+	return str[:len(str)-1], uint32(len(str))
 }

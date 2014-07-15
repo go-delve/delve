@@ -50,20 +50,17 @@ func Parse(data []byte) *DebugLineInfo {
 func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 	p := &DebugLinePrologue{}
 
-	binary.Read(buf, binary.LittleEndian, &p.Length)
-	binary.Read(buf, binary.LittleEndian, &p.Version)
-	binary.Read(buf, binary.LittleEndian, &p.PrologueLength)
-	binary.Read(buf, binary.LittleEndian, &p.MinInstrLength)
-	binary.Read(buf, binary.LittleEndian, &p.InitialIsStmt)
-	binary.Read(buf, binary.LittleEndian, &p.LineBase)
-	binary.Read(buf, binary.LittleEndian, &p.LineRange)
-	binary.Read(buf, binary.LittleEndian, &p.OpcodeBase)
-	binary.Read(buf, binary.LittleEndian, &p.StdOpLengths)
+	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
+	p.Version = binary.LittleEndian.Uint16(buf.Next(2))
+	p.PrologueLength = binary.LittleEndian.Uint32(buf.Next(4))
+	p.MinInstrLength = uint8(buf.Next(1)[0])
+	p.InitialIsStmt = uint8(buf.Next(1)[0])
+	p.LineBase = int8(buf.Next(1)[0])
+	p.LineRange = uint8(buf.Next(1)[0])
+	p.OpcodeBase = uint8(buf.Next(1)[0])
 
 	p.StdOpLengths = make([]uint8, p.OpcodeBase-1)
-	for i := uint8(0); i < p.OpcodeBase-1; i++ {
-		binary.Read(buf, binary.LittleEndian, &p.StdOpLengths[i])
-	}
+	binary.Read(buf, binary.LittleEndian, &p.StdOpLengths)
 
 	dbl.Prologue = p
 }

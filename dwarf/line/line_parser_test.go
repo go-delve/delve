@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/davecheney/profile"
 )
 
 func grabDebugLineSection(fp string, t *testing.T) []byte {
@@ -89,5 +91,15 @@ func TestDebugLinePrologueParser(t *testing.T) {
 
 	if !strings.Contains(dbl.FileNames[0].Name, "/dbg/_fixtures/testnextprog.go") {
 		t.Fatal("First entry not parsed correctly")
+	}
+}
+
+func BenchmarkLineParser(b *testing.B) {
+	defer profile.Start(profile.MemProfile).Stop()
+	data := grabDebugLineSection("../../_fixtures/testnextprog", nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Parse(data)
 	}
 }
