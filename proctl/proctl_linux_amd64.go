@@ -85,7 +85,10 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 }
 
 // Finds the executable from /proc/<pid>/exe and then
-// uses that to parse the Go symbol table.
+// uses that to parse the following information:
+// * Dwarf .debug_frame section
+// * Dwarf .debug_line section
+// * Go symbol table.
 func (dbp *DebuggedProcess) LoadInformation() error {
 	err := dbp.findExecutable()
 	if err != nil {
