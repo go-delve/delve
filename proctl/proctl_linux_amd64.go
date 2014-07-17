@@ -313,6 +313,7 @@ func (dbp *DebuggedProcess) parseDebugLine() error {
 	dbp.DebugLine = line.Parse(debugLine)
 	return nil
 }
+
 func (dbp *DebuggedProcess) parseDebugFrame() error {
 	debugFrame, err := dbp.Executable.Section(".debug_frame").Data()
 	if err != nil {
