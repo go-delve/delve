@@ -361,11 +361,6 @@ func (dbp *DebuggedProcess) ReturnAddressFromOffset(offset int64) uint64 {
 		panic("Could not obtain register values")
 	}
 
-	// TODO: the return address should be looked up in the line
-	// table, and check whether the line value for that entry is
-	// negative. If it is, we are likely in a loop, so we should
-	// search backwards though the table until we find a matching
-	// line number, and use that address.
 	retaddr := int64(regs.Rsp) + offset
 	data := make([]byte, 8)
 	syscall.PtracePeekText(dbp.Pid, uintptr(retaddr), data)
