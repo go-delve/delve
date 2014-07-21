@@ -14,14 +14,11 @@ DBG is a Go debugger, written primarily in Go.
 
 ### Usage
 
-* `break`
-Set break point at the entry point of a function, or at a specific file/line. Example: `break foo.go:13`.
+* `break` - Set break point at the entry point of a function, or at a specific file/line. Example: `break foo.go:13`.
 
-* `step`
-Single step through program.
+* `step` - Single step through program.
 
-* `next`
-Step over to next source line.
+* `next` - Step over to next source line.
 
 ### Upcoming features
 
