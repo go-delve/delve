@@ -85,7 +85,7 @@ func (dbl *DebugLineInfo) NextLocAfterPC(pc uint64) *Location {
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
 
-		if sm.Line > line {
+		if sm.Line != line {
 			break
 		}
 	}
@@ -134,7 +134,7 @@ func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) *Location {
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
 
-		if sm.Line > line {
+		if sm.Line != line {
 			break
 		}
 	}
@@ -148,7 +148,7 @@ func executeUntilPC(sm *StateMachine, buf *bytes.Buffer, pc uint64) {
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
 
-		if line != 0 && sm.Line > line {
+		if line != 0 && sm.Line != line {
 			break
 		}
 
