@@ -2,7 +2,7 @@
 
 ### What is DBG?
 
-DBG is a Go debugger, written primarily in Go.
+DBG is a Go debugger, written primarily in Go. It really needs a new name.
 
 ### Features
 
