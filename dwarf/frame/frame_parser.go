@@ -127,7 +127,7 @@ func parseDataAlignmentFactor(ctx *parseContext) parsefunc {
 
 func parseReturnAddressRegister(ctx *parseContext) parsefunc {
 	reg, c := util.DecodeULEB128(ctx.Buf)
-	ctx.Common.ReturnAddressRegister = uint8(reg)
+	ctx.Common.ReturnAddressRegister = reg
 	ctx.Length -= c
 
 	return parseInitialInstructions

@@ -11,7 +11,7 @@ type CommonInformationEntry struct {
 	Augmentation          string
 	CodeAlignmentFactor   uint64
 	DataAlignmentFactor   int64
-	ReturnAddressRegister byte
+	ReturnAddressRegister uint64
 	InitialInstructions   []byte
 }
 
@@ -43,7 +43,7 @@ func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
 func (fde *FrameDescriptionEntry) ReturnAddressOffset(pc uint64) int64 {
 	frame := fde.EstablishFrame(pc)
 
-	return frame.cfa.offset + frame.regs[16].offset
+	return frame.cfa.offset + frame.regs[fde.CIE.ReturnAddressRegister].offset
 }
 
 type FrameDescriptionEntries []*FrameDescriptionEntry
