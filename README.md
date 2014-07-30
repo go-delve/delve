@@ -27,6 +27,7 @@ DBG is a Go debugger, written primarily in Go. It really needs a new name.
 * In-scope variable setting
 * Readline integration
 * Ability to launch debugging session from debugged program, with breakpoint set correctly
+* Support for OS X
 
 ### License
 
