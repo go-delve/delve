@@ -170,8 +170,9 @@ func TestClearBreakPoint(t *testing.T) {
 
 func TestNext(t *testing.T) {
 	var (
-		ln  int
-		err error
+		ln             int
+		err            error
+		executablePath = "../_fixtures/testnextprog"
 	)
 
 	testcases := []struct {
@@ -195,7 +196,7 @@ func TestNext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	helper.WithTestProcess("../_fixtures/testnextprog", t, func(p *proctl.DebuggedProcess) {
+	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")
@@ -212,6 +213,50 @@ func TestNext(t *testing.T) {
 			ln = currentLineNumber(p, t)
 			if ln != tc.end {
 				t.Fatalf("Program did not continue to correct next location expected %d was %d", tc.end, ln)
+			}
+		}
+	})
+}
+
+func TestVariableEvaluation(t *testing.T) {
+	executablePath := "../_fixtures/testvariables"
+
+	fp, err := filepath.Abs(executablePath + ".go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testcases := []struct {
+		name    string
+		value   string
+		varType string
+	}{
+		{"foo", "6", "int"},
+	}
+
+	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 19)
+
+		_, err := p.Break(uintptr(pc))
+		assertNoError(err, t, "Break() returned an error")
+
+		err = p.Continue()
+		assertNoError(err, t, "Break() returned an error")
+
+		for _, tc := range testcases {
+			variable, err := p.EvalSymbol(tc.name)
+			assertNoError(err, t, "Variable() returned an error")
+
+			if variable.Name != tc.name {
+				t.Fatalf("Expected %s got %s\n", tc.name, variable.Name)
+			}
+
+			if variable.Type != tc.varType {
+				t.Fatalf("Expected %s got %s\n", tc.varType, variable.Type)
+			}
+
+			if variable.Value != tc.value {
+				t.Fatalf("Expected %s got %s\n", tc.value, variable.Value)
 			}
 		}
 	})

@@ -35,6 +35,10 @@ type FrameContext struct {
 	dataAlignment int64
 }
 
+func (fctx *FrameContext) CFAOffset() int64 {
+	return fctx.cfa.offset
+}
+
 // Instructions used to recreate the table from the .debug_frame data.
 const (
 	DW_CFA_nop                = 0x0        // No ops

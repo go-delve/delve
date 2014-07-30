@@ -4,15 +4,18 @@ package proctl
 
 import (
 	"bytes"
+	"debug/dwarf"
 	"debug/elf"
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
 	"os"
+	"strconv"
 	"syscall"
 
 	"github.com/derekparker/dbg/dwarf/frame"
 	"github.com/derekparker/dbg/dwarf/line"
+	"github.com/derekparker/dbg/dwarf/op"
 )
 
 // Struct representing a debugged process. Holds onto pid, register values,
@@ -46,6 +49,12 @@ type BreakPointExistsError struct {
 	file string
 	line int
 	addr uintptr
+}
+
+type Variable struct {
+	Name  string
+	Value string
+	Type  string
 }
 
 func (bpe BreakPointExistsError) Error() string {
@@ -123,6 +132,55 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 	}
 
 	return dbp.Regs, nil
+}
+
+// Returns the value of the named symbol.
+func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
+	data, err := dbp.Executable.DWARF()
+	if err != nil {
+		return nil, err
+	}
+
+	reader := data.Reader()
+
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		if entry.Tag == dwarf.TagVariable {
+			n, ok := entry.Val(dwarf.AttrName).(string)
+			if !ok {
+				continue
+			}
+
+			if n == name {
+				offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
+				if !ok {
+					continue
+				}
+
+				t, err := data.Type(offset)
+				if err != nil {
+					return nil, err
+				}
+
+				instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
+				if !ok {
+					continue
+				}
+
+				val, err := dbp.extractValue(instructions, t)
+				if err != nil {
+					return nil, err
+				}
+
+				return &Variable{Name: n, Type: t.String(), Value: val}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
 // Sets a breakpoint in the running process.
@@ -291,6 +349,55 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 	}
 
 	return regs.Rip, nil
+}
+
+// Extracts the value from the instructions given in the DW_AT_location entry.
+// We execute the stack program described in the DW_OP_* instruction stream, and
+// then grab the value from the other processes memory.
+func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (string, error) {
+	regs, err := dbp.Registers()
+	if err != nil {
+		return "", err
+	}
+
+	fde, err := dbp.FrameEntries.FDEForPC(regs.PC())
+	if err != nil {
+		return "", err
+	}
+
+	fctx := fde.EstablishFrame(regs.PC())
+	cfaOffset := fctx.CFAOffset()
+
+	off, err := op.ExecuteStackProgram(cfaOffset, instructions)
+	if err != nil {
+		return "", err
+	}
+
+	switch typ.(type) {
+	case *dwarf.IntType:
+		addr := uintptr(int64(regs.Rsp) + off)
+		val, err := dbp.readMemory(addr, 8)
+		if err != nil {
+			return "", err
+		}
+
+		n := binary.LittleEndian.Uint64(val)
+
+		return strconv.Itoa(int(n)), nil
+	}
+
+	return "", fmt.Errorf("could not find value for type %s", typ)
+}
+
+func (dbp *DebuggedProcess) readMemory(addr uintptr, size uintptr) ([]byte, error) {
+	buf := make([]byte, size)
+
+	_, err := syscall.PtracePeekData(dbp.Pid, addr, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }
 
 func (dbp *DebuggedProcess) handleResult(err error) error {
