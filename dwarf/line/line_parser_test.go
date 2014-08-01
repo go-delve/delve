@@ -42,7 +42,7 @@ func TestDebugLinePrologueParser(t *testing.T) {
 		prologue = dbl.Prologue
 	)
 
-	if prologue.Length != uint32(59807) {
+	if prologue.Length != uint32(60685) {
 		t.Fatal("Length was not parsed correctly", prologue.Length)
 	}
 
@@ -50,7 +50,7 @@ func TestDebugLinePrologueParser(t *testing.T) {
 		t.Fatal("Version not parsed correctly", prologue.Version)
 	}
 
-	if prologue.PrologueLength != uint32(5224) {
+	if prologue.PrologueLength != uint32(5363) {
 		t.Fatal("Prologue Length not parsed correctly", prologue.PrologueLength)
 	}
 
@@ -85,7 +85,7 @@ func TestDebugLinePrologueParser(t *testing.T) {
 		t.Fatal("Include dirs not parsed correctly")
 	}
 
-	if len(dbl.FileNames) != 123 {
+	if len(dbl.FileNames) != 126 {
 		t.Fatal("Filenames not parsed correctly", len(dbl.FileNames))
 	}
 
