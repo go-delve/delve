@@ -3,4 +3,5 @@ foo
 bar
 main
 notes.txt
+**/*.txt
 tags
