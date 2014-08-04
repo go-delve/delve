@@ -234,6 +234,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a1", "foo", "struct string"},
 		{"a2", "6", "int"},
 		{"a3", "7.23", "float64"},
+		{"a4", "[2]int [1 2]", "[2]int"},
 	}
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
