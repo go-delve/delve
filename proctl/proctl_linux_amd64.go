@@ -383,6 +383,8 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (
 		switch ty[1] {
 		case "string":
 			return dbp.readString(offset)
+		case "[]int":
+			return dbp.readIntSlice(offset)
 		}
 	case *dwarf.ArrayType:
 		return dbp.readIntArray(offset, t)
@@ -412,6 +414,38 @@ func (dbp *DebuggedProcess) readString(addr uintptr) (string, error) {
 	val = val[:i]
 	str := *(*string)(unsafe.Pointer(&val))
 	return str, nil
+}
+func (dbp *DebuggedProcess) readIntSlice(addr uintptr) (string, error) {
+	var number uint64
+
+	val, err := dbp.readMemory(addr, uintptr(24))
+	if err != nil {
+		return "", err
+	}
+
+	a := binary.LittleEndian.Uint64(val[:8])
+	l := binary.LittleEndian.Uint64(val[8:16])
+	c := binary.LittleEndian.Uint64(val[16:24])
+
+	val, err = dbp.readMemory(uintptr(a), uintptr(8*l))
+	if err != nil {
+		return "", err
+	}
+
+	members := make([]uint64, 0, l)
+	buf := bytes.NewBuffer(val)
+	for {
+		err := binary.Read(buf, binary.LittleEndian, &number)
+		if err != nil {
+			break
+		}
+
+		members = append(members, number)
+	}
+
+	str := fmt.Sprintf("len: %d cap: %d %d", l, c, members)
+
+	return str, err
 }
 
 func (dbp *DebuggedProcess) readIntArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
