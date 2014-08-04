@@ -231,17 +231,18 @@ func TestVariableEvaluation(t *testing.T) {
 		value   string
 		varType string
 	}{
-		{"foo", "6", "int"},
+		{"a2", "6", "int"},
+		{"a3", "7.23", "float64"},
 	}
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 19)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 21)
 
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")
 
 		err = p.Continue()
-		assertNoError(err, t, "Break() returned an error")
+		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
 			variable, err := p.EvalSymbol(tc.name)

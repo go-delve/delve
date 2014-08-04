@@ -384,6 +384,17 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (
 		n := binary.LittleEndian.Uint64(val)
 
 		return strconv.Itoa(int(n)), nil
+	case *dwarf.FloatType:
+		var n float64
+		addr := uintptr(int64(regs.Rsp) + off)
+		val, err := dbp.readMemory(addr, 8)
+		if err != nil {
+			return "", err
+		}
+		buf := bytes.NewBuffer(val)
+		binary.Read(buf, binary.LittleEndian, &n)
+
+		return strconv.FormatFloat(n, 'f', -1, 64), nil
 	}
 
 	return "", fmt.Errorf("could not find value for type %s", typ)
