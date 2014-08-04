@@ -231,6 +231,7 @@ func TestVariableEvaluation(t *testing.T) {
 		value   string
 		varType string
 	}{
+		{"a1", "foo", "struct string"},
 		{"a2", "6", "int"},
 		{"a3", "7.23", "float64"},
 	}
@@ -257,7 +258,7 @@ func TestVariableEvaluation(t *testing.T) {
 			}
 
 			if variable.Value != tc.value {
-				t.Fatalf("Expected %s got %s\n", tc.value, variable.Value)
+				t.Fatalf("Expected %#v got %#v\n", tc.value, variable.Value)
 			}
 		}
 	})

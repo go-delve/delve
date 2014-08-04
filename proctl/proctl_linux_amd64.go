@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"syscall"
+	"unsafe"
 
 	"github.com/derekparker/dbg/dwarf/frame"
 	"github.com/derekparker/dbg/dwarf/line"
@@ -376,6 +377,8 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (
 	offset := uintptr(int64(regs.Rsp) + off)
 
 	switch typ.(type) {
+	case *dwarf.StructType:
+		return dbp.readString(offset)
 	case *dwarf.IntType:
 		return dbp.readInt(offset)
 	case *dwarf.FloatType:
@@ -383,6 +386,25 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (
 	}
 
 	return "", fmt.Errorf("could not find value for type %s", typ)
+}
+
+func (dbp *DebuggedProcess) readString(addr uintptr) (string, error) {
+	val, err := dbp.readMemory(addr, 8)
+	if err != nil {
+		return "", err
+	}
+
+	// deref the pointer to the string
+	addr = uintptr(binary.LittleEndian.Uint64(val))
+	val, err = dbp.readMemory(addr, 16)
+	if err != nil {
+		return "", err
+	}
+
+	i := bytes.IndexByte(val, 0x0)
+	val = val[:i]
+	str := *(*string)(unsafe.Pointer(&val))
+	return str, nil
 }
 
 func (dbp *DebuggedProcess) readInt(addr uintptr) (string, error) {
