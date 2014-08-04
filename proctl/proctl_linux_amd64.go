@@ -373,31 +373,38 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (
 		return "", err
 	}
 
+	offset := uintptr(int64(regs.Rsp) + off)
+
 	switch typ.(type) {
 	case *dwarf.IntType:
-		addr := uintptr(int64(regs.Rsp) + off)
-		val, err := dbp.readMemory(addr, 8)
-		if err != nil {
-			return "", err
-		}
-
-		n := binary.LittleEndian.Uint64(val)
-
-		return strconv.Itoa(int(n)), nil
+		return dbp.readInt(offset)
 	case *dwarf.FloatType:
-		var n float64
-		addr := uintptr(int64(regs.Rsp) + off)
-		val, err := dbp.readMemory(addr, 8)
-		if err != nil {
-			return "", err
-		}
-		buf := bytes.NewBuffer(val)
-		binary.Read(buf, binary.LittleEndian, &n)
-
-		return strconv.FormatFloat(n, 'f', -1, 64), nil
+		return dbp.readFloat64(offset)
 	}
 
 	return "", fmt.Errorf("could not find value for type %s", typ)
+}
+
+func (dbp *DebuggedProcess) readInt(addr uintptr) (string, error) {
+	val, err := dbp.readMemory(addr, 8)
+	if err != nil {
+		return "", err
+	}
+
+	n := binary.LittleEndian.Uint64(val)
+
+	return strconv.Itoa(int(n)), nil
+}
+func (dbp *DebuggedProcess) readFloat64(addr uintptr) (string, error) {
+	var n float64
+	val, err := dbp.readMemory(addr, 8)
+	if err != nil {
+		return "", err
+	}
+	buf := bytes.NewBuffer(val)
+	binary.Read(buf, binary.LittleEndian, &n)
+
+	return strconv.FormatFloat(n, 'f', -1, 64), nil
 }
 
 func (dbp *DebuggedProcess) readMemory(addr uintptr, size uintptr) ([]byte, error) {
