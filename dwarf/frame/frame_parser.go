@@ -51,7 +51,6 @@ func parseLength(ctx *parseContext) parsefunc {
 		fn = parseVersion
 	} else {
 		ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common, AddressRange: &addrange{}}
-		ctx.Entries = append(ctx.Entries, ctx.Frame)
 		fn = parseInitialLocation
 	}
 
@@ -63,6 +62,10 @@ func parseLength(ctx *parseContext) parsefunc {
 
 func parseInitialLocation(ctx *parseContext) parsefunc {
 	ctx.Frame.AddressRange.begin = binary.LittleEndian.Uint64(ctx.Buf.Next(8))
+
+	// Insert into the tree after setting address range begin
+	// otherwise compares won't work.
+	ctx.Entries.Put(ctx.Frame)
 
 	ctx.Length -= 8
 

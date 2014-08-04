@@ -4,10 +4,11 @@ import (
 	"debug/elf"
 	"debug/gosym"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-func GosymData(testfile string, t *testing.T) *gosym.Table {
+func GosymData(testfile string, t testing.TB) *gosym.Table {
 	f, err := os.Open(testfile)
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +22,31 @@ func GosymData(testfile string, t *testing.T) *gosym.Table {
 	return parseGoSym(t, e)
 }
 
-func parseGoSym(t *testing.T, exe *elf.File) *gosym.Table {
+func GrabDebugFrameSection(fp string, t testing.TB) []byte {
+	p, err := filepath.Abs(fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ef, err := elf.NewFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := ef.Section(".debug_frame").Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return data
+}
+
+func parseGoSym(t testing.TB, exe *elf.File) *gosym.Table {
 	symdat, err := exe.Section(".gosymtab").Data()
 	if err != nil {
 		t.Fatal(err)

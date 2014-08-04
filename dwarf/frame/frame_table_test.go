@@ -1,9 +1,7 @@
 package frame_test
 
 import (
-	"debug/elf"
 	"encoding/binary"
-	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -14,34 +12,10 @@ import (
 	"github.com/derekparker/dbg/proctl"
 )
 
-func grabDebugFrameSection(fp string, t *testing.T) []byte {
-	p, err := filepath.Abs(fp)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f, err := os.Open(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ef, err := elf.NewFile(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	data, err := ef.Section(".debug_frame").Data()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return data
-}
-
 func TestFindReturnAddress(t *testing.T) {
 	var (
 		testfile, _ = filepath.Abs("../../_fixtures/testnextprog")
-		dbframe     = grabDebugFrameSection(testfile, t)
+		dbframe     = dwarfhelper.GrabDebugFrameSection(testfile, t)
 		fdes        = frame.Parse(dbframe)
 		gsd         = dwarfhelper.GosymData(testfile, t)
 	)
