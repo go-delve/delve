@@ -41,106 +41,61 @@ func cieEntry(data []byte) bool {
 }
 
 func parseLength(ctx *parseContext) parsefunc {
-	var fn parsefunc
+	var data = ctx.Buf.Next(8)
 
-	ctx.Length = binary.LittleEndian.Uint32(ctx.Buf.Next(4))
-	cieid := ctx.Buf.Next(4)
+	ctx.Length = binary.LittleEndian.Uint32(data[:4]) - 4 // take off the length of the CIE id / CIE pointer.
 
-	if cieEntry(cieid) {
+	if cieEntry(data[4:]) {
 		ctx.Common = &CommonInformationEntry{Length: ctx.Length}
-		fn = parseVersion
-	} else {
-		ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common, AddressRange: &addrange{}}
-		fn = parseInitialLocation
+		return parseCIE
 	}
 
-	// Take off the length of the CIE id / CIE pointer.
-	ctx.Length -= 4
-
-	return fn
+	ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common, AddressRange: &addrange{}}
+	return parseFDE
 }
 
-func parseInitialLocation(ctx *parseContext) parsefunc {
-	ctx.Frame.AddressRange.begin = binary.LittleEndian.Uint64(ctx.Buf.Next(8))
+func parseFDE(ctx *parseContext) parsefunc {
+	r := ctx.Buf.Next(int(ctx.Length))
+
+	ctx.Frame.AddressRange.begin = binary.LittleEndian.Uint64(r[:8])
+	ctx.Frame.AddressRange.end = binary.LittleEndian.Uint64(r[8:16])
 
 	// Insert into the tree after setting address range begin
 	// otherwise compares won't work.
 	ctx.Entries.Put(ctx.Frame)
 
-	ctx.Length -= 8
-
-	return parseAddressRange
-}
-
-func parseAddressRange(ctx *parseContext) parsefunc {
-	ctx.Frame.AddressRange.end = binary.LittleEndian.Uint64(ctx.Buf.Next(8))
-
-	ctx.Length -= 8
-
-	return parseFrameInstructions
-}
-
-func parseFrameInstructions(ctx *parseContext) parsefunc {
 	// The rest of this entry consists of the instructions
 	// so we can just grab all of the data from the buffer
 	// cursor to length.
-	ctx.Frame.Instructions = ctx.Buf.Next(int(ctx.Length))
+	ctx.Frame.Instructions = r[16:]
 	ctx.Length = 0
 
 	return parseLength
 }
 
-func parseVersion(ctx *parseContext) parsefunc {
-	version, err := ctx.Buf.ReadByte()
-	if err != nil {
-		panic(err)
-	}
-	ctx.Common.Version = version
-	ctx.Length -= 1
+func parseCIE(ctx *parseContext) parsefunc {
+	data := ctx.Buf.Next(int(ctx.Length))
+	buf := bytes.NewBuffer(data)
+	// parse version
+	ctx.Common.Version = data[0]
 
-	return parseAugmentation
-}
+	// parse augmentation
+	ctx.Common.Augmentation, _ = util.ParseString(buf)
 
-func parseAugmentation(ctx *parseContext) parsefunc {
-	var str, c = util.ParseString(ctx.Buf)
+	// parse code alignment factor
+	ctx.Common.CodeAlignmentFactor, _ = util.DecodeULEB128(buf)
 
-	ctx.Common.Augmentation = str
-	ctx.Length -= c
+	// parse data alignment factor
+	ctx.Common.DataAlignmentFactor, _ = util.DecodeSLEB128(buf)
 
-	return parseCodeAlignmentFactor
-}
+	// parse return address register
+	ctx.Common.ReturnAddressRegister, _ = util.DecodeULEB128(buf)
 
-func parseCodeAlignmentFactor(ctx *parseContext) parsefunc {
-	var caf, c = util.DecodeULEB128(ctx.Buf)
-
-	ctx.Common.CodeAlignmentFactor = caf
-	ctx.Length -= c
-
-	return parseDataAlignmentFactor
-}
-
-func parseDataAlignmentFactor(ctx *parseContext) parsefunc {
-	var daf, c = util.DecodeSLEB128(ctx.Buf)
-
-	ctx.Common.DataAlignmentFactor = daf
-	ctx.Length -= c
-
-	return parseReturnAddressRegister
-}
-
-func parseReturnAddressRegister(ctx *parseContext) parsefunc {
-	reg, c := util.DecodeULEB128(ctx.Buf)
-	ctx.Common.ReturnAddressRegister = reg
-	ctx.Length -= c
-
-	return parseInitialInstructions
-}
-
-func parseInitialInstructions(ctx *parseContext) parsefunc {
+	// parse initial instructions
 	// The rest of this entry consists of the instructions
 	// so we can just grab all of the data from the buffer
 	// cursor to length.
-	ctx.Common.InitialInstructions = ctx.Buf.Next(int(ctx.Length))
+	ctx.Common.InitialInstructions = buf.Bytes() //ctx.Buf.Next(int(ctx.Length))
 	ctx.Length = 0
 
 	return parseLength
