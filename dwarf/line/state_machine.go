@@ -195,7 +195,7 @@ func execExtendedOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
 	b, _ := buf.ReadByte()
 	fn, ok := extendedopcodes[b]
 	if !ok {
-		panic(fmt.Sprintf("Encountered unknown standard opcode %#v\n", b))
+		panic(fmt.Sprintf("Encountered unknown extended opcode %#v\n", b))
 	}
 	sm.LastWasStandard = false
 
