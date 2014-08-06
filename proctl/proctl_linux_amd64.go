@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -102,25 +103,22 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 // * Dwarf .debug_line section
 // * Go symbol table.
 func (dbp *DebuggedProcess) LoadInformation() error {
-	err := dbp.findExecutable()
+	var (
+		wg  sync.WaitGroup
+		err error
+	)
+
+	err = dbp.findExecutable()
 	if err != nil {
 		return err
 	}
 
-	err = dbp.parseDebugFrame()
-	if err != nil {
-		return err
-	}
+	wg.Add(3)
+	go dbp.parseDebugFrame(&wg)
+	go dbp.parseDebugLine(&wg)
+	go dbp.obtainGoSymbols(&wg)
 
-	err = dbp.parseDebugLine()
-	if err != nil {
-		return err
-	}
-
-	err = dbp.obtainGoSymbols()
-	if err != nil {
-		return err
-	}
+	wg.Wait()
 
 	return nil
 }
@@ -483,6 +481,7 @@ func (dbp *DebuggedProcess) readInt(addr uintptr) (string, error) {
 
 	return strconv.Itoa(int(n)), nil
 }
+
 func (dbp *DebuggedProcess) readFloat64(addr uintptr) (string, error) {
 	var n float64
 	val, err := dbp.readMemory(addr, 8)
@@ -539,46 +538,53 @@ func (dbp *DebuggedProcess) findExecutable() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) parseDebugLine() error {
+func (dbp *DebuggedProcess) parseDebugLine(wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	debugLine, err := dbp.Executable.Section(".debug_line").Data()
 	if err != nil {
-		return err
+		fmt.Println("could not get .debug_line section", err)
+		os.Exit(1)
 	}
 
 	dbp.DebugLine = line.Parse(debugLine)
-	return nil
 }
 
-func (dbp *DebuggedProcess) parseDebugFrame() error {
+func (dbp *DebuggedProcess) parseDebugFrame(wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	debugFrame, err := dbp.Executable.Section(".debug_frame").Data()
 	if err != nil {
-		return err
+		fmt.Println("could not get .debug_frame section", err)
+		os.Exit(1)
 	}
 
 	dbp.FrameEntries = frame.Parse(debugFrame)
-	return nil
 }
 
-func (dbp *DebuggedProcess) obtainGoSymbols() error {
+func (dbp *DebuggedProcess) obtainGoSymbols(wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	symdat, err := dbp.Executable.Section(".gosymtab").Data()
 	if err != nil {
-		return err
+		fmt.Println("could not get .gosymtab section", err)
+		os.Exit(1)
 	}
 
 	pclndat, err := dbp.Executable.Section(".gopclntab").Data()
 	if err != nil {
-		return err
+		fmt.Println("could not get .gopclntab section", err)
+		os.Exit(1)
 	}
 
 	pcln := gosym.NewLineTable(pclndat, dbp.Executable.Section(".text").Addr)
 	tab, err := gosym.NewTable(symdat, pcln)
 	if err != nil {
-		return err
+		fmt.Println("could not get initialize line table", err)
+		os.Exit(1)
 	}
 
 	dbp.GoSymTable = tab
-
-	return nil
 }
 
 // Converts a program counter value into a breakpoint, if one was set
