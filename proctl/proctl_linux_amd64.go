@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"syscall"
 	"unsafe"
 
@@ -380,8 +379,7 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (
 
 	switch t := typ.(type) {
 	case *dwarf.StructType:
-		ty := strings.Split(t.String(), " ")
-		switch ty[1] {
+		switch t.StructName {
 		case "string":
 			return dbp.readString(offset)
 		case "[]int":
