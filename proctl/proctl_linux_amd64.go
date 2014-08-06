@@ -295,7 +295,6 @@ func (dbp *DebuggedProcess) Next() error {
 	if !fde.AddressRange.Cover(loc.Address) {
 		// Next line is outside current frame, use return addr.
 		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-		fmt.Printf("%#v\n", addr)
 		loc = dbp.DebugLine.LocationInfoForPC(addr)
 		addrs = append(addrs, loc.Address)
 	}
