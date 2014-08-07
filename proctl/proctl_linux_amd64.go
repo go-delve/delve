@@ -565,16 +565,26 @@ func (dbp *DebuggedProcess) parseDebugFrame(wg *sync.WaitGroup) {
 func (dbp *DebuggedProcess) obtainGoSymbols(wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	symdat, err := dbp.Executable.Section(".gosymtab").Data()
-	if err != nil {
-		fmt.Println("could not get .gosymtab section", err)
-		os.Exit(1)
+	var (
+		symdat  []byte
+		pclndat []byte
+		err     error
+	)
+
+	if sec := dbp.Executable.Section(".gosymtab"); sec != nil {
+		symdat, err = sec.Data()
+		if err != nil {
+			fmt.Println("could not get .gosymtab section", err)
+			os.Exit(1)
+		}
 	}
 
-	pclndat, err := dbp.Executable.Section(".gopclntab").Data()
-	if err != nil {
-		fmt.Println("could not get .gopclntab section", err)
-		os.Exit(1)
+	if sec := dbp.Executable.Section(".gopclntab"); sec != nil {
+		pclndat, err = sec.Data()
+		if err != nil {
+			fmt.Println("could not get .gopclntab section", err)
+			os.Exit(1)
+		}
 	}
 
 	pcln := gosym.NewLineTable(pclndat, dbp.Executable.Section(".text").Addr)
