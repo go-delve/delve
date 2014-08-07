@@ -30,7 +30,7 @@ type DebuggedProcess struct {
 	Executable      *elf.File
 	Symbols         []elf.Symbol
 	GoSymTable      *gosym.Table
-	FrameEntries    frame.FrameDescriptionEntries
+	FrameEntries    *frame.FrameDescriptionEntries
 	DebugLine       *line.DebugLineInfo
 	BreakPoints     map[string]*BreakPoint
 	TempBreakPoints map[uint64]*BreakPoint

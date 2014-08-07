@@ -19,12 +19,12 @@ func TestFDEForPC(t *testing.T) {
 	tree.Put(fde3)
 	tree.Put(fde4)
 
-	fde, ok := tree.Find(35)
+	node, ok := tree.Find(Addr(35))
 	if !ok {
 		t.Fatal("Could not find FDE")
 	}
 
-	if fde != fde3 {
+	if node != fde3 {
 		t.Fatal("Got incorrect fde")
 	}
 }
