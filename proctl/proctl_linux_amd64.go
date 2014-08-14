@@ -147,36 +147,36 @@ func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 			return nil, err
 		}
 
-		if entry.Tag == dwarf.TagVariable {
-			n, ok := entry.Val(dwarf.AttrName).(string)
-			if !ok {
-				continue
-			}
-
-			if n == name {
-				offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
-				if !ok {
-					continue
-				}
-
-				t, err := data.Type(offset)
-				if err != nil {
-					return nil, err
-				}
-
-				instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-				if !ok {
-					continue
-				}
-
-				val, err := dbp.extractValue(instructions, t)
-				if err != nil {
-					return nil, err
-				}
-
-				return &Variable{Name: n, Type: t.String(), Value: val}, nil
-			}
+		if entry.Tag != dwarf.TagVariable {
+			continue
 		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok || n != name {
+			continue
+		}
+
+		offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
+		if !ok {
+			continue
+		}
+
+		t, err := data.Type(offset)
+		if err != nil {
+			return nil, err
+		}
+
+		instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
+		if !ok {
+			continue
+		}
+
+		val, err := dbp.extractValue(instructions, t)
+		if err != nil {
+			return nil, err
+		}
+
+		return &Variable{Name: n, Type: t.String(), Value: val}, nil
 	}
 
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
