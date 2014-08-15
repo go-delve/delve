@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/derekparker/dbg/proctl"
 )
@@ -66,6 +67,11 @@ func noCmdAvailable(p *proctl.DebuggedProcess, ars ...string) error {
 }
 
 func exitFunc(p *proctl.DebuggedProcess, ars ...string) error {
+	err := syscall.PtraceDetach(p.Pid)
+	if err != nil {
+		return err
+	}
+
 	os.Exit(0)
 	return nil
 }
