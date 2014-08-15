@@ -47,16 +47,16 @@ type BreakPoint struct {
 	OriginalData []byte
 }
 
-type BreakPointExistsError struct {
-	file string
-	line int
-	addr uintptr
-}
-
 type Variable struct {
 	Name  string
 	Value string
 	Type  string
+}
+
+type BreakPointExistsError struct {
+	file string
+	line int
+	addr uintptr
 }
 
 func (bpe BreakPointExistsError) Error() string {
