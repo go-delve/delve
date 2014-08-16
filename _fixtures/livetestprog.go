@@ -21,7 +21,7 @@ func main() {
 	time.Sleep(3 * time.Second)
 	for {
 		printPid(pid)
-		time.Sleep(3 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 		sayhi()
 	}
 }
