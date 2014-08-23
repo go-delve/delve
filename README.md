@@ -4,6 +4,13 @@
 
 DBG is a Go debugger, written primarily in Go. It really needs a new name.
 
+### Building
+
+Currently, DBG requires 2 patches to be applied to Go source to build.
+
+1. [Dwarf Fix](https://codereview.appspot.com/117280043/)
+2. Process.Wait() fix.
+
 ### Features
 
 * Attach to (trace) a running process
