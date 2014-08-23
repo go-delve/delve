@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/derekparker/dbg/command"
 	"github.com/derekparker/dbg/proctl"
@@ -23,31 +25,34 @@ func main() {
 	runtime.LockOSThread()
 
 	var (
+		pid  int
+		proc string
 		t    = newTerm()
 		cmds = command.DebugCommands()
 	)
 
-	if len(os.Args) == 1 {
-		die("You must provide a pid\n")
+	flag.IntVar(&pid, "pid", 0, "Pid of running process to attach to.")
+	flag.StringVar(&proc, "proc", "", "Path to process to run and debug.")
+	flag.Parse()
+
+	if flag.NFlag() == 0 {
+		flag.Usage()
+		os.Exit(0)
 	}
 
-	pid, err := strconv.Atoi(os.Args[1])
-	if err != nil {
-		die(err)
-	}
-
-	dbgproc, err := proctl.NewDebugProcess(pid)
-	if err != nil {
-		die("Could not start debugging process:", err)
-	}
+	dbgproc := beginTrace(pid, proc)
 
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
-			die("Prompt for input failed.\n")
+			die(1, "Prompt for input failed.\n")
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
+
+		if cmdstr == "exit" {
+			handleExit(t, dbgproc, 0)
+		}
 
 		cmd := cmds.Find(cmdstr)
 		err = cmd(dbgproc, args...)
@@ -57,9 +62,66 @@ func main() {
 	}
 }
 
-func die(args ...interface{}) {
+func beginTrace(pid int, proc string) *proctl.DebuggedProcess {
+	var (
+		err     error
+		dbgproc *proctl.DebuggedProcess
+	)
+
+	if pid != 0 {
+		dbgproc, err = proctl.NewDebugProcess(pid)
+		if err != nil {
+			die(1, "Could not start debugging process:", err)
+		}
+	}
+
+	if proc != "" {
+		proc := exec.Command(proc)
+		proc.Stdout = os.Stdout
+
+		err = proc.Start()
+		if err != nil {
+			die(1, "Could not start process:", err)
+		}
+
+		dbgproc, err = proctl.NewDebugProcess(proc.Process.Pid)
+		if err != nil {
+			die(1, "Could not start debugging process:", err)
+		}
+	}
+
+	return dbgproc
+}
+
+func handleExit(t *term, dbp *proctl.DebuggedProcess, status int) {
+	fmt.Println("Would you like to kill the process? [y/n]")
+	answer, err := t.stdin.ReadString('\n')
+	if err != nil {
+		die(2, err.Error())
+	}
+
+	fmt.Println("Detaching from process...")
+	err = syscall.PtraceDetach(dbp.Process.Pid)
+	if err != nil {
+		die(2, "Could not detach", err)
+	}
+
+	if answer == "y\n" {
+		fmt.Println("Killing process", dbp.Process.Pid)
+
+		err := dbp.Process.Kill()
+		if err != nil {
+			fmt.Println("Could not kill process", err)
+		}
+	}
+
+	die(status, "Hope I was of service hunting your bug!")
+}
+
+func die(status int, args ...interface{}) {
 	fmt.Fprint(os.Stderr, args)
-	os.Exit(1)
+	fmt.Fprint(os.Stderr, "\n")
+	os.Exit(status)
 }
 
 func newTerm() *term {
