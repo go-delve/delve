@@ -26,7 +26,7 @@ type DebuggedProcess struct {
 	Pid             int
 	Regs            *syscall.PtraceRegs
 	Process         *os.Process
-	ProcessState    *os.ProcessState
+	ProcessState    *syscall.WaitStatus
 	Executable      *elf.File
 	Symbols         []elf.Symbol
 	GoSymTable      *gosym.Table
@@ -75,7 +75,7 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 		return nil, err
 	}
 
-	ps, err := proc.Wait()
+	ps, err := wait(proc.Pid)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +510,7 @@ func (dbp *DebuggedProcess) handleResult(err error) error {
 		return err
 	}
 
-	ps, err := dbp.Process.Wait()
+	ps, err := wait(dbp.Process.Pid)
 	if err != nil {
 		return err
 	}
@@ -617,4 +617,16 @@ func (dbp *DebuggedProcess) ReturnAddressFromOffset(offset int64) uint64 {
 	data := make([]byte, 8)
 	syscall.PtracePeekText(dbp.Pid, uintptr(retaddr), data)
 	return binary.LittleEndian.Uint64(data)
+}
+
+func wait(pid int) (*syscall.WaitStatus, error) {
+	var status syscall.WaitStatus
+	var rusage syscall.Rusage
+
+	_, e := syscall.Wait4(pid, &status, 0, &rusage)
+	if e != nil {
+		return nil, e
+	}
+
+	return &status, nil
 }
