@@ -27,7 +27,7 @@ The debugger can be launched in two ways:
 
 * Provide the pid of a currently running process, and the debugger will attach and begin the session.
 
-	$ dbg -pid 44839
+	$ sudo dbg -pid 44839
 
 Once inside a debugging session, the following commands may be used:
 
