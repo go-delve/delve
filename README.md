@@ -23,11 +23,15 @@ The debugger can be launched in two ways:
 
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
 	
+	```
 	$ dbg -proc path/to/program
+	```
 
 * Provide the pid of a currently running process, and the debugger will attach and begin the session.
 
+	```
 	$ sudo dbg -pid 44839
+	```
 
 Once inside a debugging session, the following commands may be used:
 
