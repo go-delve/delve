@@ -35,7 +35,7 @@ type FileEntry struct {
 
 func Parse(data []byte) *DebugLineInfo {
 	var (
-		dbl = &DebugLineInfo{}
+		dbl = new(DebugLineInfo)
 		buf = bytes.NewBuffer(data)
 	)
 
@@ -48,7 +48,7 @@ func Parse(data []byte) *DebugLineInfo {
 }
 
 func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
-	p := &DebugLinePrologue{}
+	p := new(DebugLinePrologue)
 
 	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
 	p.Version = binary.LittleEndian.Uint16(buf.Next(2))
@@ -78,7 +78,7 @@ func parseIncludeDirs(info *DebugLineInfo, buf *bytes.Buffer) {
 
 func parseFileEntries(info *DebugLineInfo, buf *bytes.Buffer) {
 	for {
-		entry := FileEntry{}
+		entry := new(FileEntry)
 
 		name, _ := util.ParseString(buf)
 		if name == "" {
@@ -90,6 +90,6 @@ func parseFileEntries(info *DebugLineInfo, buf *bytes.Buffer) {
 		entry.LastModTime, _ = util.DecodeULEB128(buf)
 		entry.Length, _ = util.DecodeULEB128(buf)
 
-		info.FileNames = append(info.FileNames, &entry)
+		info.FileNames = append(info.FileNames, entry)
 	}
 }

@@ -82,7 +82,7 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 
 	debuggedProc := DebuggedProcess{
 		Pid:             pid,
-		Regs:            &syscall.PtraceRegs{},
+		Regs:            new(syscall.PtraceRegs),
 		Process:         proc,
 		ProcessState:    ps,
 		BreakPoints:     make(map[string]*BreakPoint),

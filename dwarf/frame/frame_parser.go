@@ -50,7 +50,7 @@ func parseLength(ctx *parseContext) parsefunc {
 		return parseCIE
 	}
 
-	ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common, AddressRange: &addrange{}}
+	ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common, AddressRange: new(addrange)}
 	return parseFDE
 }
 
