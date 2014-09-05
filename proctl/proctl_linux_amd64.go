@@ -272,25 +272,24 @@ func (dbp *DebuggedProcess) Step() (err error) {
 }
 
 func (dbp *DebuggedProcess) NextPotentialLocations(pc uint64) ([]uint64, error) {
-	addrs := make([]uint64, 0, 3)
+	var (
+		addrs = make([]uint64, 0, 3)
+		loc   = dbp.DebugLine.NextLocAfterPC(pc)
+	)
+	addrs = append(addrs, loc.Address)
 
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
 		return nil, err
 	}
 
-	loc := dbp.DebugLine.NextLocAfterPC(pc)
-	addrs = append(addrs, loc.Address)
-
-	if !fde.AddressRange.Cover(loc.Address) {
-		// Next line is outside current frame, use return addr.
+	if !fde.AddressRange.Cover(loc.Address) { // Next line is outside current frame, use return addr.
 		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
 		loc = dbp.DebugLine.LocationInfoForPC(addr)
 		addrs = append(addrs, loc.Address)
 	}
 
-	if loc.Delta < 0 {
-		// We are likely in a loop, set breakpoints at entry and exit.
+	if loc.Delta < 0 { // We are likely in a loop, set breakpoints at entry and exit.
 		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
 		exit := dbp.DebugLine.LoopExitLocation(loc.Address)
 		addrs = append(addrs, entry.Address, exit.Address)
