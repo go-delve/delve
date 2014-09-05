@@ -339,7 +339,6 @@ func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) 
 		addrs = make([]uint64, 0, 3)
 		loc   = dbp.DebugLine.NextLocAfterPC(pc)
 	)
-	addrs = append(addrs, loc.Address)
 
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
@@ -358,6 +357,7 @@ func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) 
 		addrs = append(addrs, entry.Address, exit.Address)
 	}
 
+	addrs = append(addrs, loc.Address)
 	return addrs, nil
 }
 
