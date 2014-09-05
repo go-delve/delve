@@ -271,33 +271,6 @@ func (dbp *DebuggedProcess) Step() (err error) {
 	return nil
 }
 
-func (dbp *DebuggedProcess) NextPotentialLocations(pc uint64) ([]uint64, error) {
-	var (
-		addrs = make([]uint64, 0, 3)
-		loc   = dbp.DebugLine.NextLocAfterPC(pc)
-	)
-	addrs = append(addrs, loc.Address)
-
-	fde, err := dbp.FrameEntries.FDEForPC(pc)
-	if err != nil {
-		return nil, err
-	}
-
-	if !fde.AddressRange.Cover(loc.Address) { // Next line is outside current frame, use return addr.
-		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-		loc = dbp.DebugLine.LocationInfoForPC(addr)
-		addrs = append(addrs, loc.Address)
-	}
-
-	if loc.Delta < 0 { // We are likely in a loop, set breakpoints at entry and exit.
-		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
-		exit := dbp.DebugLine.LoopExitLocation(loc.Address)
-		addrs = append(addrs, entry.Address, exit.Address)
-	}
-
-	return addrs, nil
-}
-
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
 	pc, err := dbp.CurrentPC()
@@ -307,7 +280,7 @@ func (dbp *DebuggedProcess) Next() error {
 
 	pc-- // account for breakpoint instruction
 
-	addrs, err := dbp.NextPotentialLocations(pc)
+	addrs, err := dbp.nextPotentialLocations(pc)
 	if err != nil {
 		return err
 	}
@@ -359,6 +332,33 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 	}
 
 	return regs.Rip, nil
+}
+
+func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) {
+	var (
+		addrs = make([]uint64, 0, 3)
+		loc   = dbp.DebugLine.NextLocAfterPC(pc)
+	)
+	addrs = append(addrs, loc.Address)
+
+	fde, err := dbp.FrameEntries.FDEForPC(pc)
+	if err != nil {
+		return nil, err
+	}
+
+	if !fde.AddressRange.Cover(loc.Address) { // Next line is outside current frame, use return addr.
+		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+		loc = dbp.DebugLine.LocationInfoForPC(addr)
+		addrs = append(addrs, loc.Address)
+	}
+
+	if loc.Delta < 0 { // We are likely in a loop, set breakpoints at entry and exit.
+		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
+		exit := dbp.DebugLine.LoopExitLocation(loc.Address)
+		addrs = append(addrs, entry.Address, exit.Address)
+	}
+
+	return addrs, nil
 }
 
 // Extracts the value from the instructions given in the DW_AT_location entry.
