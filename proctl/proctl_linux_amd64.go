@@ -271,19 +271,12 @@ func (dbp *DebuggedProcess) Step() (err error) {
 	return nil
 }
 
-// Step over function calls.
-func (dbp *DebuggedProcess) Next() error {
+func (dbp *DebuggedProcess) NextPotentialLocations(pc uint64) ([]uint64, error) {
 	addrs := make([]uint64, 0, 3)
-	pc, err := dbp.CurrentPC()
-	if err != nil {
-		return err
-	}
-
-	pc-- // account for breakpoint instruction
 
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	loc := dbp.DebugLine.NextLocAfterPC(pc)
@@ -301,6 +294,23 @@ func (dbp *DebuggedProcess) Next() error {
 		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
 		exit := dbp.DebugLine.LoopExitLocation(loc.Address)
 		addrs = append(addrs, entry.Address, exit.Address)
+	}
+
+	return addrs, nil
+}
+
+// Step over function calls.
+func (dbp *DebuggedProcess) Next() error {
+	pc, err := dbp.CurrentPC()
+	if err != nil {
+		return err
+	}
+
+	pc-- // account for breakpoint instruction
+
+	addrs, err := dbp.NextPotentialLocations(pc)
+	if err != nil {
+		return err
 	}
 
 	for _, addr := range addrs {
@@ -325,6 +335,7 @@ func (dbp *DebuggedProcess) Next() error {
 		if err != nil {
 			return err
 		}
+		delete(dbp.TempBreakPoints, pc)
 	}
 
 	return nil
