@@ -60,12 +60,9 @@ func TestStep(t *testing.T) {
 		rip := regs.PC()
 
 		err := p.Step()
-		if err != nil {
-			t.Fatal("Step():", err)
-		}
+		assertNoError(err, t, "Step()")
 
 		regs = helper.GetRegisters(p, t)
-
 		if rip >= regs.PC() {
 			t.Errorf("Expected %#v to be greater than %#v", regs.PC(), rip)
 		}
@@ -79,9 +76,7 @@ func TestContinue(t *testing.T) {
 		}
 
 		err := p.Continue()
-		if err != nil {
-			t.Fatal("Continue():", err)
-		}
+		assertNoError(err, t, "Continue()")
 
 		if p.ProcessState.ExitStatus() != 0 {
 			t.Fatal("Process did not exit successfully")
@@ -95,15 +90,11 @@ func TestBreakPoint(t *testing.T) {
 		sleepyaddr := sleepytimefunc.Entry
 
 		bp, err := p.Break(uintptr(sleepyaddr))
-		if err != nil {
-			t.Fatal("Break():", err)
-		}
+		assertNoError(err, t, "Break()")
 
 		breakpc := bp.Addr + 1
 		err = p.Continue()
-		if err != nil {
-			t.Fatal("Continue():", err)
-		}
+		assertNoError(err, t, "Continue()")
 
 		regs := helper.GetRegisters(p, t)
 
@@ -113,9 +104,7 @@ func TestBreakPoint(t *testing.T) {
 		}
 
 		err = p.Step()
-		if err != nil {
-			t.Fatal(err)
-		}
+		assertNoError(err, t, "Step()")
 
 		regs = helper.GetRegisters(p, t)
 
@@ -139,9 +128,7 @@ func TestClearBreakPoint(t *testing.T) {
 	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
 		fn := p.GoSymTable.LookupFunc("main.sleepytime")
 		bp, err := p.Break(uintptr(fn.Entry))
-		if err != nil {
-			t.Fatal("Break():", err)
-		}
+		assertNoError(err, t, "Break()")
 
 		int3, err := dataAtAddr(p.Pid, bp.Addr)
 		if err != nil {
@@ -149,9 +136,7 @@ func TestClearBreakPoint(t *testing.T) {
 		}
 
 		bp, err = p.Clear(fn.Entry)
-		if err != nil {
-			t.Fatal("Break():", err)
-		}
+		assertNoError(err, t, "Clear()")
 
 		data, err := dataAtAddr(p.Pid, bp.Addr)
 		if err != nil {
