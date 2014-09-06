@@ -184,8 +184,8 @@ func TestNext(t *testing.T) {
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
 		_, err := p.Break(uintptr(pc))
-		assertNoError(err, t, "Break() returned an error")
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(err, t, "Break()")
+		assertNoError(p.Continue(), t, "Continue()")
 
 		for _, tc := range testcases {
 			ln = currentLineNumber(p, t)
