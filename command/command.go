@@ -3,8 +3,11 @@
 package command
 
 import (
+	"bufio"
 	"debug/gosym"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -68,7 +71,12 @@ func nullCommand(p *proctl.DebuggedProcess, ars ...string) error {
 }
 
 func cont(p *proctl.DebuggedProcess, ars ...string) error {
-	return p.Continue()
+	err := p.Continue()
+	if err != nil {
+		return err
+	}
+
+	return printcontext(p)
 }
 
 func step(p *proctl.DebuggedProcess, args ...string) error {
@@ -77,15 +85,7 @@ func step(p *proctl.DebuggedProcess, args ...string) error {
 		return err
 	}
 
-	regs, err := p.Registers()
-	if err != nil {
-		return err
-	}
-
-	f, l, _ := p.GoSymTable.PCToLine(regs.PC())
-	fmt.Printf("Stopped at: %s:%d\n", f, l)
-
-	return nil
+	return printcontext(p)
 }
 
 func next(p *proctl.DebuggedProcess, args ...string) error {
@@ -94,15 +94,7 @@ func next(p *proctl.DebuggedProcess, args ...string) error {
 		return err
 	}
 
-	regs, err := p.Registers()
-	if err != nil {
-		return err
-	}
-
-	f, l, _ := p.GoSymTable.PCToLine(regs.PC())
-	fmt.Printf("Stopped at: %s:%d\n", f, l)
-
-	return nil
+	return printcontext(p)
 }
 
 func clear(p *proctl.DebuggedProcess, args ...string) error {
@@ -161,6 +153,43 @@ func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
 	}
 
 	fmt.Printf("Breakpoint set at %#v for %s %s:%d\n", bp.Addr, bp.FunctionName, bp.File, bp.Line)
+
+	return nil
+}
+
+func printcontext(p *proctl.DebuggedProcess) error {
+	var context []string
+
+	regs, err := p.Registers()
+	if err != nil {
+		return err
+	}
+
+	f, l, _ := p.GoSymTable.PCToLine(regs.PC())
+
+	fmt.Printf("Stopped at: %s:%d\n", f, l)
+	file, err := os.Open(f)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	buf := bufio.NewReader(file)
+	for i := 1; i <= l+5; i++ {
+		line, err := buf.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return err
+		}
+
+		if i >= (l - 5) {
+			if i == l {
+				line = "=>" + line
+			}
+			context = append(context, line)
+		}
+	}
+
+	fmt.Println(strings.Join(context, " "))
 
 	return nil
 }
