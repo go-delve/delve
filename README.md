@@ -43,7 +43,7 @@ Once inside a debugging session, the following commands may be used:
 
 ### Upcoming features
 
-* Handle Gos multithreaded nature better (follow goroutine accross thread contexts)
+* Handle Gos multithreaded nature better
 * In-scope variable evaluation
 * In-scope variable setting
 * Readline integration
