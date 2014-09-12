@@ -1,6 +1,8 @@
 package line
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -14,8 +16,19 @@ func init() {
 }
 
 func TestNextLocAfterPC(t *testing.T) {
+	p, err := filepath.Abs("../../_fixtures/testnextprog")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = exec.Command("go", "build", "-gcflags=-N -l", "-o", p, p+".go").Run()
+	if err != nil {
+		t.Fatal("Could not compile test file", p, err)
+	}
+	defer os.Remove(p)
+
 	var (
-		data     = grabDebugLineSection("../../_fixtures/testnextprog", t)
+		data     = grabDebugLineSection(p, t)
 		dbl      = Parse(data)
 		gosym    = dwarfhelper.GosymData(testfile, t)
 		pc, _, _ = gosym.LineToPC(testfile+".go", 20)

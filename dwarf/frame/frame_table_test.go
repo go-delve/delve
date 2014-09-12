@@ -13,14 +13,15 @@ import (
 )
 
 func TestFindReturnAddress(t *testing.T) {
-	var (
-		testfile, _ = filepath.Abs("../../_fixtures/testnextprog")
-		dbframe     = dwarfhelper.GrabDebugFrameSection(testfile, t)
-		fdes        = frame.Parse(dbframe)
-		gsd         = dwarfhelper.GosymData(testfile, t)
-	)
+	var testfile, _ = filepath.Abs("../../_fixtures/testnextprog")
 
 	helper.WithTestProcess(testfile, t, func(p *proctl.DebuggedProcess) {
+		var (
+			dbframe = dwarfhelper.GrabDebugFrameSection(testfile, t)
+			fdes    = frame.Parse(dbframe)
+			gsd     = dwarfhelper.GosymData(testfile, t)
+		)
+
 		testsourcefile := testfile + ".go"
 		start, _, err := gsd.LineToPC(testsourcefile, 22)
 		if err != nil {
