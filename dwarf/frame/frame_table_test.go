@@ -59,9 +59,8 @@ func TestFindReturnAddress(t *testing.T) {
 		syscall.PtracePeekText(p.Pid, uintptr(addr), data)
 		addr = binary.LittleEndian.Uint64(data)
 
-		end := uint64(0x400d9f)
-		if addr != end {
-			t.Fatalf("return address not found correctly, expected %#v got %#v", end, addr)
+		if addr != 0x400dff {
+			t.Fatalf("return address not found correctly, expected %#v got %#v", uintptr(0x400dff), addr)
 		}
 	})
 }
