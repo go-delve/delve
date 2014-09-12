@@ -33,9 +33,14 @@ func startDebugger(t *testing.T, pid int) *os.Process {
 }
 
 func startTestProg(t *testing.T, proc string) *os.Process {
+	err := exec.Command("go", "build", "-gcflags=-N -l", "-o", proc, proc+".go").Run()
+	if err != nil {
+		t.Fatal("Could not compile", proc, err)
+	}
+	defer os.Remove(proc)
 	cmd := exec.Command(proc)
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		t.Fatal(err)
 	}
