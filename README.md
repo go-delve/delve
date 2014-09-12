@@ -47,7 +47,6 @@ Once inside a debugging session, the following commands may be used:
 * In-scope variable evaluation
 * In-scope variable setting
 * Readline integration
-* Ability to launch debugging session from debugged program, with breakpoint set correctly
 * Support for OS X
 
 ### License
