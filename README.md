@@ -6,7 +6,7 @@ DBG is a Go debugger, written primarily in Go. It really needs a new name.
 
 ### Building
 
-Currently, DBG requires the following [patch](https://codereview.appspot.com/117280043/) to be applied to your Go source to build.
+Currently, DBG requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands.
 
 ### Features
 
