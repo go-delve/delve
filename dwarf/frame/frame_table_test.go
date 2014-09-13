@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/derekparker/dbg/_helper"
-	"github.com/derekparker/dbg/dwarf/_helper"
-	"github.com/derekparker/dbg/dwarf/frame"
 	"github.com/derekparker/dbg/proctl"
 )
 
@@ -17,9 +15,8 @@ func TestFindReturnAddress(t *testing.T) {
 
 	helper.WithTestProcess(testfile, t, func(p *proctl.DebuggedProcess) {
 		var (
-			dbframe = dwarfhelper.GrabDebugFrameSection(testfile, t)
-			fdes    = frame.Parse(dbframe)
-			gsd     = dwarfhelper.GosymData(testfile, t)
+			fdes = p.FrameEntries
+			gsd  = p.GoSymTable
 		)
 
 		testsourcefile := testfile + ".go"

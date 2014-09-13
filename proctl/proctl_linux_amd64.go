@@ -4,8 +4,6 @@ package proctl
 
 import (
 	"bytes"
-	"debug/dwarf"
-	"debug/elf"
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
@@ -18,6 +16,8 @@ import (
 	"github.com/derekparker/dbg/dwarf/frame"
 	"github.com/derekparker/dbg/dwarf/line"
 	"github.com/derekparker/dbg/dwarf/op"
+	"github.com/derekparker/dbg/vendor/dwarf"
+	"github.com/derekparker/dbg/vendor/elf"
 )
 
 // Struct representing a debugged process. Holds onto pid, register values,
@@ -458,10 +458,10 @@ func (dbp *DebuggedProcess) readIntSlice(addr uintptr) (string, error) {
 func (dbp *DebuggedProcess) readIntArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
 	var (
 		number  uint64
-		members = make([]uint64, 0, t.Size()/8)
+		members = make([]uint64, 0, t.ByteSize)
 	)
 
-	val, err := dbp.readMemory(addr, uintptr(t.Size()))
+	val, err := dbp.readMemory(addr, uintptr(t.ByteSize))
 	if err != nil {
 		return "", err
 	}
@@ -476,9 +476,9 @@ func (dbp *DebuggedProcess) readIntArray(addr uintptr, t *dwarf.ArrayType) (stri
 		members = append(members, number)
 	}
 
-	str := fmt.Sprintf("%s %d", t.String(), members)
+	str := fmt.Sprintf("[%d]int %d", t.ByteSize/8, members)
 
-	return str, err
+	return str, nil
 }
 
 func (dbp *DebuggedProcess) readInt(addr uintptr) (string, error) {
@@ -533,7 +533,7 @@ func (dbp *DebuggedProcess) handleResult(err error) error {
 func (dbp *DebuggedProcess) findExecutable() error {
 	procpath := fmt.Sprintf("/proc/%d/exe", dbp.Pid)
 
-	f, err := os.Open(procpath)
+	f, err := os.OpenFile(procpath, 0, os.ModePerm)
 	if err != nil {
 		return err
 	}

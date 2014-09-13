@@ -3,6 +3,7 @@ package helper
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"testing"
@@ -23,12 +24,13 @@ func GetRegisters(p *proctl.DebuggedProcess, t *testing.T) *syscall.PtraceRegs {
 
 func WithTestProcess(name string, t *testing.T, fn testfunc) {
 	runtime.LockOSThread()
-	err := CompileTestProg(name)
+	base, err := CompileTestProg(name)
 	if err != nil {
 		t.Fatalf("Could not compile %s due to %s", name, err)
 	}
+	defer os.Remove("./" + base)
 
-	cmd, err := startTestProcess(name)
+	cmd, err := startTestProcess(base)
 	if err != nil {
 		t.Fatal("Starting test process:", err)
 	}
@@ -38,25 +40,19 @@ func WithTestProcess(name string, t *testing.T, fn testfunc) {
 	if err != nil {
 		t.Fatal("NewDebugProcess():", err)
 	}
-	defer func() {
-		cmd.Process.Kill()
-		os.Remove(name)
-	}()
+
+	defer cmd.Process.Kill()
 
 	fn(p)
 }
 
-func CompileTestProg(source string) error {
-	return exec.Command("go", "build", "-gcflags=-N -l", "-o", source, source+".go").Run()
+func CompileTestProg(source string) (string, error) {
+	base := filepath.Base(source)
+	return base, exec.Command("go", "build", "-gcflags=-N -l", "-o", base, source+".go").Run()
 }
 
 func startTestProcess(name string) (*exec.Cmd, error) {
-	cmd := exec.Command(name)
+	cmd := exec.Command("./" + name)
 
-	err := cmd.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	return cmd, nil
+	return cmd, cmd.Start()
 }

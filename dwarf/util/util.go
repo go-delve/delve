@@ -11,6 +11,10 @@ func DecodeULEB128(buf *bytes.Buffer) (uint64, uint32) {
 		length uint32
 	)
 
+	if buf.Len() == 0 {
+		return 0, 0
+	}
+
 	for {
 		b, err := buf.ReadByte()
 		if err != nil {
@@ -41,6 +45,10 @@ func DecodeSLEB128(buf *bytes.Buffer) (int64, uint32) {
 		shift  uint64
 		length uint32
 	)
+
+	if buf.Len() == 0 {
+		return 0, 0
+	}
 
 	for {
 		b, err = buf.ReadByte()

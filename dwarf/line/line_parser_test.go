@@ -16,6 +16,7 @@ func grabDebugLineSection(p string, t *testing.T) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer f.Close()
 
 	ef, err := elf.NewFile(f)
 	if err != nil {
