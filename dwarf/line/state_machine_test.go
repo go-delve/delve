@@ -5,8 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-
-	"github.com/derekparker/dbg/dwarf/_helper"
 )
 
 var testfile string
@@ -28,13 +26,11 @@ func TestNextLocAfterPC(t *testing.T) {
 	defer os.Remove(p)
 
 	var (
-		data     = grabDebugLineSection(p, t)
-		dbl      = Parse(data)
-		gosym    = dwarfhelper.GosymData(testfile, t)
-		pc, _, _ = gosym.LineToPC(testfile+".go", 20)
+		data = grabDebugLineSection(p, t)
+		dbl  = Parse(data)
 	)
 
-	loc := dbl.NextLocAfterPC(pc)
+	loc := dbl.NextLocation(testfile+".go", 20)
 
 	if loc.File != testfile+".go" {
 		t.Fatal("File not returned correctly", loc.File)

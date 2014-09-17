@@ -74,18 +74,18 @@ func newStateMachine(dbl *DebugLineInfo) *StateMachine {
 
 // Returns the filename, line number and PC for the next executable line in
 // the traced program.
-func (dbl *DebugLineInfo) NextLocAfterPC(pc uint64) *Location {
+func (dbl *DebugLineInfo) NextLocation(file string, line int) *Location {
 	var (
 		sm  = newStateMachine(dbl)
 		buf = bytes.NewBuffer(dbl.Instructions)
 	)
 
-	executeUntilPC(sm, buf, pc)
-	line := sm.Line
+	executeUntilFileAndLine(sm, buf, file, line)
+	l := sm.Line
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
 
-		if sm.Line != line {
+		if sm.Line != l {
 			break
 		}
 	}
@@ -140,6 +140,16 @@ func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) *Location {
 	}
 
 	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
+}
+
+func executeUntilFileAndLine(sm *StateMachine, buf *bytes.Buffer, file string, line int) {
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+
+		if sm.Line == line && sm.File == file {
+			break
+		}
+	}
 }
 
 func executeUntilPC(sm *StateMachine, buf *bytes.Buffer, pc uint64) {

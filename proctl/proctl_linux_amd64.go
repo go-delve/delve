@@ -32,7 +32,7 @@ type DebuggedProcess struct {
 	GoSymTable      *gosym.Table
 	FrameEntries    *frame.FrameDescriptionEntries
 	DebugLine       *line.DebugLineInfo
-	BreakPoints     map[string]*BreakPoint
+	BreakPoints     map[uint64]*BreakPoint
 	TempBreakPoints map[uint64]*BreakPoint
 }
 
@@ -85,7 +85,7 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 		Regs:            new(syscall.PtraceRegs),
 		Process:         proc,
 		ProcessState:    ps,
-		BreakPoints:     make(map[string]*BreakPoint),
+		BreakPoints:     make(map[uint64]*BreakPoint),
 		TempBreakPoints: make(map[uint64]*BreakPoint),
 	}
 
@@ -212,8 +212,7 @@ func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 		OriginalData: originalData,
 	}
 
-	fname := fmt.Sprintf("%s:%d", f, l)
-	dbp.BreakPoints[fname] = breakpoint
+	dbp.BreakPoints[uint64(addr)] = breakpoint
 
 	return breakpoint, nil
 }
@@ -230,7 +229,7 @@ func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
 		return nil, err
 	}
 
-	delete(dbp.BreakPoints, fmt.Sprintf("%s:%d", bp.File, bp.Line))
+	delete(dbp.BreakPoints, pc)
 
 	return bp, nil
 }
@@ -278,13 +277,25 @@ func (dbp *DebuggedProcess) Next() error {
 		return err
 	}
 
-	pc-- // account for breakpoint instruction
-
 	addrs, err := dbp.nextPotentialLocations(pc)
 	if err != nil {
 		return err
 	}
 
+	err = dbp.setPotentionBreakPoints(addrs)
+	if err != nil {
+		return err
+	}
+
+	err = dbp.Continue()
+	if err != nil {
+		return err
+	}
+
+	return dbp.clearTempBreakpoints()
+}
+
+func (dbp *DebuggedProcess) setPotentionBreakPoints(addrs []uint64) error {
 	for _, addr := range addrs {
 		bp, err := dbp.Break(uintptr(addr))
 		if err != nil {
@@ -297,17 +308,28 @@ func (dbp *DebuggedProcess) Next() error {
 		dbp.TempBreakPoints[addr] = bp
 	}
 
-	err = dbp.Continue()
+	return nil
+}
+
+func (dbp *DebuggedProcess) clearTempBreakpoints() error {
+	regs, err := dbp.Registers()
 	if err != nil {
 		return err
 	}
 
-	if bp, ok := dbp.TempBreakPoints[pc]; ok {
-		_, err := dbp.Clear(bp.Addr)
+	bp, ok := dbp.PCtoBP(regs.PC() - 1)
+	for pc, _ := range dbp.TempBreakPoints {
+		_, err := dbp.Clear(pc)
 		if err != nil {
 			return err
 		}
 		delete(dbp.TempBreakPoints, pc)
+	}
+
+	if ok {
+		// Reset program counter to our restored instruction.
+		regs.SetPC(bp.Addr)
+		return syscall.PtraceSetRegs(dbp.Pid, regs)
 	}
 
 	return nil
@@ -336,8 +358,10 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 
 func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) {
 	var (
-		addrs = make([]uint64, 0, 3)
-		loc   = dbp.DebugLine.NextLocAfterPC(pc)
+		f, l, _    = dbp.GoSymTable.PCToLine(pc)
+		addrs      = make([]uint64, 0, 3)
+		loc        = dbp.DebugLine.NextLocation(f, l)
+		currentLoc = dbp.DebugLine.LocationInfoForPC(pc)
 	)
 
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
@@ -348,17 +372,20 @@ func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) 
 	if !fde.AddressRange.Cover(loc.Address) { // Next line is outside current frame, use return addr.
 		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
 		loc = dbp.DebugLine.LocationInfoForPC(addr)
-		addrs = append(addrs, loc.Address)
 	}
 
+	if currentLoc.Delta < 0 {
+		entry := dbp.DebugLine.LoopEntryLocation(currentLoc.Line)
+		exit := dbp.DebugLine.LoopExitLocation(currentLoc.Address)
+		addrs = append(addrs, entry.Address, exit.Address)
+	}
 	if loc.Delta < 0 { // We are likely in a loop, set breakpoints at entry and exit.
 		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
 		exit := dbp.DebugLine.LoopExitLocation(loc.Address)
 		addrs = append(addrs, entry.Address, exit.Address)
 	}
 
-	addrs = append(addrs, loc.Address)
-	return addrs, nil
+	return append(addrs, loc.Address), nil
 }
 
 // Extracts the value from the instructions given in the DW_AT_location entry.
@@ -521,11 +548,21 @@ func (dbp *DebuggedProcess) handleResult(err error) error {
 	}
 
 	ps, err := wait(dbp.Process.Pid)
-	if err != nil {
+	if err != nil && err != syscall.ECHILD {
 		return err
 	}
 
-	dbp.ProcessState = ps
+	if ps != nil {
+		dbp.ProcessState = ps
+		if ps.TrapCause() == -1 && !ps.Exited() {
+			regs, err := dbp.Registers()
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("traced program %s at: %#v\n", ps.StopSignal(), regs.PC())
+		}
+	}
 
 	return nil
 }
@@ -610,8 +647,7 @@ func (dbp *DebuggedProcess) obtainGoSymbols(wg *sync.WaitGroup) {
 // Converts a program counter value into a breakpoint, if one was set
 // for the function containing pc.
 func (dbp *DebuggedProcess) PCtoBP(pc uint64) (*BreakPoint, bool) {
-	f, l, _ := dbp.GoSymTable.PCToLine(pc)
-	bp, ok := dbp.BreakPoints[fmt.Sprintf("%s:%d", f, l)]
+	bp, ok := dbp.BreakPoints[pc]
 	return bp, ok
 }
 

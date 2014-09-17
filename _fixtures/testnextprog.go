@@ -26,7 +26,7 @@ func testnext() {
 }
 
 func main() {
-	for {
+	for i := 0; i <= 100; i++ {
 		sleepytime()
 		testnext()
 	}

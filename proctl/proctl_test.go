@@ -2,9 +2,12 @@ package proctl_test
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/derekparker/dbg/_helper"
 	"github.com/derekparker/dbg/proctl"
@@ -172,7 +175,8 @@ func TestNext(t *testing.T) {
 		{22, 19},
 		{19, 25},
 		{25, 26},
-		{26, 30},
+		{26, 29},
+		{29, 30},
 		{30, 31},
 	}
 
@@ -183,7 +187,7 @@ func TestNext(t *testing.T) {
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
-		_, err := p.Break(uintptr(pc))
+		bp, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
 
@@ -200,6 +204,45 @@ func TestNext(t *testing.T) {
 				t.Fatalf("Program did not continue to correct next location expected %d was %d", tc.end, ln)
 			}
 		}
+
+		if len(p.TempBreakPoints) != 0 {
+			t.Fatal("Not all breakpoints were cleaned up")
+		}
+
+		// Test that next will properly clean up after itself.
+		// Since we kind of spray breakpoints all around, we want to
+		// make sure here that after next'ing a couple time, we can
+		// still continue to execute the program without hitting a
+		// rogue breakpoint.
+		timer := time.NewTimer(5 * time.Second)
+		exited := make(chan interface{})
+
+		_, err = p.Clear(bp.Addr)
+		assertNoError(err, t, "Clear()")
+
+		go func() {
+			_, err := syscall.Wait4(p.Pid, nil, 0, nil)
+			if err != nil && err != syscall.ECHILD {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			exited <- nil
+		}()
+
+		go func() {
+			select {
+			case <-timer.C:
+				p.Process.Kill()
+				os.Exit(1)
+			case <-exited:
+				return
+			}
+		}()
+
+		// We must call Continue outside of the goroutine
+		// because all ptrace commands must be executed
+		// from the thread that started the trace.
+		assertNoError(p.Continue(), t, "Continue()")
 	})
 }
 
