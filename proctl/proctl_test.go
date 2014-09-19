@@ -214,11 +214,23 @@ func TestNext(t *testing.T) {
 		// make sure here that after next'ing a couple time, we can
 		// still continue to execute the program without hitting a
 		// rogue breakpoint.
-		timer := time.NewTimer(5 * time.Second)
 		exited := make(chan interface{})
 
 		_, err = p.Clear(bp.Addr)
 		assertNoError(err, t, "Clear()")
+
+		go func() {
+			fmt.Println("waiting")
+			select {
+			case <-time.After(2 * time.Second):
+				syscall.PtraceDetach(p.Pid)
+				p.Process.Kill()
+				os.Exit(1)
+			case <-exited:
+				p.Process.Kill()
+				os.Exit(0)
+			}
+		}()
 
 		go func() {
 			_, err := syscall.Wait4(p.Pid, nil, 0, nil)
@@ -227,16 +239,6 @@ func TestNext(t *testing.T) {
 				os.Exit(1)
 			}
 			exited <- nil
-		}()
-
-		go func() {
-			select {
-			case <-timer.C:
-				p.Process.Kill()
-				os.Exit(1)
-			case <-exited:
-				return
-			}
 		}()
 
 		// We must call Continue outside of the goroutine
