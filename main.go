@@ -12,6 +12,7 @@ import (
 
 	"github.com/derekparker/dbg/command"
 	"github.com/derekparker/dbg/proctl"
+	"github.com/rocaltair/goreadline"
 )
 
 type term struct {
@@ -136,11 +137,10 @@ func parseCommand(cmdstr string) (string, []string) {
 }
 
 func (t *term) promptForInput() (string, error) {
-	fmt.Print("dbg> ")
-
-	line, err := t.stdin.ReadString('\n')
-	if err != nil {
-		return "", err
+	prompt := "dbg> "
+	line := *goreadline.ReadLine(&prompt)
+	if line != "" {
+		goreadline.AddHistory(line)
 	}
 
 	return strings.TrimSuffix(line, "\n"), nil
