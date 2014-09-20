@@ -6,7 +6,7 @@ import (
 )
 
 func sleepytime() {
-	time.Sleep(time.Millisecond)
+	time.Sleep(time.Nanosecond)
 }
 
 func helloworld() {
@@ -26,7 +26,7 @@ func testnext() {
 }
 
 func main() {
-	for i := 0; i <= 100; i++ {
+	for i := 0; i <= 1; i++ {
 		sleepytime()
 		testnext()
 	}
