@@ -16,6 +16,7 @@ Currently, DBG requires the following [patch](https://codereview.appspot.com/117
 * Single step through a process
 * Next through a process (step over / out of subroutines)
 * Never retype commands, empty line defaults to previous command
+* Readline integration
 
 ### Usage
 
@@ -46,7 +47,6 @@ Once inside a debugging session, the following commands may be used:
 * Handle Gos multithreaded nature better
 * In-scope variable evaluation
 * In-scope variable setting
-* Readline integration
 * Support for OS X
 
 ### License
