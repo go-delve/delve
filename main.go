@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
 	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/derekparker/dbg/command"
+	"github.com/derekparker/dbg/goreadline"
 	"github.com/derekparker/dbg/proctl"
-	"github.com/rocaltair/goreadline"
 )
 
 type term struct {
@@ -42,6 +43,8 @@ func main() {
 	}
 
 	dbgproc := beginTrace(pid, proc)
+	history := ".dbg_history"
+	goreadline.LoadHistoryFromFile(history)
 
 	for {
 		cmdstr, err := t.promptForInput()
@@ -52,6 +55,8 @@ func main() {
 		cmdstr, args := parseCommand(cmdstr)
 
 		if cmdstr == "exit" {
+			err := goreadline.WriteHistoryToFile(history)
+			fmt.Println(err)
 			handleExit(t, dbgproc, 0)
 		}
 
@@ -139,9 +144,10 @@ func parseCommand(cmdstr string) (string, []string) {
 func (t *term) promptForInput() (string, error) {
 	prompt := "dbg> "
 	line := *goreadline.ReadLine(&prompt)
+	line = strings.TrimSuffix(line, "\n")
 	if line != "" {
 		goreadline.AddHistory(line)
 	}
 
-	return strings.TrimSuffix(line, "\n"), nil
+	return line, nil
 }
