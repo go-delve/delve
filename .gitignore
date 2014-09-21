@@ -6,3 +6,4 @@ notes.txt
 **/*.txt
 **/*.test
 tags
+.dbg_history
