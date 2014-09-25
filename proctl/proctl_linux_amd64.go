@@ -311,30 +311,6 @@ func (dbp *DebuggedProcess) setPotentionBreakPoints(addrs []uint64) error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) clearTempBreakpoints() error {
-	regs, err := dbp.Registers()
-	if err != nil {
-		return err
-	}
-
-	bp, ok := dbp.PCtoBP(regs.PC() - 1)
-	for pc, _ := range dbp.TempBreakPoints {
-		_, err := dbp.Clear(pc)
-		if err != nil {
-			return err
-		}
-		delete(dbp.TempBreakPoints, pc)
-	}
-
-	if ok {
-		// Reset program counter to our restored instruction.
-		regs.SetPC(bp.Addr)
-		return syscall.PtraceSetRegs(dbp.Pid, regs)
-	}
-
-	return nil
-}
-
 // Continue process until next breakpoint.
 func (dbp *DebuggedProcess) Continue() error {
 	// Stepping first will ensure we are able to continue
@@ -386,6 +362,30 @@ func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) 
 	}
 
 	return append(addrs, loc.Address), nil
+}
+
+func (dbp *DebuggedProcess) clearTempBreakpoints() error {
+	regs, err := dbp.Registers()
+	if err != nil {
+		return err
+	}
+
+	bp, ok := dbp.PCtoBP(regs.PC() - 1)
+	for pc, _ := range dbp.TempBreakPoints {
+		_, err := dbp.Clear(pc)
+		if err != nil {
+			return err
+		}
+		delete(dbp.TempBreakPoints, pc)
+	}
+
+	if ok {
+		// Reset program counter to our restored instruction.
+		regs.SetPC(bp.Addr)
+		return syscall.PtraceSetRegs(dbp.Pid, regs)
+	}
+
+	return nil
 }
 
 // Extracts the value from the instructions given in the DW_AT_location entry.
