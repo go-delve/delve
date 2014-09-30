@@ -5,5 +5,5 @@ main
 notes.txt
 **/*.txt
 **/*.test
-tags
+.tags*
 .dbg_history
