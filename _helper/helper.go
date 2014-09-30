@@ -53,6 +53,5 @@ func CompileTestProg(source string) (string, error) {
 
 func startTestProcess(name string) (*exec.Cmd, error) {
 	cmd := exec.Command("./" + name)
-
 	return cmd, cmd.Start()
 }

@@ -355,6 +355,7 @@ func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) 
 		exit := dbp.DebugLine.LoopExitLocation(currentLoc.Address)
 		addrs = append(addrs, entry.Address, exit.Address)
 	}
+
 	if loc.Delta < 0 { // We are likely in a loop, set breakpoints at entry and exit.
 		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
 		exit := dbp.DebugLine.LoopExitLocation(loc.Address)
@@ -449,6 +450,7 @@ func (dbp *DebuggedProcess) readString(addr uintptr) (string, error) {
 	str := *(*string)(unsafe.Pointer(&val))
 	return str, nil
 }
+
 func (dbp *DebuggedProcess) readIntSlice(addr uintptr) (string, error) {
 	var number uint64
 
