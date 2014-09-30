@@ -20,6 +20,8 @@ type term struct {
 	stdin *bufio.Reader
 }
 
+const historyFile string = ".dbg_history"
+
 func main() {
 	// We must ensure here that we are running on the same thread during
 	// the execution of dbg. This is due to the fact that ptrace(2) expects
@@ -43,8 +45,7 @@ func main() {
 	}
 
 	dbgproc := beginTrace(pid, proc)
-	history := ".dbg_history"
-	goreadline.LoadHistoryFromFile(history)
+	goreadline.LoadHistoryFromFile(historyFile)
 
 	for {
 		cmdstr, err := t.promptForInput()
@@ -55,7 +56,7 @@ func main() {
 		cmdstr, args := parseCommand(cmdstr)
 
 		if cmdstr == "exit" {
-			err := goreadline.WriteHistoryToFile(history)
+			err := goreadline.WriteHistoryToFile(historyFile)
 			fmt.Println(err)
 			handleExit(t, dbgproc, 0)
 		}
