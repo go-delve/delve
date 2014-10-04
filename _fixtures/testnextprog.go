@@ -14,12 +14,19 @@ func helloworld() {
 }
 
 func testnext() {
-	j := 1
+	var (
+		j = 1
+		f = 2
+	)
 
 	for i := 0; i <= 1; i++ {
 		j += j * (j ^ 3) / 100
 
 		helloworld()
+	}
+
+	if f == 1 {
+		fmt.Println("should never get here")
 	}
 
 	helloworld()

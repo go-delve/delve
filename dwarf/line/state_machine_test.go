@@ -1,19 +1,51 @@
 package line
 
 import (
+	"debug/elf"
+	"debug/gosym"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
 
-var testfile string
+func parseGoSymTab(exe *elf.File, t *testing.T) *gosym.Table {
+	var (
+		symdat  []byte
+		pclndat []byte
+		err     error
+	)
 
-func init() {
-	testfile, _ = filepath.Abs("../../_fixtures/testnextprog")
+	if sec := exe.Section(".gosymtab"); sec != nil {
+		symdat, err = sec.Data()
+		if err != nil {
+			fmt.Println("could not get .gosymtab section", err)
+			os.Exit(1)
+		}
+	}
+
+	if sec := exe.Section(".gopclntab"); sec != nil {
+		pclndat, err = sec.Data()
+		if err != nil {
+			fmt.Println("could not get .gopclntab section", err)
+			os.Exit(1)
+		}
+	}
+
+	pcln := gosym.NewLineTable(pclndat, exe.Section(".text").Addr)
+	tab, err := gosym.NewTable(symdat, pcln)
+	if err != nil {
+		fmt.Println("could not get initialize line table", err)
+		os.Exit(1)
+	}
+
+	return tab
 }
 
 func TestNextLocAfterPC(t *testing.T) {
+	testfile, _ := filepath.Abs("../../_fixtures/testnextprog")
+
 	p, err := filepath.Abs("../../_fixtures/testnextprog")
 	if err != nil {
 		t.Fatal(err)
@@ -30,13 +62,26 @@ func TestNextLocAfterPC(t *testing.T) {
 		dbl  = Parse(data)
 	)
 
-	loc := dbl.NextLocation(testfile+".go", 20)
+	f, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := elf.NewFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	symtab := parseGoSymTab(e, t)
+	pc, _, err := symtab.LineToPC(testfile+".go", 23)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loc := dbl.NextLocation(pc, 23)
 
 	if loc.File != testfile+".go" {
 		t.Fatal("File not returned correctly", loc.File)
 	}
 
-	if loc.Line != 22 {
+	if loc.Line != 25 {
 		t.Fatal("Line not returned correctly", loc.Line)
 	}
 }

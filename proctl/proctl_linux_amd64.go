@@ -277,35 +277,52 @@ func (dbp *DebuggedProcess) Next() error {
 		return err
 	}
 
-	addrs, err := dbp.nextPotentialLocations(pc)
+	if _, ok := dbp.BreakPoints[pc-1]; ok {
+		pc--
+	}
+
+	f, l, _ := dbp.GoSymTable.PCToLine(pc)
+	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
 		return err
 	}
 
-	err = dbp.setPotentionBreakPoints(addrs)
-	if err != nil {
-		return err
-	}
-
-	err = dbp.Continue()
-	if err != nil {
-		return err
-	}
-
-	return dbp.clearTempBreakpoints()
-}
-
-func (dbp *DebuggedProcess) setPotentionBreakPoints(addrs []uint64) error {
-	for _, addr := range addrs {
+	loc := dbp.DebugLine.NextLocation(pc, l)
+	if !fde.AddressRange.Cover(loc.Address) {
+		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
 		bp, err := dbp.Break(uintptr(addr))
 		if err != nil {
 			if _, ok := err.(BreakPointExistsError); !ok {
 				return err
 			}
-
-			continue
 		}
 		dbp.TempBreakPoints[addr] = bp
+
+		err = dbp.Continue()
+		if err != nil {
+			return err
+		}
+
+		return dbp.clearTempBreakpoints()
+	}
+
+	for {
+		err = dbp.Step()
+		if err != nil {
+			return fmt.Errorf("next stepping failed: ", err.Error())
+		}
+
+		pc, err = dbp.CurrentPC()
+		if err != nil {
+			return err
+		}
+
+		nf, nl, _ := dbp.GoSymTable.PCToLine(pc)
+		if nf == f && nl != l {
+			if fde.AddressRange.Cover(pc) {
+				break
+			}
+		}
 	}
 
 	return nil
@@ -330,39 +347,6 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 	}
 
 	return regs.Rip, nil
-}
-
-func (dbp *DebuggedProcess) nextPotentialLocations(pc uint64) ([]uint64, error) {
-	var (
-		f, l, _    = dbp.GoSymTable.PCToLine(pc)
-		addrs      = make([]uint64, 0, 3)
-		loc        = dbp.DebugLine.NextLocation(f, l)
-		currentLoc = dbp.DebugLine.LocationInfoForPC(pc)
-	)
-
-	fde, err := dbp.FrameEntries.FDEForPC(pc)
-	if err != nil {
-		return nil, err
-	}
-
-	if !fde.AddressRange.Cover(loc.Address) { // Next line is outside current frame, use return addr.
-		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-		loc = dbp.DebugLine.LocationInfoForPC(addr)
-	}
-
-	if currentLoc.Delta < 0 {
-		entry := dbp.DebugLine.LoopEntryLocation(currentLoc.Line)
-		exit := dbp.DebugLine.LoopExitLocation(currentLoc.Address)
-		addrs = append(addrs, entry.Address, exit.Address)
-	}
-
-	if loc.Delta < 0 { // We are likely in a loop, set breakpoints at entry and exit.
-		entry := dbp.DebugLine.LoopEntryLocation(loc.Line)
-		exit := dbp.DebugLine.LoopExitLocation(loc.Address)
-		addrs = append(addrs, entry.Address, exit.Address)
-	}
-
-	return append(addrs, loc.Address), nil
 }
 
 func (dbp *DebuggedProcess) clearTempBreakpoints() error {
