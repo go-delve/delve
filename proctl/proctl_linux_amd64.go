@@ -23,17 +23,16 @@ import (
 // Struct representing a debugged process. Holds onto pid, register values,
 // process struct and process state.
 type DebuggedProcess struct {
-	Pid             int
-	Regs            *syscall.PtraceRegs
-	Process         *os.Process
-	ProcessState    *syscall.WaitStatus
-	Executable      *elf.File
-	Symbols         []elf.Symbol
-	GoSymTable      *gosym.Table
-	FrameEntries    *frame.FrameDescriptionEntries
-	DebugLine       *line.DebugLineInfo
-	BreakPoints     map[uint64]*BreakPoint
-	TempBreakPoints map[uint64]*BreakPoint
+	Pid          int
+	Regs         *syscall.PtraceRegs
+	Process      *os.Process
+	ProcessState *syscall.WaitStatus
+	Executable   *elf.File
+	Symbols      []elf.Symbol
+	GoSymTable   *gosym.Table
+	FrameEntries *frame.FrameDescriptionEntries
+	DebugLine    *line.DebugLineInfo
+	BreakPoints  map[uint64]*BreakPoint
 }
 
 // Represents a single breakpoint. Stores information on the break
@@ -81,12 +80,11 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 	}
 
 	debuggedProc := DebuggedProcess{
-		Pid:             pid,
-		Regs:            new(syscall.PtraceRegs),
-		Process:         proc,
-		ProcessState:    ps,
-		BreakPoints:     make(map[uint64]*BreakPoint),
-		TempBreakPoints: make(map[uint64]*BreakPoint),
+		Pid:          pid,
+		Regs:         new(syscall.PtraceRegs),
+		Process:      proc,
+		ProcessState: ps,
+		BreakPoints:  make(map[uint64]*BreakPoint),
 	}
 
 	err = debuggedProc.LoadInformation()
@@ -296,14 +294,13 @@ func (dbp *DebuggedProcess) Next() error {
 				return err
 			}
 		}
-		dbp.TempBreakPoints[addr] = bp
 
 		err = dbp.Continue()
 		if err != nil {
 			return err
 		}
 
-		return dbp.clearTempBreakpoints()
+		return dbp.clearTempBreakpoint(bp.Addr)
 	}
 
 	for {
@@ -349,22 +346,18 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 	return regs.Rip, nil
 }
 
-func (dbp *DebuggedProcess) clearTempBreakpoints() error {
+func (dbp *DebuggedProcess) clearTempBreakpoint(pc uint64) error {
 	regs, err := dbp.Registers()
 	if err != nil {
 		return err
 	}
 
-	bp, ok := dbp.PCtoBP(regs.PC() - 1)
-	for pc, _ := range dbp.TempBreakPoints {
-		_, err := dbp.Clear(pc)
-		if err != nil {
-			return err
-		}
-		delete(dbp.TempBreakPoints, pc)
+	_, err = dbp.Clear(pc)
+	if err != nil {
+		return err
 	}
 
-	if ok {
+	if bp, ok := dbp.PCtoBP(regs.PC() - 1); ok {
 		// Reset program counter to our restored instruction.
 		regs.SetPC(bp.Addr)
 		return syscall.PtraceSetRegs(dbp.Pid, regs)

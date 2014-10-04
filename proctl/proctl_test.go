@@ -205,7 +205,7 @@ func TestNext(t *testing.T) {
 			}
 		}
 
-		if len(p.TempBreakPoints) != 0 {
+		if len(p.BreakPoints) != 1 {
 			t.Fatal("Not all breakpoints were cleaned up")
 		}
 
