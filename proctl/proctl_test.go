@@ -220,7 +220,6 @@ func TestNext(t *testing.T) {
 		assertNoError(err, t, "Clear()")
 
 		go func() {
-			fmt.Println("waiting")
 			select {
 			case <-time.After(2 * time.Second):
 				syscall.PtraceDetach(p.Pid)
