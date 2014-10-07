@@ -279,7 +279,7 @@ func (dbp *DebuggedProcess) Next() error {
 		pc--
 	}
 
-	f, l, _ := dbp.GoSymTable.PCToLine(pc)
+	_, l, fn := dbp.GoSymTable.PCToLine(pc)
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
 		return err
@@ -314,11 +314,9 @@ func (dbp *DebuggedProcess) Next() error {
 			return err
 		}
 
-		nf, nl, _ := dbp.GoSymTable.PCToLine(pc)
-		if nf == f && nl != l {
-			if fde.AddressRange.Cover(pc) {
-				break
-			}
+		_, nl, nfn := dbp.GoSymTable.PCToLine(pc)
+		if nfn == fn && nl != l {
+			break
 		}
 	}
 
