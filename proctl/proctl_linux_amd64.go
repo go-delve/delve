@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -129,55 +130,6 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 	}
 
 	return dbp.Regs, nil
-}
-
-// Returns the value of the named symbol.
-func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
-	data, err := dbp.Executable.DWARF()
-	if err != nil {
-		return nil, err
-	}
-
-	reader := data.Reader()
-
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
-		if err != nil {
-			return nil, err
-		}
-
-		if entry.Tag != dwarf.TagVariable {
-			continue
-		}
-
-		n, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok || n != name {
-			continue
-		}
-
-		offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
-		if !ok {
-			continue
-		}
-
-		t, err := data.Type(offset)
-		if err != nil {
-			return nil, err
-		}
-
-		instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-		if !ok {
-			continue
-		}
-
-		val, err := dbp.extractValue(instructions, t)
-		if err != nil {
-			return nil, err
-		}
-
-		return &Variable{Name: n, Type: t.String(), Value: val}, nil
-	}
-
-	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
 // Sets a breakpoint in the running process.
@@ -401,10 +353,65 @@ func (dbp *DebuggedProcess) clearTempBreakpoint(pc uint64) error {
 	return nil
 }
 
+// Returns the value of the named symbol.
+func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
+	data, err := dbp.Executable.DWARF()
+	if err != nil {
+		return nil, err
+	}
+
+	reader := data.Reader()
+
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		if entry.Tag != dwarf.TagVariable {
+			continue
+		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok || n != name {
+			continue
+		}
+
+		offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
+		if !ok {
+			continue
+		}
+
+		t, err := data.Type(offset)
+		if err != nil {
+			return nil, err
+		}
+
+		// If we have a user defined type, find the
+		// underlying concrete type and use that.
+		if tt, ok := t.(*dwarf.TypedefType); ok {
+			t = tt.Type
+		}
+
+		instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
+		if !ok {
+			continue
+		}
+
+		val, err := dbp.extractValue(instructions, 0, t)
+		if err != nil {
+			return nil, err
+		}
+
+		return &Variable{Name: n, Type: t.String(), Value: val}, nil
+	}
+
+	return nil, fmt.Errorf("could not find symbol value for %s", name)
+}
+
 // Extracts the value from the instructions given in the DW_AT_location entry.
 // We execute the stack program described in the DW_OP_* instruction stream, and
 // then grab the value from the other processes memory.
-func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (string, error) {
+func (dbp *DebuggedProcess) extractValue(instructions []byte, off int64, typ interface{}) (string, error) {
 	regs, err := dbp.Registers()
 	if err != nil {
 		return "", err
@@ -418,27 +425,44 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, typ interface{}) (
 	fctx := fde.EstablishFrame(regs.PC())
 	cfaOffset := fctx.CFAOffset()
 
-	off, err := op.ExecuteStackProgram(cfaOffset, instructions)
-	if err != nil {
-		return "", err
+	offset := off
+	if off == 0 {
+		offset, err = op.ExecuteStackProgram(cfaOffset, instructions)
+		if err != nil {
+			return "", err
+		}
+		offset = int64(regs.Rsp) + offset
 	}
 
-	offset := uintptr(int64(regs.Rsp) + off)
-
+	offaddr := uintptr(offset)
 	switch t := typ.(type) {
 	case *dwarf.StructType:
 		switch t.StructName {
 		case "string":
-			return dbp.readString(offset)
+			return dbp.readString(offaddr)
 		case "[]int":
-			return dbp.readIntSlice(offset)
+			return dbp.readIntSlice(offaddr)
+		default:
+			// Here we could recursively call extractValue to grab
+			// the value of all the members of the struct.
+			fields := make([]string, 0, len(t.Field))
+			for _, field := range t.Field {
+				val, err := dbp.extractValue(nil, field.ByteOffset+offset, field.Type)
+				if err != nil {
+					return "", err
+				}
+
+				fields = append(fields, fmt.Sprintf("%s: %s", field.Name, val))
+			}
+			retstr := fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", "))
+			return retstr, nil
 		}
 	case *dwarf.ArrayType:
-		return dbp.readIntArray(offset, t)
+		return dbp.readIntArray(offaddr, t)
 	case *dwarf.IntType:
-		return dbp.readInt(offset)
+		return dbp.readInt(offaddr)
 	case *dwarf.FloatType:
-		return dbp.readFloat64(offset)
+		return dbp.readFloat64(offaddr)
 	}
 
 	return "", fmt.Errorf("could not find value for type %s", typ)
