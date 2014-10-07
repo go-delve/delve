@@ -38,11 +38,11 @@ func currentPC(p *proctl.DebuggedProcess, t *testing.T) uint64 {
 	return pc
 }
 
-func currentLineNumber(p *proctl.DebuggedProcess, t *testing.T) int {
+func currentLineNumber(p *proctl.DebuggedProcess, t *testing.T) (string, int) {
 	pc := currentPC(p, t)
-	_, l, _ := p.GoSymTable.PCToLine(pc)
+	f, l, _ := p.GoSymTable.PCToLine(pc)
 
-	return l
+	return f, l
 }
 
 func TestAttachProcess(t *testing.T) {
@@ -158,7 +158,6 @@ func TestClearBreakPoint(t *testing.T) {
 
 func TestNext(t *testing.T) {
 	var (
-		ln             int
 		err            error
 		executablePath = "../_fixtures/testnextprog"
 	)
@@ -192,16 +191,16 @@ func TestNext(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 
 		for _, tc := range testcases {
-			ln = currentLineNumber(p, t)
+			f, ln := currentLineNumber(p, t)
 			if ln != tc.begin {
-				t.Fatalf("Program not stopped at correct spot expected %d was %d", tc.begin, ln)
+				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, f, ln)
 			}
 
 			assertNoError(p.Next(), t, "Next() returned an error")
 
-			ln = currentLineNumber(p, t)
+			f, ln = currentLineNumber(p, t)
 			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %d", tc.end, ln)
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, f, ln)
 			}
 		}
 

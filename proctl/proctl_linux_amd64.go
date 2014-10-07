@@ -289,20 +289,22 @@ func (dbp *DebuggedProcess) Next() error {
 
 	loc := dbp.DebugLine.NextLocation(pc, l)
 	if !fde.AddressRange.Cover(loc.Address) {
-		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-		bp, err := dbp.Break(uintptr(addr))
-		if err != nil {
-			if _, ok := err.(BreakPointExistsError); !ok {
+		// Unconditionally step out of current function
+		// Don't bother looking up ret addr, next line is
+		// outside of current fn, should only be a few
+		// instructions left to RET
+		for fde.AddressRange.Cover(pc) {
+			err = dbp.Step()
+			if err != nil {
+				return fmt.Errorf("next stepping failed: ", err.Error())
+			}
+
+			pc, err = dbp.CurrentPC()
+			if err != nil {
 				return err
 			}
 		}
-
-		err = dbp.Continue()
-		if err != nil {
-			return err
-		}
-
-		return dbp.clearTempBreakpoint(bp.Addr)
+		return nil
 	}
 
 	for {
@@ -316,11 +318,42 @@ func (dbp *DebuggedProcess) Next() error {
 			return err
 		}
 
-		// TODO: if we have stepped into another function,
-		// find return address and continue there.
+		if !fde.AddressRange.Cover(pc) {
+			return dbp.continueToReturnAddress(pc, fde)
+		}
+
 		_, nl, nfn := dbp.GoSymTable.PCToLine(pc)
 		if nfn == fn && nl != l {
 			break
+		}
+	}
+
+	return nil
+}
+
+func (dbp *DebuggedProcess) continueToReturnAddress(pc uint64, fde *frame.FrameDescriptionEntry) error {
+	for !fde.AddressRange.Cover(pc) {
+		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+		bp, err := dbp.Break(uintptr(addr))
+		if err != nil {
+			if _, ok := err.(BreakPointExistsError); !ok {
+				return err
+			}
+		}
+
+		err = dbp.Continue()
+		if err != nil {
+			return err
+		}
+
+		err = dbp.clearTempBreakpoint(bp.Addr)
+		if err != nil {
+			return err
+		}
+
+		pc, err = dbp.CurrentPC()
+		if err != nil {
+			return err
 		}
 	}
 
@@ -349,18 +382,18 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 }
 
 func (dbp *DebuggedProcess) clearTempBreakpoint(pc uint64) error {
-	regs, err := dbp.Registers()
-	if err != nil {
-		return err
-	}
+	if bp, ok := dbp.PCtoBP(pc); ok {
+		regs, err := dbp.Registers()
+		if err != nil {
+			return err
+		}
 
-	_, err = dbp.Clear(pc)
-	if err != nil {
-		return err
-	}
-
-	if bp, ok := dbp.PCtoBP(regs.PC() - 1); ok {
 		// Reset program counter to our restored instruction.
+		bp, err = dbp.Clear(bp.Addr)
+		if err != nil {
+			return err
+		}
+
 		regs.SetPC(bp.Addr)
 		return syscall.PtraceSetRegs(dbp.Pid, regs)
 	}
