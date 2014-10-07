@@ -29,6 +29,7 @@ func DebugCommands() *Commands {
 		"break":    breakpoint,
 		"step":     step,
 		"clear":    clear,
+		"print":    printVar,
 		"":         nullCommand,
 	}
 
@@ -154,6 +155,16 @@ func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
 
 	fmt.Printf("Breakpoint set at %#v for %s %s:%d\n", bp.Addr, bp.FunctionName, bp.File, bp.Line)
 
+	return nil
+}
+
+func printVar(p *proctl.DebuggedProcess, args ...string) error {
+	val, err := p.EvalSymbol(args[0])
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(val.Value)
 	return nil
 }
 
