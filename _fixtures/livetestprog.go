@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
+	"runtime"
 )
 
 func printPid(pid int) {
@@ -15,13 +15,12 @@ func sayhi() {
 }
 
 func main() {
+	runtime.LockOSThread()
 	pid := os.Getpid()
 	printPid(pid)
 
-	time.Sleep(3 * time.Second)
 	for {
 		printPid(pid)
-		time.Sleep(1 * time.Second)
 		sayhi()
 	}
 }
