@@ -263,7 +263,8 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a3", "7.23", "float64"},
 		{"a4", "[2]int [1 2]", "[97]int"}, // There is a weird bug in the Go dwarf parser that is grabbing the wrong size for an array.
 		{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int"},
-		{"a6", "main.FooBar {Baz: 8, Bur: word}", "struct main.FooBar"},
+		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar"},
+		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar"},
 	}
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {

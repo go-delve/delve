@@ -386,12 +386,6 @@ func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 			return nil, err
 		}
 
-		// If we have a user defined type, find the
-		// underlying concrete type and use that.
-		if tt, ok := t.(*dwarf.TypedefType); ok {
-			t = tt.Type
-		}
-
 		instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 		if !ok {
 			continue
@@ -434,8 +428,27 @@ func (dbp *DebuggedProcess) extractValue(instructions []byte, off int64, typ int
 		offset = int64(regs.Rsp) + offset
 	}
 
+	// If we have a user defined type, find the
+	// underlying concrete type and use that.
+	if tt, ok := typ.(*dwarf.TypedefType); ok {
+		typ = tt.Type
+	}
+
 	offaddr := uintptr(offset)
 	switch t := typ.(type) {
+	case *dwarf.PtrType:
+		addr, err := dbp.readMemory(offaddr, 8)
+		if err != nil {
+			return "", err
+		}
+		adr := binary.LittleEndian.Uint64(addr)
+		val, err := dbp.extractValue(nil, int64(adr), t.Type)
+		if err != nil {
+			return "", err
+		}
+
+		retstr := fmt.Sprintf("*%s", val)
+		return retstr, nil
 	case *dwarf.StructType:
 		switch t.StructName {
 		case "string":
