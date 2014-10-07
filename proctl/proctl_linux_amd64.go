@@ -316,6 +316,8 @@ func (dbp *DebuggedProcess) Next() error {
 			return err
 		}
 
+		// TODO: if we have stepped into another function,
+		// find return address and continue there.
 		_, nl, nfn := dbp.GoSymTable.PCToLine(pc)
 		if nfn == fn && nl != l {
 			break
