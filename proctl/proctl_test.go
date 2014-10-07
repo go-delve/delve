@@ -226,7 +226,6 @@ func TestNext(t *testing.T) {
 				os.Exit(1)
 			case <-exited:
 				p.Process.Kill()
-				os.Exit(0)
 			}
 		}()
 
