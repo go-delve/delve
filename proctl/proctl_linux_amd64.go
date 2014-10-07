@@ -276,6 +276,8 @@ func (dbp *DebuggedProcess) Next() error {
 	}
 
 	if _, ok := dbp.BreakPoints[pc-1]; ok {
+		// Decrement the PC to be before
+		// the breakpoint instruction.
 		pc--
 	}
 
