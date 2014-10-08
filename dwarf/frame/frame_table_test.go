@@ -20,7 +20,7 @@ func TestFindReturnAddress(t *testing.T) {
 		)
 
 		testsourcefile := testfile + ".go"
-		start, _, err := gsd.LineToPC(testsourcefile, 22)
+		start, _, err := gsd.LineToPC(testsourcefile, 24)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestFindReturnAddress(t *testing.T) {
 		syscall.PtracePeekText(p.Pid, uintptr(addr), data)
 		addr = binary.LittleEndian.Uint64(data)
 
-		if addr != 0x400f15 {
+		if addr != 0x400f04 {
 			t.Fatalf("return address not found correctly, expected %#v got %#v", uintptr(0x400f15), addr)
 		}
 	})

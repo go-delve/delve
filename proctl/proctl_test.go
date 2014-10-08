@@ -2,12 +2,11 @@ package proctl_test
 
 import (
 	"bytes"
+
 	"fmt"
-	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/derekparker/dbg/_helper"
 	"github.com/derekparker/dbg/proctl"
@@ -165,18 +164,23 @@ func TestNext(t *testing.T) {
 	testcases := []struct {
 		begin, end int
 	}{
-		{18, 19},
-		{19, 22},
-		{22, 23},
-		{23, 25},
-		{25, 22},
-		{22, 23},
-		{23, 25},
-		{25, 22},
-		{22, 28},
-		{28, 32},
-		{32, 33},
-		{33, 36},
+		{19, 20},
+		{20, 23},
+		{23, 24},
+		{24, 26},
+		{26, 31},
+		{31, 23},
+		{23, 24},
+		{24, 26},
+		{26, 31},
+		{31, 23},
+		{23, 24},
+		{24, 26},
+		{26, 27},
+		{27, 34},
+		{34, 35},
+		{35, 40},
+		{40, 41},
 	}
 
 	fp, err := filepath.Abs("../_fixtures/testnextprog.go")
@@ -186,11 +190,12 @@ func TestNext(t *testing.T) {
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
-		bp, err := p.Break(uintptr(pc))
+		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
 
 		for _, tc := range testcases {
+			fmt.Println(tc.begin)
 			f, ln := currentLineNumber(p, t)
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, f, ln)
@@ -207,41 +212,6 @@ func TestNext(t *testing.T) {
 		if len(p.BreakPoints) != 1 {
 			t.Fatal("Not all breakpoints were cleaned up")
 		}
-
-		// Test that next will properly clean up after itself.
-		// Since we kind of spray breakpoints all around, we want to
-		// make sure here that after next'ing a couple time, we can
-		// still continue to execute the program without hitting a
-		// rogue breakpoint.
-		exited := make(chan interface{})
-
-		_, err = p.Clear(bp.Addr)
-		assertNoError(err, t, "Clear()")
-
-		go func() {
-			select {
-			case <-time.After(2 * time.Second):
-				syscall.PtraceDetach(p.Pid)
-				p.Process.Kill()
-				os.Exit(1)
-			case <-exited:
-				p.Process.Kill()
-			}
-		}()
-
-		go func() {
-			_, err := syscall.Wait4(p.Pid, nil, 0, nil)
-			if err != nil && err != syscall.ECHILD {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-			exited <- nil
-		}()
-
-		// We must call Continue outside of the goroutine
-		// because all ptrace commands must be executed
-		// from the thread that started the trace.
-		assertNoError(p.Continue(), t, "Continue()")
 	})
 }
 

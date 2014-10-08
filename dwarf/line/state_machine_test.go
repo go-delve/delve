@@ -75,13 +75,13 @@ func TestNextLocAfterPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loc := dbl.NextLocation(pc, 23)
+	loc := dbl.NextLocation(pc, testfile+".go", 23)
 
 	if loc.File != testfile+".go" {
 		t.Fatal("File not returned correctly", loc.File)
 	}
 
-	if loc.Line != 25 {
+	if loc.Line != 24 {
 		t.Fatal("Line not returned correctly", loc.Line)
 	}
 }

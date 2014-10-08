@@ -74,18 +74,16 @@ func newStateMachine(dbl *DebugLineInfo) *StateMachine {
 
 // Returns the filename, line number and PC for the next executable line in
 // the traced program.
-func (dbl *DebugLineInfo) NextLocation(pc uint64, line int) *Location {
+func (dbl *DebugLineInfo) NextLocation(pc uint64, file string, line int) *Location {
 	var (
 		sm  = newStateMachine(dbl)
 		buf = bytes.NewBuffer(dbl.Instructions)
 	)
 
-	executeUntilPC(sm, buf, pc)
-	l := sm.Line
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
 
-		if sm.Line != l && sm.Line > line {
+		if sm.File == file && sm.Line > line {
 			break
 		}
 	}

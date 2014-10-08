@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 )
 
@@ -19,21 +20,23 @@ func testnext() {
 		f = 2
 	)
 
-	for i := 0; i <= 1; i++ {
+	for i := 0; i <= 5; i++ {
 		j += j * (j ^ 3) / 100
 
-		helloworld()
-	}
+		if i == f {
+			fmt.Println("foo")
+			break
+		}
 
-	if f == 1 {
-		fmt.Println("should never get here")
+		helloworld()
 	}
 
 	helloworld()
 }
 
 func main() {
-	for i := 0; i <= 1; i++ {
+	runtime.LockOSThread()
+	for {
 		sleepytime()
 		testnext()
 	}

@@ -233,13 +233,13 @@ func (dbp *DebuggedProcess) Next() error {
 		pc--
 	}
 
-	_, l, fn := dbp.GoSymTable.PCToLine(pc)
+	f, l, _ := dbp.GoSymTable.PCToLine(pc)
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
 		return err
 	}
 
-	loc := dbp.DebugLine.NextLocation(pc, l)
+	loc := dbp.DebugLine.NextLocation(pc, f, l)
 	if !fde.AddressRange.Cover(loc.Address) {
 		// Unconditionally step out of current function
 		// Don't bother looking up ret addr, next line is
@@ -271,11 +271,13 @@ func (dbp *DebuggedProcess) Next() error {
 		}
 
 		if !fde.AddressRange.Cover(pc) {
-			return dbp.continueToReturnAddress(pc, fde)
+			// We've stepped into a function, keep going.
+			// TODO: Use DWARF frame info to continue to return address.
+			continue
 		}
 
-		_, nl, nfn := dbp.GoSymTable.PCToLine(pc)
-		if nfn == fn && nl != l {
+		_, nl, _ := dbp.GoSymTable.PCToLine(pc)
+		if nl != l {
 			break
 		}
 	}
@@ -284,30 +286,32 @@ func (dbp *DebuggedProcess) Next() error {
 }
 
 func (dbp *DebuggedProcess) continueToReturnAddress(pc uint64, fde *frame.FrameDescriptionEntry) error {
-	for !fde.AddressRange.Cover(pc) {
-		addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-		bp, err := dbp.Break(uintptr(addr))
-		if err != nil {
-			if _, ok := err.(BreakPointExistsError); !ok {
-				return err
-			}
-		}
-
-		err = dbp.Continue()
-		if err != nil {
-			return err
-		}
-
-		err = dbp.clearTempBreakpoint(bp.Addr)
-		if err != nil {
-			return err
-		}
-
-		pc, err = dbp.CurrentPC()
-		if err != nil {
+	// for !fde.AddressRange.Cover(pc) {
+	fmt.Printf("START ADDR %#v\n", pc)
+	addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+	fmt.Printf("RET ADDR %#v\n", addr)
+	bp, err := dbp.Break(uintptr(addr))
+	if err != nil {
+		if _, ok := err.(BreakPointExistsError); !ok {
 			return err
 		}
 	}
+
+	err = dbp.Continue()
+	if err != nil {
+		return err
+	}
+
+	err = dbp.clearTempBreakpoint(bp.Addr)
+	if err != nil {
+		return err
+	}
+
+	// pc, err = dbp.CurrentPC()
+	// if err != nil {
+	// 	return err
+	// }
+	// }
 
 	return nil
 }
