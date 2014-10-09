@@ -101,44 +101,6 @@ func (dbl *DebugLineInfo) LocationInfoForPC(pc uint64) *Location {
 	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
 }
 
-func (dbl *DebugLineInfo) LoopEntryLocation(line int) *Location {
-	var (
-		sm  = newStateMachine(dbl)
-		buf = bytes.NewBuffer(dbl.Instructions)
-	)
-
-	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-		findAndExecOpcode(sm, buf, b)
-
-		if sm.Line > line {
-			break
-		}
-	}
-
-	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
-}
-
-func (dbl *DebugLineInfo) LoopExitLocation(pc uint64) *Location {
-	var (
-		line int
-		sm   = newStateMachine(dbl)
-		buf  = bytes.NewBuffer(dbl.Instructions)
-	)
-
-	executeUntilPC(sm, buf, pc)
-	line = sm.Line
-
-	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-		findAndExecOpcode(sm, buf, b)
-
-		if sm.Line != line {
-			break
-		}
-	}
-
-	return &Location{sm.File, sm.Line, sm.Address, sm.LastDelta}
-}
-
 func executeUntilFileAndLine(sm *StateMachine, buf *bytes.Buffer, file string, line int) {
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)

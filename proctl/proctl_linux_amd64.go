@@ -285,37 +285,6 @@ func (dbp *DebuggedProcess) Next() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) continueToReturnAddress(pc uint64, fde *frame.FrameDescriptionEntry) error {
-	// for !fde.AddressRange.Cover(pc) {
-	fmt.Printf("START ADDR %#v\n", pc)
-	addr := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-	fmt.Printf("RET ADDR %#v\n", addr)
-	bp, err := dbp.Break(uintptr(addr))
-	if err != nil {
-		if _, ok := err.(BreakPointExistsError); !ok {
-			return err
-		}
-	}
-
-	err = dbp.Continue()
-	if err != nil {
-		return err
-	}
-
-	err = dbp.clearTempBreakpoint(bp.Addr)
-	if err != nil {
-		return err
-	}
-
-	// pc, err = dbp.CurrentPC()
-	// if err != nil {
-	// 	return err
-	// }
-	// }
-
-	return nil
-}
-
 // Continue process until next breakpoint.
 func (dbp *DebuggedProcess) Continue() error {
 	// Stepping first will ensure we are able to continue
