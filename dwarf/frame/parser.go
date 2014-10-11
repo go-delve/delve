@@ -50,15 +50,15 @@ func parseLength(ctx *parseContext) parsefunc {
 		return parseCIE
 	}
 
-	ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common, AddressRange: new(addrange)}
+	ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common}
 	return parseFDE
 }
 
 func parseFDE(ctx *parseContext) parsefunc {
 	r := ctx.Buf.Next(int(ctx.Length))
 
-	ctx.Frame.AddressRange.begin = binary.LittleEndian.Uint64(r[:8])
-	ctx.Frame.AddressRange.end = binary.LittleEndian.Uint64(r[8:16])
+	ctx.Frame.begin = binary.LittleEndian.Uint64(r[:8])
+	ctx.Frame.end = binary.LittleEndian.Uint64(r[8:16])
 
 	// Insert into the tree after setting address range begin
 	// otherwise compares won't work.

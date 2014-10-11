@@ -7,10 +7,10 @@ import (
 )
 
 func TestFDEForPC(t *testing.T) {
-	fde1 := &FrameDescriptionEntry{AddressRange: &addrange{begin: 100, end: 200}}
-	fde2 := &FrameDescriptionEntry{AddressRange: &addrange{begin: 50, end: 99}}
-	fde3 := &FrameDescriptionEntry{AddressRange: &addrange{begin: 0, end: 49}}
-	fde4 := &FrameDescriptionEntry{AddressRange: &addrange{begin: 201, end: 245}}
+	fde1 := &FrameDescriptionEntry{begin: 100, end: 200}
+	fde2 := &FrameDescriptionEntry{begin: 50, end: 99}
+	fde3 := &FrameDescriptionEntry{begin: 0, end: 49}
+	fde4 := &FrameDescriptionEntry{begin: 201, end: 245}
 
 	tree := NewFrameIndex()
 	tree.Put(fde1)

@@ -19,12 +19,8 @@ type CommonInformationEntry struct {
 	InitialInstructions   []byte
 }
 
-type addrange struct {
-	begin, end uint64
-}
-
 func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
-	if (addr - fde.AddressRange.begin) < fde.AddressRange.end {
+	if (addr - fde.begin) < fde.end {
 		return true
 	}
 
@@ -36,8 +32,16 @@ func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
 type FrameDescriptionEntry struct {
 	Length       uint32
 	CIE          *CommonInformationEntry
-	AddressRange *addrange
 	Instructions []byte
+	begin, end   uint64
+}
+
+func (fde *FrameDescriptionEntry) Begin() uint64 {
+	return fde.begin
+}
+
+func (fde *FrameDescriptionEntry) End() uint64 {
+	return fde.begin + fde.end
 }
 
 func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
@@ -68,22 +72,21 @@ func (fdes *FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry
 }
 
 func (frame *FrameDescriptionEntry) Less(item rbtree.Item) bool {
-	return frame.AddressRange.begin < item.(*FrameDescriptionEntry).AddressRange.begin
+	return frame.Begin() < item.(*FrameDescriptionEntry).Begin()
 }
 
 func (frame *FrameDescriptionEntry) More(item rbtree.Item) bool {
-	r := item.(*FrameDescriptionEntry).AddressRange
-	fnr := frame.AddressRange
-	return fnr.begin+fnr.end > r.begin+r.end
+	f := item.(*FrameDescriptionEntry)
+	return frame.End() > f.End()
 }
 
 type Addr uint64
 
 func (a Addr) Less(item rbtree.Item) bool {
-	return uint64(a) < item.(*FrameDescriptionEntry).AddressRange.begin
+	return uint64(a) < item.(*FrameDescriptionEntry).Begin()
 }
 
 func (a Addr) More(item rbtree.Item) bool {
-	r := item.(*FrameDescriptionEntry).AddressRange
-	return uint64(a) > r.begin+r.end
+	f := item.(*FrameDescriptionEntry)
+	return uint64(a) > f.End()
 }

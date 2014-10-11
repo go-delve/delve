@@ -136,7 +136,7 @@ func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
 // Unwind the stack to find the return address register.
 func executeDwarfProgramUntilPC(fde *FrameDescriptionEntry, pc uint64) *FrameContext {
 	frame := executeCIEInstructions(fde.CIE)
-	frame.loc = fde.AddressRange.begin
+	frame.loc = fde.Begin()
 	frame.address = pc
 	frame.ExecuteUntilPC(fde.Instructions)
 
