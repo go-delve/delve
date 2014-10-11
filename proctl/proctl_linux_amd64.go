@@ -140,6 +140,10 @@ func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 		originalData = make([]byte, 1)
 	)
 
+	if fn == nil {
+		return nil, fmt.Errorf("could not set breakpoint")
+	}
+
 	_, err := syscall.PtracePeekData(dbp.Pid, addr, originalData)
 	if err != nil {
 		return nil, err
@@ -280,15 +284,59 @@ func (dbp *DebuggedProcess) Next() error {
 		}
 
 		if !fde.Cover(pc) {
-			// We've stepped into a function, keep going.
-			// TODO: Use DWARF frame info to continue to return address.
-			continue
+			err = dbp.continueToReturnAddress(pc, fde)
+			if err != nil {
+				return err
+			}
+
+			pc, _ = dbp.CurrentPC()
 		}
 
 		_, nl, _ := dbp.GoSymTable.PCToLine(pc)
 		if nl != l {
 			break
 		}
+	}
+
+	return nil
+}
+
+func (dbp *DebuggedProcess) continueToReturnAddress(pc uint64, fde *frame.FrameDescriptionEntry) error {
+	for !fde.Cover(pc) {
+		// Our offset here is be 0 because we
+		// have stepped into the first instruction
+		// of this function. Therefore the function
+		// has not had a chance to modify its' stack
+		// and change our offset.
+		addr := dbp.ReturnAddressFromOffset(0)
+		bp, err := dbp.Break(uintptr(addr))
+		if err != nil {
+			if _, ok := err.(BreakPointExistsError); !ok {
+				for !fde.Cover(pc) {
+					err = dbp.Step()
+					if err != nil {
+						return err
+					}
+
+					pc, err = dbp.CurrentPC()
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+		}
+
+		err = dbp.Continue()
+		if err != nil {
+			return err
+		}
+		err = dbp.clearTempBreakpoint(bp.Addr)
+		if err != nil {
+			return err
+		}
+
+		pc, _ = dbp.CurrentPC()
 	}
 
 	return nil

@@ -37,7 +37,7 @@ func testnext() {
 func main() {
 	runtime.LockOSThread()
 	for {
-		sleepytime()
+		helloworld()
 		testnext()
 	}
 }

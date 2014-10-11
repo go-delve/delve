@@ -2,7 +2,6 @@ package proctl_test
 
 import (
 	"bytes"
-
 	"path/filepath"
 	"syscall"
 	"testing"
