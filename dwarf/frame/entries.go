@@ -23,16 +23,8 @@ type addrange struct {
 	begin, end uint64
 }
 
-func (r *addrange) Begin() uint64 {
-	return r.begin
-}
-
-func (r *addrange) End() uint64 {
-	return r.end
-}
-
-func (r *addrange) Cover(addr uint64) bool {
-	if (addr - r.begin) < r.end {
+func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
+	if (addr - fde.AddressRange.begin) < fde.AddressRange.end {
 		return true
 	}
 

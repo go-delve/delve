@@ -249,7 +249,7 @@ func (dbp *DebuggedProcess) Next() error {
 	}
 
 	loc := dbp.DebugLine.NextLocation(pc, f, l)
-	if !fde.AddressRange.Cover(loc.Address) {
+	if !fde.Cover(loc.Address) {
 		// Step once to ensure we're not going to step
 		// into another function before returning.
 		pc, err = step()
@@ -257,12 +257,12 @@ func (dbp *DebuggedProcess) Next() error {
 			return err
 		}
 
-		if fde.AddressRange.Cover(pc) {
+		if fde.Cover(pc) {
 			// Unconditionally step out of current function
 			// Don't bother looking up ret addr, next line is
 			// outside of current fn, should only be a few
 			// instructions left to RET
-			for fde.AddressRange.Cover(pc) {
+			for fde.Cover(pc) {
 				pc, err = step()
 				if err != nil {
 					return err
@@ -279,7 +279,7 @@ func (dbp *DebuggedProcess) Next() error {
 			return err
 		}
 
-		if !fde.AddressRange.Cover(pc) {
+		if !fde.Cover(pc) {
 			// We've stepped into a function, keep going.
 			// TODO: Use DWARF frame info to continue to return address.
 			continue
