@@ -239,33 +239,42 @@ func (dbp *DebuggedProcess) Next() error {
 		return err
 	}
 
+	step := func() (uint64, error) {
+		err = dbp.Step()
+		if err != nil {
+			return 0, fmt.Errorf("next stepping failed: ", err.Error())
+		}
+
+		return dbp.CurrentPC()
+	}
+
 	loc := dbp.DebugLine.NextLocation(pc, f, l)
 	if !fde.AddressRange.Cover(loc.Address) {
-		// Unconditionally step out of current function
-		// Don't bother looking up ret addr, next line is
-		// outside of current fn, should only be a few
-		// instructions left to RET
-		for fde.AddressRange.Cover(pc) {
-			err = dbp.Step()
-			if err != nil {
-				return fmt.Errorf("next stepping failed: ", err.Error())
-			}
-
-			pc, err = dbp.CurrentPC()
-			if err != nil {
-				return err
-			}
+		// Step once to ensure we're not going to step
+		// into another function before returning.
+		pc, err = step()
+		if err != nil {
+			return err
 		}
-		return nil
+
+		if fde.AddressRange.Cover(pc) {
+			// Unconditionally step out of current function
+			// Don't bother looking up ret addr, next line is
+			// outside of current fn, should only be a few
+			// instructions left to RET
+			for fde.AddressRange.Cover(pc) {
+				pc, err = step()
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
 	}
 
 	for {
-		err = dbp.Step()
-		if err != nil {
-			return fmt.Errorf("next stepping failed: ", err.Error())
-		}
-
-		pc, err = dbp.CurrentPC()
+		pc, err = step()
 		if err != nil {
 			return err
 		}
