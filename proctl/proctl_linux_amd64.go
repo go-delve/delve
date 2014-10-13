@@ -173,7 +173,7 @@ func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 
 // Clears a breakpoint.
 func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
-	bp, ok := dbp.PCtoBP(pc)
+	bp, ok := dbp.BreakPoints[pc]
 	if !ok {
 		return nil, fmt.Errorf("No breakpoint currently set for %#v", pc)
 	}
@@ -195,7 +195,7 @@ func (dbp *DebuggedProcess) Step() (err error) {
 		return err
 	}
 
-	bp, ok := dbp.PCtoBP(regs.PC() - 1)
+	bp, ok := dbp.BreakPoints[regs.PC()-1]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
 		_, err = dbp.Clear(bp.Addr)
@@ -364,7 +364,7 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 }
 
 func (dbp *DebuggedProcess) clearTempBreakpoint(pc uint64) error {
-	if bp, ok := dbp.PCtoBP(pc); ok {
+	if bp, ok := dbp.BreakPoints[pc]; ok {
 		regs, err := dbp.Registers()
 		if err != nil {
 			return err
@@ -723,13 +723,6 @@ func (dbp *DebuggedProcess) obtainGoSymbols(wg *sync.WaitGroup) {
 	}
 
 	dbp.GoSymTable = tab
-}
-
-// Converts a program counter value into a breakpoint, if one was set
-// for the function containing pc.
-func (dbp *DebuggedProcess) PCtoBP(pc uint64) (*BreakPoint, bool) {
-	bp, ok := dbp.BreakPoints[pc]
-	return bp, ok
 }
 
 // Takes an offset from RSP and returns the address of the
