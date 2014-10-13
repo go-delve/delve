@@ -312,18 +312,7 @@ func (dbp *DebuggedProcess) continueToReturnAddress(pc uint64, fde *frame.FrameD
 		bp, err := dbp.Break(uintptr(addr))
 		if err != nil {
 			if _, ok := err.(BreakPointExistsError); !ok {
-				for !fde.Cover(pc) {
-					err = dbp.Step()
-					if err != nil {
-						return err
-					}
-
-					pc, err = dbp.CurrentPC()
-					if err != nil {
-						return err
-					}
-				}
-				return nil
+				return err
 			}
 		}
 
