@@ -20,7 +20,13 @@ Currently, DBG requires the following [patch](https://codereview.appspot.com/117
 
 ### Usage
 
-The debugger can be launched in two ways:
+The debugger can be launched in three ways:
+
+* Allow it to compile, run, and attach to a program:
+
+	```
+	$ dbg -run
+	```
 
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
 	

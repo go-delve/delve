@@ -29,14 +29,18 @@ func main() {
 	runtime.LockOSThread()
 
 	var (
-		pid  int
-		proc string
-		t    = newTerm()
-		cmds = command.DebugCommands()
+		pid     int
+		proc    string
+		run     bool
+		err     error
+		dbgproc *proctl.DebuggedProcess
+		t       = newTerm()
+		cmds    = command.DebugCommands()
 	)
 
 	flag.IntVar(&pid, "pid", 0, "Pid of running process to attach to.")
 	flag.StringVar(&proc, "proc", "", "Path to process to run and debug.")
+	flag.BoolVar(&run, "run", false, "Compile program and begin debug session.")
 	flag.Parse()
 
 	if flag.NFlag() == 0 {
@@ -44,7 +48,43 @@ func main() {
 		os.Exit(0)
 	}
 
-	dbgproc := beginTrace(pid, proc)
+	start := func(name string) *proctl.DebuggedProcess {
+		proc := exec.Command(name)
+		proc.Stdout = os.Stdout
+
+		err = proc.Start()
+		if err != nil {
+			die(1, "Could not start process:", err)
+		}
+
+		dbgproc, err = proctl.NewDebugProcess(proc.Process.Pid)
+		if err != nil {
+			die(1, "Could not start debugging process:", err)
+		}
+
+		return dbgproc
+	}
+
+	switch {
+	case run:
+		const debugname = "debug"
+		cmd := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
+		err := cmd.Run()
+		if err != nil {
+			die(1, "Could not compile program:", err)
+		}
+		defer os.Remove(debugname)
+
+		dbgproc = start("./" + debugname)
+	case pid != 0:
+		dbgproc, err = proctl.NewDebugProcess(pid)
+		if err != nil {
+			die(1, "Could not start debugging process:", err)
+		}
+	case proc != "":
+		dbgproc = start(proc)
+	}
+
 	goreadline.LoadHistoryFromFile(historyFile)
 
 	for {
@@ -67,37 +107,6 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
 		}
 	}
-}
-
-func beginTrace(pid int, proc string) *proctl.DebuggedProcess {
-	var (
-		err     error
-		dbgproc *proctl.DebuggedProcess
-	)
-
-	if pid != 0 {
-		dbgproc, err = proctl.NewDebugProcess(pid)
-		if err != nil {
-			die(1, "Could not start debugging process:", err)
-		}
-	}
-
-	if proc != "" {
-		proc := exec.Command(proc)
-		proc.Stdout = os.Stdout
-
-		err = proc.Start()
-		if err != nil {
-			die(1, "Could not start process:", err)
-		}
-
-		dbgproc, err = proctl.NewDebugProcess(proc.Process.Pid)
-		if err != nil {
-			die(1, "Could not start debugging process:", err)
-		}
-	}
-
-	return dbgproc
 }
 
 func handleExit(t *term, dbp *proctl.DebuggedProcess, status int) {
