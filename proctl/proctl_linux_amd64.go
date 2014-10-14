@@ -254,25 +254,26 @@ func (dbp *DebuggedProcess) Next() error {
 
 	loc := dbp.DebugLine.NextLocation(pc, f, l)
 	if !fde.Cover(loc.Address) {
-		// Step once to ensure we're not going to step
-		// into another function before returning.
-		pc, err = step()
-		if err != nil {
-			return err
+		ret := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+
+		// Attempt to step out of function.
+		for fde.Cover(pc) {
+			pc, err = step()
+			if err != nil {
+				return err
+			}
 		}
 
-		if fde.Cover(pc) {
-			// Unconditionally step out of current function
-			// Don't bother looking up ret addr, next line is
-			// outside of current fn, should only be a few
-			// instructions left to RET
-			for fde.Cover(pc) {
-				pc, err = step()
-				if err != nil {
-					return err
-				}
-			}
+		if pc == ret {
 			return nil
+		}
+
+		// We have stepped into another function, return from it
+		// and continue single stepping through until we
+		// reach our real destination.
+		err = dbp.continueToReturnAddress(pc, fde)
+		if err != nil {
+			return err
 		}
 
 	}

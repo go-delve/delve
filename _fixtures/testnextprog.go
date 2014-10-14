@@ -37,7 +37,7 @@ func testnext() {
 func main() {
 	runtime.LockOSThread()
 	for {
-		helloworld()
 		testnext()
+		fmt.Println("foo")
 	}
 }
