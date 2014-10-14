@@ -6,7 +6,7 @@ DBG is a Go debugger, written primarily in Go. It really needs a new name.
 
 ### Building
 
-Currently, DBG requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands.
+Currently, DBG requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands, so the project is go get-able.
 
 ### Features
 
@@ -47,6 +47,8 @@ Once inside a debugging session, the following commands may be used:
 * `step` - Single step through program.
 
 * `next` - Step over to next source line.
+
+* `print $var` - Evaluate a variable.
 
 ### Upcoming features
 
