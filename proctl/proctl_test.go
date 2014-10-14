@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/derekparker/dbg/_helper"
+	"github.com/derekparker/dbg/helper"
 	"github.com/derekparker/dbg/proctl"
 )
 
