@@ -132,6 +132,14 @@ func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 	return dbp.Regs, nil
 }
 
+type InvalidAddressError struct {
+	address uintptr
+}
+
+func (iae InvalidAddressError) Error() string {
+	return fmt.Sprintf("Invalid address %#v\n", iae.address)
+}
+
 // Sets a breakpoint in the running process.
 func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 	var (
@@ -141,7 +149,7 @@ func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
 	)
 
 	if fn == nil {
-		return nil, fmt.Errorf("could not set breakpoint")
+		return nil, InvalidAddressError{address: addr}
 	}
 
 	_, err := syscall.PtracePeekData(dbp.Pid, addr, originalData)
@@ -237,7 +245,7 @@ func (dbp *DebuggedProcess) Next() error {
 		pc--
 	}
 
-	f, l, _ := dbp.GoSymTable.PCToLine(pc)
+	_, l, _ := dbp.GoSymTable.PCToLine(pc)
 	fde, err := dbp.FrameEntries.FDEForPC(pc)
 	if err != nil {
 		return err
@@ -252,42 +260,19 @@ func (dbp *DebuggedProcess) Next() error {
 		return dbp.CurrentPC()
 	}
 
-	loc := dbp.DebugLine.NextLocation(pc, f, l)
-	if !fde.Cover(loc.Address) {
-		ret := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-
-		// Attempt to step out of function.
-		for fde.Cover(pc) {
-			pc, err = step()
-			if err != nil {
-				return err
-			}
-		}
-
-		if pc == ret {
-			return nil
-		}
-
-		// We have stepped into another function, return from it
-		// and continue single stepping through until we
-		// reach our real destination.
-		err = dbp.continueToReturnAddress(pc, fde)
-		if err != nil {
-			return err
-		}
-
-	}
-
+	ret := dbp.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
 	for {
 		pc, err = step()
 		if err != nil {
 			return err
 		}
 
-		if !fde.Cover(pc) {
-			err = dbp.continueToReturnAddress(pc, fde)
+		if !fde.Cover(pc) && pc != ret {
+			dbp.continueToReturnAddress(pc, fde)
 			if err != nil {
-				return err
+				if ierr, ok := err.(InvalidAddressError); ok {
+					return ierr
+				}
 			}
 
 			pc, _ = dbp.CurrentPC()
