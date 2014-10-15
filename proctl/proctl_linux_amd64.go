@@ -15,7 +15,6 @@ import (
 	"unsafe"
 
 	"github.com/derekparker/dbg/dwarf/frame"
-	"github.com/derekparker/dbg/dwarf/line"
 	"github.com/derekparker/dbg/dwarf/op"
 	"github.com/derekparker/dbg/vendor/dwarf"
 	"github.com/derekparker/dbg/vendor/elf"
@@ -32,7 +31,6 @@ type DebuggedProcess struct {
 	Symbols      []elf.Symbol
 	GoSymTable   *gosym.Table
 	FrameEntries *frame.FrameDescriptionEntries
-	DebugLine    *line.DebugLineInfo
 	BreakPoints  map[uint64]*BreakPoint
 }
 
@@ -112,9 +110,8 @@ func (dbp *DebuggedProcess) LoadInformation() error {
 		return err
 	}
 
-	wg.Add(3)
+	wg.Add(2)
 	go dbp.parseDebugFrame(&wg)
-	go dbp.parseDebugLine(&wg)
 	go dbp.obtainGoSymbols(&wg)
 
 	wg.Wait()
@@ -639,18 +636,6 @@ func (dbp *DebuggedProcess) findExecutable() error {
 	dbp.Executable = elffile
 
 	return nil
-}
-
-func (dbp *DebuggedProcess) parseDebugLine(wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	debugLine, err := dbp.Executable.Section(".debug_line").Data()
-	if err != nil {
-		fmt.Println("could not get .debug_line section", err)
-		os.Exit(1)
-	}
-
-	dbp.DebugLine = line.Parse(debugLine)
 }
 
 func (dbp *DebuggedProcess) parseDebugFrame(wg *sync.WaitGroup) {
