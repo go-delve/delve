@@ -16,7 +16,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/derekparker/dbg/vendor/dwarf"
+	"github.com/derekparker/delve/vendor/dwarf"
 )
 
 type fileTest struct {

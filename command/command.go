@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/derekparker/dbg/proctl"
+	"github.com/derekparker/delve/proctl"
 )
 
 type cmdfunc func(proc *proctl.DebuggedProcess, args ...string) error

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/derekparker/dbg/proctl"
+	"github.com/derekparker/delve/proctl"
 )
 
 func TestCommandDefault(t *testing.T) {

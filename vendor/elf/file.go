@@ -13,7 +13,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/derekparker/dbg/vendor/dwarf"
+	"github.com/derekparker/delve/vendor/dwarf"
 )
 
 // TODO: error reporting detail

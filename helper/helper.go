@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/derekparker/dbg/proctl"
+	"github.com/derekparker/delve/proctl"
 )
 
 type testfunc func(p *proctl.DebuggedProcess)

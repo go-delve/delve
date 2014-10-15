@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/derekparker/dbg/dwarf/util"
+	"github.com/derekparker/delve/dwarf/util"
 )
 
 const (

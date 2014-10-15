@@ -1,12 +1,12 @@
-# DBG
+# Delve
 
-### What is DBG?
+### What is Delve?
 
-DBG is a Go debugger, written primarily in Go. It really needs a new name.
+Delve is a Go debugger, written primarily in Go.
 
 ### Building
 
-Currently, DBG requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands, so the project is go get-able.
+Currently, Delve requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands, so the project is go get-able.
 
 ### Features
 
@@ -25,19 +25,19 @@ The debugger can be launched in three ways:
 * Allow it to compile, run, and attach to a program:
 
 	```
-	$ dbg -run
+	$ dlv -run
 	```
 
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
 	
 	```
-	$ dbg -proc path/to/program
+	$ dlv -proc path/to/program
 	```
 
 * Provide the pid of a currently running process, and the debugger will attach and begin the session.
 
 	```
-	$ sudo dbg -pid 44839
+	$ sudo dlv -pid 44839
 	```
 
 Once inside a debugging session, the following commands may be used:

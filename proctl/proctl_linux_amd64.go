@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/derekparker/dbg/dwarf/frame"
-	"github.com/derekparker/dbg/dwarf/op"
-	"github.com/derekparker/dbg/vendor/dwarf"
-	"github.com/derekparker/dbg/vendor/elf"
+	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/dwarf/op"
+	"github.com/derekparker/delve/vendor/dwarf"
+	"github.com/derekparker/delve/vendor/elf"
 )
 
 // Struct representing a debugged process. Holds onto pid, register values,

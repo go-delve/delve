@@ -11,9 +11,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/derekparker/dbg/command"
-	"github.com/derekparker/dbg/goreadline"
-	"github.com/derekparker/dbg/proctl"
+	"github.com/derekparker/delve/command"
+	"github.com/derekparker/delve/goreadline"
+	"github.com/derekparker/delve/proctl"
 )
 
 type term struct {

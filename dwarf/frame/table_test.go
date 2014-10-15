@@ -6,8 +6,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/derekparker/dbg/helper"
-	"github.com/derekparker/dbg/proctl"
+	"github.com/derekparker/delve/helper"
+	"github.com/derekparker/delve/proctl"
 )
 
 func TestFindReturnAddress(t *testing.T) {
