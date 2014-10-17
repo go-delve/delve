@@ -236,10 +236,10 @@ func printcontext(p *proctl.DebuggedProcess) error {
 		}
 
 		if i == l {
-			line = "=>" + line
+			line = "\033[34m=>\033[0m" + line
 		}
 
-		line = strconv.Itoa(i) + ": " + line
+		line = "\033[34m" + strconv.Itoa(i) + "\033[0m" + ": " + line
 		context = append(context, line)
 	}
 
