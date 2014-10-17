@@ -216,21 +216,34 @@ func printcontext(p *proctl.DebuggedProcess) error {
 	defer file.Close()
 
 	buf := bufio.NewReader(file)
-	for i := 1; i <= l+5; i++ {
-		line, err := buf.ReadString('\n')
+	for i := 1; i < l-5; i++ {
+		_, err := buf.ReadString('\n')
 		if err != nil && err != io.EOF {
 			return err
 		}
-
-		if i >= (l - 5) {
-			if i == l {
-				line = "=>" + line
-			}
-			context = append(context, line)
-		}
 	}
 
-	fmt.Println(strings.Join(context, " "))
+	for i := l - 5; i <= l+5; i++ {
+		line, err := buf.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+
+			if err == io.EOF {
+				break
+			}
+		}
+
+		if i == l {
+			line = "=>" + line
+		}
+
+		line = strconv.Itoa(i) + ": " + line
+		context = append(context, line)
+	}
+
+	fmt.Println(strings.Join(context, ""))
 
 	return nil
 }
