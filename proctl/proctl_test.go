@@ -233,6 +233,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int"},
 		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar"},
 		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar"},
+		{"baz", "bazburzum", "struct string"},
 	}
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {

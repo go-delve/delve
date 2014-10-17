@@ -369,7 +369,7 @@ func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 			return nil, err
 		}
 
-		if entry.Tag != dwarf.TagVariable {
+		if entry.Tag != dwarf.TagVariable && entry.Tag != dwarf.TagFormalParameter {
 			continue
 		}
 

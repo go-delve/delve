@@ -7,7 +7,7 @@ type FooBar struct {
 	Bur string
 }
 
-func main() {
+func foobar(baz string) {
 	var (
 		a1 = "foo"
 		a2 = 6
@@ -18,5 +18,9 @@ func main() {
 		a7 = &FooBar{Baz: 5, Bur: "strum"}
 	)
 
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz)
+}
+
+func main() {
+	foobar("bazburzum")
 }
