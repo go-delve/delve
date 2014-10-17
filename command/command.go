@@ -99,13 +99,39 @@ func next(p *proctl.DebuggedProcess, args ...string) error {
 }
 
 func clear(p *proctl.DebuggedProcess, args ...string) error {
-	fname := args[0]
-	fn := p.GoSymTable.LookupFunc(fname)
-	if fn == nil {
-		return fmt.Errorf("No function named %s", fname)
+	var (
+		fn    *gosym.Func
+		pc    uint64
+		fname = args[0]
+	)
+
+	if strings.ContainsRune(fname, ':') {
+		fl := strings.Split(fname, ":")
+
+		f, err := filepath.Abs(fl[0])
+		if err != nil {
+			return err
+		}
+
+		l, err := strconv.Atoi(fl[1])
+		if err != nil {
+			return err
+		}
+
+		pc, fn, err = p.GoSymTable.LineToPC(f, l)
+		if err != nil {
+			return err
+		}
+	} else {
+		fn = p.GoSymTable.LookupFunc(fname)
+		if fn == nil {
+			return fmt.Errorf("No function named %s", fname)
+		}
+
+		pc = fn.Entry
 	}
 
-	bp, err := p.Clear(fn.Entry)
+	bp, err := p.Clear(pc)
 	if err != nil {
 		return err
 	}
