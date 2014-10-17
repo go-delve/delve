@@ -159,6 +159,10 @@ func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
 }
 
 func printVar(p *proctl.DebuggedProcess, args ...string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("Not enough arguments to print command")
+	}
+
 	val, err := p.EvalSymbol(args[0])
 	if err != nil {
 		return err
