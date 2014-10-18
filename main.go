@@ -56,6 +56,7 @@ func main() {
 		if err != nil {
 			die(1, "Could not start process:", err)
 		}
+		syscall.Kill(proc.Process.Pid, syscall.SIGSTOP)
 
 		dbgproc, err = proctl.NewDebugProcess(proc.Process.Pid)
 		if err != nil {
@@ -98,7 +99,7 @@ func main() {
 
 		if cmdstr == "exit" {
 			err := goreadline.WriteHistoryToFile(historyFile)
-			fmt.Println(err)
+			fmt.Println("readline:", err)
 			handleExit(t, dbgproc, 0)
 		}
 

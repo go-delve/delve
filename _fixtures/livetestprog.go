@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 )
 
 func printPid(pid int) {
@@ -18,6 +19,7 @@ func main() {
 	runtime.LockOSThread()
 	pid := os.Getpid()
 	printPid(pid)
+	time.Sleep(10 * time.Second)
 
 	for {
 		printPid(pid)

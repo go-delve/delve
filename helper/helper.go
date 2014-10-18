@@ -30,18 +30,12 @@ func WithTestProcess(name string, t *testing.T, fn testfunc) {
 	}
 	defer os.Remove("./" + base)
 
-	cmd, err := startTestProcess(base)
-	if err != nil {
-		t.Fatal("Starting test process:", err)
-	}
-
-	pid := cmd.Process.Pid
-	p, err := proctl.NewDebugProcess(pid)
+	p, err := proctl.AttachBinary("./" + base)
 	if err != nil {
 		t.Fatal("NewDebugProcess():", err)
 	}
 
-	defer cmd.Process.Kill()
+	defer p.Process.Kill()
 
 	fn(p)
 }

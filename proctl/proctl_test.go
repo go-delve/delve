@@ -42,20 +42,8 @@ func currentLineNumber(p *proctl.DebuggedProcess, t *testing.T) (string, int) {
 	return f, l
 }
 
-func TestAttachProcess(t *testing.T) {
-	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
-		if !p.ProcessState.Stopped() {
-			t.Errorf("Process was not stopped correctly")
-		}
-	})
-}
-
 func TestStep(t *testing.T) {
 	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
-		if p.ProcessState.Exited() {
-			t.Fatal("Process already exited")
-		}
-
 		regs := helper.GetRegisters(p, t)
 		rip := regs.PC()
 
@@ -71,22 +59,22 @@ func TestStep(t *testing.T) {
 
 func TestContinue(t *testing.T) {
 	helper.WithTestProcess("../_fixtures/continuetestprog", t, func(p *proctl.DebuggedProcess) {
-		if p.ProcessState.Exited() {
-			t.Fatal("Process already exited")
+		err := p.Continue()
+		if err != nil {
+			if _, ok := err.(proctl.ProcessExitedError); !ok {
+				t.Fatal(err)
+			}
 		}
 
-		err := p.Continue()
-		assertNoError(err, t, "Continue()")
-
-		if p.ProcessState.ExitStatus() != 0 {
-			t.Fatal("Process did not exit successfully")
+		if p.Status().ExitStatus() != 0 {
+			t.Fatal("Process did not exit successfully", p.Status().ExitStatus())
 		}
 	})
 }
 
 func TestBreakPoint(t *testing.T) {
 	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
-		sleepytimefunc := p.GoSymTable.LookupFunc("main.sleepytime")
+		sleepytimefunc := p.GoSymTable.LookupFunc("main.helloworld")
 		sleepyaddr := sleepytimefunc.Entry
 
 		bp, err := p.Break(uintptr(sleepyaddr))
@@ -96,21 +84,55 @@ func TestBreakPoint(t *testing.T) {
 		err = p.Continue()
 		assertNoError(err, t, "Continue()")
 
-		regs := helper.GetRegisters(p, t)
+		pc, err := p.CurrentPC()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		pc := regs.PC()
 		if pc != breakpc {
-			t.Fatalf("Break not respected:\nPC:%d\nFN:%d\n", pc, breakpc)
+			f, l, _ := p.GoSymTable.PCToLine(pc)
+			t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, f, l, breakpc)
 		}
 
 		err = p.Step()
 		assertNoError(err, t, "Step()")
 
-		regs = helper.GetRegisters(p, t)
+		pc, err = p.CurrentPC()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		pc = regs.PC()
 		if pc == breakpc {
 			t.Fatalf("Step not respected:\nPC:%d\nFN:%d\n", pc, breakpc)
+		}
+	})
+}
+
+func TestBreakPointInSeperateGoRoutine(t *testing.T) {
+	helper.WithTestProcess("../_fixtures/testthreads", t, func(p *proctl.DebuggedProcess) {
+		fn := p.GoSymTable.LookupFunc("main.anotherthread")
+		if fn == nil {
+			t.Fatal("No fn exists")
+		}
+
+		_, err := p.Break(uintptr(fn.Entry))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		pc, err := p.CurrentPC()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		f, l, _ := p.GoSymTable.PCToLine(pc)
+		if f != "testthreads.go" && l != 8 {
+			t.Fatal("Program did not hit breakpoint")
 		}
 	})
 }
@@ -147,7 +169,7 @@ func TestClearBreakPoint(t *testing.T) {
 			t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
 		}
 
-		if len(p.BreakPoints) != 0 {
+		if len(p.BreakPoints()) != 0 {
 			t.Fatal("Breakpoint not removed internally")
 		}
 	})
@@ -207,7 +229,7 @@ func TestNext(t *testing.T) {
 			}
 		}
 
-		if len(p.BreakPoints) != 1 {
+		if len(p.BreakPoints()) != 1 {
 			t.Fatal("Not all breakpoints were cleaned up")
 		}
 	})

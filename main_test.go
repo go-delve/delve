@@ -22,6 +22,8 @@ func buildBinary(t *testing.T) {
 
 func startDebugger(t *testing.T, pid int) *os.Process {
 	cmd := exec.Command("sudo", "./dbg-test", "-pid", strconv.Itoa(pid))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	cmd.Stdin = bytes.NewBufferString("exit\ny\n")
 
 	err := cmd.Start()
