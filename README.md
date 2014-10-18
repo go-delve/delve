@@ -44,7 +44,7 @@ Once inside a debugging session, the following commands may be used:
 
 * `break` - Set break point at the entry point of a function, or at a specific file/line. Example: `break foo.go:13`.
 
-* `continue` - Run until breakpoint or program termination
+* `continue` - Run until breakpoint or program termination.
 
 * `step` - Single step through program.
 
