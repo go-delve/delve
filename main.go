@@ -86,6 +86,7 @@ func main() {
 	}
 
 	goreadline.LoadHistoryFromFile(historyFile)
+	fmt.Println("Type 'help' for list of commands.")
 
 	for {
 		cmdstr, err := t.promptForInput()

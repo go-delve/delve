@@ -24,6 +24,7 @@ type Commands struct {
 // Returns a Commands struct with default commands defined.
 func DebugCommands() *Commands {
 	cmds := map[string]cmdfunc{
+		"help":     help,
 		"continue": cont,
 		"next":     next,
 		"break":    breakpoint,
@@ -71,6 +72,16 @@ func nullCommand(p *proctl.DebuggedProcess, ars ...string) error {
 	return nil
 }
 
+func help(p *proctl.DebuggedProcess, ars ...string) error {
+	fmt.Println(`The following commands are available:
+    break - Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13.
+    continue - Run until breakpoint or program termination.
+    step - Single step through program.
+    next - Step over to next source line.
+    print $var - Evaluate a variable.`)
+
+	return nil
+}
 func cont(p *proctl.DebuggedProcess, ars ...string) error {
 	err := p.Continue()
 	if err != nil {
