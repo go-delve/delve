@@ -2,34 +2,36 @@
 
 ### What is Delve?
 
-Delve is a Go debugger, written primarily in Go.
+Delve is a Go debugger, written in Go.
 
 ### Building
 
 Currently, Delve requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands, so the project is go get-able.
 
+For invocation brevity, I prefer this:
+
+```
+$ go build -o dlv && mv dlv $GOPATH/bin
+```
+
 ### Features
 
-* Attach to (trace) a running process
-* Ability to launch a process and begin debugging it
-* Set breakpoints
-* Single step through a process
-* Next through a process (step over / out of subroutines)
-* Never retype commands, empty line defaults to previous command
-* Readline integration
+* Attach to an already running process
+* Launch a process and begin debug session
+* Set breakpoints, single step, step over functions, print variable contents
 
 ### Usage
 
 The debugger can be launched in three ways:
 
-* Allow it to compile, run, and attach to a program:
+* Compile, run, and attach in one step:
 
 	```
 	$ dlv -run
 	```
 
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
-	
+
 	```
 	$ dlv -proc path/to/program
 	```
@@ -54,8 +56,6 @@ Once inside a debugging session, the following commands may be used:
 
 ### Upcoming features
 
-* Handle Gos multithreaded nature better
-* In-scope variable evaluation
 * In-scope variable setting
 * Support for OS X
 
