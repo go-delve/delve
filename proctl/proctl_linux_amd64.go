@@ -3,6 +3,7 @@
 package proctl
 
 import (
+	"bytes"
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
@@ -24,8 +25,30 @@ type DebuggedProcess struct {
 	Symbols       []elf.Symbol
 	GoSymTable    *gosym.Table
 	FrameEntries  *frame.FrameDescriptionEntries
+	BreakPoints   map[uint64]*BreakPoint
 	Threads       map[int]*ThreadContext
 	CurrentThread *ThreadContext
+}
+
+// Represents a single breakpoint. Stores information on the break
+// point including the byte of data that originally was stored at that
+// address.
+type BreakPoint struct {
+	FunctionName string
+	File         string
+	Line         int
+	Addr         uint64
+	OriginalData []byte
+}
+
+type BreakPointExistsError struct {
+	file string
+	line int
+	addr uintptr
+}
+
+func (bpe BreakPointExistsError) Error() string {
+	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
 }
 
 func AttachBinary(name string) (*DebuggedProcess, error) {
@@ -48,8 +71,9 @@ func AttachBinary(name string) (*DebuggedProcess, error) {
 // Returns a new DebuggedProcess struct with sensible defaults.
 func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 	debuggedProc := DebuggedProcess{
-		Pid:     pid,
-		Threads: make(map[int]*ThreadContext),
+		Pid:         pid,
+		Threads:     make(map[int]*ThreadContext),
+		BreakPoints: make(map[uint64]*BreakPoint),
 	}
 
 	_, err := debuggedProc.AttachThread(pid)
@@ -149,10 +173,9 @@ func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
 	}
 
 	tctxt := &ThreadContext{
-		Id:          tid,
-		Process:     dbp,
-		Regs:        new(syscall.PtraceRegs),
-		BreakPoints: make(map[uint64]*BreakPoint),
+		Id:      tid,
+		Process: dbp,
+		Regs:    new(syscall.PtraceRegs),
 	}
 
 	if tid == dbp.Pid {
@@ -164,14 +187,65 @@ func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
 	return tctxt, nil
 }
 
+// Sets a breakpoint in the running process.
+func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
+	var (
+		int3         = []byte{0xCC}
+		f, l, fn     = dbp.GoSymTable.PCToLine(uint64(addr))
+		originalData = make([]byte, 1)
+	)
+
+	if fn == nil {
+		return nil, InvalidAddressError{address: addr}
+	}
+
+	_, err := syscall.PtracePeekData(dbp.CurrentThread.Id, addr, originalData)
+	if err != nil {
+		return nil, err
+	}
+
+	if bytes.Equal(originalData, int3) {
+		return nil, BreakPointExistsError{f, l, addr}
+	}
+
+	_, err = syscall.PtracePokeData(dbp.CurrentThread.Id, addr, int3)
+	if err != nil {
+		return nil, err
+	}
+
+	breakpoint := &BreakPoint{
+		FunctionName: fn.Name,
+		File:         f,
+		Line:         l,
+		Addr:         uint64(addr),
+		OriginalData: originalData,
+	}
+
+	dbp.BreakPoints[uint64(addr)] = breakpoint
+
+	return breakpoint, nil
+}
+
+// Clears a breakpoint.
+func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
+	bp, ok := dbp.BreakPoints[pc]
+	if !ok {
+		return nil, fmt.Errorf("No breakpoint currently set for %#v", pc)
+	}
+
+	_, err := syscall.PtracePokeData(dbp.CurrentThread.Id, uintptr(bp.Addr), bp.OriginalData)
+	if err != nil {
+		return nil, err
+	}
+
+	delete(dbp.BreakPoints, pc)
+
+	return bp, nil
+}
+
 // Returns the status of the current main thread context.
 func (dbp *DebuggedProcess) Status() *syscall.WaitStatus {
 	return dbp.CurrentThread.Status
-}
-
-// Returns the breakpoints of the current main thread context.
-func (dbp *DebuggedProcess) BreakPoints() map[uint64]*BreakPoint {
-	return dbp.CurrentThread.BreakPoints
 }
 
 // Finds the executable from /proc/<pid>/exe and then
@@ -255,16 +329,6 @@ type InvalidAddressError struct {
 
 func (iae InvalidAddressError) Error() string {
 	return fmt.Sprintf("Invalid address %#v\n", iae.address)
-}
-
-// Sets a breakpoint in the running process.
-func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
-	return dbp.CurrentThread.Break(addr)
-}
-
-// Clears a breakpoint.
-func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
-	return dbp.CurrentThread.Clear(pc)
 }
 
 func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
@@ -429,7 +493,7 @@ func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus,
 			for _, th := range dbp.Threads {
 				if th.Id == pid {
 					pc, _ := th.CurrentPC()
-					_, ok := th.BreakPoints[pc-1]
+					_, ok := dbp.BreakPoints[pc-1]
 					if ok {
 						return pid, &status, nil
 					} else {

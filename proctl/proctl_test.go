@@ -169,7 +169,7 @@ func TestClearBreakPoint(t *testing.T) {
 			t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
 		}
 
-		if len(p.BreakPoints()) != 0 {
+		if len(p.BreakPoints) != 0 {
 			t.Fatal("Breakpoint not removed internally")
 		}
 	})
@@ -229,7 +229,7 @@ func TestNext(t *testing.T) {
 			}
 		}
 
-		if len(p.BreakPoints()) != 1 {
+		if len(p.BreakPoints) != 1 {
 			t.Fatal("Not all breakpoints were cleaned up")
 		}
 	})
