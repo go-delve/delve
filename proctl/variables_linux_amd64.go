@@ -162,8 +162,7 @@ func (thread *ThreadContext) readString(addr uintptr) (string, error) {
 
 	i := bytes.IndexByte(val, 0x0)
 	val = val[:i]
-	str := *(*string)(unsafe.Pointer(&val))
-	return str, nil
+	return *(*string)(unsafe.Pointer(&val)), nil
 }
 
 func (thread *ThreadContext) readIntSlice(addr uintptr) (string, error) {
@@ -194,9 +193,7 @@ func (thread *ThreadContext) readIntSlice(addr uintptr) (string, error) {
 		members = append(members, number)
 	}
 
-	str := fmt.Sprintf("len: %d cap: %d %d", l, c, members)
-
-	return str, err
+	return fmt.Sprintf("len: %d cap: %d %d", l, c, members), nil
 }
 
 func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
@@ -220,9 +217,7 @@ func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (str
 		members = append(members, number)
 	}
 
-	str := fmt.Sprintf("[%d]int %d", t.ByteSize/8, members)
-
-	return str, nil
+	return fmt.Sprintf("[%d]int %d", t.ByteSize/8, members), nil
 }
 
 func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
