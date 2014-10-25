@@ -139,7 +139,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	case *dwarf.ArrayType:
 		return thread.readIntArray(offaddr, t)
 	case *dwarf.IntType:
-		return thread.readInt(offaddr)
+		return thread.readInt(offaddr, t.ByteSize)
 	case *dwarf.FloatType:
 		return thread.readFloat64(offaddr)
 	}
@@ -225,15 +225,26 @@ func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (str
 	return str, nil
 }
 
-func (thread *ThreadContext) readInt(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, 8)
+func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
+	var n int
+
+	val, err := thread.readMemory(addr, uintptr(size))
 	if err != nil {
 		return "", err
 	}
 
-	n := binary.LittleEndian.Uint64(val)
+	switch size {
+	case 1:
+		n = int(val[0])
+	case 2:
+		n = int(binary.LittleEndian.Uint16(val))
+	case 4:
+		n = int(binary.LittleEndian.Uint32(val))
+	case 8:
+		n = int(binary.LittleEndian.Uint64(val))
+	}
 
-	return strconv.Itoa(int(n)), nil
+	return strconv.Itoa(n), nil
 }
 
 func (thread *ThreadContext) readFloat64(addr uintptr) (string, error) {
