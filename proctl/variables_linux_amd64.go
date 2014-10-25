@@ -264,28 +264,3 @@ func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, err
 
 	return buf, nil
 }
-
-func (thread *ThreadContext) handleResult(err error) error {
-	if err != nil {
-		return err
-	}
-
-	_, ps, err := wait(thread.Process, thread.Id, 0)
-	if err != nil && err != syscall.ECHILD {
-		return err
-	}
-
-	if ps != nil {
-		thread.Status = ps
-		if ps.TrapCause() == -1 && !ps.Exited() {
-			regs, err := thread.Registers()
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("traced program %s at: %#v\n", ps.StopSignal(), regs.PC())
-		}
-	}
-
-	return nil
-}
