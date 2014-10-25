@@ -87,12 +87,12 @@ func (thread *ThreadContext) Step() (err error) {
 
 	err = syscall.PtraceSingleStep(thread.Id)
 	if err != nil {
-		return fmt.Errorf("step failed: ", err.Error())
+		return fmt.Errorf("step failed: %s", err.Error())
 	}
 
 	_, _, err = wait(thread.Process, thread.Id, 0)
 	if err != nil {
-		return fmt.Errorf("step failed: ", err.Error())
+		return fmt.Errorf("step failed: %s", err.Error())
 	}
 
 	return nil
@@ -120,7 +120,7 @@ func (thread *ThreadContext) Next() (err error) {
 	step := func() (uint64, error) {
 		err = thread.Step()
 		if err != nil {
-			return 0, fmt.Errorf("next stepping failed: ", err.Error())
+			return 0, fmt.Errorf("next stepping failed: %s", err.Error())
 		}
 
 		return thread.CurrentPC()
