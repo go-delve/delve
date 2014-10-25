@@ -122,7 +122,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 		case "[]int":
 			return thread.readIntSlice(offaddr)
 		default:
-			// Here we could recursively call extractValue to grab
+			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
 			fields := make([]string, 0, len(t.Field))
 			for _, field := range t.Field {
