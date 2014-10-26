@@ -141,7 +141,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	case *dwarf.IntType:
 		return thread.readInt(offaddr, t.ByteSize)
 	case *dwarf.FloatType:
-		return thread.readFloat64(offaddr)
+		return thread.readFloat(offaddr, t.ByteSize)
 	}
 
 	return "", fmt.Errorf("could not find value for type %s", typ)
@@ -242,16 +242,25 @@ func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
 	return strconv.Itoa(n), nil
 }
 
-func (thread *ThreadContext) readFloat64(addr uintptr) (string, error) {
-	var n float64
-	val, err := thread.readMemory(addr, 8)
+func (thread *ThreadContext) readFloat(addr uintptr, size int64) (string, error) {
+	val, err := thread.readMemory(addr, uintptr(size))
 	if err != nil {
 		return "", err
 	}
 	buf := bytes.NewBuffer(val)
-	binary.Read(buf, binary.LittleEndian, &n)
 
-	return strconv.FormatFloat(n, 'f', -1, 64), nil
+	switch size {
+	case 4:
+		n := float32(0)
+		binary.Read(buf, binary.LittleEndian, &n)
+		return strconv.FormatFloat(float64(n), 'f', -1, int(size)*8), nil
+	case 8:
+		n := float64(0)
+		binary.Read(buf, binary.LittleEndian, &n)
+		return strconv.FormatFloat(n, 'f', -1, int(size)*8), nil
+	}
+
+	return "", fmt.Errorf("could not read float")
 }
 
 func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, error) {

@@ -18,9 +18,10 @@ func foobar(baz string) {
 		a7  = &FooBar{Baz: 5, Bur: "strum"}
 		neg = -1
 		i8  = int8(1)
+		f32 = float32(1.2)
 	)
 
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8, f32)
 }
 
 func main() {
