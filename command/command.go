@@ -250,8 +250,7 @@ func printcontext(p *proctl.DebuggedProcess) error {
 			line = "\033[34m=>\033[0m" + line
 		}
 
-		line = "\033[34m" + strconv.Itoa(i) + "\033[0m" + ": " + line
-		context = append(context, line)
+		context = append(context, fmt.Sprintf("\033[34m%d\033[0m: %s", i, line))
 	}
 
 	fmt.Println(strings.Join(context, ""))
