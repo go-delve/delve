@@ -108,9 +108,8 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 }
 
 func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
-	var (
-		status syscall.WaitStatus
-	)
+	var status syscall.WaitStatus
+
 	if thread, ok := dbp.Threads[tid]; ok {
 		return thread, nil
 	}
