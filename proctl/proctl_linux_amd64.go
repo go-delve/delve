@@ -70,46 +70,41 @@ func AttachBinary(name string) (*DebuggedProcess, error) {
 
 // Returns a new DebuggedProcess struct with sensible defaults.
 func NewDebugProcess(pid int) (*DebuggedProcess, error) {
-	debuggedProc := DebuggedProcess{
+	dbp := DebuggedProcess{
 		Pid:         pid,
 		Threads:     make(map[int]*ThreadContext),
 		BreakPoints: make(map[uint64]*BreakPoint),
 	}
 
-	_, err := debuggedProc.AttachThread(pid)
+	thread, err := dbp.AttachThread(pid)
 	if err != nil {
 		return nil, err
 	}
+	dbp.CurrentThread = thread
 
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return nil, err
 	}
 
-	debuggedProc.Process = proc
-	err = debuggedProc.LoadInformation()
+	dbp.Process = proc
+	err = dbp.LoadInformation()
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: for some reason this isn't grabbing all threads, and
-	// neither is the subsequent ptrace clone op. Maybe when
-	// we attach the process is right in the middle of a clone syscall?
+	// Attach to all currently active threads.
 	for _, tid := range threadIds(pid) {
-		if _, ok := debuggedProc.Threads[tid]; !ok {
-			_, err := debuggedProc.AttachThread(tid)
-			if err != nil {
-				return nil, err
-			}
+		_, err := dbp.AttachThread(tid)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	return &debuggedProc, nil
+	return &dbp, nil
 }
 
 func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
-	var status syscall.WaitStatus
-
 	if thread, ok := dbp.Threads[tid]; ok {
 		return thread, nil
 	}
@@ -123,6 +118,7 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 		return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 	}
 
+	var status syscall.WaitStatus
 	pid, e := syscall.Wait4(tid, &status, syscall.WALL, nil)
 	if e != nil {
 		return nil, err
@@ -137,37 +133,25 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 
 func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
 	err := syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE)
-	if err != nil {
-		var status syscall.WaitStatus
-		pid, e := syscall.Wait4(tid, &status, syscall.WALL, nil)
-		if e != nil {
-			if status.Exited() {
-				return nil, ProcessExitedError{tid}
-			}
-			return nil, fmt.Errorf("error while waiting after adding thread: %d %s %v %d", tid, e, status.Exited(), status.TrapCause())
+	if err == syscall.ESRCH {
+		_, err = syscall.Wait4(tid, nil, syscall.WALL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
 
-		if pid != 0 {
-			err := syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE)
-			if err != nil {
-				return nil, fmt.Errorf("could not set options for new traced thread %d %s", tid, err)
-			}
+		err := syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE)
+		if err != nil {
+			return nil, fmt.Errorf("could not set options for new traced thread %d %s", tid, err)
 		}
 	}
 
-	tctxt := &ThreadContext{
+	dbp.Threads[tid] = &ThreadContext{
 		Id:      tid,
 		Process: dbp,
 		Regs:    new(syscall.PtraceRegs),
 	}
 
-	if tid == dbp.Pid {
-		dbp.CurrentThread = tctxt
-	}
-
-	dbp.Threads[tid] = tctxt
-
-	return tctxt, nil
+	return dbp.Threads[tid], nil
 }
 
 // Sets a breakpoint in the running process.

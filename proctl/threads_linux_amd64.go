@@ -242,7 +242,9 @@ func threadIds(pid int) []int {
 			panic(err)
 		}
 
-		threads = append(threads, tid)
+		if tid != pid {
+			threads = append(threads, tid)
+		}
 	}
 
 	return threads
