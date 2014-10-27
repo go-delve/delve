@@ -96,7 +96,7 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 	// neither is the subsequent ptrace clone op. Maybe when
 	// we attach the process is right in the middle of a clone syscall?
 	for _, tid := range threadIds(pid) {
-		if !debuggedProc.hasthread(tid) {
+		if _, ok := debuggedProc.Threads[tid]; !ok {
 			_, err := debuggedProc.AttachThread(tid)
 			if err != nil {
 				return nil, err
@@ -105,16 +105,6 @@ func NewDebugProcess(pid int) (*DebuggedProcess, error) {
 	}
 
 	return &debuggedProc, nil
-}
-
-func (dbp *DebuggedProcess) hasthread(tid int) bool {
-	for _, t := range dbp.Threads {
-		if tid == t.Id {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
