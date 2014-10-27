@@ -428,9 +428,7 @@ func (pe ProcessExitedError) Error() string {
 }
 
 func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus, error) {
-	var (
-		status syscall.WaitStatus
-	)
+	var status syscall.WaitStatus
 
 	for {
 		pid, e := syscall.Wait4(-1, &status, syscall.WALL|options, nil)
@@ -438,10 +436,9 @@ func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus,
 			return -1, nil, fmt.Errorf("wait err %s %d", e, pid)
 		}
 
-		for _, th := range dbp.Threads {
-			if th.Id == pid {
-				th.Status = &status
-			}
+		thread, threadtraced := dbp.Threads[pid]
+		if threadtraced {
+			thread.Status = &status
 		}
 
 		if status.Exited() {
@@ -449,15 +446,13 @@ func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus,
 				return 0, nil, ProcessExitedError{pid}
 			}
 
-			for _, th := range dbp.Threads {
-				if th.Id == pid {
-					delete(dbp.Threads, pid)
-				}
-			}
+			delete(dbp.Threads, pid)
 		}
 
 		if status.StopSignal() == syscall.SIGTRAP {
 			if status.TrapCause() == syscall.PTRACE_EVENT_CLONE {
+				// A traced thread has cloned a new thread, grab the pid and
+				// add it to our list of traced threads.
 				msg, err := syscall.PtraceGetEventMsg(pid)
 				if err != nil {
 					return 0, nil, fmt.Errorf("could not get event message: %s", err)
@@ -486,23 +481,13 @@ func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus,
 
 			if pid != dbp.CurrentThread.Id {
 				fmt.Printf("changed thread context from %d to %d\n", dbp.CurrentThread.Id, pid)
-				thread, _ := dbp.Threads[pid]
 				dbp.CurrentThread = thread
 			}
 
-			for _, th := range dbp.Threads {
-				if th.Id == pid {
-					pc, _ := th.CurrentPC()
-					_, ok := dbp.BreakPoints[pc-1]
-					if ok {
-						return pid, &status, nil
-					} else {
-						continue
-					}
-				}
+			pc, _ := thread.CurrentPC()
+			if _, ok := dbp.BreakPoints[pc-1]; ok {
+				return pid, &status, nil
 			}
-
-			return pid, &status, nil
 		}
 
 		if status.Stopped() {
