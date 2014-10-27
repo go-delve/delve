@@ -115,27 +115,21 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 	}
 
 	err := syscall.PtraceAttach(tid)
-	if err != nil {
-		if err != syscall.EPERM {
-			// Do not return err if err == EPERM,
-			// we may already be tracing this thread due to
-			// PTRACE_O_TRACECLONE. We will surely blow up later
-			// if we truly don't have permissions.
-			return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
-		}
-	} else {
-		pid, e := syscall.Wait4(tid, &status, syscall.WALL, nil)
-		if e != nil {
-			return nil, err
-		}
-		// pid, status, err = wait(dbp, tid, 0)
-		if err != nil && err != syscall.ECHILD {
-			return nil, err
-		}
+	if err != nil && err != syscall.EPERM {
+		// Do not return err if err == EPERM,
+		// we may already be tracing this thread due to
+		// PTRACE_O_TRACECLONE. We will surely blow up later
+		// if we truly don't have permissions.
+		return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
+	}
 
-		if pid != 0 && status.Exited() {
-			return nil, fmt.Errorf("thread already exited %d", tid)
-		}
+	pid, e := syscall.Wait4(tid, &status, syscall.WALL, nil)
+	if e != nil {
+		return nil, err
+	}
+
+	if status.Exited() {
+		return nil, fmt.Errorf("thread already exited %d", pid)
 	}
 
 	return dbp.addThread(tid)
