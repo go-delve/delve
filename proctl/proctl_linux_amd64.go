@@ -499,7 +499,6 @@ func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus,
 					} else {
 						continue
 					}
-
 				}
 			}
 
