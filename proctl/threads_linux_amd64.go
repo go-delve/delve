@@ -173,7 +173,7 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 			return err
 		}
 
-		err = thread.wait()
+		_, _, err = wait(thread.Process, thread.Id, 0)
 		if err != nil {
 			return err
 		}

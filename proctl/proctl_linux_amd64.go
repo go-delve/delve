@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/vendor/elf"
@@ -45,6 +46,35 @@ type BreakPointExistsError struct {
 	file string
 	line int
 	addr uintptr
+}
+
+// ProcessStatus is the result of parsing the data from
+// the /proc/<pid>/stats psuedo file.
+type ProcessStatus struct {
+	pid   int
+	comm  string
+	state rune
+	ppid  int
+}
+
+const (
+	STATUS_SLEEPING   = 'S'
+	STATUS_RUNNING    = 'R'
+	STATUS_TRACE_STOP = 't'
+)
+
+func parseProcessStatus(pid int) (*ProcessStatus, error) {
+	var ps ProcessStatus
+
+	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	fmt.Fscanf(f, "%d %s %c %d", &ps.pid, &ps.comm, &ps.state, &ps.ppid)
+
+	return &ps, nil
 }
 
 func (bpe BreakPointExistsError) Error() string {
@@ -394,18 +424,19 @@ func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("process %d has exited", pe.pid)
 }
 
-func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus, error) {
-	var status syscall.WaitStatus
-
+func wait(dbp *DebuggedProcess, p int, options int) (int, *syscall.WaitStatus, error) {
 	for {
-		pid, e := syscall.Wait4(-1, &status, syscall.WALL|options, nil)
-		if e != nil {
-			return -1, nil, fmt.Errorf("wait err %s %d", e, pid)
+		pid, status, err := timeoutWait(p, options)
+		if err != nil {
+			if _, ok := err.(TimeoutError); ok {
+				return p, nil, nil
+			}
+			return -1, nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
 
 		thread, threadtraced := dbp.Threads[pid]
 		if threadtraced {
-			thread.Status = &status
+			thread.Status = status
 		}
 
 		if status.Exited() {
@@ -452,15 +483,95 @@ func wait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus,
 			}
 
 			pc, _ := thread.CurrentPC()
+			// Check to see if we have hit a breakpoint
+			// that we know about.
 			if _, ok := dbp.BreakPoints[pc-1]; ok {
-				return pid, &status, nil
+				// Loop through all threads and ensure that we
+				// stop the rest of them, so that by the time
+				// we return control to the user, all threads
+				// are inactive. We send SIGSTOP and ensure all
+				// threads are in in signal-delivery-stop mode.
+				for _, th := range dbp.Threads {
+					if th.Id == pid {
+						// This thread is already stopped.
+						continue
+					}
+
+					ps, err := parseProcessStatus(pid)
+					if err != nil {
+						return -1, nil, err
+					}
+
+					if ps.state == STATUS_TRACE_STOP {
+						continue
+					}
+
+					err = syscall.Tgkill(dbp.Pid, th.Id, syscall.SIGALRM)
+					if err != nil {
+						return -1, nil, err
+					}
+
+					pid, err := syscall.Wait4(th.Id, nil, syscall.WALL, nil)
+					if err != nil {
+						return -1, nil, fmt.Errorf("wait err %s %d", err, pid)
+					}
+				}
+				return pid, status, nil
 			}
 		}
 
 		if status.Stopped() {
 			if pid == dbp.Pid {
-				return pid, &status, nil
+				return pid, status, nil
 			}
 		}
+	}
+}
+
+type waitstats struct {
+	pid    int
+	status *syscall.WaitStatus
+}
+
+type TimeoutError struct {
+	pid int
+}
+
+func (err TimeoutError) Error() string {
+	return fmt.Sprintf("timeout waiting for %d", err.pid)
+}
+
+// timeoutwait waits the specified duration before returning
+// a TimeoutError.
+func timeoutWait(pid int, options int) (int, *syscall.WaitStatus, error) {
+	var (
+		status   syscall.WaitStatus
+		statchan = make(chan *waitstats)
+		errchan  = make(chan error)
+	)
+
+	go func(pid int) {
+		pid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
+		if err != nil {
+			errchan <- fmt.Errorf("wait err %s %d", err, pid)
+		}
+
+		statchan <- &waitstats{pid: pid, status: &status}
+	}(pid)
+
+	select {
+	case s := <-statchan:
+		return s.pid, s.status, nil
+	case <-time.After(1 * time.Second):
+		ps, err := parseProcessStatus(pid)
+		if err != nil {
+			return -1, nil, err
+		}
+
+		syscall.Tgkill(ps.ppid, ps.pid, syscall.SIGSTOP)
+
+		return pid, nil, TimeoutError{pid}
+	case err := <-errchan:
+		return -1, nil, err
 	}
 }
