@@ -79,6 +79,7 @@ func help(p *proctl.DebuggedProcess, ars ...string) error {
     continue - Run until breakpoint or program termination.
     step - Single step through program.
     next - Step over to next source line.
+    threads - Print out info for every traced thread.
     print $var - Evaluate a variable.`)
 
 	return nil
