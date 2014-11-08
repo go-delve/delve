@@ -7,7 +7,7 @@ import (
 )
 
 func sleepytime() {
-	time.Sleep(time.Nanosecond)
+	time.Sleep(100 * time.Millisecond)
 }
 
 func helloworld() {

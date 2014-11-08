@@ -1,6 +1,8 @@
 package proctl
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"strconv"
@@ -46,12 +48,96 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 	return regs.PC(), nil
 }
 
+// Sets a software breakpoint at addr, and stores it in the process wide
+// break point table. Setting a break point must be thread specific due to
+// ptrace actions needing the thread to be in a signal-delivery-stop in order
+// to initiate any ptrace command. Otherwise, it really doesn't matter
+// as we're only dealing with threads.
+func (thread *ThreadContext) Break(addr uintptr) (*BreakPoint, error) {
+	var (
+		int3         = []byte{0xCC}
+		f, l, fn     = thread.Process.GoSymTable.PCToLine(uint64(addr))
+		originalData = make([]byte, 1)
+	)
+
+	if fn == nil {
+		return nil, InvalidAddressError{address: addr}
+	}
+
+	_, err := syscall.PtracePeekData(thread.Id, addr, originalData)
+	if err != nil {
+		fmt.Println("PEEK ERR")
+		return nil, err
+	}
+
+	if bytes.Equal(originalData, int3) {
+		return nil, BreakPointExistsError{f, l, addr}
+	}
+
+	_, err = syscall.PtracePokeData(thread.Id, addr, int3)
+	if err != nil {
+		fmt.Println("POKE ERR")
+		return nil, err
+	}
+
+	breakpoint := &BreakPoint{
+		FunctionName: fn.Name,
+		File:         f,
+		Line:         l,
+		Addr:         uint64(addr),
+		OriginalData: originalData,
+	}
+
+	thread.Process.BreakPoints[uint64(addr)] = breakpoint
+
+	return breakpoint, nil
+}
+
+// Clears a software breakpoint, and removes it from the process level
+// break point table.
+func (thread *ThreadContext) Clear(pc uint64) (*BreakPoint, error) {
+	bp, ok := thread.Process.BreakPoints[pc]
+	if !ok {
+		return nil, fmt.Errorf("No breakpoint currently set for %#v", pc)
+	}
+
+	if _, err := syscall.PtracePokeData(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
+		ps, err := parseProcessStatus(thread.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		if ps.state != STATUS_TRACE_STOP {
+			if err := syscall.Tgkill(thread.Process.Pid, thread.Id, syscall.SIGSTOP); err != nil {
+				return nil, err
+			}
+			if _, err := syscall.Wait4(thread.Id, nil, syscall.WALL, nil); err != nil {
+				return nil, err
+			}
+			if _, err := syscall.PtracePokeData(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	delete(thread.Process.BreakPoints, pc)
+
+	return bp, nil
+}
+
 func (thread *ThreadContext) Continue() error {
-	// Stepping first will ensure we are able to continue
-	// past a breakpoint if that's currently where we are stopped.
-	err := thread.Step()
+	// Check whether we are stopped at a breakpoint, and
+	// if so, single step over it before continuing.
+	regs, err := thread.Registers()
 	if err != nil {
 		return err
+	}
+
+	if _, ok := thread.Process.BreakPoints[regs.PC()-1]; ok {
+		err := thread.Step()
+		if err != nil {
+			return err
+		}
 	}
 
 	return syscall.PtraceCont(thread.Id, 0)
@@ -81,7 +167,7 @@ func (thread *ThreadContext) Step() (err error) {
 
 		// Restore breakpoint now that we have passed it.
 		defer func() {
-			_, err = thread.Process.Break(uintptr(bp.Addr))
+			_, err = thread.Break(uintptr(bp.Addr))
 		}()
 	}
 
@@ -90,8 +176,11 @@ func (thread *ThreadContext) Step() (err error) {
 		return fmt.Errorf("step failed: %s", err.Error())
 	}
 
-	_, _, err = wait(thread.Process, thread.Id, 0)
+	_, _, err = timeoutWait(thread.Id, 0)
 	if err != nil {
+		if _, ok := err.(TimeoutError); ok {
+			return nil
+		}
 		return fmt.Errorf("step failed: %s", err.Error())
 	}
 
@@ -106,9 +195,7 @@ func (thread *ThreadContext) Next() (err error) {
 	}
 
 	if _, ok := thread.Process.BreakPoints[pc-1]; ok {
-		// Decrement the PC to be before
-		// the breakpoint instruction.
-		pc--
+		pc-- // Decrement PC to account for BreakPoint
 	}
 
 	_, l, _ := thread.Process.GoSymTable.PCToLine(pc)
@@ -126,7 +213,7 @@ func (thread *ThreadContext) Next() (err error) {
 		return thread.CurrentPC()
 	}
 
-	ret := thread.Process.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+	ret := thread.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
 	for {
 		pc, err = step()
 		if err != nil {
@@ -134,13 +221,12 @@ func (thread *ThreadContext) Next() (err error) {
 		}
 
 		if !fde.Cover(pc) && pc != ret {
-			thread.continueToReturnAddress(pc, fde)
+			err := thread.continueToReturnAddress(pc, fde)
 			if err != nil {
-				if ierr, ok := err.(InvalidAddressError); ok {
-					return ierr
+				if _, ok := err.(InvalidAddressError); !ok {
+					return err
 				}
 			}
-
 			pc, _ = thread.CurrentPC()
 		}
 
@@ -160,26 +246,25 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 		// of this function. Therefore the function
 		// has not had a chance to modify its' stack
 		// and change our offset.
-		addr := thread.Process.ReturnAddressFromOffset(0)
-		bp, err := thread.Process.Break(uintptr(addr))
+		addr := thread.ReturnAddressFromOffset(0)
+		bp, err := thread.Break(uintptr(addr))
 		if err != nil {
 			if _, ok := err.(BreakPointExistsError); !ok {
 				return err
 			}
 		}
+		bp.temp = true
 
 		err = thread.Continue()
 		if err != nil {
 			return err
 		}
 
-		_, _, err = wait(thread.Process, thread.Id, 0)
-		if err != nil {
+		if _, _, err := trapWait(thread.Process, thread.Id, 0); err != nil {
 			return err
 		}
 
-		err = thread.clearTempBreakpoint(bp.Addr)
-		if err != nil {
+		if err := thread.clearTempBreakpoint(bp.Addr); err != nil {
 			return err
 		}
 
@@ -189,15 +274,30 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 	return nil
 }
 
+// Takes an offset from RSP and returns the address of the
+// instruction the currect function is going to return to.
+func (thread *ThreadContext) ReturnAddressFromOffset(offset int64) uint64 {
+	regs, err := thread.Registers()
+	if err != nil {
+		panic("Could not obtain register values")
+	}
+
+	retaddr := int64(regs.Rsp) + offset
+	data := make([]byte, 8)
+	syscall.PtracePeekText(thread.Id, uintptr(retaddr), data)
+	return binary.LittleEndian.Uint64(data)
+}
+
 func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
 	if bp, ok := thread.Process.BreakPoints[pc]; ok {
-		regs, err := thread.Registers()
+		_, err := thread.Clear(bp.Addr)
 		if err != nil {
+			fmt.Println("ERR", err)
 			return err
 		}
 
 		// Reset program counter to our restored instruction.
-		bp, err = thread.Process.Clear(bp.Addr)
+		regs, err := thread.Registers()
 		if err != nil {
 			return err
 		}
