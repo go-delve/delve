@@ -48,6 +48,8 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 	return regs.PC(), nil
 }
 
+// PrintInfo prints out the thread status
+// including: PC, tid, file, line, and function.
 func (thread *ThreadContext) PrintInfo() error {
 	pc, err := thread.CurrentPC()
 	if err != nil {
