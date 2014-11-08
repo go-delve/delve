@@ -2,12 +2,14 @@ package op
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/derekparker/delve/dwarf/util"
 )
 
 const (
+	DW_OP_addr           = 0x3
 	DW_OP_call_frame_cfa = 0x9c
 	DW_OP_plus           = 0x22
 	DW_OP_consts         = 0x11
@@ -19,6 +21,7 @@ var oplut = map[byte]stackfn{
 	DW_OP_call_frame_cfa: callframecfa,
 	DW_OP_plus:           plus,
 	DW_OP_consts:         consts,
+	DW_OP_addr:           addr,
 }
 
 func ExecuteStackProgram(cfa int64, instructions []byte) (int64, error) {
@@ -44,7 +47,15 @@ func callframecfa(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) 
 	return append(stack, int64(cfa)), nil
 }
 
+func addr(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) {
+	return append(stack, int64(binary.LittleEndian.Uint64(buf.Next(8)))), nil
+}
+
 func plus(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) {
+	if len(stack) == 1 {
+		return stack, nil
+	}
+
 	var (
 		slen   = len(stack)
 		digits = stack[slen-2 : slen]

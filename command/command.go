@@ -24,15 +24,16 @@ type Commands struct {
 // Returns a Commands struct with default commands defined.
 func DebugCommands() *Commands {
 	cmds := map[string]cmdfunc{
-		"help":     help,
-		"continue": cont,
-		"next":     next,
-		"break":    breakpoint,
-		"step":     step,
-		"clear":    clear,
-		"print":    printVar,
-		"threads":  threads,
-		"":         nullCommand,
+		"help":       help,
+		"continue":   cont,
+		"next":       next,
+		"break":      breakpoint,
+		"step":       step,
+		"clear":      clear,
+		"print":      printVar,
+		"threads":    threads,
+		"goroutines": goroutines,
+		"":           nullCommand,
 	}
 
 	return &Commands{cmds}
@@ -87,6 +88,10 @@ func help(p *proctl.DebuggedProcess, ars ...string) error {
 
 func threads(p *proctl.DebuggedProcess, ars ...string) error {
 	return p.PrintThreadInfo()
+}
+
+func goroutines(p *proctl.DebuggedProcess, ars ...string) error {
+	return p.PrintGoroutinesInfo()
 }
 
 func cont(p *proctl.DebuggedProcess, ars ...string) error {
