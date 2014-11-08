@@ -31,6 +31,7 @@ func DebugCommands() *Commands {
 		"step":     step,
 		"clear":    clear,
 		"print":    printVar,
+		"threads":  threads,
 		"":         nullCommand,
 	}
 
@@ -82,6 +83,11 @@ func help(p *proctl.DebuggedProcess, ars ...string) error {
 
 	return nil
 }
+
+func threads(p *proctl.DebuggedProcess, ars ...string) error {
+	return p.PrintThreadInfo()
+}
+
 func cont(p *proctl.DebuggedProcess, ars ...string) error {
 	err := p.Continue()
 	if err != nil {

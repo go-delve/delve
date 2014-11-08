@@ -198,6 +198,15 @@ func (dbp *DebuggedProcess) Status() *syscall.WaitStatus {
 	return dbp.CurrentThread.Status
 }
 
+func (dbp *DebuggedProcess) PrintThreadInfo() error {
+	for _, th := range dbp.Threads {
+		if err := th.PrintInfo(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Finds the executable from /proc/<pid>/exe and then
 // uses that to parse the following information:
 // * Dwarf .debug_frame section

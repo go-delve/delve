@@ -48,6 +48,16 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 	return regs.PC(), nil
 }
 
+func (thread *ThreadContext) PrintInfo() error {
+	pc, err := thread.CurrentPC()
+	if err != nil {
+		return err
+	}
+	f, l, fn := thread.Process.GoSymTable.PCToLine(pc)
+	fmt.Printf("Thread %d at %#v %s:%d %s\n", thread.Id, pc, f, l, fn.Name)
+	return nil
+}
+
 // Sets a software breakpoint at addr, and stores it in the process wide
 // break point table. Setting a break point must be thread specific due to
 // ptrace actions needing the thread to be in a signal-delivery-stop in order
