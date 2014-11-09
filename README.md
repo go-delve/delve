@@ -52,6 +52,10 @@ Once inside a debugging session, the following commands may be used:
 
 * `next` - Step over to next source line.
 
+* `threads` - Print the status of all traced goroutines.
+
+* `goroutines` - Print status of all goroutines.
+
 * `print $var` - Evaluate a variable.
 
 ### Upcoming features
