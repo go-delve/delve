@@ -55,7 +55,7 @@ func TestCleanExit(t *testing.T) {
 
 	var (
 		waitchan = make(chan *os.ProcessState)
-		testprog = startTestProg(t, "_fixtures/livetestprog")
+		testprog = startTestProg(t, "../../_fixtures/livetestprog")
 	)
 
 	go func() {
