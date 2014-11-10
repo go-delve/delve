@@ -163,7 +163,7 @@ func parseCommand(cmdstr string) (string, []string) {
 }
 
 func (t *term) promptForInput() (string, error) {
-	prompt := "dlv> "
+	prompt := "delve> "
 	line := *goreadline.ReadLine(&prompt)
 	line = strings.TrimSuffix(line, "\n")
 	if line != "" {

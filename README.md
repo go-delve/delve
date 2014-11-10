@@ -8,12 +8,6 @@ Delve is a Go debugger, written in Go.
 
 Currently, Delve requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands, so the project is go get-able.
 
-For invocation brevity, I prefer this:
-
-```
-$ go build -o dlv && mv dlv $GOPATH/bin
-```
-
 ### Features
 
 * Attach to an already running process
@@ -27,19 +21,19 @@ The debugger can be launched in three ways:
 * Compile, run, and attach in one step:
 
 	```
-	$ dlv -run
+	$ delve -run
 	```
 
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
 
 	```
-	$ dlv -proc path/to/program
+	$ delve -proc path/to/program
 	```
 
 * Provide the pid of a currently running process, and the debugger will attach and begin the session.
 
 	```
-	$ sudo dlv -pid 44839
+	$ sudo delve -pid 44839
 	```
 
 ### Breakpoints
