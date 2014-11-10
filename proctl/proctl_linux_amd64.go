@@ -407,7 +407,21 @@ func trapWait(dbp *DebuggedProcess, p int, options int) (int, *syscall.WaitStatu
 			if err != nil {
 				return -1, nil, fmt.Errorf("could not get current pc %s", err)
 			}
-			// Check to see if we have hit a breakpoint.
+			// Check to see if we hit a runtime.breakpoint
+			fn := dbp.GoSymTable.PCToFunc(pc)
+			if fn != nil && fn.Name == "runtime.breakpoint" {
+				// step twice to get back to user code
+				for i := 0; i < 2; i++ {
+					err = thread.Step()
+					if err != nil {
+						return -1, nil, err
+					}
+				}
+				handleBreakPoint(dbp, thread, pid)
+				return pid, &status, nil
+			}
+
+			// Check to see if we have hit a user set breakpoint.
 			if bp, ok := dbp.BreakPoints[pc-1]; ok {
 				if !bp.temp {
 					handleBreakPoint(dbp, thread, pid)
