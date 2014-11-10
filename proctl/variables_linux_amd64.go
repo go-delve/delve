@@ -44,7 +44,6 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 	fmt.Printf("[%d goroutines]\n", allglen)
 	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), 8)
 	allg := binary.LittleEndian.Uint64(faddr)
-	fmt.Println("sched", schedoffset)
 
 	for i := uint64(0); i < allglen; i++ {
 		err = printGoroutineInfo(dbp, allg+(i*8), goidoffset, schedoffset)
