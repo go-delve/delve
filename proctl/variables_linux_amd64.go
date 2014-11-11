@@ -24,20 +24,21 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 	if err != nil {
 		return err
 	}
+	reader := data.Reader()
 
-	allglen, err := allglenval(dbp, data)
+	allglen, err := allglenval(dbp, reader)
 	if err != nil {
 		return err
 	}
-	goidoffset, err := parsegoidoffset(dbp, data)
+	goidoffset, err := parsegoidoffset(dbp, reader)
 	if err != nil {
 		return err
 	}
-	schedoffset, err := parseschedoffset(dbp, data)
+	schedoffset, err := parseschedoffset(dbp, reader)
 	if err != nil {
 		return err
 	}
-	allgentryaddr, err := allgentryptr(dbp, data)
+	allgentryaddr, err := allgentryptr(dbp, reader)
 	if err != nil {
 		return err
 	}
@@ -76,8 +77,8 @@ func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, goidoffset, schedoffs
 	return nil
 }
 
-func allglenval(dbp *DebuggedProcess, data *dwarf.Data) (uint64, error) {
-	entry, err := findDwarfEntry("runtime.allglen", data)
+func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
+	entry, err := findDwarfEntry("runtime.allglen", reader)
 	if err != nil {
 		return 0, err
 	}
@@ -97,8 +98,8 @@ func allglenval(dbp *DebuggedProcess, data *dwarf.Data) (uint64, error) {
 	return binary.LittleEndian.Uint64(val), nil
 }
 
-func allgentryptr(dbp *DebuggedProcess, data *dwarf.Data) (uint64, error) {
-	entry, err := findDwarfEntry("runtime.allg", data)
+func allgentryptr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
+	entry, err := findDwarfEntry("runtime.allg", reader)
 	if err != nil {
 		return 0, err
 	}
@@ -115,8 +116,8 @@ func allgentryptr(dbp *DebuggedProcess, data *dwarf.Data) (uint64, error) {
 	return uint64(addr), nil
 }
 
-func parsegoidoffset(dbp *DebuggedProcess, data *dwarf.Data) (uint64, error) {
-	entry, err := findDwarfEntry("goid", data)
+func parsegoidoffset(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
+	entry, err := findDwarfEntry("goid", reader)
 	if err != nil {
 		return 0, err
 	}
@@ -132,8 +133,8 @@ func parsegoidoffset(dbp *DebuggedProcess, data *dwarf.Data) (uint64, error) {
 	return uint64(offset), nil
 }
 
-func parseschedoffset(dbp *DebuggedProcess, data *dwarf.Data) (uint64, error) {
-	entry, err := findDwarfEntry("sched", data)
+func parseschedoffset(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
+	entry, err := findDwarfEntry("sched", reader)
 	if err != nil {
 		return 0, err
 	}
@@ -156,7 +157,18 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, err
 	}
 
-	entry, err := findDwarfEntry(name, data)
+	pc, err := thread.CurrentPC()
+	if err != nil {
+		return nil, err
+	}
+	fn := thread.Process.GoSymTable.PCToFunc(pc)
+	if fn == nil {
+		return nil, fmt.Errorf("could not func function scope")
+	}
+	reader := data.Reader()
+	err = findFunction(fn.Name, reader)
+
+	entry, err := findDwarfEntry(name, reader)
 	if err != nil {
 		return nil, err
 	}
@@ -184,9 +196,34 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	return &Variable{Name: name, Type: t.String(), Value: val}, nil
 }
 
-func findDwarfEntry(name string, data *dwarf.Data) (*dwarf.Entry, error) {
-	reader := data.Reader()
+// findFunction is basically used to seek the dwarf.Reader to
+// the function entry that represents our current scope. From there
+// we can find the first child entry that matches the var name and
+// use it to determine the value of the variable.
+func findFunction(name string, reader *dwarf.Reader) error {
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return err
+		}
 
+		if entry.Tag != dwarf.TagSubprogram {
+			continue
+		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+
+		if n == name {
+			break
+		}
+	}
+
+	return nil
+}
+
+func findDwarfEntry(name string, reader *dwarf.Reader) (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return nil, err

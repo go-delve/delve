@@ -24,7 +24,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a1", "foo", "struct string"},
 		{"a2", "6", "int"},
 		{"a3", "7.23", "float64"},
-		{"a4", "[2]int [1 2]", "[97]int"},
+		{"a4", "[2]int [1 2]", "[65]int"},
 		{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int"},
 		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar"},
 		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar"},
@@ -35,7 +35,7 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 24)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 29)
 
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")

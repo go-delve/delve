@@ -7,6 +7,11 @@ type FooBar struct {
 	Bur string
 }
 
+func barfoo() {
+	a1 := "bur"
+	fmt.Println(a1)
+}
+
 func foobar(baz string) {
 	var (
 		a1  = "foo"
@@ -21,6 +26,7 @@ func foobar(baz string) {
 		f32 = float32(1.2)
 	)
 
+	barfoo()
 	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8, f32)
 }
 
