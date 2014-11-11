@@ -16,7 +16,7 @@ go get github.com/derekparker/delve/cmd/dlv
 
 * Attach to an already running process
 * Launch a process and begin debug session
-* Set breakpoints, single step, step over functions, print variable contents
+* Set breakpoints, single step, step over functions, print variable contents, print thread and goroutine information
 
 ### Usage
 
@@ -56,7 +56,7 @@ Once inside a debugging session, the following commands may be used:
 
 * `next` - Step over to next source line.
 
-* `threads` - Print the status of all traced goroutines.
+* `threads` - Print status of all traced threads.
 
 * `goroutines` - Print status of all goroutines.
 
