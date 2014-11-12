@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 
@@ -101,7 +102,11 @@ func main() {
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
-			die(1, "Prompt for input failed.\n")
+			if err == io.EOF {
+				cmdstr = "exit"
+			} else {
+				die(1, "Prompt for input failed.\n")
+			}
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
@@ -164,8 +169,11 @@ func parseCommand(cmdstr string) (string, []string) {
 
 func (t *term) promptForInput() (string, error) {
 	prompt := "dlv> "
-	line := *goreadline.ReadLine(&prompt)
-	line = strings.TrimSuffix(line, "\n")
+	pline := goreadline.ReadLine(&prompt)
+	if pline == nil {
+		return "", io.EOF
+	}
+	line := strings.TrimSuffix(*pline, "\n")
 	if line != "" {
 		goreadline.AddHistory(line)
 	}
