@@ -124,6 +124,10 @@ func next(p *proctl.DebuggedProcess, args ...string) error {
 }
 
 func clear(p *proctl.DebuggedProcess, args ...string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("Not enough arguments to clear command")
+	}
+
 	var (
 		fn    *gosym.Func
 		pc    uint64
@@ -167,6 +171,10 @@ func clear(p *proctl.DebuggedProcess, args ...string) error {
 }
 
 func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("Not enough arguments to break command")
+	}
+
 	var (
 		fn    *gosym.Func
 		pc    uint64
