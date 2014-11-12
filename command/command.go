@@ -82,7 +82,8 @@ func help(p *proctl.DebuggedProcess, ars ...string) error {
     next - Step over to next source line.
     threads - Print out info for every traced thread.
     goroutines - Print out info for every goroutine.
-    print $var - Evaluate a variable.`)
+    print $var - Evaluate a variable.
+    exit - Exit the debugger.`)
 
 	return nil
 }
