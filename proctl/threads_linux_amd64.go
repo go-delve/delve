@@ -56,7 +56,11 @@ func (thread *ThreadContext) PrintInfo() error {
 		return err
 	}
 	f, l, fn := thread.Process.GoSymTable.PCToLine(pc)
-	fmt.Printf("Thread %d at %#v %s:%d %s\n", thread.Id, pc, f, l, fn.Name)
+	if fn != nil {
+		fmt.Printf("Thread %d at %#v %s:%d %s\n", thread.Id, pc, f, l, fn.Name)
+	} else {
+		fmt.Printf("Thread %d at %#v\n", thread.Id, pc)
+	}
 	return nil
 }
 
