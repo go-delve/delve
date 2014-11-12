@@ -12,6 +12,8 @@ Currently, Delve requires the following [patch](https://codereview.appspot.com/1
 go get github.com/derekparker/delve/cmd/dlv
 ```
 
+You will need readline installed on your system. With apt simply: `sudo apt-get install libreadline-dev` .
+
 ### Features
 
 * Attach to an already running process
