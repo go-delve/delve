@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 
@@ -101,15 +102,18 @@ func main() {
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
+			if err == io.EOF {
+				handleExit(t, dbgproc, 0)
+				return
+			}
 			die(1, "Prompt for input failed.\n")
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
 
 		if cmdstr == "exit" {
-			err := goreadline.WriteHistoryToFile(historyFile)
-			fmt.Println("readline:", err)
 			handleExit(t, dbgproc, 0)
+			return
 		}
 
 		cmd := cmds.Find(cmdstr)
@@ -119,8 +123,10 @@ func main() {
 		}
 	}
 }
-
 func handleExit(t *term, dbp *proctl.DebuggedProcess, status int) {
+	errno := goreadline.WriteHistoryToFile(historyFile)
+	fmt.Println("readline:", errno)
+
 	fmt.Println("Would you like to kill the process? [y/n]")
 	answer, err := t.stdin.ReadString('\n')
 	if err != nil {
@@ -164,8 +170,11 @@ func parseCommand(cmdstr string) (string, []string) {
 
 func (t *term) promptForInput() (string, error) {
 	prompt := "dlv> "
-	line := *goreadline.ReadLine(&prompt)
-	line = strings.TrimSuffix(line, "\n")
+	linep := goreadline.ReadLine(&prompt)
+	if linep == nil {
+		return "", io.EOF
+	}
+	line := strings.TrimSuffix(*linep, "\n")
 	if line != "" {
 		goreadline.AddHistory(line)
 	}
