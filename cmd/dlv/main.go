@@ -127,6 +127,12 @@ func handleExit(t *term, dbp *proctl.DebuggedProcess, status int) {
 		die(2, err.Error())
 	}
 
+	for pc := range dbp.BreakPoints {
+		if _, err := dbp.Clear(pc); err != nil {
+			fmt.Printf("Can't clear breakpoint @%x: %s\n", pc, err)
+		}
+	}
+
 	fmt.Println("Detaching from process...")
 	err = syscall.PtraceDetach(dbp.Process.Pid)
 	if err != nil {
