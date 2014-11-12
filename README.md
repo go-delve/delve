@@ -62,6 +62,9 @@ Once inside a debugging session, the following commands may be used:
 
 * `print $var` - Evaluate a variable.
 
+* `exit` - Exit the debugger.
+
+
 ### Upcoming features
 
 * In-scope variable setting
