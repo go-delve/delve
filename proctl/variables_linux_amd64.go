@@ -30,14 +30,17 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 	if err != nil {
 		return err
 	}
+	reader.Seek(0)
 	goidoffset, err := parsegoidoffset(dbp, reader)
 	if err != nil {
 		return err
 	}
+	reader.Seek(0)
 	schedoffset, err := parseschedoffset(dbp, reader)
 	if err != nil {
 		return err
 	}
+	reader.Seek(0)
 	allgentryaddr, err := allgentryptr(dbp, reader)
 	if err != nil {
 		return err
