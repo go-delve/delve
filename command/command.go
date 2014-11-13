@@ -239,40 +239,45 @@ func printcontext(p *proctl.DebuggedProcess) error {
 		return err
 	}
 
-	f, l, _ := p.GoSymTable.PCToLine(regs.PC())
+	f, l, fn := p.GoSymTable.PCToLine(regs.PC())
 
-	fmt.Printf("Stopped at: %s:%d\n", f, l)
-	file, err := os.Open(f)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	buf := bufio.NewReader(file)
-	for i := 1; i < l-5; i++ {
-		_, err := buf.ReadString('\n')
-		if err != nil && err != io.EOF {
+	if fn != nil {
+		fmt.Printf("Stopped at: %s:%d\n", f, l)
+		file, err := os.Open(f)
+		if err != nil {
 			return err
 		}
-	}
+		defer file.Close()
 
-	for i := l - 5; i <= l+5; i++ {
-		line, err := buf.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
+		buf := bufio.NewReader(file)
+		for i := 1; i < l-5; i++ {
+			_, err := buf.ReadString('\n')
+			if err != nil && err != io.EOF {
 				return err
 			}
+		}
 
-			if err == io.EOF {
-				break
+		for i := l - 5; i <= l+5; i++ {
+			line, err := buf.ReadString('\n')
+			if err != nil {
+				if err != io.EOF {
+					return err
+				}
+
+				if err == io.EOF {
+					break
+				}
 			}
-		}
 
-		if i == l {
-			line = "\033[34m=>\033[0m" + line
-		}
+			if i == l {
+				line = "\033[34m=>\033[0m" + line
+			}
 
-		context = append(context, fmt.Sprintf("\033[34m%d\033[0m: %s", i, line))
+			context = append(context, fmt.Sprintf("\033[34m%d\033[0m: %s", i, line))
+		}
+	} else {
+		fmt.Printf("Stopped at: 0x%x\n", regs.PC())
+		context = append(context, "\033[34m=>\033[0m    no source available")
 	}
 
 	fmt.Println(strings.Join(context, ""))
