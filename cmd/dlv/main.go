@@ -104,7 +104,6 @@ func main() {
 		if err != nil {
 			if err == io.EOF {
 				handleExit(t, dbgproc, 0)
-				return
 			}
 			die(1, "Prompt for input failed.\n")
 		}
@@ -113,7 +112,6 @@ func main() {
 
 		if cmdstr == "exit" {
 			handleExit(t, dbgproc, 0)
-			return
 		}
 
 		cmd := cmds.Find(cmdstr)
