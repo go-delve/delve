@@ -30,9 +30,9 @@ func WithTestProcess(name string, t *testing.T, fn testfunc) {
 	}
 	defer os.Remove("./" + base)
 
-	p, err := proctl.AttachBinary("./" + base)
+	p, err := proctl.Launch([]string{"./" + base})
 	if err != nil {
-		t.Fatal("NewDebugProcess():", err)
+		t.Fatal("Launch():", err)
 	}
 
 	defer p.Process.Kill()
