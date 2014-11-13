@@ -80,36 +80,50 @@ func (bpe BreakPointExistsError) Error() string {
 	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
 }
 
-func AttachBinary(name string) (*DebuggedProcess, error) {
-	proc := exec.Command(name)
+func Attach(pid int) (*DebuggedProcess, error) {
+	return newDebugProcess(pid, true)
+}
+
+func Launch(cmd []string) (*DebuggedProcess, error) {
+	proc := exec.Command(cmd[0])
+	proc.Args = cmd
 	proc.Stdout = os.Stdout
+	proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
 
-	err := proc.Start()
-	if err != nil {
+	if err := proc.Start(); err != nil {
 		return nil, err
 	}
 
-	dbgproc, err := NewDebugProcess(proc.Process.Pid)
+	var status syscall.WaitStatus
+	_, err := syscall.Wait4(proc.Process.Pid, &status, syscall.WALL, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
 
-	return dbgproc, nil
+	return newDebugProcess(proc.Process.Pid, false)
 }
 
 // Returns a new DebuggedProcess struct with sensible defaults.
-func NewDebugProcess(pid int) (*DebuggedProcess, error) {
+func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 	dbp := DebuggedProcess{
 		Pid:         pid,
 		Threads:     make(map[int]*ThreadContext),
 		BreakPoints: make(map[uint64]*BreakPoint),
 	}
 
-	thread, err := dbp.AttachThread(pid)
-	if err != nil {
-		return nil, err
+	if attach {
+		thread, err := dbp.AttachThread(pid)
+		if err != nil {
+			return nil, err
+		}
+		dbp.CurrentThread = thread
+	} else {
+		thread, err := dbp.addThread(pid)
+		if err != nil {
+			return nil, err
+		}
+		dbp.CurrentThread = thread
 	}
-	dbp.CurrentThread = thread
 
 	proc, err := os.FindProcess(pid)
 	if err != nil {

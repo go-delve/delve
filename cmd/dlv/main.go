@@ -57,24 +57,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	start := func(name string) *proctl.DebuggedProcess {
-		proc := exec.Command(name)
-		proc.Stdout = os.Stdout
-
-		err = proc.Start()
-		if err != nil {
-			die(1, "Could not start process:", err)
-		}
-		syscall.Kill(proc.Process.Pid, syscall.SIGSTOP)
-
-		dbgproc, err = proctl.NewDebugProcess(proc.Process.Pid)
-		if err != nil {
-			die(1, "Could not start debugging process:", err)
-		}
-
-		return dbgproc
-	}
-
 	switch {
 	case run:
 		const debugname = "debug"
@@ -85,14 +67,20 @@ func main() {
 		}
 		defer os.Remove(debugname)
 
-		dbgproc = start("./" + debugname)
-	case pid != 0:
-		dbgproc, err = proctl.NewDebugProcess(pid)
+		dbgproc, err = proctl.Launch([]string{"./" + debugname})
 		if err != nil {
-			die(1, "Could not start debugging process:", err)
+			die(1, "Could not launch program:", err)
+		}
+	case pid != 0:
+		dbgproc, err = proctl.Attach(pid)
+		if err != nil {
+			die(1, "Could not attach to process:", err)
 		}
 	case proc != "":
-		dbgproc = start(proc)
+		dbgproc, err = proctl.Launch([]string{proc})
+		if err != nil {
+			die(1, "Could not launch program:", err)
+		}
 	}
 
 	goreadline.LoadHistoryFromFile(historyFile)
