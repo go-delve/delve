@@ -27,6 +27,7 @@ type DebuggedProcess struct {
 	BreakPoints   map[uint64]*BreakPoint
 	Threads       map[int]*ThreadContext
 	CurrentThread *ThreadContext
+	StopRequested bool
 }
 
 // Represents a single breakpoint. Stores information on the break
@@ -321,6 +322,14 @@ func (dbp *DebuggedProcess) findExecutable() error {
 	return nil
 }
 
+// RequestManualStop is normally called when SIGINT is received by delve, to
+// indicate that the next trap should stop the process and drop to the delve
+// CLI.
+func (dbp *DebuggedProcess) RequestManualStop() {
+	dbp.StopRequested = true
+	syscall.Kill(dbp.Pid, syscall.SIGTRAP)
+}
+
 func (dbp *DebuggedProcess) parseDebugFrame(wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -417,6 +426,12 @@ func trapWait(dbp *DebuggedProcess, p int, options int) (int, *syscall.WaitStatu
 						return -1, nil, err
 					}
 				}
+				handleBreakPoint(dbp, thread, pid)
+				return pid, &status, nil
+			}
+
+			if status.TrapCause() > -1 && dbp.StopRequested {
+				dbp.StopRequested = false
 				handleBreakPoint(dbp, thread, pid)
 				return pid, &status, nil
 			}

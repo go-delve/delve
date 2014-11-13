@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 
 	"runtime"
 	"strings"
@@ -72,6 +73,15 @@ func main() {
 		if err != nil {
 			die(1, "Could not start debugging process:", err)
 		}
+
+		ch := make(chan os.Signal)
+		signal.Notify(ch, syscall.SIGINT)
+
+		go func() {
+			for _ = range ch {
+				dbgproc.RequestManualStop()
+			}
+		}()
 
 		return dbgproc
 	}
