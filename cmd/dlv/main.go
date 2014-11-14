@@ -68,7 +68,7 @@ func main() {
 		}
 		defer os.Remove(debugname)
 
-		dbgproc, err = proctl.Launch([]string{"./" + debugname})
+		dbgproc, err = proctl.Launch(append([]string{"./" + debugname}, flag.Args()...))
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}
@@ -78,7 +78,7 @@ func main() {
 			die(1, "Could not attach to process:", err)
 		}
 	case proc != "":
-		dbgproc, err = proctl.Launch([]string{proc})
+		dbgproc, err = proctl.Launch(append([]string{proc}, flag.Args()...))
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}
