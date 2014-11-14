@@ -9,7 +9,7 @@ import (
 
 func TestCommandDefault(t *testing.T) {
 	var (
-		cmds = Commands{make(map[string]cmdfunc)}
+		cmds = Commands{}
 		cmd  = cmds.Find("non-existant-command")
 	)
 
@@ -25,7 +25,7 @@ func TestCommandDefault(t *testing.T) {
 
 func TestCommandReplay(t *testing.T) {
 	cmds := DebugCommands()
-	cmds.Register("foo", func(p *proctl.DebuggedProcess, args ...string) error { return fmt.Errorf("registered command") })
+	cmds.Register("foo", func(p *proctl.DebuggedProcess, args ...string) error { return fmt.Errorf("registered command") }, "foo command")
 	cmd := cmds.Find("foo")
 
 	err := cmd(nil)

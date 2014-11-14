@@ -17,47 +17,80 @@ import (
 
 type cmdfunc func(proc *proctl.DebuggedProcess, args ...string) error
 
+type command struct {
+	aliases []string
+	helpMsg string
+	cmdFn   cmdfunc
+}
+
+// Returns true if the command string matches one of the aliases for this command
+func (c command) match(cmdstr string) bool {
+	for _, v := range c.aliases {
+		if v == cmdstr {
+			return true
+		}
+	}
+	return false
+}
+
 type Commands struct {
-	cmds map[string]cmdfunc
+	cmds    []command
+	lastCmd cmdfunc
 }
 
 // Returns a Commands struct with default commands defined.
 func DebugCommands() *Commands {
-	cmds := map[string]cmdfunc{
-		"help":       help,
-		"continue":   cont,
-		"next":       next,
-		"break":      breakpoint,
-		"step":       step,
-		"clear":      clear,
-		"print":      printVar,
-		"threads":    threads,
-		"goroutines": goroutines,
-		"":           nullCommand,
+	c := &Commands{}
+
+	c.cmds = []command{
+		command{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "help - Prints the help message."},
+		command{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break|b - Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13"},
+		command{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "continue|c - Run until breakpoint or program termination."},
+		command{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "step|si - Single step through program."},
+		command{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "next|n - Step over to next source line."},
+		command{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "threads - Print out info for every traced thread."},
+		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "clear - Deletes breakpoint."},
+		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "goroutines - Print out info for every goroutine."},
+		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "print|p $var - Evaluate a variable."},
+		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "exit - Exit the debugger."},
 	}
 
-	return &Commands{cmds}
+	return c
 }
 
 // Register custom commands. Expects cf to be a func of type cmdfunc,
 // returning only an error.
-func (c *Commands) Register(cmdstr string, cf cmdfunc) {
-	c.cmds[cmdstr] = cf
+func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
+	for _, v := range c.cmds {
+		if v.match(cmdstr) {
+			v.cmdFn = cf
+			return
+		}
+	}
+
+	c.cmds = append(c.cmds, command{aliases: []string{cmdstr}, cmdFn: cf, helpMsg: helpMsg})
 }
 
 // Find will look up the command function for the given command input.
 // If it cannot find the command it will defualt to noCmdAvailable().
 // If the command is an empty string it will replay the last command.
 func (c *Commands) Find(cmdstr string) cmdfunc {
-	cmd, ok := c.cmds[cmdstr]
-	if !ok {
-		return noCmdAvailable
+	// If <enter> use last command, if there was one.
+	if cmdstr == "" {
+		if c.lastCmd != nil {
+			return c.lastCmd
+		}
+		return nullCommand
 	}
 
-	// Allow <enter> to replay last command
-	c.cmds[""] = cmd
+	for _, v := range c.cmds {
+		if v.match(cmdstr) {
+			c.lastCmd = v.cmdFn
+			return v.cmdFn
+		}
+	}
 
-	return cmd
+	return noCmdAvailable
 }
 
 func CommandFunc(fn func() error) cmdfunc {
@@ -74,17 +107,11 @@ func nullCommand(p *proctl.DebuggedProcess, ars ...string) error {
 	return nil
 }
 
-func help(p *proctl.DebuggedProcess, ars ...string) error {
-	fmt.Println(`The following commands are available:
-    break - Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13.
-    continue - Run until breakpoint or program termination.
-    step - Single step through program.
-    next - Step over to next source line.
-    threads - Print out info for every traced thread.
-    goroutines - Print out info for every goroutine.
-    print $var - Evaluate a variable.
-    exit - Exit the debugger.`)
-
+func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) error {
+	fmt.Println("The following commands are available:")
+	for _, cmd := range c.cmds {
+		fmt.Printf("\t%s\n", cmd.helpMsg)
+	}
 	return nil
 }
 
