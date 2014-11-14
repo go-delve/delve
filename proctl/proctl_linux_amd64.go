@@ -94,8 +94,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 		return nil, err
 	}
 
-	var status syscall.WaitStatus
-	_, err := syscall.Wait4(proc.Process.Pid, &status, syscall.WALL, nil)
+	_, err := syscall.Wait4(proc.Process.Pid, nil, syscall.WALL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
