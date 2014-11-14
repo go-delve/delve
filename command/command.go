@@ -43,16 +43,16 @@ func DebugCommands() *Commands {
 	c := &Commands{}
 
 	c.cmds = []command{
-		command{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "help - Prints the help message."},
-		command{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break|b - Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13"},
-		command{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "continue|c - Run until breakpoint or program termination."},
-		command{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "step|si - Single step through program."},
-		command{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "next|n - Step over to next source line."},
-		command{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "threads - Print out info for every traced thread."},
-		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "clear - Deletes breakpoint."},
-		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "goroutines - Print out info for every goroutine."},
-		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "print|p $var - Evaluate a variable."},
-		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "exit - Exit the debugger."},
+		command{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
+		command{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13"},
+		command{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
+		command{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
+		command{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
+		command{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
+		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
+		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
+		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
+		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
 	}
 
 	return c
@@ -110,7 +110,7 @@ func nullCommand(p *proctl.DebuggedProcess, ars ...string) error {
 func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) error {
 	fmt.Println("The following commands are available:")
 	for _, cmd := range c.cmds {
-		fmt.Printf("\t%s\n", cmd.helpMsg)
+		fmt.Printf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
 	}
 	return nil
 }
