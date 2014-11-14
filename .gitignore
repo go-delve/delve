@@ -8,3 +8,4 @@ notes.txt
 .tags*
 tags
 .dbg_history
+cmd/dlv/dlv
