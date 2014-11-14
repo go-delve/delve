@@ -88,6 +88,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	proc := exec.Command(cmd[0])
 	proc.Args = cmd
 	proc.Stdout = os.Stdout
+	proc.Stderr = os.Stderr
 	proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
 
 	if err := proc.Start(); err != nil {
