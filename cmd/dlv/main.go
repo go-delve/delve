@@ -33,7 +33,6 @@ func main() {
 
 	var (
 		pid     int
-		proc    string
 		run     bool
 		printv  bool
 		err     error
@@ -43,12 +42,11 @@ func main() {
 	)
 
 	flag.IntVar(&pid, "pid", 0, "Pid of running process to attach to.")
-	flag.StringVar(&proc, "proc", "", "Path to process to run and debug.")
 	flag.BoolVar(&run, "run", false, "Compile program and begin debug session.")
 	flag.BoolVar(&printv, "v", false, "Print version number and exit.")
 	flag.Parse()
 
-	if flag.NFlag() == 0 {
+	if flag.NFlag() == 0 && len(flag.Args()) == 0 {
 		flag.Usage()
 		os.Exit(0)
 	}
@@ -77,8 +75,8 @@ func main() {
 		if err != nil {
 			die(1, "Could not attach to process:", err)
 		}
-	case proc != "":
-		dbgproc, err = proctl.Launch(append([]string{proc}, flag.Args()...))
+	default:
+		dbgproc, err = proctl.Launch(flag.Args())
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}

@@ -33,7 +33,7 @@ The debugger can be launched in three ways:
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
 
 	```
-	$ dlv -proc path/to/program
+	$ dlv path/to/program
 	```
 
 * Provide the pid of a currently running process, and the debugger will attach and begin the session.
