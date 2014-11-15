@@ -13,6 +13,8 @@ import (
 	"github.com/derekparker/delve/vendor/dwarf"
 )
 
+const PTR_SIZE = unsafe.Sizeof(uintptr(1))
+
 type Variable struct {
 	Name  string
 	Value string
@@ -280,7 +282,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	offaddr := uintptr(offset)
 	switch t := typ.(type) {
 	case *dwarf.PtrType:
-		addr, err := thread.readMemory(offaddr, 8)
+		addr, err := thread.readMemory(offaddr, PTR_SIZE)
 		if err != nil {
 			return "", err
 		}
@@ -295,7 +297,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	case *dwarf.StructType:
 		switch t.StructName {
 		case "string":
-			return thread.readString(offaddr)
+			return thread.readString(offaddr, t.ByteSize)
 		case "[]int":
 			return thread.readIntSlice(offaddr)
 		default:
@@ -324,15 +326,15 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	return "", fmt.Errorf("could not find value for type %s", typ)
 }
 
-func (thread *ThreadContext) readString(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, 8)
+func (thread *ThreadContext) readString(addr uintptr, size int64) (string, error) {
+	val, err := thread.readMemory(addr, PTR_SIZE)
 	if err != nil {
 		return "", err
 	}
 
 	// deref the pointer to the string
 	addr = uintptr(binary.LittleEndian.Uint64(val))
-	val, err = thread.readMemory(addr, 16)
+	val, err = thread.readMemory(addr, uintptr(size))
 	if err != nil {
 		return "", err
 	}
@@ -345,16 +347,16 @@ func (thread *ThreadContext) readString(addr uintptr) (string, error) {
 func (thread *ThreadContext) readIntSlice(addr uintptr) (string, error) {
 	var number uint64
 
-	val, err := thread.readMemory(addr, uintptr(24))
+	val, err := thread.readMemory(addr, PTR_SIZE*3)
 	if err != nil {
 		return "", err
 	}
 
-	a := binary.LittleEndian.Uint64(val[:8])
-	l := binary.LittleEndian.Uint64(val[8:16])
-	c := binary.LittleEndian.Uint64(val[16:24])
+	a := binary.LittleEndian.Uint64(val[:PTR_SIZE])
+	l := binary.LittleEndian.Uint64(val[PTR_SIZE : PTR_SIZE*2])
+	c := binary.LittleEndian.Uint64(val[PTR_SIZE*2 : PTR_SIZE*3])
 
-	val, err = thread.readMemory(uintptr(a), uintptr(8*l))
+	val, err = thread.readMemory(uintptr(a), PTR_SIZE*uintptr(l))
 	if err != nil {
 		return "", err
 	}
@@ -394,7 +396,7 @@ func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (str
 		members = append(members, number)
 	}
 
-	return fmt.Sprintf("[%d]int %d", t.ByteSize/8, members), nil
+	return fmt.Sprintf("[%d]int %d", uintptr(t.ByteSize)/PTR_SIZE, members), nil
 }
 
 func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
