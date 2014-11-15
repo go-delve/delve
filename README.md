@@ -71,6 +71,7 @@ Once inside a debugging session, the following commands may be used:
 
 * In-scope variable setting
 * Support for OS X
+* Editor integration
 
 ### License
 
