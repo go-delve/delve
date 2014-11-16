@@ -1,9 +1,7 @@
 package frame_test
 
 import (
-	"encoding/binary"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/derekparker/delve/helper"
@@ -35,11 +33,6 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		regs, err := p.Registers()
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		fde, err := fdes.FDEForPC(start)
 		if err != nil {
 			t.Fatal(err)
@@ -50,11 +43,7 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		addr := uint64(int64(regs.Rsp) + ret)
-		data := make([]byte, 8)
-
-		syscall.PtracePeekText(p.Pid, uintptr(addr), data)
-		addr = binary.LittleEndian.Uint64(data)
+		addr := p.CurrentThread.ReturnAddressFromOffset(ret)
 
 		expected := uint64(0x400ed3)
 		if addr != expected {

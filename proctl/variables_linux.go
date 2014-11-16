@@ -266,11 +266,10 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 
 	offset := off
 	if off == 0 {
-		offset, err = op.ExecuteStackProgram(cfaOffset, instructions)
+		offset, err = calculateOffset(cfaOffset, instructions, regs)
 		if err != nil {
 			return "", err
 		}
-		offset = int64(regs.Rsp) + offset
 	}
 
 	// If we have a user defined type, find the
