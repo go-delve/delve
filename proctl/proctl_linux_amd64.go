@@ -569,9 +569,10 @@ func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, 
 	case s := <-statchan:
 		return s.pid, s.status, nil
 	case <-time.After(2 * time.Second):
-		syscall.Tgkill(thread.Process.Pid, pid, syscall.SIGSTOP)
+		if err := syscall.Tgkill(thread.Process.Pid, pid, syscall.SIGSTOP); err != nil {
+			return -1, nil, err
+		}
 		<-statchan
-
 		return 0, nil, TimeoutError{pid}
 	case err := <-errchan:
 		return -1, nil, err
