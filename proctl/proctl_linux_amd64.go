@@ -540,20 +540,17 @@ func (err TimeoutError) Error() string {
 func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, error) {
 	var (
 		status   syscall.WaitStatus
-		pid      = thread.Id
 		statchan = make(chan *waitstats)
 		errchan  = make(chan error)
 	)
 
-	if pid > 0 {
-		ps, err := parseProcessStatus(pid)
-		if err != nil {
-			return -1, nil, err
-		}
+	ps, err := parseProcessStatus(thread.Id)
+	if err != nil {
+		return -1, nil, err
+	}
 
-		if ps.state == STATUS_SLEEPING {
-			return 0, nil, nil
-		}
+	if ps.state == STATUS_SLEEPING {
+		return 0, nil, nil
 	}
 
 	go func(pid int) {
@@ -563,17 +560,17 @@ func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, 
 		}
 
 		statchan <- &waitstats{pid: wpid, status: &status}
-	}(pid)
+	}(thread.Id)
 
 	select {
 	case s := <-statchan:
 		return s.pid, s.status, nil
 	case <-time.After(10 * time.Millisecond):
-		if err := syscall.Tgkill(thread.Process.Pid, pid, syscall.SIGSTOP); err != nil {
+		if err := syscall.Tgkill(thread.Process.Pid, thread.Id, syscall.SIGSTOP); err != nil {
 			return -1, nil, err
 		}
 		<-statchan
-		return 0, nil, TimeoutError{pid}
+		return 0, nil, TimeoutError{thread.Id}
 	case err := <-errchan:
 		return -1, nil, err
 	}
