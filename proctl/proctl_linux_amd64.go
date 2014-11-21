@@ -537,9 +537,10 @@ func (err TimeoutError) Error() string {
 // The purpose is to detect whether a thread is sleeping. However, this is
 // tricky because a thread can be sleeping due to being a blocked M in the
 // scheduler or sleeping due to a user calling sleep.
-func timeoutWait(pid int, options int) (int, *syscall.WaitStatus, error) {
+func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, error) {
 	var (
 		status   syscall.WaitStatus
+		pid      = thread.Id
 		statchan = make(chan *waitstats)
 		errchan  = make(chan error)
 	)
@@ -556,25 +557,20 @@ func timeoutWait(pid int, options int) (int, *syscall.WaitStatus, error) {
 	}
 
 	go func(pid int) {
-		pid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
+		wpid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
 		if err != nil {
 			errchan <- fmt.Errorf("wait err %s %d", err, pid)
 		}
 
-		statchan <- &waitstats{pid: pid, status: &status}
+		statchan <- &waitstats{pid: wpid, status: &status}
 	}(pid)
 
 	select {
 	case s := <-statchan:
 		return s.pid, s.status, nil
 	case <-time.After(2 * time.Second):
-		if pid > 0 {
-			ps, err := parseProcessStatus(pid)
-			if err != nil {
-				return -1, nil, err
-			}
-			syscall.Tgkill(ps.ppid, ps.pid, syscall.SIGSTOP)
-		}
+		syscall.Tgkill(thread.Process.Pid, pid, syscall.SIGSTOP)
+		<-statchan
 
 		return 0, nil, TimeoutError{pid}
 	case err := <-errchan:
