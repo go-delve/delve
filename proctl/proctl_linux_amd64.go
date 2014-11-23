@@ -441,14 +441,14 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 				return err
 			}
 		}
-		stopTheWorld(dbp, thread, pid)
+		stopTheWorld(dbp)
 		return nil
 	}
 
 	// Check to see if we have hit a user set breakpoint.
 	if bp, ok := dbp.BreakPoints[pc-1]; ok {
 		if !bp.temp {
-			stopTheWorld(dbp, thread, pid)
+			stopTheWorld(dbp)
 		}
 		return nil
 	}
@@ -456,18 +456,13 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 	return fmt.Errorf("did not hit recognized breakpoint")
 }
 
-func stopTheWorld(dbp *DebuggedProcess, thread *ThreadContext, pid int) error {
+func stopTheWorld(dbp *DebuggedProcess) error {
 	// Loop through all threads and ensure that we
 	// stop the rest of them, so that by the time
 	// we return control to the user, all threads
 	// are inactive. We send SIGSTOP and ensure all
 	// threads are in in signal-delivery-stop mode.
 	for _, th := range dbp.Threads {
-		if th.Id == pid {
-			// This thread is already stopped.
-			continue
-		}
-
 		ps, err := parseProcessStatus(th.Id)
 		if err != nil {
 			return err
