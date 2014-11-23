@@ -95,7 +95,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 		return nil, err
 	}
 
-	_, err := syscall.Wait4(proc.Process.Pid, nil, syscall.WALL, nil)
+	_, _, err := wait(proc.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
@@ -161,9 +161,8 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 		return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 	}
 
-	var status syscall.WaitStatus
-	pid, e := syscall.Wait4(tid, &status, syscall.WALL, nil)
-	if e != nil {
+	pid, status, err := wait(tid, 0)
+	if err != nil {
 		return nil, err
 	}
 
@@ -177,7 +176,7 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
 	err := syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE)
 	if err == syscall.ESRCH {
-		_, err = syscall.Wait4(tid, nil, syscall.WALL, nil)
+		_, _, err = wait(tid, 0)
 		if err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
@@ -267,7 +266,9 @@ func (dbp *DebuggedProcess) Next() error {
 	for _, thread := range dbp.Threads {
 		err := thread.Next()
 		if err != nil {
-			if _, ok := err.(ProcessExitedError); !ok {
+			// TODO(dp): There are some coordination issues
+			// here that need to be resolved.
+			if _, ok := err.(TimeoutError); !ok && err != syscall.ESRCH {
 				return err
 			}
 		}
@@ -391,10 +392,8 @@ func (pe ProcessExitedError) Error() string {
 }
 
 func trapWait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus, error) {
-	var status syscall.WaitStatus
-
 	for {
-		wpid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
+		wpid, status, err := wait(pid, 0)
 		if err != nil {
 			return -1, nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
@@ -402,10 +401,10 @@ func trapWait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitSta
 			continue
 		}
 		if th, ok := dbp.Threads[wpid]; ok {
-			th.Status = &status
+			th.Status = status
 		}
 		if status.Exited() && wpid == dbp.Pid {
-			return -1, &status, ProcessExitedError{wpid}
+			return -1, status, ProcessExitedError{wpid}
 		}
 		if status.StopSignal() == syscall.SIGTRAP && status.TrapCause() == syscall.PTRACE_EVENT_CLONE {
 			err = addNewThread(dbp, wpid)
@@ -415,7 +414,7 @@ func trapWait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitSta
 			continue
 		}
 		if status.StopSignal() == syscall.SIGTRAP {
-			return wpid, &status, nil
+			return wpid, status, nil
 		}
 	}
 }
@@ -483,7 +482,7 @@ func stopTheWorld(dbp *DebuggedProcess, thread *ThreadContext, pid int) error {
 			return err
 		}
 
-		pid, err := syscall.Wait4(th.Id, nil, syscall.WALL, nil)
+		pid, _, err := wait(th.Id, 0)
 		if err != nil {
 			return fmt.Errorf("wait err %s %d", err, pid)
 		}
@@ -539,7 +538,6 @@ func (err TimeoutError) Error() string {
 // scheduler or sleeping due to a user calling sleep.
 func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, error) {
 	var (
-		status   syscall.WaitStatus
 		statchan = make(chan *waitstats)
 		errchan  = make(chan error)
 	)
@@ -554,12 +552,12 @@ func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, 
 	}
 
 	go func(pid int) {
-		wpid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
+		wpid, status, err := wait(pid, 0)
 		if err != nil {
 			errchan <- fmt.Errorf("wait err %s %d", err, pid)
 		}
 
-		statchan <- &waitstats{pid: wpid, status: &status}
+		statchan <- &waitstats{pid: wpid, status: status}
 	}(thread.Id)
 
 	select {
@@ -574,4 +572,10 @@ func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, 
 	case err := <-errchan:
 		return -1, nil, err
 	}
+}
+
+func wait(pid, options int) (int, *syscall.WaitStatus, error) {
+	var status syscall.WaitStatus
+	wpid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
+	return wpid, &status, err
 }

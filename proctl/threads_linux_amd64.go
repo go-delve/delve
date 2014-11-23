@@ -24,16 +24,7 @@ type ThreadContext struct {
 func (thread *ThreadContext) Registers() (*syscall.PtraceRegs, error) {
 	err := syscall.PtraceGetRegs(thread.Id, thread.Regs)
 	if err != nil {
-		syscall.Tgkill(thread.Process.Pid, thread.Id, syscall.SIGSTOP)
-		err = thread.wait()
-		if err != nil {
-			return nil, err
-		}
-
-		err := syscall.PtraceGetRegs(thread.Id, thread.Regs)
-		if err != nil {
-			return nil, fmt.Errorf("Registers(): %s", err)
-		}
+		return nil, err
 	}
 
 	return thread.Regs, nil
@@ -118,22 +109,7 @@ func (thread *ThreadContext) Clear(pc uint64) (*BreakPoint, error) {
 	}
 
 	if _, err := syscall.PtracePokeData(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
-		ps, err := parseProcessStatus(thread.Id)
-		if err != nil {
-			return nil, err
-		}
-
-		if ps.state != STATUS_TRACE_STOP {
-			if err := syscall.Tgkill(thread.Process.Pid, thread.Id, syscall.SIGSTOP); err != nil {
-				return nil, err
-			}
-			if _, err := syscall.Wait4(thread.Id, nil, syscall.WALL, nil); err != nil {
-				return nil, err
-			}
-			if _, err := syscall.PtracePokeData(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
-				return nil, err
-			}
-		}
+		return nil, err
 	}
 
 	delete(thread.Process.BreakPoints, pc)
@@ -194,10 +170,7 @@ func (thread *ThreadContext) Step() (err error) {
 
 	_, _, err = timeoutWait(thread, 0)
 	if err != nil {
-		if _, ok := err.(TimeoutError); ok {
-			return nil
-		}
-		return fmt.Errorf("step failed: %s", err.Error())
+		return err
 	}
 
 	return nil
@@ -223,7 +196,7 @@ func (thread *ThreadContext) Next() (err error) {
 	step := func() (uint64, error) {
 		err = thread.Step()
 		if err != nil {
-			return 0, fmt.Errorf("next stepping failed: %s", err.Error())
+			return 0, err
 		}
 
 		return thread.CurrentPC()
@@ -308,7 +281,6 @@ func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
 	if bp, ok := thread.Process.BreakPoints[pc]; ok {
 		_, err := thread.Clear(bp.Addr)
 		if err != nil {
-			fmt.Println("ERR", err)
 			return err
 		}
 
@@ -320,20 +292,6 @@ func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
 
 		regs.SetPC(bp.Addr)
 		return syscall.PtraceSetRegs(thread.Id, regs)
-	}
-
-	return nil
-}
-
-func (thread *ThreadContext) wait() error {
-	var status syscall.WaitStatus
-	_, err := syscall.Wait4(thread.Id, &status, 0, nil)
-	if err != nil {
-		if status.Exited() {
-			delete(thread.Process.Threads, thread.Id)
-			return ProcessExitedError{thread.Id}
-		}
-		return err
 	}
 
 	return nil
