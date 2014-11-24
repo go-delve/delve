@@ -2,6 +2,7 @@ package proctl
 
 import (
 	"bytes"
+	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
 	"strconv"
@@ -9,7 +10,6 @@ import (
 	"unsafe"
 
 	"github.com/derekparker/delve/dwarf/op"
-	"github.com/derekparker/delve/vendor/dwarf"
 )
 
 type Variable struct {

@@ -3,6 +3,7 @@
 package proctl
 
 import (
+	"debug/dwarf"
 	"debug/gosym"
 	"fmt"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/derekparker/delve/dwarf/frame"
-	"github.com/derekparker/delve/vendor/dwarf"
 )
 
 // Struct representing a debugged process. Holds onto pid, register values,

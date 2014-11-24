@@ -315,7 +315,7 @@ func TestFindReturnAddress(t *testing.T) {
 		readMemory(p.Pid, uintptr(addr), data)
 		addr = binary.LittleEndian.Uint64(data)
 
-		expected := uint64(0x400f03)
+		expected := uint64(0x400fbc)
 		if addr != expected {
 			t.Fatalf("return address not found correctly, expected %#v got %#v", expected, addr)
 		}

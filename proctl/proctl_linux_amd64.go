@@ -1,6 +1,7 @@
 package proctl
 
 import (
+	"debug/elf"
 	"debug/gosym"
 	"fmt"
 	"os"
@@ -8,7 +9,6 @@ import (
 	"syscall"
 
 	"github.com/derekparker/delve/dwarf/frame"
-	"github.com/derekparker/delve/vendor/elf"
 )
 
 func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
