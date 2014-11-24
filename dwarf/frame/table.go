@@ -157,12 +157,14 @@ func (frame *FrameContext) ExecuteUntilPC(instructions []byte) {
 	// We only need to execute the instructions until
 	// ctx.loc > ctx.addess (which is the address we
 	// are currently at in the traced process).
-	for frame.address >= frame.loc && frame.buf.Len() > 0 {
+	for frame.address != frame.loc && frame.buf.Len() > 0 {
 		executeDwarfInstruction(frame)
 	}
 	// make sure we get the update cfa offset
-	if frame.buf.Len() > 0 {
+	cfa := frame.CFAOffset()
+	for ncfa := cfa; ncfa == cfa && frame.buf.Len() > 0; {
 		executeDwarfInstruction(frame)
+		ncfa = frame.CFAOffset()
 	}
 }
 
