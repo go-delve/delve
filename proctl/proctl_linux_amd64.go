@@ -282,15 +282,16 @@ func (dbp *DebuggedProcess) Continue() error {
 	for _, thread := range dbp.Threads {
 		err := thread.Continue()
 		if err != nil {
-			return err
+			// TODO(dp): There are some coordination issues
+			// here that need to be resolved.
+			if _, ok := err.(TimeoutError); !ok && err != syscall.ESRCH {
+				return err
+			}
 		}
 	}
 
 	wpid, _, err := trapWait(dbp, -1, 0)
 	if err != nil {
-		if _, ok := err.(ProcessExitedError); !ok {
-			return nil
-		}
 		return err
 	}
 	return handleBreakPoint(dbp, wpid)

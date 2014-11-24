@@ -243,21 +243,31 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 			}
 		}
 		bp.temp = true
+		// Ensure we cleanup after ourselves no matter what.
+		defer thread.clearTempBreakpoint(bp.Addr)
 
-		err = thread.Continue()
-		if err != nil {
-			return err
+		for {
+			err = thread.Continue()
+			if err != nil {
+				return err
+			}
+			// We wait on -1 here because once we continue this
+			// thread, it's very possible the scheduler could of
+			// change the goroutine context on us, we there is
+			// no guarantee that waiting on this tid will ever
+			// return.
+			wpid, _, err := trapWait(thread.Process, -1, 0)
+			if err != nil {
+				return err
+			}
+			if wpid != thread.Id {
+				thread = thread.Process.Threads[wpid]
+			}
+			pc, _ = thread.CurrentPC()
+			if (pc - 1) == bp.Addr {
+				break
+			}
 		}
-
-		if _, _, err := trapWait(thread.Process, thread.Id, 0); err != nil {
-			return err
-		}
-
-		if err := thread.clearTempBreakpoint(bp.Addr); err != nil {
-			return err
-		}
-
-		pc, _ = thread.CurrentPC()
 	}
 
 	return nil

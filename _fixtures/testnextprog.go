@@ -7,7 +7,7 @@ import (
 )
 
 func sleepytime() {
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 }
 
 func helloworld() {
@@ -28,7 +28,7 @@ func testnext() {
 			break
 		}
 
-		helloworld()
+		sleepytime()
 	}
 
 	helloworld()
