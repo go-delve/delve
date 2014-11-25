@@ -549,14 +549,14 @@ func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, 
 		return 0, nil, nil
 	}
 
-	go func(pid int) {
+	go func(pid int, statchan chan *waitstats, errchan chan error) {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {
 			errchan <- fmt.Errorf("wait err %s %d", err, pid)
 		}
 
 		statchan <- &waitstats{pid: wpid, status: status}
-	}(thread.Id)
+	}(thread.Id, statchan, errchan)
 
 	select {
 	case s := <-statchan:
