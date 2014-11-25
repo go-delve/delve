@@ -30,6 +30,7 @@ func (thread *ThreadContext) Registers() (*syscall.PtraceRegs, error) {
 	return thread.Regs, nil
 }
 
+// Returns the current PC for this thread id.
 func (thread *ThreadContext) CurrentPC() (uint64, error) {
 	regs, err := thread.Registers()
 	if err != nil {
@@ -135,7 +136,8 @@ func (thread *ThreadContext) Continue() error {
 	return syscall.PtraceCont(thread.Id, 0)
 }
 
-// Steps through thread of execution.
+// Single steps this thread a single instruction, ensuring that
+// we correctly handle the likely case that we are at a breakpoint.
 func (thread *ThreadContext) Step() (err error) {
 	regs, err := thread.Registers()
 	if err != nil {
@@ -176,7 +178,13 @@ func (thread *ThreadContext) Step() (err error) {
 	return nil
 }
 
-// Steps through thread of execution.
+// Step to next source line. Next will step over functions,
+// and will follow through to the return address of a function.
+// Next is implemented on the thread context, however during the
+// course of this function running, it's very likely that the
+// goroutine our M is executing will switch to another M, therefore
+// this function cannot assume all execution will happen on this thread
+// in the traced process.
 func (thread *ThreadContext) Next() (err error) {
 	pc, err := thread.CurrentPC()
 	if err != nil {

@@ -277,7 +277,7 @@ func (dbp *DebuggedProcess) Next() error {
 	return nil
 }
 
-// Continue process until next breakpoint.
+// Resume process.
 func (dbp *DebuggedProcess) Continue() error {
 	for _, thread := range dbp.Threads {
 		err := thread.Continue()
@@ -297,7 +297,8 @@ func (dbp *DebuggedProcess) Continue() error {
 	return handleBreakPoint(dbp, wpid)
 }
 
-// Obtains register values from the debugged process.
+// Obtains register values from what Delve considers to be the current
+// thread of the traced process.
 func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
 	return dbp.CurrentThread.Registers()
 }
@@ -457,6 +458,7 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 	return fmt.Errorf("did not hit recognized breakpoint")
 }
 
+// Ensure execution of every traced thread is halted.
 func stopTheWorld(dbp *DebuggedProcess) error {
 	// Loop through all threads and ensure that we
 	// stop the rest of them, so that by the time
