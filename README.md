@@ -8,7 +8,7 @@ This project is currently in beta. Most of the functionality is there, but there
 
 ### Building
 
-Currently, Delve requires the following [patch](https://codereview.appspot.com/117280043/), however this change is vendored until Go 1.4 lands, so the project is go get-able.
+Delve requires Go 1.4 to build.
 
 ```
 go get github.com/derekparker/delve/cmd/dlv
