@@ -31,17 +31,7 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 		return err
 	}
 	reader.Seek(0)
-	goidoffset, err := parsegoidoffset(dbp, reader)
-	if err != nil {
-		return err
-	}
-	reader.Seek(0)
-	schedoffset, err := parseschedoffset(dbp, reader)
-	if err != nil {
-		return err
-	}
-	reader.Seek(0)
-	allgentryaddr, err := allgentryptr(dbp, reader)
+	allgentryaddr, err := addressFor(dbp, "runtime.allg", reader)
 	if err != nil {
 		return err
 	}
@@ -50,7 +40,7 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 	allg := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		err = printGoroutineInfo(dbp, allg+(i*8), goidoffset, schedoffset)
+		err = printGoroutineInfo(dbp, allg+(i*8), reader)
 		if err != nil {
 			return err
 		}
@@ -59,29 +49,44 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 	return nil
 }
 
-func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, goidoffset, schedoffset uint64) error {
+func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) error {
 	gaddrbytes, err := dbp.CurrentThread.readMemory(uintptr(addr), 8)
 	if err != nil {
 		return fmt.Errorf("error derefing *G %s", err)
 	}
-	gaddr := binary.LittleEndian.Uint64(gaddrbytes)
+	initialInstructions := append([]byte{op.DW_OP_addr}, gaddrbytes...)
 
-	goidbytes, err := dbp.CurrentThread.readMemory(uintptr(gaddr+goidoffset), 8)
+	reader.Seek(0)
+	goidaddr, err := offsetFor(dbp, "goid", reader, initialInstructions)
+	if err != nil {
+		return err
+	}
+	reader.Seek(0)
+	schedaddr, err := offsetFor(dbp, "sched", reader, initialInstructions)
+	if err != nil {
+		return err
+	}
+
+	goidbytes, err := dbp.CurrentThread.readMemory(uintptr(goidaddr), 8)
 	if err != nil {
 		return fmt.Errorf("error reading goid %s", err)
 	}
-	schedbytes, err := dbp.CurrentThread.readMemory(uintptr(gaddr+schedoffset+8), 8)
+	schedbytes, err := dbp.CurrentThread.readMemory(uintptr(schedaddr+8), 8)
 	if err != nil {
-		return fmt.Errorf("error reading goid %s", err)
+		return fmt.Errorf("error reading sched %s", err)
 	}
 	gopc := binary.LittleEndian.Uint64(schedbytes)
-	f, l, _ := dbp.GoSymTable.PCToLine(gopc)
-	fmt.Printf("Goroutine %d - %s:%d\n", binary.LittleEndian.Uint64(goidbytes), f, l)
+	f, l, fn := dbp.GoSymTable.PCToLine(gopc)
+	fname := ""
+	if fn != nil {
+		fname = fn.Name
+	}
+	fmt.Printf("Goroutine %d - %s:%d %s\n", binary.LittleEndian.Uint64(goidbytes), f, l, fname)
 	return nil
 }
 
 func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
-	entry, err := findDwarfEntry("runtime.allglen", reader)
+	entry, err := findDwarfEntry("runtime.allglen", reader, false)
 	if err != nil {
 		return 0, err
 	}
@@ -101,8 +106,8 @@ func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 	return binary.LittleEndian.Uint64(val), nil
 }
 
-func allgentryptr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
-	entry, err := findDwarfEntry("runtime.allg", reader)
+func addressFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader) (uint64, error) {
+	entry, err := findDwarfEntry(name, reader, false)
 	if err != nil {
 		return 0, err
 	}
@@ -119,8 +124,8 @@ func allgentryptr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 	return uint64(addr), nil
 }
 
-func parsegoidoffset(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
-	entry, err := findDwarfEntry("goid", reader)
+func offsetFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader, parentinstr []byte) (uint64, error) {
+	entry, err := findDwarfEntry(name, reader, true)
 	if err != nil {
 		return 0, err
 	}
@@ -128,24 +133,7 @@ func parsegoidoffset(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error)
 	if !ok {
 		return 0, fmt.Errorf("type assertion failed")
 	}
-	offset, err := op.ExecuteStackProgram(0, instructions)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(offset), nil
-}
-
-func parseschedoffset(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
-	entry, err := findDwarfEntry("sched", reader)
-	if err != nil {
-		return 0, err
-	}
-	instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
-	if !ok {
-		return 0, fmt.Errorf("type assertion failed")
-	}
-	offset, err := op.ExecuteStackProgram(0, instructions)
+	offset, err := op.ExecuteStackProgram(0, append(parentinstr, instructions...))
 	if err != nil {
 		return 0, err
 	}
@@ -171,7 +159,7 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	reader := data.Reader()
 	err = findFunction(fn.Name, reader)
 
-	entry, err := findDwarfEntry(name, reader)
+	entry, err := findDwarfEntry(name, reader, false)
 	if err != nil {
 		return nil, err
 	}
@@ -226,14 +214,20 @@ func findFunction(name string, reader *dwarf.Reader) error {
 	return nil
 }
 
-func findDwarfEntry(name string, reader *dwarf.Reader) (*dwarf.Entry, error) {
+func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return nil, err
 		}
 
-		if entry.Tag != dwarf.TagVariable && entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagMember {
-			continue
+		if member {
+			if entry.Tag != dwarf.TagMember {
+				continue
+			}
+		} else {
+			if entry.Tag != dwarf.TagVariable && entry.Tag != dwarf.TagFormalParameter {
+				continue
+			}
 		}
 
 		n, ok := entry.Val(dwarf.AttrName).(string)
