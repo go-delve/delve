@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/vendor/elf"
@@ -319,11 +318,7 @@ func (dbp *DebuggedProcess) Continue() error {
 	for _, thread := range dbp.Threads {
 		err := thread.Continue()
 		if err != nil {
-			// TODO(dp): There are some coordination issues
-			// here that need to be resolved.
-			if _, ok := err.(TimeoutError); !ok && err != syscall.ESRCH {
-				return err
-			}
+			return err
 		}
 	}
 
@@ -556,57 +551,6 @@ func addNewThread(dbp *DebuggedProcess, pid int) error {
 type waitstats struct {
 	pid    int
 	status *syscall.WaitStatus
-}
-
-type TimeoutError struct {
-	pid int
-}
-
-func (err TimeoutError) Error() string {
-	return fmt.Sprintf("timeout waiting for %d", err.pid)
-}
-
-// TODO(dp): this is a hacky, racy implementation. Ideally this method will
-// become defunct and replaced by a non-blocking incremental sleeping wait.
-// The purpose is to detect whether a thread is sleeping. However, this is
-// tricky because a thread can be sleeping due to being a blocked M in the
-// scheduler or sleeping due to a user calling sleep.
-func timeoutWait(thread *ThreadContext, options int) (int, *syscall.WaitStatus, error) {
-	var (
-		statchan = make(chan *waitstats)
-		errchan  = make(chan error)
-	)
-
-	ps, err := parseProcessStatus(thread.Id)
-	if err != nil {
-		return -1, nil, err
-	}
-
-	if ps.state == STATUS_SLEEPING {
-		return 0, nil, nil
-	}
-
-	go func(pid int, statchan chan *waitstats, errchan chan error) {
-		wpid, status, err := wait(pid, 0)
-		if err != nil {
-			errchan <- fmt.Errorf("wait err %s %d", err, pid)
-		}
-
-		statchan <- &waitstats{pid: wpid, status: status}
-	}(thread.Id, statchan, errchan)
-
-	select {
-	case s := <-statchan:
-		return s.pid, s.status, nil
-	case <-time.After(10 * time.Millisecond):
-		if err := syscall.Tgkill(thread.Process.Pid, thread.Id, syscall.SIGSTOP); err != nil {
-			return -1, nil, err
-		}
-		<-statchan
-		return 0, nil, TimeoutError{thread.Id}
-	case err := <-errchan:
-		return -1, nil, err
-	}
 }
 
 func wait(pid, options int) (int, *syscall.WaitStatus, error) {

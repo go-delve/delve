@@ -170,7 +170,7 @@ func (thread *ThreadContext) Step() (err error) {
 		return fmt.Errorf("step failed: %s", err.Error())
 	}
 
-	_, _, err = timeoutWait(thread, 0)
+	_, _, err = wait(thread.Id, 0)
 	if err != nil {
 		return err
 	}

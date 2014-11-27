@@ -102,9 +102,7 @@ func TestBreakPoint(t *testing.T) {
 		}
 
 		err = p.Step()
-		if _, ok := err.(proctl.TimeoutError); !ok {
-			assertNoError(err, t, "Step()")
-		}
+		assertNoError(err, t, "Step()")
 
 		pc, err = p.CurrentPC()
 		if err != nil {
