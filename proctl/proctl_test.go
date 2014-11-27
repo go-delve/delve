@@ -44,10 +44,17 @@ func currentLineNumber(p *proctl.DebuggedProcess, t *testing.T) (string, int) {
 
 func TestStep(t *testing.T) {
 	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
+		helloworldfunc := p.GoSymTable.LookupFunc("main.helloworld")
+		helloworldaddr := helloworldfunc.Entry
+
+		_, err := p.Break(uintptr(helloworldaddr))
+		assertNoError(err, t, "Break()")
+		assertNoError(p.Continue(), t, "Continue()")
+
 		regs := helper.GetRegisters(p, t)
 		rip := regs.PC()
 
-		err := p.Step()
+		err = p.Step()
 		assertNoError(err, t, "Step()")
 
 		regs = helper.GetRegisters(p, t)

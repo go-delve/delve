@@ -249,13 +249,29 @@ func (dbp *DebuggedProcess) LoadInformation() error {
 
 // Steps through process.
 func (dbp *DebuggedProcess) Step() (err error) {
-	for _, thread := range dbp.Threads {
-		err := thread.Step()
-		if err != nil {
-			if _, ok := err.(ProcessExitedError); !ok {
+	var (
+		th *ThreadContext
+		ok bool
+	)
+
+	allm, err := dbp.CurrentThread.AllM()
+	if err != nil {
+		return err
+	}
+
+	for _, m := range allm {
+		th, ok = dbp.Threads[m.procid]
+		if !ok {
+			th = dbp.Threads[dbp.Pid]
+		}
+
+		if m.blocked == 0 {
+			err := th.Step()
+			if err != nil {
 				return err
 			}
 		}
+
 	}
 
 	return nil
@@ -263,18 +279,39 @@ func (dbp *DebuggedProcess) Step() (err error) {
 
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
-	for _, thread := range dbp.Threads {
-		err := thread.Next()
-		if err != nil {
-			// TODO(dp): There are some coordination issues
-			// here that need to be resolved.
-			if _, ok := err.(TimeoutError); !ok && err != syscall.ESRCH {
-				return err
-			}
-		}
+	var (
+		th *ThreadContext
+		ok bool
+	)
+
+	allm, err := dbp.CurrentThread.AllM()
+	if err != nil {
+		return err
 	}
 
-	return nil
+	for _, m := range allm {
+		th, ok = dbp.Threads[m.procid]
+		if !ok {
+			th = dbp.Threads[dbp.Pid]
+		}
+
+		if m.blocked == 1 {
+			// Continue any blocked M so that the
+			// scheduler can continue to do its'
+			// job correctly.
+			err := th.Continue()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		err := th.Next()
+		if err != nil && err != syscall.ESRCH {
+			return err
+		}
+	}
+	return stopTheWorld(dbp)
 }
 
 // Resume process.

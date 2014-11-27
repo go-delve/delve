@@ -19,6 +19,168 @@ type Variable struct {
 	Type  string
 }
 
+type M struct {
+	procid   int
+	spinning uint8
+	blocked  uint8
+	curg     uintptr
+}
+
+// Parses and returns select info on the internal M
+// data structures used by the Go scheduler.
+func (thread *ThreadContext) AllM() ([]*M, error) {
+	data, err := thread.Process.Executable.DWARF()
+	if err != nil {
+		return nil, err
+	}
+	reader := data.Reader()
+
+	allmaddr, err := parseAllMPtr(thread.Process, reader)
+	if err != nil {
+		return nil, err
+	}
+	mptr, err := thread.readMemory(uintptr(allmaddr), 8)
+	if err != nil {
+		return nil, err
+	}
+	m := binary.LittleEndian.Uint64(mptr)
+	if m == 0 {
+		return nil, fmt.Errorf("allm contains no M pointers")
+	}
+
+	// parse addresses
+	procidInstructions, err := instructionsForMember("procid", thread.Process, reader)
+	if err != nil {
+		return nil, err
+	}
+	spinningInstructions, err := instructionsForMember("spinning", thread.Process, reader)
+	if err != nil {
+		return nil, err
+	}
+	alllinkInstructions, err := instructionsForMember("alllink", thread.Process, reader)
+	if err != nil {
+		return nil, err
+	}
+	blockedInstructions, err := instructionsForMember("blocked", thread.Process, reader)
+	if err != nil {
+		return nil, err
+	}
+	curgInstructions, err := instructionsForMember("curg", thread.Process, reader)
+	if err != nil {
+		return nil, err
+	}
+
+	var allm []*M
+	for {
+		// curg
+		curgAddr, err := executeMemberStackProgram(mptr, curgInstructions)
+		if err != nil {
+			return nil, err
+		}
+		curgBytes, err := thread.readMemory(uintptr(curgAddr), 8)
+		if err != nil {
+			return nil, fmt.Errorf("could not read curg %#v %s", curgAddr, err)
+		}
+		curg := binary.LittleEndian.Uint64(curgBytes)
+
+		// procid
+		procidAddr, err := executeMemberStackProgram(mptr, procidInstructions)
+		if err != nil {
+			return nil, err
+		}
+		procidBytes, err := thread.readMemory(uintptr(procidAddr), 8)
+		if err != nil {
+			return nil, fmt.Errorf("could not read procid %#v %s", procidAddr, err)
+		}
+		procid := binary.LittleEndian.Uint64(procidBytes)
+
+		// spinning
+		spinningAddr, err := executeMemberStackProgram(mptr, spinningInstructions)
+		if err != nil {
+			return nil, err
+		}
+		spinBytes, err := thread.readMemory(uintptr(spinningAddr), 1)
+		if err != nil {
+			return nil, fmt.Errorf("could not read spinning %#v %d", spinningAddr, err)
+		}
+
+		// blocked
+		blockedAddr, err := executeMemberStackProgram(mptr, blockedInstructions)
+		if err != nil {
+			return nil, err
+		}
+		blockBytes, err := thread.readMemory(uintptr(blockedAddr), 1)
+		if err != nil {
+			return nil, fmt.Errorf("could not read blocked %#v %s", blockedAddr, err)
+		}
+
+		allm = append(allm, &M{
+			procid:   int(procid),
+			blocked:  blockBytes[0],
+			spinning: spinBytes[0],
+			curg:     uintptr(curg),
+		})
+
+		// Follow the linked list
+		alllinkAddr, err := executeMemberStackProgram(mptr, alllinkInstructions)
+		if err != nil {
+			return nil, err
+		}
+		mptr, err = thread.readMemory(uintptr(alllinkAddr), 8)
+		if err != nil {
+			return nil, fmt.Errorf("could not read alllink %#v %s", alllinkAddr, err)
+		}
+		m = binary.LittleEndian.Uint64(mptr)
+
+		if m == 0 {
+			break
+		}
+	}
+
+	return allm, nil
+}
+
+func instructionsForMember(member string, dbp *DebuggedProcess, reader *dwarf.Reader) ([]byte, error) {
+	reader.Seek(0)
+	entry, err := findDwarfEntry(member, reader, true)
+	if err != nil {
+		return nil, err
+	}
+	instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
+	if !ok {
+		return nil, fmt.Errorf("type assertion failed")
+	}
+	return instructions, nil
+}
+
+func executeMemberStackProgram(base, instructions []byte) (uint64, error) {
+	parentInstructions := append([]byte{op.DW_OP_addr}, base...)
+	addr, err := op.ExecuteStackProgram(0, append(parentInstructions, instructions...))
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(addr), nil
+}
+
+func parseAllMPtr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
+	entry, err := findDwarfEntry("runtime.allm", reader, false)
+	if err != nil {
+		return 0, err
+	}
+
+	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
+	if !ok {
+		return 0, fmt.Errorf("type assertion failed")
+	}
+	addr, err := op.ExecuteStackProgram(0, instructions)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(addr), nil
+}
+
 func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 	data, err := dbp.Executable.DWARF()
 	if err != nil {
@@ -225,7 +387,7 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 				continue
 			}
 		} else {
-			if entry.Tag != dwarf.TagVariable && entry.Tag != dwarf.TagFormalParameter {
+			if entry.Tag != dwarf.TagVariable && entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagStructType {
 				continue
 			}
 		}
