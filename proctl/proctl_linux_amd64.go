@@ -548,11 +548,6 @@ func addNewThread(dbp *DebuggedProcess, pid int) error {
 	return nil
 }
 
-type waitstats struct {
-	pid    int
-	status *syscall.WaitStatus
-}
-
 func wait(pid, options int) (int, *syscall.WaitStatus, error) {
 	var status syscall.WaitStatus
 	wpid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
