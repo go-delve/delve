@@ -92,6 +92,16 @@ func (c *Commands) Find(cmdstr string) cmdfunc {
 
 	return noCmdAvailable
 }
+// FindPrefix returns a slice of command names with the given prefix.
+func (c *Commands) FindPrefix(prefix string) []string {
+	var matches  []string
+	for _, cmd := range c.cmds {
+		if strings.HasPrefix(cmd.aliases[0], prefix) {
+			matches = append(matches, cmd.aliases[0])
+		}
+	}
+	return matches
+}
 
 func CommandFunc(fn func() error) cmdfunc {
 	return func(p *proctl.DebuggedProcess, args ...string) error {
