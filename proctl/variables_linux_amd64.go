@@ -319,7 +319,9 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, fmt.Errorf("could not func function scope")
 	}
 	reader := data.Reader()
-	err = findFunction(fn.Name, reader)
+	if err = findFunction(fn.Name, reader); err != nil {
+		return nil, err
+	}
 
 	entry, err := findDwarfEntry(name, reader, false)
 	if err != nil {
