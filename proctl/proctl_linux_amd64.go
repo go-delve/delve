@@ -80,7 +80,25 @@ func (bpe BreakPointExistsError) Error() string {
 }
 
 func Attach(pid int) (*DebuggedProcess, error) {
-	return newDebugProcess(pid, true)
+	dbp, err := newDebugProcess(pid, true)
+	if err != nil {
+		return nil, err
+	}
+	// Attach to all currently active threads.
+	allm, err := dbp.CurrentThread.AllM()
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range allm {
+		if m.procid == 0 {
+			continue
+		}
+		_, err := dbp.AttachThread(m.procid)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return dbp, nil
 }
 
 func Launch(cmd []string) (*DebuggedProcess, error) {
@@ -133,14 +151,6 @@ func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 	err = dbp.LoadInformation()
 	if err != nil {
 		return nil, err
-	}
-
-	// Attach to all currently active threads.
-	for _, tid := range threadIds(pid) {
-		_, err := dbp.AttachThread(tid)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return &dbp, nil
