@@ -296,11 +296,12 @@ func printcontext(p *proctl.DebuggedProcess) error {
 				}
 			}
 
+			arrow := "  "
 			if i == l {
-				line = "\033[34m=>\033[0m" + line
+				arrow = "=>"
 			}
 
-			context = append(context, fmt.Sprintf("\033[34m%d\033[0m: %s", i, line))
+			context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m: %s", arrow, i, line))
 		}
 	} else {
 		fmt.Printf("Stopped at: 0x%x\n", regs.PC())
