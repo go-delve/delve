@@ -101,7 +101,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		}
 		spinBytes, err := thread.readMemory(uintptr(spinningAddr), 1)
 		if err != nil {
-			return nil, fmt.Errorf("could not read spinning %#v %d", spinningAddr, err)
+			return nil, fmt.Errorf("could not read spinning %#v %s", spinningAddr, err)
 		}
 
 		// blocked
