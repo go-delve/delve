@@ -109,6 +109,7 @@ func main() {
 		}
 	}
 }
+
 func handleExit(t *term, dbp *proctl.DebuggedProcess, status int) {
 	errno := goreadline.WriteHistoryToFile(historyFile)
 	fmt.Println("readline:", errno)
