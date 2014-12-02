@@ -269,7 +269,7 @@ func printcontext(p *proctl.DebuggedProcess) error {
 	f, l, fn := p.GoSymTable.PCToLine(regs.PC())
 
 	if fn != nil {
-		fmt.Printf("Stopped at: %s:%d\n", f, l)
+		fmt.Printf("current loc: %s %s:%d\n", fn.Name, f, l)
 		file, err := os.Open(f)
 		if err != nil {
 			return err

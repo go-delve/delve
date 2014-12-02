@@ -162,7 +162,7 @@ func parseCommand(cmdstr string) (string, []string) {
 }
 
 func (t *term) promptForInput() (string, error) {
-	prompt := "dlv> "
+	prompt := "(dlv) "
 	linep := goreadline.ReadLine(&prompt)
 	if linep == nil {
 		return "", io.EOF
