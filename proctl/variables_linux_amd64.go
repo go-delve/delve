@@ -319,7 +319,7 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, fmt.Errorf("could not func function scope")
 	}
 	reader := data.Reader()
-	if err = findFunction(fn.Name, reader); err != nil {
+	if err = seekToFunctionEntry(fn.Name, reader); err != nil {
 		return nil, err
 	}
 
@@ -351,11 +351,11 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	return &Variable{Name: name, Type: t.String(), Value: val}, nil
 }
 
-// findFunction is basically used to seek the dwarf.Reader to
+// seekToFunctionEntry is basically used to seek the dwarf.Reader to
 // the function entry that represents our current scope. From there
 // we can find the first child entry that matches the var name and
 // use it to determine the value of the variable.
-func findFunction(name string, reader *dwarf.Reader) error {
+func seekToFunctionEntry(name string, reader *dwarf.Reader) error {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return err
