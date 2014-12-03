@@ -32,6 +32,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"neg", "-1", "int"},
 		{"i8", "1", "int8"},
 		{"f32", "1.2", "float32"},
+		{"a6.Baz", "8", "int"},
 	}
 
 	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {

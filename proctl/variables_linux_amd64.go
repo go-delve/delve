@@ -49,23 +49,23 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 	}
 
 	// parse addresses
-	procidInstructions, err := instructionsForMember("procid", thread.Process, reader)
+	procidInstructions, err := instructionsFor("procid", thread.Process, reader, true)
 	if err != nil {
 		return nil, err
 	}
-	spinningInstructions, err := instructionsForMember("spinning", thread.Process, reader)
+	spinningInstructions, err := instructionsFor("spinning", thread.Process, reader, true)
 	if err != nil {
 		return nil, err
 	}
-	alllinkInstructions, err := instructionsForMember("alllink", thread.Process, reader)
+	alllinkInstructions, err := instructionsFor("alllink", thread.Process, reader, true)
 	if err != nil {
 		return nil, err
 	}
-	blockedInstructions, err := instructionsForMember("blocked", thread.Process, reader)
+	blockedInstructions, err := instructionsFor("blocked", thread.Process, reader, true)
 	if err != nil {
 		return nil, err
 	}
-	curgInstructions, err := instructionsForMember("curg", thread.Process, reader)
+	curgInstructions, err := instructionsFor("curg", thread.Process, reader, true)
 	if err != nil {
 		return nil, err
 	}
@@ -140,15 +140,19 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 	return allm, nil
 }
 
-func instructionsForMember(member string, dbp *DebuggedProcess, reader *dwarf.Reader) ([]byte, error) {
+func instructionsFor(name string, dbp *DebuggedProcess, reader *dwarf.Reader, member bool) ([]byte, error) {
 	reader.Seek(0)
-	entry, err := findDwarfEntry(member, reader, true)
+	entry, err := findDwarfEntry(name, reader, member)
 	if err != nil {
 		return nil, err
 	}
-	instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
+	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return nil, fmt.Errorf("type assertion failed")
+		instructions, ok = entry.Val(dwarf.AttrDataMemberLoc).([]byte)
+		if !ok {
+			return nil, fmt.Errorf("type assertion failed")
+		}
+		return instructions, nil
 	}
 	return instructions, nil
 }
@@ -314,13 +318,20 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	fn := thread.Process.GoSymTable.PCToFunc(pc)
 	if fn == nil {
 		return nil, fmt.Errorf("could not func function scope")
 	}
+
 	reader := data.Reader()
 	if err = seekToFunctionEntry(fn.Name, reader); err != nil {
 		return nil, err
+	}
+
+	if strings.Contains(name, ".") {
+		idx := strings.Index(name, ".")
+		return evaluateStructMember(thread, data, reader, name[:idx], name[idx+1:])
 	}
 
 	entry, err := findDwarfEntry(name, reader, false)
@@ -401,6 +412,32 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 		return entry, nil
 	}
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
+}
+
+func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent, member string) (*Variable, error) {
+	parentInstr, err := instructionsFor(parent, thread.Process, reader, false)
+	if err != nil {
+		return nil, err
+	}
+	memberInstr, err := instructionsFor(member, thread.Process, reader, true)
+	if err != nil {
+		return nil, err
+	}
+	reader.Seek(0)
+	entry, err := findDwarfEntry(member, reader, true)
+	if err != nil {
+		return nil, err
+	}
+	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
+	if !ok {
+		return nil, fmt.Errorf("type assertion failed")
+	}
+	t, err := data.Type(offset)
+	if err != nil {
+		return nil, err
+	}
+	val, err := thread.extractValue(append(parentInstr, memberInstr...), 0, t)
+	return &Variable{Name: strings.Join([]string{parent, member}, "."), Type: t.String(), Value: val}, nil
 }
 
 // Extracts the value from the instructions given in the DW_AT_location entry.
