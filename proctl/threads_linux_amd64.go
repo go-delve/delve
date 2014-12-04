@@ -123,13 +123,13 @@ func (thread *ThreadContext) Continue() error {
 	// if so, single step over it before continuing.
 	regs, err := thread.Registers()
 	if err != nil {
-		return err
+		return fmt.Errorf("could not get registers %s", err)
 	}
 
 	if _, ok := thread.Process.BreakPoints[regs.PC()-1]; ok {
 		err := thread.Step()
 		if err != nil {
-			return err
+			return fmt.Errorf("could not step %s", err)
 		}
 	}
 
@@ -141,22 +141,22 @@ func (thread *ThreadContext) Continue() error {
 func (thread *ThreadContext) Step() (err error) {
 	regs, err := thread.Registers()
 	if err != nil {
-		return err
+		return fmt.Errorf("could not get registers %s", err)
 	}
 
 	bp, ok := thread.Process.BreakPoints[regs.PC()-1]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
-		_, err = thread.Process.Clear(bp.Addr)
+		_, err = thread.Clear(bp.Addr)
 		if err != nil {
-			return err
+			return fmt.Errorf("could not clear breakpoint %s", err)
 		}
 
 		// Reset program counter to our restored instruction.
 		regs.SetPC(bp.Addr)
 		err = syscall.PtraceSetRegs(thread.Id, regs)
 		if err != nil {
-			return err
+			return fmt.Errorf("could not set registers %s", err)
 		}
 
 		// Restore breakpoint now that we have passed it.
