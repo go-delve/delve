@@ -24,7 +24,7 @@ type ThreadContext struct {
 func (thread *ThreadContext) Registers() (*syscall.PtraceRegs, error) {
 	err := syscall.PtraceGetRegs(thread.Id, thread.Regs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not get registers %s", err)
 	}
 
 	return thread.Regs, nil
@@ -110,7 +110,7 @@ func (thread *ThreadContext) Clear(pc uint64) (*BreakPoint, error) {
 	}
 
 	if _, err := syscall.PtracePokeData(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not clear breakpoint %s", err)
 	}
 
 	delete(thread.Process.BreakPoints, pc)
@@ -141,7 +141,7 @@ func (thread *ThreadContext) Continue() error {
 func (thread *ThreadContext) Step() (err error) {
 	regs, err := thread.Registers()
 	if err != nil {
-		return fmt.Errorf("could not get registers %s", err)
+		return err
 	}
 
 	bp, ok := thread.Process.BreakPoints[regs.PC()-1]
@@ -149,7 +149,7 @@ func (thread *ThreadContext) Step() (err error) {
 		// Clear the breakpoint so that we can continue execution.
 		_, err = thread.Clear(bp.Addr)
 		if err != nil {
-			return fmt.Errorf("could not clear breakpoint %s", err)
+			return err
 		}
 
 		// Reset program counter to our restored instruction.
