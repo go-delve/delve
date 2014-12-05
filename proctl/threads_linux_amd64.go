@@ -4,8 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"os"
-	"strconv"
+
 	"syscall"
 
 	"github.com/derekparker/delve/dwarf/frame"
@@ -313,31 +312,4 @@ func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
 	}
 
 	return nil
-}
-
-func threadIds(pid int) []int {
-	var threads []int
-	dir, err := os.Open(fmt.Sprintf("/proc/%d/task", pid))
-	if err != nil {
-		panic(err)
-	}
-	defer dir.Close()
-
-	names, err := dir.Readdirnames(0)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, strid := range names {
-		tid, err := strconv.Atoi(strid)
-		if err != nil {
-			panic(err)
-		}
-
-		if tid != pid {
-			threads = append(threads, tid)
-		}
-	}
-
-	return threads
 }
