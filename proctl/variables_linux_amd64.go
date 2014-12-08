@@ -29,11 +29,7 @@ type M struct {
 // Parses and returns select info on the internal M
 // data structures used by the Go scheduler.
 func (thread *ThreadContext) AllM() ([]*M, error) {
-	data, err := thread.Process.Executable.DWARF()
-	if err != nil {
-		return nil, err
-	}
-	reader := data.Reader()
+	reader := thread.Process.Dwarf.Reader()
 
 	allmaddr, err := parseAllMPtr(thread.Process, reader)
 	if err != nil {
@@ -186,11 +182,7 @@ func parseAllMPtr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 }
 
 func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
-	data, err := dbp.Executable.DWARF()
-	if err != nil {
-		return err
-	}
-	reader := data.Reader()
+	reader := dbp.Dwarf.Reader()
 
 	allglen, err := allglenval(dbp, reader)
 	if err != nil {
@@ -309,10 +301,7 @@ func offsetFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader, parentin
 
 // Returns the value of the named symbol.
 func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
-	data, err := thread.Process.Executable.DWARF()
-	if err != nil {
-		return nil, err
-	}
+	data := thread.Process.Dwarf
 
 	pc, err := thread.CurrentPC()
 	if err != nil {
