@@ -294,7 +294,7 @@ func (thread *ThreadContext) ReturnAddressFromOffset(offset int64) uint64 {
 
 	retaddr := int64(regs.SP()) + offset
 	data := make([]byte, 8)
-	syscall.PtracePeekText(thread.Id, uintptr(retaddr), data)
+	ReadMemory(thread.Id, uintptr(retaddr), data)
 	return binary.LittleEndian.Uint64(data)
 }
 
