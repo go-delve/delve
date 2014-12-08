@@ -16,7 +16,6 @@ type DebuggedProcess struct {
 	Pid           int
 	Process       *os.Process
 	Executable    *elf.File
-	Symbols       []elf.Symbol
 	GoSymTable    *gosym.Table
 	FrameEntries  *frame.FrameDescriptionEntries
 	BreakPoints   map[uint64]*BreakPoint
