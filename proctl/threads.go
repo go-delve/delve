@@ -16,17 +16,22 @@ type ThreadContext struct {
 	Id      int
 	Process *DebuggedProcess
 	Status  *syscall.WaitStatus
-	Regs    *syscall.PtraceRegs
+}
+
+type Registers interface {
+	PC() uint64
+	SP() uint64
+	SetPC(int, uint64) error
 }
 
 // Obtains register values from the debugged process.
-func (thread *ThreadContext) Registers() (*syscall.PtraceRegs, error) {
-	err := syscall.PtraceGetRegs(thread.Id, thread.Regs)
+func (thread *ThreadContext) Registers() (Registers, error) {
+	regs, err := registers(thread.Id)
 	if err != nil {
 		return nil, fmt.Errorf("could not get registers %s", err)
 	}
 
-	return thread.Regs, nil
+	return regs, nil
 }
 
 // Returns the current PC for this thread id.
@@ -152,8 +157,7 @@ func (thread *ThreadContext) Step() (err error) {
 		}
 
 		// Reset program counter to our restored instruction.
-		regs.SetPC(bp.Addr)
-		err = syscall.PtraceSetRegs(thread.Id, regs)
+		err = regs.SetPC(thread.Id, bp.Addr)
 		if err != nil {
 			return fmt.Errorf("could not set registers %s", err)
 		}
@@ -288,7 +292,7 @@ func (thread *ThreadContext) ReturnAddressFromOffset(offset int64) uint64 {
 		panic("Could not obtain register values")
 	}
 
-	retaddr := int64(regs.Rsp) + offset
+	retaddr := int64(regs.SP()) + offset
 	data := make([]byte, 8)
 	syscall.PtracePeekText(thread.Id, uintptr(retaddr), data)
 	return binary.LittleEndian.Uint64(data)
@@ -307,8 +311,7 @@ func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
 			return err
 		}
 
-		regs.SetPC(bp.Addr)
-		return syscall.PtraceSetRegs(thread.Id, regs)
+		return regs.SetPC(thread.Id, bp.Addr)
 	}
 
 	return nil

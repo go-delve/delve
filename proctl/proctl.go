@@ -277,7 +277,7 @@ func (dbp *DebuggedProcess) Continue() error {
 
 // Obtains register values from what Delve considers to be the current
 // thread of the traced process.
-func (dbp *DebuggedProcess) Registers() (*syscall.PtraceRegs, error) {
+func (dbp *DebuggedProcess) Registers() (Registers, error) {
 	return dbp.CurrentThread.Registers()
 }
 

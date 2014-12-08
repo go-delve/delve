@@ -50,7 +50,7 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		addr := uint64(int64(regs.Rsp) + ret)
+		addr := uint64(int64(regs.SP()) + ret)
 		data := make([]byte, 8)
 
 		syscall.PtracePeekText(p.Pid, uintptr(addr), data)

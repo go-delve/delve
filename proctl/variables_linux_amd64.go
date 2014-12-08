@@ -452,7 +452,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 		if err != nil {
 			return "", err
 		}
-		offset = int64(regs.Rsp) + offset
+		offset = int64(regs.SP()) + offset
 	}
 
 	// If we have a user defined type, find the

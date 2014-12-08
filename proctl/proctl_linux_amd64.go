@@ -28,7 +28,6 @@ func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
 	dbp.Threads[tid] = &ThreadContext{
 		Id:      tid,
 		Process: dbp,
-		Regs:    new(syscall.PtraceRegs),
 	}
 
 	return dbp.Threads[tid], nil

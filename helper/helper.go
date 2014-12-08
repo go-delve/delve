@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 
 	"github.com/derekparker/delve/proctl"
@@ -13,7 +12,7 @@ import (
 
 type testfunc func(p *proctl.DebuggedProcess)
 
-func GetRegisters(p *proctl.DebuggedProcess, t *testing.T) *syscall.PtraceRegs {
+func GetRegisters(p *proctl.DebuggedProcess, t *testing.T) proctl.Registers {
 	regs, err := p.Registers()
 	if err != nil {
 		t.Fatal("Registers():", err)
