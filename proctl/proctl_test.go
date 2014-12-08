@@ -3,7 +3,6 @@ package proctl_test
 import (
 	"bytes"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/derekparker/delve/helper"
@@ -12,7 +11,7 @@ import (
 
 func dataAtAddr(pid int, addr uint64) ([]byte, error) {
 	data := make([]byte, 1)
-	_, err := syscall.PtracePeekData(pid, uintptr(addr), data)
+	_, err := proctl.ReadMemory(pid, uintptr(addr), data)
 	if err != nil {
 		return nil, err
 	}
