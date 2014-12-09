@@ -28,10 +28,10 @@ func registers(tid int) (Registers, error) {
 	return &Regs{&regs}, nil
 }
 
-func WriteMemory(tid int, addr uintptr, data []byte) (int, error) {
+func writeMemory(tid int, addr uintptr, data []byte) (int, error) {
 	return syscall.PtracePokeData(tid, addr, data)
 }
 
-func ReadMemory(tid int, addr uintptr, data []byte) (int, error) {
+func readMemory(tid int, addr uintptr, data []byte) (int, error) {
 	return syscall.PtracePeekData(tid, addr, data)
 }

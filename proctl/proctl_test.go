@@ -1,15 +1,34 @@
-package proctl_test
+package proctl
 
 import (
 	"bytes"
+	"encoding/binary"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
-
-	"github.com/derekparker/delve/helper"
-	"github.com/derekparker/delve/proctl"
 )
 
-func getRegisters(p *proctl.DebuggedProcess, t *testing.T) proctl.Registers {
+func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess)) {
+	runtime.LockOSThread()
+	base := filepath.Base(name)
+	if err := exec.Command("go", "build", "-gcflags=-N -l", "-o", base, name+".go").Run(); err != nil {
+		t.Fatalf("Could not compile %s due to %s", name, err)
+	}
+	defer os.Remove("./" + base)
+
+	p, err := Launch([]string{"./" + base})
+	if err != nil {
+		t.Fatal("Launch():", err)
+	}
+
+	defer p.Process.Kill()
+
+	fn(p)
+}
+
+func getRegisters(p *DebuggedProcess, t *testing.T) Registers {
 	regs, err := p.Registers()
 	if err != nil {
 		t.Fatal("Registers():", err)
@@ -20,7 +39,7 @@ func getRegisters(p *proctl.DebuggedProcess, t *testing.T) proctl.Registers {
 
 func dataAtAddr(pid int, addr uint64) ([]byte, error) {
 	data := make([]byte, 1)
-	_, err := proctl.ReadMemory(pid, uintptr(addr), data)
+	_, err := readMemory(pid, uintptr(addr), data)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +53,7 @@ func assertNoError(err error, t *testing.T, s string) {
 	}
 }
 
-func currentPC(p *proctl.DebuggedProcess, t *testing.T) uint64 {
+func currentPC(p *DebuggedProcess, t *testing.T) uint64 {
 	pc, err := p.CurrentPC()
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +62,7 @@ func currentPC(p *proctl.DebuggedProcess, t *testing.T) uint64 {
 	return pc
 }
 
-func currentLineNumber(p *proctl.DebuggedProcess, t *testing.T) (string, int) {
+func currentLineNumber(p *DebuggedProcess, t *testing.T) (string, int) {
 	pc := currentPC(p, t)
 	f, l, _ := p.GoSymTable.PCToLine(pc)
 
@@ -51,7 +70,7 @@ func currentLineNumber(p *proctl.DebuggedProcess, t *testing.T) (string, int) {
 }
 
 func TestStep(t *testing.T) {
-	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
+	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
 		helloworldfunc := p.GoSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
@@ -73,10 +92,10 @@ func TestStep(t *testing.T) {
 }
 
 func TestContinue(t *testing.T) {
-	helper.WithTestProcess("../_fixtures/continuetestprog", t, func(p *proctl.DebuggedProcess) {
+	withTestProcess("../_fixtures/continuetestprog", t, func(p *DebuggedProcess) {
 		err := p.Continue()
 		if err != nil {
-			if _, ok := err.(proctl.ProcessExitedError); !ok {
+			if _, ok := err.(ProcessExitedError); !ok {
 				t.Fatal(err)
 			}
 		}
@@ -88,7 +107,7 @@ func TestContinue(t *testing.T) {
 }
 
 func TestBreakPoint(t *testing.T) {
-	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
+	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
 		sleepytimefunc := p.GoSymTable.LookupFunc("main.helloworld")
 		sleepyaddr := sleepytimefunc.Entry
 
@@ -124,7 +143,7 @@ func TestBreakPoint(t *testing.T) {
 }
 
 func TestBreakPointInSeperateGoRoutine(t *testing.T) {
-	helper.WithTestProcess("../_fixtures/testthreads", t, func(p *proctl.DebuggedProcess) {
+	withTestProcess("../_fixtures/testthreads", t, func(p *DebuggedProcess) {
 		fn := p.GoSymTable.LookupFunc("main.anotherthread")
 		if fn == nil {
 			t.Fatal("No fn exists")
@@ -153,7 +172,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 }
 
 func TestBreakPointWithNonExistantFunction(t *testing.T) {
-	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
+	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
 		_, err := p.Break(uintptr(0))
 		if err == nil {
 			t.Fatal("Should not be able to break at non existant function")
@@ -162,7 +181,7 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 }
 
 func TestClearBreakPoint(t *testing.T) {
-	helper.WithTestProcess("../_fixtures/testprog", t, func(p *proctl.DebuggedProcess) {
+	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
 		fn := p.GoSymTable.LookupFunc("main.sleepytime")
 		bp, err := p.Break(uintptr(fn.Entry))
 		assertNoError(err, t, "Break()")
@@ -224,7 +243,7 @@ func TestNext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
+	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break()")
@@ -246,6 +265,59 @@ func TestNext(t *testing.T) {
 
 		if len(p.BreakPoints) != 1 {
 			t.Fatal("Not all breakpoints were cleaned up", len(p.BreakPoints))
+		}
+	})
+}
+
+func TestFindReturnAddress(t *testing.T) {
+	var testfile, _ = filepath.Abs("../_fixtures/testnextprog")
+
+	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+		var (
+			fdes = p.FrameEntries
+			gsd  = p.GoSymTable
+		)
+
+		testsourcefile := testfile + ".go"
+		start, _, err := gsd.LineToPC(testsourcefile, 24)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = p.Break(uintptr(start))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		regs, err := p.Registers()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fde, err := fdes.FDEForPC(start)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ret := fde.ReturnAddressOffset(start)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addr := uint64(int64(regs.SP()) + ret)
+		data := make([]byte, 8)
+
+		readMemory(p.Pid, uintptr(addr), data)
+		addr = binary.LittleEndian.Uint64(data)
+
+		expected := uint64(0x400f03)
+		if addr != expected {
+			t.Fatalf("return address not found correctly, expected %#v got %#v", expected, addr)
 		}
 	})
 }

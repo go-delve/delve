@@ -76,7 +76,7 @@ func (thread *ThreadContext) Break(addr uintptr) (*BreakPoint, error) {
 		return nil, InvalidAddressError{address: addr}
 	}
 
-	_, err := ReadMemory(thread.Id, addr, originalData)
+	_, err := readMemory(thread.Id, addr, originalData)
 	if err != nil {
 		fmt.Println("PEEK ERR")
 		return nil, err
@@ -86,7 +86,7 @@ func (thread *ThreadContext) Break(addr uintptr) (*BreakPoint, error) {
 		return nil, BreakPointExistsError{f, l, addr}
 	}
 
-	_, err = WriteMemory(thread.Id, addr, int3)
+	_, err = writeMemory(thread.Id, addr, int3)
 	if err != nil {
 		fmt.Println("POKE ERR")
 		return nil, err
@@ -113,7 +113,7 @@ func (thread *ThreadContext) Clear(pc uint64) (*BreakPoint, error) {
 		return nil, fmt.Errorf("No breakpoint currently set for %#v", pc)
 	}
 
-	if _, err := WriteMemory(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
+	if _, err := writeMemory(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
 		return nil, fmt.Errorf("could not clear breakpoint %s", err)
 	}
 
@@ -294,7 +294,7 @@ func (thread *ThreadContext) ReturnAddressFromOffset(offset int64) uint64 {
 
 	retaddr := int64(regs.SP()) + offset
 	data := make([]byte, 8)
-	ReadMemory(thread.Id, uintptr(retaddr), data)
+	readMemory(thread.Id, uintptr(retaddr), data)
 	return binary.LittleEndian.Uint64(data)
 }
 

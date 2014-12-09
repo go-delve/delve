@@ -1,11 +1,8 @@
-package proctl_test
+package proctl
 
 import (
 	"path/filepath"
 	"testing"
-
-	"github.com/derekparker/delve/helper"
-	"github.com/derekparker/delve/proctl"
 )
 
 func TestVariableEvaluation(t *testing.T) {
@@ -35,7 +32,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a6.Baz", "8", "int"},
 	}
 
-	helper.WithTestProcess(executablePath, t, func(p *proctl.DebuggedProcess) {
+	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, 29)
 
 		_, err := p.Break(uintptr(pc))
