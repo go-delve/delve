@@ -9,6 +9,15 @@ import (
 	"github.com/derekparker/delve/proctl"
 )
 
+func getRegisters(p *proctl.DebuggedProcess, t *testing.T) proctl.Registers {
+	regs, err := p.Registers()
+	if err != nil {
+		t.Fatal("Registers():", err)
+	}
+
+	return regs
+}
+
 func dataAtAddr(pid int, addr uint64) ([]byte, error) {
 	data := make([]byte, 1)
 	_, err := proctl.ReadMemory(pid, uintptr(addr), data)
@@ -50,13 +59,13 @@ func TestStep(t *testing.T) {
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
 
-		regs := helper.GetRegisters(p, t)
+		regs := getRegisters(p, t)
 		rip := regs.PC()
 
 		err = p.Step()
 		assertNoError(err, t, "Step()")
 
-		regs = helper.GetRegisters(p, t)
+		regs = getRegisters(p, t)
 		if rip >= regs.PC() {
 			t.Errorf("Expected %#v to be greater than %#v", regs.PC(), rip)
 		}
