@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"syscall"
 	"unsafe"
 
 	"github.com/derekparker/delve/dwarf/op"
@@ -627,7 +626,7 @@ func (thread *ThreadContext) readFloat(addr uintptr, size int64) (string, error)
 func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, error) {
 	buf := make([]byte, size)
 
-	_, err := syscall.PtracePeekData(thread.Id, addr, buf)
+	_, err := ReadMemory(thread.Id, addr, buf)
 	if err != nil {
 		return nil, err
 	}
