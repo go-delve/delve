@@ -34,13 +34,13 @@ func init() {
 
 func main() {
 	var (
-		pid     int
-		run     bool
-		printv  bool
-		err     error
-		dbgproc *proctl.DebuggedProcess
-		t       = newTerm()
-		cmds    = command.DebugCommands()
+		pid    int
+		run    bool
+		printv bool
+		err    error
+		dbp    *proctl.DebuggedProcess
+		t      = newTerm()
+		cmds   = command.DebugCommands()
 	)
 
 	flag.IntVar(&pid, "pid", 0, "Pid of running process to attach to.")
@@ -68,17 +68,17 @@ func main() {
 		}
 		defer os.Remove(debugname)
 
-		dbgproc, err = proctl.Launch(append([]string{"./" + debugname}, flag.Args()...))
+		dbp, err = proctl.Launch(append([]string{"./" + debugname}, flag.Args()...))
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}
 	case pid != 0:
-		dbgproc, err = proctl.Attach(pid)
+		dbp, err = proctl.Attach(pid)
 		if err != nil {
 			die(1, "Could not attach to process:", err)
 		}
 	default:
-		dbgproc, err = proctl.Launch(flag.Args())
+		dbp, err = proctl.Launch(flag.Args())
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}
@@ -91,7 +91,7 @@ func main() {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
 			if err == io.EOF {
-				handleExit(t, dbgproc, 0)
+				handleExit(t, dbp, 0)
 			}
 			die(1, "Prompt for input failed.\n")
 		}
@@ -99,11 +99,11 @@ func main() {
 		cmdstr, args := parseCommand(cmdstr)
 
 		if cmdstr == "exit" {
-			handleExit(t, dbgproc, 0)
+			handleExit(t, dbp, 0)
 		}
 
 		cmd := cmds.Find(cmdstr)
-		err = cmd(dbgproc, args...)
+		err = cmd(dbp, args...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
 		}
