@@ -17,7 +17,7 @@ import (
 	"github.com/derekparker/delve/proctl"
 )
 
-const version string = "0.2.0.beta"
+const version string = "0.3.0.beta"
 
 type term struct {
 	stdin *bufio.Reader
