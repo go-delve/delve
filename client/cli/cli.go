@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +15,7 @@ import (
 
 const historyFile string = ".dbg_history"
 
-func Run(run bool, pid int, args ...[]string) {
+func Run(run bool, pid int, args []string) {
 	var (
 		dbp *proctl.DebuggedProcess
 		err error
@@ -32,7 +31,7 @@ func Run(run bool, pid int, args ...[]string) {
 		}
 		defer os.Remove(debugname)
 
-		dbp, err = proctl.Launch(append([]string{"./" + debugname}, flag.Args()...))
+		dbp, err = proctl.Launch(append([]string{"./" + debugname}, args...))
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}
@@ -42,7 +41,7 @@ func Run(run bool, pid int, args ...[]string) {
 			die(1, "Could not attach to process:", err)
 		}
 	default:
-		dbp, err = proctl.Launch(flag.Args())
+		dbp, err = proctl.Launch(args)
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}
