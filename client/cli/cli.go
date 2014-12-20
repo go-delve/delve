@@ -76,7 +76,9 @@ func Run(run bool, pid int, args []string) {
 
 func handleExit(dbp *proctl.DebuggedProcess, status int) {
 	errno := goreadline.WriteHistoryToFile(historyFile)
-	fmt.Println("readline:", errno)
+	if errno != 0 {
+		fmt.Println("readline:", errno)
+	}
 
 	prompt := "Would you like to kill the process? [y/n]"
 	answerp := goreadline.ReadLine(&prompt)
