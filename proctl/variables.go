@@ -25,6 +25,8 @@ type M struct {
 	curg     uintptr
 }
 
+const ptrsize uintptr = unsafe.Sizeof(int(1))
+
 // Parses and returns select info on the internal M
 // data structures used by the Go scheduler.
 func (thread *ThreadContext) AllM() ([]*M, error) {
@@ -34,7 +36,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 	if err != nil {
 		return nil, err
 	}
-	mptr, err := thread.readMemory(uintptr(allmaddr), 8)
+	mptr, err := thread.readMemory(uintptr(allmaddr), ptrsize)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +74,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		if err != nil {
 			return nil, err
 		}
-		curgBytes, err := thread.readMemory(uintptr(curgAddr), 8)
+		curgBytes, err := thread.readMemory(uintptr(curgAddr), ptrsize)
 		if err != nil {
 			return nil, fmt.Errorf("could not read curg %#v %s", curgAddr, err)
 		}
@@ -83,7 +85,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		if err != nil {
 			return nil, err
 		}
-		procidBytes, err := thread.readMemory(uintptr(procidAddr), 8)
+		procidBytes, err := thread.readMemory(uintptr(procidAddr), ptrsize)
 		if err != nil {
 			return nil, fmt.Errorf("could not read procid %#v %s", procidAddr, err)
 		}
@@ -121,7 +123,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		if err != nil {
 			return nil, err
 		}
-		mptr, err = thread.readMemory(uintptr(alllinkAddr), 8)
+		mptr, err = thread.readMemory(uintptr(alllinkAddr), ptrsize)
 		if err != nil {
 			return nil, fmt.Errorf("could not read alllink %#v %s", alllinkAddr, err)
 		}
@@ -193,11 +195,11 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 		return err
 	}
 	fmt.Printf("[%d goroutines]\n", allglen)
-	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), 8)
+	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), ptrsize)
 	allg := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		err = printGoroutineInfo(dbp, allg+(i*8), reader)
+		err = printGoroutineInfo(dbp, allg+(i*uint64(ptrsize)), reader)
 		if err != nil {
 			return err
 		}
@@ -207,7 +209,7 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 }
 
 func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) error {
-	gaddrbytes, err := dbp.CurrentThread.readMemory(uintptr(addr), 8)
+	gaddrbytes, err := dbp.CurrentThread.readMemory(uintptr(addr), ptrsize)
 	if err != nil {
 		return fmt.Errorf("error derefing *G %s", err)
 	}
@@ -224,11 +226,11 @@ func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader)
 		return err
 	}
 
-	goidbytes, err := dbp.CurrentThread.readMemory(uintptr(goidaddr), 8)
+	goidbytes, err := dbp.CurrentThread.readMemory(uintptr(goidaddr), ptrsize)
 	if err != nil {
 		return fmt.Errorf("error reading goid %s", err)
 	}
-	schedbytes, err := dbp.CurrentThread.readMemory(uintptr(schedaddr+8), 8)
+	schedbytes, err := dbp.CurrentThread.readMemory(uintptr(schedaddr+uint64(ptrsize)), ptrsize)
 	if err != nil {
 		return fmt.Errorf("error reading sched %s", err)
 	}
@@ -463,7 +465,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	offaddr := uintptr(offset)
 	switch t := typ.(type) {
 	case *dwarf.PtrType:
-		addr, err := thread.readMemory(offaddr, 8)
+		addr, err := thread.readMemory(offaddr, ptrsize)
 		if err != nil {
 			return "", err
 		}
@@ -577,7 +579,7 @@ func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (str
 		members = append(members, number)
 	}
 
-	return fmt.Sprintf("[%d]int %d", t.ByteSize/8, members), nil
+	return fmt.Sprintf("[%d]int %d", t.ByteSize/int64(ptrsize), members), nil
 }
 
 func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
