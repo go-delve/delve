@@ -478,7 +478,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	case *dwarf.StructType:
 		switch t.StructName {
 		case "string":
-			return thread.readString(offaddr)
+			return thread.readString(offaddr, t.ByteSize)
 		case "[]int":
 			return thread.readIntSlice(offaddr)
 		default:
@@ -507,8 +507,8 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	return "", fmt.Errorf("could not find value for type %s", typ)
 }
 
-func (thread *ThreadContext) readString(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, 8)
+func (thread *ThreadContext) readString(addr uintptr, size int64) (string, error) {
+	val, err := thread.readMemory(addr, uintptr(size))
 	if err != nil {
 		return "", err
 	}
