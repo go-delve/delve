@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -52,6 +54,7 @@ func DebugCommands() *Commands {
 		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
+		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides list of source files with symbols."},
 		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
 	}
 
@@ -255,6 +258,42 @@ func printVar(p *proctl.DebuggedProcess, args ...string) error {
 	}
 
 	fmt.Println(val.Value)
+	return nil
+}
+
+func info(p *proctl.DebuggedProcess, args ...string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("not enough arguments")
+	}
+
+	// Allow for optional regex
+	var filter *regexp.Regexp
+	if len(args) >= 2 {
+		var err error
+		if filter, err = regexp.Compile(args[1]); err != nil {
+			return fmt.Errorf("invalid filter argument: %s", err.Error())
+		}
+	}
+
+	switch args[0] {
+	case "sources":
+		files := make([]string, 0, len(p.GoSymTable.Files))
+		for f := range p.GoSymTable.Files {
+			if filter == nil || filter.Match([]byte(f)) {
+				files = append(files, f)
+			}
+		}
+
+		sort.Sort(sort.StringSlice(files))
+
+		for _, f := range files {
+			fmt.Printf("%s\n", f)
+		}
+
+	default:
+		return fmt.Errorf("unsupported info type, must be sources")
+	}
+
 	return nil
 }
 
