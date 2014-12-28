@@ -263,7 +263,7 @@ func printVar(p *proctl.DebuggedProcess, args ...string) error {
 
 func info(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		return fmt.Errorf("not enough arguments. expected info type [regex].")
 	}
 
 	// Allow for optional regex
@@ -275,23 +275,36 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 		}
 	}
 
+	var data []string
+
 	switch args[0] {
 	case "sources":
-		files := make([]string, 0, len(p.GoSymTable.Files))
+		data = make([]string, 0, len(p.GoSymTable.Files))
 		for f := range p.GoSymTable.Files {
 			if filter == nil || filter.Match([]byte(f)) {
-				files = append(files, f)
+				data = append(data, f)
 			}
 		}
+		break
 
-		sort.Sort(sort.StringSlice(files))
-
-		for _, f := range files {
-			fmt.Printf("%s\n", f)
+	case "functions":
+		data = make([]string, 0, len(p.GoSymTable.Funcs))
+		for _, f := range p.GoSymTable.Funcs {
+			if f.Sym != nil && (filter == nil || filter.Match([]byte(f.Name))) {
+				data = append(data, f.Name)
+			}
 		}
+		break
 
 	default:
-		return fmt.Errorf("unsupported info type, must be sources")
+		return fmt.Errorf("unsupported info type, must be sources or functions")
+	}
+
+	// sort and output data
+	sort.Sort(sort.StringSlice(data))
+
+	for _, d := range data {
+		fmt.Printf("%s\n", d)
 	}
 
 	return nil
