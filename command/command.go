@@ -286,7 +286,7 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 			}
 		}
 
-	case "functions":
+	case "funcs":
 		data = make([]string, 0, len(p.GoSymTable.Funcs))
 		for _, f := range p.GoSymTable.Funcs {
 			if f.Sym != nil && (filter == nil || filter.Match([]byte(f.Name))) {

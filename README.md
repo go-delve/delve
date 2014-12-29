@@ -66,9 +66,9 @@ Once inside a debugging session, the following commands may be used:
 
 * `print $var` - Evaluate a variable.
 
-* `info $type [regex]` - Outputs information about the symbol table. An optional regex filters the list. Example `info functions unicode`. Valid types are:
+* `info $type [regex]` - Outputs information about the symbol table. An optional regex filters the list. Example `info funcs unicode`. Valid types are:
   * `sources` - Prings the path of all source files
-  * `functions` - Prings the name of all defined functions
+  * `funcs` - Prings the name of all defined functions
 
 * `exit` - Exit the debugger.
 
