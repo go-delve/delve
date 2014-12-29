@@ -285,7 +285,6 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 				data = append(data, f)
 			}
 		}
-		break
 
 	case "functions":
 		data = make([]string, 0, len(p.GoSymTable.Funcs))
@@ -294,7 +293,6 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 				data = append(data, f.Name)
 			}
 		}
-		break
 
 	default:
 		return fmt.Errorf("unsupported info type, must be sources or functions")
@@ -304,7 +302,7 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 	sort.Sort(sort.StringSlice(data))
 
 	for _, d := range data {
-		fmt.Printf("%s\n", d)
+		fmt.Println(d)
 	}
 
 	return nil
