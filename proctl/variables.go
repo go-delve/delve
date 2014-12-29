@@ -569,12 +569,12 @@ func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (str
 		members := *(*[]uint32)(unsafe.Pointer(&val))
 		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
 		*lptr = int(t.Count)
-		return fmt.Sprintf("[%d]int32 %d", t.Count, members), nil
+		return fmt.Sprintf("%s %d", t, members), nil
 	case 8:
 		members := *(*[]uint64)(unsafe.Pointer(&val))
 		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
 		*lptr = int(t.Count)
-		return fmt.Sprintf("[%d]int %d", t.Count, members), nil
+		return fmt.Sprintf("%s %d", t, members), nil
 	}
 	return "", fmt.Errorf("Could not read array")
 }
