@@ -539,7 +539,7 @@ func (thread *ThreadContext) readIntSlice(addr uintptr) (string, error) {
 	l := binary.LittleEndian.Uint64(val[8:16])
 	c := binary.LittleEndian.Uint64(val[16:24])
 
-	val, err = thread.readMemory(uintptr(a), uintptr(8*l))
+	val, err = thread.readMemory(uintptr(a), uintptr(uint64(ptrsize)*l))
 	if err != nil {
 		return "", err
 	}
