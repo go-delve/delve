@@ -30,10 +30,11 @@ func TestVariableEvaluation(t *testing.T) {
 		{"i8", "1", "int8"},
 		{"f32", "1.2", "float32"},
 		{"a6.Baz", "8", "int"},
+		{"i32", "[2]int32 [1 2]", "[2]int32"},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 29)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 30)
 
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")

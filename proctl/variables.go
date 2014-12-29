@@ -559,27 +559,24 @@ func (thread *ThreadContext) readIntSlice(addr uintptr) (string, error) {
 }
 
 func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
-	var (
-		number  uint64
-		members = make([]uint64, 0, t.ByteSize)
-	)
-
 	val, err := thread.readMemory(addr, uintptr(t.ByteSize))
 	if err != nil {
 		return "", err
 	}
 
-	buf := bytes.NewBuffer(val)
-	for {
-		err := binary.Read(buf, binary.LittleEndian, &number)
-		if err != nil {
-			break
-		}
-
-		members = append(members, number)
+	switch t.Type.Size() {
+	case 4:
+		members := *(*[]uint32)(unsafe.Pointer(&val))
+		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
+		*lptr = int(t.Count)
+		return fmt.Sprintf("[%d]int32 %d", t.Count, members), nil
+	case 8:
+		members := *(*[]uint64)(unsafe.Pointer(&val))
+		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
+		*lptr = int(t.Count)
+		return fmt.Sprintf("[%d]int %d", t.Count, members), nil
 	}
-
-	return fmt.Sprintf("[%d]int %d", t.ByteSize/int64(ptrsize), members), nil
+	return "", fmt.Errorf("Could not read array")
 }
 
 func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {

@@ -24,10 +24,11 @@ func foobar(baz string) {
 		neg = -1
 		i8  = int8(1)
 		f32 = float32(1.2)
+		i32 = [2]int32{1, 2}
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8, f32)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8, f32, i32)
 }
 
 func main() {
