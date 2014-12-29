@@ -249,8 +249,8 @@ func TestNext(t *testing.T) {
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
 
+		f, ln := currentLineNumber(p, t)
 		for _, tc := range testcases {
-			f, ln := currentLineNumber(p, t)
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, f, ln)
 			}

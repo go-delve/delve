@@ -194,44 +194,38 @@ func (thread *ThreadContext) Next() (err error) {
 		return err
 	}
 
-	if _, ok := thread.Process.BreakPoints[pc-1]; ok {
-		pc-- // Decrement PC to account for BreakPoint
+	if bp, ok := thread.Process.BreakPoints[pc-1]; ok {
+		pc = bp.Addr
 	}
 
-	_, l, _ := thread.Process.GoSymTable.PCToLine(pc)
 	fde, err := thread.Process.FrameEntries.FDEForPC(pc)
 	if err != nil {
 		return err
 	}
 
-	step := func() (uint64, error) {
-		err = thread.Step()
-		if err != nil {
-			return 0, err
-		}
-
-		return thread.CurrentPC()
-	}
-
+	_, l, _ := thread.Process.GoSymTable.PCToLine(pc)
 	ret := thread.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
 	for {
-		pc, err = step()
-		if err != nil {
+		if err = thread.Step(); err != nil {
+			return err
+		}
+
+		if pc, err = thread.CurrentPC(); err != nil {
 			return err
 		}
 
 		if !fde.Cover(pc) && pc != ret {
-			err := thread.continueToReturnAddress(pc, fde)
-			if err != nil {
+			if err := thread.continueToReturnAddress(pc, fde); err != nil {
 				if _, ok := err.(InvalidAddressError); !ok {
 					return err
 				}
 			}
-			pc, _ = thread.CurrentPC()
+			if pc, err = thread.CurrentPC(); err != nil {
+				return err
+			}
 		}
 
-		_, nl, _ := thread.Process.GoSymTable.PCToLine(pc)
-		if nl != l {
+		if _, nl, _ := thread.Process.GoSymTable.PCToLine(pc); nl != l {
 			break
 		}
 	}
