@@ -261,6 +261,19 @@ func printVar(p *proctl.DebuggedProcess, args ...string) error {
 	return nil
 }
 
+func filterVariables(vars []*proctl.Variable, filter *regexp.Regexp) []string {
+	data := make([]string, 0, len(vars))
+	for _, v := range vars {
+		if v == nil {
+			continue
+		}
+		if filter == nil || filter.Match([]byte(v.Name)) {
+			data = append(data, fmt.Sprintf("%s = %s", v.Name, v.Value))
+		}
+	}
+	return data
+}
+
 func info(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments. expected info type [regex].")
@@ -293,6 +306,20 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 				data = append(data, f.Name)
 			}
 		}
+
+	case "args":
+		vars, err := p.CurrentThread.FunctionArguments()
+		if err != nil {
+			return nil
+		}
+		data = filterVariables(vars, filter)
+
+	case "locals":
+		vars, err := p.CurrentThread.LocalVariables()
+		if err != nil {
+			return nil
+		}
+		data = filterVariables(vars, filter)
 
 	default:
 		return fmt.Errorf("unsupported info type, must be sources or functions")
