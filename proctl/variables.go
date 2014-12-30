@@ -329,27 +329,7 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, err
 	}
 
-	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
-	if !ok {
-		return nil, fmt.Errorf("type assertion failed")
-	}
-
-	t, err := data.Type(offset)
-	if err != nil {
-		return nil, err
-	}
-
-	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-	if !ok {
-		return nil, fmt.Errorf("type assertion failed")
-	}
-
-	val, err := thread.extractValue(instructions, 0, t)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Variable{Name: name, Type: t.String(), Value: val}, nil
+	return thread.extractVariableFromEntry(entry)
 }
 
 // seekToFunctionEntry is basically used to seek the dwarf.Reader to
