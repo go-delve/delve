@@ -545,8 +545,7 @@ func (thread *ThreadContext) readIntSlice(addr uintptr, t *dwarf.StructType) (st
 	switch t.StructName {
 	case "[]int":
 		members := *(*[]int)(unsafe.Pointer(&val))
-		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
-		*lptr = int(l)
+		setSliceLength(unsafe.Pointer(&members), int(l))
 		return fmt.Sprintf("len: %d cap: %d %d", l, c, members), nil
 	}
 	return "", fmt.Errorf("Could not read slice")
@@ -561,13 +560,11 @@ func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (str
 	switch t.Type.Size() {
 	case 4:
 		members := *(*[]uint32)(unsafe.Pointer(&val))
-		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
-		*lptr = int(t.Count)
+		setSliceLength(unsafe.Pointer(&members), int(t.Count))
 		return fmt.Sprintf("%s %d", t, members), nil
 	case 8:
 		members := *(*[]uint64)(unsafe.Pointer(&val))
-		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
-		*lptr = int(t.Count)
+		setSliceLength(unsafe.Pointer(&members), int(t.Count))
 		return fmt.Sprintf("%s %d", t, members), nil
 	}
 	return "", fmt.Errorf("Could not read array")
@@ -625,4 +622,10 @@ func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, err
 	}
 
 	return buf, nil
+}
+
+// Sets the length of a slice.
+func setSliceLength(ptr unsafe.Pointer, l int) {
+	lptr := (*int)(unsafe.Pointer(uintptr(ptr) + ptrsize))
+	*lptr = int(l)
 }
