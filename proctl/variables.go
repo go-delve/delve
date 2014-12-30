@@ -143,6 +143,10 @@ func instructionsFor(name string, dbp *DebuggedProcess, reader *dwarf.Reader, me
 	if err != nil {
 		return nil, err
 	}
+	return instructionsForEntry(entry)
+}
+
+func instructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
 		instructions, ok = entry.Val(dwarf.AttrDataMemberLoc).([]byte)
@@ -375,12 +379,16 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		}
 	}
 
+	// Unable to find an entry
 	if entry == nil || err != nil {
 		return nil, err
 	}
 
 	// Process entry
-	return nil, nil
+	if len(memberName) == 0 {
+		return thread.extractVariableFromEntry(entry)
+	}
+	return evaluateStructMember(thread, data, reader, entry, memberName)
 }
 
 // seekToFunctionEntry is basically used to seek the dwarf.Reader to
@@ -424,7 +432,7 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 		if entry.Tag == 0 {
 			depth = depth - 1
 			if depth <= 0 {
-				return nil, fmt.Errorf("could not find symbol value for %s", name)
+				return nil, SymbolNotFoundError{name}
 			}
 		}
 
@@ -447,11 +455,8 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 	return nil, SymbolNotFoundError{name}
 }
 
-func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent, member string) (*Variable, error) {
-	parentInstr, err := instructionsFor(parent, thread.Process, reader, false)
-	if err != nil {
-		return nil, err
-	}
+func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent *dwarf.Entry, member string) (*Variable, error) {
+	parentInstr, err := instructionsForEntry(parent)
 	memberInstr, err := instructionsFor(member, thread.Process, reader, true)
 	if err != nil {
 		return nil, err
@@ -469,8 +474,9 @@ func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("V: %s -- %#v", member, append(parentInstr, memberInstr...))
 	val, err := thread.extractValue(append(parentInstr, memberInstr...), 0, t)
-	return &Variable{Name: strings.Join([]string{parent, member}, "."), Type: t.String(), Value: val}, nil
+	return &Variable{Name: "Test", Type: t.String(), Value: val}, nil
 }
 
 // Extracts the name, type, and value of a variable from a dwarf entry
@@ -504,6 +510,8 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 	if !ok {
 		return nil, fmt.Errorf("type assertion failed")
 	}
+
+	fmt.Printf("X: %#v", instructions)
 
 	val, err := thread.extractValue(instructions, 0, t)
 	if err != nil {
