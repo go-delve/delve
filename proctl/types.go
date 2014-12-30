@@ -50,7 +50,7 @@ func resolveTypeEntry(entry *dwarf.Entry, reader *dwarf.Reader, resolvePointerTy
 // Find the type member data entry from a struct
 func findStructMemberEntry(entry *dwarf.Entry, reader *dwarf.Reader, member string) (*dwarf.Entry, error) {
 
-	typeEntry, err := baseTypeEntryFromEntry(entry, reader, true)
+	typeEntry, err := baseTypeEntryFromEntry(entry, reader, false)
 	if err != nil {
 		return nil, err
 	}
