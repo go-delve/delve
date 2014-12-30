@@ -411,11 +411,56 @@ func seekToFunctionEntry(name string, reader *dwarf.Reader) error {
 		}
 
 		if n == name {
-			break
+			return nil
 		}
 	}
 
-	return nil
+	return SymbolNotFoundError{name}
+}
+
+// seekToTypeEntry seeks the dwarf.Reader entry to the entry representing a type
+func (thread *ThreadContext) findStructMemberEntry(t dwarf.Type, member string, reader *dwarf.Reader) (*dwarf.Entry, error) {
+	reader.Seek(0)
+
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		if entry.Tag != dwarf.TagStructType {
+			continue
+		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+
+		if n == t.String() {
+			for innerEntry, err := reader.Next(); innerEntry != nil && innerEntry.Tag != 0; innerEntry, err = reader.Next() {
+				if err != nil {
+					return nil, err
+				}
+
+				if innerEntry.Tag != dwarf.TagMember {
+					continue
+				}
+
+				n, ok := innerEntry.Val(dwarf.AttrName).(string)
+				if !ok {
+					continue
+				}
+
+				if n == member {
+					return innerEntry, nil
+				}
+
+			}
+			return nil, SymbolNotFoundError{fmt.Sprintf("%s.%s", t.String(), member)}
+		}
+	}
+
+	return nil, SymbolNotFoundError{t.String()}
 }
 
 func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entry, error) {
@@ -456,17 +501,7 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 }
 
 func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent *dwarf.Entry, member string) (*Variable, error) {
-	parentInstr, err := instructionsForEntry(parent)
-	memberInstr, err := instructionsFor(member, thread.Process, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	reader.Seek(0)
-	entry, err := findDwarfEntry(member, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
+	offset, ok := parent.Val(dwarf.AttrType).(dwarf.Offset)
 	if !ok {
 		return nil, fmt.Errorf("type assertion failed")
 	}
@@ -474,7 +509,31 @@ func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("V: %s -- %#v", member, append(parentInstr, memberInstr...))
+
+	entry, err := thread.findStructMemberEntry(t, member, reader)
+	if err != nil {
+		return nil, err
+	}
+
+	parentInstr, err := instructionsForEntry(parent)
+	if err != nil {
+		return nil, err
+	}
+
+	memberInstr, err := instructionsForEntry(entry)
+	if err != nil {
+		return nil, err
+	}
+
+	offset, ok = entry.Val(dwarf.AttrType).(dwarf.Offset)
+	if !ok {
+		return nil, fmt.Errorf("type assertion failed")
+	}
+	t, err = data.Type(offset)
+	if err != nil {
+		return nil, err
+	}
+
 	val, err := thread.extractValue(append(parentInstr, memberInstr...), 0, t)
 	return &Variable{Name: "Test", Type: t.String(), Value: val}, nil
 }
