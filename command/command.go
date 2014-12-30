@@ -54,7 +54,7 @@ func DebugCommands() *Commands {
 		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
-		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides list of source files with symbols."},
+		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about source, locals, args, or funcs."},
 		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
 	}
 
@@ -261,6 +261,19 @@ func printVar(p *proctl.DebuggedProcess, args ...string) error {
 	return nil
 }
 
+func filterVariables(vars []*proctl.Variable, filter *regexp.Regexp) []string {
+	data := make([]string, 0, len(vars))
+	for _, v := range vars {
+		if v == nil {
+			continue
+		}
+		if filter == nil || filter.Match([]byte(v.Name)) {
+			data = append(data, fmt.Sprintf("%s = %s", v.Name, v.Value))
+		}
+	}
+	return data
+}
+
 func info(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments. expected info type [regex].")
@@ -294,8 +307,22 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 			}
 		}
 
+	case "args":
+		vars, err := p.CurrentThread.FunctionArguments()
+		if err != nil {
+			return nil
+		}
+		data = filterVariables(vars, filter)
+
+	case "locals":
+		vars, err := p.CurrentThread.LocalVariables()
+		if err != nil {
+			return nil
+		}
+		data = filterVariables(vars, filter)
+
 	default:
-		return fmt.Errorf("unsupported info type, must be sources or functions")
+		return fmt.Errorf("unsupported info type, must be sources, funcs, locals, or args")
 	}
 
 	// sort and output data

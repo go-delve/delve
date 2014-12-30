@@ -12,7 +12,7 @@ func barfoo() {
 	fmt.Println(a1)
 }
 
-func foobar(baz string) {
+func foobar(baz string, bar FooBar) {
 	var (
 		a1  = "foo"
 		a2  = 6
@@ -28,9 +28,9 @@ func foobar(baz string) {
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8, f32, i32)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8, f32, i32, bar)
 }
 
 func main() {
-	foobar("bazburzum")
+	foobar("bazburzum", FooBar{Baz: 10, Bur: "lorem"})
 }
