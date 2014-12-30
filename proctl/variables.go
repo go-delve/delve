@@ -380,9 +380,21 @@ func seekToFunctionEntry(name string, reader *dwarf.Reader) error {
 }
 
 func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entry, error) {
+	depth := 1
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return nil, err
+		}
+
+		if entry.Children {
+			depth = depth + 1
+		}
+
+		if entry.Tag == 0 {
+			depth = depth - 1
+			if depth <= 0 {
+				return nil, fmt.Errorf("could not find symbol value for %s", name)
+			}
 		}
 
 		if member {
@@ -704,16 +716,17 @@ func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) 
 			break
 		}
 
-		if entry.Tag != tag {
-			continue
+		if entry.Tag == tag {
+			val, err := thread.extractVariableFromEntry(entry)
+			if err != nil {
+				return nil, err
+			}
+
+			vars = append(vars, val)
 		}
 
-		val, err := thread.extractVariableFromEntry(entry)
-		if err != nil {
-			return nil, err
-		}
-
-		vars = append(vars, val)
+		// Only care about top level
+		reader.SkipChildren()
 	}
 
 	return vars, nil
