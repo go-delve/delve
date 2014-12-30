@@ -301,6 +301,10 @@ func offsetFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader, parentin
 }
 
 // Returns the value of the named symbol.
+// Attepts to evaluate in the following order until it finds a valid symbol
+//   1) Function scope member variable
+//   2) Package variable in current package
+//   3) Package variable outside current package (if name contains at least 1 dot)
 func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	data := thread.Process.Dwarf
 
@@ -314,22 +318,69 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, fmt.Errorf("could not func function scope")
 	}
 
+	baseName := name
+	memberName := ""
+
+	// Find base entry
+	idx := strings.Index(name, ".")
+	if idx != -1 {
+		baseName = name[:idx]
+		memberName = name[idx+1:]
+	}
+
+	// Attempt to find variable in function
 	reader := data.Reader()
 	if err = seekToFunctionEntry(fn.Name, reader); err != nil {
 		return nil, err
 	}
 
-	if strings.Contains(name, ".") {
-		idx := strings.Index(name, ".")
-		return evaluateStructMember(thread, data, reader, name[:idx], name[idx+1:])
-	}
+	entry, err := findDwarfEntry(baseName, reader, false)
 
-	entry, err := findDwarfEntry(name, reader, false)
-	if err != nil {
+	// Ignore SymbolNotFoundError
+	if _, ok := err.(SymbolNotFoundError); !ok && err != nil {
 		return nil, err
 	}
 
-	return thread.extractVariableFromEntry(entry)
+	if entry == nil {
+		// Rewind reader to beginning and attempt to find variable in package,
+		reader.Seek(0)
+		idx = strings.Index(fn.Name, ".")
+		fmt.Printf("%s -- %d\n", fn.Name, idx)
+		if idx != -1 {
+			entry, err = findDwarfEntry(fmt.Sprintf("%s.%s", fn.Name[:idx], baseName), reader, false)
+		}
+
+		// Ignore SymbolNotFoundError
+		if _, ok := err.(SymbolNotFoundError); !ok && err != nil {
+			return nil, err
+		}
+	}
+
+	// Rewind reader and and attempt to use fully qualified package name
+	if entry == nil && len(memberName) > 0 {
+		reader.Seek(0)
+		idx = strings.Index(memberName, ".")
+		if idx != -1 {
+			baseName = fmt.Sprintf("%s.%s", baseName, memberName[:idx])
+			memberName = memberName[idx+1:]
+		} else {
+			baseName = fmt.Sprintf("%s.%s", baseName, memberName)
+			memberName = ""
+		}
+		entry, err = findDwarfEntry(baseName, reader, false)
+
+		// Ignore SymbolNotFoundError
+		if _, ok := err.(SymbolNotFoundError); !ok && err != nil {
+			return nil, err
+		}
+	}
+
+	if entry == nil || err != nil {
+		return nil, err
+	}
+
+	// Process entry
+	return nil, nil
 }
 
 // seekToFunctionEntry is basically used to seek the dwarf.Reader to
@@ -393,7 +444,7 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 		}
 		return entry, nil
 	}
-	return nil, fmt.Errorf("could not find symbol value for %s", name)
+	return nil, SymbolNotFoundError{name}
 }
 
 func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent, member string) (*Variable, error) {

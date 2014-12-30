@@ -44,6 +44,10 @@ type BreakPointExistsError struct {
 	addr uintptr
 }
 
+type SymbolNotFoundError struct {
+	name string
+}
+
 // ProcessStatus is the result of parsing the data from
 // the /proc/<pid>/stats psuedo file.
 type ProcessStatus struct {
@@ -61,6 +65,10 @@ const (
 
 func (bpe BreakPointExistsError) Error() string {
 	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
+}
+
+func (snf SymbolNotFoundError) Error() string {
+	return fmt.Sprintf("Could not find symbol %s", snf.name)
 }
 
 func Attach(pid int) (*DebuggedProcess, error) {
