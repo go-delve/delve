@@ -143,6 +143,10 @@ func instructionsFor(name string, dbp *DebuggedProcess, reader *dwarf.Reader, me
 	if err != nil {
 		return nil, err
 	}
+	return instructionsForEntry(entry)
+}
+
+func instructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
 		instructions, ok = entry.Val(dwarf.AttrDataMemberLoc).([]byte)
@@ -301,6 +305,10 @@ func offsetFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader, parentin
 }
 
 // Returns the value of the named symbol.
+// Attepts to evaluate in the following order until it finds a valid symbol
+//   1) Function scope member variable
+//   2) Package variable in current package
+//   3) Package variable outside current package (if name contains at least 1 dot)
 func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	data := thread.Process.Dwarf
 
@@ -314,42 +322,72 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, fmt.Errorf("could not func function scope")
 	}
 
+	baseName := name
+	memberName := ""
+
+	// Find base entry
+	idx := strings.Index(name, ".")
+	if idx != -1 {
+		baseName = name[:idx]
+		memberName = name[idx+1:]
+	}
+
+	// Attempt to find variable in function
 	reader := data.Reader()
 	if err = seekToFunctionEntry(fn.Name, reader); err != nil {
 		return nil, err
 	}
 
-	if strings.Contains(name, ".") {
-		idx := strings.Index(name, ".")
-		return evaluateStructMember(thread, data, reader, name[:idx], name[idx+1:])
-	}
+	entry, err := findDwarfEntry(baseName, reader, false)
 
-	entry, err := findDwarfEntry(name, reader, false)
-	if err != nil {
+	// Ignore SymbolNotFoundError
+	if _, ok := err.(SymbolNotFoundError); !ok && err != nil {
 		return nil, err
 	}
 
-	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
-	if !ok {
-		return nil, fmt.Errorf("type assertion failed")
+	if entry == nil {
+		// Rewind reader to beginning and attempt to find variable in package,
+		reader.Seek(0)
+		idx = strings.Index(fn.Name, ".")
+		if idx != -1 {
+			entry, err = findDwarfEntry(fmt.Sprintf("%s.%s", fn.Name[:idx], baseName), reader, false)
+		}
+
+		// Ignore SymbolNotFoundError
+		if _, ok := err.(SymbolNotFoundError); !ok && err != nil {
+			return nil, err
+		}
 	}
 
-	t, err := data.Type(offset)
-	if err != nil {
+	// Rewind reader and and attempt to use fully qualified package name
+	if entry == nil && len(memberName) > 0 {
+		reader.Seek(0)
+		idx = strings.Index(memberName, ".")
+		if idx != -1 {
+			baseName = fmt.Sprintf("%s.%s", baseName, memberName[:idx])
+			memberName = memberName[idx+1:]
+		} else {
+			baseName = fmt.Sprintf("%s.%s", baseName, memberName)
+			memberName = ""
+		}
+		entry, err = findDwarfEntry(baseName, reader, false)
+
+		// Ignore SymbolNotFoundError
+		if _, ok := err.(SymbolNotFoundError); !ok && err != nil {
+			return nil, err
+		}
+	}
+
+	// Unable to find an entry
+	if entry == nil || err != nil {
 		return nil, err
 	}
 
-	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-	if !ok {
-		return nil, fmt.Errorf("type assertion failed")
+	// Process entry
+	if len(memberName) == 0 {
+		return thread.extractVariableFromEntry(entry)
 	}
-
-	val, err := thread.extractValue(instructions, 0, t)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Variable{Name: name, Type: t.String(), Value: val}, nil
+	return evaluateStructMember(thread, data, reader, entry, memberName)
 }
 
 // seekToFunctionEntry is basically used to seek the dwarf.Reader to
@@ -372,17 +410,29 @@ func seekToFunctionEntry(name string, reader *dwarf.Reader) error {
 		}
 
 		if n == name {
-			break
+			return nil
 		}
 	}
 
-	return nil
+	return SymbolNotFoundError{name}
 }
 
 func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entry, error) {
+	depth := 1
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return nil, err
+		}
+
+		if entry.Children {
+			depth = depth + 1
+		}
+
+		if entry.Tag == 0 {
+			depth = depth - 1
+			if depth <= 0 {
+				return nil, SymbolNotFoundError{name}
+			}
 		}
 
 		if member {
@@ -401,33 +451,78 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 		}
 		return entry, nil
 	}
-	return nil, fmt.Errorf("could not find symbol value for %s", name)
+	return nil, SymbolNotFoundError{name}
 }
 
-func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent, member string) (*Variable, error) {
-	parentInstr, err := instructionsFor(parent, thread.Process, reader, false)
+func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent *dwarf.Entry, member string) (*Variable, error) {
+
+	memberEntry, err := findStructMemberEntry(parent, reader, member)
 	if err != nil {
 		return nil, err
 	}
-	memberInstr, err := instructionsFor(member, thread.Process, reader, true)
+
+	parentInstr, err := instructionsForEntry(parent)
 	if err != nil {
 		return nil, err
 	}
-	reader.Seek(0)
-	entry, err := findDwarfEntry(member, reader, true)
+
+	memberInstr, err := instructionsForEntry(memberEntry)
 	if err != nil {
 		return nil, err
 	}
+
+	typeEntry, err := typeEntryFromEntry(memberEntry, reader)
+	if err != nil {
+		return nil, err
+	}
+
+	t, err := data.Type(typeEntry.Offset)
+	if err != nil {
+		return nil, err
+	}
+
+	val, err := thread.extractValue(append(parentInstr, memberInstr...), 0, t)
+	return &Variable{Name: "Test", Type: t.String(), Value: val}, nil
+}
+
+// Extracts the name, type, and value of a variable from a dwarf entry
+func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
+
+	if entry == nil {
+		return nil, fmt.Errorf("invalid entry")
+	}
+
+	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
+		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
+	}
+
+	n, ok := entry.Val(dwarf.AttrName).(string)
+	if !ok {
+		return nil, fmt.Errorf("type assertion failed")
+	}
+
 	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
 	if !ok {
 		return nil, fmt.Errorf("type assertion failed")
 	}
+
+	data := thread.Process.Dwarf
 	t, err := data.Type(offset)
 	if err != nil {
 		return nil, err
 	}
-	val, err := thread.extractValue(append(parentInstr, memberInstr...), 0, t)
-	return &Variable{Name: strings.Join([]string{parent, member}, "."), Type: t.String(), Value: val}, nil
+
+	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
+	if !ok {
+		return nil, fmt.Errorf("type assertion failed")
+	}
+
+	val, err := thread.extractValue(instructions, 0, t)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Variable{Name: n, Type: t.String(), Value: val}, nil
 }
 
 // Extracts the value from the instructions given in the DW_AT_location entry.
@@ -445,7 +540,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	}
 
 	fctx := fde.EstablishFrame(regs.PC())
-	cfaOffset := fctx.CFAOffset()
+	cfaOffset := fctx.CFAOffset() + int64(regs.SP())
 
 	offset := off
 	if off == 0 {
@@ -453,7 +548,6 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 		if err != nil {
 			return "", err
 		}
-		offset = int64(regs.SP()) + offset
 	}
 
 	// If we have a user defined type, find the
@@ -622,6 +716,63 @@ func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, err
 	}
 
 	return buf, nil
+}
+
+// fetches all variables of a specific type in the current function scope
+func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
+	data := thread.Process.Dwarf
+
+	pc, err := thread.CurrentPC()
+	if err != nil {
+		return nil, err
+	}
+
+	fn := thread.Process.GoSymTable.PCToFunc(pc)
+	if fn == nil {
+		return nil, fmt.Errorf("could not func function scope")
+	}
+
+	reader := data.Reader()
+	if err = seekToFunctionEntry(fn.Name, reader); err != nil {
+		return nil, err
+	}
+
+	vars := make([]*Variable, 0)
+
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		// End of function
+		if entry.Tag == 0 {
+			break
+		}
+
+		if entry.Tag == tag {
+			val, err := thread.extractVariableFromEntry(entry)
+			if err != nil {
+				return nil, err
+			}
+
+			vars = append(vars, val)
+		}
+
+		// Only care about top level
+		reader.SkipChildren()
+	}
+
+	return vars, nil
+}
+
+// LocalVariables returns all local variables from the current function scope
+func (thread *ThreadContext) LocalVariables() ([]*Variable, error) {
+	return thread.variablesByTag(dwarf.TagVariable)
+}
+
+//FunctionArguments returns the name, value, and type of all current function arguments
+func (thread *ThreadContext) FunctionArguments() ([]*Variable, error) {
+	return thread.variablesByTag(dwarf.TagFormalParameter)
 }
 
 // Sets the length of a slice.

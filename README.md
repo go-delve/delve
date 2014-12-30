@@ -69,6 +69,8 @@ Once inside a debugging session, the following commands may be used:
 * `info $type [regex]` - Outputs information about the symbol table. An optional regex filters the list. Example `info funcs unicode`. Valid types are:
   * `sources` - Prings the path of all source files
   * `funcs` - Prings the name of all defined functions
+  * `locals` - Prints the name and value of all local variables in the current context
+  * `args` - Prints the name and value of all arguments to the current function
 
 * `exit` - Exit the debugger.
 
