@@ -627,5 +627,5 @@ func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, err
 // Sets the length of a slice.
 func setSliceLength(ptr unsafe.Pointer, l int) {
 	lptr := (*int)(unsafe.Pointer(uintptr(ptr) + ptrsize))
-	*lptr = int(l)
+	*lptr = l
 }
