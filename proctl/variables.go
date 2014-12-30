@@ -497,7 +497,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	}
 
 	fctx := fde.EstablishFrame(regs.PC())
-	cfaOffset := fctx.CFAOffset()
+	cfaOffset := fctx.CFAOffset() + int64(regs.SP())
 
 	offset := off
 	if off == 0 {
@@ -505,7 +505,6 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 		if err != nil {
 			return "", err
 		}
-		offset = int64(regs.SP()) + offset
 	}
 
 	// If we have a user defined type, find the
