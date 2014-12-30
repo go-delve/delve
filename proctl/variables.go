@@ -482,7 +482,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 		case "string":
 			return thread.readString(offaddr, t.ByteSize)
 		case "[]int":
-			return thread.readIntSlice(offaddr)
+			return thread.readIntSlice(offaddr, t)
 		default:
 			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
@@ -527,9 +527,7 @@ func (thread *ThreadContext) readString(addr uintptr, size int64) (string, error
 	return *(*string)(unsafe.Pointer(&val)), nil
 }
 
-func (thread *ThreadContext) readIntSlice(addr uintptr) (string, error) {
-	var number uint64
-
+func (thread *ThreadContext) readIntSlice(addr uintptr, t *dwarf.StructType) (string, error) {
 	val, err := thread.readMemory(addr, uintptr(24))
 	if err != nil {
 		return "", err
@@ -544,18 +542,14 @@ func (thread *ThreadContext) readIntSlice(addr uintptr) (string, error) {
 		return "", err
 	}
 
-	members := make([]uint64, 0, l)
-	buf := bytes.NewBuffer(val)
-	for {
-		err := binary.Read(buf, binary.LittleEndian, &number)
-		if err != nil {
-			break
-		}
-
-		members = append(members, number)
+	switch t.StructName {
+	case "[]int":
+		members := *(*[]int)(unsafe.Pointer(&val))
+		lptr := (*int)(unsafe.Pointer(uintptr(unsafe.Pointer(&members)) + ptrsize))
+		*lptr = int(l)
+		return fmt.Sprintf("len: %d cap: %d %d", l, c, members), nil
 	}
-
-	return fmt.Sprintf("len: %d cap: %d %d", l, c, members), nil
+	return "", fmt.Errorf("Could not read slice")
 }
 
 func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
