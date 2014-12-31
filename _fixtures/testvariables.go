@@ -7,6 +7,12 @@ type FooBar struct {
 	Bur string
 }
 
+// same member names, different order / types
+type FooBar2 struct {
+	Bur int
+	Baz string
+}
+
 func barfoo() {
 	a1 := "bur"
 	fmt.Println(a1)
@@ -21,6 +27,7 @@ func foobar(baz string, bar FooBar) {
 		a5  = []int{1, 2, 3, 4, 5}
 		a6  = FooBar{Baz: 8, Bur: "word"}
 		a7  = &FooBar{Baz: 5, Bur: "strum"}
+		a8  = FooBar2{Bur: 10, Baz: "feh"}
 		neg = -1
 		i8  = int8(1)
 		f32 = float32(1.2)
@@ -28,7 +35,7 @@ func foobar(baz string, bar FooBar) {
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, baz, neg, i8, f32, i32, bar)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, baz, neg, i8, f32, i32, bar)
 }
 
 func main() {

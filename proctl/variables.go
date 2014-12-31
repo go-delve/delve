@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/derekparker/delve/dwarf/op"
+	"github.com/derekparker/delve/dwarf/reader"
 )
 
 type Variable struct {
@@ -143,15 +144,27 @@ func instructionsFor(name string, dbp *DebuggedProcess, reader *dwarf.Reader, me
 	if err != nil {
 		return nil, err
 	}
+	return instructionsForEntry(entry)
+}
+
+func instructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
+	if entry.Tag == dwarf.TagMember {
+		instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
+		if !ok {
+			return nil, fmt.Errorf("member data has no data member location attribute")
+		}
+		// clone slice to prevent stomping on the dwarf data
+		return append([]byte{}, instructions...), nil
+	}
+
+	// non-member
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		instructions, ok = entry.Val(dwarf.AttrDataMemberLoc).([]byte)
-		if !ok {
-			return nil, fmt.Errorf("type assertion failed")
-		}
-		return instructions, nil
+		return nil, fmt.Errorf("entry has no location attribute")
 	}
-	return instructions, nil
+
+	// clone slice to prevent stomping on the dwarf data
+	return append([]byte{}, instructions...), nil
 }
 
 func executeMemberStackProgram(base, instructions []byte) (uint64, error) {
@@ -314,10 +327,12 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, err
 	}
 
+	varName := name
+	memberName := ""
 	if strings.Contains(name, ".") {
 		idx := strings.Index(name, ".")
-		data := thread.Process.Dwarf
-		return evaluateStructMember(thread, data, reader.Reader, name[:idx], name[idx+1:])
+		varName = name[:idx]
+		memberName = name[idx+1:]
 	}
 
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
@@ -330,8 +345,11 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 			continue
 		}
 
-		if n == name {
-			return thread.extractVariableFromEntry(entry)
+		if n == varName {
+			if len(memberName) == 0 {
+				return thread.extractVariableFromEntry(entry)
+			}
+			return thread.evaluateStructMember(entry, reader, memberName)
 		}
 	}
 
@@ -375,30 +393,65 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
-func evaluateStructMember(thread *ThreadContext, data *dwarf.Data, reader *dwarf.Reader, parent, member string) (*Variable, error) {
-	parentInstr, err := instructionsFor(parent, thread.Process, reader, false)
+func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, reader *reader.Reader, memberName string) (*Variable, error) {
+	parentInstr, err := instructionsForEntry(parentEntry)
 	if err != nil {
 		return nil, err
 	}
-	memberInstr, err := instructionsFor(member, thread.Process, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	reader.Seek(0)
-	entry, err := findDwarfEntry(member, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
+
+	// get parent variable name
+	parentName, ok := parentEntry.Val(dwarf.AttrName).(string)
 	if !ok {
-		return nil, fmt.Errorf("type assertion failed")
+		return nil, fmt.Errorf("unable to retrive variable name")
 	}
-	t, err := data.Type(offset)
+
+	// Seek reader to the type information so members can be iterated
+	_, err = reader.SeekToType(parentEntry, true, false)
 	if err != nil {
 		return nil, err
 	}
-	val, err := thread.extractValue(append(parentInstr, memberInstr...), 0, t)
-	return &Variable{Name: strings.Join([]string{parent, member}, "."), Type: t.String(), Value: val}, nil
+
+	// Iterate to find member by name
+	for memberEntry, err := reader.NextMemberVariable(); memberEntry != nil; memberEntry, err = reader.NextMemberVariable() {
+		if err != nil {
+			return nil, err
+		}
+
+		name, ok := memberEntry.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+
+		if name == memberName {
+
+			memberInstr, err := instructionsForEntry(memberEntry)
+			if err != nil {
+				return nil, err
+			}
+
+			offset, ok := memberEntry.Val(dwarf.AttrType).(dwarf.Offset)
+			if !ok {
+				return nil, fmt.Errorf("type assertion failed")
+			}
+
+			data := thread.Process.Dwarf
+			t, err := data.Type(offset)
+			if err != nil {
+				return nil, err
+			}
+
+			app := append(parentInstr, memberInstr...)
+
+			val, err := thread.extractValue(app, 0, t)
+
+			if err != nil {
+				return nil, err
+			}
+			return &Variable{Name: strings.Join([]string{parentName, memberName}, "."), Type: t.String(), Value: val}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("member %s not found for %s", memberName, parentName)
 }
 
 // Extracts the name, type, and value of a variable from a dwarf entry

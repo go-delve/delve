@@ -42,16 +42,19 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int"},
 		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar"},
 		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar"},
+		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2"},
 		{"baz", "bazburzum", "struct string"},
 		{"neg", "-1", "int"},
 		{"i8", "1", "int8"},
 		{"f32", "1.2", "float32"},
 		{"a6.Baz", "8", "int"},
+		{"a8.Baz", "feh", "struct string"},
+		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2"}, // reread variable after member
 		{"i32", "[2]int32 [1 2]", "[2]int32"},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 30)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 37)
 
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")
@@ -76,7 +79,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 30)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 37)
 
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")
@@ -91,7 +94,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 		assertNoError(err, t, "Unable to find variable a1")
 
 		// Move scopes, a1 exists here by a2 does not
-		pc, _, _ = p.GoSymTable.LineToPC(fp, 12)
+		pc, _, _ = p.GoSymTable.LineToPC(fp, 18)
 
 		_, err = p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")
@@ -147,6 +150,7 @@ func TestLocalVariables(t *testing.T) {
 				{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int"},
 				{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar"},
 				{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar"},
+				{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2"},
 				{"f32", "1.2", "float32"},
 				{"i32", "[2]int32 [1 2]", "[2]int32"},
 				{"i8", "1", "int8"},
@@ -158,7 +162,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 30)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 37)
 
 		_, err := p.Break(uintptr(pc))
 		assertNoError(err, t, "Break() returned an error")
