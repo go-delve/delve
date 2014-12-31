@@ -302,48 +302,27 @@ func offsetFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader, parentin
 
 // Returns the value of the named symbol.
 func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
-	data := thread.Process.Dwarf
-
 	pc, err := thread.CurrentPC()
 	if err != nil {
 		return nil, err
 	}
 
-	fn := thread.Process.GoSymTable.PCToFunc(pc)
-	if fn == nil {
-		return nil, fmt.Errorf("could not find function scope")
-	}
+	reader := thread.Process.DwarfReader()
 
-	reader := data.Reader()
-	if err = seekToFunctionEntry(fn.Name, reader); err != nil {
+	_, err = reader.SeekToFunction(pc)
+	if err != nil {
 		return nil, err
 	}
 
 	if strings.Contains(name, ".") {
 		idx := strings.Index(name, ".")
-		return evaluateStructMember(thread, data, reader, name[:idx], name[idx+1:])
+		data := thread.Process.Dwarf
+		return evaluateStructMember(thread, data, reader.Reader, name[:idx], name[idx+1:])
 	}
 
-	entry, err := findDwarfEntry(name, reader, false)
-	if err != nil {
-		return nil, err
-	}
-
-	return thread.extractVariableFromEntry(entry)
-}
-
-// seekToFunctionEntry is basically used to seek the dwarf.Reader to
-// the function entry that represents our current scope. From there
-// we can find the first child entry that matches the var name and
-// use it to determine the value of the variable.
-func seekToFunctionEntry(name string, reader *dwarf.Reader) error {
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
-			return err
-		}
-
-		if entry.Tag != dwarf.TagSubprogram {
-			continue
+			return nil, err
 		}
 
 		n, ok := entry.Val(dwarf.AttrName).(string)
@@ -352,11 +331,11 @@ func seekToFunctionEntry(name string, reader *dwarf.Reader) error {
 		}
 
 		if n == name {
-			break
+			return thread.extractVariableFromEntry(entry)
 		}
 	}
 
-	return nil
+	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
 func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entry, error) {
@@ -656,33 +635,23 @@ func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, err
 
 // Fetches all variables of a specific type in the current function scope
 func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
-	data := thread.Process.Dwarf
-
 	pc, err := thread.CurrentPC()
 	if err != nil {
 		return nil, err
 	}
 
-	fn := thread.Process.GoSymTable.PCToFunc(pc)
-	if fn == nil {
-		return nil, fmt.Errorf("could not find function scope")
-	}
+	reader := thread.Process.DwarfReader()
 
-	reader := data.Reader()
-	if err = seekToFunctionEntry(fn.Name, reader); err != nil {
+	_, err = reader.SeekToFunction(pc)
+	if err != nil {
 		return nil, err
 	}
 
 	vars := make([]*Variable, 0)
 
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
 			return nil, err
-		}
-
-		// End of function
-		if entry.Tag == 0 {
-			break
 		}
 
 		if entry.Tag == tag {
@@ -693,9 +662,6 @@ func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) 
 
 			vars = append(vars, val)
 		}
-
-		// Only care about top level
-		reader.SkipChildren()
 	}
 
 	return vars, nil

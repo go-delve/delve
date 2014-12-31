@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/dwarf/reader"
 )
 
 // Struct representing a debugged process. Holds onto pid, register values,
@@ -296,6 +297,11 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 // Returns the value of the named symbol.
 func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 	return dbp.CurrentThread.EvalSymbol(name)
+}
+
+// Returns a reader for the dwarf data
+func (dbp *DebuggedProcess) DwarfReader() *reader.Reader {
+	return reader.New(dbp.Dwarf)
 }
 
 type ProcessExitedError struct {
