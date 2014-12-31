@@ -464,27 +464,27 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 // Extracts the value from the instructions given in the DW_AT_location entry.
 // We execute the stack program described in the DW_OP_* instruction stream, and
 // then grab the value from the other processes memory.
-func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ interface{}) (string, error) {
-	regs, err := thread.Registers()
-	if err != nil {
-		return "", err
-	}
+func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ interface{}) (string, error) {
+	address := addr
 
-	fde, err := thread.Process.FrameEntries.FDEForPC(regs.PC())
-	if err != nil {
-		return "", err
-	}
-
-	fctx := fde.EstablishFrame(regs.PC())
-	cfaOffset := fctx.CFAOffset()
-
-	offset := off
-	if off == 0 {
-		offset, err = op.ExecuteStackProgram(cfaOffset, instructions)
+	if address == 0 {
+		regs, err := thread.Registers()
 		if err != nil {
 			return "", err
 		}
-		offset = int64(regs.SP()) + offset
+
+		fde, err := thread.Process.FrameEntries.FDEForPC(regs.PC())
+		if err != nil {
+			return "", err
+		}
+
+		fctx := fde.EstablishFrame(regs.PC())
+		cfaOffset := fctx.CFAOffset() + int64(regs.SP())
+
+		address, err = op.ExecuteStackProgram(cfaOffset, instructions)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// If we have a user defined type, find the
@@ -493,15 +493,14 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 		typ = tt.Type
 	}
 
-	offaddr := uintptr(offset)
+	ptraddress := uintptr(address)
 	switch t := typ.(type) {
 	case *dwarf.PtrType:
-		addr, err := thread.readMemory(offaddr, ptrsize)
+		ptr, err := thread.readMemory(ptraddress, ptrsize)
 		if err != nil {
 			return "", err
 		}
-		adr := binary.LittleEndian.Uint64(addr)
-		val, err := thread.extractValue(nil, int64(adr), t.Type)
+		val, err := thread.extractValue(nil, int64(binary.LittleEndian.Uint64(ptr)), t.Type)
 		if err != nil {
 			return "", err
 		}
@@ -511,15 +510,15 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 	case *dwarf.StructType:
 		switch t.StructName {
 		case "string":
-			return thread.readString(offaddr, t.ByteSize)
+			return thread.readString(ptraddress, t.ByteSize)
 		case "[]int":
-			return thread.readIntSlice(offaddr, t)
+			return thread.readIntSlice(ptraddress, t)
 		default:
 			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
 			fields := make([]string, 0, len(t.Field))
 			for _, field := range t.Field {
-				val, err := thread.extractValue(nil, field.ByteOffset+offset, field.Type)
+				val, err := thread.extractValue(nil, field.ByteOffset+address, field.Type)
 				if err != nil {
 					return "", err
 				}
@@ -530,11 +529,11 @@ func (thread *ThreadContext) extractValue(instructions []byte, off int64, typ in
 			return retstr, nil
 		}
 	case *dwarf.ArrayType:
-		return thread.readIntArray(offaddr, t)
+		return thread.readIntArray(ptraddress, t)
 	case *dwarf.IntType:
-		return thread.readInt(offaddr, t.ByteSize)
+		return thread.readInt(ptraddress, t.ByteSize)
 	case *dwarf.FloatType:
-		return thread.readFloat(offaddr, t.ByteSize)
+		return thread.readFloat(ptraddress, t.ByteSize)
 	}
 
 	return "", fmt.Errorf("could not find value for type %s", typ)
