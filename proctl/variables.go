@@ -423,7 +423,6 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 		}
 
 		if name == memberName {
-
 			memberInstr, err := instructionsForEntry(memberEntry)
 			if err != nil {
 				return nil, err
@@ -441,9 +440,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 			}
 
 			app := append(parentInstr, memberInstr...)
-
 			val, err := thread.extractValue(app, 0, t)
-
 			if err != nil {
 				return nil, err
 			}
