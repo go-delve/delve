@@ -394,7 +394,7 @@ func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entr
 }
 
 func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, reader *reader.Reader, memberName string) (*Variable, error) {
-	parentInstr, err := instructionsForEntry(parentEntry)
+	parentAddr, err := thread.extractVariableDataAddress(parentEntry, reader)
 	if err != nil {
 		return nil, err
 	}
@@ -406,7 +406,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 	}
 
 	// Seek reader to the type information so members can be iterated
-	_, err = reader.SeekToType(parentEntry, true, false)
+	_, err = reader.SeekToType(parentEntry, true, true)
 	if err != nil {
 		return nil, err
 	}
@@ -423,6 +423,11 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 		}
 
 		if name == memberName {
+			// nil ptr. wait until here to throw a nil pointer error to prioritize no such member error
+			if parentAddr == 0 {
+				return nil, fmt.Errorf("%s is nil", parentName)
+			}
+
 			memberInstr, err := instructionsForEntry(memberEntry)
 			if err != nil {
 				return nil, err
@@ -439,8 +444,11 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 				return nil, err
 			}
 
-			app := append(parentInstr, memberInstr...)
-			val, err := thread.extractValue(app, 0, t)
+			baseAddr := make([]byte, 8)
+			binary.LittleEndian.PutUint64(baseAddr, uint64(parentAddr))
+
+			parentInstructions := append([]byte{op.DW_OP_addr}, baseAddr...)
+			val, err := thread.extractValue(append(parentInstructions, memberInstr...), 0, t)
 			if err != nil {
 				return nil, err
 			}
@@ -448,7 +456,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 		}
 	}
 
-	return nil, fmt.Errorf("member %s not found for %s", memberName, parentName)
+	return nil, fmt.Errorf("%s has no member %s", parentName, memberName)
 }
 
 // Extracts the name, type, and value of a variable from a dwarf entry
@@ -490,27 +498,70 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 	return &Variable{Name: n, Type: t.String(), Value: val}, nil
 }
 
+// Execute the stack program taking into account the current stack frame
+func (thread *ThreadContext) executeStackProgram(instructions []byte) (int64, error) {
+	regs, err := thread.Registers()
+	if err != nil {
+		return 0, err
+	}
+
+	fde, err := thread.Process.FrameEntries.FDEForPC(regs.PC())
+	if err != nil {
+		return 0, err
+	}
+
+	fctx := fde.EstablishFrame(regs.PC())
+	cfaOffset := fctx.CFAOffset() + int64(regs.SP())
+
+	address, err := op.ExecuteStackProgram(cfaOffset, instructions)
+	if err != nil {
+		return 0, err
+	}
+	return address, nil
+}
+
+// Extracts the address of a variable, dereferencing any pointers
+func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, reader *reader.Reader) (int64, error) {
+	instructions, err := instructionsForEntry(entry)
+	if err != nil {
+		return 0, err
+	}
+
+	address, err := thread.executeStackProgram(instructions)
+	if err != nil {
+		return 0, err
+	}
+
+	// dereference pointers to get down the concrete type
+	for typeEntry, err := reader.SeekToType(entry, true, false); typeEntry != nil; typeEntry, err = reader.SeekToType(typeEntry, true, false) {
+		if err != nil {
+			return 0, err
+		}
+
+		if typeEntry.Tag != dwarf.TagPointerType {
+			break
+		}
+
+		ptraddress := uintptr(address)
+
+		ptr, err := thread.readMemory(ptraddress, ptrsize)
+		if err != nil {
+			return 0, err
+		}
+		address = int64(binary.LittleEndian.Uint64(ptr))
+	}
+
+	return address, nil
+}
+
 // Extracts the value from the instructions given in the DW_AT_location entry.
 // We execute the stack program described in the DW_OP_* instruction stream, and
 // then grab the value from the other processes memory.
 func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ interface{}) (string, error) {
-	address := addr
+	var err error
 
-	if address == 0 {
-		regs, err := thread.Registers()
-		if err != nil {
-			return "", err
-		}
-
-		fde, err := thread.Process.FrameEntries.FDEForPC(regs.PC())
-		if err != nil {
-			return "", err
-		}
-
-		fctx := fde.EstablishFrame(regs.PC())
-		cfaOffset := fctx.CFAOffset() + int64(regs.SP())
-
-		address, err = op.ExecuteStackProgram(cfaOffset, instructions)
+	if addr == 0 {
+		addr, err = thread.executeStackProgram(instructions)
 		if err != nil {
 			return "", err
 		}
@@ -522,20 +573,25 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 		typ = tt.Type
 	}
 
-	ptraddress := uintptr(address)
+	ptraddress := uintptr(addr)
 	switch t := typ.(type) {
 	case *dwarf.PtrType:
 		ptr, err := thread.readMemory(ptraddress, ptrsize)
 		if err != nil {
 			return "", err
 		}
-		val, err := thread.extractValue(nil, int64(binary.LittleEndian.Uint64(ptr)), t.Type)
+
+		intaddr := int64(binary.LittleEndian.Uint64(ptr))
+		if intaddr == 0 {
+			return fmt.Sprintf("%s nil", t.String()), nil
+		}
+
+		val, err := thread.extractValue(nil, intaddr, t.Type)
 		if err != nil {
 			return "", err
 		}
 
-		retstr := fmt.Sprintf("*%s", val)
-		return retstr, nil
+		return fmt.Sprintf("*%s", val), nil
 	case *dwarf.StructType:
 		switch t.StructName {
 		case "string":
@@ -547,7 +603,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 			// the value of all the members of the struct.
 			fields := make([]string, 0, len(t.Field))
 			for _, field := range t.Field {
-				val, err := thread.extractValue(nil, field.ByteOffset+address, field.Type)
+				val, err := thread.extractValue(nil, field.ByteOffset+addr, field.Type)
 				if err != nil {
 					return "", err
 				}
