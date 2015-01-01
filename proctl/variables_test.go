@@ -1,6 +1,7 @@
 package proctl
 
 import (
+	"errors"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -10,6 +11,7 @@ type varTest struct {
 	name    string
 	value   string
 	varType string
+	err     error
 }
 
 func assertVariable(t *testing.T, variable *Variable, expected varTest) {
@@ -35,26 +37,31 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	testcases := []varTest{
-		{"a1", "foo", "struct string"},
-		{"a2", "6", "int"},
-		{"a3", "7.23", "float64"},
-		{"a4", "[2]int [1 2]", "[2]int"},
-		{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int"},
-		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar"},
-		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar"},
-		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2"},
-		{"baz", "bazburzum", "struct string"},
-		{"neg", "-1", "int"},
-		{"i8", "1", "int8"},
-		{"f32", "1.2", "float32"},
-		{"a6.Baz", "8", "int"},
-		{"a8.Baz", "feh", "struct string"},
-		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2"}, // reread variable after member
-		{"i32", "[2]int32 [1 2]", "[2]int32"},
+		{"a1", "foo", "struct string", nil},
+		{"a2", "6", "int", nil},
+		{"a3", "7.23", "float64", nil},
+		{"a4", "[2]int [1 2]", "[2]int", nil},
+		{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int", nil},
+		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar", nil},
+		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar", nil},
+		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil},
+		{"a9", "*main.FooBar nil", "*main.FooBar", nil},
+		{"baz", "bazburzum", "struct string", nil},
+		{"neg", "-1", "int", nil},
+		{"i8", "1", "int8", nil},
+		{"f32", "1.2", "float32", nil},
+		{"a6.Baz", "8", "int", nil},
+		{"a7.Baz", "5", "int", nil},
+		{"a8.Baz", "feh", "struct string", nil},
+		{"a9.Baz", "nil", "int", errors.New("a9 is nil")},
+		{"a9.NonExistent", "nil", "int", errors.New("a9 has no member NonExistent")},
+		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil}, // reread variable after member
+		{"i32", "[2]int32 [1 2]", "[2]int32", nil},
+		{"NonExistent", "", "", errors.New("could not find symbol value for NonExistent")},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 37)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 38)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -64,8 +71,14 @@ func TestVariableEvaluation(t *testing.T) {
 
 		for _, tc := range testcases {
 			variable, err := p.EvalSymbol(tc.name)
-			assertNoError(err, t, "EvalSymbol() returned an error")
-			assertVariable(t, variable, tc)
+			if tc.err == nil {
+				assertNoError(err, t, "EvalSymbol() returned an error")
+				assertVariable(t, variable, tc)
+			} else {
+				if tc.err.Error() != err.Error() {
+					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+				}
+			}
 		}
 	})
 }
@@ -79,7 +92,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 37)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 38)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -143,26 +156,27 @@ func TestLocalVariables(t *testing.T) {
 	}{
 		{(*ThreadContext).LocalVariables,
 			[]varTest{
-				{"a1", "foo", "struct string"},
-				{"a2", "6", "int"},
-				{"a3", "7.23", "float64"},
-				{"a4", "[2]int [1 2]", "[2]int"},
-				{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int"},
-				{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar"},
-				{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar"},
-				{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2"},
-				{"f32", "1.2", "float32"},
-				{"i32", "[2]int32 [1 2]", "[2]int32"},
-				{"i8", "1", "int8"},
-				{"neg", "-1", "int"}}},
+				{"a1", "foo", "struct string", nil},
+				{"a2", "6", "int", nil},
+				{"a3", "7.23", "float64", nil},
+				{"a4", "[2]int [1 2]", "[2]int", nil},
+				{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int", nil},
+				{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar", nil},
+				{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar", nil},
+				{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil},
+				{"a9", "*main.FooBar nil", "*main.FooBar", nil},
+				{"f32", "1.2", "float32", nil},
+				{"i32", "[2]int32 [1 2]", "[2]int32", nil},
+				{"i8", "1", "int8", nil},
+				{"neg", "-1", "int", nil}}},
 		{(*ThreadContext).FunctionArguments,
 			[]varTest{
-				{"bar", "main.FooBar {Baz: 10, Bur: lorem}", "main.FooBar"},
-				{"baz", "bazburzum", "struct string"}}},
+				{"bar", "main.FooBar {Baz: 10, Bur: lorem}", "main.FooBar", nil},
+				{"baz", "bazburzum", "struct string", nil}}},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 37)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 38)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
