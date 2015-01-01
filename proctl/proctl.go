@@ -177,7 +177,6 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 
 // Find a location by string (file+line, function, breakpoint id, addr)
 func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
-
 	// File + Line
 	if strings.ContainsRune(str, ':') {
 		fl := strings.Split(str, ":")
