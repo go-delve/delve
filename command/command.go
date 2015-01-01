@@ -4,14 +4,11 @@ package command
 
 import (
 	"bufio"
-	"debug/gosym"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/derekparker/delve/proctl"
@@ -158,44 +155,12 @@ func clear(p *proctl.DebuggedProcess, args ...string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 
-	var (
-		fn    *gosym.Func
-		pc    uint64
-		fname = args[0]
-	)
-
-	if strings.ContainsRune(fname, ':') {
-		fl := strings.Split(fname, ":")
-
-		f, err := filepath.Abs(fl[0])
-		if err != nil {
-			return err
-		}
-
-		l, err := strconv.Atoi(fl[1])
-		if err != nil {
-			return err
-		}
-
-		pc, fn, err = p.GoSymTable.LineToPC(f, l)
-		if err != nil {
-			return err
-		}
-	} else {
-		fn = p.GoSymTable.LookupFunc(fname)
-		if fn == nil {
-			return fmt.Errorf("No function named %s", fname)
-		}
-
-		pc = fn.Entry
-	}
-
-	bp, err := p.Clear(pc)
+	bp, err := p.ClearByLocation(args[0])
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Breakpoint cleared at %#v for %s %s:%d\n", bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	fmt.Printf("Breakpoint %d cleared at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
 
 	return nil
 }
@@ -205,44 +170,12 @@ func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 
-	var (
-		fn    *gosym.Func
-		pc    uint64
-		fname = args[0]
-	)
-
-	if strings.ContainsRune(fname, ':') {
-		fl := strings.Split(fname, ":")
-
-		f, err := filepath.Abs(fl[0])
-		if err != nil {
-			return err
-		}
-
-		l, err := strconv.Atoi(fl[1])
-		if err != nil {
-			return err
-		}
-
-		pc, fn, err = p.GoSymTable.LineToPC(f, l)
-		if err != nil {
-			return err
-		}
-	} else {
-		fn = p.GoSymTable.LookupFunc(fname)
-		if fn == nil {
-			return fmt.Errorf("No function named %s", fname)
-		}
-
-		pc = fn.Entry
-	}
-
-	bp, err := p.Break(uintptr(pc))
+	bp, err := p.BreakByLocation(args[0])
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Breakpoint set at %#v for %s %s:%d\n", bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	fmt.Printf("Breakpoint %d set at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
 
 	return nil
 }

@@ -74,7 +74,7 @@ func TestStep(t *testing.T) {
 		helloworldfunc := p.GoSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
-		_, err := p.Break(uintptr(helloworldaddr))
+		_, err := p.Break(helloworldaddr)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
 
@@ -111,7 +111,7 @@ func TestBreakPoint(t *testing.T) {
 		sleepytimefunc := p.GoSymTable.LookupFunc("main.helloworld")
 		sleepyaddr := sleepytimefunc.Entry
 
-		bp, err := p.Break(uintptr(sleepyaddr))
+		bp, err := p.Break(sleepyaddr)
 		assertNoError(err, t, "Break()")
 
 		breakpc := bp.Addr + 1
@@ -149,7 +149,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal("No fn exists")
 		}
 
-		_, err := p.Break(uintptr(fn.Entry))
+		_, err := p.Break(fn.Entry)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +173,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 
 func TestBreakPointWithNonExistantFunction(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
-		_, err := p.Break(uintptr(0))
+		_, err := p.Break(0)
 		if err == nil {
 			t.Fatal("Should not be able to break at non existant function")
 		}
@@ -183,7 +183,7 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 func TestClearBreakPoint(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
 		fn := p.GoSymTable.LookupFunc("main.sleepytime")
-		bp, err := p.Break(uintptr(fn.Entry))
+		bp, err := p.Break(fn.Entry)
 		assertNoError(err, t, "Break()")
 
 		int3, err := dataAtAddr(p.Pid, bp.Addr)
@@ -245,7 +245,7 @@ func TestNext(t *testing.T) {
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
-		_, err := p.Break(uintptr(pc))
+		_, err := p.Break(pc)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
 
@@ -284,7 +284,7 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = p.Break(uintptr(start))
+		_, err = p.Break(start)
 		if err != nil {
 			t.Fatal(err)
 		}

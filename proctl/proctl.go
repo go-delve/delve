@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/derekparker/delve/dwarf/frame"
@@ -36,13 +39,14 @@ type BreakPoint struct {
 	Line         int
 	Addr         uint64
 	OriginalData []byte
+	ID           int
 	temp         bool
 }
 
 type BreakPointExistsError struct {
 	file string
 	line int
-	addr uintptr
+	addr uint64
 }
 
 // ProcessStatus is the result of parsing the data from
@@ -58,6 +62,10 @@ const (
 	STATUS_SLEEPING   = 'S'
 	STATUS_RUNNING    = 'R'
 	STATUS_TRACE_STOP = 't'
+)
+
+var (
+	breakpointIDCounter = 0
 )
 
 func (bpe BreakPointExistsError) Error() string {
@@ -167,14 +175,80 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 	return dbp.addThread(tid)
 }
 
+// Find a location by string (file+line, function, breakpoint id, addr)
+func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
+
+	// File + Line
+	if strings.ContainsRune(str, ':') {
+		fl := strings.Split(str, ":")
+
+		fileName, err := filepath.Abs(fl[0])
+		if err != nil {
+			return 0, err
+		}
+
+		line, err := strconv.Atoi(fl[1])
+		if err != nil {
+			return 0, err
+		}
+
+		pc, _, err := dbp.GoSymTable.LineToPC(fileName, line)
+		if err != nil {
+			return 0, err
+		}
+		return pc, nil
+	} else {
+		// Try to lookup by function name
+		fn := dbp.GoSymTable.LookupFunc(str)
+		if fn != nil {
+			return fn.Entry, nil
+		}
+
+		// Attempt to parse as number for breakpoint id or raw address
+		id, err := strconv.ParseUint(str, 0, 64)
+		if err != nil {
+			return 0, fmt.Errorf("unable to find location for %s", str)
+		}
+
+		// Use as breakpoint id
+		for _, bp := range dbp.BreakPoints {
+			// ID
+			if uint64(bp.ID) == id {
+				return bp.Addr, nil
+			}
+		}
+
+		// Last resort, use as raw address
+		return id, nil
+	}
+}
+
 // Sets a breakpoint in the current thread.
-func (dbp *DebuggedProcess) Break(addr uintptr) (*BreakPoint, error) {
+func (dbp *DebuggedProcess) Break(addr uint64) (*BreakPoint, error) {
+	return dbp.CurrentThread.Break(addr)
+}
+
+// Sets a breakpoint by location string (function, file+line, address)
+func (dbp *DebuggedProcess) BreakByLocation(loc string) (*BreakPoint, error) {
+	addr, err := dbp.FindLocation(loc)
+	if err != nil {
+		return nil, err
+	}
 	return dbp.CurrentThread.Break(addr)
 }
 
 // Clears a breakpoint in the current thread.
-func (dbp *DebuggedProcess) Clear(pc uint64) (*BreakPoint, error) {
-	return dbp.CurrentThread.Clear(pc)
+func (dbp *DebuggedProcess) Clear(addr uint64) (*BreakPoint, error) {
+	return dbp.CurrentThread.Clear(addr)
+}
+
+// Clears a breakpoint by location (function, file+line, address, breakpoint id)
+func (dbp *DebuggedProcess) ClearByLocation(loc string) (*BreakPoint, error) {
+	addr, err := dbp.FindLocation(loc)
+	if err != nil {
+		return nil, err
+	}
+	return dbp.CurrentThread.Clear(addr)
 }
 
 // Returns the status of the current main thread context.
@@ -283,7 +357,7 @@ func (dbp *DebuggedProcess) Registers() (Registers, error) {
 }
 
 type InvalidAddressError struct {
-	address uintptr
+	address uint64
 }
 
 func (iae InvalidAddressError) Error() string {

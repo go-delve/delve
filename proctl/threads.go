@@ -65,7 +65,7 @@ func (thread *ThreadContext) PrintInfo() error {
 // ptrace actions needing the thread to be in a signal-delivery-stop in order
 // to initiate any ptrace command. Otherwise, it really doesn't matter
 // as we're only dealing with threads.
-func (thread *ThreadContext) Break(addr uintptr) (*BreakPoint, error) {
+func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
 	var (
 		int3         = []byte{0xCC}
 		f, l, fn     = thread.Process.GoSymTable.PCToLine(uint64(addr))
@@ -76,7 +76,7 @@ func (thread *ThreadContext) Break(addr uintptr) (*BreakPoint, error) {
 		return nil, InvalidAddressError{address: addr}
 	}
 
-	_, err := readMemory(thread.Id, addr, originalData)
+	_, err := readMemory(thread.Id, uintptr(addr), originalData)
 	if err != nil {
 		fmt.Println("PEEK ERR")
 		return nil, err
@@ -86,38 +86,41 @@ func (thread *ThreadContext) Break(addr uintptr) (*BreakPoint, error) {
 		return nil, BreakPointExistsError{f, l, addr}
 	}
 
-	_, err = writeMemory(thread.Id, addr, int3)
+	_, err = writeMemory(thread.Id, uintptr(addr), int3)
 	if err != nil {
 		fmt.Println("POKE ERR")
 		return nil, err
 	}
 
+	breakpointIDCounter++
+
 	breakpoint := &BreakPoint{
 		FunctionName: fn.Name,
 		File:         f,
 		Line:         l,
-		Addr:         uint64(addr),
+		Addr:         addr,
 		OriginalData: originalData,
+		ID:           breakpointIDCounter,
 	}
 
-	thread.Process.BreakPoints[uint64(addr)] = breakpoint
+	thread.Process.BreakPoints[addr] = breakpoint
 
 	return breakpoint, nil
 }
 
 // Clears a software breakpoint, and removes it from the process level
 // break point table.
-func (thread *ThreadContext) Clear(pc uint64) (*BreakPoint, error) {
-	bp, ok := thread.Process.BreakPoints[pc]
+func (thread *ThreadContext) Clear(addr uint64) (*BreakPoint, error) {
+	bp, ok := thread.Process.BreakPoints[addr]
 	if !ok {
-		return nil, fmt.Errorf("No breakpoint currently set for %#v", pc)
+		return nil, fmt.Errorf("No breakpoint currently set for %#v", addr)
 	}
 
 	if _, err := writeMemory(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
 		return nil, fmt.Errorf("could not clear breakpoint %s", err)
 	}
 
-	delete(thread.Process.BreakPoints, pc)
+	delete(thread.Process.BreakPoints, addr)
 
 	return bp, nil
 }
@@ -164,7 +167,7 @@ func (thread *ThreadContext) Step() (err error) {
 
 		// Restore breakpoint now that we have passed it.
 		defer func() {
-			_, err = thread.Break(uintptr(bp.Addr))
+			_, err = thread.Break(bp.Addr)
 		}()
 	}
 
@@ -241,7 +244,7 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 		// has not had a chance to modify its' stack
 		// and change our offset.
 		addr := thread.ReturnAddressFromOffset(0)
-		bp, err := thread.Break(uintptr(addr))
+		bp, err := thread.Break(addr)
 		if err != nil {
 			if _, ok := err.(BreakPointExistsError); !ok {
 				return err
