@@ -399,7 +399,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 		return nil, err
 	}
 
-	// get parent variable name
+	// Get parent variable name
 	parentName, ok := parentEntry.Val(dwarf.AttrName).(string)
 	if !ok {
 		return nil, fmt.Errorf("unable to retrive variable name")
@@ -423,7 +423,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 		}
 
 		if name == memberName {
-			// nil ptr. wait until here to throw a nil pointer error to prioritize no such member error
+			// Nil ptr, wait until here to throw a nil pointer error to prioritize no such member error
 			if parentAddr == 0 {
 				return nil, fmt.Errorf("%s is nil", parentName)
 			}
@@ -532,7 +532,7 @@ func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, read
 		return 0, err
 	}
 
-	// dereference pointers to get down the concrete type
+	// Dereference pointers to get down the concrete type
 	for typeEntry, err := reader.SeekToType(entry, true, false); typeEntry != nil; typeEntry, err = reader.SeekToType(typeEntry, true, false) {
 		if err != nil {
 			return 0, err
