@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"syscall"
 
@@ -46,6 +47,16 @@ func Run(run bool, pid int, args []string) {
 			die(1, "Could not launch program:", err)
 		}
 	}
+
+	ch := make(chan os.Signal)
+	signal.Notify(ch, syscall.SIGINT)
+	go func() {
+		for _ = range ch {
+			if dbp.Running() {
+				dbp.RequestManualStop()
+			}
+		}
+	}()
 
 	cmds := command.DebugCommands()
 	goreadline.LoadHistoryFromFile(historyFile)

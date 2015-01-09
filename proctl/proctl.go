@@ -28,6 +28,8 @@ type DebuggedProcess struct {
 	BreakPoints   map[uint64]*BreakPoint
 	Threads       map[int]*ThreadContext
 	CurrentThread *ThreadContext
+	running       bool
+	halt          bool
 }
 
 // Represents a single breakpoint. Stores information on the break
@@ -49,6 +51,16 @@ type BreakPointExistsError struct {
 	addr uint64
 }
 
+func (bpe BreakPointExistsError) Error() string {
+	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
+}
+
+type ManualStopError struct{}
+
+func (mse ManualStopError) Error() string {
+	return "Manual stop requested"
+}
+
 // ProcessStatus is the result of parsing the data from
 // the /proc/<pid>/stats psuedo file.
 type ProcessStatus struct {
@@ -67,10 +79,6 @@ const (
 var (
 	breakpointIDCounter = 0
 )
-
-func (bpe BreakPointExistsError) Error() string {
-	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
-}
 
 func Attach(pid int) (*DebuggedProcess, error) {
 	dbp, err := newDebugProcess(pid, true)
@@ -175,6 +183,10 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 	return dbp.addThread(tid)
 }
 
+func (dbp *DebuggedProcess) Running() bool {
+	return dbp.running
+}
+
 // Find a location by string (file+line, function, breakpoint id, addr)
 func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 	// File + Line
@@ -220,6 +232,18 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 		// Last resort, use as raw address
 		return id, nil
 	}
+}
+
+func (dbp *DebuggedProcess) RequestManualStop() {
+	dbp.halt = true
+	for _, th := range dbp.Threads {
+		ps, _ := parseProcessStatus(th.Id)
+		if ps.state == STATUS_TRACE_STOP {
+			continue
+		}
+		syscall.Tgkill(dbp.Pid, th.Id, syscall.SIGSTOP)
+	}
+	dbp.running = false
 }
 
 // Sets a breakpoint in the current thread.
@@ -278,22 +302,25 @@ func (dbp *DebuggedProcess) Step() (err error) {
 		return err
 	}
 
-	for _, m := range allm {
-		th, ok = dbp.Threads[m.procid]
-		if !ok {
-			th = dbp.Threads[dbp.Pid]
-		}
-
-		if m.blocked == 0 {
-			err := th.Step()
-			if err != nil {
-				return err
+	fn := func() error {
+		for _, m := range allm {
+			th, ok = dbp.Threads[m.procid]
+			if !ok {
+				th = dbp.Threads[dbp.Pid]
 			}
-		}
 
+			if m.blocked == 0 {
+				err := th.Step()
+				if err != nil {
+					return err
+				}
+			}
+
+		}
+		return nil
 	}
 
-	return nil
+	return dbp.run(fn)
 }
 
 // Step over function calls.
@@ -308,29 +335,32 @@ func (dbp *DebuggedProcess) Next() error {
 		return err
 	}
 
-	for _, m := range allm {
-		th, ok = dbp.Threads[m.procid]
-		if !ok {
-			th = dbp.Threads[dbp.Pid]
-		}
+	fn := func() error {
+		for _, m := range allm {
+			th, ok = dbp.Threads[m.procid]
+			if !ok {
+				th = dbp.Threads[dbp.Pid]
+			}
 
-		if m.blocked == 1 {
-			// Continue any blocked M so that the
-			// scheduler can continue to do its'
-			// job correctly.
-			err := th.Continue()
-			if err != nil {
+			if m.blocked == 1 {
+				// Continue any blocked M so that the
+				// scheduler can continue to do its'
+				// job correctly.
+				err := th.Continue()
+				if err != nil {
+					return err
+				}
+				continue
+			}
+
+			err := th.Next()
+			if err != nil && err != syscall.ESRCH {
 				return err
 			}
-			continue
 		}
-
-		err := th.Next()
-		if err != nil && err != syscall.ESRCH {
-			return err
-		}
+		return stopTheWorld(dbp)
 	}
-	return stopTheWorld(dbp)
+	return dbp.run(fn)
 }
 
 // Resume process.
@@ -342,11 +372,14 @@ func (dbp *DebuggedProcess) Continue() error {
 		}
 	}
 
-	wpid, _, err := trapWait(dbp, -1, 0)
-	if err != nil {
-		return err
+	fn := func() error {
+		wpid, _, err := trapWait(dbp, -1)
+		if err != nil {
+			return err
+		}
+		return handleBreakPoint(dbp, wpid)
 	}
-	return handleBreakPoint(dbp, wpid)
+	return dbp.run(fn)
 }
 
 // Obtains register values from what Delve considers to be the current
@@ -377,6 +410,18 @@ func (dbp *DebuggedProcess) DwarfReader() *reader.Reader {
 	return reader.New(dbp.Dwarf)
 }
 
+func (dbp *DebuggedProcess) run(fn func() error) error {
+	dbp.running = true
+	dbp.halt = false
+	defer func() { dbp.running = false }()
+	if err := fn(); err != nil {
+		if _, ok := err.(ManualStopError); !ok {
+			return err
+		}
+	}
+	return nil
+}
+
 type ProcessExitedError struct {
 	pid int
 }
@@ -385,7 +430,7 @@ func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("process %d has exited", pe.pid)
 }
 
-func trapWait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitStatus, error) {
+func trapWait(dbp *DebuggedProcess, pid int) (int, *syscall.WaitStatus, error) {
 	for {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {
@@ -409,6 +454,9 @@ func trapWait(dbp *DebuggedProcess, pid int, options int) (int, *syscall.WaitSta
 		}
 		if status.StopSignal() == syscall.SIGTRAP {
 			return wpid, status, nil
+		}
+		if status.StopSignal() == syscall.SIGSTOP && dbp.halt {
+			return -1, nil, ManualStopError{}
 		}
 	}
 }

@@ -264,7 +264,7 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 			// change the goroutine context on us, we there is
 			// no guarantee that waiting on this tid will ever
 			// return.
-			wpid, _, err := trapWait(thread.Process, -1, 0)
+			wpid, _, err := trapWait(thread.Process, -1)
 			if err != nil {
 				return err
 			}
