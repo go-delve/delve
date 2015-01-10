@@ -25,34 +25,12 @@ type DebuggedProcess struct {
 	Dwarf         *dwarf.Data
 	GoSymTable    *gosym.Table
 	FrameEntries  *frame.FrameDescriptionEntries
+	HWBreakPoints [4]*BreakPoint // May need to change, amd64 supports 4 debug registers
 	BreakPoints   map[uint64]*BreakPoint
 	Threads       map[int]*ThreadContext
 	CurrentThread *ThreadContext
 	running       bool
 	halt          bool
-}
-
-// Represents a single breakpoint. Stores information on the break
-// point including the byte of data that originally was stored at that
-// address.
-type BreakPoint struct {
-	FunctionName string
-	File         string
-	Line         int
-	Addr         uint64
-	OriginalData []byte
-	ID           int
-	temp         bool
-}
-
-type BreakPointExistsError struct {
-	file string
-	line int
-	addr uint64
-}
-
-func (bpe BreakPointExistsError) Error() string {
-	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
 }
 
 type ManualStopError struct{}
@@ -487,7 +465,16 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 		return nil
 	}
 
-	// Check to see if we have hit a user set breakpoint.
+	// Check for hardware breakpoint
+	for _, bp := range dbp.HWBreakPoints {
+		if bp.Addr == pc {
+			if !bp.temp {
+				stopTheWorld(dbp)
+			}
+			return nil
+		}
+	}
+	// Check to see if we have hit a software breakpoint.
 	if bp, ok := dbp.BreakPoints[pc-1]; ok {
 		if !bp.temp {
 			stopTheWorld(dbp)

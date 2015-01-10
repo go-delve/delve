@@ -114,7 +114,7 @@ func TestBreakPoint(t *testing.T) {
 		bp, err := p.Break(sleepyaddr)
 		assertNoError(err, t, "Break()")
 
-		breakpc := bp.Addr + 1
+		breakpc := bp.Addr
 		err = p.Continue()
 		assertNoError(err, t, "Continue()")
 
@@ -186,11 +186,6 @@ func TestClearBreakPoint(t *testing.T) {
 		bp, err := p.Break(fn.Entry)
 		assertNoError(err, t, "Break()")
 
-		int3, err := dataAtAddr(p.Pid, bp.Addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		bp, err = p.Clear(fn.Entry)
 		assertNoError(err, t, "Clear()")
 
@@ -199,6 +194,7 @@ func TestClearBreakPoint(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		int3 := []byte{0xcc}
 		if bytes.Equal(data, int3) {
 			t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
 		}
@@ -263,8 +259,14 @@ func TestNext(t *testing.T) {
 			}
 		}
 
-		if len(p.BreakPoints) != 1 {
-			t.Fatal("Not all breakpoints were cleaned up", len(p.BreakPoints))
+		p.Clear(pc)
+		if len(p.BreakPoints) != 0 {
+			t.Fatal("Not all breakpoints were cleaned up", len(p.HWBreakPoints))
+		}
+		for _, bp := range p.HWBreakPoints {
+			if bp != nil {
+				t.Fatal("Not all breakpoints were cleaned up", bp.Addr)
+			}
 		}
 	})
 }

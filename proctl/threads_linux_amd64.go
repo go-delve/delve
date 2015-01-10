@@ -35,3 +35,7 @@ func writeMemory(tid int, addr uintptr, data []byte) (int, error) {
 func readMemory(tid int, addr uintptr, data []byte) (int, error) {
 	return syscall.PtracePeekData(tid, addr, data)
 }
+
+func clearHardwareBreakpoint(reg, tid int) error {
+	return setHardwareBreakpoint(reg, tid, 0)
+}

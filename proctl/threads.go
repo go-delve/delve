@@ -1,10 +1,8 @@
 package proctl
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
-
 	"syscall"
 
 	"github.com/derekparker/delve/dwarf/frame"
@@ -60,67 +58,22 @@ func (thread *ThreadContext) PrintInfo() error {
 	return nil
 }
 
-// Sets a software breakpoint at addr, and stores it in the process wide
+// Sets a breakpoint at addr, and stores it in the process wide
 // break point table. Setting a break point must be thread specific due to
-// ptrace actions needing the thread to be in a signal-delivery-stop in order
-// to initiate any ptrace command. Otherwise, it really doesn't matter
-// as we're only dealing with threads.
+// ptrace actions needing the thread to be in a signal-delivery-stop.
+//
+// Depending on hardware support, Delve will choose to either
+// set a hardware or software breakpoint. Essentially, if the
+// hardware supports it, and there are free debug registers, Delve
+// will set a hardware breakpoint. Otherwise we fall back to software
+// breakpoints, which are a bit more work for us.
 func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
-	var (
-		int3         = []byte{0xCC}
-		f, l, fn     = thread.Process.GoSymTable.PCToLine(uint64(addr))
-		originalData = make([]byte, 1)
-	)
-
-	if fn == nil {
-		return nil, InvalidAddressError{address: addr}
-	}
-
-	_, err := readMemory(thread.Id, uintptr(addr), originalData)
-	if err != nil {
-		return nil, err
-	}
-
-	if bytes.Equal(originalData, int3) {
-		return nil, BreakPointExistsError{f, l, addr}
-	}
-
-	_, err = writeMemory(thread.Id, uintptr(addr), int3)
-	if err != nil {
-		return nil, err
-	}
-
-	breakpointIDCounter++
-
-	breakpoint := &BreakPoint{
-		FunctionName: fn.Name,
-		File:         f,
-		Line:         l,
-		Addr:         addr,
-		OriginalData: originalData,
-		ID:           breakpointIDCounter,
-	}
-
-	thread.Process.BreakPoints[addr] = breakpoint
-
-	return breakpoint, nil
+	return thread.Process.setBreakpoint(thread.Id, addr)
 }
 
-// Clears a software breakpoint, and removes it from the process level
-// break point table.
+// Clears a breakpoint, and removes it from the process level break point table.
 func (thread *ThreadContext) Clear(addr uint64) (*BreakPoint, error) {
-	bp, ok := thread.Process.BreakPoints[addr]
-	if !ok {
-		return nil, fmt.Errorf("No breakpoint currently set for %#v", addr)
-	}
-
-	if _, err := writeMemory(thread.Id, uintptr(bp.Addr), bp.OriginalData); err != nil {
-		return nil, fmt.Errorf("could not clear breakpoint %s", err)
-	}
-
-	delete(thread.Process.BreakPoints, addr)
-
-	return bp, nil
+	return thread.Process.clearBreakpoint(thread.Id, addr)
 }
 
 func (thread *ThreadContext) Continue() error {
@@ -270,7 +223,7 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 				thread = thread.Process.Threads[wpid]
 			}
 			pc, _ = thread.CurrentPC()
-			if (pc - 1) == bp.Addr {
+			if (pc-1) == bp.Addr || pc == bp.Addr {
 				break
 			}
 		}
@@ -294,19 +247,21 @@ func (thread *ThreadContext) ReturnAddressFromOffset(offset int64) uint64 {
 }
 
 func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
-	if bp, ok := thread.Process.BreakPoints[pc]; ok {
-		_, err := thread.Clear(bp.Addr)
-		if err != nil {
-			return err
-		}
-
+	var software bool
+	if _, ok := thread.Process.BreakPoints[pc]; ok {
+		software = true
+	}
+	if _, err := thread.Clear(pc); err != nil {
+		return err
+	}
+	if software {
 		// Reset program counter to our restored instruction.
 		regs, err := thread.Registers()
 		if err != nil {
 			return err
 		}
 
-		return regs.SetPC(thread.Id, bp.Addr)
+		return regs.SetPC(thread.Id, pc)
 	}
 
 	return nil
