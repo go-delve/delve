@@ -78,7 +78,6 @@ func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
 
 	_, err := readMemory(thread.Id, uintptr(addr), originalData)
 	if err != nil {
-		fmt.Println("PEEK ERR")
 		return nil, err
 	}
 
@@ -88,7 +87,6 @@ func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
 
 	_, err = writeMemory(thread.Id, uintptr(addr), int3)
 	if err != nil {
-		fmt.Println("POKE ERR")
 		return nil, err
 	}
 
