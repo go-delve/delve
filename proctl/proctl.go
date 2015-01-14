@@ -20,17 +20,18 @@ import (
 // Struct representing a debugged process. Holds onto pid, register values,
 // process struct and process state.
 type DebuggedProcess struct {
-	Pid           int
-	Process       *os.Process
-	Dwarf         *dwarf.Data
-	GoSymTable    *gosym.Table
-	FrameEntries  *frame.FrameDescriptionEntries
-	HWBreakPoints [4]*BreakPoint // May need to change, amd64 supports 4 debug registers
-	BreakPoints   map[uint64]*BreakPoint
-	Threads       map[int]*ThreadContext
-	CurrentThread *ThreadContext
-	running       bool
-	halt          bool
+	Pid                 int
+	Process             *os.Process
+	Dwarf               *dwarf.Data
+	GoSymTable          *gosym.Table
+	FrameEntries        *frame.FrameDescriptionEntries
+	HWBreakPoints       [4]*BreakPoint // May need to change, amd64 supports 4 debug registers
+	BreakPoints         map[uint64]*BreakPoint
+	Threads             map[int]*ThreadContext
+	CurrentThread       *ThreadContext
+	breakpointIDCounter int
+	running             bool
+	halt                bool
 }
 
 type ManualStopError struct{}
@@ -38,10 +39,6 @@ type ManualStopError struct{}
 func (mse ManualStopError) Error() string {
 	return "Manual stop requested"
 }
-
-var (
-	breakpointIDCounter = 0
-)
 
 func Attach(pid int) (*DebuggedProcess, error) {
 	dbp, err := newDebugProcess(pid, true)

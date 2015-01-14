@@ -77,13 +77,13 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, er
 			if err != nil {
 				return nil, fmt.Errorf("could not set hardware breakpoint")
 			}
-			breakpointIDCounter++
+			dbp.breakpointIDCounter++
 			dbp.HWBreakPoints[i] = &BreakPoint{
 				FunctionName: fn.Name,
 				File:         f,
 				Line:         l,
 				Addr:         addr,
-				ID:           breakpointIDCounter,
+				ID:           dbp.breakpointIDCounter,
 			}
 			return dbp.HWBreakPoints[i], nil
 		}
@@ -98,14 +98,14 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, er
 	if err != nil {
 		return nil, err
 	}
-	breakpointIDCounter++
+	dbp.breakpointIDCounter++
 	dbp.BreakPoints[addr] = &BreakPoint{
 		FunctionName: fn.Name,
 		File:         f,
 		Line:         l,
 		Addr:         addr,
 		OriginalData: originalData,
-		ID:           breakpointIDCounter,
+		ID:           dbp.breakpointIDCounter,
 	}
 	return dbp.BreakPoints[addr], nil
 }
