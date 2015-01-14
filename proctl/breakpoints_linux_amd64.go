@@ -77,14 +77,7 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, er
 			if err != nil {
 				return nil, fmt.Errorf("could not set hardware breakpoint")
 			}
-			dbp.breakpointIDCounter++
-			dbp.HWBreakPoints[i] = &BreakPoint{
-				FunctionName: fn.Name,
-				File:         f,
-				Line:         l,
-				Addr:         addr,
-				ID:           dbp.breakpointIDCounter,
-			}
+			dbp.HWBreakPoints[i] = dbp.newBreakpoint(fn.Name, f, l, addr, nil)
 			return dbp.HWBreakPoints[i], nil
 		}
 	}
@@ -98,15 +91,7 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, er
 	if err != nil {
 		return nil, err
 	}
-	dbp.breakpointIDCounter++
-	dbp.BreakPoints[addr] = &BreakPoint{
-		FunctionName: fn.Name,
-		File:         f,
-		Line:         l,
-		Addr:         addr,
-		OriginalData: originalData,
-		ID:           dbp.breakpointIDCounter,
-	}
+	dbp.BreakPoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData)
 	return dbp.BreakPoints[addr], nil
 }
 
@@ -130,6 +115,18 @@ func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, 
 		return bp, nil
 	}
 	return nil, fmt.Errorf("No breakpoint currently set for %#v", addr)
+}
+
+func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte) *BreakPoint {
+	dbp.breakpointIDCounter++
+	return &BreakPoint{
+		FunctionName: fn,
+		File:         f,
+		Line:         l,
+		Addr:         addr,
+		OriginalData: data,
+		ID:           dbp.breakpointIDCounter,
+	}
 }
 
 // Sets a hardware breakpoint by setting the contents of the
