@@ -39,21 +39,6 @@ func (mse ManualStopError) Error() string {
 	return "Manual stop requested"
 }
 
-// ProcessStatus is the result of parsing the data from
-// the /proc/<pid>/stats psuedo file.
-type ProcessStatus struct {
-	pid   int
-	comm  string
-	state rune
-	ppid  int
-}
-
-const (
-	STATUS_SLEEPING   = 'S'
-	STATUS_RUNNING    = 'R'
-	STATUS_TRACE_STOP = 't'
-)
-
 var (
 	breakpointIDCounter = 0
 )
@@ -215,8 +200,7 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 func (dbp *DebuggedProcess) RequestManualStop() {
 	dbp.halt = true
 	for _, th := range dbp.Threads {
-		ps, _ := parseProcessStatus(th.Id)
-		if ps.state == STATUS_TRACE_STOP {
+		if stopped(th.Id) {
 			continue
 		}
 		syscall.Tgkill(dbp.Pid, th.Id, syscall.SIGSTOP)
@@ -493,21 +477,14 @@ func stopTheWorld(dbp *DebuggedProcess) error {
 	// are inactive. We send SIGSTOP and ensure all
 	// threads are in in signal-delivery-stop mode.
 	for _, th := range dbp.Threads {
-		ps, err := parseProcessStatus(th.Id)
-		if err != nil {
-			return err
-		}
-
-		if ps.state == STATUS_TRACE_STOP {
+		if stopped(th.Id) {
 			continue
 		}
-
-		err = syscall.Tgkill(dbp.Pid, th.Id, syscall.SIGSTOP)
+		err := syscall.Tgkill(dbp.Pid, th.Id, syscall.SIGSTOP)
 		if err != nil {
 			return err
 		}
-
-		pid, _, err := wait(th.Id, 0)
+		pid, _, err := wait(th.Id, syscall.WNOHANG)
 		if err != nil {
 			return fmt.Errorf("wait err %s %d", err, pid)
 		}

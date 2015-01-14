@@ -11,6 +11,12 @@ import (
 	"github.com/derekparker/delve/dwarf/frame"
 )
 
+const (
+	STATUS_SLEEPING   = 'S'
+	STATUS_RUNNING    = 'R'
+	STATUS_TRACE_STOP = 't'
+)
+
 func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
 	err := syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE)
 	if err == syscall.ESRCH {
@@ -33,18 +39,23 @@ func (dbp *DebuggedProcess) addThread(tid int) (*ThreadContext, error) {
 	return dbp.Threads[tid], nil
 }
 
-func parseProcessStatus(pid int) (*ProcessStatus, error) {
-	var ps ProcessStatus
-
+func stopped(pid int) bool {
 	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
-		return nil, err
+		return false
 	}
 	defer f.Close()
 
-	fmt.Fscanf(f, "%d %s %c %d", &ps.pid, &ps.comm, &ps.state, &ps.ppid)
-
-	return &ps, nil
+	var (
+		p     int
+		comm  string
+		state rune
+	)
+	fmt.Fscanf(f, "%d %s %c", &p, &comm, &state)
+	if state == STATUS_TRACE_STOP {
+		return true
+	}
+	return false
 }
 
 // Finds the executable from /proc/<pid>/exe and then
