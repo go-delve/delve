@@ -25,7 +25,7 @@ type DebuggedProcess struct {
 	Dwarf               *dwarf.Data
 	GoSymTable          *gosym.Table
 	FrameEntries        *frame.FrameDescriptionEntries
-	HWBreakPoints       [4]*BreakPoint // May need to change, amd64 supports 4 debug registers
+	HWBreakPoints       [4]*BreakPoint
 	BreakPoints         map[uint64]*BreakPoint
 	Threads             map[int]*ThreadContext
 	CurrentThread       *ThreadContext
