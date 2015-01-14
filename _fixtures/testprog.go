@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 )
 
@@ -18,4 +19,8 @@ func main() {
 		sleepytime()
 		helloworld()
 	}
+}
+
+func init() {
+	runtime.LockOSThread()
 }

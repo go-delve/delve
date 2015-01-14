@@ -27,15 +27,3 @@ func registers(tid int) (Registers, error) {
 	}
 	return &Regs{&regs}, nil
 }
-
-func writeMemory(tid int, addr uintptr, data []byte) (int, error) {
-	return sys.PtracePokeData(tid, addr, data)
-}
-
-func readMemory(tid int, addr uintptr, data []byte) (int, error) {
-	return sys.PtracePeekData(tid, addr, data)
-}
-
-func clearHardwareBreakpoint(reg, tid int) error {
-	return setHardwareBreakpoint(reg, tid, 0)
-}

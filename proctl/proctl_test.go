@@ -3,6 +3,7 @@ package proctl
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,9 +38,9 @@ func getRegisters(p *DebuggedProcess, t *testing.T) Registers {
 	return regs
 }
 
-func dataAtAddr(pid int, addr uint64) ([]byte, error) {
+func dataAtAddr(thread *ThreadContext, addr uint64) ([]byte, error) {
 	data := make([]byte, 1)
-	_, err := readMemory(pid, uintptr(addr), data)
+	_, err := readMemory(thread, uintptr(addr), data)
 	if err != nil {
 		return nil, err
 	}
@@ -78,12 +79,16 @@ func TestStep(t *testing.T) {
 
 		_, err := p.Break(helloworldaddr)
 		assertNoError(err, t, "Break()")
+		fmt.Println("continue")
 		assertNoError(p.Continue(), t, "Continue()")
+		fmt.Println("fin continue")
 
 		regs := getRegisters(p, t)
 		rip := regs.PC()
 
+		fmt.Println("begin step")
 		err = p.Step()
+		fmt.Println("fin step")
 		assertNoError(err, t, "Step()")
 
 		regs = getRegisters(p, t)
@@ -110,36 +115,21 @@ func TestContinue(t *testing.T) {
 
 func TestBreakPoint(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
-		sleepytimefunc := p.GoSymTable.LookupFunc("main.helloworld")
-		sleepyaddr := sleepytimefunc.Entry
+		helloworldfunc := p.GoSymTable.LookupFunc("main.helloworld")
+		helloworldaddr := helloworldfunc.Entry
 
-		bp, err := p.Break(sleepyaddr)
+		bp, err := p.Break(helloworldaddr)
 		assertNoError(err, t, "Break()")
-
-		breakpc := bp.Addr
-		err = p.Continue()
-		assertNoError(err, t, "Continue()")
+		assertNoError(p.Continue(), t, "Continue()")
 
 		pc, err := p.CurrentPC()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if pc != breakpc {
+		if pc-1 != bp.Addr {
 			f, l, _ := p.GoSymTable.PCToLine(pc)
-			t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, f, l, breakpc)
-		}
-
-		err = p.Step()
-		assertNoError(err, t, "Step()")
-
-		pc, err = p.CurrentPC()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if pc == breakpc {
-			t.Fatalf("Step not respected:\nPC:%d\nFN:%d\n", pc, breakpc)
+			t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, f, l, bp.Addr)
 		}
 	})
 }
@@ -151,6 +141,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal("No fn exists")
 		}
 
+		fmt.Printf("pid is %d set breakpoint for fn at %d\n", p.Pid, fn.Entry)
 		_, err := p.Break(fn.Entry)
 		if err != nil {
 			t.Fatal(err)
@@ -191,7 +182,7 @@ func TestClearBreakPoint(t *testing.T) {
 		bp, err = p.Clear(fn.Entry)
 		assertNoError(err, t, "Clear()")
 
-		data, err := dataAtAddr(p.Pid, bp.Addr)
+		data, err := dataAtAddr(p.CurrentThread, bp.Addr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,6 +240,7 @@ func TestNext(t *testing.T) {
 
 		f, ln := currentLineNumber(p, t)
 		for _, tc := range testcases {
+			fmt.Println("BEGIN-----------------", tc.begin)
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, f, ln)
 			}
@@ -316,12 +308,13 @@ func TestFindReturnAddress(t *testing.T) {
 		addr := uint64(int64(regs.SP()) + ret)
 		data := make([]byte, 8)
 
-		readMemory(p.Pid, uintptr(addr), data)
+		readMemory(p.CurrentThread, uintptr(addr), data)
 		addr = binary.LittleEndian.Uint64(data)
 
-		expected := uint64(0x400fbc)
-		if addr != expected {
-			t.Fatalf("return address not found correctly, expected %#v got %#v", expected, addr)
+		linuxExpected := uint64(0x400fbc)
+		darwinExpected := uint64(0x23bc)
+		if addr != linuxExpected && addr != darwinExpected {
+			t.Fatalf("return address not found correctly, expected (linux) %#v or (darwin) %#v got %#v", linuxExpected, darwinExpected, addr)
 		}
 	})
 }

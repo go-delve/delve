@@ -15,147 +15,7 @@ int offset(int reg) {
 */
 import "C"
 
-import (
-	"fmt"
-	"syscall"
-	"unsafe"
-
-	sys "golang.org/x/sys/unix"
-)
-
-// Represents a single breakpoint. Stores information on the break
-// point including the byte of data that originally was stored at that
-// address.
-type BreakPoint struct {
-	FunctionName string
-	File         string
-	Line         int
-	Addr         uint64
-	OriginalData []byte
-	ID           int
-	temp         bool
-}
-
-// Returned when trying to set a breakpoint at
-// an address that already has a breakpoint set for it.
-type BreakPointExistsError struct {
-	file string
-	line int
-	addr uint64
-}
-
-func (bpe BreakPointExistsError) Error() string {
-	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
-}
-
-// InvalidAddressError represents the result of
-// attempting to set a breakpoint at an invalid address.
-type InvalidAddressError struct {
-	address uint64
-}
-
-func (iae InvalidAddressError) Error() string {
-	return fmt.Sprintf("Invalid address %#v\n", iae.address)
-}
-
-func PtracePokeUser(tid int, off, addr uintptr) error {
-	_, _, err := sys.Syscall6(sys.SYS_PTRACE, sys.PTRACE_POKEUSR, uintptr(tid), uintptr(off), uintptr(addr), 0, 0)
-	if err != syscall.Errno(0) {
-		return err
-	}
-	return nil
-}
-
-func PtracePeekUser(tid int, off uintptr) (uintptr, error) {
-	var val uintptr
-	_, _, err := syscall.Syscall6(syscall.SYS_PTRACE, syscall.PTRACE_PEEKUSR, uintptr(tid), uintptr(off), uintptr(unsafe.Pointer(&val)), 0, 0)
-	if err != syscall.Errno(0) {
-		return 0, err
-	}
-	return val, nil
-}
-
-// Returns whether or not a breakpoint has been set for the given address.
-func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
-	for _, bp := range dbp.HWBreakPoints {
-		if bp != nil && bp.Addr == addr {
-			return true
-		}
-	}
-	if _, ok := dbp.BreakPoints[addr]; ok {
-		return true
-	}
-	return false
-}
-
-func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
-	var f, l, fn = dbp.GoSymTable.PCToLine(uint64(addr))
-	if fn == nil {
-		return nil, InvalidAddressError{address: addr}
-	}
-	if dbp.BreakpointExists(addr) {
-		return nil, BreakPointExistsError{f, l, addr}
-	}
-	// Try and set a hardware breakpoint.
-	for i, v := range dbp.HWBreakPoints {
-		if v == nil {
-			if err := setHardwareBreakpoint(i, tid, addr); err != nil {
-				return nil, fmt.Errorf("could not set hardware breakpoint: %v", err)
-			}
-			dbp.HWBreakPoints[i] = dbp.newBreakpoint(fn.Name, f, l, addr, nil)
-			return dbp.HWBreakPoints[i], nil
-		}
-	}
-	// Fall back to software breakpoint. 0xCC is INT 3, software
-	// breakpoint trap interrupt.
-	originalData := make([]byte, 1)
-	if _, err := readMemory(tid, uintptr(addr), originalData); err != nil {
-		return nil, err
-	}
-	_, err := writeMemory(tid, uintptr(addr), []byte{0xCC})
-	if err != nil {
-		return nil, err
-	}
-	dbp.BreakPoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData)
-	return dbp.BreakPoints[addr], nil
-}
-
-func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
-	// Check for hardware breakpoint
-	for i, bp := range dbp.HWBreakPoints {
-		if bp == nil {
-			continue
-		}
-		if bp.Addr == addr {
-			dbp.HWBreakPoints[i] = nil
-			if err := clearHardwareBreakpoint(i, tid); err != nil {
-				return nil, err
-			}
-			return bp, nil
-		}
-	}
-	// Check for software breakpoint
-	if bp, ok := dbp.BreakPoints[addr]; ok {
-		if _, err := writeMemory(tid, uintptr(bp.Addr), bp.OriginalData); err != nil {
-			return nil, fmt.Errorf("could not clear breakpoint %s", err)
-		}
-		delete(dbp.BreakPoints, addr)
-		return bp, nil
-	}
-	return nil, fmt.Errorf("No breakpoint currently set for %#v", addr)
-}
-
-func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte) *BreakPoint {
-	dbp.breakpointIDCounter++
-	return &BreakPoint{
-		FunctionName: fn,
-		File:         f,
-		Line:         l,
-		Addr:         addr,
-		OriginalData: data,
-		ID:           dbp.breakpointIDCounter,
-	}
-}
+import "fmt"
 
 // Sets a hardware breakpoint by setting the contents of the
 // debug register `reg` with the address of the instruction
@@ -207,4 +67,11 @@ func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	// exception when hitting the address of
 	// an instruction stored in dr0-dr3.
 	return PtracePokeUser(tid, dr7off, dr7)
+}
+
+// Clears a hardware breakpoint. Essentially sets
+// the debug reg to 0 and clears the control register
+// flags for that reg.
+func clearHardwareBreakpoint(reg, tid int) error {
+	return setHardwareBreakpoint(reg, tid, 0)
 }

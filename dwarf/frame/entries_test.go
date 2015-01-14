@@ -20,7 +20,7 @@ func TestFDEForPC(t *testing.T) {
 
 	node, err := frames.FDEForPC(35)
 	if err != nil {
-		t.Fatal("Could not find FDE")
+		t.Fatal(err)
 	}
 
 	if node != fde1 {

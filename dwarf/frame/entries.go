@@ -1,6 +1,9 @@
 package frame
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // Represents a Common Information Entry in
 // the Dwarf .debug_frame section.
@@ -55,29 +58,22 @@ func NewFrameIndex() FrameDescriptionEntries {
 }
 
 func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry, error) {
-	frame := find(fdes, pc)
-	if frame == nil {
-		return nil, fmt.Errorf("could not find FDE for %#v", pc)
-	}
-	return frame, nil
-}
+	fmt.Println("fdes for pc")
+	idx := sort.Search(len(fdes), func(i int) bool {
+		if fdes[i].Cover(pc) {
+			return true
+		}
+		if fdes[i].More(pc) {
+			return false
+		}
+		return true
 
-func find(fdes FrameDescriptionEntries, pc uint64) *FrameDescriptionEntry {
-	if len(fdes) == 0 {
-		return nil
+	})
+	if idx == len(fdes) {
+		return nil, fmt.Errorf("could not find FDE for PC %#v", pc)
 	}
-	idx := len(fdes) / 2
-	frame := fdes[idx]
-	if frame.Cover(pc) {
-		return frame
-	}
-	if frame.Less(pc) {
-		return find(fdes[:idx], pc)
-	}
-	if frame.More(pc) {
-		return find(fdes[idx:], pc)
-	}
-	return nil
+	fmt.Println("fin")
+	return fdes[idx], nil
 }
 
 func (frame *FrameDescriptionEntry) Less(pc uint64) bool {

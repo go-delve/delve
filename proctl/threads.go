@@ -18,6 +18,7 @@ type ThreadContext struct {
 	Id      int
 	Process *DebuggedProcess
 	Status  *sys.WaitStatus
+	os      *OSSpecificDetails
 }
 
 // An interface for a generic register type. The
@@ -27,16 +28,15 @@ type ThreadContext struct {
 type Registers interface {
 	PC() uint64
 	SP() uint64
-	SetPC(int, uint64) error
+	SetPC(*ThreadContext, uint64) error
 }
 
 // Obtains register values from the debugged process.
 func (thread *ThreadContext) Registers() (Registers, error) {
-	regs, err := registers(thread.Id)
+	regs, err := registers(thread)
 	if err != nil {
 		return nil, fmt.Errorf("could not get registers %s", err)
 	}
-
 	return regs, nil
 }
 
@@ -46,7 +46,6 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	return regs.PC(), nil
 }
 
@@ -64,24 +63,6 @@ func (thread *ThreadContext) PrintInfo() error {
 		fmt.Printf("Thread %d at %#v\n", thread.Id, pc)
 	}
 	return nil
-}
-
-// Sets a breakpoint at addr, and stores it in the process wide
-// break point table. Setting a break point must be thread specific due to
-// ptrace actions needing the thread to be in a signal-delivery-stop.
-//
-// Depending on hardware support, Delve will choose to either
-// set a hardware or software breakpoint. Essentially, if the
-// hardware supports it, and there are free debug registers, Delve
-// will set a hardware breakpoint. Otherwise we fall back to software
-// breakpoints, which are a bit more work for us.
-func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
-	return thread.Process.setBreakpoint(thread.Id, addr)
-}
-
-// Clears a breakpoint, and removes it from the process level break point table.
-func (thread *ThreadContext) Clear(addr uint64) (*BreakPoint, error) {
-	return thread.Process.clearBreakpoint(thread.Id, addr)
 }
 
 // Continue the execution of this thread. This method takes
@@ -103,7 +84,7 @@ func (thread *ThreadContext) Continue() error {
 		}
 	}
 
-	return sys.PtraceCont(thread.Id, 0)
+	return thread.cont()
 }
 
 // Single steps this thread a single instruction, ensuring that
@@ -117,29 +98,28 @@ func (thread *ThreadContext) Step() (err error) {
 	bp, ok := thread.Process.BreakPoints[regs.PC()-1]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
-		_, err = thread.Clear(bp.Addr)
+		_, err = thread.Process.Clear(bp.Addr)
 		if err != nil {
 			return err
 		}
 
 		// Reset program counter to our restored instruction.
-		err = regs.SetPC(thread.Id, bp.Addr)
+		err = regs.SetPC(thread, bp.Addr)
 		if err != nil {
 			return fmt.Errorf("could not set registers %s", err)
 		}
 
 		// Restore breakpoint now that we have passed it.
 		defer func() {
-			_, err = thread.Break(bp.Addr)
+			_, err = thread.Process.Break(bp.Addr)
 		}()
 	}
 
-	err = sys.PtraceSingleStep(thread.Id)
+	err = thread.singleStep()
 	if err != nil {
 		return fmt.Errorf("step failed: %s", err.Error())
 	}
 
-	_, _, err = wait(thread.Id, 0)
 	return err
 }
 
@@ -197,13 +177,9 @@ func (thread *ThreadContext) Next() (err error) {
 
 func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.FrameDescriptionEntry) error {
 	for !fde.Cover(pc) {
-		// Our offset here is be 0 because we
-		// have stepped into the first instruction
-		// of this function. Therefore the function
-		// has not had a chance to modify its' stack
-		// and change our offset.
+		// Offset is 0 because we have just stepped into this function.
 		addr := thread.ReturnAddressFromOffset(0)
-		bp, err := thread.Break(addr)
+		bp, err := thread.Process.Break(addr)
 		if err != nil {
 			if _, ok := err.(BreakPointExistsError); !ok {
 				return err
@@ -218,11 +194,7 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 			if err != nil {
 				return err
 			}
-			// We wait on -1 here because once we continue this
-			// thread, it's very possible the scheduler could of
-			// change the goroutine context on us, we there is
-			// no guarantee that waiting on this tid will ever
-			// return.
+			// Wait on -1, just in case scheduler switches threads for this G.
 			wpid, _, err := trapWait(thread.Process, -1)
 			if err != nil {
 				return err
@@ -230,7 +202,10 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 			if wpid != thread.Id {
 				thread = thread.Process.Threads[wpid]
 			}
-			pc, _ = thread.CurrentPC()
+			pc, err = thread.CurrentPC()
+			if err != nil {
+				return err
+			}
 			if (pc-1) == bp.Addr || pc == bp.Addr {
 				break
 			}
@@ -250,7 +225,7 @@ func (thread *ThreadContext) ReturnAddressFromOffset(offset int64) uint64 {
 
 	retaddr := int64(regs.SP()) + offset
 	data := make([]byte, 8)
-	readMemory(thread.Id, uintptr(retaddr), data)
+	readMemory(thread, uintptr(retaddr), data)
 	return binary.LittleEndian.Uint64(data)
 }
 
@@ -259,7 +234,7 @@ func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
 	if _, ok := thread.Process.BreakPoints[pc]; ok {
 		software = true
 	}
-	if _, err := thread.Clear(pc); err != nil {
+	if _, err := thread.Process.Clear(pc); err != nil {
 		return err
 	}
 	if software {
@@ -269,7 +244,7 @@ func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
 			return err
 		}
 
-		return regs.SetPC(thread.Id, pc)
+		return regs.SetPC(thread, pc)
 	}
 
 	return nil

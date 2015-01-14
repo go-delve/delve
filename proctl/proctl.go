@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	sys "golang.org/x/sys/unix"
 
@@ -32,6 +31,7 @@ type DebuggedProcess struct {
 	BreakPoints         map[uint64]*BreakPoint
 	Threads             map[int]*ThreadContext
 	CurrentThread       *ThreadContext
+	os                  *OSProcessDetails
 	breakpointIDCounter int
 	running             bool
 	halt                bool
@@ -52,18 +52,8 @@ func Attach(pid int) (*DebuggedProcess, error) {
 		return nil, err
 	}
 	// Attach to all currently active threads.
-	allm, err := dbp.CurrentThread.AllM()
-	if err != nil {
+	if err := dbp.updateThreadList(); err != nil {
 		return nil, err
-	}
-	for _, m := range allm {
-		if m.procid == 0 {
-			continue
-		}
-		_, err := dbp.AttachThread(m.procid)
-		if err != nil {
-			return nil, err
-		}
 	}
 	return dbp, nil
 }
@@ -88,70 +78,6 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	}
 
 	return newDebugProcess(proc.Process.Pid, false)
-}
-
-// Returns a new DebuggedProcess struct with sensible defaults.
-func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
-	dbp := DebuggedProcess{
-		Pid:         pid,
-		Threads:     make(map[int]*ThreadContext),
-		BreakPoints: make(map[uint64]*BreakPoint),
-	}
-
-	if attach {
-		thread, err := dbp.AttachThread(pid)
-		if err != nil {
-			return nil, err
-		}
-		dbp.CurrentThread = thread
-	} else {
-		thread, err := dbp.addThread(pid)
-		if err != nil {
-			return nil, err
-		}
-		dbp.CurrentThread = thread
-	}
-
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return nil, err
-	}
-
-	dbp.Process = proc
-	err = dbp.LoadInformation()
-	if err != nil {
-		return nil, err
-	}
-
-	return &dbp, nil
-}
-
-// Attach to a newly created thread, and store that thread in our list of
-// known threads.
-func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
-	if thread, ok := dbp.Threads[tid]; ok {
-		return thread, nil
-	}
-
-	err := sys.PtraceAttach(tid)
-	if err != nil && err != sys.EPERM {
-		// Do not return err if err == EPERM,
-		// we may already be tracing this thread due to
-		// PTRACE_O_TRACECLONE. We will surely blow up later
-		// if we truly don't have permissions.
-		return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
-	}
-
-	pid, status, err := wait(tid, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	if status.Exited() {
-		return nil, fmt.Errorf("thread already exited %d", pid)
-	}
-
-	return dbp.addThread(tid)
 }
 
 // Returns whether or not Delve thinks the debugged
@@ -219,18 +145,22 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 func (dbp *DebuggedProcess) RequestManualStop() {
 	dbp.halt = true
 	for _, th := range dbp.Threads {
-		if stopped(th.Id) {
-			continue
-		}
-		sys.Tgkill(dbp.Pid, th.Id, sys.SIGSTOP)
+		th.Halt()
 	}
 	dbp.running = false
 }
 
-// Sets a breakpoint, adding it to our list of known breakpoints. Uses
-// the "current thread" when setting the breakpoint.
+// Sets a breakpoint at addr, and stores it in the process wide
+// break point table. Setting a break point must be thread specific due to
+// ptrace actions needing the thread to be in a signal-delivery-stop.
+//
+// Depending on hardware support, Delve will choose to either
+// set a hardware or software breakpoint. Essentially, if the
+// hardware supports it, and there are free debug registers, Delve
+// will set a hardware breakpoint. Otherwise we fall back to software
+// breakpoints, which are a bit more work for us.
 func (dbp *DebuggedProcess) Break(addr uint64) (*BreakPoint, error) {
-	return dbp.CurrentThread.Break(addr)
+	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr)
 }
 
 // Sets a breakpoint by location string (function, file+line, address)
@@ -239,12 +169,12 @@ func (dbp *DebuggedProcess) BreakByLocation(loc string) (*BreakPoint, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dbp.CurrentThread.Break(addr)
+	return dbp.Break(addr)
 }
 
 // Clears a breakpoint in the current thread.
 func (dbp *DebuggedProcess) Clear(addr uint64) (*BreakPoint, error) {
-	return dbp.CurrentThread.Clear(addr)
+	return dbp.clearBreakpoint(dbp.CurrentThread.Id, addr)
 }
 
 // Clears a breakpoint by location (function, file+line, address, breakpoint id)
@@ -253,7 +183,7 @@ func (dbp *DebuggedProcess) ClearByLocation(loc string) (*BreakPoint, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dbp.CurrentThread.Clear(addr)
+	return dbp.Clear(addr)
 }
 
 // Returns the status of the current main thread context.
@@ -272,62 +202,16 @@ func (dbp *DebuggedProcess) PrintThreadInfo() error {
 	return nil
 }
 
-// Steps through process.
-func (dbp *DebuggedProcess) Step() (err error) {
-	var (
-		th *ThreadContext
-		ok bool
-	)
-
-	allm, err := dbp.CurrentThread.AllM()
-	if err != nil {
-		return err
-	}
-
-	fn := func() error {
-		for _, m := range allm {
-			th, ok = dbp.Threads[m.procid]
-			if !ok {
-				th = dbp.Threads[dbp.Pid]
-			}
-
-			if m.blocked == 0 {
-				err := th.Step()
-				if err != nil {
-					return err
-				}
-			}
-
-		}
-		return nil
-	}
-
-	return dbp.run(fn)
-}
-
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
-	var (
-		th *ThreadContext
-		ok bool
-	)
+	var runnable []*ThreadContext
 
 	fn := func() error {
-		allm, err := dbp.CurrentThread.AllM()
-		if err != nil {
-			return err
-		}
-
-		for _, m := range allm {
-			th, ok = dbp.Threads[m.procid]
-			if !ok {
-				th = dbp.Threads[dbp.Pid]
-			}
-
-			if m.blocked == 1 {
-				// Continue any blocked M so that the
-				// scheduler can continue to do its'
-				// job correctly.
+		for _, th := range dbp.Threads {
+			// Continue any blocked M so that the
+			// scheduler can continue to do its'
+			// job correctly.
+			if th.blocked() {
 				err := th.Continue()
 				if err != nil {
 					return err
@@ -335,12 +219,15 @@ func (dbp *DebuggedProcess) Next() error {
 				continue
 			}
 
+			runnable = append(runnable, th)
+		}
+		for _, th := range runnable {
 			err := th.Next()
 			if err != nil && err != sys.ESRCH {
 				return err
 			}
 		}
-		return stopTheWorld(dbp)
+		return dbp.Halt()
 	}
 	return dbp.run(fn)
 }
@@ -361,6 +248,24 @@ func (dbp *DebuggedProcess) Continue() error {
 		}
 		return handleBreakPoint(dbp, wpid)
 	}
+	return dbp.run(fn)
+}
+
+// Steps through process.
+func (dbp *DebuggedProcess) Step() (err error) {
+	fn := func() error {
+		for _, th := range dbp.Threads {
+			if th.blocked() {
+				continue
+			}
+			err := th.Step()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	return dbp.run(fn)
 }
 
@@ -404,47 +309,20 @@ func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("process %d has exited", pe.pid)
 }
 
-func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
-	for {
-		wpid, status, err := wait(pid, 0)
-		if err != nil {
-			return -1, nil, fmt.Errorf("wait err %s %d", err, pid)
-		}
-		if wpid == 0 {
-			continue
-		}
-		if th, ok := dbp.Threads[wpid]; ok {
-			th.Status = status
-		}
-		if status.Exited() && wpid == dbp.Pid {
-			return -1, status, ProcessExitedError{wpid}
-		}
-		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
-			err = addNewThread(dbp, wpid)
-			if err != nil {
-				return -1, nil, err
-			}
-			continue
-		}
-		if status.StopSignal() == sys.SIGTRAP {
-			return wpid, status, nil
-		}
-		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
-			return -1, nil, ManualStopError{}
-		}
-	}
-}
-
 func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
-	thread := dbp.Threads[pid]
+	thread, ok := dbp.Threads[pid]
+	if !ok {
+		return fmt.Errorf("could not find thread for %d", pid)
+	}
+
 	if pid != dbp.CurrentThread.Id {
-		fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, pid)
+		fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, thread.Id)
 		dbp.CurrentThread = thread
 	}
 
 	pc, err := thread.CurrentPC()
 	if err != nil {
-		return fmt.Errorf("could not get current pc %s", err)
+		return err
 	}
 
 	// Check to see if we hit a runtime.breakpoint
@@ -457,15 +335,15 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 				return err
 			}
 		}
-		stopTheWorld(dbp)
+		dbp.Halt()
 		return nil
 	}
 
 	// Check for hardware breakpoint
 	for _, bp := range dbp.HWBreakPoints {
-		if bp.Addr == pc {
+		if bp != nil && bp.Addr == pc {
 			if !bp.temp {
-				stopTheWorld(dbp)
+				return dbp.Halt()
 			}
 			return nil
 		}
@@ -473,81 +351,10 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 	// Check to see if we have hit a software breakpoint.
 	if bp, ok := dbp.BreakPoints[pc-1]; ok {
 		if !bp.temp {
-			stopTheWorld(dbp)
+			return dbp.Halt()
 		}
 		return nil
 	}
 
-	return fmt.Errorf("did not hit recognized breakpoint")
-}
-
-// Ensure execution of every traced thread is halted.
-func stopTheWorld(dbp *DebuggedProcess) error {
-	// Loop through all threads and ensure that we
-	// stop the rest of them, so that by the time
-	// we return control to the user, all threads
-	// are inactive. We send SIGSTOP and ensure all
-	// threads are in in signal-delivery-stop mode.
-	for _, th := range dbp.Threads {
-		if stopped(th.Id) {
-			continue
-		}
-		err := sys.Tgkill(dbp.Pid, th.Id, sys.SIGSTOP)
-		if err != nil {
-			return err
-		}
-		pid, _, err := wait(th.Id, sys.WNOHANG)
-		if err != nil {
-			return fmt.Errorf("wait err %s %d", err, pid)
-		}
-	}
-
-	return nil
-}
-
-func addNewThread(dbp *DebuggedProcess, pid int) error {
-	// A traced thread has cloned a new thread, grab the pid and
-	// add it to our list of traced threads.
-	msg, err := sys.PtraceGetEventMsg(pid)
-	if err != nil {
-		return fmt.Errorf("could not get event message: %s", err)
-	}
-	fmt.Println("new thread spawned", msg)
-
-	_, err = dbp.addThread(int(msg))
-	if err != nil {
-		return err
-	}
-
-	err = sys.PtraceCont(int(msg), 0)
-	if err != nil {
-		return fmt.Errorf("could not continue new thread %d %s", msg, err)
-	}
-
-	// Here we loop for a while to ensure that the once we continue
-	// the newly created thread, we allow enough time for the runtime
-	// to assign m->procid. This is important because we rely on
-	// looping through runtime.allm in other parts of the code, so
-	// we require that this is set before we do anything else.
-	// TODO(dp): we might be able to eliminate this loop by telling
-	// the CPU to emit a breakpoint exception on write to this location
-	// in memory. That way we prevent having to loop, and can be
-	// notified as soon as m->procid is set.
-	th := dbp.Threads[pid]
-	for {
-		allm, _ := th.AllM()
-		for _, m := range allm {
-			if m.procid == int(msg) {
-				// Continue the thread that cloned
-				return sys.PtraceCont(pid, 0)
-			}
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
-func wait(pid, options int) (int, *sys.WaitStatus, error) {
-	var status sys.WaitStatus
-	wpid, err := sys.Wait4(pid, &status, sys.WALL|options, nil)
-	return wpid, &status, err
+	return fmt.Errorf("unrecognized breakpoint %#v", pc)
 }
