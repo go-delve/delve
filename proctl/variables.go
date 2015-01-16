@@ -511,9 +511,8 @@ func (thread *ThreadContext) executeStackProgram(instructions []byte) (int64, er
 	}
 
 	fctx := fde.EstablishFrame(regs.PC())
-	cfaOffset := fctx.CFAOffset() + int64(regs.SP())
-
-	address, err := op.ExecuteStackProgram(cfaOffset, instructions)
+	cfa := fctx.CFAOffset() + int64(regs.SP())
+	address, err := op.ExecuteStackProgram(cfa, instructions)
 	if err != nil {
 		return 0, err
 	}
@@ -625,13 +624,13 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 }
 
 func (thread *ThreadContext) readString(addr uintptr, size int64) (string, error) {
+	// deref the pointer to the string
 	val, err := thread.readMemory(addr, uintptr(size))
 	if err != nil {
 		return "", err
 	}
-
-	// deref the pointer to the string
 	addr = uintptr(binary.LittleEndian.Uint64(val))
+
 	val, err = thread.readMemory(addr, 16)
 	if err != nil {
 		return "", err

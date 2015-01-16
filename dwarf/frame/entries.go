@@ -50,7 +50,6 @@ func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
 
 func (fde *FrameDescriptionEntry) ReturnAddressOffset(pc uint64) int64 {
 	frame := fde.EstablishFrame(pc)
-
 	return frame.cfa.offset + frame.regs[fde.CIE.ReturnAddressRegister].offset
 }
 
