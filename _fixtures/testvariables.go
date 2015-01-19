@@ -20,7 +20,7 @@ func barfoo() {
 
 func foobar(baz string, bar FooBar) {
 	var (
-		a1  = "foo"
+		a1  = "foofoofoofoofoofoo"
 		a2  = 6
 		a3  = 7.23
 		a4  = [2]int{1, 2}
@@ -29,6 +29,7 @@ func foobar(baz string, bar FooBar) {
 		a7  = &FooBar{Baz: 5, Bur: "strum"}
 		a8  = FooBar2{Bur: 10, Baz: "feh"}
 		a9  = (*FooBar)(nil)
+		a10 = a1[2:5]
 		neg = -1
 		i8  = int8(1)
 		f32 = float32(1.2)
@@ -36,7 +37,7 @@ func foobar(baz string, bar FooBar) {
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, baz, neg, i8, f32, i32, bar)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, baz, neg, i8, f32, i32, bar)
 }
 
 func main() {

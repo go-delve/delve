@@ -594,7 +594,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 	case *dwarf.StructType:
 		switch t.StructName {
 		case "string":
-			return thread.readString(ptraddress, t.ByteSize)
+			return thread.readString(ptraddress)
 		case "[]int":
 			return thread.readIntSlice(ptraddress, t)
 		default:
@@ -623,21 +623,29 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 	return "", fmt.Errorf("could not find value for type %s", typ)
 }
 
-func (thread *ThreadContext) readString(addr uintptr, size int64) (string, error) {
-	// deref the pointer to the string
-	val, err := thread.readMemory(addr, uintptr(size))
+func (thread *ThreadContext) readString(addr uintptr) (string, error) {
+	// string data structure is always two ptrs in size. Addr, followed by len
+	// http://research.swtch.com/godata
+
+	// read len
+	val, err := thread.readMemory(addr+ptrsize, ptrsize)
+	if err != nil {
+		return "", err
+	}
+	strlen := uintptr(binary.LittleEndian.Uint64(val))
+
+	// read addr
+	val, err = thread.readMemory(addr, ptrsize)
 	if err != nil {
 		return "", err
 	}
 	addr = uintptr(binary.LittleEndian.Uint64(val))
 
-	val, err = thread.readMemory(addr, 16)
+	val, err = thread.readMemory(addr, strlen)
 	if err != nil {
 		return "", err
 	}
 
-	i := bytes.IndexByte(val, 0x0)
-	val = val[:i]
 	return *(*string)(unsafe.Pointer(&val)), nil
 }
 
