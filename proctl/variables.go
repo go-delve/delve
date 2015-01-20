@@ -622,6 +622,10 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 		return thread.readFloat(ptraddress, t.ByteSize)
 	case *dwarf.BoolType:
 		return thread.readBool(ptraddress)
+	case *dwarf.FuncType:
+		return thread.readFunctionPtr(ptraddress)
+	default:
+		fmt.Printf("Unknown type: %T\n", t)
 	}
 
 	return "", fmt.Errorf("could not find value for type %s", typ)
@@ -772,6 +776,36 @@ func (thread *ThreadContext) readBool(addr uintptr) (string, error) {
 	}
 
 	return "true", nil
+}
+
+func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
+	val, err := thread.readMemory(addr, ptrsize)
+	if err != nil {
+		return "", err
+	}
+
+	// dereference pointer to find function pc
+	addr = uintptr(binary.LittleEndian.Uint64(val))
+
+	val, err = thread.readMemory(addr, ptrsize)
+	if err != nil {
+		return "", err
+	}
+
+	funcAddr := binary.LittleEndian.Uint64(val)
+	reader := thread.Process.DwarfReader()
+
+	entry, err := reader.SeekToFunction(funcAddr)
+	if err != nil {
+		return "", err
+	}
+
+	n, ok := entry.Val(dwarf.AttrName).(string)
+	if !ok {
+		return "", fmt.Errorf("Unable to retrieve function name")
+	}
+
+	return n, nil
 }
 
 func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, error) {

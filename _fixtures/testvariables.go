@@ -41,10 +41,11 @@ func foobar(baz string, bar FooBar) {
 		up  = uintptr(5)
 		f32 = float32(1.2)
 		i32 = [2]int32{1, 2}
+		f   = barfoo
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, i32, bar)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, i32, bar, f)
 }
 
 func main() {

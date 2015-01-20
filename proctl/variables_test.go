@@ -64,11 +64,12 @@ func TestVariableEvaluation(t *testing.T) {
 		{"u64", "18446744073709551615", "uint64", nil},
 		{"u8", "255", "uint8", nil},
 		{"up", "5", "uintptr", nil},
+		{"f", "main.barfoo", "func()", nil},
 		{"NonExistent", "", "", errors.New("could not find symbol value for NonExistent")},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 46)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 47)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -99,7 +100,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 46)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 47)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -175,6 +176,7 @@ func TestLocalVariables(t *testing.T) {
 				{"a9", "*main.FooBar nil", "*main.FooBar", nil},
 				{"b1", "true", "bool", nil},
 				{"b2", "false", "bool", nil},
+				{"f", "main.barfoo", "func()", nil},
 				{"f32", "1.2", "float32", nil},
 				{"i32", "[2]int32 [1 2]", "[2]int32", nil},
 				{"i8", "1", "int8", nil},
@@ -191,7 +193,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 46)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 47)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
