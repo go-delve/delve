@@ -31,6 +31,8 @@ func foobar(baz string, bar FooBar) {
 		a9  = (*FooBar)(nil)
 		a10 = a1[2:5]
 		a11 = [3]FooBar{{1, "a"}, {2, "b"}, {3, "c"}}
+		a12 = []FooBar{{4, "d"}, {5, "e"}}
+		a13 = []*FooBar{{6, "f"}, {7, "g"}, {8, "h"}}
 		b1  = true
 		b2  = false
 		neg = -1
@@ -46,7 +48,7 @@ func foobar(baz string, bar FooBar) {
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, i32, bar, f)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, i32, bar, f)
 }
 
 func main() {
