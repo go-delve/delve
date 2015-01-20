@@ -30,14 +30,21 @@ func foobar(baz string, bar FooBar) {
 		a8  = FooBar2{Bur: 10, Baz: "feh"}
 		a9  = (*FooBar)(nil)
 		a10 = a1[2:5]
+		b1  = true
+		b2  = false
 		neg = -1
 		i8  = int8(1)
+		u8  = uint8(255)
+		u16 = uint16(65535)
+		u32 = uint32(4294967295)
+		u64 = uint64(18446744073709551615)
+		up  = uintptr(5)
 		f32 = float32(1.2)
 		i32 = [2]int32{1, 2}
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, baz, neg, i8, f32, i32, bar)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, i32, bar)
 }
 
 func main() {
