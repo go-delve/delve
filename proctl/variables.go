@@ -448,7 +448,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 			binary.LittleEndian.PutUint64(baseAddr, uint64(parentAddr))
 
 			parentInstructions := append([]byte{op.DW_OP_addr}, baseAddr...)
-			val, err := thread.extractValue(append(parentInstructions, memberInstr...), 0, t)
+			val, err := thread.extractValue(append(parentInstructions, memberInstr...), 0, t, true)
 			if err != nil {
 				return nil, err
 			}
@@ -490,7 +490,7 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 		return nil, fmt.Errorf("type assertion failed")
 	}
 
-	val, err := thread.extractValue(instructions, 0, t)
+	val, err := thread.extractValue(instructions, 0, t, true)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +556,7 @@ func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, read
 // Extracts the value from the instructions given in the DW_AT_location entry.
 // We execute the stack program described in the DW_OP_* instruction stream, and
 // then grab the value from the other processes memory.
-func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ interface{}) (string, error) {
+func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ interface{}, printStructName bool) (string, error) {
 	var err error
 
 	if addr == 0 {
@@ -585,7 +585,7 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 			return fmt.Sprintf("%s nil", t.String()), nil
 		}
 
-		val, err := thread.extractValue(nil, intaddr, t.Type)
+		val, err := thread.extractValue(nil, intaddr, t.Type, printStructName)
 		if err != nil {
 			return "", err
 		}
@@ -602,18 +602,21 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 			// the value of all the members of the struct.
 			fields := make([]string, 0, len(t.Field))
 			for _, field := range t.Field {
-				val, err := thread.extractValue(nil, field.ByteOffset+addr, field.Type)
+				val, err := thread.extractValue(nil, field.ByteOffset+addr, field.Type, printStructName)
 				if err != nil {
 					return "", err
 				}
 
 				fields = append(fields, fmt.Sprintf("%s: %s", field.Name, val))
 			}
-			retstr := fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", "))
-			return retstr, nil
+			if printStructName {
+				return fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", ")), nil
+			} else {
+				return fmt.Sprintf("{%s}", strings.Join(fields, ", ")), nil
+			}
 		}
 	case *dwarf.ArrayType:
-		return thread.readIntArray(ptraddress, t)
+		return thread.readArray(ptraddress, t)
 	case *dwarf.IntType:
 		return thread.readInt(ptraddress, t.ByteSize)
 	case *dwarf.UintType:
@@ -681,23 +684,19 @@ func (thread *ThreadContext) readIntSlice(addr uintptr, t *dwarf.StructType) (st
 	return "", fmt.Errorf("Could not read slice")
 }
 
-func (thread *ThreadContext) readIntArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
-	val, err := thread.readMemory(addr, uintptr(t.ByteSize))
-	if err != nil {
-		return "", err
+func (thread *ThreadContext) readArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
+	vals := make([]string, 0)
+
+	stride := t.ByteSize / t.Count
+	for i := int64(0); i < t.Count; i++ {
+		val, err := thread.extractValue(nil, int64(addr+uintptr(i*stride)), t.Type, false)
+		if err != nil {
+			return "", err
+		}
+		vals = append(vals, val)
 	}
 
-	switch t.Type.Size() {
-	case 4:
-		members := *(*[]uint32)(unsafe.Pointer(&val))
-		setSliceLength(unsafe.Pointer(&members), int(t.Count))
-		return fmt.Sprintf("%s %d", t, members), nil
-	case 8:
-		members := *(*[]uint64)(unsafe.Pointer(&val))
-		setSliceLength(unsafe.Pointer(&members), int(t.Count))
-		return fmt.Sprintf("%s %d", t, members), nil
-	}
-	return "", fmt.Errorf("Could not read array")
+	return fmt.Sprintf("%s [%s]", t, strings.Join(vals, ",")), nil
 }
 
 func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
