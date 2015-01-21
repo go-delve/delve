@@ -254,6 +254,13 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 		}
 		data = filterVariables(vars, filter)
 
+	case "vars":
+		vars, err := p.CurrentThread.PackageVariables()
+		if err != nil {
+			return nil
+		}
+		data = filterVariables(vars, filter)
+
 	default:
 		return fmt.Errorf("unsupported info type, must be sources, funcs, locals, or args")
 	}

@@ -492,6 +492,7 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 
 	val, err := thread.extractValue(instructions, 0, t, true)
 	if err != nil {
+		fmt.Printf("NAME: %s\n", n)
 		return nil, err
 	}
 
@@ -568,8 +569,12 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 
 	// If we have a user defined type, find the
 	// underlying concrete type and use that.
-	if tt, ok := typ.(*dwarf.TypedefType); ok {
-		typ = tt.Type
+	for {
+		if tt, ok := typ.(*dwarf.TypedefType); ok {
+			typ = tt.Type
+		} else {
+			break
+		}
 	}
 
 	ptraddress := uintptr(addr)
@@ -627,6 +632,10 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 		return thread.readBool(ptraddress)
 	case *dwarf.FuncType:
 		return thread.readFunctionPtr(ptraddress)
+	case *dwarf.VoidType:
+		return "(void)", nil
+	case *dwarf.UnspecifiedType:
+		return "(unknown)", nil
 	default:
 		fmt.Printf("Unknown type: %T\n", t)
 	}
@@ -712,12 +721,15 @@ func (thread *ThreadContext) readSlice(addr uintptr, t *dwarf.StructType) (strin
 }
 
 func (thread *ThreadContext) readArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
-	vals, err := thread.readArrayValues(addr, t.Count, t.ByteSize/t.Count, t.Type)
-	if err != nil {
-		return "", err
+	if t.Count > 0 {
+		vals, err := thread.readArrayValues(addr, t.Count, t.ByteSize/t.Count, t.Type)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s [%s]", t, strings.Join(vals, ",")), nil
 	}
-
-	return fmt.Sprintf("%s [%s]", t, strings.Join(vals, ",")), nil
+	// because you can declare a zero-size array
+	return fmt.Sprintf("%s []", t), nil
 }
 
 func (thread *ThreadContext) readArrayValues(addr uintptr, count int64, stride int64, t dwarf.Type) ([]string, error) {
@@ -819,6 +831,9 @@ func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
 
 	// dereference pointer to find function pc
 	addr = uintptr(binary.LittleEndian.Uint64(val))
+	if addr == 0 {
+		return "nil", nil
+	}
 
 	val, err = thread.readMemory(addr, ptrsize)
 	if err != nil {
@@ -895,6 +910,31 @@ func (thread *ThreadContext) LocalVariables() ([]*Variable, error) {
 // FunctionArguments returns the name, value, and type of all current function arguments
 func (thread *ThreadContext) FunctionArguments() ([]*Variable, error) {
 	return thread.variablesByTag(dwarf.TagFormalParameter)
+}
+
+// PackageVariables returns the name, value, and type of all package variables in the application
+func (thread *ThreadContext) PackageVariables() ([]*Variable, error) {
+	reader := thread.Process.DwarfReader()
+
+	vars := make([]*Variable, 0)
+
+	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
+		if err != nil {
+			return nil, err
+		}
+
+		// Ignore errors trying to extract values
+		_, err := thread.extractVariableFromEntry(entry)
+		if err != nil {
+			fmt.Printf("ERR: %s\n", err.Error())
+		}
+		if err == nil {
+			//			fmt.Printf("%s %s\n", val.Name, val.Value)
+			//			vars = append(vars, val)
+		}
+	}
+
+	return vars, nil
 }
 
 // Sets the length of a slice.
