@@ -924,14 +924,11 @@ func (thread *ThreadContext) PackageVariables() ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		_, err := thread.extractVariableFromEntry(entry)
+		val, err := thread.extractVariableFromEntry(entry)
 		if err != nil {
-			fmt.Printf("ERR: %s\n", err.Error())
+			continue
 		}
-		if err == nil {
-			//			fmt.Printf("%s %s\n", val.Name, val.Value)
-			//			vars = append(vars, val)
-		}
+		vars = append(vars, val)
 	}
 
 	return vars, nil
