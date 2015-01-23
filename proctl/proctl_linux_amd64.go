@@ -117,7 +117,7 @@ func (dbp *DebuggedProcess) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
 		}
 		dbp.FrameEntries = frame.Parse(debugFrame)
 	} else {
-		fmt.Println("No debug symbols found")
+		fmt.Println("could not find .debug_frame section in binary")
 		os.Exit(1)
 	}
 }
