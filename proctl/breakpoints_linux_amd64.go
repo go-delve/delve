@@ -17,6 +17,7 @@ import "C"
 import (
 	"fmt"
 	"syscall"
+	"unsafe"
 )
 
 // Represents a single breakpoint. Stores information on the break
@@ -48,6 +49,15 @@ func PtracePokeUser(tid int, off, addr uintptr) error {
 		return err
 	}
 	return nil
+}
+
+func PtracePeekUser(tid int, off uintptr) (uintptr, error) {
+	var x uintptr // XXX: this should not be necessary
+	ret, _, err := syscall.Syscall6(syscall.SYS_PTRACE, syscall.PTRACE_PEEKUSR, uintptr(tid), uintptr(off), uintptr(unsafe.Pointer(&x)), 0, 0)
+	if err != syscall.Errno(0) {
+		return 0, err
+	}
+	return ret, nil
 }
 
 func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
@@ -133,24 +143,49 @@ func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data
 // that we want to break at. There are only 4 debug registers
 // DR0-DR3. Debug register 7 is the control register.
 func setHardwareBreakpoint(reg, tid int, addr uint64) error {
-	if reg < 0 || reg > 7 {
+	if reg < 0 || reg > 3 {
 		return fmt.Errorf("invalid register value")
 	}
 
 	var (
-		off     = uintptr(C.offset(C.int(reg)))
-		dr7     = uintptr(0x1 | C.DR_RW_EXECUTE | C.DR_LEN_8)
-		dr7addr = uintptr(C.offset(C.DR_CONTROL))
+		dr7off    = uintptr(C.offset(C.DR_CONTROL))
+		drxoff    = uintptr(C.offset(C.int(reg)))
+		drxmask   = uintptr((((1 << C.DR_CONTROL_SIZE) - 1) << uintptr(reg*C.DR_CONTROL_SIZE)) | (((1 << C.DR_ENABLE_SIZE) - 1) << uintptr(reg*C.DR_ENABLE_SIZE)))
+		drxenable = uintptr(0x1) << uintptr(reg*C.DR_ENABLE_SIZE)
+		drxctl    = uintptr(C.DR_RW_EXECUTE|C.DR_LEN_1) << uintptr(reg*C.DR_CONTROL_SIZE)
 	)
+
+	// Get current state
+	dr7, err := PtracePeekUser(tid, dr7off)
+	if err != nil {
+		return err
+	}
+
+	// If addr == 0 we are expected to disable the breakpoint
+	if addr == 0 {
+		dr7 &= ^drxmask
+		return PtracePokeUser(tid, dr7off, dr7)
+	}
+
+	// Error out if dr`reg` is already used
+	if dr7&(0x3<<uint(reg*C.DR_ENABLE_SIZE)) != 0 {
+		return fmt.Errorf("dr%d already enabled", reg)
+	}
 
 	// Set the debug register `reg` with the address of the
 	// instruction we want to trigger a debug exception.
-	if err := PtracePokeUser(tid, off, uintptr(addr)); err != nil {
+	if err := PtracePokeUser(tid, drxoff, uintptr(addr)); err != nil {
 		return err
 	}
+
+	// Clear dr`reg` flags
+	dr7 &= ^drxmask
+	// Enable dr`reg`
+	dr7 |= (drxctl<<C.DR_CONTROL_SHIFT) | drxenable
+
 	// Set the debug control register. This
 	// instructs the cpu to raise a debug
 	// exception when hitting the address of
 	// an instruction stored in dr0-dr3.
-	return PtracePokeUser(tid, dr7addr, dr7)
+	return PtracePokeUser(tid, dr7off, dr7)
 }
