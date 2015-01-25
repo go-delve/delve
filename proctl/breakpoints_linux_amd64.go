@@ -16,6 +16,7 @@ import "C"
 
 import (
 	"fmt"
+	sys "golang.org/x/sys/unix"
 	"syscall"
 )
 
@@ -43,7 +44,7 @@ func (bpe BreakPointExistsError) Error() string {
 }
 
 func PtracePokeUser(tid int, off, addr uintptr) error {
-	_, _, err := syscall.Syscall6(syscall.SYS_PTRACE, syscall.PTRACE_POKEUSR, uintptr(tid), uintptr(off), uintptr(addr), 0, 0)
+	_, _, err := sys.Syscall6(sys.SYS_PTRACE, sys.PTRACE_POKEUSR, uintptr(tid), uintptr(off), uintptr(addr), 0, 0)
 	if err != syscall.Errno(0) {
 		return err
 	}
