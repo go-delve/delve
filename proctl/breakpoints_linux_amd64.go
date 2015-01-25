@@ -52,12 +52,12 @@ func PtracePokeUser(tid int, off, addr uintptr) error {
 }
 
 func PtracePeekUser(tid int, off uintptr) (uintptr, error) {
-	var x uintptr // XXX: this should not be necessary
-	ret, _, err := syscall.Syscall6(syscall.SYS_PTRACE, syscall.PTRACE_PEEKUSR, uintptr(tid), uintptr(off), uintptr(unsafe.Pointer(&x)), 0, 0)
+	var val uintptr
+	_, _, err := syscall.Syscall6(syscall.SYS_PTRACE, syscall.PTRACE_PEEKUSR, uintptr(tid), uintptr(off), uintptr(unsafe.Pointer(&val)), 0, 0)
 	if err != syscall.Errno(0) {
 		return 0, err
 	}
-	return ret, nil
+	return val, nil
 }
 
 func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
