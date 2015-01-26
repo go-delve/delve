@@ -2,12 +2,12 @@ package cli
 
 import (
 	"fmt"
+	sys "golang.org/x/sys/unix"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
-	"syscall"
 
 	"github.com/derekparker/delve/command"
 	"github.com/derekparker/delve/goreadline"
@@ -49,7 +49,7 @@ func Run(run bool, pid int, args []string) {
 	}
 
 	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGINT)
+	signal.Notify(ch, sys.SIGINT)
 	go func() {
 		for _ = range ch {
 			if dbp.Running() {
@@ -105,7 +105,7 @@ func handleExit(dbp *proctl.DebuggedProcess, status int) {
 	}
 
 	fmt.Println("Detaching from process...")
-	err := syscall.PtraceDetach(dbp.Process.Pid)
+	err := sys.PtraceDetach(dbp.Process.Pid)
 	if err != nil {
 		die(2, "Could not detach", err)
 	}

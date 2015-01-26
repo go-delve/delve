@@ -37,18 +37,21 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	testcases := []varTest{
-		{"a1", "foo", "struct string", nil},
+		{"a1", "foofoofoofoofoofoo", "struct string", nil},
+		{"a10", "ofo", "struct string", nil},
+		{"a11", "[3]main.FooBar [{Baz: 1, Bur: a},{Baz: 2, Bur: b},{Baz: 3, Bur: c}]", "[3]main.FooBar", nil},
+		{"a12", "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: d},{Baz: 5, Bur: e}]", "struct []main.FooBar", nil},
+		{"a13", "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: f},*{Baz: 7, Bur: g},*{Baz: 8, Bur: h}]", "struct []*main.FooBar", nil},
 		{"a2", "6", "int", nil},
 		{"a3", "7.23", "float64", nil},
-		{"a4", "[2]int [1 2]", "[2]int", nil},
-		{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int", nil},
+		{"a4", "[2]int [1,2]", "[2]int", nil},
+		{"a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "struct []int", nil},
 		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar", nil},
 		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar", nil},
 		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil},
 		{"a9", "*main.FooBar nil", "*main.FooBar", nil},
 		{"baz", "bazburzum", "struct string", nil},
 		{"neg", "-1", "int", nil},
-		{"i8", "1", "int8", nil},
 		{"f32", "1.2", "float32", nil},
 		{"a6.Baz", "8", "int", nil},
 		{"a7.Baz", "5", "int", nil},
@@ -56,12 +59,20 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a9.Baz", "nil", "int", errors.New("a9 is nil")},
 		{"a9.NonExistent", "nil", "int", errors.New("a9 has no member NonExistent")},
 		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil}, // reread variable after member
-		{"i32", "[2]int32 [1 2]", "[2]int32", nil},
+		{"i32", "[2]int32 [1,2]", "[2]int32", nil},
+		{"b1", "true", "bool", nil},
+		{"b2", "false", "bool", nil}, {"i8", "1", "int8", nil},
+		{"u16", "65535", "uint16", nil},
+		{"u32", "4294967295", "uint32", nil},
+		{"u64", "18446744073709551615", "uint64", nil},
+		{"u8", "255", "uint8", nil},
+		{"up", "5", "uintptr", nil},
+		{"f", "main.barfoo", "func()", nil},
 		{"NonExistent", "", "", errors.New("could not find symbol value for NonExistent")},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 38)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 50)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -92,7 +103,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 38)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 50)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -156,19 +167,31 @@ func TestLocalVariables(t *testing.T) {
 	}{
 		{(*ThreadContext).LocalVariables,
 			[]varTest{
-				{"a1", "foo", "struct string", nil},
+				{"a1", "foofoofoofoofoofoo", "struct string", nil},
+				{"a10", "ofo", "struct string", nil},
+				{"a11", "[3]main.FooBar [{Baz: 1, Bur: a},{Baz: 2, Bur: b},{Baz: 3, Bur: c}]", "[3]main.FooBar", nil},
+				{"a12", "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: d},{Baz: 5, Bur: e}]", "struct []main.FooBar", nil},
+				{"a13", "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: f},*{Baz: 7, Bur: g},*{Baz: 8, Bur: h}]", "struct []*main.FooBar", nil},
 				{"a2", "6", "int", nil},
 				{"a3", "7.23", "float64", nil},
-				{"a4", "[2]int [1 2]", "[2]int", nil},
-				{"a5", "len: 5 cap: 5 [1 2 3 4 5]", "struct []int", nil},
+				{"a4", "[2]int [1,2]", "[2]int", nil},
+				{"a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "struct []int", nil},
 				{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar", nil},
 				{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar", nil},
 				{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil},
 				{"a9", "*main.FooBar nil", "*main.FooBar", nil},
+				{"b1", "true", "bool", nil},
+				{"b2", "false", "bool", nil},
+				{"f", "main.barfoo", "func()", nil},
 				{"f32", "1.2", "float32", nil},
-				{"i32", "[2]int32 [1 2]", "[2]int32", nil},
+				{"i32", "[2]int32 [1,2]", "[2]int32", nil},
 				{"i8", "1", "int8", nil},
-				{"neg", "-1", "int", nil}}},
+				{"neg", "-1", "int", nil},
+				{"u16", "65535", "uint16", nil},
+				{"u32", "4294967295", "uint32", nil},
+				{"u64", "18446744073709551615", "uint64", nil},
+				{"u8", "255", "uint8", nil},
+				{"up", "5", "uintptr", nil}}},
 		{(*ThreadContext).FunctionArguments,
 			[]varTest{
 				{"bar", "main.FooBar {Baz: 10, Bur: lorem}", "main.FooBar", nil},
@@ -176,7 +199,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 38)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 50)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")

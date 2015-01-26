@@ -6,6 +6,7 @@ import (
 	"debug/dwarf"
 	"debug/gosym"
 	"fmt"
+	sys "golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,17 +21,18 @@ import (
 // Struct representing a debugged process. Holds onto pid, register values,
 // process struct and process state.
 type DebuggedProcess struct {
-	Pid           int
-	Process       *os.Process
-	Dwarf         *dwarf.Data
-	GoSymTable    *gosym.Table
-	FrameEntries  *frame.FrameDescriptionEntries
-	HWBreakPoints [4]*BreakPoint // May need to change, amd64 supports 4 debug registers
-	BreakPoints   map[uint64]*BreakPoint
-	Threads       map[int]*ThreadContext
-	CurrentThread *ThreadContext
-	running       bool
-	halt          bool
+	Pid                 int
+	Process             *os.Process
+	Dwarf               *dwarf.Data
+	GoSymTable          *gosym.Table
+	FrameEntries        *frame.FrameDescriptionEntries
+	HWBreakPoints       [4]*BreakPoint
+	BreakPoints         map[uint64]*BreakPoint
+	Threads             map[int]*ThreadContext
+	CurrentThread       *ThreadContext
+	breakpointIDCounter int
+	running             bool
+	halt                bool
 }
 
 type ManualStopError struct{}
@@ -38,25 +40,6 @@ type ManualStopError struct{}
 func (mse ManualStopError) Error() string {
 	return "Manual stop requested"
 }
-
-// ProcessStatus is the result of parsing the data from
-// the /proc/<pid>/stats psuedo file.
-type ProcessStatus struct {
-	pid   int
-	comm  string
-	state rune
-	ppid  int
-}
-
-const (
-	STATUS_SLEEPING   = 'S'
-	STATUS_RUNNING    = 'R'
-	STATUS_TRACE_STOP = 't'
-)
-
-var (
-	breakpointIDCounter = 0
-)
 
 func Attach(pid int) (*DebuggedProcess, error) {
 	dbp, err := newDebugProcess(pid, true)
@@ -140,8 +123,8 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 		return thread, nil
 	}
 
-	err := syscall.PtraceAttach(tid)
-	if err != nil && err != syscall.EPERM {
+	err := sys.PtraceAttach(tid)
+	if err != nil && err != sys.EPERM {
 		// Do not return err if err == EPERM,
 		// we may already be tracing this thread due to
 		// PTRACE_O_TRACECLONE. We will surely blow up later
@@ -215,11 +198,10 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 func (dbp *DebuggedProcess) RequestManualStop() {
 	dbp.halt = true
 	for _, th := range dbp.Threads {
-		ps, _ := parseProcessStatus(th.Id)
-		if ps.state == STATUS_TRACE_STOP {
+		if stopped(th.Id) {
 			continue
 		}
-		syscall.Tgkill(dbp.Pid, th.Id, syscall.SIGSTOP)
+		sys.Tgkill(dbp.Pid, th.Id, sys.SIGSTOP)
 	}
 	dbp.running = false
 }
@@ -253,7 +235,7 @@ func (dbp *DebuggedProcess) ClearByLocation(loc string) (*BreakPoint, error) {
 }
 
 // Returns the status of the current main thread context.
-func (dbp *DebuggedProcess) Status() *syscall.WaitStatus {
+func (dbp *DebuggedProcess) Status() *sys.WaitStatus {
 	return dbp.CurrentThread.Status
 }
 
@@ -332,7 +314,7 @@ func (dbp *DebuggedProcess) Next() error {
 			}
 
 			err := th.Next()
-			if err != nil && err != syscall.ESRCH {
+			if err != nil && err != sys.ESRCH {
 				return err
 			}
 		}
@@ -408,7 +390,7 @@ func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("process %d has exited", pe.pid)
 }
 
-func trapWait(dbp *DebuggedProcess, pid int) (int, *syscall.WaitStatus, error) {
+func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
 	for {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {
@@ -423,17 +405,17 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, *syscall.WaitStatus, error) {
 		if status.Exited() && wpid == dbp.Pid {
 			return -1, status, ProcessExitedError{wpid}
 		}
-		if status.StopSignal() == syscall.SIGTRAP && status.TrapCause() == syscall.PTRACE_EVENT_CLONE {
+		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			err = addNewThread(dbp, wpid)
 			if err != nil {
 				return -1, nil, err
 			}
 			continue
 		}
-		if status.StopSignal() == syscall.SIGTRAP {
+		if status.StopSignal() == sys.SIGTRAP {
 			return wpid, status, nil
 		}
-		if status.StopSignal() == syscall.SIGSTOP && dbp.halt {
+		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
 			return -1, nil, ManualStopError{}
 		}
 	}
@@ -493,21 +475,14 @@ func stopTheWorld(dbp *DebuggedProcess) error {
 	// are inactive. We send SIGSTOP and ensure all
 	// threads are in in signal-delivery-stop mode.
 	for _, th := range dbp.Threads {
-		ps, err := parseProcessStatus(th.Id)
-		if err != nil {
-			return err
-		}
-
-		if ps.state == STATUS_TRACE_STOP {
+		if stopped(th.Id) {
 			continue
 		}
-
-		err = syscall.Tgkill(dbp.Pid, th.Id, syscall.SIGSTOP)
+		err := sys.Tgkill(dbp.Pid, th.Id, sys.SIGSTOP)
 		if err != nil {
 			return err
 		}
-
-		pid, _, err := wait(th.Id, 0)
+		pid, _, err := wait(th.Id, sys.WNOHANG)
 		if err != nil {
 			return fmt.Errorf("wait err %s %d", err, pid)
 		}
@@ -519,7 +494,7 @@ func stopTheWorld(dbp *DebuggedProcess) error {
 func addNewThread(dbp *DebuggedProcess, pid int) error {
 	// A traced thread has cloned a new thread, grab the pid and
 	// add it to our list of traced threads.
-	msg, err := syscall.PtraceGetEventMsg(pid)
+	msg, err := sys.PtraceGetEventMsg(pid)
 	if err != nil {
 		return fmt.Errorf("could not get event message: %s", err)
 	}
@@ -530,12 +505,12 @@ func addNewThread(dbp *DebuggedProcess, pid int) error {
 		return err
 	}
 
-	err = syscall.PtraceCont(int(msg), 0)
+	err = sys.PtraceCont(int(msg), 0)
 	if err != nil {
 		return fmt.Errorf("could not continue new thread %d %s", msg, err)
 	}
 
-	err = syscall.PtraceCont(pid, 0)
+	err = sys.PtraceCont(pid, 0)
 	if err != nil {
 		return fmt.Errorf("could not continue stopped thread %d %s", pid, err)
 	}
@@ -543,8 +518,8 @@ func addNewThread(dbp *DebuggedProcess, pid int) error {
 	return nil
 }
 
-func wait(pid, options int) (int, *syscall.WaitStatus, error) {
-	var status syscall.WaitStatus
-	wpid, err := syscall.Wait4(pid, &status, syscall.WALL|options, nil)
+func wait(pid, options int) (int, *sys.WaitStatus, error) {
+	var status sys.WaitStatus
+	wpid, err := sys.Wait4(pid, &status, sys.WALL|options, nil)
 	return wpid, &status, err
 }
