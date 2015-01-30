@@ -11,20 +11,20 @@ package goreadline
 */
 import "C"
 import (
+	sys "golang.org/x/sys/unix"
 	"os"
 	"os/signal"
-	"syscall"
 	"unsafe"
 )
 
 func init() {
 	C.rl_catch_sigwinch = 0
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGWINCH)
+	signal.Notify(c, sys.SIGWINCH)
 	go func() {
 		for sig := range c {
 			switch sig {
-			case syscall.SIGWINCH:
+			case sys.SIGWINCH:
 				Resize()
 			default:
 

@@ -3,7 +3,7 @@ package proctl
 import (
 	"encoding/binary"
 	"fmt"
-	"syscall"
+	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/dwarf/frame"
 )
@@ -13,7 +13,7 @@ import (
 type ThreadContext struct {
 	Id      int
 	Process *DebuggedProcess
-	Status  *syscall.WaitStatus
+	Status  *sys.WaitStatus
 }
 
 type Registers interface {
@@ -91,7 +91,7 @@ func (thread *ThreadContext) Continue() error {
 		}
 	}
 
-	return syscall.PtraceCont(thread.Id, 0)
+	return sys.PtraceCont(thread.Id, 0)
 }
 
 // Single steps this thread a single instruction, ensuring that
@@ -122,7 +122,7 @@ func (thread *ThreadContext) Step() (err error) {
 		}()
 	}
 
-	err = syscall.PtraceSingleStep(thread.Id)
+	err = sys.PtraceSingleStep(thread.Id)
 	if err != nil {
 		return fmt.Errorf("step failed: %s", err.Error())
 	}

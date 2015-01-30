@@ -1,9 +1,9 @@
 package proctl
 
-import "syscall"
+import sys "golang.org/x/sys/unix"
 
 type Regs struct {
-	regs *syscall.PtraceRegs
+	regs *sys.PtraceRegs
 }
 
 func (r *Regs) PC() uint64 {
@@ -16,12 +16,12 @@ func (r *Regs) SP() uint64 {
 
 func (r *Regs) SetPC(tid int, pc uint64) error {
 	r.regs.SetPC(pc)
-	return syscall.PtraceSetRegs(tid, r.regs)
+	return sys.PtraceSetRegs(tid, r.regs)
 }
 
 func registers(tid int) (Registers, error) {
-	var regs syscall.PtraceRegs
-	err := syscall.PtraceGetRegs(tid, &regs)
+	var regs sys.PtraceRegs
+	err := sys.PtraceGetRegs(tid, &regs)
 	if err != nil {
 		return nil, err
 	}
@@ -29,11 +29,11 @@ func registers(tid int) (Registers, error) {
 }
 
 func writeMemory(tid int, addr uintptr, data []byte) (int, error) {
-	return syscall.PtracePokeData(tid, addr, data)
+	return sys.PtracePokeData(tid, addr, data)
 }
 
 func readMemory(tid int, addr uintptr, data []byte) (int, error) {
-	return syscall.PtracePeekData(tid, addr, data)
+	return sys.PtracePeekData(tid, addr, data)
 }
 
 func clearHardwareBreakpoint(reg, tid int) error {

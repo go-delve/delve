@@ -49,7 +49,9 @@ func dataAtAddr(pid int, addr uint64) ([]byte, error) {
 
 func assertNoError(err error, t *testing.T, s string) {
 	if err != nil {
-		t.Fatal(s, ":", err)
+		_, file, line, _ := runtime.Caller(1)
+		fname := filepath.Base(file)
+		t.Fatalf("failed assertion at %s:%d: %s : %s\n", fname, line, s, err)
 	}
 }
 

@@ -109,13 +109,17 @@ func (dbp *DebuggedProcess) findExecutable() (*elf.File, error) {
 func (dbp *DebuggedProcess) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	debugFrame, err := exe.Section(".debug_frame").Data()
-	if err != nil {
-		fmt.Println("could not get .debug_frame section", err)
+	if sec := exe.Section(".debug_frame"); sec != nil {
+		debugFrame, err := exe.Section(".debug_frame").Data()
+		if err != nil {
+			fmt.Println("could not get .debug_frame section", err)
+			os.Exit(1)
+		}
+		dbp.FrameEntries = frame.Parse(debugFrame)
+	} else {
+		fmt.Println("could not find .debug_frame section in binary")
 		os.Exit(1)
 	}
-
-	dbp.FrameEntries = frame.Parse(debugFrame)
 }
 
 func (dbp *DebuggedProcess) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
