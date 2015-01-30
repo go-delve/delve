@@ -2,12 +2,13 @@ package cli
 
 import (
 	"fmt"
-	sys "golang.org/x/sys/unix"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
+
+	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/command"
 	"github.com/derekparker/delve/goreadline"
@@ -97,6 +98,15 @@ func handleExit(dbp *proctl.DebuggedProcess, status int) {
 		die(2, io.EOF)
 	}
 	answer := strings.TrimSuffix(*answerp, "\n")
+
+	for _, bp := range dbp.HWBreakPoints {
+		if bp == nil {
+			continue
+		}
+		if _, err := dbp.Clear(bp.Addr); err != nil {
+			fmt.Printf("Can't clear breakpoint @%x: %s\n", bp.Addr, err)
+		}
+	}
 
 	for pc := range dbp.BreakPoints {
 		if _, err := dbp.Clear(pc); err != nil {
