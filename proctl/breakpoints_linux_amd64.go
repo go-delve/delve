@@ -17,9 +17,10 @@ import "C"
 
 import (
 	"fmt"
-	sys "golang.org/x/sys/unix"
 	"syscall"
 	"unsafe"
+
+	sys "golang.org/x/sys/unix"
 )
 
 // Represents a single breakpoint. Stores information on the break
@@ -109,6 +110,9 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, er
 func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
 	// Check for hardware breakpoint
 	for i, bp := range dbp.HWBreakPoints {
+		if bp == nil {
+			continue
+		}
 		if bp.Addr == addr {
 			dbp.HWBreakPoints[i] = nil
 			if err := clearHardwareBreakpoint(i, tid); err != nil {
@@ -183,7 +187,7 @@ func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	// Clear dr`reg` flags
 	dr7 &= ^drxmask
 	// Enable dr`reg`
-	dr7 |= (drxctl<<C.DR_CONTROL_SHIFT) | drxenable
+	dr7 |= (drxctl << C.DR_CONTROL_SHIFT) | drxenable
 
 	// Set the debug control register. This
 	// instructs the cpu to raise a debug

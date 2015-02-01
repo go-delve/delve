@@ -6,13 +6,14 @@ import (
 	"debug/dwarf"
 	"debug/gosym"
 	"fmt"
-	sys "golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+
+	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/reader"
@@ -183,8 +184,15 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 		}
 
 		// Use as breakpoint id
+		for _, bp := range dbp.HWBreakPoints {
+			if bp == nil {
+				continue
+			}
+			if uint64(bp.ID) == id {
+				return bp.Addr, nil
+			}
+		}
 		for _, bp := range dbp.BreakPoints {
-			// ID
 			if uint64(bp.ID) == id {
 				return bp.Addr, nil
 			}
