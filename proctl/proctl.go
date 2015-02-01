@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	sys "golang.org/x/sys/unix"
 
@@ -298,12 +299,12 @@ func (dbp *DebuggedProcess) Next() error {
 		ok bool
 	)
 
-	allm, err := dbp.CurrentThread.AllM()
-	if err != nil {
-		return err
-	}
-
 	fn := func() error {
+		allm, err := dbp.CurrentThread.AllM()
+		if err != nil {
+			return err
+		}
+
 		for _, m := range allm {
 			th, ok = dbp.Threads[m.procid]
 			if !ok {
@@ -518,12 +519,26 @@ func addNewThread(dbp *DebuggedProcess, pid int) error {
 		return fmt.Errorf("could not continue new thread %d %s", msg, err)
 	}
 
-	err = sys.PtraceCont(pid, 0)
-	if err != nil {
-		return fmt.Errorf("could not continue stopped thread %d %s", pid, err)
+	// Here we loop for a while to ensure that the once we continue
+	// the newly created thread, we allow enough time for the runtime
+	// to assign m->procid. This is important because we rely on
+	// looping through runtime.allm in other parts of the code, so
+	// we require that this is set before we do anything else.
+	// TODO(dp): we might be able to eliminate this loop by telling
+	// the CPU to emit a breakpoint exception on write to this location
+	// in memory. That way we prevent having to loop, and can be
+	// notified as soon as m->procid is set.
+	th := dbp.Threads[pid]
+	for {
+		allm, _ := th.AllM()
+		for _, m := range allm {
+			if m.procid == int(msg) {
+				// Continue the thread that cloned
+				return sys.PtraceCont(pid, 0)
+			}
+		}
+		time.Sleep(time.Millisecond)
 	}
-
-	return nil
 }
 
 func wait(pid, options int) (int, *sys.WaitStatus, error) {
