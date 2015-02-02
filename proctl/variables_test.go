@@ -68,11 +68,13 @@ func TestVariableEvaluation(t *testing.T) {
 		{"u8", "255", "uint8", nil},
 		{"up", "5", "uintptr", nil},
 		{"f", "main.barfoo", "func()", nil},
+		{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "struct []int", nil},
+		{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "main.Nest", nil},
 		{"NonExistent", "", "", errors.New("could not find symbol value for NonExistent")},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 50)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -103,7 +105,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 50)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -118,7 +120,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 		assertNoError(err, t, "Unable to find variable a1")
 
 		// Move scopes, a1 exists here by a2 does not
-		pc, _, _ = p.GoSymTable.LineToPC(fp, 18)
+		pc, _, _ = p.GoSymTable.LineToPC(fp, 23)
 
 		_, err = p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -182,10 +184,12 @@ func TestLocalVariables(t *testing.T) {
 				{"a9", "*main.FooBar nil", "*main.FooBar", nil},
 				{"b1", "true", "bool", nil},
 				{"b2", "false", "bool", nil},
+				{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "struct []int", nil},
 				{"f", "main.barfoo", "func()", nil},
 				{"f32", "1.2", "float32", nil},
 				{"i32", "[2]int32 [1,2]", "[2]int32", nil},
 				{"i8", "1", "int8", nil},
+				{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "main.Nest", nil},
 				{"neg", "-1", "int", nil},
 				{"u16", "65535", "uint16", nil},
 				{"u32", "4294967295", "uint32", nil},
@@ -199,7 +203,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 50)
+		pc, _, _ := p.GoSymTable.LineToPC(fp, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
