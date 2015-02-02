@@ -13,6 +13,11 @@ import (
 	"github.com/derekparker/delve/dwarf/reader"
 )
 
+const (
+	maxVariableRecurse = 1
+	maxArrayValues     = 64
+)
+
 type Variable struct {
 	Name  string
 	Value string
@@ -558,6 +563,10 @@ func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, read
 // We execute the stack program described in the DW_OP_* instruction stream, and
 // then grab the value from the other processes memory.
 func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ interface{}, printStructName bool) (string, error) {
+	return thread.extractValueInternal(instructions, addr, typ, printStructName, 0)
+}
+
+func (thread *ThreadContext) extractValueInternal(instructions []byte, addr int64, typ interface{}, printStructName bool, recurseLevel int) (string, error) {
 	var err error
 
 	if addr == 0 {
@@ -590,7 +599,8 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 			return fmt.Sprintf("%s nil", t.String()), nil
 		}
 
-		val, err := thread.extractValue(nil, intaddr, t.Type, printStructName)
+		// Don't increase the recursion level when dereferencing pointers
+		val, err := thread.extractValueInternal(nil, intaddr, t.Type, printStructName, recurseLevel)
 		if err != nil {
 			return "", err
 		}
@@ -605,20 +615,26 @@ func (thread *ThreadContext) extractValue(instructions []byte, addr int64, typ i
 		default:
 			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
-			fields := make([]string, 0, len(t.Field))
-			for _, field := range t.Field {
-				val, err := thread.extractValue(nil, field.ByteOffset+addr, field.Type, printStructName)
-				if err != nil {
-					return "", err
-				}
+			if recurseLevel <= maxVariableRecurse {
+				fields := make([]string, 0, len(t.Field))
+				for _, field := range t.Field {
+					val, err := thread.extractValueInternal(nil, field.ByteOffset+addr, field.Type, printStructName, recurseLevel+1)
+					if err != nil {
+						return "", err
+					}
 
-				fields = append(fields, fmt.Sprintf("%s: %s", field.Name, val))
-			}
-			if printStructName {
-				return fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", ")), nil
-			} else {
+					fields = append(fields, fmt.Sprintf("%s: %s", field.Name, val))
+				}
+				if printStructName {
+					return fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", ")), nil
+				}
 				return fmt.Sprintf("{%s}", strings.Join(fields, ", ")), nil
 			}
+			// no fields
+			if printStructName {
+				return fmt.Sprintf("%s {...}", t.StructName), nil
+			}
+			return "{...}", nil
 		}
 	case *dwarf.ArrayType:
 		return thread.readArray(ptraddress, t)
@@ -736,6 +752,12 @@ func (thread *ThreadContext) readArrayValues(addr uintptr, count int64, stride i
 	vals := make([]string, 0)
 
 	for i := int64(0); i < count; i++ {
+		// Cap number of elements
+		if i >= maxArrayValues {
+			vals = append(vals, fmt.Sprintf("...+%d more", count-maxArrayValues))
+			break
+		}
+
 		val, err := thread.extractValue(nil, int64(addr+uintptr(i*stride)), t, false)
 		if err != nil {
 			return nil, err
