@@ -37,12 +37,15 @@ type DebuggedProcess struct {
 	halt                bool
 }
 
+// A ManualStopError happens when the user triggers a
+// manual stop via SIGERM.
 type ManualStopError struct{}
 
 func (mse ManualStopError) Error() string {
 	return "Manual stop requested"
 }
 
+// Attach to an existing process with the given PID.
 func Attach(pid int) (*DebuggedProcess, error) {
 	dbp, err := newDebugProcess(pid, true)
 	if err != nil {
@@ -65,6 +68,9 @@ func Attach(pid int) (*DebuggedProcess, error) {
 	return dbp, nil
 }
 
+// Create and begin debugging a new process. First entry in
+// `cmd` is the program to run, and then rest are the arguments
+// to be supplied to that process.
 func Launch(cmd []string) (*DebuggedProcess, error) {
 	proc := exec.Command(cmd[0])
 	proc.Args = cmd
@@ -120,6 +126,8 @@ func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 	return &dbp, nil
 }
 
+// Attach to a newly created thread, and store that thread in our list of
+// known threads.
 func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 	if thread, ok := dbp.Threads[tid]; ok {
 		return thread, nil
@@ -146,6 +154,8 @@ func (dbp *DebuggedProcess) AttachThread(tid int) (*ThreadContext, error) {
 	return dbp.addThread(tid)
 }
 
+// Returns whether or not Delve thinks the debugged
+// process is currently executing.
 func (dbp *DebuggedProcess) Running() bool {
 	return dbp.running
 }
@@ -204,6 +214,8 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 	}
 }
 
+// Sends out a request that the debugged process halt
+// execution. Sends SIGSTOP to all threads.
 func (dbp *DebuggedProcess) RequestManualStop() {
 	dbp.halt = true
 	for _, th := range dbp.Threads {
@@ -215,7 +227,8 @@ func (dbp *DebuggedProcess) RequestManualStop() {
 	dbp.running = false
 }
 
-// Sets a breakpoint in the current thread.
+// Sets a breakpoint, adding it to our list of known breakpoints. Uses
+// the "current thread" when setting the breakpoint.
 func (dbp *DebuggedProcess) Break(addr uint64) (*BreakPoint, error) {
 	return dbp.CurrentThread.Break(addr)
 }
@@ -355,14 +368,6 @@ func (dbp *DebuggedProcess) Continue() error {
 // thread of the traced process.
 func (dbp *DebuggedProcess) Registers() (Registers, error) {
 	return dbp.CurrentThread.Registers()
-}
-
-type InvalidAddressError struct {
-	address uint64
-}
-
-func (iae InvalidAddressError) Error() string {
-	return fmt.Sprintf("Invalid address %#v\n", iae.address)
 }
 
 func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {

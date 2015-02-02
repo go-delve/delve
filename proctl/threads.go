@@ -3,19 +3,27 @@ package proctl
 import (
 	"encoding/binary"
 	"fmt"
+
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/dwarf/frame"
 )
 
-// ThreadContext represents a single thread of execution in the
-// traced program.
+// ThreadContext represents a single thread in the traced process
+// Id represents the thread id, Process holds a reference to the
+// DebuggedProcess struct that contains info on the process as
+// a whole, and Status represents the last result of a `wait` call
+// on this thread.
 type ThreadContext struct {
 	Id      int
 	Process *DebuggedProcess
 	Status  *sys.WaitStatus
 }
 
+// An interface for a generic register type. The
+// interface encapsulates the generic values / actions
+// we need independant of arch. The concrete register types
+// will be different depending on OS/Arch.
 type Registers interface {
 	PC() uint64
 	SP() uint64
@@ -32,7 +40,7 @@ func (thread *ThreadContext) Registers() (Registers, error) {
 	return regs, nil
 }
 
-// Returns the current PC for this thread id.
+// Returns the current PC for this thread.
 func (thread *ThreadContext) CurrentPC() (uint64, error) {
 	regs, err := thread.Registers()
 	if err != nil {
@@ -76,6 +84,10 @@ func (thread *ThreadContext) Clear(addr uint64) (*BreakPoint, error) {
 	return thread.Process.clearBreakpoint(thread.Id, addr)
 }
 
+// Continue the execution of this thread. This method takes
+// software breakpoints into consideration and ensures that
+// we step over any breakpoints. It will restore the instruction,
+// step, and then restore the breakpoint and continue.
 func (thread *ThreadContext) Continue() error {
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.

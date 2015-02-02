@@ -36,6 +36,8 @@ type BreakPoint struct {
 	temp         bool
 }
 
+// Returned when trying to set a breakpoint at
+// an address that already has a breakpoint set for it.
 type BreakPointExistsError struct {
 	file string
 	line int
@@ -44,6 +46,16 @@ type BreakPointExistsError struct {
 
 func (bpe BreakPointExistsError) Error() string {
 	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
+}
+
+// InvalidAddressError represents the result of
+// attempting to set a breakpoint at an invalid address.
+type InvalidAddressError struct {
+	address uint64
+}
+
+func (iae InvalidAddressError) Error() string {
+	return fmt.Sprintf("Invalid address %#v\n", iae.address)
 }
 
 func PtracePokeUser(tid int, off, addr uintptr) error {
@@ -63,6 +75,7 @@ func PtracePeekUser(tid int, off uintptr) (uintptr, error) {
 	return val, nil
 }
 
+// Returns whether or not a breakpoint has been set for the given address.
 func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
 	for _, bp := range dbp.HWBreakPoints {
 		if bp != nil && bp.Addr == addr {
