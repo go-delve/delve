@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/derekparker/delve/client/cli"
+	"github.com/derekparker/delve/client/web"
 )
 
 const version string = "0.4.0.beta"
@@ -20,14 +21,18 @@ func init() {
 
 func main() {
 	var (
-		pid    int
-		run    bool
-		printv bool
+		pid     int
+		run     bool
+		printv  bool
+		remote  bool
+		address string
 	)
 
 	flag.IntVar(&pid, "pid", 0, "Pid of running process to attach to.")
 	flag.BoolVar(&run, "run", false, "Compile program and begin debug session.")
 	flag.BoolVar(&printv, "v", false, "Print version number and exit.")
+	flag.BoolVar(&remote, "r", false, "Run in remote mode via websockets. Also useful for IDEs.")
+	flag.StringVar(&address, "address", "127.0.0.1:6006", "Address to run when -r is used.")
 	flag.Parse()
 
 	if flag.NFlag() == 0 && len(flag.Args()) == 0 {
@@ -40,5 +45,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	cli.Run(run, pid, flag.Args())
+	if remote {
+		web.Run(run, pid, address, flag.Args())
+	} else {
+		cli.Run(run, pid, flag.Args())
+	}
+
 }
