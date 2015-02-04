@@ -262,7 +262,7 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 		data = filterVariables(vars, filter)
 
 	default:
-		return fmt.Errorf("unsupported info type, must be sources, funcs, locals, args, or vars")
+		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources, or vars")
 	}
 
 	// sort and output data
