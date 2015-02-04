@@ -529,7 +529,6 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 
 	val, err := thread.extractValue(instructions, 0, t, true)
 	if err != nil {
-		fmt.Printf("NAME: %s\n", n)
 		return nil, err
 	}
 
