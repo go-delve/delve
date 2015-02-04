@@ -7,10 +7,11 @@ Want to help contribute to Delve? Great! Any and all help is certainly appreciat
 When filing an issue, make sure to answer these five questions:
 
 1. What version of Delve are you using (`dlv -v`)?
-2. What operating system and processor architecture are you using?
-3. What did you do?
-4. What did you expect to see?
-5. What did you see instead?
+2. What version of Go are you using? (`go version`)?
+3. What operating system and processor architecture are you using?
+4. What did you do?
+5. What did you expect to see?
+6. What did you see instead?
 
 ## Contributing code
 
