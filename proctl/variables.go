@@ -361,6 +361,38 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
+// LocalVariables returns all local variables from the current function scope.
+func (thread *ThreadContext) LocalVariables() ([]*Variable, error) {
+	return thread.variablesByTag(dwarf.TagVariable)
+}
+
+// FunctionArguments returns the name, value, and type of all current function arguments.
+func (thread *ThreadContext) FunctionArguments() ([]*Variable, error) {
+	return thread.variablesByTag(dwarf.TagFormalParameter)
+}
+
+// PackageVariables returns the name, value, and type of all package variables in the application.
+func (thread *ThreadContext) PackageVariables() ([]*Variable, error) {
+	reader := thread.Process.DwarfReader()
+
+	vars := make([]*Variable, 0)
+
+	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
+		if err != nil {
+			return nil, err
+		}
+
+		// Ignore errors trying to extract values
+		val, err := thread.extractVariableFromEntry(entry)
+		if err != nil {
+			continue
+		}
+		vars = append(vars, val)
+	}
+
+	return vars, nil
+}
+
 func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entry, error) {
 	depth := 1
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
@@ -919,38 +951,6 @@ func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) 
 
 			vars = append(vars, val)
 		}
-	}
-
-	return vars, nil
-}
-
-// LocalVariables returns all local variables from the current function scope
-func (thread *ThreadContext) LocalVariables() ([]*Variable, error) {
-	return thread.variablesByTag(dwarf.TagVariable)
-}
-
-// FunctionArguments returns the name, value, and type of all current function arguments
-func (thread *ThreadContext) FunctionArguments() ([]*Variable, error) {
-	return thread.variablesByTag(dwarf.TagFormalParameter)
-}
-
-// PackageVariables returns the name, value, and type of all package variables in the application
-func (thread *ThreadContext) PackageVariables() ([]*Variable, error) {
-	reader := thread.Process.DwarfReader()
-
-	vars := make([]*Variable, 0)
-
-	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
-		if err != nil {
-			return nil, err
-		}
-
-		// Ignore errors trying to extract values
-		val, err := thread.extractVariableFromEntry(entry)
-		if err != nil {
-			continue
-		}
-		vars = append(vars, val)
 	}
 
 	return vars, nil

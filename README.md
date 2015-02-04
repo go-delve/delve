@@ -67,10 +67,11 @@ Once inside a debugging session, the following commands may be used:
 * `print $var` - Evaluate a variable.
 
 * `info $type [regex]` - Outputs information about the symbol table. An optional regex filters the list. Example `info funcs unicode`. Valid types are:
-  * `sources` - Prings the path of all source files
+  * `args` - Prints the name and value of all arguments to the current function
   * `funcs` - Prings the name of all defined functions
   * `locals` - Prints the name and value of all local variables in the current context
-  * `args` - Prints the name and value of all arguments to the current function
+  * `sources` - Prings the path of all source files
+  * `vars` - Prints the name and value of all package variables in the app. Any variable that is not local or arg is considered a package variables
 
 * `exit` - Exit the debugger.
 

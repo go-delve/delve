@@ -10,18 +10,18 @@ type Reader struct {
 	depth int
 }
 
-// New returns a reader for the specified dwarf data
+// New returns a reader for the specified dwarf data.
 func New(data *dwarf.Data) *Reader {
 	return &Reader{data.Reader(), 0}
 }
 
-// Seek moves the reader to an arbitrary offset
+// Seek moves the reader to an arbitrary offset.
 func (reader *Reader) Seek(off dwarf.Offset) {
 	reader.depth = 0
 	reader.Reader.Seek(off)
 }
 
-// SeekToEntry moves the reader to an arbitrary entry
+// SeekToEntry moves the reader to an arbitrary entry.
 func (reader *Reader) SeekToEntry(entry *dwarf.Entry) error {
 	reader.Seek(entry.Offset)
 	// Consume the current entry so .Next works as intended
@@ -62,7 +62,7 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 
 // SeekToType moves the reader to the type specified by the entry,
 // optionally resolving typedefs and pointer types. If the reader is set
-// to a struct type the NextMemberVariable call can be used to walk all member data
+// to a struct type the NextMemberVariable call can be used to walk all member data.
 func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resolvePointerTypes bool) (*dwarf.Entry, error) {
 	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
 	if !ok {
@@ -97,7 +97,7 @@ func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resol
 	return nil, fmt.Errorf("no type entry found")
 }
 
-// NextScopeVariable moves the reader to the next debug entry that describes a local variable and returns the entry
+// NextScopeVariable moves the reader to the next debug entry that describes a local variable and returns the entry.
 func (reader *Reader) NextScopeVariable() (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
@@ -121,7 +121,7 @@ func (reader *Reader) NextScopeVariable() (*dwarf.Entry, error) {
 	return nil, nil
 }
 
-// NextMememberVariable moves the reader to the next debug entry that describes a member variable and returns the entry
+// NextMememberVariable moves the reader to the next debug entry that describes a member variable and returns the entry.
 func (reader *Reader) NextMemberVariable() (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
@@ -145,8 +145,8 @@ func (reader *Reader) NextMemberVariable() (*dwarf.Entry, error) {
 	return nil, nil
 }
 
-// NextPackage moves the reader to the next debug entry that describes a package variable
-// any TagVariable entry that is not inside a sub prgram entry and is marked external is considered a package variable
+// NextPackageVariable moves the reader to the next debug entry that describes a package variable.
+// Any TagVariable entry that is not inside a sub prgram entry and is marked external is considered a package variable.
 func (reader *Reader) NextPackageVariable() (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
