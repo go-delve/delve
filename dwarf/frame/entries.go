@@ -1,10 +1,6 @@
 package frame
 
-import (
-	"fmt"
-
-	"github.com/derekparker/rbtree"
-)
+import "fmt"
 
 // Represents a Common Information Entry in
 // the Dwarf .debug_frame section.
@@ -23,7 +19,6 @@ func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
 	if (addr - fde.begin) < fde.end {
 		return true
 	}
-
 	return false
 }
 
@@ -53,39 +48,42 @@ func (fde *FrameDescriptionEntry) ReturnAddressOffset(pc uint64) int64 {
 	return frame.cfa.offset + frame.regs[fde.CIE.ReturnAddressRegister].offset
 }
 
-type FrameDescriptionEntries struct {
-	*rbtree.RedBlackTree
+type FrameDescriptionEntries []*FrameDescriptionEntry
+
+func NewFrameIndex() FrameDescriptionEntries {
+	return make(FrameDescriptionEntries, 0, 1000)
 }
 
-func NewFrameIndex() *FrameDescriptionEntries {
-	return &FrameDescriptionEntries{rbtree.New()}
-}
-
-func (fdes *FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry, error) {
-	node, ok := fdes.Find(Addr(pc))
-	if !ok {
-		return nil, fmt.Errorf("Could not find FDE for %#v", pc)
+func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry, error) {
+	frame := find(fdes, pc)
+	if frame == nil {
+		return nil, fmt.Errorf("could not find FDE for %#v", pc)
 	}
-
-	return node.(*FrameDescriptionEntry), nil
+	return frame, nil
 }
 
-func (frame *FrameDescriptionEntry) Less(item rbtree.Item) bool {
-	return frame.Begin() < item.(*FrameDescriptionEntry).Begin()
+func find(fdes FrameDescriptionEntries, pc uint64) *FrameDescriptionEntry {
+	if len(fdes) == 0 {
+		return nil
+	}
+	idx := len(fdes) / 2
+	frame := fdes[idx]
+	if frame.Cover(pc) {
+		return frame
+	}
+	if frame.Less(pc) {
+		return find(fdes[:idx], pc)
+	}
+	if frame.More(pc) {
+		return find(fdes[idx:], pc)
+	}
+	return nil
 }
 
-func (frame *FrameDescriptionEntry) More(item rbtree.Item) bool {
-	f := item.(*FrameDescriptionEntry)
-	return frame.End() > f.End()
+func (frame *FrameDescriptionEntry) Less(pc uint64) bool {
+	return frame.Begin() > pc
 }
 
-type Addr uint64
-
-func (a Addr) Less(item rbtree.Item) bool {
-	return uint64(a) < item.(*FrameDescriptionEntry).Begin()
-}
-
-func (a Addr) More(item rbtree.Item) bool {
-	f := item.(*FrameDescriptionEntry)
-	return uint64(a) > f.End()
+func (frame *FrameDescriptionEntry) More(pc uint64) bool {
+	return frame.End() < pc
 }

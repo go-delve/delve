@@ -14,7 +14,7 @@ type parsefunc func(*parseContext) parsefunc
 
 type parseContext struct {
 	Buf     *bytes.Buffer
-	Entries *FrameDescriptionEntries
+	Entries FrameDescriptionEntries
 	Common  *CommonInformationEntry
 	Frame   *FrameDescriptionEntry
 	Length  uint32
@@ -23,7 +23,7 @@ type parseContext struct {
 // Parse takes in data (a byte slice) and returns a slice of
 // CommonInformationEntry structures. Each CommonInformationEntry
 // has a slice of FrameDescriptionEntry structures.
-func Parse(data []byte) *FrameDescriptionEntries {
+func Parse(data []byte) FrameDescriptionEntries {
 	var (
 		buf  = bytes.NewBuffer(data)
 		pctx = &parseContext{Buf: buf, Entries: NewFrameIndex()}
@@ -62,7 +62,7 @@ func parseFDE(ctx *parseContext) parsefunc {
 
 	// Insert into the tree after setting address range begin
 	// otherwise compares won't work.
-	ctx.Entries.Put(ctx.Frame)
+	ctx.Entries = append(ctx.Entries, ctx.Frame)
 
 	// The rest of this entry consists of the instructions
 	// so we can just grab all of the data from the buffer

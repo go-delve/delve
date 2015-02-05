@@ -27,7 +27,7 @@ type DebuggedProcess struct {
 	Process             *os.Process
 	Dwarf               *dwarf.Data
 	GoSymTable          *gosym.Table
-	FrameEntries        *frame.FrameDescriptionEntries
+	FrameEntries        frame.FrameDescriptionEntries
 	HWBreakPoints       [4]*BreakPoint
 	BreakPoints         map[uint64]*BreakPoint
 	Threads             map[int]*ThreadContext
