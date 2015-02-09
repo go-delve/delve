@@ -7,11 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
 	"sync"
 
 	sys "golang.org/x/sys/unix"
 
+	. "github.com/derekparker/delve/client/internal/common"
 	"github.com/derekparker/delve/command"
 	"github.com/derekparker/delve/proctl"
 
@@ -38,6 +38,7 @@ var (
 	}
 
 	messageConnectedToDelve            = replyMessage{Message: "Conected to DLV debugger"}
+	messageDisconnectingFromDelve      = replyMessage{Message: "Hope I was of service hunting your bug!"}
 	errNotATextMessage                 = replyMessage{Message: "Received message is not a text message"}
 	errCommandFailed                   = replyMessage{Message: "Command failed. Message: %q"}
 	errCommandResultsNotImplementedYet = replyMessage{Message: "Command results are not yet implemented"}
@@ -91,11 +92,12 @@ func commandsHandler(dbp *proctl.DebuggedProcess) http.HandlerFunc {
 
 			cmdstr := string(message)
 
-			cmdstr, args := parseCommand(cmdstr)
+			cmdstr, args := ParseCommand(cmdstr)
 
 			if cmdstr == "exit" {
-				//TODO Handle exit better
-				handleExit(dbp, 0)
+				//TODO Handle exit better, check if the user wants to kill the process as well
+				HandleExit(dbp, true)
+				reply(conn, messageDisconnectingFromDelve)
 			}
 
 			replyMessage := errCommandResultsNotImplementedYet
@@ -124,23 +126,23 @@ func Run(run bool, pid int, address string, args []string) {
 		cmd := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
 		err := cmd.Run()
 		if err != nil {
-			die(1, "Could not compile program:", err)
+			Die(1, "Could not compile program:", err)
 		}
 		defer os.Remove(debugname)
 
 		dbp, err = proctl.Launch(append([]string{"./" + debugname}, args...))
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			Die(1, "Could not launch program:", err)
 		}
 	case pid != 0:
 		dbp, err = proctl.Attach(pid)
 		if err != nil {
-			die(1, "Could not attach to process:", err)
+			Die(1, "Could not attach to process:", err)
 		}
 	default:
 		dbp, err = proctl.Launch(args)
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			Die(1, "Could not launch program:", err)
 		}
 	}
 
@@ -158,46 +160,6 @@ func Run(run bool, pid int, address string, args []string) {
 	log.Fatalf("Error: %q", http.ListenAndServe(address, nil))
 }
 
-func handleExit(dbp *proctl.DebuggedProcess, status int) {
-	for _, bp := range dbp.HWBreakPoints {
-		if bp == nil {
-			continue
-		}
-		if _, err := dbp.Clear(bp.Addr); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", bp.Addr, err)
-		}
-	}
-
-	for pc := range dbp.BreakPoints {
-		if _, err := dbp.Clear(pc); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", pc, err)
-		}
-	}
-
-	fmt.Println("Detaching from process...")
-	err := sys.PtraceDetach(dbp.Process.Pid)
-	if err != nil {
-		die(2, "Could not detach", err)
-	}
-
-	// TODO Don't kill the process unless the user wants to
-	fmt.Println("Killing process", dbp.Process.Pid)
-	err = dbp.Process.Kill()
-	if err != nil {
-		fmt.Println("Could not kill process", err)
-	}
-
-	die(status, "Hope I was of service hunting your bug!")
-}
-
-func die(status int, args ...interface{}) {
-	// TODO Change this one to not die on delve, but rather send the error back on the socket
-	// TODO Add a special function / command to actually stop delve when running in this mode
-	fmt.Fprint(os.Stderr, args)
-	fmt.Fprint(os.Stderr, "\n")
-	os.Exit(status)
-}
-
 func reply(conn *websocket.Conn, reply replyMessage) {
 	err := conn.WriteJSON(reply)
 	if err != nil {
@@ -210,9 +172,4 @@ func commandFailed(err error) replyMessage {
 	reply.Message = fmt.Sprintf(reply.Message, "Command failed: %s\n", err)
 
 	return reply
-}
-
-func parseCommand(cmdstr string) (string, []string) {
-	vals := strings.Split(cmdstr, " ")
-	return vals[0], vals[1:]
 }

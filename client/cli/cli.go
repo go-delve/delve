@@ -10,6 +10,7 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
+	. "github.com/derekparker/delve/client/internal/common"
 	"github.com/derekparker/delve/command"
 	"github.com/derekparker/delve/goreadline"
 	"github.com/derekparker/delve/proctl"
@@ -29,23 +30,23 @@ func Run(run bool, pid int, args []string) {
 		cmd := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
 		err := cmd.Run()
 		if err != nil {
-			die(1, "Could not compile program:", err)
+			Die(1, "Could not compile program:", err)
 		}
 		defer os.Remove(debugname)
 
 		dbp, err = proctl.Launch(append([]string{"./" + debugname}, args...))
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			Die(1, "Could not launch program:", err)
 		}
 	case pid != 0:
 		dbp, err = proctl.Attach(pid)
 		if err != nil {
-			die(1, "Could not attach to process:", err)
+			Die(1, "Could not attach to process:", err)
 		}
 	default:
 		dbp, err = proctl.Launch(args)
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			Die(1, "Could not launch program:", err)
 		}
 	}
 
@@ -69,10 +70,10 @@ func Run(run bool, pid int, args []string) {
 			if err == io.EOF {
 				handleExit(dbp, 0)
 			}
-			die(1, "Prompt for input failed.\n")
+			Die(1, "Prompt for input failed.\n")
 		}
 
-		cmdstr, args := parseCommand(cmdstr)
+		cmdstr, args := ParseCommand(cmdstr)
 
 		if cmdstr == "exit" {
 			handleExit(dbp, 0)
@@ -95,52 +96,13 @@ func handleExit(dbp *proctl.DebuggedProcess, status int) {
 	prompt := "Would you like to kill the process? [y/n]"
 	answerp := goreadline.ReadLine(&prompt)
 	if answerp == nil {
-		die(2, io.EOF)
+		Die(2, io.EOF)
 	}
 	answer := strings.TrimSuffix(*answerp, "\n")
 
-	for _, bp := range dbp.HWBreakPoints {
-		if bp == nil {
-			continue
-		}
-		if _, err := dbp.Clear(bp.Addr); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", bp.Addr, err)
-		}
-	}
+	HandleExit(dbp, answer == "y")
 
-	for pc := range dbp.BreakPoints {
-		if _, err := dbp.Clear(pc); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", pc, err)
-		}
-	}
-
-	fmt.Println("Detaching from process...")
-	err := sys.PtraceDetach(dbp.Process.Pid)
-	if err != nil {
-		die(2, "Could not detach", err)
-	}
-
-	if answer == "y" {
-		fmt.Println("Killing process", dbp.Process.Pid)
-
-		err := dbp.Process.Kill()
-		if err != nil {
-			fmt.Println("Could not kill process", err)
-		}
-	}
-
-	die(status, "Hope I was of service hunting your bug!")
-}
-
-func die(status int, args ...interface{}) {
-	fmt.Fprint(os.Stderr, args)
-	fmt.Fprint(os.Stderr, "\n")
-	os.Exit(status)
-}
-
-func parseCommand(cmdstr string) (string, []string) {
-	vals := strings.Split(cmdstr, " ")
-	return vals[0], vals[1:]
+	Die(status, "Hope I was of service hunting your bug!")
 }
 
 func promptForInput() (string, error) {
