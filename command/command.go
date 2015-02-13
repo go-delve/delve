@@ -51,7 +51,7 @@ func DebugCommands() *Commands {
 		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
-		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about source, locals, args, or funcs."},
+		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about args, funcs, locals, sources, or vars."},
 		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
 	}
 
