@@ -200,57 +200,58 @@ func parseAllMPtr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 	return uint64(addr), nil
 }
 
-func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
+func (dbp *DebuggedProcess) PrintGoroutinesInfo() (string, error) {
 	reader := dbp.Dwarf.Reader()
 
 	allglen, err := allglenval(dbp, reader)
 	if err != nil {
-		return err
+		return "", err
 	}
 	reader.Seek(0)
 	allgentryaddr, err := addressFor(dbp, "runtime.allg", reader)
 	if err != nil {
-		return err
+		return "", err
 	}
-	fmt.Printf("[%d goroutines]\n", allglen)
+	result := fmt.Sprintf("[%d goroutines]\n", allglen)
 	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), ptrsize)
 	allg := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		err = printGoroutineInfo(dbp, allg+(i*uint64(ptrsize)), reader)
+		res, err := printGoroutineInfo(dbp, allg+(i*uint64(ptrsize)), reader)
 		if err != nil {
-			return err
+			return "", err
 		}
+		result += res
 	}
 
-	return nil
+	return result, nil
 }
 
-func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) error {
+func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) (string, error) {
 	gaddrbytes, err := dbp.CurrentThread.readMemory(uintptr(addr), ptrsize)
 	if err != nil {
-		return fmt.Errorf("error derefing *G %s", err)
+		return "", fmt.Errorf("error derefing *G %s", err)
 	}
 	initialInstructions := append([]byte{op.DW_OP_addr}, gaddrbytes...)
 
 	reader.Seek(0)
 	goidaddr, err := offsetFor(dbp, "goid", reader, initialInstructions)
 	if err != nil {
-		return err
+		return "", err
 	}
 	reader.Seek(0)
 	schedaddr, err := offsetFor(dbp, "sched", reader, initialInstructions)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	goidbytes, err := dbp.CurrentThread.readMemory(uintptr(goidaddr), ptrsize)
 	if err != nil {
-		return fmt.Errorf("error reading goid %s", err)
+		return "", fmt.Errorf("error reading goid %s", err)
 	}
 	schedbytes, err := dbp.CurrentThread.readMemory(uintptr(schedaddr+uint64(ptrsize)), ptrsize)
 	if err != nil {
-		return fmt.Errorf("error reading sched %s", err)
+		return "", fmt.Errorf("error reading sched %s", err)
 	}
 	gopc := binary.LittleEndian.Uint64(schedbytes)
 	f, l, fn := dbp.GoSymTable.PCToLine(gopc)
@@ -258,8 +259,8 @@ func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader)
 	if fn != nil {
 		fname = fn.Name
 	}
-	fmt.Printf("Goroutine %d - %s:%d %s\n", binary.LittleEndian.Uint64(goidbytes), f, l, fname)
-	return nil
+	result := fmt.Sprintf("Goroutine %d - %s:%d %s\n", binary.LittleEndian.Uint64(goidbytes), f, l, fname)
+	return result, nil
 }
 
 func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {

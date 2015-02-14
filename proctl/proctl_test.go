@@ -83,7 +83,7 @@ func TestStep(t *testing.T) {
 		regs := getRegisters(p, t)
 		rip := regs.PC()
 
-		err = p.Step()
+		_, err = p.Step()
 		assertNoError(err, t, "Step()")
 
 		regs = getRegisters(p, t)
@@ -130,7 +130,7 @@ func TestBreakPoint(t *testing.T) {
 			t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, f, l, breakpc)
 		}
 
-		err = p.Step()
+		_, err = p.Step()
 		assertNoError(err, t, "Step()")
 
 		pc, err = p.CurrentPC()
@@ -253,7 +253,8 @@ func TestNext(t *testing.T) {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, f, ln)
 			}
 
-			assertNoError(p.Next(), t, "Next() returned an error")
+			_, err = p.Next()
+			assertNoError(err, t, "Next() returned an error")
 
 			f, ln = currentLineNumber(p, t)
 			if ln != tc.end {

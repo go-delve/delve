@@ -263,17 +263,20 @@ func (dbp *DebuggedProcess) Status() *sys.WaitStatus {
 
 // Loop through all threads, printing their information
 // to the console.
-func (dbp *DebuggedProcess) PrintThreadInfo() error {
+func (dbp *DebuggedProcess) PrintThreadInfo() (string, error) {
+	result := ""
 	for _, th := range dbp.Threads {
-		if err := th.PrintInfo(); err != nil {
-			return err
+		res, err := th.PrintInfo()
+		if err != nil {
+			return "", err
 		}
+		result += res
 	}
-	return nil
+	return result, nil
 }
 
 // Steps through process.
-func (dbp *DebuggedProcess) Step() (err error) {
+func (dbp *DebuggedProcess) Step() (string, error) {
 	var (
 		th *ThreadContext
 		ok bool
@@ -281,7 +284,7 @@ func (dbp *DebuggedProcess) Step() (err error) {
 
 	allm, err := dbp.CurrentThread.AllM()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	fn := func() error {
@@ -292,8 +295,7 @@ func (dbp *DebuggedProcess) Step() (err error) {
 			}
 
 			if m.blocked == 0 {
-				err := th.Step()
-				if err != nil {
+				if err := th.Step(); err != nil {
 					return err
 				}
 			}
@@ -302,11 +304,11 @@ func (dbp *DebuggedProcess) Step() (err error) {
 		return nil
 	}
 
-	return dbp.run(fn)
+	return "", dbp.run(fn)
 }
 
 // Step over function calls.
-func (dbp *DebuggedProcess) Next() error {
+func (dbp *DebuggedProcess) Next() (string, error) {
 	var (
 		th *ThreadContext
 		ok bool
@@ -342,7 +344,7 @@ func (dbp *DebuggedProcess) Next() error {
 		}
 		return stopTheWorld(dbp)
 	}
-	return dbp.run(fn)
+	return "", dbp.run(fn)
 }
 
 // Resume process.

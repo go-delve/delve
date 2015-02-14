@@ -103,11 +103,13 @@ func commandsHandler(dbp *proctl.DebuggedProcess) http.HandlerFunc {
 			replyMessage := errCommandResultsNotImplementedYet
 			cmd := cmds.Find(cmdstr)
 
-			err = cmd(dbp, args...)
-			if err != nil {
-				reply(conn, commandFailed(err))
+			output := cmd(dbp, args...)
+			if output.Err != nil {
+				reply(conn, commandFailed(output.Err))
 				continue
 			}
+
+			replyMessage.Message = output.Out
 
 			reply(conn, replyMessage)
 		}

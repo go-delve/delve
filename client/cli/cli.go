@@ -80,9 +80,11 @@ func Run(run bool, pid int, args []string) {
 		}
 
 		cmd := cmds.Find(cmdstr)
-		err = cmd(dbp, args...)
-		if err != nil {
+		output := cmd(dbp, args...)
+		if output.Err != nil {
 			fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
+		} else {
+			fmt.Fprintf(os.Stdout, output.Out)
 		}
 	}
 }
