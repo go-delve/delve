@@ -78,7 +78,8 @@ func TestStep(t *testing.T) {
 
 		_, err := p.Break(helloworldaddr)
 		assertNoError(err, t, "Break()")
-		assertNoError(p.Continue(), t, "Continue()")
+		_, err = p.Continue()
+		assertNoError(err, t, "Continue()")
 
 		regs := getRegisters(p, t)
 		rip := regs.PC()
@@ -95,7 +96,7 @@ func TestStep(t *testing.T) {
 
 func TestContinue(t *testing.T) {
 	withTestProcess("../_fixtures/continuetestprog", t, func(p *DebuggedProcess) {
-		err := p.Continue()
+		_, err := p.Continue()
 		if err != nil {
 			if _, ok := err.(ProcessExitedError); !ok {
 				t.Fatal(err)
@@ -117,7 +118,7 @@ func TestBreakPoint(t *testing.T) {
 		assertNoError(err, t, "Break()")
 
 		breakpc := bp.Addr
-		err = p.Continue()
+		_, err = p.Continue()
 		assertNoError(err, t, "Continue()")
 
 		pc, err := p.CurrentPC()
@@ -156,7 +157,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = p.Continue()
+		_, err = p.Continue()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -245,7 +246,8 @@ func TestNext(t *testing.T) {
 		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break()")
-		assertNoError(p.Continue(), t, "Continue()")
+		_, err = p.Continue()
+		assertNoError(err, t, "Continue()")
 
 		f, ln := currentLineNumber(p, t)
 		for _, tc := range testcases {
@@ -294,7 +296,7 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = p.Continue()
+		_, err = p.Continue()
 		if err != nil {
 			t.Fatal(err)
 		}
