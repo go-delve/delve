@@ -52,18 +52,19 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 
 // PrintInfo prints out the thread status
 // including: PC, tid, file, line, and function.
-func (thread *ThreadContext) PrintInfo() error {
+func (thread *ThreadContext) PrintInfo() (string, error) {
 	pc, err := thread.CurrentPC()
 	if err != nil {
-		return err
+		return "", err
 	}
+	result := ""
 	f, l, fn := thread.Process.GoSymTable.PCToLine(pc)
 	if fn != nil {
-		fmt.Printf("Thread %d at %#v %s:%d %s\n", thread.Id, pc, f, l, fn.Name)
+		result = fmt.Sprintf("Thread %d at %#v %s:%d %s\n", thread.Id, pc, f, l, fn.Name)
 	} else {
-		fmt.Printf("Thread %d at %#v\n", thread.Id, pc)
+		result = fmt.Sprintf("Thread %d at %#v\n", thread.Id, pc)
 	}
-	return nil
+	return result, nil
 }
 
 // Sets a breakpoint at addr, and stores it in the process wide
@@ -108,7 +109,7 @@ func (thread *ThreadContext) Continue() error {
 
 // Single steps this thread a single instruction, ensuring that
 // we correctly handle the likely case that we are at a breakpoint.
-func (thread *ThreadContext) Step() (err error) {
+func (thread *ThreadContext) Step() error {
 	regs, err := thread.Registers()
 	if err != nil {
 		return err
@@ -144,7 +145,7 @@ func (thread *ThreadContext) Step() (err error) {
 		return err
 	}
 
-	return nil
+	return err
 }
 
 // Step to next source line. Next will step over functions,

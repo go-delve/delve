@@ -79,7 +79,7 @@ func TestVariableEvaluation(t *testing.T) {
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
 
-		err = p.Continue()
+		_, err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -110,7 +110,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
 
-		err = p.Continue()
+		_, err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		_, err = p.EvalSymbol("a1")
@@ -125,7 +125,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 		_, err = p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
 
-		err = p.Continue()
+		_, err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		_, err = p.EvalSymbol("a1")
@@ -208,7 +208,7 @@ func TestLocalVariables(t *testing.T) {
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
 
-		err = p.Continue()
+		_, err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {

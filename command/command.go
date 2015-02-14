@@ -14,7 +14,20 @@ import (
 	"github.com/derekparker/delve/proctl"
 )
 
-type cmdfunc func(proc *proctl.DebuggedProcess, args ...string) error
+type CommandOutput struct {
+	Out string
+	Err error
+}
+
+func (output *CommandOutput) Error() error {
+	return output.Err
+}
+
+func (output *CommandOutput) String() string {
+	return output.Out
+}
+
+type cmdfunc func(proc *proctl.DebuggedProcess, args ...string) *CommandOutput
 
 type command struct {
 	aliases []string
@@ -93,105 +106,142 @@ func (c *Commands) Find(cmdstr string) cmdfunc {
 	return noCmdAvailable
 }
 
+// TODO derekparker Remove this as it's not used?
 func CommandFunc(fn func() error) cmdfunc {
-	return func(p *proctl.DebuggedProcess, args ...string) error {
-		return fn()
+	return func(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+		output := &CommandOutput{}
+		output.Err = fn()
+		return output
 	}
 }
 
-func noCmdAvailable(p *proctl.DebuggedProcess, ars ...string) error {
-	return fmt.Errorf("command not available")
+func noCmdAvailable(p *proctl.DebuggedProcess, ars ...string) *CommandOutput {
+	return &CommandOutput{Err: fmt.Errorf("command not available")}
 }
 
-func nullCommand(p *proctl.DebuggedProcess, ars ...string) error {
-	return nil
+func nullCommand(p *proctl.DebuggedProcess, ars ...string) *CommandOutput {
+	return &CommandOutput{}
 }
 
-func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) error {
-	fmt.Println("The following commands are available:")
+func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) *CommandOutput {
+	output := &CommandOutput{}
+	output.Out += "The following commands are available:\n"
 	for _, cmd := range c.cmds {
-		fmt.Printf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
+		output.Out += fmt.Sprintf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
 	}
-	return nil
+	return output
 }
 
-func threads(p *proctl.DebuggedProcess, ars ...string) error {
-	return p.PrintThreadInfo()
+func threads(p *proctl.DebuggedProcess, ars ...string) *CommandOutput {
+	output := &CommandOutput{}
+	output.Out, output.Err = p.PrintThreadInfo()
+	return output
 }
 
-func goroutines(p *proctl.DebuggedProcess, ars ...string) error {
-	return p.PrintGoroutinesInfo()
+func goroutines(p *proctl.DebuggedProcess, ars ...string) *CommandOutput {
+	output := &CommandOutput{}
+	output.Out, output.Err = p.PrintGoroutinesInfo()
+	return output
 }
 
-func cont(p *proctl.DebuggedProcess, ars ...string) error {
-	err := p.Continue()
-	if err != nil {
-		return err
-	}
-
-	return printcontext(p)
-}
-
-func step(p *proctl.DebuggedProcess, args ...string) error {
-	err := p.Step()
-	if err != nil {
-		return err
+func cont(p *proctl.DebuggedProcess, ars ...string) *CommandOutput {
+	output := &CommandOutput{}
+	output.Out, output.Err = p.Continue()
+	if output.Err != nil {
+		return output
 	}
 
-	return printcontext(p)
+	output.Out, output.Err = printcontext(p)
+	return output
 }
 
-func next(p *proctl.DebuggedProcess, args ...string) error {
-	err := p.Next()
-	if err != nil {
-		return err
+func step(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+	output := &CommandOutput{}
+	output.Out, output.Err = p.Step()
+	if output.Err != nil {
+		return output
 	}
 
-	return printcontext(p)
+	output.Out, output.Err = printcontext(p)
+	return output
 }
 
-func clear(p *proctl.DebuggedProcess, args ...string) error {
+func next(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+	output := &CommandOutput{}
+	output.Out, output.Err = p.Next()
+	if output.Err != nil {
+		return output
+	}
+
+	output.Out, output.Err = printcontext(p)
+	return output
+}
+
+func clear(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+	output := &CommandOutput{}
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		output.Err = fmt.Errorf("not enough arguments")
+		return output
 	}
 
 	bp, err := p.ClearByLocation(args[0])
 	if err != nil {
-		return err
+		output.Err = err
+		return output
 	}
 
-	fmt.Printf("Breakpoint %d cleared at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	output.Out = fmt.Sprintf(
+		"Breakpoint %d cleared at %#v for %s %s:%d\n",
+		bp.ID,
+		bp.Addr,
+		bp.FunctionName,
+		bp.File,
+		bp.Line,
+	)
 
-	return nil
+	return output
 }
 
-func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
+func breakpoint(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+	output := &CommandOutput{}
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		output.Err = fmt.Errorf("not enough arguments")
+		return output
 	}
 
 	bp, err := p.BreakByLocation(args[0])
 	if err != nil {
-		return err
+		output.Err = err
+		return output
 	}
 
-	fmt.Printf("Breakpoint %d set at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	output.Out = fmt.Sprintf(
+		"Breakpoint %d set at %#v for %s %s:%d\n",
+		bp.ID,
+		bp.Addr,
+		bp.FunctionName,
+		bp.File,
+		bp.Line,
+	)
 
-	return nil
+	return output
 }
 
-func printVar(p *proctl.DebuggedProcess, args ...string) error {
+func printVar(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+	output := &CommandOutput{}
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		output.Err = fmt.Errorf("not enough arguments")
+		return output
 	}
 
 	val, err := p.EvalSymbol(args[0])
 	if err != nil {
-		return err
+		output.Err = err
+		return output
 	}
 
-	fmt.Println(val.Value)
-	return nil
+	output.Out = val.Value
+	return output
 }
 
 func filterVariables(vars []*proctl.Variable, filter *regexp.Regexp) []string {
@@ -207,9 +257,11 @@ func filterVariables(vars []*proctl.Variable, filter *regexp.Regexp) []string {
 	return data
 }
 
-func info(p *proctl.DebuggedProcess, args ...string) error {
+func info(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+	output := &CommandOutput{}
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments. expected info type [regex].")
+		output.Err = fmt.Errorf("not enough arguments. expected info type [regex].")
+		return output
 	}
 
 	// Allow for optional regex
@@ -217,7 +269,8 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) >= 2 {
 		var err error
 		if filter, err = regexp.Compile(args[1]); err != nil {
-			return fmt.Errorf("invalid filter argument: %s", err.Error())
+			output.Err = fmt.Errorf("invalid filter argument: %s", err.Error())
+			return output
 		}
 	}
 
@@ -243,6 +296,7 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 	case "args":
 		vars, err := p.CurrentThread.FunctionArguments()
 		if err != nil {
+			// TODO derekparker shouldn't it be: return err?
 			return nil
 		}
 		data = filterVariables(vars, filter)
@@ -250,6 +304,7 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 	case "locals":
 		vars, err := p.CurrentThread.LocalVariables()
 		if err != nil {
+			// TODO derekparker shouldn't it be: return err?
 			return nil
 		}
 		data = filterVariables(vars, filter)
@@ -257,39 +312,41 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 	case "vars":
 		vars, err := p.CurrentThread.PackageVariables()
 		if err != nil {
+			// TODO derekparker shouldn't it be: return err?
 			return nil
 		}
 		data = filterVariables(vars, filter)
 
 	default:
-		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources, or vars")
+		output.Err = fmt.Errorf("unsupported info type, must be args, funcs, locals, sources, or vars")
+		return output
 	}
 
 	// sort and output data
 	sort.Sort(sort.StringSlice(data))
 
 	for _, d := range data {
-		fmt.Println(d)
+		output.Out += fmt.Sprintln(d)
 	}
 
-	return nil
+	return output
 }
 
-func printcontext(p *proctl.DebuggedProcess) error {
+func printcontext(p *proctl.DebuggedProcess) (string, error) {
 	var context []string
 
 	regs, err := p.Registers()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	f, l, fn := p.GoSymTable.PCToLine(regs.PC())
 
 	if fn != nil {
-		fmt.Printf("current loc: %s %s:%d\n", fn.Name, f, l)
+		context = append(context, fmt.Sprintf("current loc: %s %s:%d\n", fn.Name, f, l))
 		file, err := os.Open(f)
 		if err != nil {
-			return err
+			return "", err
 		}
 		defer file.Close()
 
@@ -297,7 +354,7 @@ func printcontext(p *proctl.DebuggedProcess) error {
 		for i := 1; i < l-5; i++ {
 			_, err := buf.ReadString('\n')
 			if err != nil && err != io.EOF {
-				return err
+				return "", err
 			}
 		}
 
@@ -305,7 +362,7 @@ func printcontext(p *proctl.DebuggedProcess) error {
 			line, err := buf.ReadString('\n')
 			if err != nil {
 				if err != io.EOF {
-					return err
+					return "", err
 				}
 
 				if err == io.EOF {
@@ -318,14 +375,13 @@ func printcontext(p *proctl.DebuggedProcess) error {
 				arrow = "=>"
 			}
 
+			// TODO this is not needed to parse for IDEs but it adds something good for console
 			context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m: %s", arrow, i, line))
 		}
 	} else {
-		fmt.Printf("Stopped at: 0x%x\n", regs.PC())
+		context = append([]string{fmt.Sprintf("Stopped at: 0x%x\n", regs.PC())}, context...)
 		context = append(context, "\033[34m=>\033[0m    no source available")
 	}
 
-	fmt.Println(strings.Join(context, ""))
-
-	return nil
+	return strings.Join(context, ""), nil
 }

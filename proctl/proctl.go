@@ -263,17 +263,20 @@ func (dbp *DebuggedProcess) Status() *sys.WaitStatus {
 
 // Loop through all threads, printing their information
 // to the console.
-func (dbp *DebuggedProcess) PrintThreadInfo() error {
+func (dbp *DebuggedProcess) PrintThreadInfo() (string, error) {
+	result := ""
 	for _, th := range dbp.Threads {
-		if err := th.PrintInfo(); err != nil {
-			return err
+		res, err := th.PrintInfo()
+		if err != nil {
+			return "", err
 		}
+		result += res
 	}
-	return nil
+	return result, nil
 }
 
 // Steps through process.
-func (dbp *DebuggedProcess) Step() (err error) {
+func (dbp *DebuggedProcess) Step() (string, error) {
 	var (
 		th *ThreadContext
 		ok bool
@@ -281,10 +284,10 @@ func (dbp *DebuggedProcess) Step() (err error) {
 
 	allm, err := dbp.CurrentThread.AllM()
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	fn := func() error {
+	fn := func() (string, error) {
 		for _, m := range allm {
 			th, ok = dbp.Threads[m.procid]
 			if !ok {
@@ -292,30 +295,29 @@ func (dbp *DebuggedProcess) Step() (err error) {
 			}
 
 			if m.blocked == 0 {
-				err := th.Step()
-				if err != nil {
-					return err
+				if err := th.Step(); err != nil {
+					return "", err
 				}
 			}
 
 		}
-		return nil
+		return "", nil
 	}
 
 	return dbp.run(fn)
 }
 
 // Step over function calls.
-func (dbp *DebuggedProcess) Next() error {
+func (dbp *DebuggedProcess) Next() (string, error) {
 	var (
 		th *ThreadContext
 		ok bool
 	)
 
-	fn := func() error {
+	fn := func() (string, error) {
 		allm, err := dbp.CurrentThread.AllM()
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		for _, m := range allm {
@@ -330,34 +332,34 @@ func (dbp *DebuggedProcess) Next() error {
 				// job correctly.
 				err := th.Continue()
 				if err != nil {
-					return err
+					return "", err
 				}
 				continue
 			}
 
 			err := th.Next()
 			if err != nil && err != sys.ESRCH {
-				return err
+				return "", err
 			}
 		}
-		return stopTheWorld(dbp)
+		return "", stopTheWorld(dbp)
 	}
 	return dbp.run(fn)
 }
 
 // Resume process.
-func (dbp *DebuggedProcess) Continue() error {
+func (dbp *DebuggedProcess) Continue() (string, error) {
 	for _, thread := range dbp.Threads {
 		err := thread.Continue()
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	fn := func() error {
+	fn := func() (string, error) {
 		wpid, _, err := trapWait(dbp, -1)
 		if err != nil {
-			return err
+			return "", err
 		}
 		return handleBreakPoint(dbp, wpid)
 	}
@@ -384,16 +386,17 @@ func (dbp *DebuggedProcess) DwarfReader() *reader.Reader {
 	return reader.New(dbp.Dwarf)
 }
 
-func (dbp *DebuggedProcess) run(fn func() error) error {
+func (dbp *DebuggedProcess) run(fn func() (string, error)) (string, error) {
 	dbp.running = true
 	dbp.halt = false
 	defer func() { dbp.running = false }()
-	if err := fn(); err != nil {
+	result, err := fn()
+	if err != nil {
 		if _, ok := err.(ManualStopError); !ok {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	return result, nil
 }
 
 type ProcessExitedError struct {
@@ -420,7 +423,8 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
 			return -1, status, ProcessExitedError{wpid}
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
-			err = addNewThread(dbp, wpid)
+			// TODO dlsniper do something with this value
+			_, err = addNewThread(dbp, wpid)
 			if err != nil {
 				return -1, nil, err
 			}
@@ -435,16 +439,17 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
 	}
 }
 
-func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
+func handleBreakPoint(dbp *DebuggedProcess, pid int) (string, error) {
+	result := ""
 	thread := dbp.Threads[pid]
 	if pid != dbp.CurrentThread.Id {
-		fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, pid)
+		result += fmt.Sprintf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, pid)
 		dbp.CurrentThread = thread
 	}
 
 	pc, err := thread.CurrentPC()
 	if err != nil {
-		return fmt.Errorf("could not get current pc %s", err)
+		return "", fmt.Errorf("could not get current pc %s", err)
 	}
 
 	// Check to see if we hit a runtime.breakpoint
@@ -454,11 +459,11 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 		for i := 0; i < 2; i++ {
 			err = thread.Step()
 			if err != nil {
-				return err
+				return "", err
 			}
 		}
 		stopTheWorld(dbp)
-		return nil
+		return result, nil
 	}
 
 	// Check for hardware breakpoint
@@ -467,7 +472,7 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 			if !bp.temp {
 				stopTheWorld(dbp)
 			}
-			return nil
+			return result, nil
 		}
 	}
 	// Check to see if we have hit a software breakpoint.
@@ -475,10 +480,10 @@ func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
 		if !bp.temp {
 			stopTheWorld(dbp)
 		}
-		return nil
+		return result, nil
 	}
 
-	return fmt.Errorf("did not hit recognized breakpoint")
+	return "", fmt.Errorf("did not hit recognized breakpoint")
 }
 
 // Ensure execution of every traced thread is halted.
@@ -505,23 +510,24 @@ func stopTheWorld(dbp *DebuggedProcess) error {
 	return nil
 }
 
-func addNewThread(dbp *DebuggedProcess, pid int) error {
+func addNewThread(dbp *DebuggedProcess, pid int) (string, error) {
 	// A traced thread has cloned a new thread, grab the pid and
 	// add it to our list of traced threads.
+	result := ""
 	msg, err := sys.PtraceGetEventMsg(pid)
 	if err != nil {
-		return fmt.Errorf("could not get event message: %s", err)
+		return "", fmt.Errorf("could not get event message: %s", err)
 	}
-	fmt.Println("new thread spawned", msg)
+	result += fmt.Sprintln("new thread spawned", msg)
 
 	_, err = dbp.addThread(int(msg))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = sys.PtraceCont(int(msg), 0)
 	if err != nil {
-		return fmt.Errorf("could not continue new thread %d %s", msg, err)
+		return "", fmt.Errorf("could not continue new thread %d %s", msg, err)
 	}
 
 	// Here we loop for a while to ensure that the once we continue
@@ -539,11 +545,13 @@ func addNewThread(dbp *DebuggedProcess, pid int) error {
 		for _, m := range allm {
 			if m.procid == int(msg) {
 				// Continue the thread that cloned
-				return sys.PtraceCont(pid, 0)
+				return result, sys.PtraceCont(pid, 0)
 			}
 		}
 		time.Sleep(time.Millisecond)
 	}
+
+	return result, nil
 }
 
 func wait(pid, options int) (int, *sys.WaitStatus, error) {
