@@ -82,7 +82,7 @@ func Run(run bool, pid int, args []string) {
 		cmd := cmds.Find(cmdstr)
 		output := cmd(dbp, args...)
 		if output.Err != nil {
-			fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
+			fmt.Fprintf(os.Stderr, "Command failed: %s\n", output.Err)
 		} else {
 			fmt.Fprintf(os.Stdout, output.Out)
 		}
@@ -102,7 +102,7 @@ func handleExit(dbp *proctl.DebuggedProcess, status int) {
 	}
 	answer := strings.TrimSuffix(*answerp, "\n")
 
-	HandleExit(dbp, answer == "y")
+	fmt.Print(HandleExit(dbp, answer == "y"))
 
 	Die(status, "Hope I was of service hunting your bug!")
 }

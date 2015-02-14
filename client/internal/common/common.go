@@ -15,35 +15,37 @@ func ParseCommand(cmdstr string) (string, []string) {
 	return vals[0], vals[1:]
 }
 
-func HandleExit(dbp *proctl.DebuggedProcess, withKill bool) {
+func HandleExit(dbp *proctl.DebuggedProcess, withKill bool) (output string) {
 	for _, bp := range dbp.HWBreakPoints {
 		if bp == nil {
 			continue
 		}
 		if _, err := dbp.Clear(bp.Addr); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", bp.Addr, err)
+			output += fmt.Sprintf("Can't clear breakpoint @%x: %s\n", bp.Addr, err)
 		}
 	}
 
 	for pc := range dbp.BreakPoints {
 		if _, err := dbp.Clear(pc); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", pc, err)
+			output += fmt.Sprintf("Can't clear breakpoint @%x: %s\n", pc, err)
 		}
 	}
 
-	fmt.Println("Detaching from process...")
+	output += fmt.Sprintln("Detaching from process...")
 	err := sys.PtraceDetach(dbp.Process.Pid)
 	if err != nil {
 		Die(2, "Could not detach", err)
 	}
 
 	if withKill {
-		fmt.Println("Killing process", dbp.Process.Pid)
+		output += fmt.Sprintln("Killing process", dbp.Process.Pid)
 		err = dbp.Process.Kill()
 		if err != nil {
-			fmt.Println("Could not kill process", err)
+			output += fmt.Sprintln("Could not kill process", err)
 		}
 	}
+
+	return
 }
 
 func Die(status int, args ...interface{}) {

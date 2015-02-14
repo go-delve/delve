@@ -24,8 +24,8 @@ func TestCommandDefault(t *testing.T) {
 
 func TestCommandReplay(t *testing.T) {
 	cmds := DebugCommands()
-	cmds.Register("foo", func(p *proctl.DebuggedProcess, args ...string) *cmdOutput {
-		return &cmdOutput{Out: "registered command"}
+	cmds.Register("foo", func(p *proctl.DebuggedProcess, args ...string) *CommandOutput {
+		return &CommandOutput{Out: "registered command"}
 	}, "foo command")
 	cmd := cmds.Find("foo")
 

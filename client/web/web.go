@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"sync"
+	"time"
 
 	sys "golang.org/x/sys/unix"
 
@@ -37,6 +38,10 @@ var (
 		},
 	}
 
+	dbp           *proctl.DebuggedProcess
+	commandInput  = make(chan string)
+	commandOutput = make(chan *command.CommandOutput)
+
 	messageConnectedToDelve            = replyMessage{Message: "Conected to DLV debugger"}
 	messageDisconnectingFromDelve      = replyMessage{Message: "Hope I was of service hunting your bug!"}
 	errNotATextMessage                 = replyMessage{Message: "Received message is not a text message"}
@@ -58,8 +63,7 @@ func (ch *connectionHandler) shouldReject(w *http.ResponseWriter) bool {
 	return shouldReject
 }
 
-func commandsHandler(dbp *proctl.DebuggedProcess) http.HandlerFunc {
-	cmds := command.DebugCommands()
+func commandsHandler() http.HandlerFunc {
 	var connectionHandler connectionHandler
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -81,8 +85,9 @@ func commandsHandler(dbp *proctl.DebuggedProcess) http.HandlerFunc {
 		for {
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
-				reply(conn, commandFailed(err))
-				continue
+				HandleExit(dbp, true)
+				close(commandInput)
+				os.Exit(0)
 			}
 
 			if messageType != websocket.TextMessage {
@@ -90,20 +95,12 @@ func commandsHandler(dbp *proctl.DebuggedProcess) http.HandlerFunc {
 				continue
 			}
 
-			cmdstr := string(message)
-
-			cmdstr, args := ParseCommand(cmdstr)
-
-			if cmdstr == "exit" {
-				//TODO Handle exit better, check if the user wants to kill the process as well
-				HandleExit(dbp, true)
-				reply(conn, messageDisconnectingFromDelve)
-			}
+			command := string(message)
 
 			replyMessage := errCommandResultsNotImplementedYet
-			cmd := cmds.Find(cmdstr)
 
-			output := cmd(dbp, args...)
+			commandInput <- command
+			output := <-commandOutput
 			if output.Err != nil {
 				reply(conn, commandFailed(output.Err))
 				continue
@@ -115,9 +112,9 @@ func commandsHandler(dbp *proctl.DebuggedProcess) http.HandlerFunc {
 		}
 	}
 }
+
 func Run(run bool, pid int, address string, args []string) {
 	var (
-		dbp *proctl.DebuggedProcess
 		err error
 	)
 
@@ -154,12 +151,34 @@ func Run(run bool, pid int, address string, args []string) {
 		for _ = range ch {
 			if dbp.Running() {
 				dbp.RequestManualStop()
+				close(commandInput)
 			}
 		}
 	}()
 
-	http.HandleFunc("/", commandsHandler(dbp))
-	log.Fatalf("Error: %q", http.ListenAndServe(address, nil))
+	http.HandleFunc("/", commandsHandler())
+	go func() {
+		log.Fatalf("Error: %q", http.ListenAndServe(address, nil))
+	}()
+
+	cmds := command.DebugCommands()
+	for {
+		cmd, done := <-commandInput
+		if !done {
+			return
+		}
+		cmdstr, args := ParseCommand(cmd)
+		if cmdstr == "exit" {
+			//TODO Handle exit better, check if the user wants to kill the process as well
+			out := HandleExit(dbp, true)
+			commandOutput <- &command.CommandOutput{Out: out + messageDisconnectingFromDelve.Message}
+			/// Allow a few moments for things to send the output to the clients and terminate
+			time.Sleep(time.Duration(1) * time.Second)
+			os.Exit(0)
+		}
+
+		commandOutput <- cmds.Find(cmdstr)(dbp, args...)
+	}
 }
 
 func reply(conn *websocket.Conn, reply replyMessage) {
@@ -171,7 +190,7 @@ func reply(conn *websocket.Conn, reply replyMessage) {
 
 func commandFailed(err error) replyMessage {
 	reply := errCommandFailed
-	reply.Message = fmt.Sprintf(reply.Message, "Command failed: %s\n", err)
+	reply.Message = fmt.Sprintf(reply.Message, err.Error())
 
 	return reply
 }
