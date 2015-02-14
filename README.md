@@ -1,5 +1,8 @@
 # Delve
 
+[![Build Status](https://travis-ci.org/github.com/derekparker/delve.png?branch=master)](https://travis-ci.org/github.com/derekparker/delve)
+[![GoDoc](https://godoc.org/github.com/derekparker/delve?status.svg)](https://godoc.org/github.com/derekparker/delve)
+
 ### What is Delve?
 
 Delve is a (Beta) Go debugger, written in Go.

@@ -1,0 +1,8 @@
+language: go
+
+go:
+  - 1.4.1
+  - tip
+
+before_install:
+  - apt-get install libreadline-dev
