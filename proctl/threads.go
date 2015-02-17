@@ -140,11 +140,7 @@ func (thread *ThreadContext) Step() (err error) {
 	}
 
 	_, _, err = wait(thread.Id, 0)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // Step to next source line. Next will step over functions,
