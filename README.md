@@ -1,6 +1,6 @@
 # Delve
 
-[![Build Status](https://travis-ci.org/derekparker/delve.svg?branch=master)](https://travis-ci.org/github.com/derekparker/delve)
+[![Build Status](https://travis-ci.org/derekparker/delve.svg?branch=master)](https://travis-ci.org/derekparker/delve)
 [![GoDoc](https://godoc.org/github.com/derekparker/delve?status.svg)](https://godoc.org/github.com/derekparker/delve)
 
 ### What is Delve?
