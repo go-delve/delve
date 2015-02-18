@@ -4,5 +4,7 @@ go:
   - 1.4.1
   - tip
 
+env: GOMAXPROCS=4
+
 before_install:
   - sudo apt-get install libreadline-dev
