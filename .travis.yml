@@ -5,4 +5,4 @@ go:
   - tip
 
 before_install:
-  - apt-get install libreadline-dev
+  - sudo apt-get install libreadline-dev
