@@ -16,32 +16,43 @@ func (t *ThreadContext) Halt() error {
 	}
 	err := sys.Tgkill(t.Process.Pid, t.Id, sys.SIGSTOP)
 	if err != nil {
-		return fmt.Errorf("Halt err %s %d", err, pid)
+		return fmt.Errorf("Halt err %s %d", err, t.Id)
 	}
-	pid, _, err := wait(th.Id, sys.WNOHANG)
+	_, _, err = wait(t.Id, sys.WNOHANG)
 	if err != nil {
-		return fmt.Errorf("wait err %s %d", err, pid)
+		return fmt.Errorf("wait err %s %d", err, t.Id)
 	}
 	return nil
 }
 
 func (t *ThreadContext) cont() error {
-	return PtraceCont(thread.Id, 0)
+	return PtraceCont(t.Id, 0)
 }
 
 func (t *ThreadContext) singleStep() error {
 	err := sys.PtraceSingleStep(t.Id)
-	if err != nill {
+	if err != nil {
 		return err
 	}
-	_, _, err = wait(thread.Id, 0)
+	_, _, err = wait(t.Id, 0)
 	return err
 }
 
-func writeMemory(tid int, addr uintptr, data []byte) (int, error) {
-	return sys.PtracePokeData(tid, addr, data)
+func (t *ThreadContext) blocked() bool {
+	// TODO(dp) cache the func pc to remove this lookup
+	// TODO(dp) check err
+	pc, _ := t.CurrentPC()
+	fn := t.Process.GoSymTable.PCToFunc(pc)
+	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep")) {
+		return true
+	}
+	return false
 }
 
-func readMemory(tid int, addr uintptr, data []byte) (int, error) {
-	return sys.PtracePeekData(tid, addr, data)
+func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+	return sys.PtracePokeData(thread.Id, addr, data)
+}
+
+func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+	return sys.PtracePeekData(thread.Id, addr, data)
 }

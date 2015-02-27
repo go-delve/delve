@@ -62,33 +62,6 @@ func (dbp *DebuggedProcess) LoadInformation() error {
 	return nil
 }
 
-// Returns a new DebuggedProcess struct.
-func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
-	dbp := DebuggedProcess{
-		Pid:         pid,
-		Threads:     make(map[int]*ThreadContext),
-		BreakPoints: make(map[uint64]*BreakPoint),
-		os:          new(OSProcessDetails),
-	}
-
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return nil, err
-	}
-
-	dbp.Process = proc
-	err = dbp.LoadInformation()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := dbp.updateThreadList(); err != nil {
-		return nil, err
-	}
-
-	return &dbp, nil
-}
-
 func (dbp *DebuggedProcess) updateThreadList() error {
 	var (
 		err   error

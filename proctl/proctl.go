@@ -52,6 +52,7 @@ func Attach(pid int) (*DebuggedProcess, error) {
 		return nil, err
 	}
 	// Attach to all currently active threads.
+	// TODO(dp) doing this in newDebugProcess already for mach
 	if err := dbp.updateThreadList(); err != nil {
 		return nil, err
 	}
@@ -287,6 +288,44 @@ func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 // Returns a reader for the dwarf data
 func (dbp *DebuggedProcess) DwarfReader() *reader.Reader {
 	return reader.New(dbp.Dwarf)
+}
+
+// Returns a new DebuggedProcess struct.
+func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
+	dbp := DebuggedProcess{
+		Pid:         pid,
+		Threads:     make(map[int]*ThreadContext),
+		BreakPoints: make(map[uint64]*BreakPoint),
+		os:          new(OSProcessDetails),
+	}
+
+	if attach {
+		err := sys.PtraceAttach(pid)
+		if err != nil {
+			return nil, err
+		}
+		_, _, err = wait(pid, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return nil, err
+	}
+
+	dbp.Process = proc
+	err = dbp.LoadInformation()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := dbp.updateThreadList(); err != nil {
+		return nil, err
+	}
+
+	return &dbp, nil
 }
 
 func (dbp *DebuggedProcess) run(fn func() error) error {

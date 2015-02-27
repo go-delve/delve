@@ -14,14 +14,14 @@ func (r *Regs) SP() uint64 {
 	return r.regs.Rsp
 }
 
-func (r *Regs) SetPC(tid int, pc uint64) error {
+func (r *Regs) SetPC(thread *ThreadContext, pc uint64) error {
 	r.regs.SetPC(pc)
-	return sys.PtraceSetRegs(tid, r.regs)
+	return sys.PtraceSetRegs(thread.Id, r.regs)
 }
 
-func registers(tid int) (Registers, error) {
+func registers(thread *ThreadContext) (Registers, error) {
 	var regs sys.PtraceRegs
-	err := sys.PtraceGetRegs(tid, &regs)
+	err := sys.PtraceGetRegs(thread.Id, &regs)
 	if err != nil {
 		return nil, err
 	}

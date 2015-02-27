@@ -33,44 +33,6 @@ func (dbp *DebuggedProcess) Halt() (err error) {
 	return nil
 }
 
-// Steps through process.
-func (dbp *DebuggedProcess) Step() (err error) {
-	var (
-		th *ThreadContext
-		ok bool
-	)
-
-	allm, err := dbp.CurrentThread.AllM()
-	if err != nil {
-		return err
-	}
-
-	fn := func() error {
-		for _, m := range allm {
-			th, ok = dbp.Threads[m.procid]
-			fmt.Println(ok, m.procid)
-			if !ok {
-				if m.procid == 0 {
-					// TODO(dp) might not work for linux
-					th = dbp.Threads[dbp.CurrentThread.Id]
-				}
-				return fmt.Errorf("m->procid is invalid port")
-			}
-
-			if m.blocked == 0 {
-				err := th.Step()
-				if err != nil {
-					return err
-				}
-			}
-
-		}
-		return nil
-	}
-
-	return dbp.run(fn)
-}
-
 // Finds the executable from /proc/<pid>/exe and then
 // uses that to parse the following information:
 // * Dwarf .debug_frame section
@@ -144,19 +106,21 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, err
 	return dbp.Threads[tid], nil
 }
 
-func (dbp *DebuggedProcess) refreshThreadList() error {
+func (dbp *DebuggedProcess) updateThreadList() error {
 	allm, err := dbp.CurrentThread.AllM()
 	if err != nil {
 		return err
 	}
+	// TODO(dp) user /proc/<pid>/task to remove reliance on allm
 	for _, m := range allm {
-		if tid == 0 {
+		if m.procid == 0 {
 			continue
 		}
 		if _, err := dbp.addThread(m.procid, false); err != nil {
 			return err
 		}
 	}
+	return nil
 }
 
 func (dbp *DebuggedProcess) findExecutable() (*elf.File, error) {
@@ -232,46 +196,11 @@ func (dbp *DebuggedProcess) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
 	dbp.GoSymTable = tab
 }
 
-func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
-	dbp := DebuggedProcess{
-		Pid:         pid,
-		Threads:     make(map[int]*ThreadContext),
-		BreakPoints: make(map[uint64]*BreakPoint),
-		os:          new(OSProcessDetails),
-	}
-
-	if attach {
-		thread, err := dbp.AttachThread(pid)
-		if err != nil {
-			return nil, err
-		}
-		dbp.CurrentThread = thread
-	} else {
-		thread, err := dbp.addThread(pid)
-		if err != nil {
-			return nil, err
-		}
-		dbp.CurrentThread = thread
-	}
-
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return nil, err
-	}
-
-	dbp.Process = proc
-	err = dbp.LoadInformation()
-	if err != nil {
-		return nil, err
-	}
-
-	return &dbp, nil
-}
-
+// TODO(dp) seems like it could be unneccessary
 func addNewThread(dbp *DebuggedProcess, cloner, cloned int) error {
 	fmt.Println("new thread spawned", cloned)
 
-	th, err := dbp.addThread(cloned)
+	th, err := dbp.addThread(cloned, false)
 	if err != nil {
 		return err
 	}
