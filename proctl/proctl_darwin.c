@@ -27,6 +27,7 @@ static thread_act_t _global_thread;
 kern_return_t
 acquire_mach_task(int tid, mach_port_name_t *task, mach_port_t *exception_port) {
   kern_return_t kret;
+  mach_port_t prev_not;
   mach_port_t self = mach_task_self();
 
   kret = task_for_pid(self, tid, task);
@@ -36,6 +37,10 @@ acquire_mach_task(int tid, mach_port_name_t *task, mach_port_t *exception_port) 
   if (kret != KERN_SUCCESS) return kret;
 
   kret = mach_port_insert_right(self, *exception_port, *exception_port, MACH_MSG_TYPE_MAKE_SEND);
+  if (kret != KERN_SUCCESS) return kret;
+
+  kret = mach_port_request_notification(self, *task, MACH_NOTIFY_DEAD_NAME, 0, *exception_port, MACH_MSG_TYPE_MAKE_SEND_ONCE,
+           &prev_not);
   if (kret != KERN_SUCCESS) return kret;
 
   // Set exception port
@@ -91,11 +96,10 @@ typedef struct exc_msg {
 
 thread_act_t
 mach_port_wait(mach_port_t port) {
-  puts("begin mach wait");
   mach_msg_return_t msg = mach_msg_server_once(exc_server, sizeof(exc_msg_t), port, MACH_MSG_TIMEOUT_NONE);
   if (msg != MACH_MSG_SUCCESS) {
+    return -1;
   }
-  puts("fin mach wait");
   return _global_thread;
 }
 
@@ -110,8 +114,6 @@ catch_mach_exception_raise(
   mach_exception_data_t code,
   mach_msg_type_number_t codeCnt)
 {
-  puts("caught exception raise");
-  fprintf(stderr, "My exception handler was called by exception_raise()\n");
   return KERN_SUCCESS;
 }
 
@@ -127,8 +129,6 @@ catch_mach_exception_raise_state(
   thread_state_t new_state,
   mach_msg_type_number_t *new_stateCnt)
 {
-  puts("caught raise state");
-  fprintf(stderr, "My exception handler was called by exception_raise()\n");
   return KERN_SUCCESS;
 }
 
@@ -146,8 +146,6 @@ catch_mach_exception_raise_state_identity(
   thread_state_t new_state,
   mach_msg_type_number_t *new_stateCnt)
 {
-  puts("caught identity");
-  fprintf(stderr, "My exception handler was called by exception_raise()\n");
   return KERN_SUCCESS;
 }
 
@@ -179,8 +177,6 @@ catch_exception_raise_state(
   thread_state_t new_state,
   mach_msg_type_number_t *new_stateCnt)
 {
-  puts("caught raise state");
-  fprintf(stderr, "My exception handler was called by exception_raise()\n");
   return KERN_SUCCESS;
 }
 
@@ -198,7 +194,5 @@ catch_exception_raise_state_identity(
   thread_state_t new_state,
   mach_msg_type_number_t *new_stateCnt)
 {
-  puts("caught identity");
-  fprintf(stderr, "My exception handler was called by exception_raise()\n");
   return KERN_SUCCESS;
 }

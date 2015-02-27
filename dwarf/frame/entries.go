@@ -58,7 +58,6 @@ func NewFrameIndex() FrameDescriptionEntries {
 }
 
 func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry, error) {
-	fmt.Println("fdes for pc")
 	idx := sort.Search(len(fdes), func(i int) bool {
 		if fdes[i].Cover(pc) {
 			return true
@@ -72,7 +71,6 @@ func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry,
 	if idx == len(fdes) {
 		return nil, fmt.Errorf("could not find FDE for PC %#v", pc)
 	}
-	fmt.Println("fin")
 	return fdes[idx], nil
 }
 

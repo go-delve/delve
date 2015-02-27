@@ -29,7 +29,6 @@ func (t *ThreadContext) singleStep() error {
 }
 
 func (t *ThreadContext) cont() error {
-	// debug.PrintStack()
 	// TODO(dp) set flag for ptrace stops
 	if err := PtraceCont(t.Process.Pid, 0); err == nil {
 		return nil

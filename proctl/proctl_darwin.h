@@ -1,5 +1,3 @@
-#include <errno.h>
-#include <stdio.h>
 #include <sys/types.h>
 #include <libproc.h>
 #include <mach/mach.h>

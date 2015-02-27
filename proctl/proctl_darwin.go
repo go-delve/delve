@@ -95,8 +95,11 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 		kret  C.kern_return_t
 		th    *ThreadContext
 		count = C.thread_count(C.task_t(dbp.os.task))
-		list  = make([]uint32, count)
 	)
+	if count == -1 {
+		return fmt.Errorf("could not get thread count")
+	}
+	list := make([]uint32, count)
 
 	// TODO(dp) might be better to malloc mem in C and them free it here
 	// instead of getting count above and passing in a slice
@@ -209,7 +212,7 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
 	port := C.mach_port_wait(dbp.os.exceptionPort)
 	if port == 0 {
-		return -1, nil, fmt.Errorf("mach port wait error")
+		return -1, nil, ProcessExitedError{}
 	}
 
 	dbp.updateThreadList()

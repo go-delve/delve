@@ -3,7 +3,6 @@ package proctl
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,36 +78,17 @@ func TestStep(t *testing.T) {
 
 		_, err := p.Break(helloworldaddr)
 		assertNoError(err, t, "Break()")
-		fmt.Println("continue")
 		assertNoError(p.Continue(), t, "Continue()")
-		fmt.Println("fin continue")
 
 		regs := getRegisters(p, t)
 		rip := regs.PC()
 
-		fmt.Println("begin step")
 		err = p.Step()
-		fmt.Println("fin step")
 		assertNoError(err, t, "Step()")
 
 		regs = getRegisters(p, t)
 		if rip >= regs.PC() {
 			t.Errorf("Expected %#v to be greater than %#v", regs.PC(), rip)
-		}
-	})
-}
-
-func TestContinue(t *testing.T) {
-	withTestProcess("../_fixtures/continuetestprog", t, func(p *DebuggedProcess) {
-		err := p.Continue()
-		if err != nil {
-			if _, ok := err.(ProcessExitedError); !ok {
-				t.Fatal(err)
-			}
-		}
-
-		if p.Status().ExitStatus() != 0 {
-			t.Fatal("Process did not exit successfully", p.Status().ExitStatus())
 		}
 	})
 }
@@ -141,7 +121,6 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal("No fn exists")
 		}
 
-		fmt.Printf("pid is %d set breakpoint for fn at %d\n", p.Pid, fn.Entry)
 		_, err := p.Break(fn.Entry)
 		if err != nil {
 			t.Fatal(err)
@@ -240,7 +219,6 @@ func TestNext(t *testing.T) {
 
 		f, ln := currentLineNumber(p, t)
 		for _, tc := range testcases {
-			fmt.Println("BEGIN-----------------", tc.begin)
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, f, ln)
 			}

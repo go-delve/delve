@@ -92,6 +92,7 @@ single_step(thread_act_t thread) {
 	}
 }
 
+// TODO(dp) return kret
 void
 clear_trap_flag(thread_act_t thread) {
 	kern_return_t kret;
