@@ -11,17 +11,20 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/command"
-	"github.com/derekparker/delve/goreadline"
 	"github.com/derekparker/delve/proctl"
+
+	"github.com/peterh/liner"
 )
 
 const historyFile string = ".dbg_history"
 
 func Run(run bool, pid int, args []string) {
 	var (
-		dbp *proctl.DebuggedProcess
-		err error
+		dbp  *proctl.DebuggedProcess
+		err  error
+		line = liner.NewLiner()
 	)
+	defer line.Close()
 
 	switch {
 	case run:
@@ -60,14 +63,17 @@ func Run(run bool, pid int, args []string) {
 	}()
 
 	cmds := command.DebugCommands()
-	goreadline.LoadHistoryFromFile(historyFile)
+	if f, err := os.Open(historyFile); err == nil {
+		line.ReadHistory(f)
+		f.Close()
+	}
 	fmt.Println("Type 'help' for list of commands.")
 
 	for {
-		cmdstr, err := promptForInput()
+		cmdstr, err := promptForInput(line)
 		if err != nil {
 			if err == io.EOF {
-				handleExit(dbp, 0)
+				handleExit(dbp, line, 0)
 			}
 			die(1, "Prompt for input failed.\n")
 		}
@@ -75,7 +81,7 @@ func Run(run bool, pid int, args []string) {
 		cmdstr, args := parseCommand(cmdstr)
 
 		if cmdstr == "exit" {
-			handleExit(dbp, 0)
+			handleExit(dbp, line, 0)
 		}
 
 		cmd := cmds.Find(cmdstr)
@@ -86,18 +92,17 @@ func Run(run bool, pid int, args []string) {
 	}
 }
 
-func handleExit(dbp *proctl.DebuggedProcess, status int) {
-	errno := goreadline.WriteHistoryToFile(historyFile)
-	if errno != 0 {
-		fmt.Println("readline:", errno)
+func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
+	if f, err := os.Open(historyFile); err == nil {
+		line.WriteHistory(f)
+		f.Close()
 	}
 
-	prompt := "Would you like to kill the process? [y/n]"
-	answerp := goreadline.ReadLine(&prompt)
-	if answerp == nil {
+	answer, err := line.Prompt("Would you like to kill the process? [y/n]")
+	if err != nil {
 		die(2, io.EOF)
 	}
-	answer := strings.TrimSuffix(*answerp, "\n")
+	answer = strings.TrimSuffix(answer, "\n")
 
 	for _, bp := range dbp.HWBreakPoints {
 		if bp == nil {
@@ -115,7 +120,7 @@ func handleExit(dbp *proctl.DebuggedProcess, status int) {
 	}
 
 	fmt.Println("Detaching from process...")
-	err := sys.PtraceDetach(dbp.Process.Pid)
+	err = sys.PtraceDetach(dbp.Process.Pid)
 	if err != nil {
 		die(2, "Could not detach", err)
 	}
@@ -143,16 +148,16 @@ func parseCommand(cmdstr string) (string, []string) {
 	return vals[0], vals[1:]
 }
 
-func promptForInput() (string, error) {
-	prompt := "(dlv) "
-	linep := goreadline.ReadLine(&prompt)
-	if linep == nil {
-		return "", io.EOF
-	}
-	line := strings.TrimSuffix(*linep, "\n")
-	if line != "" {
-		goreadline.AddHistory(line)
+func promptForInput(line *liner.State) (string, error) {
+	l, err := line.Prompt("(dlv) ")
+	if err != nil {
+		return "", err
 	}
 
-	return line, nil
+	l = strings.TrimSuffix(l, "\n")
+	if l != "" {
+		line.AppendHistory(l)
+	}
+
+	return l, nil
 }
