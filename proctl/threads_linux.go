@@ -18,13 +18,14 @@ func (t *ThreadContext) Halt() error {
 	if err != nil {
 		return fmt.Errorf("Halt err %s %d", err, t.Id)
 	}
-	_, _, err = wait(t.Id, sys.WNOHANG)
+	_, _, err = wait(t.Id, 0)
 	if err != nil {
 		return fmt.Errorf("wait err %s %d", err, t.Id)
 	}
 	return nil
 }
 
+// TODO(dp) rename this to resume or something
 func (t *ThreadContext) cont() error {
 	return PtraceCont(t.Id, 0)
 }

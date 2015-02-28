@@ -5,9 +5,10 @@ import (
 	"debug/gosym"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
-	"time"
 
 	sys "golang.org/x/sys/unix"
 
@@ -103,20 +104,22 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, err
 		Process: dbp,
 	}
 
+	if dbp.CurrentThread == nil {
+		dbp.CurrentThread = dbp.Threads[tid]
+	}
+
 	return dbp.Threads[tid], nil
 }
 
 func (dbp *DebuggedProcess) updateThreadList() error {
-	allm, err := dbp.CurrentThread.AllM()
-	if err != nil {
-		return err
-	}
-	// TODO(dp) user /proc/<pid>/task to remove reliance on allm
-	for _, m := range allm {
-		if m.procid == 0 {
-			continue
+	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.Pid))
+	for _, tidpath := range tids {
+		tidstr := filepath.Base(tidpath)
+		tid, err := strconv.Atoi(tidstr)
+		if err != nil {
+			return err
 		}
-		if _, err := dbp.addThread(m.procid, false); err != nil {
+		if _, err := dbp.addThread(tid, false); err != nil {
 			return err
 		}
 	}
@@ -210,27 +213,7 @@ func addNewThread(dbp *DebuggedProcess, cloner, cloned int) error {
 		return fmt.Errorf("could not continue new thread %d %s", cloned, err)
 	}
 
-	// Here we loop for a while to ensure that the once we continue
-	// the newly created thread, we allow enough time for the runtime
-	// to assign m->procid. This is important because we rely on
-	// looping through runtime.allm in other parts of the code, so
-	// we require that this is set before we do anything else.
-	// TODO(dp): we might be able to eliminate this loop by telling
-	// the CPU to emit a breakpoint exception on write to this location
-	// in memory. That way we prevent having to loop, and can be
-	// notified as soon as m->procid is set.
-	// TODO(dp) get rid of this hack
-	th = dbp.Threads[cloner]
-	for {
-		allm, _ := th.AllM()
-		for _, m := range allm {
-			if m.procid == cloned {
-				// Continue the thread that cloned
-				return th.Continue()
-			}
-		}
-		time.Sleep(time.Millisecond)
-	}
+	return dbp.Threads[cloner].Continue()
 }
 
 func stopped(pid int) bool {
