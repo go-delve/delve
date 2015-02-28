@@ -112,6 +112,7 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, err
 }
 
 func (dbp *DebuggedProcess) updateThreadList() error {
+	var attach bool
 	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.Pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)
@@ -119,7 +120,10 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 		if err != nil {
 			return err
 		}
-		if _, err := dbp.addThread(tid, false); err != nil {
+		if tid != dbp.Pid {
+			attach = true
+		}
+		if _, err := dbp.addThread(tid, attach); err != nil {
 			return err
 		}
 	}

@@ -44,7 +44,7 @@ func (t *ThreadContext) blocked() bool {
 	// TODO(dp) check err
 	pc, _ := t.CurrentPC()
 	fn := t.Process.GoSymTable.PCToFunc(pc)
-	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep")) {
+	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
 		return true
 	}
 	return false
