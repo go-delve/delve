@@ -46,7 +46,6 @@ get_registers(mach_port_name_t task, x86_thread_state64_t *state) {
 	return thread_get_state(task, x86_THREAD_STATE64, (thread_state_t)state, &stateCount);
 }
 
-// TODO(dp) this should return kret instead of void
 kern_return_t
 set_pc(thread_act_t task, uint64_t pc) {
 	kern_return_t kret;
@@ -61,26 +60,20 @@ set_pc(thread_act_t task, uint64_t pc) {
 	return thread_set_state(task, x86_THREAD_STATE64, (thread_state_t)&state, stateCount);
 }
 
-// TODO(dp) this should return kret instead of void
-void
+kern_return_t
 single_step(thread_act_t thread) {
 	kern_return_t kret;
 	x86_thread_state64_t regs;
 	mach_msg_type_number_t count = x86_THREAD_STATE64_COUNT;
 
 	kret = thread_get_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, &count);
-	if (kret != KERN_SUCCESS) {
-		puts("get state fail");
-		puts(mach_error_string(kret));
-	}
+	if (kret != KERN_SUCCESS) return kret;
+
 	// Set trap bit in rflags
 	regs.__rflags |= 0x100UL;
 
 	kret = thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
-	if (kret != KERN_SUCCESS) {
-		puts("set state fail");
-		puts(mach_error_string(kret));
-	}
+	if (kret != KERN_SUCCESS) return kret;
 	// TODO(dp) vm deallocate state?
 
 	// Continue here until we've fully decremented suspend_count
@@ -88,27 +81,22 @@ single_step(thread_act_t thread) {
 		kret = thread_resume(thread);
 		if (kret != KERN_SUCCESS) break;
 	}
+
+	return KERN_SUCCESS;
 }
 
-// TODO(dp) return kret
-void
+kern_return_t
 clear_trap_flag(thread_act_t thread) {
 	kern_return_t kret;
 	x86_thread_state64_t regs;
 	mach_msg_type_number_t count = x86_THREAD_STATE64_COUNT;
 
 	kret = thread_get_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, &count);
-	if (kret != KERN_SUCCESS) {
-		puts("get state fail");
-		puts(mach_error_string(kret));
-	}
+	if (kret != KERN_SUCCESS) return kret;
+
 	// Clear trap bit in rflags
 	regs.__rflags ^= 0x100UL;
 
-	kret = thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
-	if (kret != KERN_SUCCESS) {
-		puts("set state fail");
-		puts(mach_error_string(kret));
-	}
 	// TODO(dp) vm deallocate state?
+	return thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
 }

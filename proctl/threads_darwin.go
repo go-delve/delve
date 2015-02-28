@@ -22,9 +22,15 @@ func (t *ThreadContext) Halt() error {
 }
 
 func (t *ThreadContext) singleStep() error {
-	C.single_step(t.os.thread_act)
+	kret := C.single_step(t.os.thread_act)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not single step")
+	}
 	trapWait(t.Process, 0)
-	C.clear_trap_flag(t.os.thread_act)
+	kret = C.clear_trap_flag(t.os.thread_act)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not clear CPU trap flag")
+	}
 	return nil
 }
 

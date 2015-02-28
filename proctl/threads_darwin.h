@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <sys/types.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
@@ -16,8 +15,8 @@ get_registers(mach_port_name_t, x86_thread_state64_t*);
 kern_return_t
 set_pc(thread_act_t, uint64_t);
 
-void
+kern_return_t
 single_step(thread_act_t);
 
-void
+kern_return_t
 clear_trap_flag(thread_act_t thread);
