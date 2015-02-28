@@ -37,18 +37,13 @@ read_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_typ
 	return count;
 }
 
-x86_thread_state64_t
-get_registers(mach_port_name_t task) {
+kern_return_t
+get_registers(mach_port_name_t task, x86_thread_state64_t *state) {
 	kern_return_t kret;
-	x86_thread_state64_t state;
 	mach_msg_type_number_t stateCount = x86_THREAD_STATE64_COUNT;
 
 	// TODO(dp) - possible memory leak - vm_deallocate state
-	kret = thread_get_state(task, x86_THREAD_STATE64, (thread_state_t)&state, &stateCount);
-	if (kret != KERN_SUCCESS) printf("SOMETHING WENT WRONG-------------- %d\n", kret);
-	if (kret == KERN_INVALID_ARGUMENT) puts("INAVLID ARGUMENT");
-
-	return state;
+	return thread_get_state(task, x86_THREAD_STATE64, (thread_state_t)state, &stateCount);
 }
 
 // TODO(dp) this should return kret instead of void

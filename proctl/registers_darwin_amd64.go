@@ -2,6 +2,7 @@ package proctl
 
 // #include "threads_darwin.h"
 import "C"
+import "fmt"
 
 type Regs struct {
 	pc, sp uint64
@@ -21,7 +22,11 @@ func (r *Regs) SetPC(thread *ThreadContext, pc uint64) error {
 }
 
 func registers(thread *ThreadContext) (Registers, error) {
-	state := C.get_registers(C.mach_port_name_t(thread.os.thread_act))
+	var state C.x86_thread_state64_t
+	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &state)
+	if kret != C.KERN_SUCCESS {
+		return nil, fmt.Errorf("could not get registers")
+	}
 	regs := &Regs{pc: uint64(state.__rip), sp: uint64(state.__rsp)}
 	return regs, nil
 }
