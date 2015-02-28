@@ -29,8 +29,11 @@ read_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_typ
 
 	kret = mach_vm_read((vm_map_t)task, addr, len, &data, &count);
 	if (kret != KERN_SUCCESS) return -1;
-	// TODO(dp) possible memory leak - vm_deallocate data
 	memcpy(d, (void *)data, len);
+
+	kret = vm_deallocate(task, data, len);
+	if (kret != KERN_SUCCESS) return -1;
+
 	return count;
 }
 
@@ -44,6 +47,7 @@ get_registers(mach_port_name_t task) {
 	kret = thread_get_state(task, x86_THREAD_STATE64, (thread_state_t)&state, &stateCount);
 	if (kret != KERN_SUCCESS) printf("SOMETHING WENT WRONG-------------- %d\n", kret);
 	if (kret == KERN_INVALID_ARGUMENT) puts("INAVLID ARGUMENT");
+
 	return state;
 }
 

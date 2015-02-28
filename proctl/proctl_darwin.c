@@ -67,6 +67,10 @@ get_threads(task_t task, void *slice) {
   }
 
   memcpy(slice, (void*)list, count*sizeof(list[0]));
+
+  kret = vm_deallocate(task, (vm_address_t) &list, count * sizeof(list[0]));
+  if (kret != KERN_SUCCESS) return kret;
+
   return (kern_return_t)0;
 }
 
@@ -76,9 +80,12 @@ thread_count(task_t task) {
   thread_act_array_t list;
   mach_msg_type_number_t count;
 
-  // TODO(dp) vm_deallocate list
   kret = task_threads(task, &list, &count);
   if (kret != KERN_SUCCESS) return -1;
+
+  kret = vm_deallocate(task, (vm_address_t) &list, count * sizeof(list[0]));
+  if (kret != KERN_SUCCESS) return -1;
+
   return count;
 }
 
@@ -114,6 +121,8 @@ catch_mach_exception_raise(
   mach_exception_data_t code,
   mach_msg_type_number_t codeCnt)
 {
+  _global_thread = (thread_act_t)thread;
+  thread_suspend(thread);
   return KERN_SUCCESS;
 }
 
