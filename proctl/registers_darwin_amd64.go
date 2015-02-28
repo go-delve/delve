@@ -17,7 +17,10 @@ func (r *Regs) SP() uint64 {
 }
 
 func (r *Regs) SetPC(thread *ThreadContext, pc uint64) error {
-	C.set_pc(thread.os.thread_act, C.uint64_t(pc))
+	kret := C.set_pc(thread.os.thread_act, C.uint64_t(pc))
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not set pc")
+	}
 	return nil
 }
 

@@ -13,7 +13,7 @@ read_memory(mach_port_name_t, mach_vm_address_t, void *, mach_msg_type_number_t)
 kern_return_t
 get_registers(mach_port_name_t, x86_thread_state64_t*);
 
-void
+kern_return_t
 set_pc(thread_act_t, uint64_t);
 
 void
