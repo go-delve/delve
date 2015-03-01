@@ -98,7 +98,7 @@ func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
 	if f, err := os.OpenFile(historyFile, os.O_RDWR, 0666); err == nil {
 		_, err := line.WriteHistory(f)
 		if err != nil {
-			fmt.Println("readline histroy: ", err)
+			fmt.Println("readline history error: ", err)
 		}
 		f.Close()
 	}
