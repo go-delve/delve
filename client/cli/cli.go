@@ -63,10 +63,12 @@ func Run(run bool, pid int, args []string) {
 	}()
 
 	cmds := command.DebugCommands()
-	if f, err := os.Open(historyFile); err == nil {
-		line.ReadHistory(f)
-		f.Close()
+	f, err := os.Open(historyFile)
+	if err != nil {
+		f, _ = os.Create(historyFile)
 	}
+	line.ReadHistory(f)
+	f.Close()
 	fmt.Println("Type 'help' for list of commands.")
 
 	for {
@@ -93,8 +95,11 @@ func Run(run bool, pid int, args []string) {
 }
 
 func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
-	if f, err := os.Open(historyFile); err == nil {
-		line.WriteHistory(f)
+	if f, err := os.OpenFile(historyFile, os.O_RDWR, 0666); err == nil {
+		_, err := line.WriteHistory(f)
+		if err != nil {
+			fmt.Println("readline histroy: ", err)
+		}
 		f.Close()
 	}
 
