@@ -242,7 +242,53 @@ func (dbp *DebuggedProcess) Continue() error {
 		if err != nil {
 			return err
 		}
-		return handleBreakPoint(dbp, wpid)
+		thread, ok := dbp.Threads[wpid]
+		if !ok {
+			return fmt.Errorf("could not find thread for %d", wpid)
+		}
+
+		if wpid != dbp.CurrentThread.Id {
+			fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, thread.Id)
+			dbp.CurrentThread = thread
+		}
+
+		pc, err := thread.CurrentPC()
+		if err != nil {
+			return err
+		}
+
+		// Check to see if we hit a runtime.breakpoint
+		fn := dbp.GoSymTable.PCToFunc(pc)
+		if fn != nil && fn.Name == "runtime.breakpoint" {
+			// step twice to get back to user code
+			for i := 0; i < 2; i++ {
+				err = thread.Step()
+				if err != nil {
+					return err
+				}
+			}
+			dbp.Halt()
+			return nil
+		}
+
+		// Check for hardware breakpoint
+		for _, bp := range dbp.HWBreakPoints {
+			if bp != nil && bp.Addr == pc {
+				if !bp.temp {
+					return dbp.Halt()
+				}
+				return nil
+			}
+		}
+		// Check to see if we have hit a software breakpoint.
+		if bp, ok := dbp.BreakPoints[pc-1]; ok {
+			if !bp.temp {
+				return dbp.Halt()
+			}
+			return nil
+		}
+
+		return fmt.Errorf("unrecognized breakpoint %#v", pc)
 	}
 	return dbp.run(fn)
 }
@@ -341,54 +387,4 @@ type ProcessExitedError struct {
 
 func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("process %d has exited", pe.pid)
-}
-
-func handleBreakPoint(dbp *DebuggedProcess, pid int) error {
-	thread, ok := dbp.Threads[pid]
-	if !ok {
-		return fmt.Errorf("could not find thread for %d", pid)
-	}
-
-	if pid != dbp.CurrentThread.Id {
-		fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, thread.Id)
-		dbp.CurrentThread = thread
-	}
-
-	pc, err := thread.CurrentPC()
-	if err != nil {
-		return err
-	}
-
-	// Check to see if we hit a runtime.breakpoint
-	fn := dbp.GoSymTable.PCToFunc(pc)
-	if fn != nil && fn.Name == "runtime.breakpoint" {
-		// step twice to get back to user code
-		for i := 0; i < 2; i++ {
-			err = thread.Step()
-			if err != nil {
-				return err
-			}
-		}
-		dbp.Halt()
-		return nil
-	}
-
-	// Check for hardware breakpoint
-	for _, bp := range dbp.HWBreakPoints {
-		if bp != nil && bp.Addr == pc {
-			if !bp.temp {
-				return dbp.Halt()
-			}
-			return nil
-		}
-	}
-	// Check to see if we have hit a software breakpoint.
-	if bp, ok := dbp.BreakPoints[pc-1]; ok {
-		if !bp.temp {
-			return dbp.Halt()
-		}
-		return nil
-	}
-
-	return fmt.Errorf("unrecognized breakpoint %#v", pc)
 }
