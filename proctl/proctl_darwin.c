@@ -68,7 +68,7 @@ get_threads(task_t task, void *slice) {
 
   memcpy(slice, (void*)list, count*sizeof(list[0]));
 
-  kret = vm_deallocate(task, (vm_address_t) &list, count * sizeof(list[0]));
+  kret = vm_deallocate(mach_task_self(), (vm_address_t) list, count * sizeof(list[0]));
   if (kret != KERN_SUCCESS) return kret;
 
   return (kern_return_t)0;
@@ -83,7 +83,7 @@ thread_count(task_t task) {
   kret = task_threads(task, &list, &count);
   if (kret != KERN_SUCCESS) return -1;
 
-  kret = vm_deallocate(task, (vm_address_t) &list, count * sizeof(list[0]));
+  kret = vm_deallocate(mach_task_self(), (vm_address_t) list, count * sizeof(list[0]));
   if (kret != KERN_SUCCESS) return -1;
 
   return count;
