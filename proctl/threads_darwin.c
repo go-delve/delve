@@ -56,7 +56,6 @@ set_pc(thread_act_t task, uint64_t pc) {
 	if (kret != KERN_SUCCESS) return kret;
 	state.__rip = pc;
 
-	// TODO(dp) - possible memory leak - vm_deallocate state
 	return thread_set_state(task, x86_THREAD_STATE64, (thread_state_t)&state, stateCount);
 }
 
@@ -74,7 +73,6 @@ single_step(thread_act_t thread) {
 
 	kret = thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
 	if (kret != KERN_SUCCESS) return kret;
-	// TODO(dp) vm deallocate state?
 
 	// Continue here until we've fully decremented suspend_count
 	for (;;) {
@@ -97,6 +95,5 @@ clear_trap_flag(thread_act_t thread) {
 	// Clear trap bit in rflags
 	regs.__rflags ^= 0x100UL;
 
-	// TODO(dp) vm deallocate state?
 	return thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
 }
