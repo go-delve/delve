@@ -9,7 +9,7 @@ import (
 	"github.com/derekparker/delve/client/cli"
 )
 
-const version string = "0.4.0.beta"
+const version string = "0.5.0.beta"
 
 func init() {
 	// We must ensure here that we are running on the same thread during
