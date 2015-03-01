@@ -4,13 +4,13 @@ PREFIX=github.com/derekparker/delve
 build:
 	go build github.com/derekparker/delve/cmd/dlv
 ifeq "$(UNAME)" "Darwin"
-	codesign -s dlv-cert ./dlv
+	codesign -s $(CERT) ./dlv
 endif
 
 install:
 	go install github.com/derekparker/delve/cmd/dlv
 ifeq "$(UNAME)" "Darwin"
-	codesign -s dlv-cert $(which dlv)
+	codesign -s $(CERT) $(which dlv)
 endif
 
 test:
