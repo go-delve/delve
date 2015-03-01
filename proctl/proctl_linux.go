@@ -65,7 +65,7 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, err
 	if thread, ok := dbp.Threads[tid]; ok {
 		return thread, nil
 	}
-	fmt.Println("new thread spawned", cloned)
+	fmt.Println("new thread spawned", tid)
 
 	if attach {
 		err := sys.PtraceAttach(tid)
@@ -246,7 +246,7 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
 				return -1, nil, fmt.Errorf("could not get event message: %s", err)
 			}
 
-			th, err := dbp.addThread(cloned, false)
+			th, err := dbp.addThread(int(cloned), false)
 			if err != nil {
 				return -1, nil, err
 			}
@@ -256,7 +256,7 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
 				return -1, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 
-			err = dbp.Threads[cloner].Continue()
+			err = dbp.Threads[int(wpid)].Continue()
 			if err != nil {
 				return -1, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
