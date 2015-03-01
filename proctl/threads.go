@@ -84,7 +84,7 @@ func (thread *ThreadContext) Continue() error {
 		}
 	}
 
-	return thread.cont()
+	return thread.resume()
 }
 
 // Single steps this thread a single instruction, ensuring that

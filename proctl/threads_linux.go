@@ -25,8 +25,7 @@ func (t *ThreadContext) Halt() error {
 	return nil
 }
 
-// TODO(dp) rename this to resume or something
-func (t *ThreadContext) cont() error {
+func (t *ThreadContext) resume() error {
 	return PtraceCont(t.Id, 0)
 }
 

@@ -34,9 +34,9 @@ func (t *ThreadContext) singleStep() error {
 	return nil
 }
 
-func (t *ThreadContext) cont() error {
+func (t *ThreadContext) resume() error {
 	// TODO(dp) set flag for ptrace stops
-	if err := PtraceCont(t.Process.Pid, 0); err == nil {
+	if PtraceCont(t.Process.Pid, 0) == nil {
 		return nil
 	}
 	for {
