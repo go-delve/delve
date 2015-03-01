@@ -10,7 +10,7 @@ endif
 install:
 	go install github.com/derekparker/delve/cmd/dlv
 ifeq "$(UNAME)" "Darwin"
-	codesign -s $(CERT) $(which dlv)
+	codesign -s $(CERT) $(GOPATH)/bin/dlv
 endif
 
 test:
