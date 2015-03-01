@@ -41,8 +41,8 @@ func (dbp *DebuggedProcess) LoadInformation() error {
 		err error
 	)
 
-	if err := dbp.acquireMachTask(); err != nil {
-		return fmt.Errorf("could not acquire mach task")
+	if ret := C.acquire_mach_task(C.int(dbp.Pid), &dbp.os.task, &dbp.os.exceptionPort); ret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not acquire mach task %d", ret)
 	}
 	exe, err = dbp.findExecutable()
 	if err != nil {
@@ -95,14 +95,6 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) acquireMachTask() error {
-	if ret := C.acquire_mach_task(C.int(dbp.Pid), &dbp.os.task, &dbp.os.exceptionPort); ret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not acquire mach task %d", ret)
-	}
-	return nil
-}
-
-// export addThread
 func (dbp *DebuggedProcess) addThread(port int, attach bool) (*ThreadContext, error) {
 	if thread, ok := dbp.Threads[port]; ok {
 		return thread, nil
