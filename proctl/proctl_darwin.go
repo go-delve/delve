@@ -85,7 +85,6 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 
 	for _, port := range list {
 		if _, ok := dbp.Threads[int(port)]; !ok {
-			fmt.Println("new thread spawned", port)
 			_, err = dbp.addThread(int(port), false)
 			if err != nil {
 				return err
@@ -105,6 +104,10 @@ func (dbp *DebuggedProcess) acquireMachTask() error {
 
 // export addThread
 func (dbp *DebuggedProcess) addThread(port int, attach bool) (*ThreadContext, error) {
+	if thread, ok := dbp.Threads[port]; ok {
+		return thread, nil
+	}
+	fmt.Println("new thread spawned", port)
 	thread := &ThreadContext{
 		Id:      port,
 		Process: dbp,
