@@ -66,7 +66,6 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	var (
 		err   error
 		kret  C.kern_return_t
-		th    *ThreadContext
 		count = C.thread_count(C.task_t(dbp.os.task))
 	)
 	if count == -1 {
@@ -74,7 +73,7 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	}
 	list := make([]uint32, count)
 
-	// TODO(dp) might be better to malloc mem in C and them free it here
+	// TODO(dp) might be better to malloc mem in C and then free it here
 	// instead of getting count above and passing in a slice
 	kret = C.get_threads(C.task_t(dbp.os.task), unsafe.Pointer(&list[0]))
 	if kret != C.KERN_SUCCESS {
@@ -85,15 +84,13 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	}
 
 	for _, port := range list {
-		th, err = dbp.addThread(int(port), false)
-		if err != nil {
-			return err
+		if _, ok := dbp.Threads[int(port)]; !ok {
+			fmt.Println("new thread spawned", port)
+			_, err = dbp.addThread(int(port), false)
+			if err != nil {
+				return err
+			}
 		}
-	}
-
-	// TODO(dp) account for GOMAXPROCS=1 or attaching to pid
-	if count == 1 {
-		dbp.CurrentThread = th
 	}
 
 	return nil
@@ -115,6 +112,9 @@ func (dbp *DebuggedProcess) addThread(port int, attach bool) (*ThreadContext, er
 	}
 	dbp.Threads[port] = thread
 	thread.os.thread_act = C.thread_act_t(port)
+	if dbp.CurrentThread == nil {
+		dbp.CurrentThread = thread
+	}
 	return thread, nil
 }
 
@@ -167,11 +167,6 @@ func (dbp *DebuggedProcess) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup)
 	}
 
 	dbp.GoSymTable = tab
-}
-
-// TODO(darwin) IMPLEMENT ME
-func stopped(pid int) bool {
-	return false
 }
 
 func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {

@@ -51,11 +51,6 @@ func Attach(pid int) (*DebuggedProcess, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Attach to all currently active threads.
-	// TODO(dp) doing this in newDebugProcess already for mach
-	if err := dbp.updateThreadList(); err != nil {
-		return nil, err
-	}
 	return dbp, nil
 }
 

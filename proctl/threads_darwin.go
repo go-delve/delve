@@ -12,7 +12,6 @@ type OSSpecificDetails struct {
 }
 
 func (t *ThreadContext) Halt() error {
-	// TODO(dp) may be able to just task_suspend instead of suspending individual threads
 	var kret C.kern_return_t
 	kret = C.thread_suspend(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
@@ -49,7 +48,6 @@ func (t *ThreadContext) resume() error {
 
 func (t *ThreadContext) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
-	// TODO(dp) check err
 	pc, _ := t.CurrentPC()
 	fn := t.Process.GoSymTable.PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.mach_semaphore_wait") || (fn.Name == "runtime.usleep")) {

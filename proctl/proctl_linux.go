@@ -203,23 +203,6 @@ func (dbp *DebuggedProcess) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
 	dbp.GoSymTable = tab
 }
 
-// TODO(dp) seems like it could be unneccessary
-func addNewThread(dbp *DebuggedProcess, cloner, cloned int) error {
-	fmt.Println("new thread spawned", cloned)
-
-	th, err := dbp.addThread(cloned, false)
-	if err != nil {
-		return err
-	}
-
-	err = th.Continue()
-	if err != nil {
-		return fmt.Errorf("could not continue new thread %d %s", cloned, err)
-	}
-
-	return dbp.Threads[cloner].Continue()
-}
-
 func stopped(pid int) bool {
 	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
@@ -257,13 +240,26 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
-			tid, err := sys.PtraceGetEventMsg(wpid)
+			cloned, err := sys.PtraceGetEventMsg(wpid)
 			if err != nil {
 				return -1, nil, fmt.Errorf("could not get event message: %s", err)
 			}
-			err = addNewThread(dbp, wpid, int(tid))
+
+			fmt.Println("new thread spawned", cloned)
+
+			th, err := dbp.addThread(cloned, false)
 			if err != nil {
 				return -1, nil, err
+			}
+
+			err = th.Continue()
+			if err != nil {
+				return -1, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
+			}
+
+			err = dbp.Threads[cloner].Continue()
+			if err != nil {
+				return -1, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 			continue
 		}
