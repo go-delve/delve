@@ -1,4 +1,0 @@
-#!/bin/sh
-
-go test -c && codesign -s dbg-cert ./proctl.test && ./proctl.test -test.v -test.run "$1"
-rm ./proctl.test
