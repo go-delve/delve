@@ -22,7 +22,7 @@ func Run(run bool, pid int, args []string) {
 	var (
 		dbp *proctl.DebuggedProcess
 		err error
-		t   = Terminator{line: liner.NewLiner()}
+		t   = &Terminator{line: liner.NewLiner()}
 	)
 	defer t.line.Close()
 
@@ -63,6 +63,31 @@ func Run(run bool, pid int, args []string) {
 	}()
 
 	cmds := command.DebugCommands()
+	names := cmds.Names()
+
+	// set command completer
+	t.line.SetWordCompleter(func(line string, pos int) (head string, completions []string, tail string) {
+		start := strings.LastIndex(line[:pos], " ")
+		match := ""
+		if start < 0 { // this is the command to match
+			head = ""
+			tail = line[pos:]
+			match = line
+		} else if strings.HasPrefix(line, "help ") {
+			head = line[:start+1]
+			match = line[start+1:]
+			tail = line[pos:]
+		} else {
+			return
+		}
+		for _, n := range names {
+			if strings.HasPrefix(n, strings.ToLower(match)) {
+				completions = append(completions, n)
+			}
+		}
+		return
+	})
+
 	f, err := os.Open(historyFile)
 	if err != nil {
 		f, _ = os.Create(historyFile)
@@ -72,10 +97,10 @@ func Run(run bool, pid int, args []string) {
 	fmt.Println("Type 'help' for list of commands.")
 
 	for {
-		cmdstr, err := promptForInput(line)
+		cmdstr, err := promptForInput(t)
 		if err != nil {
 			if err == io.EOF {
-				handleExit(dbp, line, 0)
+				handleExit(dbp, t, 0)
 			}
 			t.die(1, "Prompt for input failed.\n")
 		}
@@ -83,7 +108,7 @@ func Run(run bool, pid int, args []string) {
 		cmdstr, args := parseCommand(cmdstr)
 
 		if cmdstr == "exit" {
-			handleExit(dbp, line, 0)
+			handleExit(dbp, t, 0)
 		}
 
 		cmd := cmds.Find(cmdstr)
@@ -147,8 +172,8 @@ type Terminator struct {
 }
 
 func (t *Terminator) die(status int, args ...interface{}) {
-	if line != nil {
-		line.Close()
+	if t.line != nil {
+		t.line.Close()
 	}
 
 	fmt.Fprint(os.Stderr, args)
