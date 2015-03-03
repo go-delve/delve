@@ -37,6 +37,16 @@ type Commands struct {
 	lastCmd cmdfunc
 }
 
+func (c *Commands) Names() (names []string) {
+	for _, cc := range c.cmds {
+		for _, a := range cc.aliases {
+			names = append(names, a)
+		}
+	}
+
+	return
+}
+
 // Returns a Commands struct with default commands defined.
 func DebugCommands() *Commands {
 	c := &Commands{}
@@ -108,10 +118,24 @@ func nullCommand(p *proctl.DebuggedProcess, ars ...string) error {
 }
 
 func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) error {
-	fmt.Println("The following commands are available:")
-	for _, cmd := range c.cmds {
-		fmt.Printf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
+	if len(ars) > 0 {
+		cmdstr := ars[0]
+
+		for _, cmd := range c.cmds {
+			if cmd.match(cmdstr) {
+				fmt.Printf("%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
+				return nil
+			}
+		}
+
+		fmt.Println("no help for", cmdstr)
+	} else {
+		fmt.Println("The following commands are available:")
+		for _, cmd := range c.cmds {
+			fmt.Printf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
+		}
 	}
+
 	return nil
 }
 
