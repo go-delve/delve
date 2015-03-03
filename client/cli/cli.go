@@ -20,11 +20,11 @@ const historyFile string = ".dbg_history"
 
 func Run(run bool, pid int, args []string) {
 	var (
-		dbp  *proctl.DebuggedProcess
-		err  error
-		line = liner.NewLiner()
+		dbp *proctl.DebuggedProcess
+		err error
+		t   = Terminator{line: liner.NewLiner()}
 	)
-	defer line.Close()
+	defer t.line.Close()
 
 	switch {
 	case run:
@@ -32,23 +32,23 @@ func Run(run bool, pid int, args []string) {
 		cmd := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
 		err := cmd.Run()
 		if err != nil {
-			die(1, "Could not compile program:", err)
+			t.die(1, "Could not compile program:", err)
 		}
 		defer os.Remove(debugname)
 
 		dbp, err = proctl.Launch(append([]string{"./" + debugname}, args...))
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			t.die(1, "Could not launch program:", err)
 		}
 	case pid != 0:
 		dbp, err = proctl.Attach(pid)
 		if err != nil {
-			die(1, "Could not attach to process:", err)
+			t.die(1, "Could not attach to process:", err)
 		}
 	default:
 		dbp, err = proctl.Launch(args)
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			t.die(1, "Could not launch program:", err)
 		}
 	}
 
@@ -67,7 +67,7 @@ func Run(run bool, pid int, args []string) {
 	if err != nil {
 		f, _ = os.Create(historyFile)
 	}
-	line.ReadHistory(f)
+	t.line.ReadHistory(f)
 	f.Close()
 	fmt.Println("Type 'help' for list of commands.")
 
@@ -77,7 +77,7 @@ func Run(run bool, pid int, args []string) {
 			if err == io.EOF {
 				handleExit(dbp, line, 0)
 			}
-			die(1, "Prompt for input failed.\n")
+			t.die(1, "Prompt for input failed.\n")
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
@@ -94,18 +94,18 @@ func Run(run bool, pid int, args []string) {
 	}
 }
 
-func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
+func handleExit(dbp *proctl.DebuggedProcess, t *Terminator, status int) {
 	if f, err := os.OpenFile(historyFile, os.O_RDWR, 0666); err == nil {
-		_, err := line.WriteHistory(f)
+		_, err := t.line.WriteHistory(f)
 		if err != nil {
 			fmt.Println("readline history error: ", err)
 		}
 		f.Close()
 	}
 
-	answer, err := line.Prompt("Would you like to kill the process? [y/n]")
+	answer, err := t.line.Prompt("Would you like to kill the process? [y/n]")
 	if err != nil {
-		die(2, io.EOF)
+		t.die(2, io.EOF)
 	}
 	answer = strings.TrimSuffix(answer, "\n")
 
@@ -127,7 +127,7 @@ func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
 	fmt.Println("Detaching from process...")
 	err = sys.PtraceDetach(dbp.Process.Pid)
 	if err != nil {
-		die(2, "Could not detach", err)
+		t.die(2, "Could not detach", err)
 	}
 
 	if answer == "y" {
@@ -139,10 +139,18 @@ func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
 		}
 	}
 
-	die(status, "Hope I was of service hunting your bug!")
+	t.die(status, "Hope I was of service hunting your bug!")
 }
 
-func die(status int, args ...interface{}) {
+type Terminator struct {
+	line *liner.State
+}
+
+func (t *Terminator) die(status int, args ...interface{}) {
+	if line != nil {
+		line.Close()
+	}
+
 	fmt.Fprint(os.Stderr, args)
 	fmt.Fprint(os.Stderr, "\n")
 	os.Exit(status)
@@ -153,15 +161,15 @@ func parseCommand(cmdstr string) (string, []string) {
 	return vals[0], vals[1:]
 }
 
-func promptForInput(line *liner.State) (string, error) {
-	l, err := line.Prompt("(dlv) ")
+func promptForInput(t *Terminator) (string, error) {
+	l, err := t.line.Prompt("(dlv) ")
 	if err != nil {
 		return "", err
 	}
 
 	l = strings.TrimSuffix(l, "\n")
 	if l != "" {
-		line.AppendHistory(l)
+		t.line.AppendHistory(l)
 	}
 
 	return l, nil
