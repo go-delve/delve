@@ -18,6 +18,8 @@ type CommonInformationEntry struct {
 	InitialInstructions   []byte
 }
 
+// Returns whether or not the given address is within the
+// bounds of this frame.
 func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
 	if (addr - fde.begin) < fde.end {
 		return true
@@ -34,18 +36,22 @@ type FrameDescriptionEntry struct {
 	begin, end   uint64
 }
 
+// Address of first location for this frame.
 func (fde *FrameDescriptionEntry) Begin() uint64 {
 	return fde.begin
 }
 
+// Address of last location for this frame.
 func (fde *FrameDescriptionEntry) End() uint64 {
 	return fde.begin + fde.end
 }
 
+// Set up frame for the given PC.
 func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
 	return executeDwarfProgramUntilPC(fde, pc)
 }
 
+// Return the offset from the current SP that the return address is stored at.
 func (fde *FrameDescriptionEntry) ReturnAddressOffset(pc uint64) int64 {
 	frame := fde.EstablishFrame(pc)
 	return frame.cfa.offset + frame.regs[fde.CIE.ReturnAddressRegister].offset
@@ -57,6 +63,7 @@ func NewFrameIndex() FrameDescriptionEntries {
 	return make(FrameDescriptionEntries, 0, 1000)
 }
 
+// Returns the Frame Description Entry for the given PC.
 func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry, error) {
 	idx := sort.Search(len(fdes), func(i int) bool {
 		if fdes[i].Cover(pc) {
