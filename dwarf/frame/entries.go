@@ -18,15 +18,6 @@ type CommonInformationEntry struct {
 	InitialInstructions   []byte
 }
 
-// Returns whether or not the given address is within the
-// bounds of this frame.
-func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
-	if (addr - fde.begin) < fde.end {
-		return true
-	}
-	return false
-}
-
 // Represents a Frame Descriptor Entry in the
 // Dwarf .debug_frame section.
 type FrameDescriptionEntry struct {
@@ -34,6 +25,15 @@ type FrameDescriptionEntry struct {
 	CIE          *CommonInformationEntry
 	Instructions []byte
 	begin, end   uint64
+}
+
+// Returns whether or not the given address is within the
+// bounds of this frame.
+func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
+	if (addr - fde.begin) < fde.end {
+		return true
+	}
+	return false
 }
 
 // Address of first location for this frame.
@@ -81,10 +81,6 @@ func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry,
 	return fdes[idx], nil
 }
 
-func (frame *FrameDescriptionEntry) Less(pc uint64) bool {
-	return frame.Begin() > pc
-}
-
 func (frame *FrameDescriptionEntry) More(pc uint64) bool {
-	return frame.End() < pc
+	return frame.End() <= pc
 }
