@@ -39,9 +39,7 @@ type Commands struct {
 
 func (c *Commands) Names() (names []string) {
 	for _, cc := range c.cmds {
-		for _, a := range cc.aliases {
-			names = append(names, a)
-		}
+		names = append(names, cc.aliases[0])
 	}
 
 	return
