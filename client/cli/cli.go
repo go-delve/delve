@@ -87,9 +87,14 @@ func Run(run bool, pid int, args []string) {
 		}
 
 		cmd := cmds.Find(cmdstr)
-		err = cmd(dbp, args...)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
+		if err := cmd(dbp, args...); err != nil {
+			switch err.(type) {
+			case proctl.ProcessExitedError:
+				pe := err.(proctl.ProcessExitedError)
+				fmt.Fprintf(os.Stderr, "Process exited with status %d\n", pe.Status)
+			default:
+				fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
+			}
 		}
 	}
 }

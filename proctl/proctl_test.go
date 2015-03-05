@@ -71,6 +71,22 @@ func currentLineNumber(p *DebuggedProcess, t *testing.T) (string, int) {
 	return f, l
 }
 
+func TestExit(t *testing.T) {
+	withTestProcess("../_fixtures/continuetestprog", t, func(p *DebuggedProcess) {
+		err := p.Continue()
+		pe, ok := err.(ProcessExitedError)
+		if !ok {
+			t.Fatalf("Continue() returned unexpected error type")
+		}
+		if pe.Status != 0 {
+			t.Errorf("Unexpected error status: %d", pe.Status)
+		}
+		if pe.Pid != p.Pid {
+			t.Errorf("Unexpected process id: %d", pe.Pid)
+		}
+	})
+}
+
 func TestStep(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
 		helloworldfunc := p.GoSymTable.LookupFunc("main.helloworld")
