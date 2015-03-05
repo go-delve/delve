@@ -22,7 +22,7 @@ func Run(run bool, pid int, args []string) {
 	var (
 		dbp *proctl.DebuggedProcess
 		err error
-		t   = &Terminator{line: liner.NewLiner()}
+		t   = &Term{prompt: "(dlv) ", line: liner.NewLiner()}
 	)
 	defer t.line.Close()
 
@@ -97,7 +97,7 @@ func Run(run bool, pid int, args []string) {
 	fmt.Println("Type 'help' for list of commands.")
 
 	for {
-		cmdstr, err := promptForInput(t)
+		cmdstr, err := t.promptForInput()
 		if err != nil {
 			if err == io.EOF {
 				handleExit(dbp, t, 0)
@@ -119,7 +119,7 @@ func Run(run bool, pid int, args []string) {
 	}
 }
 
-func handleExit(dbp *proctl.DebuggedProcess, t *Terminator, status int) {
+func handleExit(dbp *proctl.DebuggedProcess, t *Term, status int) {
 	if f, err := os.OpenFile(historyFile, os.O_RDWR, 0666); err == nil {
 		_, err := t.line.WriteHistory(f)
 		if err != nil {
@@ -167,11 +167,12 @@ func handleExit(dbp *proctl.DebuggedProcess, t *Terminator, status int) {
 	t.die(status, "Hope I was of service hunting your bug!")
 }
 
-type Terminator struct {
-	line *liner.State
+type Term struct {
+	prompt string
+	line   *liner.State
 }
 
-func (t *Terminator) die(status int, args ...interface{}) {
+func (t *Term) die(status int, args ...interface{}) {
 	if t.line != nil {
 		t.line.Close()
 	}
@@ -181,13 +182,8 @@ func (t *Terminator) die(status int, args ...interface{}) {
 	os.Exit(status)
 }
 
-func parseCommand(cmdstr string) (string, []string) {
-	vals := strings.Split(cmdstr, " ")
-	return vals[0], vals[1:]
-}
-
-func promptForInput(t *Terminator) (string, error) {
-	l, err := t.line.Prompt("(dlv) ")
+func (t *Term) promptForInput() (string, error) {
+	l, err := t.line.Prompt(t.prompt)
 	if err != nil {
 		return "", err
 	}
@@ -198,4 +194,9 @@ func promptForInput(t *Terminator) (string, error) {
 	}
 
 	return l, nil
+}
+
+func parseCommand(cmdstr string) (string, []string) {
+	vals := strings.Split(cmdstr, " ")
+	return vals[0], vals[1:]
 }
