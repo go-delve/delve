@@ -45,6 +45,17 @@ func (mse ManualStopError) Error() string {
 	return "Manual stop requested"
 }
 
+// ProcessExitedError indicates that the process has exited and contains both
+// process id and exit status.
+type ProcessExitedError struct {
+	Pid    int
+	Status int
+}
+
+func (pe ProcessExitedError) Error() string {
+	return fmt.Sprintf("process %d has exited with status %d", pe.Pid, pe.Status)
+}
+
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*DebuggedProcess, error) {
 	dbp, err := newDebugProcess(pid, true)
@@ -238,7 +249,7 @@ func (dbp *DebuggedProcess) Continue() error {
 	}
 
 	fn := func() error {
-		wpid, _, err := trapWait(dbp, -1)
+		wpid, err := trapWait(dbp, -1)
 		if err != nil {
 			return err
 		}
@@ -379,12 +390,4 @@ func (dbp *DebuggedProcess) run(fn func() error) error {
 		}
 	}
 	return nil
-}
-
-type ProcessExitedError struct {
-	pid int
-}
-
-func (pe ProcessExitedError) Error() string {
-	return fmt.Sprintf("process %d has exited", pe.pid)
 }

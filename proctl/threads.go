@@ -35,7 +35,7 @@ type Registers interface {
 func (thread *ThreadContext) Registers() (Registers, error) {
 	regs, err := registers(thread)
 	if err != nil {
-		return nil, fmt.Errorf("could not get registers %s", err)
+		return nil, fmt.Errorf("could not get registers: %s", err)
 	}
 	return regs, nil
 }
@@ -70,13 +70,13 @@ func (thread *ThreadContext) PrintInfo() error {
 // we step over any breakpoints. It will restore the instruction,
 // step, and then restore the breakpoint and continue.
 func (thread *ThreadContext) Continue() error {
-	// Check whether we are stopped at a breakpoint, and
-	// if so, single step over it before continuing.
 	regs, err := thread.Registers()
 	if err != nil {
-		return fmt.Errorf("could not get registers %s", err)
+		return err
 	}
 
+	// Check whether we are stopped at a breakpoint, and
+	// if so, single step over it before continuing.
 	if _, ok := thread.Process.BreakPoints[regs.PC()-1]; ok {
 		err := thread.Step()
 		if err != nil {
@@ -195,7 +195,7 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 				return err
 			}
 			// Wait on -1, just in case scheduler switches threads for this G.
-			wpid, _, err := trapWait(thread.Process, -1)
+			wpid, err := trapWait(thread.Process, -1)
 			if err != nil {
 				return err
 			}

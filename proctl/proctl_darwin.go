@@ -172,14 +172,14 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 	return macho.Open(C.GoString(pathptr))
 }
 
-func trapWait(dbp *DebuggedProcess, pid int) (int, *sys.WaitStatus, error) {
+func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 	port := C.mach_port_wait(dbp.os.exceptionPort)
 	if port == 0 {
-		return -1, nil, ProcessExitedError{}
+		return -1, ProcessExitedError{Pid: dbp.Pid}
 	}
 
 	dbp.updateThreadList()
-	return int(port), nil, nil
+	return int(port), nil
 }
 
 func wait(pid, options int) (int, *sys.WaitStatus, error) {
