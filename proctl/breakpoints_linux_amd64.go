@@ -23,7 +23,7 @@ import "fmt"
 // DR0-DR3. Debug register 7 is the control register.
 func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	if reg < 0 || reg > 3 {
-		return fmt.Errorf("invalid register value")
+		return fmt.Errorf("invalid debug register value")
 	}
 
 	var (
