@@ -175,7 +175,11 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 	port := C.mach_port_wait(dbp.os.exceptionPort)
 	if port == 0 {
-		return -1, ProcessExitedError{Pid: dbp.Pid}
+		_, status, err := wait(dbp.Pid, 0)
+		if err != nil {
+			return -1, err
+		}
+		return -1, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
 	}
 
 	dbp.updateThreadList()
