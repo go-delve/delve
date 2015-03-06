@@ -185,7 +185,7 @@ func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.Frame
 				return err
 			}
 		}
-		bp.temp = true
+		bp.Temp = true
 		// Ensure we cleanup after ourselves no matter what.
 		defer thread.clearTempBreakpoint(bp.Addr)
 

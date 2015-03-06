@@ -15,7 +15,11 @@ type BreakPoint struct {
 	Addr         uint64
 	OriginalData []byte
 	ID           int
-	temp         bool
+	Temp         bool
+}
+
+func (bp *BreakPoint) String() string {
+	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.ID, bp.Addr, bp.File, bp.Line)
 }
 
 // Returned when trying to set a breakpoint at

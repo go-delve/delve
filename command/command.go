@@ -50,6 +50,7 @@ func DebugCommands() *Commands {
 		command{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
+		command{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
 		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about args, funcs, locals, sources, or vars."},
 		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
@@ -161,6 +162,37 @@ func clear(p *proctl.DebuggedProcess, args ...string) error {
 	}
 
 	fmt.Printf("Breakpoint %d cleared at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
+
+	return nil
+}
+
+type ById []*proctl.BreakPoint
+
+func (a ById) Len() int           { return len(a) }
+func (a ById) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ById) Less(i, j int) bool { return a[i].ID < a[j].ID }
+
+func breakpoints(p *proctl.DebuggedProcess, args ...string) error {
+	bps := make([]*proctl.BreakPoint, 0, len(p.BreakPoints)+4)
+
+	for _, bp := range p.HWBreakPoints {
+		if bp == nil {
+			continue
+		}
+		bps = append(bps, bp)
+	}
+
+	for _, bp := range p.BreakPoints {
+		if bp.Temp {
+			continue
+		}
+		bps = append(bps, bp)
+	}
+
+	sort.Sort(ById(bps))
+	for _, bp := range bps {
+		fmt.Println(bp)
+	}
 
 	return nil
 }

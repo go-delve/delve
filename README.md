@@ -85,6 +85,8 @@ Once inside a debugging session, the following commands may be used:
 
 * `goroutines` - Print status of all goroutines.
 
+* `breakpoints` - Print information on all active breakpoints.
+
 * `print $var` - Evaluate a variable.
 
 * `info $type [regex]` - Outputs information about the symbol table. An optional regex filters the list. Example `info funcs unicode`. Valid types are:

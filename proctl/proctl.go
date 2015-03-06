@@ -274,7 +274,7 @@ func (dbp *DebuggedProcess) Continue() error {
 		// Check for hardware breakpoint
 		for _, bp := range dbp.HWBreakPoints {
 			if bp != nil && bp.Addr == pc {
-				if !bp.temp {
+				if !bp.Temp {
 					return dbp.Halt()
 				}
 				return nil
@@ -282,7 +282,7 @@ func (dbp *DebuggedProcess) Continue() error {
 		}
 		// Check to see if we have hit a software breakpoint.
 		if bp, ok := dbp.BreakPoints[pc-1]; ok {
-			if !bp.temp {
+			if !bp.Temp {
 				return dbp.Halt()
 			}
 			return nil
