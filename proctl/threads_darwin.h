@@ -19,4 +19,7 @@ kern_return_t
 single_step(thread_act_t);
 
 kern_return_t
-clear_trap_flag(thread_act_t thread);
+clear_trap_flag(thread_act_t);
+
+kern_return_t
+resume_thread(thread_act_t);

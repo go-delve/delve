@@ -38,10 +38,9 @@ func (t *ThreadContext) resume() error {
 	if PtraceCont(t.Process.Pid, 0) == nil {
 		return nil
 	}
-	for {
-		if C.thread_resume(t.os.thread_act) != C.KERN_SUCCESS {
-			break
-		}
+	kret := C.resume_thread(t.os.thread_act)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not continue thread")
 	}
 	return nil
 }
