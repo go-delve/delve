@@ -50,7 +50,7 @@ The debugger can be launched in three ways:
 * Compile, run, and attach in one step:
 
 	```
-	$ dlv -run
+	$ dlv run
 	```
 
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
@@ -62,7 +62,7 @@ The debugger can be launched in three ways:
 * Provide the pid of a currently running process, and the debugger will attach and begin the session.
 
 	```
-	$ sudo dlv -pid 44839
+	$ sudo dlv attach 44839
 	```
 
 ### Breakpoints

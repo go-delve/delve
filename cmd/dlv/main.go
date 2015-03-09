@@ -11,6 +11,20 @@ import (
 
 const version string = "0.5.0.beta"
 
+var usage string = fmt.Sprintf(`Delve version %s
+
+flags:
+  -v - Print version
+
+Invoke with the path to a binary:
+
+dlv ./path/to/prog
+
+or use the following commands:
+  run - Build, run, and attach to program
+  attach - Attach to running process
+`, version)
+
 func init() {
 	// We must ensure here that we are running on the same thread during
 	// the execution of dbg. This is due to the fact that ptrace(2) expects
@@ -19,19 +33,12 @@ func init() {
 }
 
 func main() {
-	var (
-		pid    int
-		run    bool
-		printv bool
-	)
+	var printv bool
 
-	flag.IntVar(&pid, "pid", 0, "Pid of running process to attach to.")
-	flag.BoolVar(&run, "run", false, "Compile program and begin debug session.")
-	flag.BoolVar(&printv, "v", false, "Print version number and exit.")
 	flag.Parse()
 
 	if flag.NFlag() == 0 && len(flag.Args()) == 0 {
-		flag.Usage()
+		fmt.Println(usage)
 		os.Exit(0)
 	}
 
@@ -40,5 +47,5 @@ func main() {
 		os.Exit(0)
 	}
 
-	cli.Run(run, pid, flag.Args())
+	cli.Run(os.Args[1:])
 }

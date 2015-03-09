@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"strconv"
 
 	sys "golang.org/x/sys/unix"
 
@@ -18,7 +19,7 @@ import (
 
 const historyFile string = ".dbg_history"
 
-func Run(run bool, pid int, args []string) {
+func Run(args []string) {
 	var (
 		dbp  *proctl.DebuggedProcess
 		err  error
@@ -26,8 +27,8 @@ func Run(run bool, pid int, args []string) {
 	)
 	defer line.Close()
 
-	switch {
-	case run:
+	switch args[0] {
+	case "run":
 		const debugname = "debug"
 		cmd := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
 		err := cmd.Run()
@@ -40,7 +41,11 @@ func Run(run bool, pid int, args []string) {
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}
-	case pid != 0:
+	case "attach":
+		pid, err := strconv.Atoi(args[1])
+		if err != nil {
+			die(1, "Invalid pid", args[1])
+		}
 		dbp, err = proctl.Attach(pid)
 		if err != nil {
 			die(1, "Could not attach to process:", err)
