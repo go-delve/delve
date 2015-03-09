@@ -22,6 +22,7 @@ Invoke with the path to a binary:
 
 or use the following commands:
   run - Build, run, and attach to program
+  test - Build test binary, run and attach to it
   attach - Attach to running process
 `, version)
 

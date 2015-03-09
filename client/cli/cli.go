@@ -6,8 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	sys "golang.org/x/sys/unix"
 
@@ -38,6 +39,24 @@ func Run(args []string) {
 		defer os.Remove(debugname)
 
 		dbp, err = proctl.Launch(append([]string{"./" + debugname}, args...))
+		if err != nil {
+			die(1, "Could not launch program:", err)
+		}
+	case "test":
+		wd, err := os.Getwd()
+		if err != nil {
+			die(1, err)
+		}
+		base := filepath.Base(wd)
+		cmd := exec.Command("go", "test", "-c", "-gcflags", "-N -l")
+		err = cmd.Run()
+		if err != nil {
+			die(1, "Could not compile program:", err)
+		}
+		debugname := "./" + base + ".test"
+		defer os.Remove(debugname)
+
+		dbp, err = proctl.Launch(append([]string{debugname}, args...))
 		if err != nil {
 			die(1, "Could not launch program:", err)
 		}

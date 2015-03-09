@@ -53,6 +53,12 @@ The debugger can be launched in three ways:
 	$ dlv run
 	```
 
+* Compile test binary, run and attach:
+
+	```
+	$ dlv test
+	```
+
 * Provide the name of the program you want to debug, and the debugger will launch it for you.
 
 	```
