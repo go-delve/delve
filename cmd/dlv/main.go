@@ -14,7 +14,7 @@ const version string = "0.5.0.beta"
 var usage string = fmt.Sprintf(`Delve version %s
 
 flags:
-  -v - Print version
+  -v Print version
 
 Invoke with the path to a binary:
 
@@ -36,6 +36,7 @@ func init() {
 func main() {
 	var printv bool
 
+	flag.BoolVar(&printv, "v", false, "Print version number and exit.")
 	flag.Parse()
 
 	if flag.NFlag() == 0 && len(flag.Args()) == 0 {
