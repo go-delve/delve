@@ -18,7 +18,7 @@ flags:
 
 Invoke with the path to a binary:
 
-dlv ./path/to/prog
+  dlv ./path/to/prog
 
 or use the following commands:
   run - Build, run, and attach to program
