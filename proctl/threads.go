@@ -49,22 +49,6 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 	return regs.PC(), nil
 }
 
-// PrintInfo prints out the thread status
-// including: PC, tid, file, line, and function.
-func (thread *ThreadContext) PrintInfo() error {
-	pc, err := thread.CurrentPC()
-	if err != nil {
-		return err
-	}
-	f, l, fn := thread.Process.GoSymTable.PCToLine(pc)
-	if fn != nil {
-		fmt.Printf("Thread %d at %#v %s:%d %s\n", thread.Id, pc, f, l, fn.Name)
-	} else {
-		fmt.Printf("Thread %d at %#v\n", thread.Id, pc)
-	}
-	return nil
-}
-
 // Continue the execution of this thread. This method takes
 // software breakpoints into consideration and ensures that
 // we step over any breakpoints. It will restore the instruction,

@@ -198,17 +198,6 @@ func (dbp *DebuggedProcess) Status() *sys.WaitStatus {
 	return dbp.CurrentThread.Status
 }
 
-// Loop through all threads, printing their information
-// to the console.
-func (dbp *DebuggedProcess) PrintThreadInfo() error {
-	for _, th := range dbp.Threads {
-		if err := th.PrintInfo(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
 	var runnable []*ThreadContext

@@ -117,7 +117,23 @@ func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) error {
 }
 
 func threads(p *proctl.DebuggedProcess, ars ...string) error {
-	return p.PrintThreadInfo()
+	for _, th := range p.Threads {
+		prefix := "  "
+		if th == p.CurrentThread {
+			prefix = "* "
+		}
+		pc, err := th.CurrentPC()
+		if err != nil {
+			return err
+		}
+		f, l, fn := th.Process.GoSymTable.PCToLine(pc)
+		if fn != nil {
+			fmt.Printf("%sThread %d at %#v %s:%d %s\n", prefix, th.Id, pc, f, l, fn.Name)
+		} else {
+			fmt.Printf("%sThread %d at %#v\n", prefix, th.Id, pc)
+		}
+	}
+	return nil
 }
 
 func goroutines(p *proctl.DebuggedProcess, ars ...string) error {
