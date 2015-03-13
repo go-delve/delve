@@ -174,6 +174,10 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 
 func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 	port := C.mach_port_wait(dbp.os.exceptionPort)
+	if port == C.MACH_RCV_INTERRUPTED {
+		return -1, ManualStopError{}
+	}
+
 	if port == 0 {
 		_, status, err := wait(dbp.Pid, 0)
 		if err != nil {

@@ -103,7 +103,8 @@ typedef struct exc_msg {
 
 thread_act_t
 mach_port_wait(mach_port_t port) {
-  mach_msg_return_t msg = mach_msg_server_once(exc_server, sizeof(exc_msg_t), port, MACH_MSG_TIMEOUT_NONE);
+  mach_msg_return_t msg = mach_msg_server_once(exc_server, sizeof(exc_msg_t), port, MACH_RCV_INTERRUPT|MACH_MSG_TIMEOUT_NONE);
+  if (msg == MACH_RCV_INTERRUPTED) return msg;
   if (msg != MACH_MSG_SUCCESS) {
     return -1;
   }
