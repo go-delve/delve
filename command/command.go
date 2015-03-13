@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/derekparker/delve/proctl"
@@ -48,6 +49,7 @@ func DebugCommands() *Commands {
 		command{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
 		command{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
 		command{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
+		command{aliases: []string{"thread", "t"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
 		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		command{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
@@ -133,6 +135,22 @@ func threads(p *proctl.DebuggedProcess, ars ...string) error {
 			fmt.Printf("%sThread %d at %#v\n", prefix, th.Id, pc)
 		}
 	}
+	return nil
+}
+
+func thread(p *proctl.DebuggedProcess, ars ...string) error {
+	oldTid := p.CurrentThread.Id
+	tid, err := strconv.Atoi(ars[0])
+	if err != nil {
+		return err
+	}
+
+	err = p.SwitchThread(tid)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Switched from %d to %d\n", oldTid, tid)
 	return nil
 }
 

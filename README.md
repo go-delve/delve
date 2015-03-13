@@ -89,6 +89,8 @@ Once inside a debugging session, the following commands may be used:
 
 * `threads` - Print status of all traced threads.
 
+* `thread $tid` - Switch to another thread.
+
 * `goroutines` - Print status of all goroutines.
 
 * `breakpoints` - Print information on all active breakpoints.

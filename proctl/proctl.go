@@ -311,12 +311,22 @@ func (dbp *DebuggedProcess) Step() (err error) {
 	return dbp.run(fn)
 }
 
+// Change from current thread to the thread specified by `tid`.
+func (dbp *DebuggedProcess) SwitchThread(tid int) error {
+	if th, ok := dbp.Threads[tid]; ok {
+		dbp.CurrentThread = th
+		return nil
+	}
+	return fmt.Errorf("thread %d does not exist", tid)
+}
+
 // Obtains register values from what Delve considers to be the current
 // thread of the traced process.
 func (dbp *DebuggedProcess) Registers() (Registers, error) {
 	return dbp.CurrentThread.Registers()
 }
 
+// Returns the PC of the current thread.
 func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 	return dbp.CurrentThread.CurrentPC()
 }
