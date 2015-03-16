@@ -22,11 +22,11 @@ const historyFile string = ".dbg_history"
 
 func Run(args []string) {
 	var (
-		dbp  *proctl.DebuggedProcess
-		err  error
-		line = liner.NewLiner()
+		dbp *proctl.DebuggedProcess
+		err error
+		t   = &Term{prompt: "(dlv) ", line: liner.NewLiner()}
 	)
-	defer line.Close()
+	defer t.line.Close()
 
 	switch args[0] {
 	case "run":
@@ -34,45 +34,45 @@ func Run(args []string) {
 		cmd := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
 		err := cmd.Run()
 		if err != nil {
-			die(1, "Could not compile program:", err)
+			t.die(1, "Could not compile program:", err)
 		}
 		defer os.Remove(debugname)
 
 		dbp, err = proctl.Launch(append([]string{"./" + debugname}, args...))
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			t.die(1, "Could not launch program:", err)
 		}
 	case "test":
 		wd, err := os.Getwd()
 		if err != nil {
-			die(1, err)
+			t.die(1, err)
 		}
 		base := filepath.Base(wd)
 		cmd := exec.Command("go", "test", "-c", "-gcflags", "-N -l")
 		err = cmd.Run()
 		if err != nil {
-			die(1, "Could not compile program:", err)
+			t.die(1, "Could not compile program:", err)
 		}
 		debugname := "./" + base + ".test"
 		defer os.Remove(debugname)
 
 		dbp, err = proctl.Launch(append([]string{debugname}, args...))
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			t.die(1, "Could not launch program:", err)
 		}
 	case "attach":
 		pid, err := strconv.Atoi(args[1])
 		if err != nil {
-			die(1, "Invalid pid", args[1])
+			t.die(1, "Invalid pid", args[1])
 		}
 		dbp, err = proctl.Attach(pid)
 		if err != nil {
-			die(1, "Could not attach to process:", err)
+			t.die(1, "Could not attach to process:", err)
 		}
 	default:
 		dbp, err = proctl.Launch(args)
 		if err != nil {
-			die(1, "Could not launch program:", err)
+			t.die(1, "Could not launch program:", err)
 		}
 	}
 
@@ -91,23 +91,23 @@ func Run(args []string) {
 	if err != nil {
 		f, _ = os.Create(historyFile)
 	}
-	line.ReadHistory(f)
+	t.line.ReadHistory(f)
 	f.Close()
 	fmt.Println("Type 'help' for list of commands.")
 
 	for {
-		cmdstr, err := promptForInput(line)
+		cmdstr, err := t.promptForInput()
 		if err != nil {
 			if err == io.EOF {
-				handleExit(dbp, line, 0)
+				handleExit(dbp, t, 0)
 			}
-			die(1, "Prompt for input failed.\n")
+			t.die(1, "Prompt for input failed.\n")
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
 
 		if cmdstr == "exit" {
-			handleExit(dbp, line, 0)
+			handleExit(dbp, t, 0)
 		}
 
 		cmd := cmds.Find(cmdstr)
@@ -123,18 +123,18 @@ func Run(args []string) {
 	}
 }
 
-func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
+func handleExit(dbp *proctl.DebuggedProcess, t *Term, status int) {
 	if f, err := os.OpenFile(historyFile, os.O_RDWR, 0666); err == nil {
-		_, err := line.WriteHistory(f)
+		_, err := t.line.WriteHistory(f)
 		if err != nil {
 			fmt.Println("readline history error: ", err)
 		}
 		f.Close()
 	}
 
-	answer, err := line.Prompt("Would you like to kill the process? [y/n]")
+	answer, err := t.line.Prompt("Would you like to kill the process? [y/n]")
 	if err != nil {
-		die(2, io.EOF)
+		t.die(2, io.EOF)
 	}
 	answer = strings.TrimSuffix(answer, "\n")
 
@@ -156,7 +156,7 @@ func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
 	fmt.Println("Detaching from process...")
 	err = sys.PtraceDetach(dbp.Process.Pid)
 	if err != nil {
-		die(2, "Could not detach", err)
+		t.die(2, "Could not detach", err)
 	}
 
 	if answer == "y" {
@@ -168,30 +168,39 @@ func handleExit(dbp *proctl.DebuggedProcess, line *liner.State, status int) {
 		}
 	}
 
-	die(status, "Hope I was of service hunting your bug!")
+	t.die(status, "Hope I was of service hunting your bug!")
 }
 
-func die(status int, args ...interface{}) {
+type Term struct {
+	prompt string
+	line   *liner.State
+}
+
+func (t *Term) die(status int, args ...interface{}) {
+	if t.line != nil {
+		t.line.Close()
+	}
+
 	fmt.Fprint(os.Stderr, args)
 	fmt.Fprint(os.Stderr, "\n")
 	os.Exit(status)
 }
 
-func parseCommand(cmdstr string) (string, []string) {
-	vals := strings.Split(cmdstr, " ")
-	return vals[0], vals[1:]
-}
-
-func promptForInput(line *liner.State) (string, error) {
-	l, err := line.Prompt("(dlv) ")
+func (t *Term) promptForInput() (string, error) {
+	l, err := t.line.Prompt(t.prompt)
 	if err != nil {
 		return "", err
 	}
 
 	l = strings.TrimSuffix(l, "\n")
 	if l != "" {
-		line.AppendHistory(l)
+		t.line.AppendHistory(l)
 	}
 
 	return l, nil
+}
+
+func parseCommand(cmdstr string) (string, []string) {
+	vals := strings.Split(cmdstr, " ")
+	return vals[0], vals[1:]
 }
