@@ -87,6 +87,31 @@ func Run(args []string) {
 	}()
 
 	cmds := command.DebugCommands()
+	names := cmds.Names()
+
+	// set command completer
+	t.line.SetWordCompleter(func(line string, pos int) (head string, completions []string, tail string) {
+		start := strings.LastIndex(line[:pos], " ")
+		match := ""
+		if start < 0 { // this is the command to match
+			head = ""
+			tail = line[pos:]
+			match = line
+		} else if strings.HasPrefix(line, "help ") {
+			head = line[:start+1]
+			match = line[start+1:]
+			tail = line[pos:]
+		} else {
+			return
+		}
+		for _, n := range names {
+			if strings.HasPrefix(n, strings.ToLower(match)) {
+				completions = append(completions, n)
+			}
+		}
+		return
+	})
+
 	f, err := os.Open(historyFile)
 	if err != nil {
 		f, _ = os.Create(historyFile)
