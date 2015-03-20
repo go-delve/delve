@@ -388,7 +388,7 @@ func TestSwitchThread(t *testing.T) {
 		}
 		var nt int
 		ct := p.CurrentThread.Id
-		for tid, _ := range p.Threads {
+		for tid := range p.Threads {
 			if tid != ct {
 				nt = tid
 				break
