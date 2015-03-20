@@ -1,10 +1,10 @@
-package command
+package terminal
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/derekparker/delve/proctl"
+	"github.com/derekparker/delve/service"
 )
 
 func TestCommandDefault(t *testing.T) {
@@ -24,8 +24,8 @@ func TestCommandDefault(t *testing.T) {
 }
 
 func TestCommandReplay(t *testing.T) {
-	cmds := DebugCommands()
-	cmds.Register("foo", func(p *proctl.DebuggedProcess, args ...string) error { return fmt.Errorf("registered command") }, "foo command")
+	cmds := DebugCommands(nil)
+	cmds.Register("foo", func(client service.Client, args ...string) error { return fmt.Errorf("registered command") }, "foo command")
 	cmd := cmds.Find("foo")
 
 	err := cmd(nil)
@@ -42,19 +42,12 @@ func TestCommandReplay(t *testing.T) {
 
 func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
-		cmds = DebugCommands()
+		cmds = DebugCommands(nil)
 		cmd  = cmds.Find("")
 		err  = cmd(nil)
 	)
 
 	if err != nil {
 		t.Error("Null command not returned", err)
-	}
-}
-
-func TestSwitchThread(t *testing.T) {
-	err := thread(nil, []string{}...)
-	if err == nil {
-		t.Fatal("expected error for empty arg slice")
 	}
 }
