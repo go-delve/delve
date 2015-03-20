@@ -15,8 +15,10 @@ import (
 )
 
 type OSProcessDetails struct {
-	task          C.mach_port_name_t
-	exceptionPort C.mach_port_t
+	task             C.mach_port_name_t
+	portSet          C.mach_port_t
+	exceptionPort    C.mach_port_t
+	notificationPort C.mach_port_t
 }
 
 func (dbp *DebuggedProcess) Halt() (err error) {
@@ -41,7 +43,8 @@ func (dbp *DebuggedProcess) LoadInformation() error {
 		err error
 	)
 
-	if ret := C.acquire_mach_task(C.int(dbp.Pid), &dbp.os.task, &dbp.os.exceptionPort); ret != C.KERN_SUCCESS {
+	ret := C.acquire_mach_task(C.int(dbp.Pid), &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
+	if ret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not acquire mach task %d", ret)
 	}
 	exe, err = dbp.findExecutable()
@@ -173,12 +176,13 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 }
 
 func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
-	port := C.mach_port_wait(dbp.os.exceptionPort)
-	if port == C.MACH_RCV_INTERRUPTED {
+	port := C.mach_port_wait(dbp.os.portSet)
+	switch port {
+	case C.MACH_RCV_INTERRUPTED:
 		return -1, ManualStopError{}
-	}
-
-	if port == 0 {
+	case 0:
+		return -1, fmt.Errorf("error while waiting for task")
+	case dbp.os.notificationPort:
 		_, status, err := wait(dbp.Pid, 0)
 		if err != nil {
 			return -1, err
