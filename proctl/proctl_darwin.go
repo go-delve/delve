@@ -180,14 +180,14 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 	switch port {
 	case C.MACH_RCV_INTERRUPTED:
 		return -1, ManualStopError{}
-	case 0:
-		return -1, fmt.Errorf("error while waiting for task")
 	case dbp.os.notificationPort:
 		_, status, err := wait(dbp.Pid, 0)
 		if err != nil {
 			return -1, err
 		}
 		return -1, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+	case 0:
+		return -1, fmt.Errorf("error while waiting for task")
 	}
 
 	dbp.updateThreadList()
