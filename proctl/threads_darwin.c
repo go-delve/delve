@@ -99,7 +99,7 @@ resume_thread(thread_act_t thread) {
 
 	for (int i = 0; i < info.suspend_count; i++) {
 		kret = thread_resume(thread);
-		if (kret != KERN_SUCCESS) break;
+		if (kret != KERN_SUCCESS) return kret;
 	}
 
 	return KERN_SUCCESS;
