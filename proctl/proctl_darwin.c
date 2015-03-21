@@ -122,14 +122,14 @@ mach_port_wait(mach_port_t port_set) {
 	// Wait for mach msg.
 	kret = mach_msg(&msg.hdr, MACH_RCV_MSG|MACH_RCV_INTERRUPT,
 			0, sizeof(msg.data), port_set, 0, MACH_PORT_NULL);
-
-	if (kret == MACH_RCV_INTERRUPTED || kret != MACH_MSG_SUCCESS) return 0;
+	if (kret == MACH_RCV_INTERRUPTED) return kret;
+	if (kret != MACH_MSG_SUCCESS) return 0;
 
 	mach_msg_body_t *bod = (mach_msg_body_t*)(&msg.hdr + 1);
 	mach_msg_port_descriptor_t *desc = (mach_msg_port_descriptor_t *)(bod + 1);
 	thread = desc[0].name;
 
-	// Exception
+
 	switch (msg.hdr.msgh_id) {
 		case 2401: // Exception
 			kret = thread_suspend(thread);

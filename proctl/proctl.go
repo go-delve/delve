@@ -35,6 +35,7 @@ type DebuggedProcess struct {
 	breakpointIDCounter int
 	running             bool
 	halt                bool
+	exited              bool
 }
 
 // A ManualStopError happens when the user triggers a
@@ -85,6 +86,12 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	}
 
 	return newDebugProcess(proc.Process.Pid, false)
+}
+
+// Returns whether or not Delve thinks the debugged
+// process has exited.
+func (dbp *DebuggedProcess) Exited() bool {
+	return dbp.exited
 }
 
 // Returns whether or not Delve thinks the debugged
@@ -242,6 +249,7 @@ func (dbp *DebuggedProcess) Continue() error {
 		if err != nil {
 			return err
 		}
+
 		thread, ok := dbp.Threads[wpid]
 		if !ok {
 			return fmt.Errorf("could not find thread for %d", wpid)
@@ -380,6 +388,9 @@ func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 }
 
 func (dbp *DebuggedProcess) run(fn func() error) error {
+	if dbp.exited {
+		return fmt.Errorf("process has already exited")
+	}
 	dbp.running = true
 	dbp.halt = false
 	defer func() { dbp.running = false }()

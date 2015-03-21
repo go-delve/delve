@@ -177,20 +177,31 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 
 func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 	port := C.mach_port_wait(dbp.os.portSet)
+
 	switch port {
-	case C.MACH_RCV_INTERRUPTED:
-		return -1, ManualStopError{}
 	case dbp.os.notificationPort:
 		_, status, err := wait(dbp.Pid, 0)
 		if err != nil {
 			return -1, err
 		}
+		dbp.exited = true
 		return -1, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+	case C.MACH_RCV_INTERRUPTED:
+		if !dbp.halt {
+			// Call trapWait again, it seems
+			// MACH_RCV_INTERRUPTED is emitted before
+			// process natural death _sometimes_.
+			return trapWait(dbp, pid)
+		}
+		return -1, ManualStopError{}
 	case 0:
 		return -1, fmt.Errorf("error while waiting for task")
 	}
 
+	// Since we cannot be notified of new threads on OS X
+	// this is as good a time as any to check for them.
 	dbp.updateThreadList()
+
 	return int(port), nil
 }
 

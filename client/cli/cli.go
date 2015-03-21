@@ -105,9 +105,13 @@ func Run(args []string) {
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
-
 		if cmdstr == "exit" {
 			handleExit(dbp, t, 0)
+		}
+
+		if dbp.Exited() && cmdstr != "help" {
+			fmt.Fprintf(os.Stderr, "Process has already exited.\n")
+			continue
 		}
 
 		cmd := cmds.Find(cmdstr)
@@ -132,39 +136,41 @@ func handleExit(dbp *proctl.DebuggedProcess, t *Term, status int) {
 		f.Close()
 	}
 
-	answer, err := t.line.Prompt("Would you like to kill the process? [y/n]")
-	if err != nil {
-		t.die(2, io.EOF)
-	}
-	answer = strings.TrimSuffix(answer, "\n")
-
-	for _, bp := range dbp.HWBreakPoints {
-		if bp == nil {
-			continue
+	if !dbp.Exited() {
+		for _, bp := range dbp.HWBreakPoints {
+			if bp == nil {
+				continue
+			}
+			if _, err := dbp.Clear(bp.Addr); err != nil {
+				fmt.Printf("Can't clear breakpoint @%x: %s\n", bp.Addr, err)
+			}
 		}
-		if _, err := dbp.Clear(bp.Addr); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", bp.Addr, err)
+
+		for pc := range dbp.BreakPoints {
+			if _, err := dbp.Clear(pc); err != nil {
+				fmt.Printf("Can't clear breakpoint @%x: %s\n", pc, err)
+			}
 		}
-	}
 
-	for pc := range dbp.BreakPoints {
-		if _, err := dbp.Clear(pc); err != nil {
-			fmt.Printf("Can't clear breakpoint @%x: %s\n", pc, err)
-		}
-	}
-
-	fmt.Println("Detaching from process...")
-	err = sys.PtraceDetach(dbp.Process.Pid)
-	if err != nil {
-		t.die(2, "Could not detach", err)
-	}
-
-	if answer == "y" {
-		fmt.Println("Killing process", dbp.Process.Pid)
-
-		err := dbp.Process.Kill()
+		answer, err := t.line.Prompt("Would you like to kill the process? [y/n]")
 		if err != nil {
-			fmt.Println("Could not kill process", err)
+			t.die(2, io.EOF)
+		}
+		answer = strings.TrimSuffix(answer, "\n")
+
+		fmt.Println("Detaching from process...")
+		err = sys.PtraceDetach(dbp.Process.Pid)
+		if err != nil {
+			t.die(2, "Could not detach", err)
+		}
+
+		if answer == "y" {
+			fmt.Println("Killing process", dbp.Process.Pid)
+
+			err := dbp.Process.Kill()
+			if err != nil {
+				fmt.Println("Could not kill process", err)
+			}
 		}
 	}
 
