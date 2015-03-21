@@ -94,10 +94,10 @@ single_step(thread_act_t thread) {
 kern_return_t
 resume_thread(thread_act_t thread) {
 	kern_return_t kret;
-    struct thread_basic_info info;
+	struct thread_basic_info info;
 	unsigned int info_count = THREAD_BASIC_INFO_COUNT;
 
-    kret = thread_info((thread_t)thread, THREAD_BASIC_INFO, (thread_info_t)&info, &info_count);
+	kret = thread_info((thread_t)thread, THREAD_BASIC_INFO, (thread_info_t)&info, &info_count);
 	if (kret != KERN_SUCCESS) return kret;
 
 	for (int i = 0; i < info.suspend_count; i++) {
