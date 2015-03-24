@@ -121,37 +121,37 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 			return 0, err
 		}
 		return pc, nil
-	} else {
-		// Try to lookup by function name
-		fn := dbp.GoSymTable.LookupFunc(str)
-		if fn != nil {
-			return fn.Entry, nil
-		}
-
-		// Attempt to parse as number for breakpoint id or raw address
-		id, err := strconv.ParseUint(str, 0, 64)
-		if err != nil {
-			return 0, fmt.Errorf("unable to find location for %s", str)
-		}
-
-		// Use as breakpoint id
-		for _, bp := range dbp.HWBreakPoints {
-			if bp == nil {
-				continue
-			}
-			if uint64(bp.ID) == id {
-				return bp.Addr, nil
-			}
-		}
-		for _, bp := range dbp.BreakPoints {
-			if uint64(bp.ID) == id {
-				return bp.Addr, nil
-			}
-		}
-
-		// Last resort, use as raw address
-		return id, nil
 	}
+
+	// Try to lookup by function name
+	fn := dbp.GoSymTable.LookupFunc(str)
+	if fn != nil {
+		return fn.Entry, nil
+	}
+
+	// Attempt to parse as number for breakpoint id or raw address
+	id, err := strconv.ParseUint(str, 0, 64)
+	if err != nil {
+		return 0, fmt.Errorf("unable to find location for %s", str)
+	}
+
+	// Use as breakpoint id
+	for _, bp := range dbp.HWBreakPoints {
+		if bp == nil {
+			continue
+		}
+		if uint64(bp.ID) == id {
+			return bp.Addr, nil
+		}
+	}
+	for _, bp := range dbp.BreakPoints {
+		if uint64(bp.ID) == id {
+			return bp.Addr, nil
+		}
+	}
+
+	// Last resort, use as raw address
+	return id, nil
 }
 
 // Sends out a request that the debugged process halt
