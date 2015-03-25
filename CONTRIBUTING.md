@@ -2,6 +2,8 @@
 
 Want to help contribute to Delve? Great! Any and all help is certainly appreciated, whether it's code, documentation, or spelling corrections.
 
+If you'd like to join the discussion, hop on #delve-dbgr on irc.freenode.net.
+
 ## Filing issues
 
 When filing an issue, make sure to answer these five questions:
