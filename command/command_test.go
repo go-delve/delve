@@ -51,3 +51,10 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 		t.Error("Null command not returned", err)
 	}
 }
+
+func TestSwitchThread(t *testing.T) {
+	err := thread(nil, []string{}...)
+	if err == nil {
+		t.Fatal("expected error for empty arg slice")
+	}
+}

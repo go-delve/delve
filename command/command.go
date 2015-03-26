@@ -139,6 +139,9 @@ func threads(p *proctl.DebuggedProcess, ars ...string) error {
 }
 
 func thread(p *proctl.DebuggedProcess, ars ...string) error {
+	if len(ars) == 0 {
+		return fmt.Errorf("you must specify a thread")
+	}
 	oldTid := p.CurrentThread.Id
 	tid, err := strconv.Atoi(ars[0])
 	if err != nil {

@@ -312,3 +312,46 @@ func TestFindReturnAddress(t *testing.T) {
 		}
 	})
 }
+
+func TestSwitchThread(t *testing.T) {
+	var testfile, _ = filepath.Abs("../_fixtures/testnextprog")
+
+	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+		// With invalid thread id
+		err := p.SwitchThread(-1)
+		if err == nil {
+			t.Fatal("Expected error for invalid thread id")
+		}
+		pc, err := p.FindLocation("main.main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.Break(pc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var nt int
+		ct := p.CurrentThread.Id
+		for tid, _ := range p.Threads {
+			if tid != ct {
+				nt = tid
+				break
+			}
+		}
+		if nt == 0 {
+			t.Fatal("could not find thread to switch to")
+		}
+		// With valid thread id
+		err = p.SwitchThread(nt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.CurrentThread.Id != nt {
+			t.Fatal("Did not switch threads")
+		}
+	})
+}
