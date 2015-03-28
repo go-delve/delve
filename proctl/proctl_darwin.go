@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/dwarf/line"
 	sys "golang.org/x/sys/unix"
 )
 
@@ -28,40 +29,6 @@ func (dbp *DebuggedProcess) Halt() (err error) {
 			return err
 		}
 	}
-	return nil
-}
-
-// Finds the executable and then uses it
-// to parse the following information:
-// * Dwarf .debug_frame section
-// * Dwarf .debug_line section
-// * Go symbol table.
-func (dbp *DebuggedProcess) LoadInformation() error {
-	var (
-		wg  sync.WaitGroup
-		exe *macho.File
-		err error
-	)
-
-	ret := C.acquire_mach_task(C.int(dbp.Pid), &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
-	if ret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not acquire mach task %d", ret)
-	}
-	exe, err = dbp.findExecutable()
-	if err != nil {
-		return err
-	}
-	data, err := exe.DWARF()
-	if err != nil {
-		return err
-	}
-	dbp.Dwarf = data
-
-	wg.Add(2)
-	go dbp.parseDebugFrame(exe, &wg)
-	go dbp.obtainGoSymbols(exe, &wg)
-	wg.Wait()
-
 	return nil
 }
 
@@ -167,12 +134,41 @@ func (dbp *DebuggedProcess) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup)
 	dbp.GoSymTable = tab
 }
 
+func (dbp *DebuggedProcess) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	if sec := exe.Section("__debug_line"); sec != nil {
+		debugLine, err := exe.Section("__debug_line").Data()
+		if err != nil {
+			fmt.Println("could not get __debug_line section", err)
+			os.Exit(1)
+		}
+		dbp.LineInfo = line.Parse(debugLine)
+	} else {
+		fmt.Println("could not find __debug_line section in binary")
+		os.Exit(1)
+	}
+}
+
 func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
+	ret := C.acquire_mach_task(C.int(dbp.Pid), &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
+	if ret != C.KERN_SUCCESS {
+		return nil, fmt.Errorf("could not acquire mach task %d", ret)
+	}
 	pathptr, err := C.find_executable(C.int(dbp.Pid))
 	if err != nil {
 		return nil, err
 	}
-	return macho.Open(C.GoString(pathptr))
+	exe, err := macho.Open(C.GoString(pathptr))
+	if err != nil {
+		return nil, err
+	}
+	data, err := exe.DWARF()
+	if err != nil {
+		return nil, err
+	}
+	dbp.Dwarf = data
+	return exe, nil
 }
 
 func trapWait(dbp *DebuggedProcess, pid int) (int, error) {

@@ -8,7 +8,9 @@ import (
 
 // Not actually used, but necessary
 // to be defined.
-type OSSpecificDetails interface{}
+type OSSpecificDetails struct {
+	registers sys.PtraceRegs
+}
 
 func (t *ThreadContext) Halt() error {
 	if stopped(t.Id) {
@@ -54,4 +56,18 @@ func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) 
 
 func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 	return sys.PtracePeekData(thread.Id, addr, data)
+}
+
+func (thread *ThreadContext) saveRegisters() error {
+	var regs sys.PtraceRegs
+	err := sys.PtraceGetRegs(thread.Id, &regs)
+	if err != nil {
+		return err
+	}
+	thread.os.registers = regs
+	return nil
+}
+
+func (thread *ThreadContext) restoreRegisters() error {
+	return sys.PtraceSetRegs(thread.Id, &thread.os.registers)
 }

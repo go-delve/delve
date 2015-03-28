@@ -11,12 +11,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/dwarf/line"
 	"github.com/derekparker/delve/dwarf/reader"
+	"github.com/derekparker/delve/source"
 )
 
 // Struct representing a debugged process. Holds onto pid, register values,
@@ -27,11 +30,13 @@ type DebuggedProcess struct {
 	Dwarf               *dwarf.Data
 	GoSymTable          *gosym.Table
 	FrameEntries        frame.FrameDescriptionEntries
+	LineInfo            *line.DebugLineInfo
 	HWBreakPoints       [4]*BreakPoint
 	BreakPoints         map[uint64]*BreakPoint
 	Threads             map[int]*ThreadContext
 	CurrentThread       *ThreadContext
 	os                  *OSProcessDetails
+	ast                 *source.Searcher
 	breakpointIDCounter int
 	running             bool
 	halt                bool
@@ -98,6 +103,28 @@ func (dbp *DebuggedProcess) Exited() bool {
 // process is currently executing.
 func (dbp *DebuggedProcess) Running() bool {
 	return dbp.running
+}
+
+// Finds the executable and then uses it
+// to parse the following information:
+// * Dwarf .debug_frame section
+// * Dwarf .debug_line section
+// * Go symbol table.
+func (dbp *DebuggedProcess) LoadInformation() error {
+	var wg sync.WaitGroup
+
+	exe, err := dbp.findExecutable()
+	if err != nil {
+		return err
+	}
+
+	wg.Add(3)
+	go dbp.parseDebugFrame(exe, &wg)
+	go dbp.obtainGoSymbols(exe, &wg)
+	go dbp.parseDebugLineInfo(exe, &wg)
+	wg.Wait()
+
+	return nil
 }
 
 // Find a location by string (file+line, function, breakpoint id, addr)
@@ -188,7 +215,30 @@ func (dbp *DebuggedProcess) BreakByLocation(loc string) (*BreakPoint, error) {
 
 // Clears a breakpoint in the current thread.
 func (dbp *DebuggedProcess) Clear(addr uint64) (*BreakPoint, error) {
-	return dbp.clearBreakpoint(dbp.CurrentThread.Id, addr)
+	tid := dbp.CurrentThread.Id
+	// Check for hardware breakpoint
+	for i, bp := range dbp.HWBreakPoints {
+		if bp == nil {
+			continue
+		}
+		if bp.Addr == addr {
+			dbp.HWBreakPoints[i] = nil
+			if err := clearHardwareBreakpoint(i, tid); err != nil {
+				return nil, err
+			}
+			return bp, nil
+		}
+	}
+	// Check for software breakpoint
+	if bp, ok := dbp.BreakPoints[addr]; ok {
+		thread := dbp.Threads[tid]
+		if _, err := writeMemory(thread, uintptr(bp.Addr), bp.OriginalData); err != nil {
+			return nil, fmt.Errorf("could not clear breakpoint %s", err)
+		}
+		delete(dbp.BreakPoints, addr)
+		return bp, nil
+	}
+	return nil, fmt.Errorf("no breakpoint at %#v", addr)
 }
 
 // Clears a breakpoint by location (function, file+line, address, breakpoint id)
@@ -207,32 +257,59 @@ func (dbp *DebuggedProcess) Status() *sys.WaitStatus {
 
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
-	var runnable []*ThreadContext
+	return dbp.run(dbp.next)
+}
 
-	fn := func() error {
-		for _, th := range dbp.Threads {
-			// Continue any blocked M so that the
-			// scheduler can continue to do its'
-			// job correctly.
-			if th.blocked() {
-				err := th.Continue()
-				if err != nil {
-					return err
-				}
-				continue
-			}
-
-			runnable = append(runnable, th)
-		}
-		for _, th := range runnable {
-			err := th.Next()
-			if err != nil && err != sys.ESRCH {
+func (dbp *DebuggedProcess) next() error {
+	curg, err := dbp.CurrentThread.curG()
+	if err != nil {
+		return err
+	}
+	defer dbp.clearTempBreakpoints()
+	for _, th := range dbp.Threads {
+		if th.blocked() { // Continue threads that aren't running go code.
+			if err := th.Continue(); err != nil {
 				return err
 			}
+			continue
 		}
-		return dbp.Halt()
+		if err := th.Next(); err != nil {
+			return err
+		}
 	}
-	return dbp.run(fn)
+
+	for {
+		tid, err := trapWait(dbp, -1)
+		if err != nil {
+			return err
+		}
+		th, ok := dbp.Threads[tid]
+		if !ok {
+			return fmt.Errorf("unknown thread %d", tid)
+		}
+		pc, err := th.CurrentPC()
+		if err != nil {
+			return err
+		}
+		// Check if we've hit a software breakpoint. If so, reset PC.
+		if err = th.clearTempBreakpoint(pc - 1); err != nil {
+			return err
+		}
+		// Grab the current goroutine for this thread.
+		tg, err := th.curG()
+		if err != nil {
+			return err
+		}
+		// Make sure we're on the same goroutine.
+		// TODO(dp) take into account goroutine exit.
+		if tg.id == curg.id {
+			if dbp.CurrentThread.Id != tid {
+				dbp.SwitchThread(tid)
+			}
+			break
+		}
+	}
+	return dbp.Halt()
 }
 
 // Resume process.
@@ -256,8 +333,7 @@ func (dbp *DebuggedProcess) Continue() error {
 		}
 
 		if wpid != dbp.CurrentThread.Id {
-			fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, thread.Id)
-			dbp.CurrentThread = thread
+			dbp.SwitchThread(wpid)
 		}
 
 		pc, err := thread.CurrentPC()
@@ -323,6 +399,7 @@ func (dbp *DebuggedProcess) Step() (err error) {
 func (dbp *DebuggedProcess) SwitchThread(tid int) error {
 	if th, ok := dbp.Threads[tid]; ok {
 		dbp.CurrentThread = th
+		fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, tid)
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
@@ -344,9 +421,26 @@ func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 	return dbp.CurrentThread.EvalSymbol(name)
 }
 
+func (dbp *DebuggedProcess) CallFn(name string, fn func(*ThreadContext) error) error {
+	return dbp.CurrentThread.CallFn(name, fn)
+}
+
 // Returns a reader for the dwarf data
 func (dbp *DebuggedProcess) DwarfReader() *reader.Reader {
 	return reader.New(dbp.Dwarf)
+}
+
+// Finds the breakpoint for the given pc.
+func (dbp *DebuggedProcess) FindBreakpoint(pc uint64) (*BreakPoint, bool) {
+	for _, bp := range dbp.HWBreakPoints {
+		if bp != nil && bp.Addr == pc {
+			return bp, true
+		}
+	}
+	if bp, ok := dbp.BreakPoints[pc]; ok {
+		return bp, true
+	}
+	return nil, false
 }
 
 // Returns a new DebuggedProcess struct.
@@ -356,6 +450,7 @@ func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 		Threads:     make(map[int]*ThreadContext),
 		BreakPoints: make(map[uint64]*BreakPoint),
 		os:          new(OSProcessDetails),
+		ast:         source.New(),
 	}
 
 	if attach {
@@ -385,6 +480,24 @@ func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 	}
 
 	return &dbp, nil
+}
+func (dbp *DebuggedProcess) clearTempBreakpoints() error {
+	for _, bp := range dbp.HWBreakPoints {
+		if bp != nil && bp.Temp {
+			if _, err := dbp.Clear(bp.Addr); err != nil {
+				return err
+			}
+		}
+	}
+	for _, bp := range dbp.BreakPoints {
+		if !bp.Temp {
+			continue
+		}
+		if _, err := dbp.Clear(bp.Addr); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (dbp *DebuggedProcess) run(fn func() error) error {

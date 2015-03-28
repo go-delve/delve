@@ -15,7 +15,7 @@ endif
 
 test:
 ifeq "$(UNAME)" "Darwin"
-	go test $(PREFIX)/command $(PREFIX)/dwarf/frame $(PREFIX)/dwarf/op $(PREFIX)/dwarf/util
+	go test $(PREFIX)/command $(PREFIX)/dwarf/frame $(PREFIX)/dwarf/op $(PREFIX)/dwarf/util $(PREFIX)/source $(PREFIX)/dwarf/line
 	cd proctl && go test -c $(PREFIX)/proctl && codesign -s $(CERT) ./proctl.test && ./proctl.test && rm ./proctl.test
 else
 	go test ./...

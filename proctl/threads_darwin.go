@@ -9,6 +9,7 @@ import (
 
 type OSSpecificDetails struct {
 	thread_act C.thread_act_t
+	registers  C.x86_thread_state64_t
 }
 
 func (t *ThreadContext) Halt() error {
@@ -80,4 +81,20 @@ func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 		return 0, fmt.Errorf("could not read memory")
 	}
 	return len(data), nil
+}
+
+func (thread *ThreadContext) saveRegisters() error {
+	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not save register contents")
+	}
+	return nil
+}
+
+func (thread *ThreadContext) restoreRegisters() error {
+	kret := C.set_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not save register contents")
+	}
+	return nil
 }

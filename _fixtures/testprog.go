@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-func sleepytime() {
-	time.Sleep(time.Millisecond)
-}
-
 func helloworld() {
 	fmt.Println("Hello, World!")
+}
+
+func sleepytime() {
+	time.Sleep(time.Millisecond)
 }
 
 func main() {

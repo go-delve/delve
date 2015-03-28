@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	sys "golang.org/x/sys/unix"
-
-	"github.com/derekparker/delve/dwarf/frame"
 )
 
 // ThreadContext represents a single thread in the traced process
@@ -54,14 +52,14 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 // we step over any breakpoints. It will restore the instruction,
 // step, and then restore the breakpoint and continue.
 func (thread *ThreadContext) Continue() error {
-	regs, err := thread.Registers()
+	pc, err := thread.CurrentPC()
 	if err != nil {
 		return err
 	}
 
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
-	if _, ok := thread.Process.BreakPoints[regs.PC()-1]; ok {
+	if _, ok := thread.Process.BreakPoints[pc-1]; ok {
 		err := thread.Step()
 		if err != nil {
 			return fmt.Errorf("could not step %s", err)
@@ -74,12 +72,12 @@ func (thread *ThreadContext) Continue() error {
 // Single steps this thread a single instruction, ensuring that
 // we correctly handle the likely case that we are at a breakpoint.
 func (thread *ThreadContext) Step() (err error) {
-	regs, err := thread.Registers()
+	pc, err := thread.CurrentPC()
 	if err != nil {
 		return err
 	}
 
-	bp, ok := thread.Process.BreakPoints[regs.PC()-1]
+	bp, ok := thread.Process.BreakPoints[pc-1]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
 		_, err = thread.Process.Clear(bp.Addr)
@@ -88,14 +86,16 @@ func (thread *ThreadContext) Step() (err error) {
 		}
 
 		// Reset program counter to our restored instruction.
-		err = regs.SetPC(thread, bp.Addr)
+		err = thread.SetPC(bp.Addr)
 		if err != nil {
 			return fmt.Errorf("could not set registers %s", err)
 		}
 
 		// Restore breakpoint now that we have passed it.
 		defer func() {
-			_, err = thread.Process.Break(bp.Addr)
+			var nbp *BreakPoint
+			nbp, err = thread.Process.Break(bp.Addr)
+			nbp.Temp = bp.Temp
 		}()
 	}
 
@@ -107,96 +107,101 @@ func (thread *ThreadContext) Step() (err error) {
 	return err
 }
 
-// Step to next source line. Next will step over functions,
-// and will follow through to the return address of a function.
-// Next is implemented on the thread context, however during the
-// course of this function running, it's very likely that the
-// goroutine our M is executing will switch to another M, therefore
-// this function cannot assume all execution will happen on this thread
-// in the traced process.
-func (thread *ThreadContext) Next() (err error) {
-	pc, err := thread.CurrentPC()
+// Call a function named `name`. This is currently _NOT_ safe.
+func (thread *ThreadContext) CallFn(name string, fn func(*ThreadContext) error) error {
+	f := thread.Process.GoSymTable.LookupFunc(name)
+	if f == nil {
+		return fmt.Errorf("could not find function %s", name)
+	}
+
+	// Set breakpoint at the end of the function (before it returns).
+	bp, err := thread.Process.Break(f.End - 2)
 	if err != nil {
 		return err
 	}
+	defer thread.Process.Clear(bp.Addr)
 
-	if bp, ok := thread.Process.BreakPoints[pc-1]; ok {
-		pc = bp.Addr
-	}
-
-	fde, err := thread.Process.FrameEntries.FDEForPC(pc)
-	if err != nil {
+	if err := thread.saveRegisters(); err != nil {
 		return err
 	}
-
-	_, l, _ := thread.Process.GoSymTable.PCToLine(pc)
-	ret := thread.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
-	for {
-		if err = thread.Step(); err != nil {
-			return err
-		}
-
-		if pc, err = thread.CurrentPC(); err != nil {
-			return err
-		}
-
-		if !fde.Cover(pc) && pc != ret {
-			if err := thread.continueToReturnAddress(pc, fde); err != nil {
-				if _, ok := err.(InvalidAddressError); !ok {
-					return err
-				}
-			}
-			if pc, err = thread.CurrentPC(); err != nil {
-				return err
-			}
-		}
-
-		if _, nl, _ := thread.Process.GoSymTable.PCToLine(pc); nl != l {
-			break
-		}
+	if err = thread.SetPC(f.Entry); err != nil {
+		return err
 	}
-
-	return nil
+	defer thread.restoreRegisters()
+	if err := thread.Continue(); err != nil {
+		return err
+	}
+	if _, err = trapWait(thread.Process, -1); err != nil {
+		return err
+	}
+	return fn(thread)
 }
 
-func (thread *ThreadContext) continueToReturnAddress(pc uint64, fde *frame.FrameDescriptionEntry) error {
-	for !fde.Cover(pc) {
-		// Offset is 0 because we have just stepped into this function.
-		addr := thread.ReturnAddressFromOffset(0)
-		bp, err := thread.Process.Break(addr)
-		if err != nil {
-			if _, ok := err.(BreakPointExistsError); !ok {
-				return err
-			}
-		}
-		bp.Temp = true
-		// Ensure we cleanup after ourselves no matter what.
-		defer thread.clearTempBreakpoint(bp.Addr)
-
-		for {
-			err = thread.Continue()
-			if err != nil {
-				return err
-			}
-			// Wait on -1, just in case scheduler switches threads for this G.
-			wpid, err := trapWait(thread.Process, -1)
-			if err != nil {
-				return err
-			}
-			if wpid != thread.Id {
-				thread = thread.Process.Threads[wpid]
-			}
-			pc, err = thread.CurrentPC()
-			if err != nil {
-				return err
-			}
-			if (pc-1) == bp.Addr || pc == bp.Addr {
-				break
-			}
-		}
+// Step to next source line.
+//
+// Next will step over functions, and will follow through to the
+// return address of a function.
+//
+// This functionality is implemented by finding all possible next lines
+// and setting a breakpoint at them. Once we've set a breakpoint at each
+// potential line, we continue the thread.
+func (thread *ThreadContext) Next() (err error) {
+	curpc, err := thread.CurrentPC()
+	if err != nil {
+		return err
 	}
 
-	return nil
+	// Check and see if we're at a breakpoint, if so
+	// correct the PC value for the breakpoint instruction.
+	if bp, ok := thread.Process.BreakPoints[curpc-1]; ok {
+		curpc = bp.Addr
+	}
+
+	// Grab info on our current stack frame. Used to determine
+	// whether we may be stepping outside of the current function.
+	fde, err := thread.Process.FrameEntries.FDEForPC(curpc)
+	if err != nil {
+		return err
+	}
+
+	// Get current file/line.
+	f, l, _ := thread.Process.GoSymTable.PCToLine(curpc)
+
+	// Find any line we could potentially get to.
+	lines, err := thread.Process.ast.NextLines(f, l)
+	if err != nil {
+		return err
+	}
+
+	// Set a breakpoint at every line reachable from our location.
+	for _, l := range lines {
+		pcs := thread.Process.LineInfo.AllPCsForFileLine(f, l)
+		for _, pc := range pcs {
+			if pc == curpc {
+				continue
+			}
+			if !fde.Cover(pc) {
+				pc = thread.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+			}
+			bp, err := thread.Process.Break(pc)
+			if err != nil {
+				if err, ok := err.(BreakPointExistsError); !ok {
+					return err
+				}
+				continue
+			}
+			bp.Temp = true
+		}
+	}
+	return thread.Continue()
+}
+
+func (thread *ThreadContext) SetPC(pc uint64) error {
+	regs, err := thread.Registers()
+	if err != nil {
+		return err
+	}
+	return regs.SetPC(thread, pc)
 }
 
 // Takes an offset from RSP and returns the address of the
@@ -214,22 +219,33 @@ func (thread *ThreadContext) ReturnAddressFromOffset(offset int64) uint64 {
 }
 
 func (thread *ThreadContext) clearTempBreakpoint(pc uint64) error {
-	var software bool
-	if _, ok := thread.Process.BreakPoints[pc]; ok {
-		software = true
+	clearbp := func(bp *BreakPoint) error {
+		if _, err := thread.Process.Clear(bp.Addr); err != nil {
+			return err
+		}
+		return thread.SetPC(bp.Addr)
 	}
-	if _, err := thread.Process.Clear(pc); err != nil {
-		return err
+	for _, bp := range thread.Process.HWBreakPoints {
+		if bp != nil && bp.Temp && bp.Addr == pc {
+			return clearbp(bp)
+		}
 	}
-	if software {
-		// Reset program counter to our restored instruction.
-		regs, err := thread.Registers()
+	if bp, ok := thread.Process.BreakPoints[pc]; ok && bp.Temp {
+		return clearbp(bp)
+	}
+	return nil
+}
+
+func (thread *ThreadContext) curG() (*G, error) {
+	var g *G
+	err := thread.CallFn("runtime.getg", func(t *ThreadContext) error {
+		regs, err := t.Registers()
 		if err != nil {
 			return err
 		}
-
-		return regs.SetPC(thread, pc)
-	}
-
-	return nil
+		reader := t.Process.Dwarf.Reader()
+		g, err = parseG(t.Process, regs.SP()+uint64(ptrsize), reader)
+		return err
+	})
+	return g, err
 }

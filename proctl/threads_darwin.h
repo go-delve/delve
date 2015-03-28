@@ -23,3 +23,6 @@ clear_trap_flag(thread_act_t);
 
 kern_return_t
 resume_thread(thread_act_t);
+
+kern_return_t
+set_registers(mach_port_name_t, x86_thread_state64_t*);

@@ -129,7 +129,6 @@ mach_port_wait(mach_port_t port_set) {
 	mach_msg_port_descriptor_t *desc = (mach_msg_port_descriptor_t *)(bod + 1);
 	thread = desc[0].name;
 
-
 	switch (msg.hdr.msgh_id) {
 		case 2401: // Exception
 			kret = thread_suspend(thread);

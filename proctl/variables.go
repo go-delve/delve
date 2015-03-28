@@ -31,6 +31,11 @@ type M struct {
 	curg     uintptr
 }
 
+type G struct {
+	id int
+	pc uint64
+}
+
 const ptrsize uintptr = unsafe.Sizeof(int(1))
 
 // Parses and returns select info on the internal M
@@ -217,49 +222,48 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 	allg := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		err = printGoroutineInfo(dbp, allg+(i*uint64(ptrsize)), reader)
+		g, err := parseG(dbp, allg+(i*uint64(ptrsize)), reader)
 		if err != nil {
 			return err
 		}
+		f, l, fn := dbp.GoSymTable.PCToLine(g.pc)
+		fname := ""
+		if fn != nil {
+			fname = fn.Name
+		}
+		fmt.Printf("Goroutine %d - %s:%d %s\n", g.id, f, l, fname)
 	}
-
 	return nil
 }
 
-func printGoroutineInfo(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) error {
+func parseG(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) (*G, error) {
 	gaddrbytes, err := dbp.CurrentThread.readMemory(uintptr(addr), ptrsize)
 	if err != nil {
-		return fmt.Errorf("error derefing *G %s", err)
+		return nil, fmt.Errorf("error derefing *G %s", err)
 	}
 	initialInstructions := append([]byte{op.DW_OP_addr}, gaddrbytes...)
 
 	reader.Seek(0)
 	goidaddr, err := offsetFor(dbp, "goid", reader, initialInstructions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	reader.Seek(0)
 	schedaddr, err := offsetFor(dbp, "sched", reader, initialInstructions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	goidbytes, err := dbp.CurrentThread.readMemory(uintptr(goidaddr), ptrsize)
 	if err != nil {
-		return fmt.Errorf("error reading goid %s", err)
+		return nil, fmt.Errorf("error reading goid %s", err)
 	}
 	schedbytes, err := dbp.CurrentThread.readMemory(uintptr(schedaddr+uint64(ptrsize)), ptrsize)
 	if err != nil {
-		return fmt.Errorf("error reading sched %s", err)
+		return nil, fmt.Errorf("error reading sched %s", err)
 	}
 	gopc := binary.LittleEndian.Uint64(schedbytes)
-	f, l, fn := dbp.GoSymTable.PCToLine(gopc)
-	fname := ""
-	if fn != nil {
-		fname = fn.Name
-	}
-	fmt.Printf("Goroutine %d - %s:%d %s\n", binary.LittleEndian.Uint64(goidbytes), f, l, fname)
-	return nil
+	return &G{id: int(binary.LittleEndian.Uint64(goidbytes)), pc: gopc}, nil
 }
 
 func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {

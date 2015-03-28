@@ -216,8 +216,7 @@ func TestNext(t *testing.T) {
 		{24, 26},
 		{26, 27},
 		{27, 34},
-		{34, 35},
-		{35, 41},
+		{34, 41},
 		{41, 40},
 		{40, 41},
 	}
@@ -232,18 +231,19 @@ func TestNext(t *testing.T) {
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
+		p.Clear(pc)
 
 		f, ln := currentLineNumber(p, t)
 		for _, tc := range testcases {
 			if ln != tc.begin {
-				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, f, ln)
+				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
 
 			assertNoError(p.Next(), t, "Next() returned an error")
 
 			f, ln = currentLineNumber(p, t)
 			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, f, ln)
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
 			}
 		}
 
@@ -352,6 +352,63 @@ func TestSwitchThread(t *testing.T) {
 		}
 		if p.CurrentThread.Id != nt {
 			t.Fatal("Did not switch threads")
+		}
+	})
+}
+
+func TestFunctionCall(t *testing.T) {
+	var testfile, _ = filepath.Abs("../_fixtures/testprog")
+
+	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+		pc, err := p.FindLocation("main.main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.Break(pc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		pc, err = p.CurrentPC()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fn := p.GoSymTable.PCToFunc(pc)
+		if fn == nil {
+			t.Fatalf("Could not find func for PC: %#v", pc)
+		}
+		if fn.Name != "main.main" {
+			t.Fatal("Program stopped at incorrect place")
+		}
+		if err = p.CallFn("runtime.getg", func(th *ThreadContext) error {
+			pc, err := th.CurrentPC()
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := th.Process.GoSymTable.LookupFunc("runtime.getg")
+			if f == nil {
+				t.Fatalf("could not find function %s", "runtime.getg")
+			}
+			if pc-1 != f.End-2 && pc != f.End-2 {
+				t.Fatalf("wrong pc expected %#v got %#v", f.End-2, pc-1)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		pc, err = p.CurrentPC()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fn = p.GoSymTable.PCToFunc(pc)
+		if fn == nil {
+			t.Fatalf("Could not find func for PC: %#v", pc)
+		}
+		if fn.Name != "main.main" {
+			t.Fatal("Program stopped at incorrect place")
 		}
 	})
 }
