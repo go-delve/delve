@@ -237,6 +237,7 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 		}
 
 		if status.Exited() && wpid == dbp.Pid {
+			dbp.exited = true
 			return -1, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
