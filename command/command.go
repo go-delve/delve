@@ -102,15 +102,15 @@ func CommandFunc(fn func() error) cmdfunc {
 	}
 }
 
-func noCmdAvailable(p *proctl.DebuggedProcess, ars ...string) error {
+func noCmdAvailable(p *proctl.DebuggedProcess, args ...string) error {
 	return fmt.Errorf("command not available")
 }
 
-func nullCommand(p *proctl.DebuggedProcess, ars ...string) error {
+func nullCommand(p *proctl.DebuggedProcess, args ...string) error {
 	return nil
 }
 
-func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) error {
+func (c *Commands) help(p *proctl.DebuggedProcess, args ...string) error {
 	fmt.Println("The following commands are available:")
 	for _, cmd := range c.cmds {
 		fmt.Printf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
@@ -118,7 +118,7 @@ func (c *Commands) help(p *proctl.DebuggedProcess, ars ...string) error {
 	return nil
 }
 
-func threads(p *proctl.DebuggedProcess, ars ...string) error {
+func threads(p *proctl.DebuggedProcess, args ...string) error {
 	for _, th := range p.Threads {
 		prefix := "  "
 		if th == p.CurrentThread {
@@ -138,12 +138,12 @@ func threads(p *proctl.DebuggedProcess, ars ...string) error {
 	return nil
 }
 
-func thread(p *proctl.DebuggedProcess, ars ...string) error {
-	if len(ars) == 0 {
+func thread(p *proctl.DebuggedProcess, args ...string) error {
+	if len(args) == 0 {
 		return fmt.Errorf("you must specify a thread")
 	}
 	oldTid := p.CurrentThread.Id
-	tid, err := strconv.Atoi(ars[0])
+	tid, err := strconv.Atoi(args[0])
 	if err != nil {
 		return err
 	}
@@ -157,11 +157,11 @@ func thread(p *proctl.DebuggedProcess, ars ...string) error {
 	return nil
 }
 
-func goroutines(p *proctl.DebuggedProcess, ars ...string) error {
+func goroutines(p *proctl.DebuggedProcess, args ...string) error {
 	return p.PrintGoroutinesInfo()
 }
 
-func cont(p *proctl.DebuggedProcess, ars ...string) error {
+func cont(p *proctl.DebuggedProcess, args ...string) error {
 	err := p.Continue()
 	if err != nil {
 		return err
