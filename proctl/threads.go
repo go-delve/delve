@@ -181,7 +181,7 @@ func (thread *ThreadContext) Next() (err error) {
 				continue
 			}
 			if !fde.Cover(pc) {
-				pc = thread.ReturnAddressFromOffset(fde.ReturnAddressOffset(pc))
+				pc = thread.ReturnAddressFromOffset(fde.ReturnAddressOffset(curpc))
 			}
 			bp, err := thread.Process.Break(pc)
 			if err != nil {
