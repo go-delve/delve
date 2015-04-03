@@ -27,14 +27,14 @@ import (
 type DebuggedProcess struct {
 	Pid                 int
 	Process             *os.Process
-	Dwarf               *dwarf.Data
-	GoSymTable          *gosym.Table
-	FrameEntries        frame.FrameDescriptionEntries
-	LineInfo            *line.DebugLineInfo
 	HWBreakPoints       [4]*BreakPoint
 	BreakPoints         map[uint64]*BreakPoint
 	Threads             map[int]*ThreadContext
 	CurrentThread       *ThreadContext
+	dwarf               *dwarf.Data
+	goSymTable          *gosym.Table
+	frameEntries        frame.FrameDescriptionEntries
+	lineInfo            *line.DebugLineInfo
 	os                  *OSProcessDetails
 	ast                 *source.Searcher
 	breakpointIDCounter int
@@ -143,7 +143,7 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 			return 0, err
 		}
 
-		pc, _, err := dbp.GoSymTable.LineToPC(fileName, line)
+		pc, _, err := dbp.goSymTable.LineToPC(fileName, line)
 		if err != nil {
 			return 0, err
 		}
@@ -151,7 +151,7 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 	}
 
 	// Try to lookup by function name
-	fn := dbp.GoSymTable.LookupFunc(str)
+	fn := dbp.goSymTable.LookupFunc(str)
 	if fn != nil {
 		return fn.Entry, nil
 	}
@@ -335,7 +335,7 @@ func (dbp *DebuggedProcess) resume() error {
 		}
 	}
 	// Check to see if we hit a runtime.breakpoint
-	fn := dbp.GoSymTable.PCToFunc(pc)
+	fn := dbp.goSymTable.PCToFunc(pc)
 	if fn != nil && fn.Name == "runtime.breakpoint" {
 		// step twice to get back to user code
 		for i := 0; i < 2; i++ {
@@ -399,7 +399,19 @@ func (dbp *DebuggedProcess) CallFn(name string, fn func(*ThreadContext) error) e
 
 // Returns a reader for the dwarf data
 func (dbp *DebuggedProcess) DwarfReader() *reader.Reader {
-	return reader.New(dbp.Dwarf)
+	return reader.New(dbp.dwarf)
+}
+
+func (dbp *DebuggedProcess) Sources() map[string]*gosym.Obj {
+	return dbp.goSymTable.Files
+}
+
+func (dbp *DebuggedProcess) Funcs() []gosym.Func {
+	return dbp.goSymTable.Funcs
+}
+
+func (dbp *DebuggedProcess) PCToLine(pc uint64) (string, int, *gosym.Func) {
+	return dbp.goSymTable.PCToLine(pc)
 }
 
 // Finds the breakpoint for the given pc.

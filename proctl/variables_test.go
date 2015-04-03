@@ -74,7 +74,7 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 57)
+		pc, _, _ := p.goSymTable.LineToPC(fp, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -105,7 +105,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 57)
+		pc, _, _ := p.goSymTable.LineToPC(fp, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -120,7 +120,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 		assertNoError(err, t, "Unable to find variable a1")
 
 		// Move scopes, a1 exists here by a2 does not
-		pc, _, _ = p.GoSymTable.LineToPC(fp, 23)
+		pc, _, _ = p.goSymTable.LineToPC(fp, 23)
 
 		_, err = p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -203,7 +203,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, 57)
+		pc, _, _ := p.goSymTable.LineToPC(fp, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")

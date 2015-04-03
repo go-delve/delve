@@ -92,7 +92,7 @@ func (dbp *DebuggedProcess) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup)
 			fmt.Println("could not get __debug_frame section", err)
 			os.Exit(1)
 		}
-		dbp.FrameEntries = frame.Parse(debugFrame)
+		dbp.frameEntries = frame.Parse(debugFrame)
 	} else {
 		fmt.Println("could not find __debug_frame section in binary")
 		os.Exit(1)
@@ -131,7 +131,7 @@ func (dbp *DebuggedProcess) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup)
 		os.Exit(1)
 	}
 
-	dbp.GoSymTable = tab
+	dbp.goSymTable = tab
 }
 
 func (dbp *DebuggedProcess) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
@@ -143,7 +143,7 @@ func (dbp *DebuggedProcess) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGro
 			fmt.Println("could not get __debug_line section", err)
 			os.Exit(1)
 		}
-		dbp.LineInfo = line.Parse(debugLine)
+		dbp.lineInfo = line.Parse(debugLine)
 	} else {
 		fmt.Println("could not find __debug_line section in binary")
 		os.Exit(1)
@@ -167,7 +167,7 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbp.Dwarf = data
+	dbp.dwarf = data
 	return exe, nil
 }
 

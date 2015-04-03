@@ -66,7 +66,7 @@ func currentPC(p *DebuggedProcess, t *testing.T) uint64 {
 
 func currentLineNumber(p *DebuggedProcess, t *testing.T) (string, int) {
 	pc := currentPC(p, t)
-	f, l, _ := p.GoSymTable.PCToLine(pc)
+	f, l, _ := p.goSymTable.PCToLine(pc)
 
 	return f, l
 }
@@ -89,7 +89,7 @@ func TestExit(t *testing.T) {
 
 func TestStep(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
-		helloworldfunc := p.GoSymTable.LookupFunc("main.helloworld")
+		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
 		_, err := p.Break(helloworldaddr)
@@ -111,7 +111,7 @@ func TestStep(t *testing.T) {
 
 func TestBreakPoint(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
-		helloworldfunc := p.GoSymTable.LookupFunc("main.helloworld")
+		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
 		bp, err := p.Break(helloworldaddr)
@@ -124,7 +124,7 @@ func TestBreakPoint(t *testing.T) {
 		}
 
 		if pc-1 != bp.Addr && pc != bp.Addr {
-			f, l, _ := p.GoSymTable.PCToLine(pc)
+			f, l, _ := p.goSymTable.PCToLine(pc)
 			t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, f, l, bp.Addr)
 		}
 	})
@@ -132,7 +132,7 @@ func TestBreakPoint(t *testing.T) {
 
 func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 	withTestProcess("../_fixtures/testthreads", t, func(p *DebuggedProcess) {
-		fn := p.GoSymTable.LookupFunc("main.anotherthread")
+		fn := p.goSymTable.LookupFunc("main.anotherthread")
 		if fn == nil {
 			t.Fatal("No fn exists")
 		}
@@ -152,7 +152,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		f, l, _ := p.GoSymTable.PCToLine(pc)
+		f, l, _ := p.goSymTable.PCToLine(pc)
 		if f != "testthreads.go" && l != 8 {
 			t.Fatal("Program did not hit breakpoint")
 		}
@@ -170,7 +170,7 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 
 func TestClearBreakPoint(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
-		fn := p.GoSymTable.LookupFunc("main.sleepytime")
+		fn := p.goSymTable.LookupFunc("main.sleepytime")
 		bp, err := p.Break(fn.Entry)
 		assertNoError(err, t, "Break()")
 
@@ -227,7 +227,7 @@ func TestNext(t *testing.T) {
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.GoSymTable.LineToPC(fp, testcases[0].begin)
+		pc, _, _ := p.goSymTable.LineToPC(fp, testcases[0].begin)
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
@@ -264,8 +264,8 @@ func TestFindReturnAddress(t *testing.T) {
 
 	withTestProcess(testfile, t, func(p *DebuggedProcess) {
 		var (
-			fdes = p.FrameEntries
-			gsd  = p.GoSymTable
+			fdes = p.frameEntries
+			gsd  = p.goSymTable
 		)
 
 		testsourcefile := testfile + ".go"
@@ -376,7 +376,7 @@ func TestFunctionCall(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fn := p.GoSymTable.PCToFunc(pc)
+		fn := p.goSymTable.PCToFunc(pc)
 		if fn == nil {
 			t.Fatalf("Could not find func for PC: %#v", pc)
 		}
@@ -388,7 +388,7 @@ func TestFunctionCall(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f := th.Process.GoSymTable.LookupFunc("runtime.getg")
+			f := th.Process.goSymTable.LookupFunc("runtime.getg")
 			if f == nil {
 				t.Fatalf("could not find function %s", "runtime.getg")
 			}
@@ -403,7 +403,7 @@ func TestFunctionCall(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fn = p.GoSymTable.PCToFunc(pc)
+		fn = p.goSymTable.PCToFunc(pc)
 		if fn == nil {
 			t.Fatalf("Could not find func for PC: %#v", pc)
 		}

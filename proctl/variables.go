@@ -41,7 +41,7 @@ const ptrsize uintptr = unsafe.Sizeof(int(1))
 // Parses and returns select info on the internal M
 // data structures used by the Go scheduler.
 func (thread *ThreadContext) AllM() ([]*M, error) {
-	reader := thread.Process.Dwarf.Reader()
+	reader := thread.Process.dwarf.Reader()
 
 	allmaddr, err := parseAllMPtr(thread.Process, reader)
 	if err != nil {
@@ -206,7 +206,7 @@ func parseAllMPtr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 }
 
 func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
-	reader := dbp.Dwarf.Reader()
+	reader := dbp.dwarf.Reader()
 
 	allglen, err := allglenval(dbp, reader)
 	if err != nil {
@@ -226,7 +226,7 @@ func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
 		if err != nil {
 			return err
 		}
-		f, l, fn := dbp.GoSymTable.PCToLine(g.pc)
+		f, l, fn := dbp.goSymTable.PCToLine(g.pc)
 		fname := ""
 		if fn != nil {
 			fname = fn.Name
@@ -479,7 +479,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 				return nil, fmt.Errorf("type assertion failed")
 			}
 
-			data := thread.Process.Dwarf
+			data := thread.Process.dwarf
 			t, err := data.Type(offset)
 			if err != nil {
 				return nil, err
@@ -520,7 +520,7 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 		return nil, fmt.Errorf("type assertion failed")
 	}
 
-	data := thread.Process.Dwarf
+	data := thread.Process.dwarf
 	t, err := data.Type(offset)
 	if err != nil {
 		return nil, err
@@ -546,7 +546,7 @@ func (thread *ThreadContext) executeStackProgram(instructions []byte) (int64, er
 		return 0, err
 	}
 
-	fde, err := thread.Process.FrameEntries.FDEForPC(regs.PC())
+	fde, err := thread.Process.frameEntries.FDEForPC(regs.PC())
 	if err != nil {
 		return 0, err
 	}

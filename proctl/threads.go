@@ -109,7 +109,7 @@ func (thread *ThreadContext) Step() (err error) {
 
 // Call a function named `name`. This is currently _NOT_ safe.
 func (thread *ThreadContext) CallFn(name string, fn func(*ThreadContext) error) error {
-	f := thread.Process.GoSymTable.LookupFunc(name)
+	f := thread.Process.goSymTable.LookupFunc(name)
 	if f == nil {
 		return fmt.Errorf("could not find function %s", name)
 	}
@@ -159,13 +159,13 @@ func (thread *ThreadContext) Next() (err error) {
 
 	// Grab info on our current stack frame. Used to determine
 	// whether we may be stepping outside of the current function.
-	fde, err := thread.Process.FrameEntries.FDEForPC(curpc)
+	fde, err := thread.Process.frameEntries.FDEForPC(curpc)
 	if err != nil {
 		return err
 	}
 
 	// Get current file/line.
-	f, l, _ := thread.Process.GoSymTable.PCToLine(curpc)
+	f, l, _ := thread.Process.goSymTable.PCToLine(curpc)
 
 	// Find any line we could potentially get to.
 	lines, err := thread.Process.ast.NextLines(f, l)
@@ -175,7 +175,7 @@ func (thread *ThreadContext) Next() (err error) {
 
 	// Set a breakpoint at every line reachable from our location.
 	for _, l := range lines {
-		pcs := thread.Process.LineInfo.AllPCsForFileLine(f, l)
+		pcs := thread.Process.lineInfo.AllPCsForFileLine(f, l)
 		for _, pc := range pcs {
 			if pc == curpc {
 				continue
@@ -243,7 +243,7 @@ func (thread *ThreadContext) curG() (*G, error) {
 		if err != nil {
 			return err
 		}
-		reader := t.Process.Dwarf.Reader()
+		reader := t.Process.dwarf.Reader()
 		g, err = parseG(t.Process, regs.SP()+uint64(ptrsize), reader)
 		return err
 	})

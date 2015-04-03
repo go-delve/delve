@@ -128,7 +128,7 @@ func threads(p *proctl.DebuggedProcess, args ...string) error {
 		if err != nil {
 			return err
 		}
-		f, l, fn := th.Process.GoSymTable.PCToLine(pc)
+		f, l, fn := th.Process.PCToLine(pc)
 		if fn != nil {
 			fmt.Printf("%sThread %d at %#v %s:%d %s\n", prefix, th.Id, pc, f, l, fn.Name)
 		} else {
@@ -294,16 +294,16 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 
 	switch args[0] {
 	case "sources":
-		data = make([]string, 0, len(p.GoSymTable.Files))
-		for f := range p.GoSymTable.Files {
+		data = make([]string, 0, len(p.Sources()))
+		for f := range p.Sources() {
 			if filter == nil || filter.Match([]byte(f)) {
 				data = append(data, f)
 			}
 		}
 
 	case "funcs":
-		data = make([]string, 0, len(p.GoSymTable.Funcs))
-		for _, f := range p.GoSymTable.Funcs {
+		data = make([]string, 0, len(p.Funcs()))
+		for _, f := range p.Funcs() {
 			if f.Sym != nil && (filter == nil || filter.Match([]byte(f.Name))) {
 				data = append(data, f.Name)
 			}
@@ -352,7 +352,7 @@ func printcontext(p *proctl.DebuggedProcess) error {
 		return err
 	}
 
-	f, l, fn := p.GoSymTable.PCToLine(regs.PC())
+	f, l, fn := p.PCToLine(regs.PC())
 
 	if fn != nil {
 		fmt.Printf("current loc: %s %s:%d\n", fn.Name, f, l)

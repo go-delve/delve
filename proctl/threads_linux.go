@@ -43,7 +43,7 @@ func (t *ThreadContext) singleStep() error {
 func (t *ThreadContext) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.CurrentPC()
-	fn := t.Process.GoSymTable.PCToFunc(pc)
+	fn := t.Process.goSymTable.PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
 		return true
 	}

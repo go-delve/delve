@@ -72,7 +72,7 @@ func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data
 }
 
 func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
-	var f, l, fn = dbp.GoSymTable.PCToLine(uint64(addr))
+	var f, l, fn = dbp.goSymTable.PCToLine(uint64(addr))
 	if fn == nil {
 		return nil, InvalidAddressError{address: addr}
 	}
