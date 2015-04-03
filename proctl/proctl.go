@@ -471,6 +471,27 @@ func (dbp *DebuggedProcess) clearTempBreakpoints() error {
 	}
 	return nil
 }
+func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, *BreakPoint, error) {
+	thread, ok := dbp.Threads[id]
+	if !ok {
+		return nil, nil, fmt.Errorf("could not find thread for %d", id)
+	}
+	pc, err := thread.CurrentPC()
+	if err != nil {
+		return nil, nil, err
+	}
+	// Check for hardware breakpoint
+	for _, bp := range dbp.HWBreakPoints {
+		if bp != nil && bp.Addr == pc {
+			return thread, bp, nil
+		}
+	}
+	// Check to see if we have hit a software breakpoint.
+	if bp, ok := dbp.BreakPoints[pc-1]; ok {
+		return thread, bp, nil
+	}
+	return thread, nil, nil
+}
 
 func (dbp *DebuggedProcess) run(fn func() error) error {
 	if dbp.exited {

@@ -258,25 +258,7 @@ func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, *BreakPoint, error
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP {
-			thread, ok := dbp.Threads[wpid]
-			if !ok {
-				return nil, nil, fmt.Errorf("could not find thread for %d", wpid)
-			}
-			pc, err := thread.CurrentPC()
-			if err != nil {
-				return nil, nil, err
-			}
-			// Check for hardware breakpoint
-			for _, bp := range dbp.HWBreakPoints {
-				if bp != nil && bp.Addr == pc {
-					return thread, bp, nil
-				}
-			}
-			// Check to see if we have hit a software breakpoint.
-			if bp, ok := dbp.BreakPoints[pc-1]; ok {
-				return thread, bp, nil
-			}
-			return thread, nil, nil
+			return dbp.handleBreakpointOnThread(wpid)
 		}
 		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
 			return nil, nil, ManualStopError{}
