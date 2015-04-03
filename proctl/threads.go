@@ -131,7 +131,7 @@ func (thread *ThreadContext) CallFn(name string, fn func(*ThreadContext) error) 
 	if err := thread.Continue(); err != nil {
 		return err
 	}
-	if _, err = trapWait(thread.Process, -1); err != nil {
+	if _, _, err = trapWait(thread.Process, -1); err != nil {
 		return err
 	}
 	return fn(thread)

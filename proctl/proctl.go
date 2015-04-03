@@ -279,17 +279,15 @@ func (dbp *DebuggedProcess) next() error {
 	}
 
 	for {
-		thread, err := trapWait(dbp, -1)
+		thread, breakpoint, err := trapWait(dbp, -1)
 		if err != nil {
 			return err
 		}
-		pc, err := thread.CurrentPC()
-		if err != nil {
-			return err
-		}
-		// Check if we've hit a software breakpoint. If so, reset PC.
-		if err = thread.clearTempBreakpoint(pc - 1); err != nil {
-			return err
+		// Check if we've hit a breakpoint.
+		if breakpoint != nil {
+			if err = thread.clearTempBreakpoint(breakpoint.Addr); err != nil {
+				return err
+			}
 		}
 		// Grab the current goroutine for this thread.
 		tg, err := thread.curG()
@@ -316,54 +314,39 @@ func (dbp *DebuggedProcess) Continue() error {
 			return err
 		}
 	}
+	return dbp.run(dbp.resume)
+}
 
-	fn := func() error {
-		thread, err := trapWait(dbp, -1)
-		if err != nil {
-			return err
-		}
-		if dbp.CurrentThread != thread {
-			dbp.SwitchThread(thread.Id)
-		}
-		pc, err := thread.CurrentPC()
-		if err != nil {
-			return err
-		}
-
-		// Check to see if we hit a runtime.breakpoint
-		fn := dbp.GoSymTable.PCToFunc(pc)
-		if fn != nil && fn.Name == "runtime.breakpoint" {
-			// step twice to get back to user code
-			for i := 0; i < 2; i++ {
-				err = thread.Step()
-				if err != nil {
-					return err
-				}
-			}
-			dbp.Halt()
-			return nil
-		}
-
-		// Check for hardware breakpoint
-		for _, bp := range dbp.HWBreakPoints {
-			if bp != nil && bp.Addr == pc {
-				if !bp.Temp {
-					return dbp.Halt()
-				}
-				return nil
-			}
-		}
-		// Check to see if we have hit a software breakpoint.
-		if bp, ok := dbp.BreakPoints[pc-1]; ok {
-			if !bp.Temp {
-				return dbp.Halt()
-			}
-			return nil
-		}
-
-		return fmt.Errorf("unrecognized breakpoint %#v", pc)
+func (dbp *DebuggedProcess) resume() error {
+	thread, breakpoint, err := trapWait(dbp, -1)
+	if err != nil {
+		return err
 	}
-	return dbp.run(fn)
+	if dbp.CurrentThread != thread {
+		dbp.SwitchThread(thread.Id)
+	}
+	pc, err := thread.CurrentPC()
+	if err != nil {
+		return err
+	}
+	if breakpoint != nil {
+		if !breakpoint.Temp {
+			return dbp.Halt()
+		}
+	}
+	// Check to see if we hit a runtime.breakpoint
+	fn := dbp.GoSymTable.PCToFunc(pc)
+	if fn != nil && fn.Name == "runtime.breakpoint" {
+		// step twice to get back to user code
+		for i := 0; i < 2; i++ {
+			if err = thread.Step(); err != nil {
+				return err
+			}
+		}
+		return dbp.Halt()
+	}
+
+	return fmt.Errorf("unrecognized breakpoint %#v", pc)
 }
 
 // Steps through process.

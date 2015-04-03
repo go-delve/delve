@@ -216,11 +216,11 @@ func stopped(pid int) bool {
 	return false
 }
 
-func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
+func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, *BreakPoint, error) {
 	for {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {
-			return nil, fmt.Errorf("wait err %s %d", err, pid)
+			return nil, nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
 		if wpid == 0 {
 			continue
@@ -231,41 +231,55 @@ func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
 
 		if status.Exited() && wpid == dbp.Pid {
 			dbp.exited = true
-			return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
+			return nil, nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
 			cloned, err := sys.PtraceGetEventMsg(wpid)
 			if err != nil {
-				return nil, fmt.Errorf("could not get event message: %s", err)
+				return nil, nil, fmt.Errorf("could not get event message: %s", err)
 			}
 
 			th, err := dbp.addThread(int(cloned), false)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 			err = th.Continue()
 			if err != nil {
-				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
+				return nil, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 
 			err = dbp.Threads[int(wpid)].Continue()
 			if err != nil {
-				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
+				return nil, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP {
 			thread, ok := dbp.Threads[wpid]
 			if !ok {
-				return nil, fmt.Errorf("could not find thread for %d", wpid)
+				return nil, nil, fmt.Errorf("could not find thread for %d", wpid)
 			}
-			return thread, nil
+			pc, err := thread.CurrentPC()
+			if err != nil {
+				return nil, nil, err
+			}
+			// Check for hardware breakpoint
+			for _, bp := range dbp.HWBreakPoints {
+				if bp != nil && bp.Addr == pc {
+					return thread, bp, nil
+				}
+			}
+			// Check to see if we have hit a software breakpoint.
+			if bp, ok := dbp.BreakPoints[pc-1]; ok {
+				return thread, bp, nil
+			}
+			return thread, nil, nil
 		}
 		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
-			return nil, ManualStopError{}
+			return nil, nil, ManualStopError{}
 		}
 	}
 }
