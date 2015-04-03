@@ -171,17 +171,17 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 	return exe, nil
 }
 
-func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
+func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
 	port := C.mach_port_wait(dbp.os.portSet)
 
 	switch port {
 	case dbp.os.notificationPort:
 		_, status, err := wait(dbp.Pid, 0)
 		if err != nil {
-			return -1, err
+			return nil, err
 		}
 		dbp.exited = true
-		return -1, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+		return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
 	case C.MACH_RCV_INTERRUPTED:
 		if !dbp.halt {
 			// Call trapWait again, it seems
@@ -189,16 +189,19 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 			// process natural death _sometimes_.
 			return trapWait(dbp, pid)
 		}
-		return -1, ManualStopError{}
+		return nil, ManualStopError{}
 	case 0:
-		return -1, fmt.Errorf("error while waiting for task")
+		return nil, fmt.Errorf("error while waiting for task")
 	}
 
 	// Since we cannot be notified of new threads on OS X
 	// this is as good a time as any to check for them.
 	dbp.updateThreadList()
-
-	return int(port), nil
+	thread, ok := dbp.Threads[int(port)]
+	if !ok {
+		return nil, fmt.Errorf("could not find thread for %d", port)
+	}
+	return thread, nil
 }
 
 func wait(pid, options int) (int, *sys.WaitStatus, error) {

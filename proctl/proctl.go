@@ -279,32 +279,28 @@ func (dbp *DebuggedProcess) next() error {
 	}
 
 	for {
-		tid, err := trapWait(dbp, -1)
+		thread, err := trapWait(dbp, -1)
 		if err != nil {
 			return err
 		}
-		th, ok := dbp.Threads[tid]
-		if !ok {
-			return fmt.Errorf("unknown thread %d", tid)
-		}
-		pc, err := th.CurrentPC()
+		pc, err := thread.CurrentPC()
 		if err != nil {
 			return err
 		}
 		// Check if we've hit a software breakpoint. If so, reset PC.
-		if err = th.clearTempBreakpoint(pc - 1); err != nil {
+		if err = thread.clearTempBreakpoint(pc - 1); err != nil {
 			return err
 		}
 		// Grab the current goroutine for this thread.
-		tg, err := th.curG()
+		tg, err := thread.curG()
 		if err != nil {
 			return err
 		}
 		// Make sure we're on the same goroutine.
 		// TODO(dp) take into account goroutine exit.
 		if tg.id == curg.id {
-			if dbp.CurrentThread.Id != tid {
-				dbp.SwitchThread(tid)
+			if dbp.CurrentThread != thread {
+				dbp.SwitchThread(thread.Id)
 			}
 			break
 		}
@@ -322,20 +318,13 @@ func (dbp *DebuggedProcess) Continue() error {
 	}
 
 	fn := func() error {
-		wpid, err := trapWait(dbp, -1)
+		thread, err := trapWait(dbp, -1)
 		if err != nil {
 			return err
 		}
-
-		thread, ok := dbp.Threads[wpid]
-		if !ok {
-			return fmt.Errorf("could not find thread for %d", wpid)
+		if dbp.CurrentThread != thread {
+			dbp.SwitchThread(thread.Id)
 		}
-
-		if wpid != dbp.CurrentThread.Id {
-			dbp.SwitchThread(wpid)
-		}
-
 		pc, err := thread.CurrentPC()
 		if err != nil {
 			return err

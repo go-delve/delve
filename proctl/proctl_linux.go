@@ -216,11 +216,11 @@ func stopped(pid int) bool {
 	return false
 }
 
-func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
+func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
 	for {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {
-			return -1, fmt.Errorf("wait err %s %d", err, pid)
+			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
 		if wpid == 0 {
 			continue
@@ -231,37 +231,41 @@ func trapWait(dbp *DebuggedProcess, pid int) (int, error) {
 
 		if status.Exited() && wpid == dbp.Pid {
 			dbp.exited = true
-			return -1, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
+			return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
 			cloned, err := sys.PtraceGetEventMsg(wpid)
 			if err != nil {
-				return -1, fmt.Errorf("could not get event message: %s", err)
+				return nil, fmt.Errorf("could not get event message: %s", err)
 			}
 
 			th, err := dbp.addThread(int(cloned), false)
 			if err != nil {
-				return -1, err
+				return nil, err
 			}
 
 			err = th.Continue()
 			if err != nil {
-				return -1, fmt.Errorf("could not continue new thread %d %s", cloned, err)
+				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 
 			err = dbp.Threads[int(wpid)].Continue()
 			if err != nil {
-				return -1, fmt.Errorf("could not continue new thread %d %s", cloned, err)
+				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP {
-			return wpid, nil
+			thread, ok := dbp.Threads[wpid]
+			if !ok {
+				return nil, fmt.Errorf("could not find thread for %d", wpid)
+			}
+			return thread, nil
 		}
 		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
-			return -1, ManualStopError{}
+			return nil, ManualStopError{}
 		}
 	}
 }
