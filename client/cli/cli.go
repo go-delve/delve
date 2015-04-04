@@ -118,25 +118,12 @@ func Run(args []string) {
 			t.die(1, "Prompt for input failed.\n")
 		}
 
-		cmdstr, args := parseCommand(cmdstr)
-		if cmdstr == "exit" {
+		exited, err := cmds.RunCommand(dbp, cmdstr)
+		if exited {
 			handleExit(dbp, t, 0)
 		}
-
-		if dbp.Exited() && cmdstr != "help" {
-			fmt.Fprintf(os.Stderr, "Process has already exited.\n")
-			continue
-		}
-
-		cmd := cmds.Find(cmdstr)
-		if err := cmd(dbp, args...); err != nil {
-			switch err.(type) {
-			case proctl.ProcessExitedError:
-				pe := err.(proctl.ProcessExitedError)
-				fmt.Fprintf(os.Stderr, "Process exited with status %d\n", pe.Status)
-			default:
-				fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
-			}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
 		}
 	}
 }
@@ -223,11 +210,6 @@ func (t *Term) promptForInput() (string, error) {
 	}
 
 	return l, nil
-}
-
-func parseCommand(cmdstr string) (string, []string) {
-	vals := strings.Split(cmdstr, " ")
-	return vals[0], vals[1:]
 }
 
 func createConfigPath() error {
