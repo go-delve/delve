@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	"github.com/peterh/liner"
 )
 
+const configDir = ".dlv"
 const historyFile string = ".dbg_history"
 
 func Run(args []string) {
@@ -27,6 +30,12 @@ func Run(args []string) {
 		t   = &Term{prompt: "(dlv) ", line: liner.NewLiner()}
 	)
 	defer t.line.Close()
+
+	// ensure the config directory is created
+	err = createConfigPath()
+	if err != nil {
+		t.die(1, "Could not create config directory: ", err)
+	}
 
 	switch args[0] {
 	case "run":
@@ -87,9 +96,14 @@ func Run(args []string) {
 	}()
 
 	cmds := command.DebugCommands()
-	f, err := os.Open(historyFile)
+	fullHistoryFile, err := getConfigFilePath(historyFile)
 	if err != nil {
-		f, _ = os.Create(historyFile)
+		t.die(1, "Error loading history file:", err)
+	}
+
+	f, err := os.Open(fullHistoryFile)
+	if err != nil {
+		f, _ = os.Create(fullHistoryFile)
 	}
 	t.line.ReadHistory(f)
 	f.Close()
@@ -128,12 +142,17 @@ func Run(args []string) {
 }
 
 func handleExit(dbp *proctl.DebuggedProcess, t *Term, status int) {
-	if f, err := os.OpenFile(historyFile, os.O_RDWR, 0666); err == nil {
-		_, err := t.line.WriteHistory(f)
-		if err != nil {
-			fmt.Println("readline history error: ", err)
+	fullHistoryFile, err := getConfigFilePath(historyFile)
+	if err != nil {
+		fmt.Println("Error saving history file:", err)
+	} else {
+		if f, err := os.OpenFile(fullHistoryFile, os.O_RDWR, 0666); err == nil {
+			_, err := t.line.WriteHistory(f)
+			if err != nil {
+				fmt.Println("readline history error: ", err)
+			}
+			f.Close()
 		}
-		f.Close()
 	}
 
 	if !dbp.Exited() {
@@ -209,4 +228,20 @@ func (t *Term) promptForInput() (string, error) {
 func parseCommand(cmdstr string) (string, []string) {
 	vals := strings.Split(cmdstr, " ")
 	return vals[0], vals[1:]
+}
+
+func createConfigPath() error {
+	path, err := getConfigFilePath("")
+	if err != nil {
+		return err
+	}
+	return os.MkdirAll(path, 0700)
+}
+
+func getConfigFilePath(file string) (string, error) {
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return path.Join(usr.HomeDir, configDir, file), nil
 }
