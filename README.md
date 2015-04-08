@@ -37,6 +37,8 @@ Following that you can `CERT=mycert make install` which should install the binar
 
 The makefile is only necessary to help facilitate the process of building and codesigning.
 
+See [Tips and troubleshooting](#tips-and-troubleshooting) for additional OS X setup information.
+
 ### Features
 
 * Attach to an already running process
@@ -105,6 +107,28 @@ Once inside a debugging session, the following commands may be used:
   * `vars` - Prints the name and value of all package variables in the app. Any variable that is not local or arg is considered a package variables
 
 * `exit` - Exit the debugger.
+
+### Tips and troubleshooting
+
+#### OS X
+
+##### Eliminating codesign authorization prompt during builds
+
+If you're prompted for authorization when running `make` using your self-signed certificate, try the following:
+
+* Open application “Keychain Access” (/Applications/Utilities/Keychain Access.app)
+* Double-click on the private key corresponding to your self-signed certificate (dlv-cert in the example)
+* Choose the "Access Control" tab
+* Click the [+] under "Always allow access by these applications", and choose `/usr/bin/codesign` from the Finder dialog
+* Click the "Save changes" button
+
+##### Eliminating "Developer tools access" prompt running delve
+
+If you are prompted with this when running `dlv`:
+
+    "Developer tools access needs to take control of another process for debugging to continue. Type your password to allow this"
+
+Try running `DevToolsSecurity -enable` to eliminate the prompt. See `man DevToolsSecurity` for more information.
 
 
 ### Upcoming features
