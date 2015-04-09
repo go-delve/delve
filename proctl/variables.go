@@ -3,6 +3,7 @@ package proctl
 import (
 	"bytes"
 	"debug/dwarf"
+	"debug/gosym"
 	"encoding/binary"
 	"fmt"
 	"strconv"
@@ -32,8 +33,11 @@ type M struct {
 }
 
 type G struct {
-	id int
-	pc uint64
+	Id   int
+	PC   uint64
+	File string
+	Line int
+	Func *gosym.Func
 }
 
 const ptrsize uintptr = unsafe.Sizeof(int(1))
@@ -205,37 +209,6 @@ func parseAllMPtr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 	return uint64(addr), nil
 }
 
-func (dbp *DebuggedProcess) PrintGoroutinesInfo() error {
-	reader := dbp.dwarf.Reader()
-
-	allglen, err := allglenval(dbp, reader)
-	if err != nil {
-		return err
-	}
-	reader.Seek(0)
-	allgentryaddr, err := addressFor(dbp, "runtime.allg", reader)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("[%d goroutines]\n", allglen)
-	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), ptrsize)
-	allg := binary.LittleEndian.Uint64(faddr)
-
-	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp, allg+(i*uint64(ptrsize)), reader)
-		if err != nil {
-			return err
-		}
-		f, l, fn := dbp.goSymTable.PCToLine(g.pc)
-		fname := ""
-		if fn != nil {
-			fname = fn.Name
-		}
-		fmt.Printf("Goroutine %d - %s:%d %s\n", g.id, f, l, fname)
-	}
-	return nil
-}
-
 func parseG(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) (*G, error) {
 	gaddrbytes, err := dbp.CurrentThread.readMemory(uintptr(addr), ptrsize)
 	if err != nil {
@@ -263,7 +236,15 @@ func parseG(dbp *DebuggedProcess, addr uint64, reader *dwarf.Reader) (*G, error)
 		return nil, fmt.Errorf("error reading sched %s", err)
 	}
 	gopc := binary.LittleEndian.Uint64(schedbytes)
-	return &G{id: int(binary.LittleEndian.Uint64(goidbytes)), pc: gopc}, nil
+	f, l, fn := dbp.goSymTable.PCToLine(gopc)
+	g := &G{
+		Id:   int(binary.LittleEndian.Uint64(goidbytes)),
+		PC:   gopc,
+		File: f,
+		Line: l,
+		Func: fn,
+	}
+	return g, nil
 }
 
 func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {

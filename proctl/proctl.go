@@ -5,6 +5,7 @@ package proctl
 import (
 	"debug/dwarf"
 	"debug/gosym"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -296,7 +297,7 @@ func (dbp *DebuggedProcess) next() error {
 		}
 		// Make sure we're on the same goroutine.
 		// TODO(dp) take into account goroutine exit.
-		if tg.id == curg.id {
+		if tg.Id == curg.Id {
 			if dbp.CurrentThread != thread {
 				dbp.SwitchThread(thread.Id)
 			}
@@ -375,6 +376,34 @@ func (dbp *DebuggedProcess) SwitchThread(tid int) error {
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
+}
+
+func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
+	var (
+		allg   []*G
+		reader = dbp.dwarf.Reader()
+	)
+
+	allglen, err := allglenval(dbp, reader)
+	if err != nil {
+		return nil, err
+	}
+	reader.Seek(0)
+	allgentryaddr, err := addressFor(dbp, "runtime.allg", reader)
+	if err != nil {
+		return nil, err
+	}
+	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), ptrsize)
+	allgptr := binary.LittleEndian.Uint64(faddr)
+
+	for i := uint64(0); i < allglen; i++ {
+		g, err := parseG(dbp, allgptr+(i*uint64(ptrsize)), reader)
+		if err != nil {
+			return nil, err
+		}
+		allg = append(allg, g)
+	}
+	return allg, nil
 }
 
 // Obtains register values from what Delve considers to be the current

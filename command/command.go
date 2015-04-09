@@ -158,7 +158,21 @@ func thread(p *proctl.DebuggedProcess, args ...string) error {
 }
 
 func goroutines(p *proctl.DebuggedProcess, args ...string) error {
-	return p.PrintGoroutinesInfo()
+	var fname string
+	gs, err := p.GoroutinesInfo()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("[%d goroutines]\n", len(gs))
+	for _, g := range gs {
+		if g.Func != nil {
+			fname = g.Func.Name
+		}
+		fmt.Printf("Goroutine %d - %s:%d %s\n", g.Id, g.File, g.Line, fname)
+	}
+
+	return nil
 }
 
 func cont(p *proctl.DebuggedProcess, args ...string) error {
