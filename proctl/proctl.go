@@ -31,6 +31,7 @@ type DebuggedProcess struct {
 	HWBreakPoints       [4]*BreakPoint
 	BreakPoints         map[uint64]*BreakPoint
 	Threads             map[int]*ThreadContext
+	CurrentBreakpoint   *BreakPoint
 	CurrentThread       *ThreadContext
 	dwarf               *dwarf.Data
 	goSymTable          *gosym.Table
@@ -280,13 +281,13 @@ func (dbp *DebuggedProcess) next() error {
 	}
 
 	for {
-		thread, breakpoint, err := trapWait(dbp, -1)
+		thread, err := trapWait(dbp, -1)
 		if err != nil {
 			return err
 		}
 		// Check if we've hit a breakpoint.
-		if breakpoint != nil {
-			if err = thread.clearTempBreakpoint(breakpoint.Addr); err != nil {
+		if dbp.CurrentBreakpoint != nil {
+			if err = thread.clearTempBreakpoint(dbp.CurrentBreakpoint.Addr); err != nil {
 				return err
 			}
 		}
@@ -319,7 +320,7 @@ func (dbp *DebuggedProcess) Continue() error {
 }
 
 func (dbp *DebuggedProcess) resume() error {
-	thread, breakpoint, err := trapWait(dbp, -1)
+	thread, err := trapWait(dbp, -1)
 	if err != nil {
 		return err
 	}
@@ -330,8 +331,8 @@ func (dbp *DebuggedProcess) resume() error {
 	if err != nil {
 		return err
 	}
-	if breakpoint != nil {
-		if !breakpoint.Temp {
+	if dbp.CurrentBreakpoint != nil {
+		if !dbp.CurrentBreakpoint.Temp {
 			return dbp.Halt()
 		}
 	}
@@ -512,26 +513,28 @@ func (dbp *DebuggedProcess) clearTempBreakpoints() error {
 	}
 	return nil
 }
-func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, *BreakPoint, error) {
+func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, error) {
 	thread, ok := dbp.Threads[id]
 	if !ok {
-		return nil, nil, fmt.Errorf("could not find thread for %d", id)
+		return nil, fmt.Errorf("could not find thread for %d", id)
 	}
 	pc, err := thread.CurrentPC()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// Check for hardware breakpoint
 	for _, bp := range dbp.HWBreakPoints {
 		if bp != nil && bp.Addr == pc {
-			return thread, bp, nil
+			dbp.CurrentBreakpoint = bp
+			return thread, nil
 		}
 	}
 	// Check to see if we have hit a software breakpoint.
 	if bp, ok := dbp.BreakPoints[pc-1]; ok {
-		return thread, bp, nil
+		dbp.CurrentBreakpoint = bp
+		return thread, nil
 	}
-	return thread, nil, nil
+	return thread, nil
 }
 
 func (dbp *DebuggedProcess) run(fn func() error) error {
@@ -540,6 +543,7 @@ func (dbp *DebuggedProcess) run(fn func() error) error {
 	}
 	dbp.running = true
 	dbp.halt = false
+	dbp.CurrentBreakpoint = nil
 	defer func() { dbp.running = false }()
 	if err := fn(); err != nil {
 		if _, ok := err.(ManualStopError); !ok {
