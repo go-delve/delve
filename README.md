@@ -22,7 +22,7 @@ You're done!
 
 #### OS X
 
-If you are on OS X a few extra steps must be taken. You must create a self signed certificate:
+If you are on OS X a few extra steps must be taken. You must create a self signed certificate and sign the binary with it:
 
 * Open application “Keychain Access” (/Applications/Utilities/Keychain Access.app)
 * Open menu /Keychain Access/Certificate Assistant/Create a Certificate...
@@ -31,6 +31,7 @@ If you are on OS X a few extra steps must be taken. You must create a self signe
 * If you can't store the certificate in the “System” keychain, create it in the “login” keychain, then export it. You can then import it into the “System” keychain.
 * In keychains select “System”, and you should find your new certificate. Use the context menu for the certificate, select “Get Info”, open the “Trust” item, and set “Code Signing” to “Always Trust”.
 * You must quit “Keychain Access” application in order to use the certificate and restart “taskgated” service by killing the current running “taskgated” process. Alternatively you can restart your computer.
+* Run the following: `CERT=$mycert make install`, which will install the binary and codesign it.
 
 All `make` commands assume a CERT environment variables that contains the name of the cert you created above.
 Following that you can `CERT=mycert make install` which should install the binary and codesign it. For running tests, simply run `CERT=mycert make test`.
