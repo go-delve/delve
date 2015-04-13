@@ -25,14 +25,8 @@ const (
 // Not actually needed for Linux.
 type OSProcessDetails interface{}
 
-func (dbp *DebuggedProcess) Halt() (err error) {
-	for _, th := range dbp.Threads {
-		err := th.Halt()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+func (dbp *DebuggedProcess) requestManualStop() (err error) {
+	return sys.Kill(dbp.Pid, sys.SIGSTOP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of

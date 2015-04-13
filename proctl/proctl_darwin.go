@@ -22,12 +22,15 @@ type OSProcessDetails struct {
 	notificationPort C.mach_port_t
 }
 
-func (dbp *DebuggedProcess) Halt() (err error) {
-	for _, th := range dbp.Threads {
-		err := th.Halt()
-		if err != nil {
-			return err
-		}
+func (dbp *DebuggedProcess) requestManualStop() (err error) {
+	var (
+		task          = C.mach_port_t(dbp.os.task)
+		thread        = C.mach_port_t(dbp.CurrentThread.os.thread_act)
+		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
+	)
+	kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not raise mach exception")
 	}
 	return nil
 }

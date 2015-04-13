@@ -185,12 +185,14 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 
 // Sends out a request that the debugged process halt
 // execution. Sends SIGSTOP to all threads.
-func (dbp *DebuggedProcess) RequestManualStop() {
+func (dbp *DebuggedProcess) RequestManualStop() error {
 	dbp.halt = true
-	for _, th := range dbp.Threads {
-		th.Halt()
+	err := dbp.requestManualStop()
+	if err != nil {
+		return err
 	}
 	dbp.running = false
+	return nil
 }
 
 // Sets a breakpoint at addr, and stores it in the process wide
@@ -331,10 +333,8 @@ func (dbp *DebuggedProcess) resume() error {
 	if err != nil {
 		return err
 	}
-	if dbp.CurrentBreakpoint != nil {
-		if !dbp.CurrentBreakpoint.Temp {
-			return dbp.Halt()
-		}
+	if dbp.CurrentBreakpoint != nil || dbp.halt {
+		return dbp.Halt()
 	}
 	// Check to see if we hit a runtime.breakpoint
 	fn := dbp.goSymTable.PCToFunc(pc)
@@ -405,6 +405,15 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 		allg = append(allg, g)
 	}
 	return allg, nil
+}
+
+func (dbp *DebuggedProcess) Halt() (err error) {
+	for _, th := range dbp.Threads {
+		if err := th.Halt(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Obtains register values from what Delve considers to be the current

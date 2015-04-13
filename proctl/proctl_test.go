@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess)) {
@@ -83,6 +84,31 @@ func TestExit(t *testing.T) {
 		}
 		if pe.Pid != p.Pid {
 			t.Errorf("Unexpected process id: %d", pe.Pid)
+		}
+	})
+}
+
+func TestHalt(t *testing.T) {
+	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			err := p.RequestManualStop()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+		err := p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Loop through threads and make sure they are all
+		// actually stopped, err will not be nil if the process
+		// is still running.
+		for _, th := range p.Threads {
+			_, err := th.Registers()
+			if err != nil {
+				t.Error(err)
+			}
 		}
 	})
 }

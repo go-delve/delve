@@ -158,3 +158,8 @@ mach_port_wait(mach_port_t port_set) {
 
 	return thread;
 }
+
+kern_return_t
+raise_exception(mach_port_t task, mach_port_t thread, mach_port_t exception_port, exception_type_t exception) {
+	return exception_raise(exception_port, thread, task, exception, 0, 0);
+}

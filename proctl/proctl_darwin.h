@@ -37,3 +37,7 @@ thread_count(task_t task);
 
 mach_port_t
 mach_port_wait(mach_port_t);
+
+kern_return_t
+raise_exception(mach_port_t, mach_port_t, mach_port_t, exception_type_t);
+
