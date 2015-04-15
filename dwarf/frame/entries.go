@@ -69,11 +69,10 @@ func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry,
 		if fdes[i].Cover(pc) {
 			return true
 		}
-		if fdes[i].More(pc) {
+		if fdes[i].LessThan(pc) {
 			return false
 		}
 		return true
-
 	})
 	if idx == len(fdes) {
 		return nil, fmt.Errorf("could not find FDE for PC %#v", pc)
@@ -81,6 +80,6 @@ func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry,
 	return fdes[idx], nil
 }
 
-func (frame *FrameDescriptionEntry) More(pc uint64) bool {
+func (frame *FrameDescriptionEntry) LessThan(pc uint64) bool {
 	return frame.End() <= pc
 }
