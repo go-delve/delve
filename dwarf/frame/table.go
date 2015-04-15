@@ -119,6 +119,8 @@ var fnlookup = map[byte]instruction{
 }
 
 func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
+	initialInstructions := make([]byte, len(cie.InitialInstructions))
+	copy(initialInstructions, cie.InitialInstructions)
 	frame := &FrameContext{
 		cie:           cie,
 		regs:          make(map[uint64]DWRule),
@@ -126,7 +128,7 @@ func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
 		prevRegs:      make(map[uint64]DWRule),
 		codeAlignment: cie.CodeAlignmentFactor,
 		dataAlignment: cie.DataAlignmentFactor,
-		buf:           bytes.NewBuffer(cie.InitialInstructions),
+		buf:           bytes.NewBuffer(initialInstructions),
 	}
 
 	frame.ExecuteDwarfProgram()
