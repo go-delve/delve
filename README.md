@@ -6,7 +6,7 @@
 
 Delve is a Go debugger, written in Go.
 
-**This project is currently in beta. Most of the functionality is there, however there are various improvements to be made. Delve is not (yet) ready for daily use.**
+**This project is currently pre 1.0. Most of the functionality is there, however there are various improvements to be made. Delve is not _yet_ ready for daily use.**
 
 ### Building
 
