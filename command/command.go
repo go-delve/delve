@@ -38,6 +38,15 @@ type Commands struct {
 	lastCmd cmdfunc
 }
 
+// Returns the list of available command names
+func (c *Commands) Names() (names []string) {
+	for _, cc := range c.cmds {
+		names = append(names, cc.aliases[0])
+	}
+
+	return
+}
+
 // Returns a Commands struct with default commands defined.
 func DebugCommands() *Commands {
 	c := &Commands{}
