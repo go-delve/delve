@@ -98,8 +98,13 @@ func (s *RESTServer) Run() error {
 	return http.Serve(s.listener, container)
 }
 
+// Stop detaches from the debugger and waits for it to stop.
 func (s *RESTServer) Stop(kill bool) error {
-	return s.debugger.Detach(kill)
+	err := s.debugger.Detach(kill)
+	if err != nil {
+		return err
+	}
+	return <-s.debuggerStopped
 }
 
 // writeError writes a simple error response.
@@ -117,17 +122,12 @@ func (s *RESTServer) detach(request *restful.Request, response *restful.Response
 		return
 	}
 
-	err = s.debugger.Detach(kill)
+	err = s.Stop(kill)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	err = <-s.debuggerStopped
-	if err != nil {
-		writeError(response, http.StatusInternalServerError, err.Error())
-		return
-	}
 	response.WriteHeader(http.StatusOK)
 }
 
