@@ -3,11 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	sys "golang.org/x/sys/unix"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 
@@ -36,10 +38,12 @@ func main() {
 	var printv, printhelp bool
 	var addr string
 	var logEnabled bool
+	var headless bool
 
 	flag.BoolVar(&printv, "version", false, "Print version number and exit.")
 	flag.StringVar(&addr, "addr", "localhost:0", "Debugging server listen address.")
 	flag.BoolVar(&logEnabled, "log", false, "Enable debugging server logging.")
+	flag.BoolVar(&headless, "headless", false, "Run in headless mode.")
 	flag.Parse()
 
 	if flag.NFlag() == 0 && len(flag.Args()) == 0 {
@@ -120,15 +124,22 @@ func main() {
 	})
 	go server.Run()
 
-	// Create and start a terminal
-	client := rest.NewClient(listener.Addr().String())
-	term := terminal.New(client)
-	err, status := term.Run()
+	status := 0
+	if !headless {
+		// Create and start a terminal
+		client := rest.NewClient(listener.Addr().String())
+		term := terminal.New(client)
+		err, status = term.Run()
+	} else {
+		ch := make(chan os.Signal)
+		signal.Notify(ch, sys.SIGINT)
+		<-ch
+		err = server.Stop(true)
+	}
+
 	if err != nil {
 		fmt.Println(err)
 	}
-
-	// Clean up and exit
 	fmt.Println("[Hope I was of service hunting your bug!]")
 	os.Exit(status)
 }
