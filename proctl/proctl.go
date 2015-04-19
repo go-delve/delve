@@ -205,7 +205,11 @@ func (dbp *DebuggedProcess) RequestManualStop() error {
 // will set a hardware breakpoint. Otherwise we fall back to software
 // breakpoints, which are a bit more work for us.
 func (dbp *DebuggedProcess) Break(addr uint64) (*BreakPoint, error) {
-	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr)
+	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, false)
+}
+
+func (dbp *DebuggedProcess) TempBreak(addr uint64) (*BreakPoint, error) {
+	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, true)
 }
 
 // Sets a breakpoint by location string (function, file+line, address)
@@ -219,30 +223,7 @@ func (dbp *DebuggedProcess) BreakByLocation(loc string) (*BreakPoint, error) {
 
 // Clears a breakpoint in the current thread.
 func (dbp *DebuggedProcess) Clear(addr uint64) (*BreakPoint, error) {
-	tid := dbp.CurrentThread.Id
-	// Check for hardware breakpoint
-	for i, bp := range dbp.HWBreakPoints {
-		if bp == nil {
-			continue
-		}
-		if bp.Addr == addr {
-			dbp.HWBreakPoints[i] = nil
-			if err := clearHardwareBreakpoint(i, tid); err != nil {
-				return nil, err
-			}
-			return bp, nil
-		}
-	}
-	// Check for software breakpoint
-	if bp, ok := dbp.BreakPoints[addr]; ok {
-		thread := dbp.Threads[tid]
-		if _, err := writeMemory(thread, uintptr(bp.Addr), bp.OriginalData); err != nil {
-			return nil, fmt.Errorf("could not clear breakpoint %s", err)
-		}
-		delete(dbp.BreakPoints, addr)
-		return bp, nil
-	}
-	return nil, fmt.Errorf("no breakpoint at %#v", addr)
+	return dbp.clearBreakpoint(dbp.CurrentThread.Id, addr)
 }
 
 // Clears a breakpoint by location (function, file+line, address, breakpoint id)
@@ -261,15 +242,40 @@ func (dbp *DebuggedProcess) Status() *sys.WaitStatus {
 
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
+	if err := dbp.setChanRecvBreakpoints(); err != nil {
+		return err
+	}
 	return dbp.run(dbp.next)
 }
 
+func (dbp *DebuggedProcess) setChanRecvBreakpoints() error {
+	allg, err := dbp.GoroutinesInfo()
+	if err != nil {
+		return err
+	}
+	for _, g := range allg {
+		if g.ChanRecvBlocked() {
+			ret, err := g.chanRecvReturnAddr(dbp)
+			if err != nil {
+				return err
+			}
+			if _, err = dbp.TempBreak(ret); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (dbp *DebuggedProcess) next() error {
+	defer dbp.clearTempBreakpoints()
+
 	curg, err := dbp.CurrentThread.curG()
 	if err != nil {
 		return err
 	}
-	defer dbp.clearTempBreakpoints()
+
+	var goroutineExiting bool
 	for _, th := range dbp.Threads {
 		if th.blocked() { // Continue threads that aren't running go code.
 			if err := th.Continue(); err != nil {
@@ -277,7 +283,16 @@ func (dbp *DebuggedProcess) next() error {
 			}
 			continue
 		}
-		if err := th.Next(); err != nil {
+		if err = th.Next(); err != nil {
+			if err, ok := err.(GoroutineExitingError); ok {
+				if err.goid == curg.Id {
+					goroutineExiting = true
+				}
+				if err := th.Continue(); err != nil {
+					return err
+				}
+				continue
+			}
 			return err
 		}
 	}
@@ -287,10 +302,18 @@ func (dbp *DebuggedProcess) next() error {
 		if err != nil {
 			return err
 		}
-		// Check if we've hit a breakpoint.
+		if goroutineExiting {
+			break
+		}
 		if dbp.CurrentBreakpoint != nil {
-			if err = thread.clearTempBreakpoint(dbp.CurrentBreakpoint.Addr); err != nil {
+			bp, err := dbp.Clear(dbp.CurrentBreakpoint.Addr)
+			if err != nil {
 				return err
+			}
+			if !bp.hardware {
+				if err = thread.SetPC(bp.Addr); err != nil {
+					return err
+				}
 			}
 		}
 		// Grab the current goroutine for this thread.
@@ -398,7 +421,7 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp, allgptr+(i*uint64(ptrsize)), reader)
+		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(ptrsize)), reader)
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +455,7 @@ func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 	return dbp.CurrentThread.EvalSymbol(name)
 }
 
-func (dbp *DebuggedProcess) CallFn(name string, fn func(*ThreadContext) error) error {
+func (dbp *DebuggedProcess) CallFn(name string, fn func() error) error {
 	return dbp.CurrentThread.CallFn(name, fn)
 }
 

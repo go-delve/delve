@@ -16,7 +16,7 @@ func (t *ThreadContext) Halt() error {
 	var kret C.kern_return_t
 	kret = C.thread_suspend(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not suspend task %d", t.Id)
+		return fmt.Errorf("could not suspend thread %d", t.Id)
 	}
 	return nil
 }
@@ -50,7 +50,7 @@ func (t *ThreadContext) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.CurrentPC()
 	fn := t.Process.goSymTable.PCToFunc(pc)
-	if fn != nil && ((fn.Name == "runtime.mach_semaphore_wait") || (fn.Name == "runtime.usleep")) {
+	if fn != nil && (fn.Name == "runtime.mach_semaphore_wait") {
 		return true
 	}
 	return false

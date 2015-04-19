@@ -1,6 +1,7 @@
 package source
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -33,6 +34,9 @@ func (s *Searcher) FirstNodeAt(fname string, line int) (ast.Node, error) {
 		}
 		return true
 	})
+	if node == nil {
+		return nil, fmt.Errorf("could not find node at %s:%d", fname, line)
+	}
 	return node, nil
 }
 
@@ -83,11 +87,11 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 		if x.Else == nil {
 			// Grab first line after entire 'if' block
 			rbrace = s.fileset.Position(x.Body.Rbrace).Line
-			n, err := s.FirstNodeAt(fname, 1)
+			f, err := s.parse(fname)
 			if err != nil {
 				return nil, err
 			}
-			ast.Inspect(n, func(n ast.Node) bool {
+			ast.Inspect(f, func(n ast.Node) bool {
 				if n == nil {
 					return true
 				}
@@ -156,9 +160,8 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 	//      end up at the top of the loop again.
 	default:
 		var (
-			parents     []*ast.BlockStmt
-			parentLines []int
-			parentLine  int
+			parents              []*ast.BlockStmt
+			parentBlockBeginLine int
 		)
 		f, err := s.parse(fname)
 		if err != nil {
@@ -174,54 +177,85 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 			if stmt, ok := n.(*ast.ForStmt); ok {
 				parents = append(parents, stmt.Body)
 				pos := s.fileset.Position(stmt.Pos())
-				parentLine = pos.Line
-				parentLines = append(parentLines, pos.Line)
+				parentBlockBeginLine = pos.Line
 			}
+
+			if _, ok := n.(*ast.GenDecl); ok {
+				return true
+			}
+
+			if st, ok := n.(*ast.DeclStmt); ok {
+				beginpos := s.fileset.Position(st.Pos())
+				endpos := s.fileset.Position(st.End())
+				if beginpos.Line < endpos.Line {
+					return true
+				}
+			}
+
+			// Check to see if we've found the "next" line.
 			pos := s.fileset.Position(n.Pos())
 			if line < pos.Line {
 				if _, ok := n.(*ast.BlockStmt); ok {
 					return true
 				}
-				for {
-					if 0 < len(parents) {
-						parent := parents[len(parents)-1]
-						endLine := s.fileset.Position(parent.Rbrace).Line
-						if endLine < line {
-							if len(parents) == 1 {
-								parents = []*ast.BlockStmt{}
-								parentLines = []int{}
-								parentLine = 0
-							} else {
-								parents = parents[0 : len(parents)-1]
-								parentLines = parentLines[0:len(parents)]
-								parent = parents[len(parents)-1]
-								parentLine = s.fileset.Position(parent.Pos()).Line
-							}
-							continue
-						}
-						if parentLine != 0 {
-							var endfound bool
-							ast.Inspect(f, func(n ast.Node) bool {
-								if n == nil || endfound {
-									return false
-								}
-								if _, ok := n.(*ast.BlockStmt); ok {
-									return true
-								}
-								pos := s.fileset.Position(n.Pos())
-								if endLine < pos.Line {
-									endLine = pos.Line
-									endfound = true
-									return false
-								}
-								return true
-							})
-							lines = append(lines, parentLine, endLine)
-						}
+				var (
+					parent        *ast.BlockStmt
+					parentEndLine int
+				)
+				for len(parents) > 0 {
+					parent = parents[len(parents)-1]
+
+					// Grab the line number of the right brace of the parent block.
+					parentEndLine = s.fileset.Position(parent.Rbrace).Line
+
+					// Check to see if we're still within the parents block.
+					// If we are, we're done and that is our parent.
+					if parentEndLine > line {
+						parentBlockBeginLine = s.fileset.Position(parent.Pos()).Line
+						break
 					}
-					break
+					// If we weren't, and there is only 1 parent, we no longer have one.
+					if len(parents) == 1 {
+						parent = nil
+						break
+					}
+					// Remove that parent from the stack.
+					parents = parents[0 : len(parents)-1]
 				}
-				if _, ok := n.(*ast.BranchStmt); !ok {
+				if parent != nil {
+					var (
+						endfound   bool
+						beginFound bool
+						beginLine  int
+					)
+
+					ast.Inspect(f, func(n ast.Node) bool {
+						if n == nil || endfound {
+							return false
+						}
+						if _, ok := n.(*ast.BlockStmt); ok {
+							return true
+						}
+						pos := s.fileset.Position(n.Pos())
+						if parentBlockBeginLine < pos.Line && !beginFound {
+							beginFound = true
+							beginLine = pos.Line
+							return true
+						}
+						if parentEndLine < pos.Line {
+							if _, ok := n.(*ast.FuncDecl); !ok {
+								lines = append(lines, beginLine, pos.Line)
+							}
+							endfound = true
+							return false
+						}
+						return true
+					})
+					lines = append(lines, parentBlockBeginLine)
+				}
+				switch n.(type) {
+				case *ast.BranchStmt, *ast.FuncDecl:
+				default:
 					lines = append(lines, pos.Line)
 				}
 				found = true

@@ -57,3 +57,9 @@ func endlesslooptest() {
 		fmt.Println("foo")
 	}
 }
+
+func decltest() {
+	var foo = "bar"
+	var baz = 9
+	fmt.Println(foo, baz)
+}

@@ -219,45 +219,18 @@ func TestClearBreakPoint(t *testing.T) {
 	})
 }
 
-func TestNext(t *testing.T) {
-	var (
-		err            error
-		executablePath = "../_fixtures/testnextprog"
-	)
+type nextTest struct {
+	begin, end int
+}
 
-	testcases := []struct {
-		begin, end int
-	}{
-		{19, 20},
-		{20, 23},
-		{23, 24},
-		{24, 26},
-		{26, 31},
-		{31, 23},
-		{23, 24},
-		{24, 26},
-		{26, 31},
-		{31, 23},
-		{23, 24},
-		{24, 26},
-		{26, 27},
-		{27, 34},
-		{34, 41},
-		{41, 40},
-		{40, 41},
-	}
-
-	fp, err := filepath.Abs("../_fixtures/testnextprog.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-
+func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
+	var executablePath = "../_fixtures/testnextprog"
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.goSymTable.LineToPC(fp, testcases[0].begin)
-		_, err := p.Break(pc)
+		bp, err := p.BreakByLocation(initialLocation)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
-		p.Clear(pc)
+		p.Clear(bp.Addr)
+		p.CurrentThread.SetPC(bp.Addr)
 
 		f, ln := currentLineNumber(p, t)
 		for _, tc := range testcases {
@@ -273,9 +246,8 @@ func TestNext(t *testing.T) {
 			}
 		}
 
-		p.Clear(pc)
 		if len(p.BreakPoints) != 0 {
-			t.Fatal("Not all breakpoints were cleaned up", len(p.HWBreakPoints))
+			t.Fatal("Not all breakpoints were cleaned up", len(p.BreakPoints))
 		}
 		for _, bp := range p.HWBreakPoints {
 			if bp != nil {
@@ -283,6 +255,43 @@ func TestNext(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestNextGeneral(t *testing.T) {
+	testcases := []nextTest{
+		{17, 19},
+		{19, 20},
+		{20, 23},
+		{23, 24},
+		{24, 26},
+		{26, 31},
+		{31, 23},
+		{23, 24},
+		{24, 26},
+		{26, 31},
+		{31, 23},
+		{23, 24},
+		{24, 26},
+		{26, 27},
+		{27, 34},
+	}
+	testnext(testcases, "main.testnext", t)
+}
+
+func TestNextGoroutine(t *testing.T) {
+	testcases := []nextTest{
+		{46, 47},
+		{47, 42},
+	}
+	testnext(testcases, "main.testgoroutine", t)
+}
+
+func TestNextFunctionReturn(t *testing.T) {
+	testcases := []nextTest{
+		{13, 14},
+		{14, 35},
+	}
+	testnext(testcases, "main.helloworld", t)
 }
 
 func TestFindReturnAddress(t *testing.T) {
@@ -331,10 +340,9 @@ func TestFindReturnAddress(t *testing.T) {
 		readMemory(p.CurrentThread, uintptr(addr), data)
 		addr = binary.LittleEndian.Uint64(data)
 
-		linuxExpected := uint64(0x400fbc)
-		darwinExpected := uint64(0x23bc)
-		if addr != linuxExpected && addr != darwinExpected {
-			t.Fatalf("return address not found correctly, expected (linux) %#v or (darwin) %#v got %#v", linuxExpected, darwinExpected, addr)
+		_, l, _ := p.goSymTable.PCToLine(addr)
+		if l != 40 {
+			t.Fatalf("return address not found correctly, expected line 40")
 		}
 	})
 }
@@ -409,7 +417,8 @@ func TestFunctionCall(t *testing.T) {
 		if fn.Name != "main.main" {
 			t.Fatal("Program stopped at incorrect place")
 		}
-		if err = p.CallFn("runtime.getg", func(th *ThreadContext) error {
+		if err = p.CallFn("runtime.getg", func() error {
+			th := p.CurrentThread
 			pc, err := th.CurrentPC()
 			if err != nil {
 				t.Fatal(err)

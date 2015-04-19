@@ -16,10 +16,25 @@ type BreakPoint struct {
 	OriginalData []byte
 	ID           int
 	Temp         bool
+	hardware     bool
+	reg          int
 }
 
 func (bp *BreakPoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.ID, bp.Addr, bp.File, bp.Line)
+}
+
+func (bp *BreakPoint) Clear(thread *ThreadContext) (*BreakPoint, error) {
+	if bp.hardware {
+		if err := clearHardwareBreakpoint(bp.reg, thread.Id); err != nil {
+			return nil, err
+		}
+		return bp, nil
+	}
+	if _, err := writeMemory(thread, uintptr(bp.Addr), bp.OriginalData); err != nil {
+		return nil, fmt.Errorf("could not clear breakpoint %s", err)
+	}
+	return bp, nil
 }
 
 // Returned when trying to set a breakpoint at
@@ -59,7 +74,7 @@ func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
 	return ok
 }
 
-func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte) *BreakPoint {
+func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool) *BreakPoint {
 	dbp.breakpointIDCounter++
 	return &BreakPoint{
 		FunctionName: fn,
@@ -68,10 +83,18 @@ func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data
 		Addr:         addr,
 		OriginalData: data,
 		ID:           dbp.breakpointIDCounter,
+		Temp:         temp,
 	}
 }
 
-func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
+func (dbp *DebuggedProcess) newHardwareBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool, reg int) *BreakPoint {
+	bp := dbp.newBreakpoint(fn, f, l, addr, data, temp)
+	bp.hardware = true
+	bp.reg = reg
+	return bp
+}
+
+func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*BreakPoint, error) {
 	var f, l, fn = dbp.goSymTable.PCToLine(uint64(addr))
 	if fn == nil {
 		return nil, InvalidAddressError{address: addr}
@@ -89,7 +112,7 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, er
 			if err := setHardwareBreakpoint(i, tid, addr); err != nil {
 				return nil, fmt.Errorf("could not set hardware breakpoint: %v", err)
 			}
-			dbp.HWBreakPoints[i] = dbp.newBreakpoint(fn.Name, f, l, addr, nil)
+			dbp.HWBreakPoints[i] = dbp.newHardwareBreakpoint(fn.Name, f, l, addr, nil, temp, i)
 			return dbp.HWBreakPoints[i], nil
 		}
 	}
@@ -103,6 +126,33 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64) (*BreakPoint, er
 	if _, err := writeMemory(thread, uintptr(addr), []byte{0xCC}); err != nil {
 		return nil, err
 	}
-	dbp.BreakPoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData)
+	dbp.BreakPoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData, temp)
 	return dbp.BreakPoints[addr], nil
+}
+
+func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
+	thread := dbp.Threads[tid]
+	// Check for hardware breakpoint
+	for i, bp := range dbp.HWBreakPoints {
+		if bp == nil {
+			continue
+		}
+		if bp.Addr == addr {
+			_, err := bp.Clear(thread)
+			if err != nil {
+				return nil, err
+			}
+			dbp.HWBreakPoints[i] = nil
+			return bp, nil
+		}
+	}
+	// Check for software breakpoint
+	if bp, ok := dbp.BreakPoints[addr]; ok {
+		if _, err := bp.Clear(thread); err != nil {
+			return nil, err
+		}
+		delete(dbp.BreakPoints, addr)
+		return bp, nil
+	}
+	return nil, fmt.Errorf("no breakpoint at %#v", addr)
 }

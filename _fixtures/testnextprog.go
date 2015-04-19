@@ -1,8 +1,8 @@
+// fix lines
 package main
 
 import (
 	"fmt"
-	"runtime"
 	"time"
 )
 
@@ -35,9 +35,14 @@ func testnext() {
 }
 
 func main() {
-	runtime.LockOSThread()
-	for {
-		testnext()
-		fmt.Println("foo")
-	}
+	d := make(chan int)
+	testnext()
+	go testgoroutine(9, d)
+	<-d
+	fmt.Println("done")
+}
+
+// fix line
+func testgoroutine(foo int, d chan int) {
+	d <- foo
 }
