@@ -247,25 +247,6 @@ func (dbp *DebuggedProcess) Next() error {
 	return dbp.run(dbp.next)
 }
 
-func (dbp *DebuggedProcess) setChanRecvBreakpoints() error {
-	allg, err := dbp.GoroutinesInfo()
-	if err != nil {
-		return err
-	}
-	for _, g := range allg {
-		if g.ChanRecvBlocked() {
-			ret, err := g.chanRecvReturnAddr(dbp)
-			if err != nil {
-				return err
-			}
-			if _, err = dbp.TempBreak(ret); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (dbp *DebuggedProcess) next() error {
 	defer dbp.clearTempBreakpoints()
 
@@ -327,6 +308,25 @@ func (dbp *DebuggedProcess) next() error {
 		}
 	}
 	return dbp.Halt()
+}
+
+func (dbp *DebuggedProcess) setChanRecvBreakpoints() error {
+	allg, err := dbp.GoroutinesInfo()
+	if err != nil {
+		return err
+	}
+	for _, g := range allg {
+		if g.ChanRecvBlocked() {
+			ret, err := g.chanRecvReturnAddr(dbp)
+			if err != nil {
+				return err
+			}
+			if _, err = dbp.TempBreak(ret); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Resume process.
