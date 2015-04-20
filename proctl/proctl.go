@@ -31,7 +31,6 @@ type DebuggedProcess struct {
 	HWBreakPoints       [4]*BreakPoint
 	BreakPoints         map[uint64]*BreakPoint
 	Threads             map[int]*ThreadContext
-	CurrentBreakpoint   *BreakPoint
 	CurrentThread       *ThreadContext
 	dwarf               *dwarf.Data
 	goSymTable          *gosym.Table
@@ -305,12 +304,9 @@ func (dbp *DebuggedProcess) next() error {
 		if goroutineExiting {
 			break
 		}
-		if dbp.CurrentBreakpoint != nil {
-			bp, err := dbp.Clear(dbp.CurrentBreakpoint.Addr)
-			if err != nil {
-				return err
-			}
-			if !bp.hardware {
+		if thread.CurrentBreakpoint != nil {
+			bp := thread.CurrentBreakpoint
+			if bp != nil && !bp.hardware {
 				if err = thread.SetPC(bp.Addr); err != nil {
 					return err
 				}
@@ -322,7 +318,7 @@ func (dbp *DebuggedProcess) next() error {
 			return err
 		}
 		// Make sure we're on the same goroutine.
-		// TODO(dp) take into account goroutine exit.
+		// TODO(dp) better take into account goroutine exit.
 		if tg.Id == curg.Id {
 			if dbp.CurrentThread != thread {
 				dbp.SwitchThread(thread.Id)
@@ -450,6 +446,11 @@ func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
 	return dbp.CurrentThread.CurrentPC()
 }
 
+// Returns the PC of the current thread.
+func (dbp *DebuggedProcess) CurrentBreakpoint() *BreakPoint {
+	return dbp.CurrentThread.CurrentBreakpoint
+}
+
 // Returns the value of the named symbol.
 func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 	return dbp.CurrentThread.EvalSymbol(name)
@@ -527,6 +528,7 @@ func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 
 	return &dbp, nil
 }
+
 func (dbp *DebuggedProcess) clearTempBreakpoints() error {
 	for _, bp := range dbp.HWBreakPoints {
 		if bp != nil && bp.Temp {
@@ -545,6 +547,7 @@ func (dbp *DebuggedProcess) clearTempBreakpoints() error {
 	}
 	return nil
 }
+
 func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, error) {
 	thread, ok := dbp.Threads[id]
 	if !ok {
@@ -557,13 +560,13 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 	// Check for hardware breakpoint
 	for _, bp := range dbp.HWBreakPoints {
 		if bp != nil && bp.Addr == pc {
-			dbp.CurrentBreakpoint = bp
+			thread.CurrentBreakpoint = bp
 			return thread, nil
 		}
 	}
 	// Check to see if we have hit a software breakpoint.
 	if bp, ok := dbp.BreakPoints[pc-1]; ok {
-		dbp.CurrentBreakpoint = bp
+		thread.CurrentBreakpoint = bp
 		return thread, nil
 	}
 	return thread, nil
@@ -575,7 +578,9 @@ func (dbp *DebuggedProcess) run(fn func() error) error {
 	}
 	dbp.running = true
 	dbp.halt = false
-	dbp.CurrentBreakpoint = nil
+	for _, th := range dbp.Threads {
+		th.CurrentBreakpoint = nil
+	}
 	defer func() { dbp.running = false }()
 	if err := fn(); err != nil {
 		if _, ok := err.(ManualStopError); !ok {

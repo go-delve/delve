@@ -14,11 +14,12 @@ import (
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type ThreadContext struct {
-	Id      int
-	Process *DebuggedProcess
-	Status  *sys.WaitStatus
-	running bool
-	os      *OSSpecificDetails
+	Id                int
+	Process           *DebuggedProcess
+	Status            *sys.WaitStatus
+	CurrentBreakpoint *BreakPoint
+	running           bool
+	os                *OSSpecificDetails
 }
 
 // An interface for a generic register type. The
@@ -182,7 +183,7 @@ func (thread *ThreadContext) Next() (err error) {
 			return err
 		}
 	} else {
-		if err = thread.cnext(curpc, fde, f, l); err != nil {
+		if err = thread.cnext(curpc, fde); err != nil {
 			return err
 		}
 	}
@@ -233,31 +234,35 @@ func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry
 			}
 			return GoroutineExitingError{goid: g.Id}
 		}
-		pcs = append(pcs, ret)
 	}
+	pcs = append(pcs, ret)
+	return thread.setNextTempBreakpoints(curpc, pcs)
+}
 
-	// Set a breakpoint at every line reachable from our location.
-	for _, pc := range pcs {
-		// Do not set breakpoint at our current location.
-		if pc == curpc {
+// Set a breakpoint at every reachable location, as well as the return address. Without
+// the benefit of an AST we can't be sure we're not at a branching statement and thus
+// cannot accurately predict where we may end up.
+func (thread *ThreadContext) cnext(curpc uint64, fde *frame.FrameDescriptionEntry) error {
+	pcs := thread.Process.lineInfo.AllPCsBetween(fde.Begin(), fde.End())
+	ret, err := thread.ReturnAddress()
+	if err != nil {
+		return err
+	}
+	pcs = append(pcs, ret)
+	return thread.setNextTempBreakpoints(curpc, pcs)
+}
+
+func (thread *ThreadContext) setNextTempBreakpoints(curpc uint64, pcs []uint64) error {
+	for i := range pcs {
+		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
 		}
-		// If the PC is not covered by our frame, set breakpoint at return address.
-		if !fde.Cover(pc) {
-			pc = ret
-		}
-		if _, err := thread.Process.TempBreak(pc); err != nil {
+		if _, err := thread.Process.TempBreak(pcs[i]); err != nil {
 			if err, ok := err.(BreakPointExistsError); !ok {
 				return err
 			}
 		}
 	}
-	return nil
-}
-
-func (thread *ThreadContext) cnext(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
-	// TODO(dp) We are not in a Go source file, we should fall back on DWARF line information
-	// and use that to set breakpoints.
 	return nil
 }
 

@@ -105,6 +105,25 @@ func (dbl *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64) {
 	return
 }
 
+func (dbl *DebugLineInfo) AllPCsBetween(begin, end uint64) []uint64 {
+	var (
+		pcs []uint64
+		sm  = newStateMachine(dbl)
+		buf = bytes.NewBuffer(dbl.Instructions)
+	)
+
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+		if sm.address > end {
+			break
+		}
+		if sm.address >= begin && sm.address <= end {
+			pcs = append(pcs, sm.address)
+		}
+	}
+	return pcs
+}
+
 func findAndExecOpcode(sm *StateMachine, buf *bytes.Buffer, b byte) {
 	switch {
 	case b == 0:

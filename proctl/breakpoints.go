@@ -130,6 +130,14 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 	return dbp.BreakPoints[addr], nil
 }
 
+type NoBreakPointError struct {
+	addr uint64
+}
+
+func (nbp NoBreakPointError) Error() string {
+	return fmt.Sprintf("no breakpoint at %#v", nbp.addr)
+}
+
 func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
 	thread := dbp.Threads[tid]
 	// Check for hardware breakpoint
@@ -154,5 +162,5 @@ func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, 
 		delete(dbp.BreakPoints, addr)
 		return bp, nil
 	}
-	return nil, fmt.Errorf("no breakpoint at %#v", addr)
+	return nil, NoBreakPointError{addr: addr}
 }
