@@ -1,5 +1,3 @@
-// Package proctl provides functions for attaching to and manipulating
-// a process during the debug session.
 package proctl
 
 import (

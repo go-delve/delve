@@ -15,37 +15,47 @@ import (
 )
 
 const (
-	maxVariableRecurse = 1
-	maxArrayValues     = 64
+	ptrsize uintptr = unsafe.Sizeof(int(1)) // Size of a pointer.
+
+	maxVariableRecurse = 1  // How far to recurse when evaluating nested types.
+	maxArrayValues     = 64 // Max value for reading large arrays.
 
 	ChanRecv = "chan receive"
 	ChanSend = "chan send"
 )
 
+// Represents an evaluated variable.
 type Variable struct {
 	Name  string
 	Value string
 	Type  string
 }
 
+// Represents a runtime M (OS thread) structure.
 type M struct {
-	procid   int
-	spinning uint8
-	blocked  uint8
-	curg     uintptr
+	procid   int     // Thread ID or port.
+	spinning uint8   // Busy looping.
+	blocked  uint8   // Waiting on futex / semaphore.
+	curg     uintptr // Current G running on this thread.
 }
 
+// Represents a runtime G (goroutine) structure (at least the
+// fields that Delve is interested in).
 type G struct {
-	Id         int
-	PC         uint64
-	SP         uint64
-	GoPC       uint64
-	File       string
-	Line       int
-	Func       *gosym.Func
-	WaitReason string
+	Id         int    // Goroutine ID
+	PC         uint64 // PC of goroutine when it was parked.
+	SP         uint64 // SP of goroutine when it was parked.
+	GoPC       uint64 // PC of 'go' statement that created this goroutine.
+	WaitReason string // Reason for goroutine being parked.
+
+	// Information on goroutine location.
+	File string
+	Line int
+	Func *gosym.Func
 }
 
+// Returns whether the goroutine is blocked on
+// a channel read operation.
 func (g *G) ChanRecvBlocked() bool {
 	return g.WaitReason == ChanRecv
 }
@@ -59,8 +69,6 @@ func (g *G) chanRecvReturnAddr(dbp *DebuggedProcess) (uint64, error) {
 	topLoc := locs[len(locs)-1]
 	return topLoc.addr, nil
 }
-
-const ptrsize uintptr = unsafe.Sizeof(int(1))
 
 // Parses and returns select info on the internal M
 // data structures used by the Go scheduler.
@@ -80,7 +88,6 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		return nil, fmt.Errorf("allm contains no M pointers")
 	}
 
-	// parse addresses
 	procidInstructions, err := instructionsFor("procid", thread.Process, reader, true)
 	if err != nil {
 		return nil, err

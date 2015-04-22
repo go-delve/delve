@@ -9,21 +9,25 @@ import (
 // point including the byte of data that originally was stored at that
 // address.
 type BreakPoint struct {
+	// File & line information for printing.
 	FunctionName string
 	File         string
 	Line         int
-	Addr         uint64
-	OriginalData []byte
-	ID           int
-	Temp         bool
-	hardware     bool
-	reg          int
+
+	Addr         uint64 // Address breakpoint is set for.
+	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
+	ID           int    // Monotonically increasing ID.
+	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
+	hardware     bool   // Breakpoint using CPU debug registers.
+	reg          int    // If hardware breakpoint, what debug register it belongs to.
 }
 
 func (bp *BreakPoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.ID, bp.Addr, bp.File, bp.Line)
 }
 
+// Clear this breakpoint appropriately depending on whether it is a
+// hardware or software breakpoint.
 func (bp *BreakPoint) Clear(thread *ThreadContext) (*BreakPoint, error) {
 	if bp.hardware {
 		if err := clearHardwareBreakpoint(bp.reg, thread.Id); err != nil {
