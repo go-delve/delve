@@ -205,6 +205,7 @@ func (dbp *DebuggedProcess) Break(addr uint64) (*BreakPoint, error) {
 	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, false)
 }
 
+// Sets a temp breakpoint, for the 'next' command.
 func (dbp *DebuggedProcess) TempBreak(addr uint64) (*BreakPoint, error) {
 	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, true)
 }
@@ -368,7 +369,7 @@ func (dbp *DebuggedProcess) resume() error {
 	return fmt.Errorf("unrecognized breakpoint %#v", pc)
 }
 
-// Steps through process.
+// Single step, will execute a single instruction.
 func (dbp *DebuggedProcess) Step() (err error) {
 	fn := func() error {
 		for _, th := range dbp.Threads {
@@ -396,6 +397,8 @@ func (dbp *DebuggedProcess) SwitchThread(tid int) error {
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
+// Returns an array of G structures representing the information
+// Delve cares about from the internal runtime G structure.
 func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	var (
 		allg   []*G
@@ -424,6 +427,7 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	return allg, nil
 }
 
+// Stop all threads.
 func (dbp *DebuggedProcess) Halt() (err error) {
 	for _, th := range dbp.Threads {
 		if err := th.Halt(); err != nil {
@@ -463,14 +467,17 @@ func (dbp *DebuggedProcess) DwarfReader() *reader.Reader {
 	return reader.New(dbp.dwarf)
 }
 
+// Returns list of source files that comprise the debugged binary.
 func (dbp *DebuggedProcess) Sources() map[string]*gosym.Obj {
 	return dbp.goSymTable.Files
 }
 
+// Returns list of functions present in the debugged program.
 func (dbp *DebuggedProcess) Funcs() []gosym.Func {
 	return dbp.goSymTable.Funcs
 }
 
+// Converts an instruction address to a file/line/function.
 func (dbp *DebuggedProcess) PCToLine(pc uint64) (string, int, *gosym.Func) {
 	return dbp.goSymTable.PCToLine(pc)
 }

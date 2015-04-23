@@ -266,6 +266,7 @@ func (thread *ThreadContext) setNextTempBreakpoints(curpc uint64, pcs []uint64) 
 	return nil
 }
 
+// Sets the PC for this thread.
 func (thread *ThreadContext) SetPC(pc uint64) error {
 	regs, err := thread.Registers()
 	if err != nil {
