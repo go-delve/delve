@@ -247,6 +247,7 @@ func (dbp *DebuggedProcess) Next() error {
 }
 
 func (dbp *DebuggedProcess) next() error {
+	// Make sure we clean up the temp breakpoints created by thread.Next
 	defer dbp.clearTempBreakpoints()
 
 	curg, err := dbp.CurrentThread.curG()

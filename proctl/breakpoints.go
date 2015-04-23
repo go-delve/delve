@@ -120,8 +120,7 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 			return dbp.HWBreakPoints[i], nil
 		}
 	}
-	// Fall back to software breakpoint. 0xCC is INT 3, software
-	// breakpoint trap interrupt.
+	// Fall back to software breakpoint. 0xCC is INT 3 trap interrupt.
 	thread := dbp.Threads[tid]
 	originalData := make([]byte, 1)
 	if _, err := readMemory(thread, uintptr(addr), originalData); err != nil {
@@ -134,6 +133,7 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 	return dbp.BreakPoints[addr], nil
 }
 
+// Error thrown when trying to clear a breakpoint that does not exist.
 type NoBreakPointError struct {
 	addr uint64
 }
