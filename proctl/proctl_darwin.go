@@ -174,7 +174,7 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 	return exe, nil
 }
 
-func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
+func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 	port := C.mach_port_wait(dbp.os.portSet)
 
 	switch port {
@@ -190,7 +190,7 @@ func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
 			// Call trapWait again, it seems
 			// MACH_RCV_INTERRUPTED is emitted before
 			// process natural death _sometimes_.
-			return trapWait(dbp, pid)
+			return dbp.trapWait(pid)
 		}
 		return nil, ManualStopError{}
 	case 0:

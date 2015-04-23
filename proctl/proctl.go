@@ -278,7 +278,7 @@ func (dbp *DebuggedProcess) next() error {
 	}
 
 	for {
-		thread, err := trapWait(dbp, -1)
+		thread, err := dbp.trapWait(-1)
 		if err != nil {
 			return err
 		}
@@ -341,7 +341,7 @@ func (dbp *DebuggedProcess) Continue() error {
 }
 
 func (dbp *DebuggedProcess) resume() error {
-	thread, err := trapWait(dbp, -1)
+	thread, err := dbp.trapWait(-1)
 	if err != nil {
 		return err
 	}

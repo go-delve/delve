@@ -133,9 +133,11 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 	if err = thread.Continue(); err != nil {
 		return err
 	}
-	if _, err = trapWait(thread.Process, -1); err != nil {
+	th, err := thread.Process.trapWait(-1)
+	if err != nil {
 		return err
 	}
+	th.CurrentBreakpoint = nil
 	return fn()
 }
 

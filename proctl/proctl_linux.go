@@ -191,26 +191,7 @@ func (dbp *DebuggedProcess) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup
 	}
 }
 
-func stopped(pid int) bool {
-	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	var (
-		p     int
-		comm  string
-		state rune
-	)
-	fmt.Fscanf(f, "%d %s %c", &p, &comm, &state)
-	if state == STATUS_TRACE_STOP {
-		return true
-	}
-	return false
-}
-
-func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
+func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 	for {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {
@@ -258,6 +239,25 @@ func trapWait(dbp *DebuggedProcess, pid int) (*ThreadContext, error) {
 			return nil, ManualStopError{}
 		}
 	}
+}
+
+func stopped(pid int) bool {
+	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	var (
+		p     int
+		comm  string
+		state rune
+	)
+	fmt.Fscanf(f, "%d %s %c", &p, &comm, &state)
+	if state == STATUS_TRACE_STOP {
+		return true
+	}
+	return false
 }
 
 func wait(pid, options int) (int, *sys.WaitStatus, error) {

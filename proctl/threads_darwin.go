@@ -26,7 +26,7 @@ func (t *ThreadContext) singleStep() error {
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not single step")
 	}
-	trapWait(t.Process, 0)
+	t.Process.trapWait(0)
 	kret = C.clear_trap_flag(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not clear CPU trap flag")
