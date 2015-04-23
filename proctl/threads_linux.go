@@ -50,24 +50,18 @@ func (t *ThreadContext) blocked() bool {
 	return false
 }
 
+func (thread *ThreadContext) saveRegisters() error {
+	return sys.PtraceGetRegs(thread.Id, &thread.os.registers)
+}
+
+func (thread *ThreadContext) restoreRegisters() error {
+	return sys.PtraceSetRegs(thread.Id, &thread.os.registers)
+}
+
 func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 	return sys.PtracePokeData(thread.Id, addr, data)
 }
 
 func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 	return sys.PtracePeekData(thread.Id, addr, data)
-}
-
-func (thread *ThreadContext) saveRegisters() error {
-	var regs sys.PtraceRegs
-	err := sys.PtraceGetRegs(thread.Id, &regs)
-	if err != nil {
-		return err
-	}
-	thread.os.registers = regs
-	return nil
-}
-
-func (thread *ThreadContext) restoreRegisters() error {
-	return sys.PtraceSetRegs(thread.Id, &thread.os.registers)
 }
