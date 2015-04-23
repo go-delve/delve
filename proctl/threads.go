@@ -62,7 +62,7 @@ func (thread *ThreadContext) Continue() error {
 
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
-	if _, ok := thread.Process.BreakPoints[pc-1]; ok {
+	if _, ok := thread.Process.BreakPoints[pc]; ok {
 		err := thread.Step()
 		if err != nil {
 			return fmt.Errorf("could not step %s", err)
@@ -79,18 +79,12 @@ func (thread *ThreadContext) Step() (err error) {
 		return err
 	}
 
-	bp, ok := thread.Process.BreakPoints[pc-1]
+	bp, ok := thread.Process.BreakPoints[pc]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
 		_, err = thread.Process.Clear(bp.Addr)
 		if err != nil {
 			return err
-		}
-
-		// Reset program counter to our restored instruction.
-		err = thread.SetPC(bp.Addr)
-		if err != nil {
-			return fmt.Errorf("could not set registers %s", err)
 		}
 
 		// Restore breakpoint now that we have passed it.
@@ -163,12 +157,6 @@ func (thread *ThreadContext) Next() (err error) {
 	curpc, err := thread.PC()
 	if err != nil {
 		return err
-	}
-
-	// Check and see if we're at a breakpoint, if so
-	// correct the PC value for the breakpoint instruction.
-	if bp, ok := thread.Process.BreakPoints[curpc-1]; ok {
-		curpc = bp.Addr
 	}
 
 	// Grab info on our current stack frame. Used to determine

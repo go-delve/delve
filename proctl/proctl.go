@@ -282,32 +282,22 @@ func (dbp *DebuggedProcess) next() error {
 		if err != nil {
 			return err
 		}
-		if goroutineExiting {
-			break
-		}
-		if thread.CurrentBreakpoint != nil {
-			bp := thread.CurrentBreakpoint
-			if bp != nil && !bp.hardware {
-				if err = thread.SetPC(bp.Addr); err != nil {
-					return err
-				}
-			}
-		}
-		// Grab the current goroutine for this thread.
 		tg, err := thread.curG()
 		if err != nil {
 			return err
 		}
-		// Make sure we're on the same goroutine.
-		// TODO(dp) better take into account goroutine exit.
-		if tg.Id == curg.Id {
+		// Make sure we're on the same goroutine, unless it has exited.
+		if tg.Id == curg.Id || goroutineExiting {
 			if dbp.CurrentThread != thread {
 				dbp.SwitchThread(thread.Id)
+			}
+			if err = dbp.Halt(); err != nil {
+				return err
 			}
 			break
 		}
 	}
-	return dbp.Halt()
+	return nil
 }
 
 func (dbp *DebuggedProcess) setChanRecvBreakpoints() error {
@@ -573,9 +563,15 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 	// Check to see if we have hit a software breakpoint.
 	if bp, ok := dbp.BreakPoints[pc-1]; ok {
 		thread.CurrentBreakpoint = bp
+		if err = thread.SetPC(bp.Addr); err != nil {
+			return nil, err
+		}
 		return thread, nil
 	}
-	return thread, nil
+	if dbp.halt {
+		return thread, nil
+	}
+	return nil, fmt.Errorf("no breakpoint at %#v", pc)
 }
 
 func (dbp *DebuggedProcess) run(fn func() error) error {
