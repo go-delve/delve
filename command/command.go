@@ -124,7 +124,7 @@ func threads(p *proctl.DebuggedProcess, args ...string) error {
 		if th == p.CurrentThread {
 			prefix = "* "
 		}
-		pc, err := th.CurrentPC()
+		pc, err := th.PC()
 		if err != nil {
 			return err
 		}

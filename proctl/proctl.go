@@ -348,7 +348,7 @@ func (dbp *DebuggedProcess) resume() error {
 	if dbp.CurrentThread != thread {
 		dbp.SwitchThread(thread.Id)
 	}
-	pc, err := thread.CurrentPC()
+	pc, err := thread.PC()
 	if err != nil {
 		return err
 	}
@@ -445,8 +445,8 @@ func (dbp *DebuggedProcess) Registers() (Registers, error) {
 }
 
 // Returns the PC of the current thread.
-func (dbp *DebuggedProcess) CurrentPC() (uint64, error) {
-	return dbp.CurrentThread.CurrentPC()
+func (dbp *DebuggedProcess) PC() (uint64, error) {
+	return dbp.CurrentThread.PC()
 }
 
 // Returns the PC of the current thread.
@@ -559,7 +559,7 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 	if !ok {
 		return nil, fmt.Errorf("could not find thread for %d", id)
 	}
-	pc, err := thread.CurrentPC()
+	pc, err := thread.PC()
 	if err != nil {
 		return nil, err
 	}

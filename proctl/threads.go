@@ -42,7 +42,7 @@ func (thread *ThreadContext) Registers() (Registers, error) {
 }
 
 // Returns the current PC for this thread.
-func (thread *ThreadContext) CurrentPC() (uint64, error) {
+func (thread *ThreadContext) PC() (uint64, error) {
 	regs, err := thread.Registers()
 	if err != nil {
 		return 0, err
@@ -55,7 +55,7 @@ func (thread *ThreadContext) CurrentPC() (uint64, error) {
 // we step over any breakpoints. It will restore the instruction,
 // step, and then restore the breakpoint and continue.
 func (thread *ThreadContext) Continue() error {
-	pc, err := thread.CurrentPC()
+	pc, err := thread.PC()
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func (thread *ThreadContext) Continue() error {
 // Single steps this thread a single instruction, ensuring that
 // we correctly handle the likely case that we are at a breakpoint.
 func (thread *ThreadContext) Step() (err error) {
-	pc, err := thread.CurrentPC()
+	pc, err := thread.PC()
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (thread *ThreadContext) Clear(addr uint64) (*BreakPoint, error) {
 // and setting a breakpoint at them. Once we've set a breakpoint at each
 // potential line, we continue the thread.
 func (thread *ThreadContext) Next() (err error) {
-	curpc, err := thread.CurrentPC()
+	curpc, err := thread.PC()
 	if err != nil {
 		return err
 	}

@@ -372,7 +372,7 @@ func offsetFor(name string, reader *dwarf.Reader, parentinstr []byte) (uint64, e
 
 // Returns the value of the named symbol.
 func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
-	pc, err := thread.CurrentPC()
+	pc, err := thread.PC()
 	if err != nil {
 		return nil, err
 	}
@@ -976,7 +976,7 @@ func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, err
 
 // Fetches all variables of a specific type in the current function scope
 func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
-	pc, err := thread.CurrentPC()
+	pc, err := thread.PC()
 	if err != nil {
 		return nil, err
 	}

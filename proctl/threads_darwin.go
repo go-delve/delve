@@ -48,7 +48,7 @@ func (t *ThreadContext) resume() error {
 
 func (t *ThreadContext) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
-	pc, _ := t.CurrentPC()
+	pc, _ := t.PC()
 	fn := t.Process.goSymTable.PCToFunc(pc)
 	if fn != nil && (fn.Name == "runtime.mach_semaphore_wait" || fn.Name == "runtime.usleep") {
 		return true

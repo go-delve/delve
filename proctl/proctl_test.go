@@ -57,7 +57,7 @@ func assertNoError(err error, t *testing.T, s string) {
 }
 
 func currentPC(p *DebuggedProcess, t *testing.T) uint64 {
-	pc, err := p.CurrentPC()
+	pc, err := p.PC()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestBreakPoint(t *testing.T) {
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
 
-		pc, err := p.CurrentPC()
+		pc, err := p.PC()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +173,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		pc, err := p.CurrentPC()
+		pc, err := p.PC()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -406,7 +406,7 @@ func TestFunctionCall(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pc, err = p.CurrentPC()
+		pc, err = p.PC()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -419,7 +419,7 @@ func TestFunctionCall(t *testing.T) {
 		}
 		if err = p.CallFn("runtime.getg", func() error {
 			th := p.CurrentThread
-			pc, err := th.CurrentPC()
+			pc, err := th.PC()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -434,7 +434,7 @@ func TestFunctionCall(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		pc, err = p.CurrentPC()
+		pc, err = p.PC()
 		if err != nil {
 			t.Fatal(err)
 		}
