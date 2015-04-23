@@ -258,7 +258,7 @@ func (dbp *DebuggedProcess) next() error {
 	var goroutineExiting bool
 	for _, th := range dbp.Threads {
 		if th.blocked() { // Continue threads that aren't running go code.
-			if err := th.Continue(); err != nil {
+			if err = th.Continue(); err != nil {
 				return err
 			}
 			continue

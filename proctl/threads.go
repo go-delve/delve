@@ -123,14 +123,14 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 	}
 	defer thread.Process.Clear(bp.Addr)
 
-	if err := thread.saveRegisters(); err != nil {
+	if err = thread.saveRegisters(); err != nil {
 		return err
 	}
 	if err = thread.SetPC(f.Entry); err != nil {
 		return err
 	}
 	defer thread.restoreRegisters()
-	if err := thread.Continue(); err != nil {
+	if err = thread.Continue(); err != nil {
 		return err
 	}
 	if _, err = trapWait(thread.Process, -1); err != nil {
