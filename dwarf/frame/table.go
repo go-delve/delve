@@ -140,7 +140,9 @@ func executeDwarfProgramUntilPC(fde *FrameDescriptionEntry, pc uint64) *FrameCon
 	frame := executeCIEInstructions(fde.CIE)
 	frame.loc = fde.Begin()
 	frame.address = pc
-	frame.ExecuteUntilPC(fde.Instructions)
+	fdeInstructions := make([]byte, len(fde.Instructions))
+	copy(fdeInstructions, fde.Instructions)
+	frame.ExecuteUntilPC(fdeInstructions)
 
 	return frame
 }
@@ -153,7 +155,7 @@ func (frame *FrameContext) ExecuteDwarfProgram() {
 
 // Execute dwarf instructions.
 func (frame *FrameContext) ExecuteUntilPC(instructions []byte) {
-	frame.buf.Reset()
+	frame.buf.Truncate(0)
 	frame.buf.Write(instructions)
 
 	// We only need to execute the instructions until
