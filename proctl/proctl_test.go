@@ -294,6 +294,24 @@ func TestNextFunctionReturn(t *testing.T) {
 	testnext(testcases, "main.helloworld", t)
 }
 
+func TestRuntimeBreakpoint(t *testing.T) {
+	var testfile, _ = filepath.Abs("../_fixtures/testruntimebreakpoint")
+	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+		err := p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		pc, err := p.PC()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, l, _ := p.PCToLine(pc)
+		if l != 10 {
+			t.Fatal("did not respect breakpoint")
+		}
+	})
+}
+
 func TestFindReturnAddress(t *testing.T) {
 	var testfile, _ = filepath.Abs("../_fixtures/testnextprog")
 

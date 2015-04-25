@@ -554,6 +554,17 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 	if dbp.halt {
 		return thread, nil
 	}
+	fn := dbp.goSymTable.PCToFunc(pc)
+	if fn != nil && fn.Name == "runtime.breakpoint" {
+		dbp.singleStep = true
+		defer func() { dbp.singleStep = false }()
+		for i := 0; i < 2; i++ {
+			if err := thread.Step(); err != nil {
+				return nil, err
+			}
+		}
+		return thread, nil
+	}
 	return nil, NoBreakPointError{addr: pc}
 }
 
