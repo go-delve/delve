@@ -6,12 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 
 	sys "golang.org/x/sys/unix"
 
@@ -34,6 +32,8 @@ type DebuggedProcess struct {
 	goSymTable          *gosym.Table
 	frameEntries        frame.FrameDescriptionEntries
 	lineInfo            *line.DebugLineInfo
+	firstStart          bool
+	singleStep          bool
 	os                  *OSProcessDetails
 	ast                 *source.Searcher
 	breakpointIDCounter int
@@ -63,33 +63,18 @@ func (pe ProcessExitedError) Error() string {
 
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*DebuggedProcess, error) {
-	dbp, err := newDebugProcess(pid, true)
+	dbp := &DebuggedProcess{
+		Pid:         pid,
+		Threads:     make(map[int]*ThreadContext),
+		BreakPoints: make(map[uint64]*BreakPoint),
+		os:          new(OSProcessDetails),
+		ast:         source.New(),
+	}
+	dbp, err := initializeDebugProcess(dbp, "", true)
 	if err != nil {
 		return nil, err
 	}
 	return dbp, nil
-}
-
-// Create and begin debugging a new process. First entry in
-// `cmd` is the program to run, and then rest are the arguments
-// to be supplied to that process.
-func Launch(cmd []string) (*DebuggedProcess, error) {
-	proc := exec.Command(cmd[0])
-	proc.Args = cmd
-	proc.Stdout = os.Stdout
-	proc.Stderr = os.Stderr
-	proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
-
-	if err := proc.Start(); err != nil {
-		return nil, err
-	}
-
-	_, _, err := wait(proc.Process.Pid, 0)
-	if err != nil {
-		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
-	}
-
-	return newDebugProcess(proc.Process.Pid, false)
 }
 
 // Returns whether or not Delve thinks the debugged
@@ -109,10 +94,10 @@ func (dbp *DebuggedProcess) Running() bool {
 // * Dwarf .debug_frame section
 // * Dwarf .debug_line section
 // * Go symbol table.
-func (dbp *DebuggedProcess) LoadInformation() error {
+func (dbp *DebuggedProcess) LoadInformation(path string) error {
 	var wg sync.WaitGroup
 
-	exe, err := dbp.findExecutable()
+	exe, err := dbp.findExecutable(path)
 	if err != nil {
 		return err
 	}
@@ -367,6 +352,8 @@ func (dbp *DebuggedProcess) resume() error {
 // Single step, will execute a single instruction.
 func (dbp *DebuggedProcess) Step() (err error) {
 	fn := func() error {
+		dbp.singleStep = true
+		defer func() { dbp.singleStep = false }()
 		for _, th := range dbp.Threads {
 			if th.blocked() {
 				continue
@@ -491,33 +478,25 @@ func (dbp *DebuggedProcess) FindBreakpoint(pc uint64) (*BreakPoint, bool) {
 }
 
 // Returns a new DebuggedProcess struct.
-func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
-	dbp := DebuggedProcess{
-		Pid:         pid,
-		Threads:     make(map[int]*ThreadContext),
-		BreakPoints: make(map[uint64]*BreakPoint),
-		os:          new(OSProcessDetails),
-		ast:         source.New(),
-	}
-
+func initializeDebugProcess(dbp *DebuggedProcess, path string, attach bool) (*DebuggedProcess, error) {
 	if attach {
-		err := sys.PtraceAttach(pid)
+		err := sys.PtraceAttach(dbp.Pid)
 		if err != nil {
 			return nil, err
 		}
-		_, _, err = wait(pid, 0)
+		_, _, err = wait(dbp.Pid, 0)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	proc, err := os.FindProcess(pid)
+	proc, err := os.FindProcess(dbp.Pid)
 	if err != nil {
 		return nil, err
 	}
 
 	dbp.Process = proc
-	err = dbp.LoadInformation()
+	err = dbp.LoadInformation(path)
 	if err != nil {
 		return nil, err
 	}
@@ -526,7 +505,7 @@ func newDebugProcess(pid int, attach bool) (*DebuggedProcess, error) {
 		return nil, err
 	}
 
-	return &dbp, nil
+	return dbp, nil
 }
 
 func (dbp *DebuggedProcess) clearTempBreakpoints() error {
@@ -575,7 +554,7 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 	if dbp.halt {
 		return thread, nil
 	}
-	return nil, fmt.Errorf("no breakpoint at %#v", pc)
+	return nil, NoBreakPointError{addr: pc}
 }
 
 func (dbp *DebuggedProcess) run(fn func() error) error {

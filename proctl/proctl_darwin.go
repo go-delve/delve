@@ -1,17 +1,20 @@
 package proctl
 
 // #include "proctl_darwin.h"
+// #include "exec_darwin.h"
 import "C"
 import (
 	"debug/gosym"
 	"debug/macho"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"unsafe"
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
+	"github.com/derekparker/delve/source"
 	sys "golang.org/x/sys/unix"
 )
 
@@ -20,6 +23,55 @@ type OSProcessDetails struct {
 	portSet          C.mach_port_t
 	exceptionPort    C.mach_port_t
 	notificationPort C.mach_port_t
+}
+
+// Create and begin debugging a new process. Uses a
+// custom fork/exec process in order to take advantage of
+// PT_SIGEXC on Darwin.
+func Launch(cmd []string) (*DebuggedProcess, error) {
+	argv0, err := filepath.Abs(cmd[0])
+	if err != nil {
+		return nil, err
+	}
+	var (
+		task             C.mach_port_name_t
+		portSet          C.mach_port_t
+		exceptionPort    C.mach_port_t
+		notificationPort C.mach_port_t
+
+		argv = C.CString(cmd[0])
+	)
+
+	if len(cmd) == 1 {
+		argv = nil
+	}
+
+	pid := int(C.fork_exec(C.CString(argv0), &argv, &task, &portSet, &exceptionPort, &notificationPort))
+	if pid <= 0 {
+		return nil, fmt.Errorf("could not fork/exec")
+	}
+
+	dbp := &DebuggedProcess{
+		Pid:         pid,
+		Threads:     make(map[int]*ThreadContext),
+		BreakPoints: make(map[uint64]*BreakPoint),
+		firstStart:  true,
+		os:          new(OSProcessDetails),
+		ast:         source.New(),
+	}
+
+	dbp.os = &OSProcessDetails{
+		task:             task,
+		portSet:          portSet,
+		exceptionPort:    exceptionPort,
+		notificationPort: notificationPort,
+	}
+	dbp, err = initializeDebugProcess(dbp, argv0, false)
+	if err != nil {
+		return nil, err
+	}
+	err = dbp.Continue()
+	return dbp, err
 }
 
 func (dbp *DebuggedProcess) requestManualStop() (err error) {
@@ -153,16 +205,11 @@ func (dbp *DebuggedProcess) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGro
 	}
 }
 
-func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
-	ret := C.acquire_mach_task(C.int(dbp.Pid), &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
-	if ret != C.KERN_SUCCESS {
-		return nil, fmt.Errorf("could not acquire mach task %d", ret)
+func (dbp *DebuggedProcess) findExecutable(path string) (*macho.File, error) {
+	if path == "" {
+		path = C.GoString(C.find_executable(C.int(dbp.Pid)))
 	}
-	pathptr, err := C.find_executable(C.int(dbp.Pid))
-	if err != nil {
-		return nil, err
-	}
-	exe, err := macho.Open(C.GoString(pathptr))
+	exe, err := macho.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -175,32 +222,53 @@ func (dbp *DebuggedProcess) findExecutable() (*macho.File, error) {
 }
 
 func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
-	port := C.mach_port_wait(dbp.os.portSet)
+	var (
+		th  *ThreadContext
+		err error
+	)
+	for {
+		port := C.mach_port_wait(dbp.os.portSet)
 
-	switch port {
-	case dbp.os.notificationPort:
-		_, status, err := wait(dbp.Pid, 0)
+		switch port {
+		case dbp.os.notificationPort:
+			_, status, err := wait(dbp.Pid, 0)
+			if err != nil {
+				return nil, err
+			}
+			dbp.exited = true
+			return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+		case C.MACH_RCV_INTERRUPTED:
+			if !dbp.halt {
+				// Call trapWait again, it seems
+				// MACH_RCV_INTERRUPTED is emitted before
+				// process natural death _sometimes_.
+				return dbp.trapWait(pid)
+			}
+			return nil, ManualStopError{}
+		case 0:
+			return nil, fmt.Errorf("error while waiting for task")
+		}
+
+		// Since we cannot be notified of new threads on OS X
+		// this is as good a time as any to check for them.
+		dbp.updateThreadList()
+		th, err = dbp.handleBreakpointOnThread(int(port))
 		if err != nil {
+			if _, ok := err.(NoBreakPointError); ok {
+				if dbp.firstStart || dbp.singleStep {
+					dbp.firstStart = false
+					return dbp.Threads[int(port)], nil
+				}
+				if th, ok := dbp.Threads[int(port)]; ok {
+					th.Continue()
+				}
+				continue
+			}
 			return nil, err
 		}
-		dbp.exited = true
-		return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
-	case C.MACH_RCV_INTERRUPTED:
-		if !dbp.halt {
-			// Call trapWait again, it seems
-			// MACH_RCV_INTERRUPTED is emitted before
-			// process natural death _sometimes_.
-			return dbp.trapWait(pid)
-		}
-		return nil, ManualStopError{}
-	case 0:
-		return nil, fmt.Errorf("error while waiting for task")
+		return th, nil
 	}
-
-	// Since we cannot be notified of new threads on OS X
-	// this is as good a time as any to check for them.
-	dbp.updateThreadList()
-	return dbp.handleBreakpointOnThread(int(port))
+	return th, nil
 }
 
 func wait(pid, options int) (int, *sys.WaitStatus, error) {

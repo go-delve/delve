@@ -112,6 +112,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 
 		err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
+		p.Clear(pc)
 
 		_, err = p.EvalSymbol("a1")
 		assertNoError(err, t, "Unable to find variable a1")

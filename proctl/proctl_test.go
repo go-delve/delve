@@ -77,7 +77,7 @@ func TestExit(t *testing.T) {
 		err := p.Continue()
 		pe, ok := err.(ProcessExitedError)
 		if !ok {
-			t.Fatalf("Continue() returned unexpected error type")
+			t.Fatalf("Continue() returned unexpected error type %s", err)
 		}
 		if pe.Status != 0 {
 			t.Errorf("Unexpected error status: %d", pe.Status)

@@ -5,6 +5,7 @@ import (
 	"debug/gosym"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
+	"github.com/derekparker/delve/source"
 )
 
 const (
@@ -24,6 +26,34 @@ const (
 
 // Not actually needed for Linux.
 type OSProcessDetails interface{}
+
+// Create and begin debugging a new process. First entry in
+// `cmd` is the program to run, and then rest are the arguments
+// to be supplied to that process.
+func Launch(cmd []string) (*DebuggedProcess, error) {
+	proc := exec.Command(cmd[0])
+	proc.Args = cmd
+	proc.Stdout = os.Stdout
+	proc.Stderr = os.Stderr
+	proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
+
+	if err := proc.Start(); err != nil {
+		return nil, err
+	}
+	_, _, err := wait(proc.Process.Pid, 0)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
+	}
+	dbp := &DebuggedProcess{
+		Pid:         proc.Process.Pid,
+		Threads:     make(map[int]*ThreadContext),
+		BreakPoints: make(map[uint64]*BreakPoint),
+		os:          new(OSProcessDetails),
+		ast:         source.New(),
+	}
+
+	return initializeDebugProcess(dbp, proc.Path, false)
+}
 
 func (dbp *DebuggedProcess) requestManualStop() (err error) {
 	return sys.Kill(dbp.Pid, sys.SIGSTOP)
@@ -102,10 +132,11 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) findExecutable() (*elf.File, error) {
-	procpath := fmt.Sprintf("/proc/%d/exe", dbp.Pid)
-
-	f, err := os.OpenFile(procpath, 0, os.ModePerm)
+func (dbp *DebuggedProcess) findExecutable(path string) (*elf.File, error) {
+	if path == "" {
+		path = fmt.Sprintf("/proc/%d/exe", dbp.Pid)
+	}
+	f, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -200,13 +231,17 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 		if wpid == 0 {
 			continue
 		}
-		if th, ok := dbp.Threads[wpid]; ok {
+		th, ok := dbp.Threads[wpid]
+		if ok {
 			th.Status = status
 		}
 
-		if status.Exited() && wpid == dbp.Pid {
-			dbp.exited = true
-			return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
+		if status.Exited() {
+			if wpid == dbp.Pid {
+				dbp.exited = true
+				return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
+			}
+			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			// A traced thread has cloned a new thread, grab the pid and
@@ -216,7 +251,7 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 				return nil, fmt.Errorf("could not get event message: %s", err)
 			}
 
-			th, err := dbp.addThread(int(cloned), false)
+			th, err = dbp.addThread(int(cloned), false)
 			if err != nil {
 				return nil, err
 			}
@@ -237,6 +272,11 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 		}
 		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
 			return nil, ManualStopError{}
+		}
+		if th != nil {
+			if err := th.Continue(); err != nil {
+				return nil, err
+			}
 		}
 	}
 }
