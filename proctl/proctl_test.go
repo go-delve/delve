@@ -107,7 +107,7 @@ func TestHalt(t *testing.T) {
 		for _, th := range p.Threads {
 			_, err := th.Registers()
 			if err != nil {
-				t.Error(err)
+				t.Error(err, th.Id)
 			}
 		}
 	})

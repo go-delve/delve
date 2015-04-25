@@ -173,6 +173,10 @@ func (dbp *DebuggedProcess) RequestManualStop() error {
 	if err != nil {
 		return err
 	}
+	err = dbp.Halt()
+	if err != nil {
+		return err
+	}
 	dbp.running = false
 	return nil
 }
