@@ -240,9 +240,6 @@ func (dbp *DebuggedProcess) Status() *sys.WaitStatus {
 
 // Step over function calls.
 func (dbp *DebuggedProcess) Next() error {
-	if err := dbp.setChanRecvBreakpoints(); err != nil {
-		return err
-	}
 	return dbp.run(dbp.next)
 }
 
@@ -250,12 +247,18 @@ func (dbp *DebuggedProcess) next() error {
 	// Make sure we clean up the temp breakpoints created by thread.Next
 	defer dbp.clearTempBreakpoints()
 
+	chanRecvCount, err := dbp.setChanRecvBreakpoints()
+	if err != nil {
+		return err
+	}
+
 	curg, err := dbp.CurrentThread.curG()
 	if err != nil {
 		return err
 	}
 
 	var goroutineExiting bool
+	var waitCount int
 	for _, th := range dbp.Threads {
 		if th.blocked() { // Continue threads that aren't running go code.
 			if err = th.Continue(); err != nil {
@@ -263,8 +266,10 @@ func (dbp *DebuggedProcess) next() error {
 			}
 			continue
 		}
+		waitCount++
 		if err = th.Next(); err != nil {
 			if err, ok := err.(GoroutineExitingError); ok {
+				waitCount = waitCount - 1 + chanRecvCount
 				if err.goid == curg.Id {
 					goroutineExiting = true
 				}
@@ -277,7 +282,7 @@ func (dbp *DebuggedProcess) next() error {
 		}
 	}
 
-	for {
+	for waitCount > 0 {
 		thread, err := dbp.trapWait(-1)
 		if err != nil {
 			return err
@@ -291,32 +296,31 @@ func (dbp *DebuggedProcess) next() error {
 			if dbp.CurrentThread != thread {
 				dbp.SwitchThread(thread.Id)
 			}
-			if err = dbp.Halt(); err != nil {
-				return err
-			}
-			break
 		}
+		waitCount--
 	}
-	return nil
+	return dbp.Halt()
 }
 
-func (dbp *DebuggedProcess) setChanRecvBreakpoints() error {
+func (dbp *DebuggedProcess) setChanRecvBreakpoints() (int, error) {
+	var count int
 	allg, err := dbp.GoroutinesInfo()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, g := range allg {
 		if g.ChanRecvBlocked() {
 			ret, err := g.chanRecvReturnAddr(dbp)
 			if err != nil {
-				return err
+				return 0, err
 			}
 			if _, err = dbp.TempBreak(ret); err != nil {
-				return err
+				return 0, err
 			}
+			count++
 		}
 	}
-	return nil
+	return count, nil
 }
 
 // Resume process.
