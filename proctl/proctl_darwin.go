@@ -33,26 +33,13 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	if err != nil {
 		return nil, err
 	}
-	var (
-		task             C.mach_port_name_t
-		portSet          C.mach_port_t
-		exceptionPort    C.mach_port_t
-		notificationPort C.mach_port_t
 
-		argv = C.CString(cmd[0])
-	)
-
+	argv := C.CString(cmd[0])
 	if len(cmd) == 1 {
 		argv = nil
 	}
 
-	pid := int(C.fork_exec(C.CString(argv0), &argv, &task, &portSet, &exceptionPort, &notificationPort))
-	if pid <= 0 {
-		return nil, fmt.Errorf("could not fork/exec")
-	}
-
 	dbp := &DebuggedProcess{
-		Pid:         pid,
 		Threads:     make(map[int]*ThreadContext),
 		BreakPoints: make(map[uint64]*BreakPoint),
 		firstStart:  true,
@@ -60,12 +47,12 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 		ast:         source.New(),
 	}
 
-	dbp.os = &OSProcessDetails{
-		task:             task,
-		portSet:          portSet,
-		exceptionPort:    exceptionPort,
-		notificationPort: notificationPort,
+	pid := int(C.fork_exec(C.CString(argv0), &argv, &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort))
+	if pid <= 0 {
+		return nil, fmt.Errorf("could not fork/exec")
 	}
+	dbp.Pid = pid
+
 	dbp, err = initializeDebugProcess(dbp, argv0, false)
 	if err != nil {
 		return nil, err
