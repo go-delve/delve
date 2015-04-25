@@ -18,6 +18,7 @@ type ThreadContext struct {
 	Process           *DebuggedProcess
 	Status            *sys.WaitStatus
 	CurrentBreakpoint *BreakPoint
+	singleStepping    bool
 	running           bool
 	os                *OSSpecificDetails
 }
@@ -74,6 +75,8 @@ func (thread *ThreadContext) Continue() error {
 // Single steps this thread a single instruction, ensuring that
 // we correctly handle the likely case that we are at a breakpoint.
 func (thread *ThreadContext) Step() (err error) {
+	thread.singleStepping = true
+	defer func() { thread.singleStepping = false }()
 	pc, err := thread.PC()
 	if err != nil {
 		return err

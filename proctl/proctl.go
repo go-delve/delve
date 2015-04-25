@@ -33,7 +33,7 @@ type DebuggedProcess struct {
 	frameEntries        frame.FrameDescriptionEntries
 	lineInfo            *line.DebugLineInfo
 	firstStart          bool
-	singleStep          bool
+	singleStepping      bool
 	os                  *OSProcessDetails
 	ast                 *source.Searcher
 	breakpointIDCounter int
@@ -356,8 +356,8 @@ func (dbp *DebuggedProcess) resume() error {
 // Single step, will execute a single instruction.
 func (dbp *DebuggedProcess) Step() (err error) {
 	fn := func() error {
-		dbp.singleStep = true
-		defer func() { dbp.singleStep = false }()
+		dbp.singleStepping = true
+		defer func() { dbp.singleStepping = false }()
 		for _, th := range dbp.Threads {
 			if th.blocked() {
 				continue
@@ -560,8 +560,8 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 	}
 	fn := dbp.goSymTable.PCToFunc(pc)
 	if fn != nil && fn.Name == "runtime.breakpoint" {
-		dbp.singleStep = true
-		defer func() { dbp.singleStep = false }()
+		thread.singleStepping = true
+		defer func() { thread.singleStepping = false }()
 		for i := 0; i < 2; i++ {
 			if err := thread.Step(); err != nil {
 				return nil, err

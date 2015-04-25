@@ -242,7 +242,7 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 				// Call trapWait again, it seems
 				// MACH_RCV_INTERRUPTED is emitted before
 				// process natural death _sometimes_.
-				return dbp.trapWait(pid)
+				continue
 			}
 			return nil, ManualStopError{}
 		case 0:
@@ -255,12 +255,13 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 		th, err = dbp.handleBreakpointOnThread(int(port))
 		if err != nil {
 			if _, ok := err.(NoBreakPointError); ok {
-				if dbp.firstStart || dbp.singleStep {
+				th := dbp.Threads[int(port)]
+				if dbp.firstStart || dbp.singleStepping || th.singleStepping {
 					dbp.firstStart = false
 					return dbp.Threads[int(port)], nil
 				}
-				if th, ok := dbp.Threads[int(port)]; ok {
-					th.Continue()
+				if err := th.Continue(); err != nil {
+					return nil, err
 				}
 				continue
 			}
