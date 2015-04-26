@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 )
 
 func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess)) {
@@ -91,10 +90,14 @@ func TestExit(t *testing.T) {
 func TestHalt(t *testing.T) {
 	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
 		go func() {
-			time.Sleep(10 * time.Millisecond)
-			err := p.RequestManualStop()
-			if err != nil {
-				t.Fatal(err)
+			for {
+				if p.Running() {
+					err := p.RequestManualStop()
+					if err != nil {
+						t.Fatal(err)
+					}
+					return
+				}
 			}
 		}()
 		err := p.Continue()
@@ -388,7 +391,7 @@ func TestSwitchThread(t *testing.T) {
 		}
 		var nt int
 		ct := p.CurrentThread.Id
-		for tid, _ := range p.Threads {
+		for tid := range p.Threads {
 			if tid != ct {
 				nt = tid
 				break
