@@ -55,6 +55,7 @@ func DebugCommands() *Commands {
 		command{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
 		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about args, funcs, locals, sources, or vars."},
+		command{aliases: []string{"source", "s"}, cmdFn: c.source, helpMsg: "Runs commands from a file."},
 		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
 	}
 
@@ -96,10 +97,59 @@ func (c *Commands) Find(cmdstr string) cmdfunc {
 	return noCmdAvailable
 }
 
+func (c *Commands) SourceCommandFile(p *proctl.DebuggedProcess, file string) error {
+	f, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		_, err := c.RunCommand(p, scanner.Text())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Commands) RunCommand(p *proctl.DebuggedProcess, cmdstr string) (exited bool, err error) {
+	cmdstr, args := parseCommand(cmdstr)
+	if cmdstr == "exit" {
+		exited = true
+		return
+	}
+
+	if p.Exited() && cmdstr != "help" {
+		fmt.Fprintf(os.Stderr, "Process has already exited.\n")
+		return
+	}
+
+	cmd := c.Find(cmdstr)
+	if err = cmd(p, args...); err != nil {
+		switch err.(type) {
+		case proctl.ProcessExitedError:
+			pe := err.(proctl.ProcessExitedError)
+			fmt.Fprintf(os.Stderr, "Process exited with status %d\n", pe.Status)
+		}
+	}
+	return
+}
+
 func CommandFunc(fn func() error) cmdfunc {
 	return func(p *proctl.DebuggedProcess, args ...string) error {
 		return fn()
 	}
+}
+
+func parseCommand(cmdstr string) (string, []string) {
+	vals := strings.Split(cmdstr, " ")
+	return vals[0], vals[1:]
 }
 
 func noCmdAvailable(p *proctl.DebuggedProcess, args ...string) error {
@@ -116,6 +166,14 @@ func (c *Commands) help(p *proctl.DebuggedProcess, args ...string) error {
 		fmt.Printf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
 	}
 	return nil
+}
+
+func (c *Commands) source(p *proctl.DebuggedProcess, args ...string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("not enough arguments, expected source filename")
+	}
+
+	return c.SourceCommandFile(p, args[1])
 }
 
 func threads(p *proctl.DebuggedProcess, args ...string) error {
