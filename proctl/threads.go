@@ -36,9 +36,8 @@ func (thread *ThreadContext) Continue() error {
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
 	if _, ok := thread.Process.BreakPoints[pc]; ok {
-		err := thread.Step()
-		if err != nil {
-			return fmt.Errorf("could not step %s", err)
+		if err := thread.Step(); err != nil {
+			return err
 		}
 	}
 	return thread.resume()
@@ -74,8 +73,7 @@ func (thread *ThreadContext) Step() (err error) {
 	if err != nil {
 		return fmt.Errorf("step failed: %s", err.Error())
 	}
-
-	return err
+	return nil
 }
 
 // Call a function named `name`. This is currently _NOT_ safe.
