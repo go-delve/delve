@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,6 +36,7 @@ type DebuggedProcess struct {
 	firstStart              bool
 	singleStepping          bool
 	os                      *OSProcessDetails
+	arch                    Arch
 	ast                     *source.Searcher
 	breakpointIDCounter     int
 	tempBreakpointIDCounter int
@@ -401,11 +403,11 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), ptrsize)
+	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), dbp.arch.PtrSize())
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(ptrsize)), reader)
+		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())), reader)
 		if err != nil {
 			return nil, err
 		}
@@ -508,6 +510,11 @@ func initializeDebugProcess(dbp *DebuggedProcess, path string, attach bool) (*De
 
 	if err := dbp.updateThreadList(); err != nil {
 		return nil, err
+	}
+
+	switch runtime.GOARCH {
+	case "amd64":
+		dbp.arch = AMD64Arch()
 	}
 
 	return dbp, nil

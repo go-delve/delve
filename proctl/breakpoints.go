@@ -129,11 +129,11 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 	}
 	// Fall back to software breakpoint. 0xCC is INT 3 trap interrupt.
 	thread := dbp.Threads[tid]
-	originalData := make([]byte, 1)
+	originalData := make([]byte, dbp.arch.BreakpointSize())
 	if _, err := readMemory(thread, uintptr(addr), originalData); err != nil {
 		return nil, err
 	}
-	if _, err := writeMemory(thread, uintptr(addr), []byte{0xCC}); err != nil {
+	if _, err := writeMemory(thread, uintptr(addr), dbp.arch.BreakpointInstruction()); err != nil {
 		return nil, err
 	}
 	dbp.BreakPoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData, temp)

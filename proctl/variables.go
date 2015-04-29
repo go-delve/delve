@@ -15,8 +15,6 @@ import (
 )
 
 const (
-	ptrsize uintptr = unsafe.Sizeof(int(1)) // Size of a pointer.
-
 	maxVariableRecurse = 1  // How far to recurse when evaluating nested types.
 	maxArrayValues     = 64 // Max value for reading large arrays.
 
@@ -79,7 +77,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 	if err != nil {
 		return nil, err
 	}
-	mptr, err := thread.readMemory(uintptr(allmaddr), ptrsize)
+	mptr, err := thread.readMemory(uintptr(allmaddr), thread.Process.arch.PtrSize())
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +114,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		if err != nil {
 			return nil, err
 		}
-		curgBytes, err := thread.readMemory(uintptr(curgAddr), ptrsize)
+		curgBytes, err := thread.readMemory(uintptr(curgAddr), thread.Process.arch.PtrSize())
 		if err != nil {
 			return nil, fmt.Errorf("could not read curg %#v %s", curgAddr, err)
 		}
@@ -127,7 +125,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		if err != nil {
 			return nil, err
 		}
-		procidBytes, err := thread.readMemory(uintptr(procidAddr), ptrsize)
+		procidBytes, err := thread.readMemory(uintptr(procidAddr), thread.Process.arch.PtrSize())
 		if err != nil {
 			return nil, fmt.Errorf("could not read procid %#v %s", procidAddr, err)
 		}
@@ -165,7 +163,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 		if err != nil {
 			return nil, err
 		}
-		mptr, err = thread.readMemory(uintptr(alllinkAddr), ptrsize)
+		mptr, err = thread.readMemory(uintptr(alllinkAddr), thread.Process.arch.PtrSize())
 		if err != nil {
 			return nil, fmt.Errorf("could not read alllink %#v %s", alllinkAddr, err)
 		}
@@ -245,7 +243,7 @@ func (ng NoGError) Error() string {
 }
 
 func parseG(thread *ThreadContext, addr uint64, reader *dwarf.Reader) (*G, error) {
-	gaddrbytes, err := thread.readMemory(uintptr(addr), ptrsize)
+	gaddrbytes, err := thread.readMemory(uintptr(addr), thread.Process.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error derefing *G %s", err)
 	}
@@ -260,7 +258,7 @@ func parseG(thread *ThreadContext, addr uint64, reader *dwarf.Reader) (*G, error
 	if err != nil {
 		return nil, err
 	}
-	goidbytes, err := thread.readMemory(uintptr(goidaddr), ptrsize)
+	goidbytes, err := thread.readMemory(uintptr(goidaddr), thread.Process.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error reading goid %s", err)
 	}
@@ -269,7 +267,7 @@ func parseG(thread *ThreadContext, addr uint64, reader *dwarf.Reader) (*G, error
 	if err != nil {
 		return nil, err
 	}
-	gopcbytes, err := thread.readMemory(uintptr(gopcaddr), ptrsize)
+	gopcbytes, err := thread.readMemory(uintptr(gopcaddr), thread.Process.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error reading gopc %s", err)
 	}
@@ -288,13 +286,13 @@ func parseG(thread *ThreadContext, addr uint64, reader *dwarf.Reader) (*G, error
 		return nil, err
 	}
 
-	spbytes, err := thread.readMemory(uintptr(schedaddr), ptrsize)
+	spbytes, err := thread.readMemory(uintptr(schedaddr), thread.Process.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error reading goroutine SP %s", err)
 	}
 	gosp := binary.LittleEndian.Uint64(spbytes)
 
-	pcbytes, err := thread.readMemory(uintptr(schedaddr+uint64(ptrsize)), ptrsize)
+	pcbytes, err := thread.readMemory(uintptr(schedaddr+uint64(thread.Process.arch.PtrSize())), thread.Process.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error reading goroutine PC %s", err)
 	}
@@ -632,7 +630,7 @@ func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, read
 
 		ptraddress := uintptr(address)
 
-		ptr, err := thread.readMemory(ptraddress, ptrsize)
+		ptr, err := thread.readMemory(ptraddress, thread.Process.arch.PtrSize())
 		if err != nil {
 			return 0, err
 		}
@@ -672,7 +670,7 @@ func (thread *ThreadContext) extractValueInternal(instructions []byte, addr int6
 	ptraddress := uintptr(addr)
 	switch t := typ.(type) {
 	case *dwarf.PtrType:
-		ptr, err := thread.readMemory(ptraddress, ptrsize)
+		ptr, err := thread.readMemory(ptraddress, thread.Process.arch.PtrSize())
 		if err != nil {
 			return "", err
 		}
@@ -747,14 +745,14 @@ func (thread *ThreadContext) readString(addr uintptr) (string, error) {
 	// http://research.swtch.com/godata
 
 	// read len
-	val, err := thread.readMemory(addr+ptrsize, ptrsize)
+	val, err := thread.readMemory(addr+uintptr(thread.Process.arch.PtrSize()), thread.Process.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
-	strlen := uintptr(binary.LittleEndian.Uint64(val))
+	strlen := int(binary.LittleEndian.Uint64(val))
 
 	// read addr
-	val, err = thread.readMemory(addr, ptrsize)
+	val, err = thread.readMemory(addr, thread.Process.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
@@ -775,7 +773,7 @@ func (thread *ThreadContext) readSlice(addr uintptr, t *dwarf.StructType) (strin
 	for _, f := range t.Field {
 		switch f.Name {
 		case "array":
-			val, err := thread.readMemory(addr+uintptr(f.ByteOffset), ptrsize)
+			val, err := thread.readMemory(addr+uintptr(f.ByteOffset), thread.Process.arch.PtrSize())
 			if err != nil {
 				return "", err
 			}
@@ -809,7 +807,7 @@ func (thread *ThreadContext) readSlice(addr uintptr, t *dwarf.StructType) (strin
 
 	stride := arrayType.Size()
 	if _, ok := arrayType.(*dwarf.PtrType); ok {
-		stride = int64(ptrsize)
+		stride = int64(thread.Process.arch.PtrSize())
 	}
 	vals, err := thread.readArrayValues(arrayAddr, sliceLen, stride, arrayType)
 	if err != nil {
@@ -853,7 +851,7 @@ func (thread *ThreadContext) readArrayValues(addr uintptr, count int64, stride i
 func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
 	var n int64
 
-	val, err := thread.readMemory(addr, uintptr(size))
+	val, err := thread.readMemory(addr, int(size))
 	if err != nil {
 		return "", err
 	}
@@ -875,7 +873,7 @@ func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
 func (thread *ThreadContext) readUint(addr uintptr, size int64) (string, error) {
 	var n uint64
 
-	val, err := thread.readMemory(addr, uintptr(size))
+	val, err := thread.readMemory(addr, int(size))
 	if err != nil {
 		return "", err
 	}
@@ -895,7 +893,7 @@ func (thread *ThreadContext) readUint(addr uintptr, size int64) (string, error) 
 }
 
 func (thread *ThreadContext) readFloat(addr uintptr, size int64) (string, error) {
-	val, err := thread.readMemory(addr, uintptr(size))
+	val, err := thread.readMemory(addr, int(size))
 	if err != nil {
 		return "", err
 	}
@@ -916,7 +914,7 @@ func (thread *ThreadContext) readFloat(addr uintptr, size int64) (string, error)
 }
 
 func (thread *ThreadContext) readBool(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, uintptr(1))
+	val, err := thread.readMemory(addr, 1)
 	if err != nil {
 		return "", err
 	}
@@ -929,7 +927,7 @@ func (thread *ThreadContext) readBool(addr uintptr) (string, error) {
 }
 
 func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, ptrsize)
+	val, err := thread.readMemory(addr, thread.Process.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
@@ -940,7 +938,7 @@ func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
 		return "nil", nil
 	}
 
-	val, err = thread.readMemory(addr, ptrsize)
+	val, err = thread.readMemory(addr, thread.Process.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
@@ -961,7 +959,7 @@ func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
 	return n, nil
 }
 
-func (thread *ThreadContext) readMemory(addr uintptr, size uintptr) ([]byte, error) {
+func (thread *ThreadContext) readMemory(addr uintptr, size int) ([]byte, error) {
 	if size == 0 {
 		return nil, nil
 	}
@@ -1007,10 +1005,4 @@ func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) 
 	}
 
 	return vars, nil
-}
-
-// Sets the length of a slice.
-func setSliceLength(ptr unsafe.Pointer, l int) {
-	lptr := (*int)(unsafe.Pointer(uintptr(ptr) + ptrsize))
-	*lptr = l
 }
