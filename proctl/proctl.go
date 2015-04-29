@@ -22,24 +22,25 @@ import (
 // Struct representing a debugged process. Holds onto pid, register values,
 // process struct and process state.
 type DebuggedProcess struct {
-	Pid                 int
-	Process             *os.Process
-	HWBreakPoints       [4]*BreakPoint
-	BreakPoints         map[uint64]*BreakPoint
-	Threads             map[int]*ThreadContext
-	CurrentThread       *ThreadContext
-	dwarf               *dwarf.Data
-	goSymTable          *gosym.Table
-	frameEntries        frame.FrameDescriptionEntries
-	lineInfo            *line.DebugLineInfo
-	firstStart          bool
-	singleStepping      bool
-	os                  *OSProcessDetails
-	ast                 *source.Searcher
-	breakpointIDCounter int
-	running             bool
-	halt                bool
-	exited              bool
+	Pid                     int
+	Process                 *os.Process
+	HWBreakPoints           [4]*BreakPoint
+	BreakPoints             map[uint64]*BreakPoint
+	Threads                 map[int]*ThreadContext
+	CurrentThread           *ThreadContext
+	dwarf                   *dwarf.Data
+	goSymTable              *gosym.Table
+	frameEntries            frame.FrameDescriptionEntries
+	lineInfo                *line.DebugLineInfo
+	firstStart              bool
+	singleStepping          bool
+	os                      *OSProcessDetails
+	ast                     *source.Searcher
+	breakpointIDCounter     int
+	tempBreakpointIDCounter int
+	running                 bool
+	halt                    bool
+	exited                  bool
 }
 
 // A ManualStopError happens when the user triggers a

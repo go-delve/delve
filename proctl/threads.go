@@ -84,7 +84,7 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 	}
 
 	// Set breakpoint at the end of the function (before it returns).
-	bp, err := thread.Break(f.End - 2)
+	bp, err := thread.TempBreak(f.End - 2)
 	if err != nil {
 		return err
 	}
@@ -111,6 +111,11 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 // Set breakpoint using this thread.
 func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
 	return thread.Process.setBreakpoint(thread.Id, addr, false)
+}
+
+// Set breakpoint using this thread.
+func (thread *ThreadContext) TempBreak(addr uint64) (*BreakPoint, error) {
+	return thread.Process.setBreakpoint(thread.Id, addr, true)
 }
 
 // Clear breakpoint using this thread.

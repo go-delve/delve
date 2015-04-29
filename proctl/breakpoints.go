@@ -79,14 +79,21 @@ func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
 }
 
 func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool) *BreakPoint {
-	dbp.breakpointIDCounter++
+	var id int
+	if temp {
+		dbp.tempBreakpointIDCounter++
+		id = dbp.tempBreakpointIDCounter
+	} else {
+		dbp.breakpointIDCounter++
+		id = dbp.breakpointIDCounter
+	}
 	return &BreakPoint{
 		FunctionName: fn,
 		File:         f,
 		Line:         l,
 		Addr:         addr,
 		OriginalData: data,
-		ID:           dbp.breakpointIDCounter,
+		ID:           id,
 		Temp:         temp,
 	}
 }
