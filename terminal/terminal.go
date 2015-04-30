@@ -72,16 +72,15 @@ func (t *Term) Run() (error, int) {
 
 	for {
 		cmdstr, err := t.promptForInput()
-		if len(cmdstr) == 0 {
-			continue
-		}
-
 		if err != nil {
 			if err == io.EOF {
 				err, status = handleExit(t.client, t)
 			}
 			err, status = fmt.Errorf("Prompt for input failed.\n"), 1
 			break
+		}
+		if len(cmdstr) == 0 {
+			continue
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
