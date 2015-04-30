@@ -30,20 +30,6 @@ func New(client service.Client) *Term {
 	}
 }
 
-func (t *Term) promptForInput() (string, error) {
-	l, err := t.line.Prompt(t.prompt)
-	if err != nil {
-		return "", err
-	}
-
-	l = strings.TrimSuffix(l, "\n")
-	if l != "" {
-		t.line.AppendHistory(l)
-	}
-
-	return l, nil
-}
-
 func (t *Term) Run() (error, int) {
 	defer t.line.Close()
 
@@ -99,6 +85,20 @@ func (t *Term) Run() (error, int) {
 	}
 
 	return nil, status
+}
+
+func (t *Term) promptForInput() (string, error) {
+	l, err := t.line.Prompt(t.prompt)
+	if err != nil {
+		return "", err
+	}
+
+	l = strings.TrimSuffix(l, "\n")
+	if l != "" {
+		t.line.AppendHistory(l)
+	}
+
+	return l, nil
 }
 
 func handleExit(client service.Client, t *Term) (error, int) {
