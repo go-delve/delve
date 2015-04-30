@@ -79,12 +79,8 @@ func (t *Term) Run() (error, int) {
 			err, status = fmt.Errorf("Prompt for input failed.\n"), 1
 			break
 		}
-		if len(cmdstr) == 0 {
-			continue
-		}
 
 		cmdstr, args := parseCommand(cmdstr)
-
 		if cmdstr == "exit" {
 			err, status = handleExit(t.client, t)
 			break
