@@ -7,14 +7,4 @@
 // methods to evaluate variables and read them from the virtual memory of
 // the process we are debugging.
 //
-// What follows is a breakdown of the division of responsibility by file:
-//
-// * proctl(_*).go/c - Data structures and methods for manipulating an entire process.
-// * threads(_*).go/c - Data structures and methods for manipulating individual threads.
-// * variablges.go - Data structures and methods for evaluation of variables.
-// * breakpoints(_*).go - Data structures and methods for setting / clearing breakpoints.
-// * registers_*.go - Data structures and methods for obtaining register information.
-// * stack.go - Functions for unwinding the stack.
-// * ptrace_*.go - Ptrace stubs for missing stdlib functionality.
-//
 package proctl
