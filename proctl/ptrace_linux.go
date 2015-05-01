@@ -7,6 +7,14 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
+func PtraceDetach(tid, sig int) error {
+	_, _, err := sys.Syscall6(sys.SYS_PTRACE, sys.PTRACE_DETACH, uintptr(tid), 1, uintptr(sig), 0, 0)
+	if err != syscall.Errno(0) {
+		return err
+	}
+	return nil
+}
+
 func PtraceCont(tid, sig int) error {
 	return sys.PtraceCont(tid, sig)
 }
