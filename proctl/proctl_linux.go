@@ -65,7 +65,6 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, err
 	if thread, ok := dbp.Threads[tid]; ok {
 		return thread, nil
 	}
-	fmt.Println("new thread spawned", tid)
 
 	if attach {
 		err := sys.PtraceAttach(tid)

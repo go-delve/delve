@@ -111,7 +111,6 @@ func (dbp *DebuggedProcess) addThread(port int, attach bool) (*ThreadContext, er
 	if thread, ok := dbp.Threads[port]; ok {
 		return thread, nil
 	}
-	fmt.Println("new thread spawned", port)
 	thread := &ThreadContext{
 		Id:      port,
 		Process: dbp,
