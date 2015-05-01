@@ -93,6 +93,18 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 	if err = thread.saveRegisters(); err != nil {
 		return err
 	}
+
+	regs, err := thread.Registers()
+	if err != nil {
+		return err
+	}
+	previousFrame := make([]byte, f.FrameSize)
+	frameSize := uintptr(regs.SP() + uint64(f.FrameSize))
+	if _, err := readMemory(thread, frameSize, previousFrame); err != nil {
+		return err
+	}
+	defer func() { writeMemory(thread, frameSize, previousFrame) }()
+
 	if err = thread.SetPC(f.Entry); err != nil {
 		return err
 	}
