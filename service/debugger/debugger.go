@@ -135,21 +135,21 @@ func (d *Debugger) Run() error {
 				}
 			}
 
-			// Detach
-			if !d.process.Exited() {
-				if err := sys.PtraceDetach(d.process.Pid); err == nil {
-					log.Print("detached from process")
-				} else {
-					log.Printf("couldn't detach from process: %s", err)
-				}
-			}
-
 			// Kill the process if requested
 			if s.KillProcess {
-				if err := d.process.Process.Kill(); err == nil {
+				if err := proctl.PtraceCont(d.process.Pid, int(sys.SIGINT)); err == nil {
 					log.Print("killed process")
 				} else {
 					log.Printf("couldn't kill process: %s", err)
+				}
+			} else {
+				// Detach
+				if !d.process.Exited() {
+					if err := sys.PtraceDetach(d.process.Pid); err == nil {
+						log.Print("detached from process")
+					} else {
+						log.Printf("couldn't detach from process: %s", err)
+					}
 				}
 			}
 
