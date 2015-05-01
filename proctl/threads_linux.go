@@ -50,8 +50,11 @@ func (t *ThreadContext) blocked() bool {
 	return false
 }
 
-func (thread *ThreadContext) saveRegisters() error {
-	return sys.PtraceGetRegs(thread.Id, &thread.os.registers)
+func (thread *ThreadContext) saveRegisters() (Registers, error) {
+	if err := sys.PtraceGetRegs(thread.Id, &thread.os.registers); err != nil {
+		return nil, fmt.Errorf("could not save register contents")
+	}
+	return &Regs{&thread.os.registers}, nil
 }
 
 func (thread *ThreadContext) restoreRegisters() error {

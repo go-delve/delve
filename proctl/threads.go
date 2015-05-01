@@ -90,14 +90,11 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 	}
 	defer thread.Process.Clear(bp.Addr)
 
-	if err = thread.saveRegisters(); err != nil {
-		return err
-	}
-
-	regs, err := thread.Registers()
+	regs, err := thread.saveRegisters()
 	if err != nil {
 		return err
 	}
+
 	previousFrame := make([]byte, f.FrameSize)
 	frameSize := uintptr(regs.SP() + uint64(f.FrameSize))
 	if _, err := readMemory(thread, frameSize, previousFrame); err != nil {
