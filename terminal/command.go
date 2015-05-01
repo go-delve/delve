@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -106,7 +107,7 @@ func CommandFunc(fn func() error) cmdfunc {
 }
 
 func noCmdAvailable(client service.Client, args ...string) error {
-	return fmt.Errorf("command not available")
+	return errors.New("command not available")
 }
 
 func nullCommand(client service.Client, args ...string) error {
@@ -220,7 +221,7 @@ func next(client service.Client, args ...string) error {
 
 func clear(client service.Client, args ...string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 
 	id, err := strconv.Atoi(args[0])
@@ -272,7 +273,7 @@ func breakpoints(client service.Client, args ...string) error {
 
 func breakpoint(client service.Client, args ...string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("argument must be either a function name or <file:line>")
+		return errors.New("argument must be either a function name or <file:line>")
 	}
 	requestedBp := &api.BreakPoint{}
 	tokens := strings.Split(args[0], ":")
@@ -288,7 +289,7 @@ func breakpoint(client service.Client, args ...string) error {
 		requestedBp.File = file
 		requestedBp.Line = line
 	default:
-		return fmt.Errorf("invalid line reference")
+		return errors.New("invalid line reference")
 	}
 
 	bp, err := client.CreateBreakPoint(requestedBp)
@@ -302,7 +303,7 @@ func breakpoint(client service.Client, args ...string) error {
 
 func printVar(client service.Client, args ...string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 
 	val, err := client.EvalSymbol(args[0])
@@ -326,7 +327,7 @@ func filterVariables(vars []api.Variable, filter *regexp.Regexp) []string {
 
 func info(client service.Client, args ...string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments. expected info type [regex].")
+		return errors.New("not enough arguments. expected info type [regex].")
 	}
 
 	// Allow for optional regex
@@ -397,7 +398,7 @@ func info(client service.Client, args ...string) error {
 		}
 
 	default:
-		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources, or vars")
+		return errors.New("unsupported info type, must be args, funcs, locals, sources, or vars")
 	}
 
 	// sort and output data

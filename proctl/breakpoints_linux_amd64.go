@@ -15,7 +15,10 @@ int offset(int reg) {
 */
 import "C"
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sets a hardware breakpoint by setting the contents of the
 // debug register `reg` with the address of the instruction
@@ -23,7 +26,7 @@ import "fmt"
 // DR0-DR3. Debug register 7 is the control register.
 func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	if reg < 0 || reg > 3 {
-		return fmt.Errorf("invalid debug register value")
+		return errors.New("invalid debug register value")
 	}
 
 	var (

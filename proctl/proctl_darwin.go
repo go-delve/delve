@@ -6,6 +6,7 @@ import "C"
 import (
 	"debug/gosym"
 	"debug/macho"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 
 	pid := int(C.fork_exec(C.CString(argv0), &argv, &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort))
 	if pid <= 0 {
-		return nil, fmt.Errorf("could not fork/exec")
+		return nil, errors.New("could not fork/exec")
 	}
 	dbp.Pid = pid
 
@@ -69,7 +70,7 @@ func (dbp *DebuggedProcess) requestManualStop() (err error) {
 	)
 	kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)
 	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not raise mach exception")
+		return errors.New("could not raise mach exception")
 	}
 	return nil
 }
@@ -81,7 +82,7 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 		count = C.thread_count(C.task_t(dbp.os.task))
 	)
 	if count == -1 {
-		return fmt.Errorf("could not get thread count")
+		return errors.New("could not get thread count")
 	}
 	list := make([]uint32, count)
 
@@ -89,10 +90,10 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	// instead of getting count above and passing in a slice
 	kret = C.get_threads(C.task_t(dbp.os.task), unsafe.Pointer(&list[0]))
 	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not get thread list")
+		return errors.New("could not get thread list")
 	}
 	if count < 0 {
-		return fmt.Errorf("could not get thread list")
+		return errors.New("could not get thread list")
 	}
 
 	for _, port := range list {
@@ -232,7 +233,7 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 			}
 			return nil, ManualStopError{}
 		case 0:
-			return nil, fmt.Errorf("error while waiting for task")
+			return nil, errors.New("error while waiting for task")
 		}
 
 		// Since we cannot be notified of new threads on OS X

@@ -1,6 +1,7 @@
 package proctl
 
 import (
+	"errors"
 	"fmt"
 
 	sys "golang.org/x/sys/unix"
@@ -52,7 +53,7 @@ func (t *ThreadContext) blocked() bool {
 
 func (thread *ThreadContext) saveRegisters() (Registers, error) {
 	if err := sys.PtraceGetRegs(thread.Id, &thread.os.registers); err != nil {
-		return nil, fmt.Errorf("could not save register contents")
+		return nil, errors.New("could not save register contents")
 	}
 	return &Regs{&thread.os.registers}, nil
 }

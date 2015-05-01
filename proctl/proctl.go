@@ -4,6 +4,7 @@ import (
 	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -582,7 +583,7 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 
 func (dbp *DebuggedProcess) run(fn func() error) error {
 	if dbp.exited {
-		return fmt.Errorf("process has already exited")
+		return errors.New("process has already exited")
 	}
 	dbp.running = true
 	dbp.halt = false
