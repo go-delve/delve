@@ -19,6 +19,16 @@ type RESTClient struct {
 	httpClient *http.Client
 }
 
+// ClientError is an error from the debugger.
+type ClientError struct {
+	// Message is the specific error from the debugger.
+	Message string
+	// Status is the HTTP error from the debugger request.
+	Status string
+}
+
+func (e *ClientError) Error() string { return e.Message }
+
 // Ensure the implementation satisfies the interface.
 var _ service.Client = &RESTClient{}
 
@@ -267,7 +277,7 @@ func (c *RESTClient) doGET(path string, obj interface{}, params ...[]string) err
 	// Extract error text and return
 	if resp.StatusCode != http.StatusOK {
 		contents, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("%s: %s", resp.Status, contents)
+		return &ClientError{Message: string(contents), Status: resp.Status}
 	}
 
 	// Decode result object
@@ -298,7 +308,7 @@ func (c *RESTClient) doPOST(path string, out interface{}, in interface{}) error 
 
 	if resp.StatusCode != http.StatusCreated {
 		contents, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("%s: %s", resp.Status, contents)
+		return &ClientError{Message: string(contents), Status: resp.Status}
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -322,7 +332,7 @@ func (c *RESTClient) doDELETE(path string, obj interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		contents, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("%s: %s", resp.Status, contents)
+		return &ClientError{Message: string(contents), Status: resp.Status}
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -352,7 +362,7 @@ func (c *RESTClient) doPUT(path string, out interface{}, in interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		contents, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("%s: %s", resp.Status, contents)
+		return &ClientError{Message: string(contents), Status: resp.Status}
 	}
 
 	decoder := json.NewDecoder(resp.Body)
