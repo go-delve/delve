@@ -945,19 +945,12 @@ func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
 	}
 
 	funcAddr := binary.LittleEndian.Uint64(val)
-	reader := thread.Process.DwarfReader()
-
-	entry, err := reader.SeekToFunction(funcAddr)
-	if err != nil {
-		return "", err
+	fn := thread.Process.goSymTable.PCToFunc(uint64(funcAddr))
+	if fn == nil {
+		return "", fmt.Errorf("could not find function for %#v", funcAddr)
 	}
 
-	n, ok := entry.Val(dwarf.AttrName).(string)
-	if !ok {
-		return "", errors.New("Unable to retrieve function name")
-	}
-
-	return n, nil
+	return fn.Name, nil
 }
 
 func (thread *ThreadContext) readMemory(addr uintptr, size int) ([]byte, error) {
