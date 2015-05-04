@@ -1,58 +1,16 @@
 package rest
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
-	"io/ioutil"
 	"net"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
 
+	protest "github.com/derekparker/delve/proctl/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 )
 
-var fixtures map[string]string = make(map[string]string)
-
 func TestMain(m *testing.M) {
-	fixturesDir := "../../_fixtures"
-	sources, err := ioutil.ReadDir(fixturesDir)
-	if err != nil {
-		fmt.Printf("Couldn't read fixtures dir: %v\n", err)
-		os.Exit(1)
-	}
-
-	for _, src := range sources {
-		if src.IsDir() {
-			continue
-		}
-		// Make a (good enough) random temporary file name
-		r := make([]byte, 4)
-		rand.Read(r)
-		path := filepath.Join(fixturesDir, src.Name())
-		name := strings.TrimSuffix(src.Name(), filepath.Ext(src.Name()))
-		tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.%s", name, hex.EncodeToString(r)))
-
-		// Build the test binary
-		if err := exec.Command("go", "build", "-gcflags=-N -l", "-o", tmpfile, path).Run(); err != nil {
-			fmt.Printf("Error compiling %s: %s\n", path, err)
-			os.Exit(1)
-		}
-		fmt.Printf("Compiled test binary %s: %s\n", name, tmpfile)
-		fixtures[name] = tmpfile
-	}
-
-	status := m.Run()
-
-	for _, f := range fixtures {
-		os.Remove(f)
-	}
-
-	os.Exit(status)
+	protest.RunTestsWithFixtures(m)
 }
 
 func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
@@ -60,16 +18,13 @@ func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
-
 	server := NewServer(&Config{
 		Listener:    listener,
-		ProcessArgs: []string{fixtures[name]},
+		ProcessArgs: []string{protest.Fixtures[name].Path},
 	})
 	go server.Run()
-
 	client := NewClient(listener.Addr().String())
 	defer client.Detach(true)
-
 	fn(client)
 }
 
