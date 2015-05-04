@@ -4,7 +4,6 @@ package command
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -104,7 +103,7 @@ func CommandFunc(fn func() error) cmdfunc {
 }
 
 func noCmdAvailable(p *proctl.DebuggedProcess, args ...string) error {
-	return errors.New("command not available")
+	return fmt.Errorf("command not available")
 }
 
 func nullCommand(p *proctl.DebuggedProcess, args ...string) error {
@@ -141,7 +140,7 @@ func threads(p *proctl.DebuggedProcess, args ...string) error {
 
 func thread(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
-		return errors.New("you must specify a thread")
+		return fmt.Errorf("you must specify a thread")
 	}
 	oldTid := p.CurrentThread.Id
 	tid, err := strconv.Atoi(args[0])
@@ -205,7 +204,7 @@ func next(p *proctl.DebuggedProcess, args ...string) error {
 
 func clear(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
-		return errors.New("not enough arguments")
+		return fmt.Errorf("not enough arguments")
 	}
 
 	bp, err := p.ClearByLocation(args[0])
@@ -251,7 +250,7 @@ func breakpoints(p *proctl.DebuggedProcess, args ...string) error {
 
 func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
-		return errors.New("not enough arguments")
+		return fmt.Errorf("not enough arguments")
 	}
 
 	bp, err := p.BreakByLocation(args[0])
@@ -266,7 +265,7 @@ func breakpoint(p *proctl.DebuggedProcess, args ...string) error {
 
 func printVar(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
-		return errors.New("not enough arguments")
+		return fmt.Errorf("not enough arguments")
 	}
 
 	val, err := p.EvalSymbol(args[0])
@@ -293,7 +292,7 @@ func filterVariables(vars []*proctl.Variable, filter *regexp.Regexp) []string {
 
 func info(p *proctl.DebuggedProcess, args ...string) error {
 	if len(args) == 0 {
-		return errors.New("not enough arguments. expected info type [regex].")
+		return fmt.Errorf("not enough arguments. expected info type [regex].")
 	}
 
 	// Allow for optional regex
@@ -346,7 +345,7 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 		data = filterVariables(vars, filter)
 
 	default:
-		return errors.New("unsupported info type, must be args, funcs, locals, sources, or vars")
+		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources, or vars")
 	}
 
 	// sort and output data

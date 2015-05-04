@@ -2,7 +2,7 @@ package reader
 
 import (
 	"debug/dwarf"
-	"errors"
+	"fmt"
 )
 
 type Reader struct {
@@ -57,7 +57,7 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 		}
 	}
 
-	return nil, errors.New("unable to find function context")
+	return nil, fmt.Errorf("unable to find function context")
 }
 
 // SeekToType moves the reader to the type specified by the entry,
@@ -66,7 +66,7 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resolvePointerTypes bool) (*dwarf.Entry, error) {
 	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
 	if !ok {
-		return nil, errors.New("entry does not have a type attribute")
+		return nil, fmt.Errorf("entry does not have a type attribute")
 	}
 
 	// Seek to the first type offset
@@ -94,7 +94,7 @@ func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resol
 		reader.Seek(offset)
 	}
 
-	return nil, errors.New("no type entry found")
+	return nil, fmt.Errorf("no type entry found")
 }
 
 // NextScopeVariable moves the reader to the next debug entry that describes a local variable and returns the entry.

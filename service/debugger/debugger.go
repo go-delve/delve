@@ -1,7 +1,6 @@
 package debugger
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -66,7 +65,7 @@ func New(config *Config) *Debugger {
 // operation.
 func (d *Debugger) withProcess(f func(*proctl.DebuggedProcess) error) error {
 	if !d.running {
-		return errors.New("debugger isn't running")
+		return fmt.Errorf("debugger isn't running")
 	}
 
 	result := make(chan error)
@@ -162,7 +161,7 @@ func (d *Debugger) Run() error {
 // Detach stops the debugger.
 func (d *Debugger) Detach(kill bool) error {
 	if !d.running {
-		return errors.New("debugger isn't running")
+		return fmt.Errorf("debugger isn't running")
 	}
 
 	d.stop <- stopSignal{KillProcess: kill}
@@ -206,7 +205,7 @@ func (d *Debugger) CreateBreakPoint(requestedBp *api.BreakPoint) (*api.BreakPoin
 		case len(requestedBp.FunctionName) > 0:
 			loc = requestedBp.FunctionName
 		default:
-			return errors.New("no file or function name specified")
+			return fmt.Errorf("no file or function name specified")
 		}
 
 		bp, breakError := p.BreakByLocation(loc)

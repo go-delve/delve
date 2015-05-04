@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -80,7 +79,7 @@ func (t *Term) Run() (error, int) {
 			if err == io.EOF {
 				err, status = handleExit(t.client, t)
 			}
-			err, status = errors.New("Prompt for input failed.\n"), 1
+			err, status = fmt.Errorf("Prompt for input failed.\n"), 1
 			break
 		}
 

@@ -3,7 +3,6 @@ package proctl
 // #include "threads_darwin.h"
 import "C"
 import (
-	"errors"
 	"fmt"
 	"unsafe"
 )
@@ -25,12 +24,12 @@ func (t *ThreadContext) Halt() error {
 func (t *ThreadContext) singleStep() error {
 	kret := C.single_step(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
-		return errors.New("could not single step")
+		return fmt.Errorf("could not single step")
 	}
 	t.Process.trapWait(0)
 	kret = C.clear_trap_flag(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
-		return errors.New("could not clear CPU trap flag")
+		return fmt.Errorf("could not clear CPU trap flag")
 	}
 	return nil
 }
@@ -42,7 +41,7 @@ func (t *ThreadContext) resume() error {
 	}
 	kret := C.resume_thread(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
-		return errors.New("could not continue thread")
+		return fmt.Errorf("could not continue thread")
 	}
 	return nil
 }
@@ -65,7 +64,7 @@ func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) 
 	)
 
 	if ret := C.write_memory(thread.Process.os.task, vm_addr, vm_data, length); ret < 0 {
-		return 0, errors.New("could not write memory")
+		return 0, fmt.Errorf("could not write memory")
 	}
 	return len(data), nil
 }
@@ -79,7 +78,7 @@ func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 
 	ret := C.read_memory(thread.Process.os.task, vm_addr, vm_data, length)
 	if ret < 0 {
-		return 0, errors.New("could not read memory")
+		return 0, fmt.Errorf("could not read memory")
 	}
 	return len(data), nil
 }
@@ -87,7 +86,7 @@ func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 func (thread *ThreadContext) saveRegisters() (Registers, error) {
 	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
 	if kret != C.KERN_SUCCESS {
-		return nil, errors.New("could not save register contents")
+		return nil, fmt.Errorf("could not save register contents")
 	}
 	return &Regs{pc: uint64(thread.os.registers.__rip), sp: uint64(thread.os.registers.__rsp)}, nil
 }
@@ -95,7 +94,7 @@ func (thread *ThreadContext) saveRegisters() (Registers, error) {
 func (thread *ThreadContext) restoreRegisters() error {
 	kret := C.set_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
 	if kret != C.KERN_SUCCESS {
-		return errors.New("could not save register contents")
+		return fmt.Errorf("could not save register contents")
 	}
 	return nil
 }

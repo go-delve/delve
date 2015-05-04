@@ -1,13 +1,13 @@
 package proctl
 
-import "errors"
+import "fmt"
 
 // TODO(darwin)
 func setHardwareBreakpoint(reg, tid int, addr uint64) error {
-	return errors.New("not implemented on darwin")
+	return fmt.Errorf("not implemented on darwin")
 }
 
 // TODO(darwin)
 func clearHardwareBreakpoint(reg, tid int) error {
-	return errors.New("not implemented on darwin")
+	return fmt.Errorf("not implemented on darwin")
 }

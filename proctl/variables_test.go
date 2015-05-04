@@ -1,7 +1,7 @@
 package proctl
 
 import (
-	"errors"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -56,8 +56,8 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a6.Baz", "8", "int", nil},
 		{"a7.Baz", "5", "int", nil},
 		{"a8.Baz", "feh", "struct string", nil},
-		{"a9.Baz", "nil", "int", errors.New("a9 is nil")},
-		{"a9.NonExistent", "nil", "int", errors.New("a9 has no member NonExistent")},
+		{"a9.Baz", "nil", "int", fmt.Errorf("a9 is nil")},
+		{"a9.NonExistent", "nil", "int", fmt.Errorf("a9 has no member NonExistent")},
 		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil}, // reread variable after member
 		{"i32", "[2]int32 [1,2]", "[2]int32", nil},
 		{"b1", "true", "bool", nil},
@@ -70,7 +70,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"f", "main.barfoo", "func()", nil},
 		{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "struct []int", nil},
 		{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "main.Nest", nil},
-		{"NonExistent", "", "", errors.New("could not find symbol value for NonExistent")},
+		{"NonExistent", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
 	withTestProcess(executablePath, t, func(p *DebuggedProcess) {

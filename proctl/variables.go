@@ -5,7 +5,6 @@ import (
 	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -84,7 +83,7 @@ func (thread *ThreadContext) AllM() ([]*M, error) {
 	}
 	m := binary.LittleEndian.Uint64(mptr)
 	if m == 0 {
-		return nil, errors.New("allm contains no M pointers")
+		return nil, fmt.Errorf("allm contains no M pointers")
 	}
 
 	procidInstructions, err := instructionsFor("procid", thread.Process, reader, true)
@@ -191,7 +190,7 @@ func instructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	if entry.Tag == dwarf.TagMember {
 		instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
 		if !ok {
-			return nil, errors.New("member data has no data member location attribute")
+			return nil, fmt.Errorf("member data has no data member location attribute")
 		}
 		// clone slice to prevent stomping on the dwarf data
 		return append([]byte{}, instructions...), nil
@@ -200,7 +199,7 @@ func instructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	// non-member
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return nil, errors.New("entry has no location attribute")
+		return nil, fmt.Errorf("entry has no location attribute")
 	}
 
 	// clone slice to prevent stomping on the dwarf data
@@ -225,7 +224,7 @@ func parseAllMPtr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return 0, errors.New("type assertion failed")
+		return 0, fmt.Errorf("type assertion failed")
 	}
 	addr, err := op.ExecuteStackProgram(0, instructions)
 	if err != nil {
@@ -321,7 +320,7 @@ func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
 
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return 0, errors.New("type assertion failed")
+		return 0, fmt.Errorf("type assertion failed")
 	}
 	addr, err := op.ExecuteStackProgram(0, instructions)
 	if err != nil {
@@ -342,7 +341,7 @@ func addressFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader) (uint64
 
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return 0, errors.New("type assertion failed")
+		return 0, fmt.Errorf("type assertion failed")
 	}
 	addr, err := op.ExecuteStackProgram(0, instructions)
 	if err != nil {
@@ -359,7 +358,7 @@ func offsetFor(name string, reader *dwarf.Reader, parentinstr []byte) (uint64, e
 	}
 	instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
 	if !ok {
-		return 0, errors.New("type assertion failed")
+		return 0, fmt.Errorf("type assertion failed")
 	}
 	offset, err := op.ExecuteStackProgram(0, append(parentinstr, instructions...))
 	if err != nil {
@@ -490,7 +489,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 	// Get parent variable name
 	parentName, ok := parentEntry.Val(dwarf.AttrName).(string)
 	if !ok {
-		return nil, errors.New("unable to retrive variable name")
+		return nil, fmt.Errorf("unable to retrive variable name")
 	}
 
 	// Seek reader to the type information so members can be iterated
@@ -523,7 +522,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 
 			offset, ok := memberEntry.Val(dwarf.AttrType).(dwarf.Offset)
 			if !ok {
-				return nil, errors.New("type assertion failed")
+				return nil, fmt.Errorf("type assertion failed")
 			}
 
 			data := thread.Process.dwarf
@@ -550,7 +549,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 // Extracts the name, type, and value of a variable from a dwarf entry
 func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
 	if entry == nil {
-		return nil, errors.New("invalid entry")
+		return nil, fmt.Errorf("invalid entry")
 	}
 
 	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
@@ -559,12 +558,12 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 
 	n, ok := entry.Val(dwarf.AttrName).(string)
 	if !ok {
-		return nil, errors.New("type assertion failed")
+		return nil, fmt.Errorf("type assertion failed")
 	}
 
 	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
 	if !ok {
-		return nil, errors.New("type assertion failed")
+		return nil, fmt.Errorf("type assertion failed")
 	}
 
 	data := thread.Process.dwarf
@@ -575,7 +574,7 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return nil, errors.New("type assertion failed")
+		return nil, fmt.Errorf("type assertion failed")
 	}
 
 	val, err := thread.extractValue(instructions, 0, t, true)
@@ -911,7 +910,7 @@ func (thread *ThreadContext) readFloat(addr uintptr, size int64) (string, error)
 		return strconv.FormatFloat(n, 'f', -1, int(size)*8), nil
 	}
 
-	return "", errors.New("could not read float")
+	return "", fmt.Errorf("could not read float")
 }
 
 func (thread *ThreadContext) readBool(addr uintptr) (string, error) {
