@@ -2,9 +2,10 @@ package proctl
 
 import (
 	"errors"
-	"path/filepath"
 	"sort"
 	"testing"
+
+	protest "github.com/derekparker/delve/proctl/test"
 )
 
 type varTest struct {
@@ -29,13 +30,6 @@ func assertVariable(t *testing.T, variable *Variable, expected varTest) {
 }
 
 func TestVariableEvaluation(t *testing.T) {
-	executablePath := "../_fixtures/testvariables"
-
-	fp, err := filepath.Abs(executablePath + ".go")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	testcases := []varTest{
 		{"a1", "foofoofoofoofoofoo", "struct string", nil},
 		{"a10", "ofo", "struct string", nil},
@@ -73,8 +67,8 @@ func TestVariableEvaluation(t *testing.T) {
 		{"NonExistent", "", "", errors.New("could not find symbol value for NonExistent")},
 	}
 
-	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.goSymTable.LineToPC(fp, 57)
+	withTestProcess("testvariables", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -97,15 +91,8 @@ func TestVariableEvaluation(t *testing.T) {
 }
 
 func TestVariableFunctionScoping(t *testing.T) {
-	executablePath := "../_fixtures/testvariables"
-
-	fp, err := filepath.Abs(executablePath + ".go")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.goSymTable.LineToPC(fp, 57)
+	withTestProcess("testvariables", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -121,7 +108,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 		assertNoError(err, t, "Unable to find variable a1")
 
 		// Move scopes, a1 exists here by a2 does not
-		pc, _, _ = p.goSymTable.LineToPC(fp, 23)
+		pc, _, _ = p.goSymTable.LineToPC(fixture.Source, 23)
 
 		_, err = p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
@@ -157,13 +144,6 @@ func (s varArray) Less(i, j int) bool {
 }
 
 func TestLocalVariables(t *testing.T) {
-	executablePath := "../_fixtures/testvariables"
-
-	fp, err := filepath.Abs(executablePath + ".go")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	testcases := []struct {
 		fn     func(*ThreadContext) ([]*Variable, error)
 		output []varTest
@@ -203,8 +183,8 @@ func TestLocalVariables(t *testing.T) {
 				{"baz", "bazburzum", "struct string", nil}}},
 	}
 
-	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
-		pc, _, _ := p.goSymTable.LineToPC(fp, 57)
+	withTestProcess("testvariables", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
 		_, err := p.Break(pc)
 		assertNoError(err, t, "Break() returned an error")
