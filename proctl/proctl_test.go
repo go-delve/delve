@@ -3,29 +3,29 @@ package proctl
 import (
 	"bytes"
 	"encoding/binary"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	protest "github.com/derekparker/delve/proctl/test"
 )
 
-func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess)) {
-	runtime.LockOSThread()
-	base := filepath.Base(name)
-	if err := exec.Command("go", "build", "-gcflags=-N -l", "-o", base, name+".go").Run(); err != nil {
-		t.Fatalf("Could not compile %s due to %s", name, err)
-	}
-	defer os.Remove("./" + base)
+func TestMain(m *testing.M) {
+	protest.RunTestsWithFixtures(m)
+}
 
-	p, err := Launch([]string{"./" + base})
+func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess, fixture protest.Fixture)) {
+	runtime.LockOSThread()
+
+	fixture := protest.Fixtures[name]
+	p, err := Launch([]string{fixture.Path})
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
 
 	defer p.Process.Kill()
 
-	fn(p)
+	fn(p, fixture)
 }
 
 func getRegisters(p *DebuggedProcess, t *testing.T) Registers {
@@ -72,7 +72,7 @@ func currentLineNumber(p *DebuggedProcess, t *testing.T) (string, int) {
 }
 
 func TestExit(t *testing.T) {
-	withTestProcess("../_fixtures/continuetestprog", t, func(p *DebuggedProcess) {
+	withTestProcess("continuetestprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		err := p.Continue()
 		pe, ok := err.(ProcessExitedError)
 		if !ok {
@@ -88,7 +88,7 @@ func TestExit(t *testing.T) {
 }
 
 func TestHalt(t *testing.T) {
-	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
+	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		go func() {
 			for {
 				if p.Running() {
@@ -117,7 +117,7 @@ func TestHalt(t *testing.T) {
 }
 
 func TestStep(t *testing.T) {
-	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
+	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
@@ -139,7 +139,7 @@ func TestStep(t *testing.T) {
 }
 
 func TestBreakPoint(t *testing.T) {
-	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
+	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
@@ -160,7 +160,7 @@ func TestBreakPoint(t *testing.T) {
 }
 
 func TestBreakPointInSeperateGoRoutine(t *testing.T) {
-	withTestProcess("../_fixtures/testthreads", t, func(p *DebuggedProcess) {
+	withTestProcess("testthreads", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		fn := p.goSymTable.LookupFunc("main.anotherthread")
 		if fn == nil {
 			t.Fatal("No fn exists")
@@ -189,7 +189,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 }
 
 func TestBreakPointWithNonExistantFunction(t *testing.T) {
-	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
+	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		_, err := p.Break(0)
 		if err == nil {
 			t.Fatal("Should not be able to break at non existant function")
@@ -198,7 +198,7 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 }
 
 func TestClearBreakPoint(t *testing.T) {
-	withTestProcess("../_fixtures/testprog", t, func(p *DebuggedProcess) {
+	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		fn := p.goSymTable.LookupFunc("main.sleepytime")
 		bp, err := p.Break(fn.Entry)
 		assertNoError(err, t, "Break()")
@@ -227,8 +227,7 @@ type nextTest struct {
 }
 
 func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
-	var executablePath = "../_fixtures/testnextprog"
-	withTestProcess(executablePath, t, func(p *DebuggedProcess) {
+	withTestProcess("testnextprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		bp, err := p.BreakByLocation(initialLocation)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
@@ -298,8 +297,7 @@ func TestNextFunctionReturn(t *testing.T) {
 }
 
 func TestRuntimeBreakpoint(t *testing.T) {
-	var testfile, _ = filepath.Abs("../_fixtures/testruntimebreakpoint")
-	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+	withTestProcess("testruntimebreakpoint", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		err := p.Continue()
 		if err != nil {
 			t.Fatal(err)
@@ -316,16 +314,13 @@ func TestRuntimeBreakpoint(t *testing.T) {
 }
 
 func TestFindReturnAddress(t *testing.T) {
-	var testfile, _ = filepath.Abs("../_fixtures/testnextprog")
-
-	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+	withTestProcess("testnextprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		var (
 			fdes = p.frameEntries
 			gsd  = p.goSymTable
 		)
 
-		testsourcefile := testfile + ".go"
-		start, _, err := gsd.LineToPC(testsourcefile, 24)
+		start, _, err := gsd.LineToPC(fixture.Source, 24)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -369,9 +364,7 @@ func TestFindReturnAddress(t *testing.T) {
 }
 
 func TestSwitchThread(t *testing.T) {
-	var testfile, _ = filepath.Abs("../_fixtures/testnextprog")
-
-	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+	withTestProcess("testnextprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		// With invalid thread id
 		err := p.SwitchThread(-1)
 		if err == nil {
@@ -412,9 +405,7 @@ func TestSwitchThread(t *testing.T) {
 }
 
 func TestFunctionCall(t *testing.T) {
-	var testfile, _ = filepath.Abs("../_fixtures/testprog")
-
-	withTestProcess(testfile, t, func(p *DebuggedProcess) {
+	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		pc, err := p.FindLocation("main.main")
 		if err != nil {
 			t.Fatal(err)
