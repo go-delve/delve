@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"os/user"
+	"path"
 	"strings"
 
 	"github.com/peterh/liner"
@@ -15,6 +17,7 @@ import (
 	"github.com/derekparker/delve/service"
 )
 
+const configDir string = ".dlv"
 const historyFile string = ".dbg_history"
 
 type Term struct {
@@ -34,6 +37,11 @@ func New(client service.Client) *Term {
 func (t *Term) Run() (error, int) {
 	defer t.line.Close()
 
+	err := createConfigPath()
+	if err != nil {
+		fmt.Printf("Could not create config directory: %v.")
+	}
+
 	// Send the debugger a halt command on SIGINT
 	ch := make(chan os.Signal)
 	signal.Notify(ch, sys.SIGINT)
@@ -47,10 +55,19 @@ func (t *Term) Run() (error, int) {
 	}()
 
 	cmds := DebugCommands(t.client)
-	f, err := os.Open(historyFile)
+	fullHistoryFile, err := getConfigFilePath(historyFile)
 	if err != nil {
-		f, _ = os.Create(historyFile)
+		fmt.Printf("Unable to load history file: %v.", err)
 	}
+
+	f, err := os.Open(fullHistoryFile)
+	if err != nil {
+		f, err = os.Create(fullHistoryFile)
+		if err != nil {
+			fmt.Printf("Unable to open history file: %v. History will not be saved for this session.", err)
+		}
+	}
+
 	t.line.ReadHistory(f)
 	f.Close()
 	fmt.Println("Type 'help' for list of commands.")
@@ -103,12 +120,17 @@ func (t *Term) promptForInput() (string, error) {
 }
 
 func handleExit(client service.Client, t *Term) (error, int) {
-	if f, err := os.OpenFile(historyFile, os.O_RDWR, 0666); err == nil {
-		_, err := t.line.WriteHistory(f)
-		if err != nil {
-			fmt.Println("readline history error: ", err)
+	fullHistoryFile, err := getConfigFilePath(historyFile)
+	if err != nil {
+		fmt.Println("Error saving history file:", err)
+	} else {
+		if f, err := os.OpenFile(fullHistoryFile, os.O_RDWR, 0666); err == nil {
+			_, err := t.line.WriteHistory(f)
+			if err != nil {
+				fmt.Println("readline history error: ", err)
+			}
+			f.Close()
 		}
-		f.Close()
 	}
 
 	answer, err := t.line.Prompt("Would you like to kill the process? [y/n] ")
@@ -128,4 +150,20 @@ func handleExit(client service.Client, t *Term) (error, int) {
 func parseCommand(cmdstr string) (string, []string) {
 	vals := strings.Split(cmdstr, " ")
 	return vals[0], vals[1:]
+}
+
+func createConfigPath() error {
+	path, err := getConfigFilePath("")
+	if err != nil {
+		return err
+	}
+	return os.MkdirAll(path, 0700)
+}
+
+func getConfigFilePath(file string) (string, error) {
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return path.Join(usr.HomeDir, configDir, file), nil
 }
