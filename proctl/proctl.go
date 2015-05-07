@@ -304,6 +304,9 @@ func (dbp *DebuggedProcess) setChanRecvBreakpoints() (int, error) {
 		if g.ChanRecvBlocked() {
 			ret, err := g.chanRecvReturnAddr(dbp)
 			if err != nil {
+				if _, ok := err.(NullAddrError); ok {
+					continue
+				}
 				return 0, err
 			}
 			if _, err = dbp.TempBreak(ret); err != nil {

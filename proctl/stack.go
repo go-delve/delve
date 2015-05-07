@@ -26,6 +26,12 @@ func (thread *ThreadContext) ReturnAddress() (uint64, error) {
 	return locations[0].addr, nil
 }
 
+type NullAddrError struct{}
+
+func (n NullAddrError) Error() string {
+	return "NULL address"
+}
+
 func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]stackLocation, error) {
 	var (
 		ret       = pc
@@ -41,6 +47,9 @@ func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]stackLocatio
 		}
 		btoffset += fde.ReturnAddressOffset(ret)
 		retaddr = uintptr(int64(sp) + btoffset + (i * 8))
+		if retaddr == 0 {
+			return nil, NullAddrError{}
+		}
 		_, err = readMemory(dbp.CurrentThread, retaddr, data)
 		if err != nil {
 			return nil, err
