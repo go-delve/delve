@@ -10,7 +10,7 @@ Delve is a Go debugger, written in Go.
 
 ### Building
 
-Delve requires Go 1.4 to build.
+Delve requires Go 1.4 or greater to build.
 
 ```
 go get -u github.com/derekparker/delve/cmd/dlv
