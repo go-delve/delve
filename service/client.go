@@ -51,6 +51,10 @@ type Client interface {
 	ListSources(filter string) ([]string, error)
 	// ListFunctions lists all functions in the process matching filter.
 	ListFunctions(filter string) ([]string, error)
+	// ListLocals lists all local variables in scope.
+	ListLocalVariables() ([]api.Variable, error)
+	// ListFunctionArgs lists all arguments to the current function.
+	ListFunctionArgs() ([]api.Variable, error)
 
 	// ListGoroutines lists all goroutines.
 	ListGoroutines() ([]*api.Goroutine, error)

@@ -88,6 +88,8 @@ func (s *RESTServer) Run() error {
 		Route(ws.GET("/sources").To(s.listSources)).
 		Route(ws.GET("/functions").To(s.listFunctions)).
 		Route(ws.GET("/vars").To(s.listPackageVars)).
+		Route(ws.GET("/localvars").To(s.listLocalVars)).
+		Route(ws.GET("/args").To(s.listFunctionArgs)).
 		Route(ws.GET("/eval/{symbol}").To(s.evalSymbol)).
 		// TODO: GET might be the wrong verb for this
 		Route(ws.GET("/detach").To(s.detach))
@@ -284,6 +286,40 @@ func (s *RESTServer) listThreadPackageVars(request *restful.Request, response *r
 	filter := request.QueryParameter("filter")
 	vars, err := s.debugger.PackageVariables(id, filter)
 
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+	response.WriteEntity(vars)
+}
+
+func (s *RESTServer) listLocalVars(request *restful.Request, response *restful.Response) {
+	state, err := s.debugger.State()
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	vars, err := s.debugger.LocalVariables(state.CurrentThread.ID)
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+	response.WriteEntity(vars)
+}
+
+func (s *RESTServer) listFunctionArgs(request *restful.Request, response *restful.Response) {
+	state, err := s.debugger.State()
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	vars, err := s.debugger.FunctionArguments(state.CurrentThread.ID)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
