@@ -80,7 +80,7 @@ func main() {
 		}
 		defer os.Remove(debugname)
 
-		processArgs = append([]string{"./" + debugname}, flag.Args()...)
+		processArgs = append([]string{"./" + debugname}, flag.Args()[1:]...)
 	case "test":
 		wd, err := os.Getwd()
 		if err != nil {
@@ -97,7 +97,7 @@ func main() {
 		debugname := "./" + base + ".test"
 		defer os.Remove(debugname)
 
-		processArgs = append([]string{debugname}, flag.Args()...)
+		processArgs = append([]string{debugname}, flag.Args()[1:]...)
 	case "attach":
 		pid, err := strconv.Atoi(flag.Args()[1])
 		if err != nil {

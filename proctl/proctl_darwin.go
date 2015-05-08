@@ -2,6 +2,7 @@ package proctl
 
 // #include "proctl_darwin.h"
 // #include "exec_darwin.h"
+// #include <stdlib.h>
 import "C"
 import (
 	"debug/gosym"
@@ -29,14 +30,20 @@ type OSProcessDetails struct {
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin.
 func Launch(cmd []string) (*DebuggedProcess, error) {
-	argv0, err := filepath.Abs(cmd[0])
+	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
 	}
+	argv0 := C.CString(argv0Go)
 
-	argv := C.CString(cmd[0])
-	if len(cmd) == 1 {
-		argv = nil
+	argvSlice := make([]*C.char, 0, len(cmd))
+	for _, arg := range cmd {
+		argvSlice = append(argvSlice, C.CString(arg))
+	}
+
+	var argv **C.char
+	if len(cmd) > 1 {
+		argv = &argvSlice[0]
 	}
 
 	dbp := &DebuggedProcess{
@@ -47,13 +54,17 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 		ast:         source.New(),
 	}
 
-	pid := int(C.fork_exec(C.CString(argv0), &argv, &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort))
+	ret := C.fork_exec(argv0, argv, &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
+	pid := int(ret)
 	if pid <= 0 {
 		return nil, fmt.Errorf("could not fork/exec")
 	}
 	dbp.Pid = pid
+	for i := range argvSlice {
+		C.free(unsafe.Pointer(argvSlice[i]))
+	}
 
-	dbp, err = initializeDebugProcess(dbp, argv0, false)
+	dbp, err = initializeDebugProcess(dbp, argv0Go, false)
 	if err != nil {
 		return nil, err
 	}
