@@ -162,6 +162,7 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 		var (
 			parents              []*ast.BlockStmt
 			parentBlockBeginLine int
+			deferEndLine         int
 		)
 		f, err := s.parse(fname)
 		if err != nil {
@@ -174,6 +175,17 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 			if n == nil {
 				return true
 			}
+
+			pos := s.fileset.Position(n.Pos())
+			if line < pos.Line && deferEndLine != 0 {
+				p := s.fileset.Position(n.Pos())
+				if deferEndLine < p.Line {
+					found = true
+					lines = append(lines, p.Line)
+					return false
+				}
+			}
+
 			if stmt, ok := n.(*ast.ForStmt); ok {
 				parents = append(parents, stmt.Body)
 				pos := s.fileset.Position(stmt.Pos())
@@ -182,6 +194,13 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 
 			if _, ok := n.(*ast.GenDecl); ok {
 				return true
+			}
+
+			if dn, ok := n.(*ast.DeferStmt); ok {
+				fmt.Println("defer")
+				endpos := s.fileset.Position(dn.End())
+				deferEndLine = endpos.Line
+				return false
 			}
 
 			if st, ok := n.(*ast.DeclStmt); ok {
@@ -193,7 +212,6 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 			}
 
 			// Check to see if we've found the "next" line.
-			pos := s.fileset.Position(n.Pos())
 			if line < pos.Line {
 				if _, ok := n.(*ast.BlockStmt); ok {
 					return true
