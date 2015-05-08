@@ -42,9 +42,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	}
 
 	var argv **C.char
-	if len(cmd) > 1 {
-		argv = &argvSlice[0]
-	}
+	argv = &argvSlice[0]
 
 	dbp := &DebuggedProcess{
 		Threads:     make(map[int]*ThreadContext),
