@@ -3,15 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	sys "golang.org/x/sys/unix"
-	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+
+	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/service/rest"
 	"github.com/derekparker/delve/terminal"
@@ -59,11 +58,6 @@ func main() {
 	if printhelp {
 		help()
 		os.Exit(0)
-	}
-
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	if !logEnabled {
-		log.SetOutput(ioutil.Discard)
 	}
 
 	// Collect launch arguments
@@ -121,7 +115,7 @@ func main() {
 		Listener:    listener,
 		ProcessArgs: processArgs,
 		AttachPid:   attachPid,
-	})
+	}, logEnabled)
 	go server.Run()
 
 	status := 0

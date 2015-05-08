@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -41,7 +42,12 @@ type Config struct {
 }
 
 // NewServer creates a new RESTServer.
-func NewServer(config *Config) *RESTServer {
+func NewServer(config *Config, logEnabled bool) *RESTServer {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	if !logEnabled {
+		log.SetOutput(ioutil.Discard)
+	}
+
 	return &RESTServer{
 		config:          config,
 		listener:        config.Listener,

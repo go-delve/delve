@@ -22,7 +22,7 @@ func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
 	server := NewServer(&Config{
 		Listener:    listener,
 		ProcessArgs: []string{protest.Fixtures[name].Path},
-	})
+	}, false)
 	go server.Run()
 	client := NewClient(listener.Addr().String())
 	defer client.Detach(true)
