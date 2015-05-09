@@ -242,7 +242,7 @@ func (ng NoGError) Error() string {
 	return fmt.Sprintf("no G executing on thread %d", ng.tid)
 }
 
-func parseG(thread *ThreadContext, addr uint64, reader *dwarf.Reader) (*G, error) {
+func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 	gaddrbytes, err := thread.readMemory(uintptr(addr), thread.Process.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error derefing *G %s", err)
@@ -253,57 +253,64 @@ func parseG(thread *ThreadContext, addr uint64, reader *dwarf.Reader) (*G, error
 		return nil, NoGError{tid: thread.Id}
 	}
 
-	reader.Seek(0)
-	goidaddr, err := offsetFor("goid", reader, initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	goidbytes, err := thread.readMemory(uintptr(goidaddr), thread.Process.arch.PtrSize())
-	if err != nil {
-		return nil, fmt.Errorf("error reading goid %s", err)
-	}
-	reader.Seek(0)
-	gopcaddr, err := offsetFor("gopc", reader, initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	gopcbytes, err := thread.readMemory(uintptr(gopcaddr), thread.Process.arch.PtrSize())
-	if err != nil {
-		return nil, fmt.Errorf("error reading gopc %s", err)
-	}
-	reader.Seek(0)
-	schedaddr, err := offsetFor("sched", reader, initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	reader.Seek(0)
-	waitreasonaddr, err := offsetFor("waitreason", reader, initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	waitreason, err := thread.readString(uintptr(waitreasonaddr))
+	rdr := thread.Process.DwarfReader()
+	rdr.Seek(0)
+	_, err = rdr.SeekToTypeNamed("runtime.g")
 	if err != nil {
 		return nil, err
 	}
 
-	spbytes, err := thread.readMemory(uintptr(schedaddr), thread.Process.arch.PtrSize())
-	if err != nil {
-		return nil, fmt.Errorf("error reading goroutine SP %s", err)
-	}
-	gosp := binary.LittleEndian.Uint64(spbytes)
+	// Let's parse all of the members we care about in order so that
+	// we don't have to spend any extra time seeking.
 
-	pcbytes, err := thread.readMemory(uintptr(schedaddr+uint64(thread.Process.arch.PtrSize())), thread.Process.arch.PtrSize())
+	// Parse sched
+	schedAddr, err := rdr.AddrForMember("sched", initialInstructions)
 	if err != nil {
-		return nil, fmt.Errorf("error reading goroutine PC %s", err)
+		return nil, err
 	}
-	gopc := binary.LittleEndian.Uint64(pcbytes)
+	// From sched, let's parse PC and SP.
+	sp, err := thread.readUintRaw(uintptr(schedAddr), 8)
+	if err != nil {
+		return nil, err
+	}
+	pc, err := thread.readUintRaw(uintptr(schedAddr+uint64(thread.Process.arch.PtrSize())), 8)
+	if err != nil {
+		return nil, err
+	}
+	// Parse goid
+	goidAddr, err := rdr.AddrForMember("goid", initialInstructions)
+	if err != nil {
+		return nil, err
+	}
+	goid, err := thread.readIntRaw(uintptr(goidAddr), 8)
+	if err != nil {
+		return nil, err
+	}
+	// Parse waitreason
+	waitReasonAddr, err := rdr.AddrForMember("waitreason", initialInstructions)
+	if err != nil {
+		return nil, err
+	}
+	waitreason, err := thread.readString(uintptr(waitReasonAddr))
+	if err != nil {
+		return nil, err
+	}
+	// Parse gopc
+	gopcAddr, err := rdr.AddrForMember("gopc", initialInstructions)
+	if err != nil {
+		return nil, err
+	}
+	gopc, err := thread.readUintRaw(uintptr(gopcAddr), 8)
+	if err != nil {
+		return nil, err
+	}
 
 	f, l, fn := thread.Process.goSymTable.PCToLine(gopc)
 	g := &G{
-		Id:         int(binary.LittleEndian.Uint64(goidbytes)),
-		GoPC:       binary.LittleEndian.Uint64(gopcbytes),
-		PC:         gopc,
-		SP:         gosp,
+		Id:         int(goid),
+		GoPC:       gopc,
+		PC:         pc,
+		SP:         sp,
 		File:       f,
 		Line:       l,
 		Func:       fn,
@@ -349,23 +356,6 @@ func addressFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader) (uint64
 	}
 
 	return uint64(addr), nil
-}
-
-func offsetFor(name string, reader *dwarf.Reader, parentinstr []byte) (uint64, error) {
-	entry, err := findDwarfEntry(name, reader, true)
-	if err != nil {
-		return 0, err
-	}
-	instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
-	if !ok {
-		return 0, fmt.Errorf("type assertion failed")
-	}
-	offset, err := op.ExecuteStackProgram(0, append(parentinstr, instructions...))
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(offset), nil
 }
 
 // Returns the value of the named symbol.
@@ -852,11 +842,19 @@ func (thread *ThreadContext) readArrayValues(addr uintptr, count int64, stride i
 }
 
 func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
+	n, err := thread.readIntRaw(addr, size)
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatInt(n, 10), nil
+}
+
+func (thread *ThreadContext) readIntRaw(addr uintptr, size int64) (int64, error) {
 	var n int64
 
 	val, err := thread.readMemory(addr, int(size))
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 
 	switch size {
@@ -870,15 +868,23 @@ func (thread *ThreadContext) readInt(addr uintptr, size int64) (string, error) {
 		n = int64(binary.LittleEndian.Uint64(val))
 	}
 
-	return strconv.FormatInt(n, 10), nil
+	return n, nil
 }
 
 func (thread *ThreadContext) readUint(addr uintptr, size int64) (string, error) {
+	n, err := thread.readUintRaw(addr, size)
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatUint(n, 10), nil
+}
+
+func (thread *ThreadContext) readUintRaw(addr uintptr, size int64) (uint64, error) {
 	var n uint64
 
 	val, err := thread.readMemory(addr, int(size))
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 
 	switch size {
@@ -892,7 +898,7 @@ func (thread *ThreadContext) readUint(addr uintptr, size int64) (string, error) 
 		n = uint64(binary.LittleEndian.Uint64(val))
 	}
 
-	return strconv.FormatUint(n, 10), nil
+	return n, nil
 }
 
 func (thread *ThreadContext) readFloat(addr uintptr, size int64) (string, error) {

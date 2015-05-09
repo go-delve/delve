@@ -2,7 +2,10 @@ package reader
 
 import (
 	"debug/dwarf"
+	"errors"
 	"fmt"
+
+	"github.com/derekparker/delve/dwarf/op"
 )
 
 type Reader struct {
@@ -58,6 +61,49 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 	}
 
 	return nil, fmt.Errorf("unable to find function context")
+}
+
+// SeekToTypeNamed moves the reader to the type specified by the name.
+// If the reader is set to a struct type the NextMemberVariable call
+// can be used to walk all member data.
+func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
+	// Walk the types to the base
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+
+		if n == name {
+			return entry, nil
+		}
+	}
+
+	return nil, errors.New("no type entry found")
+}
+
+// Returns the address for the named struct member.
+func (reader *Reader) AddrForMember(member string, initialInstructions []byte) (uint64, error) {
+	for {
+		entry, err := reader.NextMemberVariable()
+		if err != nil {
+			return 0, err
+		}
+		name, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok || name != member {
+			continue
+		}
+		instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
+		if !ok {
+			continue
+		}
+		addr, err := op.ExecuteStackProgram(0, append(initialInstructions, instructions...))
+		return uint64(addr), err
+	}
 }
 
 // SeekToType moves the reader to the type specified by the entry,

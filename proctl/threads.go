@@ -259,8 +259,7 @@ func (thread *ThreadContext) curG() (*G, error) {
 		if err != nil {
 			return err
 		}
-		reader := thread.Process.dwarf.Reader()
-		g, err = parseG(thread, regs.SP()+uint64(thread.Process.arch.PtrSize()), reader)
+		g, err = parseG(thread, regs.SP()+uint64(thread.Process.arch.PtrSize()))
 		return err
 	})
 	return g, err

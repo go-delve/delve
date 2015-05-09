@@ -410,7 +410,7 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())), reader)
+		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())))
 		if err != nil {
 			return nil, err
 		}
