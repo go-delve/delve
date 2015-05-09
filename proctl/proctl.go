@@ -249,6 +249,13 @@ func (dbp *DebuggedProcess) next() error {
 		return err
 	}
 
+	if curg.DeferPC != 0 {
+		_, err = dbp.TempBreak(curg.DeferPC)
+		if err != nil {
+			return err
+		}
+	}
+
 	var goroutineExiting bool
 	var waitCount int
 	for _, th := range dbp.Threads {

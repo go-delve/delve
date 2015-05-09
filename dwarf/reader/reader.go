@@ -87,6 +87,9 @@ func (reader *Reader) AddrForMember(member string, initialInstructions []byte) (
 		if err != nil {
 			return 0, err
 		}
+		if entry == nil {
+			return 0, fmt.Errorf("nil entry for member named %s", member)
+		}
 		name, ok := entry.Val(dwarf.AttrName).(string)
 		if !ok || name != member {
 			continue

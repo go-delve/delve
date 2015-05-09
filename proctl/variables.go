@@ -50,6 +50,9 @@ type G struct {
 	File string
 	Line int
 	Func *gosym.Func
+
+	// PC of entry to top-most deferred function.
+	DeferPC uint64
 }
 
 // Returns whether the goroutine is blocked on
@@ -89,7 +92,7 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 
 	rdr := thread.Process.DwarfReader()
 	rdr.Seek(0)
-	_, err = rdr.SeekToTypeNamed("runtime.g")
+	entry, err := rdr.SeekToTypeNamed("runtime.g")
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +100,37 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 	// Let's parse all of the members we care about in order so that
 	// we don't have to spend any extra time seeking.
 
+	// Parse defer
+	deferAddr, err := rdr.AddrForMember("_defer", initialInstructions)
+	if err != nil {
+		return nil, err
+	}
+	var deferPC uint64
+	// Dereference *defer pointer
+	deferAddrBytes, err := thread.readMemory(uintptr(deferAddr), thread.Process.arch.PtrSize())
+	if err != nil {
+		return nil, fmt.Errorf("error derefing *G %s", err)
+	}
+	if binary.LittleEndian.Uint64(deferAddrBytes) != 0 {
+		initialDeferInstructions := append([]byte{op.DW_OP_addr}, deferAddrBytes...)
+		_, err = rdr.SeekToTypeNamed("runtime._defer")
+		if err != nil {
+			return nil, err
+		}
+		deferPCAddr, err := rdr.AddrForMember("fn", initialDeferInstructions)
+		deferPC, err = thread.readUintRaw(uintptr(deferPCAddr), 8)
+		if err != nil {
+			return nil, err
+		}
+		deferPC, err = thread.readUintRaw(uintptr(deferPC), 8)
+		if err != nil {
+			return nil, err
+		}
+		err = rdr.SeekToEntry(entry)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// Parse sched
 	schedAddr, err := rdr.AddrForMember("sched", initialInstructions)
 	if err != nil {
@@ -149,6 +183,7 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 		Line:       l,
 		Func:       fn,
 		WaitReason: waitreason,
+		DeferPC:    deferPC,
 	}
 	return g, nil
 }

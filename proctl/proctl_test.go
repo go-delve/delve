@@ -226,8 +226,8 @@ type nextTest struct {
 	begin, end int
 }
 
-func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
-	withTestProcess("testnextprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+func testnext(program string, testcases []nextTest, initialLocation string, t *testing.T) {
+	withTestProcess(program, t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		bp, err := p.BreakByLocation(initialLocation)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
@@ -277,7 +277,7 @@ func TestNextGeneral(t *testing.T) {
 		{26, 27},
 		{27, 34},
 	}
-	testnext(testcases, "main.testnext", t)
+	testnext("testnextprog", testcases, "main.testnext", t)
 }
 
 func TestNextGoroutine(t *testing.T) {
@@ -285,7 +285,7 @@ func TestNextGoroutine(t *testing.T) {
 		{46, 47},
 		{47, 42},
 	}
-	testnext(testcases, "main.testgoroutine", t)
+	testnext("testnextprog", testcases, "main.testgoroutine", t)
 }
 
 func TestNextFunctionReturn(t *testing.T) {
@@ -293,7 +293,15 @@ func TestNextFunctionReturn(t *testing.T) {
 		{13, 14},
 		{14, 35},
 	}
-	testnext(testcases, "main.helloworld", t)
+	testnext("testnextprog", testcases, "main.helloworld", t)
+}
+
+func TestNextFunctionReturnDefer(t *testing.T) {
+	testcases := []nextTest{
+		{5, 9},
+		{9, 6},
+	}
+	testnext("testnextdefer", testcases, "main.main", t)
 }
 
 func TestRuntimeBreakpoint(t *testing.T) {
