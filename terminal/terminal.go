@@ -132,13 +132,13 @@ func handleExit(client service.Client, t *Term) (error, int) {
 		}
 	}
 
-	answer, err := t.line.Prompt("Would you like to kill the process? [y/n] ")
+	answer, err := t.line.Prompt("Would you like to kill the process? [Y/n] ")
 	if err != nil {
 		return io.EOF, 2
 	}
-	answer = strings.TrimSuffix(answer, "\n")
+	answer = strings.ToLower(strings.TrimSpace(answer))
 
-	kill := (answer == "y")
+	kill := (answer != "n" && answer != "no")
 	err = client.Detach(kill)
 	if err != nil {
 		return err, 1

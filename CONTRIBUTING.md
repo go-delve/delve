@@ -8,7 +8,7 @@ If you'd like to join the discussion, hop on #delve-dbgr on irc.freenode.net.
 
 When filing an issue, make sure to answer these five questions:
 
-1. What version of Delve are you using (`dlv -v`)?
+1. What version of Delve are you using (`dlv -version`)?
 2. What version of Go are you using? (`go version`)?
 3. What operating system and processor architecture are you using?
 4. What did you do?

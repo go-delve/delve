@@ -3,6 +3,7 @@ package op
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/derekparker/delve/dwarf/util"
@@ -40,6 +41,10 @@ func ExecuteStackProgram(cfa int64, instructions []byte) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
+	}
+
+	if len(stack) == 0 {
+		return 0, errors.New("empty OP stack")
 	}
 
 	return stack[len(stack)-1], nil

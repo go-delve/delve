@@ -3,15 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	sys "golang.org/x/sys/unix"
-	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+
+	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/service/rest"
 	"github.com/derekparker/delve/terminal"
@@ -61,11 +60,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	if !logEnabled {
-		log.SetOutput(ioutil.Discard)
-	}
-
 	// Collect launch arguments
 	var processArgs []string
 	var attachPid int
@@ -80,7 +74,7 @@ func main() {
 		}
 		defer os.Remove(debugname)
 
-		processArgs = append([]string{"./" + debugname}, flag.Args()...)
+		processArgs = append([]string{"./" + debugname}, flag.Args()[1:]...)
 	case "test":
 		wd, err := os.Getwd()
 		if err != nil {
@@ -97,7 +91,7 @@ func main() {
 		debugname := "./" + base + ".test"
 		defer os.Remove(debugname)
 
-		processArgs = append([]string{debugname}, flag.Args()...)
+		processArgs = append([]string{debugname}, flag.Args()[1:]...)
 	case "attach":
 		pid, err := strconv.Atoi(flag.Args()[1])
 		if err != nil {
@@ -121,7 +115,7 @@ func main() {
 		Listener:    listener,
 		ProcessArgs: processArgs,
 		AttachPid:   attachPid,
-	})
+	}, logEnabled)
 	go server.Run()
 
 	status := 0

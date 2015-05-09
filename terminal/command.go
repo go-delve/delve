@@ -364,24 +364,18 @@ func info(client service.Client, args ...string) error {
 		data = funcs
 
 	case "args":
-		state, err := client.GetState()
+		args, err := client.ListFunctionArgs()
 		if err != nil {
 			return err
 		}
-		if state.CurrentThread == nil || state.CurrentThread.Function == nil {
-			return nil
-		}
-		data = filterVariables(state.CurrentThread.Function.Args, filter)
+		data = filterVariables(args, filter)
 
 	case "locals":
-		state, err := client.GetState()
+		locals, err := client.ListLocalVariables()
 		if err != nil {
 			return err
 		}
-		if state.CurrentThread == nil || state.CurrentThread.Function == nil {
-			return nil
-		}
-		data = filterVariables(state.CurrentThread.Function.Locals, filter)
+		data = filterVariables(locals, filter)
 
 	case "vars":
 		regex := ""
@@ -392,9 +386,7 @@ func info(client service.Client, args ...string) error {
 		if err != nil {
 			return err
 		}
-		for _, v := range vars {
-			data = append(data, fmt.Sprintf("%s = %s", v.Name, v.Value))
-		}
+		data = filterVariables(vars, filter)
 
 	default:
 		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources, or vars")

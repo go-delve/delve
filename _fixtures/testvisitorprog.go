@@ -63,3 +63,10 @@ func decltest() {
 	var baz = 9
 	fmt.Println(foo, baz)
 }
+
+func defertest() {
+	defer func() {
+		fmt.Println("this is a useless defer")
+	}()
+	fmt.Println("I should get here")
+}

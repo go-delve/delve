@@ -2,6 +2,7 @@ package rest
 
 import (
 	"net"
+	"path/filepath"
 	"testing"
 
 	protest "github.com/derekparker/delve/proctl/test"
@@ -21,7 +22,7 @@ func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
 	server := NewServer(&Config{
 		Listener:    listener,
 		ProcessArgs: []string{protest.Fixtures[name].Path},
-	})
+	}, false)
 	go server.Run()
 	client := NewClient(listener.Addr().String())
 	defer client.Detach(true)
@@ -265,6 +266,54 @@ func TestClientServer_switchThread(t *testing.T) {
 		}
 		if state.CurrentThread.ID != nt {
 			t.Fatal("Did not switch threads")
+		}
+	})
+}
+
+func TestClientServer_infoLocals(t *testing.T) {
+	withTestClient("testnextprog", t, func(c service.Client) {
+		fp, err := filepath.Abs("../../_fixtures/testnextprog.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = c.CreateBreakPoint(&api.BreakPoint{File: fp, Line: 23})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		state, err := c.Continue()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+		}
+		locals, err := c.ListLocalVariables()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if len(locals) != 3 {
+			t.Fatalf("Expected 3 locals, got %d %#v", len(locals), locals)
+		}
+	})
+}
+
+func TestClientServer_infoArgs(t *testing.T) {
+	withTestClient("testnextprog", t, func(c service.Client) {
+		fp, err := filepath.Abs("../../_fixtures/testnextprog.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = c.CreateBreakPoint(&api.BreakPoint{File: fp, Line: 47})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		state, err := c.Continue()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+		}
+		locals, err := c.ListFunctionArgs()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if len(locals) != 2 {
+			t.Fatalf("Expected 2 function args, got %d %#v", len(locals), locals)
 		}
 	})
 }

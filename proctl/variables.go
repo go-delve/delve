@@ -757,6 +757,9 @@ func (thread *ThreadContext) readString(addr uintptr) (string, error) {
 		return "", err
 	}
 	addr = uintptr(binary.LittleEndian.Uint64(val))
+	if addr == 0 {
+		return "", nil
+	}
 
 	val, err = thread.readMemory(addr, strlen)
 	if err != nil {

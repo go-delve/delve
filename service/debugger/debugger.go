@@ -390,6 +390,44 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 	return vars, err
 }
 
+func (d *Debugger) LocalVariables(threadID int) ([]api.Variable, error) {
+	vars := []api.Variable{}
+	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+		thread, found := p.Threads[threadID]
+		if !found {
+			return fmt.Errorf("couldn't find thread %d", threadID)
+		}
+		pv, err := thread.LocalVariables()
+		if err != nil {
+			return err
+		}
+		for _, v := range pv {
+			vars = append(vars, convertVar(v))
+		}
+		return nil
+	})
+	return vars, err
+}
+
+func (d *Debugger) FunctionArguments(threadID int) ([]api.Variable, error) {
+	vars := []api.Variable{}
+	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+		thread, found := p.Threads[threadID]
+		if !found {
+			return fmt.Errorf("couldn't find thread %d", threadID)
+		}
+		pv, err := thread.FunctionArguments()
+		if err != nil {
+			return err
+		}
+		for _, v := range pv {
+			vars = append(vars, convertVar(v))
+		}
+		return nil
+	})
+	return vars, err
+}
+
 func (d *Debugger) EvalSymbolInThread(threadID int, symbol string) (*api.Variable, error) {
 	var variable *api.Variable
 	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
@@ -450,24 +488,6 @@ func convertThread(th *proctl.ThreadContext) *api.Thread {
 				Type:   fn.Type,
 				Value:  fn.Value,
 				GoType: fn.GoType,
-				Args:   []api.Variable{},
-				Locals: []api.Variable{},
-			}
-
-			if vars, err := th.LocalVariables(); err == nil {
-				for _, v := range vars {
-					function.Locals = append(function.Locals, convertVar(v))
-				}
-			} else {
-				log.Printf("error getting locals for function at %s:%d: %s", file, line, err)
-			}
-
-			if vars, err := th.FunctionArguments(); err == nil {
-				for _, v := range vars {
-					function.Args = append(function.Args, convertVar(v))
-				}
-			} else {
-				log.Printf("error getting args for function at %s:%d: %s", file, line, err)
 			}
 		}
 	}

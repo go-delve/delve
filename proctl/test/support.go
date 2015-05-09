@@ -37,7 +37,7 @@ func RunTestsWithFixtures(m *testing.M) {
 		if _, err := os.Stat(fixturesDir); err == nil {
 			break
 		}
-		fixturesDir = filepath.Join("..", fixturesDir)
+		fixturesDir = filepath.Join(parent, fixturesDir)
 	}
 	if _, err := os.Stat(fixturesDir); err != nil {
 		fmt.Println("Couldn't locate fixtures directory")

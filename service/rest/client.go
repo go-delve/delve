@@ -230,6 +230,24 @@ func (c *RESTClient) ListPackageVariablesFor(threadID int, filter string) ([]api
 	return vars, nil
 }
 
+func (c *RESTClient) ListLocalVariables() ([]api.Variable, error) {
+	var vars []api.Variable
+	err := c.doGET("/localvars", &vars)
+	if err != nil {
+		return nil, err
+	}
+	return vars, nil
+}
+
+func (c *RESTClient) ListFunctionArgs() ([]api.Variable, error) {
+	var vars []api.Variable
+	err := c.doGET("/args", &vars)
+	if err != nil {
+		return nil, err
+	}
+	return vars, nil
+}
+
 func (c *RESTClient) ListGoroutines() ([]*api.Goroutine, error) {
 	var goroutines []*api.Goroutine
 	err := c.doGET("/goroutines", &goroutines)
