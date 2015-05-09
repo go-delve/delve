@@ -197,7 +197,6 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 			}
 
 			if dn, ok := n.(*ast.DeferStmt); ok {
-				fmt.Println("defer")
 				endpos := s.fileset.Position(dn.End())
 				deferEndLine = endpos.Line
 				return false
