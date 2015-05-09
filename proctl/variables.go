@@ -68,172 +68,6 @@ func (g *G) chanRecvReturnAddr(dbp *DebuggedProcess) (uint64, error) {
 	return topLoc.addr, nil
 }
 
-// Parses and returns select info on the internal M
-// data structures used by the Go scheduler.
-func (thread *ThreadContext) AllM() ([]*M, error) {
-	reader := thread.Process.dwarf.Reader()
-
-	allmaddr, err := parseAllMPtr(thread.Process, reader)
-	if err != nil {
-		return nil, err
-	}
-	mptr, err := thread.readMemory(uintptr(allmaddr), thread.Process.arch.PtrSize())
-	if err != nil {
-		return nil, err
-	}
-	m := binary.LittleEndian.Uint64(mptr)
-	if m == 0 {
-		return nil, fmt.Errorf("allm contains no M pointers")
-	}
-
-	procidInstructions, err := instructionsFor("procid", thread.Process, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	spinningInstructions, err := instructionsFor("spinning", thread.Process, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	alllinkInstructions, err := instructionsFor("alllink", thread.Process, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	blockedInstructions, err := instructionsFor("blocked", thread.Process, reader, true)
-	if err != nil {
-		return nil, err
-	}
-	curgInstructions, err := instructionsFor("curg", thread.Process, reader, true)
-	if err != nil {
-		return nil, err
-	}
-
-	var allm []*M
-	for {
-		// curg
-		curgAddr, err := executeMemberStackProgram(mptr, curgInstructions)
-		if err != nil {
-			return nil, err
-		}
-		curgBytes, err := thread.readMemory(uintptr(curgAddr), thread.Process.arch.PtrSize())
-		if err != nil {
-			return nil, fmt.Errorf("could not read curg %#v %s", curgAddr, err)
-		}
-		curg := binary.LittleEndian.Uint64(curgBytes)
-
-		// procid
-		procidAddr, err := executeMemberStackProgram(mptr, procidInstructions)
-		if err != nil {
-			return nil, err
-		}
-		procidBytes, err := thread.readMemory(uintptr(procidAddr), thread.Process.arch.PtrSize())
-		if err != nil {
-			return nil, fmt.Errorf("could not read procid %#v %s", procidAddr, err)
-		}
-		procid := binary.LittleEndian.Uint64(procidBytes)
-
-		// spinning
-		spinningAddr, err := executeMemberStackProgram(mptr, spinningInstructions)
-		if err != nil {
-			return nil, err
-		}
-		spinBytes, err := thread.readMemory(uintptr(spinningAddr), 1)
-		if err != nil {
-			return nil, fmt.Errorf("could not read spinning %#v %s", spinningAddr, err)
-		}
-
-		// blocked
-		blockedAddr, err := executeMemberStackProgram(mptr, blockedInstructions)
-		if err != nil {
-			return nil, err
-		}
-		blockBytes, err := thread.readMemory(uintptr(blockedAddr), 1)
-		if err != nil {
-			return nil, fmt.Errorf("could not read blocked %#v %s", blockedAddr, err)
-		}
-
-		allm = append(allm, &M{
-			procid:   int(procid),
-			blocked:  blockBytes[0],
-			spinning: spinBytes[0],
-			curg:     uintptr(curg),
-		})
-
-		// Follow the linked list
-		alllinkAddr, err := executeMemberStackProgram(mptr, alllinkInstructions)
-		if err != nil {
-			return nil, err
-		}
-		mptr, err = thread.readMemory(uintptr(alllinkAddr), thread.Process.arch.PtrSize())
-		if err != nil {
-			return nil, fmt.Errorf("could not read alllink %#v %s", alllinkAddr, err)
-		}
-		m = binary.LittleEndian.Uint64(mptr)
-
-		if m == 0 {
-			break
-		}
-	}
-
-	return allm, nil
-}
-
-func instructionsFor(name string, dbp *DebuggedProcess, reader *dwarf.Reader, member bool) ([]byte, error) {
-	reader.Seek(0)
-	entry, err := findDwarfEntry(name, reader, member)
-	if err != nil {
-		return nil, err
-	}
-	return instructionsForEntry(entry)
-}
-
-func instructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
-	if entry.Tag == dwarf.TagMember {
-		instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
-		if !ok {
-			return nil, fmt.Errorf("member data has no data member location attribute")
-		}
-		// clone slice to prevent stomping on the dwarf data
-		return append([]byte{}, instructions...), nil
-	}
-
-	// non-member
-	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-	if !ok {
-		return nil, fmt.Errorf("entry has no location attribute")
-	}
-
-	// clone slice to prevent stomping on the dwarf data
-	return append([]byte{}, instructions...), nil
-}
-
-func executeMemberStackProgram(base, instructions []byte) (uint64, error) {
-	parentInstructions := append([]byte{op.DW_OP_addr}, base...)
-	addr, err := op.ExecuteStackProgram(0, append(parentInstructions, instructions...))
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(addr), nil
-}
-
-func parseAllMPtr(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
-	entry, err := findDwarfEntry("runtime.allm", reader, false)
-	if err != nil {
-		return 0, err
-	}
-
-	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-	if !ok {
-		return 0, fmt.Errorf("type assertion failed")
-	}
-	addr, err := op.ExecuteStackProgram(0, instructions)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(addr), nil
-}
-
 type NoGError struct {
 	tid int
 }
@@ -319,45 +153,6 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 	return g, nil
 }
 
-func allglenval(dbp *DebuggedProcess, reader *dwarf.Reader) (uint64, error) {
-	entry, err := findDwarfEntry("runtime.allglen", reader, false)
-	if err != nil {
-		return 0, err
-	}
-
-	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-	if !ok {
-		return 0, fmt.Errorf("type assertion failed")
-	}
-	addr, err := op.ExecuteStackProgram(0, instructions)
-	if err != nil {
-		return 0, err
-	}
-	val, err := dbp.CurrentThread.readMemory(uintptr(addr), 8)
-	if err != nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint64(val), nil
-}
-
-func addressFor(dbp *DebuggedProcess, name string, reader *dwarf.Reader) (uint64, error) {
-	entry, err := findDwarfEntry(name, reader, false)
-	if err != nil {
-		return 0, err
-	}
-
-	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
-	if !ok {
-		return 0, fmt.Errorf("type assertion failed")
-	}
-	addr, err := op.ExecuteStackProgram(0, instructions)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(addr), nil
-}
-
 // Returns the value of the named symbol.
 func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 	pc, err := thread.PC()
@@ -433,45 +228,8 @@ func (thread *ThreadContext) PackageVariables() ([]*Variable, error) {
 	return vars, nil
 }
 
-func findDwarfEntry(name string, reader *dwarf.Reader, member bool) (*dwarf.Entry, error) {
-	depth := 1
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
-		if err != nil {
-			return nil, err
-		}
-
-		if entry.Children {
-			depth++
-		}
-
-		if entry.Tag == 0 {
-			depth--
-			if depth <= 0 {
-				return nil, fmt.Errorf("could not find symbol value for %s", name)
-			}
-		}
-
-		if member {
-			if entry.Tag != dwarf.TagMember {
-				continue
-			}
-		} else {
-			if entry.Tag != dwarf.TagVariable && entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagStructType {
-				continue
-			}
-		}
-
-		n, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok || n != name {
-			continue
-		}
-		return entry, nil
-	}
-	return nil, fmt.Errorf("could not find symbol value for %s", name)
-}
-
-func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, reader *reader.Reader, memberName string) (*Variable, error) {
-	parentAddr, err := thread.extractVariableDataAddress(parentEntry, reader)
+func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader.Reader, memberName string) (*Variable, error) {
+	parentAddr, err := thread.extractVariableDataAddress(parentEntry, rdr)
 	if err != nil {
 		return nil, err
 	}
@@ -483,13 +241,13 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 	}
 
 	// Seek reader to the type information so members can be iterated
-	_, err = reader.SeekToType(parentEntry, true, true)
+	_, err = rdr.SeekToType(parentEntry, true, true)
 	if err != nil {
 		return nil, err
 	}
 
 	// Iterate to find member by name
-	for memberEntry, err := reader.NextMemberVariable(); memberEntry != nil; memberEntry, err = reader.NextMemberVariable() {
+	for memberEntry, err := rdr.NextMemberVariable(); memberEntry != nil; memberEntry, err = rdr.NextMemberVariable() {
 		if err != nil {
 			return nil, err
 		}
@@ -505,7 +263,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, read
 				return nil, fmt.Errorf("%s is nil", parentName)
 			}
 
-			memberInstr, err := instructionsForEntry(memberEntry)
+			memberInstr, err := rdr.InstructionsForEntry(memberEntry)
 			if err != nil {
 				return nil, err
 			}
@@ -597,8 +355,8 @@ func (thread *ThreadContext) executeStackProgram(instructions []byte) (int64, er
 }
 
 // Extracts the address of a variable, dereferencing any pointers
-func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, reader *reader.Reader) (int64, error) {
-	instructions, err := instructionsForEntry(entry)
+func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, rdr *reader.Reader) (int64, error) {
+	instructions, err := rdr.InstructionsForEntry(entry)
 	if err != nil {
 		return 0, err
 	}
@@ -609,7 +367,7 @@ func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, read
 	}
 
 	// Dereference pointers to get down the concrete type
-	for typeEntry, err := reader.SeekToType(entry, true, false); typeEntry != nil; typeEntry, err = reader.SeekToType(typeEntry, true, false) {
+	for typeEntry, err := rdr.SeekToType(entry, true, false); typeEntry != nil; typeEntry, err = rdr.SeekToType(typeEntry, true, false) {
 		if err != nil {
 			return 0, err
 		}

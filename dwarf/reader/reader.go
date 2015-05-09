@@ -63,27 +63,21 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 	return nil, fmt.Errorf("unable to find function context")
 }
 
-// SeekToTypeNamed moves the reader to the type specified by the name.
-// If the reader is set to a struct type the NextMemberVariable call
-// can be used to walk all member data.
-func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
-	// Walk the types to the base
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
-		if err != nil {
-			return nil, err
-		}
-
-		n, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok {
-			continue
-		}
-
-		if n == name {
-			return entry, nil
-		}
+// Returns the address for the named entry.
+func (reader *Reader) AddrFor(name string) (uint64, error) {
+	entry, err := reader.FindEntryNamed(name, false)
+	if err != nil {
+		return 0, err
 	}
-
-	return nil, errors.New("no type entry found")
+	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
+	if !ok {
+		return 0, fmt.Errorf("type assertion failed")
+	}
+	addr, err := op.ExecuteStackProgram(0, instructions)
+	if err != nil {
+		return 0, err
+	}
+	return uint64(addr), nil
 }
 
 // Returns the address for the named struct member.
@@ -141,6 +135,105 @@ func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resol
 	}
 
 	return nil, fmt.Errorf("no type entry found")
+}
+
+// SeekToTypeNamed moves the reader to the type specified by the name.
+// If the reader is set to a struct type the NextMemberVariable call
+// can be used to walk all member data.
+func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
+	// Walk the types to the base
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+
+		if n == name {
+			return entry, nil
+		}
+	}
+
+	return nil, errors.New("no type entry found")
+}
+
+// Finds the entry for 'name'.
+func (reader *Reader) FindEntryNamed(name string, member bool) (*dwarf.Entry, error) {
+	depth := 1
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		if entry.Children {
+			depth++
+		}
+
+		if entry.Tag == 0 {
+			depth--
+			if depth <= 0 {
+				return nil, fmt.Errorf("could not find symbol value for %s", name)
+			}
+		}
+
+		if member {
+			if entry.Tag != dwarf.TagMember {
+				continue
+			}
+		} else {
+			if entry.Tag != dwarf.TagVariable && entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagStructType {
+				continue
+			}
+		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok || n != name {
+			continue
+		}
+		return entry, nil
+	}
+	return nil, fmt.Errorf("could not find symbol value for %s", name)
+}
+
+func (reader *Reader) InstructionsForEntryNamed(name string, member bool) ([]byte, error) {
+	entry, err := reader.FindEntryNamed(name, member)
+	if err != nil {
+		return nil, err
+	}
+	var attr dwarf.Attr
+	if member {
+		attr = dwarf.AttrDataMemberLoc
+	} else {
+		attr = dwarf.AttrLocation
+	}
+	instr, ok := entry.Val(attr).([]byte)
+	if !ok {
+		return nil, errors.New("invalid typecast for Dwarf instructions")
+	}
+	return instr, nil
+}
+
+func (reader *Reader) InstructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
+	if entry.Tag == dwarf.TagMember {
+		instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
+		if !ok {
+			return nil, fmt.Errorf("member data has no data member location attribute")
+		}
+		// clone slice to prevent stomping on the dwarf data
+		return append([]byte{}, instructions...), nil
+	}
+
+	// non-member
+	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
+	if !ok {
+		return nil, fmt.Errorf("entry has no location attribute")
+	}
+
+	// clone slice to prevent stomping on the dwarf data
+	return append([]byte{}, instructions...), nil
 }
 
 // NextScopeVariable moves the reader to the next debug entry that describes a local variable and returns the entry.
