@@ -29,6 +29,7 @@ type DebuggedProcess struct {
 	BreakPoints             map[uint64]*BreakPoint
 	Threads                 map[int]*ThreadContext
 	CurrentThread           *ThreadContext
+	ListLine                int
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
 	frameEntries            frame.FrameDescriptionEntries
@@ -114,9 +115,12 @@ func (dbp *DebuggedProcess) LoadInformation(path string) error {
 	return nil
 }
 
-// Find a location by string (file+line, function, breakpoint id, addr)
+// Find a location by string (function, linenum, filename:linenum, *address)
 func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
-	// File + Line
+
+	// filename:linenum
+	// TODO(kel) Parse filename:function if necessary to distinguish
+	// between identically named functions in different files
 	if strings.ContainsRune(str, ':') {
 		fl := strings.Split(str, ":")
 
@@ -125,12 +129,41 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 			return 0, err
 		}
 
-		line, err := strconv.Atoi(fl[1])
+		lineNum, err := strconv.Atoi(fl[1])
 		if err != nil {
 			return 0, err
 		}
 
-		pc, _, err := dbp.goSymTable.LineToPC(fileName, line)
+		pc, _, err := dbp.goSymTable.LineToPC(fileName, lineNum)
+		if err != nil {
+			return 0, err
+		}
+		return pc, nil
+	}
+
+	// *address
+	if strings.IndexRune(str, '*') == 0 {
+		s := strings.Split(str, "*")
+
+		// Attempt to parse number to use as raw address
+		addr, err := strconv.ParseUint(s[1], 0, 64)
+		if err != nil {
+			return 0, fmt.Errorf("unable to find location for %s", str)
+		}
+		return addr, nil
+	}	
+
+	// If it's an integer, interpret as linenum in current file
+	// TODO(kel) Parse +/- offset from current linenum
+	lineNum, err := strconv.Atoi(str)
+	if err == nil {
+		regs, err := dbp.Registers()
+		if err != nil {
+			return 0, err
+		}
+		fileName, _, _ := dbp.PCToLine(regs.PC())
+
+		pc, _, err := dbp.goSymTable.LineToPC(fileName, lineNum)
 		if err != nil {
 			return 0, err
 		}
@@ -143,13 +176,19 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 		return fn.Entry, nil
 	}
 
-	// Attempt to parse as number for breakpoint id or raw address
+	// No joy
+	return 0, nil
+}
+
+// Find a breakpoint by string (breakpoint id)
+func (dbp *DebuggedProcess) FindBp(str string) (uint64, error) {
+
+	// Attempt to parse number to use as breakpoint id
 	id, err := strconv.ParseUint(str, 0, 64)
 	if err != nil {
-		return 0, fmt.Errorf("unable to find location for %s", str)
+		return 0, fmt.Errorf("unable to find bp %s", str)
 	}
 
-	// Use as breakpoint id
 	for _, bp := range dbp.HWBreakPoints {
 		if bp == nil {
 			continue
@@ -164,8 +203,7 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 		}
 	}
 
-	// Last resort, use as raw address
-	return id, nil
+	return 0, nil
 }
 
 // Sends out a request that the debugged process halt
@@ -216,9 +254,18 @@ func (dbp *DebuggedProcess) Clear(addr uint64) (*BreakPoint, error) {
 	return dbp.clearBreakpoint(dbp.CurrentThread.Id, addr)
 }
 
-// Clears a breakpoint by location (function, file+line, address, breakpoint id)
+// Clears a breakpoint by location (function, filename:linenum, *address)
 func (dbp *DebuggedProcess) ClearByLocation(loc string) (*BreakPoint, error) {
 	addr, err := dbp.FindLocation(loc)
+	if err != nil {
+		return nil, err
+	}
+	return dbp.Clear(addr)
+}
+
+// Deletes a breakpoint by breakpoint id
+func (dbp *DebuggedProcess) DeleteById(id string) (*BreakPoint, error) {
+	addr, err := dbp.FindBp(id)
 	if err != nil {
 		return nil, err
 	}
