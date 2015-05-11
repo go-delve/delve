@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/source"
 	sys "golang.org/x/sys/unix"
 )
 
@@ -181,7 +182,9 @@ func (ge GoroutineExitingError) Error() string {
 func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
 	lines, err := thread.Process.ast.NextLines(file, line)
 	if err != nil {
-		return err
+		if _, ok := err.(source.NoNodeError); !ok {
+			return err
+		}
 	}
 
 	ret, err := thread.ReturnAddress()
