@@ -82,6 +82,8 @@ Delve can insert breakpoints via the `breakpoint` command once inside a debug se
 
 Once inside a debugging session, the following commands may be used:
 
+* `help` - Prints the help message.
+
 * `break` - Set a breakpoint. Example: `break foo.go:13` or `break main.main`.
 
 * `continue` - Run until breakpoint or program termination.
