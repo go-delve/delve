@@ -40,12 +40,6 @@ The makefile is only necessary to help facilitate the process of building and co
 
 See [Tips and troubleshooting](#tips-and-troubleshooting) for additional OS X setup information.
 
-### Features
-
-* Attach to an already running process
-* Launch a process and begin debug session
-* Set breakpoints, single step, step over functions, print variable contents, print thread and goroutine information
-
 ### Usage
 
 The debugger can be launched in three ways:
@@ -76,7 +70,7 @@ The debugger can be launched in three ways:
 
 ### Breakpoints
 
-Delve can insert breakpoints via the `breakpoint` command once inside a debug session, however for ease of debugging, you can also call `runtime.Breakpoint()` and Delve will handle the breakpoint and stop the program at the next source line.
+Delve can insert breakpoints via the `breakpoint` command once inside a debug session, however for ease of debugging, you can also use the `runtime.Breakpoint()` function in your source code and Delve will handle the breakpoint and stop the program at the next source line.
 
 ### Commands
 
