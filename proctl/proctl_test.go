@@ -17,7 +17,7 @@ func TestMain(m *testing.M) {
 func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess, fixture protest.Fixture)) {
 	runtime.LockOSThread()
 
-	fixture := protest.Fixtures[name]
+	fixture := protest.BuildFixture(name)
 	p, err := Launch([]string{fixture.Path})
 	if err != nil {
 		t.Fatal("Launch():", err)
