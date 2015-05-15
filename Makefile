@@ -22,3 +22,9 @@ ifeq "$(UNAME)" "Darwin"
 else
 	go test -v ./...
 endif
+
+test-proctl-run:
+	cd proctl && go test -c $(PREFIX)/proctl && codesign -s $(CERT) ./proctl.test && ./proctl.test -test.run $(RUN) && rm ./proctl.test
+
+test-integration-run:
+	cd service/rest && go test -c $(PREFIX)/service/rest && codesign -s $(CERT) ./rest.test && ./rest.test -test.run $(RUN) && rm ./rest.test
