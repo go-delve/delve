@@ -1,5 +1,7 @@
 #include "exec_darwin.h"
 
+extern char** environ;
+
 int
 fork_exec(char *argv0, char **argv,
 		mach_port_name_t *task,
@@ -44,6 +46,8 @@ fork_exec(char *argv0, char **argv,
 	if (pret != 0 && errno != 0) return -errno;
 
 	// Create the child process.
-	execve(argv0, argv, NULL);
+	execve(argv0, argv, environ);
+
+	// We should never reach here, but if we did something went wrong.
 	exit(1);
 }
