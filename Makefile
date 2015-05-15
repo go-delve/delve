@@ -24,7 +24,15 @@ else
 endif
 
 test-proctl-run:
+ifeq "$(UNAME)" "Darwin"
 	cd proctl && go test -c $(PREFIX)/proctl && codesign -s $(CERT) ./proctl.test && ./proctl.test -test.run $(RUN) && rm ./proctl.test
+else
+	cd proctl && go test -run $(RUN)
+endif
 
 test-integration-run:
+ifeq "$(UNAME)" "Darwin"
 	cd service/rest && go test -c $(PREFIX)/service/rest && codesign -s $(CERT) ./rest.test && ./rest.test -test.run $(RUN) && rm ./rest.test
+else
+	cd service/rest && go test -run $(RUN)
+endif
