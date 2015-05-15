@@ -1,3 +1,4 @@
+.DEFAULT_GOAL=test
 UNAME = $(shell uname)
 PREFIX=github.com/derekparker/delve
 
