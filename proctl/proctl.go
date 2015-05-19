@@ -312,6 +312,13 @@ func (dbp *DebuggedProcess) next() error {
 		return err
 	}
 
+	if curg.DeferPC != 0 {
+		_, err = dbp.TempBreak(curg.DeferPC)
+		if err != nil {
+			return err
+		}
+	}
+
 	var goroutineExiting bool
 	var waitCount int
 	for _, th := range dbp.Threads {
@@ -456,16 +463,22 @@ func (dbp *DebuggedProcess) SwitchThread(tid int) error {
 // Delve cares about from the internal runtime G structure.
 func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	var (
-		allg   []*G
-		reader = dbp.dwarf.Reader()
+		allg []*G
+		rdr  = dbp.DwarfReader()
 	)
 
-	allglen, err := allglenval(dbp, reader)
+	addr, err := rdr.AddrFor("runtime.allglen")
 	if err != nil {
 		return nil, err
 	}
-	reader.Seek(0)
-	allgentryaddr, err := addressFor(dbp, "runtime.allg", reader)
+	allglenBytes, err := dbp.CurrentThread.readMemory(uintptr(addr), 8)
+	if err != nil {
+		return nil, err
+	}
+	allglen := binary.LittleEndian.Uint64(allglenBytes)
+
+	rdr.Seek(0)
+	allgentryaddr, err := rdr.AddrFor("runtime.allg")
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +486,7 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())), reader)
+		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())))
 		if err != nil {
 			return nil, err
 		}

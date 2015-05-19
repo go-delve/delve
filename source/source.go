@@ -16,6 +16,15 @@ func New() *Searcher {
 	return &Searcher{fileset: token.NewFileSet(), visited: make(map[string]*ast.File)}
 }
 
+type NoNodeError struct {
+	f string
+	l int
+}
+
+func (n NoNodeError) Error() string {
+	return fmt.Sprintf("could not find node at %s:%d", n.f, n.l)
+}
+
 // Returns the first node at the given file:line.
 func (s *Searcher) FirstNodeAt(fname string, line int) (ast.Node, error) {
 	var node ast.Node
@@ -35,7 +44,7 @@ func (s *Searcher) FirstNodeAt(fname string, line int) (ast.Node, error) {
 		return true
 	})
 	if node == nil {
-		return nil, fmt.Errorf("could not find node at %s:%d", fname, line)
+		return nil, NoNodeError{f: fname, l: line}
 	}
 	return node, nil
 }
@@ -52,7 +61,7 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 	var found bool
 	n, err := s.FirstNodeAt(fname, line)
 	if err != nil {
-		return nil, err
+		return lines, nil
 	}
 	defer func() {
 		if e := recover(); e != nil {
@@ -196,8 +205,7 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 				return true
 			}
 
-			if dn, ok := n.(*ast.DeferStmt); ok {
-				fmt.Println("defer")
+			if dn, ok := n.(*ast.DeferStmt); ok && line < pos.Line {
 				endpos := s.fileset.Position(dn.End())
 				deferEndLine = endpos.Line
 				return false

@@ -41,6 +41,7 @@ func TestNextLines(t *testing.T) {
 		{30, []int{32}},
 		{62, []int{63}},
 		{67, []int{71}},
+		{68, []int{69}},
 	}
 	for i, c := range cases {
 		lines, err := v.NextLines(tf, c.line)

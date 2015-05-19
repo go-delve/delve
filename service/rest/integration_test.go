@@ -21,7 +21,7 @@ func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
 	}
 	server := NewServer(&Config{
 		Listener:    listener,
-		ProcessArgs: []string{protest.Fixtures[name].Path},
+		ProcessArgs: []string{protest.BuildFixture(name).Path},
 	}, false)
 	go server.Run()
 	client := NewClient(listener.Addr().String())
