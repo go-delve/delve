@@ -40,25 +40,28 @@ type Commands struct {
 	client  service.Client
 }
 
+var c *Commands
+
 // Returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
-	c := &Commands{client: client}
+	c = &Commands{client: client}
 
 	c.cmds = []command{
-		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
+		{aliases: []string{"help", "h"}, cmdFn: c.help, helpMsg: "Prints the help message."},
 		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13"},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
-		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
+		{aliases: []string{"threads", "allm"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "t"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
 		{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: "Deletes all breakpoints."},
-		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
+		{aliases: []string{"goroutines", "allg"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
 		{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about args, funcs, locals, sources, or vars."},
-		{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
+		{aliases: []string{"list", "l"}, cmdFn: list, helpMsg: "Print more lines."},
+		{aliases: []string{"exit", "q"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
 	}
 
 	return c
@@ -78,7 +81,7 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 }
 
 // Find will look up the command function for the given command input.
-// If it cannot find the command it will defualt to noCmdAvailable().
+// If it cannot find the command it will default to noCmdAvailable().
 // If the command is an empty string it will replay the last command.
 func (c *Commands) Find(cmdstr string) cmdfunc {
 	// If <enter> use last command, if there was one.
@@ -137,7 +140,7 @@ func threads(client service.Client, args ...string) error {
 		}
 		if th.Function != nil {
 			fmt.Printf("%sThread %d at %#v %s:%d %s\n",
-				prefix, th.ID, th.PC, th.File,
+				prefix, th.ID, th.Addr, th.File,
 				th.Line, th.Function.Name)
 		} else {
 			fmt.Printf("%sThread %d at %s:%d\n", prefix, th.ID, th.File, th.Line)
@@ -196,6 +199,7 @@ func cont(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
+
 	printcontext(state)
 	return nil
 }
@@ -205,6 +209,7 @@ func step(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
+
 	printcontext(state)
 	return nil
 }
@@ -214,6 +219,7 @@ func next(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
+
 	printcontext(state)
 	return nil
 }
@@ -271,33 +277,23 @@ func breakpoints(client service.Client, args ...string) error {
 }
 
 func breakpoint(client service.Client, args ...string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("argument must be either a function name or <file:line>")
-	}
-	requestedBp := &api.BreakPoint{}
-	tokens := strings.Split(args[0], ":")
-	switch {
-	case len(tokens) == 1:
-		requestedBp.FunctionName = args[0]
-	case len(tokens) == 2:
-		file := tokens[0]
-		line, err := strconv.Atoi(tokens[1])
-		if err != nil {
-			return err
-		}
-		requestedBp.File = file
-		requestedBp.Line = line
-	default:
-		return fmt.Errorf("invalid line reference")
-	}
-
-	bp, err := client.CreateBreakPoint(requestedBp)
+	location := convertArgs(args...)
+	bp, err := client.CreateBreakPoint(location)
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("Breakpoint %d set at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	fmt.Printf("Breakpoint %d set at %#v for %s %s:%d\n",
+		bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
 	return nil
+}
+
+func convertArgs(args ...string) *api.Arguments {
+	cmd := &api.Arguments{}
+	cmd.Args = make([]string, len(args))
+	for i, a := range args {
+		cmd.Args[i] = a
+	}
+	return cmd
 }
 
 func printVar(client service.Client, args ...string) error {
@@ -401,6 +397,26 @@ func info(client service.Client, args ...string) error {
 	return nil
 }
 
+func listBack(client service.Client, args ...string) error {
+	return list(client, "-")
+}
+
+func list(client service.Client, args ...string) error {
+	location := ""
+	if len(args) >= 1 && len(args[0]) > 0 {
+		location = args[0]
+		// HACK: must special case replay of "list -"
+		if location == "-" {
+			c.lastCmd = listBack
+		}
+	}
+	state, err := client.List(location)
+	if err != nil {
+		return err
+	}
+	return print(state)
+}
+
 func printcontext(state *api.DebuggerState) error {
 	if state.CurrentThread == nil {
 		fmt.Println("No current thread available")
@@ -408,18 +424,37 @@ func printcontext(state *api.DebuggerState) error {
 	}
 
 	if len(state.CurrentThread.File) == 0 {
-		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
+		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.Addr)
 		fmt.Printf("\033[34m=>\033[0m    no source available\n")
 		return nil
 	}
-
-	var context []string
 
 	fn := ""
 	if state.CurrentThread.Function != nil {
 		fn = state.CurrentThread.Function.Name
 	}
-	fmt.Printf("current loc: %s %s:%d\n", fn, state.CurrentThread.File, state.CurrentThread.Line)
+
+	// Here because of a command other than 'list' (e.g. 'next')
+	if state.List.Line == 0 {
+		state.List.Line = state.CurrentThread.Line
+		fmt.Printf("current loc: %s %s:%d\n", fn,
+			state.CurrentThread.File, state.CurrentThread.Line)
+	}
+
+	numLines := state.List.ListSize
+	halfLines := (numLines + 1) / 2
+
+	if state.List.Line < halfLines {
+		state.List.Line = halfLines
+	}
+	state.List.FirstLine = state.List.Line - halfLines + 1
+	state.List.LastLine = state.List.Line + halfLines
+
+	return print(state)
+}
+
+func print(state *api.DebuggerState) error {
+	var context []string
 
 	file, err := os.Open(state.CurrentThread.File)
 	if err != nil {
@@ -428,34 +463,36 @@ func printcontext(state *api.DebuggerState) error {
 	defer file.Close()
 
 	buf := bufio.NewReader(file)
-	l := state.CurrentThread.Line
-	for i := 1; i < l-5; i++ {
+	pc := state.CurrentThread.Line
+	f := state.List.FirstLine
+	l := state.List.LastLine
+
+	for i := 1; i < f; i++ {
 		_, err := buf.ReadString('\n')
 		if err != nil && err != io.EOF {
 			return err
 		}
 	}
 
-	for i := l - 5; i <= l+5; i++ {
+	for i := f; i <= l; i++ {
 		line, err := buf.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
 				return err
 			}
-
 			if err == io.EOF {
 				break
 			}
 		}
 
 		arrow := "  "
-		if i == l {
+		if i == pc {
 			arrow = "=>"
 		}
 
-		context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m: %s", arrow, i, line))
+		context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m: %s",
+			arrow, i, line))
 	}
-
 	fmt.Println(strings.Join(context, ""))
 
 	return nil

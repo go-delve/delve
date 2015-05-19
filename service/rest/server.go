@@ -92,6 +92,7 @@ func (s *RESTServer) Run() error {
 		Route(ws.GET("/goroutines").To(s.listGoroutines)).
 		Route(ws.POST("/command").To(s.doCommand)).
 		Route(ws.GET("/sources").To(s.listSources)).
+		Route(ws.GET("/source").To(s.listSource)).
 		Route(ws.GET("/functions").To(s.listFunctions)).
 		Route(ws.GET("/vars").To(s.listPackageVars)).
 		Route(ws.GET("/localvars").To(s.listLocalVars)).
@@ -187,20 +188,9 @@ func (s *RESTServer) listBreakPoints(request *restful.Request, response *restful
 }
 
 func (s *RESTServer) createBreakPoint(request *restful.Request, response *restful.Response) {
-	incomingBp := new(api.BreakPoint)
-	err := request.ReadEntity(incomingBp)
-	if err != nil {
-		writeError(response, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if len(incomingBp.File) == 0 && len(incomingBp.FunctionName) == 0 {
-		writeError(response, http.StatusBadRequest, "no file or function name provided")
-		return
-	}
-
-	createdbp, err := s.debugger.CreateBreakPoint(incomingBp)
-
+	location := new(api.Arguments)
+	err := request.ReadEntity(location)
+	createdbp, err := s.debugger.CreateBreakPoint(location)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
@@ -392,6 +382,18 @@ func (s *RESTServer) evalThreadSymbol(request *restful.Request, response *restfu
 	response.WriteEntity(v)
 }
 
+func (s *RESTServer) listSource(request *restful.Request, response *restful.Response) {
+	location := request.QueryParameter("location")
+	sources, err := s.debugger.ListSource(location)
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+	response.WriteEntity(sources)
+}
+
 func (s *RESTServer) listSources(request *restful.Request, response *restful.Response) {
 	filter := request.QueryParameter("filter")
 	sources, err := s.debugger.Sources(filter)
@@ -399,7 +401,6 @@ func (s *RESTServer) listSources(request *restful.Request, response *restful.Res
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	response.WriteHeader(http.StatusOK)
 	response.WriteEntity(sources)
 }

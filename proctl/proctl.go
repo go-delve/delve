@@ -21,7 +21,7 @@ import (
 )
 
 // Struct representing a debugged process. Holds onto pid, register values,
-// process struct and process state.
+// process struct, process state, and list source context.
 type DebuggedProcess struct {
 	Pid                     int
 	Process                 *os.Process
@@ -29,7 +29,7 @@ type DebuggedProcess struct {
 	BreakPoints             map[uint64]*BreakPoint
 	Threads                 map[int]*ThreadContext
 	CurrentThread           *ThreadContext
-	ListLine                int
+	ListContext             *List
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
 	frameEntries            frame.FrameDescriptionEntries
@@ -44,6 +44,21 @@ type DebuggedProcess struct {
 	running                 bool
 	halt                    bool
 	exited                  bool
+}
+
+// List struct mirrors api.List{}
+type List struct {
+	// File & line information for printing.
+	Addr         uint64 // Address breakpoint is set for.
+	File         string
+	Line         int
+	FunctionName string
+	Label        string
+	Offset       int
+	ListSize     int
+	Direction    bool // Direction (true == down)
+	FirstLine    int
+	LastLine     int
 }
 
 // A ManualStopError happens when the user triggers a
@@ -71,6 +86,7 @@ func Attach(pid int) (*DebuggedProcess, error) {
 		Pid:         pid,
 		Threads:     make(map[int]*ThreadContext),
 		BreakPoints: make(map[uint64]*BreakPoint),
+		ListContext: new(List),
 		os:          new(OSProcessDetails),
 		ast:         source.New(),
 	}
@@ -151,7 +167,7 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 			return 0, fmt.Errorf("unable to find location for %s", str)
 		}
 		return addr, nil
-	}	
+	}
 
 	// If it's an integer, interpret as linenum in current file
 	// TODO(kel) Parse +/- offset from current linenum
@@ -550,6 +566,11 @@ func initializeDebugProcess(dbp *DebuggedProcess, path string, attach bool) (*De
 	proc, err := os.FindProcess(dbp.Pid)
 	if err != nil {
 		return nil, err
+	}
+
+	if dbp.ListContext != nil {
+		dbp.ListContext.ListSize = 10
+		dbp.ListContext.Direction = true
 	}
 
 	dbp.Process = proc
