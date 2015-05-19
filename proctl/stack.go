@@ -13,7 +13,7 @@ type stackLocation struct {
 }
 
 // Takes an offset from RSP and returns the address of the
-// instruction the currect function is going to return to.
+// instruction the current function is going to return to.
 func (thread *ThreadContext) ReturnAddress() (uint64, error) {
 	regs, err := thread.Registers()
 	if err != nil {

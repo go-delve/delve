@@ -106,6 +106,19 @@ func (c *RESTClient) Halt() (*api.DebuggerState, error) {
 	return state, nil
 }
 
+func (c *RESTClient) List(location string) (*api.DebuggerState, error) {
+	params := [][]string{}
+	if len(location) > 0 {
+		params = append(params, []string{"location", location})
+	}
+	var state *api.DebuggerState
+	err := c.doGET("/source", &state, params...)
+	if err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
 func (c *RESTClient) GetBreakPoint(id int) (*api.BreakPoint, error) {
 	var breakPoint *api.BreakPoint
 	err := c.doGET(fmt.Sprintf("/breakpoints/%d", id), &breakPoint)
@@ -115,9 +128,9 @@ func (c *RESTClient) GetBreakPoint(id int) (*api.BreakPoint, error) {
 	return breakPoint, nil
 }
 
-func (c *RESTClient) CreateBreakPoint(breakPoint *api.BreakPoint) (*api.BreakPoint, error) {
+func (c *RESTClient) CreateBreakPoint(location *api.Arguments) (*api.BreakPoint, error) {
 	var newBreakPoint *api.BreakPoint
-	err := c.doPOST("/breakpoints", breakPoint, &newBreakPoint)
+	err := c.doPOST("/breakpoints", location, &newBreakPoint)
 	if err != nil {
 		return nil, err
 	}

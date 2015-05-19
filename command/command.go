@@ -44,17 +44,18 @@ func DebugCommands() *Commands {
 
 	c.cmds = []command{
 		command{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
-		command{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13"},
+		command{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "Set break point at the entry point of a function, or at a specific file:line. Example: break foo.go:13"},
 		command{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		command{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
 		command{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
-		command{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
+		command{aliases: []string{"threads", "allm"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		command{aliases: []string{"thread", "t"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
-		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
-		command{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
+		command{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint by location."},
+		command{aliases: []string{"goroutines", "allg"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		command{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		command{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
 		command{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about args, funcs, locals, sources, or vars."},
+		command{aliases: []string{"list", "l"}, cmdFn: list, helpMsg: "Print more lines."},
 		command{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
 	}
 
@@ -180,7 +181,7 @@ func cont(p *proctl.DebuggedProcess, args ...string) error {
 	if err != nil {
 		return err
 	}
-
+	p.ListLine = 0
 	return printcontext(p)
 }
 
@@ -189,7 +190,7 @@ func step(p *proctl.DebuggedProcess, args ...string) error {
 	if err != nil {
 		return err
 	}
-
+	p.ListLine = 0
 	return printcontext(p)
 }
 
@@ -198,7 +199,7 @@ func next(p *proctl.DebuggedProcess, args ...string) error {
 	if err != nil {
 		return err
 	}
-
+	p.ListLine = 0
 	return printcontext(p)
 }
 
@@ -358,8 +359,35 @@ func info(p *proctl.DebuggedProcess, args ...string) error {
 	return nil
 }
 
+func list(p *proctl.DebuggedProcess, args ...string) error {
+	if len(args) != 0 {
+		switch  args[0] {
+		case "-":
+			if p.ListLine > 20 {
+				p.ListLine -= 20
+			} else {
+				p.ListLine = 6
+			}
+		default:
+			i, err := strconv.Atoi(args[0])
+			if err != nil {
+				// handle error
+				fmt.Println(err)
+				return err
+			}
+			if i > 5 {
+				p.ListLine = i
+			} else {
+				p.ListLine = 0
+			}
+		}
+	}
+	return printcontext(p)
+}
+
 func printcontext(p *proctl.DebuggedProcess) error {
 	var context []string
+	var ll int
 
 	regs, err := p.Registers()
 	if err != nil {
@@ -369,7 +397,14 @@ func printcontext(p *proctl.DebuggedProcess) error {
 	f, l, fn := p.PCToLine(regs.PC())
 
 	if fn != nil {
-		fmt.Printf("current loc: %s %s:%d\n", fn.Name, f, l)
+		if p.ListLine == 0 {
+			fmt.Printf("current loc: %s %s:%d\n", fn.Name, f, l)
+			ll = l
+			p.ListLine = ll
+		} else {
+			ll = p.ListLine
+		}
+//		fmt.Printf("p.ListLine = %d\n", p.ListLine)
 		file, err := os.Open(f)
 		if err != nil {
 			return err
@@ -377,14 +412,15 @@ func printcontext(p *proctl.DebuggedProcess) error {
 		defer file.Close()
 
 		buf := bufio.NewReader(file)
-		for i := 1; i < l-5; i++ {
+		for i := 1; i < ll-5; i++ {
 			_, err := buf.ReadString('\n')
 			if err != nil && err != io.EOF {
 				return err
 			}
 		}
 
-		for i := l - 5; i <= l+5; i++ {
+		// TODO(kel) This code looks problematic if l <= 5.
+		for i := ll - 5; i <= ll+5; i++ {
 			line, err := buf.ReadString('\n')
 			if err != nil {
 				if err != io.EOF {
@@ -402,6 +438,7 @@ func printcontext(p *proctl.DebuggedProcess) error {
 			}
 
 			context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m: %s", arrow, i, line))
+			p.ListLine = ll + 10
 		}
 	} else {
 		fmt.Printf("Stopped at: 0x%x\n", regs.PC())
