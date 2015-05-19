@@ -1,4 +1,4 @@
-# Delve
+![Delve](https://raw.githubusercontent.com/derekparker/delve/master/assets/delve_horizontal.png)
 
 [![GoDoc](https://godoc.org/github.com/derekparker/delve?status.svg)](https://godoc.org/github.com/derekparker/delve)
 
