@@ -401,6 +401,7 @@ func (s *RESTServer) listSources(request *restful.Request, response *restful.Res
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	response.WriteHeader(http.StatusOK)
 	response.WriteEntity(sources)
 }
@@ -423,6 +424,7 @@ func (s *RESTServer) listGoroutines(request *restful.Request, response *restful.
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	response.WriteHeader(http.StatusOK)
 	response.WriteEntity(gs)
 }

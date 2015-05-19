@@ -199,7 +199,6 @@ func cont(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
-
 	printcontext(state)
 	return nil
 }
@@ -209,7 +208,6 @@ func step(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
-
 	printcontext(state)
 	return nil
 }
@@ -219,7 +217,6 @@ func next(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
-
 	printcontext(state)
 	return nil
 }
@@ -480,6 +477,7 @@ func print(state *api.DebuggerState) error {
 			if err != io.EOF {
 				return err
 			}
+
 			if err == io.EOF {
 				break
 			}
@@ -493,6 +491,7 @@ func print(state *api.DebuggerState) error {
 		context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m: %s",
 			arrow, i, line))
 	}
+
 	fmt.Println(strings.Join(context, ""))
 
 	return nil
