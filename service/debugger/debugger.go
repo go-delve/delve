@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"runtime"
 
-	sys "golang.org/x/sys/unix"
-
 	"github.com/derekparker/delve/proctl"
 	"github.com/derekparker/delve/service/api"
 )
@@ -137,7 +135,7 @@ func (d *Debugger) Run() error {
 
 			// Kill the process if requested
 			if s.KillProcess {
-				if err := proctl.PtraceDetach(d.process.Pid, int(sys.SIGINT)); err == nil {
+				if err := d.process.Detach(); err == nil {
 					log.Print("killed process")
 				} else {
 					log.Printf("couldn't kill process: %s", err)

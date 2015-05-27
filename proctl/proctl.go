@@ -80,6 +80,10 @@ func Attach(pid int) (*DebuggedProcess, error) {
 	return dbp, nil
 }
 
+func (dbp *DebuggedProcess) Detach() error {
+	return PtraceDetach(dbp.Pid, int(sys.SIGINT))
+}
+
 // Returns whether or not Delve thinks the debugged
 // process has exited.
 func (dbp *DebuggedProcess) Exited() bool {

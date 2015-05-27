@@ -23,7 +23,7 @@ func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess, fixt
 		t.Fatal("Launch():", err)
 	}
 
-	defer p.Process.Kill()
+	defer p.Detach()
 
 	fn(p, fixture)
 }
