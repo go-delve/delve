@@ -443,7 +443,7 @@ func TestFunctionCall(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f := th.Process.goSymTable.LookupFunc("runtime.getg")
+			f := th.dbp.goSymTable.LookupFunc("runtime.getg")
 			if f == nil {
 				t.Fatalf("could not find function %s", "runtime.getg")
 			}

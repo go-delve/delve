@@ -16,7 +16,7 @@ func (t *ThreadContext) Halt() error {
 	if stopped(t.Id) {
 		return nil
 	}
-	err := sys.Tgkill(t.Process.Pid, t.Id, sys.SIGSTOP)
+	err := sys.Tgkill(t.dbp.Pid, t.Id, sys.SIGSTOP)
 	if err != nil {
 		return fmt.Errorf("Halt err %s %d", err, t.Id)
 	}
@@ -43,7 +43,7 @@ func (t *ThreadContext) singleStep() error {
 func (t *ThreadContext) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.PC()
-	fn := t.Process.goSymTable.PCToFunc(pc)
+	fn := t.dbp.goSymTable.PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
 		return true
 	}

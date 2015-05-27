@@ -474,20 +474,24 @@ func convertBreakPoint(bp *proctl.BreakPoint) *api.BreakPoint {
 
 // convertThread converts an internal thread to an API Thread.
 func convertThread(th *proctl.ThreadContext) *api.Thread {
-	var function *api.Function
-	file, line := "", 0
+	var (
+		function *api.Function
+		file     string
+		line     int
+		pc       uint64
+	)
 
-	pc, err := th.PC()
+	loc, err := th.Location()
 	if err == nil {
-		f, l, fn := th.Process.PCToLine(pc)
-		file = f
-		line = l
-		if fn != nil {
+		pc = loc.PC
+		file = loc.File
+		line = loc.Line
+		if loc.Fn != nil {
 			function = &api.Function{
-				Name:   fn.Name,
-				Type:   fn.Type,
-				Value:  fn.Value,
-				GoType: fn.GoType,
+				Name:   loc.Fn.Name,
+				Type:   loc.Fn.Type,
+				Value:  loc.Fn.Value,
+				GoType: loc.Fn.GoType,
 			}
 		}
 	}

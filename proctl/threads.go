@@ -1,6 +1,7 @@
 package proctl
 
 import (
+	"debug/gosym"
 	"fmt"
 	"path/filepath"
 
@@ -16,12 +17,19 @@ import (
 // on this thread.
 type ThreadContext struct {
 	Id                int
-	Process           *DebuggedProcess
 	Status            *sys.WaitStatus
 	CurrentBreakpoint *BreakPoint
+	dbp               *DebuggedProcess
 	singleStepping    bool
 	running           bool
 	os                *OSSpecificDetails
+}
+
+type Location struct {
+	PC   uint64
+	File string
+	Line int
+	Fn   *gosym.Func
 }
 
 // Continue the execution of this thread. This method takes
@@ -36,7 +44,7 @@ func (thread *ThreadContext) Continue() error {
 
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
-	if _, ok := thread.Process.BreakPoints[pc]; ok {
+	if _, ok := thread.dbp.BreakPoints[pc]; ok {
 		if err := thread.Step(); err != nil {
 			return err
 		}
@@ -54,10 +62,10 @@ func (thread *ThreadContext) Step() (err error) {
 		return err
 	}
 
-	bp, ok := thread.Process.BreakPoints[pc]
+	bp, ok := thread.dbp.BreakPoints[pc]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
-		_, err = thread.Process.Clear(bp.Addr)
+		_, err = thread.dbp.Clear(bp.Addr)
 		if err != nil {
 			return err
 		}
@@ -65,7 +73,7 @@ func (thread *ThreadContext) Step() (err error) {
 		// Restore breakpoint now that we have passed it.
 		defer func() {
 			var nbp *BreakPoint
-			nbp, err = thread.Process.Break(bp.Addr)
+			nbp, err = thread.dbp.Break(bp.Addr)
 			nbp.Temp = bp.Temp
 		}()
 	}
@@ -79,7 +87,7 @@ func (thread *ThreadContext) Step() (err error) {
 
 // Call a function named `name`. This is currently _NOT_ safe.
 func (thread *ThreadContext) CallFn(name string, fn func() error) error {
-	f := thread.Process.goSymTable.LookupFunc(name)
+	f := thread.dbp.goSymTable.LookupFunc(name)
 	if f == nil {
 		return fmt.Errorf("could not find function %s", name)
 	}
@@ -89,7 +97,7 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 	if err != nil {
 		return err
 	}
-	defer thread.Process.Clear(bp.Addr)
+	defer thread.dbp.Clear(bp.Addr)
 
 	regs, err := thread.saveRegisters()
 	if err != nil {
@@ -110,7 +118,7 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 	if err = thread.Continue(); err != nil {
 		return err
 	}
-	th, err := thread.Process.trapWait(-1)
+	th, err := thread.dbp.trapWait(-1)
 	if err != nil {
 		return err
 	}
@@ -120,17 +128,26 @@ func (thread *ThreadContext) CallFn(name string, fn func() error) error {
 
 // Set breakpoint using this thread.
 func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
-	return thread.Process.setBreakpoint(thread.Id, addr, false)
+	return thread.dbp.setBreakpoint(thread.Id, addr, false)
 }
 
 // Set breakpoint using this thread.
 func (thread *ThreadContext) TempBreak(addr uint64) (*BreakPoint, error) {
-	return thread.Process.setBreakpoint(thread.Id, addr, true)
+	return thread.dbp.setBreakpoint(thread.Id, addr, true)
 }
 
 // Clear breakpoint using this thread.
 func (thread *ThreadContext) Clear(addr uint64) (*BreakPoint, error) {
-	return thread.Process.clearBreakpoint(thread.Id, addr)
+	return thread.dbp.clearBreakpoint(thread.Id, addr)
+}
+
+func (thread *ThreadContext) Location() (*Location, error) {
+	pc, err := thread.PC()
+	if err != nil {
+		return nil, err
+	}
+	f, l, fn := thread.dbp.PCToLine(pc)
+	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
 // Step to next source line.
@@ -149,15 +166,18 @@ func (thread *ThreadContext) Next() (err error) {
 
 	// Grab info on our current stack frame. Used to determine
 	// whether we may be stepping outside of the current function.
-	fde, err := thread.Process.frameEntries.FDEForPC(curpc)
+	fde, err := thread.dbp.frameEntries.FDEForPC(curpc)
 	if err != nil {
 		return err
 	}
 
 	// Get current file/line.
-	f, l, _ := thread.Process.goSymTable.PCToLine(curpc)
-	if filepath.Ext(f) == ".go" {
-		if err = thread.next(curpc, fde, f, l); err != nil {
+	loc, err := thread.Location()
+	if err != nil {
+		return err
+	}
+	if filepath.Ext(loc.File) == ".go" {
+		if err = thread.next(curpc, fde, loc.File, loc.Line); err != nil {
 			return err
 		}
 	} else {
@@ -180,7 +200,7 @@ func (ge GoroutineExitingError) Error() string {
 // This version of next uses the AST from the current source file to figure out all of the potential source lines
 // we could end up at.
 func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
-	lines, err := thread.Process.ast.NextLines(file, line)
+	lines, err := thread.dbp.ast.NextLines(file, line)
 	if err != nil {
 		if _, ok := err.(source.NoNodeError); !ok {
 			return err
@@ -194,7 +214,7 @@ func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry
 
 	pcs := make([]uint64, 0, len(lines))
 	for i := range lines {
-		pcs = append(pcs, thread.Process.lineInfo.AllPCsForFileLine(file, lines[i])...)
+		pcs = append(pcs, thread.dbp.lineInfo.AllPCsForFileLine(file, lines[i])...)
 	}
 
 	var covered bool
@@ -206,7 +226,7 @@ func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry
 	}
 
 	if !covered {
-		fn := thread.Process.goSymTable.PCToFunc(ret)
+		fn := thread.dbp.goSymTable.PCToFunc(ret)
 		if fn != nil && fn.Name == "runtime.goexit" {
 			g, err := thread.curG()
 			if err != nil {
@@ -223,7 +243,7 @@ func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry
 // the benefit of an AST we can't be sure we're not at a branching statement and thus
 // cannot accurately predict where we may end up.
 func (thread *ThreadContext) cnext(curpc uint64, fde *frame.FrameDescriptionEntry) error {
-	pcs := thread.Process.lineInfo.AllPCsBetween(fde.Begin(), fde.End())
+	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End())
 	ret, err := thread.ReturnAddress()
 	if err != nil {
 		return err
@@ -237,7 +257,7 @@ func (thread *ThreadContext) setNextTempBreakpoints(curpc uint64, pcs []uint64) 
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
 		}
-		if _, err := thread.Process.TempBreak(pcs[i]); err != nil {
+		if _, err := thread.dbp.TempBreak(pcs[i]); err != nil {
 			if err, ok := err.(BreakPointExistsError); !ok {
 				return err
 			}
@@ -262,7 +282,7 @@ func (thread *ThreadContext) curG() (*G, error) {
 		if err != nil {
 			return err
 		}
-		g, err = parseG(thread, regs.SP()+uint64(thread.Process.arch.PtrSize()))
+		g, err = parseG(thread, regs.SP()+uint64(thread.dbp.arch.PtrSize()))
 		return err
 	})
 	return g, err

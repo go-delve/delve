@@ -121,9 +121,9 @@ func (dbp *DebuggedProcess) addThread(port int, attach bool) (*ThreadContext, er
 		return thread, nil
 	}
 	thread := &ThreadContext{
-		Id:      port,
-		Process: dbp,
-		os:      new(OSSpecificDetails),
+		Id:  port,
+		dbp: dbp,
+		os:  new(OSSpecificDetails),
 	}
 	dbp.Threads[port] = thread
 	thread.os.thread_act = C.thread_act_t(port)

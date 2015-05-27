@@ -100,9 +100,9 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, err
 	}
 
 	dbp.Threads[tid] = &ThreadContext{
-		Id:      tid,
-		Process: dbp,
-		os:      new(OSSpecificDetails),
+		Id:  tid,
+		dbp: dbp,
+		os:  new(OSSpecificDetails),
 	}
 
 	if dbp.CurrentThread == nil {

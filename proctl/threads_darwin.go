@@ -26,7 +26,7 @@ func (t *ThreadContext) singleStep() error {
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not single step")
 	}
-	t.Process.trapWait(0)
+	t.dbp.trapWait(0)
 	kret = C.clear_trap_flag(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not clear CPU trap flag")
@@ -36,7 +36,7 @@ func (t *ThreadContext) singleStep() error {
 
 func (t *ThreadContext) resume() error {
 	// TODO(dp) set flag for ptrace stops
-	if PtraceCont(t.Process.Pid, 0) == nil {
+	if PtraceCont(t.dbp.Pid, 0) == nil {
 		return nil
 	}
 	kret := C.resume_thread(t.os.thread_act)
@@ -49,7 +49,7 @@ func (t *ThreadContext) resume() error {
 func (t *ThreadContext) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.PC()
-	fn := t.Process.goSymTable.PCToFunc(pc)
+	fn := t.dbp.goSymTable.PCToFunc(pc)
 	if fn != nil && (fn.Name == "runtime.mach_semaphore_wait" || fn.Name == "runtime.usleep") {
 		return true
 	}
@@ -63,7 +63,7 @@ func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) 
 		length  = C.mach_msg_type_number_t(len(data))
 	)
 
-	if ret := C.write_memory(thread.Process.os.task, vm_addr, vm_data, length); ret < 0 {
+	if ret := C.write_memory(thread.dbp.os.task, vm_addr, vm_data, length); ret < 0 {
 		return 0, fmt.Errorf("could not write memory")
 	}
 	return len(data), nil
@@ -76,7 +76,7 @@ func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 		length  = C.mach_msg_type_number_t(len(data))
 	)
 
-	ret := C.read_memory(thread.Process.os.task, vm_addr, vm_data, length)
+	ret := C.read_memory(thread.dbp.os.task, vm_addr, vm_data, length)
 	if ret < 0 {
 		return 0, fmt.Errorf("could not read memory")
 	}

@@ -80,7 +80,7 @@ func (ng NoGError) Error() string {
 }
 
 func parseG(thread *ThreadContext, addr uint64) (*G, error) {
-	gaddrbytes, err := thread.readMemory(uintptr(addr), thread.Process.arch.PtrSize())
+	gaddrbytes, err := thread.readMemory(uintptr(addr), thread.dbp.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error derefing *G %s", err)
 	}
@@ -90,7 +90,7 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 		return nil, NoGError{tid: thread.Id}
 	}
 
-	rdr := thread.Process.DwarfReader()
+	rdr := thread.dbp.DwarfReader()
 	rdr.Seek(0)
 	entry, err := rdr.SeekToTypeNamed("runtime.g")
 	if err != nil {
@@ -107,7 +107,7 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 	}
 	var deferPC uint64
 	// Dereference *defer pointer
-	deferAddrBytes, err := thread.readMemory(uintptr(deferAddr), thread.Process.arch.PtrSize())
+	deferAddrBytes, err := thread.readMemory(uintptr(deferAddr), thread.dbp.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error derefing *G %s", err)
 	}
@@ -141,7 +141,7 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	pc, err := thread.readUintRaw(uintptr(schedAddr+uint64(thread.Process.arch.PtrSize())), 8)
+	pc, err := thread.readUintRaw(uintptr(schedAddr+uint64(thread.dbp.arch.PtrSize())), 8)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +173,7 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 		return nil, err
 	}
 
-	f, l, fn := thread.Process.goSymTable.PCToLine(gopc)
+	f, l, fn := thread.dbp.goSymTable.PCToLine(gopc)
 	g := &G{
 		Id:         int(goid),
 		GoPC:       gopc,
@@ -195,7 +195,7 @@ func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
 		return nil, err
 	}
 
-	reader := thread.Process.DwarfReader()
+	reader := thread.dbp.DwarfReader()
 
 	_, err = reader.SeekToFunction(pc)
 	if err != nil {
@@ -243,7 +243,7 @@ func (thread *ThreadContext) FunctionArguments() ([]*Variable, error) {
 
 // PackageVariables returns the name, value, and type of all package variables in the application.
 func (thread *ThreadContext) PackageVariables() ([]*Variable, error) {
-	reader := thread.Process.DwarfReader()
+	reader := thread.dbp.DwarfReader()
 
 	vars := make([]*Variable, 0)
 
@@ -308,7 +308,7 @@ func (thread *ThreadContext) evaluateStructMember(parentEntry *dwarf.Entry, rdr 
 				return nil, fmt.Errorf("type assertion failed")
 			}
 
-			data := thread.Process.dwarf
+			data := thread.dbp.dwarf
 			t, err := data.Type(offset)
 			if err != nil {
 				return nil, err
@@ -349,7 +349,7 @@ func (thread *ThreadContext) extractVariableFromEntry(entry *dwarf.Entry) (*Vari
 		return nil, fmt.Errorf("type assertion failed")
 	}
 
-	data := thread.Process.dwarf
+	data := thread.dbp.dwarf
 	t, err := data.Type(offset)
 	if err != nil {
 		return nil, err
@@ -375,7 +375,7 @@ func (thread *ThreadContext) executeStackProgram(instructions []byte) (int64, er
 		return 0, err
 	}
 
-	fde, err := thread.Process.frameEntries.FDEForPC(regs.PC())
+	fde, err := thread.dbp.frameEntries.FDEForPC(regs.PC())
 	if err != nil {
 		return 0, err
 	}
@@ -413,7 +413,7 @@ func (thread *ThreadContext) extractVariableDataAddress(entry *dwarf.Entry, rdr 
 
 		ptraddress := uintptr(address)
 
-		ptr, err := thread.readMemory(ptraddress, thread.Process.arch.PtrSize())
+		ptr, err := thread.readMemory(ptraddress, thread.dbp.arch.PtrSize())
 		if err != nil {
 			return 0, err
 		}
@@ -453,7 +453,7 @@ func (thread *ThreadContext) extractValueInternal(instructions []byte, addr int6
 	ptraddress := uintptr(addr)
 	switch t := typ.(type) {
 	case *dwarf.PtrType:
-		ptr, err := thread.readMemory(ptraddress, thread.Process.arch.PtrSize())
+		ptr, err := thread.readMemory(ptraddress, thread.dbp.arch.PtrSize())
 		if err != nil {
 			return "", err
 		}
@@ -528,14 +528,14 @@ func (thread *ThreadContext) readString(addr uintptr) (string, error) {
 	// http://research.swtch.com/godata
 
 	// read len
-	val, err := thread.readMemory(addr+uintptr(thread.Process.arch.PtrSize()), thread.Process.arch.PtrSize())
+	val, err := thread.readMemory(addr+uintptr(thread.dbp.arch.PtrSize()), thread.dbp.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
 	strlen := int(binary.LittleEndian.Uint64(val))
 
 	// read addr
-	val, err = thread.readMemory(addr, thread.Process.arch.PtrSize())
+	val, err = thread.readMemory(addr, thread.dbp.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
@@ -559,7 +559,7 @@ func (thread *ThreadContext) readSlice(addr uintptr, t *dwarf.StructType) (strin
 	for _, f := range t.Field {
 		switch f.Name {
 		case "array":
-			val, err := thread.readMemory(addr+uintptr(f.ByteOffset), thread.Process.arch.PtrSize())
+			val, err := thread.readMemory(addr+uintptr(f.ByteOffset), thread.dbp.arch.PtrSize())
 			if err != nil {
 				return "", err
 			}
@@ -593,7 +593,7 @@ func (thread *ThreadContext) readSlice(addr uintptr, t *dwarf.StructType) (strin
 
 	stride := arrayType.Size()
 	if _, ok := arrayType.(*dwarf.PtrType); ok {
-		stride = int64(thread.Process.arch.PtrSize())
+		stride = int64(thread.dbp.arch.PtrSize())
 	}
 	vals, err := thread.readArrayValues(arrayAddr, sliceLen, stride, arrayType)
 	if err != nil {
@@ -729,7 +729,7 @@ func (thread *ThreadContext) readBool(addr uintptr) (string, error) {
 }
 
 func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, thread.Process.arch.PtrSize())
+	val, err := thread.readMemory(addr, thread.dbp.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
@@ -740,13 +740,13 @@ func (thread *ThreadContext) readFunctionPtr(addr uintptr) (string, error) {
 		return "nil", nil
 	}
 
-	val, err = thread.readMemory(addr, thread.Process.arch.PtrSize())
+	val, err = thread.readMemory(addr, thread.dbp.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
 
 	funcAddr := binary.LittleEndian.Uint64(val)
-	fn := thread.Process.goSymTable.PCToFunc(uint64(funcAddr))
+	fn := thread.dbp.goSymTable.PCToFunc(uint64(funcAddr))
 	if fn == nil {
 		return "", fmt.Errorf("could not find function for %#v", funcAddr)
 	}
@@ -774,7 +774,7 @@ func (thread *ThreadContext) variablesByTag(tag dwarf.Tag) ([]*Variable, error) 
 		return nil, err
 	}
 
-	reader := thread.Process.DwarfReader()
+	reader := thread.dbp.DwarfReader()
 
 	_, err = reader.SeekToFunction(pc)
 	if err != nil {

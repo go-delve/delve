@@ -124,15 +124,14 @@ func threads(p *proctl.DebuggedProcess, args ...string) error {
 		if th == p.CurrentThread {
 			prefix = "* "
 		}
-		pc, err := th.PC()
+		loc, err := th.Location()
 		if err != nil {
 			return err
 		}
-		f, l, fn := th.Process.PCToLine(pc)
-		if fn != nil {
-			fmt.Printf("%sThread %d at %#v %s:%d %s\n", prefix, th.Id, pc, f, l, fn.Name)
+		if loc.Fn != nil {
+			fmt.Printf("%sThread %d at %#v %s:%d %s\n", prefix, th.Id, loc.PC, loc.File, loc.Line, loc.Fn.Name)
 		} else {
-			fmt.Printf("%sThread %d at %#v\n", prefix, th.Id, pc)
+			fmt.Printf("%sThread %d at %#v\n", prefix, th.Id, loc.PC)
 		}
 	}
 	return nil

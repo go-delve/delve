@@ -19,7 +19,7 @@ func (thread *ThreadContext) ReturnAddress() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	locations, err := thread.Process.stacktrace(regs.PC(), regs.SP(), 1)
+	locations, err := thread.dbp.stacktrace(regs.PC(), regs.SP(), 1)
 	if err != nil {
 		return 0, err
 	}
