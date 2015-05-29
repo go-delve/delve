@@ -147,6 +147,9 @@ func threads(client service.Client, args ...string) error {
 }
 
 func thread(client service.Client, args ...string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("you must specify a thread")
+	}
 	tid, err := strconv.Atoi(args[0])
 	if err != nil {
 		return err
