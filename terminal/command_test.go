@@ -51,3 +51,19 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 		t.Error("Null command not returned", err)
 	}
 }
+
+func TestCommandThread(t *testing.T) {
+	var (
+		cmds = DebugCommands(nil)
+		cmd  = cmds.Find("thread")
+	)
+
+	err := cmd(nil)
+	if err == nil {
+		t.Fatal("thread terminal command did not default")
+	}
+
+	if err.Error() != "you must specify a thread" {
+		t.Fatal("wrong command output: ", err.Error())
+	}
+}
