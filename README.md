@@ -13,7 +13,7 @@
 - [Upcoming Features](https://github.com/derekparker/delve/wiki/Upcoming-Features)
 - [Contributing](https://github.com/derekparker/delve/blob/master/CONTRIBUTING.md)
 
-Delve is a debugger for the Go programming language. The goal of the project is to provide a simple, yet full featured debugging tool for Go. Delve should be easy to invoke and easy to use. Chances are if you're using a debugger, most likely things aren't going your way. With that in mind, Delve should help guide you, and stay out of your way as much as possible.
+Delve is a debugger for the Go programming language. The goal of the project is to provide a simple, full featured debugging tool for Go. Delve should be easy to invoke and easy to use. Chances are if you're using a debugger, most likely things aren't going your way. With that in mind, Delve should stay out of your way as much as possible.
 
 ### License
 
