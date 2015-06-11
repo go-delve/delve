@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <sys/types.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>

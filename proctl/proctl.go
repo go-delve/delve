@@ -248,13 +248,13 @@ func (dbp *DebuggedProcess) next() error {
 		return err
 	}
 
-	curg, err := dbp.CurrentThread.curG()
+	g, err := dbp.CurrentThread.getG()
 	if err != nil {
 		return err
 	}
 
-	if curg.DeferPC != 0 {
-		_, err = dbp.TempBreak(curg.DeferPC)
+	if g.DeferPC != 0 {
+		_, err = dbp.TempBreak(g.DeferPC)
 		if err != nil {
 			return err
 		}
@@ -273,7 +273,7 @@ func (dbp *DebuggedProcess) next() error {
 		if err = th.Next(); err != nil {
 			if err, ok := err.(GoroutineExitingError); ok {
 				waitCount = waitCount - 1 + chanRecvCount
-				if err.goid == curg.Id {
+				if err.goid == g.Id {
 					goroutineExiting = true
 				}
 				if err := th.Continue(); err != nil {
@@ -290,12 +290,12 @@ func (dbp *DebuggedProcess) next() error {
 		if err != nil {
 			return err
 		}
-		tg, err := thread.curG()
+		tg, err := thread.getG()
 		if err != nil {
 			return err
 		}
 		// Make sure we're on the same goroutine, unless it has exited.
-		if tg.Id == curg.Id || goroutineExiting {
+		if tg.Id == g.Id || goroutineExiting {
 			if dbp.CurrentThread != thread {
 				dbp.SwitchThread(thread.Id)
 			}
@@ -427,7 +427,7 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())))
+		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())), true)
 		if err != nil {
 			return nil, err
 		}
@@ -465,10 +465,6 @@ func (dbp *DebuggedProcess) CurrentBreakpoint() *BreakPoint {
 // Returns the value of the named symbol.
 func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
 	return dbp.CurrentThread.EvalSymbol(name)
-}
-
-func (dbp *DebuggedProcess) CallFn(name string, fn func() error) error {
-	return dbp.CurrentThread.CallFn(name, fn)
 }
 
 // Returns a reader for the dwarf data

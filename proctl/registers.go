@@ -9,6 +9,7 @@ import "fmt"
 type Registers interface {
 	PC() uint64
 	SP() uint64
+	CX() uint64
 	SetPC(*ThreadContext, uint64) error
 }
 

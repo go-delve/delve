@@ -57,12 +57,14 @@ func (t *ThreadContext) blocked() bool {
 }
 
 func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
 	var (
 		vm_data = unsafe.Pointer(&data[0])
 		vm_addr = C.mach_vm_address_t(addr)
 		length  = C.mach_msg_type_number_t(len(data))
 	)
-
 	if ret := C.write_memory(thread.dbp.os.task, vm_addr, vm_data, length); ret < 0 {
 		return 0, fmt.Errorf("could not write memory")
 	}
@@ -70,6 +72,9 @@ func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) 
 }
 
 func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
 	var (
 		vm_data = unsafe.Pointer(&data[0])
 		vm_addr = C.mach_vm_address_t(addr)

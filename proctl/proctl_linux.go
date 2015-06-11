@@ -234,7 +234,6 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 		if ok {
 			th.Status = status
 		}
-
 		if status.Exited() {
 			if wpid == dbp.Pid {
 				dbp.exited = true
@@ -249,30 +248,29 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 			if err != nil {
 				return nil, fmt.Errorf("could not get event message: %s", err)
 			}
-
 			th, err = dbp.addThread(int(cloned), false)
 			if err != nil {
 				return nil, err
 			}
-
-			err = th.Continue()
-			if err != nil {
+			if err = th.Continue(); err != nil {
 				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
-
-			err = dbp.Threads[int(wpid)].Continue()
-			if err != nil {
-				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
+			if err = dbp.Threads[int(wpid)].Continue(); err != nil {
+				return nil, fmt.Errorf("could not continue existing thread %d %s", cloned, err)
 			}
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP {
 			return dbp.handleBreakpointOnThread(wpid)
 		}
+		if status.StopSignal() == sys.SIGTRAP && dbp.halt {
+			return th, nil
+		}
 		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
 			return nil, ManualStopError{}
 		}
 		if th != nil {
+			// TODO(dp) alert user about unexpected signals here.
 			if err := th.Continue(); err != nil {
 				return nil, err
 			}

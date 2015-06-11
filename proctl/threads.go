@@ -85,47 +85,6 @@ func (thread *ThreadContext) Step() (err error) {
 	return nil
 }
 
-// Call a function named `name`. This is currently _NOT_ safe.
-func (thread *ThreadContext) CallFn(name string, fn func() error) error {
-	f := thread.dbp.goSymTable.LookupFunc(name)
-	if f == nil {
-		return fmt.Errorf("could not find function %s", name)
-	}
-
-	// Set breakpoint at the end of the function (before it returns).
-	bp, err := thread.TempBreak(f.End - 2)
-	if err != nil {
-		return err
-	}
-	defer thread.dbp.Clear(bp.Addr)
-
-	regs, err := thread.saveRegisters()
-	if err != nil {
-		return err
-	}
-
-	previousFrame := make([]byte, f.FrameSize)
-	frameSize := uintptr(regs.SP() + uint64(f.FrameSize))
-	if _, err := readMemory(thread, frameSize, previousFrame); err != nil {
-		return err
-	}
-	defer func() { writeMemory(thread, frameSize, previousFrame) }()
-
-	if err = thread.SetPC(f.Entry); err != nil {
-		return err
-	}
-	defer thread.restoreRegisters()
-	if err = thread.Continue(); err != nil {
-		return err
-	}
-	th, err := thread.dbp.trapWait(-1)
-	if err != nil {
-		return err
-	}
-	th.CurrentBreakpoint = nil
-	return fn()
-}
-
 // Set breakpoint using this thread.
 func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
 	return thread.dbp.setBreakpoint(thread.Id, addr, false)
@@ -228,7 +187,7 @@ func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry
 	if !covered {
 		fn := thread.dbp.goSymTable.PCToFunc(ret)
 		if fn != nil && fn.Name == "runtime.goexit" {
-			g, err := thread.curG()
+			g, err := thread.getG()
 			if err != nil {
 				return err
 			}
@@ -275,15 +234,77 @@ func (thread *ThreadContext) SetPC(pc uint64) error {
 	return regs.SetPC(thread, pc)
 }
 
-func (thread *ThreadContext) curG() (*G, error) {
-	var g *G
-	err := thread.CallFn("runtime.getg", func() error {
-		regs, err := thread.Registers()
-		if err != nil {
-			return err
+// Returns information on the G (goroutine) that is executing on this thread.
+//
+// The G structure for a thread is stored in thread local memory. Execute instructions
+// that move the *G structure into a CPU register (we use rcx here), and then grab
+// the new registers and parse the G structure.
+//
+// We cannot simply use the allg linked list in order to find the M that represents
+// the given OS thread and follow its G pointer because on Darwin mach ports are not
+// universal, so our port for this thread would not map to the `id` attribute of the M
+// structure. Also, when linked against libc, Go prefers the libc version of clone as
+// opposed to the runtime version. This has the consequence of not setting M.id for
+// any thread, regardless of OS.
+//
+// In order to get around all this craziness, we write the instructions to retrieve the G
+// structure running on this thread (which is stored in thread local memory) into the
+// current instruction stream. The instructions are obviously arch/os dependant, as they
+// vary on how thread local storage is implemented, which MMU register is used and
+// what the offset into thread local storage is.
+func (thread *ThreadContext) getG() (g *G, err error) {
+	var pcInt uint64
+	pcInt, err = thread.PC()
+	if err != nil {
+		return
+	}
+	pc := uintptr(pcInt)
+	// Read original instructions.
+	originalInstructions := make([]byte, len(thread.dbp.arch.CurgInstructions()))
+	if _, err = readMemory(thread, pc, originalInstructions); err != nil {
+		return
+	}
+	// Write new instructions.
+	if _, err = writeMemory(thread, pc, thread.dbp.arch.CurgInstructions()); err != nil {
+		return
+	}
+	// We're going to be intentionally modifying the registers
+	// once we execute the code we inject into the instruction stream,
+	// so save them off here so we can restore them later.
+	if _, err = thread.saveRegisters(); err != nil {
+		return
+	}
+	// Ensure original instructions and PC are both restored.
+	defer func() {
+		// Do not shadow previous error, if there was one.
+		originalErr := err
+		// Restore the original instructions and register contents.
+		if _, err = writeMemory(thread, pc, originalInstructions); err != nil {
+			return
 		}
-		g, err = parseG(thread, regs.SP()+uint64(thread.dbp.arch.PtrSize()))
-		return err
-	})
-	return g, err
+		if err = thread.restoreRegisters(); err != nil {
+			return
+		}
+		err = originalErr
+		return
+	}()
+	// Execute new instructions.
+	if err = thread.resume(); err != nil {
+		return
+	}
+	// Set the halt flag so that trapWait will ignore the fact that
+	// we hit a breakpoint that isn't captured in our list of
+	// known breakpoints.
+	thread.dbp.halt = true
+	defer func(dbp *DebuggedProcess) { dbp.halt = false }(thread.dbp)
+	if _, err = thread.dbp.trapWait(-1); err != nil {
+		return
+	}
+	// Grab *G from RCX.
+	regs, err := thread.Registers()
+	if err != nil {
+		return nil, err
+	}
+	g, err = parseG(thread, regs.CX(), false)
+	return
 }

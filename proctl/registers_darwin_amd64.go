@@ -5,7 +5,7 @@ import "C"
 import "fmt"
 
 type Regs struct {
-	pc, sp uint64
+	pc, sp, cx uint64
 }
 
 func (r *Regs) PC() uint64 {
@@ -14,6 +14,10 @@ func (r *Regs) PC() uint64 {
 
 func (r *Regs) SP() uint64 {
 	return r.sp
+}
+
+func (r *Regs) CX() uint64 {
+	return r.cx
 }
 
 func (r *Regs) SetPC(thread *ThreadContext, pc uint64) error {
@@ -30,6 +34,6 @@ func registers(thread *ThreadContext) (Registers, error) {
 	if kret != C.KERN_SUCCESS {
 		return nil, fmt.Errorf("could not get registers")
 	}
-	regs := &Regs{pc: uint64(state.__rip), sp: uint64(state.__rsp)}
+	regs := &Regs{pc: uint64(state.__rip), sp: uint64(state.__rsp), cx: uint64(state.__rcx)}
 	return regs, nil
 }

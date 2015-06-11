@@ -79,15 +79,20 @@ func (ng NoGError) Error() string {
 	return fmt.Sprintf("no G executing on thread %d", ng.tid)
 }
 
-func parseG(thread *ThreadContext, addr uint64) (*G, error) {
-	gaddrbytes, err := thread.readMemory(uintptr(addr), thread.dbp.arch.PtrSize())
-	if err != nil {
-		return nil, fmt.Errorf("error derefing *G %s", err)
-	}
-	initialInstructions := append([]byte{op.DW_OP_addr}, gaddrbytes...)
-	gaddr := binary.LittleEndian.Uint64(gaddrbytes)
-	if gaddr == 0 {
-		return nil, NoGError{tid: thread.Id}
+func parseG(thread *ThreadContext, gaddr uint64, deref bool) (*G, error) {
+	initialInstructions := make([]byte, thread.dbp.arch.PtrSize()+1)
+	initialInstructions[0] = op.DW_OP_addr
+	binary.LittleEndian.PutUint64(initialInstructions[1:], gaddr)
+	if deref {
+		gaddrbytes, err := thread.readMemory(uintptr(gaddr), thread.dbp.arch.PtrSize())
+		if err != nil {
+			return nil, fmt.Errorf("error derefing *G %s", err)
+		}
+		initialInstructions = append([]byte{op.DW_OP_addr}, gaddrbytes...)
+		gaddr = binary.LittleEndian.Uint64(gaddrbytes)
+		if gaddr == 0 {
+			return nil, NoGError{tid: thread.Id}
+		}
 	}
 
 	rdr := thread.dbp.DwarfReader()
@@ -96,9 +101,6 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Let's parse all of the members we care about in order so that
-	// we don't have to spend any extra time seeking.
 
 	// Parse defer
 	deferAddr, err := rdr.AddrForMember("_defer", initialInstructions)
@@ -109,7 +111,7 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 	// Dereference *defer pointer
 	deferAddrBytes, err := thread.readMemory(uintptr(deferAddr), thread.dbp.arch.PtrSize())
 	if err != nil {
-		return nil, fmt.Errorf("error derefing *G %s", err)
+		return nil, fmt.Errorf("error derefing defer %s", err)
 	}
 	if binary.LittleEndian.Uint64(deferAddrBytes) != 0 {
 		initialDeferInstructions := append([]byte{op.DW_OP_addr}, deferAddrBytes...)
@@ -126,11 +128,16 @@ func parseG(thread *ThreadContext, addr uint64) (*G, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = rdr.SeekToEntry(entry)
-		if err != nil {
-			return nil, err
-		}
 	}
+
+	// Let's parse all of the members we care about in order so that
+	// we don't have to spend any extra time seeking.
+
+	err = rdr.SeekToEntry(entry)
+	if err != nil {
+		return nil, err
+	}
+
 	// Parse sched
 	schedAddr, err := rdr.AddrForMember("sched", initialInstructions)
 	if err != nil {
@@ -530,14 +537,14 @@ func (thread *ThreadContext) readString(addr uintptr) (string, error) {
 	// read len
 	val, err := thread.readMemory(addr+uintptr(thread.dbp.arch.PtrSize()), thread.dbp.arch.PtrSize())
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("could not read string len %s", err)
 	}
 	strlen := int(binary.LittleEndian.Uint64(val))
 
 	// read addr
 	val, err = thread.readMemory(addr, thread.dbp.arch.PtrSize())
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("could not read string pointer %s", err)
 	}
 	addr = uintptr(binary.LittleEndian.Uint64(val))
 	if addr == 0 {
@@ -546,7 +553,7 @@ func (thread *ThreadContext) readString(addr uintptr) (string, error) {
 
 	val, err = thread.readMemory(addr, strlen)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("could not read string at %#v due to %s", addr, err)
 	}
 
 	return *(*string)(unsafe.Pointer(&val)), nil

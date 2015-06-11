@@ -62,9 +62,15 @@ func (thread *ThreadContext) restoreRegisters() error {
 }
 
 func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
 	return sys.PtracePokeData(thread.Id, addr, data)
 }
 
 func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
 	return sys.PtracePeekData(thread.Id, addr, data)
 }
