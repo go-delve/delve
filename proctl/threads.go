@@ -237,7 +237,7 @@ func (thread *ThreadContext) SetPC(pc uint64) error {
 // Returns information on the G (goroutine) that is executing on this thread.
 //
 // The G structure for a thread is stored in thread local memory. Execute instructions
-// that move the *G structure into a CPU register (we use rcx here), and then grab
+// that move the *G structure into a CPU register, and then grab
 // the new registers and parse the G structure.
 //
 // We cannot simply use the allg linked list in order to find the M that represents
