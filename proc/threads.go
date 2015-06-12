@@ -16,13 +16,14 @@ import (
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type Thread struct {
-	Id                int
-	Status            *sys.WaitStatus
-	CurrentBreakpoint *Breakpoint
-	dbp               *DebuggedProcess
-	singleStepping    bool
-	running           bool
-	os                *OSSpecificDetails
+	Id                int             // Thread ID or mach port
+	Status            *sys.WaitStatus // Status returned from last wait call
+	CurrentBreakpoint *Breakpoint     // Breakpoint thread is currently stopped at
+
+	dbp            *DebuggedProcess
+	singleStepping bool
+	running        bool
+	os             *OSSpecificDetails
 }
 
 type Location struct {
