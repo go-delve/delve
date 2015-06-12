@@ -393,8 +393,8 @@ func (dbp *DebuggedProcess) Step() (err error) {
 // Change from current thread to the thread specified by `tid`.
 func (dbp *DebuggedProcess) SwitchThread(tid int) error {
 	if th, ok := dbp.Threads[tid]; ok {
-		dbp.CurrentThread = th
 		fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, tid)
+		dbp.CurrentThread = th
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
