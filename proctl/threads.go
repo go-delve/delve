@@ -217,7 +217,7 @@ func (thread *ThreadContext) setNextTempBreakpoints(curpc uint64, pcs []uint64) 
 			continue
 		}
 		if _, err := thread.dbp.TempBreak(pcs[i]); err != nil {
-			if err, ok := err.(BreakPointExistsError); !ok {
+			if _, ok := err.(BreakPointExistsError); !ok {
 				return err
 			}
 		}
