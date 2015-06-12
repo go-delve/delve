@@ -5,6 +5,7 @@ import (
 	"log"
 	"regexp"
 	"runtime"
+	"strconv"
 
 	"github.com/derekparker/delve/proctl"
 	"github.com/derekparker/delve/service/api"
@@ -182,9 +183,29 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 			breakpoint = convertBreakPoint(bp)
 		}
 
+		lc := p.ListContext
+		if lc == nil {
+			log.Println("*** Nil list context ***")
+			list := new(proctl.List)
+			list.FunctionName = ""
+			list.File = ""
+			list.Line = 0
+			list.Addr = 0
+			list.ListSize = 10
+			list.Direction = true
+			p.ListContext = list
+			lc = p.ListContext
+		}
+
+		var list *api.List
+		if lc != nil {
+			list = convertList(lc)
+		}
+
 		state = &api.DebuggerState{
 			BreakPoint:    breakpoint,
 			CurrentThread: thread,
+			List:          list,
 			Exited:        p.Exited(),
 		}
 		return nil
@@ -193,19 +214,14 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 	return state, err
 }
 
-func (d *Debugger) CreateBreakPoint(requestedBp *api.BreakPoint) (*api.BreakPoint, error) {
+func (d *Debugger) CreateBreakPoint(location *api.Arguments) (*api.BreakPoint, error) {
 	var createdBp *api.BreakPoint
 	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
-		var loc string
-		switch {
-		case len(requestedBp.File) > 0:
-			loc = fmt.Sprintf("%s:%d", requestedBp.File, requestedBp.Line)
-		case len(requestedBp.FunctionName) > 0:
-			loc = requestedBp.FunctionName
-		default:
-			return fmt.Errorf("no file or function name specified")
-		}
+		var loc string = ""
 
+		if len(location.Args) == 1 {
+			loc = location.Args[0]
+		}
 		bp, breakError := p.BreakByLocation(loc)
 		if breakError != nil {
 			return breakError
@@ -312,8 +328,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 			return p.SwitchThread(command.ThreadID)
 		})
 	case api.Halt:
-		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
-		// access the process directly.
+		// RequestManualStop does not invoke any ptrace syscalls, so it's
+		// safe to access the process directly.
 		log.Print("halting")
 		err = d.process.RequestManualStop()
 	}
@@ -324,6 +340,56 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		}
 	}
 	return d.State()
+}
+
+func (d *Debugger) ListSource(location string) (*api.DebuggerState, error) {
+	state, err := d.State()
+	if state.List == nil {
+		return nil, nil
+	}
+
+	err = d.withProcess(func(p *proctl.DebuggedProcess) error {
+
+		if state.List.Line == 0 {
+			state.List.File = state.CurrentThread.File
+			state.List.Line = state.CurrentThread.Line
+		}
+		state.List.Direction = true
+		numLines := state.List.ListSize
+		halfLines := (numLines + 1) / 2
+
+		if len(location) != 0 {
+			switch location {
+			case "-":
+				state.List.Direction = false
+				state.List.Line -= numLines
+				if state.List.Line < halfLines {
+					state.List.Line = halfLines
+				}
+			default:
+				i, err := strconv.Atoi(location)
+				if err != nil {
+					// handle error
+					return err
+				}
+				if i < halfLines {
+					state.List.Line = halfLines
+				} else {
+					state.List.Line = i
+				}
+			}
+		} else {
+			state.List.Line += numLines
+		}
+		state.List.FirstLine = state.List.Line - halfLines + 1
+		state.List.LastLine = state.List.Line + halfLines
+
+		p.ListContext.Line = state.List.Line
+		p.ListContext.Direction = state.List.Direction
+		return nil
+	})
+
+	return state, err
 }
 
 func (d *Debugger) Sources(filter string) ([]string, error) {
@@ -459,14 +525,30 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	return goroutines, err
 }
 
+// convertList converts an internal list to an API List.
+func convertList(ls *proctl.List) *api.List {
+	return &api.List{
+		LineSpec: api.LineSpec{
+			FunctionName: ls.FunctionName,
+			File:         ls.File,
+			Line:         ls.Line,
+			Addr:         ls.Addr,
+		},
+		ListSize:  10,
+		Direction: true,
+	}
+}
+
 // convertBreakPoint converts an internal breakpoint to an API BreakPoint.
 func convertBreakPoint(bp *proctl.BreakPoint) *api.BreakPoint {
 	return &api.BreakPoint{
-		ID:           bp.ID,
-		FunctionName: bp.FunctionName,
-		File:         bp.File,
-		Line:         bp.Line,
-		Addr:         bp.Addr,
+		ID: bp.ID,
+		LineSpec: api.LineSpec{
+			FunctionName: bp.FunctionName,
+			File:         bp.File,
+			Line:         bp.Line,
+			Addr:         bp.Addr,
+		},
 	}
 }
 
@@ -495,10 +577,12 @@ func convertThread(th *proctl.ThreadContext) *api.Thread {
 	}
 
 	return &api.Thread{
-		ID:       th.Id,
-		PC:       pc,
-		File:     file,
-		Line:     line,
+		ID: th.Id,
+		LineSpec: api.LineSpec{
+			Addr: pc,
+			File: file,
+			Line: line,
+		},
 		Function: function,
 	}
 }

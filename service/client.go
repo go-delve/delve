@@ -27,7 +27,7 @@ type Client interface {
 	// GetBreakPoint gets a breakpoint by ID.
 	GetBreakPoint(id int) (*api.BreakPoint, error)
 	// CreateBreakPoint creates a new breakpoint.
-	CreateBreakPoint(*api.BreakPoint) (*api.BreakPoint, error)
+	CreateBreakPoint(location *api.Arguments) (*api.BreakPoint, error)
 	// ListBreakPoints gets all breakpoints.
 	ListBreakPoints() ([]*api.BreakPoint, error)
 	// ClearBreakPoint deletes a breakpoint by ID.
@@ -55,6 +55,8 @@ type Client interface {
 	ListLocalVariables() ([]api.Variable, error)
 	// ListFunctionArgs lists all arguments to the current function.
 	ListFunctionArgs() ([]api.Variable, error)
+	// List prints out lines of source code.
+	List(location string) (*api.DebuggerState, error)
 
 	// ListGoroutines lists all goroutines.
 	ListGoroutines() ([]*api.Goroutine, error)
