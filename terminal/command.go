@@ -231,7 +231,7 @@ func clear(client service.Client, args ...string) error {
 		return err
 	}
 
-	bp, err := client.ClearBreakPoint(id)
+	bp, err := client.ClearBreakpoint(id)
 	if err != nil {
 		return err
 	}
@@ -240,12 +240,12 @@ func clear(client service.Client, args ...string) error {
 }
 
 func clearAll(client service.Client, args ...string) error {
-	breakPoints, err := client.ListBreakPoints()
+	breakPoints, err := client.ListBreakpoints()
 	if err != nil {
 		return err
 	}
 	for _, bp := range breakPoints {
-		_, err := client.ClearBreakPoint(bp.ID)
+		_, err := client.ClearBreakpoint(bp.ID)
 		if err != nil {
 			fmt.Printf("Couldn't delete breakpoint %d at %#v %s:%d: %s\n", bp.ID, bp.Addr, bp.File, bp.Line, err)
 		}
@@ -254,14 +254,14 @@ func clearAll(client service.Client, args ...string) error {
 	return nil
 }
 
-type ById []*api.BreakPoint
+type ById []*api.Breakpoint
 
 func (a ById) Len() int           { return len(a) }
 func (a ById) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ById) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
 func breakpoints(client service.Client, args ...string) error {
-	breakPoints, err := client.ListBreakPoints()
+	breakPoints, err := client.ListBreakpoints()
 	if err != nil {
 		return err
 	}
@@ -277,7 +277,7 @@ func breakpoint(client service.Client, args ...string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("argument must be either a function name or <file:line>")
 	}
-	requestedBp := &api.BreakPoint{}
+	requestedBp := &api.Breakpoint{}
 	tokens := strings.Split(args[0], ":")
 	switch {
 	case len(tokens) == 1:
@@ -294,7 +294,7 @@ func breakpoint(client service.Client, args ...string) error {
 		return fmt.Errorf("invalid line reference")
 	}
 
-	bp, err := client.CreateBreakPoint(requestedBp)
+	bp, err := client.CreateBreakpoint(requestedBp)
 	if err != nil {
 		return err
 	}

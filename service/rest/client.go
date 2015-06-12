@@ -106,8 +106,8 @@ func (c *RESTClient) Halt() (*api.DebuggerState, error) {
 	return state, nil
 }
 
-func (c *RESTClient) GetBreakPoint(id int) (*api.BreakPoint, error) {
-	var breakPoint *api.BreakPoint
+func (c *RESTClient) GetBreakpoint(id int) (*api.Breakpoint, error) {
+	var breakPoint *api.Breakpoint
 	err := c.doGET(fmt.Sprintf("/breakpoints/%d", id), &breakPoint)
 	if err != nil {
 		return nil, err
@@ -115,17 +115,17 @@ func (c *RESTClient) GetBreakPoint(id int) (*api.BreakPoint, error) {
 	return breakPoint, nil
 }
 
-func (c *RESTClient) CreateBreakPoint(breakPoint *api.BreakPoint) (*api.BreakPoint, error) {
-	var newBreakPoint *api.BreakPoint
-	err := c.doPOST("/breakpoints", breakPoint, &newBreakPoint)
+func (c *RESTClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoint, error) {
+	var newBreakpoint *api.Breakpoint
+	err := c.doPOST("/breakpoints", breakPoint, &newBreakpoint)
 	if err != nil {
 		return nil, err
 	}
-	return newBreakPoint, nil
+	return newBreakpoint, nil
 }
 
-func (c *RESTClient) ListBreakPoints() ([]*api.BreakPoint, error) {
-	var breakPoints []*api.BreakPoint
+func (c *RESTClient) ListBreakpoints() ([]*api.Breakpoint, error) {
+	var breakPoints []*api.Breakpoint
 	err := c.doGET("/breakpoints", &breakPoints)
 	if err != nil {
 		return nil, err
@@ -133,8 +133,8 @@ func (c *RESTClient) ListBreakPoints() ([]*api.BreakPoint, error) {
 	return breakPoints, nil
 }
 
-func (c *RESTClient) ClearBreakPoint(id int) (*api.BreakPoint, error) {
-	var breakPoint *api.BreakPoint
+func (c *RESTClient) ClearBreakpoint(id int) (*api.Breakpoint, error) {
+	var breakPoint *api.Breakpoint
 	err := c.doDELETE(fmt.Sprintf("/breakpoints/%d", id), &breakPoint)
 	if err != nil {
 		return nil, err

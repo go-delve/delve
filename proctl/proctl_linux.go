@@ -47,7 +47,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	dbp := &DebuggedProcess{
 		Pid:         proc.Process.Pid,
 		Threads:     make(map[int]*ThreadContext),
-		BreakPoints: make(map[uint64]*BreakPoint),
+		Breakpoints: make(map[uint64]*Breakpoint),
 		os:          new(OSProcessDetails),
 		ast:         source.New(),
 	}
@@ -252,7 +252,7 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 			if err != nil {
 				return nil, err
 			}
-			for reg, bp := range dbp.HardwareBreakPoints() {
+			for reg, bp := range dbp.HardwareBreakpoints() {
 				if bp == nil {
 					continue
 				}

@@ -81,10 +81,10 @@ func (s *RESTServer) Run() error {
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON).
 		Route(ws.GET("/state").To(s.getState)).
-		Route(ws.GET("/breakpoints").To(s.listBreakPoints)).
-		Route(ws.GET("/breakpoints/{breakpoint-id}").To(s.getBreakPoint)).
-		Route(ws.POST("/breakpoints").To(s.createBreakPoint)).
-		Route(ws.DELETE("/breakpoints/{breakpoint-id}").To(s.clearBreakPoint)).
+		Route(ws.GET("/breakpoints").To(s.listBreakpoints)).
+		Route(ws.GET("/breakpoints/{breakpoint-id}").To(s.getBreakpoint)).
+		Route(ws.POST("/breakpoints").To(s.createBreakpoint)).
+		Route(ws.DELETE("/breakpoints/{breakpoint-id}").To(s.clearBreakpoint)).
 		Route(ws.GET("/threads").To(s.listThreads)).
 		Route(ws.GET("/threads/{thread-id}").To(s.getThread)).
 		Route(ws.GET("/threads/{thread-id}/vars").To(s.listThreadPackageVars)).
@@ -166,14 +166,14 @@ func (s *RESTServer) doCommand(request *restful.Request, response *restful.Respo
 	response.WriteEntity(state)
 }
 
-func (s *RESTServer) getBreakPoint(request *restful.Request, response *restful.Response) {
+func (s *RESTServer) getBreakpoint(request *restful.Request, response *restful.Response) {
 	id, err := strconv.Atoi(request.PathParameter("breakpoint-id"))
 	if err != nil {
 		writeError(response, http.StatusBadRequest, "invalid breakpoint id")
 		return
 	}
 
-	found := s.debugger.FindBreakPoint(id)
+	found := s.debugger.FindBreakpoint(id)
 	if found == nil {
 		writeError(response, http.StatusNotFound, "breakpoint not found")
 		return
@@ -182,12 +182,12 @@ func (s *RESTServer) getBreakPoint(request *restful.Request, response *restful.R
 	response.WriteEntity(found)
 }
 
-func (s *RESTServer) listBreakPoints(request *restful.Request, response *restful.Response) {
-	response.WriteEntity(s.debugger.BreakPoints())
+func (s *RESTServer) listBreakpoints(request *restful.Request, response *restful.Response) {
+	response.WriteEntity(s.debugger.Breakpoints())
 }
 
-func (s *RESTServer) createBreakPoint(request *restful.Request, response *restful.Response) {
-	incomingBp := new(api.BreakPoint)
+func (s *RESTServer) createBreakpoint(request *restful.Request, response *restful.Response) {
+	incomingBp := new(api.Breakpoint)
 	err := request.ReadEntity(incomingBp)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
@@ -199,7 +199,7 @@ func (s *RESTServer) createBreakPoint(request *restful.Request, response *restfu
 		return
 	}
 
-	createdbp, err := s.debugger.CreateBreakPoint(incomingBp)
+	createdbp, err := s.debugger.CreateBreakpoint(incomingBp)
 
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
@@ -210,20 +210,20 @@ func (s *RESTServer) createBreakPoint(request *restful.Request, response *restfu
 	response.WriteEntity(createdbp)
 }
 
-func (s *RESTServer) clearBreakPoint(request *restful.Request, response *restful.Response) {
+func (s *RESTServer) clearBreakpoint(request *restful.Request, response *restful.Response) {
 	id, err := strconv.Atoi(request.PathParameter("breakpoint-id"))
 	if err != nil {
 		writeError(response, http.StatusBadRequest, "invalid breakpoint id")
 		return
 	}
 
-	found := s.debugger.FindBreakPoint(id)
+	found := s.debugger.FindBreakpoint(id)
 	if found == nil {
 		writeError(response, http.StatusNotFound, "breakpoint not found")
 		return
 	}
 
-	deleted, err := s.debugger.ClearBreakPoint(found)
+	deleted, err := s.debugger.ClearBreakpoint(found)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return

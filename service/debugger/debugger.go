@@ -113,13 +113,13 @@ func (d *Debugger) Run() error {
 			log.Print("debugger is stopping")
 
 			// Clear breakpoints
-			bps := []*proctl.BreakPoint{}
-			for _, bp := range d.process.BreakPoints {
+			bps := []*proc.Breakpoint{}
+			for _, bp := range d.process.Breakpoints {
 				if bp != nil {
 					bps = append(bps, bp)
 				}
 			}
-			for _, bp := range d.process.HardwareBreakPoints() {
+			for _, bp := range d.process.HardwareBreakpoints() {
 				if bp != nil {
 					bps = append(bps, bp)
 				}
@@ -176,14 +176,14 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 			thread = convertThread(th)
 		}
 
-		var breakpoint *api.BreakPoint
+		var breakpoint *api.Breakpoint
 		bp := p.CurrentBreakpoint()
 		if bp != nil {
-			breakpoint = convertBreakPoint(bp)
+			breakpoint = convertBreakpoint(bp)
 		}
 
 		state = &api.DebuggerState{
-			BreakPoint:    breakpoint,
+			Breakpoint:    breakpoint,
 			CurrentThread: thread,
 			Exited:        p.Exited(),
 		}
@@ -193,9 +193,9 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 	return state, err
 }
 
-func (d *Debugger) CreateBreakPoint(requestedBp *api.BreakPoint) (*api.BreakPoint, error) {
-	var createdBp *api.BreakPoint
 	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+	var createdBp *api.Breakpoint
 		var loc string
 		switch {
 		case len(requestedBp.File) > 0:
@@ -210,50 +210,50 @@ func (d *Debugger) CreateBreakPoint(requestedBp *api.BreakPoint) (*api.BreakPoin
 		if breakError != nil {
 			return breakError
 		}
-		createdBp = convertBreakPoint(bp)
+		createdBp = convertBreakpoint(bp)
 		log.Printf("created breakpoint: %#v", createdBp)
 		return nil
 	})
 	return createdBp, err
 }
 
-func (d *Debugger) ClearBreakPoint(requestedBp *api.BreakPoint) (*api.BreakPoint, error) {
-	var clearedBp *api.BreakPoint
-	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+	var clearedBp *api.Breakpoint
+	err := d.withProcess(func(p *proc.DebuggedProcess) error {
 		bp, err := p.Clear(requestedBp.Addr)
 		if err != nil {
 			return fmt.Errorf("Can't clear breakpoint @%x: %s", requestedBp.Addr, err)
 		}
-		clearedBp = convertBreakPoint(bp)
+		clearedBp = convertBreakpoint(bp)
 		log.Printf("cleared breakpoint: %#v", clearedBp)
 		return nil
 	})
 	return clearedBp, err
 }
 
-func (d *Debugger) BreakPoints() []*api.BreakPoint {
-	bps := []*api.BreakPoint{}
-	d.withProcess(func(p *proctl.DebuggedProcess) error {
-		for _, bp := range p.HardwareBreakPoints() {
+func (d *Debugger) Breakpoints() []*api.Breakpoint {
+	bps := []*api.Breakpoint{}
+	d.withProcess(func(p *proc.DebuggedProcess) error {
+		for _, bp := range p.HardwareBreakpoints() {
 			if bp == nil {
 				continue
 			}
-			bps = append(bps, convertBreakPoint(bp))
+			bps = append(bps, convertBreakpoint(bp))
 		}
 
-		for _, bp := range p.BreakPoints {
+		for _, bp := range p.Breakpoints {
 			if bp.Temp {
 				continue
 			}
-			bps = append(bps, convertBreakPoint(bp))
+			bps = append(bps, convertBreakpoint(bp))
 		}
 		return nil
 	})
 	return bps
 }
 
-func (d *Debugger) FindBreakPoint(id int) *api.BreakPoint {
-	for _, bp := range d.BreakPoints() {
+func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
+	for _, bp := range d.Breakpoints() {
 		if bp.ID == id {
 			return bp
 		}
@@ -459,9 +459,9 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	return goroutines, err
 }
 
-// convertBreakPoint converts an internal breakpoint to an API BreakPoint.
-func convertBreakPoint(bp *proctl.BreakPoint) *api.BreakPoint {
-	return &api.BreakPoint{
+// convertBreakpoint converts an internal breakpoint to an API Breakpoint.
+func convertBreakpoint(bp *proctl.Breakpoint) *api.Breakpoint {
+	return &api.Breakpoint{
 		ID:           bp.ID,
 		FunctionName: bp.FunctionName,
 		File:         bp.File,

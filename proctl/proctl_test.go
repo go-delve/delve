@@ -138,7 +138,7 @@ func TestStep(t *testing.T) {
 	})
 }
 
-func TestBreakPoint(t *testing.T) {
+func TestBreakpoint(t *testing.T) {
 	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
@@ -159,7 +159,7 @@ func TestBreakPoint(t *testing.T) {
 	})
 }
 
-func TestBreakPointInSeperateGoRoutine(t *testing.T) {
+func TestBreakpointInSeperateGoRoutine(t *testing.T) {
 	withTestProcess("testthreads", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		fn := p.goSymTable.LookupFunc("main.anotherthread")
 		if fn == nil {
@@ -188,7 +188,7 @@ func TestBreakPointInSeperateGoRoutine(t *testing.T) {
 	})
 }
 
-func TestBreakPointWithNonExistantFunction(t *testing.T) {
+func TestBreakpointWithNonExistantFunction(t *testing.T) {
 	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		_, err := p.Break(0)
 		if err == nil {
@@ -197,7 +197,7 @@ func TestBreakPointWithNonExistantFunction(t *testing.T) {
 	})
 }
 
-func TestClearBreakPoint(t *testing.T) {
+func TestClearBreakpoint(t *testing.T) {
 	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		fn := p.goSymTable.LookupFunc("main.sleepytime")
 		bp, err := p.Break(fn.Entry)
@@ -216,7 +216,7 @@ func TestClearBreakPoint(t *testing.T) {
 			t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
 		}
 
-		if len(p.BreakPoints) != 0 {
+		if len(p.Breakpoints) != 0 {
 			t.Fatal("Breakpoint not removed internally")
 		}
 	})
@@ -248,10 +248,10 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 			}
 		}
 
-		if len(p.BreakPoints) != 0 {
-			t.Fatal("Not all breakpoints were cleaned up", len(p.BreakPoints))
+		if len(p.Breakpoints) != 0 {
+			t.Fatal("Not all breakpoints were cleaned up", len(p.Breakpoints))
 		}
-		for _, bp := range p.arch.HardwareBreakPoints() {
+		for _, bp := range p.arch.HardwareBreakpoints() {
 			if bp != nil {
 				t.Fatal("Not all breakpoints were cleaned up", bp.Addr)
 			}

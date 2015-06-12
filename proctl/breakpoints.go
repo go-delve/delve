@@ -8,7 +8,7 @@ import (
 // Represents a single breakpoint. Stores information on the break
 // point including the byte of data that originally was stored at that
 // address.
-type BreakPoint struct {
+type Breakpoint struct {
 	// File & line information for printing.
 	FunctionName string
 	File         string
@@ -22,13 +22,13 @@ type BreakPoint struct {
 	reg          int    // If hardware breakpoint, what debug register it belongs to.
 }
 
-func (bp *BreakPoint) String() string {
+func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.ID, bp.Addr, bp.File, bp.Line)
 }
 
 // Clear this breakpoint appropriately depending on whether it is a
 // hardware or software breakpoint.
-func (bp *BreakPoint) Clear(thread *ThreadContext) (*BreakPoint, error) {
+func (bp *Breakpoint) Clear(thread *ThreadContext) (*Breakpoint, error) {
 	if bp.hardware {
 		if err := clearHardwareBreakpoint(bp.reg, thread.Id); err != nil {
 			return nil, err
@@ -43,13 +43,13 @@ func (bp *BreakPoint) Clear(thread *ThreadContext) (*BreakPoint, error) {
 
 // Returned when trying to set a breakpoint at
 // an address that already has a breakpoint set for it.
-type BreakPointExistsError struct {
+type BreakpointExistsError struct {
 	file string
 	line int
 	addr uint64
 }
 
-func (bpe BreakPointExistsError) Error() string {
+func (bpe BreakpointExistsError) Error() string {
 	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
 }
 
@@ -65,7 +65,7 @@ func (iae InvalidAddressError) Error() string {
 
 // Returns whether or not a breakpoint has been set for the given address.
 func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
-	for _, bp := range dbp.arch.HardwareBreakPoints() {
+	for _, bp := range dbp.arch.HardwareBreakpoints() {
 		// TODO(darwin)
 		if runtime.GOOS == "darwin" {
 			break
@@ -74,11 +74,11 @@ func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
 			return true
 		}
 	}
-	_, ok := dbp.BreakPoints[addr]
+	_, ok := dbp.Breakpoints[addr]
 	return ok
 }
 
-func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool) *BreakPoint {
+func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool) *Breakpoint {
 	var id int
 	if temp {
 		dbp.tempBreakpointIDCounter++
@@ -87,7 +87,7 @@ func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data
 		dbp.breakpointIDCounter++
 		id = dbp.breakpointIDCounter
 	}
-	return &BreakPoint{
+	return &Breakpoint{
 		FunctionName: fn,
 		File:         f,
 		Line:         l,
@@ -98,23 +98,23 @@ func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data
 	}
 }
 
-func (dbp *DebuggedProcess) newHardwareBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool, reg int) *BreakPoint {
+func (dbp *DebuggedProcess) newHardwareBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool, reg int) *Breakpoint {
 	bp := dbp.newBreakpoint(fn, f, l, addr, data, temp)
 	bp.hardware = true
 	bp.reg = reg
 	return bp
 }
 
-func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*BreakPoint, error) {
+func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
 	var f, l, fn = dbp.goSymTable.PCToLine(uint64(addr))
 	if fn == nil {
 		return nil, InvalidAddressError{address: addr}
 	}
 	if dbp.BreakpointExists(addr) {
-		return nil, BreakPointExistsError{f, l, addr}
+		return nil, BreakpointExistsError{f, l, addr}
 	}
 	// Try and set a hardware breakpoint.
-	for i, v := range dbp.arch.HardwareBreakPoints() {
+	for i, v := range dbp.arch.HardwareBreakpoints() {
 		// TODO(darwin)
 		if runtime.GOOS == "darwin" {
 			break
@@ -125,8 +125,8 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 					return nil, fmt.Errorf("could not set hardware breakpoint on thread %d: %s", t, err)
 				}
 			}
-			dbp.arch.HardwareBreakPoints()[i] = dbp.newHardwareBreakpoint(fn.Name, f, l, addr, nil, temp, i)
-			return dbp.arch.HardwareBreakPoints()[i], nil
+			dbp.arch.HardwareBreakpoints()[i] = dbp.newHardwareBreakpoint(fn.Name, f, l, addr, nil, temp, i)
+			return dbp.arch.HardwareBreakpoints()[i], nil
 		}
 	}
 	// Fall back to software breakpoint. 0xCC is INT 3 trap interrupt.
@@ -138,23 +138,23 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 	if _, err := writeMemory(thread, uintptr(addr), dbp.arch.BreakpointInstruction()); err != nil {
 		return nil, err
 	}
-	dbp.BreakPoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData, temp)
-	return dbp.BreakPoints[addr], nil
+	dbp.Breakpoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData, temp)
+	return dbp.Breakpoints[addr], nil
 }
 
 // Error thrown when trying to clear a breakpoint that does not exist.
-type NoBreakPointError struct {
+type NoBreakpointError struct {
 	addr uint64
 }
 
-func (nbp NoBreakPointError) Error() string {
+func (nbp NoBreakpointError) Error() string {
 	return fmt.Sprintf("no breakpoint at %#v", nbp.addr)
 }
 
-func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
+func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*Breakpoint, error) {
 	thread := dbp.Threads[tid]
 	// Check for hardware breakpoint
-	for i, bp := range dbp.arch.HardwareBreakPoints() {
+	for i, bp := range dbp.arch.HardwareBreakpoints() {
 		if bp == nil {
 			continue
 		}
@@ -163,17 +163,17 @@ func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, 
 			if err != nil {
 				return nil, err
 			}
-			dbp.arch.HardwareBreakPoints()[i] = nil
+			dbp.arch.HardwareBreakpoints()[i] = nil
 			return bp, nil
 		}
 	}
 	// Check for software breakpoint
-	if bp, ok := dbp.BreakPoints[addr]; ok {
+	if bp, ok := dbp.Breakpoints[addr]; ok {
 		if _, err := bp.Clear(thread); err != nil {
 			return nil, err
 		}
-		delete(dbp.BreakPoints, addr)
+		delete(dbp.Breakpoints, addr)
 		return bp, nil
 	}
-	return nil, NoBreakPointError{addr: addr}
+	return nil, NoBreakpointError{addr: addr}
 }

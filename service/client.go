@@ -24,14 +24,14 @@ type Client interface {
 	// Halt suspends the process.
 	Halt() (*api.DebuggerState, error)
 
-	// GetBreakPoint gets a breakpoint by ID.
-	GetBreakPoint(id int) (*api.BreakPoint, error)
-	// CreateBreakPoint creates a new breakpoint.
-	CreateBreakPoint(*api.BreakPoint) (*api.BreakPoint, error)
-	// ListBreakPoints gets all breakpoints.
-	ListBreakPoints() ([]*api.BreakPoint, error)
-	// ClearBreakPoint deletes a breakpoint by ID.
-	ClearBreakPoint(id int) (*api.BreakPoint, error)
+	// GetBreakpoint gets a breakpoint by ID.
+	GetBreakpoint(id int) (*api.Breakpoint, error)
+	// CreateBreakpoint creates a new breakpoint.
+	CreateBreakpoint(*api.Breakpoint) (*api.Breakpoint, error)
+	// ListBreakpoints gets all breakpoints.
+	ListBreakpoints() ([]*api.Breakpoint, error)
+	// ClearBreakpoint deletes a breakpoint by ID.
+	ClearBreakpoint(id int) (*api.Breakpoint, error)
 
 	// ListThreads lists all threads.
 	ListThreads() ([]*api.Thread, error)

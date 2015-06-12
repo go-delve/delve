@@ -46,7 +46,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 
 	dbp := &DebuggedProcess{
 		Threads:     make(map[int]*ThreadContext),
-		BreakPoints: make(map[uint64]*BreakPoint),
+		Breakpoints: make(map[uint64]*Breakpoint),
 		firstStart:  true,
 		os:          new(OSProcessDetails),
 		ast:         source.New(),
@@ -249,7 +249,7 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 		dbp.updateThreadList()
 		th, err = dbp.handleBreakpointOnThread(int(port))
 		if err != nil {
-			if _, ok := err.(NoBreakPointError); ok {
+			if _, ok := err.(NoBreakpointError); ok {
 				th := dbp.Threads[int(port)]
 				if dbp.firstStart || dbp.singleStepping || th.singleStepping {
 					dbp.firstStart = false

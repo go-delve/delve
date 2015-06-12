@@ -7,7 +7,7 @@ type Arch interface {
 	BreakpointInstruction() []byte
 	BreakpointSize() int
 	CurgInstructions() []byte
-	HardwareBreakPoints() []*BreakPoint
+	HardwareBreakpoints() []*Breakpoint
 }
 
 type AMD64 struct {
@@ -15,7 +15,7 @@ type AMD64 struct {
 	breakInstruction    []byte
 	breakInstructionLen int
 	curgInstructions    []byte
-	hardwareBreakPoints []*BreakPoint // Slice of hardware breakpoints
+	hardwareBreakpoints []*Breakpoint // Slice of hardware breakpoints
 }
 
 func AMD64Arch() *AMD64 {
@@ -42,7 +42,7 @@ func AMD64Arch() *AMD64 {
 		breakInstruction:    breakInstr,
 		breakInstructionLen: 1,
 		curgInstructions:    curg,
-		hardwareBreakPoints: make([]*BreakPoint, 4),
+		hardwareBreakpoints: make([]*Breakpoint, 4),
 	}
 }
 
@@ -62,6 +62,6 @@ func (a *AMD64) CurgInstructions() []byte {
 	return a.curgInstructions
 }
 
-func (a *AMD64) HardwareBreakPoints() []*BreakPoint {
-	return a.hardwareBreakPoints
+func (a *AMD64) HardwareBreakpoints() []*Breakpoint {
+	return a.hardwareBreakpoints
 }

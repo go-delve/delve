@@ -53,7 +53,7 @@ func TestClientServer_exit(t *testing.T) {
 
 func TestClientServer_step(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		_, err := c.CreateBreakPoint(&api.BreakPoint{FunctionName: "main.helloworld"})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld"})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -80,7 +80,7 @@ type nextTest struct {
 
 func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 	withTestClient("testnextprog", t, func(c service.Client) {
-		bp, err := c.CreateBreakPoint(&api.BreakPoint{FunctionName: initialLocation})
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: initialLocation})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -90,7 +90,7 @@ func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		_, err = c.ClearBreakPoint(bp.ID)
+		_, err = c.ClearBreakpoint(bp.ID)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -152,7 +152,7 @@ func TestNextFunctionReturn(t *testing.T) {
 
 func TestClientServer_breakpointInMainThread(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		bp, err := c.CreateBreakPoint(&api.BreakPoint{FunctionName: "main.helloworld"})
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld"})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -173,7 +173,7 @@ func TestClientServer_breakpointInMainThread(t *testing.T) {
 
 func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 	withTestClient("testthreads", t, func(c service.Client) {
-		_, err := c.CreateBreakPoint(&api.BreakPoint{FunctionName: "main.anotherthread"})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.anotherthread"})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -192,7 +192,7 @@ func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 
 func TestClientServer_breakAtNonexistentPoint(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		_, err := c.CreateBreakPoint(&api.BreakPoint{FunctionName: "nowhere"})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "nowhere"})
 		if err == nil {
 			t.Fatal("Should not be able to break at non existent function")
 		}
@@ -201,17 +201,17 @@ func TestClientServer_breakAtNonexistentPoint(t *testing.T) {
 
 func TestClientServer_clearBreakpoint(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		bp, err := c.CreateBreakPoint(&api.BreakPoint{FunctionName: "main.sleepytime"})
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sleepytime"})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		bps, err := c.ListBreakPoints()
+		bps, err := c.ListBreakpoints()
 		if e, a := 1, len(bps); e != a {
 			t.Fatalf("Expected breakpoint count %d, got %d", e, a)
 		}
 
-		deleted, err := c.ClearBreakPoint(bp.ID)
+		deleted, err := c.ClearBreakpoint(bp.ID)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -220,7 +220,7 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 			t.Fatalf("Expected deleted breakpoint ID %v, got %v", bp.ID, deleted.ID)
 		}
 
-		bps, err = c.ListBreakPoints()
+		bps, err = c.ListBreakpoints()
 		if e, a := 0, len(bps); e != a {
 			t.Fatalf("Expected breakpoint count %d, got %d", e, a)
 		}
@@ -235,7 +235,7 @@ func TestClientServer_switchThread(t *testing.T) {
 			t.Fatal("Expected error for invalid thread id")
 		}
 
-		_, err = c.CreateBreakPoint(&api.BreakPoint{FunctionName: "main.main"})
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -276,7 +276,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = c.CreateBreakPoint(&api.BreakPoint{File: fp, Line: 23})
+		_, err = c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -300,7 +300,7 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = c.CreateBreakPoint(&api.BreakPoint{File: fp, Line: 47})
+		_, err = c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 47})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}

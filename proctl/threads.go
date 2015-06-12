@@ -18,7 +18,7 @@ import (
 type ThreadContext struct {
 	Id                int
 	Status            *sys.WaitStatus
-	CurrentBreakpoint *BreakPoint
+	CurrentBreakpoint *Breakpoint
 	dbp               *DebuggedProcess
 	singleStepping    bool
 	running           bool
@@ -44,7 +44,7 @@ func (thread *ThreadContext) Continue() error {
 
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
-	if _, ok := thread.dbp.BreakPoints[pc]; ok {
+	if _, ok := thread.dbp.Breakpoints[pc]; ok {
 		if err := thread.Step(); err != nil {
 			return err
 		}
@@ -62,7 +62,7 @@ func (thread *ThreadContext) Step() (err error) {
 		return err
 	}
 
-	bp, ok := thread.dbp.BreakPoints[pc]
+	bp, ok := thread.dbp.Breakpoints[pc]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
 		_, err = thread.dbp.Clear(bp.Addr)
@@ -72,7 +72,7 @@ func (thread *ThreadContext) Step() (err error) {
 
 		// Restore breakpoint now that we have passed it.
 		defer func() {
-			var nbp *BreakPoint
+			var nbp *Breakpoint
 			nbp, err = thread.dbp.Break(bp.Addr)
 			nbp.Temp = bp.Temp
 		}()
@@ -86,17 +86,17 @@ func (thread *ThreadContext) Step() (err error) {
 }
 
 // Set breakpoint using this thread.
-func (thread *ThreadContext) Break(addr uint64) (*BreakPoint, error) {
+func (thread *ThreadContext) Break(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.setBreakpoint(thread.Id, addr, false)
 }
 
 // Set breakpoint using this thread.
-func (thread *ThreadContext) TempBreak(addr uint64) (*BreakPoint, error) {
+func (thread *ThreadContext) TempBreak(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.setBreakpoint(thread.Id, addr, true)
 }
 
 // Clear breakpoint using this thread.
-func (thread *ThreadContext) Clear(addr uint64) (*BreakPoint, error) {
+func (thread *ThreadContext) Clear(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.clearBreakpoint(thread.Id, addr)
 }
 
@@ -217,7 +217,7 @@ func (thread *ThreadContext) setNextTempBreakpoints(curpc uint64, pcs []uint64) 
 			continue
 		}
 		if _, err := thread.dbp.TempBreak(pcs[i]); err != nil {
-			if _, ok := err.(BreakPointExistsError); !ok {
+			if _, ok := err.(BreakpointExistsError); !ok {
 				return err
 			}
 		}

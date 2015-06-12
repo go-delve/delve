@@ -2,18 +2,18 @@ package api
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
-	// BreakPoint is the current breakpoint at which the debugged process is
+	// Breakpoint is the current breakpoint at which the debugged process is
 	// suspended, and may be empty if the process is not suspended.
-	BreakPoint *BreakPoint `json:"breakPoint,omitempty"`
+	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// CurrentThread is the currently selected debugger thread.
 	CurrentThread *Thread `json:"currentThread,omitempty"`
 	// Exited indicates whether the debugged process has exited.
 	Exited bool `json:"exited"`
 }
 
-// BreakPoint addresses a location at which process execution may be
+// Breakpoint addresses a location at which process execution may be
 // suspended.
-type BreakPoint struct {
+type Breakpoint struct {
 	// ID is a unique identifier for the breakpoint.
 	ID int `json:"id"`
 	// Addr is the address of the breakpoint.
