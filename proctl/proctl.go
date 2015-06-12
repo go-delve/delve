@@ -463,8 +463,8 @@ func (dbp *DebuggedProcess) CurrentBreakpoint() *BreakPoint {
 }
 
 // Returns the value of the named symbol.
-func (dbp *DebuggedProcess) EvalSymbol(name string) (*Variable, error) {
-	return dbp.CurrentThread.EvalSymbol(name)
+func (dbp *DebuggedProcess) EvalVariable(name string) (*Variable, error) {
+	return dbp.CurrentThread.EvalVariable(name)
 }
 
 // Returns a reader for the dwarf data

@@ -354,7 +354,7 @@ func (s *RESTServer) evalSymbol(request *restful.Request, response *restful.Resp
 		return
 	}
 
-	v, err := s.debugger.EvalSymbolInThread(current.ID, symbol)
+	v, err := s.debugger.EvalVariableInThread(current.ID, symbol)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return
@@ -382,7 +382,7 @@ func (s *RESTServer) evalThreadSymbol(request *restful.Request, response *restfu
 		return
 	}
 
-	v, err := s.debugger.EvalSymbolInThread(id, symbol)
+	v, err := s.debugger.EvalVariableInThread(id, symbol)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, err.Error())
 		return

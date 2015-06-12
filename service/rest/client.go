@@ -160,7 +160,7 @@ func (c *RESTClient) GetThread(id int) (*api.Thread, error) {
 	return thread, nil
 }
 
-func (c *RESTClient) EvalSymbol(symbol string) (*api.Variable, error) {
+func (c *RESTClient) EvalVariable(symbol string) (*api.Variable, error) {
 	var v *api.Variable
 	err := c.doGET(fmt.Sprintf("/eval/%s", symbol), &v)
 	if err != nil {
@@ -169,7 +169,7 @@ func (c *RESTClient) EvalSymbol(symbol string) (*api.Variable, error) {
 	return v, nil
 }
 
-func (c *RESTClient) EvalSymbolFor(threadID int, symbol string) (*api.Variable, error) {
+func (c *RESTClient) EvalVariableFor(threadID int, symbol string) (*api.Variable, error) {
 	var v *api.Variable
 	err := c.doGET(fmt.Sprintf("/threads/%d/eval/%s", threadID, symbol), &v)
 	if err != nil {

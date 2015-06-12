@@ -308,7 +308,7 @@ func printVar(client service.Client, args ...string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 
-	val, err := client.EvalSymbol(args[0])
+	val, err := client.EvalVariable(args[0])
 	if err != nil {
 		return err
 	}

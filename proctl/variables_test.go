@@ -77,9 +77,9 @@ func TestVariableEvaluation(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			variable, err := p.EvalSymbol(tc.name)
+			variable, err := p.EvalVariable(tc.name)
 			if tc.err == nil {
-				assertNoError(err, t, "EvalSymbol() returned an error")
+				assertNoError(err, t, "EvalVariable() returned an error")
 				assertVariable(t, variable, tc)
 			} else {
 				if tc.err.Error() != err.Error() {
@@ -101,10 +101,10 @@ func TestVariableFunctionScoping(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 		p.Clear(pc)
 
-		_, err = p.EvalSymbol("a1")
+		_, err = p.EvalVariable("a1")
 		assertNoError(err, t, "Unable to find variable a1")
 
-		_, err = p.EvalSymbol("a2")
+		_, err = p.EvalVariable("a2")
 		assertNoError(err, t, "Unable to find variable a1")
 
 		// Move scopes, a1 exists here by a2 does not
@@ -116,10 +116,10 @@ func TestVariableFunctionScoping(t *testing.T) {
 		err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
-		_, err = p.EvalSymbol("a1")
+		_, err = p.EvalVariable("a1")
 		assertNoError(err, t, "Unable to find variable a1")
 
-		_, err = p.EvalSymbol("a2")
+		_, err = p.EvalVariable("a2")
 		if err == nil {
 			t.Fatalf("Can eval out of scope variable a2")
 		}

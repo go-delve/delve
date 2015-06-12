@@ -426,14 +426,14 @@ func (d *Debugger) FunctionArguments(threadID int) ([]api.Variable, error) {
 	return vars, err
 }
 
-func (d *Debugger) EvalSymbolInThread(threadID int, symbol string) (*api.Variable, error) {
+func (d *Debugger) EvalVariableInThread(threadID int, symbol string) (*api.Variable, error) {
 	var variable *api.Variable
 	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
 		thread, found := p.Threads[threadID]
 		if !found {
 			return fmt.Errorf("couldn't find thread %d", threadID)
 		}
-		v, err := thread.EvalSymbol(symbol)
+		v, err := thread.EvalVariable(symbol)
 		if err != nil {
 			return err
 		}

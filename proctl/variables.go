@@ -197,8 +197,8 @@ func parseG(thread *ThreadContext, gaddr uint64, deref bool) (*G, error) {
 	return g, nil
 }
 
-// Returns the value of the named symbol.
-func (thread *ThreadContext) EvalSymbol(name string) (*Variable, error) {
+// Returns the value of the named variable.
+func (thread *ThreadContext) EvalVariable(name string) (*Variable, error) {
 	pc, err := thread.PC()
 	if err != nil {
 		return nil, err

@@ -40,12 +40,12 @@ type Client interface {
 
 	// ListPackageVariables lists all package variables in the context of the current thread.
 	ListPackageVariables(filter string) ([]api.Variable, error)
-	// EvalSymbol returns a variable in the context of the current thread.
-	EvalSymbol(symbol string) (*api.Variable, error)
+	// EvalVariable returns a variable in the context of the current thread.
+	EvalVariable(symbol string) (*api.Variable, error)
 	// ListPackageVariablesFor lists all package variables in the context of a thread.
 	ListPackageVariablesFor(threadID int, filter string) ([]api.Variable, error)
-	// EvalSymbolFor returns a variable in the context of the specified thread.
-	EvalSymbolFor(threadID int, symbol string) (*api.Variable, error)
+	// EvalVariableFor returns a variable in the context of the specified thread.
+	EvalVariableFor(threadID int, symbol string) (*api.Variable, error)
 
 	// ListSources lists all source files in the process matching filter.
 	ListSources(filter string) ([]string, error)
