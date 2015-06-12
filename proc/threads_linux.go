@@ -12,7 +12,7 @@ type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
-func (t *ThreadContext) Halt() error {
+func (t *Thread) Halt() error {
 	if stopped(t.Id) {
 		return nil
 	}
@@ -27,11 +27,11 @@ func (t *ThreadContext) Halt() error {
 	return nil
 }
 
-func (t *ThreadContext) resume() error {
+func (t *Thread) resume() error {
 	return PtraceCont(t.Id, 0)
 }
 
-func (t *ThreadContext) singleStep() error {
+func (t *Thread) singleStep() error {
 	err := sys.PtraceSingleStep(t.Id)
 	if err != nil {
 		return err
@@ -40,7 +40,7 @@ func (t *ThreadContext) singleStep() error {
 	return err
 }
 
-func (t *ThreadContext) blocked() bool {
+func (t *Thread) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.PC()
 	fn := t.dbp.goSymTable.PCToFunc(pc)
@@ -50,25 +50,25 @@ func (t *ThreadContext) blocked() bool {
 	return false
 }
 
-func (thread *ThreadContext) saveRegisters() (Registers, error) {
+func (thread *Thread) saveRegisters() (Registers, error) {
 	if err := sys.PtraceGetRegs(thread.Id, &thread.os.registers); err != nil {
 		return nil, fmt.Errorf("could not save register contents")
 	}
 	return &Regs{&thread.os.registers}, nil
 }
 
-func (thread *ThreadContext) restoreRegisters() error {
+func (thread *Thread) restoreRegisters() error {
 	return sys.PtraceSetRegs(thread.Id, &thread.os.registers)
 }
 
-func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+func writeMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
 	return sys.PtracePokeData(thread.Id, addr, data)
 }
 
-func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+func readMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}

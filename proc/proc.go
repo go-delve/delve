@@ -29,11 +29,11 @@ type DebuggedProcess struct {
 	// Software breakpoint table. Hardware breakpoints are stored in proc/arch.go, as they are architecture dependant.
 	Breakpoints map[uint64]*Breakpoint
 
-	// List of threads mapped as such: pid -> *ThreadContext
-	Threads map[int]*ThreadContext
+	// List of threads mapped as such: pid -> *Thread
+	Threads map[int]*Thread
 
 	// Active thread. This is the default thread used for setting breakpoints, evaluating variables, etc..
-	CurrentThread *ThreadContext
+	CurrentThread *Thread
 
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
@@ -74,7 +74,7 @@ func (pe ProcessExitedError) Error() string {
 func Attach(pid int) (*DebuggedProcess, error) {
 	dbp := &DebuggedProcess{
 		Pid:         pid,
-		Threads:     make(map[int]*ThreadContext),
+		Threads:     make(map[int]*Thread),
 		Breakpoints: make(map[uint64]*Breakpoint),
 		os:          new(OSProcessDetails),
 		ast:         source.New(),
@@ -565,7 +565,7 @@ func (dbp *DebuggedProcess) clearTempBreakpoints() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, error) {
+func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*Thread, error) {
 	thread, ok := dbp.Threads[id]
 	if !ok {
 		return nil, fmt.Errorf("could not find thread for %d", id)

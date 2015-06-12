@@ -45,7 +45,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	argv = &argvSlice[0]
 
 	dbp := &DebuggedProcess{
-		Threads:     make(map[int]*ThreadContext),
+		Threads:     make(map[int]*Thread),
 		Breakpoints: make(map[uint64]*Breakpoint),
 		firstStart:  true,
 		os:          new(OSProcessDetails),
@@ -116,11 +116,11 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) addThread(port int, attach bool) (*ThreadContext, error) {
+func (dbp *DebuggedProcess) addThread(port int, attach bool) (*Thread, error) {
 	if thread, ok := dbp.Threads[port]; ok {
 		return thread, nil
 	}
-	thread := &ThreadContext{
+	thread := &Thread{
 		Id:  port,
 		dbp: dbp,
 		os:  new(OSSpecificDetails),
@@ -216,9 +216,9 @@ func (dbp *DebuggedProcess) findExecutable(path string) (*macho.File, error) {
 	return exe, nil
 }
 
-func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
+func (dbp *DebuggedProcess) trapWait(pid int) (*Thread, error) {
 	var (
-		th  *ThreadContext
+		th  *Thread
 		err error
 	)
 	for {

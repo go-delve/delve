@@ -20,7 +20,7 @@ func (r *Regs) CX() uint64 {
 	return r.cx
 }
 
-func (r *Regs) SetPC(thread *ThreadContext, pc uint64) error {
+func (r *Regs) SetPC(thread *Thread, pc uint64) error {
 	kret := C.set_pc(thread.os.thread_act, C.uint64_t(pc))
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not set pc")
@@ -28,7 +28,7 @@ func (r *Regs) SetPC(thread *ThreadContext, pc uint64) error {
 	return nil
 }
 
-func registers(thread *ThreadContext) (Registers, error) {
+func registers(thread *Thread) (Registers, error) {
 	var state C.x86_thread_state64_t
 	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &state)
 	if kret != C.KERN_SUCCESS {

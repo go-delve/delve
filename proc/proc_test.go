@@ -37,7 +37,7 @@ func getRegisters(p *DebuggedProcess, t *testing.T) Registers {
 	return regs
 }
 
-func dataAtAddr(thread *ThreadContext, addr uint64) ([]byte, error) {
+func dataAtAddr(thread *Thread, addr uint64) ([]byte, error) {
 	data := make([]byte, 1)
 	_, err := readMemory(thread, uintptr(addr), data)
 	if err != nil {

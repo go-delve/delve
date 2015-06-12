@@ -10,12 +10,12 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
-// ThreadContext represents a single thread in the traced process
-// Id represents the thread id, Process holds a reference to the
+// Thread represents a single thread in the traced process
+// Id represents the thread id or port, Process holds a reference to the
 // DebuggedProcess struct that contains info on the process as
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
-type ThreadContext struct {
+type Thread struct {
 	Id                int
 	Status            *sys.WaitStatus
 	CurrentBreakpoint *Breakpoint
@@ -36,7 +36,7 @@ type Location struct {
 // software breakpoints into consideration and ensures that
 // we step over any breakpoints. It will restore the instruction,
 // step, and then restore the breakpoint and continue.
-func (thread *ThreadContext) Continue() error {
+func (thread *Thread) Continue() error {
 	pc, err := thread.PC()
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func (thread *ThreadContext) Continue() error {
 
 // Single steps this thread a single instruction, ensuring that
 // we correctly handle the likely case that we are at a breakpoint.
-func (thread *ThreadContext) Step() (err error) {
+func (thread *Thread) Step() (err error) {
 	thread.singleStepping = true
 	defer func() { thread.singleStepping = false }()
 	pc, err := thread.PC()
@@ -86,21 +86,21 @@ func (thread *ThreadContext) Step() (err error) {
 }
 
 // Set breakpoint using this thread.
-func (thread *ThreadContext) Break(addr uint64) (*Breakpoint, error) {
+func (thread *Thread) Break(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.setBreakpoint(thread.Id, addr, false)
 }
 
 // Set breakpoint using this thread.
-func (thread *ThreadContext) TempBreak(addr uint64) (*Breakpoint, error) {
+func (thread *Thread) TempBreak(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.setBreakpoint(thread.Id, addr, true)
 }
 
 // Clear breakpoint using this thread.
-func (thread *ThreadContext) Clear(addr uint64) (*Breakpoint, error) {
+func (thread *Thread) Clear(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.clearBreakpoint(thread.Id, addr)
 }
 
-func (thread *ThreadContext) Location() (*Location, error) {
+func (thread *Thread) Location() (*Location, error) {
 	pc, err := thread.PC()
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func (thread *ThreadContext) Location() (*Location, error) {
 // This functionality is implemented by finding all possible next lines
 // and setting a breakpoint at them. Once we've set a breakpoint at each
 // potential line, we continue the thread.
-func (thread *ThreadContext) SetNextBreakpoints() (err error) {
+func (thread *Thread) SetNextBreakpoints() (err error) {
 	curpc, err := thread.PC()
 	if err != nil {
 		return err
@@ -158,7 +158,7 @@ func (ge GoroutineExitingError) Error() string {
 
 // This version of next uses the AST from the current source file to figure out all of the potential source lines
 // we could end up at.
-func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
+func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
 	lines, err := thread.dbp.ast.NextLines(file, line)
 	if err != nil {
 		if _, ok := err.(source.NoNodeError); !ok {
@@ -201,7 +201,7 @@ func (thread *ThreadContext) next(curpc uint64, fde *frame.FrameDescriptionEntry
 // Set a breakpoint at every reachable location, as well as the return address. Without
 // the benefit of an AST we can't be sure we're not at a branching statement and thus
 // cannot accurately predict where we may end up.
-func (thread *ThreadContext) cnext(curpc uint64, fde *frame.FrameDescriptionEntry) error {
+func (thread *Thread) cnext(curpc uint64, fde *frame.FrameDescriptionEntry) error {
 	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End())
 	ret, err := thread.ReturnAddress()
 	if err != nil {
@@ -211,7 +211,7 @@ func (thread *ThreadContext) cnext(curpc uint64, fde *frame.FrameDescriptionEntr
 	return thread.setNextTempBreakpoints(curpc, pcs)
 }
 
-func (thread *ThreadContext) setNextTempBreakpoints(curpc uint64, pcs []uint64) error {
+func (thread *Thread) setNextTempBreakpoints(curpc uint64, pcs []uint64) error {
 	for i := range pcs {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
@@ -226,7 +226,7 @@ func (thread *ThreadContext) setNextTempBreakpoints(curpc uint64, pcs []uint64) 
 }
 
 // Sets the PC for this thread.
-func (thread *ThreadContext) SetPC(pc uint64) error {
+func (thread *Thread) SetPC(pc uint64) error {
 	regs, err := thread.Registers()
 	if err != nil {
 		return err
@@ -252,7 +252,7 @@ func (thread *ThreadContext) SetPC(pc uint64) error {
 // current instruction stream. The instructions are obviously arch/os dependant, as they
 // vary on how thread local storage is implemented, which MMU register is used and
 // what the offset into thread local storage is.
-func (thread *ThreadContext) getG() (g *G, err error) {
+func (thread *Thread) getG() (g *G, err error) {
 	var pcInt uint64
 	pcInt, err = thread.PC()
 	if err != nil {

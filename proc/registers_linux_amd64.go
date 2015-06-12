@@ -18,12 +18,12 @@ func (r *Regs) CX() uint64 {
 	return r.regs.Rcx
 }
 
-func (r *Regs) SetPC(thread *ThreadContext, pc uint64) error {
+func (r *Regs) SetPC(thread *Thread, pc uint64) error {
 	r.regs.SetPC(pc)
 	return sys.PtraceSetRegs(thread.Id, r.regs)
 }
 
-func registers(thread *ThreadContext) (Registers, error) {
+func registers(thread *Thread) (Registers, error) {
 	var regs sys.PtraceRegs
 	err := sys.PtraceGetRegs(thread.Id, &regs)
 	if err != nil {

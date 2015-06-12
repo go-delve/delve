@@ -46,7 +46,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	}
 	dbp := &DebuggedProcess{
 		Pid:         proc.Process.Pid,
-		Threads:     make(map[int]*ThreadContext),
+		Threads:     make(map[int]*Thread),
 		Breakpoints: make(map[uint64]*Breakpoint),
 		os:          new(OSProcessDetails),
 		ast:         source.New(),
@@ -61,7 +61,7 @@ func (dbp *DebuggedProcess) requestManualStop() (err error) {
 
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
-func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, error) {
+func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*Thread, error) {
 	if thread, ok := dbp.Threads[tid]; ok {
 		return thread, nil
 	}
@@ -99,7 +99,7 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*ThreadContext, err
 		}
 	}
 
-	dbp.Threads[tid] = &ThreadContext{
+	dbp.Threads[tid] = &Thread{
 		Id:  tid,
 		dbp: dbp,
 		os:  new(OSSpecificDetails),
@@ -221,7 +221,7 @@ func (dbp *DebuggedProcess) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup
 	}
 }
 
-func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
+func (dbp *DebuggedProcess) trapWait(pid int) (*Thread, error) {
 	for {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {

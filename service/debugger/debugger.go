@@ -471,7 +471,7 @@ func convertBreakpoint(bp *proc.Breakpoint) *api.Breakpoint {
 }
 
 // convertThread converts an internal thread to an API Thread.
-func convertThread(th *proc.ThreadContext) *api.Thread {
+func convertThread(th *proc.Thread) *api.Thread {
 	var (
 		function *api.Function
 		file     string

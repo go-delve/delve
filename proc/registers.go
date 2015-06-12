@@ -10,11 +10,11 @@ type Registers interface {
 	PC() uint64
 	SP() uint64
 	CX() uint64
-	SetPC(*ThreadContext, uint64) error
+	SetPC(*Thread, uint64) error
 }
 
 // Obtains register values from the debugged process.
-func (thread *ThreadContext) Registers() (Registers, error) {
+func (thread *Thread) Registers() (Registers, error) {
 	regs, err := registers(thread)
 	if err != nil {
 		return nil, fmt.Errorf("could not get registers: %s", err)
@@ -23,7 +23,7 @@ func (thread *ThreadContext) Registers() (Registers, error) {
 }
 
 // Returns the current PC for this thread.
-func (thread *ThreadContext) PC() (uint64, error) {
+func (thread *Thread) PC() (uint64, error) {
 	regs, err := thread.Registers()
 	if err != nil {
 		return 0, err

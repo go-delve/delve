@@ -12,7 +12,7 @@ type OSSpecificDetails struct {
 	registers  C.x86_thread_state64_t
 }
 
-func (t *ThreadContext) Halt() error {
+func (t *Thread) Halt() error {
 	var kret C.kern_return_t
 	kret = C.thread_suspend(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
@@ -21,7 +21,7 @@ func (t *ThreadContext) Halt() error {
 	return nil
 }
 
-func (t *ThreadContext) singleStep() error {
+func (t *Thread) singleStep() error {
 	kret := C.single_step(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not single step")
@@ -34,7 +34,7 @@ func (t *ThreadContext) singleStep() error {
 	return nil
 }
 
-func (t *ThreadContext) resume() error {
+func (t *Thread) resume() error {
 	// TODO(dp) set flag for ptrace stops
 	if PtraceCont(t.dbp.Pid, 0) == nil {
 		return nil
@@ -46,7 +46,7 @@ func (t *ThreadContext) resume() error {
 	return nil
 }
 
-func (t *ThreadContext) blocked() bool {
+func (t *Thread) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.PC()
 	fn := t.dbp.goSymTable.PCToFunc(pc)
@@ -56,7 +56,7 @@ func (t *ThreadContext) blocked() bool {
 	return false
 }
 
-func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+func writeMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
@@ -71,7 +71,7 @@ func writeMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) 
 	return len(data), nil
 }
 
-func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
+func readMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
@@ -88,7 +88,7 @@ func readMemory(thread *ThreadContext, addr uintptr, data []byte) (int, error) {
 	return len(data), nil
 }
 
-func (thread *ThreadContext) saveRegisters() (Registers, error) {
+func (thread *Thread) saveRegisters() (Registers, error) {
 	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
 	if kret != C.KERN_SUCCESS {
 		return nil, fmt.Errorf("could not save register contents")
@@ -96,7 +96,7 @@ func (thread *ThreadContext) saveRegisters() (Registers, error) {
 	return &Regs{pc: uint64(thread.os.registers.__rip), sp: uint64(thread.os.registers.__rsp)}, nil
 }
 
-func (thread *ThreadContext) restoreRegisters() error {
+func (thread *Thread) restoreRegisters() error {
 	kret := C.set_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not save register contents")

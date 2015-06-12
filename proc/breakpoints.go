@@ -28,7 +28,7 @@ func (bp *Breakpoint) String() string {
 
 // Clear this breakpoint appropriately depending on whether it is a
 // hardware or software breakpoint.
-func (bp *Breakpoint) Clear(thread *ThreadContext) (*Breakpoint, error) {
+func (bp *Breakpoint) Clear(thread *Thread) (*Breakpoint, error) {
 	if bp.hardware {
 		if err := clearHardwareBreakpoint(bp.reg, thread.Id); err != nil {
 			return nil, err

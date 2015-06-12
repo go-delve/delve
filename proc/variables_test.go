@@ -145,10 +145,10 @@ func (s varArray) Less(i, j int) bool {
 
 func TestLocalVariables(t *testing.T) {
 	testcases := []struct {
-		fn     func(*ThreadContext) ([]*Variable, error)
+		fn     func(*Thread) ([]*Variable, error)
 		output []varTest
 	}{
-		{(*ThreadContext).LocalVariables,
+		{(*Thread).LocalVariables,
 			[]varTest{
 				{"a1", "foofoofoofoofoofoo", "struct string", nil},
 				{"a10", "ofo", "struct string", nil},
@@ -177,7 +177,7 @@ func TestLocalVariables(t *testing.T) {
 				{"u64", "18446744073709551615", "uint64", nil},
 				{"u8", "255", "uint8", nil},
 				{"up", "5", "uintptr", nil}}},
-		{(*ThreadContext).FunctionArguments,
+		{(*Thread).FunctionArguments,
 			[]varTest{
 				{"bar", "main.FooBar {Baz: 10, Bur: lorem}", "main.FooBar", nil},
 				{"baz", "bazburzum", "struct string", nil}}},
