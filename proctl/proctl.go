@@ -20,15 +20,18 @@ import (
 	"github.com/derekparker/delve/source"
 )
 
-// Struct representing a debugged process. Holds onto pid, register values,
-// process struct and process state.
+// DebuggedProcess represents all of the information the debugger
+// is holding onto regarding the process we are debugging.
 type DebuggedProcess struct {
-	Pid                     int
-	Process                 *os.Process
-	HWBreakPoints           [4]*BreakPoint
-	BreakPoints             map[uint64]*BreakPoint
-	Threads                 map[int]*ThreadContext
-	CurrentThread           *ThreadContext
+	Pid           int                    // Process Pid
+	Process       *os.Process            // Pointer to process struct for the actual process we are debugging
+	HWBreakPoints [4]*BreakPoint         // Array of hardware breakpoints
+	BreakPoints   map[uint64]*BreakPoint // Breakpoint table
+	Threads       map[int]*ThreadContext // List of threads mapped as such: pid -> *ThreadContext
+
+	// Active thread. This is the default thread used for setting breakpoints, evaluating variables, etc..
+	CurrentThread *ThreadContext
+
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
 	frameEntries            frame.FrameDescriptionEntries
