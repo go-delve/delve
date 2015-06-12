@@ -71,6 +71,8 @@ func (g *G) chanRecvReturnAddr(dbp *DebuggedProcess) (uint64, error) {
 	return topLoc.addr, nil
 }
 
+// NoGError returned when a G could not be found
+// for a specific thread.
 type NoGError struct {
 	tid int
 }
