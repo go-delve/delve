@@ -65,7 +65,7 @@ func (iae InvalidAddressError) Error() string {
 
 // Returns whether or not a breakpoint has been set for the given address.
 func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
-	for _, bp := range dbp.HWBreakPoints {
+	for _, bp := range dbp.arch.HardwareBreakPoints() {
 		// TODO(darwin)
 		if runtime.GOOS == "darwin" {
 			break
@@ -114,7 +114,7 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 		return nil, BreakPointExistsError{f, l, addr}
 	}
 	// Try and set a hardware breakpoint.
-	for i, v := range dbp.HWBreakPoints {
+	for i, v := range dbp.arch.HardwareBreakPoints() {
 		// TODO(darwin)
 		if runtime.GOOS == "darwin" {
 			break
@@ -125,8 +125,8 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 					return nil, fmt.Errorf("could not set hardware breakpoint on thread %d: %s", t, err)
 				}
 			}
-			dbp.HWBreakPoints[i] = dbp.newHardwareBreakpoint(fn.Name, f, l, addr, nil, temp, i)
-			return dbp.HWBreakPoints[i], nil
+			dbp.arch.HardwareBreakPoints()[i] = dbp.newHardwareBreakpoint(fn.Name, f, l, addr, nil, temp, i)
+			return dbp.arch.HardwareBreakPoints()[i], nil
 		}
 	}
 	// Fall back to software breakpoint. 0xCC is INT 3 trap interrupt.
@@ -154,7 +154,7 @@ func (nbp NoBreakPointError) Error() string {
 func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, error) {
 	thread := dbp.Threads[tid]
 	// Check for hardware breakpoint
-	for i, bp := range dbp.HWBreakPoints {
+	for i, bp := range dbp.arch.HardwareBreakPoints() {
 		if bp == nil {
 			continue
 		}
@@ -163,7 +163,7 @@ func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*BreakPoint, 
 			if err != nil {
 				return nil, err
 			}
-			dbp.HWBreakPoints[i] = nil
+			dbp.arch.HardwareBreakPoints()[i] = nil
 			return bp, nil
 		}
 	}

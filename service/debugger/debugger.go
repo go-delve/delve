@@ -119,7 +119,7 @@ func (d *Debugger) Run() error {
 					bps = append(bps, bp)
 				}
 			}
-			for _, bp := range d.process.HWBreakPoints {
+			for _, bp := range d.process.HardwareBreakPoints() {
 				if bp != nil {
 					bps = append(bps, bp)
 				}
@@ -234,7 +234,7 @@ func (d *Debugger) ClearBreakPoint(requestedBp *api.BreakPoint) (*api.BreakPoint
 func (d *Debugger) BreakPoints() []*api.BreakPoint {
 	bps := []*api.BreakPoint{}
 	d.withProcess(func(p *proctl.DebuggedProcess) error {
-		for _, bp := range p.HWBreakPoints {
+		for _, bp := range p.HardwareBreakPoints() {
 			if bp == nil {
 				continue
 			}

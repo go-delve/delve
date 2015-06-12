@@ -23,11 +23,14 @@ import (
 // DebuggedProcess represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type DebuggedProcess struct {
-	Pid           int                    // Process Pid
-	Process       *os.Process            // Pointer to process struct for the actual process we are debugging
-	HWBreakPoints [4]*BreakPoint         // Array of hardware breakpoints
-	BreakPoints   map[uint64]*BreakPoint // Breakpoint table
-	Threads       map[int]*ThreadContext // List of threads mapped as such: pid -> *ThreadContext
+	Pid     int         // Process Pid
+	Process *os.Process // Pointer to process struct for the actual process we are debugging
+
+	// Software breakpoint table. Hardware breakpoints are stored in proctl/arch.go, as they are architecture dependant.
+	BreakPoints map[uint64]*BreakPoint
+
+	// List of threads mapped as such: pid -> *ThreadContext
+	Threads map[int]*ThreadContext
 
 	// Active thread. This is the default thread used for setting breakpoints, evaluating variables, etc..
 	CurrentThread *ThreadContext
@@ -157,7 +160,7 @@ func (dbp *DebuggedProcess) FindLocation(str string) (uint64, error) {
 	}
 
 	// Use as breakpoint id
-	for _, bp := range dbp.HWBreakPoints {
+	for _, bp := range dbp.arch.HardwareBreakPoints() {
 		if bp == nil {
 			continue
 		}
@@ -216,6 +219,10 @@ func (dbp *DebuggedProcess) BreakByLocation(loc string) (*BreakPoint, error) {
 		return nil, err
 	}
 	return dbp.Break(addr)
+}
+
+func (dbp *DebuggedProcess) HardwareBreakPoints() []*BreakPoint {
+	return dbp.arch.HardwareBreakPoints()
 }
 
 // Clears a breakpoint in the current thread.
@@ -492,7 +499,7 @@ func (dbp *DebuggedProcess) PCToLine(pc uint64) (string, int, *gosym.Func) {
 
 // Finds the breakpoint for the given pc.
 func (dbp *DebuggedProcess) FindBreakpoint(pc uint64) (*BreakPoint, bool) {
-	for _, bp := range dbp.HWBreakPoints {
+	for _, bp := range dbp.arch.HardwareBreakPoints() {
 		if bp != nil && bp.Addr == pc {
 			return bp, true
 		}
@@ -540,7 +547,7 @@ func initializeDebugProcess(dbp *DebuggedProcess, path string, attach bool) (*De
 }
 
 func (dbp *DebuggedProcess) clearTempBreakpoints() error {
-	for _, bp := range dbp.HWBreakPoints {
+	for _, bp := range dbp.arch.HardwareBreakPoints() {
 		if bp != nil && bp.Temp {
 			if _, err := dbp.Clear(bp.Addr); err != nil {
 				return err
@@ -568,7 +575,7 @@ func (dbp *DebuggedProcess) handleBreakpointOnThread(id int) (*ThreadContext, er
 		return nil, err
 	}
 	// Check for hardware breakpoint
-	for _, bp := range dbp.HWBreakPoints {
+	for _, bp := range dbp.arch.HardwareBreakPoints() {
 		if bp != nil && bp.Addr == pc {
 			thread.CurrentBreakpoint = bp
 			return thread, nil

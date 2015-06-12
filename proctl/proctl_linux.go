@@ -252,7 +252,7 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 			if err != nil {
 				return nil, err
 			}
-			for reg, bp := range dbp.HWBreakPoints {
+			for reg, bp := range dbp.HardwareBreakPoints() {
 				if bp == nil {
 					continue
 				}
