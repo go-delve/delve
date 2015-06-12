@@ -1,4 +1,4 @@
-package proctl
+package proc
 
 import "runtime"
 

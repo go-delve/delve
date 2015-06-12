@@ -26,20 +26,20 @@ ifeq "$(CERT)" ""
 	$(error You must provide a CERT env var)
 endif
 	go test $(PREFIX)/terminal $(PREFIX)/dwarf/frame $(PREFIX)/dwarf/op $(PREFIX)/dwarf/util $(PREFIX)/source $(PREFIX)/dwarf/line
-	cd proctl && go test -c $(PREFIX)/proctl && codesign -s $(CERT) ./proctl.test && ./proctl.test $(TESTFLAGS) && rm ./proctl.test
+	cd proc && go test -c $(PREFIX)/proc && codesign -s $(CERT) ./proc.test && ./proc.test $(TESTFLAGS) && rm ./proc.test
 	cd service/rest && go test -c $(PREFIX)/service/rest && codesign -s $(CERT) ./rest.test && ./rest.test $(TESTFLAGS) && rm ./rest.test
 else
 	go test -v ./...
 endif
 
-test-proctl-run:
+test-proc-run:
 ifeq "$(UNAME)" "Darwin"
 ifeq "$(CERT)" ""
 	$(error You must provide a CERT env var)
 endif
-	cd proctl && go test -c $(PREFIX)/proctl && codesign -s $(CERT) ./proctl.test && ./proctl.test -test.run $(RUN) && rm ./proctl.test
+	cd proc && go test -c $(PREFIX)/proc && codesign -s $(CERT) ./proc.test && ./proc.test -test.run $(RUN) && rm ./proc.test
 else
-	cd proctl && go test -run $(RUN)
+	cd proc && go test -run $(RUN)
 endif
 
 test-integration-run:

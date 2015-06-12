@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	protest "github.com/derekparker/delve/proctl/test"
+	protest "github.com/derekparker/delve/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 )

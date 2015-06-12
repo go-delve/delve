@@ -1,4 +1,4 @@
-package proctl
+package proc
 
 import (
 	"debug/dwarf"
@@ -26,7 +26,7 @@ type DebuggedProcess struct {
 	Pid     int         // Process Pid
 	Process *os.Process // Pointer to process struct for the actual process we are debugging
 
-	// Software breakpoint table. Hardware breakpoints are stored in proctl/arch.go, as they are architecture dependant.
+	// Software breakpoint table. Hardware breakpoints are stored in proc/arch.go, as they are architecture dependant.
 	Breakpoints map[uint64]*Breakpoint
 
 	// List of threads mapped as such: pid -> *ThreadContext

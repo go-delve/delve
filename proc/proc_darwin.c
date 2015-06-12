@@ -1,4 +1,4 @@
-#include "proctl_darwin.h"
+#include "proc_darwin.h"
 
 static const unsigned char info_plist[]
 __attribute__ ((section ("__TEXT,__info_plist"),used)) =

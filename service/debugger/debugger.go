@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"runtime"
 
-	"github.com/derekparker/delve/proctl"
+	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service/api"
 )
 
@@ -14,8 +14,8 @@ import (
 // Debugger can be exposed by other services.
 type Debugger struct {
 	config     *Config
-	process    *proctl.DebuggedProcess
-	processOps chan func(*proctl.DebuggedProcess)
+	process    *proc.DebuggedProcess
+	processOps chan func(*proc.DebuggedProcess)
 	stop       chan stopSignal
 	running    bool
 }
@@ -42,7 +42,7 @@ type stopSignal struct {
 // New creates a new Debugger.
 func New(config *Config) *Debugger {
 	debugger := &Debugger{
-		processOps: make(chan func(*proctl.DebuggedProcess)),
+		processOps: make(chan func(*proc.DebuggedProcess)),
 		config:     config,
 		stop:       make(chan stopSignal),
 	}
@@ -61,13 +61,13 @@ func New(config *Config) *Debugger {
 // instance, when performing an operation like halt which merely sends a
 // signal to the process rather than performing something like a ptrace
 // operation.
-func (d *Debugger) withProcess(f func(*proctl.DebuggedProcess) error) error {
+func (d *Debugger) withProcess(f func(*proc.DebuggedProcess) error) error {
 	if !d.running {
 		return fmt.Errorf("debugger isn't running")
 	}
 
 	result := make(chan error)
-	d.processOps <- func(proc *proctl.DebuggedProcess) {
+	d.processOps <- func(proc *proc.DebuggedProcess) {
 		result <- f(proc)
 	}
 	return <-result
@@ -87,14 +87,14 @@ func (d *Debugger) Run() error {
 	// Create the process by either attaching or launching.
 	if d.config.AttachPid > 0 {
 		log.Printf("attaching to pid %d", d.config.AttachPid)
-		p, err := proctl.Attach(d.config.AttachPid)
+		p, err := proc.Attach(d.config.AttachPid)
 		if err != nil {
 			return fmt.Errorf("couldn't attach to pid %d: %s", d.config.AttachPid, err)
 		}
 		d.process = p
 	} else {
 		log.Printf("launching process with args: %v", d.config.ProcessArgs)
-		p, err := proctl.Launch(d.config.ProcessArgs)
+		p, err := proc.Launch(d.config.ProcessArgs)
 		if err != nil {
 			return fmt.Errorf("couldn't launch process: %s", err)
 		}
@@ -143,7 +143,7 @@ func (d *Debugger) Run() error {
 			} else {
 				// Detach
 				if !d.process.Exited() {
-					if err := proctl.PtraceDetach(d.process.Pid, 0); err == nil {
+					if err := proc.PtraceDetach(d.process.Pid, 0); err == nil {
 						log.Print("detached from process")
 					} else {
 						log.Printf("couldn't detach from process: %s", err)
@@ -169,7 +169,7 @@ func (d *Debugger) Detach(kill bool) error {
 func (d *Debugger) State() (*api.DebuggerState, error) {
 	var state *api.DebuggerState
 
-	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+	err := d.withProcess(func(p *proc.DebuggedProcess) error {
 		var thread *api.Thread
 		th := p.CurrentThread
 		if th != nil {
@@ -193,9 +193,9 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 	return state, err
 }
 
-	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
 func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	var createdBp *api.Breakpoint
+	err := d.withProcess(func(p *proc.DebuggedProcess) error {
 		var loc string
 		switch {
 		case len(requestedBp.File) > 0:
@@ -263,7 +263,7 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 
 func (d *Debugger) Threads() []*api.Thread {
 	threads := []*api.Thread{}
-	d.withProcess(func(p *proctl.DebuggedProcess) error {
+	d.withProcess(func(p *proc.DebuggedProcess) error {
 		for _, th := range p.Threads {
 			threads = append(threads, convertThread(th))
 		}
@@ -291,23 +291,23 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	var err error
 	switch command.Name {
 	case api.Continue:
-		err = d.withProcess(func(p *proctl.DebuggedProcess) error {
+		err = d.withProcess(func(p *proc.DebuggedProcess) error {
 			log.Print("continuing")
 			e := p.Continue()
 			return e
 		})
 	case api.Next:
-		err = d.withProcess(func(p *proctl.DebuggedProcess) error {
+		err = d.withProcess(func(p *proc.DebuggedProcess) error {
 			log.Print("nexting")
 			return p.Next()
 		})
 	case api.Step:
-		err = d.withProcess(func(p *proctl.DebuggedProcess) error {
+		err = d.withProcess(func(p *proc.DebuggedProcess) error {
 			log.Print("stepping")
 			return p.Step()
 		})
 	case api.SwitchThread:
-		err = d.withProcess(func(p *proctl.DebuggedProcess) error {
+		err = d.withProcess(func(p *proc.DebuggedProcess) error {
 			log.Printf("switching to thread %d", command.ThreadID)
 			return p.SwitchThread(command.ThreadID)
 		})
@@ -319,7 +319,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	}
 	if err != nil {
 		// Only report the error if it's not a process exit.
-		if _, exited := err.(proctl.ProcessExitedError); !exited {
+		if _, exited := err.(proc.ProcessExitedError); !exited {
 			return nil, err
 		}
 	}
@@ -333,7 +333,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	}
 
 	files := []string{}
-	d.withProcess(func(p *proctl.DebuggedProcess) error {
+	d.withProcess(func(p *proc.DebuggedProcess) error {
 		for f := range p.Sources() {
 			if regex.Match([]byte(f)) {
 				files = append(files, f)
@@ -351,7 +351,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	}
 
 	funcs := []string{}
-	d.withProcess(func(p *proctl.DebuggedProcess) error {
+	d.withProcess(func(p *proc.DebuggedProcess) error {
 		for _, f := range p.Funcs() {
 			if f.Sym != nil && regex.Match([]byte(f.Name)) {
 				funcs = append(funcs, f.Name)
@@ -369,7 +369,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 	}
 
 	vars := []api.Variable{}
-	err = d.withProcess(func(p *proctl.DebuggedProcess) error {
+	err = d.withProcess(func(p *proc.DebuggedProcess) error {
 		thread, found := p.Threads[threadID]
 		if !found {
 			return fmt.Errorf("couldn't find thread %d", threadID)
@@ -390,7 +390,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 
 func (d *Debugger) LocalVariables(threadID int) ([]api.Variable, error) {
 	vars := []api.Variable{}
-	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+	err := d.withProcess(func(p *proc.DebuggedProcess) error {
 		thread, found := p.Threads[threadID]
 		if !found {
 			return fmt.Errorf("couldn't find thread %d", threadID)
@@ -409,7 +409,7 @@ func (d *Debugger) LocalVariables(threadID int) ([]api.Variable, error) {
 
 func (d *Debugger) FunctionArguments(threadID int) ([]api.Variable, error) {
 	vars := []api.Variable{}
-	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+	err := d.withProcess(func(p *proc.DebuggedProcess) error {
 		thread, found := p.Threads[threadID]
 		if !found {
 			return fmt.Errorf("couldn't find thread %d", threadID)
@@ -428,7 +428,7 @@ func (d *Debugger) FunctionArguments(threadID int) ([]api.Variable, error) {
 
 func (d *Debugger) EvalVariableInThread(threadID int, symbol string) (*api.Variable, error) {
 	var variable *api.Variable
-	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+	err := d.withProcess(func(p *proc.DebuggedProcess) error {
 		thread, found := p.Threads[threadID]
 		if !found {
 			return fmt.Errorf("couldn't find thread %d", threadID)
@@ -446,7 +446,7 @@ func (d *Debugger) EvalVariableInThread(threadID int, symbol string) (*api.Varia
 
 func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	goroutines := []*api.Goroutine{}
-	err := d.withProcess(func(p *proctl.DebuggedProcess) error {
+	err := d.withProcess(func(p *proc.DebuggedProcess) error {
 		gs, err := p.GoroutinesInfo()
 		if err != nil {
 			return err
@@ -460,7 +460,7 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 }
 
 // convertBreakpoint converts an internal breakpoint to an API Breakpoint.
-func convertBreakpoint(bp *proctl.Breakpoint) *api.Breakpoint {
+func convertBreakpoint(bp *proc.Breakpoint) *api.Breakpoint {
 	return &api.Breakpoint{
 		ID:           bp.ID,
 		FunctionName: bp.FunctionName,
@@ -471,7 +471,7 @@ func convertBreakpoint(bp *proctl.Breakpoint) *api.Breakpoint {
 }
 
 // convertThread converts an internal thread to an API Thread.
-func convertThread(th *proctl.ThreadContext) *api.Thread {
+func convertThread(th *proc.ThreadContext) *api.Thread {
 	var (
 		function *api.Function
 		file     string
@@ -504,7 +504,7 @@ func convertThread(th *proctl.ThreadContext) *api.Thread {
 }
 
 // convertVar converts an internal variable to an API Variable.
-func convertVar(v *proctl.Variable) api.Variable {
+func convertVar(v *proc.Variable) api.Variable {
 	return api.Variable{
 		Name:  v.Name,
 		Value: v.Value,
@@ -513,7 +513,7 @@ func convertVar(v *proctl.Variable) api.Variable {
 }
 
 // convertGoroutine converts an internal Goroutine to an API Goroutine.
-func convertGoroutine(g *proctl.G) *api.Goroutine {
+func convertGoroutine(g *proc.G) *api.Goroutine {
 	var function *api.Function
 	if g.Func != nil {
 		function = &api.Function{

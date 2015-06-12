@@ -1,6 +1,6 @@
-package proctl
+package proc
 
-// #include "proctl_darwin.h"
+// #include "proc_darwin.h"
 // #include "exec_darwin.h"
 // #include <stdlib.h>
 import "C"

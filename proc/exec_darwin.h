@@ -1,4 +1,4 @@
-#include "proctl_darwin.h"
+#include "proc_darwin.h"
 
 #include <unistd.h>
 #include <sys/ptrace.h>

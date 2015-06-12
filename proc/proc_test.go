@@ -1,4 +1,4 @@
-package proctl
+package proc
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	protest "github.com/derekparker/delve/proctl/test"
+	protest "github.com/derekparker/delve/proc/test"
 )
 
 func TestMain(m *testing.M) {

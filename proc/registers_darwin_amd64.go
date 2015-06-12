@@ -1,4 +1,4 @@
-package proctl
+package proc
 
 // #include "threads_darwin.h"
 import "C"

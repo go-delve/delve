@@ -12,7 +12,7 @@ import (
 	"github.com/peterh/liner"
 	sys "golang.org/x/sys/unix"
 
-	"github.com/derekparker/delve/proctl"
+	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service"
 )
 
@@ -92,8 +92,8 @@ func (t *Term) Run() (error, int) {
 		cmd := cmds.Find(cmdstr)
 		if err := cmd(t.client, args...); err != nil {
 			switch err.(type) {
-			case proctl.ProcessExitedError:
-				pe := err.(proctl.ProcessExitedError)
+			case proc.ProcessExitedError:
+				pe := err.(proc.ProcessExitedError)
 				fmt.Fprintf(os.Stderr, "Process exited with status %d\n", pe.Status)
 			default:
 				fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)

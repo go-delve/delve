@@ -1,11 +1,11 @@
-package proctl
+package proc
 
 import (
 	"fmt"
 	"sort"
 	"testing"
 
-	protest "github.com/derekparker/delve/proctl/test"
+	protest "github.com/derekparker/delve/proc/test"
 )
 
 type varTest struct {
