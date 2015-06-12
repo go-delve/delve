@@ -120,8 +120,10 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 			break
 		}
 		if v == nil {
-			if err := setHardwareBreakpoint(i, tid, addr); err != nil {
-				return nil, fmt.Errorf("could not set hardware breakpoint: %v", err)
+			for t, _ := range dbp.Threads {
+				if err := setHardwareBreakpoint(i, t, addr); err != nil {
+					return nil, fmt.Errorf("could not set hardware breakpoint on thread %d: %s", t, err)
+				}
 			}
 			dbp.HWBreakPoints[i] = dbp.newHardwareBreakpoint(fn.Name, f, l, addr, nil, temp, i)
 			return dbp.HWBreakPoints[i], nil

@@ -46,11 +46,6 @@ func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 		return PtracePokeUser(tid, dr7off, dr7)
 	}
 
-	// Error out if dr`reg` is already used
-	if dr7&(0x3<<uint(reg*C.DR_ENABLE_SIZE)) != 0 {
-		return fmt.Errorf("dr%d already enabled", reg)
-	}
-
 	// Set the debug register `reg` with the address of the
 	// instruction we want to trigger a debug exception.
 	if err := PtracePokeUser(tid, drxoff, uintptr(addr)); err != nil {

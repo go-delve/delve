@@ -252,6 +252,14 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*ThreadContext, error) {
 			if err != nil {
 				return nil, err
 			}
+			for reg, bp := range dbp.HWBreakPoints {
+				if bp == nil {
+					continue
+				}
+				if err = setHardwareBreakpoint(reg, th.Id, bp.Addr); err != nil {
+					return nil, err
+				}
+			}
 			if err = th.Continue(); err != nil {
 				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}

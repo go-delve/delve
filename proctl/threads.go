@@ -117,7 +117,7 @@ func (thread *ThreadContext) Location() (*Location, error) {
 // This functionality is implemented by finding all possible next lines
 // and setting a breakpoint at them. Once we've set a breakpoint at each
 // potential line, we continue the thread.
-func (thread *ThreadContext) Next() (err error) {
+func (thread *ThreadContext) SetNextBreakpoints() (err error) {
 	curpc, err := thread.PC()
 	if err != nil {
 		return err
@@ -144,7 +144,7 @@ func (thread *ThreadContext) Next() (err error) {
 			return err
 		}
 	}
-	return thread.Continue()
+	return nil
 }
 
 // Go routine is exiting.

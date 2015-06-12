@@ -1,8 +1,8 @@
-// fix lines
 package main
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 )
 
@@ -45,4 +45,9 @@ func main() {
 // fix line
 func testgoroutine(foo int, d chan int) {
 	d <- foo
+}
+
+func init() {
+	runtime.LockOSThread()
+	runtime.GOMAXPROCS(4)
 }
