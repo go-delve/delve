@@ -2,13 +2,19 @@ package rest
 
 import (
 	"net"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	protest "github.com/derekparker/delve/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 )
+
+func init() {
+	runtime.GOMAXPROCS(2)
+}
 
 func TestMain(m *testing.M) {
 	protest.RunTestsWithFixtures(m)
@@ -272,9 +278,15 @@ func TestClientServer_switchThread(t *testing.T) {
 
 func TestClientServer_infoLocals(t *testing.T) {
 	withTestClient("testnextprog", t, func(c service.Client) {
-		fp, err := filepath.Abs("../../_fixtures/testnextprog.go")
+		fp, err := filepath.Abs("_fixtures/testnextprog.go")
 		if err != nil {
 			t.Fatal(err)
+		}
+		if _, err := os.Stat(fp); err != nil {
+			fp, err = filepath.Abs("../../_fixtures/testnextprog.go")
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		_, err = c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
 		if err != nil {
@@ -296,9 +308,15 @@ func TestClientServer_infoLocals(t *testing.T) {
 
 func TestClientServer_infoArgs(t *testing.T) {
 	withTestClient("testnextprog", t, func(c service.Client) {
-		fp, err := filepath.Abs("../../_fixtures/testnextprog.go")
+		fp, err := filepath.Abs("_fixtures/testnextprog.go")
 		if err != nil {
 			t.Fatal(err)
+		}
+		if _, err := os.Stat(fp); err != nil {
+			fp, err = filepath.Abs("../../_fixtures/testnextprog.go")
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		_, err = c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 47})
 		if err != nil {

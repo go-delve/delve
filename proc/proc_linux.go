@@ -15,7 +15,6 @@ import (
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
-	"github.com/derekparker/delve/source"
 )
 
 const (
@@ -31,27 +30,27 @@ type OSProcessDetails interface{}
 // `cmd` is the program to run, and then rest are the arguments
 // to be supplied to that process.
 func Launch(cmd []string) (*DebuggedProcess, error) {
-	proc := exec.Command(cmd[0])
-	proc.Args = cmd
-	proc.Stdout = os.Stdout
-	proc.Stderr = os.Stderr
-	proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
-
-	if err := proc.Start(); err != nil {
+	var (
+		proc *exec.Cmd
+		err  error
+	)
+	dbp := New(0)
+	dbp.execPtraceFunc(func() {
+		proc = exec.Command(cmd[0])
+		proc.Args = cmd
+		proc.Stdout = os.Stdout
+		proc.Stderr = os.Stderr
+		proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
+		err = proc.Start()
+	})
+	if err != nil {
 		return nil, err
 	}
-	_, _, err := wait(proc.Process.Pid, 0)
+	dbp.Pid = proc.Process.Pid
+	_, _, err = wait(proc.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	dbp := &DebuggedProcess{
-		Pid:         proc.Process.Pid,
-		Threads:     make(map[int]*Thread),
-		Breakpoints: make(map[uint64]*Breakpoint),
-		os:          new(OSProcessDetails),
-		ast:         source.New(),
-	}
-
 	return initializeDebugProcess(dbp, proc.Path, false)
 }
 
@@ -66,8 +65,9 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*Thread, error) {
 		return thread, nil
 	}
 
+	var err error
 	if attach {
-		err := sys.PtraceAttach(tid)
+		dbp.execPtraceFunc(func() { err = sys.PtraceAttach(tid) })
 		if err != nil && err != sys.EPERM {
 			// Do not return err if err == EPERM,
 			// we may already be tracing this thread due to
@@ -86,14 +86,14 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	err := syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE)
+	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
 		_, _, err = wait(tid, 0)
 		if err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
 
-		err := syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE)
+		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 		if err != nil {
 			return nil, fmt.Errorf("could not set options for new traced thread %d %s", tid, err)
 		}
@@ -244,7 +244,8 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*Thread, error) {
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
-			cloned, err := sys.PtraceGetEventMsg(wpid)
+			var cloned uint
+			dbp.execPtraceFunc(func() { cloned, err = sys.PtraceGetEventMsg(wpid) })
 			if err != nil {
 				return nil, fmt.Errorf("could not get event message: %s", err)
 			}
@@ -256,7 +257,7 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*Thread, error) {
 				if bp == nil {
 					continue
 				}
-				if err = setHardwareBreakpoint(reg, th.Id, bp.Addr); err != nil {
+				if err = dbp.setHardwareBreakpoint(reg, th.Id, bp.Addr); err != nil {
 					return nil, err
 				}
 			}

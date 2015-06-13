@@ -21,7 +21,7 @@ import "fmt"
 // debug register `reg` with the address of the instruction
 // that we want to break at. There are only 4 debug registers
 // DR0-DR3. Debug register 7 is the control register.
-func setHardwareBreakpoint(reg, tid int, addr uint64) error {
+func (dbp *DebuggedProcess) setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	if reg < 0 || reg > 3 {
 		return fmt.Errorf("invalid debug register value")
 	}
@@ -32,10 +32,12 @@ func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 		drxmask   = uintptr((((1 << C.DR_CONTROL_SIZE) - 1) << uintptr(reg*C.DR_CONTROL_SIZE)) | (((1 << C.DR_ENABLE_SIZE) - 1) << uintptr(reg*C.DR_ENABLE_SIZE)))
 		drxenable = uintptr(0x1) << uintptr(reg*C.DR_ENABLE_SIZE)
 		drxctl    = uintptr(C.DR_RW_EXECUTE|C.DR_LEN_1) << uintptr(reg*C.DR_CONTROL_SIZE)
+		dr7       uintptr
 	)
 
 	// Get current state
-	dr7, err := PtracePeekUser(tid, dr7off)
+	var err error
+	dbp.execPtraceFunc(func() { dr7, err = PtracePeekUser(tid, dr7off) })
 	if err != nil {
 		return err
 	}
@@ -43,12 +45,14 @@ func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	// If addr == 0 we are expected to disable the breakpoint
 	if addr == 0 {
 		dr7 &= ^drxmask
-		return PtracePokeUser(tid, dr7off, dr7)
+		dbp.execPtraceFunc(func() { err = PtracePokeUser(tid, dr7off, dr7) })
+		return err
 	}
 
 	// Set the debug register `reg` with the address of the
 	// instruction we want to trigger a debug exception.
-	if err := PtracePokeUser(tid, drxoff, uintptr(addr)); err != nil {
+	dbp.execPtraceFunc(func() { err = PtracePokeUser(tid, drxoff, uintptr(addr)) })
+	if err != nil {
 		return err
 	}
 
@@ -61,12 +65,13 @@ func setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	// instructs the cpu to raise a debug
 	// exception when hitting the address of
 	// an instruction stored in dr0-dr3.
-	return PtracePokeUser(tid, dr7off, dr7)
+	dbp.execPtraceFunc(func() { err = PtracePokeUser(tid, dr7off, dr7) })
+	return err
 }
 
 // Clears a hardware breakpoint. Essentially sets
 // the debug reg to 0 and clears the control register
 // flags for that reg.
-func clearHardwareBreakpoint(reg, tid int) error {
-	return setHardwareBreakpoint(reg, tid, 0)
+func (dbp *DebuggedProcess) clearHardwareBreakpoint(reg, tid int) error {
+	return dbp.setHardwareBreakpoint(reg, tid, 0)
 }

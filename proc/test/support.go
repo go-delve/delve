@@ -28,7 +28,7 @@ func BuildFixture(name string) Fixture {
 		return f
 	}
 	parent := ".."
-	fixturesDir := filepath.Join(parent, "_fixtures")
+	fixturesDir := "_fixtures"
 	for depth := 0; depth < 10; depth++ {
 		if _, err := os.Stat(fixturesDir); err == nil {
 			break

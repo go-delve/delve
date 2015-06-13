@@ -10,20 +10,22 @@ import (
 	protest "github.com/derekparker/delve/proc/test"
 )
 
+func init() {
+	runtime.GOMAXPROCS(2)
+}
+
 func TestMain(m *testing.M) {
 	protest.RunTestsWithFixtures(m)
 }
 
 func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess, fixture protest.Fixture)) {
-	runtime.LockOSThread()
-
 	fixture := protest.BuildFixture(name)
 	p, err := Launch([]string{fixture.Path})
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
 
-	defer p.Detach()
+	defer p.Detach(true)
 
 	fn(p, fixture)
 }
@@ -88,6 +90,7 @@ func TestExit(t *testing.T) {
 }
 
 func TestHalt(t *testing.T) {
+	runtime.GOMAXPROCS(2)
 	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
 		go func() {
 			for {

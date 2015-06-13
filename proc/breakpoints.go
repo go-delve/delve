@@ -30,7 +30,7 @@ func (bp *Breakpoint) String() string {
 // hardware or software breakpoint.
 func (bp *Breakpoint) Clear(thread *Thread) (*Breakpoint, error) {
 	if bp.hardware {
-		if err := clearHardwareBreakpoint(bp.reg, thread.Id); err != nil {
+		if err := thread.dbp.clearHardwareBreakpoint(bp.reg, thread.Id); err != nil {
 			return nil, err
 		}
 		return bp, nil
@@ -121,7 +121,7 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 		}
 		if v == nil {
 			for t, _ := range dbp.Threads {
-				if err := setHardwareBreakpoint(i, t, addr); err != nil {
+				if err := dbp.setHardwareBreakpoint(i, t, addr); err != nil {
 					return nil, fmt.Errorf("could not set hardware breakpoint on thread %d: %s", t, err)
 				}
 			}

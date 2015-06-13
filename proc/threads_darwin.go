@@ -36,7 +36,9 @@ func (t *Thread) singleStep() error {
 
 func (t *Thread) resume() error {
 	// TODO(dp) set flag for ptrace stops
-	if PtraceCont(t.dbp.Pid, 0) == nil {
+	var err error
+	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.Pid, 0) })
+	if err == nil {
 		return nil
 	}
 	kret := C.resume_thread(t.os.thread_act)

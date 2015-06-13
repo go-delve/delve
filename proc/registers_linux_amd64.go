@@ -18,14 +18,18 @@ func (r *Regs) CX() uint64 {
 	return r.regs.Rcx
 }
 
-func (r *Regs) SetPC(thread *Thread, pc uint64) error {
+func (r *Regs) SetPC(thread *Thread, pc uint64) (err error) {
 	r.regs.SetPC(pc)
-	return sys.PtraceSetRegs(thread.Id, r.regs)
+	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.Id, r.regs) })
+	return
 }
 
 func registers(thread *Thread) (Registers, error) {
-	var regs sys.PtraceRegs
-	err := sys.PtraceGetRegs(thread.Id, &regs)
+	var (
+		regs sys.PtraceRegs
+		err  error
+	)
+	thread.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(thread.Id, &regs) })
 	if err != nil {
 		return nil, err
 	}

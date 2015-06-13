@@ -15,7 +15,6 @@ import (
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
-	"github.com/derekparker/delve/source"
 	sys "golang.org/x/sys/unix"
 )
 
@@ -44,16 +43,12 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	var argv **C.char
 	argv = &argvSlice[0]
 
-	dbp := &DebuggedProcess{
-		Threads:     make(map[int]*Thread),
-		Breakpoints: make(map[uint64]*Breakpoint),
-		firstStart:  true,
-		os:          new(OSProcessDetails),
-		ast:         source.New(),
-	}
-
-	ret := C.fork_exec(argv0, argv, &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
-	pid := int(ret)
+	dbp := New(0)
+	var pid int
+	dbp.execPtraceFunc(func() {
+		ret := C.fork_exec(argv0, argv, &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
+		pid = int(ret)
+	})
 	if pid <= 0 {
 		return nil, fmt.Errorf("could not fork/exec")
 	}

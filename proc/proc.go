@@ -49,6 +49,23 @@ type DebuggedProcess struct {
 	running                 bool
 	halt                    bool
 	exited                  bool
+	ptraceChan              chan func()
+	ptraceDoneChan          chan interface{}
+}
+
+func New(pid int) *DebuggedProcess {
+	dbp := &DebuggedProcess{
+		Pid:            pid,
+		Threads:        make(map[int]*Thread),
+		Breakpoints:    make(map[uint64]*Breakpoint),
+		firstStart:     true,
+		os:             new(OSProcessDetails),
+		ast:            source.New(),
+		ptraceChan:     make(chan func()),
+		ptraceDoneChan: make(chan interface{}),
+	}
+	go dbp.handlePtraceFuncs()
+	return dbp
 }
 
 // A ManualStopError happens when the user triggers a
@@ -72,22 +89,33 @@ func (pe ProcessExitedError) Error() string {
 
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*DebuggedProcess, error) {
-	dbp := &DebuggedProcess{
-		Pid:         pid,
-		Threads:     make(map[int]*Thread),
-		Breakpoints: make(map[uint64]*Breakpoint),
-		os:          new(OSProcessDetails),
-		ast:         source.New(),
-	}
-	dbp, err := initializeDebugProcess(dbp, "", true)
+	dbp, err := initializeDebugProcess(New(pid), "", true)
 	if err != nil {
 		return nil, err
 	}
 	return dbp, nil
 }
 
-func (dbp *DebuggedProcess) Detach() error {
-	return PtraceDetach(dbp.Pid, int(sys.SIGINT))
+func (dbp *DebuggedProcess) Detach(kill bool) (err error) {
+	// Clean up any breakpoints we've set.
+	for _, bp := range dbp.arch.HardwareBreakpoints() {
+		if bp != nil {
+			dbp.Clear(bp.Addr)
+		}
+	}
+	for _, bp := range dbp.Breakpoints {
+		if bp != nil {
+			dbp.Clear(bp.Addr)
+		}
+	}
+	dbp.execPtraceFunc(func() {
+		var sig int
+		if kill {
+			sig = int(sys.SIGINT)
+		}
+		err = PtraceDetach(dbp.Pid, sig)
+	})
+	return
 }
 
 // Returns whether or not Delve thinks the debugged
@@ -497,6 +525,21 @@ func (dbp *DebuggedProcess) PCToLine(pc uint64) (string, int, *gosym.Func) {
 	return dbp.goSymTable.PCToLine(pc)
 }
 
+// Finds the breakpoint for the given ID.
+func (dbp *DebuggedProcess) FindBreakpointByID(id int) (*Breakpoint, bool) {
+	for _, bp := range dbp.arch.HardwareBreakpoints() {
+		if bp != nil && bp.ID == id {
+			return bp, true
+		}
+	}
+	for _, bp := range dbp.Breakpoints {
+		if bp.ID == id {
+			return bp, true
+		}
+	}
+	return nil, false
+}
+
 // Finds the breakpoint for the given pc.
 func (dbp *DebuggedProcess) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
 	for _, bp := range dbp.arch.HardwareBreakpoints() {
@@ -513,7 +556,8 @@ func (dbp *DebuggedProcess) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
 // Returns a new DebuggedProcess struct.
 func initializeDebugProcess(dbp *DebuggedProcess, path string, attach bool) (*DebuggedProcess, error) {
 	if attach {
-		err := sys.PtraceAttach(dbp.Pid)
+		var err error
+		dbp.execPtraceFunc(func() { err = sys.PtraceAttach(dbp.Pid) })
 		if err != nil {
 			return nil, err
 		}
@@ -622,4 +666,21 @@ func (dbp *DebuggedProcess) run(fn func() error) error {
 		}
 	}
 	return nil
+}
+
+func (dbp *DebuggedProcess) handlePtraceFuncs() {
+	// We must ensure here that we are running on the same thread during
+	// the execution of dbg. This is due to the fact that ptrace(2) expects
+	// all commands after PTRACE_ATTACH to come from the same thread.
+	runtime.LockOSThread()
+
+	for fn := range dbp.ptraceChan {
+		fn()
+		dbp.ptraceDoneChan <- nil
+	}
+}
+
+func (dbp *DebuggedProcess) execPtraceFunc(fn func()) {
+	dbp.ptraceChan <- fn
+	<-dbp.ptraceDoneChan
 }
