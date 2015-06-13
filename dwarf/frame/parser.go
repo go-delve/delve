@@ -13,90 +13,90 @@ import (
 type parsefunc func(*parseContext) parsefunc
 
 type parseContext struct {
-	Buf     *bytes.Buffer
-	Entries FrameDescriptionEntries
-	Common  *CommonInformationEntry
-	Frame   *FrameDescriptionEntry
-	Length  uint32
+	buf     *bytes.Buffer
+	entries FrameDescriptionEntries
+	common  *CommonInformationEntry
+	frame   *FrameDescriptionEntry
+	length  uint32
 }
 
 // Parse takes in data (a byte slice) and returns a slice of
-// CommonInformationEntry structures. Each CommonInformationEntry
-// has a slice of FrameDescriptionEntry structures.
+// commonInformationEntry structures. Each commonInformationEntry
+// has a slice of frameDescriptionEntry structures.
 func Parse(data []byte) FrameDescriptionEntries {
 	var (
 		buf  = bytes.NewBuffer(data)
-		pctx = &parseContext{Buf: buf, Entries: NewFrameIndex()}
+		pctx = &parseContext{buf: buf, entries: NewFrameIndex()}
 	)
 
-	for fn := parseLength; buf.Len() != 0; {
+	for fn := parselength; buf.Len() != 0; {
 		fn = fn(pctx)
 	}
 
-	return pctx.Entries
+	return pctx.entries
 }
 
 func cieEntry(data []byte) bool {
 	return bytes.Equal(data, []byte{0xff, 0xff, 0xff, 0xff})
 }
 
-func parseLength(ctx *parseContext) parsefunc {
-	var data = ctx.Buf.Next(8)
+func parselength(ctx *parseContext) parsefunc {
+	var data = ctx.buf.Next(8)
 
-	ctx.Length = binary.LittleEndian.Uint32(data[:4]) - 4 // take off the length of the CIE id / CIE pointer.
+	ctx.length = binary.LittleEndian.Uint32(data[:4]) - 4 // take off the length of the CIE id / CIE pointer.
 
 	if cieEntry(data[4:]) {
-		ctx.Common = &CommonInformationEntry{Length: ctx.Length}
+		ctx.common = &CommonInformationEntry{Length: ctx.length}
 		return parseCIE
 	}
 
-	ctx.Frame = &FrameDescriptionEntry{Length: ctx.Length, CIE: ctx.Common}
+	ctx.frame = &FrameDescriptionEntry{Length: ctx.length, CIE: ctx.common}
 	return parseFDE
 }
 
 func parseFDE(ctx *parseContext) parsefunc {
-	r := ctx.Buf.Next(int(ctx.Length))
+	r := ctx.buf.Next(int(ctx.length))
 
-	ctx.Frame.begin = binary.LittleEndian.Uint64(r[:8])
-	ctx.Frame.end = binary.LittleEndian.Uint64(r[8:16])
+	ctx.frame.begin = binary.LittleEndian.Uint64(r[:8])
+	ctx.frame.end = binary.LittleEndian.Uint64(r[8:16])
 
 	// Insert into the tree after setting address range begin
 	// otherwise compares won't work.
-	ctx.Entries = append(ctx.Entries, ctx.Frame)
+	ctx.entries = append(ctx.entries, ctx.frame)
 
 	// The rest of this entry consists of the instructions
 	// so we can just grab all of the data from the buffer
 	// cursor to length.
-	ctx.Frame.Instructions = r[16:]
-	ctx.Length = 0
+	ctx.frame.Instructions = r[16:]
+	ctx.length = 0
 
-	return parseLength
+	return parselength
 }
 
 func parseCIE(ctx *parseContext) parsefunc {
-	data := ctx.Buf.Next(int(ctx.Length))
+	data := ctx.buf.Next(int(ctx.length))
 	buf := bytes.NewBuffer(data)
 	// parse version
-	ctx.Common.Version = data[0]
+	ctx.common.Version = data[0]
 
 	// parse augmentation
-	ctx.Common.Augmentation, _ = util.ParseString(buf)
+	ctx.common.Augmentation, _ = util.ParseString(buf)
 
 	// parse code alignment factor
-	ctx.Common.CodeAlignmentFactor, _ = util.DecodeULEB128(buf)
+	ctx.common.CodeAlignmentFactor, _ = util.DecodeULEB128(buf)
 
 	// parse data alignment factor
-	ctx.Common.DataAlignmentFactor, _ = util.DecodeSLEB128(buf)
+	ctx.common.DataAlignmentFactor, _ = util.DecodeSLEB128(buf)
 
 	// parse return address register
-	ctx.Common.ReturnAddressRegister, _ = util.DecodeULEB128(buf)
+	ctx.common.ReturnAddressRegister, _ = util.DecodeULEB128(buf)
 
 	// parse initial instructions
 	// The rest of this entry consists of the instructions
 	// so we can just grab all of the data from the buffer
 	// cursor to length.
-	ctx.Common.InitialInstructions = buf.Bytes() //ctx.Buf.Next(int(ctx.Length))
-	ctx.Length = 0
+	ctx.common.InitialInstructions = buf.Bytes() //ctx.buf.Next(int(ctx.length))
+	ctx.length = 0
 
-	return parseLength
+	return parselength
 }
