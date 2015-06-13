@@ -35,7 +35,7 @@ func (n NullAddrError) Error() string {
 func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]stackLocation, error) {
 	var (
 		ret       = pc
-		data      = make([]byte, 8)
+		data      = make([]byte, dbp.arch.PtrSize())
 		btoffset  int64
 		locations []stackLocation
 		retaddr   uintptr
@@ -46,7 +46,7 @@ func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]stackLocatio
 			return nil, err
 		}
 		btoffset += fde.ReturnAddressOffset(ret)
-		retaddr = uintptr(int64(sp) + btoffset + (i * 8))
+		retaddr = uintptr(int64(sp) + btoffset + (i * int64(dbp.arch.PtrSize())))
 		if retaddr == 0 {
 			return nil, NullAddrError{}
 		}
