@@ -60,6 +60,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	status := run(addr, logEnabled, headless)
+	fmt.Println("[Hope I was of service hunting your bug!]")
+	os.Exit(status)
+}
+
+func run(addr string, logEnabled, headless bool) int {
 	// Collect launch arguments
 	var processArgs []string
 	var attachPid int
@@ -69,24 +75,29 @@ func main() {
 		cmd := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
 		err := cmd.Run()
 		if err != nil {
-			fmt.Errorf("Could not compile program: %s\n", err)
-			os.Exit(1)
+			fmt.Println("Could not compile program:", err)
+			return 1
 		}
-		defer os.Remove(debugname)
+		fp, err := filepath.Abs("./" + debugname)
+		if err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		defer os.Remove(fp)
 
 		processArgs = append([]string{"./" + debugname}, flag.Args()[1:]...)
 	case "test":
 		wd, err := os.Getwd()
 		if err != nil {
 			fmt.Println(err)
-			os.Exit(1)
+			return 1
 		}
 		base := filepath.Base(wd)
 		cmd := exec.Command("go", "test", "-c", "-gcflags", "-N -l")
 		err = cmd.Run()
 		if err != nil {
 			fmt.Errorf("Could not compile program: %s\n", err)
-			os.Exit(1)
+			return 1
 		}
 		debugname := "./" + base + ".test"
 		defer os.Remove(debugname)
@@ -96,7 +107,7 @@ func main() {
 		pid, err := strconv.Atoi(flag.Args()[1])
 		if err != nil {
 			fmt.Errorf("Invalid pid: %d", flag.Args()[1])
-			os.Exit(1)
+			return 1
 		}
 		attachPid = pid
 	default:
@@ -107,7 +118,7 @@ func main() {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		fmt.Printf("couldn't start listener: %s\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Create and start a REST debugger server
@@ -118,7 +129,7 @@ func main() {
 	}, logEnabled)
 	go server.Run()
 
-	status := 0
+	var status int
 	if !headless {
 		// Create and start a terminal
 		client := rest.NewClient(listener.Addr().String())
@@ -134,8 +145,8 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println("[Hope I was of service hunting your bug!]")
-	os.Exit(status)
+
+	return status
 }
 
 // help prints help text to os.Stderr.
