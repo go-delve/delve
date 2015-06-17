@@ -53,6 +53,9 @@ type G struct {
 
 	// PC of entry to top-most deferred function.
 	DeferPC uint64
+
+	// Thread that this goroutine is currently allocated to
+	thread *Thread
 }
 
 // Returns whether the goroutine is blocked on
@@ -68,7 +71,7 @@ func (g *G) chanRecvReturnAddr(dbp *DebuggedProcess) (uint64, error) {
 		return 0, err
 	}
 	topLoc := locs[len(locs)-1]
-	return topLoc.addr, nil
+	return topLoc.PC, nil
 }
 
 // NoGError returned when a G could not be found

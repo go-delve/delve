@@ -59,6 +59,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
 		{aliases: []string{"info"}, cmdFn: info, helpMsg: "Provides info about args, funcs, locals, sources, or vars."},
 		{aliases: []string{"exit"}, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
+		{aliases: []string{"stack"}, cmdFn: stackCommand, helpMsg: "stack [<depth> [<goroutine id>]]. Prints stack."},
 	}
 
 	return c
@@ -189,7 +190,7 @@ func goroutines(client service.Client, args ...string) error {
 		if g.Function != nil {
 			fname = g.Function.Name
 		}
-		fmt.Printf("Goroutine %d - %s:%d %s\n", g.ID, g.File, g.Line, fname)
+		fmt.Printf("Goroutine %d - %s:%d %s (%d)\n", g.ID, g.File, g.Line, fname, g.PC)
 	}
 	return nil
 }
@@ -392,7 +393,7 @@ func info(client service.Client, args ...string) error {
 		data = filterVariables(vars, filter)
 
 	default:
-		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources, or vars")
+		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources or vars")
 	}
 
 	// sort and output data
@@ -400,6 +401,45 @@ func info(client service.Client, args ...string) error {
 
 	for _, d := range data {
 		fmt.Println(d)
+	}
+	return nil
+}
+
+func stackCommand(client service.Client, args ...string) error {
+	var err error
+
+	goroutineid := -1
+	depth := 10
+
+	switch len(args) {
+	case 0:
+		// nothing to do
+	case 2:
+		goroutineid, err = strconv.Atoi(args[1])
+		if err != nil {
+			return fmt.Errorf("Wrong argument: expected integer")
+		}
+		fallthrough
+	case 1:
+		depth, err = strconv.Atoi(args[0])
+		if err != nil {
+			return fmt.Errorf("Wrong argument: expected integer")
+		}
+
+	default:
+		return fmt.Errorf("Wrong number of arguments to stack")
+	}
+
+	stack, err := client.Stacktrace(goroutineid, depth)
+	if err != nil {
+		return err
+	}
+	for i := range stack {
+		name := "(nil)"
+		if stack[i].Function != nil {
+			name = stack[i].Function.Name
+		}
+		fmt.Printf("%d. %s\n\t%s:%d (%d)\n", i, name, stack[i].File, stack[i].Line, stack[i].PC)
 	}
 	return nil
 }

@@ -41,6 +41,13 @@ type Thread struct {
 	Function *Function `json:"function,omitempty"`
 }
 
+type Location struct {
+	PC       uint64    `json:"pc"`
+	File     string    `json:"file"`
+	Line     int       `json:"line"`
+	Function *Function `json:"function,omitempty"`
+}
+
 // Function represents thread-scoped function information.
 type Function struct {
 	// Name is the function name.

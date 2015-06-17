@@ -58,4 +58,7 @@ type Client interface {
 
 	// ListGoroutines lists all goroutines.
 	ListGoroutines() ([]*api.Goroutine, error)
+
+	// Returns stacktrace
+	Stacktrace(goroutineId, depth int) ([]*api.Location, error)
 }

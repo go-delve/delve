@@ -414,3 +414,102 @@ func TestSwitchThread(t *testing.T) {
 		}
 	})
 }
+
+type loc struct {
+	line int
+	fn   string
+}
+
+func (l1 *loc) match(l2 Location) bool {
+	if l1.line >= 0 {
+		if l1.line != l2.Line-1 {
+			return false
+		}
+	}
+
+	return l1.fn == l2.Fn.Name
+}
+
+func TestStacktrace(t *testing.T) {
+	stacks := [][]loc{
+		[]loc{{8, "main.func1"}, {16, "main.main"}},
+		[]loc{{8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
+	}
+	withTestProcess("stacktraceprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+		bp, err := p.BreakByLocation("main.stacktraceme")
+		assertNoError(err, t, "BreakByLocation()")
+
+		for i := range stacks {
+			assertNoError(p.Continue(), t, "Continue()")
+			locations, err := p.CurrentThread.Stacktrace(40)
+			assertNoError(err, t, "Stacktrace()")
+
+			if len(locations) != len(stacks[i])+2 {
+				t.Fatalf("Wrong stack trace size %d %d\n", len(locations), len(stacks[i])+2)
+			}
+
+			for j := range stacks[i] {
+				if !stacks[i][j].match(locations[j]) {
+					t.Fatalf("Wrong stack trace pos %d\n", j)
+				}
+			}
+		}
+
+		p.Clear(bp.Addr)
+		p.Continue()
+	})
+}
+
+func stackMatch(stack []loc, locations []Location) bool {
+	if len(stack) > len(locations) {
+		return false
+	}
+	for i := range stack {
+		if !stack[i].match(locations[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func TestStacktraceGoroutine(t *testing.T) {
+	mainStack := []loc{{18, "main.main"}}
+	agoroutineStack := []loc{{-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {6, "main.agoroutine"}}
+
+	withTestProcess("goroutinestackprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+		bp, err := p.BreakByLocation("main.stacktraceme")
+		assertNoError(err, t, "BreakByLocation()")
+
+		assertNoError(p.Continue(), t, "Continue()")
+
+		gs, err := p.GoroutinesInfo()
+		assertNoError(err, t, "GoroutinesInfo")
+
+		agoroutineCount := 0
+		mainCount := 0
+
+		for _, g := range gs {
+			locations, _ := p.GoroutineStacktrace(g, 40)
+			assertNoError(err, t, "GoroutineStacktrace()")
+
+			if stackMatch(mainStack, locations) {
+				mainCount++
+			}
+
+			if stackMatch(agoroutineStack, locations) {
+				agoroutineCount++
+			}
+		}
+
+		if mainCount != 1 {
+			t.Fatalf("Main goroutine stack not found")
+		}
+
+		if agoroutineCount != 10 {
+			t.Fatalf("Goroutine stacks not found (%d)", agoroutineStack)
+		}
+
+		p.Clear(bp.Addr)
+		p.Continue()
+	})
+}

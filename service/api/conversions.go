@@ -1,6 +1,9 @@
 package api
 
-import "github.com/derekparker/delve/proc"
+import (
+	"debug/gosym"
+	"github.com/derekparker/delve/proc"
+)
 
 // convertBreakpoint converts an internal breakpoint to an API Breakpoint.
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
@@ -27,14 +30,7 @@ func ConvertThread(th *proc.Thread) *Thread {
 		pc = loc.PC
 		file = loc.File
 		line = loc.Line
-		if loc.Fn != nil {
-			function = &Function{
-				Name:   loc.Fn.Name,
-				Type:   loc.Fn.Type,
-				Value:  loc.Fn.Value,
-				GoType: loc.Fn.GoType,
-			}
-		}
+		function = ConvertFunction(loc.Fn)
 	}
 
 	return &Thread{
@@ -55,23 +51,35 @@ func ConvertVar(v *proc.Variable) Variable {
 	}
 }
 
-// convertGoroutine converts an internal Goroutine to an API Goroutine.
-func ConvertGoroutine(g *proc.G) *Goroutine {
-	var function *Function
-	if g.Func != nil {
-		function = &Function{
-			Name:   g.Func.Name,
-			Type:   g.Func.Type,
-			Value:  g.Func.Value,
-			GoType: g.Func.GoType,
-		}
+func ConvertFunction(fn *gosym.Func) *Function {
+	if fn == nil {
+		return nil
 	}
 
+	return &Function{
+		Name:   fn.Name,
+		Type:   fn.Type,
+		Value:  fn.Value,
+		GoType: fn.GoType,
+	}
+}
+
+// convertGoroutine converts an internal Goroutine to an API Goroutine.
+func ConvertGoroutine(g *proc.G) *Goroutine {
 	return &Goroutine{
 		ID:       g.Id,
 		PC:       g.PC,
 		File:     g.File,
 		Line:     g.Line,
-		Function: function,
+		Function: ConvertFunction(g.Func),
+	}
+}
+
+func ConvertLocation(loc proc.Location) Location {
+	return Location{
+		PC:       loc.PC,
+		File:     loc.File,
+		Line:     loc.Line,
+		Function: ConvertFunction(loc.Fn),
 	}
 }
