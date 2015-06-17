@@ -254,11 +254,6 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 		if len(p.Breakpoints) != 0 {
 			t.Fatal("Not all breakpoints were cleaned up", len(p.Breakpoints))
 		}
-		for _, bp := range p.arch.HardwareBreakpoints() {
-			if bp != nil {
-				t.Fatal("Not all breakpoints were cleaned up", bp.Addr)
-			}
-		}
 	})
 }
 

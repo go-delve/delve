@@ -253,11 +253,12 @@ func (dbp *DebuggedProcess) trapWait(pid int) (*Thread, error) {
 			if err != nil {
 				return nil, err
 			}
-			for reg, bp := range dbp.HardwareBreakpoints() {
-				if bp == nil {
+			// Set all hardware breakpoints on the new thread.
+			for _, bp := range dbp.Breakpoints {
+				if !bp.hardware {
 					continue
 				}
-				if err = dbp.setHardwareBreakpoint(reg, th.Id, bp.Addr); err != nil {
+				if err = dbp.setHardwareBreakpoint(bp.reg, th.Id, bp.Addr); err != nil {
 					return nil, err
 				}
 			}

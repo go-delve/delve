@@ -117,13 +117,6 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 
 func (d *Debugger) Breakpoints() []*api.Breakpoint {
 	bps := []*api.Breakpoint{}
-	for _, bp := range d.process.HardwareBreakpoints() {
-		if bp == nil {
-			continue
-		}
-		bps = append(bps, api.ConvertBreakpoint(bp))
-	}
-
 	for _, bp := range d.process.Breakpoints {
 		if bp.Temp {
 			continue

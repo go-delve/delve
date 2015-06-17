@@ -63,22 +63,16 @@ func (iae InvalidAddressError) Error() string {
 	return fmt.Sprintf("Invalid address %#v\n", iae.address)
 }
 
-// Returns whether or not a breakpoint has been set for the given address.
-func (dbp *DebuggedProcess) BreakpointExists(addr uint64) bool {
-	for _, bp := range dbp.arch.HardwareBreakpoints() {
-		// TODO(darwin)
-		if runtime.GOOS == "darwin" {
-			break
-		}
-		if bp != nil && bp.Addr == addr {
-			return true
-		}
+func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
+	if bp, ok := dbp.FindBreakpoint(addr); ok {
+		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 	}
-	_, ok := dbp.Breakpoints[addr]
-	return ok
-}
 
-func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool) *Breakpoint {
+	f, l, fn := dbp.goSymTable.PCToLine(uint64(addr))
+	if fn == nil {
+		return nil, InvalidAddressError{address: addr}
+	}
+
 	var id int
 	if temp {
 		dbp.tempBreakpointIDCounter++
@@ -87,48 +81,35 @@ func (dbp *DebuggedProcess) newBreakpoint(fn, f string, l int, addr uint64, data
 		dbp.breakpointIDCounter++
 		id = dbp.breakpointIDCounter
 	}
-	return &Breakpoint{
-		FunctionName: fn,
-		File:         f,
-		Line:         l,
-		Addr:         addr,
-		OriginalData: data,
-		ID:           id,
-		Temp:         temp,
-	}
-}
 
-func (dbp *DebuggedProcess) newHardwareBreakpoint(fn, f string, l int, addr uint64, data []byte, temp bool, reg int) *Breakpoint {
-	bp := dbp.newBreakpoint(fn, f, l, addr, data, temp)
-	bp.hardware = true
-	bp.reg = reg
-	return bp
-}
-
-func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
-	var f, l, fn = dbp.goSymTable.PCToLine(uint64(addr))
-	if fn == nil {
-		return nil, InvalidAddressError{address: addr}
-	}
-	if dbp.BreakpointExists(addr) {
-		return nil, BreakpointExistsError{f, l, addr}
-	}
 	// Try and set a hardware breakpoint.
-	for i, v := range dbp.arch.HardwareBreakpoints() {
-		// TODO(darwin)
-		if runtime.GOOS == "darwin" {
+	for i, used := range dbp.arch.HardwareBreakpointUsage() {
+		if runtime.GOOS == "darwin" { // TODO(dp): Implement hardware breakpoints on OSX.
 			break
 		}
-		if v == nil {
-			for t, _ := range dbp.Threads {
-				if err := dbp.setHardwareBreakpoint(i, t, addr); err != nil {
-					return nil, fmt.Errorf("could not set hardware breakpoint on thread %d: %s", t, err)
-				}
-			}
-			dbp.arch.HardwareBreakpoints()[i] = dbp.newHardwareBreakpoint(fn.Name, f, l, addr, nil, temp, i)
-			return dbp.arch.HardwareBreakpoints()[i], nil
+		if used {
+			continue
 		}
+		for t, _ := range dbp.Threads {
+			if err := dbp.setHardwareBreakpoint(i, t, addr); err != nil {
+				return nil, fmt.Errorf("could not set hardware breakpoint on thread %d: %s", t, err)
+			}
+		}
+		dbp.arch.SetHardwareBreakpointUsage(i, true)
+		dbp.Breakpoints[addr] = &Breakpoint{
+			FunctionName: fn.Name,
+			File:         f,
+			Line:         l,
+			Addr:         addr,
+			ID:           id,
+			Temp:         temp,
+			hardware:     true,
+			reg:          i,
+		}
+
+		return dbp.Breakpoints[addr], nil
 	}
+
 	// Fall back to software breakpoint. 0xCC is INT 3 trap interrupt.
 	thread := dbp.Threads[tid]
 	originalData := make([]byte, dbp.arch.BreakpointSize())
@@ -138,7 +119,16 @@ func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Bre
 	if _, err := writeMemory(thread, uintptr(addr), dbp.arch.BreakpointInstruction()); err != nil {
 		return nil, err
 	}
-	dbp.Breakpoints[addr] = dbp.newBreakpoint(fn.Name, f, l, addr, originalData, temp)
+	dbp.Breakpoints[addr] = &Breakpoint{
+		FunctionName: fn.Name,
+		File:         f,
+		Line:         l,
+		Addr:         addr,
+		OriginalData: originalData,
+		ID:           id,
+		Temp:         temp,
+	}
+
 	return dbp.Breakpoints[addr], nil
 }
 
@@ -153,24 +143,12 @@ func (nbp NoBreakpointError) Error() string {
 
 func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*Breakpoint, error) {
 	thread := dbp.Threads[tid]
-	// Check for hardware breakpoint
-	for i, bp := range dbp.arch.HardwareBreakpoints() {
-		if bp == nil {
-			continue
-		}
-		if bp.Addr == addr {
-			_, err := bp.Clear(thread)
-			if err != nil {
-				return nil, err
-			}
-			dbp.arch.HardwareBreakpoints()[i] = nil
-			return bp, nil
-		}
-	}
-	// Check for software breakpoint
 	if bp, ok := dbp.Breakpoints[addr]; ok {
 		if _, err := bp.Clear(thread); err != nil {
 			return nil, err
+		}
+		if bp.hardware {
+			dbp.arch.SetHardwareBreakpointUsage(bp.reg, false)
 		}
 		delete(dbp.Breakpoints, addr)
 		return bp, nil
