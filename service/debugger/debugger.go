@@ -309,3 +309,49 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	}
 	return goroutines, err
 }
+
+func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
+	var rawlocs []proc.Location
+	var rawloc *proc.Location
+	var err error
+
+	if goroutineId < 0 {
+		rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
+		if err != nil {
+			return nil, err
+		}
+		rawloc, err = d.process.CurrentThread.Location()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		gs, err := d.process.GoroutinesInfo()
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range gs {
+			if g.Id == goroutineId {
+				rawlocs, err = d.process.GoroutineStacktrace(g, depth)
+				if err != nil {
+					return nil, err
+				}
+				rawloc = d.process.GoroutineLocation(g)
+				break
+			}
+		}
+
+		if rawlocs == nil {
+			return nil, fmt.Errorf("Unknown goroutine id %d\n", goroutineId)
+		}
+	}
+
+	locations := make([]api.Location, 0, len(rawlocs)+1)
+
+	locations = append(locations, api.ConvertLocation(*rawloc))
+	for i := range rawlocs {
+		rawlocs[i].Line--
+		locations = append(locations, api.ConvertLocation(rawlocs[i]))
+	}
+
+	return locations, nil
+}

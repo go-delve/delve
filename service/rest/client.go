@@ -266,6 +266,15 @@ func (c *RESTClient) ListGoroutines() ([]*api.Goroutine, error) {
 	return goroutines, nil
 }
 
+func (c *RESTClient) Stacktrace(goroutineId, depth int) ([]*api.Location, error) {
+	var locations []*api.Location
+	err := c.doGET(fmt.Sprintf("/goroutines/%d/trace?depth=%d", goroutineId, depth), &locations)
+	if err != nil {
+		return nil, err
+	}
+	return locations, nil
+}
+
 // TODO: how do we use http.Client with a UNIX socket URI?
 func (c *RESTClient) url(path string) string {
 	return fmt.Sprintf("http://%s%s", c.addr, path)

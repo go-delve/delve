@@ -82,6 +82,7 @@ func (s *RESTServer) Run() error {
 		Route(ws.GET("/threads/{thread-id}/vars").To(s.listThreadPackageVars)).
 		Route(ws.GET("/threads/{thread-id}/eval/{symbol}").To(s.evalThreadSymbol)).
 		Route(ws.GET("/goroutines").To(s.listGoroutines)).
+		Route(ws.GET("/goroutines/{goroutine-id}/trace").To(s.stacktraceGoroutine)).
 		Route(ws.POST("/command").To(s.doCommand)).
 		Route(ws.GET("/sources").To(s.listSources)).
 		Route(ws.GET("/functions").To(s.listFunctions)).
@@ -169,6 +170,29 @@ func (s *RESTServer) getBreakpoint(request *restful.Request, response *restful.R
 	}
 	response.WriteHeader(http.StatusOK)
 	response.WriteEntity(found)
+}
+
+func (s *RESTServer) stacktraceGoroutine(request *restful.Request, response *restful.Response) {
+	goroutineId, err := strconv.Atoi(request.PathParameter("goroutine-id"))
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "invalid goroutine id")
+		return
+	}
+
+	depth, err := strconv.Atoi(request.QueryParameter("depth"))
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "invalid depth")
+		return
+	}
+
+	locations, err := s.debugger.Stacktrace(goroutineId, depth)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+	response.WriteEntity(locations)
 }
 
 func (s *RESTServer) listBreakpoints(request *restful.Request, response *restful.Response) {

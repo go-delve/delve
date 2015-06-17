@@ -1,29 +1,45 @@
 package proc
 
 import (
-	"debug/gosym"
 	"encoding/binary"
 )
-
-type stackLocation struct {
-	addr uint64
-	file string
-	line int
-	fn   *gosym.Func
-}
 
 // Takes an offset from RSP and returns the address of the
 // instruction the currect function is going to return to.
 func (thread *Thread) ReturnAddress() (uint64, error) {
+	locations, err := thread.Stacktrace(1)
+	if err != nil {
+		return 0, err
+	}
+	return locations[0].PC, nil
+}
+
+// Returns the stack trace for thread
+// Note that it doesn't include the current frame and the locations in the array are return addresses not call addresses
+func (thread *Thread) Stacktrace(depth int) ([]Location, error) {
 	regs, err := thread.Registers()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	locations, err := thread.dbp.stacktrace(regs.PC(), regs.SP(), 1)
+	locations, err := thread.dbp.stacktrace(regs.PC(), regs.SP(), depth)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return locations[0].addr, nil
+	return locations, nil
+}
+
+// Returns the stack trace for a goroutine
+// Note that it doesn't include the current frame and the locations in the array are return addresses not call addresses
+func (dbp *DebuggedProcess) GoroutineStacktrace(g *G, depth int) ([]Location, error) {
+	if g.thread != nil {
+		return g.thread.Stacktrace(depth)
+	}
+	return dbp.stacktrace(g.PC, g.SP, depth)
+}
+
+func (dbp *DebuggedProcess) GoroutineLocation(g *G) *Location {
+	f, l, fn := dbp.PCToLine(g.PC)
+	return &Location{PC: g.PC, File: f, Line: l, Fn: fn}
 }
 
 type NullAddrError struct{}
@@ -32,12 +48,12 @@ func (n NullAddrError) Error() string {
 	return "NULL address"
 }
 
-func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]stackLocation, error) {
+func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 	var (
 		ret       = pc
 		data      = make([]byte, dbp.arch.PtrSize())
 		btoffset  int64
-		locations []stackLocation
+		locations []Location
 		retaddr   uintptr
 	)
 	for i := int64(0); i < int64(depth); i++ {
@@ -55,8 +71,15 @@ func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]stackLocatio
 			return nil, err
 		}
 		ret = binary.LittleEndian.Uint64(data)
+		if ret <= 0 {
+			break
+		}
 		f, l, fn := dbp.goSymTable.PCToLine(ret)
-		locations = append(locations, stackLocation{addr: ret, file: f, line: l, fn: fn})
+		locations = append(locations, Location{PC: ret, File: f, Line: l, Fn: fn})
+		if fn != nil && fn.Name == "runtime.goexit" {
+			break
+		}
+
 	}
 	return locations, nil
 }

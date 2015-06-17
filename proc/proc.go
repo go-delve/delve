@@ -424,9 +424,20 @@ func (dbp *DebuggedProcess) SwitchThread(tid int) error {
 // Delve cares about from the internal runtime G structure.
 func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 	var (
-		allg []*G
-		rdr  = dbp.DwarfReader()
+		threadg = map[int]*Thread{}
+		allg    []*G
+		rdr     = dbp.DwarfReader()
 	)
+
+	for i := range dbp.Threads {
+		if dbp.Threads[i].blocked() {
+			continue
+		}
+		g, _ := dbp.Threads[i].getG()
+		if g != nil {
+			threadg[g.Id] = dbp.Threads[i]
+		}
+	}
 
 	addr, err := rdr.AddrFor("runtime.allglen")
 	if err != nil {
@@ -450,6 +461,9 @@ func (dbp *DebuggedProcess) GoroutinesInfo() ([]*G, error) {
 		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())), true)
 		if err != nil {
 			return nil, err
+		}
+		if thread, allocated := threadg[g.Id]; allocated {
+			g.thread = thread
 		}
 		allg = append(allg, g)
 	}
