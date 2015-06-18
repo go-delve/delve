@@ -80,7 +80,8 @@ func (reader *Reader) AddrFor(name string) (uint64, error) {
 	return uint64(addr), nil
 }
 
-// Returns the address for the named struct member.
+// Returns the address for the named struct member. Expects the reader to be at the parent entry
+// or one of the parents children, thus does not seek to parent by itself.
 func (reader *Reader) AddrForMember(member string, initialInstructions []byte) (uint64, error) {
 	for {
 		entry, err := reader.NextMemberVariable()
