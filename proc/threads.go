@@ -110,14 +110,20 @@ func (thread *Thread) Location() (*Location, error) {
 	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
-// Step to next source line.
+// Set breakpoints for potential next lines.
 //
-// Next will step over functions, and will follow through to the
-// return address of a function.
+// There are two modes of operation for this method. First,
+// if we are executing Go code, we can use the stdlib AST
+// information to determine which lines we could potentially
+// end up at. Parsing the source file into an AST and traversing
+// it lets us gain insight into whether we're at a branch, and
+// where that branch could end up at, etc...
 //
-// This functionality is implemented by finding all possible next lines
-// and setting a breakpoint at them. Once we've set a breakpoint at each
-// potential line, we continue the thread.
+// However, if we are executing C code, we use the DWARF
+// debug_line information and essentially set a breakpoint
+// at every single line within the current function, and
+// another at the functions return address, in case we're at
+// the end.
 func (thread *Thread) SetNextBreakpoints() (err error) {
 	curpc, err := thread.PC()
 	if err != nil {
