@@ -26,6 +26,9 @@ type Thread struct {
 	os             *OSSpecificDetails
 }
 
+// Represents the location of a thread.
+// Holds information on the current instruction
+// address, the source file:line, and the function.
 type Location struct {
 	PC   uint64
 	File string
@@ -53,8 +56,12 @@ func (thread *Thread) Continue() error {
 	return thread.resume()
 }
 
-// Single steps this thread a single instruction, ensuring that
-// we correctly handle the likely case that we are at a breakpoint.
+// Step a single instruction.
+//
+// Executes exactly one instruction and then returns.
+// If the thread is at a breakpoint, we first clear it,
+// execute the instruction, and then replace the breakpoint.
+// Otherwise we simply execute the next instruction.
 func (thread *Thread) Step() (err error) {
 	thread.singleStepping = true
 	defer func() { thread.singleStepping = false }()
@@ -91,7 +98,7 @@ func (thread *Thread) Break(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.setBreakpoint(thread.Id, addr, false)
 }
 
-// Set breakpoint using this thread.
+// Set temp breakpoint using this thread. Primarily used for next'ing.
 func (thread *Thread) TempBreak(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.setBreakpoint(thread.Id, addr, true)
 }
@@ -101,6 +108,9 @@ func (thread *Thread) Clear(addr uint64) (*Breakpoint, error) {
 	return thread.dbp.clearBreakpoint(thread.Id, addr)
 }
 
+// Returns the threads location, including the file:line
+// of the corresponding source code, the function we're in
+// and the current instruction address.
 func (thread *Thread) Location() (*Location, error) {
 	pc, err := thread.PC()
 	if err != nil {
@@ -163,8 +173,7 @@ func (ge GoroutineExitingError) Error() string {
 	return fmt.Sprintf("goroutine %d is exiting", ge.goid)
 }
 
-// This version of next uses the AST from the current source file to figure out all of the potential source lines
-// we could end up at.
+// Use the AST to determine potential next lines.
 func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
 	lines, err := thread.dbp.ast.NextLines(file, line)
 	if err != nil {
