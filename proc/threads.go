@@ -36,10 +36,11 @@ type Location struct {
 	Fn   *gosym.Func
 }
 
-// Continue the execution of this thread. This method takes
-// software breakpoints into consideration and ensures that
-// we step over any breakpoints. It will restore the instruction,
-// step, and then restore the breakpoint and continue.
+// Continue the execution of this thread.
+//
+// If we are currently at a breakpoint, we'll clear it
+// first and then resume execution. Thread will continue until
+// it hits a breakpoint or is signaled.
 func (thread *Thread) Continue() error {
 	pc, err := thread.PC()
 	if err != nil {
