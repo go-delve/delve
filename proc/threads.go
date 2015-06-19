@@ -93,21 +93,6 @@ func (thread *Thread) Step() (err error) {
 	return nil
 }
 
-// Set breakpoint using this thread.
-func (thread *Thread) Break(addr uint64) (*Breakpoint, error) {
-	return thread.dbp.setBreakpoint(thread.Id, addr, false)
-}
-
-// Set temp breakpoint using this thread. Primarily used for next'ing.
-func (thread *Thread) TempBreak(addr uint64) (*Breakpoint, error) {
-	return thread.dbp.setBreakpoint(thread.Id, addr, true)
-}
-
-// Clear breakpoint using this thread.
-func (thread *Thread) Clear(addr uint64) (*Breakpoint, error) {
-	return thread.dbp.clearBreakpoint(thread.Id, addr)
-}
-
 // Returns the threads location, including the file:line
 // of the corresponding source code, the function we're in
 // and the current instruction address.
