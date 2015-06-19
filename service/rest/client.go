@@ -239,6 +239,15 @@ func (c *RESTClient) ListLocalVariables() ([]api.Variable, error) {
 	return vars, nil
 }
 
+func (c *RESTClient) ListRegisters() (string, error) {
+	var regs string
+	err := c.doGET("/regs", &regs)
+	if err != nil {
+		return "", err
+	}
+	return regs, nil
+}
+
 func (c *RESTClient) ListFunctionArgs() ([]api.Variable, error) {
 	var vars []api.Variable
 	err := c.doGET("/args", &vars)

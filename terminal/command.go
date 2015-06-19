@@ -366,6 +366,13 @@ func info(client service.Client, args ...string) error {
 		}
 		data = funcs
 
+	case "regs":
+		regs, err := client.ListRegisters()
+		if err != nil {
+			return err
+		}
+		data = append(data, regs)
+
 	case "args":
 		args, err := client.ListFunctionArgs()
 		if err != nil {

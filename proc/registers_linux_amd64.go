@@ -1,9 +1,15 @@
 package proc
 
+import "fmt"
 import sys "golang.org/x/sys/unix"
 
 type Regs struct {
 	regs *sys.PtraceRegs
+}
+
+func (r *Regs) String() string {
+	return fmt.Sprintf("pc = 0x%x, sp = 0x%x, cx = 0x%x",
+		r.PC(), r.SP(), r.CX())
 }
 
 func (r *Regs) PC() uint64 {

@@ -11,6 +11,7 @@ type Registers interface {
 	SP() uint64
 	CX() uint64
 	SetPC(*Thread, uint64) error
+	String() string
 }
 
 // Obtains register values from the debugged process.

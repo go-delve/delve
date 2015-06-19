@@ -241,6 +241,18 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 	return vars, err
 }
 
+func (d *Debugger) Registers(threadID int) (string, error) {
+	thread, found := d.process.Threads[threadID]
+	if !found {
+		return "", fmt.Errorf("couldn't find thread %d", threadID)
+	}
+	regs, err := thread.Registers()
+	if err != nil {
+		return "", err
+	}
+	return regs.String(), err
+}
+
 func (d *Debugger) LocalVariables(threadID int) ([]api.Variable, error) {
 	vars := []api.Variable{}
 	thread, found := d.process.Threads[threadID]
