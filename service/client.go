@@ -55,6 +55,8 @@ type Client interface {
 	ListLocalVariables() ([]api.Variable, error)
 	// ListFunctionArgs lists all arguments to the current function.
 	ListFunctionArgs() ([]api.Variable, error)
+	// ListRegisters lists registers and their values.
+	ListRegisters() (string, error)
 
 	// ListGoroutines lists all goroutines.
 	ListGoroutines() ([]*api.Goroutine, error)

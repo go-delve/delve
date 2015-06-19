@@ -85,6 +85,7 @@ func (s *RESTServer) Run() error {
 		Route(ws.POST("/command").To(s.doCommand)).
 		Route(ws.GET("/sources").To(s.listSources)).
 		Route(ws.GET("/functions").To(s.listFunctions)).
+		Route(ws.GET("/regs").To(s.listRegisters)).
 		Route(ws.GET("/vars").To(s.listPackageVars)).
 		Route(ws.GET("/localvars").To(s.listLocalVars)).
 		Route(ws.GET("/args").To(s.listFunctionArgs)).
@@ -287,6 +288,23 @@ func (s *RESTServer) listThreadPackageVars(request *restful.Request, response *r
 
 	response.WriteHeader(http.StatusOK)
 	response.WriteEntity(vars)
+}
+
+func (s *RESTServer) listRegisters(request *restful.Request, response *restful.Response) {
+	state, err := s.debugger.State()
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	regs, err := s.debugger.Registers(state.CurrentThread.ID)
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+	response.WriteEntity(regs)
 }
 
 func (s *RESTServer) listLocalVars(request *restful.Request, response *restful.Response) {

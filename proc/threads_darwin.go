@@ -89,19 +89,3 @@ func readMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
 	}
 	return len(data), nil
 }
-
-func (thread *Thread) saveRegisters() (Registers, error) {
-	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
-	if kret != C.KERN_SUCCESS {
-		return nil, fmt.Errorf("could not save register contents")
-	}
-	return &Regs{pc: uint64(thread.os.registers.__rip), sp: uint64(thread.os.registers.__rsp)}, nil
-}
-
-func (thread *Thread) restoreRegisters() error {
-	kret := C.set_registers(C.mach_port_name_t(thread.os.thread_act), &thread.os.registers)
-	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not save register contents")
-	}
-	return nil
-}
