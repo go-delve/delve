@@ -18,11 +18,15 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
+// Darwin specific information.
 type OSProcessDetails struct {
-	task             C.mach_port_name_t
-	portSet          C.mach_port_t
-	exceptionPort    C.mach_port_t
-	notificationPort C.mach_port_t
+	task             C.mach_port_name_t // mach task for the debugged process.
+	exceptionPort    C.mach_port_t      // mach port for receiving mach exceptions.
+	notificationPort C.mach_port_t      // mach port for dead name notification (process exit).
+
+	// the main port we use, will return messages from both the
+	// exception and notification ports.
+	portSet C.mach_port_t
 }
 
 // Create and begin debugging a new process. Uses a
