@@ -326,6 +326,13 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
 		}
+		regs, err := c.ListRegisters()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if regs == "" {
+			t.Fatal("Expected string showing registers values, got empty string")
+		}
 		locals, err := c.ListFunctionArgs()
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
