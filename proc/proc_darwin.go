@@ -31,7 +31,8 @@ type OSProcessDetails struct {
 
 // Create and begin debugging a new process. Uses a
 // custom fork/exec process in order to take advantage of
-// PT_SIGEXC on Darwin.
+// PT_SIGEXC on Darwin which will turn Unix signals into
+// Mach exceptions.
 func Launch(cmd []string) (*DebuggedProcess, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
