@@ -1,5 +1,7 @@
 package main
 
+import "runtime"
+
 const N = 10
 
 func agoroutine(done chan<- struct{}) {
@@ -15,6 +17,7 @@ func main() {
 	for i := 0; i < N; i++ {
 		go agoroutine(done)
 	}
+	runtime.Gosched()
 	stacktraceme()
 	for i := 0; i < N; i++ {
 		<-done
