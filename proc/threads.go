@@ -12,7 +12,7 @@ import (
 
 // Thread represents a single thread in the traced process
 // Id represents the thread id or port, Process holds a reference to the
-// DebuggedProcess struct that contains info on the process as
+// Process struct that contains info on the process as
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type Thread struct {
@@ -20,7 +20,7 @@ type Thread struct {
 	Status            *sys.WaitStatus // Status returned from last wait call
 	CurrentBreakpoint *Breakpoint     // Breakpoint thread is currently stopped at
 
-	dbp            *DebuggedProcess
+	dbp            *Process
 	singleStepping bool
 	running        bool
 	os             *OSSpecificDetails
@@ -298,7 +298,7 @@ func (thread *Thread) getG() (g *G, err error) {
 	// we hit a breakpoint that isn't captured in our list of
 	// known breakpoints.
 	thread.dbp.halt = true
-	defer func(dbp *DebuggedProcess) { dbp.halt = false }(thread.dbp)
+	defer func(dbp *Process) { dbp.halt = false }(thread.dbp)
 	if _, err = thread.dbp.trapWait(-1); err != nil {
 		return
 	}

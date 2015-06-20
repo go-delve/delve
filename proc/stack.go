@@ -30,14 +30,14 @@ func (thread *Thread) Stacktrace(depth int) ([]Location, error) {
 
 // Returns the stack trace for a goroutine
 // Note that it doesn't include the current frame and the locations in the array are return addresses not call addresses
-func (dbp *DebuggedProcess) GoroutineStacktrace(g *G, depth int) ([]Location, error) {
+func (dbp *Process) GoroutineStacktrace(g *G, depth int) ([]Location, error) {
 	if g.thread != nil {
 		return g.thread.Stacktrace(depth)
 	}
 	return dbp.stacktrace(g.PC, g.SP, depth)
 }
 
-func (dbp *DebuggedProcess) GoroutineLocation(g *G) *Location {
+func (dbp *Process) GoroutineLocation(g *G) *Location {
 	f, l, fn := dbp.PCToLine(g.PC)
 	return &Location{PC: g.PC, File: f, Line: l, Fn: fn}
 }
@@ -48,7 +48,7 @@ func (n NullAddrError) Error() string {
 	return "NULL address"
 }
 
-func (dbp *DebuggedProcess) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
+func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 	var (
 		ret       = pc
 		data      = make([]byte, dbp.arch.PtrSize())

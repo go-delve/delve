@@ -33,7 +33,7 @@ type OSProcessDetails struct {
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
-func Launch(cmd []string) (*DebuggedProcess, error) {
+func Launch(cmd []string) (*Process, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	return dbp, err
 }
 
-func (dbp *DebuggedProcess) requestManualStop() (err error) {
+func (dbp *Process) requestManualStop() (err error) {
 	var (
 		task          = C.mach_port_t(dbp.os.task)
 		thread        = C.mach_port_t(dbp.CurrentThread.os.thread_act)
@@ -83,7 +83,7 @@ func (dbp *DebuggedProcess) requestManualStop() (err error) {
 	return nil
 }
 
-func (dbp *DebuggedProcess) updateThreadList() error {
+func (dbp *Process) updateThreadList() error {
 	var (
 		err   error
 		kret  C.kern_return_t
@@ -116,7 +116,7 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) addThread(port int, attach bool) (*Thread, error) {
+func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 	if thread, ok := dbp.Threads[port]; ok {
 		return thread, nil
 	}
@@ -133,7 +133,7 @@ func (dbp *DebuggedProcess) addThread(port int, attach bool) (*Thread, error) {
 	return thread, nil
 }
 
-func (dbp *DebuggedProcess) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup) {
+func (dbp *Process) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if sec := exe.Section("__debug_frame"); sec != nil {
@@ -149,7 +149,7 @@ func (dbp *DebuggedProcess) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup)
 	}
 }
 
-func (dbp *DebuggedProcess) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup) {
+func (dbp *Process) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var (
@@ -184,7 +184,7 @@ func (dbp *DebuggedProcess) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup)
 	dbp.goSymTable = tab
 }
 
-func (dbp *DebuggedProcess) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
+func (dbp *Process) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if sec := exe.Section("__debug_line"); sec != nil {
@@ -200,7 +200,7 @@ func (dbp *DebuggedProcess) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGro
 	}
 }
 
-func (dbp *DebuggedProcess) findExecutable(path string) (*macho.File, error) {
+func (dbp *Process) findExecutable(path string) (*macho.File, error) {
 	if path == "" {
 		path = C.GoString(C.find_executable(C.int(dbp.Pid)))
 	}
@@ -216,7 +216,7 @@ func (dbp *DebuggedProcess) findExecutable(path string) (*macho.File, error) {
 	return exe, nil
 }
 
-func (dbp *DebuggedProcess) trapWait(pid int) (*Thread, error) {
+func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	var (
 		th  *Thread
 		err error

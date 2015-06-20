@@ -12,14 +12,14 @@ import (
 // Debugger service.
 //
 // Debugger provides a higher level of
-// abstraction over proc.DebuggedProcess.
+// abstraction over proc.Process.
 // It handles converting from internal types to
 // the types expected by clients. It also handles
 // functionality needed by clients, but not needed in
 // lower lever packages such as proc.
 type Debugger struct {
 	config  *Config
-	process *proc.DebuggedProcess
+	process *proc.Process
 }
 
 // Config provides the configuration to start a Debugger.

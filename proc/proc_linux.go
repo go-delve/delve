@@ -29,7 +29,7 @@ type OSProcessDetails interface{}
 // Create and begin debugging a new process. First entry in
 // `cmd` is the program to run, and then rest are the arguments
 // to be supplied to that process.
-func Launch(cmd []string) (*DebuggedProcess, error) {
+func Launch(cmd []string) (*Process, error) {
 	var (
 		proc *exec.Cmd
 		err  error
@@ -54,13 +54,13 @@ func Launch(cmd []string) (*DebuggedProcess, error) {
 	return initializeDebugProcess(dbp, proc.Path, false)
 }
 
-func (dbp *DebuggedProcess) requestManualStop() (err error) {
+func (dbp *Process) requestManualStop() (err error) {
 	return sys.Kill(dbp.Pid, sys.SIGSTOP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
-func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*Thread, error) {
+func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 	if thread, ok := dbp.Threads[tid]; ok {
 		return thread, nil
 	}
@@ -112,7 +112,7 @@ func (dbp *DebuggedProcess) addThread(tid int, attach bool) (*Thread, error) {
 	return dbp.Threads[tid], nil
 }
 
-func (dbp *DebuggedProcess) updateThreadList() error {
+func (dbp *Process) updateThreadList() error {
 	var attach bool
 	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.Pid))
 	for _, tidpath := range tids {
@@ -131,7 +131,7 @@ func (dbp *DebuggedProcess) updateThreadList() error {
 	return nil
 }
 
-func (dbp *DebuggedProcess) findExecutable(path string) (*elf.File, error) {
+func (dbp *Process) findExecutable(path string) (*elf.File, error) {
 	if path == "" {
 		path = fmt.Sprintf("/proc/%d/exe", dbp.Pid)
 	}
@@ -154,7 +154,7 @@ func (dbp *DebuggedProcess) findExecutable(path string) (*elf.File, error) {
 	return elffile, nil
 }
 
-func (dbp *DebuggedProcess) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
+func (dbp *Process) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if sec := exe.Section(".debug_frame"); sec != nil {
@@ -170,7 +170,7 @@ func (dbp *DebuggedProcess) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
 	}
 }
 
-func (dbp *DebuggedProcess) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
+func (dbp *Process) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var (
@@ -205,7 +205,7 @@ func (dbp *DebuggedProcess) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
 	dbp.goSymTable = tab
 }
 
-func (dbp *DebuggedProcess) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
+func (dbp *Process) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if sec := exe.Section(".debug_line"); sec != nil {
@@ -221,7 +221,7 @@ func (dbp *DebuggedProcess) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup
 	}
 }
 
-func (dbp *DebuggedProcess) trapWait(pid int) (*Thread, error) {
+func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	for {
 		wpid, status, err := wait(pid, 0)
 		if err != nil {

@@ -63,7 +63,7 @@ func (iae InvalidAddressError) Error() string {
 	return fmt.Sprintf("Invalid address %#v\n", iae.address)
 }
 
-func (dbp *DebuggedProcess) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
+func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
 	if bp, ok := dbp.FindBreakpoint(addr); ok {
 		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 	}
@@ -141,7 +141,7 @@ func (nbp NoBreakpointError) Error() string {
 	return fmt.Sprintf("no breakpoint at %#v", nbp.addr)
 }
 
-func (dbp *DebuggedProcess) clearBreakpoint(tid int, addr uint64) (*Breakpoint, error) {
+func (dbp *Process) clearBreakpoint(tid int, addr uint64) (*Breakpoint, error) {
 	thread := dbp.Threads[tid]
 	if bp, ok := dbp.Breakpoints[addr]; ok {
 		if _, err := bp.Clear(thread); err != nil {

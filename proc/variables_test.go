@@ -67,7 +67,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"NonExistent", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
-	withTestProcess("testvariables", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
 		_, err := p.Break(pc)
@@ -91,7 +91,7 @@ func TestVariableEvaluation(t *testing.T) {
 }
 
 func TestVariableFunctionScoping(t *testing.T) {
-	withTestProcess("testvariables", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
 		_, err := p.Break(pc)
@@ -183,7 +183,7 @@ func TestLocalVariables(t *testing.T) {
 				{"baz", "bazburzum", "struct string", nil}}},
 	}
 
-	withTestProcess("testvariables", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
 		_, err := p.Break(pc)

@@ -18,7 +18,7 @@ func TestMain(m *testing.M) {
 	protest.RunTestsWithFixtures(m)
 }
 
-func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess, fixture protest.Fixture)) {
+func withTestProcess(name string, t *testing.T, fn func(p *Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)
 	p, err := Launch([]string{fixture.Path})
 	if err != nil {
@@ -30,7 +30,7 @@ func withTestProcess(name string, t *testing.T, fn func(p *DebuggedProcess, fixt
 	fn(p, fixture)
 }
 
-func getRegisters(p *DebuggedProcess, t *testing.T) Registers {
+func getRegisters(p *Process, t *testing.T) Registers {
 	regs, err := p.Registers()
 	if err != nil {
 		t.Fatal("Registers():", err)
@@ -57,7 +57,7 @@ func assertNoError(err error, t *testing.T, s string) {
 	}
 }
 
-func currentPC(p *DebuggedProcess, t *testing.T) uint64 {
+func currentPC(p *Process, t *testing.T) uint64 {
 	pc, err := p.PC()
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func currentPC(p *DebuggedProcess, t *testing.T) uint64 {
 	return pc
 }
 
-func currentLineNumber(p *DebuggedProcess, t *testing.T) (string, int) {
+func currentLineNumber(p *Process, t *testing.T) (string, int) {
 	pc := currentPC(p, t)
 	f, l, _ := p.goSymTable.PCToLine(pc)
 
@@ -74,7 +74,7 @@ func currentLineNumber(p *DebuggedProcess, t *testing.T) (string, int) {
 }
 
 func TestExit(t *testing.T) {
-	withTestProcess("continuetestprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("continuetestprog", t, func(p *Process, fixture protest.Fixture) {
 		err := p.Continue()
 		pe, ok := err.(ProcessExitedError)
 		if !ok {
@@ -91,7 +91,7 @@ func TestExit(t *testing.T) {
 
 func TestHalt(t *testing.T) {
 	runtime.GOMAXPROCS(2)
-	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
 		go func() {
 			for {
 				if p.Running() {
@@ -120,7 +120,7 @@ func TestHalt(t *testing.T) {
 }
 
 func TestStep(t *testing.T) {
-	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
 		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
@@ -142,7 +142,7 @@ func TestStep(t *testing.T) {
 }
 
 func TestBreakpoint(t *testing.T) {
-	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
 		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
@@ -163,7 +163,7 @@ func TestBreakpoint(t *testing.T) {
 }
 
 func TestBreakpointInSeperateGoRoutine(t *testing.T) {
-	withTestProcess("testthreads", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testthreads", t, func(p *Process, fixture protest.Fixture) {
 		fn := p.goSymTable.LookupFunc("main.anotherthread")
 		if fn == nil {
 			t.Fatal("No fn exists")
@@ -192,7 +192,7 @@ func TestBreakpointInSeperateGoRoutine(t *testing.T) {
 }
 
 func TestBreakpointWithNonExistantFunction(t *testing.T) {
-	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
 		_, err := p.Break(0)
 		if err == nil {
 			t.Fatal("Should not be able to break at non existant function")
@@ -201,7 +201,7 @@ func TestBreakpointWithNonExistantFunction(t *testing.T) {
 }
 
 func TestClearBreakpoint(t *testing.T) {
-	withTestProcess("testprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
 		fn := p.goSymTable.LookupFunc("main.sleepytime")
 		bp, err := p.Break(fn.Entry)
 		assertNoError(err, t, "Break()")
@@ -230,7 +230,7 @@ type nextTest struct {
 }
 
 func testnext(program string, testcases []nextTest, initialLocation string, t *testing.T) {
-	withTestProcess(program, t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess(program, t, func(p *Process, fixture protest.Fixture) {
 		bp, err := p.BreakByLocation(initialLocation)
 		assertNoError(err, t, "Break()")
 		assertNoError(p.Continue(), t, "Continue()")
@@ -303,7 +303,7 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 }
 
 func TestRuntimeBreakpoint(t *testing.T) {
-	withTestProcess("testruntimebreakpoint", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testruntimebreakpoint", t, func(p *Process, fixture protest.Fixture) {
 		err := p.Continue()
 		if err != nil {
 			t.Fatal(err)
@@ -320,7 +320,7 @@ func TestRuntimeBreakpoint(t *testing.T) {
 }
 
 func TestFindReturnAddress(t *testing.T) {
-	withTestProcess("testnextprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
 		var (
 			fdes = p.frameEntries
 			gsd  = p.goSymTable
@@ -370,7 +370,7 @@ func TestFindReturnAddress(t *testing.T) {
 }
 
 func TestSwitchThread(t *testing.T) {
-	withTestProcess("testnextprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
 		// With invalid thread id
 		err := p.SwitchThread(-1)
 		if err == nil {
@@ -430,7 +430,7 @@ func TestStacktrace(t *testing.T) {
 		[]loc{{8, "main.func1"}, {16, "main.main"}},
 		[]loc{{8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
 	}
-	withTestProcess("stacktraceprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("stacktraceprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := p.BreakByLocation("main.stacktraceme")
 		assertNoError(err, t, "BreakByLocation()")
 
@@ -471,7 +471,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 	mainStack := []loc{{21, "main.main"}}
 	agoroutineStack := []loc{{-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {8, "main.agoroutine"}}
 
-	withTestProcess("goroutinestackprog", t, func(p *DebuggedProcess, fixture protest.Fixture) {
+	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := p.BreakByLocation("main.stacktraceme")
 		assertNoError(err, t, "BreakByLocation()")
 

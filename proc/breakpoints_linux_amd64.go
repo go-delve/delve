@@ -21,7 +21,7 @@ import "fmt"
 // debug register `reg` with the address of the instruction
 // that we want to break at. There are only 4 debug registers
 // DR0-DR3. Debug register 7 is the control register.
-func (dbp *DebuggedProcess) setHardwareBreakpoint(reg, tid int, addr uint64) error {
+func (dbp *Process) setHardwareBreakpoint(reg, tid int, addr uint64) error {
 	if reg < 0 || reg > 3 {
 		return fmt.Errorf("invalid debug register value")
 	}
@@ -72,6 +72,6 @@ func (dbp *DebuggedProcess) setHardwareBreakpoint(reg, tid int, addr uint64) err
 // Clears a hardware breakpoint. Essentially sets
 // the debug reg to 0 and clears the control register
 // flags for that reg.
-func (dbp *DebuggedProcess) clearHardwareBreakpoint(reg, tid int) error {
+func (dbp *Process) clearHardwareBreakpoint(reg, tid int) error {
 	return dbp.setHardwareBreakpoint(reg, tid, 0)
 }
