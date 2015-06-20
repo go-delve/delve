@@ -9,8 +9,14 @@ import (
 	"github.com/derekparker/delve/service/api"
 )
 
-// Debugger provides a conveniant way to convert from internal
-// structure representations to API representations.
+// Debugger service.
+//
+// Debugger provides a higher level of
+// abstraction over proc.DebuggedProcess.
+// It handles converting from internal types to
+// the types expected by clients. It also handles
+// functionality needed by clients, but not needed in
+// lower lever packages such as proc.
 type Debugger struct {
 	config  *Config
 	process *proc.DebuggedProcess
@@ -152,12 +158,7 @@ func (d *Debugger) FindThread(id int) *api.Thread {
 	return nil
 }
 
-// Command handles commands which control the debugger lifecycle. Like other
-// debugger operations, these are executed one at a time as part of the
-// process operation pipeline.
-//
-// The one exception is the Halt command, which can be executed concurrently
-// with any operation.
+// Command handles commands which control the debugger lifecycle
 func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, error) {
 	var err error
 	switch command.Name {
