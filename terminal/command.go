@@ -190,7 +190,7 @@ func goroutines(client service.Client, args ...string) error {
 		if g.Function != nil {
 			fname = g.Function.Name
 		}
-		fmt.Printf("Goroutine %d - %s:%d %s (%d)\n", g.ID, g.File, g.Line, fname, g.PC)
+		fmt.Printf("Goroutine %d - %s:%d %s (%#v)\n", g.ID, g.File, g.Line, fname, g.PC)
 	}
 	return nil
 }
@@ -439,7 +439,7 @@ func stackCommand(client service.Client, args ...string) error {
 		if stack[i].Function != nil {
 			name = stack[i].Function.Name
 		}
-		fmt.Printf("%d. %s\n\t%s:%d (%d)\n", i, name, stack[i].File, stack[i].Line, stack[i].PC)
+		fmt.Printf("%d. %s\n\t%s:%d (%#v)\n", i, name, stack[i].File, stack[i].Line, stack[i].PC)
 	}
 	return nil
 }
