@@ -26,7 +26,8 @@ type Process struct {
 	Pid     int         // Process Pid
 	Process *os.Process // Pointer to process struct for the actual process we are debugging
 
-	// Breakpoint table. Hardware breakpoints are stored in proc/arch.go, as they are architecture dependant.
+	// Breakpoint table, hold information on software / hardware breakpoints.
+	// Maps instruction address to Breakpoint struct.
 	Breakpoints map[uint64]*Breakpoint
 
 	// List of threads mapped as such: pid -> *Thread
