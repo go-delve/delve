@@ -124,8 +124,8 @@ func TestStep(t *testing.T) {
 		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
-		_, err := p.Break(helloworldaddr)
-		assertNoError(err, t, "Break()")
+		_, err := p.SetBreakpoint(helloworldaddr)
+		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(p.Continue(), t, "Continue()")
 
 		regs := getRegisters(p, t)
@@ -146,8 +146,8 @@ func TestBreakpoint(t *testing.T) {
 		helloworldfunc := p.goSymTable.LookupFunc("main.helloworld")
 		helloworldaddr := helloworldfunc.Entry
 
-		bp, err := p.Break(helloworldaddr)
-		assertNoError(err, t, "Break()")
+		bp, err := p.SetBreakpoint(helloworldaddr)
+		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(p.Continue(), t, "Continue()")
 
 		pc, err := p.PC()
@@ -169,7 +169,7 @@ func TestBreakpointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal("No fn exists")
 		}
 
-		_, err := p.Break(fn.Entry)
+		_, err := p.SetBreakpoint(fn.Entry)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,21 +193,21 @@ func TestBreakpointInSeperateGoRoutine(t *testing.T) {
 
 func TestBreakpointWithNonExistantFunction(t *testing.T) {
 	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
-		_, err := p.Break(0)
+		_, err := p.SetBreakpoint(0)
 		if err == nil {
 			t.Fatal("Should not be able to break at non existant function")
 		}
 	})
 }
 
-func TestClearBreakpoint(t *testing.T) {
+func TestClearBreakpointBreakpoint(t *testing.T) {
 	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
 		fn := p.goSymTable.LookupFunc("main.sleepytime")
-		bp, err := p.Break(fn.Entry)
-		assertNoError(err, t, "Break()")
+		bp, err := p.SetBreakpoint(fn.Entry)
+		assertNoError(err, t, "SetBreakpoint()")
 
-		bp, err = p.Clear(fn.Entry)
-		assertNoError(err, t, "Clear()")
+		bp, err = p.ClearBreakpoint(fn.Entry)
+		assertNoError(err, t, "ClearBreakpoint()")
 
 		data, err := dataAtAddr(p.CurrentThread, bp.Addr)
 		if err != nil {
@@ -231,10 +231,10 @@ type nextTest struct {
 
 func testnext(program string, testcases []nextTest, initialLocation string, t *testing.T) {
 	withTestProcess(program, t, func(p *Process, fixture protest.Fixture) {
-		bp, err := p.BreakByLocation(initialLocation)
-		assertNoError(err, t, "Break()")
+		bp, err := p.SetBreakpointByLocation(initialLocation)
+		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(p.Continue(), t, "Continue()")
-		p.Clear(bp.Addr)
+		p.ClearBreakpoint(bp.Addr)
 		p.CurrentThread.SetPC(bp.Addr)
 
 		f, ln := currentLineNumber(p, t)
@@ -331,7 +331,7 @@ func TestFindReturnAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = p.Break(start)
+		_, err = p.SetBreakpoint(start)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -380,7 +380,7 @@ func TestSwitchThread(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = p.Break(pc)
+		_, err = p.SetBreakpoint(pc)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -431,7 +431,7 @@ func TestStacktrace(t *testing.T) {
 		[]loc{{8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
 	}
 	withTestProcess("stacktraceprog", t, func(p *Process, fixture protest.Fixture) {
-		bp, err := p.BreakByLocation("main.stacktraceme")
+		bp, err := p.SetBreakpointByLocation("main.stacktraceme")
 		assertNoError(err, t, "BreakByLocation()")
 
 		for i := range stacks {
@@ -450,7 +450,7 @@ func TestStacktrace(t *testing.T) {
 			}
 		}
 
-		p.Clear(bp.Addr)
+		p.ClearBreakpoint(bp.Addr)
 		p.Continue()
 	})
 }
@@ -472,7 +472,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 	agoroutineStack := []loc{{-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {8, "main.agoroutine"}}
 
 	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
-		bp, err := p.BreakByLocation("main.stacktraceme")
+		bp, err := p.SetBreakpointByLocation("main.stacktraceme")
 		assertNoError(err, t, "BreakByLocation()")
 
 		assertNoError(p.Continue(), t, "Continue()")
@@ -515,7 +515,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 			t.Fatalf("Goroutine stacks not found (%d)", agoroutineCount)
 		}
 
-		p.Clear(bp.Addr)
+		p.ClearBreakpoint(bp.Addr)
 		p.Continue()
 	})
 }

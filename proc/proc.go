@@ -100,7 +100,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 	// Clean up any breakpoints we've set.
 	for _, bp := range dbp.Breakpoints {
 		if bp != nil {
-			dbp.Clear(bp.Addr)
+			dbp.ClearBreakpoint(bp.Addr)
 		}
 	}
 	dbp.execPtraceFunc(func() {
@@ -217,36 +217,36 @@ func (dbp *Process) RequestManualStop() error {
 // hardware supports it, and there are free debug registers, Delve
 // will set a hardware breakpoint. Otherwise we fall back to software
 // breakpoints, which are a bit more work for us.
-func (dbp *Process) Break(addr uint64) (*Breakpoint, error) {
+func (dbp *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
 	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, false)
 }
 
 // Sets a temp breakpoint, for the 'next' command.
-func (dbp *Process) TempBreak(addr uint64) (*Breakpoint, error) {
+func (dbp *Process) SetTempBreakpoint(addr uint64) (*Breakpoint, error) {
 	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, true)
 }
 
 // Sets a breakpoint by location string (function, file+line, address)
-func (dbp *Process) BreakByLocation(loc string) (*Breakpoint, error) {
+func (dbp *Process) SetBreakpointByLocation(loc string) (*Breakpoint, error) {
 	addr, err := dbp.FindLocation(loc)
 	if err != nil {
 		return nil, err
 	}
-	return dbp.Break(addr)
+	return dbp.SetBreakpoint(addr)
 }
 
 // Clears a breakpoint in the current thread.
-func (dbp *Process) Clear(addr uint64) (*Breakpoint, error) {
+func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	return dbp.clearBreakpoint(dbp.CurrentThread.Id, addr)
 }
 
 // Clears a breakpoint by location (function, file+line, address, breakpoint id)
-func (dbp *Process) ClearByLocation(loc string) (*Breakpoint, error) {
+func (dbp *Process) ClearBreakpointByLocation(loc string) (*Breakpoint, error) {
 	addr, err := dbp.FindLocation(loc)
 	if err != nil {
 		return nil, err
 	}
-	return dbp.Clear(addr)
+	return dbp.ClearBreakpoint(addr)
 }
 
 // Returns the status of the current main thread context.
@@ -274,7 +274,7 @@ func (dbp *Process) next() error {
 	}
 
 	if g.DeferPC != 0 {
-		_, err = dbp.TempBreak(g.DeferPC)
+		_, err = dbp.SetTempBreakpoint(g.DeferPC)
 		if err != nil {
 			return err
 		}
@@ -340,7 +340,7 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 				}
 				return 0, err
 			}
-			if _, err = dbp.TempBreak(ret); err != nil {
+			if _, err = dbp.SetTempBreakpoint(ret); err != nil {
 				return 0, err
 			}
 			count++
@@ -590,7 +590,7 @@ func (dbp *Process) clearTempBreakpoints() error {
 		if !bp.Temp {
 			continue
 		}
-		if _, err := dbp.Clear(bp.Addr); err != nil {
+		if _, err := dbp.ClearBreakpoint(bp.Addr); err != nil {
 			return err
 		}
 	}

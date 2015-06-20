@@ -101,7 +101,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		return nil, fmt.Errorf("no file or function name specified")
 	}
 
-	bp, err := d.process.BreakByLocation(loc)
+	bp, err := d.process.SetBreakpointByLocation(loc)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	var clearedBp *api.Breakpoint
-	bp, err := d.process.Clear(requestedBp.Addr)
+	bp, err := d.process.ClearBreakpoint(requestedBp.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("Can't clear breakpoint @%x: %s", requestedBp.Addr, err)
 	}

@@ -74,7 +74,7 @@ func (thread *Thread) Step() (err error) {
 	bp, ok := thread.dbp.Breakpoints[pc]
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
-		_, err = thread.dbp.Clear(bp.Addr)
+		_, err = thread.dbp.ClearBreakpoint(bp.Addr)
 		if err != nil {
 			return err
 		}
@@ -82,7 +82,7 @@ func (thread *Thread) Step() (err error) {
 		// Restore breakpoint now that we have passed it.
 		defer func() {
 			var nbp *Breakpoint
-			nbp, err = thread.dbp.Break(bp.Addr)
+			nbp, err = thread.dbp.SetBreakpoint(bp.Addr)
 			nbp.Temp = bp.Temp
 		}()
 	}
@@ -218,7 +218,7 @@ func (thread *Thread) setNextTempBreakpoints(curpc uint64, pcs []uint64) error {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
 		}
-		if _, err := thread.dbp.TempBreak(pcs[i]); err != nil {
+		if _, err := thread.dbp.SetTempBreakpoint(pcs[i]); err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
 				return err
 			}

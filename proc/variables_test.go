@@ -70,8 +70,8 @@ func TestVariableEvaluation(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
-		_, err := p.Break(pc)
-		assertNoError(err, t, "Break() returned an error")
+		_, err := p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint() returned an error")
 
 		err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
@@ -94,12 +94,12 @@ func TestVariableFunctionScoping(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
-		_, err := p.Break(pc)
-		assertNoError(err, t, "Break() returned an error")
+		_, err := p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint() returned an error")
 
 		err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
-		p.Clear(pc)
+		p.ClearBreakpoint(pc)
 
 		_, err = p.EvalVariable("a1")
 		assertNoError(err, t, "Unable to find variable a1")
@@ -110,8 +110,8 @@ func TestVariableFunctionScoping(t *testing.T) {
 		// Move scopes, a1 exists here by a2 does not
 		pc, _, _ = p.goSymTable.LineToPC(fixture.Source, 23)
 
-		_, err = p.Break(pc)
-		assertNoError(err, t, "Break() returned an error")
+		_, err = p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint() returned an error")
 
 		err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
@@ -186,8 +186,8 @@ func TestLocalVariables(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
 
-		_, err := p.Break(pc)
-		assertNoError(err, t, "Break() returned an error")
+		_, err := p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint() returned an error")
 
 		err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
