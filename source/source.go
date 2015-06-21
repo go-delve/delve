@@ -120,22 +120,24 @@ func (s *Searcher) NextLines(fname string, line int) (lines []int, err error) {
 					x = stmt
 					continue
 				}
-				pos := s.fileset.Position(x.Else.Pos())
-				ast.Inspect(x, func(n ast.Node) bool {
-					if found {
-						panic(Done("done"))
-					}
-					if n == nil {
-						return false
-					}
-					p := s.fileset.Position(n.Pos())
-					if pos.Line < p.Line {
-						lines = append(lines, p.Line)
-						found = true
-						return false
-					}
-					return true
-				})
+				if x.Else != nil {
+					pos := s.fileset.Position(x.Else.Pos())
+					ast.Inspect(x, func(n ast.Node) bool {
+						if found {
+							panic(Done("done"))
+						}
+						if n == nil {
+							return false
+						}
+						p := s.fileset.Position(n.Pos())
+						if pos.Line < p.Line {
+							lines = append(lines, p.Line)
+							found = true
+							return false
+						}
+						return true
+					})
+				}
 			}
 		}
 
