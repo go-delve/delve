@@ -55,13 +55,12 @@ func BuildFixture(name string) Fixture {
 
 // RunTestsWithFixtures will pre-compile test fixtures before running test
 // methods. Test binaries are deleted before exiting.
-func RunTestsWithFixtures(m *testing.M) {
+func RunTestsWithFixtures(m *testing.M) int {
 	status := m.Run()
 
 	// Remove the fixtures.
 	for _, f := range Fixtures {
 		os.Remove(f.Path)
 	}
-
-	os.Exit(status)
+	return status
 }

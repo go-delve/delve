@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"encoding/binary"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -15,7 +16,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	protest.RunTestsWithFixtures(m)
+	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
 func withTestProcess(name string, t *testing.T, fn func(p *Process, fixture protest.Fixture)) {
