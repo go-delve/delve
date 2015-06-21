@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	protest "github.com/derekparker/delve/proc/test"
@@ -68,8 +69,15 @@ func TestClientServer_exit(t *testing.T) {
 			t.Fatalf("Expected exited %v, got %v", e, a)
 		}
 		state, err = c.Continue()
+		if err == nil {
+			t.Fatalf("Expected error after continue, got none")
+		}
+		if !strings.Contains(err.Error(), "exited") {
+			t.Fatal("Expected exit message")
+		}
+		state, err = c.GetState()
 		if err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+			t.Fatal(err)
 		}
 		if state.CurrentThread == nil {
 			t.Fatalf("Expected CurrentThread")

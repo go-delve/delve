@@ -12,7 +12,6 @@ import (
 	"github.com/peterh/liner"
 	sys "golang.org/x/sys/unix"
 
-	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service"
 )
 
@@ -91,11 +90,12 @@ func (t *Term) Run() (error, int) {
 
 		cmd := cmds.Find(cmdstr)
 		if err := cmd(t.client, args...); err != nil {
-			switch err.(type) {
-			case proc.ProcessExitedError:
-				pe := err.(proc.ProcessExitedError)
-				fmt.Fprintf(os.Stderr, "Process exited with status %d\n", pe.Status)
-			default:
+			// The type information gets lost in serialization / de-serialization,
+			// so we do a string compare on the error message to see if the process
+			// has exited, or if the command actually failed.
+			if strings.Contains(err.Error(), "exited") {
+				fmt.Fprintln(os.Stderr, err.Error())
+			} else {
 				fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
 			}
 		}
