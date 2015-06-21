@@ -308,6 +308,8 @@ func (thread *Thread) getG() (g *G, err error) {
 		return nil, err
 	}
 	g, err = parseG(thread, regs.CX(), false)
-	g.thread = thread
+	if err == nil {
+		g.thread = thread
+	}
 	return
 }
