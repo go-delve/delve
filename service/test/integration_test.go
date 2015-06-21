@@ -1,6 +1,7 @@
-package rest
+package servicetest
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -8,8 +9,11 @@ import (
 	"testing"
 
 	protest "github.com/derekparker/delve/proc/test"
+
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/service/rest"
+	"github.com/derekparker/delve/service/rpc"
 )
 
 func init() {
@@ -17,7 +21,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	protest.RunTestsWithFixtures(m)
+	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
 func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
@@ -25,14 +29,33 @@ func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
-	server := NewServer(&Config{
-		Listener:    listener,
-		ProcessArgs: []string{protest.BuildFixture(name).Path},
-	}, false)
-	go server.Run()
-	client := NewClient(listener.Addr().String())
-	defer client.Detach(true)
-	fn(client)
+	defer listener.Close()
+	// Test REST service
+	restService := func() {
+		fmt.Println("---- RUNNING TEST WITH REST CLIENT ----")
+		server := rest.NewServer(&service.Config{
+			Listener:    listener,
+			ProcessArgs: []string{protest.BuildFixture(name).Path},
+		}, false)
+		go server.Run()
+		client := rest.NewClient(listener.Addr().String())
+		defer client.Detach(true)
+		fn(client)
+	}
+	// Test RPC service
+	rpcService := func() {
+		fmt.Println("---- RUNNING TEST WITH RPC CLIENT ----")
+		server := rpc.NewServer(&service.Config{
+			Listener:    listener,
+			ProcessArgs: []string{protest.BuildFixture(name).Path},
+		}, false)
+		go server.Run()
+		client := rpc.NewClient(listener.Addr().String())
+		defer client.Detach(true)
+		fn(client)
+	}
+	rpcService()
+	restService()
 }
 
 func TestClientServer_exit(t *testing.T) {

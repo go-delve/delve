@@ -13,7 +13,7 @@ func anotherthread(wg *sync.WaitGroup) {
 
 func main() {
 	var wg sync.WaitGroup
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go anotherthread(&wg)
 	}

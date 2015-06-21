@@ -101,7 +101,10 @@ func (dbp *Process) Detach(kill bool) (err error) {
 	// Clean up any breakpoints we've set.
 	for _, bp := range dbp.Breakpoints {
 		if bp != nil {
-			dbp.ClearBreakpoint(bp.Addr)
+			_, err := dbp.ClearBreakpoint(bp.Addr)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	dbp.execPtraceFunc(func() {

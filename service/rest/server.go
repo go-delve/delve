@@ -9,6 +9,7 @@ import (
 
 	restful "github.com/emicklei/go-restful"
 
+	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
 )
@@ -16,31 +17,15 @@ import (
 // RESTServer exposes a Debugger via a HTTP REST API.
 type RESTServer struct {
 	// config is all the information necessary to start the debugger and server.
-	config *Config
+	config *service.Config
 	// listener is used to serve HTTP.
 	listener net.Listener
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
 }
 
-// Config provides the configuration to start a Debugger and expose it with a
-// RESTServer.
-//
-// Only one of ProcessArgs or AttachPid should be specified. If ProcessArgs is
-// provided, a new process will be launched. Otherwise, the debugger will try
-// to attach to an existing process with AttachPid.
-type Config struct {
-	// Listener is used to serve HTTP.
-	Listener net.Listener
-	// ProcessArgs are the arguments to launch a new process.
-	ProcessArgs []string
-	// AttachPid is the PID of an existing process to which the debugger should
-	// attach.
-	AttachPid int
-}
-
 // NewServer creates a new RESTServer.
-func NewServer(config *Config, logEnabled bool) *RESTServer {
+func NewServer(config *service.Config, logEnabled bool) *RESTServer {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	if !logEnabled {
 		log.SetOutput(ioutil.Discard)
