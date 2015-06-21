@@ -181,10 +181,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = d.process.RequestManualStop()
 	}
 	if err != nil {
-		// Only report the error if it's not a process exit.
-		if _, exited := err.(proc.ProcessExitedError); !exited {
-			return nil, err
-		}
+		return nil, err
 	}
 	return d.State()
 }

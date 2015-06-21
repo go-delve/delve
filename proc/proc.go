@@ -85,7 +85,7 @@ type ProcessExitedError struct {
 }
 
 func (pe ProcessExitedError) Error() string {
-	return fmt.Sprintf("process %d has exited with status %d", pe.Pid, pe.Status)
+	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
 }
 
 // Attach to an existing process with the given PID.
