@@ -2,7 +2,7 @@
 
 Want to help contribute to Delve? Great! Any and all help is certainly appreciated, whether it's code, documentation, or spelling corrections.
 
-If you'd like to join the discussion, hop on #delve-dbgr on irc.freenode.net.
+If you'd like to join the discussion, join the gitter chat (link in README).
 
 ## Filing issues
 
@@ -27,5 +27,3 @@ Consider the following guidelines when preparing to submit a patch:
 * Ensure that you test your code. Any patches sent in for new / fixed functionality must include tests in order to be merged into master.
 * If you plan on making any major changes, create an issue before sending a patch. This will allow for proper discussion beforehand.
 * Keep any os / arch specific code contained to os / arch specific files. Delve leverages Go's filename based conditional compilation, i.e do not put Linux specific functionality in a non Linux specific file.
-
-
