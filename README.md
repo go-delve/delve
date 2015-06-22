@@ -6,6 +6,8 @@
 
 ### About Delve
 
+[![Join the chat at https://gitter.im/derekparker/delve](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/derekparker/delve?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 - [Building](https://github.com/derekparker/delve/wiki/Building)
 - [Usage](https://github.com/derekparker/delve/wiki/Usage)
 - [Command reference](https://github.com/derekparker/delve/wiki/Commands)
