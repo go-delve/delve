@@ -271,12 +271,15 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP {
+			th.running = false
 			return dbp.handleBreakpointOnThread(wpid)
 		}
 		if status.StopSignal() == sys.SIGTRAP && dbp.halt {
+			th.running = false
 			return th, nil
 		}
 		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
+			th.running = false
 			return nil, ManualStopError{}
 		}
 		if th != nil {

@@ -65,7 +65,11 @@ func (thread *Thread) Continue() error {
 // Otherwise we simply execute the next instruction.
 func (thread *Thread) Step() (err error) {
 	thread.singleStepping = true
-	defer func() { thread.singleStepping = false }()
+	thread.running = true
+	defer func() {
+		thread.singleStepping = false
+		thread.running = false
+	}()
 	pc, err := thread.PC()
 	if err != nil {
 		return err

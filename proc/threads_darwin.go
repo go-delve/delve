@@ -18,6 +18,7 @@ func (t *Thread) Halt() error {
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not suspend thread %d", t.Id)
 	}
+	t.running = false
 	return nil
 }
 
@@ -35,6 +36,7 @@ func (t *Thread) singleStep() error {
 }
 
 func (t *Thread) resume() error {
+	t.running = true
 	// TODO(dp) set flag for ptrace stops
 	var err error
 	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.Pid, 0) })

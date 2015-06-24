@@ -18,16 +18,18 @@ func (t *Thread) Halt() error {
 	}
 	err := sys.Tgkill(t.dbp.Pid, t.Id, sys.SIGSTOP)
 	if err != nil {
-		return fmt.Errorf("Halt err %s %d", err, t.Id)
+		return fmt.Errorf("halt err %s on thread %d", err, t.Id)
 	}
 	_, _, err = wait(t.Id, 0)
 	if err != nil {
-		return fmt.Errorf("wait err %s %d", err, t.Id)
+		return fmt.Errorf("wait err %s on thread %d", err, t.Id)
 	}
+	t.running = false
 	return nil
 }
 
 func (t *Thread) resume() (err error) {
+	t.running = true
 	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.Id, 0) })
 	return
 }
