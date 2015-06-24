@@ -35,7 +35,10 @@ func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
 	}, false)
 	go server.Run()
 	client := rpc.NewClient(listener.Addr().String())
-	defer client.Detach(true)
+	defer func() {
+		client.Detach(true)
+	}()
+
 	fn(client)
 }
 
