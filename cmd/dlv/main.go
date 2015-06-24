@@ -13,7 +13,6 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/service"
-	"github.com/derekparker/delve/service/rest"
 	"github.com/derekparker/delve/service/rpc"
 	"github.com/derekparker/delve/terminal"
 )
@@ -40,13 +39,11 @@ func main() {
 	var addr string
 	var logEnabled bool
 	var headless bool
-	var http bool
 
 	flag.BoolVar(&printv, "version", false, "Print version number and exit.")
 	flag.StringVar(&addr, "addr", "localhost:0", "Debugging server listen address.")
 	flag.BoolVar(&logEnabled, "log", false, "Enable debugging server logging.")
 	flag.BoolVar(&headless, "headless", false, "Run in headless mode.")
-	flag.BoolVar(&http, "http", false, "Start HTTP server instead of RPC.")
 	flag.Parse()
 
 	if flag.NFlag() == 0 && len(flag.Args()) == 0 {
@@ -64,12 +61,12 @@ func main() {
 		os.Exit(0)
 	}
 
-	status := run(addr, logEnabled, headless, http)
+	status := run(addr, logEnabled, headless)
 	fmt.Println("[Hope I was of service hunting your bug!]")
 	os.Exit(status)
 }
 
-func run(addr string, logEnabled, headless, http bool) int {
+func run(addr string, logEnabled, headless bool) int {
 	// Collect launch arguments
 	var processArgs []string
 	var attachPid int
@@ -127,30 +124,18 @@ func run(addr string, logEnabled, headless, http bool) int {
 
 	// Create and start a debugger server
 	var server service.Server
-	if http {
-		server = rest.NewServer(&service.Config{
-			Listener:    listener,
-			ProcessArgs: processArgs,
-			AttachPid:   attachPid,
-		}, logEnabled)
-	} else {
-		server = rpc.NewServer(&service.Config{
-			Listener:    listener,
-			ProcessArgs: processArgs,
-			AttachPid:   attachPid,
-		}, logEnabled)
-	}
+	server = rpc.NewServer(&service.Config{
+		Listener:    listener,
+		ProcessArgs: processArgs,
+		AttachPid:   attachPid,
+	}, logEnabled)
 	go server.Run()
 
 	var status int
 	if !headless {
 		// Create and start a terminal
 		var client service.Client
-		if http {
-			client = rest.NewClient(listener.Addr().String())
-		} else {
-			client = rpc.NewClient(listener.Addr().String())
-		}
+		client = rpc.NewClient(listener.Addr().String())
 		term := terminal.New(client)
 		err, status = term.Run()
 	} else {
