@@ -503,7 +503,7 @@ func printcontext(state *api.DebuggerState) error {
 			arrow = "=>"
 		}
 
-		context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m: %s", arrow, i, line))
+		context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m:\t%s", arrow, i, line))
 	}
 
 	fmt.Println(strings.Join(context, ""))
