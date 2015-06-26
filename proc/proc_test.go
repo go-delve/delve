@@ -12,7 +12,8 @@ import (
 )
 
 func init() {
-	runtime.GOMAXPROCS(2)
+	runtime.GOMAXPROCS(4)
+	os.Setenv("GOMAXPROCS", "4")
 }
 
 func TestMain(m *testing.M) {
@@ -57,7 +58,7 @@ func assertNoError(err error, t *testing.T, s string) {
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
 		fname := filepath.Base(file)
-		t.Fatalf("failed assertion at %s:%d: %s : %s\n", fname, line, s, err)
+		t.Fatalf("failed assertion at %s:%d: %s - %s\n", fname, line, s, err)
 	}
 }
 
@@ -94,31 +95,40 @@ func TestExit(t *testing.T) {
 }
 
 func TestHalt(t *testing.T) {
-	runtime.GOMAXPROCS(2)
-	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
+	stopChan := make(chan interface{})
+	withTestProcess("loopprog", t, func(p *Process, fixture protest.Fixture) {
+		_, err := p.SetBreakpointByLocation("main.loop")
+		assertNoError(err, t, "SetBreakpoint")
+		assertNoError(p.Continue(), t, "Continue")
+		for _, th := range p.Threads {
+			if th.running != false {
+				t.Fatal("expected running = false for thread", th.Id)
+			}
+			_, err := th.Registers()
+			assertNoError(err, t, "Registers")
+		}
 		go func() {
 			for {
 				if p.Running() {
-					err := p.RequestManualStop()
-					if err != nil {
+					if err := p.RequestManualStop(); err != nil {
 						t.Fatal(err)
 					}
+					stopChan <- nil
 					return
 				}
 			}
 		}()
-		err := p.Continue()
-		if err != nil {
-			t.Fatal(err)
-		}
+		assertNoError(p.Continue(), t, "Continue")
+		<-stopChan
 		// Loop through threads and make sure they are all
 		// actually stopped, err will not be nil if the process
 		// is still running.
 		for _, th := range p.Threads {
-			_, err := th.Registers()
-			if err != nil {
-				t.Error(err, th.Id)
+			if th.running != false {
+				t.Fatal("expected running = false for thread", th.Id)
 			}
+			_, err := th.Registers()
+			assertNoError(err, t, "Registers")
 		}
 	})
 }

@@ -362,7 +362,7 @@ func (dbp *Process) Continue() error {
 	for _, thread := range dbp.Threads {
 		err := thread.Continue()
 		if err != nil {
-			return err
+			return fmt.Errorf("could not continue thread %d %s", thread.Id, err)
 		}
 	}
 	return dbp.run(dbp.resume)

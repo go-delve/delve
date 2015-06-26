@@ -86,7 +86,10 @@ func (thread *Thread) Step() (err error) {
 		// Restore breakpoint now that we have passed it.
 		defer func() {
 			var nbp *Breakpoint
-			nbp, err = thread.dbp.SetBreakpoint(bp.Addr)
+			nbp, err = thread.dbp.setBreakpoint(thread.Id, bp.Addr, bp.Temp)
+			if err != nil {
+				return
+			}
 			nbp.Temp = bp.Temp
 		}()
 	}

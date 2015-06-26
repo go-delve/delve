@@ -239,6 +239,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				dbp.exited = true
 				return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
 			}
+			delete(dbp.Threads, wpid)
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
