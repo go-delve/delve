@@ -564,7 +564,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		if err != nil {
 			return nil, err
 		}
-		_, _, err = wait(dbp.Pid, 0)
+		_, _, err = wait(dbp.Pid, dbp.Pid, 0)
 		if err != nil {
 			return nil, err
 		}

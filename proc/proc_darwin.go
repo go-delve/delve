@@ -267,7 +267,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	return th, nil
 }
 
-func wait(pid, options int) (int, *sys.WaitStatus, error) {
+func wait(pid, tgid, options int) (int, *sys.WaitStatus, error) {
 	var status sys.WaitStatus
 	wpid, err := sys.Wait4(pid, &status, options, nil)
 	return wpid, &status, err
