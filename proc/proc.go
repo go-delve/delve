@@ -51,7 +51,6 @@ type Process struct {
 	ast                     *source.Searcher
 	breakpointIDCounter     int
 	tempBreakpointIDCounter int
-	running                 bool
 	halt                    bool
 	exited                  bool
 	ptraceChan              chan func()
@@ -130,7 +129,12 @@ func (dbp *Process) Exited() bool {
 // Returns whether or not Delve thinks the debugged
 // process is currently executing.
 func (dbp *Process) Running() bool {
-	return dbp.running
+	for _, th := range dbp.Threads {
+		if th.running {
+			return true
+		}
+	}
+	return false
 }
 
 // Finds the executable and then uses it
@@ -212,7 +216,6 @@ func (dbp *Process) RequestManualStop() error {
 	if err != nil {
 		return err
 	}
-	dbp.running = false
 	return nil
 }
 
@@ -643,12 +646,10 @@ func (dbp *Process) run(fn func() error) error {
 	if dbp.exited {
 		return fmt.Errorf("process has already exited")
 	}
-	dbp.running = true
 	dbp.halt = false
 	for _, th := range dbp.Threads {
 		th.CurrentBreakpoint = nil
 	}
-	defer func() { dbp.running = false }()
 	if err := fn(); err != nil {
 		if _, ok := err.(ManualStopError); !ok {
 			return err

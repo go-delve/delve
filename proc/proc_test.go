@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	protest "github.com/derekparker/delve/proc/test"
 )
@@ -110,6 +111,7 @@ func TestHalt(t *testing.T) {
 		go func() {
 			for {
 				if p.Running() {
+					time.Sleep(time.Millisecond)
 					if err := p.RequestManualStop(); err != nil {
 						t.Fatal(err)
 					}

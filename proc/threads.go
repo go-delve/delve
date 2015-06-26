@@ -64,8 +64,8 @@ func (thread *Thread) Continue() error {
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
 func (thread *Thread) Step() (err error) {
-	thread.singleStepping = true
 	thread.running = true
+	thread.singleStepping = true
 	defer func() {
 		thread.singleStepping = false
 		thread.running = false

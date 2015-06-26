@@ -35,8 +35,6 @@ func (t *Thread) resume() (err error) {
 }
 
 func (t *Thread) singleStep() (err error) {
-	t.running = true
-	defer func() { t.running = false }()
 	t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.Id) })
 	if err != nil {
 		return err
