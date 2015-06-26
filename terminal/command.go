@@ -503,7 +503,13 @@ func printcontext(state *api.DebuggerState) error {
 			arrow = "=>"
 		}
 
-		context = append(context, fmt.Sprintf("\033[34m%s %d\033[0m:\t%s", arrow, i, line))
+		var lineNum string
+		if i < 10 {
+			lineNum = fmt.Sprintf("\033[34m%s  %d\033[0m:\t", arrow, i)
+		} else {
+			lineNum = fmt.Sprintf("\033[34m%s %d\033[0m:\t", arrow, i)
+		}
+		context = append(context, lineNum+line)
 	}
 
 	fmt.Println(strings.Join(context, ""))
