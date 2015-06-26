@@ -39,6 +39,7 @@ func (t *Thread) singleStep() (err error) {
 	if err != nil {
 		return err
 	}
+	t.running = false
 	_, _, err = wait(t.Id, 0)
 	return err
 }
