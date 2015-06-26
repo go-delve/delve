@@ -123,7 +123,7 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 	if _, err := readMemory(thread, uintptr(addr), originalData); err != nil {
 		return nil, err
 	}
-	if _, err := writeMemory(thread, uintptr(addr), dbp.arch.BreakpointInstruction()); err != nil {
+	if err := dbp.writeSoftwareBreakpoint(thread, addr); err != nil {
 		return nil, err
 	}
 	dbp.Breakpoints[addr] = &Breakpoint{
@@ -137,6 +137,11 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 	}
 
 	return dbp.Breakpoints[addr], nil
+}
+
+func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
+	_, err := writeMemory(thread, uintptr(addr), dbp.arch.BreakpointInstruction())
+	return err
 }
 
 // Error thrown when trying to clear a breakpoint that does not exist.
