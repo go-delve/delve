@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
 	sys "golang.org/x/sys/unix"
 
@@ -21,6 +22,7 @@ const (
 	STATUS_SLEEPING   = 'S'
 	STATUS_RUNNING    = 'R'
 	STATUS_TRACE_STOP = 't'
+	STATUS_ZOMBIE     = 'Z'
 )
 
 // Not actually needed for Linux.
@@ -47,7 +49,7 @@ func Launch(cmd []string) (*Process, error) {
 		return nil, err
 	}
 	dbp.Pid = proc.Process.Pid
-	_, _, err = wait(proc.Process.Pid, 0)
+	_, _, err = wait(proc.Process.Pid, proc.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
@@ -76,7 +78,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 			return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 		}
 
-		pid, status, err := wait(tid, 0)
+		pid, status, err := wait(tid, dbp.Pid, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +90,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
-		_, _, err = wait(tid, 0)
+		_, _, err = wait(tid, dbp.Pid, 0)
 		if err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
@@ -223,7 +225,7 @@ func (dbp *Process) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	for {
-		wpid, status, err := wait(pid, 0)
+		wpid, status, err := wait(pid, dbp.Pid, 0)
 		if err != nil {
 			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
@@ -271,6 +273,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			}
 			continue
 		}
+		if th == nil {
+			// Sometimes we get an unknown thread, ignore it?
+			continue
+		}
 		if status.StopSignal() == sys.SIGTRAP {
 			th.running = false
 			return dbp.handleBreakpointOnThread(wpid)
@@ -292,10 +298,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 }
 
-func stopped(pid int) bool {
+func status(pid int) rune {
 	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
-		return false
+		return '\000'
 	}
 	defer f.Close()
 
@@ -305,14 +311,48 @@ func stopped(pid int) bool {
 		state rune
 	)
 	fmt.Fscanf(f, "%d %s %c", &p, &comm, &state)
+	return state
+}
+
+func stopped(pid int) bool {
+	state := status(pid)
 	if state == STATUS_TRACE_STOP {
 		return true
 	}
 	return false
 }
 
-func wait(pid, options int) (int, *sys.WaitStatus, error) {
-	var status sys.WaitStatus
-	wpid, err := sys.Wait4(pid, &status, sys.WALL|options, nil)
-	return wpid, &status, err
+func wait(pid, tgid, options int) (int, *sys.WaitStatus, error) {
+	var s sys.WaitStatus
+	if (pid != tgid) || (options != 0) {
+		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
+		return wpid, &s, err
+	} else {
+		// If we call wait4/waitpid on a thread that is the leader of its group,
+		// with options == 0, while ptracing and the thread leader has exited leaving
+		// zombies of its own then waitpid hangs forever this is apparently intended
+		// behaviour in the linux kernel because it's just so convenient.
+		// Therefore we call wait4 in a loop with WNOHANG, sleeping a while between
+		// calls and exiting when either wait4 succeeds or we find out that the thread
+		// has become a zombie.
+		// References:
+		// https://sourceware.org/bugzilla/show_bug.cgi?id=12702
+		// https://sourceware.org/bugzilla/show_bug.cgi?id=10095
+		// https://sourceware.org/bugzilla/attachment.cgi?id=5685
+		for {
+			wpid, err := sys.Wait4(pid, &s, sys.WNOHANG|sys.WALL|options, nil)
+			if err != nil {
+				return 0, nil, err
+			}
+			if wpid != 0 {
+				return wpid, &s, err
+			}
+
+			if status(pid) == STATUS_ZOMBIE {
+				return pid, nil, nil
+			}
+
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
 }

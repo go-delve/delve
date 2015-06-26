@@ -20,7 +20,7 @@ func (t *Thread) Halt() error {
 	if err != nil {
 		return fmt.Errorf("halt err %s on thread %d", err, t.Id)
 	}
-	_, _, err = wait(t.Id, 0)
+	_, _, err = wait(t.Id, t.dbp.Pid, 0)
 	if err != nil {
 		return fmt.Errorf("wait err %s on thread %d", err, t.Id)
 	}
@@ -39,7 +39,7 @@ func (t *Thread) singleStep() (err error) {
 	if err != nil {
 		return err
 	}
-	_, _, err = wait(t.Id, 0)
+	_, _, err = wait(t.Id, t.dbp.Pid, 0)
 	return err
 }
 

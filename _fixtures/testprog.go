@@ -15,7 +15,7 @@ func sleepytime() {
 }
 
 func main() {
-	for {
+	for i := 0; i < 500; i++ {
 		sleepytime()
 		helloworld()
 	}
