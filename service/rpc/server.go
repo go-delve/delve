@@ -45,11 +45,7 @@ func (s *RPCServer) Stop(kill bool) error {
 // itself can be stopped with the `detach` API. Run blocks until the HTTP
 // server stops.
 func (s *RPCServer) Run() error {
-	c, err := s.listener.Accept()
-	if err != nil {
-		return err
-	}
-
+	var err error
 	// Create and start the debugger
 	if s.debugger, err = debugger.New(&debugger.Config{
 		ProcessArgs: s.config.ProcessArgs,
@@ -58,9 +54,16 @@ func (s *RPCServer) Run() error {
 		return err
 	}
 
-	rpcs := grpc.NewServer()
-	rpcs.Register(s)
-	rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+	go func() {
+		c, err := s.listener.Accept()
+		if err != nil {
+			panic(err)
+		}
+
+		rpcs := grpc.NewServer()
+		rpcs.Register(s)
+		rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+	}()
 	return nil
 }
 

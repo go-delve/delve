@@ -33,13 +33,30 @@ func withTestClient(name string, t *testing.T, fn func(c service.Client)) {
 		Listener:    listener,
 		ProcessArgs: []string{protest.BuildFixture(name).Path},
 	}, false)
-	go server.Run()
+	if err := server.Run(); err != nil {
+		t.Fatal(err)
+	}
 	client := rpc.NewClient(listener.Addr().String())
 	defer func() {
 		client.Detach(true)
 	}()
 
 	fn(client)
+}
+
+func TestRunWithInvalidPath(t *testing.T) {
+	listener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("couldn't start listener: %s\n", err)
+	}
+	defer listener.Close()
+	server := rpc.NewServer(&service.Config{
+		Listener:    listener,
+		ProcessArgs: []string{"invalid_path"},
+	}, false)
+	if err := server.Run(); err == nil {
+		t.Fatal("Expected Run to return error for invalid program path")
+	}
 }
 
 func TestClientServer_exit(t *testing.T) {

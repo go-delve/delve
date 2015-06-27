@@ -46,14 +46,14 @@ func New(config *Config) (*Debugger, error) {
 		log.Printf("attaching to pid %d", d.config.AttachPid)
 		p, err := proc.Attach(d.config.AttachPid)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't attach to pid %d: %s", d.config.AttachPid, err)
+			return nil, fmt.Errorf("could not attach to pid %d: %s", d.config.AttachPid, err)
 		}
 		d.process = p
 	} else {
 		log.Printf("launching process with args: %v", d.config.ProcessArgs)
 		p, err := proc.Launch(d.config.ProcessArgs)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't launch process: %s", err)
+			return nil, fmt.Errorf("could not launch process: %s", err)
 		}
 		d.process = p
 	}

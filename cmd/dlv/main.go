@@ -61,6 +61,13 @@ func main() {
 		os.Exit(0)
 	}
 
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}()
+
 	status := run(addr, logEnabled, headless)
 	fmt.Println("[Hope I was of service hunting your bug!]")
 	os.Exit(status)
@@ -121,6 +128,7 @@ func run(addr string, logEnabled, headless bool) int {
 		fmt.Printf("couldn't start listener: %s\n", err)
 		return 1
 	}
+	defer listener.Close()
 
 	// Create and start a debugger server
 	var server service.Server
@@ -129,7 +137,10 @@ func run(addr string, logEnabled, headless bool) int {
 		ProcessArgs: processArgs,
 		AttachPid:   attachPid,
 	}, logEnabled)
-	go server.Run()
+	if err := server.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 
 	var status int
 	if !headless {
