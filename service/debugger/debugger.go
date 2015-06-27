@@ -46,7 +46,7 @@ func New(config *Config) (*Debugger, error) {
 		log.Printf("attaching to pid %d", d.config.AttachPid)
 		p, err := proc.Attach(d.config.AttachPid)
 		if err != nil {
-			return nil, fmt.Errorf("could not attach to pid %d: %s", d.config.AttachPid, err)
+			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
 		d.process = p
 	} else {
