@@ -39,17 +39,17 @@ func Launch(cmd []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Make sure the binary exists.
 	if filepath.Base(cmd[0]) == cmd[0] {
 		if _, err := exec.LookPath(cmd[0]); err != nil {
 			return nil, err
 		}
 	}
-	argv0 := C.CString(argv0Go)
-
-	// Make sure the binary exists.
 	if _, err := os.Stat(argv0Go); err != nil {
 		return nil, err
 	}
+
+	argv0 := C.CString(argv0Go)
 
 	argvSlice := make([]*C.char, 0, len(cmd))
 	for _, arg := range cmd {
