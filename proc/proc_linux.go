@@ -347,11 +347,9 @@ func wait(pid, tgid, options int) (int, *sys.WaitStatus, error) {
 			if wpid != 0 {
 				return wpid, &s, err
 			}
-
 			if status(pid) == STATUS_ZOMBIE {
 				return pid, nil, nil
 			}
-
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
