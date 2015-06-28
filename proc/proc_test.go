@@ -452,7 +452,7 @@ func TestStacktrace(t *testing.T) {
 
 		for i := range stacks {
 			assertNoError(p.Continue(), t, "Continue()")
-			locations, err := p.CurrentThread.Stacktrace(40)
+			_, locations, err := p.CurrentThread.Stacktrace(40)
 			assertNoError(err, t, "Stacktrace()")
 
 			if len(locations) != len(stacks[i])+2 {
@@ -500,7 +500,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		mainCount := 0
 
 		for _, g := range gs {
-			locations, _ := p.GoroutineStacktrace(g, 40)
+			_, locations, _ := p.GoroutineStacktrace(g, 40)
 			assertNoError(err, t, "GoroutineStacktrace()")
 
 			if stackMatch(mainStack, locations) {

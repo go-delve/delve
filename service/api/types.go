@@ -7,8 +7,13 @@ type DebuggerState struct {
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// CurrentThread is the currently selected debugger thread.
 	CurrentThread *Thread `json:"currentThread,omitempty"`
+	// Information requested by the current breakpoint
+	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
 	// Exited indicates whether the debugged process has exited.
 	Exited bool `json:"exited"`
+
+	// Filled by RPCClient.Continue, indicates an error
+	Err error `json:"-"`
 }
 
 // Breakpoint addresses a location at which process execution may be
@@ -25,6 +30,15 @@ type Breakpoint struct {
 	// FunctionName is the name of the function at the current breakpoint, and
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
+
+	// tracepoint flag
+	Tracepoint bool `json:"continue"`
+	// number of stack frames to retrieve
+	Stacktrace int `json:"stacktrace"`
+	// retrieve goroutine information
+	Goroutine bool `json:"goroutine"`
+	// variables to evaluate
+	Symbols []string `json:"symbols,omitempty"`
 }
 
 // Thread is a thread within the debugged process.
@@ -90,6 +104,13 @@ type DebuggerCommand struct {
 	// ThreadID is used to specify which thread to use with the SwitchThread
 	// command.
 	ThreadID int `json:"threadID,omitempty"`
+}
+
+// Informations about the current breakpoint
+type BreakpointInfo struct {
+	Stacktrace []Location `json:"stacktrace,omitempty"`
+	Goroutine  *Goroutine `json:"goroutine,omitempty"`
+	Variables  []Variable `json:"variables,omitempty"`
 }
 
 const (

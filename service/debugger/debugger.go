@@ -105,6 +105,10 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	if err != nil {
 		return nil, err
 	}
+	bp.Tracepoint = requestedBp.Tracepoint
+	bp.Goroutine = requestedBp.Goroutine
+	bp.Stacktrace = requestedBp.Stacktrace
+	bp.Symbols = requestedBp.Symbols
 	createdBp = api.ConvertBreakpoint(bp)
 	log.Printf("created breakpoint: %#v", createdBp)
 	return createdBp, nil
@@ -165,6 +169,20 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.Continue:
 		log.Print("continuing")
 		err = d.process.Continue()
+		if err != nil {
+			if _, exited := err.(proc.ProcessExitedError); exited {
+				return d.State()
+			}
+			return nil, err
+		}
+
+		state, err := d.State()
+		if err != nil {
+			return state, err
+		}
+		err = d.collectBreakpointInformation(state)
+		return state, err
+
 	case api.Next:
 		log.Print("nexting")
 		err = d.process.Next()
@@ -184,6 +202,45 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		return nil, err
 	}
 	return d.State()
+}
+
+func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error {
+	if state == nil || state.Breakpoint == nil {
+		return nil
+	}
+
+	bp := state.Breakpoint
+	bpi := &api.BreakpointInfo{}
+	state.BreakpointInfo = bpi
+
+	if bp.Goroutine {
+		g, err := d.process.CurrentThread.GetG()
+		if err != nil {
+			return err
+		}
+		bpi.Goroutine = api.ConvertGoroutine(g)
+	}
+
+	if bp.Stacktrace > 0 {
+		rawloc, rawlocs, err := d.process.CurrentThread.Stacktrace(bp.Stacktrace)
+		if err != nil {
+			return err
+		}
+		bpi.Stacktrace = convertStacktrace(rawloc, rawlocs)
+	}
+
+	if len(bp.Symbols) > 0 {
+		bpi.Variables = make([]api.Variable, len(bp.Symbols))
+	}
+	for i := range bp.Symbols {
+		v, err := d.process.CurrentThread.EvalVariable(bp.Symbols[i])
+		if err != nil {
+			return err
+		}
+		bpi.Variables[i] = api.ConvertVar(v)
+	}
+
+	return nil
 }
 
 func (d *Debugger) Sources(filter string) ([]string, error) {
@@ -314,11 +371,7 @@ func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 	var err error
 
 	if goroutineId < 0 {
-		rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
-		if err != nil {
-			return nil, err
-		}
-		rawloc, err = d.process.CurrentThread.Location()
+		rawloc, rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
 		if err != nil {
 			return nil, err
 		}
@@ -329,11 +382,10 @@ func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 		}
 		for _, g := range gs {
 			if g.Id == goroutineId {
-				rawlocs, err = d.process.GoroutineStacktrace(g, depth)
+				rawloc, rawlocs, err = d.process.GoroutineStacktrace(g, depth)
 				if err != nil {
 					return nil, err
 				}
-				rawloc = d.process.GoroutineLocation(g)
 				break
 			}
 		}
@@ -343,6 +395,10 @@ func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 		}
 	}
 
+	return convertStacktrace(rawloc, rawlocs), nil
+}
+
+func convertStacktrace(rawloc *proc.Location, rawlocs []proc.Location) []api.Location {
 	locations := make([]api.Location, 0, len(rawlocs)+1)
 
 	locations = append(locations, api.ConvertLocation(*rawloc))
@@ -351,5 +407,5 @@ func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 		locations = append(locations, api.ConvertLocation(rawlocs[i]))
 	}
 
-	return locations, nil
+	return locations
 }

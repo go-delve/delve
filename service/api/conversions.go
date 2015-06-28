@@ -13,6 +13,10 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		File:         bp.File,
 		Line:         bp.Line,
 		Addr:         bp.Addr,
+		Tracepoint:   bp.Tracepoint,
+		Stacktrace:   bp.Stacktrace,
+		Goroutine:    bp.Goroutine,
+		Symbols:      bp.Symbols,
 	}
 }
 

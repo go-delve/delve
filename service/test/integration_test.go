@@ -1,11 +1,12 @@
 package servicetest
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
+	"strconv"
 	"testing"
 
 	protest "github.com/derekparker/delve/proc/test"
@@ -68,12 +69,12 @@ func TestClientServer_exit(t *testing.T) {
 		if e, a := false, state.Exited; e != a {
 			t.Fatalf("Expected exited %v, got %v", e, a)
 		}
-		state, err = c.Continue()
-		if err == nil {
-			t.Fatalf("Expected error after continue, got none")
+		state = <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Error after continue: %v\n", err)
 		}
-		if !strings.Contains(err.Error(), "exited") {
-			t.Fatal("Expected exit message")
+		if !state.Exited {
+			t.Fatalf("Expected exit after continue: %v", state)
 		}
 		state, err = c.GetState()
 		if err != nil {
@@ -95,9 +96,10 @@ func TestClientServer_step(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		stateBefore, err := c.Continue()
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
+		statech := c.Continue()
+		stateBefore := <-statech
+		if stateBefore.Err != nil {
+			t.Fatalf("Unexpected error: %v", stateBefore.Err)
 		}
 
 		stateAfter, err := c.Step()
@@ -122,9 +124,9 @@ func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		state, err := c.Continue()
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v", state.Err)
 		}
 
 		_, err = c.ClearBreakpoint(bp.ID)
@@ -194,7 +196,7 @@ func TestClientServer_breakpointInMainThread(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		state, err := c.Continue()
+		state := <-c.Continue()
 		if err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
 		}
@@ -215,9 +217,9 @@ func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		state, err := c.Continue()
-		if err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
 
 		f, l := state.CurrentThread.File, state.CurrentThread.Line
@@ -276,9 +278,9 @@ func TestClientServer_switchThread(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		state, err := c.Continue()
-		if err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
 
 		var nt int
@@ -307,25 +309,30 @@ func TestClientServer_switchThread(t *testing.T) {
 	})
 }
 
-func TestClientServer_infoLocals(t *testing.T) {
-	withTestClient("testnextprog", t, func(c service.Client) {
-		fp, err := filepath.Abs("_fixtures/testnextprog.go")
+func testProgPath(t *testing.T, name string) string {
+	fp, err := filepath.Abs(fmt.Sprintf("_fixtures/%s.go", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(fp); err != nil {
+		fp, err = filepath.Abs(fmt.Sprintf("../../_fixtures/%s.go", name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := os.Stat(fp); err != nil {
-			fp, err = filepath.Abs("../../_fixtures/testnextprog.go")
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		_, err = c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
+	}
+	return fp
+}
+
+func TestClientServer_infoLocals(t *testing.T) {
+	withTestClient("testnextprog", t, func(c service.Client) {
+		fp := testProgPath(t, "testnextprog")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		state, err := c.Continue()
-		if err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
 		locals, err := c.ListLocalVariables()
 		if err != nil {
@@ -339,23 +346,14 @@ func TestClientServer_infoLocals(t *testing.T) {
 
 func TestClientServer_infoArgs(t *testing.T) {
 	withTestClient("testnextprog", t, func(c service.Client) {
-		fp, err := filepath.Abs("_fixtures/testnextprog.go")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(fp); err != nil {
-			fp, err = filepath.Abs("../../_fixtures/testnextprog.go")
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		_, err = c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 47})
+		fp := testProgPath(t, "testnextprog")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 47})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		state, err := c.Continue()
-		if err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
 		regs, err := c.ListRegisters()
 		if err != nil {
@@ -370,6 +368,59 @@ func TestClientServer_infoArgs(t *testing.T) {
 		}
 		if len(locals) != 2 {
 			t.Fatalf("Expected 2 function args, got %d %#v", len(locals), locals)
+		}
+	})
+}
+
+func TestClientServer_traceContinue(t *testing.T) {
+	withTestClient("integrationprog", t, func(c service.Client) {
+		fp := testProgPath(t, "integrationprog")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 15, Tracepoint: true, Goroutine: true, Stacktrace: 5, Symbols: []string{"i"}})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+		count := 0
+		contch := c.Continue()
+		for state := range contch {
+			if state.Breakpoint != nil {
+				count++
+
+				t.Logf("%v", state)
+
+				bpi := state.BreakpointInfo
+
+				if bpi.Goroutine == nil {
+					t.Fatalf("No goroutine information")
+				}
+
+				if len(bpi.Stacktrace) <= 0 {
+					t.Fatalf("No stacktrace\n")
+				}
+
+				if len(bpi.Variables) != 1 {
+					t.Fatalf("Wrong number of variables returned: %d", len(bpi.Variables))
+				}
+
+				if bpi.Variables[0].Name != "i" {
+					t.Fatalf("Wrong variable returned %s", bpi.Variables[0].Name)
+				}
+
+				if bpi.Variables[0].Value != strconv.Itoa(count-1) {
+					t.Fatalf("Wrong variable value %s (%d)", bpi.Variables[0].Value, count)
+				}
+			}
+			if state.Exited {
+				continue
+			}
+			t.Logf("%v", state)
+			if state.Err != nil {
+				t.Fatalf("Unexpected error during continue: %v\n", state.Err)
+			}
+
+		}
+
+		if count != 3 {
+			t.Fatalf("Wrong number of continues hit: %d\n", count)
 		}
 	})
 }

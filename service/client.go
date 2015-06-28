@@ -14,7 +14,7 @@ type Client interface {
 	GetState() (*api.DebuggerState, error)
 
 	// Continue resumes process execution.
-	Continue() (*api.DebuggerState, error)
+	Continue() <-chan *api.DebuggerState
 	// Next continues to the next source line, not entering function calls.
 	Next() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
@@ -62,5 +62,5 @@ type Client interface {
 	ListGoroutines() ([]*api.Goroutine, error)
 
 	// Returns stacktrace
-	Stacktrace(goroutineId, depth int) ([]*api.Location, error)
+	Stacktrace(goroutineId, depth int) ([]api.Location, error)
 }

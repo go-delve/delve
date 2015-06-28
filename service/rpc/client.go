@@ -41,10 +41,21 @@ func (c *RPCClient) GetState() (*api.DebuggerState, error) {
 	return state, err
 }
 
-func (c *RPCClient) Continue() (*api.DebuggerState, error) {
-	state := new(api.DebuggerState)
-	err := c.call("Command", &api.DebuggerCommand{Name: api.Continue}, state)
-	return state, err
+func (c *RPCClient) Continue() <- chan *api.DebuggerState {
+	ch := make(chan *api.DebuggerState)
+	go func() {
+		for {
+			state := new(api.DebuggerState)
+			err := c.call("Command", &api.DebuggerCommand{Name: api.Continue}, state)
+			state.Err = err
+			ch <- state
+			if err != nil || state.Breakpoint == nil || !state.Breakpoint.Tracepoint {
+				close(ch)
+				return
+			}
+		}
+	}()
+	return ch
 }
 
 func (c *RPCClient) Next() (*api.DebuggerState, error) {
@@ -171,8 +182,8 @@ func (c *RPCClient) ListGoroutines() ([]*api.Goroutine, error) {
 	return goroutines, err
 }
 
-func (c *RPCClient) Stacktrace(goroutineId, depth int) ([]*api.Location, error) {
-	var locations []*api.Location
+func (c *RPCClient) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
+	var locations []api.Location
 	err := c.call("StacktraceGoroutine", &StacktraceGoroutineArgs{Id: 1, Depth: depth}, &locations)
 	return locations, err
 }

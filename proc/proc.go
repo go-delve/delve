@@ -301,7 +301,7 @@ func (dbp *Process) next() error {
 		return err
 	}
 
-	g, err := dbp.CurrentThread.getG()
+	g, err := dbp.CurrentThread.GetG()
 	if err != nil {
 		return err
 	}
@@ -343,7 +343,7 @@ func (dbp *Process) next() error {
 		if err != nil {
 			return err
 		}
-		tg, err := thread.getG()
+		tg, err := thread.GetG()
 		if err != nil {
 			return err
 		}
@@ -466,7 +466,7 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 		if dbp.Threads[i].blocked() {
 			continue
 		}
-		g, _ := dbp.Threads[i].getG()
+		g, _ := dbp.Threads[i].GetG()
 		if g != nil {
 			threadg[g.Id] = dbp.Threads[i]
 		}

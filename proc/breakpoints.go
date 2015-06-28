@@ -20,6 +20,12 @@ type Breakpoint struct {
 	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
 	hardware     bool   // Breakpoint using CPU debug registers.
 	reg          int    // If hardware breakpoint, what debug register it belongs to.
+
+	// Breakpoint informations
+	Tracepoint bool     // tracepoint flag
+	Stacktrace int      // number of stack frames to retrieve
+	Goroutine  bool     // retrieve goroutine information
+	Symbols    []string // variables to evaluate
 }
 
 func (bp *Breakpoint) String() string {

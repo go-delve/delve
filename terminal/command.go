@@ -46,7 +46,8 @@ func DebugCommands(client service.Client) *Commands {
 
 	c.cmds = []command{
 		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
-		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "Set break point at the entry point of a function, or at a specific file/line. Example: break foo.go:13"},
+		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <address> [-stack <n>|-goroutine|<variable name>]*\nSet break point at the entry point of a function, or at a specific file/line.\nWhen the breakpoint is reached the value of the specified variables will be printed, if -stack is specified the stack trace of the current goroutine will be printed, if -goroutine is specified informations about the current goroutine will be printed. Example: break foo.go:13"},
+		{aliases: []string{"trace"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break"},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
@@ -186,21 +187,27 @@ func goroutines(client service.Client, args ...string) error {
 	}
 	fmt.Printf("[%d goroutines]\n", len(gs))
 	for _, g := range gs {
-		var fname string
-		if g.Function != nil {
-			fname = g.Function.Name
-		}
-		fmt.Printf("Goroutine %d - %s:%d %s (%#v)\n", g.ID, g.File, g.Line, fname, g.PC)
+		fmt.Printf("Goroutine %s\n", formatGoroutine(g))
 	}
 	return nil
 }
 
-func cont(client service.Client, args ...string) error {
-	state, err := client.Continue()
-	if err != nil {
-		return err
+func formatGoroutine(g *api.Goroutine) string {
+	fname := ""
+	if g.Function != nil {
+		fname = g.Function.Name
 	}
-	printcontext(state)
+	return fmt.Sprintf("%d - %s:%d %s (%#v)\n", g.ID, g.File, g.Line, fname, g.PC)
+}
+
+func cont(client service.Client, args ...string) error {
+	statech := client.Continue()
+	for state := range statech {
+		if state.Err != nil {
+			return state.Err
+		}
+		printcontext(state)
+	}
 	return nil
 }
 
@@ -268,16 +275,37 @@ func breakpoints(client service.Client, args ...string) error {
 	}
 	sort.Sort(ById(breakPoints))
 	for _, bp := range breakPoints {
-		fmt.Printf("Breakpoint %d at %#v %s:%d\n", bp.ID, bp.Addr, bp.File, bp.Line)
+		thing := "Breakpoint"
+		if bp.Tracepoint {
+			thing = "Tracepoint"
+		}
+		fmt.Printf("%s %d at %#v %s:%d\n", thing, bp.ID, bp.Addr, bp.File, bp.Line)
+
+		var attrs []string
+		if bp.Stacktrace > 0 {
+			attrs = append(attrs, "-stack")
+			attrs = append(attrs, strconv.Itoa(bp.Stacktrace))
+		}
+		if bp.Goroutine {
+			attrs = append(attrs, "-goroutine")
+		}
+		for i := range bp.Symbols {
+			attrs = append(attrs, bp.Symbols[i])
+		}
+
+		if len(attrs) > 0 {
+			fmt.Printf("\t%s\n", strings.Join(attrs, " "))
+		}
 	}
 
 	return nil
 }
 
-func breakpoint(client service.Client, args ...string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("argument must be either a function name or <file:line>")
+func breakpointIntl(client service.Client, tracepoint bool, args ...string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("address required, specify either a function name or <file:line>")
 	}
+
 	requestedBp := &api.Breakpoint{}
 	tokens := strings.Split(args[0], ":")
 	switch {
@@ -295,13 +323,44 @@ func breakpoint(client service.Client, args ...string) error {
 		return fmt.Errorf("invalid line reference")
 	}
 
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "-stack":
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil {
+				return fmt.Errorf("argument of -stack must be a number")
+			}
+			requestedBp.Stacktrace = n
+		case "-goroutine":
+			requestedBp.Goroutine = true
+		default:
+			requestedBp.Symbols = append(requestedBp.Symbols, args[i])
+		}
+	}
+
+	requestedBp.Tracepoint = tracepoint
+
 	bp, err := client.CreateBreakpoint(requestedBp)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Breakpoint %d set at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	thing := "Breakpoint"
+	if tracepoint {
+		thing = "Tracepoint"
+	}
+
+	fmt.Printf("%s %d set at %#v for %s %s:%d\n", thing, bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
 	return nil
+}
+
+func breakpoint(client service.Client, args ...string) error {
+	return breakpointIntl(client, false, args...)
+}
+
+func tracepoint(client service.Client, args ...string) error {
+	return breakpointIntl(client, true, args...)
 }
 
 func printVar(client service.Client, args ...string) error {
@@ -441,14 +500,18 @@ func stackCommand(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
+	printStack(stack, "")
+	return nil
+}
+
+func printStack(stack []api.Location, ind string) {
 	for i := range stack {
 		name := "(nil)"
 		if stack[i].Function != nil {
 			name = stack[i].Function.Name
 		}
-		fmt.Printf("%d. %s\n\t%s:%d (%#v)\n", i, name, stack[i].File, stack[i].Line, stack[i].PC)
+		fmt.Printf("%s%d. %s %s:%d (%#v)\n", ind, i, name, stack[i].File, stack[i].Line, stack[i].PC)
 	}
-	return nil
 }
 
 func printcontext(state *api.DebuggerState) error {
@@ -470,6 +533,29 @@ func printcontext(state *api.DebuggerState) error {
 		fn = state.CurrentThread.Function.Name
 	}
 	fmt.Printf("current loc: %s %s:%d\n", fn, state.CurrentThread.File, state.CurrentThread.Line)
+
+	if state.BreakpointInfo != nil {
+		bpi := state.BreakpointInfo
+
+		if bpi.Goroutine != nil {
+			fmt.Printf("\tGoroutine %s\n", formatGoroutine(bpi.Goroutine))
+		}
+
+		ss := make([]string, len(bpi.Variables))
+		for i, v := range bpi.Variables {
+			ss[i] = fmt.Sprintf("%s: <%v>", v.Name, v.Value)
+		}
+		fmt.Printf("\t%s\n", strings.Join(ss, ", "))
+
+		if bpi.Stacktrace != nil {
+			fmt.Printf("\tStack:\n")
+			printStack(bpi.Stacktrace, "\t\t")
+		}
+	}
+
+	if state.Breakpoint != nil && state.Breakpoint.Tracepoint {
+		return nil
+	}
 
 	file, err := os.Open(state.CurrentThread.File)
 	if err != nil {

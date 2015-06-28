@@ -192,7 +192,7 @@ func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file 
 	if !covered {
 		fn := thread.dbp.goSymTable.PCToFunc(ret)
 		if fn != nil && fn.Name == "runtime.goexit" {
-			g, err := thread.getG()
+			g, err := thread.GetG()
 			if err != nil {
 				return err
 			}
@@ -257,7 +257,7 @@ func (thread *Thread) SetPC(pc uint64) error {
 // current instruction stream. The instructions are obviously arch/os dependant, as they
 // vary on how thread local storage is implemented, which MMU register is used and
 // what the offset into thread local storage is.
-func (thread *Thread) getG() (g *G, err error) {
+func (thread *Thread) GetG() (g *G, err error) {
 	var pcInt uint64
 	pcInt, err = thread.PC()
 	if err != nil {
