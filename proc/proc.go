@@ -246,7 +246,10 @@ func (dbp *Process) SetBreakpointByLocation(loc string) (*Breakpoint, error) {
 	return dbp.SetBreakpoint(addr)
 }
 
-// Clears a breakpoint in the current thread.
+// Clears a breakpoint.
+//
+// If it is a hardware assisted breakpoint, iterate through all threads
+// and clear the debug register. Otherwise, restore original instruction.
 func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	bp, ok := dbp.Breakpoints[addr]
 	if !ok {
