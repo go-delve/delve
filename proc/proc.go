@@ -248,7 +248,26 @@ func (dbp *Process) SetBreakpointByLocation(loc string) (*Breakpoint, error) {
 
 // Clears a breakpoint in the current thread.
 func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
-	return dbp.clearBreakpoint(dbp.CurrentThread.Id, addr)
+	bp, ok := dbp.Breakpoints[addr]
+	if !ok {
+		return nil, NoBreakpointError{addr: addr}
+	}
+
+	for _, thread := range dbp.Threads {
+		if _, err := bp.Clear(thread); err != nil {
+			return nil, err
+		}
+		if !bp.hardware {
+			break
+		}
+	}
+
+	if bp.hardware {
+		dbp.arch.SetHardwareBreakpointUsage(bp.reg, false)
+	}
+	delete(dbp.Breakpoints, addr)
+
+	return bp, nil
 }
 
 // Clears a breakpoint by location (function, file+line, address, breakpoint id)

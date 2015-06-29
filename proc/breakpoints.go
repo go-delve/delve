@@ -152,18 +152,3 @@ type NoBreakpointError struct {
 func (nbp NoBreakpointError) Error() string {
 	return fmt.Sprintf("no breakpoint at %#v", nbp.addr)
 }
-
-func (dbp *Process) clearBreakpoint(tid int, addr uint64) (*Breakpoint, error) {
-	thread := dbp.Threads[tid]
-	if bp, ok := dbp.Breakpoints[addr]; ok {
-		if _, err := bp.Clear(thread); err != nil {
-			return nil, err
-		}
-		if bp.hardware {
-			dbp.arch.SetHardwareBreakpointUsage(bp.reg, false)
-		}
-		delete(dbp.Breakpoints, addr)
-		return bp, nil
-	}
-	return nil, NoBreakpointError{addr: addr}
-}
