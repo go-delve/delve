@@ -201,7 +201,7 @@ func (c *RPCClient) ListGoroutines() ([]*api.Goroutine, error) {
 
 func (c *RPCClient) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 	var locations []api.Location
-	err := c.call("StacktraceGoroutine", &StacktraceGoroutineArgs{Id: 1, Depth: depth}, &locations)
+	err := c.call("StacktraceGoroutine", &StacktraceGoroutineArgs{Id: goroutineId, Depth: depth}, &locations)
 	return locations, err
 }
 
