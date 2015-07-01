@@ -443,8 +443,8 @@ func (l1 *loc) match(l2 Location) bool {
 
 func TestStacktrace(t *testing.T) {
 	stacks := [][]loc{
-		[]loc{{8, "main.func1"}, {16, "main.main"}},
-		[]loc{{8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
+		[]loc{{3, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
+		[]loc{{3, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
 	}
 	withTestProcess("stacktraceprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := p.SetBreakpointByLocation("main.stacktraceme")
@@ -452,7 +452,7 @@ func TestStacktrace(t *testing.T) {
 
 		for i := range stacks {
 			assertNoError(p.Continue(), t, "Continue()")
-			_, locations, err := p.CurrentThread.Stacktrace(40)
+			locations, err := p.CurrentThread.Stacktrace(40)
 			assertNoError(err, t, "Stacktrace()")
 
 			if len(locations) != len(stacks[i])+2 {
@@ -484,8 +484,8 @@ func stackMatch(stack []loc, locations []Location) bool {
 }
 
 func TestStacktraceGoroutine(t *testing.T) {
-	mainStack := []loc{{21, "main.main"}}
-	agoroutineStack := []loc{{-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {8, "main.agoroutine"}}
+	mainStack := []loc{{11, "main.stacktraceme"}, {21, "main.main"}}
+	agoroutineStack := []loc{{-1, "runtime.gopark"}, {-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {8, "main.agoroutine"}}
 
 	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := p.SetBreakpointByLocation("main.stacktraceme")
@@ -499,8 +499,8 @@ func TestStacktraceGoroutine(t *testing.T) {
 		agoroutineCount := 0
 		mainCount := 0
 
-		for _, g := range gs {
-			_, locations, _ := p.GoroutineStacktrace(g, 40)
+		for i, g := range gs {
+			locations, err := p.GoroutineStacktrace(g, 40)
 			assertNoError(err, t, "GoroutineStacktrace()")
 
 			if stackMatch(mainStack, locations) {
@@ -510,7 +510,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 			if stackMatch(agoroutineStack, locations) {
 				agoroutineCount++
 			} else {
-				t.Logf("Non-goroutine stack: (%d)", len(locations))
+				t.Logf("Non-goroutine stack: %d (%d)", i, len(locations))
 				for i := range locations {
 					name := ""
 					if locations[i].Fn != nil {

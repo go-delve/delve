@@ -2,6 +2,7 @@ package api
 
 import (
 	"debug/gosym"
+
 	"github.com/derekparker/delve/proc"
 )
 
@@ -16,7 +17,7 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		Tracepoint:   bp.Tracepoint,
 		Stacktrace:   bp.Stacktrace,
 		Goroutine:    bp.Goroutine,
-		Symbols:      bp.Symbols,
+		Variables:    bp.Variables,
 	}
 }
 

@@ -38,7 +38,7 @@ type Breakpoint struct {
 	// retrieve goroutine information
 	Goroutine bool `json:"goroutine"`
 	// variables to evaluate
-	Symbols []string `json:"symbols,omitempty"`
+	Variables []string `json:"variables,omitempty"`
 }
 
 // Thread is a thread within the debugged process.

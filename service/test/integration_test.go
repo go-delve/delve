@@ -96,8 +96,7 @@ func TestClientServer_step(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		statech := c.Continue()
-		stateBefore := <-statech
+		stateBefore := <-c.Continue()
 		if stateBefore.Err != nil {
 			t.Fatalf("Unexpected error: %v", stateBefore.Err)
 		}
@@ -375,13 +374,13 @@ func TestClientServer_infoArgs(t *testing.T) {
 func TestClientServer_traceContinue(t *testing.T) {
 	withTestClient("integrationprog", t, func(c service.Client) {
 		fp := testProgPath(t, "integrationprog")
-		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 15, Tracepoint: true, Goroutine: true, Stacktrace: 5, Symbols: []string{"i"}})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 15, Tracepoint: true, Goroutine: true, Stacktrace: 5, Variables: []string{"i"}})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v\n", err)
 		}
 		count := 0
-		contch := c.Continue()
-		for state := range contch {
+		contChan := c.Continue()
+		for state := range contChan {
 			if state.Breakpoint != nil {
 				count++
 

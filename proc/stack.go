@@ -7,39 +7,31 @@ import (
 // Takes an offset from RSP and returns the address of the
 // instruction the currect function is going to return to.
 func (thread *Thread) ReturnAddress() (uint64, error) {
-	_, locations, err := thread.Stacktrace(1)
+	locations, err := thread.Stacktrace(2)
 	if err != nil {
 		return 0, err
 	}
-	return locations[0].PC, nil
+	return locations[1].PC, nil
 }
 
-// Returns the stack trace for thread
-// Note that it doesn't include the current frame and the locations in the array are return addresses not call addresses
-func (thread *Thread) Stacktrace(depth int) (*Location, []Location, error) {
-	loc, err := thread.Location()
-	if err != nil {
-		return nil, nil, err
-	}
+// Returns the stack trace for thread.
+// Note the locations in the array are return addresses not call addresses.
+func (thread *Thread) Stacktrace(depth int) ([]Location, error) {
 	regs, err := thread.Registers()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	locations, err := thread.dbp.stacktrace(regs.PC(), regs.SP(), depth)
-	if err != nil {
-		return nil, nil, err
-	}
-	return loc, locations, nil
+	return thread.dbp.stacktrace(regs.PC(), regs.SP(), depth)
 }
 
-// Returns the stack trace for a goroutine
-// Note that it doesn't include the current frame and the locations in the array are return addresses not call addresses
-func (dbp *Process) GoroutineStacktrace(g *G, depth int) (*Location, []Location, error) {
+// Returns the stack trace for a goroutine.
+// Note the locations in the array are return addresses not call addresses.
+func (dbp *Process) GoroutineStacktrace(g *G, depth int) ([]Location, error) {
 	if g.thread != nil {
 		return g.thread.Stacktrace(depth)
 	}
 	locs, err := dbp.stacktrace(g.PC, g.SP, depth)
-	return dbp.GoroutineLocation(g), locs, err
+	return locs, err
 }
 
 func (dbp *Process) GoroutineLocation(g *G) *Location {
@@ -61,6 +53,8 @@ func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 		locations []Location
 		retaddr   uintptr
 	)
+	f, l, fn := dbp.PCToLine(pc)
+	locations = append(locations, Location{PC: pc, File: f, Line: l, Fn: fn})
 	for i := int64(0); i < int64(depth); i++ {
 		fde, err := dbp.frameEntries.FDEForPC(ret)
 		if err != nil {
@@ -79,7 +73,7 @@ func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 		if ret <= 0 {
 			break
 		}
-		f, l, fn := dbp.goSymTable.PCToLine(ret)
+		f, l, fn = dbp.goSymTable.PCToLine(ret)
 		locations = append(locations, Location{PC: ret, File: f, Line: l, Fn: fn})
 		if fn != nil && fn.Name == "runtime.goexit" {
 			break

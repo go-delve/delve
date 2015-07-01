@@ -18,14 +18,16 @@ type Breakpoint struct {
 	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
 	ID           int    // Monotonically increasing ID.
 	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
-	hardware     bool   // Breakpoint using CPU debug registers.
-	reg          int    // If hardware breakpoint, what debug register it belongs to.
 
-	// Breakpoint informations
-	Tracepoint bool     // tracepoint flag
-	Stacktrace int      // number of stack frames to retrieve
-	Goroutine  bool     // retrieve goroutine information
-	Symbols    []string // variables to evaluate
+	// Breakpoint information
+	Tracepoint bool     // Tracepoint flag
+	Stacktrace int      // Number of stack frames to retrieve
+	Goroutine  bool     // Retrieve goroutine information
+	Variables  []string // Variables to evaluate
+
+	hardware bool // Breakpoint using CPU debug registers.
+	reg      int  // If hardware breakpoint, what debug register it belongs to.
+
 }
 
 func (bp *Breakpoint) String() string {

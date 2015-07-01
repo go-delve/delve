@@ -47,7 +47,7 @@ func DebugCommands(client service.Client) *Commands {
 	c.cmds = []command{
 		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
 		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <address> [-stack <n>|-goroutine|<variable name>]*\nSet break point at the entry point of a function, or at a specific file/line.\nWhen the breakpoint is reached the value of the specified variables will be printed, if -stack is specified the stack trace of the current goroutine will be printed, if -goroutine is specified informations about the current goroutine will be printed. Example: break foo.go:13"},
-		{aliases: []string{"trace"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break"},
+		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break"},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
@@ -201,8 +201,8 @@ func formatGoroutine(g *api.Goroutine) string {
 }
 
 func cont(client service.Client, args ...string) error {
-	statech := client.Continue()
-	for state := range statech {
+	stateChan := client.Continue()
+	for state := range stateChan {
 		if state.Err != nil {
 			return state.Err
 		}
@@ -289,8 +289,8 @@ func breakpoints(client service.Client, args ...string) error {
 		if bp.Goroutine {
 			attrs = append(attrs, "-goroutine")
 		}
-		for i := range bp.Symbols {
-			attrs = append(attrs, bp.Symbols[i])
+		for i := range bp.Variables {
+			attrs = append(attrs, bp.Variables[i])
 		}
 
 		if len(attrs) > 0 {
@@ -301,7 +301,7 @@ func breakpoints(client service.Client, args ...string) error {
 	return nil
 }
 
-func breakpointIntl(client service.Client, tracepoint bool, args ...string) error {
+func setBreakpoint(client service.Client, tracepoint bool, args ...string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("address required, specify either a function name or <file:line>")
 	}
@@ -335,7 +335,7 @@ func breakpointIntl(client service.Client, tracepoint bool, args ...string) erro
 		case "-goroutine":
 			requestedBp.Goroutine = true
 		default:
-			requestedBp.Symbols = append(requestedBp.Symbols, args[i])
+			requestedBp.Variables = append(requestedBp.Variables, args[i])
 		}
 	}
 
@@ -356,11 +356,11 @@ func breakpointIntl(client service.Client, tracepoint bool, args ...string) erro
 }
 
 func breakpoint(client service.Client, args ...string) error {
-	return breakpointIntl(client, false, args...)
+	return setBreakpoint(client, false, args...)
 }
 
 func tracepoint(client service.Client, args ...string) error {
-	return breakpointIntl(client, true, args...)
+	return setBreakpoint(client, true, args...)
 }
 
 func printVar(client service.Client, args ...string) error {
