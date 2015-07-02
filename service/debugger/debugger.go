@@ -170,8 +170,12 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		log.Print("continuing")
 		err = d.process.Continue()
 		if err != nil {
-			if _, exited := err.(proc.ProcessExitedError); exited {
-				return d.State()
+			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
+				state, err := d.State()
+				if err != nil {
+					return state, err
+				}
+				return state, exitedErr
 			}
 			return nil, err
 		}
