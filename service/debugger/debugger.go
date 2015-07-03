@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -169,19 +170,17 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.Continue:
 		log.Print("continuing")
 		err = d.process.Continue()
+		state, stateErr := d.State()
+		if stateErr != nil {
+			return state, stateErr
+		}
 		if err != nil {
 			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
-				state, err := d.State()
-				if err != nil {
-					return state, err
-				}
-				return state, exitedErr
+				state.Exited = true
+				state.ExitStatus = exitedErr.Status
+				state.Err = errors.New(exitedErr.Error())
+				return state, nil
 			}
-			return nil, err
-		}
-
-		state, err := d.State()
-		if err != nil {
 			return nil, err
 		}
 		err = d.collectBreakpointInformation(state)

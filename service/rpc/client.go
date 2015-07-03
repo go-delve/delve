@@ -41,13 +41,19 @@ func (c *RPCClient) GetState() (*api.DebuggerState, error) {
 	return state, err
 }
 
-func (c *RPCClient) Continue() <- chan *api.DebuggerState {
+func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 	ch := make(chan *api.DebuggerState)
 	go func() {
 		for {
 			state := new(api.DebuggerState)
 			err := c.call("Command", &api.DebuggerCommand{Name: api.Continue}, state)
-			state.Err = err
+			if err != nil {
+				state.Err = err
+			}
+			if state.Exited {
+				// Error types apparantly cannot be marshalled by Go correctly. Must reset error here.
+				state.Err = fmt.Errorf("Process %d has exited with status %d", c.ProcessPid(), state.ExitStatus)
+			}
 			ch <- state
 			if err != nil || state.Breakpoint == nil || !state.Breakpoint.Tracepoint {
 				close(ch)

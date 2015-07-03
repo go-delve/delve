@@ -10,7 +10,8 @@ type DebuggerState struct {
 	// Information requested by the current breakpoint
 	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
 	// Exited indicates whether the debugged process has exited.
-	Exited bool `json:"exited"`
+	Exited     bool `json:"exited"`
+	ExitStatus int  `json:"exitStatus"`
 
 	// Filled by RPCClient.Continue, indicates an error
 	Err error `json:"-"`

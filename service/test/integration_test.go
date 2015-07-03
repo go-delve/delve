@@ -70,8 +70,8 @@ func TestClientServer_exit(t *testing.T) {
 			t.Fatalf("Expected exited %v, got %v", e, a)
 		}
 		state = <-c.Continue()
-		if state.Err != nil {
-			t.Fatalf("Error after continue: %v\n", err)
+		if state.Err == nil {
+			t.Fatalf("Error expected after continue")
 		}
 		if !state.Exited {
 			t.Fatalf("Expected exit after continue: %v", state)
