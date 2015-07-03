@@ -2,10 +2,6 @@
 UNAME = $(shell uname)
 PREFIX=github.com/derekparker/delve
 
-ifndef $(RUN)
-	RUN = ".*"
-endif
-
 build:
 	go build github.com/derekparker/delve/cmd/dlv
 ifeq "$(UNAME)" "Darwin"

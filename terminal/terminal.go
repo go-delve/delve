@@ -76,7 +76,7 @@ func (t *Term) Run() (error, int) {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
 			if err == io.EOF {
-				err, status = handleExit(t.client, t)
+				return handleExit(t.client, t)
 			}
 			err, status = fmt.Errorf("Prompt for input failed.\n"), 1
 			break

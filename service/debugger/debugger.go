@@ -8,6 +8,7 @@ import (
 
 	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service/api"
+	sys "golang.org/x/sys/unix"
 )
 
 // Debugger service.
@@ -61,8 +62,33 @@ func New(config *Config) (*Debugger, error) {
 	return d, nil
 }
 
+func (d *Debugger) ProcessPid() int {
+	return d.process.Pid
+}
+
 func (d *Debugger) Detach(kill bool) error {
 	return d.process.Detach(kill)
+}
+
+func (d *Debugger) Restart() error {
+	if !d.process.Exited() {
+		if d.process.Running() {
+			d.process.Halt()
+		}
+		// Ensure the process is in a PTRACE_STOP.
+		if err := sys.Kill(d.ProcessPid(), sys.SIGSTOP); err != nil {
+			return err
+		}
+		if err := d.Detach(true); err != nil {
+			return err
+		}
+	}
+	p, err := proc.Launch(d.config.ProcessArgs)
+	if err != nil {
+		return fmt.Errorf("could not launch process: %s", err)
+	}
+	d.process = p
+	return nil
 }
 
 func (d *Debugger) State() (*api.DebuggerState, error) {

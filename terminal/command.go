@@ -48,6 +48,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
 		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <address> [-stack <n>|-goroutine|<variable name>]*\nSet break point at the entry point of a function, or at a specific file/line.\nWhen the breakpoint is reached the value of the specified variables will be printed, if -stack is specified the stack trace of the current goroutine will be printed, if -goroutine is specified informations about the current goroutine will be printed. Example: break foo.go:13"},
 		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break"},
+		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
@@ -198,6 +199,14 @@ func formatGoroutine(g *api.Goroutine) string {
 		fname = g.Function.Name
 	}
 	return fmt.Sprintf("%d - %s:%d %s (%#v)\n", g.ID, g.File, g.Line, fname, g.PC)
+}
+
+func restart(client service.Client, args ...string) error {
+	if err := client.Restart(); err != nil {
+		return err
+	}
+	fmt.Println("Process restarted with PID", client.ProcessPid())
+	return nil
 }
 
 func cont(client service.Client, args ...string) error {

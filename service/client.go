@@ -7,8 +7,14 @@ import (
 // Client represents a debugger service client. All client methods are
 // synchronous.
 type Client interface {
+	// Returns the pid of the process we are debugging.
+	ProcessPid() int
+
 	// Detach detaches the debugger, optionally killing the process.
 	Detach(killProcess bool) error
+
+	// Restarts program.
+	Restart() error
 
 	// GetState returns the current debugger state.
 	GetState() (*api.DebuggerState, error)

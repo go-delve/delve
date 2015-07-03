@@ -60,6 +60,69 @@ func TestRunWithInvalidPath(t *testing.T) {
 	}
 }
 
+func TestRestart_afterExit(t *testing.T) {
+	withTestClient("continuetestprog", t, func(c service.Client) {
+		origPid := c.ProcessPid()
+		state := <-c.Continue()
+		if !state.Exited {
+			t.Fatal("expected initial process to have exited")
+		}
+		if err := c.Restart(); err != nil {
+			t.Fatal(err)
+		}
+		if c.ProcessPid() == origPid {
+			t.Fatal("did not spawn new process, has same PID")
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Fatal("expected restarted process to have exited")
+		}
+	})
+}
+
+func TestRestart_duringStop(t *testing.T) {
+	withTestClient("continuetestprog", t, func(c service.Client) {
+		origPid := c.ProcessPid()
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := <-c.Continue()
+		if state.Breakpoint == nil {
+			t.Fatal("did not hit breakpoint")
+		}
+		if err := c.Restart(); err != nil {
+			t.Fatal(err)
+		}
+		if c.ProcessPid() == origPid {
+			t.Fatal("did not spawn new process, has same PID")
+		}
+		bps, err := c.ListBreakpoints()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(bps) != 0 {
+			t.Fatal("breakpoint tabe not cleared")
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Fatal("expected process to have exited")
+		}
+	})
+}
+
+func TestRestart_attachPid(t *testing.T) {
+	// Assert it does not work and returns error.
+	// We cannot restart a process we did not spawn.
+	server := rpc.NewServer(&service.Config{
+		Listener:  nil,
+		AttachPid: 999,
+	}, false)
+	if err := server.Restart(nil, nil); err == nil {
+		t.Fatal("expected error on restart after attaching to pid but got none")
+	}
+}
+
 func TestClientServer_exit(t *testing.T) {
 	withTestClient("continuetestprog", t, func(c service.Client) {
 		state, err := c.GetState()

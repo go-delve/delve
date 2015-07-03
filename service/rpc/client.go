@@ -12,8 +12,9 @@ import (
 
 // Client is a RPC service.Client.
 type RPCClient struct {
-	addr   string
-	client *rpc.Client
+	addr       string
+	processPid int
+	client     *rpc.Client
 }
 
 // Ensure the implementation satisfies the interface.
@@ -31,8 +32,18 @@ func NewClient(addr string) *RPCClient {
 	}
 }
 
+func (c *RPCClient) ProcessPid() int {
+	var pid int
+	c.call("ProcessPid", nil, &pid)
+	return pid
+}
+
 func (c *RPCClient) Detach(kill bool) error {
 	return c.call("Detach", kill, nil)
+}
+
+func (c *RPCClient) Restart() error {
+	return c.call("Restart", nil, nil)
 }
 
 func (c *RPCClient) GetState() (*api.DebuggerState, error) {

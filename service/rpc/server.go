@@ -67,8 +67,20 @@ func (s *RPCServer) Run() error {
 	return nil
 }
 
+func (s *RPCServer) ProcessPid(arg1 interface{}, pid *int) error {
+	*pid = s.debugger.ProcessPid()
+	return nil
+}
+
 func (s *RPCServer) Detach(kill bool, ret *int) error {
 	return s.debugger.Detach(kill)
+}
+
+func (s *RPCServer) Restart(arg1 interface{}, arg2 *int) error {
+	if s.config.AttachPid != 0 {
+		return errors.New("cannot restart process Delve did not create")
+	}
+	return s.debugger.Restart()
 }
 
 func (s *RPCServer) State(arg interface{}, state *api.DebuggerState) error {
