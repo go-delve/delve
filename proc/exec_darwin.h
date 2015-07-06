@@ -6,4 +6,4 @@
 #include <stdlib.h>
 
 int
-fork_exec(char *argv0, char **argv, mach_port_name_t*, mach_port_t*, mach_port_t*, mach_port_t*);
+fork_exec(char *, char **, int, mach_port_name_t*, mach_port_t*, mach_port_t*, mach_port_t*);

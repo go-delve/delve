@@ -3,7 +3,7 @@
 extern char** environ;
 
 int
-fork_exec(char *argv0, char **argv,
+fork_exec(char *argv0, char **argv, int size,
 		mach_port_name_t *task,
 		mach_port_t *port_set,
 		mach_port_t *exception_port,
@@ -11,6 +11,8 @@ fork_exec(char *argv0, char **argv,
 {
 	int fd[2];
 	if (pipe(fd) < 0) return -1;
+
+	argv[size-1] = '\0';
 
 	kern_return_t kret;
 	pid_t pid = fork();

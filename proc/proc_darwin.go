@@ -51,18 +51,15 @@ func Launch(cmd []string) (*Process, error) {
 
 	argv0 := C.CString(argv0Go)
 
-	argvSlice := make([]*C.char, 0, len(cmd))
+	argvSlice := make([]*C.char, 0, len(cmd)+1)
 	for _, arg := range cmd {
 		argvSlice = append(argvSlice, C.CString(arg))
 	}
 
-	var argv **C.char
-	argv = &argvSlice[0]
-
 	dbp := New(0)
 	var pid int
 	dbp.execPtraceFunc(func() {
-		ret := C.fork_exec(argv0, argv, &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
+		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)), &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort)
 		pid = int(ret)
 	})
 	if pid <= 0 {
