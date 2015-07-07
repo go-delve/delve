@@ -250,7 +250,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				// process natural death _sometimes_.
 				continue
 			}
-			return nil, ManualStopError{}
+			return nil, nil
 		case 0:
 			return nil, fmt.Errorf("error while waiting for task")
 		}
@@ -261,6 +261,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		th, err = dbp.handleBreakpointOnThread(int(port))
 		if err != nil {
 			if _, ok := err.(NoBreakpointError); ok {
+				if dbp.halt {
+					dbp.halt = false
+					return dbp.Threads[int(port)], nil
+				}
 				th := dbp.Threads[int(port)]
 				if dbp.firstStart || dbp.singleStepping || th.singleStepping {
 					dbp.firstStart = false

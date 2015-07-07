@@ -1,16 +1,14 @@
 package main
 
-import (
-	"fmt"
-	"time"
-)
+import "fmt"
 
 func loop() {
 	i := 0
 	for {
 		i++
-		fmt.Println(i)
-		time.Sleep(10 * time.Millisecond)
+		if (i % 100000) == 0 {
+			fmt.Println(i)
+		}
 	}
 	fmt.Println(i)
 }

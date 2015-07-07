@@ -57,7 +57,7 @@ func Launch(cmd []string) (*Process, error) {
 }
 
 func (dbp *Process) requestManualStop() (err error) {
-	return sys.Kill(dbp.Pid, sys.SIGSTOP)
+	return sys.Kill(dbp.Pid, sys.SIGTRAP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
@@ -277,17 +277,14 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			// Sometimes we get an unknown thread, ignore it?
 			continue
 		}
+		if status.StopSignal() == sys.SIGTRAP && dbp.halt {
+			th.running = false
+			dbp.halt = false
+			return th, nil
+		}
 		if status.StopSignal() == sys.SIGTRAP {
 			th.running = false
 			return dbp.handleBreakpointOnThread(wpid)
-		}
-		if status.StopSignal() == sys.SIGTRAP && dbp.halt {
-			th.running = false
-			return th, nil
-		}
-		if status.StopSignal() == sys.SIGSTOP && dbp.halt {
-			th.running = false
-			return nil, ManualStopError{}
 		}
 		if th != nil {
 			// TODO(dp) alert user about unexpected signals here.

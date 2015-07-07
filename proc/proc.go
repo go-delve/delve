@@ -72,14 +72,6 @@ func New(pid int) *Process {
 	return dbp
 }
 
-// A ManualStopError happens when the user triggers a
-// manual stop via SIGERM.
-type ManualStopError struct{}
-
-func (mse ManualStopError) Error() string {
-	return "Manual stop requested"
-}
-
 // ProcessExitedError indicates that the process has exited and contains both
 // process id and exit status.
 type ProcessExitedError struct {
@@ -208,15 +200,7 @@ func (dbp *Process) FindLocation(str string) (uint64, error) {
 // execution. Sends SIGSTOP to all threads.
 func (dbp *Process) RequestManualStop() error {
 	dbp.halt = true
-	err := dbp.requestManualStop()
-	if err != nil {
-		return err
-	}
-	err = dbp.Halt()
-	if err != nil {
-		return err
-	}
-	return nil
+	return dbp.requestManualStop()
 }
 
 // Sets a breakpoint at addr, and stores it in the process wide
@@ -668,14 +652,11 @@ func (dbp *Process) run(fn func() error) error {
 	if dbp.exited {
 		return fmt.Errorf("process has already exited")
 	}
-	dbp.halt = false
 	for _, th := range dbp.Threads {
 		th.CurrentBreakpoint = nil
 	}
 	if err := fn(); err != nil {
-		if _, ok := err.(ManualStopError); !ok {
-			return err
-		}
+		return err
 	}
 	return nil
 }
