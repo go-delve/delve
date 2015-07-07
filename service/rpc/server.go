@@ -302,3 +302,10 @@ func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine
 	*goroutines = gs
 	return nil
 }
+
+func (c *RPCServer) AttachedToExistingProcess(arg interface{}, answer *bool) error {
+	if c.config.AttachPid != 0 {
+		*answer = true
+	}
+	return nil
+}

@@ -69,4 +69,7 @@ type Client interface {
 
 	// Returns stacktrace
 	Stacktrace(goroutineId, depth int) ([]api.Location, error)
+
+	// Returns whether we attached to a running process or not
+	AttachedToExistingProcess() bool
 }

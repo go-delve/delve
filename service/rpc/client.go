@@ -205,6 +205,12 @@ func (c *RPCClient) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 	return locations, err
 }
 
+func (c *RPCClient) AttachedToExistingProcess() bool {
+	var answer bool
+	c.call("AttachedToRunningProcess", nil, &answer)
+	return answer
+}
+
 func (c *RPCClient) url(path string) string {
 	return fmt.Sprintf("http://%s%s", c.addr, path)
 }
