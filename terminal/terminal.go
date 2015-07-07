@@ -132,17 +132,14 @@ func handleExit(client service.Client, t *Term) (error, int) {
 		}
 	}
 
-	var kill bool
+	kill := true
 	if client.AttachedToExistingProcess() {
 		answer, err := t.line.Prompt("Would you like to kill the process? [Y/n] ")
 		if err != nil {
 			return io.EOF, 2
 		}
 		answer = strings.ToLower(strings.TrimSpace(answer))
-
 		kill = (answer != "n" && answer != "no")
-	} else {
-		kill = true
 	}
 	err = client.Detach(kill)
 	if err != nil {
