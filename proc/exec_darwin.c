@@ -12,8 +12,6 @@ fork_exec(char *argv0, char **argv, int size,
 	int fd[2];
 	if (pipe(fd) < 0) return -1;
 
-	argv[size-1] = '\0';
-
 	kern_return_t kret;
 	pid_t pid = fork();
 	if (pid > 0) {
