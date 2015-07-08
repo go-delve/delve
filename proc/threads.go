@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 
+	sys "golang.org/x/sys/unix"
+
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/source"
-	sys "golang.org/x/sys/unix"
 )
 
 // Thread represents a single thread in the traced process
