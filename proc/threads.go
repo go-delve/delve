@@ -42,10 +42,14 @@ type Location struct {
 // first and then resume execution. Thread will continue until
 // it hits a breakpoint or is signaled.
 func (thread *Thread) Continue() error {
+	pc, err := thread.PC()
+	if err != nil {
+		return err
+	}
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
-	if thread.CurrentBreakpoint != nil {
-		if !thread.CurrentBreakpoint.hardware {
+	if bp, ok := thread.dbp.FindBreakpoint(pc); ok {
+		if !bp.hardware {
 			if err := thread.Step(); err != nil {
 				return err
 			}
