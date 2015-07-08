@@ -480,7 +480,15 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 			return nil, err
 		}
 		if thread, allocated := threadg[g.Id]; allocated {
+			loc, err := thread.Location()
+			if err != nil {
+				return nil, err
+			}
 			g.thread = thread
+			// Prefer actual thread location information.
+			g.File = loc.File
+			g.Line = loc.Line
+			g.Func = loc.Fn
 		}
 		allg = append(allg, g)
 	}
