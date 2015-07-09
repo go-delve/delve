@@ -280,6 +280,10 @@ func (dbp *Process) next() error {
 	// Make sure we clean up the temp breakpoints created by thread.Next
 	defer dbp.clearTempBreakpoints()
 
+	// Set breakpoints for any goroutine that is currently
+	// blocked trying to read from a channel. This is so that
+	// if control flow switches to that goroutine, we end up
+	// somewhere useful instead of in runtime code.
 	chanRecvCount, err := dbp.setChanRecvBreakpoints()
 	if err != nil {
 		return err
