@@ -592,3 +592,39 @@ func TestKill(t *testing.T) {
 		}
 	})
 }
+
+func TestContinueMulti(t *testing.T) {
+	withTestProcess("integrationprog", t, func(p *Process, fixture protest.Fixture) {
+		bp1, err := p.SetBreakpointByLocation("main.main")
+		assertNoError(err, t, "BreakByLocation()")
+
+		bp2, err := p.SetBreakpointByLocation("main.sayhi")
+		assertNoError(err, t, "BreakByLocation()")
+
+		mainCount := 0
+		sayhiCount := 0
+		for {
+			err := p.Continue()
+			if p.exited {
+				break
+			}
+			assertNoError(err, t, "Continue()")
+
+			if p.CurrentBreakpoint().ID == bp1.ID {
+				mainCount++
+			}
+
+			if p.CurrentBreakpoint().ID == bp2.ID {
+				sayhiCount++
+			}
+		}
+
+		if mainCount != 1 {
+			t.Fatalf("Main breakpoint hit wrong number of times: %d\n", mainCount)
+		}
+
+		if sayhiCount != 3 {
+			t.Fatalf("Sayhi breakpoint hit wrong number of times: %d\n", sayhiCount)
+		}
+	})
+}
