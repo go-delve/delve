@@ -389,7 +389,7 @@ func (dbp *Process) resume() error {
 	if err != nil {
 		return err
 	}
-	if dbp.CurrentBreakpoint != nil || dbp.halt {
+	if dbp.CurrentBreakpoint() != nil || dbp.halt {
 		return dbp.Halt()
 	}
 	// Check to see if we hit a runtime.breakpoint
