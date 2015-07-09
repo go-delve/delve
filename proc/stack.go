@@ -1,8 +1,6 @@
 package proc
 
-import (
-	"encoding/binary"
-)
+import "encoding/binary"
 
 // Takes an offset from RSP and returns the address of the
 // instruction the currect function is going to return to.
@@ -78,7 +76,6 @@ func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 		if fn != nil && fn.Name == "runtime.goexit" {
 			break
 		}
-
 	}
 	return locations, nil
 }

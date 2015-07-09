@@ -12,7 +12,7 @@ func TestTokenAtLine(t *testing.T) {
 		tf, _ = filepath.Abs("../_fixtures/testvisitorprog.go")
 		v     = New()
 	)
-	n, err := v.FirstNodeAt(tf, 8)
+	_, n, err := v.FirstNodeAt(tf, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,9 +52,9 @@ func TestNextLines(t *testing.T) {
 			fmt.Println(lines)
 			t.Fatalf("did not get correct number of lines back expected %d got %d for test case %d", len(c.nextlines), len(lines), i+1)
 		}
-		for i, l := range lines {
-			if l != c.nextlines[i] {
-				t.Fatalf("expected index %d to be %d got %d", i, c.nextlines[i], l)
+		for j, l := range lines {
+			if l != c.nextlines[j] {
+				t.Fatalf("expected index %d to be %d got %d for case %d", j, c.nextlines[j], l, i+1)
 			}
 		}
 	}
