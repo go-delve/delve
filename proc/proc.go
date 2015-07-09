@@ -185,11 +185,8 @@ func (dbp *Process) FindLocation(str string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("unable to find location for %s", str)
 	}
-
-	for _, bp := range dbp.Breakpoints {
-		if uint64(bp.ID) == id {
-			return bp.Addr, nil
-		}
+	if bp, ok := dbp.FindBreakpointByID(int(id)); ok {
+		return bp.Addr, nil
 	}
 
 	// Last resort, use as raw address
