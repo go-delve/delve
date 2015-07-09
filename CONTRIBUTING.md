@@ -2,6 +2,8 @@
 
 Want to help contribute to Delve? Great! Any and all help is certainly appreciated, whether it's code, documentation, or spelling corrections.
 
+If you are planning to contribute a significant change, please draft a design document (or start a conversation) and post it to the [developer mailing list](https://groups.google.com/forum/#!forum/delve-dev). This will allow other developers and users to discuss the proposed change.
+
 If you'd like to join the discussion, join the gitter chat (link in README).
 
 ## Filing issues
