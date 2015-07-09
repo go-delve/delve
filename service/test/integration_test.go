@@ -486,3 +486,46 @@ func TestClientServer_traceContinue(t *testing.T) {
 		}
 	})
 }
+
+func TestClientServer_traceContinue2(t *testing.T) {
+	withTestClient("integrationprog", t, func(c service.Client) {
+		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+		bp2, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+		countMain := 0
+		countSayhi := 0
+		contChan := c.Continue()
+		for state := range contChan {
+			if state.Breakpoint != nil {
+				switch state.Breakpoint.ID {
+				case bp1.ID:
+					countMain++
+				case bp2.ID:
+					countSayhi++
+				}
+
+				t.Logf("%v", state)
+			}
+			if state.Exited {
+				continue
+			}
+			if state.Err != nil {
+				t.Fatalf("Unexpected error during continue: %v\n", state.Err)
+			}
+
+		}
+
+		if countMain != 1 {
+			t.Fatalf("Wrong number of continues (main.main) hit: %d\n", countMain)
+		}
+
+		if countSayhi != 3 {
+			t.Fatalf("Wrong number of continues (main.sayhi) hit: %d\n", countSayhi)
+		}
+	})
+}
