@@ -375,38 +375,36 @@ func (dbp *Process) Continue() error {
 			return fmt.Errorf("could not continue thread %d %s", thread.Id, err)
 		}
 	}
-	return dbp.run(dbp.resume)
-}
-
-func (dbp *Process) resume() error {
-	thread, err := dbp.trapWait(-1)
-	if err != nil {
-		return err
-	}
-	if err := dbp.Halt(); err != nil {
-		return err
-	}
-	if dbp.CurrentThread != thread {
-		dbp.SwitchThread(thread.Id)
-	}
-	pc, err := thread.PC()
-	if err != nil {
-		return err
-	}
-	if dbp.CurrentBreakpoint() != nil || dbp.halt {
-		return dbp.Halt()
-	}
-	// Check to see if we hit a runtime.breakpoint
-	fn := dbp.goSymTable.PCToFunc(pc)
-	if fn != nil && fn.Name == "runtime.breakpoint" {
-		// step twice to get back to user code
-		for i := 0; i < 2; i++ {
-			if err = thread.Step(); err != nil {
-				return err
+	return dbp.run(func() error {
+		thread, err := dbp.trapWait(-1)
+		if err != nil {
+			return err
+		}
+		if err := dbp.Halt(); err != nil {
+			return err
+		}
+		if dbp.CurrentThread != thread {
+			dbp.SwitchThread(thread.Id)
+		}
+		pc, err := thread.PC()
+		if err != nil {
+			return err
+		}
+		if dbp.CurrentBreakpoint() != nil || dbp.halt {
+			return dbp.Halt()
+		}
+		// Check to see if we hit a runtime.breakpoint
+		fn := dbp.goSymTable.PCToFunc(pc)
+		if fn != nil && fn.Name == "runtime.breakpoint" {
+			// step twice to get back to user code
+			for i := 0; i < 2; i++ {
+				if err = thread.Step(); err != nil {
+					return err
+				}
 			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // Single step, will execute a single instruction.
