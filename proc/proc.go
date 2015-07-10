@@ -390,9 +390,6 @@ func (dbp *Process) Continue() error {
 		if err != nil {
 			return err
 		}
-		if dbp.CurrentBreakpoint() != nil || dbp.halt {
-			return dbp.Halt()
-		}
 		// Check to see if we hit a runtime.breakpoint
 		fn := dbp.goSymTable.PCToFunc(pc)
 		if fn != nil && fn.Name == "runtime.breakpoint" {
