@@ -20,10 +20,6 @@ import (
 	"github.com/derekparker/delve/source"
 )
 
-func init() {
-	runtime.GOMAXPROCS(2)
-}
-
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
