@@ -392,7 +392,7 @@ func (dbp *Process) Continue() error {
 		}
 		// Check to see if we hit a runtime.breakpoint
 		if loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint" {
-			// step twice to get back to user code
+			// Step twice to get back to user code
 			for i := 0; i < 2; i++ {
 				if err = thread.Step(); err != nil {
 					return err
