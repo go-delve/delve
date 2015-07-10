@@ -386,13 +386,12 @@ func (dbp *Process) Continue() error {
 		if dbp.CurrentThread != thread {
 			dbp.SwitchThread(thread.Id)
 		}
-		pc, err := thread.PC()
+		loc, err := thread.Location()
 		if err != nil {
 			return err
 		}
 		// Check to see if we hit a runtime.breakpoint
-		fn := dbp.goSymTable.PCToFunc(pc)
-		if fn != nil && fn.Name == "runtime.breakpoint" {
+		if loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint" {
 			// step twice to get back to user code
 			for i := 0; i < 2; i++ {
 				if err = thread.Step(); err != nil {
