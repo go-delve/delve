@@ -172,7 +172,31 @@ func (dbp *Process) FindLocation(str string) (uint64, error) {
 	// Try to lookup by function name
 	fn := dbp.goSymTable.LookupFunc(str)
 	if fn != nil {
-		return fn.Entry, nil
+		/* fn.Entry, the entry point of the function, is always a prologue, the prologue may call into the scheduler or grow the stack, this will result in the breakpoint getting hit multiple times without any apparent program progress inbetween.
+		In order to avoid this confusing behaviour we try to find the first line of the function and set the breakpoint there. */
+		filename, lineno, _ := dbp.goSymTable.PCToLine(fn.Entry)
+		var firstLinePC uint64
+		for {
+			var err error
+			lineno++
+			firstLinePC, _, err = dbp.goSymTable.LineToPC(filename, lineno)
+			if err == nil {
+				break
+			}
+
+			if _, unk := err.(*gosym.UnknownLineError); !unk {
+				return 0, err
+			}
+		}
+
+		var breakAddr uint64
+		if firstLinePC < fn.End {
+			breakAddr = firstLinePC
+		} else {
+			breakAddr = fn.Entry
+		}
+
+		return breakAddr, nil
 	}
 
 	// Attempt to parse as number for breakpoint id or raw address

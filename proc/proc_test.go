@@ -277,7 +277,6 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 
 func TestNextGeneral(t *testing.T) {
 	testcases := []nextTest{
-		{17, 19},
 		{19, 20},
 		{20, 23},
 		{23, 24},
@@ -298,7 +297,6 @@ func TestNextGeneral(t *testing.T) {
 
 func TestNextGoroutine(t *testing.T) {
 	testcases := []nextTest{
-		{46, 47},
 		{47, 42},
 	}
 	testnext("testnextprog", testcases, "main.testgoroutine", t)
@@ -306,7 +304,6 @@ func TestNextGoroutine(t *testing.T) {
 
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
-		{13, 14},
 		{14, 35},
 	}
 	testnext("testnextprog", testcases, "main.helloworld", t)
