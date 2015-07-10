@@ -5,10 +5,9 @@
 
 **This project is currently pre 1.0. Most of the functionality is there, however there are various improvements to be made. Delve is not _yet_ ready for daily use.**
 
-The Github issue tracker is for *bugs* only. Please use the [mailing list](https://groups.google.com/forum/#!forum/delve-dev) for any feature proposals and discussions.
+The Github issue tracker is for _bugs_ only. Please use the [mailing list](https://groups.google.com/forum/#!forum/delve-dev) for any feature proposals and discussions.
 
 ### About Delve
-
 
 - [Building](https://github.com/derekparker/delve/wiki/Building)
 - [Usage](https://github.com/derekparker/delve/wiki/Usage)
