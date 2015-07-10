@@ -383,6 +383,9 @@ func (dbp *Process) resume() error {
 	if err != nil {
 		return err
 	}
+	if err := dbp.Halt(); err != nil {
+		return err
+	}
 	if dbp.CurrentThread != thread {
 		dbp.SwitchThread(thread.Id)
 	}
@@ -390,7 +393,7 @@ func (dbp *Process) resume() error {
 	if err != nil {
 		return err
 	}
-	if dbp.CurrentBreakpoint != nil || dbp.halt {
+	if dbp.CurrentBreakpoint() != nil || dbp.halt {
 		return dbp.Halt()
 	}
 	// Check to see if we hit a runtime.breakpoint
@@ -402,10 +405,8 @@ func (dbp *Process) resume() error {
 				return err
 			}
 		}
-		return dbp.Halt()
 	}
-
-	return fmt.Errorf("unrecognized breakpoint %#v", pc)
+	return nil
 }
 
 // Single step, will execute a single instruction.
