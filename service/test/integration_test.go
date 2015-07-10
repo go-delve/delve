@@ -216,7 +216,6 @@ func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 
 func TestNextGeneral(t *testing.T) {
 	testcases := []nextTest{
-		{17, 19},
 		{19, 20},
 		{20, 23},
 		{23, 24},
@@ -237,7 +236,6 @@ func TestNextGeneral(t *testing.T) {
 
 func TestNextGoroutine(t *testing.T) {
 	testcases := []nextTest{
-		{46, 47},
 		{47, 42},
 	}
 	testnext(testcases, "main.testgoroutine", t)
@@ -245,7 +243,6 @@ func TestNextGoroutine(t *testing.T) {
 
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
-		{13, 14},
 		{14, 35},
 	}
 	testnext(testcases, "main.helloworld", t)
@@ -285,7 +282,7 @@ func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 		}
 
 		f, l := state.CurrentThread.File, state.CurrentThread.Line
-		if f != "testthreads.go" && l != 8 {
+		if f != "testthreads.go" && l != 9 {
 			t.Fatal("Program did not hit breakpoint")
 		}
 	})
