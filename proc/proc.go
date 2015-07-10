@@ -412,8 +412,7 @@ func (dbp *Process) Step() (err error) {
 			if th.blocked() {
 				continue
 			}
-			err := th.Step()
-			if err != nil {
+			if err := th.Step(); err != nil {
 				return err
 			}
 		}
@@ -426,7 +425,6 @@ func (dbp *Process) Step() (err error) {
 // Change from current thread to the thread specified by `tid`.
 func (dbp *Process) SwitchThread(tid int) error {
 	if th, ok := dbp.Threads[tid]; ok {
-		fmt.Printf("thread context changed from %d to %d\n", dbp.CurrentThread.Id, tid)
 		dbp.CurrentThread = th
 		return nil
 	}
