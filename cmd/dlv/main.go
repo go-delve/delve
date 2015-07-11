@@ -59,22 +59,24 @@ The goal of this tool is to provide a simple yet powerful interface for debuggin
 		Long: `Compiles your program with optimizations disabled, 
 starts and attaches to it, and enables you to immediately begin debugging your program.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			const debugname = "debug"
-			goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
-			goBuild.Stderr = os.Stderr
-			err := goBuild.Run()
-			if err != nil {
-				os.Exit(1)
-			}
-			fp, err := filepath.Abs("./" + debugname)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, err.Error())
-				os.Exit(1)
-			}
+			status := func() int {
+				const debugname = "debug"
+				goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
+				goBuild.Stderr = os.Stderr
+				err := goBuild.Run()
+				if err != nil {
+					return 1
+				}
+				fp, err := filepath.Abs("./" + debugname)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, err.Error())
+					return 1
+				}
+				defer os.Remove(fp)
 
-			processArgs := append([]string{"./" + debugname}, args...)
-			status := execute(0, processArgs)
-			os.Remove(fp)
+				processArgs := append([]string{"./" + debugname}, args...)
+				return execute(0, processArgs)
+			}()
 			os.Exit(status)
 		},
 	}
@@ -87,23 +89,25 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		Long: `Compiles a test binary with optimizations disabled, 
 starts and attaches to it, and enable you to immediately begin debugging your program.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			wd, err := os.Getwd()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, err.Error())
-				os.Exit(1)
-			}
-			base := filepath.Base(wd)
-			goTest := exec.Command("go", "test", "-c", "-gcflags", "-N -l")
-			goTest.Stderr = os.Stderr
-			err = goTest.Run()
-			if err != nil {
-				os.Exit(1)
-			}
-			debugname := "./" + base + ".test"
-			processArgs := append([]string{debugname}, args...)
+			status := func() int {
+				wd, err := os.Getwd()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, err.Error())
+					return 1
+				}
+				base := filepath.Base(wd)
+				goTest := exec.Command("go", "test", "-c", "-gcflags", "-N -l")
+				goTest.Stderr = os.Stderr
+				err = goTest.Run()
+				if err != nil {
+					return 1
+				}
+				debugname := "./" + base + ".test"
+				defer os.Remove(debugname)
+				processArgs := append([]string{debugname}, args...)
 
-			status := execute(0, processArgs)
-			os.Remove(debugname)
+				return execute(0, processArgs)
+			}()
 			os.Exit(status)
 		},
 	}
@@ -138,8 +142,7 @@ func execute(attachPid int, processArgs []string) int {
 	defer listener.Close()
 
 	// Create and start a debugger server
-	var server service.Server
-	server = rpc.NewServer(&service.Config{
+	server := rpc.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: processArgs,
 		AttachPid:   attachPid,
