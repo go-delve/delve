@@ -50,7 +50,7 @@ func main() {
 		Use:   "run",
 		Short: "Compile and begin debugging program.",
 		Long: `Compiles your program with optimizations disabled, 
-starts and attaches to it, and enable you to immediately begin debugging your program.`,
+starts and attaches to it, and enables you to immediately begin debugging your program.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			const debugname = "debug"
 			goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
