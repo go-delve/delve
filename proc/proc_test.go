@@ -516,9 +516,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 					}
 					t.Logf("\t%s:%d %s\n", locations[i].File, locations[i].Line, name)
 				}
-
 			}
-
 		}
 
 		if mainCount != 1 {
