@@ -30,6 +30,13 @@ func main() {
 	rootCommand := &cobra.Command{
 		Use:   "dlv",
 		Short: "Delve is a debugger for the Go programming language.",
+		Long: `Delve is a source level debugger for Go programs.
+
+Delve enables you to interact with your program by controlling the execution of the process,
+evaluating variables, and providing information of thread / goroutine state, CPU register state and more.
+
+The goal of this tool is to provide a simple yet powerful interface for debugging Go programs.
+`,
 	}
 	rootCommand.Flags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	rootCommand.Flags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
