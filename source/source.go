@@ -191,8 +191,17 @@ func (s *Searcher) parseDefaultBlock(ifRoot ast.Node, parsedFile *ast.File, line
 		}
 
 		if stmt, ok := n.(*ast.ForStmt); ok {
-			parents = append(parents, stmt.Body)
 			pos := s.fileset.Position(stmt.Pos())
+			if stmt.Cond == nil {
+				nextLine := s.fileset.Position(stmt.Body.List[0].Pos()).Line
+				if line < nextLine {
+					lines = []int{nextLine}
+					found = true
+					parents = nil
+					return false
+				}
+			}
+			parents = append(parents, stmt.Body)
 			parentBlockBeginLine = pos.Line
 		}
 

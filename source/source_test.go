@@ -30,6 +30,7 @@ func TestNextLines(t *testing.T) {
 		line      int
 		nextlines []int
 	}{
+		{5, []int{7}},
 		{8, []int{9, 10, 13}},
 		{15, []int{17, 19}},
 		{25, []int{27}},
@@ -50,7 +51,7 @@ func TestNextLines(t *testing.T) {
 		}
 		if len(lines) != len(c.nextlines) {
 			fmt.Println(lines)
-			t.Fatalf("did not get correct number of lines back expected %d got %d for test case %d", len(c.nextlines), len(lines), i+1)
+			t.Fatalf("did not get correct number of lines back expected %d got %d for test case %d got %#v", len(c.nextlines), len(lines), i+1, lines)
 		}
 		for j, l := range lines {
 			if l != c.nextlines[j] {
