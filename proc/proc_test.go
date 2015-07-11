@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -29,7 +30,7 @@ func withTestProcess(name string, t *testing.T, fn func(p *Process, fixture prot
 
 	defer func() {
 		p.Halt()
-		p.Detach(true)
+		p.Kill()
 	}()
 
 	fn(p, fixture)
@@ -529,5 +530,22 @@ func TestStacktraceGoroutine(t *testing.T) {
 
 		p.ClearBreakpoint(bp.Addr)
 		p.Continue()
+	})
+}
+
+func TestKill(t *testing.T) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
+		if err := p.Kill(); err != nil {
+			t.Fatal(err)
+		}
+		if p.Exited() != true {
+			t.Fatal("expected process to have exited")
+		}
+		if runtime.GOOS == "linux" {
+			_, err := os.Open(fmt.Sprintf("/proc/%d/", p.Pid))
+			if err == nil {
+				t.Fatal("process has not exited", p.Pid)
+			}
+		}
 	})
 }

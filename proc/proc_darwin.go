@@ -7,6 +7,7 @@ import "C"
 import (
 	"debug/gosym"
 	"debug/macho"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -79,6 +80,26 @@ func Launch(cmd []string) (*Process, error) {
 	}
 	err = dbp.Continue()
 	return dbp, err
+}
+
+func (dbp *Process) Kill() (err error) {
+	err = sys.Kill(dbp.Pid, sys.SIGKILL)
+	if err != nil {
+		return errors.New("could not deliver signal: " + err.Error())
+	}
+	for port := range dbp.Threads {
+		if C.thread_resume(C.thread_act_t(port)) != C.KERN_SUCCESS {
+			return errors.New("could not resume task")
+		}
+	}
+	for {
+		port := C.mach_port_wait(dbp.os.portSet)
+		if port == dbp.os.notificationPort {
+			break
+		}
+	}
+	dbp.exited = true
+	return
 }
 
 func (dbp *Process) requestManualStop() (err error) {

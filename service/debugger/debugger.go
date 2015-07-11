@@ -67,7 +67,11 @@ func (d *Debugger) ProcessPid() int {
 }
 
 func (d *Debugger) Detach(kill bool) error {
-	return d.process.Detach(kill)
+	if d.config.AttachPid != 0 {
+		return d.process.Detach(kill)
+	} else {
+		return d.process.Kill()
+	}
 }
 
 func (d *Debugger) Restart() error {

@@ -3,6 +3,7 @@ package proc
 import (
 	"debug/elf"
 	"debug/gosym"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -54,6 +55,22 @@ func Launch(cmd []string) (*Process, error) {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
 	return initializeDebugProcess(dbp, proc.Path, false)
+}
+
+func (dbp *Process) Kill() (err error) {
+	if !stopped(dbp.Pid) {
+		return errors.New("process must be stopped in order to kill it")
+	}
+	err = sys.Kill(dbp.Pid, sys.SIGKILL)
+	if err != nil {
+		return errors.New("could not deliver signal " + err.Error())
+	}
+	_, _, err = wait(-1, dbp.Pid, 0)
+	if err != nil {
+		return
+	}
+	dbp.exited = true
+	return
 }
 
 func (dbp *Process) requestManualStop() (err error) {
