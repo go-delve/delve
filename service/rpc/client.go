@@ -66,7 +66,7 @@ func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 				state.Err = fmt.Errorf("Process %d has exited with status %d", c.ProcessPid(), state.ExitStatus)
 			}
 			ch <- state
-			if err != nil || state.Breakpoint == nil || !state.Breakpoint.Tracepoint {
+			if err != nil || state.Exited || state.Breakpoint == nil || !state.Breakpoint.Tracepoint {
 				close(ch)
 				return
 			}

@@ -770,7 +770,6 @@ func (thread *Thread) readMemory(addr uintptr, size int) ([]byte, error) {
 	if size == 0 {
 		return nil, nil
 	}
-
 	buf := make([]byte, size)
 	_, err := readMemory(thread, addr, buf)
 	if err != nil {

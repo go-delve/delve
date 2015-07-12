@@ -537,11 +537,19 @@ func printcontext(state *api.DebuggerState) error {
 
 	var context []string
 
-	fn := ""
+	var fn *api.Function
 	if state.CurrentThread.Function != nil {
-		fn = state.CurrentThread.Function.Name
+		fn = state.CurrentThread.Function
 	}
-	fmt.Printf("current loc: %s %s:%d\n", fn, state.CurrentThread.File, state.CurrentThread.Line)
+	if state.Breakpoint != nil && state.Breakpoint.Tracepoint {
+		var args []string
+		for _, arg := range state.CurrentThread.Function.Args {
+			args = append(args, arg.Value)
+		}
+		fmt.Printf("%s(%s) %s:%d\n", fn.Name, strings.Join(args, ", "), state.CurrentThread.File, state.CurrentThread.Line)
+	} else {
+		fmt.Printf("%s() %s:%d\n", fn.Name, state.CurrentThread.File, state.CurrentThread.Line)
+	}
 
 	if state.BreakpointInfo != nil {
 		bpi := state.BreakpointInfo

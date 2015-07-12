@@ -272,6 +272,10 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		}
 		bpi.Variables[i] = api.ConvertVar(v)
 	}
+	vars, err := d.FunctionArguments(d.process.CurrentThread.Id)
+	if err == nil {
+		bpi.Arguments = vars
+	}
 
 	return nil
 }
@@ -370,7 +374,7 @@ func (d *Debugger) FunctionArguments(threadID int) ([]api.Variable, error) {
 	for _, v := range pv {
 		vars = append(vars, api.ConvertVar(v))
 	}
-	return vars, err
+	return vars, nil
 }
 
 func (d *Debugger) EvalVariableInThread(threadID int, symbol string) (*api.Variable, error) {

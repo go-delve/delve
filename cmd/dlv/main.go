@@ -8,10 +8,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/service"
+	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc"
 	"github.com/derekparker/delve/terminal"
 	"github.com/spf13/cobra"
@@ -81,6 +83,91 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		},
 	}
 	rootCommand.AddCommand(runCommand)
+
+	// 'trace' subcommand.
+	traceCommand := &cobra.Command{
+		Use:   "trace [regexp]",
+		Short: "Compile and begin tracing program.",
+		Long:  "Trace program execution. Will set a tracepoint on every function matching [regexp] and output information when tracepoint is hit.",
+		Run: func(cmd *cobra.Command, args []string) {
+			status := func() int {
+				const debugname = "debug"
+				goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
+				goBuild.Stderr = os.Stderr
+				err := goBuild.Run()
+				if err != nil {
+					return 1
+				}
+				fp, err := filepath.Abs("./" + debugname)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, err.Error())
+					return 1
+				}
+				defer os.Remove(fp)
+
+				processArgs := append([]string{"./" + debugname}, args...)
+				// Make a TCP listener
+				listener, err := net.Listen("tcp", Addr)
+				if err != nil {
+					fmt.Printf("couldn't start listener: %s\n", err)
+					return 1
+				}
+				defer listener.Close()
+
+				// Create and start a debugger server
+				server := rpc.NewServer(&service.Config{
+					Listener:    listener,
+					ProcessArgs: processArgs,
+				}, Log)
+				if err := server.Run(); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+				sigChan := make(chan os.Signal)
+				signal.Notify(sigChan, sys.SIGINT)
+				client := rpc.NewClient(listener.Addr().String())
+				funcs, err := client.ListFunctions(args[0])
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+				for i := range funcs {
+					_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: funcs[i], Tracepoint: true})
+					if err != nil {
+						fmt.Fprintln(os.Stderr, err)
+						return 1
+					}
+				}
+				stateChan := client.Continue()
+				for {
+					select {
+					case state := <-stateChan:
+						if state.Err != nil {
+							fmt.Fprintln(os.Stderr, state.Err)
+							return 0
+						}
+						var args []string
+						var fname string
+						if state.CurrentThread != nil && state.CurrentThread.Function != nil {
+							fname = state.CurrentThread.Function.Name
+						}
+						if state.BreakpointInfo != nil {
+							for _, arg := range state.BreakpointInfo.Arguments {
+								args = append(args, arg.Value)
+							}
+						}
+						fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), state.CurrentThread.File, state.CurrentThread.Line)
+					case <-sigChan:
+						server.Stop(true)
+						return 1
+					}
+				}
+				return 0
+			}()
+			os.Exit(status)
+		},
+	}
+	rootCommand.AddCommand(traceCommand)
 
 	// 'test' subcommand.
 	testCommand := &cobra.Command{

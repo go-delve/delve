@@ -112,6 +112,7 @@ type BreakpointInfo struct {
 	Stacktrace []Location `json:"stacktrace,omitempty"`
 	Goroutine  *Goroutine `json:"goroutine,omitempty"`
 	Variables  []Variable `json:"variables,omitempty"`
+	Arguments  []Variable `json:"arguments,omitempty"`
 }
 
 const (

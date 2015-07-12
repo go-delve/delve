@@ -55,7 +55,7 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 			continue
 		}
 
-		if lowpc <= pc && highpc >= pc {
+		if lowpc <= pc && highpc > pc {
 			return entry, nil
 		}
 	}
