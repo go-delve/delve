@@ -90,6 +90,11 @@ func Attach(pid int) (*Process, error) {
 
 // Detach from the process being debugged, optionally killing it.
 func (dbp *Process) Detach(kill bool) (err error) {
+	if dbp.Running() {
+		if err = dbp.Halt(); err != nil {
+			return
+		}
+	}
 	if !kill {
 		// Clean up any breakpoints we've set.
 		for _, bp := range dbp.Breakpoints {

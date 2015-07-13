@@ -85,27 +85,31 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 	rootCommand.AddCommand(runCommand)
 
 	// 'trace' subcommand.
+	var traceAttachPid int
 	traceCommand := &cobra.Command{
-		Use:   "trace [regexp]",
+		Use:   "trace [regexp] [flags]",
 		Short: "Compile and begin tracing program.",
 		Long:  "Trace program execution. Will set a tracepoint on every function matching [regexp] and output information when tracepoint is hit.",
 		Run: func(cmd *cobra.Command, args []string) {
 			status := func() int {
 				const debugname = "debug"
-				goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
-				goBuild.Stderr = os.Stderr
-				err := goBuild.Run()
-				if err != nil {
-					return 1
-				}
-				fp, err := filepath.Abs("./" + debugname)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, err.Error())
-					return 1
-				}
-				defer os.Remove(fp)
+				var processArgs []string
+				if traceAttachPid == 0 {
+					goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
+					goBuild.Stderr = os.Stderr
+					err := goBuild.Run()
+					if err != nil {
+						return 1
+					}
+					fp, err := filepath.Abs("./" + debugname)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, err.Error())
+						return 1
+					}
+					defer os.Remove(fp)
 
-				processArgs := append([]string{"./" + debugname}, args...)
+					processArgs = append([]string{"./" + debugname}, args...)
+				}
 				// Make a TCP listener
 				listener, err := net.Listen("tcp", Addr)
 				if err != nil {
@@ -118,6 +122,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 				server := rpc.NewServer(&service.Config{
 					Listener:    listener,
 					ProcessArgs: processArgs,
+					AttachPid:   traceAttachPid,
 				}, Log)
 				if err := server.Run(); err != nil {
 					fmt.Fprintln(os.Stderr, err)
@@ -158,7 +163,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 						}
 						fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), state.CurrentThread.File, state.CurrentThread.Line)
 					case <-sigChan:
-						server.Stop(true)
+						server.Stop(traceAttachPid == 0)
 						return 1
 					}
 				}
@@ -167,6 +172,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 			os.Exit(status)
 		},
 	}
+	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
 	rootCommand.AddCommand(traceCommand)
 
 	// 'test' subcommand.
