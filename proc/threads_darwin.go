@@ -54,10 +54,15 @@ func (t *Thread) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.PC()
 	fn := t.dbp.goSymTable.PCToFunc(pc)
-	if fn != nil && (fn.Name == "runtime.mach_semaphore_wait" || fn.Name == "runtime.usleep") {
-		return true
+	if fn == nil {
+		return false
 	}
-	return false
+	switch fn.Name {
+	case "runtime.kevent", "runtime.mach_semaphore_wait", "runtime.usleep":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
