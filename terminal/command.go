@@ -81,7 +81,7 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 }
 
 // Find will look up the command function for the given command input.
-// If it cannot find the command it will defualt to noCmdAvailable().
+// If it cannot find the command it will default to noCmdAvailable().
 // If the command is an empty string it will replay the last command.
 func (c *Commands) Find(cmdstr string) cmdfunc {
 	// If <enter> use last command, if there was one.
