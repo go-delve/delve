@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	protest "github.com/derekparker/delve/proc/test"
 )
@@ -315,6 +318,46 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 		{9, 6},
 	}
 	testnext("testnextdefer", testcases, "main.main", t)
+}
+
+func TestNextNetHTTP(t *testing.T) {
+	testcases := []nextTest{
+		{11, 12},
+		{12, 13},
+	}
+	withTestProcess("testnextnethttp", t, func(p *Process, fixture protest.Fixture) {
+		go func() {
+			for !p.Running() {
+				time.Sleep(50 * time.Millisecond)
+			}
+			// Wait for program to start listening.
+			for {
+				conn, err := net.Dial("tcp", ":8080")
+				if err == nil {
+					conn.Close()
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			http.Get("http://localhost:8080")
+		}()
+		if err := p.Continue(); err != nil {
+			t.Fatal(err)
+		}
+		f, ln := currentLineNumber(p, t)
+		for _, tc := range testcases {
+			if ln != tc.begin {
+				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
+			}
+
+			assertNoError(p.Next(), t, "Next() returned an error")
+
+			f, ln = currentLineNumber(p, t)
+			if ln != tc.end {
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
+			}
+		}
+	})
 }
 
 func TestRuntimeBreakpoint(t *testing.T) {
