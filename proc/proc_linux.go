@@ -57,6 +57,11 @@ func Launch(cmd []string) (*Process, error) {
 	return initializeDebugProcess(dbp, proc.Path, false)
 }
 
+// Attach to an existing process with the given PID.
+func Attach(pid int) (*Process, error) {
+	return initializeDebugProcess(New(pid), "", true)
+}
+
 func (dbp *Process) Kill() (err error) {
 	if !stopped(dbp.Pid) {
 		return errors.New("process must be stopped in order to kill it")

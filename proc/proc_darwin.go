@@ -82,6 +82,21 @@ func Launch(cmd []string) (*Process, error) {
 	return dbp, err
 }
 
+// Attach to an existing process with the given PID.
+func Attach(pid int) (*Process, error) {
+	dbp := New(pid)
+
+	kret := C.acquire_mach_task(C.int(pid),
+		&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
+		&dbp.os.notificationPort)
+
+	if kret != C.KERN_SUCCESS {
+		return nil, fmt.Errorf("could not attach to %d", pid)
+	}
+
+	return initializeDebugProcess(dbp, "", true)
+}
+
 func (dbp *Process) Kill() (err error) {
 	err = sys.Kill(dbp.Pid, sys.SIGKILL)
 	if err != nil {

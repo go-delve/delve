@@ -79,15 +79,6 @@ func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
 }
 
-// Attach to an existing process with the given PID.
-func Attach(pid int) (*Process, error) {
-	dbp, err := initializeDebugProcess(New(pid), "", true)
-	if err != nil {
-		return nil, err
-	}
-	return dbp, nil
-}
-
 // Detach from the process being debugged, optionally killing it.
 func (dbp *Process) Detach(kill bool) (err error) {
 	if dbp.Running() {
