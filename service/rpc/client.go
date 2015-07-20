@@ -207,7 +207,7 @@ func (c *RPCClient) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 
 func (c *RPCClient) AttachedToExistingProcess() bool {
 	var answer bool
-	c.call("AttachedToRunningProcess", nil, &answer)
+	c.call("AttachedToExistingProcess", nil, &answer)
 	return answer
 }
 
