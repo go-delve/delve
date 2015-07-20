@@ -40,9 +40,9 @@ evaluating variables, and providing information of thread / goroutine state, CPU
 The goal of this tool is to provide a simple yet powerful interface for debugging Go programs.
 `,
 	}
-	rootCommand.Flags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
-	rootCommand.Flags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
-	rootCommand.Flags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
+	rootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
+	rootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
+	rootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 
 	// 'version' subcommand.
 	versionCommand := &cobra.Command{
