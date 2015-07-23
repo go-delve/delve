@@ -275,6 +275,27 @@ func (thread *Thread) PackageVariables() ([]*Variable, error) {
 	return vars, nil
 }
 
+func (thread *Thread) EvalPackageVariable(name string) (*Variable, error) {
+	reader := thread.dbp.DwarfReader()
+
+	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
+		if err != nil {
+			return nil, err
+		}
+
+		n, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+
+		if n == name {
+			return thread.extractVariableFromEntry(entry)
+		}
+	}
+
+	return nil, fmt.Errorf("could not find symbol value for %s", name)
+}
+
 func (thread *Thread) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader.Reader, memberName string) (*Variable, error) {
 	parentAddr, err := thread.extractVariableDataAddress(parentEntry, rdr)
 	if err != nil {
@@ -387,13 +408,13 @@ func (thread *Thread) executeStackProgram(instructions []byte) (int64, error) {
 		return 0, err
 	}
 
-	fde, err := thread.dbp.frameEntries.FDEForPC(regs.PC())
-	if err != nil {
-		return 0, err
-	}
+	var cfa int64 = 0
 
-	fctx := fde.EstablishFrame(regs.PC())
-	cfa := fctx.CFAOffset() + int64(regs.SP())
+	fde, err := thread.dbp.frameEntries.FDEForPC(regs.PC())
+	if err == nil {
+		fctx := fde.EstablishFrame(regs.PC())
+		cfa = fctx.CFAOffset() + int64(regs.SP())
+	}
 	address, err := op.ExecuteStackProgram(cfa, instructions)
 	if err != nil {
 		return 0, err

@@ -3,6 +3,7 @@ package proc
 import "runtime"
 
 type Arch interface {
+	SetCurGInstructions(ver GoVersion, iscgo bool)
 	PtrSize() int
 	BreakpointInstruction() []byte
 	BreakpointSize() int
@@ -20,10 +21,18 @@ type AMD64 struct {
 }
 
 func AMD64Arch() *AMD64 {
-	var (
-		curg       []byte
-		breakInstr = []byte{0xCC}
-	)
+	var breakInstr = []byte{0xCC}
+
+	return &AMD64{
+		ptrSize:                 8,
+		breakInstruction:        breakInstr,
+		breakInstructionLen:     len(breakInstr),
+		hardwareBreakpointUsage: make([]bool, 4),
+	}
+}
+
+func (a *AMD64) SetCurGInstructions(ver GoVersion, isextld bool) {
+	var curg []byte
 
 	switch runtime.GOOS {
 	case "darwin":
@@ -32,19 +41,19 @@ func AMD64Arch() *AMD64 {
 			0x0, 0x0,
 		}
 	case "linux":
-		curg = []byte{
-			0x64, 0x48, 0x8b, 0x0c, 0x25, 0xf0, 0xff, 0xff, 0xff, // mov %fs:0xfffffffffffffff0,%rcx
+		if isextld || ver.After(GoVersion{1, 5, 0}) {
+			curg = []byte{
+				0x64, 0x48, 0x8b, 0x0c, 0x25, 0xf8, 0xff, 0xff, 0xff, // mov %fs:0xfffffffffffffff8,%rcx
+			}
+		} else {
+			curg = []byte{
+				0x64, 0x48, 0x8b, 0x0c, 0x25, 0xf0, 0xff, 0xff, 0xff, // mov %fs:0xfffffffffffffff0,%rcx
+			}
 		}
 	}
-	curg = append(curg, breakInstr[0])
+	curg = append(curg, a.breakInstruction...)
 
-	return &AMD64{
-		ptrSize:                 8,
-		breakInstruction:        breakInstr,
-		breakInstructionLen:     1,
-		curgInstructions:        curg,
-		hardwareBreakpointUsage: make([]bool, 4),
-	}
+	a.curgInstructions = curg
 }
 
 func (a *AMD64) PtrSize() int {

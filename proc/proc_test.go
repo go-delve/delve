@@ -592,3 +592,32 @@ func TestKill(t *testing.T) {
 		}
 	})
 }
+
+func testGSupportFunc(name string, t *testing.T, p *Process, fixture protest.Fixture) {
+	bp, err := p.SetBreakpointByLocation("main.main")
+	assertNoError(err, t, name+": BreakByLocation()")
+
+	assertNoError(p.Continue(), t, name+": Continue()")
+
+	g, err := p.CurrentThread.GetG()
+	assertNoError(err, t, name+": GetG()")
+
+	if g == nil {
+		t.Fatal(name + ": g was nil")
+	}
+
+	t.Logf(name+": g is: %v", g)
+
+	p.ClearBreakpoint(bp.Addr)
+	p.Kill()
+}
+
+func TestGetG(t *testing.T) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
+		testGSupportFunc("nocgo", t, p, fixture)
+	})
+
+	withTestProcess("cgotest", t, func(p *Process, fixture protest.Fixture) {
+		testGSupportFunc("cgo", t, p, fixture)
+	})
+}

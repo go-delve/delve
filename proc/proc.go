@@ -596,6 +596,13 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		dbp.arch = AMD64Arch()
 	}
 
+	ver, isextld, err := dbp.getGoInformation()
+	if err != nil {
+		return nil, err
+	}
+
+	dbp.arch.SetCurGInstructions(ver, isextld)
+
 	return dbp, nil
 }
 
@@ -673,4 +680,35 @@ func (dbp *Process) handlePtraceFuncs() {
 func (dbp *Process) execPtraceFunc(fn func()) {
 	dbp.ptraceChan <- fn
 	<-dbp.ptraceDoneChan
+}
+
+func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
+	th := dbp.Threads[dbp.Pid]
+
+	vv, err := th.EvalPackageVariable("runtime.buildVersion")
+	if err != nil {
+		err = fmt.Errorf("Could not determine version number: %v\n", err)
+		return
+	}
+
+	ver, ok := parseVersionString(vv.Value)
+	if !ok {
+		err = fmt.Errorf("Could not parse version number: %s\n", vv.Value)
+	}
+
+	isextld = false
+
+	rdr := dbp.DwarfReader()
+	rdr.Seek(0)
+	for entry, err := rdr.NextCompileUnit(); entry != nil; entry, err = rdr.NextCompileUnit() {
+		if err != nil {
+			return ver, isextld, err
+		}
+		if prod, ok := entry.Val(dwarf.AttrProducer).(string); ok && (strings.HasPrefix(prod, "GNU AS")) {
+			isextld = true
+			break
+		}
+	}
+
+	return
 }

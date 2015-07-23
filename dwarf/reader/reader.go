@@ -312,3 +312,17 @@ func (reader *Reader) NextPackageVariable() (*dwarf.Entry, error) {
 	// No more items
 	return nil, nil
 }
+
+func (reader *Reader) NextCompileUnit() (*dwarf.Entry, error) {
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		if entry.Tag == dwarf.TagCompileUnit {
+			return entry, nil
+		}
+	}
+
+	return nil, nil
+}
