@@ -692,6 +692,7 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 	ver, ok := parseVersionString(vv.Value)
 	if !ok {
 		err = fmt.Errorf("Could not parse version number: %s\n", vv.Value)
+		return
 	}
 
 	isextld = false
