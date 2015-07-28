@@ -59,7 +59,7 @@ func parseVersionString(ver string) (GoVersion, bool) {
 	return GoVersion{}, false
 }
 
-func (a *GoVersion) After(b GoVersion) bool {
+func (a *GoVersion) AfterOrEqual(b GoVersion) bool {
 	if a.Major < b.Major {
 		return false
 	} else if a.Major > b.Major {
