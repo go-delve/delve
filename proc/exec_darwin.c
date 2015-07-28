@@ -9,6 +9,9 @@ fork_exec(char *argv0, char **argv, int size,
 		mach_port_t *exception_port,
 		mach_port_t *notification_port)
 {
+	// In order to call PT_SIGEXC below, we must ensure that we have acquired the mach task first.
+	// We facilitate this by creating a pipe and using it to let the forked process know that we've
+	// finishing acquiring the mach task, and it can go ahead with the calls to PT_TRACE_ME and PT_SIGEXC.
 	int fd[2];
 	if (pipe(fd) < 0) return -1;
 
