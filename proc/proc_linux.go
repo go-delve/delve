@@ -19,6 +19,7 @@ import (
 	"github.com/derekparker/delve/dwarf/line"
 )
 
+// Process statuses
 const (
 	STATUS_SLEEPING   = 'S'
 	STATUS_RUNNING    = 'R'
