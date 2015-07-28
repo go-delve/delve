@@ -53,13 +53,13 @@ func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 	)
 	f, l, fn := dbp.PCToLine(pc)
 	locations = append(locations, Location{PC: pc, File: f, Line: l, Fn: fn})
-	for i := int64(0); i < int64(depth); i++ {
+	for i := 0; i < depth; i++ {
 		fde, err := dbp.frameEntries.FDEForPC(ret)
 		if err != nil {
 			return nil, err
 		}
 		btoffset += fde.ReturnAddressOffset(ret)
-		retaddr = uintptr(int64(sp) + btoffset + (i * int64(dbp.arch.PtrSize())))
+		retaddr = uintptr(int64(sp) + btoffset + int64(i*dbp.arch.PtrSize()))
 		if retaddr == 0 {
 			return nil, NullAddrError{}
 		}
@@ -72,8 +72,11 @@ func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 			break
 		}
 		f, l, fn = dbp.goSymTable.PCToLine(ret)
+		if fn == nil {
+			break
+		}
 		locations = append(locations, Location{PC: ret, File: f, Line: l, Fn: fn})
-		if fn != nil && fn.Name == "runtime.goexit" {
+		if fn.Name == "runtime.goexit" {
 			break
 		}
 	}

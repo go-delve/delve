@@ -291,7 +291,7 @@ func offsetextended(frame *FrameContext) {
 		offset, _ = util.DecodeULEB128(frame.buf)
 	)
 
-	frame.regs[reg] = DWRule{offset: int64(offset), rule: rule_offset}
+	frame.regs[reg] = DWRule{offset: int64(offset) * frame.dataAlignment, rule: rule_offset}
 }
 
 func undefined(frame *FrameContext) {
