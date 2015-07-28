@@ -216,7 +216,6 @@ func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 
 func TestNextGeneral(t *testing.T) {
 	testcases := []nextTest{
-		{17, 19},
 		{19, 20},
 		{20, 23},
 		{23, 24},
@@ -237,7 +236,6 @@ func TestNextGeneral(t *testing.T) {
 
 func TestNextGoroutine(t *testing.T) {
 	testcases := []nextTest{
-		{46, 47},
 		{47, 42},
 	}
 	testnext(testcases, "main.testgoroutine", t)
@@ -245,7 +243,6 @@ func TestNextGoroutine(t *testing.T) {
 
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
-		{13, 14},
 		{14, 35},
 	}
 	testnext(testcases, "main.helloworld", t)
@@ -285,7 +282,7 @@ func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 		}
 
 		f, l := state.CurrentThread.File, state.CurrentThread.Line
-		if f != "testthreads.go" && l != 8 {
+		if f != "testthreads.go" && l != 9 {
 			t.Fatal("Program did not hit breakpoint")
 		}
 	})
@@ -483,6 +480,49 @@ func TestClientServer_traceContinue(t *testing.T) {
 
 		if count != 3 {
 			t.Fatalf("Wrong number of continues hit: %d\n", count)
+		}
+	})
+}
+
+func TestClientServer_traceContinue2(t *testing.T) {
+	withTestClient("integrationprog", t, func(c service.Client) {
+		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+		bp2, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+		countMain := 0
+		countSayhi := 0
+		contChan := c.Continue()
+		for state := range contChan {
+			if state.Breakpoint != nil {
+				switch state.Breakpoint.ID {
+				case bp1.ID:
+					countMain++
+				case bp2.ID:
+					countSayhi++
+				}
+
+				t.Logf("%v", state)
+			}
+			if state.Exited {
+				continue
+			}
+			if state.Err != nil {
+				t.Fatalf("Unexpected error during continue: %v\n", state.Err)
+			}
+
+		}
+
+		if countMain != 1 {
+			t.Fatalf("Wrong number of continues (main.main) hit: %d\n", countMain)
+		}
+
+		if countSayhi != 3 {
+			t.Fatalf("Wrong number of continues (main.sayhi) hit: %d\n", countSayhi)
 		}
 	})
 }

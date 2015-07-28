@@ -277,7 +277,6 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 
 func TestNextGeneral(t *testing.T) {
 	testcases := []nextTest{
-		{17, 19},
 		{19, 20},
 		{20, 23},
 		{23, 24},
@@ -298,7 +297,6 @@ func TestNextGeneral(t *testing.T) {
 
 func TestNextGoroutine(t *testing.T) {
 	testcases := []nextTest{
-		{46, 47},
 		{47, 42},
 	}
 	testnext("testnextprog", testcases, "main.testgoroutine", t)
@@ -306,7 +304,6 @@ func TestNextGoroutine(t *testing.T) {
 
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
-		{13, 14},
 		{14, 35},
 	}
 	testnext("testnextprog", testcases, "main.helloworld", t)
@@ -589,6 +586,42 @@ func TestKill(t *testing.T) {
 			if err == nil {
 				t.Fatal("process has not exited", p.Pid)
 			}
+		}
+	})
+}
+
+func TestContinueMulti(t *testing.T) {
+	withTestProcess("integrationprog", t, func(p *Process, fixture protest.Fixture) {
+		bp1, err := p.SetBreakpointByLocation("main.main")
+		assertNoError(err, t, "BreakByLocation()")
+
+		bp2, err := p.SetBreakpointByLocation("main.sayhi")
+		assertNoError(err, t, "BreakByLocation()")
+
+		mainCount := 0
+		sayhiCount := 0
+		for {
+			err := p.Continue()
+			if p.exited {
+				break
+			}
+			assertNoError(err, t, "Continue()")
+
+			if p.CurrentBreakpoint().ID == bp1.ID {
+				mainCount++
+			}
+
+			if p.CurrentBreakpoint().ID == bp2.ID {
+				sayhiCount++
+			}
+		}
+
+		if mainCount != 1 {
+			t.Fatalf("Main breakpoint hit wrong number of times: %d\n", mainCount)
+		}
+
+		if sayhiCount != 3 {
+			t.Fatalf("Sayhi breakpoint hit wrong number of times: %d\n", sayhiCount)
 		}
 	})
 }
