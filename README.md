@@ -13,7 +13,7 @@ The Github issue tracker is for **bugs** only. Please use the [developer mailing
 - [Building](https://github.com/derekparker/delve/wiki/Building)
 - [Usage](https://github.com/derekparker/delve/wiki/Usage)
 - [Command reference](https://github.com/derekparker/delve/wiki/Commands)
-- [Tips & Troubleshooting](https://github.com/derekparker/delve/wiki/Tips-&-Troubleshooting)
+- [Installation Tips & Troubleshooting](https://github.com/derekparker/delve/wiki/Tips-&-Troubleshooting)
 - [Upcoming Features](https://github.com/derekparker/delve/wiki/Upcoming-Features)
 - [Contributing](https://github.com/derekparker/delve/blob/master/CONTRIBUTING.md)
 
