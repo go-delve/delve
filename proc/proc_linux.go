@@ -66,7 +66,7 @@ func (dbp *Process) Kill() (err error) {
 	if !stopped(dbp.Pid) {
 		return errors.New("process must be stopped in order to kill it")
 	}
-	err = sys.Kill(dbp.Pid, sys.SIGKILL)
+	err = sys.Kill(-dbp.Pid, sys.SIGKILL)
 	if err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
