@@ -659,3 +659,27 @@ func TestContinueMulti(t *testing.T) {
 		}
 	})
 }
+
+func versionAfter(t *testing.T, verStr string, ver GoVersion) {
+	pver, ok := parseVersionString(verStr)
+	if !ok {
+		t.Fatalf("Could not parse version string <%s>", verStr)
+	}
+	if !pver.After(ver) {
+		t.Fatalf("Version <%s> parsed as %v not after %v", verStr, pver, ver)
+	}
+	t.Logf("version string <%s> → %v", verStr, ver)
+}
+
+func TestParseVersionString(t *testing.T) {
+	versionAfter(t, "go1.5.0", GoVersion{1, 5, 0, 0})
+	versionAfter(t, "go1.4.2", GoVersion{1, 4, 2, 0})
+	versionAfter(t, "go1.5beta2", GoVersion{1, 5, -1, 2})
+	ver, ok := parseVersionString("devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64")
+	if !ok {
+		t.Fatalf("Could not parse devel version string")
+	}
+	if !ver.IsDevel() {
+		t.Fatalf("Devel version string not correctly recognized")
+	}
+}
