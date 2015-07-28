@@ -610,7 +610,6 @@ func testGSupportFunc(name string, t *testing.T, p *Process, fixture protest.Fix
 	t.Logf(name+": g is: %v", g)
 
 	p.ClearBreakpoint(bp.Addr)
-	p.Kill()
 }
 
 func TestGetG(t *testing.T) {
