@@ -34,6 +34,15 @@ fork_exec(char *argv0, char **argv, int size,
 	read(fd[0], &sig, 1);
 	close(fd[0]);
 
+	// Create a new session for this process.
+	if (setsid() < 0) {
+		// Could not set session, but still want to create
+		// a new process group.
+		if (setpgid(0, 0) < 0) {
+			return -1;
+		}
+	}
+
 	// Set errno to zero before a call to ptrace.
 	// It is documented that ptrace can return -1 even
 	// for successful calls.

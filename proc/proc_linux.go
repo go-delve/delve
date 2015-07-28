@@ -43,7 +43,7 @@ func Launch(cmd []string) (*Process, error) {
 		proc.Args = cmd
 		proc.Stdout = os.Stdout
 		proc.Stderr = os.Stderr
-		proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
+		proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setsid: true}
 		err = proc.Start()
 	})
 	if err != nil {
