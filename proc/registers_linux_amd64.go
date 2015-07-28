@@ -60,6 +60,10 @@ func (r *Regs) CX() uint64 {
 	return r.regs.Rcx
 }
 
+func (r *Regs) TLS() uint64 {
+	return r.regs.Fs_base
+}
+
 func (r *Regs) SetPC(thread *Thread, pc uint64) (err error) {
 	r.regs.SetPC(pc)
 	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.Id, r.regs) })

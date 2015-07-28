@@ -10,6 +10,7 @@ type Registers interface {
 	PC() uint64
 	SP() uint64
 	CX() uint64
+	TLS() uint64
 	SetPC(*Thread, uint64) error
 	String() string
 }

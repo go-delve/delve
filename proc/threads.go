@@ -2,6 +2,7 @@ package proc
 
 import (
 	"debug/gosym"
+	"encoding/binary"
 	"fmt"
 	"path/filepath"
 
@@ -257,65 +258,22 @@ func (thread *Thread) SetPC(pc uint64) error {
 // opposed to the runtime version. This has the consequence of not setting M.id for
 // any thread, regardless of OS.
 //
-// In order to get around all this craziness, we write the instructions to retrieve the G
-// structure running on this thread (which is stored in thread local memory) into the
-// current instruction stream. The instructions are obviously arch/os dependant, as they
-// vary on how thread local storage is implemented, which MMU register is used and
-// what the offset into thread local storage is.
+// In order to get around all this craziness, we read the address of the G structure for
+// the current thread from the thread local storage area.
 func (thread *Thread) GetG() (g *G, err error) {
-	var pcInt uint64
-	pcInt, err = thread.PC()
-	if err != nil {
-		return
-	}
-	pc := uintptr(pcInt)
-	// Read original instructions.
-	originalInstructions := make([]byte, len(thread.dbp.arch.CurgInstructions()))
-	if _, err = readMemory(thread, pc, originalInstructions); err != nil {
-		return
-	}
-	// Write new instructions.
-	if _, err = writeMemory(thread, pc, thread.dbp.arch.CurgInstructions()); err != nil {
-		return
-	}
-	// We're going to be intentionally modifying the registers
-	// once we execute the code we inject into the instruction stream,
-	// so save them off here so we can restore them later.
-	if _, err = thread.saveRegisters(); err != nil {
-		return
-	}
-	// Ensure original instructions and PC are both restored.
-	defer func() {
-		// Do not shadow previous error, if there was one.
-		originalErr := err
-		// Restore the original instructions and register contents.
-		if _, err = writeMemory(thread, pc, originalInstructions); err != nil {
-			return
-		}
-		if err = thread.restoreRegisters(); err != nil {
-			return
-		}
-		err = originalErr
-		return
-	}()
-	// Execute new instructions.
-	if err = thread.resume(); err != nil {
-		return
-	}
-	// Set the halt flag so that trapWait will ignore the fact that
-	// we hit a breakpoint that isn't captured in our list of
-	// known breakpoints.
-	thread.dbp.halt = true
-	defer func(dbp *Process) { dbp.halt = false }(thread.dbp)
-	if _, err = thread.dbp.trapWait(-1); err != nil {
-		return
-	}
-	// Grab *G from RCX.
 	regs, err := thread.Registers()
 	if err != nil {
 		return nil, err
 	}
-	g, err = parseG(thread, regs.CX(), false)
+
+	gaddrbs := make([]byte, 8)
+	_, err = readMemory(thread, uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), gaddrbs)
+	if err != nil {
+		return nil, err
+	}
+	gaddr := binary.LittleEndian.Uint64(gaddrbs)
+
+	g, err = parseG(thread, gaddr, false)
 	if err == nil {
 		g.thread = thread
 	}

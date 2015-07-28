@@ -27,3 +27,6 @@ resume_thread(thread_act_t);
 
 kern_return_t
 set_registers(mach_port_name_t, x86_thread_state64_t*);
+
+kern_return_t
+get_identity(mach_port_name_t, thread_identifier_info_data_t *);

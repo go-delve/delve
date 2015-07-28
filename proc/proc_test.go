@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -616,6 +617,11 @@ func TestGetG(t *testing.T) {
 	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
 		testGSupportFunc("nocgo", t, p, fixture)
 	})
+
+	// On OSX with Go < 1.5 CGO is not supported due to: https://github.com/golang/go/issues/8973
+	if runtime.GOOS == "darwin" && strings.Contains(runtime.Version(), "1.4") {
+		return
+	}
 
 	withTestProcess("cgotest", t, func(p *Process, fixture protest.Fixture) {
 		testGSupportFunc("cgo", t, p, fixture)

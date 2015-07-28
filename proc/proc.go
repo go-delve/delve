@@ -601,7 +601,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		return nil, err
 	}
 
-	dbp.arch.SetCurGInstructions(ver, isextld)
+	dbp.arch.SetGStructOffset(ver, isextld)
 
 	return dbp, nil
 }
@@ -683,9 +683,7 @@ func (dbp *Process) execPtraceFunc(fn func()) {
 }
 
 func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
-	th := dbp.Threads[dbp.Pid]
-
-	vv, err := th.EvalPackageVariable("runtime.buildVersion")
+	vv, err := dbp.CurrentThread.EvalPackageVariable("runtime.buildVersion")
 	if err != nil {
 		err = fmt.Errorf("Could not determine version number: %v\n", err)
 		return
@@ -709,6 +707,5 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 			break
 		}
 	}
-
 	return
 }
