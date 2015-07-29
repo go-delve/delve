@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
@@ -46,8 +47,8 @@ func DebugCommands(client service.Client) *Commands {
 
 	c.cmds = []command{
 		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
-		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <address> [-stack <n>|-goroutine|<variable name>]*\nSet break point at the entry point of a function, or at a specific file/line.\nWhen the breakpoint is reached the value of the specified variables will be printed, if -stack is specified the stack trace of the current goroutine will be printed, if -goroutine is specified informations about the current goroutine will be printed. Example: break foo.go:13"},
-		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break"},
+		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <file:line|function|address> [-stack <n>|-goroutine|<variable name>]*"},
+		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break."},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
@@ -118,10 +119,16 @@ func nullCommand(client service.Client, args ...string) error {
 
 func (c *Commands) help(client service.Client, args ...string) error {
 	fmt.Println("The following commands are available:")
+	w := new(tabwriter.Writer)
+	w.Init(os.Stdout, 0, 8, 0, '-', 0)
 	for _, cmd := range c.cmds {
-		fmt.Printf("\t%s - %s\n", strings.Join(cmd.aliases, "|"), cmd.helpMsg)
+		if len(cmd.aliases) > 1 {
+			fmt.Fprintf(w, "    %s (alias: %s) \t %s\n", cmd.aliases[0], strings.Join(cmd.aliases[1:], " | "), cmd.helpMsg)
+		} else {
+			fmt.Fprintf(w, "    %s \t %s\n", cmd.aliases[0], cmd.helpMsg)
+		}
 	}
-	return nil
+	return w.Flush()
 }
 
 func threads(client service.Client, args ...string) error {
