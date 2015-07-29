@@ -71,26 +71,23 @@ func (t *Term) Run() (error, int) {
 	fmt.Println("Type 'help' for list of commands.")
 
 	var status int
-
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("exit")
-				return handleExit(t.client, t)
+				return t.handleExit()
 			}
 			err, status = fmt.Errorf("Prompt for input failed.\n"), 1
 			break
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
-		if isExitCommand(cmdstr) {
-			err, status = handleExit(t.client, t)
-			break
-		}
-
 		cmd := cmds.Find(cmdstr)
 		if err := cmd(t.client, args...); err != nil {
+			if _, ok := err.(ExitRequestError); ok {
+				return t.handleExit()
+			}
 			// The type information gets lost in serialization / de-serialization,
 			// so we do a string compare on the error message to see if the process
 			// has exited, or if the command actually failed.
@@ -119,7 +116,7 @@ func (t *Term) promptForInput() (string, error) {
 	return l, nil
 }
 
-func handleExit(client service.Client, t *Term) (error, int) {
+func (t *Term) handleExit() (error, int) {
 	fullHistoryFile, err := getConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Println("Error saving history file:", err)
@@ -134,7 +131,7 @@ func handleExit(client service.Client, t *Term) (error, int) {
 	}
 
 	kill := true
-	if client.AttachedToExistingProcess() {
+	if t.client.AttachedToExistingProcess() {
 		answer, err := t.line.Prompt("Would you like to kill the process? [Y/n] ")
 		if err != nil {
 			return io.EOF, 2
@@ -142,7 +139,7 @@ func handleExit(client service.Client, t *Term) (error, int) {
 		answer = strings.ToLower(strings.TrimSpace(answer))
 		kill = (answer != "n" && answer != "no")
 	}
-	err = client.Detach(kill)
+	err = t.client.Detach(kill)
 	if err != nil {
 		return err, 1
 	}

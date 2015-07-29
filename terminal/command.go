@@ -41,8 +41,6 @@ type Commands struct {
 	client  service.Client
 }
 
-var exitAliases = []string{"exit", "quit", "q"}
-
 // Returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
 	c := &Commands{client: client}
@@ -63,20 +61,11 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
 		{aliases: []string{"info"}, cmdFn: info, helpMsg: "Subcommands: args, funcs, locals, sources, vars, or regs."},
-		{aliases: exitAliases, cmdFn: nullCommand, helpMsg: "Exit the debugger."},
+		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth> [<goroutine id>]]. Prints stack."},
 	}
 
 	return c
-}
-
-func isExitCommand(cmdstr string) bool {
-	for _, a := range exitAliases {
-		if a == cmdstr {
-			return true
-		}
-	}
-	return false
 }
 
 // Register custom commands. Expects cf to be a func of type cmdfunc,
@@ -636,4 +625,14 @@ func printcontext(state *api.DebuggerState) error {
 	fmt.Println(strings.Join(context, ""))
 
 	return nil
+}
+
+type ExitRequestError struct{}
+
+func (ere ExitRequestError) Error() string {
+	return ""
+}
+
+func exitCommand(client service.Client, args ...string) error {
+	return ExitRequestError{}
 }
