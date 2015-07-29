@@ -84,7 +84,7 @@ func (t *Term) Run() (error, int) {
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
-		if cmdstr == "exit" {
+		if isExitCommand(cmdstr) {
 			err, status = handleExit(t.client, t)
 			break
 		}
