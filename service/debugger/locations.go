@@ -228,6 +228,25 @@ func (loc *NormalLocationSpec) FileMatch(path string) bool {
 	return strings.HasSuffix(path, loc.Base) && (path[len(path)-len(loc.Base)-1] == filepath.Separator)
 }
 
+type AmbiguousLocationError struct {
+	Location           string
+	CandidatesString   []string
+	CandidatesLocation []api.Location
+}
+
+func (ale AmbiguousLocationError) Error() string {
+	var candidates []string
+	if ale.CandidatesLocation != nil {
+		for i := range ale.CandidatesLocation {
+			candidates = append(candidates, ale.CandidatesLocation[i].Function.Name)
+		}
+
+	} else {
+		candidates = ale.CandidatesString
+	}
+	return fmt.Sprintf("Location \"%s\" ambiguous: %s…", ale.Location, strings.Join(candidates, ", "))
+}
+
 func (loc *NormalLocationSpec) Find(d *Debugger, locStr string) ([]api.Location, error) {
 	funcs := d.process.Funcs()
 	files := d.process.Sources()
@@ -280,7 +299,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, locStr string) ([]api.Location,
 	case 0:
 		return nil, fmt.Errorf("Location \"%s\" not found", locStr)
 	default:
-		return nil, fmt.Errorf("Location \"%s\" ambiguous: %s…", locStr, strings.Join(candidates, ", "))
+		return nil, AmbiguousLocationError{Location: locStr, CandidatesString: candidates}
 	}
 }
 

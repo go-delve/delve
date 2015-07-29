@@ -15,6 +15,7 @@ import (
 
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/service/debugger"
 )
 
 type cmdfunc func(client service.Client, args ...string) error
@@ -68,6 +69,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth> [<goroutine id>]]. Prints stack."},
+		{aliases: []string{"list"}, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
 	}
 
 	return c
@@ -503,6 +505,29 @@ func stackCommand(client service.Client, args ...string) error {
 	return nil
 }
 
+func listCommand(client service.Client, args ...string) error {
+	if len(args) == 0 {
+		state, err := client.GetState()
+		if err != nil {
+			return err
+		}
+		printcontext(state)
+		return nil
+	}
+
+	locs, err := client.FindLocation(args[0])
+	if err != nil {
+		return err
+	}
+
+	if len(locs) > 1 {
+		return debugger.AmbiguousLocationError{Location: args[0], CandidatesLocation: locs}
+	}
+
+	printfile(locs[0].File, locs[0].Line, false)
+	return nil
+}
+
 func printStack(stack []api.Location, ind string) {
 	for i := range stack {
 		name := "(nil)"
@@ -524,8 +549,6 @@ func printcontext(state *api.DebuggerState) error {
 		fmt.Printf("\033[34m=>\033[0m    no source available\n")
 		return nil
 	}
-
-	var context []string
 
 	var fn *api.Function
 	if state.CurrentThread.Function != nil {
@@ -564,14 +587,20 @@ func printcontext(state *api.DebuggerState) error {
 		return nil
 	}
 
-	file, err := os.Open(state.CurrentThread.File)
+	return printfile(state.CurrentThread.File, state.CurrentThread.Line, true)
+}
+
+func printfile(filename string, line int, showArrow bool) error {
+	file, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
+	var context []string
+
 	buf := bufio.NewReader(file)
-	l := state.CurrentThread.Line
+	l := line
 	for i := 1; i < l-5; i++ {
 		_, err := buf.ReadString('\n')
 		if err != nil && err != io.EOF {
@@ -579,7 +608,12 @@ func printcontext(state *api.DebuggerState) error {
 		}
 	}
 
-	for i := l - 5; i <= l+5; i++ {
+	s := l - 5
+	if s < 1 {
+		s = 1
+	}
+
+	for i := s; i <= l+5; i++ {
 		line, err := buf.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
@@ -591,9 +625,12 @@ func printcontext(state *api.DebuggerState) error {
 			}
 		}
 
-		arrow := "  "
-		if i == l {
-			arrow = "=>"
+		var arrow string
+		if showArrow {
+			arrow = "  "
+			if i == l {
+				arrow = "=>"
+			}
 		}
 
 		var lineNum string
