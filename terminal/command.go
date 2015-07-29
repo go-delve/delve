@@ -53,7 +53,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
-		{aliases: []string{"thread", "t"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
+		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
 		{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: "Deletes all breakpoints."},
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
