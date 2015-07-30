@@ -29,6 +29,8 @@ func assertVariable(t *testing.T, variable *Variable, expected varTest) {
 	}
 }
 
+const varTestBreakpointLineNumber = 59
+
 func TestVariableEvaluation(t *testing.T) {
 	testcases := []varTest{
 		{"a1", "foofoofoofoofoofoo", "struct string", nil},
@@ -70,7 +72,7 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 59)
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, varTestBreakpointLineNumber)
 
 		_, err := p.SetBreakpoint(pc)
 		assertNoError(err, t, "SetBreakpoint() returned an error")
@@ -94,7 +96,7 @@ func TestVariableEvaluation(t *testing.T) {
 
 func TestVariableFunctionScoping(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 59)
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, varTestBreakpointLineNumber)
 
 		_, err := p.SetBreakpoint(pc)
 		assertNoError(err, t, "SetBreakpoint() returned an error")
@@ -188,7 +190,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 59)
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, varTestBreakpointLineNumber)
 
 		_, err := p.SetBreakpoint(pc)
 		assertNoError(err, t, "SetBreakpoint() returned an error")
