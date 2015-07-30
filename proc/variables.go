@@ -535,6 +535,8 @@ func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ 
 		}
 	case *dwarf.ArrayType:
 		return thread.readArray(ptraddress, t)
+	case *dwarf.ComplexType:
+		return thread.readComplex(ptraddress, t.ByteSize)
 	case *dwarf.IntType:
 		return thread.readInt(ptraddress, t.ByteSize)
 	case *dwarf.UintType:
@@ -665,6 +667,27 @@ func (thread *Thread) readArrayValues(addr uintptr, count int64, stride int64, t
 		vals = append(vals, val)
 	}
 	return vals, nil
+}
+
+func (thread *Thread) readComplex(addr uintptr, size int64) (string, error) {
+	var fs int64
+	switch size {
+	case 8:
+		fs = 4
+	case 16:
+		fs = 8
+	default:
+		return "", fmt.Errorf("invalid size (%d) for complex type", size)
+	}
+	r, err := thread.readFloat(addr, fs)
+	if err != nil {
+		return "", err
+	}
+	i, err := thread.readFloat(addr+uintptr(fs), fs)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("(%s, %si)", r, i), nil
 }
 
 func (thread *Thread) readInt(addr uintptr, size int64) (string, error) {
