@@ -94,7 +94,7 @@ func TestVariableEvaluation(t *testing.T) {
 
 func TestVariableFunctionScoping(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 59)
 
 		_, err := p.SetBreakpoint(pc)
 		assertNoError(err, t, "SetBreakpoint() returned an error")
@@ -168,6 +168,8 @@ func TestLocalVariables(t *testing.T) {
 				{"b1", "true", "bool", nil},
 				{"b2", "false", "bool", nil},
 				{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "struct []int", nil},
+				{"c128", "(2, 3i)", "complex128", nil},
+				{"c64", "(1, 2i)", "complex64", nil},
 				{"f", "main.barfoo", "func()", nil},
 				{"f32", "1.2", "float32", nil},
 				{"i32", "[2]int32 [1,2]", "[2]int32", nil},
@@ -186,7 +188,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 59)
 
 		_, err := p.SetBreakpoint(pc)
 		assertNoError(err, t, "SetBreakpoint() returned an error")
