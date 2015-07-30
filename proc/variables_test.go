@@ -47,6 +47,8 @@ func TestVariableEvaluation(t *testing.T) {
 		{"baz", "bazburzum", "struct string", nil},
 		{"neg", "-1", "int", nil},
 		{"f32", "1.2", "float32", nil},
+		{"c64", "(1, 2i)", "complex64", nil},
+		{"c128", "(2, 3i)", "complex128", nil},
 		{"a6.Baz", "8", "int", nil},
 		{"a7.Baz", "5", "int", nil},
 		{"a8.Baz", "feh", "struct string", nil},
@@ -68,7 +70,7 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 57)
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, 59)
 
 		_, err := p.SetBreakpoint(pc)
 		assertNoError(err, t, "SetBreakpoint() returned an error")
