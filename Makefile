@@ -1,7 +1,17 @@
 .DEFAULT_GOAL=test
 UNAME = $(shell uname)
 PREFIX=github.com/derekparker/delve
+GOVERSION = $(shell go version)
+
+# We must compile with -ldflags="-s" to omit
+# DWARF info on OSX when compiling with the
+# 1.5 toolchain. Otherwise the resulting binary
+# will be malformed once we codesign it and
+# unable to execute.
+# See https://github.com/golang/go/issues/11887#issuecomment-126117692.
+ifneq (,$(findstring 1.5, $(GOVERSION)))
 FLAGS=-ldflags="-s"
+endif
 
 build:
 	go build $(FLAGS) github.com/derekparker/delve/cmd/dlv
