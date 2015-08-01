@@ -71,9 +71,15 @@ func (dbp *Process) Kill() (err error) {
 	if err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
-	_, _, err = wait(-1, dbp.Pid, 0)
-	if err != nil {
-		return
+	for {
+		var wpid int
+		wpid, _, err = wait(-1, dbp.Pid, 0)
+		if err != nil {
+			return
+		}
+		if wpid == dbp.Pid {
+			break
+		}
 	}
 	dbp.exited = true
 	return
