@@ -81,13 +81,20 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		return nil, InvalidAddressError{address: addr}
 	}
 
-	var id int
+	newBreakpoint := &Breakpoint{
+		FunctionName: fn.Name,
+		File:         f,
+		Line:         l,
+		Addr:         addr,
+		Temp:         temp,
+	}
+
 	if temp {
 		dbp.tempBreakpointIDCounter++
-		id = dbp.tempBreakpointIDCounter
+		newBreakpoint.ID = dbp.tempBreakpointIDCounter
 	} else {
 		dbp.breakpointIDCounter++
-		id = dbp.breakpointIDCounter
+		newBreakpoint.ID = dbp.breakpointIDCounter
 	}
 
 	// Try and set a hardware breakpoint.
@@ -111,17 +118,9 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 			}
 		}
 		dbp.arch.SetHardwareBreakpointUsage(i, true)
-		dbp.Breakpoints[addr] = &Breakpoint{
-			FunctionName: fn.Name,
-			File:         f,
-			Line:         l,
-			Addr:         addr,
-			ID:           id,
-			Temp:         temp,
-			hardware:     true,
-			reg:          i,
-		}
-
+		newBreakpoint.reg = i
+		newBreakpoint.hardware = true
+		dbp.Breakpoints[addr] = newBreakpoint
 		return dbp.Breakpoints[addr], nil
 	}
 
@@ -134,17 +133,10 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 	if err := dbp.writeSoftwareBreakpoint(thread, addr); err != nil {
 		return nil, err
 	}
-	dbp.Breakpoints[addr] = &Breakpoint{
-		FunctionName: fn.Name,
-		File:         f,
-		Line:         l,
-		Addr:         addr,
-		OriginalData: originalData,
-		ID:           id,
-		Temp:         temp,
-	}
+	newBreakpoint.OriginalData = originalData
+	dbp.Breakpoints[addr] = newBreakpoint
 
-	return dbp.Breakpoints[addr], nil
+	return newBreakpoint, nil
 }
 
 func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
