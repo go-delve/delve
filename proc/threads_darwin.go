@@ -65,7 +65,7 @@ func (t *Thread) blocked() bool {
 	}
 }
 
-func writeMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
+func (thread *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
@@ -80,19 +80,20 @@ func writeMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
 	return len(data), nil
 }
 
-func readMemory(thread *Thread, addr uintptr, data []byte) (int, error) {
-	if len(data) == 0 {
-		return 0, nil
+func (thread *Thread) readMemory(addr uintptr, size int) ([]byte, error) {
+	if size == 0 {
+		return nil, nil
 	}
 	var (
-		vm_data = unsafe.Pointer(&data[0])
+		buf     = make([]byte, size)
+		vm_data = unsafe.Pointer(&buf[0])
 		vm_addr = C.mach_vm_address_t(addr)
-		length  = C.mach_msg_type_number_t(len(data))
+		length  = C.mach_msg_type_number_t(size)
 	)
 
 	ret := C.read_memory(thread.dbp.os.task, vm_addr, vm_data, length)
 	if ret < 0 {
-		return 0, fmt.Errorf("could not read memory")
+		return nil, fmt.Errorf("could not read memory")
 	}
-	return len(data), nil
+	return buf, nil
 }

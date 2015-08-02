@@ -266,8 +266,7 @@ func (thread *Thread) GetG() (g *G, err error) {
 		return nil, err
 	}
 
-	gaddrbs := make([]byte, 8)
-	_, err = readMemory(thread, uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), gaddrbs)
+	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), thread.dbp.arch.PtrSize())
 	if err != nil {
 		return nil, err
 	}

@@ -50,13 +50,7 @@ func getRegisters(p *Process, t *testing.T) Registers {
 }
 
 func dataAtAddr(thread *Thread, addr uint64) ([]byte, error) {
-	data := make([]byte, 1)
-	_, err := readMemory(thread, uintptr(addr), data)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
+	return thread.readMemory(uintptr(addr), 1)
 }
 
 func assertNoError(err error, t *testing.T, s string) {
@@ -413,9 +407,10 @@ func TestFindReturnAddress(t *testing.T) {
 		}
 
 		addr := uint64(int64(regs.SP()) + ret)
-		data := make([]byte, 8)
-
-		readMemory(p.CurrentThread, uintptr(addr), data)
+		data, err := p.CurrentThread.readMemory(uintptr(addr), 8)
+		if err != nil {
+			t.Fatal(err)
+		}
 		addr = binary.LittleEndian.Uint64(data)
 
 		_, l, _ := p.goSymTable.PCToLine(addr)

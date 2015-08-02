@@ -43,7 +43,7 @@ func (bp *Breakpoint) Clear(thread *Thread) (*Breakpoint, error) {
 		}
 		return bp, nil
 	}
-	if _, err := writeMemory(thread, uintptr(bp.Addr), bp.OriginalData); err != nil {
+	if _, err := thread.writeMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
 		return nil, fmt.Errorf("could not clear breakpoint %s", err)
 	}
 	return bp, nil
@@ -126,8 +126,8 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 
 	// Fall back to software breakpoint.
 	thread := dbp.Threads[tid]
-	originalData := make([]byte, dbp.arch.BreakpointSize())
-	if _, err := readMemory(thread, uintptr(addr), originalData); err != nil {
+	originalData, err := thread.readMemory(uintptr(addr), dbp.arch.BreakpointSize())
+	if err != nil {
 		return nil, err
 	}
 	if err := dbp.writeSoftwareBreakpoint(thread, addr); err != nil {
@@ -140,7 +140,7 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 }
 
 func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
-	_, err := writeMemory(thread, uintptr(addr), dbp.arch.BreakpointInstruction())
+	_, err := thread.writeMemory(uintptr(addr), dbp.arch.BreakpointInstruction())
 	return err
 }
 

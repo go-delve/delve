@@ -67,7 +67,7 @@ func (thread *Thread) restoreRegisters() (err error) {
 	return
 }
 
-func writeMemory(thread *Thread, addr uintptr, data []byte) (written int, err error) {
+func (thread *Thread) writeMemory(addr uintptr, data []byte) (written int, err error) {
 	if len(data) == 0 {
 		return
 	}
@@ -75,10 +75,11 @@ func writeMemory(thread *Thread, addr uintptr, data []byte) (written int, err er
 	return
 }
 
-func readMemory(thread *Thread, addr uintptr, data []byte) (read int, err error) {
-	if len(data) == 0 {
-		return
+func (thread *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
+	if size == 0 {
+		return nil, nil
 	}
+	data = make([]byte, size)
 	thread.dbp.execPtraceFunc(func() { read, err = sys.PtracePeekData(thread.Id, addr, data) })
 	return
 }

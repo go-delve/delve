@@ -810,18 +810,6 @@ func (thread *Thread) readFunctionPtr(addr uintptr) (string, error) {
 	return fn.Name, nil
 }
 
-func (thread *Thread) readMemory(addr uintptr, size int) ([]byte, error) {
-	if size == 0 {
-		return nil, nil
-	}
-	buf := make([]byte, size)
-	_, err := readMemory(thread, addr, buf)
-	if err != nil {
-		return nil, err
-	}
-	return buf, nil
-}
-
 // Fetches all variables of a specific type in the current function scope
 func (thread *Thread) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
 	pc, err := thread.PC()
