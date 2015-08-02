@@ -67,12 +67,10 @@ func (dbp *Process) Kill() (err error) {
 	if !stopped(dbp.Pid) {
 		return errors.New("process must be stopped in order to kill it")
 	}
-	err = sys.Kill(-dbp.Pid, sys.SIGKILL)
-	if err != nil {
+	if err = sys.Kill(-dbp.Pid, sys.SIGKILL); err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
-	_, _, err = wait(dbp.Pid, dbp.Pid, 0)
-	if err != nil {
+	if _, _, err = wait(dbp.Pid, dbp.Pid, 0); err != nil {
 		return
 	}
 	dbp.exited = true
@@ -100,12 +98,10 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 			// if we truly don't have permissions.
 			return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 		}
-
 		pid, status, err := wait(tid, dbp.Pid, 0)
 		if err != nil {
 			return nil, err
 		}
-
 		if status.Exited() {
 			return nil, fmt.Errorf("thread already exited %d", pid)
 		}
@@ -113,11 +109,9 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
-		_, _, err = wait(tid, dbp.Pid, 0)
-		if err != nil {
+		if _, _, err = wait(tid, dbp.Pid, 0); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
-
 		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 		if err != nil {
 			return nil, fmt.Errorf("could not set options for new traced thread %d %s", tid, err)
@@ -129,16 +123,13 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		dbp: dbp,
 		os:  new(OSSpecificDetails),
 	}
-
 	if dbp.CurrentThread == nil {
 		dbp.CurrentThread = dbp.Threads[tid]
 	}
-
 	return dbp.Threads[tid], nil
 }
 
 func (dbp *Process) updateThreadList() error {
-	var attach bool
 	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.Pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)
@@ -146,10 +137,7 @@ func (dbp *Process) updateThreadList() error {
 		if err != nil {
 			return err
 		}
-		if tid != dbp.Pid {
-			attach = true
-		}
-		if _, err := dbp.addThread(tid, attach); err != nil {
+		if _, err := dbp.addThread(tid, tid != dbp.Pid); err != nil {
 			return err
 		}
 	}
@@ -164,19 +152,16 @@ func (dbp *Process) findExecutable(path string) (*elf.File, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	elffile, err := elf.NewFile(f)
+	elfFile, err := elf.NewFile(f)
 	if err != nil {
 		return nil, err
 	}
-
-	data, err := elffile.DWARF()
+	data, err := elfFile.DWARF()
 	if err != nil {
 		return nil, err
 	}
 	dbp.dwarf = data
-
-	return elffile, nil
+	return elfFile, nil
 }
 
 func (dbp *Process) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
