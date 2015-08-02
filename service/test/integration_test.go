@@ -101,12 +101,8 @@ func TestRestart_duringStop(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(bps) != 0 {
-			t.Fatal("breakpoint tabe not cleared")
-		}
-		state = <-c.Continue()
-		if !state.Exited {
-			t.Fatal("expected process to have exited")
+		if len(bps) == 0 {
+			t.Fatal("breakpoints not preserved")
 		}
 	})
 }

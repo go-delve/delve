@@ -91,6 +91,11 @@ func (d *Debugger) Restart() error {
 	if err != nil {
 		return fmt.Errorf("could not launch process: %s", err)
 	}
+	for addr, _ := range d.process.Breakpoints {
+		if _, err := p.SetBreakpoint(addr); err != nil {
+			return err
+		}
+	}
 	d.process = p
 	return nil
 }
