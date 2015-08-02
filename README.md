@@ -4,7 +4,7 @@
 [![GoDoc](https://godoc.org/github.com/derekparker/delve?status.svg)](https://godoc.org/github.com/derekparker/delve)
 [![Join the chat at https://gitter.im/derekparker/delve](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/derekparker/delve?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-**This project is currently pre 1.0. Most of the functionality is there, however there are various improvements to be made. Delve is not _yet_ ready for daily use.**
+**This project is currently pre 1.0.**
 
 The Github issue tracker is for **bugs** only. Please use the [developer mailing list](https://groups.google.com/forum/#!forum/delve-dev) for any feature proposals and discussions.
 
