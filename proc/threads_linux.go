@@ -44,7 +44,6 @@ func (t *Thread) singleStep() (err error) {
 }
 
 func (t *Thread) blocked() bool {
-	// TODO(dp) cache the func pc to remove this lookup
 	pc, _ := t.PC()
 	fn := t.dbp.goSymTable.PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
@@ -77,7 +76,7 @@ func (thread *Thread) writeMemory(addr uintptr, data []byte) (written int, err e
 
 func (thread *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
 	if size == 0 {
-		return nil, nil
+		return
 	}
 	data = make([]byte, size)
 	thread.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(thread.Id, addr, data) })
