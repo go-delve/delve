@@ -90,10 +90,7 @@ single_step(thread_act_t thread) {
 	kret = thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
 	if (kret != KERN_SUCCESS) return kret;
 
-	kret = resume_thread(thread);
-	if (kret != KERN_SUCCESS) return kret;
-
-	return KERN_SUCCESS;
+	return resume_thread(thread);
 }
 
 kern_return_t
