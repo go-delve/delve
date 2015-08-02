@@ -80,6 +80,6 @@ func (thread *Thread) readMemory(addr uintptr, size int) (data []byte, err error
 		return nil, nil
 	}
 	data = make([]byte, size)
-	thread.dbp.execPtraceFunc(func() { read, err = sys.PtracePeekData(thread.Id, addr, data) })
+	thread.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(thread.Id, addr, data) })
 	return
 }
