@@ -1,7 +1,7 @@
 .DEFAULT_GOAL=test
-UNAME = $(shell uname)
+UNAME=$(shell uname)
 PREFIX=github.com/derekparker/delve
-GOVERSION = $(shell go version)
+GOVERSION=$(shell go version)
 
 # We must compile with -ldflags="-s" to omit
 # DWARF info on OSX when compiling with the
@@ -10,44 +10,49 @@ GOVERSION = $(shell go version)
 # unable to execute.
 # See https://github.com/golang/go/issues/11887#issuecomment-126117692.
 ifneq (,$(findstring 1.5, $(GOVERSION)))
-FLAGS=-ldflags="-s"
+	FLAGS=-ldflags="-s"
 endif
 
-build:
-	go build $(FLAGS) github.com/derekparker/delve/cmd/dlv
+# If we're on OSX make sure the proper CERT env var is set.
 ifeq "$(UNAME)" "Darwin"
 ifeq "$(CERT)" ""
-	$(error You must provide a CERT env var)
+	$(error You must provide a CERT environment variable in order to codesign the binary.)
 endif
+endif
+
+deps:
+	go get -u github.com/peterh/liner
+	go get -u github.com/spf13/cobra
+	go get -u golang.org/x/sys/unix
+	go get -u github.com/davecheney/profile
+
+build: deps
+	go build $(FLAGS) github.com/derekparker/delve/cmd/dlv
+ifeq "$(UNAME)" "Darwin"
 	codesign -s $(CERT) ./dlv
 endif
 
-install:
+install: deps
 	go install $(FLAGS) github.com/derekparker/delve/cmd/dlv
 ifeq "$(UNAME)" "Darwin"
-ifeq "$(CERT)" ""
-	$(error You must provide a CERT env var)
-endif
 	codesign -s $(CERT) $(GOPATH)/bin/dlv
 endif
 
-test:
+test: deps
 ifeq "$(UNAME)" "Darwin"
-ifeq "$(CERT)" ""
-	$(error You must provide a CERT env var)
-endif
+ifeq "$(TRAVIS)" "true"
+	sudo -E go test -v ./...
+else
 	go test $(PREFIX)/terminal $(PREFIX)/dwarf/frame $(PREFIX)/dwarf/op $(PREFIX)/dwarf/util $(PREFIX)/source $(PREFIX)/dwarf/line
 	go test -c $(FLAGS) $(PREFIX)/proc && codesign -s $(CERT) ./proc.test && ./proc.test $(TESTFLAGS) && rm ./proc.test
 	go test -c  $(FLAGS) $(PREFIX)/service/test && codesign -s $(CERT) ./test.test && ./test.test $(TESTFLAGS) && rm ./test.test
+endif
 else
 	go test -v ./...
 endif
 
 test-proc-run:
 ifeq "$(UNAME)" "Darwin"
-ifeq "$(CERT)" ""
-	$(error You must provide a CERT env var)
-endif
 	go test -c $(FLAGS) $(PREFIX)/proc && codesign -s $(CERT) ./proc.test && ./proc.test -test.run $(RUN) && rm ./proc.test
 else
 	go test $(PREFIX) -run $(RUN)
@@ -55,9 +60,6 @@ endif
 
 test-integration-run:
 ifeq "$(UNAME)" "Darwin"
-ifeq "$(CERT)" ""
-	$(error You must provide a CERT env var)
-endif
 	go test -c $(FLAGS) $(PREFIX)/service/test && codesign -s $(CERT) ./test.test && ./test.test -test.run $(RUN) && rm ./test.test
 else
 	go test $(PREFIX)/service/rest -run $(RUN)
