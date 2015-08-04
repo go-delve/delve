@@ -64,6 +64,9 @@ func Attach(pid int) (*Process, error) {
 }
 
 func (dbp *Process) Kill() (err error) {
+	if dbp.exited {
+		return nil
+	}
 	if !stopped(dbp.Pid) {
 		return errors.New("process must be stopped in order to kill it")
 	}

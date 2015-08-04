@@ -98,6 +98,9 @@ func Attach(pid int) (*Process, error) {
 }
 
 func (dbp *Process) Kill() (err error) {
+	if dbp.exited {
+		return nil
+	}
 	err = sys.Kill(-dbp.Pid, sys.SIGKILL)
 	if err != nil {
 		return errors.New("could not deliver signal: " + err.Error())
