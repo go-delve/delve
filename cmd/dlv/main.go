@@ -87,7 +87,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 	// 'trace' subcommand.
 	var traceAttachPid int
 	traceCommand := &cobra.Command{
-		Use:   "trace [regexp] [flags]",
+		Use:   "trace [regexp]",
 		Short: "Compile and begin tracing program.",
 		Long:  "Trace program execution. Will set a tracepoint on every function matching [regexp] and output information when tracepoint is hit.",
 		Run: func(cmd *cobra.Command, args []string) {
