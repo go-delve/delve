@@ -601,3 +601,41 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 }
+
+func TestClientServer_EvalVariableFor(t *testing.T) {
+	withTestClient("testvariables", t, func(c service.Client) {
+		fp := testProgPath(t, "testvariables")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 59})
+		if err != nil {
+			t.Fatalf("CreateBreakpoint(): %v", err)
+		}
+
+		state := <-c.Continue()
+
+		if state.Err != nil {
+			t.Fatalf("Continue(): %v\n", state.Err)
+		}
+
+		var1, err := c.EvalVariable("a1")
+		if err != nil {
+			t.Fatalf("EvalVariable(): %v", err)
+		}
+
+		t.Logf("var1: <%s>", var1.Value)
+
+		if var1.Value != "foofoofoofoofoofoo" {
+			t.Fatalf("Wrong variable value (EvalVariable)", var1.Value)
+		}
+
+		var2, err := c.EvalVariableFor(state.CurrentThread.ID, "a1")
+		if err != nil {
+			t.Fatalf("EvalVariableFor(): %v", err)
+		}
+
+		t.Logf("var2: <%s>", var2.Value)
+
+		if var2.Value != var1.Value {
+			t.Fatalf("Wrong variable value (EvalVariableFor)", var2.Value)
+		}
+	})
+}
