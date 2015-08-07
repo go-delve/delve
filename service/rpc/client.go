@@ -147,7 +147,7 @@ func (c *RPCClient) EvalVariable(symbol string) (*api.Variable, error) {
 
 func (c *RPCClient) EvalVariableFor(threadID int, symbol string) (*api.Variable, error) {
 	v := new(api.Variable)
-	err := c.call("EvalThreadSymbol", threadID, v)
+	err := c.call("EvalThreadSymbol", ThreadSymbolArgs{threadID, symbol}, v)
 	return v, err
 }
 
