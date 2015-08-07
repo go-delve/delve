@@ -216,3 +216,12 @@ func TestLocalVariables(t *testing.T) {
 		}
 	})
 }
+
+func TestRecursiveStructure(t *testing.T) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		v, err := p.EvalVariable("aas")
+		assertNoError(err, t, "EvalVariable()")
+		t.Logf("v: %v\n", v)
+	})
+}
