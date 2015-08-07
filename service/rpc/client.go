@@ -211,6 +211,12 @@ func (c *RPCClient) AttachedToExistingProcess() bool {
 	return answer
 }
 
+func (c *RPCClient) FindLocation(loc string) ([]api.Location, error) {
+	var answer []api.Location
+	err := c.call("FindLocation", loc, &answer)
+	return answer, err
+}
+
 func (c *RPCClient) url(path string) string {
 	return fmt.Sprintf("http://%s%s", c.addr, path)
 }

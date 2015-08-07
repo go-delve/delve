@@ -93,10 +93,18 @@ func TestExit(t *testing.T) {
 	})
 }
 
+func setFunctionBreakpoint(p *Process, fname string) (*Breakpoint, error) {
+	addr, err := p.FindFunctionLocation(fname, true, 0)
+	if err != nil {
+		return nil, err
+	}
+	return p.SetBreakpoint(addr)
+}
+
 func TestHalt(t *testing.T) {
 	stopChan := make(chan interface{})
 	withTestProcess("loopprog", t, func(p *Process, fixture protest.Fixture) {
-		_, err := p.SetBreakpointByLocation("main.loop")
+		_, err := setFunctionBreakpoint(p, "main.loop")
 		assertNoError(err, t, "SetBreakpoint")
 		assertNoError(p.Continue(), t, "Continue")
 		for _, th := range p.Threads {
@@ -244,7 +252,7 @@ type nextTest struct {
 
 func testnext(program string, testcases []nextTest, initialLocation string, t *testing.T) {
 	withTestProcess(program, t, func(p *Process, fixture protest.Fixture) {
-		bp, err := p.SetBreakpointByLocation(initialLocation)
+		bp, err := setFunctionBreakpoint(p, initialLocation)
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(p.Continue(), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
@@ -306,8 +314,9 @@ func TestNextFunctionReturn(t *testing.T) {
 
 func TestNextFunctionReturnDefer(t *testing.T) {
 	testcases := []nextTest{
-		{5, 9},
 		{9, 6},
+		{6, 7},
+		{7, 10},
 	}
 	testnext("testnextdefer", testcases, "main.main", t)
 }
@@ -427,7 +436,7 @@ func TestSwitchThread(t *testing.T) {
 		if err == nil {
 			t.Fatal("Expected error for invalid thread id")
 		}
-		pc, err := p.FindLocation("main.main")
+		pc, err := p.FindFunctionLocation("main.main", true, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -482,7 +491,7 @@ func TestStacktrace(t *testing.T) {
 		[]loc{{3, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
 	}
 	withTestProcess("stacktraceprog", t, func(p *Process, fixture protest.Fixture) {
-		bp, err := p.SetBreakpointByLocation("main.stacktraceme")
+		bp, err := setFunctionBreakpoint(p, "main.stacktraceme")
 		assertNoError(err, t, "BreakByLocation()")
 
 		for i := range stacks {
@@ -523,7 +532,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 	agoroutineStack := []loc{{-1, "runtime.gopark"}, {-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {8, "main.agoroutine"}}
 
 	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
-		bp, err := p.SetBreakpointByLocation("main.stacktraceme")
+		bp, err := setFunctionBreakpoint(p, "main.stacktraceme")
 		assertNoError(err, t, "BreakByLocation()")
 
 		assertNoError(p.Continue(), t, "Continue()")
@@ -587,7 +596,7 @@ func TestKill(t *testing.T) {
 }
 
 func testGSupportFunc(name string, t *testing.T, p *Process, fixture protest.Fixture) {
-	bp, err := p.SetBreakpointByLocation("main.main")
+	bp, err := setFunctionBreakpoint(p, "main.main")
 	assertNoError(err, t, name+": BreakByLocation()")
 
 	assertNoError(p.Continue(), t, name+": Continue()")
@@ -621,10 +630,10 @@ func TestGetG(t *testing.T) {
 
 func TestContinueMulti(t *testing.T) {
 	withTestProcess("integrationprog", t, func(p *Process, fixture protest.Fixture) {
-		bp1, err := p.SetBreakpointByLocation("main.main")
+		bp1, err := setFunctionBreakpoint(p, "main.main")
 		assertNoError(err, t, "BreakByLocation()")
 
-		bp2, err := p.SetBreakpointByLocation("main.sayhi")
+		bp2, err := setFunctionBreakpoint(p, "main.sayhi")
 		assertNoError(err, t, "BreakByLocation()")
 
 		mainCount := 0
@@ -677,4 +686,18 @@ func TestParseVersionString(t *testing.T) {
 	if !ver.IsDevel() {
 		t.Fatalf("Devel version string not correctly recognized")
 	}
+}
+
+func TestBreakpointOnFunctionEntry(t *testing.T) {
+	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
+		addr, err := p.FindFunctionLocation("main.main", false, 0)
+		assertNoError(err, t, "FindFunctionLocation()")
+		_, err = p.SetBreakpoint(addr)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		_, ln := currentLineNumber(p, t)
+		if ln != 17 {
+			t.Fatalf("Wrong line number: %d (expected: 17)\n", ln)
+		}
+	})
 }
