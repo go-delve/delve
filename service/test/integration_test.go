@@ -83,7 +83,7 @@ func TestRestart_afterExit(t *testing.T) {
 func TestRestart_duringStop(t *testing.T) {
 	withTestClient("continuetestprog", t, func(c service.Client) {
 		origPid := c.ProcessPid()
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,7 +150,7 @@ func TestClientServer_exit(t *testing.T) {
 
 func TestClientServer_step(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld"})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -177,7 +177,7 @@ type nextTest struct {
 
 func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 	withTestClient("testnextprog", t, func(c service.Client) {
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: initialLocation})
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: initialLocation, Line: -1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -246,7 +246,7 @@ func TestNextFunctionReturn(t *testing.T) {
 
 func TestClientServer_breakpointInMainThread(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld"})
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -267,7 +267,7 @@ func TestClientServer_breakpointInMainThread(t *testing.T) {
 
 func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 	withTestClient("testthreads", t, func(c service.Client) {
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.anotherthread"})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.anotherthread", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -286,7 +286,7 @@ func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 
 func TestClientServer_breakAtNonexistentPoint(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "nowhere"})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "nowhere", Line: 1})
 		if err == nil {
 			t.Fatal("Should not be able to break at non existent function")
 		}
@@ -295,7 +295,7 @@ func TestClientServer_breakAtNonexistentPoint(t *testing.T) {
 
 func TestClientServer_clearBreakpoint(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sleepytime"})
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sleepytime", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -329,7 +329,7 @@ func TestClientServer_switchThread(t *testing.T) {
 			t.Fatal("Expected error for invalid thread id")
 		}
 
-		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -482,11 +482,11 @@ func TestClientServer_traceContinue(t *testing.T) {
 
 func TestClientServer_traceContinue2(t *testing.T) {
 	withTestClient("integrationprog", t, func(c service.Client) {
-		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Tracepoint: true})
+		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Tracepoint: true})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v\n", err)
 		}
-		bp2, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Tracepoint: true})
+		bp2, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1, Tracepoint: true})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v\n", err)
 		}
@@ -520,5 +520,84 @@ func TestClientServer_traceContinue2(t *testing.T) {
 		if countSayhi != 3 {
 			t.Fatalf("Wrong number of continues (main.sayhi) hit: %d\n", countSayhi)
 		}
+	})
+}
+
+func findLocationHelper(t *testing.T, c service.Client, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
+	locs, err := c.FindLocation(loc)
+	t.Logf("FindLocation(\"%s\") → %v\n", loc, locs)
+
+	if shouldErr {
+		if err == nil {
+			t.Fatalf("Resolving location <%s> didn't return an error: %v", loc, locs)
+		}
+	} else {
+		if err != nil {
+			t.Fatalf("Error resolving location <%s>: %v", loc, err)
+		}
+	}
+
+	if (count >= 0) && (len(locs) != count) {
+		t.Fatalf("Wrong number of breakpoints returned for location <%s> (got %d, expected %d)", loc, len(locs), count)
+	}
+
+	if checkAddr != 0 && checkAddr != locs[0].PC {
+		t.Fatalf("Wrong address returned for location <%s> (got %v, epected %v)", loc, locs[0].PC, checkAddr)
+	}
+
+	addrs := make([]uint64, len(locs))
+	for i := range locs {
+		addrs[i] = locs[i].PC
+	}
+	return addrs
+}
+
+func TestClientServer_FindLocations(t *testing.T) {
+	withTestClient("locationsprog", t, func(c service.Client) {
+		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
+		findLocationHelper(t, c, "anotherFunction:1", false, 1, someFunctionCallAddr)
+		findLocationHelper(t, c, "main.anotherFunction:1", false, 1, someFunctionCallAddr)
+		findLocationHelper(t, c, "anotherFunction", false, 1, someFunctionCallAddr)
+		findLocationHelper(t, c, "main.anotherFunction", false, 1, someFunctionCallAddr)
+		findLocationHelper(t, c, fmt.Sprintf("*0x%x", someFunctionCallAddr), false, 1, someFunctionCallAddr)
+		findLocationHelper(t, c, "sprog.go:26", true, 0, 0)
+
+		findLocationHelper(t, c, "String", true, 0, 0)
+		findLocationHelper(t, c, "main.String", true, 0, 0)
+
+		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:14", false, 1, 0)[0]
+		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:18", false, 1, 0)[0]
+		findLocationHelper(t, c, "SomeType.String", false, 1, someTypeStringFuncAddr)
+		findLocationHelper(t, c, "(*SomeType).String", false, 1, someTypeStringFuncAddr)
+		findLocationHelper(t, c, "main.SomeType.String", false, 1, someTypeStringFuncAddr)
+		findLocationHelper(t, c, "main.(*SomeType).String", false, 1, someTypeStringFuncAddr)
+
+		stringAddrs := findLocationHelper(t, c, "/^main.*Type.*String$/", false, 2, 0)
+
+		if otherTypeStringFuncAddr != stringAddrs[0] && otherTypeStringFuncAddr != stringAddrs[1] {
+			t.Fatalf("Wrong locations returned for \"/.*Type.*String/\", got: %v expected: %v and %v\n", stringAddrs, someTypeStringFuncAddr, otherTypeStringFuncAddr)
+		}
+
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 4, Tracepoint: false})
+		if err != nil {
+			t.Fatalf("CreateBreakpoint(): %v\n", err)
+		}
+
+		<-c.Continue()
+
+		locationsprog34Addr := findLocationHelper(t, c, "locationsprog.go:34", false, 1, 0)[0]
+		findLocationHelper(t, c, "+1", false, 1, locationsprog34Addr)
+		findLocationHelper(t, c, "34", false, 1, locationsprog34Addr)
+		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:32", false, 1, 0)[0])
+	})
+
+	withTestClient("testnextdefer", t, func(c service.Client) {
+		firstMainLine := findLocationHelper(t, c, "testnextdefer.go:9", false, 1, 0)[0]
+		findLocationHelper(t, c, "main.main", false, 1, firstMainLine)
+	})
+
+	withTestClient("stacktraceprog", t, func(c service.Client) {
+		stacktracemeAddr := findLocationHelper(t, c, "stacktraceprog.go:4", false, 1, 0)[0]
+		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 }

@@ -47,7 +47,7 @@ func DebugCommands(client service.Client) *Commands {
 
 	c.cmds = []command{
 		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
-		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <file:line|function|address> [-stack <n>|-goroutine|<variable name>]*"},
+		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <linespec> [-stack <n>|-goroutine|<variable name>]*"},
 		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break."},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
@@ -323,21 +323,6 @@ func setBreakpoint(client service.Client, tracepoint bool, args ...string) error
 	}
 
 	requestedBp := &api.Breakpoint{}
-	tokens := strings.Split(args[0], ":")
-	switch {
-	case len(tokens) == 1:
-		requestedBp.FunctionName = args[0]
-	case len(tokens) == 2:
-		file := tokens[0]
-		line, err := strconv.Atoi(tokens[1])
-		if err != nil {
-			return err
-		}
-		requestedBp.File = file
-		requestedBp.Line = line
-	default:
-		return fmt.Errorf("invalid line reference")
-	}
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -357,7 +342,7 @@ func setBreakpoint(client service.Client, tracepoint bool, args ...string) error
 
 	requestedBp.Tracepoint = tracepoint
 
-	bp, err := client.CreateBreakpoint(requestedBp)
+	locs, err := client.FindLocation(args[0])
 	if err != nil {
 		return err
 	}
@@ -367,7 +352,17 @@ func setBreakpoint(client service.Client, tracepoint bool, args ...string) error
 		thing = "Tracepoint"
 	}
 
-	fmt.Printf("%s %d set at %#v for %s %s:%d\n", thing, bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	for _, loc := range locs {
+		requestedBp.Addr = loc.PC
+
+		bp, err := client.CreateBreakpoint(requestedBp)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%s %d set at %#v for %s %s:%d\n", thing, bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
+	}
+
 	return nil
 }
 
