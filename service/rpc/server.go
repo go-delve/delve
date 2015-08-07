@@ -309,3 +309,9 @@ func (c *RPCServer) AttachedToExistingProcess(arg interface{}, answer *bool) err
 	}
 	return nil
 }
+
+func (c *RPCServer) FindLocation(loc string, answer *[]api.Location) error {
+	var err error
+	*answer, err = c.debugger.FindLocation(loc)
+	return err
+}

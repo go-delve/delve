@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -146,69 +145,50 @@ func (dbp *Process) LoadInformation(path string) error {
 	return nil
 }
 
-// Find a location by string (file+line, function, breakpoint id, addr)
-func (dbp *Process) FindLocation(str string) (uint64, error) {
-	// File + Line
-	if strings.ContainsRune(str, ':') {
-		fl := strings.Split(str, ":")
-
-		fileName, err := filepath.Abs(fl[0])
-		if err != nil {
-			return 0, err
-		}
-
-		line, err := strconv.Atoi(fl[1])
-		if err != nil {
-			return 0, err
-		}
-
-		pc, _, err := dbp.goSymTable.LineToPC(fileName, line)
-		if err != nil {
-			return 0, err
-		}
-		return pc, nil
-	}
-
-	// Try to lookup by function name
-	fn := dbp.goSymTable.LookupFunc(str)
-	if fn != nil {
-		// fn.Entry, the entry point of the function, is always a prologue, the prologue may call into the scheduler or grow the stack,
-		// this will result in the breakpoint getting hit multiple times without any apparent program progress inbetween.
-		// In order to avoid this confusing behaviour we try to find the first line of the function and set the breakpoint there.
-		filename, lineno, _ := dbp.goSymTable.PCToLine(fn.Entry)
-		var firstLinePC uint64
-		var err error
-		for {
-			lineno++
-			firstLinePC, _, err = dbp.goSymTable.LineToPC(filename, lineno)
-			if err == nil {
-				break
-			}
-			if _, unk := err.(*gosym.UnknownLineError); !unk {
-				return 0, err
-			}
-		}
-
-		var breakAddr uint64
-		if firstLinePC < fn.End {
-			breakAddr = firstLinePC
-		} else {
-			breakAddr = fn.Entry
-		}
-		return breakAddr, nil
-	}
-
-	// Attempt to parse as number for breakpoint id or raw address
-	id, err := strconv.ParseUint(str, 0, 64)
+func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
+	pc, _, err := dbp.goSymTable.LineToPC(fileName, lineno)
 	if err != nil {
-		return 0, fmt.Errorf("unable to find location for %s", str)
+		return 0, err
 	}
-	if bp, ok := dbp.FindBreakpointByID(int(id)); ok {
-		return bp.Addr, nil
+	return pc, nil
+}
+
+// Finds address of a function's line
+// If firstLine == true is passed FindFunctionLocation will attempt to find the first line of the function
+// If lineOffset is passed FindFunctionLocation will return the address of that line
+// Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
+// Note that setting breakpoints at that address will cause surprising behavior:
+// https://github.com/derekparker/delve/issues/170
+func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
+	fn := dbp.goSymTable.LookupFunc(funcName)
+	if fn == nil {
+		return 0, fmt.Errorf("Could not find function %s\n", funcName)
 	}
 
-	// Last resort, use as raw address
-	return id, nil
+	if firstLine {
+		filename, lineno, _ := dbp.goSymTable.PCToLine(fn.Entry)
+		if filepath.Ext(filename) != ".go" {
+			return fn.Entry, nil
+		}
+
+		lines, err := dbp.ast.NextLines(filename, lineno)
+		if err != nil {
+			return 0, err
+		}
+
+		if len(lines) > 0 {
+			linePC, _, err := dbp.goSymTable.LineToPC(filename, lines[0])
+			return linePC, err
+		} else {
+			return fn.Entry, nil
+		}
+	} else if lineOffset > 0 {
+		filename, lineno, _ := dbp.goSymTable.PCToLine(fn.Entry)
+		breakAddr, _, err := dbp.goSymTable.LineToPC(filename, lineno+lineOffset)
+		return breakAddr, err
+	}
+
+	return fn.Entry, nil
 }
 
 // Sends out a request that the debugged process halt
@@ -236,15 +216,6 @@ func (dbp *Process) SetTempBreakpoint(addr uint64) (*Breakpoint, error) {
 	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, true)
 }
 
-// Sets a breakpoint by location string (function, file+line, address)
-func (dbp *Process) SetBreakpointByLocation(loc string) (*Breakpoint, error) {
-	addr, err := dbp.FindLocation(loc)
-	if err != nil {
-		return nil, err
-	}
-	return dbp.SetBreakpoint(addr)
-}
-
 // Clears a breakpoint.
 //
 // If it is a hardware assisted breakpoint, iterate through all threads
@@ -270,15 +241,6 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	delete(dbp.Breakpoints, addr)
 
 	return bp, nil
-}
-
-// Clears a breakpoint by location (function, file+line, address, breakpoint id)
-func (dbp *Process) ClearBreakpointByLocation(loc string) (*Breakpoint, error) {
-	addr, err := dbp.FindLocation(loc)
-	if err != nil {
-		return nil, err
-	}
-	return dbp.ClearBreakpoint(addr)
 }
 
 // Returns the status of the current main thread context.

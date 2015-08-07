@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"debug/gosym"
 	"errors"
 	"fmt"
 	"log"
@@ -126,18 +127,29 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 }
 
 func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	var createdBp *api.Breakpoint
-	var loc string
+	var (
+		createdBp *api.Breakpoint
+		addr      uint64
+		err       error
+	)
 	switch {
 	case len(requestedBp.File) > 0:
-		loc = fmt.Sprintf("%s:%d", requestedBp.File, requestedBp.Line)
+		addr, err = d.process.FindFileLocation(requestedBp.File, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		loc = requestedBp.FunctionName
+		if requestedBp.Line >= 0 {
+			addr, err = d.process.FindFunctionLocation(requestedBp.FunctionName, false, requestedBp.Line)
+		} else {
+			addr, err = d.process.FindFunctionLocation(requestedBp.FunctionName, true, 0)
+		}
 	default:
-		return nil, fmt.Errorf("no file or function name specified")
+		addr = requestedBp.Addr
 	}
 
-	bp, err := d.process.SetBreakpointByLocation(loc)
+	if err != nil {
+		return nil, err
+	}
+
+	bp, err := d.process.SetBreakpoint(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -301,13 +313,17 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 }
 
 func (d *Debugger) Functions(filter string) ([]string, error) {
+	return regexFilterFuncs(filter, d.process.Funcs())
+}
+
+func regexFilterFuncs(filter string, allFuncs []gosym.Func) ([]string, error) {
 	regex, err := regexp.Compile(filter)
 	if err != nil {
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
 	funcs := []string{}
-	for _, f := range d.process.Funcs() {
+	for _, f := range allFuncs {
 		if f.Sym != nil && regex.Match([]byte(f.Name)) {
 			funcs = append(funcs, f.Name)
 		}
@@ -447,4 +463,20 @@ func convertStacktrace(rawlocs []proc.Location) []api.Location {
 	}
 
 	return locations
+}
+
+func (d *Debugger) FindLocation(locStr string) ([]api.Location, error) {
+	loc, err := parseLocationSpec(locStr)
+	if err != nil {
+		return nil, err
+	}
+
+	locs, err := loc.Find(d, locStr)
+	for i := range locs {
+		file, line, fn := d.process.PCToLine(locs[i].PC)
+		locs[i].File = file
+		locs[i].Line = line
+		locs[i].Function = api.ConvertFunction(fn)
+	}
+	return locs, err
 }
