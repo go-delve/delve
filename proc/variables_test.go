@@ -21,11 +21,11 @@ func assertVariable(t *testing.T, variable *Variable, expected varTest) {
 	}
 
 	if variable.Type != expected.varType {
-		t.Fatalf("Expected %s got %s\n", expected.varType, variable.Type)
+		t.Fatalf("Expected %s got %s (for variable %s)\n", expected.varType, variable.Type, expected.name)
 	}
 
 	if variable.Value != expected.value {
-		t.Fatalf("Expected %#v got %#v\n", expected.value, variable.Value)
+		t.Fatalf("Expected %#v got %#v (for variable %s)\n", expected.value, variable.Value, expected.name)
 	}
 }
 
@@ -68,6 +68,8 @@ func TestVariableEvaluation(t *testing.T) {
 		{"f", "main.barfoo", "func()", nil},
 		{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "struct []int", nil},
 		{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "main.Nest", nil},
+		{"main.p1", "10", "int", nil},
+		{"p1", "10", "int", nil},
 		{"NonExistent", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
