@@ -57,8 +57,10 @@ func foobar(baz string, bar FooBar) {
 	)
 
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, c64, c128, i32, bar, f, ms, ba)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, c64, c128, i32, bar, f, ms, ba, p1)
 }
+
+var p1 = 10
 
 func main() {
 	foobar("bazburzum", FooBar{Baz: 10, Bur: "lorem"})

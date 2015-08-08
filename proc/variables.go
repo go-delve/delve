@@ -240,6 +240,20 @@ func (thread *Thread) EvalVariable(name string) (*Variable, error) {
 		}
 	}
 
+	// Attempt to evaluate name as a package variable.
+	if memberName != "" {
+		return thread.EvalPackageVariable(name)
+	} else {
+		loc, err := thread.Location()
+		if err == nil && loc.Fn != nil {
+			v, err := thread.EvalPackageVariable(loc.Fn.PackageName() + "." + name)
+			if err == nil {
+				v.Name = name
+				return v, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
