@@ -14,13 +14,16 @@ ifneq (,$(findstring 1.5, $(GOVERSION)))
 endif
 
 # If we're on OSX make sure the proper CERT env var is set.
+check-cert:
+ifneq "$(TRAVIS)" "true"
 ifeq "$(UNAME)" "Darwin"
 ifeq "$(CERT)" ""
 	$(error You must provide a CERT environment variable in order to codesign the binary.)
 endif
 endif
+endif
 
-deps:
+deps: check-cert
 	go get -u github.com/peterh/liner
 	go get -u github.com/spf13/cobra
 	go get -u golang.org/x/sys/unix
