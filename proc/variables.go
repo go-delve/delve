@@ -240,6 +240,20 @@ func (thread *Thread) EvalVariable(name string) (*Variable, error) {
 		}
 	}
 
+	// attempt to evaluate name as a package variable
+	if memberName != "" {
+		return thread.EvalPackageVariable(name)
+	} else {
+		loc, err := thread.Location()
+		if err == nil && loc.Fn != nil {
+			v, err := thread.EvalPackageVariable(loc.Fn.PackageName() + "." + name)
+			if err == nil {
+				v.Name = name
+				return v, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
@@ -508,7 +522,7 @@ func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ 
 		case t.StructName == "string":
 			return thread.readString(ptraddress)
 		case strings.HasPrefix(t.StructName, "[]"):
-			return thread.readSlice(ptraddress, t)
+			return thread.readSlice(ptraddress, t, recurseLevel)
 		default:
 			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
@@ -534,7 +548,7 @@ func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ 
 			return "{...}", nil
 		}
 	case *dwarf.ArrayType:
-		return thread.readArray(ptraddress, t)
+		return thread.readArray(ptraddress, t, recurseLevel)
 	case *dwarf.ComplexType:
 		return thread.readComplex(ptraddress, t.ByteSize)
 	case *dwarf.IntType:
@@ -587,7 +601,7 @@ func (thread *Thread) readString(addr uintptr) (string, error) {
 	return *(*string)(unsafe.Pointer(&val)), nil
 }
 
-func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType) (string, error) {
+func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel int) (string, error) {
 	var sliceLen, sliceCap int64
 	var arrayAddr uintptr
 	var arrayType dwarf.Type
@@ -630,7 +644,7 @@ func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType) (string, erro
 	if _, ok := arrayType.(*dwarf.PtrType); ok {
 		stride = int64(thread.dbp.arch.PtrSize())
 	}
-	vals, err := thread.readArrayValues(arrayAddr, sliceLen, stride, arrayType)
+	vals, err := thread.readArrayValues(arrayAddr, sliceLen, stride, arrayType, recurseLevel)
 	if err != nil {
 		return "", err
 	}
@@ -638,9 +652,9 @@ func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType) (string, erro
 	return fmt.Sprintf("[]%s len: %d, cap: %d, [%s]", arrayType, sliceLen, sliceCap, strings.Join(vals, ",")), nil
 }
 
-func (thread *Thread) readArray(addr uintptr, t *dwarf.ArrayType) (string, error) {
+func (thread *Thread) readArray(addr uintptr, t *dwarf.ArrayType, recurseLevel int) (string, error) {
 	if t.Count > 0 {
-		vals, err := thread.readArrayValues(addr, t.Count, t.ByteSize/t.Count, t.Type)
+		vals, err := thread.readArrayValues(addr, t.Count, t.ByteSize/t.Count, t.Type, recurseLevel)
 		if err != nil {
 			return "", err
 		}
@@ -650,7 +664,7 @@ func (thread *Thread) readArray(addr uintptr, t *dwarf.ArrayType) (string, error
 	return fmt.Sprintf("%s []", t), nil
 }
 
-func (thread *Thread) readArrayValues(addr uintptr, count int64, stride int64, t dwarf.Type) ([]string, error) {
+func (thread *Thread) readArrayValues(addr uintptr, count int64, stride int64, t dwarf.Type, recurseLevel int) ([]string, error) {
 	vals := make([]string, 0)
 
 	for i := int64(0); i < count; i++ {
@@ -660,7 +674,7 @@ func (thread *Thread) readArrayValues(addr uintptr, count int64, stride int64, t
 			break
 		}
 
-		val, err := thread.extractValue(nil, int64(addr+uintptr(i*stride)), t, false)
+		val, err := thread.extractValueInternal(nil, int64(addr+uintptr(i*stride)), t, false, recurseLevel+1)
 		if err != nil {
 			return nil, err
 		}
