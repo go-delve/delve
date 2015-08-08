@@ -324,14 +324,14 @@ func TestNextNetHTTP(t *testing.T) {
 			}
 			// Wait for program to start listening.
 			for {
-				conn, err := net.Dial("tcp", ":8080")
+				conn, err := net.Dial("tcp", ":9191")
 				if err == nil {
 					conn.Close()
 					break
 				}
 				time.Sleep(50 * time.Millisecond)
 			}
-			http.Get("http://localhost:8080")
+			http.Get("http://localhost:9191")
 		}()
 		if err := p.Continue(); err != nil {
 			t.Fatal(err)
