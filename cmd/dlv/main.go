@@ -58,7 +58,7 @@ The goal of this tool is to provide a simple yet powerful interface for debuggin
 	runCommand := &cobra.Command{
 		Use:   "run",
 		Short: "Compile and begin debugging program.",
-		Long: `Compiles your program with optimizations disabled, 
+		Long: `Compiles your program with optimizations disabled,
 starts and attaches to it, and enables you to immediately begin debugging your program.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			status := func() int {
@@ -179,7 +179,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 	testCommand := &cobra.Command{
 		Use:   "test",
 		Short: "Compile test binary and begin debugging program.",
-		Long: `Compiles a test binary with optimizations disabled, 
+		Long: `Compiles a test binary with optimizations disabled,
 starts and attaches to it, and enable you to immediately begin debugging your program.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			status := func() int {
@@ -222,7 +222,35 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 	}
 	rootCommand.AddCommand(attachCommand)
 
+	// 'connect' subcommand.
+	connectCommand := &cobra.Command{
+		Use:   "connect [pid]",
+		Short: "Connect to a headless debug server.",
+		Long:  "Connect to a headless debug server.",
+		Run: func(cmd *cobra.Command, args []string) {
+			addr := args[0]
+			if addr == "" {
+				fmt.Fprintf(os.Stderr, "An empty address was provided. You must provide the address to connect to.")
+				os.Exit(1)
+			}
+			os.Exit(connect(addr))
+		},
+	}
+	rootCommand.AddCommand(connectCommand)
+
 	rootCommand.Execute()
+}
+
+func connect(addr string) int {
+	// Create and start a terminal - attach to running instance
+	var client service.Client
+	client = rpc.NewClient(addr)
+	term := terminal.New(client)
+	err, status := term.Run()
+	if err != nil {
+		fmt.Println(err)
+	}
+	return status
 }
 
 func execute(attachPid int, processArgs []string) int {
