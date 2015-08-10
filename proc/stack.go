@@ -1,6 +1,9 @@
 package proc
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 // Takes an offset from RSP and returns the address of the
 // instruction the current function is going to return to.
@@ -8,6 +11,9 @@ func (thread *Thread) ReturnAddress() (uint64, error) {
 	locations, err := thread.Stacktrace(2)
 	if err != nil {
 		return 0, err
+	}
+	if len(locations) < 2 {
+		return 0, fmt.Errorf("could not find return address for %s", locations[0].Fn.BaseName())
 	}
 	return locations[1].PC, nil
 }
@@ -75,7 +81,8 @@ func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
 			break
 		}
 		locations = append(locations, Location{PC: ret, File: f, Line: l, Fn: fn})
-		if fn.Name == "runtime.goexit" {
+		// Look for "top of stack" functions.
+		if fn.Name == "runtime.rt0_go" {
 			break
 		}
 	}

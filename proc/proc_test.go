@@ -2,7 +2,6 @@ package proc
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"net/http"
@@ -380,51 +379,44 @@ func TestRuntimeBreakpoint(t *testing.T) {
 
 func TestFindReturnAddress(t *testing.T) {
 	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
-		var (
-			fdes = p.frameEntries
-			gsd  = p.goSymTable
-		)
-
-		start, _, err := gsd.LineToPC(fixture.Source, 24)
+		start, _, err := p.goSymTable.LineToPC(fixture.Source, 24)
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		_, err = p.SetBreakpoint(start)
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		err = p.Continue()
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		regs, err := p.Registers()
+		addr, err := p.CurrentThread.ReturnAddress()
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		fde, err := fdes.FDEForPC(start)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		ret := fde.ReturnAddressOffset(start)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		addr := uint64(int64(regs.SP()) + ret)
-		data, err := p.CurrentThread.readMemory(uintptr(addr), 8)
-		if err != nil {
-			t.Fatal(err)
-		}
-		addr = binary.LittleEndian.Uint64(data)
-
 		_, l, _ := p.goSymTable.PCToLine(addr)
 		if l != 40 {
 			t.Fatalf("return address not found correctly, expected line 40")
+		}
+	})
+}
+
+func TestFindReturnAddressTopOfStackFn(t *testing.T) {
+	withTestProcess("testreturnaddress", t, func(p *Process, fixture protest.Fixture) {
+		fnName := "runtime.rt0_go"
+		fn := p.goSymTable.LookupFunc(fnName)
+		if fn == nil {
+			t.Fatalf("could not find function %s", fnName)
+		}
+		if _, err := p.SetBreakpoint(fn.Entry); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.Continue(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.CurrentThread.ReturnAddress(); err == nil {
+			t.Fatal("expected error to be returned")
 		}
 	})
 }
