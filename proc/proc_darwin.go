@@ -282,6 +282,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			}
 			dbp.exited = true
 			return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+
 		case C.MACH_RCV_INTERRUPTED:
 			if !dbp.halt {
 				// Call trapWait again, it seems
@@ -290,6 +291,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				continue
 			}
 			return nil, nil
+
 		case 0:
 			return nil, fmt.Errorf("error while waiting for task")
 		}
@@ -305,7 +307,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 					return dbp.Threads[int(port)], nil
 				}
 				th := dbp.Threads[int(port)]
-				if dbp.firstStart || dbp.singleStepping || th.singleStepping {
+				if dbp.firstStart || th.singleStepping {
 					dbp.firstStart = false
 					return dbp.Threads[int(port)], nil
 				}

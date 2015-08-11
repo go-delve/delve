@@ -40,7 +40,6 @@ type Process struct {
 	frameEntries            frame.FrameDescriptionEntries
 	lineInfo                *line.DebugLineInfo
 	firstStart              bool
-	singleStepping          bool
 	os                      *OSProcessDetails
 	arch                    Arch
 	ast                     *source.Searcher
@@ -386,8 +385,6 @@ func (dbp *Process) Continue() error {
 // Single step, will execute a single instruction.
 func (dbp *Process) Step() (err error) {
 	fn := func() error {
-		dbp.singleStepping = true
-		defer func() { dbp.singleStepping = false }()
 		for _, th := range dbp.Threads {
 			if th.blocked() {
 				continue
