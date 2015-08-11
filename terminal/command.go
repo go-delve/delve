@@ -60,7 +60,12 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
-		{aliases: []string{"info"}, cmdFn: info, helpMsg: "Subcommands: args, funcs, locals, sources, vars, or regs."},
+		{aliases: []string{"sources"}, cmdFn: filterSortAndOutput(sources), helpMsg: "Print list of source files, optionally filtered by a regexp."},
+		{aliases: []string{"funcs"}, cmdFn: filterSortAndOutput(funcs), helpMsg: "Print list of functions, optionally filtered by a regexp."},
+		{aliases: []string{"args"}, cmdFn: filterSortAndOutput(args), helpMsg: "Print function arguments, optionally filtered by a regexp."},
+		{aliases: []string{"locals"}, cmdFn: filterSortAndOutput(locals), helpMsg: "Print function locals, optionally filtered by a regexp."},
+		{aliases: []string{"vars"}, cmdFn: filterSortAndOutput(vars), helpMsg: "Print package variables, optionally filtered by a regexp."},
+		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth> [<goroutine id>]]. Prints stack."},
 	}
@@ -388,98 +393,81 @@ func printVar(client service.Client, args ...string) error {
 	return nil
 }
 
-func filterVariables(vars []api.Variable, filter *regexp.Regexp) []string {
+func filterVariables(vars []api.Variable, filter string) []string {
+	reg, err := regexp.Compile(filter)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+		return nil
+	}
 	data := make([]string, 0, len(vars))
 	for _, v := range vars {
-		if filter == nil || filter.Match([]byte(v.Name)) {
+		if reg == nil || reg.Match([]byte(v.Name)) {
 			data = append(data, fmt.Sprintf("%s = %s", v.Name, v.Value))
 		}
 	}
 	return data
 }
 
-func info(client service.Client, args ...string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments. expected info type [regex].")
+func sources(client service.Client, filter string) ([]string, error) {
+	return client.ListSources(filter)
+}
+
+func funcs(client service.Client, filter string) ([]string, error) {
+	return client.ListFunctions(filter)
+}
+
+func args(client service.Client, filter string) ([]string, error) {
+	vars, err := client.ListFunctionArgs()
+	if err != nil {
+		return nil, err
 	}
+	return filterVariables(vars, filter), nil
+}
 
-	// Allow for optional regex
-	var filter *regexp.Regexp
-	if len(args) >= 2 {
-		var err error
-		if filter, err = regexp.Compile(args[1]); err != nil {
-			return fmt.Errorf("invalid filter argument: %s", err.Error())
-		}
+func locals(client service.Client, filter string) ([]string, error) {
+	locals, err := client.ListLocalVariables()
+	if err != nil {
+		return nil, err
 	}
+	return filterVariables(locals, filter), nil
+}
 
-	var data []string
-
-	switch args[0] {
-	case "sources":
-		regex := ""
-		if len(args) >= 2 && len(args[1]) > 0 {
-			regex = args[1]
-		}
-		sources, err := client.ListSources(regex)
-		if err != nil {
-			return err
-		}
-		data = sources
-
-	case "funcs":
-		regex := ""
-		if len(args) >= 2 && len(args[1]) > 0 {
-			regex = args[1]
-		}
-		funcs, err := client.ListFunctions(regex)
-		if err != nil {
-			return err
-		}
-		data = funcs
-
-	case "regs":
-		regs, err := client.ListRegisters()
-		if err != nil {
-			return err
-		}
-		data = append(data, regs)
-
-	case "args":
-		args, err := client.ListFunctionArgs()
-		if err != nil {
-			return err
-		}
-		data = filterVariables(args, filter)
-
-	case "locals":
-		locals, err := client.ListLocalVariables()
-		if err != nil {
-			return err
-		}
-		data = filterVariables(locals, filter)
-
-	case "vars":
-		regex := ""
-		if len(args) >= 2 && len(args[1]) > 0 {
-			regex = args[1]
-		}
-		vars, err := client.ListPackageVariables(regex)
-		if err != nil {
-			return err
-		}
-		data = filterVariables(vars, filter)
-
-	default:
-		return fmt.Errorf("unsupported info type, must be args, funcs, locals, sources or vars")
+func vars(client service.Client, filter string) ([]string, error) {
+	vars, err := client.ListPackageVariables(filter)
+	if err != nil {
+		return nil, err
 	}
+	return filterVariables(vars, filter), nil
+}
 
-	// sort and output data
-	sort.Sort(sort.StringSlice(data))
-
-	for _, d := range data {
-		fmt.Println(d)
+func regs(client service.Client, args ...string) error {
+	regs, err := client.ListRegisters()
+	if err != nil {
+		return err
 	}
+	fmt.Println(regs)
 	return nil
+}
+
+func filterSortAndOutput(fn func(client service.Client, filter string) ([]string, error)) cmdfunc {
+	return func(client service.Client, args ...string) error {
+		var filter string
+		if len(args) == 1 {
+			if _, err := regexp.Compile(args[0]); err != nil {
+				return fmt.Errorf("invalid filter argument: %s", err.Error())
+			}
+			filter = args[0]
+		}
+		data, err := fn(client, filter)
+		if err != nil {
+			return err
+		}
+		sort.Sort(sort.StringSlice(data))
+		for _, d := range data {
+			fmt.Println(d)
+		}
+		return nil
+	}
 }
 
 func stackCommand(client service.Client, args ...string) error {
