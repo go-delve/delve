@@ -668,9 +668,10 @@ func versionAfterOrEqual(t *testing.T, verStr string, ver GoVersion) {
 }
 
 func TestParseVersionString(t *testing.T) {
-	versionAfterOrEqual(t, "go1.5.0", GoVersion{1, 5, 0, 0})
-	versionAfterOrEqual(t, "go1.4.2", GoVersion{1, 4, 2, 0})
-	versionAfterOrEqual(t, "go1.5beta2", GoVersion{1, 5, -1, 2})
+	versionAfterOrEqual(t, "go1.5.0", GoVersion{1, 5, 0, 0, 0})
+	versionAfterOrEqual(t, "go1.4.2", GoVersion{1, 4, 2, 0, 0})
+	versionAfterOrEqual(t, "go1.5beta2", GoVersion{1, 5, -1, 2, 0})
+	versionAfterOrEqual(t, "go1.5rc2", GoVersion{1, 5, -1, 0, 2})
 	ver, ok := parseVersionString("devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64")
 	if !ok {
 		t.Fatalf("Could not parse devel version string")
