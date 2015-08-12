@@ -668,6 +668,7 @@ func versionAfterOrEqual(t *testing.T, verStr string, ver GoVersion) {
 }
 
 func TestParseVersionString(t *testing.T) {
+	versionAfterOrEqual(t, "go1.4", GoVersion{1, 4, 0, 0, 0})
 	versionAfterOrEqual(t, "go1.5.0", GoVersion{1, 5, 0, 0, 0})
 	versionAfterOrEqual(t, "go1.4.2", GoVersion{1, 4, 2, 0, 0})
 	versionAfterOrEqual(t, "go1.5beta2", GoVersion{1, 5, -1, 2, 0})
