@@ -228,9 +228,13 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 		Short: "Connect to a headless debug server.",
 		Long:  "Connect to a headless debug server.",
 		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) == 0 {
+				fmt.Fprintf(os.Stderr, "An address was not provided. You must provide an address as the first argument.\n")
+				os.Exit(1)
+			}
 			addr := args[0]
 			if addr == "" {
-				fmt.Fprintf(os.Stderr, "An empty address was provided. You must provide the address to connect to.")
+				fmt.Fprintf(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
 				os.Exit(1)
 			}
 			os.Exit(connect(addr))
