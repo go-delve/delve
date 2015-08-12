@@ -33,10 +33,13 @@ func parseVersionString(ver string) (GoVersion, bool) {
 				vr = strings.SplitN(v[1], "rc", 2)
 				if len(vr) == 2 {
 					r.RC, err3 = strconv.Atoi(vr[1])
+				} else {
+					r.Minor, err2 = strconv.Atoi(v[1])
+					if err2 != nil {
+						return GoVersion{}, false
+					}
+					return r, true
 				}
-			}
-			if len(vr) < 2 {
-				return GoVersion{}, false
 			}
 
 			r.Minor, err2 = strconv.Atoi(vr[0])
