@@ -214,7 +214,7 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 		Run: func(cmd *cobra.Command, args []string) {
 			pid, err := strconv.Atoi(args[0])
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid pid: %d", args[0])
+				fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
 				os.Exit(1)
 			}
 			os.Exit(execute(pid, nil))
