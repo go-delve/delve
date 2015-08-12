@@ -113,6 +113,8 @@ mach_port_t
 mach_port_wait(mach_port_t port_set) {
 	kern_return_t kret;
 	thread_act_t thread;
+	NDR_record_t *ndr;
+	integer_t *data;
 	union
 	{
 		mach_msg_header_t hdr;
@@ -128,28 +130,21 @@ mach_port_wait(mach_port_t port_set) {
 	mach_msg_body_t *bod = (mach_msg_body_t*)(&msg.hdr + 1);
 	mach_msg_port_descriptor_t *desc = (mach_msg_port_descriptor_t *)(bod + 1);
 	thread = desc[0].name;
+	ndr = (NDR_record_t *)(desc + 2);
+	data = (integer_t *)(ndr + 1);
 
 	switch (msg.hdr.msgh_id) {
 		case 2401: // Exception
-			kret = thread_suspend(thread);
-			if (kret != KERN_SUCCESS) return 0;
-
+			if (thread_suspend(thread) != KERN_SUCCESS) return 0;
 			// Send our reply back so the kernel knows this exception has been handled.
-			mig_reply_error_t reply;
-			mach_msg_header_t *rh = &reply.Head;
-			rh->msgh_bits = MACH_MSGH_BITS(MACH_MSGH_BITS_REMOTE(msg.hdr.msgh_bits), 0);
-			rh->msgh_remote_port = msg.hdr.msgh_remote_port;
-			rh->msgh_size = (mach_msg_size_t) sizeof(mig_reply_error_t);
-			rh->msgh_local_port = MACH_PORT_NULL;
-			rh->msgh_id = msg.hdr.msgh_id + 100;
-
-			reply.NDR = NDR_record;
-			reply.RetCode = KERN_SUCCESS;
-
-			kret = mach_msg(&reply.Head, MACH_SEND_MSG|MACH_SEND_INTERRUPT, rh->msgh_size, 0,
-					MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
-
+			kret = mach_send_reply(msg.hdr);
 			if (kret != MACH_MSG_SUCCESS) return 0;
+			if (data[2] == EXC_SOFT_SIGNAL) {
+				if (data[3] != SIGTRAP) {
+					if (thread_resume(thread) != KERN_SUCCESS) return 0;
+					return mach_port_wait(port_set);
+				}
+			}
 			break;
 
 		case 72: // Death
@@ -157,6 +152,23 @@ mach_port_wait(mach_port_t port_set) {
 	}
 
 	return thread;
+}
+
+kern_return_t
+mach_send_reply(mach_msg_header_t hdr) {
+	mig_reply_error_t reply;
+	mach_msg_header_t *rh = &reply.Head;
+	rh->msgh_bits = MACH_MSGH_BITS(MACH_MSGH_BITS_REMOTE(hdr.msgh_bits), 0);
+	rh->msgh_remote_port = hdr.msgh_remote_port;
+	rh->msgh_size = (mach_msg_size_t) sizeof(mig_reply_error_t);
+	rh->msgh_local_port = MACH_PORT_NULL;
+	rh->msgh_id = hdr.msgh_id + 100;
+
+	reply.NDR = NDR_record;
+	reply.RetCode = KERN_SUCCESS;
+
+	return mach_msg(&reply.Head, MACH_SEND_MSG|MACH_SEND_INTERRUPT, rh->msgh_size, 0,
+			MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
 }
 
 kern_return_t

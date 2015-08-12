@@ -39,5 +39,8 @@ mach_port_t
 mach_port_wait(mach_port_t);
 
 kern_return_t
+mach_send_reply(mach_msg_header_t);
+
+kern_return_t
 raise_exception(mach_port_t, mach_port_t, mach_port_t, exception_type_t);
 

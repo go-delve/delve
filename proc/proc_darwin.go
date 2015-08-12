@@ -301,26 +301,25 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		dbp.updateThreadList()
 		th, err = dbp.handleBreakpointOnThread(int(port))
 		if err != nil {
-			if _, ok := err.(NoBreakpointError); ok {
-				if dbp.halt {
-					dbp.halt = false
-					return dbp.Threads[int(port)], nil
-				}
-				th := dbp.Threads[int(port)]
-				if dbp.firstStart || th.singleStepping {
-					dbp.firstStart = false
-					return dbp.Threads[int(port)], nil
-				}
-				if err := th.Continue(); err != nil {
-					return nil, err
-				}
-				continue
+			if _, ok := err.(NoBreakpointError); !ok {
+				return nil, err
 			}
-			return nil, err
+			thread := dbp.Threads[int(port)]
+			if dbp.halt {
+				dbp.halt = false
+				return thread, nil
+			}
+			if dbp.firstStart || thread.singleStepping {
+				dbp.firstStart = false
+				return thread, nil
+			}
+			if err := thread.Continue(); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		return th, nil
 	}
-	return th, nil
 }
 
 func wait(pid, tgid, options int) (int, *sys.WaitStatus, error) {
