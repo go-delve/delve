@@ -280,7 +280,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, locStr string) ([]api.Location,
 	case 0:
 		return nil, fmt.Errorf("Location \"%s\" not found", locStr)
 	default:
-		return nil, fmt.Errorf("Location \"%s\" ambiguous: %s…\n", locStr, strings.Join(candidates, ", "))
+		return nil, fmt.Errorf("Location \"%s\" ambiguous: %s…", locStr, strings.Join(candidates, ", "))
 	}
 }
 
