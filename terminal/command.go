@@ -523,7 +523,7 @@ func listCommand(client service.Client, args ...string) error {
 		return fmt.Errorf("Ambiguous location: %s", args[0])
 	}
 
-	printfile(locs[0].File, locs[0].Line)
+	printfile(locs[0].File, locs[0].Line, false)
 	return nil
 }
 
@@ -586,10 +586,10 @@ func printcontext(state *api.DebuggerState) error {
 		return nil
 	}
 
-	return printfile(state.CurrentThread.File, state.CurrentThread.Line)
+	return printfile(state.CurrentThread.File, state.CurrentThread.Line, true)
 }
 
-func printfile(filename string, line int) error {
+func printfile(filename string, line int, showArrow bool) error {
 	file, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -624,9 +624,12 @@ func printfile(filename string, line int) error {
 			}
 		}
 
-		arrow := "  "
-		if i == l {
-			arrow = "=>"
+		var arrow string
+		if showArrow {
+			arrow = "  "
+			if i == l {
+				arrow = "=>"
+			}
 		}
 
 		var lineNum string
