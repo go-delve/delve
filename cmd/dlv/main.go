@@ -224,7 +224,7 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 
 	// 'connect' subcommand.
 	connectCommand := &cobra.Command{
-		Use:   "connect [pid]",
+		Use:   "connect [addr]",
 		Short: "Connect to a headless debug server.",
 		Long:  "Connect to a headless debug server.",
 		Run: func(cmd *cobra.Command, args []string) {
