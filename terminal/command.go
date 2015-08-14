@@ -69,7 +69,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth> [<goroutine id>]]. Prints stack."},
-		{aliases: []string{"list"}, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
+		{aliases: []string{"list", "ls"}, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
 	}
 
 	return c
