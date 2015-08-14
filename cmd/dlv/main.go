@@ -54,9 +54,20 @@ The goal of this tool is to provide a simple yet powerful interface for debuggin
 	}
 	rootCommand.AddCommand(versionCommand)
 
-	// 'run' subcommand.
+	// Deprecated 'run' subcommand.
 	runCommand := &cobra.Command{
 		Use:   "run",
+		Short: "Deprecated command. Use 'debug' instead.",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("This command is deprecated, please use 'debug' instead.")
+			os.Exit(0)
+		},
+	}
+	rootCommand.AddCommand(runCommand)
+
+	// 'debug' subcommand.
+	debugCommand := &cobra.Command{
+		Use:   "debug",
 		Short: "Compile and begin debugging program.",
 		Long: `Compiles your program with optimizations disabled,
 starts and attaches to it, and enables you to immediately begin debugging your program.`,
@@ -82,7 +93,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 			os.Exit(status)
 		},
 	}
-	rootCommand.AddCommand(runCommand)
+	rootCommand.AddCommand(debugCommand)
 
 	// 'trace' subcommand.
 	var traceAttachPid int
