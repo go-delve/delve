@@ -212,7 +212,7 @@ func formatGoroutine(g *api.Goroutine) string {
 	if g.Function != nil {
 		fname = g.Function.Name
 	}
-	return fmt.Sprintf("%d - %s:%d %s (%#v)\n", g.ID, g.File, g.Line, fname, g.PC)
+	return fmt.Sprintf("%d - %s:%d %s (%#v)", g.ID, g.File, g.Line, fname, g.PC)
 }
 
 func restart(client service.Client, args ...string) error {
