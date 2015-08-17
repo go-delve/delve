@@ -28,6 +28,7 @@ deps: check-cert
 	go get -u github.com/spf13/cobra
 	go get -u golang.org/x/sys/unix
 	go get -u github.com/davecheney/profile
+	go get -u gopkg.in/yaml.v2
 
 build: deps
 	go build $(FLAGS) github.com/derekparker/delve/cmd/dlv

@@ -1,8 +1,11 @@
 package terminal
 
 import (
+	"bytes"
 	"fmt"
+	"gopkg.in/yaml.v2"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"os/user"
@@ -15,8 +18,16 @@ import (
 	"github.com/derekparker/delve/service"
 )
 
-const configDir string = ".dlv"
-const historyFile string = ".dbg_history"
+const (
+	configDir   string = ".dlv"
+	historyFile string = ".dbg_history"
+	configFile  string = "config.yml"
+)
+
+// config defines all configuration options available to be set through the config file.
+type config struct {
+	Aliases map[string][]string
+}
 
 type Term struct {
 	client service.Client
@@ -53,6 +64,11 @@ func (t *Term) Run() (error, int) {
 	}()
 
 	cmds := DebugCommands(t.client)
+	config := loadConfig(cmds)
+	if config != nil {
+		cmds.Merge(config.Aliases)
+	}
+
 	fullHistoryFile, err := getConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Printf("Unable to load history file: %v.", err)
@@ -165,4 +181,69 @@ func getConfigFilePath(file string) (string, error) {
 		return "", err
 	}
 	return path.Join(usr.HomeDir, configDir, file), nil
+}
+
+func loadConfig(cmds *Commands) *config {
+	fullConfigFile, err := getConfigFilePath(configFile)
+	if err != nil {
+		fmt.Printf("Unable to load config file: %v.", err)
+	}
+
+	f, err := os.Open(fullConfigFile)
+	if err != nil {
+		f, err = os.Create(fullConfigFile)
+		if err != nil {
+			fmt.Printf("Unable to create config file: %v.", err)
+		} else {
+			err = writeDefaultConfig(f, cmds)
+			if err != nil {
+				fmt.Printf("Unable to write default configuration: %v.", err)
+				_, err = f.Seek(0, os.SEEK_SET)
+				if err != nil {
+					fmt.Printf("Unable to seek config file to beginning: %v.", err)
+					return nil
+				}
+			}
+		}
+	}
+
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		fmt.Printf("Unable to read config data: %v.", err)
+		return nil
+	}
+
+	var c config
+	err = yaml.Unmarshal(data, &c)
+	if err != nil {
+		fmt.Printf("Unable to decode config file: %v.", err)
+		return nil
+	}
+
+	f.Close()
+
+	return &c
+}
+
+func writeDefaultConfig(f *os.File, cmds *Commands) error {
+	var buffer bytes.Buffer
+	buffer.WriteString(
+		`# Configuration file for the delve debugger.
+
+# This is the default configuration file. Available options are provided, but disabled.
+# Delete the leading hash mark to enable an item.
+
+# Provided aliases will be added to the default aliases for a given command.
+aliases:
+  # example: ["alias1", "alias2"]
+
+`)
+
+	for _, cmd := range cmds.cmds {
+		buffer.WriteString(fmt.Sprintf("  # %s: []\n", cmd.aliases[0]))
+	}
+
+	_, err := f.WriteString(buffer.String())
+
+	return err
 }
