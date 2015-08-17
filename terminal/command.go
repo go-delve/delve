@@ -171,12 +171,10 @@ func thread(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
-
 	oldState, err := client.GetState()
 	if err != nil {
 		return err
 	}
-
 	newState, err := client.SwitchThread(tid)
 	if err != nil {
 		return err
@@ -190,7 +188,6 @@ func thread(client service.Client, args ...string) error {
 	if newState.CurrentThread != nil {
 		newThread = strconv.Itoa(newState.CurrentThread.ID)
 	}
-
 	fmt.Printf("Switched from %s to %s\n", oldThread, newThread)
 	return nil
 }
@@ -256,12 +253,10 @@ func clear(client service.Client, args ...string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
-
 	id, err := strconv.Atoi(args[0])
 	if err != nil {
 		return err
 	}
-
 	bp, err := client.ClearBreakpoint(id)
 	if err != nil {
 		return err
@@ -315,12 +310,10 @@ func breakpoints(client service.Client, args ...string) error {
 		for i := range bp.Variables {
 			attrs = append(attrs, bp.Variables[i])
 		}
-
 		if len(attrs) > 0 {
 			fmt.Printf("\t%s\n", strings.Join(attrs, " "))
 		}
 	}
-
 	return nil
 }
 
@@ -328,7 +321,6 @@ func setBreakpoint(client service.Client, tracepoint bool, args ...string) error
 	if len(args) < 1 {
 		return fmt.Errorf("address required, specify either a function name or <file:line>")
 	}
-
 	requestedBp := &api.Breakpoint{}
 
 	for i := 1; i < len(args); i++ {
@@ -348,17 +340,14 @@ func setBreakpoint(client service.Client, tracepoint bool, args ...string) error
 	}
 
 	requestedBp.Tracepoint = tracepoint
-
 	locs, err := client.FindLocation(args[0])
 	if err != nil {
 		return err
 	}
-
 	thing := "Breakpoint"
 	if tracepoint {
 		thing = "Tracepoint"
 	}
-
 	for _, loc := range locs {
 		requestedBp.Addr = loc.PC
 
@@ -369,7 +358,6 @@ func setBreakpoint(client service.Client, tracepoint bool, args ...string) error
 
 		fmt.Printf("%s %d set at %#v for %s %s:%d\n", thing, bp.ID, bp.Addr, bp.FunctionName, bp.File, bp.Line)
 	}
-
 	return nil
 }
 
@@ -385,12 +373,10 @@ func printVar(client service.Client, args ...string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
-
 	val, err := client.EvalVariable(args[0])
 	if err != nil {
 		return err
 	}
-
 	fmt.Println(val.Value)
 	return nil
 }
@@ -519,11 +505,9 @@ func listCommand(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
-
 	if len(locs) > 1 {
 		return debugger.AmbiguousLocationError{Location: args[0], CandidatesLocation: locs}
 	}
-
 	printfile(locs[0].File, locs[0].Line, false)
 	return nil
 }
@@ -543,13 +527,11 @@ func printcontext(state *api.DebuggerState) error {
 		fmt.Println("No current thread available")
 		return nil
 	}
-
 	if len(state.CurrentThread.File) == 0 {
 		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
 		fmt.Printf("\033[34m=>\033[0m    no source available\n")
 		return nil
 	}
-
 	var fn *api.Function
 	if state.CurrentThread.Function != nil {
 		fn = state.CurrentThread.Function
@@ -582,11 +564,9 @@ func printcontext(state *api.DebuggerState) error {
 			printStack(bpi.Stacktrace, "\t\t")
 		}
 	}
-
 	if state.Breakpoint != nil && state.Breakpoint.Tracepoint {
 		return nil
 	}
-
 	return printfile(state.CurrentThread.File, state.CurrentThread.Line, true)
 }
 
@@ -598,7 +578,6 @@ func printfile(filename string, line int, showArrow bool) error {
 	defer file.Close()
 
 	var context []string
-
 	buf := bufio.NewReader(file)
 	l := line
 	for i := 1; i < l-5; i++ {
