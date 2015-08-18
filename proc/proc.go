@@ -280,23 +280,20 @@ func (dbp *Process) next() error {
 	var goroutineExiting bool
 	var waitCount int
 	for _, th := range dbp.Threads {
-		if th.blocked() {
-			// Ignore threads that aren't running go code.
-			continue
-		}
-		waitCount++
-		if err = th.SetNextBreakpoints(); err != nil {
-			if err, ok := err.(GoroutineExitingError); ok {
-				waitCount = waitCount - 1 + chanRecvCount
-				if err.goid == g.Id {
-					goroutineExiting = true
+		// Ignore threads that aren't running go code.
+		if !th.blocked() {
+			waitCount++
+			if err = th.SetNextBreakpoints(); err != nil {
+				if gerr, ok := err.(GoroutineExitingError); ok {
+					waitCount = waitCount - 1 + chanRecvCount
+					if gerr.goid == g.Id {
+						goroutineExiting = true
+					}
+				} else {
+					return err
 				}
-				continue
 			}
-			return err
 		}
-	}
-	for _, th := range dbp.Threads {
 		if err = th.Continue(); err != nil {
 			return err
 		}
