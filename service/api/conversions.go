@@ -2,8 +2,6 @@ package api
 
 import (
 	"debug/gosym"
-	"os"
-	"strings"
 
 	"github.com/derekparker/delve/proc"
 )
@@ -13,7 +11,7 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	return &Breakpoint{
 		ID:           bp.ID,
 		FunctionName: bp.FunctionName,
-		File:         shortenFilePath(bp.File),
+		File:         bp.File,
 		Line:         bp.Line,
 		Addr:         bp.Addr,
 		Tracepoint:   bp.Tracepoint,
@@ -43,7 +41,7 @@ func ConvertThread(th *proc.Thread) *Thread {
 	return &Thread{
 		ID:       th.Id,
 		PC:       pc,
-		File:     shortenFilePath(file),
+		File:     file,
 		Line:     line,
 		Function: function,
 	}
@@ -76,7 +74,7 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 	return &Goroutine{
 		ID:       g.Id,
 		PC:       g.PC,
-		File:     shortenFilePath(g.File),
+		File:     g.File,
 		Line:     g.Line,
 		Function: ConvertFunction(g.Func),
 	}
@@ -85,13 +83,8 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 func ConvertLocation(loc proc.Location) Location {
 	return Location{
 		PC:       loc.PC,
-		File:     shortenFilePath(loc.File),
+		File:     loc.File,
 		Line:     loc.Line,
 		Function: ConvertFunction(loc.Fn),
 	}
-}
-
-func shortenFilePath(fullPath string) string {
-	workingDir, _ := os.Getwd()
-	return strings.Replace(fullPath, workingDir, ".", 1)
 }
