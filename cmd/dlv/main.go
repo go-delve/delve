@@ -95,6 +95,16 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 	}
 	rootCommand.AddCommand(debugCommand)
 
+	// 'exec' subcommand.
+	execCommand := &cobra.Command{
+		Use:   "exec [./path/to/binary]",
+		Short: "Runs precompiled binary, attaches and begins debug session.",
+		Run: func(cmd *cobra.Command, args []string) {
+			os.Exit(execute(0, args))
+		},
+	}
+	rootCommand.AddCommand(execCommand)
+
 	// 'trace' subcommand.
 	var traceAttachPid int
 	traceCommand := &cobra.Command{
