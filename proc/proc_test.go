@@ -130,6 +130,9 @@ func TestHalt(t *testing.T) {
 		// actually stopped, err will not be nil if the process
 		// is still running.
 		for _, th := range p.Threads {
+			if !th.Stopped() {
+				t.Fatal("expected thread to be stopped, but was not")
+			}
 			if th.running != false {
 				t.Fatal("expected running = false for thread", th.Id)
 			}
@@ -295,6 +298,36 @@ func TestNextGeneral(t *testing.T) {
 		{27, 34},
 	}
 	testnext("testnextprog", testcases, "main.testnext", t)
+}
+
+func TestNextConcurrent(t *testing.T) {
+	testcases := []nextTest{
+		{9, 10},
+		{10, 11},
+	}
+	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.sayhi")
+		assertNoError(err, t, "SetBreakpoint")
+		assertNoError(p.Continue(), t, "Continue")
+		f, ln := currentLineNumber(p, t)
+		initV, err := p.EvalVariable("n")
+		assertNoError(err, t, "EvalVariable")
+		for _, tc := range testcases {
+			if ln != tc.begin {
+				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
+			}
+			assertNoError(p.Next(), t, "Next() returned an error")
+			f, ln = currentLineNumber(p, t)
+			if ln != tc.end {
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
+			}
+			v, err := p.EvalVariable("n")
+			assertNoError(err, t, "EvalVariable")
+			if v.Value != initV.Value {
+				t.Fatal("Did not end up on same goroutine")
+			}
+		}
+	})
 }
 
 func TestNextGoroutine(t *testing.T) {

@@ -12,14 +12,22 @@ type OSSpecificDetails struct {
 	registers  C.x86_thread_state64_t
 }
 
-func (t *Thread) Halt() error {
-	var kret C.kern_return_t
-	kret = C.thread_suspend(t.os.thread_act)
-	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not suspend thread %d", t.Id)
+func (t *Thread) Halt() (err error) {
+	defer func() {
+		if err == nil {
+			t.running = false
+		}
+	}()
+	if t.Stopped() {
+		return
 	}
-	t.running = false
-	return nil
+	kret := C.thread_suspend(t.os.thread_act)
+	if kret != C.KERN_SUCCESS {
+		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
+		err = fmt.Errorf("could not suspend thread %d %s", t.Id, errStr)
+		return
+	}
+	return
 }
 
 func (t *Thread) singleStep() error {
@@ -50,10 +58,13 @@ func (t *Thread) resume() error {
 	return nil
 }
 
-func (t *Thread) blocked() bool {
+func (thread *Thread) blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
-	pc, _ := t.PC()
-	fn := t.dbp.goSymTable.PCToFunc(pc)
+	pc, err := thread.PC()
+	if err != nil {
+		return false
+	}
+	fn := thread.dbp.goSymTable.PCToFunc(pc)
 	if fn == nil {
 		return false
 	}
@@ -63,6 +74,10 @@ func (t *Thread) blocked() bool {
 	default:
 		return false
 	}
+}
+
+func (thread *Thread) stopped() bool {
+	return C.thread_blocked(thread.os.thread_act) > C.int(0)
 }
 
 func (thread *Thread) writeMemory(addr uintptr, data []byte) (int, error) {

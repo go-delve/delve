@@ -252,7 +252,7 @@ func (dbp *Process) Next() error {
 	return dbp.run(dbp.next)
 }
 
-func (dbp *Process) next() error {
+func (dbp *Process) next() (err error) {
 	// Make sure we clean up the temp breakpoints created by thread.Next
 	defer dbp.clearTempBreakpoints()
 
@@ -260,63 +260,78 @@ func (dbp *Process) next() error {
 	// blocked trying to read from a channel. This is so that
 	// if control flow switches to that goroutine, we end up
 	// somewhere useful instead of in runtime code.
-	chanRecvCount, err := dbp.setChanRecvBreakpoints()
-	if err != nil {
+	if _, err := dbp.setChanRecvBreakpoints(); err != nil {
 		return err
 	}
 
+	// Get the goroutine for the current thread. We will
+	// use it later in order to ensure we are on the same
+	// goroutine.
 	g, err := dbp.CurrentThread.GetG()
 	if err != nil {
 		return err
 	}
 
-	if g.DeferPC != 0 {
-		_, err = dbp.SetTempBreakpoint(g.DeferPC)
-		if err != nil {
-			return err
-		}
-	}
-
 	var goroutineExiting bool
-	var waitCount int
-	for _, th := range dbp.Threads {
-		// Ignore threads that aren't running go code.
-		if !th.blocked() {
-			waitCount++
-			if err = th.SetNextBreakpoints(); err != nil {
-				if gerr, ok := err.(GoroutineExitingError); ok {
-					waitCount = waitCount - 1 + chanRecvCount
-					if gerr.goid == g.Id {
-						goroutineExiting = true
-					}
-				} else {
-					return err
-				}
+	threadNext := func(thread *Thread) error {
+		if err = thread.setNextBreakpoints(); err != nil {
+			switch t := err.(type) {
+			case ThreadBlockedError, NoReturnAddr: // Noop
+			case GoroutineExitingError:
+				goroutineExiting = t.goid == g.Id
+			default:
+				return err
 			}
 		}
-		if err = th.Continue(); err != nil {
+		return thread.Continue()
+	}
+
+	// Make sure that we halt the process at the end of this
+	// function. We could get into a situation where we have
+	// started some, but not all threads.
+	defer func() { err = dbp.Halt() }()
+
+	// Set next breakpoints and then continue each thread.
+	for _, th := range dbp.Threads {
+		if err := threadNext(th); err != nil {
 			return err
 		}
 	}
 
-	for waitCount > 0 {
-		thread, err := dbp.trapWait(-1)
-		if err != nil {
+	for {
+		if _, err := dbp.trapWait(-1); err != nil {
 			return err
 		}
-		tg, err := thread.GetG()
-		if err != nil {
-			return err
-		}
-		// Make sure we're on the same goroutine, unless it has exited.
-		if tg.Id == g.Id || goroutineExiting {
-			if dbp.CurrentThread != thread {
-				dbp.SwitchThread(thread.Id)
+		// We need to wait for our goroutine to execute, which may not happen
+		// immediately.
+		//
+		// Loop through all threads, and for each stopped thread
+		// see if it is the thread that we care about (thread.g == original.g).
+		// If so, we're done. Otherwise set next temp breakpoints for
+		// each thread and continue them. The reason we do this is because
+		// if our goroutine is paused, we must execute other threads in order
+		// for them to get to a scheduling point, so they can pick up the
+		// goroutine we care about and begin executing it.
+		for _, thr := range dbp.Threads {
+			if !thr.Stopped() {
+				continue
+			}
+			tg, err := thr.GetG()
+			if err != nil {
+				return err
+			}
+			// Make sure we're on the same goroutine, unless it has exited.
+			if tg.Id == g.Id || goroutineExiting {
+				if dbp.CurrentThread != thr {
+					dbp.SwitchThread(thr.Id)
+				}
+				return nil
+			}
+			if err := threadNext(thr); err != nil {
+				return err
 			}
 		}
-		waitCount--
 	}
-	return dbp.Halt()
 }
 
 func (dbp *Process) setChanRecvBreakpoints() (int, error) {

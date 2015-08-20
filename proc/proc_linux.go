@@ -67,7 +67,7 @@ func (dbp *Process) Kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
-	if !stopped(dbp.Pid) {
+	if !dbp.Threads[dbp.Pid].Stopped() {
 		return errors.New("process must be stopped in order to kill it")
 	}
 	if err = sys.Kill(-dbp.Pid, sys.SIGKILL); err != nil {
@@ -320,14 +320,6 @@ func status(pid int) rune {
 	)
 	fmt.Fscanf(f, "%d %s %c", &p, &comm, &state)
 	return state
-}
-
-func stopped(pid int) bool {
-	state := status(pid)
-	if state == STATUS_TRACE_STOP {
-		return true
-	}
-	return false
 }
 
 func wait(pid, tgid, options int) (int, *sys.WaitStatus, error) {

@@ -5,6 +5,14 @@ import (
 	"fmt"
 )
 
+type NoReturnAddr struct {
+	fn string
+}
+
+func (nra NoReturnAddr) Error() string {
+	return fmt.Sprintf("could not find return address for %s", nra.fn)
+}
+
 // Takes an offset from RSP and returns the address of the
 // instruction the current function is going to return to.
 func (thread *Thread) ReturnAddress() (uint64, error) {
@@ -13,7 +21,7 @@ func (thread *Thread) ReturnAddress() (uint64, error) {
 		return 0, err
 	}
 	if len(locations) < 2 {
-		return 0, fmt.Errorf("could not find return address for %s", locations[0].Fn.BaseName())
+		return 0, NoReturnAddr{locations[0].Fn.BaseName()}
 	}
 	return locations[1].PC, nil
 }

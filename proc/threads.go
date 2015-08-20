@@ -115,6 +115,12 @@ func (thread *Thread) Location() (*Location, error) {
 	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
+type ThreadBlockedError struct{}
+
+func (tbe ThreadBlockedError) Error() string {
+	return ""
+}
+
 // Set breakpoints for potential next lines.
 //
 // There are two modes of operation for this method. First,
@@ -129,10 +135,22 @@ func (thread *Thread) Location() (*Location, error) {
 // at every single line within the current function, and
 // another at the functions return address, in case we're at
 // the end.
-func (thread *Thread) SetNextBreakpoints() (err error) {
+func (thread *Thread) setNextBreakpoints() (err error) {
+	if thread.blocked() {
+		return ThreadBlockedError{}
+	}
 	curpc, err := thread.PC()
 	if err != nil {
 		return err
+	}
+	g, err := thread.GetG()
+	if err != nil {
+		return err
+	}
+	if g.DeferPC != 0 {
+		if _, err = thread.dbp.SetTempBreakpoint(g.DeferPC); err != nil {
+			return err
+		}
 	}
 
 	// Grab info on our current stack frame. Used to determine
@@ -148,15 +166,11 @@ func (thread *Thread) SetNextBreakpoints() (err error) {
 		return err
 	}
 	if filepath.Ext(loc.File) == ".go" {
-		if err = thread.next(curpc, fde, loc.File, loc.Line); err != nil {
-			return err
-		}
+		err = thread.next(curpc, fde, loc.File, loc.Line)
 	} else {
-		if err = thread.cnext(curpc, fde); err != nil {
-			return err
-		}
+		err = thread.cnext(curpc, fde)
 	}
-	return nil
+	return err
 }
 
 // Go routine is exiting.
@@ -277,4 +291,11 @@ func (thread *Thread) GetG() (g *G, err error) {
 		g.thread = thread
 	}
 	return
+}
+
+// Returns whether the thread is stopped at
+// the operating system level. Actual implementation
+// is OS dependant, look in OS thread file.
+func (thread *Thread) Stopped() bool {
+	return thread.stopped()
 }
