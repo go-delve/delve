@@ -110,7 +110,7 @@ func (c *Commands) Find(cmdstr string) cmdfunc {
 	return noCmdAvailable
 }
 
-// Merge takes aliases defined in the config struct and merges them with the default aliases
+// Merge takes aliases defined in the config struct and merges them with the default aliases.
 func (c *Commands) Merge(allAliases map[string][]string) {
 	for primary, aliases := range allAliases {
 		for i := range c.cmds {

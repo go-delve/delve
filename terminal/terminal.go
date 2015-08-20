@@ -186,26 +186,21 @@ func getConfigFilePath(file string) (string, error) {
 func loadConfig(cmds *Commands) *config {
 	fullConfigFile, err := getConfigFilePath(configFile)
 	if err != nil {
-		fmt.Printf("Unable to load config file: %v.", err)
+		fmt.Printf("Unable to get config file path: %v.", err)
+		return nil
 	}
 
 	f, err := os.Open(fullConfigFile)
 	if err != nil {
-		f, err = os.Create(fullConfigFile)
-		if err != nil {
-			fmt.Printf("Unable to create config file: %v.", err)
-		} else {
-			err = writeDefaultConfig(f, cmds)
-			if err != nil {
-				fmt.Printf("Unable to write default configuration: %v.", err)
-				_, err = f.Seek(0, os.SEEK_SET)
-				if err != nil {
-					fmt.Printf("Unable to seek config file to beginning: %v.", err)
-					return nil
-				}
-			}
-		}
+		createDefaultConfig(fullConfigFile, cmds)
+		return nil
 	}
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			fmt.Printf("Closing config file failed: %v.", err)
+		}
+	}()
 
 	data, err := ioutil.ReadAll(f)
 	if err != nil {
@@ -220,9 +215,25 @@ func loadConfig(cmds *Commands) *config {
 		return nil
 	}
 
-	f.Close()
-
 	return &c
+}
+
+func createDefaultConfig(path string, cmds *Commands) {
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Printf("Unable to create config file: %v.", err)
+		return
+	}
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			fmt.Printf("Closing config file failed: %v.", err)
+		}
+	}()
+	err = writeDefaultConfig(f, cmds)
+	if err != nil {
+		fmt.Printf("Unable to write default configuration: %v.", err)
+	}
 }
 
 func writeDefaultConfig(f *os.File, cmds *Commands) error {
@@ -243,7 +254,7 @@ aliases:
 		buffer.WriteString(fmt.Sprintf("  # %s: []\n", cmd.aliases[0]))
 	}
 
-	_, err := f.WriteString(buffer.String())
+	_, err := buffer.WriteTo(f)
 
 	return err
 }
