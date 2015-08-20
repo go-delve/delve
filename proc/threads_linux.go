@@ -12,15 +12,7 @@ type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
-func (t *Thread) Halt() (err error) {
-	defer func() {
-		if err == nil {
-			t.running = false
-		}
-	}()
-	if t.Stopped() {
-		return
-	}
+func (t *Thread) halt() (err error) {
 	err = sys.Tgkill(t.dbp.Pid, t.Id, sys.SIGSTOP)
 	if err != nil {
 		err = fmt.Errorf("halt err %s on thread %d", err, t.Id)

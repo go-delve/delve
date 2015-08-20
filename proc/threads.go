@@ -299,3 +299,19 @@ func (thread *Thread) GetG() (g *G, err error) {
 func (thread *Thread) Stopped() bool {
 	return thread.stopped()
 }
+
+// Stops this thread from executing. Actual
+// implementation is OS dependant. Look in OS
+// thread file.
+func (thread *Thread) Halt() (err error) {
+	defer func() {
+		if err == nil {
+			thread.running = false
+		}
+	}()
+	if thread.Stopped() {
+		return
+	}
+	err = thread.halt()
+	return
+}

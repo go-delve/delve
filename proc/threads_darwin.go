@@ -12,15 +12,7 @@ type OSSpecificDetails struct {
 	registers  C.x86_thread_state64_t
 }
 
-func (t *Thread) Halt() (err error) {
-	defer func() {
-		if err == nil {
-			t.running = false
-		}
-	}()
-	if t.Stopped() {
-		return
-	}
+func (t *Thread) halt() (err error) {
 	kret := C.thread_suspend(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
 		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
