@@ -1,55 +1,39 @@
 package terminal
 
 import (
-	"bytes"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/signal"
-	"os/user"
-	"path"
 	"strings"
 
 	"github.com/peterh/liner"
 	sys "golang.org/x/sys/unix"
 
+	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
 )
 
-const (
-	configDir   string = ".dlv"
-	historyFile string = ".dbg_history"
-	configFile  string = "config.yml"
-)
-
-// config defines all configuration options available to be set through the config file.
-type config struct {
-	Aliases map[string][]string
-}
+const historyFile string = ".dbg_history"
 
 type Term struct {
 	client service.Client
 	prompt string
 	line   *liner.State
+	conf   *config.Config
 }
 
-func New(client service.Client) *Term {
+func New(client service.Client, conf *config.Config) *Term {
 	return &Term{
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		client: client,
+		conf:   conf,
 	}
 }
 
 func (t *Term) Run() (error, int) {
 	defer t.line.Close()
-
-	err := createConfigPath()
-	if err != nil {
-		fmt.Printf("Could not create config directory: %v.")
-	}
 
 	// Send the debugger a halt command on SIGINT
 	ch := make(chan os.Signal)
@@ -64,12 +48,10 @@ func (t *Term) Run() (error, int) {
 	}()
 
 	cmds := DebugCommands(t.client)
-	config := loadConfig(cmds)
-	if config != nil {
-		cmds.Merge(config.Aliases)
+	if t.conf != nil {
+		cmds.Merge(t.conf.Aliases)
 	}
-
-	fullHistoryFile, err := getConfigFilePath(historyFile)
+	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Printf("Unable to load history file: %v.", err)
 	}
@@ -133,7 +115,7 @@ func (t *Term) promptForInput() (string, error) {
 }
 
 func (t *Term) handleExit() (error, int) {
-	fullHistoryFile, err := getConfigFilePath(historyFile)
+	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Println("Error saving history file:", err)
 	} else {
@@ -165,96 +147,4 @@ func (t *Term) handleExit() (error, int) {
 func parseCommand(cmdstr string) (string, []string) {
 	vals := strings.Split(cmdstr, " ")
 	return vals[0], vals[1:]
-}
-
-func createConfigPath() error {
-	path, err := getConfigFilePath("")
-	if err != nil {
-		return err
-	}
-	return os.MkdirAll(path, 0700)
-}
-
-func getConfigFilePath(file string) (string, error) {
-	usr, err := user.Current()
-	if err != nil {
-		return "", err
-	}
-	return path.Join(usr.HomeDir, configDir, file), nil
-}
-
-func loadConfig(cmds *Commands) *config {
-	fullConfigFile, err := getConfigFilePath(configFile)
-	if err != nil {
-		fmt.Printf("Unable to get config file path: %v.", err)
-		return nil
-	}
-
-	f, err := os.Open(fullConfigFile)
-	if err != nil {
-		createDefaultConfig(fullConfigFile, cmds)
-		return nil
-	}
-	defer func() {
-		err := f.Close()
-		if err != nil {
-			fmt.Printf("Closing config file failed: %v.", err)
-		}
-	}()
-
-	data, err := ioutil.ReadAll(f)
-	if err != nil {
-		fmt.Printf("Unable to read config data: %v.", err)
-		return nil
-	}
-
-	var c config
-	err = yaml.Unmarshal(data, &c)
-	if err != nil {
-		fmt.Printf("Unable to decode config file: %v.", err)
-		return nil
-	}
-
-	return &c
-}
-
-func createDefaultConfig(path string, cmds *Commands) {
-	f, err := os.Create(path)
-	if err != nil {
-		fmt.Printf("Unable to create config file: %v.", err)
-		return
-	}
-	defer func() {
-		err := f.Close()
-		if err != nil {
-			fmt.Printf("Closing config file failed: %v.", err)
-		}
-	}()
-	err = writeDefaultConfig(f, cmds)
-	if err != nil {
-		fmt.Printf("Unable to write default configuration: %v.", err)
-	}
-}
-
-func writeDefaultConfig(f *os.File, cmds *Commands) error {
-	var buffer bytes.Buffer
-	buffer.WriteString(
-		`# Configuration file for the delve debugger.
-
-# This is the default configuration file. Available options are provided, but disabled.
-# Delete the leading hash mark to enable an item.
-
-# Provided aliases will be added to the default aliases for a given command.
-aliases:
-  # example: ["alias1", "alias2"]
-
-`)
-
-	for _, cmd := range cmds.cmds {
-		buffer.WriteString(fmt.Sprintf("  # %s: []\n", cmd.aliases[0]))
-	}
-
-	_, err := buffer.WriteTo(f)
-
-	return err
 }
