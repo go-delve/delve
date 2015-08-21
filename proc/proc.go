@@ -272,18 +272,17 @@ func (dbp *Process) next() (err error) {
 		return err
 	}
 
-	var goroutineExiting bool
-	threadNext := func(thread *Thread) error {
-		if err = thread.setNextBreakpoints(); err != nil {
-			switch t := err.(type) {
-			case ThreadBlockedError, NoReturnAddr: // Noop
-			case GoroutineExitingError:
-				goroutineExiting = t.goid == g.Id
-			default:
-				return err
-			}
+	goroutineExiting := false
+
+	err = dbp.CurrentThread.setNextBreakpoints()
+	if err != nil {
+		switch err.(type) {
+		case ThreadBlockedError, NoReturnAddr: // Noop
+		case GoroutineExitingError:
+			goroutineExiting = true
+		default:
+			return err
 		}
-		return thread.Continue()
 	}
 
 	// Make sure that we halt the process at the end of this
@@ -291,9 +290,9 @@ func (dbp *Process) next() (err error) {
 	// started some, but not all threads.
 	defer func() { err = dbp.Halt() }()
 
-	// Set next breakpoints and then continue each thread.
+	// Continue each thread.
 	for _, th := range dbp.Threads {
-		if err := threadNext(th); err != nil {
+		if err := th.Continue(); err != nil {
 			return err
 		}
 	}
@@ -304,14 +303,6 @@ func (dbp *Process) next() (err error) {
 		}
 		// We need to wait for our goroutine to execute, which may not happen
 		// immediately.
-		//
-		// Loop through all threads, and for each stopped thread
-		// see if it is the thread that we care about (thread.g == original.g).
-		// If so, we're done. Otherwise set next temp breakpoints for
-		// each thread and continue them. The reason we do this is because
-		// if our goroutine is paused, we must execute other threads in order
-		// for them to get to a scheduling point, so they can pick up the
-		// goroutine we care about and begin executing it.
 		for _, thr := range dbp.Threads {
 			if !thr.Stopped() {
 				continue
@@ -320,14 +311,30 @@ func (dbp *Process) next() (err error) {
 			if err != nil {
 				return err
 			}
-			// Make sure we're on the same goroutine, unless it has exited.
-			if tg.Id == g.Id || goroutineExiting {
+
+			atTemp := false
+			if tg.Id == g.Id {
+				if pc, err := thr.PC(); err == nil {
+					if bp, _ := dbp.FindBreakpoint(pc); bp != nil {
+						atTemp = bp.Temp
+					}
+				}
+			}
+
+			// Make sure we're on the same goroutine and at a temp breakpoint, unless it has exited.
+			if atTemp || goroutineExiting {
 				if dbp.CurrentThread != thr {
 					dbp.SwitchThread(thr.Id)
 				}
 				return nil
 			}
-			if err := threadNext(thr); err != nil {
+		}
+
+		for _, thr := range dbp.Threads {
+			if !thr.Stopped() {
+				continue
+			}
+			if err := thr.Continue(); err != nil {
 				return err
 			}
 		}
