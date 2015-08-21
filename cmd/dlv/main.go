@@ -106,7 +106,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		Use:   "exec [./path/to/binary]",
 		Short: "Runs precompiled binary, attaches and begins debug session.",
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(execute(0, args))
+			os.Exit(execute(0, args, conf))
 		},
 	}
 	rootCommand.AddCommand(execCommand)
