@@ -32,10 +32,6 @@ var (
 func main() {
 
 	// Config setup and load.
-	err := config.CreateConfigPath()
-	if err != nil {
-		fmt.Printf("Could not create config directory: %v.")
-	}
 	conf := config.LoadConfig()
 
 	// Main dlv root command.

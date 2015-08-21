@@ -48,7 +48,7 @@ func (t *Term) Run() (error, int) {
 	}()
 
 	cmds := DebugCommands(t.client)
-	if t.conf != nil {
+	if t.conf != nil && t.conf.Aliases != nil {
 		cmds.Merge(t.conf.Aliases)
 	}
 	fullHistoryFile, err := config.GetConfigFilePath(historyFile)

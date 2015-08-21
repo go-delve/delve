@@ -23,6 +23,11 @@ type Config struct {
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
 func LoadConfig() *Config {
+	err := createConfigPath()
+	if err != nil {
+		fmt.Printf("Could not create config directory: %v.")
+		return nil
+	}
 	fullConfigFile, err := GetConfigFilePath(configFile)
 	if err != nil {
 		fmt.Printf("Unable to get config file path: %v.", err)
@@ -93,8 +98,8 @@ aliases:
 	return err
 }
 
-// CreateConfigPath creates the directory structure at which all config files are saved.
-func CreateConfigPath() error {
+// createConfigPath creates the directory structure at which all config files are saved.
+func createConfigPath() error {
 	path, err := GetConfigFilePath("")
 	if err != nil {
 		return err
