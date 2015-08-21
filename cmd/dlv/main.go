@@ -12,10 +12,12 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
+	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc"
 	"github.com/derekparker/delve/terminal"
+
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +30,10 @@ var (
 )
 
 func main() {
+
+	// Config setup and load.
+	conf := config.LoadConfig()
+
 	// Main dlv root command.
 	rootCommand := &cobra.Command{
 		Use:   "dlv",
@@ -88,7 +94,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 				defer os.Remove(fp)
 
 				processArgs := append([]string{"./" + debugname}, args...)
-				return execute(0, processArgs)
+				return execute(0, processArgs, conf)
 			}()
 			os.Exit(status)
 		},
@@ -100,7 +106,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		Use:   "exec [./path/to/binary]",
 		Short: "Runs precompiled binary, attaches and begins debug session.",
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(execute(0, args))
+			os.Exit(execute(0, args, conf))
 		},
 	}
 	rootCommand.AddCommand(execCommand)
@@ -220,7 +226,7 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 				defer os.Remove(debugname)
 				processArgs := append([]string{debugname}, args...)
 
-				return execute(0, processArgs)
+				return execute(0, processArgs, conf)
 			}()
 			os.Exit(status)
 		},
@@ -238,7 +244,7 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 				fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
 				os.Exit(1)
 			}
-			os.Exit(execute(pid, nil))
+			os.Exit(execute(pid, nil, conf))
 		},
 	}
 	rootCommand.AddCommand(attachCommand)
@@ -258,7 +264,7 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 				fmt.Fprintf(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
 				os.Exit(1)
 			}
-			os.Exit(connect(addr))
+			os.Exit(connect(addr, conf))
 		},
 	}
 	rootCommand.AddCommand(connectCommand)
@@ -266,11 +272,11 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 	rootCommand.Execute()
 }
 
-func connect(addr string) int {
+func connect(addr string, conf *config.Config) int {
 	// Create and start a terminal - attach to running instance
 	var client service.Client
 	client = rpc.NewClient(addr)
-	term := terminal.New(client)
+	term := terminal.New(client, conf)
 	err, status := term.Run()
 	if err != nil {
 		fmt.Println(err)
@@ -278,7 +284,7 @@ func connect(addr string) int {
 	return status
 }
 
-func execute(attachPid int, processArgs []string) int {
+func execute(attachPid int, processArgs []string, conf *config.Config) int {
 	// Make a TCP listener
 	listener, err := net.Listen("tcp", Addr)
 	if err != nil {
@@ -303,7 +309,7 @@ func execute(attachPid int, processArgs []string) int {
 		// Create and start a terminal
 		var client service.Client
 		client = rpc.NewClient(listener.Addr().String())
-		term := terminal.New(client)
+		term := terminal.New(client, conf)
 		err, status = term.Run()
 	} else {
 		ch := make(chan os.Signal)

@@ -5,40 +5,35 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"os/user"
-	"path"
 	"strings"
 
 	"github.com/peterh/liner"
 	sys "golang.org/x/sys/unix"
 
+	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
 )
 
-const configDir string = ".dlv"
 const historyFile string = ".dbg_history"
 
 type Term struct {
 	client service.Client
 	prompt string
 	line   *liner.State
+	conf   *config.Config
 }
 
-func New(client service.Client) *Term {
+func New(client service.Client, conf *config.Config) *Term {
 	return &Term{
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		client: client,
+		conf:   conf,
 	}
 }
 
 func (t *Term) Run() (error, int) {
 	defer t.line.Close()
-
-	err := createConfigPath()
-	if err != nil {
-		fmt.Printf("Could not create config directory: %v.")
-	}
 
 	// Send the debugger a halt command on SIGINT
 	ch := make(chan os.Signal)
@@ -53,7 +48,10 @@ func (t *Term) Run() (error, int) {
 	}()
 
 	cmds := DebugCommands(t.client)
-	fullHistoryFile, err := getConfigFilePath(historyFile)
+	if t.conf != nil && t.conf.Aliases != nil {
+		cmds.Merge(t.conf.Aliases)
+	}
+	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Printf("Unable to load history file: %v.", err)
 	}
@@ -117,7 +115,7 @@ func (t *Term) promptForInput() (string, error) {
 }
 
 func (t *Term) handleExit() (error, int) {
-	fullHistoryFile, err := getConfigFilePath(historyFile)
+	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Println("Error saving history file:", err)
 	} else {
@@ -149,20 +147,4 @@ func (t *Term) handleExit() (error, int) {
 func parseCommand(cmdstr string) (string, []string) {
 	vals := strings.Split(cmdstr, " ")
 	return vals[0], vals[1:]
-}
-
-func createConfigPath() error {
-	path, err := getConfigFilePath("")
-	if err != nil {
-		return err
-	}
-	return os.MkdirAll(path, 0700)
-}
-
-func getConfigFilePath(file string) (string, error) {
-	usr, err := user.Current()
-	if err != nil {
-		return "", err
-	}
-	return path.Join(usr.HomeDir, configDir, file), nil
 }
