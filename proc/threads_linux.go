@@ -12,20 +12,23 @@ type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
-func (t *Thread) Halt() error {
-	if stopped(t.Id) {
-		return nil
-	}
-	err := sys.Tgkill(t.dbp.Pid, t.Id, sys.SIGSTOP)
+func (t *Thread) halt() (err error) {
+	err = sys.Tgkill(t.dbp.Pid, t.Id, sys.SIGSTOP)
 	if err != nil {
-		return fmt.Errorf("halt err %s on thread %d", err, t.Id)
+		err = fmt.Errorf("halt err %s on thread %d", err, t.Id)
+		return
 	}
 	_, _, err = wait(t.Id, t.dbp.Pid, 0)
 	if err != nil {
-		return fmt.Errorf("wait err %s on thread %d", err, t.Id)
+		err = fmt.Errorf("wait err %s on thread %d", err, t.Id)
+		return
 	}
-	t.running = false
-	return nil
+	return
+}
+
+func (thread *Thread) stopped() bool {
+	state := status(thread.Id)
+	return state == STATUS_TRACE_STOP
 }
 
 func (t *Thread) resume() (err error) {
