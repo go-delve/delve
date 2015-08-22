@@ -145,13 +145,12 @@ mach_port_wait(mach_port_t port_set) {
 					return mach_port_wait(port_set);
 				}
 			}
-			break;
+			return thread;
 
 		case 72: // Death
 			return msg.hdr.msgh_local_port;
 	}
-
-	return thread;
+	return 0;
 }
 
 kern_return_t

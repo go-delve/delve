@@ -272,64 +272,53 @@ func (dbp *Process) next() (err error) {
 		return err
 	}
 
-	var goroutineExiting bool
-	threadNext := func(thread *Thread) error {
-		if err = thread.setNextBreakpoints(); err != nil {
-			switch t := err.(type) {
-			case ThreadBlockedError, NoReturnAddr: // Noop
-			case GoroutineExitingError:
-				goroutineExiting = t.goid == g.Id
-			default:
-				return err
-			}
-		}
-		return thread.Continue()
-	}
-
 	// Make sure that we halt the process at the end of this
 	// function. We could get into a situation where we have
 	// started some, but not all threads.
 	defer func() { err = dbp.Halt() }()
 
-	// Set next breakpoints and then continue each thread.
+	var goroutineExiting bool
+	if err = dbp.CurrentThread.setNextBreakpoints(); err != nil {
+		switch t := err.(type) {
+		case ThreadBlockedError, NoReturnAddr: // Noop
+		case GoroutineExitingError:
+			goroutineExiting = t.goid == g.Id
+		default:
+			return err
+		}
+	}
+
 	for _, th := range dbp.Threads {
-		if err := threadNext(th); err != nil {
+		if err := th.Continue(); err != nil {
 			return err
 		}
 	}
 
 	for {
-		if _, err := dbp.trapWait(-1); err != nil {
+		th, err := dbp.trapWait(-1)
+		if err != nil {
 			return err
 		}
-		// We need to wait for our goroutine to execute, which may not happen
-		// immediately.
-		//
-		// Loop through all threads, and for each stopped thread
-		// see if it is the thread that we care about (thread.g == original.g).
-		// If so, we're done. Otherwise set next temp breakpoints for
-		// each thread and continue them. The reason we do this is because
-		// if our goroutine is paused, we must execute other threads in order
-		// for them to get to a scheduling point, so they can pick up the
-		// goroutine we care about and begin executing it.
-		for _, thr := range dbp.Threads {
-			if !thr.Stopped() {
-				continue
-			}
-			tg, err := thr.GetG()
-			if err != nil {
-				return err
-			}
-			// Make sure we're on the same goroutine, unless it has exited.
-			if tg.Id == g.Id || goroutineExiting {
-				if dbp.CurrentThread != thr {
-					dbp.SwitchThread(thr.Id)
+		tg, err := th.GetG()
+		if err != nil {
+			return err
+		}
+		// Make sure we're on the same goroutine, unless it has exited.
+		if tg.Id == g.Id || goroutineExiting {
+			// Check to see if the goroutine has switched to another
+			// thread, if so make it the current thread.
+			if dbp.CurrentThread.Id != th.Id {
+				if err := dbp.SwitchThread(th.Id); err != nil {
+					return err
 				}
-				return nil
 			}
-			if err := threadNext(thr); err != nil {
-				return err
-			}
+			return nil
+		}
+		// This thread was not running our goroutine.
+		// We continue it since our goroutine could
+		// potentially be on this threads queue.
+		if err := th.Continue(); err != nil {
+			return err
 		}
 	}
 }
