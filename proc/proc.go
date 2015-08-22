@@ -623,8 +623,6 @@ func (dbp *Process) handleBreakpointOnThread(id int) (*Thread, error) {
 	}
 	fn := dbp.goSymTable.PCToFunc(pc)
 	if fn != nil && fn.Name == "runtime.breakpoint" {
-		thread.singleStepping = true
-		defer func() { thread.singleStepping = false }()
 		for i := 0; i < 2; i++ {
 			if err := thread.Step(); err != nil {
 				return nil, err
