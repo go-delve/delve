@@ -267,10 +267,6 @@ func (dbp *Process) findExecutable(path string) (*macho.File, error) {
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
-	var (
-		th  *Thread
-		err error
-	)
 	for {
 		port := C.mach_port_wait(dbp.os.portSet)
 
@@ -299,7 +295,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
 		dbp.updateThreadList()
-		th, err = dbp.handleBreakpointOnThread(int(port))
+		th, err := dbp.handleBreakpointOnThread(int(port))
 		if err != nil {
 			if _, ok := err.(NoBreakpointError); !ok {
 				return nil, err
