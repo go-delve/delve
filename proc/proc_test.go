@@ -495,6 +495,28 @@ func TestSwitchThread(t *testing.T) {
 	})
 }
 
+func TestCGONext(t *testing.T) {
+	//test if one can do 'next' in a cgo binary
+	withTestProcess("cgotest", t, func(p *Process, fixture protest.Fixture) {
+		pc, err := p.FindFunctionLocation("main.main", true, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.SetBreakpoint(pc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = p.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 type loc struct {
 	line int
 	fn   string

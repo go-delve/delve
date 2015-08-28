@@ -44,7 +44,8 @@ func TestDebugLinePrologueParser(t *testing.T) {
 	}
 	defer os.Remove(p)
 	data := grabDebugLineSection(p, t)
-	dbl := Parse(data)
+	debugLines := Parse(data)
+	dbl := debugLines[0]
 	prologue := dbl.Prologue
 
 	if prologue.Version != uint16(2) {
