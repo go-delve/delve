@@ -253,15 +253,30 @@ func (dbp *Process) Next() error {
 }
 
 func (dbp *Process) next() (err error) {
-	// Make sure we clean up the temp breakpoints created by thread.Next
-	defer dbp.clearTempBreakpoints()
+	defer func() {
+		// Always halt process at end of this function.
+		herr := dbp.Halt()
+		// Make sure we clean up the temp breakpoints.
+		cerr := dbp.clearTempBreakpoints()
+		// If we already had an error, return it.
+		if err != nil {
+			return
+		}
+		if herr != nil {
+			err = herr
+			return
+		}
+		if cerr != nil {
+			err = cerr
+		}
+	}()
 
 	// Set breakpoints for any goroutine that is currently
 	// blocked trying to read from a channel. This is so that
 	// if control flow switches to that goroutine, we end up
 	// somewhere useful instead of in runtime code.
-	if _, err := dbp.setChanRecvBreakpoints(); err != nil {
-		return err
+	if _, err = dbp.setChanRecvBreakpoints(); err != nil {
+		return
 	}
 
 	// Get the goroutine for the current thread. We will
@@ -272,11 +287,6 @@ func (dbp *Process) next() (err error) {
 		return err
 	}
 
-	// Make sure that we halt the process at the end of this
-	// function. We could get into a situation where we have
-	// started some, but not all threads.
-	defer func() { err = dbp.Halt() }()
-
 	var goroutineExiting bool
 	if err = dbp.CurrentThread.setNextBreakpoints(); err != nil {
 		switch t := err.(type) {
@@ -284,13 +294,13 @@ func (dbp *Process) next() (err error) {
 		case GoroutineExitingError:
 			goroutineExiting = t.goid == g.Id
 		default:
-			return err
+			return
 		}
 	}
 
 	for _, th := range dbp.Threads {
-		if err := th.Continue(); err != nil {
-			return err
+		if err = th.Continue(); err != nil {
+			return
 		}
 	}
 
@@ -308,7 +318,7 @@ func (dbp *Process) next() (err error) {
 			// Check to see if the goroutine has switched to another
 			// thread, if so make it the current thread.
 			if dbp.CurrentThread.Id != th.Id {
-				if err := dbp.SwitchThread(th.Id); err != nil {
+				if err = dbp.SwitchThread(th.Id); err != nil {
 					return err
 				}
 			}
@@ -317,7 +327,7 @@ func (dbp *Process) next() (err error) {
 		// This thread was not running our goroutine.
 		// We continue it since our goroutine could
 		// potentially be on this threads queue.
-		if err := th.Continue(); err != nil {
+		if err = th.Continue(); err != nil {
 			return err
 		}
 	}
