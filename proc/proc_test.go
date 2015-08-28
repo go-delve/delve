@@ -495,6 +495,33 @@ func TestSwitchThread(t *testing.T) {
 	})
 }
 
+func TestCGONext(t *testing.T) {
+	// Test if one can do 'next' in a cgo binary
+	// On OSX with Go < 1.5 CGO is not supported due to: https://github.com/golang/go/issues/8973
+	if runtime.GOOS == "darwin" && strings.Contains(runtime.Version(), "1.4") {
+		return
+	}
+
+	withTestProcess("cgotest", t, func(p *Process, fixture protest.Fixture) {
+		pc, err := p.FindFunctionLocation("main.main", true, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.SetBreakpoint(pc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = p.Continue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = p.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 type loc struct {
 	line int
 	fn   string
