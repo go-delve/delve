@@ -111,7 +111,8 @@ func (s *RPCServer) GetBreakpoint(id int, breakpoint *api.Breakpoint) error {
 }
 
 type StacktraceGoroutineArgs struct {
-	Id, Depth int
+	Id    int
+	Depth int
 }
 
 func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations *[]api.Location) error {
@@ -215,13 +216,8 @@ func (s *RPCServer) ListRegisters(arg interface{}, registers *string) error {
 	return nil
 }
 
-func (s *RPCServer) ListLocalVars(arg interface{}, variables *[]api.Variable) error {
-	state, err := s.debugger.State()
-	if err != nil {
-		return err
-	}
-
-	vars, err := s.debugger.LocalVariables(state.CurrentThread.ID)
+func (s *RPCServer) ListLocalVars(scope api.EvalScope, variables *[]api.Variable) error {
+	vars, err := s.debugger.LocalVariables(scope)
 	if err != nil {
 		return err
 	}
@@ -229,13 +225,8 @@ func (s *RPCServer) ListLocalVars(arg interface{}, variables *[]api.Variable) er
 	return nil
 }
 
-func (s *RPCServer) ListFunctionArgs(arg interface{}, variables *[]api.Variable) error {
-	state, err := s.debugger.State()
-	if err != nil {
-		return err
-	}
-
-	vars, err := s.debugger.FunctionArguments(state.CurrentThread.ID)
+func (s *RPCServer) ListFunctionArgs(scope api.EvalScope, variables *[]api.Variable) error {
+	vars, err := s.debugger.FunctionArguments(scope)
 	if err != nil {
 		return err
 	}
@@ -243,32 +234,13 @@ func (s *RPCServer) ListFunctionArgs(arg interface{}, variables *[]api.Variable)
 	return nil
 }
 
-func (s *RPCServer) EvalSymbol(symbol string, variable *api.Variable) error {
-	state, err := s.debugger.State()
-	if err != nil {
-		return err
-	}
-
-	current := state.CurrentThread
-	if current == nil {
-		return errors.New("no current thread")
-	}
-
-	v, err := s.debugger.EvalVariableInThread(current.ID, symbol)
-	if err != nil {
-		return err
-	}
-	*variable = *v
-	return nil
-}
-
-type ThreadSymbolArgs struct {
-	Id     int
+type EvalSymbolArgs struct {
+	Scope  api.EvalScope
 	Symbol string
 }
 
-func (s *RPCServer) EvalThreadSymbol(args *ThreadSymbolArgs, variable *api.Variable) error {
-	v, err := s.debugger.EvalVariableInThread(args.Id, args.Symbol)
+func (s *RPCServer) EvalSymbol(args EvalSymbolArgs, variable *api.Variable) error {
+	v, err := s.debugger.EvalVariableInScope(args.Scope, args.Symbol)
 	if err != nil {
 		return err
 	}
@@ -310,8 +282,13 @@ func (c *RPCServer) AttachedToExistingProcess(arg interface{}, answer *bool) err
 	return nil
 }
 
-func (c *RPCServer) FindLocation(loc string, answer *[]api.Location) error {
+type FindLocationArgs struct {
+	Scope api.EvalScope
+	Loc   string
+}
+
+func (c *RPCServer) FindLocation(args FindLocationArgs, answer *[]api.Location) error {
 	var err error
-	*answer, err = c.debugger.FindLocation(loc)
+	*answer, err = c.debugger.FindLocation(args.Scope, args.Loc)
 	return err
 }

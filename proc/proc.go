@@ -419,6 +419,20 @@ func (dbp *Process) SwitchThread(tid int) error {
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
+// Change from current thread to the thread running the specified goroutine
+func (dbp *Process) SwitchGoroutine(gid int) error {
+	for tid := range dbp.Threads {
+		if dbp.Threads[tid].blocked() {
+			continue
+		}
+		g, err := dbp.Threads[tid].GetG()
+		if err == nil && g.Id == gid {
+			return dbp.SwitchThread(tid)
+		}
+	}
+	return fmt.Errorf("No thread associated with goroutine: %d", gid)
+}
+
 // Returns an array of G structures representing the information
 // Delve cares about from the internal runtime G structure.
 func (dbp *Process) GoroutinesInfo() ([]*G, error) {
@@ -501,11 +515,6 @@ func (dbp *Process) PC() (uint64, error) {
 // Returns the PC of the current thread.
 func (dbp *Process) CurrentBreakpoint() *Breakpoint {
 	return dbp.CurrentThread.CurrentBreakpoint
-}
-
-// Returns the value of the named symbol.
-func (dbp *Process) EvalVariable(name string) (*Variable, error) {
-	return dbp.CurrentThread.EvalVariable(name)
 }
 
 // Returns a reader for the dwarf data
@@ -674,7 +683,7 @@ func (dbp *Process) execPtraceFunc(fn func()) {
 }
 
 func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
-	vv, err := dbp.CurrentThread.EvalPackageVariable("runtime.buildVersion")
+	vv, err := dbp.EvalPackageVariable("runtime.buildVersion")
 	if err != nil {
 		err = fmt.Errorf("Could not determine version number: %v\n", err)
 		return
@@ -698,4 +707,45 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 		}
 	}
 	return
+}
+
+func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
+	if gid == -1 {
+		return dbp.CurrentThread.Scope()
+	}
+
+	gs, err := dbp.GoroutinesInfo()
+	if err != nil {
+		return nil, err
+	}
+	var out EvalScope
+	var g *G
+	for i := range gs {
+		if gs[i].Id == gid {
+			g = gs[i]
+			out.Thread = g.thread
+			break
+		}
+	}
+
+	if g == nil {
+		return nil, fmt.Errorf("Unknown goroutine %d", gid)
+	}
+
+	if out.Thread == nil {
+		out.Thread = dbp.CurrentThread
+	}
+
+	locs, err := dbp.GoroutineStacktrace(g, frame)
+	if err != nil {
+		return nil, err
+	}
+
+	if frame >= len(locs) {
+		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+	}
+
+	out.PC, out.CFA = locs[frame].PC, locs[frame].CFA
+
+	return &out, nil
 }

@@ -315,3 +315,11 @@ func (thread *Thread) Halt() (err error) {
 	err = thread.halt()
 	return
 }
+
+func (thread *Thread) Scope() (*EvalScope, error) {
+	locations, err := thread.Stacktrace(0)
+	if err != nil {
+		return nil, err
+	}
+	return &EvalScope{Thread: thread, PC: locations[0].PC, CFA: locations[0].CFA}, nil
+}

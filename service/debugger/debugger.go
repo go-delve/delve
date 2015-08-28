@@ -106,12 +106,17 @@ func (d *Debugger) Restart() error {
 
 func (d *Debugger) State() (*api.DebuggerState, error) {
 	var (
-		state  *api.DebuggerState
-		thread *api.Thread
+		state     *api.DebuggerState
+		thread    *api.Thread
+		goroutine *api.Goroutine
 	)
 	th := d.process.CurrentThread
 	if th != nil {
 		thread = api.ConvertThread(th)
+		g, _ := th.GetG()
+		if g != nil {
+			goroutine = api.ConvertGoroutine(g)
+		}
 	}
 
 	var breakpoint *api.Breakpoint
@@ -121,9 +126,10 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 	}
 
 	state = &api.DebuggerState{
-		Breakpoint:    breakpoint,
-		CurrentThread: thread,
-		Exited:        d.process.Exited(),
+		Breakpoint:       breakpoint,
+		CurrentThread:    thread,
+		CurrentGoroutine: goroutine,
+		Exited:           d.process.Exited(),
 	}
 
 	return state, nil
@@ -245,6 +251,9 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.SwitchThread:
 		log.Printf("switching to thread %d", command.ThreadID)
 		err = d.process.SwitchThread(command.ThreadID)
+	case api.SwitchGoroutine:
+		log.Printf("switching to goroutine %d", command.GoroutineID)
+		err = d.process.SwitchGoroutine(command.GoroutineID)
 	case api.Halt:
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
@@ -282,21 +291,25 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		bpi.Stacktrace = convertStacktrace(rawlocs)
 	}
 
+	s, err := d.process.CurrentThread.Scope()
+	if err != nil {
+		return err
+	}
+
 	if len(bp.Variables) > 0 {
 		bpi.Variables = make([]api.Variable, len(bp.Variables))
 	}
 	for i := range bp.Variables {
-		v, err := d.process.CurrentThread.EvalVariable(bp.Variables[i])
+		v, err := s.EvalVariable(bp.Variables[i])
 		if err != nil {
 			return err
 		}
 		bpi.Variables[i] = api.ConvertVar(v)
 	}
-	vars, err := d.FunctionArguments(d.process.CurrentThread.Id)
+	vars, err := functionArguments(s)
 	if err == nil {
 		bpi.Arguments = vars
 	}
-
 	return nil
 }
 
@@ -345,7 +358,11 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 	if !found {
 		return nil, fmt.Errorf("couldn't find thread %d", threadID)
 	}
-	pv, err := thread.PackageVariables()
+	scope, err := thread.Scope()
+	if err != nil {
+		return nil, err
+	}
+	pv, err := scope.PackageVariables()
 	if err != nil {
 		return nil, err
 	}
@@ -369,44 +386,48 @@ func (d *Debugger) Registers(threadID int) (string, error) {
 	return regs.String(), err
 }
 
-func (d *Debugger) LocalVariables(threadID int) ([]api.Variable, error) {
-	vars := []api.Variable{}
-	thread, found := d.process.Threads[threadID]
-	if !found {
-		return nil, fmt.Errorf("couldn't find thread %d", threadID)
-	}
-	pv, err := thread.LocalVariables()
+func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
+	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
+	pv, err := s.LocalVariables()
+	if err != nil {
+		return nil, err
+	}
+	vars := make([]api.Variable, 0, len(pv))
 	for _, v := range pv {
 		vars = append(vars, api.ConvertVar(v))
 	}
 	return vars, err
 }
 
-func (d *Debugger) FunctionArguments(threadID int) ([]api.Variable, error) {
-	vars := []api.Variable{}
-	thread, found := d.process.Threads[threadID]
-	if !found {
-		return nil, fmt.Errorf("couldn't find thread %d", threadID)
-	}
-	pv, err := thread.FunctionArguments()
+func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error) {
+	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
+	return functionArguments(s)
+}
+
+func functionArguments(s *proc.EvalScope) ([]api.Variable, error) {
+	pv, err := s.FunctionArguments()
+	if err != nil {
+		return nil, err
+	}
+	vars := make([]api.Variable, 0, len(pv))
 	for _, v := range pv {
 		vars = append(vars, api.ConvertVar(v))
 	}
 	return vars, nil
 }
 
-func (d *Debugger) EvalVariableInThread(threadID int, symbol string) (*api.Variable, error) {
-	thread, found := d.process.Threads[threadID]
-	if !found {
-		return nil, fmt.Errorf("couldn't find thread %d", threadID)
+func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api.Variable, error) {
+	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	if err != nil {
+		return nil, err
 	}
-	v, err := thread.EvalVariable(symbol)
+	v, err := s.EvalVariable(symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +448,7 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 }
 
 func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
-	var rawlocs []proc.Location
+	var rawlocs []proc.Stackframe
 	var err error
 
 	if goroutineId < 0 {
@@ -458,23 +479,25 @@ func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 	return convertStacktrace(rawlocs), nil
 }
 
-func convertStacktrace(rawlocs []proc.Location) []api.Location {
+func convertStacktrace(rawlocs []proc.Stackframe) []api.Location {
 	locations := make([]api.Location, 0, len(rawlocs))
 	for i := range rawlocs {
 		rawlocs[i].Line--
-		locations = append(locations, api.ConvertLocation(rawlocs[i]))
+		locations = append(locations, api.ConvertLocation(rawlocs[i].Location))
 	}
 
 	return locations
 }
 
-func (d *Debugger) FindLocation(locStr string) ([]api.Location, error) {
+func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Location, error) {
 	loc, err := parseLocationSpec(locStr)
 	if err != nil {
 		return nil, err
 	}
 
-	locs, err := loc.Find(d, locStr)
+	s, _ := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+
+	locs, err := loc.Find(d, s, locStr)
 	for i := range locs {
 		file, line, fn := d.process.PCToLine(locs[i].PC)
 		locs[i].File = file
