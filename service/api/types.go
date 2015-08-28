@@ -7,6 +7,8 @@ type DebuggerState struct {
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// CurrentThread is the currently selected debugger thread.
 	CurrentThread *Thread `json:"currentThread,omitempty"`
+	// SelectedGoroutine is the currently selected goroutine
+	SelectedGoroutine *Goroutine `json:"currentGoroutine,omitempty"`
 	// Information requested by the current breakpoint
 	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
 	// Exited indicates whether the debugged process has exited.
@@ -105,6 +107,9 @@ type DebuggerCommand struct {
 	// ThreadID is used to specify which thread to use with the SwitchThread
 	// command.
 	ThreadID int `json:"threadID,omitempty"`
+	// GoroutineID is used to specify which thread to use with the SwitchGoroutine
+	// command.
+	GoroutineID int `json:"goroutineID,omitempty"`
 }
 
 // Informations about the current breakpoint
@@ -113,6 +118,11 @@ type BreakpointInfo struct {
 	Goroutine  *Goroutine `json:"goroutine,omitempty"`
 	Variables  []Variable `json:"variables,omitempty"`
 	Arguments  []Variable `json:"arguments,omitempty"`
+}
+
+type EvalScope struct {
+	GoroutineID int
+	Frame       int
 }
 
 const (
@@ -124,6 +134,8 @@ const (
 	Next = "next"
 	// SwitchThread switches the debugger's current thread context.
 	SwitchThread = "switchThread"
+	// SwitchGoroutine switches the debugger's current thread context to the thread running the specified goroutine
+	SwitchGoroutine = "switchGoroutine"
 	// Halt suspends the process.
 	Halt = "halt"
 )

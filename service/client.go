@@ -27,6 +27,8 @@ type Client interface {
 	Step() (*api.DebuggerState, error)
 	// SwitchThread switches the current thread context.
 	SwitchThread(threadID int) (*api.DebuggerState, error)
+	// SwitchGoroutine switches the current goroutine (and the current thread as well)
+	SwitchGoroutine(goroutineID int) (*api.DebuggerState, error)
 	// Halt suspends the process.
 	Halt() (*api.DebuggerState, error)
 
@@ -47,20 +49,18 @@ type Client interface {
 	// ListPackageVariables lists all package variables in the context of the current thread.
 	ListPackageVariables(filter string) ([]api.Variable, error)
 	// EvalVariable returns a variable in the context of the current thread.
-	EvalVariable(symbol string) (*api.Variable, error)
+	EvalVariable(scope api.EvalScope, symbol string) (*api.Variable, error)
 	// ListPackageVariablesFor lists all package variables in the context of a thread.
 	ListPackageVariablesFor(threadID int, filter string) ([]api.Variable, error)
-	// EvalVariableFor returns a variable in the context of the specified thread.
-	EvalVariableFor(threadID int, symbol string) (*api.Variable, error)
 
 	// ListSources lists all source files in the process matching filter.
 	ListSources(filter string) ([]string, error)
 	// ListFunctions lists all functions in the process matching filter.
 	ListFunctions(filter string) ([]string, error)
 	// ListLocals lists all local variables in scope.
-	ListLocalVariables() ([]api.Variable, error)
+	ListLocalVariables(scope api.EvalScope) ([]api.Variable, error)
 	// ListFunctionArgs lists all arguments to the current function.
-	ListFunctionArgs() ([]api.Variable, error)
+	ListFunctionArgs(scope api.EvalScope) ([]api.Variable, error)
 	// ListRegisters lists registers and their values.
 	ListRegisters() (string, error)
 
@@ -84,5 +84,5 @@ type Client interface {
 	// * <line> returns a location for a line in the current file
 	// * *<address> returns the location corresponding to the specified address
 	// NOTE: this function does not actually set breakpoints.
-	FindLocation(loc string) ([]api.Location, error)
+	FindLocation(scope api.EvalScope, loc string) ([]api.Location, error)
 }

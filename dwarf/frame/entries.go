@@ -52,9 +52,9 @@ func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
 }
 
 // Return the offset from the current SP that the return address is stored at.
-func (fde *FrameDescriptionEntry) ReturnAddressOffset(pc uint64) int64 {
+func (fde *FrameDescriptionEntry) ReturnAddressOffset(pc uint64) (frameOffset, returnAddressOffset int64) {
 	frame := fde.EstablishFrame(pc)
-	return frame.cfa.offset + frame.regs[fde.CIE.ReturnAddressRegister].offset
+	return frame.cfa.offset, frame.regs[fde.CIE.ReturnAddressRegister].offset
 }
 
 type FrameDescriptionEntries []*FrameDescriptionEntry

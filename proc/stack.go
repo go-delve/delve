@@ -13,6 +13,12 @@ func (nra NoReturnAddr) Error() string {
 	return fmt.Sprintf("could not find return address for %s", nra.fn)
 }
 
+type Stackframe struct {
+	Location
+	CFA int64
+	Ret uint64
+}
+
 // Takes an offset from RSP and returns the address of the
 // instruction the current function is going to return to.
 func (thread *Thread) ReturnAddress() (uint64, error) {
@@ -28,7 +34,7 @@ func (thread *Thread) ReturnAddress() (uint64, error) {
 
 // Returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func (thread *Thread) Stacktrace(depth int) ([]Location, error) {
+func (thread *Thread) Stacktrace(depth int) ([]Stackframe, error) {
 	regs, err := thread.Registers()
 	if err != nil {
 		return nil, err
@@ -38,7 +44,7 @@ func (thread *Thread) Stacktrace(depth int) ([]Location, error) {
 
 // Returns the stack trace for a goroutine.
 // Note the locations in the array are return addresses not call addresses.
-func (dbp *Process) GoroutineStacktrace(g *G, depth int) ([]Location, error) {
+func (dbp *Process) GoroutineStacktrace(g *G, depth int) ([]Stackframe, error) {
 	if g.thread != nil {
 		return g.thread.Stacktrace(depth)
 	}
@@ -57,42 +63,48 @@ func (n NullAddrError) Error() string {
 	return "NULL address"
 }
 
-func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Location, error) {
-	var (
-		ret       = pc
-		btoffset  int64
-		locations []Location
-		retaddr   uintptr
-	)
+func (dbp *Process) frameInfo(pc, sp uint64) (Stackframe, error) {
 	f, l, fn := dbp.PCToLine(pc)
-	locations = append(locations, Location{PC: pc, File: f, Line: l, Fn: fn})
-	for i := 0; i < depth; i++ {
-		fde, err := dbp.frameEntries.FDEForPC(ret)
-		if err != nil {
-			return nil, err
-		}
-		btoffset += fde.ReturnAddressOffset(ret)
-		retaddr = uintptr(int64(sp) + btoffset + int64(i*dbp.arch.PtrSize()))
-		if retaddr == 0 {
-			return nil, NullAddrError{}
-		}
-		data, err := dbp.CurrentThread.readMemory(retaddr, dbp.arch.PtrSize())
-		if err != nil {
-			return nil, err
-		}
-		ret = binary.LittleEndian.Uint64(data)
-		if ret <= 0 {
-			break
-		}
-		f, l, fn = dbp.goSymTable.PCToLine(ret)
-		if fn == nil {
-			break
-		}
-		locations = append(locations, Location{PC: ret, File: f, Line: l, Fn: fn})
-		// Look for "top of stack" functions.
-		if fn.Name == "runtime.rt0_go" {
-			break
-		}
+	fde, err := dbp.frameEntries.FDEForPC(pc)
+	if err != nil {
+		return Stackframe{}, err
 	}
-	return locations, nil
+	spoffset, retoffset := fde.ReturnAddressOffset(pc)
+	cfa := int64(sp) + spoffset
+
+	retaddr := uintptr(cfa + retoffset)
+	if retaddr == 0 {
+		return Stackframe{}, NullAddrError{}
+	}
+	data, err := dbp.CurrentThread.readMemory(retaddr, dbp.arch.PtrSize())
+	if err != nil {
+		return Stackframe{}, err
+	}
+	return Stackframe{Location: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, Ret: binary.LittleEndian.Uint64(data)}, nil
+}
+
+func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Stackframe, error) {
+	frames := make([]Stackframe, 0, depth+1)
+
+	for i := 0; i < depth+1; i++ {
+		frame, err := dbp.frameInfo(pc, sp)
+		if err != nil {
+			return nil, err
+		}
+		if frame.Fn == nil {
+			break
+		}
+		frames = append(frames, frame)
+		if frame.Ret <= 0 {
+			break
+		}
+		// Look for "top of stack" functions.
+		if frame.Fn.Name == "runtime.goexit" || frame.Fn.Name == "runtime.rt0_go" {
+			break
+		}
+
+		pc = frame.Ret
+		sp = uint64(frame.CFA)
+	}
+	return frames, nil
 }

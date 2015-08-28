@@ -58,6 +58,25 @@ type G struct {
 	thread *Thread
 }
 
+// Scope for variable evaluation
+type EvalScope struct {
+	Thread *Thread
+	PC     uint64
+	CFA    int64
+}
+
+func (scope *EvalScope) DwarfReader() *reader.Reader {
+	return scope.Thread.dbp.DwarfReader()
+}
+
+func (scope *EvalScope) Type(offset dwarf.Offset) (dwarf.Type, error) {
+	return scope.Thread.dbp.dwarf.Type(offset)
+}
+
+func (scope *EvalScope) PtrSize() int {
+	return scope.Thread.dbp.arch.PtrSize()
+}
+
 // Returns whether the goroutine is blocked on
 // a channel read operation.
 func (g *G) ChanRecvBlocked() bool {
@@ -201,15 +220,10 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 }
 
 // Returns the value of the named variable.
-func (thread *Thread) EvalVariable(name string) (*Variable, error) {
-	pc, err := thread.PC()
-	if err != nil {
-		return nil, err
-	}
+func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
+	reader := scope.DwarfReader()
 
-	reader := thread.dbp.DwarfReader()
-
-	_, err = reader.SeekToFunction(pc)
+	_, err := reader.SeekToFunction(scope.PC)
 	if err != nil {
 		return nil, err
 	}
@@ -234,19 +248,19 @@ func (thread *Thread) EvalVariable(name string) (*Variable, error) {
 
 		if n == varName {
 			if len(memberName) == 0 {
-				return thread.extractVariableFromEntry(entry)
+				return scope.extractVariableFromEntry(entry)
 			}
-			return thread.evaluateStructMember(entry, reader, memberName)
+			return scope.evaluateStructMember(entry, reader, memberName)
 		}
 	}
 
 	// Attempt to evaluate name as a package variable.
 	if memberName != "" {
-		return thread.EvalPackageVariable(name)
+		return scope.Thread.dbp.EvalPackageVariable(name)
 	} else {
-		loc, err := thread.Location()
-		if err == nil && loc.Fn != nil {
-			v, err := thread.EvalPackageVariable(loc.Fn.PackageName() + "." + name)
+		_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
+		if fn != nil {
+			v, err := scope.Thread.dbp.EvalPackageVariable(fn.PackageName() + "." + name)
 			if err == nil {
 				v.Name = name
 				return v, nil
@@ -258,18 +272,18 @@ func (thread *Thread) EvalVariable(name string) (*Variable, error) {
 }
 
 // LocalVariables returns all local variables from the current function scope.
-func (thread *Thread) LocalVariables() ([]*Variable, error) {
-	return thread.variablesByTag(dwarf.TagVariable)
+func (scope *EvalScope) LocalVariables() ([]*Variable, error) {
+	return scope.variablesByTag(dwarf.TagVariable)
 }
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
-func (thread *Thread) FunctionArguments() ([]*Variable, error) {
-	return thread.variablesByTag(dwarf.TagFormalParameter)
+func (scope *EvalScope) FunctionArguments() ([]*Variable, error) {
+	return scope.variablesByTag(dwarf.TagFormalParameter)
 }
 
 // PackageVariables returns the name, value, and type of all package variables in the application.
-func (thread *Thread) PackageVariables() ([]*Variable, error) {
-	reader := thread.dbp.DwarfReader()
+func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
+	reader := scope.DwarfReader()
 
 	vars := make([]*Variable, 0)
 
@@ -279,7 +293,7 @@ func (thread *Thread) PackageVariables() ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		val, err := thread.extractVariableFromEntry(entry)
+		val, err := scope.extractVariableFromEntry(entry)
 		if err != nil {
 			continue
 		}
@@ -289,8 +303,9 @@ func (thread *Thread) PackageVariables() ([]*Variable, error) {
 	return vars, nil
 }
 
-func (thread *Thread) EvalPackageVariable(name string) (*Variable, error) {
-	reader := thread.dbp.DwarfReader()
+func (dbp *Process) EvalPackageVariable(name string) (*Variable, error) {
+	reader := dbp.DwarfReader()
+	scope := &EvalScope{Thread: dbp.CurrentThread, PC: 0, CFA: 0}
 
 	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
 		if err != nil {
@@ -303,15 +318,15 @@ func (thread *Thread) EvalPackageVariable(name string) (*Variable, error) {
 		}
 
 		if n == name {
-			return thread.extractVariableFromEntry(entry)
+			return scope.extractVariableFromEntry(entry)
 		}
 	}
 
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
-func (thread *Thread) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader.Reader, memberName string) (*Variable, error) {
-	parentAddr, err := thread.extractVariableDataAddress(parentEntry, rdr)
+func (scope *EvalScope) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader.Reader, memberName string) (*Variable, error) {
+	parentAddr, err := scope.extractVariableDataAddress(parentEntry, rdr)
 	if err != nil {
 		return nil, err
 	}
@@ -355,8 +370,7 @@ func (thread *Thread) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader
 				return nil, fmt.Errorf("type assertion failed")
 			}
 
-			data := thread.dbp.dwarf
-			t, err := data.Type(offset)
+			t, err := scope.Type(offset)
 			if err != nil {
 				return nil, err
 			}
@@ -365,7 +379,7 @@ func (thread *Thread) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader
 			binary.LittleEndian.PutUint64(baseAddr, uint64(parentAddr))
 
 			parentInstructions := append([]byte{op.DW_OP_addr}, baseAddr...)
-			val, err := thread.extractValue(append(parentInstructions, memberInstr...), 0, t, true)
+			val, err := scope.extractValue(append(parentInstructions, memberInstr...), 0, t, true)
 			if err != nil {
 				return nil, err
 			}
@@ -377,7 +391,7 @@ func (thread *Thread) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader
 }
 
 // Extracts the name, type, and value of a variable from a dwarf entry
-func (thread *Thread) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
+func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
 	if entry == nil {
 		return nil, fmt.Errorf("invalid entry")
 	}
@@ -396,8 +410,7 @@ func (thread *Thread) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, e
 		return nil, fmt.Errorf("type assertion failed")
 	}
 
-	data := thread.dbp.dwarf
-	t, err := data.Type(offset)
+	t, err := scope.Type(offset)
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +420,7 @@ func (thread *Thread) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, e
 		return nil, fmt.Errorf("type assertion failed")
 	}
 
-	val, err := thread.extractValue(instructions, 0, t, true)
+	val, err := scope.extractValue(instructions, 0, t, true)
 	if err != nil {
 		return nil, err
 	}
@@ -415,35 +428,14 @@ func (thread *Thread) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, e
 	return &Variable{Name: n, Type: t.String(), Value: val}, nil
 }
 
-// Execute the stack program taking into account the current stack frame
-func (thread *Thread) executeStackProgram(instructions []byte) (int64, error) {
-	regs, err := thread.Registers()
-	if err != nil {
-		return 0, err
-	}
-
-	var cfa int64 = 0
-
-	fde, err := thread.dbp.frameEntries.FDEForPC(regs.PC())
-	if err == nil {
-		fctx := fde.EstablishFrame(regs.PC())
-		cfa = fctx.CFAOffset() + int64(regs.SP())
-	}
-	address, err := op.ExecuteStackProgram(cfa, instructions)
-	if err != nil {
-		return 0, err
-	}
-	return address, nil
-}
-
 // Extracts the address of a variable, dereferencing any pointers
-func (thread *Thread) extractVariableDataAddress(entry *dwarf.Entry, rdr *reader.Reader) (int64, error) {
+func (scope *EvalScope) extractVariableDataAddress(entry *dwarf.Entry, rdr *reader.Reader) (int64, error) {
 	instructions, err := rdr.InstructionsForEntry(entry)
 	if err != nil {
 		return 0, err
 	}
 
-	address, err := thread.executeStackProgram(instructions)
+	address, err := op.ExecuteStackProgram(scope.CFA, instructions)
 	if err != nil {
 		return 0, err
 	}
@@ -460,7 +452,7 @@ func (thread *Thread) extractVariableDataAddress(entry *dwarf.Entry, rdr *reader
 
 		ptraddress := uintptr(address)
 
-		ptr, err := thread.readMemory(ptraddress, thread.dbp.arch.PtrSize())
+		ptr, err := scope.Thread.readMemory(ptraddress, scope.PtrSize())
 		if err != nil {
 			return 0, err
 		}
@@ -473,15 +465,15 @@ func (thread *Thread) extractVariableDataAddress(entry *dwarf.Entry, rdr *reader
 // Extracts the value from the instructions given in the DW_AT_location entry.
 // We execute the stack program described in the DW_OP_* instruction stream, and
 // then grab the value from the other processes memory.
-func (thread *Thread) extractValue(instructions []byte, addr int64, typ interface{}, printStructName bool) (string, error) {
-	return thread.extractValueInternal(instructions, addr, typ, printStructName, 0)
+func (scope *EvalScope) extractValue(instructions []byte, addr int64, typ interface{}, printStructName bool) (string, error) {
+	return scope.extractValueInternal(instructions, addr, typ, printStructName, 0)
 }
 
-func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ interface{}, printStructName bool, recurseLevel int) (string, error) {
+func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, typ interface{}, printStructName bool, recurseLevel int) (string, error) {
 	var err error
 
 	if addr == 0 {
-		addr, err = thread.executeStackProgram(instructions)
+		addr, err = op.ExecuteStackProgram(scope.CFA, instructions)
 		if err != nil {
 			return "", err
 		}
@@ -500,7 +492,7 @@ func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ 
 	ptraddress := uintptr(addr)
 	switch t := typ.(type) {
 	case *dwarf.PtrType:
-		ptr, err := thread.readMemory(ptraddress, thread.dbp.arch.PtrSize())
+		ptr, err := scope.Thread.readMemory(ptraddress, scope.PtrSize())
 		if err != nil {
 			return "", err
 		}
@@ -511,7 +503,7 @@ func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ 
 		}
 
 		// Don't increase the recursion level when dereferencing pointers
-		val, err := thread.extractValueInternal(nil, intaddr, t.Type, printStructName, recurseLevel)
+		val, err := scope.extractValueInternal(nil, intaddr, t.Type, printStructName, recurseLevel)
 		if err != nil {
 			return "", err
 		}
@@ -520,16 +512,16 @@ func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ 
 	case *dwarf.StructType:
 		switch {
 		case t.StructName == "string":
-			return thread.readString(ptraddress)
+			return scope.Thread.readString(ptraddress)
 		case strings.HasPrefix(t.StructName, "[]"):
-			return thread.readSlice(ptraddress, t, recurseLevel)
+			return scope.readSlice(ptraddress, t, recurseLevel)
 		default:
 			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
 			if recurseLevel <= maxVariableRecurse {
 				fields := make([]string, 0, len(t.Field))
 				for _, field := range t.Field {
-					val, err := thread.extractValueInternal(nil, field.ByteOffset+addr, field.Type, printStructName, recurseLevel+1)
+					val, err := scope.extractValueInternal(nil, field.ByteOffset+addr, field.Type, printStructName, recurseLevel+1)
 					if err != nil {
 						return "", err
 					}
@@ -548,19 +540,19 @@ func (thread *Thread) extractValueInternal(instructions []byte, addr int64, typ 
 			return "{...}", nil
 		}
 	case *dwarf.ArrayType:
-		return thread.readArray(ptraddress, t, recurseLevel)
+		return scope.readArray(ptraddress, t, recurseLevel)
 	case *dwarf.ComplexType:
-		return thread.readComplex(ptraddress, t.ByteSize)
+		return scope.Thread.readComplex(ptraddress, t.ByteSize)
 	case *dwarf.IntType:
-		return thread.readInt(ptraddress, t.ByteSize)
+		return scope.Thread.readInt(ptraddress, t.ByteSize)
 	case *dwarf.UintType:
-		return thread.readUint(ptraddress, t.ByteSize)
+		return scope.Thread.readUint(ptraddress, t.ByteSize)
 	case *dwarf.FloatType:
-		return thread.readFloat(ptraddress, t.ByteSize)
+		return scope.Thread.readFloat(ptraddress, t.ByteSize)
 	case *dwarf.BoolType:
-		return thread.readBool(ptraddress)
+		return scope.Thread.readBool(ptraddress)
 	case *dwarf.FuncType:
-		return thread.readFunctionPtr(ptraddress)
+		return scope.Thread.readFunctionPtr(ptraddress)
 	case *dwarf.VoidType:
 		return "(void)", nil
 	case *dwarf.UnspecifiedType:
@@ -601,14 +593,14 @@ func (thread *Thread) readString(addr uintptr) (string, error) {
 	return *(*string)(unsafe.Pointer(&val)), nil
 }
 
-func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel int) (string, error) {
+func (scope *EvalScope) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel int) (string, error) {
 	var sliceLen, sliceCap int64
 	var arrayAddr uintptr
 	var arrayType dwarf.Type
 	for _, f := range t.Field {
 		switch f.Name {
 		case "array":
-			val, err := thread.readMemory(addr+uintptr(f.ByteOffset), thread.dbp.arch.PtrSize())
+			val, err := scope.Thread.readMemory(addr+uintptr(f.ByteOffset), scope.PtrSize())
 			if err != nil {
 				return "", err
 			}
@@ -620,7 +612,7 @@ func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel 
 			}
 			arrayType = ptrType.Type
 		case "len":
-			lstr, err := thread.extractValue(nil, int64(addr+uintptr(f.ByteOffset)), f.Type, true)
+			lstr, err := scope.extractValue(nil, int64(addr+uintptr(f.ByteOffset)), f.Type, true)
 			if err != nil {
 				return "", err
 			}
@@ -629,7 +621,7 @@ func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel 
 				return "", err
 			}
 		case "cap":
-			cstr, err := thread.extractValue(nil, int64(addr+uintptr(f.ByteOffset)), f.Type, true)
+			cstr, err := scope.extractValue(nil, int64(addr+uintptr(f.ByteOffset)), f.Type, true)
 			if err != nil {
 				return "", err
 			}
@@ -642,9 +634,9 @@ func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel 
 
 	stride := arrayType.Size()
 	if _, ok := arrayType.(*dwarf.PtrType); ok {
-		stride = int64(thread.dbp.arch.PtrSize())
+		stride = int64(scope.PtrSize())
 	}
-	vals, err := thread.readArrayValues(arrayAddr, sliceLen, stride, arrayType, recurseLevel)
+	vals, err := scope.readArrayValues(arrayAddr, sliceLen, stride, arrayType, recurseLevel)
 	if err != nil {
 		return "", err
 	}
@@ -652,9 +644,9 @@ func (thread *Thread) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel 
 	return fmt.Sprintf("[]%s len: %d, cap: %d, [%s]", arrayType, sliceLen, sliceCap, strings.Join(vals, ",")), nil
 }
 
-func (thread *Thread) readArray(addr uintptr, t *dwarf.ArrayType, recurseLevel int) (string, error) {
+func (scope *EvalScope) readArray(addr uintptr, t *dwarf.ArrayType, recurseLevel int) (string, error) {
 	if t.Count > 0 {
-		vals, err := thread.readArrayValues(addr, t.Count, t.ByteSize/t.Count, t.Type, recurseLevel)
+		vals, err := scope.readArrayValues(addr, t.Count, t.ByteSize/t.Count, t.Type, recurseLevel)
 		if err != nil {
 			return "", err
 		}
@@ -664,7 +656,7 @@ func (thread *Thread) readArray(addr uintptr, t *dwarf.ArrayType, recurseLevel i
 	return fmt.Sprintf("%s []", t), nil
 }
 
-func (thread *Thread) readArrayValues(addr uintptr, count int64, stride int64, t dwarf.Type, recurseLevel int) ([]string, error) {
+func (scope *EvalScope) readArrayValues(addr uintptr, count int64, stride int64, t dwarf.Type, recurseLevel int) ([]string, error) {
 	vals := make([]string, 0)
 
 	for i := int64(0); i < count; i++ {
@@ -674,7 +666,7 @@ func (thread *Thread) readArrayValues(addr uintptr, count int64, stride int64, t
 			break
 		}
 
-		val, err := thread.extractValueInternal(nil, int64(addr+uintptr(i*stride)), t, false, recurseLevel+1)
+		val, err := scope.extractValueInternal(nil, int64(addr+uintptr(i*stride)), t, false, recurseLevel+1)
 		if err != nil {
 			return nil, err
 		}
@@ -825,15 +817,10 @@ func (thread *Thread) readFunctionPtr(addr uintptr) (string, error) {
 }
 
 // Fetches all variables of a specific type in the current function scope
-func (thread *Thread) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
-	pc, err := thread.PC()
-	if err != nil {
-		return nil, err
-	}
+func (scope *EvalScope) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
+	reader := scope.DwarfReader()
 
-	reader := thread.dbp.DwarfReader()
-
-	_, err = reader.SeekToFunction(pc)
+	_, err := reader.SeekToFunction(scope.PC)
 	if err != nil {
 		return nil, err
 	}
@@ -846,7 +833,7 @@ func (thread *Thread) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
 		}
 
 		if entry.Tag == tag {
-			val, err := thread.extractVariableFromEntry(entry)
+			val, err := scope.extractVariableFromEntry(entry)
 			if err != nil {
 				// skip variables that we can't parse yet
 				continue

@@ -127,7 +127,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		os:  new(OSSpecificDetails),
 	}
 	if dbp.CurrentThread == nil {
-		dbp.CurrentThread = dbp.Threads[tid]
+		dbp.SwitchThread(tid)
 	}
 	return dbp.Threads[tid], nil
 }

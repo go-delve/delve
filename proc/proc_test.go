@@ -310,9 +310,14 @@ func TestNextConcurrent(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint")
 		assertNoError(p.Continue(), t, "Continue")
 		f, ln := currentLineNumber(p, t)
-		initV, err := p.EvalVariable("n")
+		initV, err := evalVariable(p, "n")
 		assertNoError(err, t, "EvalVariable")
 		for _, tc := range testcases {
+			g, err := p.CurrentThread.GetG()
+			assertNoError(err, t, "GetG()")
+			if p.SelectedGoroutine.Id != g.Id {
+				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.Id, p.SelectedGoroutine.Id)
+			}
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
@@ -321,7 +326,7 @@ func TestNextConcurrent(t *testing.T) {
 			if ln != tc.end {
 				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
 			}
-			v, err := p.EvalVariable("n")
+			v, err := evalVariable(p, "n")
 			assertNoError(err, t, "EvalVariable")
 			if v.Value != initV.Value {
 				t.Fatal("Did not end up on same goroutine")
@@ -527,7 +532,7 @@ type loc struct {
 	fn   string
 }
 
-func (l1 *loc) match(l2 Location) bool {
+func (l1 *loc) match(l2 Stackframe) bool {
 	if l1.line >= 0 {
 		if l1.line != l2.Line-1 {
 			return false
@@ -555,6 +560,8 @@ func TestStacktrace(t *testing.T) {
 				t.Fatalf("Wrong stack trace size %d %d\n", len(locations), len(stacks[i])+2)
 			}
 
+			t.Logf("Stacktrace %d: %v\n", i, locations)
+
 			for j := range stacks[i] {
 				if !stacks[i][j].match(locations[j]) {
 					t.Fatalf("Wrong stack trace pos %d\n", j)
@@ -567,7 +574,7 @@ func TestStacktrace(t *testing.T) {
 	})
 }
 
-func stackMatch(stack []loc, locations []Location) bool {
+func stackMatch(stack []loc, locations []Stackframe) bool {
 	if len(stack) > len(locations) {
 		return false
 	}
