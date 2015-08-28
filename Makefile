@@ -24,11 +24,13 @@ endif
 endif
 
 deps: check-cert
+ifeq "$(SKIP_DEPS)" ""
 	go get -u github.com/peterh/liner
 	go get -u github.com/spf13/cobra
 	go get -u golang.org/x/sys/unix
 	go get -u github.com/davecheney/profile
 	go get -u gopkg.in/yaml.v2
+endif
 
 build: deps
 	go build $(FLAGS) github.com/derekparker/delve/cmd/dlv
