@@ -75,7 +75,6 @@ func newStateMachine(dbl *DebugLineInfo) *StateMachine {
 // Returns all PCs for a given file/line. Useful for loops where the 'for' line
 // could be split amongst 2 PCs.
 func (dbl *DebugLines) AllPCsForFileLine(f string, l int) (pcs []uint64) {
-
 	lineInfo := dbl.GetLineInfo(f)
 
 	var (

@@ -37,10 +37,8 @@ type FileEntry struct {
 type DebugLines []*DebugLineInfo
 
 func (d *DebugLines) GetLineInfo(name string) *DebugLineInfo {
-	/*
-		Find in which table file exists.
-		Return that table
-	*/
+	//Find in which table file exists.
+	//Return that table
 	for _, l := range *d {
 		if fe := l.GetFileEntry(name); fe != nil {
 			return l
@@ -69,14 +67,10 @@ func Parse(data []byte) DebugLines {
 		parseIncludeDirs(dbl, buf)
 		parseFileEntries(dbl, buf)
 
-		/*
-			Instructions size calculation breakdown:
-
-			- dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
-			- dbl.Prologue.Length is the length of the prologue not including unit length, version or the prologue length itself.
-			- So you have UnitLength - PrologueLength - (version_length_bytes(2) + prologue_length_bytes(4)).
-			- thanks to Derek for ^
-		*/
+		//Instructions size calculation breakdown:
+		//- dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
+		//- dbl.Prologue.Length is the length of the prologue not including unit length, version or the prologue length itself.
+		//- So you have UnitLength - PrologueLength - (version_length_bytes(2) + prologue_length_bytes(4)).
 		dbl.Instructions = buf.Next(int(dbl.Prologue.UnitLength - dbl.Prologue.Length - 6))
 
 		lines = append(lines, dbl)
