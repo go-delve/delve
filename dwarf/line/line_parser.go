@@ -8,9 +8,9 @@ import (
 )
 
 type DebugLinePrologue struct {
-	Length         uint32
+	UnitLength     uint32
 	Version        uint16
-	PrologueLength uint32
+	Length         uint32
 	MinInstrLength uint8
 	InitialIsStmt  uint8
 	LineBase       int8
@@ -24,6 +24,7 @@ type DebugLineInfo struct {
 	IncludeDirs  []string
 	FileNames    []*FileEntry
 	Instructions []byte
+	Lookup       map[string]*FileEntry
 }
 
 type FileEntry struct {
@@ -33,26 +34,57 @@ type FileEntry struct {
 	Length      uint64
 }
 
-func Parse(data []byte) *DebugLineInfo {
+type DebugLines []*DebugLineInfo
+
+func (d *DebugLines) GetLineInfo(name string) *DebugLineInfo {
+	//Find in which table file exists.
+	//Return that table
+	for _, l := range *d {
+		if fe := l.GetFileEntry(name); fe != nil {
+			return l
+		}
+	}
+
+	return nil
+}
+
+func (d *DebugLineInfo) GetFileEntry(name string) *FileEntry {
+	return d.Lookup[name]
+}
+
+func Parse(data []byte) DebugLines {
 	var (
-		dbl = new(DebugLineInfo)
-		buf = bytes.NewBuffer(data)
+		lines = make(DebugLines, 0)
+		buf   = bytes.NewBuffer(data)
 	)
 
-	parseDebugLinePrologue(dbl, buf)
-	parseIncludeDirs(dbl, buf)
-	parseFileEntries(dbl, buf)
-	dbl.Instructions = buf.Bytes()
+	// we have to scan multiple file name tables here
+	for buf.Len() > 0 {
+		dbl := new(DebugLineInfo)
+		dbl.Lookup = make(map[string]*FileEntry)
 
-	return dbl
+		parseDebugLinePrologue(dbl, buf)
+		parseIncludeDirs(dbl, buf)
+		parseFileEntries(dbl, buf)
+
+		//Instructions size calculation breakdown:
+		//- dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
+		//- dbl.Prologue.Length is the length of the prologue not including unit length, version or the prologue length itself.
+		//- So you have UnitLength - PrologueLength - (version_length_bytes(2) + prologue_length_bytes(4)).
+		dbl.Instructions = buf.Next(int(dbl.Prologue.UnitLength - dbl.Prologue.Length - 6))
+
+		lines = append(lines, dbl)
+	}
+
+	return lines
 }
 
 func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 	p := new(DebugLinePrologue)
 
-	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
+	p.UnitLength = binary.LittleEndian.Uint32(buf.Next(4))
 	p.Version = binary.LittleEndian.Uint16(buf.Next(2))
-	p.PrologueLength = binary.LittleEndian.Uint32(buf.Next(4))
+	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
 	p.MinInstrLength = uint8(buf.Next(1)[0])
 	p.InitialIsStmt = uint8(buf.Next(1)[0])
 	p.LineBase = int8(buf.Next(1)[0])
@@ -91,5 +123,6 @@ func parseFileEntries(info *DebugLineInfo, buf *bytes.Buffer) {
 		entry.Length, _ = util.DecodeULEB128(buf)
 
 		info.FileNames = append(info.FileNames, entry)
+		info.Lookup[name] = entry
 	}
 }

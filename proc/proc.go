@@ -38,7 +38,7 @@ type Process struct {
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
 	frameEntries            frame.FrameDescriptionEntries
-	lineInfo                *line.DebugLineInfo
+	lineInfo                line.DebugLines
 	firstStart              bool
 	os                      *OSProcessDetails
 	arch                    Arch

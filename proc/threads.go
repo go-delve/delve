@@ -168,7 +168,7 @@ func (thread *Thread) setNextBreakpoints() (err error) {
 	if filepath.Ext(loc.File) == ".go" {
 		err = thread.next(curpc, fde, loc.File, loc.Line)
 	} else {
-		err = thread.cnext(curpc, fde)
+		err = thread.cnext(curpc, fde, loc.File)
 	}
 	return err
 }
@@ -226,8 +226,8 @@ func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file 
 // Set a breakpoint at every reachable location, as well as the return address. Without
 // the benefit of an AST we can't be sure we're not at a branching statement and thus
 // cannot accurately predict where we may end up.
-func (thread *Thread) cnext(curpc uint64, fde *frame.FrameDescriptionEntry) error {
-	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End())
+func (thread *Thread) cnext(curpc uint64, fde *frame.FrameDescriptionEntry, file string) error {
+	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End(), file)
 	ret, err := thread.ReturnAddress()
 	if err != nil {
 		return err

@@ -74,12 +74,14 @@ func newStateMachine(dbl *DebugLineInfo) *StateMachine {
 
 // Returns all PCs for a given file/line. Useful for loops where the 'for' line
 // could be split amongst 2 PCs.
-func (dbl *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64) {
+func (dbl *DebugLines) AllPCsForFileLine(f string, l int) (pcs []uint64) {
+	lineInfo := dbl.GetLineInfo(f)
+
 	var (
+		sm        = newStateMachine(lineInfo)
+		buf       = bytes.NewBuffer(lineInfo.Instructions)
 		foundFile bool
 		lastAddr  uint64
-		sm        = newStateMachine(dbl)
-		buf       = bytes.NewBuffer(dbl.Instructions)
 	)
 
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
@@ -105,11 +107,12 @@ func (dbl *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64) {
 	return
 }
 
-func (dbl *DebugLineInfo) AllPCsBetween(begin, end uint64) []uint64 {
+func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) []uint64 {
+	lineInfo := dbl.GetLineInfo(filename)
 	var (
 		pcs []uint64
-		sm  = newStateMachine(dbl)
-		buf = bytes.NewBuffer(dbl.Instructions)
+		sm  = newStateMachine(lineInfo)
+		buf = bytes.NewBuffer(lineInfo.Instructions)
 	)
 
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
