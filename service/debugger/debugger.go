@@ -110,13 +110,13 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 		thread    *api.Thread
 		goroutine *api.Goroutine
 	)
-	th := d.process.CurrentThread
-	if th != nil {
-		thread = api.ConvertThread(th)
-		g, _ := th.GetG()
-		if g != nil {
-			goroutine = api.ConvertGoroutine(g)
-		}
+
+	if d.process.CurrentThread != nil {
+		thread = api.ConvertThread(d.process.CurrentThread)
+	}
+
+	if d.process.SelectedGoroutine != nil {
+		goroutine = api.ConvertGoroutine(d.process.SelectedGoroutine)
 	}
 
 	var breakpoint *api.Breakpoint
@@ -126,10 +126,10 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 	}
 
 	state = &api.DebuggerState{
-		Breakpoint:       breakpoint,
-		CurrentThread:    thread,
-		CurrentGoroutine: goroutine,
-		Exited:           d.process.Exited(),
+		Breakpoint:        breakpoint,
+		CurrentThread:     thread,
+		SelectedGoroutine: goroutine,
+		Exited:            d.process.Exited(),
 	}
 
 	return state, nil
@@ -452,9 +452,16 @@ func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 	var err error
 
 	if goroutineId < 0 {
-		rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
-		if err != nil {
-			return nil, err
+		if d.process.SelectedGoroutine != nil {
+			rawlocs, err = d.process.GoroutineStacktrace(d.process.SelectedGoroutine, depth)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
+			if err != nil {
+				return nil, err
+			}
 		}
 	} else {
 		gs, err := d.process.GoroutinesInfo()

@@ -7,8 +7,8 @@ type DebuggerState struct {
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// CurrentThread is the currently selected debugger thread.
 	CurrentThread *Thread `json:"currentThread,omitempty"`
-	// CurrentGoroutine is the currently selected goroutine
-	CurrentGoroutine *Goroutine `json:"currentGoroutine,omitempty"`
+	// SelectedGoroutine is the currently selected goroutine
+	SelectedGoroutine *Goroutine `json:"currentGoroutine,omitempty"`
 	// Information requested by the current breakpoint
 	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
 	// Exited indicates whether the debugged process has exited.

@@ -313,6 +313,11 @@ func TestNextConcurrent(t *testing.T) {
 		initV, err := evalVariable(p, "n")
 		assertNoError(err, t, "EvalVariable")
 		for _, tc := range testcases {
+			g, err := p.CurrentThread.GetG()
+			assertNoError(err, t, "GetG()")
+			if p.SelectedGoroutine.Id != g.Id {
+				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.Id, p.SelectedGoroutine.Id)
+			}
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}

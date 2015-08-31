@@ -178,7 +178,7 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 	dbp.Threads[port] = thread
 	thread.os.thread_act = C.thread_act_t(port)
 	if dbp.CurrentThread == nil {
-		dbp.CurrentThread = thread
+		dbp.SwitchThread(thread.Id)
 	}
 	return thread, nil
 }

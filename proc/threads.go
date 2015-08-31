@@ -280,6 +280,12 @@ func (thread *Thread) GetG() (g *G, err error) {
 		return nil, err
 	}
 
+	if thread.dbp.arch.GStructOffset() == 0 {
+		// GetG was called through SwitchThread / updateThreadList during initialization
+		// thread.dbp.arch isn't setup yet (it needs a CurrentThread to read global variables from)
+		return nil, fmt.Errorf("g struct offset not initialized")
+	}
+
 	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), thread.dbp.arch.PtrSize())
 	if err != nil {
 		return nil, err
