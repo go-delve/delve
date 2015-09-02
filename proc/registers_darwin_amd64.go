@@ -62,7 +62,7 @@ func (r *Regs) String() string {
 		{"Gs_base", r.gs_base},
 	}
 	for _, reg := range regs {
-		fmt.Fprintf(&buf, "%s = 0x%x\n", reg.k, reg.v)
+		fmt.Fprintf(&buf, "%8s = %0#16x\n", reg.k, reg.v)
 	}
 	return buf.String()
 }
