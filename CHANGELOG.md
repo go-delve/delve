@@ -5,6 +5,25 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [0.8.0-alpha] 2015-09-05
+
+### Added
+- New command: 'frame'. Accepts a frame number and a command to execute in the context of that frame. (@aarzilli)
+- New command: 'goroutine'. Accepts goroutine ID and optionally a command to execute within the context of that goroutine. (@aarzilli)
+- New subcommand: 'exec'. Allows user to debug existing binary.
+- Add config file and add config options for command aliases. (@tylerb)
+
+### Changed
+- Add Go 1.5 to travis list.
+- Stop shortening file paths from API, shorten instead in terminal UI.
+- Implemented several improvements for `next`ing through highly parallel programs.
+- Visually align registers. (@paulsmith)
+
+### Fixed
+- Fixed output of 'goroutines' command.
+- Stopped preserving temp breakpoints on restart.
+- Added support for parsing multiple DWARF file tables. (@Omie)
+
 ## [0.7.0-alpha] 2015-08-14
 
 ### Added
