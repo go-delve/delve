@@ -19,6 +19,10 @@ import (
 )
 
 type cmdfunc func(client service.Client, args ...string) error
+type scopedCmdfunc func(client service.Client, scope api.EvalScope, args ...string) error
+
+type filteringFunc func(client service.Client, filter string) ([]string, error)
+type scopedFilteringFunc func(client service.Client, scope api.EvalScope, filter string) ([]string, error)
 
 type command struct {
 	aliases []string
@@ -61,11 +65,11 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		{aliases: []string{"goroutine"}, cmdFn: goroutine, helpMsg: "Sets current goroutine."},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
-		{aliases: []string{"print", "p"}, cmdFn: printVar, helpMsg: "Evaluate a variable."},
+		{aliases: []string{"print", "p"}, cmdFn: g0f0(printVar), helpMsg: "Evaluate a variable."},
 		{aliases: []string{"sources"}, cmdFn: filterSortAndOutput(sources), helpMsg: "Print list of source files, optionally filtered by a regexp."},
 		{aliases: []string{"funcs"}, cmdFn: filterSortAndOutput(funcs), helpMsg: "Print list of functions, optionally filtered by a regexp."},
-		{aliases: []string{"args"}, cmdFn: filterSortAndOutput(args), helpMsg: "Print function arguments, optionally filtered by a regexp."},
-		{aliases: []string{"locals"}, cmdFn: filterSortAndOutput(locals), helpMsg: "Print function locals, optionally filtered by a regexp."},
+		{aliases: []string{"args"}, cmdFn: filterSortAndOutput(g0f0filter(args)), helpMsg: "Print function arguments, optionally filtered by a regexp."},
+		{aliases: []string{"locals"}, cmdFn: filterSortAndOutput(g0f0filter(locals)), helpMsg: "Print function locals, optionally filtered by a regexp."},
 		{aliases: []string{"vars"}, cmdFn: filterSortAndOutput(vars), helpMsg: "Print package variables, optionally filtered by a regexp."},
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
@@ -204,6 +208,10 @@ func thread(client service.Client, args ...string) error {
 }
 
 func goroutines(client service.Client, args ...string) error {
+	state, err := client.GetState()
+	if err != nil {
+		return err
+	}
 	gs, err := client.ListGoroutines()
 	if err != nil {
 		return err
@@ -211,7 +219,7 @@ func goroutines(client service.Client, args ...string) error {
 	fmt.Printf("[%d goroutines]\n", len(gs))
 	for _, g := range gs {
 		prefix := "  "
-		if g.ID == client.EvalScope().GoroutineID {
+		if g.ID == state.SelectedGoroutine.ID {
 			prefix = "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g))
@@ -220,41 +228,87 @@ func goroutines(client service.Client, args ...string) error {
 }
 
 func goroutine(client service.Client, args ...string) error {
-	if len(args) == 0 {
+	switch len(args) {
+	case 0:
 		return printscope(client)
-	}
-	gid, err := strconv.Atoi(args[0])
-	if err != nil {
-		return err
-	}
 
-	oldGid := client.EvalScope().GoroutineID
-
-	newState, err := client.SwitchGoroutine(gid)
-	if err != nil {
-		newState, err = client.GetState()
+	case 1:
+		gid, err := strconv.Atoi(args[0])
 		if err != nil {
 			return err
 		}
-	}
 
-	if client.EvalScope().GoroutineID != gid {
-		client.EvalScope().GoroutineID = gid
-		fmt.Printf("Switched from %d to %d (Warning: goroutine is not associated to a thread)\n", oldGid, gid)
-	} else {
-		fmt.Printf("Switched from %d to %d (Thread: %d)\n", oldGid, gid, newState.CurrentThread.ID)
-	}
+		oldState, err := client.GetState()
+		if err != nil {
+			return err
+		}
+		newState, err := client.SwitchGoroutine(gid)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
+		return nil
+
+	default:
+		return scopePrefix(client, "goroutine", args...)
+	}
 }
 
 func frame(client service.Client, args ...string) error {
-	if len(args) == 0 {
-		return printscope(client)
+	return scopePrefix(client, "frame", args...)
+}
+
+func scopePrefix(client service.Client, cmdname string, pargs ...string) error {
+	fullargs := make([]string, 0, len(pargs)+1)
+	fullargs = append(fullargs, cmdname)
+	fullargs = append(fullargs, pargs...)
+
+	scope := api.EvalScope{-1, 0}
+	lastcmd := ""
+
+	callFilterSortAndOutput := func(fn scopedFilteringFunc, fnargs []string) error {
+		outfn := filterSortAndOutput(func(client service.Client, filter string) ([]string, error) {
+			return fn(client, scope, filter)
+		})
+		return outfn(client, fnargs...)
 	}
-	var err error
-	client.EvalScope().Frame, err = strconv.Atoi(args[0])
-	return err
+
+	for i := 0; i < len(fullargs); i++ {
+		lastcmd = fullargs[i]
+		switch fullargs[i] {
+		case "goroutine":
+			if i+1 >= len(fullargs) {
+				return fmt.Errorf("goroutine command needs an argument")
+			}
+			n, err := strconv.Atoi(fullargs[i+1])
+			if err != nil {
+				return fmt.Errorf("invalid argument to goroutine, expected integer")
+			}
+			scope.GoroutineID = int(n)
+			i++
+		case "frame":
+			if i+1 >= len(fullargs) {
+				return fmt.Errorf("frame command needs an argument")
+			}
+			n, err := strconv.Atoi(fullargs[i+1])
+			if err != nil {
+				return fmt.Errorf("invalid argument to frame, expected integer")
+			}
+			scope.Frame = int(n)
+			i++
+		case "locals":
+			return callFilterSortAndOutput(locals, fullargs[i+1:])
+		case "args":
+			return callFilterSortAndOutput(args, fullargs[i+1:])
+		case "print", "p":
+			return printVar(client, scope, fullargs[i+1:]...)
+		default:
+			return fmt.Errorf("unknown command %s", fullargs[i])
+		}
+	}
+
+	return fmt.Errorf("no command passed to %s", lastcmd)
 }
 
 func printscope(client service.Client) error {
@@ -263,24 +317,7 @@ func printscope(client service.Client) error {
 		return err
 	}
 
-	var g *api.Goroutine
-	if state.CurrentGoroutine != nil && state.CurrentGoroutine.ID == client.EvalScope().GoroutineID {
-		g = state.CurrentGoroutine
-	} else {
-		gs, err := client.ListGoroutines()
-		if err != nil {
-			return err
-		}
-
-		for i := range gs {
-			if gs[i].ID == client.EvalScope().GoroutineID {
-				g = gs[i]
-				break
-			}
-		}
-	}
-
-	fmt.Printf("Thread %s\nGoroutine %s Frame %d\n", formatThread(state.CurrentThread), formatGoroutine(g), client.EvalScope().Frame)
+	fmt.Printf("Thread %s\nGoroutine %s\n", formatThread(state.CurrentThread), formatGoroutine(state.SelectedGoroutine))
 	return nil
 }
 
@@ -430,7 +467,7 @@ func setBreakpoint(client service.Client, tracepoint bool, args ...string) error
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := client.FindLocation(*client.EvalScope(), args[0])
+	locs, err := client.FindLocation(api.EvalScope{-1, 0}, args[0])
 	if err != nil {
 		return err
 	}
@@ -459,11 +496,23 @@ func tracepoint(client service.Client, args ...string) error {
 	return setBreakpoint(client, true, args...)
 }
 
-func printVar(client service.Client, args ...string) error {
+func g0f0(fn scopedCmdfunc) cmdfunc {
+	return func(client service.Client, args ...string) error {
+		return fn(client, api.EvalScope{-1, 0}, args...)
+	}
+}
+
+func g0f0filter(fn scopedFilteringFunc) filteringFunc {
+	return func(client service.Client, filter string) ([]string, error) {
+		return fn(client, api.EvalScope{-1, 0}, filter)
+	}
+}
+
+func printVar(client service.Client, scope api.EvalScope, args ...string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
-	val, err := client.EvalVariable(*client.EvalScope(), args[0])
+	val, err := client.EvalVariable(scope, args[0])
 	if err != nil {
 		return err
 	}
@@ -494,16 +543,16 @@ func funcs(client service.Client, filter string) ([]string, error) {
 	return client.ListFunctions(filter)
 }
 
-func args(client service.Client, filter string) ([]string, error) {
-	vars, err := client.ListFunctionArgs(*client.EvalScope())
+func args(client service.Client, scope api.EvalScope, filter string) ([]string, error) {
+	vars, err := client.ListFunctionArgs(scope)
 	if err != nil {
 		return nil, err
 	}
 	return filterVariables(vars, filter), nil
 }
 
-func locals(client service.Client, filter string) ([]string, error) {
-	locals, err := client.ListLocalVariables(*client.EvalScope())
+func locals(client service.Client, scope api.EvalScope, filter string) ([]string, error) {
+	locals, err := client.ListLocalVariables(scope)
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +576,7 @@ func regs(client service.Client, args ...string) error {
 	return nil
 }
 
-func filterSortAndOutput(fn func(client service.Client, filter string) ([]string, error)) cmdfunc {
+func filterSortAndOutput(fn filteringFunc) cmdfunc {
 	return func(client service.Client, args ...string) error {
 		var filter string
 		if len(args) == 1 {
@@ -551,7 +600,7 @@ func filterSortAndOutput(fn func(client service.Client, filter string) ([]string
 func stackCommand(client service.Client, args ...string) error {
 	var err error
 
-	goroutineid := client.EvalScope().GoroutineID
+	goroutineid := -1
 	depth := 10
 
 	switch len(args) {
@@ -577,7 +626,7 @@ func stackCommand(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
-	printStack(stack, "", goroutineid == client.EvalScope().GoroutineID, client.EvalScope().Frame)
+	printStack(stack, "")
 	return nil
 }
 
@@ -591,7 +640,7 @@ func listCommand(client service.Client, args ...string) error {
 		return nil
 	}
 
-	locs, err := client.FindLocation(*client.EvalScope(), args[0])
+	locs, err := client.FindLocation(api.EvalScope{-1, 0}, args[0])
 	if err != nil {
 		return err
 	}
@@ -602,17 +651,13 @@ func listCommand(client service.Client, args ...string) error {
 	return nil
 }
 
-func printStack(stack []api.Location, ind string, currentGoroutine bool, frame int) {
+func printStack(stack []api.Location, ind string) {
 	for i := range stack {
 		name := "(nil)"
 		if stack[i].Function != nil {
 			name = stack[i].Function.Name
 		}
-		prefix := " "
-		if currentGoroutine && i == frame {
-			prefix = "*"
-		}
-		fmt.Printf("%s%s%d. %s %s:%d (%#v)\n", ind, prefix, i, name, shortenFilePath(stack[i].File), stack[i].Line, stack[i].PC)
+		fmt.Printf("%s%d. %s %s:%d (%#v)\n", ind, i, name, shortenFilePath(stack[i].File), stack[i].Line, stack[i].PC)
 	}
 }
 
@@ -655,7 +700,7 @@ func printcontext(state *api.DebuggerState) error {
 
 		if bpi.Stacktrace != nil {
 			fmt.Printf("\tStack:\n")
-			printStack(bpi.Stacktrace, "\t\t", false, -1)
+			printStack(bpi.Stacktrace, "\t\t")
 		}
 	}
 	if state.Breakpoint != nil && state.Breakpoint.Tracepoint {

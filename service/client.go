@@ -85,7 +85,4 @@ type Client interface {
 	// * *<address> returns the location corresponding to the specified address
 	// NOTE: this function does not actually set breakpoints.
 	FindLocation(scope api.EvalScope, loc string) ([]api.Location, error)
-
-	// Returns the current EvalScope
-	EvalScope() *api.EvalScope
 }

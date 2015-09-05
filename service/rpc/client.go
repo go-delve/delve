@@ -15,7 +15,6 @@ type RPCClient struct {
 	addr       string
 	processPid int
 	client     *rpc.Client
-	evalScope  api.EvalScope
 }
 
 // Ensure the implementation satisfies the interface.
@@ -28,9 +27,8 @@ func NewClient(addr string) *RPCClient {
 		log.Fatal("dialing:", err)
 	}
 	return &RPCClient{
-		addr:      addr,
-		client:    client,
-		evalScope: api.EvalScope{-1, 0},
+		addr:   addr,
+		client: client,
 	}
 }
 
@@ -67,7 +65,6 @@ func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 				// Error types apparantly cannot be marshalled by Go correctly. Must reset error here.
 				state.Err = fmt.Errorf("Process %d has exited with status %d", c.ProcessPid(), state.ExitStatus)
 			}
-			c.setEvalScope(state)
 			ch <- state
 			if err != nil || state.Exited || state.Breakpoint == nil || !state.Breakpoint.Tracepoint {
 				close(ch)
@@ -81,14 +78,12 @@ func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 func (c *RPCClient) Next() (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
 	err := c.call("Command", &api.DebuggerCommand{Name: api.Next}, state)
-	c.setEvalScope(state)
 	return state, err
 }
 
 func (c *RPCClient) Step() (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
 	err := c.call("Command", &api.DebuggerCommand{Name: api.Step}, state)
-	c.setEvalScope(state)
 	return state, err
 }
 
@@ -99,7 +94,6 @@ func (c *RPCClient) SwitchThread(threadID int) (*api.DebuggerState, error) {
 		ThreadID: threadID,
 	}
 	err := c.call("Command", cmd, state)
-	c.setEvalScope(state)
 	return state, err
 }
 
@@ -110,14 +104,12 @@ func (c *RPCClient) SwitchGoroutine(goroutineID int) (*api.DebuggerState, error)
 		GoroutineID: goroutineID,
 	}
 	err := c.call("Command", cmd, state)
-	c.setEvalScope(state)
 	return state, err
 }
 
 func (c *RPCClient) Halt() (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
 	err := c.call("Command", &api.DebuggerCommand{Name: api.Halt}, state)
-	c.setEvalScope(state)
 	return state, err
 }
 
@@ -229,25 +221,8 @@ func (c *RPCClient) FindLocation(scope api.EvalScope, loc string) ([]api.Locatio
 	return answer, err
 }
 
-func (c *RPCClient) EvalScope() *api.EvalScope {
-	return &c.evalScope
-}
-
 func (c *RPCClient) url(path string) string {
 	return fmt.Sprintf("http://%s%s", c.addr, path)
-}
-
-func (c *RPCClient) setEvalScope(state *api.DebuggerState) {
-	if state == nil {
-		return
-	}
-
-	if state.CurrentGoroutine != nil {
-		c.evalScope.GoroutineID = state.CurrentGoroutine.ID
-	} else {
-		c.evalScope.GoroutineID = -1
-	}
-	c.evalScope.Frame = 0
 }
 
 func (c *RPCClient) call(method string, args, reply interface{}) error {

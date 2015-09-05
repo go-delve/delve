@@ -389,7 +389,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
-		locals, err := c.ListLocalVariables(*c.EvalScope())
+		locals, err := c.ListLocalVariables(api.EvalScope{-1, 0})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -417,7 +417,7 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if regs == "" {
 			t.Fatal("Expected string showing registers values, got empty string")
 		}
-		locals, err := c.ListFunctionArgs(*c.EvalScope())
+		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -524,7 +524,7 @@ func TestClientServer_traceContinue2(t *testing.T) {
 }
 
 func findLocationHelper(t *testing.T, c service.Client, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
-	locs, err := c.FindLocation(*c.EvalScope(), loc)
+	locs, err := c.FindLocation(api.EvalScope{-1, 0}, loc)
 	t.Logf("FindLocation(\"%s\") → %v\n", loc, locs)
 
 	if shouldErr {
@@ -616,7 +616,7 @@ func TestClientServer_EvalVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		var1, err := c.EvalVariable(*c.EvalScope(), "a1")
+		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "a1")
 		if err != nil {
 			t.Fatalf("EvalVariable(): %v", err)
 		}

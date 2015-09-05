@@ -613,7 +613,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	// because without calling SetGStructOffset we can not read the G struct of CurrentThread
 	// but without calling updateThreadList we can not examine memory to determine
 	// the offset of g struct inside TLS
-	dbp.SwitchThread(dbp.CurrentThread.Id)
+	dbp.SelectedGoroutine, _ = dbp.CurrentThread.GetG()
 
 	return dbp, nil
 }
