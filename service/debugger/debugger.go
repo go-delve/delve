@@ -502,12 +502,12 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 		return nil, err
 	}
 
-	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	pc, err := d.process.PC()
 	if err != nil {
 		return nil, err
 	}
 
-	locs, err := loc.Find(d, s, locStr)
+	locs, err := loc.Find(d, pc, locStr)
 	for i := range locs {
 		file, line, fn := d.process.PCToLine(locs[i].PC)
 		locs[i].File = file

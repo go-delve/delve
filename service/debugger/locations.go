@@ -7,14 +7,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service/api"
 )
 
 const maxFindLocationCandidates = 5
 
 type LocationSpec interface {
-	Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error)
+	Find(d *Debugger, pc uint64, locStr string) ([]api.Location, error)
 }
 
 type NormalLocationSpec struct {
@@ -205,7 +204,7 @@ func (spec *FuncLocationSpec) Match(sym *gosym.Sym) bool {
 	return true
 }
 
-func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *RegexLocationSpec) Find(d *Debugger, pc uint64, locStr string) ([]api.Location, error) {
 	funcs := d.process.Funcs()
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
 	if err != nil {
@@ -221,7 +220,7 @@ func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr st
 	return r, nil
 }
 
-func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *AddrLocationSpec) Find(d *Debugger, pc uint64, locStr string) ([]api.Location, error) {
 	return []api.Location{{PC: loc.Addr}}, nil
 }
 
@@ -248,7 +247,7 @@ func (ale AmbiguousLocationError) Error() string {
 	return fmt.Sprintf("Location \"%s\" ambiguous: %s…", ale.Location, strings.Join(candidates, ", "))
 }
 
-func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *NormalLocationSpec) Find(d *Debugger, pc uint64, locStr string) ([]api.Location, error) {
 	funcs := d.process.Funcs()
 	files := d.process.Sources()
 
@@ -304,11 +303,8 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	}
 }
 
-func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
-	if scope == nil {
-		return nil, fmt.Errorf("could not determine current location (scope is nil)")
-	}
-	file, line, fn := d.process.PCToLine(scope.PC)
+func (loc *OffsetLocationSpec) Find(d *Debugger, pc uint64, locStr string) ([]api.Location, error) {
+	file, line, fn := d.process.PCToLine(pc)
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
@@ -316,11 +312,8 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	return []api.Location{{PC: addr}}, err
 }
 
-func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
-	if scope == nil {
-		return nil, fmt.Errorf("could not determine current location (scope is nil)")
-	}
-	file, _, fn := d.process.PCToLine(scope.PC)
+func (loc *LineLocationSpec) Find(d *Debugger, pc uint64, locStr string) ([]api.Location, error) {
+	file, _, fn := d.process.PCToLine(pc)
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
