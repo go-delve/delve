@@ -32,8 +32,12 @@ type Process struct {
 	// List of threads mapped as such: pid -> *Thread
 	Threads map[int]*Thread
 
-	// Active thread. This is the default thread used for setting breakpoints, evaluating variables, etc..
+	// Active thread
 	CurrentThread *Thread
+
+	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
+	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
+	SelectedGoroutine *G
 
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
@@ -317,10 +321,8 @@ func (dbp *Process) next() (err error) {
 		if tg.Id == g.Id || goroutineExiting {
 			// Check to see if the goroutine has switched to another
 			// thread, if so make it the current thread.
-			if dbp.CurrentThread.Id != th.Id {
-				if err = dbp.SwitchThread(th.Id); err != nil {
-					return err
-				}
+			if err := dbp.SwitchThread(th.Id); err != nil {
+				return err
 			}
 			return nil
 		}
@@ -373,9 +375,7 @@ func (dbp *Process) Continue() error {
 		if err := dbp.Halt(); err != nil {
 			return err
 		}
-		if dbp.CurrentThread != thread {
-			dbp.SwitchThread(thread.Id)
-		}
+		dbp.SwitchThread(thread.Id)
 		loc, err := thread.Location()
 		if err != nil {
 			return err
@@ -414,9 +414,28 @@ func (dbp *Process) Step() (err error) {
 func (dbp *Process) SwitchThread(tid int) error {
 	if th, ok := dbp.Threads[tid]; ok {
 		dbp.CurrentThread = th
+		dbp.SelectedGoroutine, _ = dbp.CurrentThread.GetG()
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
+}
+
+// Change from current thread to the thread running the specified goroutine
+func (dbp *Process) SwitchGoroutine(gid int) error {
+	gs, err := dbp.GoroutinesInfo()
+	if err != nil {
+		return err
+	}
+	for _, g := range gs {
+		if g.Id == gid {
+			if g.thread != nil {
+				return dbp.SwitchThread(g.thread.Id)
+			}
+			dbp.SelectedGoroutine = g
+			return nil
+		}
+	}
+	return fmt.Errorf("could not find goroutine %d", gid)
 }
 
 // Returns an array of G structures representing the information
@@ -503,11 +522,6 @@ func (dbp *Process) CurrentBreakpoint() *Breakpoint {
 	return dbp.CurrentThread.CurrentBreakpoint
 }
 
-// Returns the value of the named symbol.
-func (dbp *Process) EvalVariable(name string) (*Variable, error) {
-	return dbp.CurrentThread.EvalVariable(name)
-}
-
 // Returns a reader for the dwarf data
 func (dbp *Process) DwarfReader() *reader.Reader {
 	return reader.New(dbp.dwarf)
@@ -580,13 +594,13 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		return nil, err
 	}
 
-	if err := dbp.updateThreadList(); err != nil {
-		return nil, err
-	}
-
 	switch runtime.GOARCH {
 	case "amd64":
 		dbp.arch = AMD64Arch()
+	}
+
+	if err := dbp.updateThreadList(); err != nil {
+		return nil, err
 	}
 
 	ver, isextld, err := dbp.getGoInformation()
@@ -595,6 +609,11 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	}
 
 	dbp.arch.SetGStructOffset(ver, isextld)
+	// SelectedGoroutine can not be set correctly by the call to updateThreadList
+	// because without calling SetGStructOffset we can not read the G struct of CurrentThread
+	// but without calling updateThreadList we can not examine memory to determine
+	// the offset of g struct inside TLS
+	dbp.SelectedGoroutine, _ = dbp.CurrentThread.GetG()
 
 	return dbp, nil
 }
@@ -674,7 +693,7 @@ func (dbp *Process) execPtraceFunc(fn func()) {
 }
 
 func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
-	vv, err := dbp.CurrentThread.EvalPackageVariable("runtime.buildVersion")
+	vv, err := dbp.EvalPackageVariable("runtime.buildVersion")
 	if err != nil {
 		err = fmt.Errorf("Could not determine version number: %v\n", err)
 		return
@@ -698,4 +717,53 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 		}
 	}
 	return
+}
+
+func (dbp *Process) FindGoroutine(gid int) (*G, error) {
+	if gid == -1 {
+		return dbp.SelectedGoroutine, nil
+	}
+
+	gs, err := dbp.GoroutinesInfo()
+	if err != nil {
+		return nil, err
+	}
+	for i := range gs {
+		if gs[i].Id == gid {
+			return gs[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("Unknown goroutine %d", gid)
+}
+
+func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
+	g, err := dbp.FindGoroutine(gid)
+	if err != nil {
+		return nil, err
+	}
+	if g == nil {
+		return dbp.CurrentThread.Scope()
+	}
+
+	var out EvalScope
+
+	if g.thread == nil {
+		out.Thread = dbp.CurrentThread
+	} else {
+		out.Thread = g.thread
+	}
+
+	locs, err := dbp.GoroutineStacktrace(g, frame)
+	if err != nil {
+		return nil, err
+	}
+
+	if frame >= len(locs) {
+		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+	}
+
+	out.PC, out.CFA = locs[frame].PC, locs[frame].CFA
+
+	return &out, nil
 }

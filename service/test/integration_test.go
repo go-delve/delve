@@ -389,7 +389,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
-		locals, err := c.ListLocalVariables()
+		locals, err := c.ListLocalVariables(api.EvalScope{-1, 0})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -417,7 +417,7 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if regs == "" {
 			t.Fatal("Expected string showing registers values, got empty string")
 		}
-		locals, err := c.ListFunctionArgs()
+		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -524,7 +524,7 @@ func TestClientServer_traceContinue2(t *testing.T) {
 }
 
 func findLocationHelper(t *testing.T, c service.Client, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
-	locs, err := c.FindLocation(loc)
+	locs, err := c.FindLocation(api.EvalScope{-1, 0}, loc)
 	t.Logf("FindLocation(\"%s\") → %v\n", loc, locs)
 
 	if shouldErr {
@@ -602,7 +602,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 	})
 }
 
-func TestClientServer_EvalVariableFor(t *testing.T) {
+func TestClientServer_EvalVariable(t *testing.T) {
 	withTestClient("testvariables", t, func(c service.Client) {
 		fp := testProgPath(t, "testvariables")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 59})
@@ -616,7 +616,7 @@ func TestClientServer_EvalVariableFor(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		var1, err := c.EvalVariable("a1")
+		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "a1")
 		if err != nil {
 			t.Fatalf("EvalVariable(): %v", err)
 		}
@@ -625,17 +625,6 @@ func TestClientServer_EvalVariableFor(t *testing.T) {
 
 		if var1.Value != "foofoofoofoofoofoo" {
 			t.Fatalf("Wrong variable value (EvalVariable)", var1.Value)
-		}
-
-		var2, err := c.EvalVariableFor(state.CurrentThread.ID, "a1")
-		if err != nil {
-			t.Fatalf("EvalVariableFor(): %v", err)
-		}
-
-		t.Logf("var2: <%s>", var2.Value)
-
-		if var2.Value != var1.Value {
-			t.Fatalf("Wrong variable value (EvalVariableFor)", var2.Value)
 		}
 	})
 }

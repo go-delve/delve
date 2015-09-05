@@ -97,6 +97,16 @@ func (c *RPCClient) SwitchThread(threadID int) (*api.DebuggerState, error) {
 	return state, err
 }
 
+func (c *RPCClient) SwitchGoroutine(goroutineID int) (*api.DebuggerState, error) {
+	state := new(api.DebuggerState)
+	cmd := &api.DebuggerCommand{
+		Name:        api.SwitchGoroutine,
+		GoroutineID: goroutineID,
+	}
+	err := c.call("Command", cmd, state)
+	return state, err
+}
+
 func (c *RPCClient) Halt() (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
 	err := c.call("Command", &api.DebuggerCommand{Name: api.Halt}, state)
@@ -139,15 +149,9 @@ func (c *RPCClient) GetThread(id int) (*api.Thread, error) {
 	return thread, err
 }
 
-func (c *RPCClient) EvalVariable(symbol string) (*api.Variable, error) {
+func (c *RPCClient) EvalVariable(scope api.EvalScope, symbol string) (*api.Variable, error) {
 	v := new(api.Variable)
-	err := c.call("EvalSymbol", symbol, v)
-	return v, err
-}
-
-func (c *RPCClient) EvalVariableFor(threadID int, symbol string) (*api.Variable, error) {
-	v := new(api.Variable)
-	err := c.call("EvalThreadSymbol", ThreadSymbolArgs{threadID, symbol}, v)
+	err := c.call("EvalSymbol", EvalSymbolArgs{scope, symbol}, v)
 	return v, err
 }
 
@@ -175,9 +179,9 @@ func (c *RPCClient) ListPackageVariablesFor(threadID int, filter string) ([]api.
 	return vars, err
 }
 
-func (c *RPCClient) ListLocalVariables() ([]api.Variable, error) {
+func (c *RPCClient) ListLocalVariables(scope api.EvalScope) ([]api.Variable, error) {
 	var vars []api.Variable
-	err := c.call("ListLocalVars", nil, &vars)
+	err := c.call("ListLocalVars", scope, &vars)
 	return vars, err
 }
 
@@ -187,9 +191,9 @@ func (c *RPCClient) ListRegisters() (string, error) {
 	return regs, err
 }
 
-func (c *RPCClient) ListFunctionArgs() ([]api.Variable, error) {
+func (c *RPCClient) ListFunctionArgs(scope api.EvalScope) ([]api.Variable, error) {
 	var vars []api.Variable
-	err := c.call("ListFunctionArgs", nil, &vars)
+	err := c.call("ListFunctionArgs", scope, &vars)
 	return vars, err
 }
 
@@ -211,9 +215,9 @@ func (c *RPCClient) AttachedToExistingProcess() bool {
 	return answer
 }
 
-func (c *RPCClient) FindLocation(loc string) ([]api.Location, error) {
+func (c *RPCClient) FindLocation(scope api.EvalScope, loc string) ([]api.Location, error) {
 	var answer []api.Location
-	err := c.call("FindLocation", loc, &answer)
+	err := c.call("FindLocation", FindLocationArgs{scope, loc}, &answer)
 	return answer, err
 }
 

@@ -3,6 +3,7 @@ package proc
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"testing"
 
 	protest "github.com/derekparker/delve/proc/test"
@@ -27,6 +28,14 @@ func assertVariable(t *testing.T, variable *Variable, expected varTest) {
 	if variable.Value != expected.value {
 		t.Fatalf("Expected %#v got %#v (for variable %s)\n", expected.value, variable.Value, expected.name)
 	}
+}
+
+func evalVariable(p *Process, symbol string) (*Variable, error) {
+	scope, err := p.CurrentThread.Scope()
+	if err != nil {
+		return nil, err
+	}
+	return scope.EvalVariable(symbol)
 }
 
 const varTestBreakpointLineNumber = 59
@@ -83,7 +92,7 @@ func TestVariableEvaluation(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			variable, err := p.EvalVariable(tc.name)
+			variable, err := evalVariable(p, tc.name)
 			if tc.err == nil {
 				assertNoError(err, t, "EvalVariable() returned an error")
 				assertVariable(t, variable, tc)
@@ -107,10 +116,10 @@ func TestVariableFunctionScoping(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 		p.ClearBreakpoint(pc)
 
-		_, err = p.EvalVariable("a1")
+		_, err = evalVariable(p, "a1")
 		assertNoError(err, t, "Unable to find variable a1")
 
-		_, err = p.EvalVariable("a2")
+		_, err = evalVariable(p, "a2")
 		assertNoError(err, t, "Unable to find variable a1")
 
 		// Move scopes, a1 exists here by a2 does not
@@ -122,10 +131,10 @@ func TestVariableFunctionScoping(t *testing.T) {
 		err = p.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
-		_, err = p.EvalVariable("a1")
+		_, err = evalVariable(p, "a1")
 		assertNoError(err, t, "Unable to find variable a1")
 
-		_, err = p.EvalVariable("a2")
+		_, err = evalVariable(p, "a2")
 		if err == nil {
 			t.Fatalf("Can eval out of scope variable a2")
 		}
@@ -151,10 +160,10 @@ func (s varArray) Less(i, j int) bool {
 
 func TestLocalVariables(t *testing.T) {
 	testcases := []struct {
-		fn     func(*Thread) ([]*Variable, error)
+		fn     func(*EvalScope) ([]*Variable, error)
 		output []varTest
 	}{
-		{(*Thread).LocalVariables,
+		{(*EvalScope).LocalVariables,
 			[]varTest{
 				{"a1", "foofoofoofoofoofoo", "struct string", nil},
 				{"a10", "ofo", "struct string", nil},
@@ -185,7 +194,7 @@ func TestLocalVariables(t *testing.T) {
 				{"u64", "18446744073709551615", "uint64", nil},
 				{"u8", "255", "uint8", nil},
 				{"up", "5", "uintptr", nil}}},
-		{(*Thread).FunctionArguments,
+		{(*EvalScope).FunctionArguments,
 			[]varTest{
 				{"bar", "main.FooBar {Baz: 10, Bur: lorem}", "main.FooBar", nil},
 				{"baz", "bazburzum", "struct string", nil}}},
@@ -201,7 +210,9 @@ func TestLocalVariables(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			vars, err := tc.fn(p.CurrentThread)
+			scope, err := p.CurrentThread.Scope()
+			assertNoError(err, t, "AsScope()")
+			vars, err := tc.fn(scope)
 			assertNoError(err, t, "LocalVariables() returned an error")
 
 			sort.Sort(varArray(vars))
@@ -220,8 +231,74 @@ func TestLocalVariables(t *testing.T) {
 func TestRecursiveStructure(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
-		v, err := p.EvalVariable("aas")
+		v, err := evalVariable(p, "aas")
 		assertNoError(err, t, "EvalVariable()")
 		t.Logf("v: %v\n", v)
+	})
+}
+
+func TestFrameEvaluation(t *testing.T) {
+	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.stacktraceme")
+		assertNoError(err, t, "setFunctionBreakpoint")
+		assertNoError(p.Continue(), t, "Continue()")
+
+		/**** Testing evaluation on goroutines ****/
+		gs, err := p.GoroutinesInfo()
+		assertNoError(err, t, "GoroutinesInfo")
+		found := make([]bool, 10)
+		for _, g := range gs {
+			frame := -1
+			frames, err := p.GoroutineStacktrace(g, 10)
+			assertNoError(err, t, "GoroutineStacktrace()")
+			for i := range frames {
+				if frames[i].Fn != nil && frames[i].Fn.Name == "main.agoroutine" {
+					frame = i
+					break
+				}
+			}
+
+			if frame < 0 {
+				t.Logf("Goroutine %d: could not find correct frame", g.Id)
+				continue
+			}
+
+			scope, err := p.ConvertEvalScope(g.Id, frame)
+			assertNoError(err, t, "ConvertEvalScope()")
+			t.Logf("scope = %v", scope)
+			v, err := scope.EvalVariable("i")
+			t.Logf("v = %v", v)
+			if err != nil {
+				t.Logf("Goroutine %d: %v\n", g.Id, err)
+				continue
+			}
+			i, err := strconv.Atoi(v.Value)
+			assertNoError(err, t, fmt.Sprintf("strconv.Atoi(%s)", v.Value))
+			found[i] = true
+		}
+
+		for i := range found {
+			if !found[i] {
+				t.Fatalf("Goroutine %d not found\n", i)
+			}
+		}
+
+		/**** Testing evaluation on frames ****/
+		assertNoError(p.Continue(), t, "Continue() 2")
+		g, err := p.CurrentThread.GetG()
+		assertNoError(err, t, "GetG()")
+
+		for i := 0; i <= 3; i++ {
+			scope, err := p.ConvertEvalScope(g.Id, i+1)
+			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
+			v, err := scope.EvalVariable("n")
+			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
+			n, err := strconv.Atoi(v.Value)
+			assertNoError(err, t, fmt.Sprintf("strconv.Atoi(%s) on frame %d", v.Value, i+1))
+			t.Logf("frame %d n %d\n", i+1, n)
+			if n != 3-i {
+				t.Fatalf("On frame %d value of n is %d (not %d)", i+1, n, 3-i)
+			}
+		}
 	})
 }
