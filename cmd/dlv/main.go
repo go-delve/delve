@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version string = "0.8.0-alpha"
+const version string = "0.8.1-alpha"
 
 var (
 	Log      bool

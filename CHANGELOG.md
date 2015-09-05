@@ -5,6 +5,11 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [0.8.1-alpha] 2015-09-05
+
+### Fixed
+- OSX: Fix error setting breakpoint upon Delve startup.
+
 ## [0.8.0-alpha] 2015-09-05
 
 ### Added
