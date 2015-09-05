@@ -309,28 +309,33 @@ func (dbp *Process) next() (err error) {
 	}
 
 	for {
-		th, err := dbp.trapWait(-1)
+		_, err := dbp.trapWait(-1)
 		if err != nil {
 			return err
 		}
-		tg, err := th.GetG()
-		if err != nil {
-			return err
-		}
-		// Make sure we're on the same goroutine, unless it has exited.
-		if tg.Id == g.Id || goroutineExiting {
-			// Check to see if the goroutine has switched to another
-			// thread, if so make it the current thread.
-			if err := dbp.SwitchThread(th.Id); err != nil {
+		for _, th := range dbp.Threads {
+			if !th.Stopped() {
+				continue
+			}
+			tg, err := th.GetG()
+			if err != nil {
 				return err
 			}
-			return nil
-		}
-		// This thread was not running our goroutine.
-		// We continue it since our goroutine could
-		// potentially be on this threads queue.
-		if err = th.Continue(); err != nil {
-			return err
+			// Make sure we're on the same goroutine, unless it has exited.
+			if tg.Id == g.Id || goroutineExiting {
+				// Check to see if the goroutine has switched to another
+				// thread, if so make it the current thread.
+				if err := dbp.SwitchThread(th.Id); err != nil {
+					return err
+				}
+				return nil
+			}
+			// This thread was not running our goroutine.
+			// We continue it since our goroutine could
+			// potentially be on this threads queue.
+			if err = th.Continue(); err != nil {
+				return err
+			}
 		}
 	}
 }
