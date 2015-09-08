@@ -586,6 +586,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 		<-c.Continue()
 
 		locationsprog34Addr := findLocationHelper(t, c, "locationsprog.go:34", false, 1, 0)[0]
+		findLocationHelper(t, c, fmt.Sprintf("%s:34", testProgPath(t, "locationsprog")), false, 1, locationsprog34Addr)
 		findLocationHelper(t, c, "+1", false, 1, locationsprog34Addr)
 		findLocationHelper(t, c, "34", false, 1, locationsprog34Addr)
 		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:32", false, 1, 0)[0])

@@ -65,14 +65,18 @@ func parseLocationSpec(locStr string) (LocationSpec, error) {
 		return &OffsetLocationSpec{offset}, nil
 
 	case '/':
-		rx, rest := readRegex(rest[1:])
-		if len(rest) < 0 {
-			return nil, malformed("non-terminated regular expression")
+		if rest[len(rest)-1] == '/' {
+			rx, rest := readRegex(rest[1:])
+			if len(rest) < 0 {
+				return nil, malformed("non-terminated regular expression")
+			}
+			if len(rest) > 1 {
+				return nil, malformed("no line offset can be specified for regular expression locations")
+			}
+			return &RegexLocationSpec{rx}, nil
+		} else {
+			return parseLocationSpecDefault(locStr, rest)
 		}
-		if len(rest) > 1 {
-			return nil, malformed("no line offset can be specified for regular expression locations")
-		}
-		return &RegexLocationSpec{rx}, nil
 
 	case '*':
 		rest = rest[1:]
@@ -86,35 +90,43 @@ func parseLocationSpec(locStr string) (LocationSpec, error) {
 		return &AddrLocationSpec{uint64(addr)}, nil
 
 	default:
-		v := strings.SplitN(rest, ":", 2)
+		return parseLocationSpecDefault(locStr, rest)
+	}
+}
 
-		if len(v) == 1 {
-			n, err := strconv.ParseInt(v[0], 0, 64)
-			if err == nil {
-				return &LineLocationSpec{int(n)}, nil
-			}
+func parseLocationSpecDefault(locStr, rest string) (LocationSpec, error) {
+	malformed := func(reason string) error {
+		return fmt.Errorf("Malformed breakpoint location \"%s\" at %d: %s", locStr, len(locStr)-len(rest), reason)
+	}
+
+	v := strings.SplitN(rest, ":", 2)
+
+	if len(v) == 1 {
+		n, err := strconv.ParseInt(v[0], 0, 64)
+		if err == nil {
+			return &LineLocationSpec{int(n)}, nil
 		}
+	}
 
-		spec := &NormalLocationSpec{}
+	spec := &NormalLocationSpec{}
 
-		spec.Base = v[0]
-		spec.FuncBase = parseFuncLocationSpec(spec.Base)
+	spec.Base = v[0]
+	spec.FuncBase = parseFuncLocationSpec(spec.Base)
 
-		if len(v) < 2 {
-			spec.LineOffset = -1
-			return spec, nil
-		}
-
-		rest = v[1]
-
-		var err error
-		spec.LineOffset, err = strconv.Atoi(rest)
-		if err != nil || spec.LineOffset < 0 {
-			return nil, malformed("line offset negative or not a number")
-		}
-
+	if len(v) < 2 {
+		spec.LineOffset = -1
 		return spec, nil
 	}
+
+	rest = v[1]
+
+	var err error
+	spec.LineOffset, err = strconv.Atoi(rest)
+	if err != nil || spec.LineOffset < 0 {
+		return nil, malformed("line offset negative or not a number")
+	}
+
+	return spec, nil
 }
 
 func readRegex(in string) (rx string, rest string) {
@@ -225,7 +237,11 @@ func (loc *AddrLocationSpec) Find(d *Debugger, pc uint64, locStr string) ([]api.
 }
 
 func (loc *NormalLocationSpec) FileMatch(path string) bool {
-	return strings.HasSuffix(path, loc.Base) && (path[len(path)-len(loc.Base)-1] == filepath.Separator)
+	if len(loc.Base) < len(path)-1 {
+		return strings.HasSuffix(path, loc.Base) && (path[len(path)-len(loc.Base)-1] == filepath.Separator)
+	} else {
+		return loc.Base == path
+	}
 }
 
 type AmbiguousLocationError struct {
