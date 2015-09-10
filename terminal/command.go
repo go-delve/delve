@@ -153,11 +153,11 @@ func (c *Commands) help(client service.Client, args ...string) error {
 	return w.Flush()
 }
 
-type byID []*api.Thread
+type byThreadID []*api.Thread
 
-func (a byID) Len() int           { return len(a) }
-func (a byID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byID) Less(i, j int) bool { return a[i].ID < a[j].ID }
+func (a byThreadID) Len() int           { return len(a) }
+func (a byThreadID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byThreadID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
 func threads(client service.Client, args ...string) error {
 	threads, err := client.ListThreads()
@@ -168,7 +168,7 @@ func threads(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
-	sort.Sort(byID(threads))
+	sort.Sort(byThreadID(threads))
 	for _, th := range threads {
 		prefix := "  "
 		if state.CurrentThread != nil && state.CurrentThread.ID == th.ID {
@@ -214,6 +214,12 @@ func thread(client service.Client, args ...string) error {
 	return nil
 }
 
+type byGoroutineID []*api.Goroutine
+
+func (a byGoroutineID) Len() int           { return len(a) }
+func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
+
 func goroutines(client service.Client, args ...string) error {
 	state, err := client.GetState()
 	if err != nil {
@@ -223,6 +229,7 @@ func goroutines(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
+	sort.Sort(byGoroutineID(gs))
 	fmt.Printf("[%d goroutines]\n", len(gs))
 	for _, g := range gs {
 		prefix := "  "
