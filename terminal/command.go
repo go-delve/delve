@@ -311,6 +311,17 @@ func scopePrefix(client service.Client, cmdname string, pargs ...string) error {
 			}
 			scope.Frame = int(n)
 			i++
+		case "list", "ls":
+			frame, gid := scope.Frame, scope.GoroutineID
+			locs, err := client.Stacktrace(gid, frame)
+			if err != nil {
+				return err
+			}
+			if frame >= len(locs) {
+				return fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+			}
+			loc := locs[frame]
+			return printfile(loc.File, loc.Line, true)
 		case "locals":
 			return callFilterSortAndOutput(locals, fullargs[i+1:])
 		case "args":
