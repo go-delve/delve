@@ -297,7 +297,7 @@ func scopePrefix(client service.Client, cmdname string, pargs ...string) error {
 			}
 			scope.Frame = int(n)
 			i++
-		case "list":
+		case "list", "ls":
 			frame, gid := scope.Frame, scope.GoroutineID
 			locs, err := client.Stacktrace(gid, frame)
 			if err != nil {
