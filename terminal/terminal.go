@@ -51,6 +51,17 @@ func (t *Term) Run() (error, int) {
 	if t.conf != nil && t.conf.Aliases != nil {
 		cmds.Merge(t.conf.Aliases)
 	}
+	t.line.SetCompleter(func(line string) (c []string) {
+		for _, cmd := range cmds.cmds {
+			for _, alias := range cmd.aliases {
+				if strings.HasPrefix(alias, strings.ToLower(line)) {
+					c = append(c, alias)
+				}
+			}
+		}
+		return
+	})
+
 	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Printf("Unable to load history file: %v.", err)
