@@ -153,6 +153,12 @@ func (c *Commands) help(client service.Client, args ...string) error {
 	return w.Flush()
 }
 
+type byID []*api.Thread
+
+func (a byID) Len() int           { return len(a) }
+func (a byID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byID) Less(i, j int) bool { return a[i].ID < a[j].ID }
+
 func threads(client service.Client, args ...string) error {
 	threads, err := client.ListThreads()
 	if err != nil {
@@ -162,6 +168,7 @@ func threads(client service.Client, args ...string) error {
 	if err != nil {
 		return err
 	}
+	sort.Sort(byID(threads))
 	for _, th := range threads {
 		prefix := "  "
 		if state.CurrentThread != nil && state.CurrentThread.ID == th.ID {
