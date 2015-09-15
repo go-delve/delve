@@ -3,6 +3,7 @@
 .tags*
 tags
 .dbg_history
-cmd/dlv/dlv
+bin/
+pkg/
 .vagrant
 **/*.swp
