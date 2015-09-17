@@ -39,6 +39,7 @@ type Process struct {
 	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	SelectedGoroutine *G
 
+	allGCache               []*G
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
 	frameEntries            frame.FrameDescriptionEntries
@@ -446,6 +447,10 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 // Returns an array of G structures representing the information
 // Delve cares about from the internal runtime G structure.
 func (dbp *Process) GoroutinesInfo() ([]*G, error) {
+	if dbp.allGCache != nil {
+		return dbp.allGCache, nil
+	}
+
 	var (
 		threadg = map[int]*Thread{}
 		allg    []*G
@@ -498,6 +503,7 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 		}
 		allg = append(allg, g)
 	}
+	dbp.allGCache = allg
 	return allg, nil
 }
 
@@ -668,6 +674,7 @@ func (dbp *Process) handleBreakpointOnThread(id int) (*Thread, error) {
 }
 
 func (dbp *Process) run(fn func() error) error {
+	dbp.allGCache = nil
 	if dbp.exited {
 		return fmt.Errorf("process has already exited")
 	}
