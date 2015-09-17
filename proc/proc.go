@@ -496,7 +496,9 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 			g.Line = loc.Line
 			g.Func = loc.Fn
 		}
-		allg = append(allg, g)
+		if g.Status != Gdead {
+			allg = append(allg, g)
+		}
 	}
 	return allg, nil
 }
