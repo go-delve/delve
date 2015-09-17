@@ -37,6 +37,19 @@ type M struct {
 	curg     uintptr // Current G running on this thread.
 }
 
+const (
+	// G status, from: src/runtime/runtime2.go
+	Gidle            uint64 = iota // 0
+	Grunnable                      // 1 runnable and on a run queue
+	Grunning                       // 2
+	Gsyscall                       // 3
+	Gwaiting                       // 4
+	Gmoribund_unused               // 5 currently unused, but hardcoded in gdb scripts
+	Gdead                          // 6
+	Genqueue                       // 7 Only the Gscanenqueue is used.
+	Gcopystack                     // 8 in this state when newstack is moving the stack
+)
+
 // Represents a runtime G (goroutine) structure (at least the
 // fields that Delve is interested in).
 type G struct {
@@ -45,6 +58,7 @@ type G struct {
 	SP         uint64 // SP of goroutine when it was parked.
 	GoPC       uint64 // PC of 'go' statement that created this goroutine.
 	WaitReason string // Reason for goroutine being parked.
+	Status     uint64
 
 	// Information on goroutine location.
 	File string
@@ -176,6 +190,12 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Parse atomicstatus
+	atomicStatusAddr, err := rdr.AddrForMember("atomicstatus", initialInstructions)
+	if err != nil {
+		return nil, err
+	}
+	atomicStatus, err := thread.readUintRaw(uintptr(atomicStatusAddr), 4)
 	// Parse goid
 	goidAddr, err := rdr.AddrForMember("goid", initialInstructions)
 	if err != nil {
@@ -215,6 +235,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		Func:       fn,
 		WaitReason: waitreason,
 		DeferPC:    deferPC,
+		Status:     atomicStatus,
 	}
 	return g, nil
 }
