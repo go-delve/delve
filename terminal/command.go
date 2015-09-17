@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"regexp"
 	"sort"
@@ -73,8 +74,8 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"vars"}, cmdFn: filterSortAndOutput(vars), helpMsg: "Print package variables, optionally filtered by a regexp."},
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
-		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth> [<goroutine id>]]. Prints stack."},
 		{aliases: []string{"list", "ls"}, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
+		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [-<depth>] [-full] [<goroutine id>]. Prints stack."},
 		{aliases: []string{"frame"}, cmdFn: frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
 	}
 
@@ -313,7 +314,7 @@ func scopePrefix(client service.Client, cmdname string, pargs ...string) error {
 			i++
 		case "list", "ls":
 			frame, gid := scope.Frame, scope.GoroutineID
-			locs, err := client.Stacktrace(gid, frame)
+			locs, err := client.Stacktrace(gid, frame, false)
 			if err != nil {
 				return err
 			}
@@ -627,27 +628,27 @@ func stackCommand(client service.Client, args ...string) error {
 
 	goroutineid := -1
 	depth := 10
+	full := false
 
-	switch len(args) {
-	case 0:
-		// nothing to do
-	case 2:
-		goroutineid, err = strconv.Atoi(args[1])
-		if err != nil {
-			return fmt.Errorf("Wrong argument: expected integer")
+	for i := range args {
+		if args[i] == "-full" {
+			full = true
+		} else if args[i][0] == '-' {
+			n, err := strconv.Atoi(args[i][1:])
+			if err != nil {
+				return fmt.Errorf("unknown option: %s", args[i])
+			}
+			depth = n
+		} else {
+			n, err := strconv.Atoi(args[i])
+			if err != nil {
+				return fmt.Errorf("goroutine id must be a number")
+			}
+			goroutineid = n
 		}
-		fallthrough
-	case 1:
-		depth, err = strconv.Atoi(args[0])
-		if err != nil {
-			return fmt.Errorf("Wrong argument: expected integer")
-		}
-
-	default:
-		return fmt.Errorf("Wrong number of arguments to stack")
 	}
 
-	stack, err := client.Stacktrace(goroutineid, depth)
+	stack, err := client.Stacktrace(goroutineid, depth, full)
 	if err != nil {
 		return err
 	}
@@ -676,13 +677,37 @@ func listCommand(client service.Client, args ...string) error {
 	return nil
 }
 
-func printStack(stack []api.Location, ind string) {
+func digits(n int) int {
+	return int(math.Floor(math.Log10(float64(n)))) + 1
+}
+
+func spaces(n int) string {
+	spaces := make([]byte, n)
+	for i := range spaces {
+		spaces[i] = ' '
+	}
+	return string(spaces)
+}
+
+func printStack(stack []api.Stackframe, ind string) {
+	d := digits(len(stack) - 1)
+	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
+	s := spaces(d + 2 + len(ind))
+
 	for i := range stack {
 		name := "(nil)"
 		if stack[i].Function != nil {
 			name = stack[i].Function.Name
 		}
-		fmt.Printf("%s%d. %s %s:%d (%#v)\n", ind, i, name, shortenFilePath(stack[i].File), stack[i].Line, stack[i].PC)
+		fmt.Printf(fmtstr, ind, i, stack[i].PC, name)
+		fmt.Printf("%sat %s:%d\n", s, shortenFilePath(stack[i].File), stack[i].Line)
+
+		for j := range stack[i].Arguments {
+			fmt.Printf("%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].Value)
+		}
+		for j := range stack[i].Locals {
+			fmt.Printf("%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].Value)
+		}
 	}
 }
 

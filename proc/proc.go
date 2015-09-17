@@ -776,7 +776,7 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
 	}
 
-	out.PC, out.CFA = locs[frame].PC, locs[frame].CFA
+	out.PC, out.CFA = locs[frame].Current.PC, locs[frame].CFA
 
 	return &out, nil
 }

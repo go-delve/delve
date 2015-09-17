@@ -104,7 +104,7 @@ func (g *G) chanRecvReturnAddr(dbp *Process) (uint64, error) {
 		return 0, err
 	}
 	topLoc := locs[len(locs)-1]
-	return topLoc.PC, nil
+	return topLoc.Current.PC, nil
 }
 
 // NoGError returned when a G could not be found

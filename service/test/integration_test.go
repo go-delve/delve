@@ -20,6 +20,14 @@ func init() {
 	runtime.GOMAXPROCS(2)
 }
 
+func assertNoError(err error, t *testing.T, s string) {
+	if err != nil {
+		_, file, line, _ := runtime.Caller(1)
+		fname := filepath.Base(file)
+		t.Fatalf("failed assertion at %s:%d: %s - %s\n", fname, line, s, err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
@@ -607,9 +615,7 @@ func TestClientServer_EvalVariable(t *testing.T) {
 	withTestClient("testvariables", t, func(c service.Client) {
 		fp := testProgPath(t, "testvariables")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 59})
-		if err != nil {
-			t.Fatalf("CreateBreakpoint(): %v", err)
-		}
+		assertNoError(err, t, "CreateBreakpoint()")
 
 		state := <-c.Continue()
 
@@ -618,14 +624,83 @@ func TestClientServer_EvalVariable(t *testing.T) {
 		}
 
 		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "a1")
-		if err != nil {
-			t.Fatalf("EvalVariable(): %v", err)
-		}
+		assertNoError(err, t, "EvalVariable")
 
 		t.Logf("var1: <%s>", var1.Value)
 
 		if var1.Value != "foofoofoofoofoofoo" {
 			t.Fatalf("Wrong variable value (EvalVariable)", var1.Value)
+		}
+	})
+}
+
+func TestClientServer_FullStacktrace(t *testing.T) {
+	withTestClient("goroutinestackprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Continue(): %v\n", state.Err)
+		}
+
+		gs, err := c.ListGoroutines()
+		assertNoError(err, t, "GoroutinesInfo()")
+		found := make([]bool, 10)
+		for _, g := range gs {
+			frames, err := c.Stacktrace(g.ID, 10, true)
+			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
+			for i, frame := range frames {
+				if frame.Function == nil {
+					continue
+				}
+				if frame.Function.Name != "main.agoroutine" {
+					continue
+				}
+				t.Logf("frame %d: %v", i, frame)
+				for _, arg := range frame.Arguments {
+					if arg.Name != "i" {
+						continue
+					}
+					n, err := strconv.Atoi(arg.Value)
+					assertNoError(err, t, fmt.Sprintf("Wrong value for i in goroutine %d (%s)", g.ID, arg.Value))
+					found[n] = true
+				}
+			}
+		}
+
+		for i := range found {
+			if !found[i] {
+				t.Fatalf("Goroutine %d not found", i)
+			}
+		}
+
+		state = <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Continue(): %v\n", state.Err)
+		}
+
+		frames, err := c.Stacktrace(-1, 10, true)
+		assertNoError(err, t, "Stacktrace")
+
+		cur := 3
+		for i, frame := range frames {
+			if i == 0 {
+				continue
+			}
+			t.Logf("frame %d: %v", i, frame)
+			v := frame.Var("n")
+			if v == nil {
+				t.Fatalf("Could not find value of variable n in frame %d", i)
+			}
+			n, err := strconv.Atoi(v.Value)
+			assertNoError(err, t, fmt.Sprintf("Wrong value for n: %s", v.Value))
+			if n != cur {
+				t.Fatalf("Expected value %d got %d", cur, n)
+			}
+			cur--
+			if cur < 0 {
+				break
+			}
 		}
 	})
 }

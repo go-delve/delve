@@ -14,9 +14,16 @@ func (nra NoReturnAddr) Error() string {
 }
 
 type Stackframe struct {
-	Location
-	CFA int64
-	Ret uint64
+	// Address the function above this one on the call stack will return to
+	Current Location
+	// Address of the call instruction for the function above on the call stack.
+	Call Location
+	CFA  int64
+	Ret  uint64
+}
+
+func (frame *Stackframe) Scope(thread *Thread) *EvalScope {
+	return &EvalScope{Thread: thread, PC: frame.Current.PC, CFA: frame.CFA}
 }
 
 // Takes an offset from RSP and returns the address of the
@@ -27,9 +34,9 @@ func (thread *Thread) ReturnAddress() (uint64, error) {
 		return 0, err
 	}
 	if len(locations) < 2 {
-		return 0, NoReturnAddr{locations[0].Fn.BaseName()}
+		return 0, NoReturnAddr{locations[0].Current.Fn.BaseName()}
 	}
-	return locations[1].PC, nil
+	return locations[1].Current.PC, nil
 }
 
 // Returns the stack trace for thread.
@@ -63,7 +70,7 @@ func (n NullAddrError) Error() string {
 	return "NULL address"
 }
 
-func (dbp *Process) frameInfo(pc, sp uint64) (Stackframe, error) {
+func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 	f, l, fn := dbp.PCToLine(pc)
 	fde, err := dbp.frameEntries.FDEForPC(pc)
 	if err != nil {
@@ -80,18 +87,25 @@ func (dbp *Process) frameInfo(pc, sp uint64) (Stackframe, error) {
 	if err != nil {
 		return Stackframe{}, err
 	}
-	return Stackframe{Location: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, Ret: binary.LittleEndian.Uint64(data)}, nil
+	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, Ret: binary.LittleEndian.Uint64(data)}
+	if !top {
+		r.Call.File, r.Call.Line, r.Call.Fn = dbp.PCToLine(pc - 1)
+		r.Call.PC, _, _ = dbp.goSymTable.LineToPC(r.Call.File, r.Call.Line)
+	} else {
+		r.Call = r.Current
+	}
+	return r, nil
 }
 
 func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Stackframe, error) {
 	frames := make([]Stackframe, 0, depth+1)
 
 	for i := 0; i < depth+1; i++ {
-		frame, err := dbp.frameInfo(pc, sp)
+		frame, err := dbp.frameInfo(pc, sp, i == 0)
 		if err != nil {
 			return nil, err
 		}
-		if frame.Fn == nil {
+		if frame.Current.Fn == nil {
 			break
 		}
 		frames = append(frames, frame)
@@ -99,7 +113,7 @@ func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Stackframe, error) {
 			break
 		}
 		// Look for "top of stack" functions.
-		if frame.Fn.Name == "runtime.goexit" || frame.Fn.Name == "runtime.rt0_go" {
+		if frame.Current.Fn.Name == "runtime.goexit" || frame.Current.Fn.Name == "runtime.rt0_go" {
 			break
 		}
 

@@ -65,6 +65,26 @@ type Location struct {
 	Function *Function `json:"function,omitempty"`
 }
 
+type Stackframe struct {
+	Location
+	Locals    []Variable
+	Arguments []Variable
+}
+
+func (frame *Stackframe) Var(name string) *Variable {
+	for i := range frame.Locals {
+		if frame.Locals[i].Name == name {
+			return &frame.Locals[i]
+		}
+	}
+	for i := range frame.Arguments {
+		if frame.Arguments[i].Name == name {
+			return &frame.Arguments[i]
+		}
+	}
+	return nil
+}
+
 // Function represents thread-scoped function information.
 type Function struct {
 	// Name is the function name.
@@ -114,10 +134,10 @@ type DebuggerCommand struct {
 
 // Informations about the current breakpoint
 type BreakpointInfo struct {
-	Stacktrace []Location `json:"stacktrace,omitempty"`
-	Goroutine  *Goroutine `json:"goroutine,omitempty"`
-	Variables  []Variable `json:"variables,omitempty"`
-	Arguments  []Variable `json:"arguments,omitempty"`
+	Stacktrace []Stackframe `json:"stacktrace,omitempty"`
+	Goroutine  *Goroutine   `json:"goroutine,omitempty"`
+	Variables  []Variable   `json:"variables,omitempty"`
+	Arguments  []Variable   `json:"arguments,omitempty"`
 }
 
 type EvalScope struct {

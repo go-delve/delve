@@ -113,10 +113,11 @@ func (s *RPCServer) GetBreakpoint(id int, breakpoint *api.Breakpoint) error {
 type StacktraceGoroutineArgs struct {
 	Id    int
 	Depth int
+	Full  bool
 }
 
-func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations *[]api.Location) error {
-	locs, err := s.debugger.Stacktrace(args.Id, args.Depth)
+func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations *[]api.Stackframe) error {
+	locs, err := s.debugger.Stacktrace(args.Id, args.Depth, args.Full)
 	if err != nil {
 		return err
 	}

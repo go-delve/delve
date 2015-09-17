@@ -288,7 +288,10 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		if err != nil {
 			return err
 		}
-		bpi.Stacktrace = convertStacktrace(rawlocs)
+		bpi.Stacktrace, err = d.convertStacktrace(rawlocs, false)
+		if err != nil {
+			return err
+		}
 	}
 
 	s, err := d.process.CurrentThread.Scope()
@@ -386,6 +389,14 @@ func (d *Debugger) Registers(threadID int) (string, error) {
 	return regs.String(), err
 }
 
+func convertVars(pv []*proc.Variable) []api.Variable {
+	vars := make([]api.Variable, 0, len(pv))
+	for _, v := range pv {
+		vars = append(vars, api.ConvertVar(v))
+	}
+	return vars
+}
+
 func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
 	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
 	if err != nil {
@@ -395,11 +406,7 @@ func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	vars := make([]api.Variable, 0, len(pv))
-	for _, v := range pv {
-		vars = append(vars, api.ConvertVar(v))
-	}
-	return vars, err
+	return convertVars(pv), err
 }
 
 func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error) {
@@ -447,7 +454,7 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	return goroutines, err
 }
 
-func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
+func (d *Debugger) Stacktrace(goroutineId, depth int, full bool) ([]api.Stackframe, error) {
 	var rawlocs []proc.Stackframe
 	var err error
 
@@ -483,17 +490,30 @@ func (d *Debugger) Stacktrace(goroutineId, depth int) ([]api.Location, error) {
 		}
 	}
 
-	return convertStacktrace(rawlocs), nil
+	return d.convertStacktrace(rawlocs, full)
 }
 
-func convertStacktrace(rawlocs []proc.Stackframe) []api.Location {
-	locations := make([]api.Location, 0, len(rawlocs))
+func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, full bool) ([]api.Stackframe, error) {
+	locations := make([]api.Stackframe, 0, len(rawlocs))
 	for i := range rawlocs {
-		rawlocs[i].Line--
-		locations = append(locations, api.ConvertLocation(rawlocs[i].Location))
+		frame := api.Stackframe{Location: api.ConvertLocation(rawlocs[i].Call)}
+		if full {
+			scope := rawlocs[i].Scope(d.process.CurrentThread)
+			lv, err := scope.LocalVariables()
+			if err != nil {
+				return nil, err
+			}
+			av, err := scope.FunctionArguments()
+			if err != nil {
+				return nil, err
+			}
+			frame.Locals = convertVars(lv)
+			frame.Arguments = convertVars(av)
+		}
+		locations = append(locations, frame)
 	}
 
-	return locations
+	return locations, nil
 }
 
 func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Location, error) {

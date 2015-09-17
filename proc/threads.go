@@ -327,5 +327,5 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &EvalScope{Thread: thread, PC: locations[0].PC, CFA: locations[0].CFA}, nil
+	return locations[0].Scope(thread), nil
 }

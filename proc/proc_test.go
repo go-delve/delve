@@ -534,18 +534,17 @@ type loc struct {
 
 func (l1 *loc) match(l2 Stackframe) bool {
 	if l1.line >= 0 {
-		if l1.line != l2.Line-1 {
+		if l1.line != l2.Call.Line {
 			return false
 		}
 	}
-
-	return l1.fn == l2.Fn.Name
+	return l1.fn == l2.Call.Fn.Name
 }
 
 func TestStacktrace(t *testing.T) {
 	stacks := [][]loc{
-		[]loc{{3, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
-		[]loc{{3, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
+		[]loc{{4, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
+		[]loc{{4, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
 	}
 	withTestProcess("stacktraceprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.stacktraceme")
@@ -560,7 +559,10 @@ func TestStacktrace(t *testing.T) {
 				t.Fatalf("Wrong stack trace size %d %d\n", len(locations), len(stacks[i])+2)
 			}
 
-			t.Logf("Stacktrace %d: %v\n", i, locations)
+			t.Logf("Stacktrace %d:\n", i)
+			for i := range locations {
+				t.Logf("\t%s:%d\n", locations[i].Call.File, locations[i].Call.Line)
+			}
 
 			for j := range stacks[i] {
 				if !stacks[i][j].match(locations[j]) {
@@ -572,6 +574,32 @@ func TestStacktrace(t *testing.T) {
 		p.ClearBreakpoint(bp.Addr)
 		p.Continue()
 	})
+}
+
+func TestStacktrace2(t *testing.T) {
+	withTestProcess("retstack", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+
+		locations, err := p.CurrentThread.Stacktrace(40)
+		assertNoError(err, t, "Stacktrace()")
+		if !stackMatch([]loc{loc{-1, "main.f"}, loc{16, "main.main"}}, locations) {
+			for i := range locations {
+				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
+			}
+			t.Fatalf("Stack error at main.f()\n", locations)
+		}
+
+		assertNoError(p.Continue(), t, "Continue()")
+		locations, err = p.CurrentThread.Stacktrace(40)
+		assertNoError(err, t, "Stacktrace()")
+		if !stackMatch([]loc{loc{-1, "main.g"}, loc{17, "main.main"}}, locations) {
+			for i := range locations {
+				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
+			}
+			t.Fatalf("Stack error at main.g()\n", locations)
+		}
+	})
+
 }
 
 func stackMatch(stack []loc, locations []Stackframe) bool {
@@ -587,7 +615,7 @@ func stackMatch(stack []loc, locations []Stackframe) bool {
 }
 
 func TestStacktraceGoroutine(t *testing.T) {
-	mainStack := []loc{{11, "main.stacktraceme"}, {21, "main.main"}}
+	mainStack := []loc{{12, "main.stacktraceme"}, {21, "main.main"}}
 	agoroutineStack := []loc{{-1, "runtime.gopark"}, {-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {8, "main.agoroutine"}}
 
 	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
@@ -616,10 +644,10 @@ func TestStacktraceGoroutine(t *testing.T) {
 				t.Logf("Non-goroutine stack: %d (%d)", i, len(locations))
 				for i := range locations {
 					name := ""
-					if locations[i].Fn != nil {
-						name = locations[i].Fn.Name
+					if locations[i].Call.Fn != nil {
+						name = locations[i].Call.Fn.Name
 					}
-					t.Logf("\t%s:%d %s\n", locations[i].File, locations[i].Line, name)
+					t.Logf("\t%s:%d %s\n", locations[i].Call.File, locations[i].Call.Line, name)
 				}
 			}
 		}

@@ -252,7 +252,7 @@ func TestFrameEvaluation(t *testing.T) {
 			frames, err := p.GoroutineStacktrace(g, 10)
 			assertNoError(err, t, "GoroutineStacktrace()")
 			for i := range frames {
-				if frames[i].Fn != nil && frames[i].Fn.Name == "main.agoroutine" {
+				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
 					frame = i
 					break
 				}
