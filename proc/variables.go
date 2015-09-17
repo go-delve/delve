@@ -204,7 +204,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		return nil, err
 	}
 
-	f, l, fn := thread.dbp.goSymTable.PCToLine(gopc)
+	f, l, fn := thread.dbp.goSymTable.PCToLine(pc)
 	g := &G{
 		Id:         int(goid),
 		GoPC:       gopc,
