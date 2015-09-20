@@ -14,7 +14,7 @@ func (nra NoReturnAddr) Error() string {
 }
 
 type Stackframe struct {
-	// Address the function above this one on the call stack will return to
+	// Address the function above this one on the call stack will return to.
 	Current Location
 	// Address of the call instruction for the function above on the call stack.
 	Call Location
