@@ -17,6 +17,7 @@ import (
 const (
 	maxVariableRecurse = 1  // How far to recurse when evaluating nested types.
 	maxArrayValues     = 64 // Max value for reading large arrays.
+	maxErrCount        = 3  // Max number of read errors to accept while evaluating slices, arrays and structs
 
 	ChanRecv = "chan receive"
 	ChanSend = "chan send"
@@ -540,14 +541,20 @@ func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, ty
 			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
 			if recurseLevel <= maxVariableRecurse {
+				errcount := 0
 				fields := make([]string, 0, len(t.Field))
-				for _, field := range t.Field {
+				for i, field := range t.Field {
 					val, err := scope.extractValueInternal(nil, field.ByteOffset+addr, field.Type, printStructName, recurseLevel+1)
 					if err != nil {
-						return "", err
+						errcount++
+						val = fmt.Sprintf("<unreadable: %s>", err.Error())
 					}
 
 					fields = append(fields, fmt.Sprintf("%s: %s", field.Name, val))
+
+					if errcount > maxErrCount {
+						fields = append(fields, fmt.Sprintf("...+%d more", len(t.Field)-i))
+					}
 				}
 				if printStructName {
 					return fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", ")), nil
@@ -595,6 +602,14 @@ func (thread *Thread) readString(addr uintptr) (string, error) {
 		return "", fmt.Errorf("could not read string len %s", err)
 	}
 	strlen := int(binary.LittleEndian.Uint64(val))
+	if strlen < 0 {
+		return "", fmt.Errorf("invalid length: %d", strlen)
+	}
+
+	count := strlen
+	if count > maxArrayValues {
+		count = maxArrayValues
+	}
 
 	// read addr
 	val, err = thread.readMemory(addr, thread.dbp.arch.PtrSize())
@@ -606,12 +621,18 @@ func (thread *Thread) readString(addr uintptr) (string, error) {
 		return "", nil
 	}
 
-	val, err = thread.readMemory(addr, strlen)
+	val, err = thread.readMemory(addr, count)
 	if err != nil {
 		return "", fmt.Errorf("could not read string at %#v due to %s", addr, err)
 	}
 
-	return *(*string)(unsafe.Pointer(&val)), nil
+	retstr := *(*string)(unsafe.Pointer(&val))
+
+	if count != strlen {
+		retstr = retstr + fmt.Sprintf("...+%d more", strlen-count)
+	}
+
+	return retstr, nil
 }
 
 func (scope *EvalScope) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel int) (string, error) {
@@ -679,6 +700,7 @@ func (scope *EvalScope) readArray(addr uintptr, t *dwarf.ArrayType, recurseLevel
 
 func (scope *EvalScope) readArrayValues(addr uintptr, count int64, stride int64, t dwarf.Type, recurseLevel int) ([]string, error) {
 	vals := make([]string, 0)
+	errcount := 0
 
 	for i := int64(0); i < count; i++ {
 		// Cap number of elements
@@ -689,9 +711,14 @@ func (scope *EvalScope) readArrayValues(addr uintptr, count int64, stride int64,
 
 		val, err := scope.extractValueInternal(nil, int64(addr+uintptr(i*stride)), t, false, recurseLevel+1)
 		if err != nil {
-			return nil, err
+			errcount++
+			val = fmt.Sprintf("<unreadable: %s>", err.Error())
 		}
 		vals = append(vals, val)
+		if errcount > maxErrCount {
+			vals = append(vals, fmt.Sprintf("...+%d more", count-i))
+			break
+		}
 	}
 	return vals, nil
 }
