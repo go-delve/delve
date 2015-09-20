@@ -456,38 +456,19 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 
 func (d *Debugger) Stacktrace(goroutineId, depth int, full bool) ([]api.Stackframe, error) {
 	var rawlocs []proc.Stackframe
-	var err error
 
-	if goroutineId < 0 {
-		if d.process.SelectedGoroutine != nil {
-			rawlocs, err = d.process.GoroutineStacktrace(d.process.SelectedGoroutine, depth)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
-			if err != nil {
-				return nil, err
-			}
-		}
+	g, err := d.process.FindGoroutine(goroutineId)
+	if err != nil {
+		return nil, err
+	}
+
+	if g == nil {
+		rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
 	} else {
-		gs, err := d.process.GoroutinesInfo()
-		if err != nil {
-			return nil, err
-		}
-		for _, g := range gs {
-			if g.Id == goroutineId {
-				rawlocs, err = d.process.GoroutineStacktrace(g, depth)
-				if err != nil {
-					return nil, err
-				}
-				break
-			}
-		}
-
-		if rawlocs == nil {
-			return nil, fmt.Errorf("Unknown goroutine id %d\n", goroutineId)
-		}
+		rawlocs, err = d.process.GoroutineStacktrace(g, depth)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return d.convertStacktrace(rawlocs, full)

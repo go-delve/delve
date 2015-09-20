@@ -428,20 +428,19 @@ func (dbp *Process) SwitchThread(tid int) error {
 
 // Change from current thread to the thread running the specified goroutine
 func (dbp *Process) SwitchGoroutine(gid int) error {
-	gs, err := dbp.GoroutinesInfo()
+	g, err := dbp.FindGoroutine(gid)
 	if err != nil {
 		return err
 	}
-	for _, g := range gs {
-		if g.Id == gid {
-			if g.thread != nil {
-				return dbp.SwitchThread(g.thread.Id)
-			}
-			dbp.SelectedGoroutine = g
-			return nil
-		}
+	if g == nil {
+		// user specified -1 and SelectedGoroutine is nil
+		return nil
 	}
-	return fmt.Errorf("could not find goroutine %d", gid)
+	if g.thread != nil {
+		return dbp.SwitchThread(g.thread.Id)
+	}
+	dbp.SelectedGoroutine = g
+	return nil
 }
 
 // Returns an array of G structures representing the information
