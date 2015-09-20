@@ -695,18 +695,10 @@ func digits(n int) int {
 	return int(math.Floor(math.Log10(float64(n)))) + 1
 }
 
-func spaces(n int) string {
-	spaces := make([]byte, n)
-	for i := range spaces {
-		spaces[i] = ' '
-	}
-	return string(spaces)
-}
-
 func printStack(stack []api.Stackframe, ind string) {
 	d := digits(len(stack) - 1)
 	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
-	s := spaces(d + 2 + len(ind))
+	s := strings.Repeat(" ", d+2+len(ind))
 
 	for i := range stack {
 		name := "(nil)"
