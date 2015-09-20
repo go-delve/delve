@@ -5,6 +5,26 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [0.9.0-alpha] 2015-09-19
+
+### Added
+
+- Basic tab completion to terminal UI (@icholy)
+- Added `-full` flag to stack command, prints local vars and function args (@aarzilli)
+
+### Changed
+
+- Output of threads and goroutines sorted by ID (@icholy)
+- Performance improvement: cache parsed goroutines during halt (@icholy)
+- Stack command no longer takes goroutine ID. Use scope prefix command instead (i.e. `goroutine <id> bt`)
+
+### Fixed
+
+- OSX: Fix hang when 'next'ing through highly parallel programs
+- Absolute path confused as regexp in FindLocation (@aarzilli)
+- Use sched.pc instead of gopc for goroutine location
+- Exclude dead goroutines from `goroutines` command output (@icholy)
+
 ## [0.8.1-alpha] 2015-09-05
 
 ### Fixed
