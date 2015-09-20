@@ -75,7 +75,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"list", "ls"}, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
-		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [-<depth>] [-full] [<goroutine id>]. Prints stack."},
+		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth>] [-full]. Prints stack."},
 		{aliases: []string{"frame"}, cmdFn: frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
 	}
 
@@ -323,6 +323,17 @@ func scopePrefix(client service.Client, cmdname string, pargs ...string) error {
 			}
 			loc := locs[frame]
 			return printfile(loc.File, loc.Line, true)
+		case "stack", "bt":
+			depth, full, err := parseStackArgs(fullargs[i+1:])
+			if err != nil {
+				return err
+			}
+			stack, err := client.Stacktrace(scope.GoroutineID, depth, full)
+			if err != nil {
+				return err
+			}
+			printStack(stack, "")
+			return nil
 		case "locals":
 			return callFilterSortAndOutput(locals, fullargs[i+1:])
 		case "args":
@@ -624,36 +635,39 @@ func filterSortAndOutput(fn filteringFunc) cmdfunc {
 }
 
 func stackCommand(client service.Client, args ...string) error {
-	var err error
-
-	goroutineid := -1
-	depth := 10
-	full := false
-
-	for i := range args {
-		if args[i] == "-full" {
-			full = true
-		} else if args[i][0] == '-' {
-			n, err := strconv.Atoi(args[i][1:])
-			if err != nil {
-				return fmt.Errorf("unknown option: %s", args[i])
-			}
-			depth = n
-		} else {
-			n, err := strconv.Atoi(args[i])
-			if err != nil {
-				return fmt.Errorf("goroutine id must be a number")
-			}
-			goroutineid = n
-		}
+	var (
+		err         error
+		goroutineid = -1
+	)
+	depth, full, err := parseStackArgs(args)
+	if err != nil {
+		return err
 	}
-
 	stack, err := client.Stacktrace(goroutineid, depth, full)
 	if err != nil {
 		return err
 	}
 	printStack(stack, "")
 	return nil
+}
+
+func parseStackArgs(args []string) (int, bool, error) {
+	var (
+		depth = 10
+		full  = false
+	)
+	for i := range args {
+		if args[i] == "-full" {
+			full = true
+		} else {
+			n, err := strconv.Atoi(args[i])
+			if err != nil {
+				return 0, false, fmt.Errorf("depth must be a number")
+			}
+			depth = n
+		}
+	}
+	return depth, full, nil
 }
 
 func listCommand(client service.Client, args ...string) error {
