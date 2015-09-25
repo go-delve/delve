@@ -47,6 +47,8 @@ type Commands struct {
 	client  service.Client
 }
 
+var dumbTerminal = strings.ToLower(os.Getenv("TERM")) == "dumb"
+
 // Returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
 	c := &Commands{client: client}
@@ -733,7 +735,11 @@ func printcontext(state *api.DebuggerState) error {
 	}
 	if len(state.CurrentThread.File) == 0 {
 		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
-		fmt.Printf("\033[34m=>\033[0m    no source available\n")
+		if dumbTerminal {
+			fmt.Printf("=>    no source available\n")
+		} else {
+			fmt.Printf("\033[34m=>\033[0m    no source available\n")
+		}
 		return nil
 	}
 	var fn *api.Function
@@ -817,10 +823,18 @@ func printfile(filename string, line int, showArrow bool) error {
 		}
 
 		var lineNum string
-		if i < 10 {
-			lineNum = fmt.Sprintf("\033[34m%s  %d\033[0m:\t", arrow, i)
+		if dumbTerminal {
+			if i < 10 {
+				lineNum = fmt.Sprintf("%s  %d:\t", arrow, i)
+			} else {
+				lineNum = fmt.Sprintf("%s %d:\t", arrow, i)
+			}
 		} else {
-			lineNum = fmt.Sprintf("\033[34m%s %d\033[0m:\t", arrow, i)
+			if i < 10 {
+				lineNum = fmt.Sprintf("\033[34m%s  %d\033[0m:\t", arrow, i)
+			} else {
+				lineNum = fmt.Sprintf("\033[34m%s %d\033[0m:\t", arrow, i)
+			}
 		}
 		context = append(context, lineNum+line)
 	}
