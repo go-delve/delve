@@ -727,7 +727,7 @@ func TestContinueMulti(t *testing.T) {
 		sayhiCount := 0
 		for {
 			err := p.Continue()
-			if p.exited {
+			if p.Exited() {
 				break
 			}
 			assertNoError(err, t, "Continue()")

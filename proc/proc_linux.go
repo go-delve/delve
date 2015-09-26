@@ -267,15 +267,6 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			if err != nil {
 				return nil, err
 			}
-			// Set all hardware breakpoints on the new thread.
-			for _, bp := range dbp.Breakpoints {
-				if !bp.hardware {
-					continue
-				}
-				if err = dbp.setHardwareBreakpoint(bp.reg, th.Id, bp.Addr); err != nil {
-					return nil, err
-				}
-			}
 			if err = th.Continue(); err != nil {
 				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}

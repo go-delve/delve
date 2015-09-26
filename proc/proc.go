@@ -25,7 +25,7 @@ type Process struct {
 	Pid     int         // Process Pid
 	Process *os.Process // Pointer to process struct for the actual process we are debugging
 
-	// Breakpoint table, hold information on software / hardware breakpoints.
+	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
 	Breakpoints map[uint64]*Breakpoint
 
@@ -205,12 +205,6 @@ func (dbp *Process) RequestManualStop() error {
 // Sets a breakpoint at addr, and stores it in the process wide
 // break point table. Setting a break point must be thread specific due to
 // ptrace actions needing the thread to be in a signal-delivery-stop.
-//
-// Depending on hardware support, Delve will choose to either
-// set a hardware or software breakpoint. Essentially, if the
-// hardware supports it, and there are free debug registers, Delve
-// will set a hardware breakpoint. Otherwise we fall back to software
-// breakpoints, which are a bit more work for us.
 func (dbp *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
 	return dbp.setBreakpoint(dbp.CurrentThread.Id, addr, false)
 }
@@ -221,27 +215,16 @@ func (dbp *Process) SetTempBreakpoint(addr uint64) (*Breakpoint, error) {
 }
 
 // Clears a breakpoint.
-//
-// If it is a hardware assisted breakpoint, iterate through all threads
-// and clear the debug register. Otherwise, restore original instruction.
 func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
-	bp, ok := dbp.Breakpoints[addr]
+	bp, ok := dbp.FindBreakpoint(addr)
 	if !ok {
 		return nil, NoBreakpointError{addr: addr}
 	}
 
-	for _, thread := range dbp.Threads {
-		if _, err := bp.Clear(thread); err != nil {
-			return nil, err
-		}
-		if !bp.hardware {
-			break
-		}
+	if _, err := bp.Clear(dbp.CurrentThread); err != nil {
+		return nil, err
 	}
 
-	if bp.hardware {
-		dbp.arch.SetHardwareBreakpointUsage(bp.reg, false)
-	}
 	delete(dbp.Breakpoints, addr)
 
 	return bp, nil
@@ -566,15 +549,11 @@ func (dbp *Process) FindBreakpointByID(id int) (*Breakpoint, bool) {
 
 // Finds the breakpoint for the given pc.
 func (dbp *Process) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
-	// Check for software breakpoint. PC will be at
-	// breakpoint instruction + size of breakpoint.
+	// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
 	if bp, ok := dbp.Breakpoints[pc-uint64(dbp.arch.BreakpointSize())]; ok {
 		return bp, true
 	}
-	// Check for hardware breakpoint. PC will equal
-	// the breakpoint address since the CPU will stop
-	// the process without executing the instruction at
-	// this address.
+	// Directly use addr to lookup breakpoint.
 	if bp, ok := dbp.Breakpoints[pc]; ok {
 		return bp, true
 	}

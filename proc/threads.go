@@ -50,11 +50,9 @@ func (thread *Thread) Continue() error {
 	}
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
-	if bp, ok := thread.dbp.FindBreakpoint(pc); ok {
-		if !bp.hardware {
-			if err := thread.Step(); err != nil {
-				return err
-			}
+	if _, ok := thread.dbp.FindBreakpoint(pc); ok {
+		if err := thread.Step(); err != nil {
+			return err
 		}
 	}
 	return thread.resume()
@@ -78,7 +76,7 @@ func (thread *Thread) Step() (err error) {
 		return err
 	}
 
-	bp, ok := thread.dbp.Breakpoints[pc]
+	bp, ok := thread.dbp.FindBreakpoint(pc)
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
 		_, err = bp.Clear(thread)
@@ -88,11 +86,7 @@ func (thread *Thread) Step() (err error) {
 
 		// Restore breakpoint now that we have passed it.
 		defer func() {
-			if bp.hardware {
-				err = thread.dbp.setHardwareBreakpoint(bp.reg, thread.Id, bp.Addr)
-			} else {
-				err = thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
-			}
+			err = thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
 		}()
 	}
 

@@ -1,9 +1,6 @@
 package proc
 
-import (
-	"fmt"
-	"runtime"
-)
+import "fmt"
 
 // Represents a single breakpoint. Stores information on the break
 // point including the byte of data that originally was stored at that
@@ -24,10 +21,6 @@ type Breakpoint struct {
 	Stacktrace int      // Number of stack frames to retrieve
 	Goroutine  bool     // Retrieve goroutine information
 	Variables  []string // Variables to evaluate
-
-	hardware bool // Breakpoint using CPU debug registers.
-	reg      int  // If hardware breakpoint, what debug register it belongs to.
-
 }
 
 func (bp *Breakpoint) String() string {
@@ -37,12 +30,6 @@ func (bp *Breakpoint) String() string {
 // Clear this breakpoint appropriately depending on whether it is a
 // hardware or software breakpoint.
 func (bp *Breakpoint) Clear(thread *Thread) (*Breakpoint, error) {
-	if bp.hardware {
-		if err := thread.dbp.clearHardwareBreakpoint(bp.reg, thread.Id); err != nil {
-			return nil, err
-		}
-		return bp, nil
-	}
 	if _, err := thread.writeMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
 		return nil, fmt.Errorf("could not clear breakpoint %s", err)
 	}
@@ -97,34 +84,6 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		newBreakpoint.ID = dbp.breakpointIDCounter
 	}
 
-	// Try and set a hardware breakpoint.
-	for i, used := range dbp.arch.HardwareBreakpointUsage() {
-		if runtime.GOOS == "darwin" { // TODO(dp): Implement hardware breakpoints on OSX.
-			break
-		}
-		if used {
-			continue
-		}
-		for tid, t := range dbp.Threads {
-			if t.running {
-				err := t.Halt()
-				if err != nil {
-					return nil, err
-				}
-				defer t.Continue()
-			}
-			if err := dbp.setHardwareBreakpoint(i, tid, addr); err != nil {
-				return nil, fmt.Errorf("could not set hardware breakpoint on thread %d: %s", t, err)
-			}
-		}
-		dbp.arch.SetHardwareBreakpointUsage(i, true)
-		newBreakpoint.reg = i
-		newBreakpoint.hardware = true
-		dbp.Breakpoints[addr] = newBreakpoint
-		return dbp.Breakpoints[addr], nil
-	}
-
-	// Fall back to software breakpoint.
 	thread := dbp.Threads[tid]
 	originalData, err := thread.readMemory(uintptr(addr), dbp.arch.BreakpointSize())
 	if err != nil {
