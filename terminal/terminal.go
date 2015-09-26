@@ -139,18 +139,24 @@ func (t *Term) handleExit() (error, int) {
 		}
 	}
 
-	kill := true
-	if t.client.AttachedToExistingProcess() {
-		answer, err := t.line.Prompt("Would you like to kill the process? [Y/n] ")
-		if err != nil {
-			return io.EOF, 2
-		}
-		answer = strings.ToLower(strings.TrimSpace(answer))
-		kill = (answer != "n" && answer != "no")
-	}
-	err = t.client.Detach(kill)
+	s, err := t.client.GetState()
 	if err != nil {
 		return err, 1
+	}
+	if !s.Exited {
+		kill := true
+		if t.client.AttachedToExistingProcess() {
+			answer, err := t.line.Prompt("Would you like to kill the process? [Y/n] ")
+			if err != nil {
+				return io.EOF, 2
+			}
+			answer = strings.ToLower(strings.TrimSpace(answer))
+			kill = (answer != "n" && answer != "no")
+		}
+		err = t.client.Detach(kill)
+		if err != nil {
+			return err, 1
+		}
 	}
 	return nil, 0
 }
