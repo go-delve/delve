@@ -9,7 +9,7 @@ GOVERSION=$(shell go version)
 # will be malformed once we codesign it and
 # unable to execute.
 # See https://github.com/golang/go/issues/11887#issuecomment-126117692.
-ifneq (,$(findstring 1.5, $(GOVERSION)))
+ifeq "$(UNAME)" "Darwin"
 	FLAGS=-ldflags="-s"
 endif
 
