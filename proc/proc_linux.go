@@ -116,6 +116,9 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
 		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
+		if err == syscall.ESRCH {
+			return nil, err
+		}
 		if err != nil {
 			return nil, fmt.Errorf("could not set options for new traced thread %d %s", tid, err)
 		}
@@ -265,9 +268,18 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			}
 			th, err = dbp.addThread(int(cloned), false)
 			if err != nil {
+				if err == sys.ESRCH {
+					// thread died while we were adding it
+					continue
+				}
 				return nil, err
 			}
 			if err = th.Continue(); err != nil {
+				if err == sys.ESRCH {
+					// thread died while we were adding it
+					delete(dbp.Threads, th.Id)
+					continue
+				}
 				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 			if err = dbp.Threads[int(wpid)].Continue(); err != nil {

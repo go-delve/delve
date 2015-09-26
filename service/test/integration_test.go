@@ -83,7 +83,7 @@ func TestRestart_afterExit(t *testing.T) {
 		}
 		state = <-c.Continue()
 		if !state.Exited {
-			t.Fatal("expected restarted process to have exited")
+			t.Fatalf("expected restarted process to have exited %v", state)
 		}
 	})
 }
