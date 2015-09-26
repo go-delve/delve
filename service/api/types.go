@@ -42,6 +42,10 @@ type Breakpoint struct {
 	Goroutine bool `json:"goroutine"`
 	// variables to evaluate
 	Variables []string `json:"variables,omitempty"`
+	// number of times a breakpoint has been reached in a certain goroutine
+	HitCount map[string]uint64 `json:"hitCount"`
+	// number of times a breakpoint has been reached
+	TotalHitCount uint64 `json:"totalHitCount"`
 }
 
 // Thread is a thread within the debugged process.

@@ -646,6 +646,10 @@ func (dbp *Process) handleBreakpointOnThread(id int) (*Thread, error) {
 		if err = thread.SetPC(bp.Addr); err != nil {
 			return nil, err
 		}
+		if g, err := thread.GetG(); err == nil {
+			thread.CurrentBreakpoint.HitCount[g.Id]++
+		}
+		thread.CurrentBreakpoint.TotalHitCount++
 		return thread, nil
 	}
 	if dbp.halt {
