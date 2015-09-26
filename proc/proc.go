@@ -101,11 +101,13 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		}
 	}
 	dbp.execPtraceFunc(func() {
-		var sig int
-		if kill {
-			sig = int(sys.SIGINT)
+		err = PtraceDetach(dbp.Pid, 0)
+		if err != nil {
+			return
 		}
-		err = PtraceDetach(dbp.Pid, sig)
+		if kill {
+			err = sys.Kill(dbp.Pid, sys.SIGINT)
+		}
 	})
 	return
 }
