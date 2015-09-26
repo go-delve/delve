@@ -178,6 +178,10 @@ func TestBreakpoint(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		if bp.TotalHitCount != 1 {
+			t.Fatalf("Breakpoint should be hit once, got %d\n", bp.TotalHitCount)
+		}
+
 		if pc-1 != bp.Addr && pc != bp.Addr {
 			f, l, _ := p.goSymTable.PCToLine(pc)
 			t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, f, l, bp.Addr)

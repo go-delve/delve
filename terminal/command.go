@@ -461,7 +461,7 @@ func breakpoints(client service.Client, args ...string) error {
 		if bp.Tracepoint {
 			thing = "Tracepoint"
 		}
-		fmt.Printf("%s %d at %#v %s:%d\n", thing, bp.ID, bp.Addr, shortenFilePath(bp.File), bp.Line)
+		fmt.Printf("%s %d at %#v %s:%d (%d)\n", thing, bp.ID, bp.Addr, shortenFilePath(bp.File), bp.Line, bp.TotalHitCount)
 
 		var attrs []string
 		if bp.Stacktrace > 0 {
@@ -731,12 +731,34 @@ func printcontext(state *api.DebuggerState) error {
 	if state.CurrentThread.Function != nil {
 		fn = state.CurrentThread.Function
 	}
-	if state.Breakpoint != nil && state.Breakpoint.Tracepoint {
-		var args []string
-		for _, arg := range state.CurrentThread.Function.Args {
-			args = append(args, arg.Value)
+
+	if state.Breakpoint != nil {
+		args := ""
+		if state.Breakpoint.Tracepoint {
+			var arg []string
+			for _, ar := range state.CurrentThread.Function.Args {
+				arg = append(arg, ar.Value)
+			}
+			args = strings.Join(arg, ", ")
 		}
-		fmt.Printf("> %s(%s) %s:%d\n", fn.Name, strings.Join(args, ", "), shortenFilePath(state.CurrentThread.File), state.CurrentThread.Line)
+
+		if hitCount, ok := state.Breakpoint.HitCount[strconv.Itoa(state.SelectedGoroutine.ID)]; ok {
+			fmt.Printf("> %s(%s) %s:%d (hits goroutine(%d):%d total:%d)\n",
+				fn.Name,
+				args,
+				shortenFilePath(state.CurrentThread.File),
+				state.CurrentThread.Line,
+				state.SelectedGoroutine.ID,
+				hitCount,
+				state.Breakpoint.TotalHitCount)
+		} else {
+			fmt.Printf("> %s(%s) %s:%d (hits total:%d)\n",
+				fn.Name,
+				args,
+				shortenFilePath(state.CurrentThread.File),
+				state.CurrentThread.Line,
+				state.Breakpoint.TotalHitCount)
+		}
 	} else {
 		fmt.Printf("> %s() %s:%d\n", fn.Name, shortenFilePath(state.CurrentThread.File), state.CurrentThread.Line)
 	}

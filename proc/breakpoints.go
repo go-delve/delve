@@ -17,14 +17,16 @@ type Breakpoint struct {
 	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
 
 	// Breakpoint information
-	Tracepoint bool     // Tracepoint flag
-	Stacktrace int      // Number of stack frames to retrieve
-	Goroutine  bool     // Retrieve goroutine information
-	Variables  []string // Variables to evaluate
+	Tracepoint    bool           // Tracepoint flag
+	Stacktrace    int            // Number of stack frames to retrieve
+	Goroutine     bool           // Retrieve goroutine information
+	Variables     []string       // Variables to evaluate
+	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
+	TotalHitCount uint64         // Number of times a breakpoint has been reached
 }
 
 func (bp *Breakpoint) String() string {
-	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.ID, bp.Addr, bp.File, bp.Line)
+	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.ID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
 }
 
 // Clear this breakpoint appropriately depending on whether it is a
@@ -74,6 +76,7 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		Line:         l,
 		Addr:         addr,
 		Temp:         temp,
+		HitCount:     map[int]uint64{},
 	}
 
 	if temp {
