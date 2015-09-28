@@ -67,6 +67,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"goroutine"}, cmdFn: goroutine, helpMsg: "Sets current goroutine."},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		{aliases: []string{"print", "p"}, cmdFn: g0f0(printVar), helpMsg: "Evaluate a variable."},
+		{aliases: []string{"set"}, cmdFn: g0f0(setVar), helpMsg: "Changes the value of a variable."},
 		{aliases: []string{"sources"}, cmdFn: filterSortAndOutput(sources), helpMsg: "Print list of source files, optionally filtered by a regexp."},
 		{aliases: []string{"funcs"}, cmdFn: filterSortAndOutput(funcs), helpMsg: "Print list of functions, optionally filtered by a regexp."},
 		{aliases: []string{"args"}, cmdFn: filterSortAndOutput(g0f0filter(args)), helpMsg: "Print function arguments, optionally filtered by a regexp."},
@@ -555,6 +556,14 @@ func printVar(client service.Client, scope api.EvalScope, args ...string) error 
 	}
 	fmt.Println(val.Value)
 	return nil
+}
+
+func setVar(client service.Client, scope api.EvalScope, args ...string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("wrong number of arguments")
+	}
+
+	return client.SetVariable(scope, args[0], args[1])
 }
 
 func filterVariables(vars []api.Variable, filter string) []string {

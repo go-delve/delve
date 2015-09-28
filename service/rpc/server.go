@@ -249,6 +249,17 @@ func (s *RPCServer) EvalSymbol(args EvalSymbolArgs, variable *api.Variable) erro
 	return nil
 }
 
+type SetSymbolArgs struct {
+	Scope  api.EvalScope
+	Symbol string
+	Value  string
+}
+
+func (s *RPCServer) SetSymbol(args SetSymbolArgs, unused *int) error {
+	*unused = 0
+	return s.debugger.SetVariableInScope(args.Scope, args.Symbol, args.Value)
+}
+
 func (s *RPCServer) ListSources(filter string, sources *[]string) error {
 	ss, err := s.debugger.Sources(filter)
 	if err != nil {

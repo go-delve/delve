@@ -6,6 +6,9 @@ import (
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -337,6 +340,15 @@ func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
 	return addr, err
 }
 
+// Sets the value of the named variable
+func (scope *EvalScope) SetVariable(name, value string) error {
+	addr, err := scope.ExtractVariableInfo(name)
+	if err != nil {
+		return err
+	}
+	return addr.setValue(value)
+}
+
 func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
 	rdr := scope.DwarfReader()
 	addr, err := scope.extractVarInfoFromEntry(entry, rdr)
@@ -625,6 +637,27 @@ func (v *Variable) loadValueInternal(printStructName bool, recurseLevel int) (st
 	return "", fmt.Errorf("could not find value for type %s", v.dwarfType)
 }
 
+func (v *Variable) setValue(value string) error {
+	v = v.resolveTypedefs()
+
+	switch t := v.dwarfType.(type) {
+	case *dwarf.PtrType:
+		return v.writeUint(false, value, int64(v.thread.dbp.arch.PtrSize()))
+	case *dwarf.ComplexType:
+		return v.writeComplex(value, t.ByteSize)
+	case *dwarf.IntType:
+		return v.writeUint(true, value, t.ByteSize)
+	case *dwarf.UintType:
+		return v.writeUint(false, value, t.ByteSize)
+	case *dwarf.FloatType:
+		return v.writeFloat(value, t.ByteSize)
+	case *dwarf.BoolType:
+		return v.writeBool(value)
+	default:
+		return fmt.Errorf("Can not set value of variables of type: %T\n", t)
+	}
+}
+
 func (thread *Thread) readString(addr uintptr) (string, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
@@ -773,6 +806,81 @@ func (v *Variable) readComplex(size int64) (string, error) {
 	return fmt.Sprintf("(%s + %si)", r, i), nil
 }
 
+func (v *Variable) writeComplex(value string, size int64) error {
+	var real, imag float64
+
+	expr, err := parser.ParseExpr(value)
+	if err != nil {
+		return err
+	}
+
+	var lits []*ast.BasicLit
+
+	if e, ok := expr.(*ast.ParenExpr); ok {
+		expr = e.X
+	}
+
+	switch e := expr.(type) {
+	case *ast.BinaryExpr: // "<float> + <float>i" or "<float>i + <float>"
+		x, xok := e.X.(*ast.BasicLit)
+		y, yok := e.Y.(*ast.BasicLit)
+		if e.Op != token.ADD || !xok || !yok {
+			return fmt.Errorf("Not a complex constant: %s", value)
+		}
+		lits = []*ast.BasicLit{x, y}
+	case *ast.CallExpr: // "complex(<float>, <float>)"
+		tname, ok := e.Fun.(*ast.Ident)
+		if !ok {
+			return fmt.Errorf("Not a complex constant: %s", value)
+		}
+		if (tname.Name != "complex64") && (tname.Name != "complex128") {
+			return fmt.Errorf("Not a complex constant: %s", value)
+		}
+		if len(e.Args) != 2 {
+			return fmt.Errorf("Not a complex constant: %s", value)
+		}
+		for i := range e.Args {
+			lit, ok := e.Args[i].(*ast.BasicLit)
+			if !ok {
+				return fmt.Errorf("Not a complex constant: %s", value)
+			}
+			lits = append(lits, lit)
+		}
+		lits[1].Kind = token.IMAG
+		lits[1].Value = lits[1].Value + "i"
+	case *ast.BasicLit: // "<float>" or "<float>i"
+		lits = []*ast.BasicLit{e}
+	default:
+		return fmt.Errorf("Not a complex constant: %s", value)
+	}
+
+	for _, lit := range lits {
+		var err error
+		var v float64
+		switch lit.Kind {
+		case token.FLOAT, token.INT:
+			v, err = strconv.ParseFloat(lit.Value, int(size/2))
+			real += v
+		case token.IMAG:
+			v, err = strconv.ParseFloat(lit.Value[:len(lit.Value)-1], int(size/2))
+			imag += v
+		default:
+			return fmt.Errorf("Not a complex constant: %s", value)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	err = v.writeFloatRaw(real, int64(size/2))
+	if err != nil {
+		return err
+	}
+	imagaddr := *v
+	imagaddr.Addr += uintptr(size / 2)
+	return imagaddr.writeFloatRaw(imag, int64(size/2))
+}
+
 func (v *Variable) readInt(size int64) (string, error) {
 	n, err := v.thread.readIntRaw(v.Addr, size)
 	if err != nil {
@@ -809,6 +917,37 @@ func (v *Variable) readUint(size int64) (string, error) {
 		return "", err
 	}
 	return strconv.FormatUint(n, 10), nil
+}
+
+func (v *Variable) writeUint(signed bool, value string, size int64) error {
+	var n uint64
+	var err error
+	if signed {
+		var m int64
+		m, err = strconv.ParseInt(value, 0, int(size*8))
+		n = uint64(m)
+	} else {
+		n, err = strconv.ParseUint(value, 0, int(size*8))
+	}
+	if err != nil {
+		return err
+	}
+
+	val := make([]byte, size)
+
+	switch size {
+	case 1:
+		val[0] = byte(n)
+	case 2:
+		binary.LittleEndian.PutUint16(val, uint16(n))
+	case 4:
+		binary.LittleEndian.PutUint32(val, uint32(n))
+	case 8:
+		binary.LittleEndian.PutUint64(val, uint64(n))
+	}
+
+	_, err = v.thread.writeMemory(v.Addr, val)
+	return err
 }
 
 func (thread *Thread) readUintRaw(addr uintptr, size int64) (uint64, error) {
@@ -854,6 +993,30 @@ func (v *Variable) readFloat(size int64) (string, error) {
 	return "", fmt.Errorf("could not read float")
 }
 
+func (v *Variable) writeFloat(value string, size int64) error {
+	f, err := strconv.ParseFloat(value, int(size*8))
+	if err != nil {
+		return err
+	}
+	return v.writeFloatRaw(f, size)
+}
+
+func (v *Variable) writeFloatRaw(f float64, size int64) error {
+	buf := bytes.NewBuffer(make([]byte, 0, size))
+
+	switch size {
+	case 4:
+		n := float32(f)
+		binary.Write(buf, binary.LittleEndian, n)
+	case 8:
+		n := float64(f)
+		binary.Write(buf, binary.LittleEndian, n)
+	}
+
+	_, err := v.thread.writeMemory(v.Addr, buf.Bytes())
+	return err
+}
+
 func (v *Variable) readBool() (string, error) {
 	val, err := v.thread.readMemory(v.Addr, 1)
 	if err != nil {
@@ -865,6 +1028,19 @@ func (v *Variable) readBool() (string, error) {
 	}
 
 	return "true", nil
+}
+
+func (v *Variable) writeBool(value string) error {
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return err
+	}
+	val := []byte{0}
+	if b {
+		val[0] = *(*byte)(unsafe.Pointer(&b))
+	}
+	_, err = v.thread.writeMemory(v.Addr, val)
+	return err
 }
 
 func (v *Variable) readFunctionPtr() (string, error) {
