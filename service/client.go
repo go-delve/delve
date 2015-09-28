@@ -53,6 +53,9 @@ type Client interface {
 	// ListPackageVariablesFor lists all package variables in the context of a thread.
 	ListPackageVariablesFor(threadID int, filter string) ([]api.Variable, error)
 
+	// SetVariable sets the value of a variable
+	SetVariable(scope api.EvalScope, symbol, value string) error
+
 	// ListSources lists all source files in the process matching filter.
 	ListSources(filter string) ([]string, error)
 	// ListFunctions lists all functions in the process matching filter.

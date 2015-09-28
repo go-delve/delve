@@ -155,6 +155,11 @@ func (c *RPCClient) EvalVariable(scope api.EvalScope, symbol string) (*api.Varia
 	return v, err
 }
 
+func (c *RPCClient) SetVariable(scope api.EvalScope, symbol, value string) error {
+	var unused int
+	return c.call("SetSymbol", SetSymbolArgs{scope, symbol, value}, &unused)
+}
+
 func (c *RPCClient) ListSources(filter string) ([]string, error) {
 	var sources []string
 	err := c.call("ListSources", filter, &sources)

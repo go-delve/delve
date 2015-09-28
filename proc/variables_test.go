@@ -12,6 +12,7 @@ import (
 type varTest struct {
 	name    string
 	value   string
+	setTo   string
 	varType string
 	err     error
 }
@@ -38,48 +39,67 @@ func evalVariable(p *Process, symbol string) (*Variable, error) {
 	return scope.EvalVariable(symbol)
 }
 
+func (tc *varTest) settable() bool {
+	return tc.setTo != ""
+}
+
+func (tc *varTest) afterSet() varTest {
+	r := *tc
+	r.value = r.setTo
+	return r
+}
+
+func setVariable(p *Process, symbol, value string) error {
+	scope, err := p.CurrentThread.Scope()
+	if err != nil {
+		return err
+	}
+	return scope.SetVariable(symbol, value)
+}
+
 const varTestBreakpointLineNumber = 59
 
 func TestVariableEvaluation(t *testing.T) {
 	testcases := []varTest{
-		{"a1", "foofoofoofoofoofoo", "struct string", nil},
-		{"a10", "ofo", "struct string", nil},
-		{"a11", "[3]main.FooBar [{Baz: 1, Bur: a},{Baz: 2, Bur: b},{Baz: 3, Bur: c}]", "[3]main.FooBar", nil},
-		{"a12", "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: d},{Baz: 5, Bur: e}]", "struct []main.FooBar", nil},
-		{"a13", "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: f},*{Baz: 7, Bur: g},*{Baz: 8, Bur: h}]", "struct []*main.FooBar", nil},
-		{"a2", "6", "int", nil},
-		{"a3", "7.23", "float64", nil},
-		{"a4", "[2]int [1,2]", "[2]int", nil},
-		{"a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "struct []int", nil},
-		{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar", nil},
-		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar", nil},
-		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil},
-		{"a9", "*main.FooBar nil", "*main.FooBar", nil},
-		{"baz", "bazburzum", "struct string", nil},
-		{"neg", "-1", "int", nil},
-		{"f32", "1.2", "float32", nil},
-		{"c64", "(1 + 2i)", "complex64", nil},
-		{"c128", "(2 + 3i)", "complex128", nil},
-		{"a6.Baz", "8", "int", nil},
-		{"a7.Baz", "5", "int", nil},
-		{"a8.Baz", "feh", "struct string", nil},
-		{"a9.Baz", "nil", "int", fmt.Errorf("a9 is nil")},
-		{"a9.NonExistent", "nil", "int", fmt.Errorf("a9 has no member NonExistent")},
-		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil}, // reread variable after member
-		{"i32", "[2]int32 [1,2]", "[2]int32", nil},
-		{"b1", "true", "bool", nil},
-		{"b2", "false", "bool", nil}, {"i8", "1", "int8", nil},
-		{"u16", "65535", "uint16", nil},
-		{"u32", "4294967295", "uint32", nil},
-		{"u64", "18446744073709551615", "uint64", nil},
-		{"u8", "255", "uint8", nil},
-		{"up", "5", "uintptr", nil},
-		{"f", "main.barfoo", "func()", nil},
-		{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "struct []int", nil},
-		{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "main.Nest", nil},
-		{"main.p1", "10", "int", nil},
-		{"p1", "10", "int", nil},
-		{"NonExistent", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
+		{"a1", "foofoofoofoofoofoo", "", "struct string", nil},
+		{"a10", "ofo", "", "struct string", nil},
+		{"a11", "[3]main.FooBar [{Baz: 1, Bur: a},{Baz: 2, Bur: b},{Baz: 3, Bur: c}]", "", "[3]main.FooBar", nil},
+		{"a12", "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: d},{Baz: 5, Bur: e}]", "", "struct []main.FooBar", nil},
+		{"a13", "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: f},*{Baz: 7, Bur: g},*{Baz: 8, Bur: h}]", "", "struct []*main.FooBar", nil},
+		{"a2", "6", "10", "int", nil},
+		{"a3", "7.23", "3.1", "float64", nil},
+		{"a4", "[2]int [1,2]", "", "[2]int", nil},
+		{"a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "struct []int", nil},
+		{"a6", "main.FooBar {Baz: 8, Bur: word}", "", "main.FooBar", nil},
+		{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "", "*main.FooBar", nil},
+		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "", "main.FooBar2", nil},
+		{"a9", "*main.FooBar nil", "", "*main.FooBar", nil},
+		{"baz", "bazburzum", "", "struct string", nil},
+		{"neg", "-1", "-20", "int", nil},
+		{"f32", "1.2", "1.1", "float32", nil},
+		{"c64", "(1 + 2i)", "(4 + 5i)", "complex64", nil},
+		{"c128", "(2 + 3i)", "(6.3 + 7i)", "complex128", nil},
+		{"a6.Baz", "8", "20", "int", nil},
+		{"a7.Baz", "5", "25", "int", nil},
+		{"a8.Baz", "feh", "", "struct string", nil},
+		{"a9.Baz", "nil", "", "int", fmt.Errorf("a9 is nil")},
+		{"a9.NonExistent", "nil", "", "int", fmt.Errorf("a9 has no member NonExistent")},
+		{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "", "main.FooBar2", nil}, // reread variable after member
+		{"i32", "[2]int32 [1,2]", "", "[2]int32", nil},
+		{"b1", "true", "false", "bool", nil},
+		{"b2", "false", "true", "bool", nil},
+		{"i8", "1", "2", "int8", nil},
+		{"u16", "65535", "0", "uint16", nil},
+		{"u32", "4294967295", "1", "uint32", nil},
+		{"u64", "18446744073709551615", "2", "uint64", nil},
+		{"u8", "255", "3", "uint8", nil},
+		{"up", "5", "4", "uintptr", nil},
+		{"f", "main.barfoo", "", "func()", nil},
+		{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "struct []int", nil},
+		{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "", "main.Nest", nil},
+		{"main.p1", "10", "12", "int", nil},
+		{"p1", "10", "13", "int", nil},
+		{"NonExistent", "", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
@@ -100,6 +120,18 @@ func TestVariableEvaluation(t *testing.T) {
 				if tc.err.Error() != err.Error() {
 					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
 				}
+			}
+
+			if tc.settable() {
+				assertNoError(setVariable(p, tc.name, tc.setTo), t, "SetVariable()")
+				variable, err = evalVariable(p, tc.name)
+				assertNoError(err, t, "EvalVariable()")
+				assertVariable(t, variable, tc.afterSet())
+
+				assertNoError(setVariable(p, tc.name, tc.value), t, "SetVariable()")
+				variable, err := evalVariable(p, tc.name)
+				assertNoError(err, t, "EvalVariable()")
+				assertVariable(t, variable, tc)
 			}
 		}
 	})
@@ -165,39 +197,39 @@ func TestLocalVariables(t *testing.T) {
 	}{
 		{(*EvalScope).LocalVariables,
 			[]varTest{
-				{"a1", "foofoofoofoofoofoo", "struct string", nil},
-				{"a10", "ofo", "struct string", nil},
-				{"a11", "[3]main.FooBar [{Baz: 1, Bur: a},{Baz: 2, Bur: b},{Baz: 3, Bur: c}]", "[3]main.FooBar", nil},
-				{"a12", "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: d},{Baz: 5, Bur: e}]", "struct []main.FooBar", nil},
-				{"a13", "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: f},*{Baz: 7, Bur: g},*{Baz: 8, Bur: h}]", "struct []*main.FooBar", nil},
-				{"a2", "6", "int", nil},
-				{"a3", "7.23", "float64", nil},
-				{"a4", "[2]int [1,2]", "[2]int", nil},
-				{"a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "struct []int", nil},
-				{"a6", "main.FooBar {Baz: 8, Bur: word}", "main.FooBar", nil},
-				{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "*main.FooBar", nil},
-				{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "main.FooBar2", nil},
-				{"a9", "*main.FooBar nil", "*main.FooBar", nil},
-				{"b1", "true", "bool", nil},
-				{"b2", "false", "bool", nil},
-				{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "struct []int", nil},
-				{"c128", "(2 + 3i)", "complex128", nil},
-				{"c64", "(1 + 2i)", "complex64", nil},
-				{"f", "main.barfoo", "func()", nil},
-				{"f32", "1.2", "float32", nil},
-				{"i32", "[2]int32 [1,2]", "[2]int32", nil},
-				{"i8", "1", "int8", nil},
-				{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "main.Nest", nil},
-				{"neg", "-1", "int", nil},
-				{"u16", "65535", "uint16", nil},
-				{"u32", "4294967295", "uint32", nil},
-				{"u64", "18446744073709551615", "uint64", nil},
-				{"u8", "255", "uint8", nil},
-				{"up", "5", "uintptr", nil}}},
+				{"a1", "foofoofoofoofoofoo", "", "struct string", nil},
+				{"a10", "ofo", "", "struct string", nil},
+				{"a11", "[3]main.FooBar [{Baz: 1, Bur: a},{Baz: 2, Bur: b},{Baz: 3, Bur: c}]", "", "[3]main.FooBar", nil},
+				{"a12", "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: d},{Baz: 5, Bur: e}]", "", "struct []main.FooBar", nil},
+				{"a13", "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: f},*{Baz: 7, Bur: g},*{Baz: 8, Bur: h}]", "", "struct []*main.FooBar", nil},
+				{"a2", "6", "", "int", nil},
+				{"a3", "7.23", "", "float64", nil},
+				{"a4", "[2]int [1,2]", "", "[2]int", nil},
+				{"a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "struct []int", nil},
+				{"a6", "main.FooBar {Baz: 8, Bur: word}", "", "main.FooBar", nil},
+				{"a7", "*main.FooBar {Baz: 5, Bur: strum}", "", "*main.FooBar", nil},
+				{"a8", "main.FooBar2 {Bur: 10, Baz: feh}", "", "main.FooBar2", nil},
+				{"a9", "*main.FooBar nil", "", "*main.FooBar", nil},
+				{"b1", "true", "", "bool", nil},
+				{"b2", "false", "", "bool", nil},
+				{"ba", "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "struct []int", nil},
+				{"c128", "(2 + 3i)", "", "complex128", nil},
+				{"c64", "(1 + 2i)", "", "complex64", nil},
+				{"f", "main.barfoo", "", "func()", nil},
+				{"f32", "1.2", "", "float32", nil},
+				{"i32", "[2]int32 [1,2]", "", "[2]int32", nil},
+				{"i8", "1", "", "int8", nil},
+				{"ms", "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *main.Nest {...}}}", "", "main.Nest", nil},
+				{"neg", "-1", "", "int", nil},
+				{"u16", "65535", "", "uint16", nil},
+				{"u32", "4294967295", "", "uint32", nil},
+				{"u64", "18446744073709551615", "", "uint64", nil},
+				{"u8", "255", "", "uint8", nil},
+				{"up", "5", "", "uintptr", nil}}},
 		{(*EvalScope).FunctionArguments,
 			[]varTest{
-				{"bar", "main.FooBar {Baz: 10, Bur: lorem}", "main.FooBar", nil},
-				{"baz", "bazburzum", "struct string", nil}}},
+				{"bar", "main.FooBar {Baz: 10, Bur: lorem}", "", "main.FooBar", nil},
+				{"baz", "bazburzum", "", "struct string", nil}}},
 	}
 
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
@@ -300,5 +332,59 @@ func TestFrameEvaluation(t *testing.T) {
 				t.Fatalf("On frame %d value of n is %d (not %d)", i+1, n, 3-i)
 			}
 		}
+	})
+}
+
+func TestComplexSetting(t *testing.T) {
+	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
+		pc, _, _ := p.goSymTable.LineToPC(fixture.Source, varTestBreakpointLineNumber)
+
+		_, err := p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint() returned an error")
+
+		err = p.Continue()
+		assertNoError(err, t, "Continue() returned an error")
+
+		h := func(setExpr, value string) {
+			assertNoError(setVariable(p, "c128", setExpr), t, "SetVariable()")
+			variable, err := evalVariable(p, "c128")
+			assertNoError(err, t, "EvalVariable()")
+			if variable.Value != value {
+				t.Fatalf("Wrong value of c128: \"%s\", expected \"%s\" after setting it to \"%s\"", variable.Value, value, setExpr)
+			}
+		}
+
+		h("3.2i", "(0 + 3.2i)")
+		h("1.1", "(1.1 + 0i)")
+		h("1 + 3.3i", "(1 + 3.3i)")
+		h("complex128(1.2, 3.4)", "(1.2 + 3.4i)")
+	})
+}
+
+func TestPointerSetting(t *testing.T) {
+	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+
+		pval := func(value string) {
+			variable, err := evalVariable(p, "p1")
+			assertNoError(err, t, "EvalVariable()")
+			if variable.Value != value {
+				t.Fatalf("Wrong value of p1, \"%s\" expected \"%s\"", variable.Value, value)
+			}
+		}
+
+		pval("*1")
+
+		// change p1 to point to i2
+		scope, err := p.CurrentThread.Scope()
+		assertNoError(err, t, "Scope()")
+		i2addr, err := scope.ExtractVariableInfo("i2")
+		assertNoError(err, t, "EvalVariableAddr()")
+		assertNoError(setVariable(p, "p1", strconv.Itoa(int(i2addr.Addr))), t, "SetVariable()")
+		pval("*2")
+
+		// change the value of i2 check that p1 also changes
+		assertNoError(setVariable(p, "i2", "5"), t, "SetVariable()")
+		pval("*5")
 	})
 }

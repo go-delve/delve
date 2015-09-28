@@ -442,6 +442,14 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api
 	return &converted, err
 }
 
+func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string) error {
+	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	if err != nil {
+		return err
+	}
+	return s.SetVariable(symbol, value)
+}
+
 func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	goroutines := []*api.Goroutine{}
 	gs, err := d.process.GoroutinesInfo()
