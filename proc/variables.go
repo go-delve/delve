@@ -23,11 +23,20 @@ const (
 	ChanSend = "chan send"
 )
 
-// Represents an evaluated variable.
+// Represents a variable.
 type Variable struct {
-	Name  string
-	Value string
-	Type  string
+	Addr      uintptr
+	Name      string
+	Value     string
+	Type      string
+	dwarfType dwarf.Type
+	thread    *Thread
+
+	Len       int64
+	Cap       int64
+	base      uintptr
+	stride    int64
+	fieldType dwarf.Type
 }
 
 // Represents a runtime M (OS thread) structure.
@@ -78,6 +87,46 @@ type EvalScope struct {
 	Thread *Thread
 	PC     uint64
 	CFA    int64
+}
+
+func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread) (*Variable, error) {
+	v := &Variable{
+		Name:      name,
+		Addr:      addr,
+		dwarfType: dwarfType,
+		thread:    thread,
+		Type:      dwarfType.String(),
+	}
+
+	switch t := dwarfType.(type) {
+	case *dwarf.StructType:
+		if strings.HasPrefix(t.StructName, "[]") {
+			err := v.loadSliceInfo(t)
+			if err != nil {
+				return nil, err
+			}
+		}
+	case *dwarf.ArrayType:
+		v.base = v.Addr
+		v.Len = t.Count
+		v.Cap = -1
+		v.fieldType = t.Type
+		v.stride = 0
+
+		if t.Count > 0 {
+			v.stride = t.ByteSize / t.Count
+		}
+	}
+
+	return v, nil
+}
+
+func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
+	name := ""
+	if v.Name != "" {
+		name = fmt.Sprintf("%s.%s", v.Name, field.Name)
+	}
+	return newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.thread)
 }
 
 func (scope *EvalScope) DwarfReader() *reader.Reader {
@@ -241,21 +290,69 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	return g, nil
 }
 
-// Returns the value of the named variable.
-func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
-	reader := scope.DwarfReader()
-
-	_, err := reader.SeekToFunction(scope.PC)
-	if err != nil {
-		return nil, err
-	}
-
+// Returns the address of the named variable
+func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
 	varName := name
 	memberName := ""
 	if strings.Contains(name, ".") {
 		idx := strings.Index(name, ".")
 		varName = name[:idx]
 		memberName = name[idx+1:]
+	}
+
+	addr, err := scope.extractVarInfo(varName)
+	if err != nil {
+		origErr := err
+		// Attempt to evaluate name as a package variable.
+		if memberName != "" {
+			addr, err = scope.packageVarAddr(name)
+		} else {
+			_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
+			if fn != nil {
+				addr, err = scope.packageVarAddr(fn.PackageName() + "." + name)
+			}
+		}
+		if err != nil {
+			return nil, origErr
+		}
+		addr.Name = name
+	} else {
+		if len(memberName) > 0 {
+			addr, err = addr.structMember(memberName)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return addr, nil
+}
+
+// Returns the value of the named variable.
+func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
+	addr, err := scope.ExtractVariableInfo(name)
+	if err != nil {
+		return nil, err
+	}
+	err = addr.loadValue(true)
+	return addr, err
+}
+
+func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
+	rdr := scope.DwarfReader()
+	addr, err := scope.extractVarInfoFromEntry(entry, rdr)
+	if err != nil {
+		return nil, err
+	}
+	err = addr.loadValue(true)
+	return addr, err
+}
+
+func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
+	reader := scope.DwarfReader()
+
+	_, err := reader.SeekToFunction(scope.PC)
+	if err != nil {
+		return nil, err
 	}
 
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
@@ -269,28 +366,10 @@ func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
 		}
 
 		if n == varName {
-			if len(memberName) == 0 {
-				return scope.extractVariableFromEntry(entry)
-			}
-			return scope.evaluateStructMember(entry, reader, memberName)
+			return scope.extractVarInfoFromEntry(entry, reader)
 		}
 	}
-
-	// Attempt to evaluate name as a package variable.
-	if memberName != "" {
-		return scope.Thread.dbp.EvalPackageVariable(name)
-	} else {
-		_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
-		if fn != nil {
-			v, err := scope.Thread.dbp.EvalPackageVariable(fn.PackageName() + "." + name)
-			if err == nil {
-				v.Name = name
-				return v, nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("could not find symbol value for %s", name)
+	return nil, fmt.Errorf("could not find symbol value for %s", varName)
 }
 
 // LocalVariables returns all local variables from the current function scope.
@@ -326,9 +405,18 @@ func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
 }
 
 func (dbp *Process) EvalPackageVariable(name string) (*Variable, error) {
-	reader := dbp.DwarfReader()
 	scope := &EvalScope{Thread: dbp.CurrentThread, PC: 0, CFA: 0}
 
+	addr, err := scope.packageVarAddr(name)
+	if err != nil {
+		return nil, err
+	}
+	err = addr.loadValue(true)
+	return addr, err
+}
+
+func (scope *EvalScope) packageVarAddr(name string) (*Variable, error) {
+	reader := scope.DwarfReader()
 	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
 		if err != nil {
 			return nil, err
@@ -340,80 +428,40 @@ func (dbp *Process) EvalPackageVariable(name string) (*Variable, error) {
 		}
 
 		if n == name {
-			return scope.extractVariableFromEntry(entry)
+			return scope.extractVarInfoFromEntry(entry, reader)
 		}
 	}
-
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
-func (scope *EvalScope) evaluateStructMember(parentEntry *dwarf.Entry, rdr *reader.Reader, memberName string) (*Variable, error) {
-	parentAddr, err := scope.extractVariableDataAddress(parentEntry, rdr)
+func (v *Variable) structMember(memberName string) (*Variable, error) {
+	structVar, err := v.maybeDereference()
+	structVar.Name = v.Name
 	if err != nil {
 		return nil, err
 	}
+	structVar = structVar.resolveTypedefs()
 
-	// Get parent variable name
-	parentName, ok := parentEntry.Val(dwarf.AttrName).(string)
-	if !ok {
-		return nil, fmt.Errorf("unable to retrive variable name")
-	}
-
-	// Seek reader to the type information so members can be iterated
-	_, err = rdr.SeekToType(parentEntry, true, true)
-	if err != nil {
-		return nil, err
-	}
-
-	// Iterate to find member by name
-	for memberEntry, err := rdr.NextMemberVariable(); memberEntry != nil; memberEntry, err = rdr.NextMemberVariable() {
-		if err != nil {
-			return nil, err
+	switch t := structVar.dwarfType.(type) {
+	case *dwarf.StructType:
+		for _, field := range t.Field {
+			if field.Name != memberName {
+				continue
+			}
+			if structVar.Addr == 0 {
+				return nil, fmt.Errorf("%s is nil", v.Name)
+			}
+			return structVar.toField(field)
 		}
-
-		name, ok := memberEntry.Val(dwarf.AttrName).(string)
-		if !ok {
-			continue
-		}
-
-		if name == memberName {
-			// Nil ptr, wait until here to throw a nil pointer error to prioritize no such member error
-			if parentAddr == 0 {
-				return nil, fmt.Errorf("%s is nil", parentName)
-			}
-
-			memberInstr, err := rdr.InstructionsForEntry(memberEntry)
-			if err != nil {
-				return nil, err
-			}
-
-			offset, ok := memberEntry.Val(dwarf.AttrType).(dwarf.Offset)
-			if !ok {
-				return nil, fmt.Errorf("type assertion failed")
-			}
-
-			t, err := scope.Type(offset)
-			if err != nil {
-				return nil, err
-			}
-
-			baseAddr := make([]byte, 8)
-			binary.LittleEndian.PutUint64(baseAddr, uint64(parentAddr))
-
-			parentInstructions := append([]byte{op.DW_OP_addr}, baseAddr...)
-			val, err := scope.extractValue(append(parentInstructions, memberInstr...), 0, t, true)
-			if err != nil {
-				return nil, err
-			}
-			return &Variable{Name: strings.Join([]string{parentName, memberName}, "."), Type: t.String(), Value: val}, nil
-		}
+		return nil, fmt.Errorf("%s has no member %s", v.Name, memberName)
+	default:
+		return nil, fmt.Errorf("%s type %s is not a struct", v.Name, structVar.dwarfType)
 	}
-
-	return nil, fmt.Errorf("%s has no member %s", parentName, memberName)
 }
 
-// Extracts the name, type, and value of a variable from a dwarf entry
-func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
+// Extracts the name and type of a variable from a dwarf entry
+// then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
+func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry, rdr *reader.Reader) (*Variable, error) {
 	if entry == nil {
 		return nil, fmt.Errorf("invalid entry")
 	}
@@ -442,67 +490,34 @@ func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable,
 		return nil, fmt.Errorf("type assertion failed")
 	}
 
-	val, err := scope.extractValue(instructions, 0, t, true)
+	addr, err := op.ExecuteStackProgram(scope.CFA, instructions)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Variable{Name: n, Type: t.String(), Value: val}, nil
+	return newVariable(n, uintptr(addr), t, scope.Thread)
 }
 
-// Extracts the address of a variable, dereferencing any pointers
-func (scope *EvalScope) extractVariableDataAddress(entry *dwarf.Entry, rdr *reader.Reader) (int64, error) {
-	instructions, err := rdr.InstructionsForEntry(entry)
-	if err != nil {
-		return 0, err
-	}
+// If addr is a pointer a new variable is returned containing the value pointed by addr
+func (v *Variable) maybeDereference() (*Variable, error) {
+	v = v.resolveTypedefs()
 
-	address, err := op.ExecuteStackProgram(scope.CFA, instructions)
-	if err != nil {
-		return 0, err
-	}
-
-	// Dereference pointers to get down the concrete type
-	for typeEntry, err := rdr.SeekToType(entry, true, false); typeEntry != nil; typeEntry, err = rdr.SeekToType(typeEntry, true, false) {
+	switch t := v.dwarfType.(type) {
+	case *dwarf.PtrType:
+		ptrval, err := v.thread.readUintRaw(uintptr(v.Addr), int64(v.thread.dbp.arch.PtrSize()))
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 
-		if typeEntry.Tag != dwarf.TagPointerType {
-			break
-		}
-
-		ptraddress := uintptr(address)
-
-		ptr, err := scope.Thread.readMemory(ptraddress, scope.PtrSize())
-		if err != nil {
-			return 0, err
-		}
-		address = int64(binary.LittleEndian.Uint64(ptr))
+		return newVariable("", uintptr(ptrval), t.Type, v.thread)
+	default:
+		return v, nil
 	}
-
-	return address, nil
 }
 
-// Extracts the value from the instructions given in the DW_AT_location entry.
-// We execute the stack program described in the DW_OP_* instruction stream, and
-// then grab the value from the other processes memory.
-func (scope *EvalScope) extractValue(instructions []byte, addr int64, typ interface{}, printStructName bool) (string, error) {
-	return scope.extractValueInternal(instructions, addr, typ, printStructName, 0)
-}
-
-func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, typ interface{}, printStructName bool, recurseLevel int) (string, error) {
-	var err error
-
-	if addr == 0 {
-		addr, err = op.ExecuteStackProgram(scope.CFA, instructions)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	// If we have a user defined type, find the
-	// underlying concrete type and use that.
+// Returns a VarAddr with the same address but a concrete dwarfType
+func (v *Variable) resolveTypedefs() *Variable {
+	typ := v.dwarfType
 	for {
 		if tt, ok := typ.(*dwarf.TypedefType); ok {
 			typ = tt.Type
@@ -510,22 +525,33 @@ func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, ty
 			break
 		}
 	}
+	r := *v
+	r.dwarfType = typ
+	return &r
+}
 
-	ptraddress := uintptr(addr)
-	switch t := typ.(type) {
+// Extracts the value of the given address
+func (v *Variable) loadValue(printStructName bool) (err error) {
+	v.Value, err = v.loadValueInternal(printStructName, 0)
+	return
+}
+
+func (v *Variable) loadValueInternal(printStructName bool, recurseLevel int) (string, error) {
+	v = v.resolveTypedefs()
+
+	switch t := v.dwarfType.(type) {
 	case *dwarf.PtrType:
-		ptr, err := scope.Thread.readMemory(ptraddress, scope.PtrSize())
+		ptrv, err := v.maybeDereference()
 		if err != nil {
 			return "", err
 		}
 
-		intaddr := int64(binary.LittleEndian.Uint64(ptr))
-		if intaddr == 0 {
+		if ptrv.Addr == 0 {
 			return fmt.Sprintf("%s nil", t.String()), nil
 		}
 
 		// Don't increase the recursion level when dereferencing pointers
-		val, err := scope.extractValueInternal(nil, intaddr, t.Type, printStructName, recurseLevel)
+		val, err := ptrv.loadValueInternal(printStructName, recurseLevel)
 		if err != nil {
 			return "", err
 		}
@@ -534,9 +560,9 @@ func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, ty
 	case *dwarf.StructType:
 		switch {
 		case t.StructName == "string":
-			return scope.Thread.readString(ptraddress)
+			return v.thread.readString(uintptr(v.Addr))
 		case strings.HasPrefix(t.StructName, "[]"):
-			return scope.readSlice(ptraddress, t, recurseLevel)
+			return v.loadArrayValues(recurseLevel)
 		default:
 			// Recursively call extractValue to grab
 			// the value of all the members of the struct.
@@ -544,7 +570,14 @@ func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, ty
 				errcount := 0
 				fields := make([]string, 0, len(t.Field))
 				for i, field := range t.Field {
-					val, err := scope.extractValueInternal(nil, field.ByteOffset+addr, field.Type, printStructName, recurseLevel+1)
+					var err error
+					var val string
+					var fieldvar *Variable
+
+					fieldvar, err = v.toField(field)
+					if err == nil {
+						val, err = fieldvar.loadValueInternal(printStructName, recurseLevel+1)
+					}
 					if err != nil {
 						errcount++
 						val = fmt.Sprintf("<unreadable: %s>", err.Error())
@@ -568,19 +601,19 @@ func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, ty
 			return "{...}", nil
 		}
 	case *dwarf.ArrayType:
-		return scope.readArray(ptraddress, t, recurseLevel)
+		return v.loadArrayValues(recurseLevel)
 	case *dwarf.ComplexType:
-		return scope.Thread.readComplex(ptraddress, t.ByteSize)
+		return v.readComplex(t.ByteSize)
 	case *dwarf.IntType:
-		return scope.Thread.readInt(ptraddress, t.ByteSize)
+		return v.readInt(t.ByteSize)
 	case *dwarf.UintType:
-		return scope.Thread.readUint(ptraddress, t.ByteSize)
+		return v.readUint(t.ByteSize)
 	case *dwarf.FloatType:
-		return scope.Thread.readFloat(ptraddress, t.ByteSize)
+		return v.readFloat(t.ByteSize)
 	case *dwarf.BoolType:
-		return scope.Thread.readBool(ptraddress)
+		return v.readBool()
 	case *dwarf.FuncType:
-		return scope.Thread.readFunctionPtr(ptraddress)
+		return v.readFunctionPtr()
 	case *dwarf.VoidType:
 		return "(void)", nil
 	case *dwarf.UnspecifiedType:
@@ -589,7 +622,7 @@ func (scope *EvalScope) extractValueInternal(instructions []byte, addr int64, ty
 		fmt.Printf("Unknown type: %T\n", t)
 	}
 
-	return "", fmt.Errorf("could not find value for type %s", typ)
+	return "", fmt.Errorf("could not find value for type %s", v.dwarfType)
 }
 
 func (thread *Thread) readString(addr uintptr) (string, error) {
@@ -635,95 +668,89 @@ func (thread *Thread) readString(addr uintptr) (string, error) {
 	return retstr, nil
 }
 
-func (scope *EvalScope) readSlice(addr uintptr, t *dwarf.StructType, recurseLevel int) (string, error) {
-	var sliceLen, sliceCap int64
-	var arrayAddr uintptr
-	var arrayType dwarf.Type
+func (v *Variable) loadSliceInfo(t *dwarf.StructType) error {
+	var err error
 	for _, f := range t.Field {
 		switch f.Name {
 		case "array":
-			val, err := scope.Thread.readMemory(addr+uintptr(f.ByteOffset), scope.PtrSize())
-			if err != nil {
-				return "", err
+			var base uint64
+			base, err = v.thread.readUintRaw(uintptr(int64(v.Addr)+f.ByteOffset), int64(v.thread.dbp.arch.PtrSize()))
+			if err == nil {
+				v.base = uintptr(base)
+				// Dereference array type to get value type
+				ptrType, ok := f.Type.(*dwarf.PtrType)
+				if !ok {
+					return fmt.Errorf("Invalid type %s in slice array", f.Type)
+				}
+				v.fieldType = ptrType.Type
 			}
-			arrayAddr = uintptr(binary.LittleEndian.Uint64(val))
-			// Dereference array type to get value type
-			ptrType, ok := f.Type.(*dwarf.PtrType)
-			if !ok {
-				return "", fmt.Errorf("Invalid type %s in slice array", f.Type)
-			}
-			arrayType = ptrType.Type
 		case "len":
-			lstr, err := scope.extractValue(nil, int64(addr+uintptr(f.ByteOffset)), f.Type, true)
-			if err != nil {
-				return "", err
+			lstrAddr, err := v.toField(f)
+			if err == nil {
+				err = lstrAddr.loadValue(true)
 			}
-			sliceLen, err = strconv.ParseInt(lstr, 10, 64)
-			if err != nil {
-				return "", err
+			if err == nil {
+				v.Len, err = strconv.ParseInt(lstrAddr.Value, 10, 64)
 			}
 		case "cap":
-			cstr, err := scope.extractValue(nil, int64(addr+uintptr(f.ByteOffset)), f.Type, true)
-			if err != nil {
-				return "", err
+			cstrAddr, err := v.toField(f)
+			if err == nil {
+				err = cstrAddr.loadValue(true)
 			}
-			sliceCap, err = strconv.ParseInt(cstr, 10, 64)
-			if err != nil {
-				return "", err
+			if err == nil {
+				v.Cap, err = strconv.ParseInt(cstrAddr.Value, 10, 64)
 			}
 		}
 	}
 
-	stride := arrayType.Size()
-	if _, ok := arrayType.(*dwarf.PtrType); ok {
-		stride = int64(scope.PtrSize())
-	}
-	vals, err := scope.readArrayValues(arrayAddr, sliceLen, stride, arrayType, recurseLevel)
 	if err != nil {
-		return "", err
+		return nil
 	}
 
-	return fmt.Sprintf("[]%s len: %d, cap: %d, [%s]", arrayType, sliceLen, sliceCap, strings.Join(vals, ",")), nil
-}
-
-func (scope *EvalScope) readArray(addr uintptr, t *dwarf.ArrayType, recurseLevel int) (string, error) {
-	if t.Count > 0 {
-		vals, err := scope.readArrayValues(addr, t.Count, t.ByteSize/t.Count, t.Type, recurseLevel)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%s [%s]", t, strings.Join(vals, ",")), nil
+	v.stride = v.fieldType.Size()
+	if _, ok := v.fieldType.(*dwarf.PtrType); ok {
+		v.stride = int64(v.thread.dbp.arch.PtrSize())
 	}
-	// because you can declare a zero-size array
-	return fmt.Sprintf("%s []", t), nil
+
+	return nil
 }
 
-func (scope *EvalScope) readArrayValues(addr uintptr, count int64, stride int64, t dwarf.Type, recurseLevel int) ([]string, error) {
+func (v *Variable) loadArrayValues(recurseLevel int) (string, error) {
 	vals := make([]string, 0)
 	errcount := 0
 
-	for i := int64(0); i < count; i++ {
+	for i := int64(0); i < v.Len; i++ {
 		// Cap number of elements
 		if i >= maxArrayValues {
-			vals = append(vals, fmt.Sprintf("...+%d more", count-maxArrayValues))
+			vals = append(vals, fmt.Sprintf("...+%d more", v.Len-maxArrayValues))
 			break
 		}
 
-		val, err := scope.extractValueInternal(nil, int64(addr+uintptr(i*stride)), t, false, recurseLevel+1)
+		var val string
+		fieldvar, err := newVariable("", uintptr(int64(v.base)+(i*v.stride)), v.fieldType, v.thread)
+		if err == nil {
+			val, err = fieldvar.loadValueInternal(false, recurseLevel+1)
+		}
 		if err != nil {
 			errcount++
 			val = fmt.Sprintf("<unreadable: %s>", err.Error())
 		}
+
 		vals = append(vals, val)
 		if errcount > maxErrCount {
-			vals = append(vals, fmt.Sprintf("...+%d more", count-i))
+			vals = append(vals, fmt.Sprintf("...+%d more", v.Len-i))
 			break
 		}
 	}
-	return vals, nil
+
+	if v.Cap < 0 {
+		return fmt.Sprintf("%s [%s]", v.dwarfType, strings.Join(vals, ",")), nil
+	} else {
+		return fmt.Sprintf("[]%s len: %d, cap: %d, [%s]", v.fieldType, v.Len, v.Cap, strings.Join(vals, ",")), nil
+	}
 }
 
-func (thread *Thread) readComplex(addr uintptr, size int64) (string, error) {
+func (v *Variable) readComplex(size int64) (string, error) {
 	var fs int64
 	switch size {
 	case 8:
@@ -733,19 +760,21 @@ func (thread *Thread) readComplex(addr uintptr, size int64) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid size (%d) for complex type", size)
 	}
-	r, err := thread.readFloat(addr, fs)
+	r, err := v.readFloat(fs)
 	if err != nil {
 		return "", err
 	}
-	i, err := thread.readFloat(addr+uintptr(fs), fs)
+	imagvar := *v
+	imagvar.Addr += uintptr(fs)
+	i, err := imagvar.readFloat(fs)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("(%s, %si)", r, i), nil
+	return fmt.Sprintf("(%s + %si)", r, i), nil
 }
 
-func (thread *Thread) readInt(addr uintptr, size int64) (string, error) {
-	n, err := thread.readIntRaw(addr, size)
+func (v *Variable) readInt(size int64) (string, error) {
+	n, err := v.thread.readIntRaw(v.Addr, size)
 	if err != nil {
 		return "", err
 	}
@@ -774,8 +803,8 @@ func (thread *Thread) readIntRaw(addr uintptr, size int64) (int64, error) {
 	return n, nil
 }
 
-func (thread *Thread) readUint(addr uintptr, size int64) (string, error) {
-	n, err := thread.readUintRaw(addr, size)
+func (v *Variable) readUint(size int64) (string, error) {
+	n, err := v.thread.readUintRaw(v.Addr, size)
 	if err != nil {
 		return "", err
 	}
@@ -804,8 +833,8 @@ func (thread *Thread) readUintRaw(addr uintptr, size int64) (uint64, error) {
 	return n, nil
 }
 
-func (thread *Thread) readFloat(addr uintptr, size int64) (string, error) {
-	val, err := thread.readMemory(addr, int(size))
+func (v *Variable) readFloat(size int64) (string, error) {
+	val, err := v.thread.readMemory(v.Addr, int(size))
 	if err != nil {
 		return "", err
 	}
@@ -825,8 +854,8 @@ func (thread *Thread) readFloat(addr uintptr, size int64) (string, error) {
 	return "", fmt.Errorf("could not read float")
 }
 
-func (thread *Thread) readBool(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, 1)
+func (v *Variable) readBool() (string, error) {
+	val, err := v.thread.readMemory(v.Addr, 1)
 	if err != nil {
 		return "", err
 	}
@@ -838,25 +867,25 @@ func (thread *Thread) readBool(addr uintptr) (string, error) {
 	return "true", nil
 }
 
-func (thread *Thread) readFunctionPtr(addr uintptr) (string, error) {
-	val, err := thread.readMemory(addr, thread.dbp.arch.PtrSize())
+func (v *Variable) readFunctionPtr() (string, error) {
+	val, err := v.thread.readMemory(v.Addr, v.thread.dbp.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
 
 	// dereference pointer to find function pc
-	addr = uintptr(binary.LittleEndian.Uint64(val))
-	if addr == 0 {
+	fnaddr := uintptr(binary.LittleEndian.Uint64(val))
+	if fnaddr == 0 {
 		return "nil", nil
 	}
 
-	val, err = thread.readMemory(addr, thread.dbp.arch.PtrSize())
+	val, err = v.thread.readMemory(fnaddr, v.thread.dbp.arch.PtrSize())
 	if err != nil {
 		return "", err
 	}
 
 	funcAddr := binary.LittleEndian.Uint64(val)
-	fn := thread.dbp.goSymTable.PCToFunc(uint64(funcAddr))
+	fn := v.thread.dbp.goSymTable.PCToFunc(uint64(funcAddr))
 	if fn == nil {
 		return "", fmt.Errorf("could not find function for %#v", funcAddr)
 	}
