@@ -342,11 +342,11 @@ func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
 
 // Sets the value of the named variable
 func (scope *EvalScope) SetVariable(name, value string) error {
-	addr, err := scope.ExtractVariableInfo(name)
+	v, err := scope.ExtractVariableInfo(name)
 	if err != nil {
 		return err
 	}
-	return addr.setValue(value)
+	return v.setValue(value)
 }
 
 func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
@@ -922,8 +922,10 @@ func (v *Variable) readUint(size int64) (string, error) {
 }
 
 func (v *Variable) writeUint(signed bool, value string, size int64) error {
-	var n uint64
-	var err error
+	var (
+		n   uint64
+		err error
+	)
 	if signed {
 		var m int64
 		m, err = strconv.ParseInt(value, 0, int(size*8))
