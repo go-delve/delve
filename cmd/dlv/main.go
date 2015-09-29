@@ -27,6 +27,7 @@ var (
 	Log      bool
 	Headless bool
 	Addr     string
+	InitFile string
 )
 
 func main() {
@@ -48,6 +49,7 @@ The goal of this tool is to provide a simple yet powerful interface for debuggin
 	rootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	rootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	rootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
+	rootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client")
 
 	// 'version' subcommand.
 	versionCommand := &cobra.Command{
@@ -292,6 +294,10 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 	}
 	defer listener.Close()
 
+	if Headless && (InitFile != "") {
+		fmt.Fprintf(os.Stderr, "Warning: init file ignored\n")
+	}
+
 	// Create and start a debugger server
 	server := rpc.NewServer(&service.Config{
 		Listener:    listener,
@@ -309,6 +315,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		var client service.Client
 		client = rpc.NewClient(listener.Addr().String())
 		term := terminal.New(client, conf)
+		term.InitFile = InitFile
 		err, status = term.Run()
 	} else {
 		ch := make(chan os.Signal)

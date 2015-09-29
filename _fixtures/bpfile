@@ -1,0 +1,8 @@
+# comment line
+trace main.main
+
+break main.sayhi
+
+#
+# comment line
+#

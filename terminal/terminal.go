@@ -26,6 +26,7 @@ type Term struct {
 	line   *liner.State
 	conf   *config.Config
 	dumb   bool
+	InitFile string
 }
 
 func New(client service.Client, conf *config.Config) *Term {
@@ -84,6 +85,13 @@ func (t *Term) Run() (error, int) {
 	t.line.ReadHistory(f)
 	f.Close()
 	fmt.Println("Type 'help' for list of commands.")
+
+	if t.InitFile != "" {
+		err := cmds.executeFile(t, t.InitFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error executing init file: %s\n", err)
+		}
+	}
 
 	var status int
 	for {
