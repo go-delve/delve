@@ -295,19 +295,15 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 
 // Returns information for the named variable.
 func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
-	varName := name
-	memberName := ""
-	if strings.Contains(name, ".") {
-		idx := strings.Index(name, ".")
-		varName = name[:idx]
-		memberName = name[idx+1:]
-	}
+	parts := strings.Split(name, ".")
+	varName := parts[0]
+	memberNames := parts[1:]
 
 	v, err := scope.extractVarInfo(varName)
 	if err != nil {
 		origErr := err
 		// Attempt to evaluate name as a package variable.
-		if memberName != "" {
+		if len(memberNames) > 0 {
 			v, err = scope.packageVarAddr(name)
 		} else {
 			_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
@@ -320,7 +316,7 @@ func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
 		}
 		v.Name = name
 	} else {
-		if len(memberName) > 0 {
+		for _, memberName := range memberNames {
 			v, err = v.structMember(memberName)
 			if err != nil {
 				return nil, err
