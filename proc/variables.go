@@ -290,7 +290,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	return g, nil
 }
 
-// Returns the address of the named variable
+// Returns information for the named variable.
 func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
 	varName := name
 	memberName := ""
@@ -300,51 +300,51 @@ func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
 		memberName = name[idx+1:]
 	}
 
-	addr, err := scope.extractVarInfo(varName)
+	v, err := scope.extractVarInfo(varName)
 	if err != nil {
 		origErr := err
 		// Attempt to evaluate name as a package variable.
 		if memberName != "" {
-			addr, err = scope.packageVarAddr(name)
+			v, err = scope.packageVarAddr(name)
 		} else {
 			_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
 			if fn != nil {
-				addr, err = scope.packageVarAddr(fn.PackageName() + "." + name)
+				v, err = scope.packageVarAddr(fn.PackageName() + "." + name)
 			}
 		}
 		if err != nil {
 			return nil, origErr
 		}
-		addr.Name = name
+		v.Name = name
 	} else {
 		if len(memberName) > 0 {
-			addr, err = addr.structMember(memberName)
+			v, err = v.structMember(memberName)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-	return addr, nil
+	return v, nil
 }
 
 // Returns the value of the named variable.
 func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
-	addr, err := scope.ExtractVariableInfo(name)
+	v, err := scope.ExtractVariableInfo(name)
 	if err != nil {
 		return nil, err
 	}
-	err = addr.loadValue(true)
-	return addr, err
+	err = v.loadValue(true)
+	return v, err
 }
 
 func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
 	rdr := scope.DwarfReader()
-	addr, err := scope.extractVarInfoFromEntry(entry, rdr)
+	v, err := scope.extractVarInfoFromEntry(entry, rdr)
 	if err != nil {
 		return nil, err
 	}
-	err = addr.loadValue(true)
-	return addr, err
+	err = v.loadValue(true)
+	return v, err
 }
 
 func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
@@ -407,12 +407,12 @@ func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
 func (dbp *Process) EvalPackageVariable(name string) (*Variable, error) {
 	scope := &EvalScope{Thread: dbp.CurrentThread, PC: 0, CFA: 0}
 
-	addr, err := scope.packageVarAddr(name)
+	v, err := scope.packageVarAddr(name)
 	if err != nil {
 		return nil, err
 	}
-	err = addr.loadValue(true)
-	return addr, err
+	err = v.loadValue(true)
+	return v, err
 }
 
 func (scope *EvalScope) packageVarAddr(name string) (*Variable, error) {
@@ -498,7 +498,7 @@ func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry, rdr *reader.
 	return newVariable(n, uintptr(addr), t, scope.Thread)
 }
 
-// If addr is a pointer a new variable is returned containing the value pointed by addr
+// If v is a pointer a new variable is returned containing the value pointed by v.
 func (v *Variable) maybeDereference() (*Variable, error) {
 	v = v.resolveTypedefs()
 
@@ -515,7 +515,7 @@ func (v *Variable) maybeDereference() (*Variable, error) {
 	}
 }
 
-// Returns a VarAddr with the same address but a concrete dwarfType
+// Returns a Variable with the same address but a concrete dwarfType.
 func (v *Variable) resolveTypedefs() *Variable {
 	typ := v.dwarfType
 	for {
@@ -530,7 +530,7 @@ func (v *Variable) resolveTypedefs() *Variable {
 	return &r
 }
 
-// Extracts the value of the given address
+// Extracts the value of the variable at the given address.
 func (v *Variable) loadValue(printStructName bool) (err error) {
 	v.Value, err = v.loadValueInternal(printStructName, 0)
 	return
@@ -570,9 +570,11 @@ func (v *Variable) loadValueInternal(printStructName bool, recurseLevel int) (st
 				errcount := 0
 				fields := make([]string, 0, len(t.Field))
 				for i, field := range t.Field {
-					var err error
-					var val string
-					var fieldvar *Variable
+					var (
+						err      error
+						val      string
+						fieldvar *Variable
+					)
 
 					fieldvar, err = v.toField(field)
 					if err == nil {
