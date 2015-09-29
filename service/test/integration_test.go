@@ -629,7 +629,31 @@ func TestClientServer_EvalVariable(t *testing.T) {
 		t.Logf("var1: <%s>", var1.Value)
 
 		if var1.Value != "foofoofoofoofoofoo" {
-			t.Fatalf("Wrong variable value (EvalVariable)", var1.Value)
+			t.Fatalf("Wrong variable value: %v", var1.Value)
+		}
+	})
+}
+
+func TestClientServer_SetVariable(t *testing.T) {
+	withTestClient("testvariables", t, func(c service.Client) {
+		fp := testProgPath(t, "testvariables")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 59})
+		assertNoError(err, t, "CreateBreakpoint()")
+
+		state := <-c.Continue()
+
+		if state.Err != nil {
+			t.Fatalf("Continue(): %v\n", state.Err)
+		}
+
+		assertNoError(c.SetVariable(api.EvalScope{ -1, 0 }, "a2", "8"), t, "SetVariable()")
+
+		a2, err := c.EvalVariable(api.EvalScope{ -1, 0 }, "a2")
+
+		t.Logf("a2: <%s>", a2.Value)
+
+		if a2.Value != "8" {
+			t.Fatalf("Wrong variable value: %v", a2.Value)
 		}
 	})
 }
