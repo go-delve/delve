@@ -41,9 +41,9 @@ func (c command) match(cmdstr string) bool {
 }
 
 type Commands struct {
-	cmds    []command
-	lastCmd cmdfunc
-	client  service.Client
+	cmds            []command
+	lastCmd         cmdfunc
+	client          service.Client
 }
 
 // Returns a Commands struct with default commands defined.
@@ -77,6 +77,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"list", "ls"}, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
 		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth>] [-full]. Prints stack."},
 		{aliases: []string{"frame"}, cmdFn: frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
+		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: "Executes a file containing a list of delve commands"},
 	}
 
 	return c
@@ -699,6 +700,14 @@ func listCommand(t *Term, args ...string) error {
 	return nil
 }
 
+func (cmds *Commands) sourceCommand(t *Term, args ...string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("wrong number of arguments: source <filename>")
+	}
+
+	return cmds.executeFile(t, args[0])
+}
+
 func digits(n int) int {
 	return int(math.Floor(math.Log10(float64(n)))) + 1
 }
@@ -825,4 +834,33 @@ func exitCommand(t *Term, args ...string) error {
 func shortenFilePath(fullPath string) string {
 	workingDir, _ := os.Getwd()
 	return strings.Replace(fullPath, workingDir, ".", 1)
+}
+
+func (cmds *Commands) executeFile(t *Term, name string) error {
+	fh, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	scanner := bufio.NewScanner(fh)
+	lineno := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		lineno++
+
+		if line == "" || line[0] == '#' {
+			continue
+		}
+
+		cmdstr, args := parseCommand(line)
+		cmd := cmds.Find(cmdstr)
+		err := cmd(t, args...)
+
+		if err != nil {
+			fmt.Printf("%s:%d: %v\n", name, lineno, err)
+		}
+	}
+
+	return scanner.Err()
 }

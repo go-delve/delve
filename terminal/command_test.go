@@ -2,7 +2,10 @@ package terminal
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
+
+	"github.com/derekparker/delve/proc/test"
 )
 
 func TestCommandDefault(t *testing.T) {
@@ -63,5 +66,35 @@ func TestCommandThread(t *testing.T) {
 
 	if err.Error() != "you must specify a thread" {
 		t.Fatal("wrong command output: ", err.Error())
+	}
+}
+
+func TestExecuteFile(t *testing.T) {
+	breakCount := 0
+	traceCount := 0
+	c := &Commands{
+		client: nil,
+		cmds: []command{
+			{aliases: []string{"trace"}, cmdFn: func(t *Term, args ...string) error {
+				traceCount++
+				return nil
+			}},
+			{aliases: []string{"break"}, cmdFn: func(t *Term, args ...string) error {
+				breakCount++
+				return nil
+			}},
+		},
+	}
+
+	fixturesDir := test.FindFixturesDir()
+
+	err := c.executeFile(nil, filepath.Join(fixturesDir, "bpfile"))
+
+	if err != nil {
+		t.Fatalf("executeFile: %v", err)
+	}
+
+	if breakCount != 1 || traceCount != 1 {
+		t.Fatalf("Wrong counts break: %d trace: %d\n", breakCount, traceCount)
 	}
 }

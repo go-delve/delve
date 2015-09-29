@@ -23,10 +23,7 @@ type Fixture struct {
 // Fixtures is a map of Fixture.Name to Fixture.
 var Fixtures map[string]Fixture = make(map[string]Fixture)
 
-func BuildFixture(name string) Fixture {
-	if f, ok := Fixtures[name]; ok {
-		return f
-	}
+func FindFixturesDir() string {
 	parent := ".."
 	fixturesDir := "_fixtures"
 	for depth := 0; depth < 10; depth++ {
@@ -35,6 +32,15 @@ func BuildFixture(name string) Fixture {
 		}
 		fixturesDir = filepath.Join(parent, fixturesDir)
 	}
+	return fixturesDir
+}
+
+func BuildFixture(name string) Fixture {
+	if f, ok := Fixtures[name]; ok {
+		return f
+	}
+
+	fixturesDir := FindFixturesDir()
 
 	// Make a (good enough) random temporary file name
 	r := make([]byte, 4)
