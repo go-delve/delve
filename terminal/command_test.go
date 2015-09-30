@@ -3,8 +3,6 @@ package terminal
 import (
 	"fmt"
 	"testing"
-
-	"github.com/derekparker/delve/service"
 )
 
 func TestCommandDefault(t *testing.T) {
@@ -25,7 +23,7 @@ func TestCommandDefault(t *testing.T) {
 
 func TestCommandReplay(t *testing.T) {
 	cmds := DebugCommands(nil)
-	cmds.Register("foo", func(client service.Client, args ...string) error { return fmt.Errorf("registered command") }, "foo command")
+	cmds.Register("foo", func(t *Term, args ...string) error { return fmt.Errorf("registered command") }, "foo command")
 	cmd := cmds.Find("foo")
 
 	err := cmd(nil)
