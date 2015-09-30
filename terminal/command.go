@@ -798,21 +798,16 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 			return nil
 		}
 
-		var arrow string
+		var prefix string
 		if showArrow {
-			arrow = "  "
+			prefix = "  "
 			if i == l {
-				arrow = "=>"
+				prefix = "=>"
 			}
 		}
 
-		var lineNum string
-		if i < 10 {
-			lineNum = fmt.Sprintf("%s  %d:\t", arrow, i)
-		} else {
-			lineNum = fmt.Sprintf("%s %d:\t", arrow, i)
-		}
-		t.Println(lineNum, buf.Text())
+		prefix = fmt.Sprintf("%s%4d:\t", prefix, i)
+		t.Println(prefix, buf.Text())
 	}
 	return nil
 }
