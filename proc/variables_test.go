@@ -391,3 +391,29 @@ func TestPointerSetting(t *testing.T) {
 		pval("*5")
 	})
 }
+
+func TestEmbeddedStruct(t *testing.T) {
+	withTestProcess("testvariables4", t, func(p *Process, fixture protest.Fixture) {
+		testcases := []varTest{
+			{"b.val", "-314", "", "int", nil},
+			{"b.A.val", "-314", "", "int", nil},
+			{"b.a.val", "42", "", "int", nil},
+			{"b.ptr.val", "1337", "", "int", nil},
+			{"b.C.s", "hello", "", "struct string", nil},
+			{"b.s", "hello", "", "struct string", nil},
+		}
+		assertNoError(p.Continue(), t, "Continue()")
+
+		for _, tc := range testcases {
+			variable, err := evalVariable(p, tc.name)
+			if tc.err == nil {
+				assertNoError(err, t, "EvalVariable() returned an error")
+				assertVariable(t, variable, tc)
+			} else {
+				if tc.err.Error() != err.Error() {
+					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+				}
+			}
+		}
+	})
+}

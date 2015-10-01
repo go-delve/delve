@@ -127,7 +127,12 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 	name := ""
 	if v.Name != "" {
-		name = fmt.Sprintf("%s.%s", v.Name, field.Name)
+		parts := strings.Split(field.Name, ".")
+		if len(parts) > 1 {
+			name = fmt.Sprintf("%s.%s", v.Name, parts[1])
+		} else {
+			name = fmt.Sprintf("%s.%s", v.Name, field.Name)	
+		}
 	}
 	return newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.thread)
 }
@@ -442,6 +447,13 @@ func (scope *EvalScope) packageVarAddr(name string) (*Variable, error) {
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
+func (v *Variable) toFieldNilChecked(field *dwarf.StructField, name string) (*Variable, error) {
+	if v.Addr == 0 {
+		return nil, fmt.Errorf("%s is nil", name)
+	}
+	return v.toField(field)
+}
+
 func (v *Variable) structMember(memberName string) (*Variable, error) {
 	structVar, err := v.maybeDereference()
 	structVar.Name = v.Name
@@ -449,17 +461,44 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		return nil, err
 	}
 	structVar = structVar.resolveTypedefs()
-
 	switch t := structVar.dwarfType.(type) {
 	case *dwarf.StructType:
 		for _, field := range t.Field {
 			if field.Name != memberName {
 				continue
 			}
-			if structVar.Addr == 0 {
-				return nil, fmt.Errorf("%s is nil", v.Name)
+			return structVar.toFieldNilChecked(field, v.Name)
+		}
+		// Check for embedded field only if field was
+		// not a regular struct member
+		for _, field := range t.Field {
+			isEmbeddedStructMember :=
+				(field.Type.String() == ("struct " + field.Name)) ||
+				(len(field.Name) > 1 &&
+					field.Name[0] == '*' &&
+					field.Type.String()[1:] == ("struct " + field.Name[1:]))
+			if !isEmbeddedStructMember {
+				continue
 			}
-			return structVar.toField(field)
+			// Check for embedded field referenced by type name
+			parts := strings.Split(field.Name, ".")
+			if len(parts) > 1 && parts[1] == memberName {
+				embeddedVar, err := structVar.toFieldNilChecked(field, v.Name)
+				if err != nil {
+					return nil, err
+				}
+				return embeddedVar, nil
+			}
+			// Recursively check for promoted fields on the embedded field
+			embeddedVar, err := structVar.toFieldNilChecked(field, v.Name)
+			if err != nil {
+				return nil, err
+			}
+			embeddedVar.Name = structVar.Name
+			embeddedField, err := embeddedVar.structMember(memberName)
+			if embeddedField != nil {
+				return embeddedField, nil
+			}
 		}
 		return nil, fmt.Errorf("%s has no member %s", v.Name, memberName)
 	default:
