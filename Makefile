@@ -23,28 +23,19 @@ endif
 endif
 endif
 
-deps: check-cert
-ifeq "$(SKIP_DEPS)" ""
-	go get -u github.com/peterh/liner
-	go get -u github.com/spf13/cobra
-	go get -u golang.org/x/sys/unix
-	go get -u github.com/davecheney/profile
-	go get -u gopkg.in/yaml.v2
-endif
-
-build: deps
+build: check-cert
 	go build $(FLAGS) github.com/derekparker/delve/cmd/dlv
 ifeq "$(UNAME)" "Darwin"
 	codesign -s $(CERT) ./dlv
 endif
 
-install: deps
+install: check-cert
 	go install $(FLAGS) github.com/derekparker/delve/cmd/dlv
 ifeq "$(UNAME)" "Darwin"
 	codesign -s $(CERT) $(GOPATH)/bin/dlv
 endif
 
-test: deps
+test: check-cert
 ifeq "$(UNAME)" "Darwin"
 ifeq "$(TRAVIS)" "true"
 	sudo -E go test -v ./...

@@ -1,0 +1,55 @@
+{
+	"ImportPath": "github.com/derekparker/delve",
+	"GoVersion": "go1.5.1",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/cpuguy83/go-md2man/md2man",
+			"Comment": "v1.0.4",
+			"Rev": "71acacd42f85e5e82f70a55327789582a5200a90"
+		},
+		{
+			"ImportPath": "github.com/davecheney/profile",
+			"Rev": "c29d1a1565bca9fbeed5eed0e5d52ba78469a16b"
+		},
+		{
+			"ImportPath": "github.com/inconshreveable/mousetrap",
+			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
+		},
+		{
+			"ImportPath": "github.com/peterh/liner",
+			"Rev": "941195f85dd7a23971a3d55142972d396278ddcf"
+		},
+		{
+			"ImportPath": "github.com/russross/blackfriday",
+			"Comment": "v1.3",
+			"Rev": "8cec3a854e68dba10faabbe31c089abf4a3e57a6"
+		},
+		{
+			"ImportPath": "github.com/shurcooL/sanitized_anchor_name",
+			"Rev": "244f5ac324cb97e1987ef901a0081a77bfd8e845"
+		},
+		{
+			"ImportPath": "github.com/spf13/cobra",
+			"Rev": "53d96508f5c9311f5dade714e1de7bd6a9d2af4a"
+		},
+		{
+			"ImportPath": "github.com/spf13/pflag",
+			"Rev": "b084184666e02084b8ccb9b704bf0d79c466eb1d"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "342d6a85aa15bcd2ec54803cdffe90d52b6f35a7"
+		},
+		{
+			"ImportPath": "gopkg.in/check.v1",
+			"Rev": "11d3bc7aa68e238947792f30573146a3231fc0f1"
+		},
+		{
+			"ImportPath": "gopkg.in/yaml.v2",
+			"Rev": "53feefa2559fb8dfa8d81baad31be332c97d6c77"
+		}
+	]
+}
