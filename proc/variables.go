@@ -152,7 +152,7 @@ func (g *G) ChanRecvBlocked() bool {
 
 // chanRecvReturnAddr returns the address of the return from a channel read.
 func (g *G) chanRecvReturnAddr(dbp *Process) (uint64, error) {
-	locs, err := dbp.stacktrace(g.PC, g.SP, 4)
+	locs, err := dbp.GoroutineStacktrace(g, 4)
 	if err != nil {
 		return 0, err
 	}
