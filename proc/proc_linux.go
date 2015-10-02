@@ -377,3 +377,15 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 		}
 	}
 }
+
+func (dbp *Process) exitGuard(err error) error {
+	if err != sys.ESRCH {
+		return err
+	}
+	if status(dbp.Pid, dbp.os.comm) == STATUS_ZOMBIE {
+		_, err := dbp.trapWait(-1)
+		return err
+	}
+
+	return err
+}

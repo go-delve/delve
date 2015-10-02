@@ -364,10 +364,19 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 
 // Resume process.
 func (dbp *Process) Continue() error {
+	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.Threads {
-		err := thread.Continue()
-		if err != nil {
-			return fmt.Errorf("could not continue thread %d %s", thread.Id, err)
+		if thread.CurrentBreakpoint != nil {
+			if err := thread.Step(); err != nil {
+				return err
+			}
+			thread.CurrentBreakpoint = nil
+		}
+	}
+	// everything is resumed
+	for _, thread := range dbp.Threads {
+		if err := thread.resume(); err != nil {
+			return dbp.exitGuard(err)
 		}
 	}
 	return dbp.run(func() error {
@@ -376,9 +385,17 @@ func (dbp *Process) Continue() error {
 			return err
 		}
 		if err := dbp.Halt(); err != nil {
-			return err
+			return dbp.exitGuard(err)
 		}
 		dbp.SwitchThread(thread.Id)
+		for _, th := range dbp.Threads {
+			if th.CurrentBreakpoint == nil {
+				err := th.SetCurrentBreakpoint()
+				if err != nil {
+					return err
+				}
+			}
+		}
 		loc, err := thread.Location()
 		if err != nil {
 			return err
@@ -642,24 +659,18 @@ func (dbp *Process) handleBreakpointOnThread(id int) (*Thread, error) {
 	if !ok {
 		return nil, fmt.Errorf("could not find thread for %d", id)
 	}
-	pc, err := thread.PC()
+	// Check to see if we have hit a breakpoint.
+	err := thread.SetCurrentBreakpoint()
 	if err != nil {
 		return nil, err
 	}
-	// Check to see if we have hit a breakpoint.
-	if bp, ok := dbp.FindBreakpoint(pc); ok {
-		thread.CurrentBreakpoint = bp
-		if err = thread.SetPC(bp.Addr); err != nil {
-			return nil, err
-		}
-		if g, err := thread.GetG(); err == nil {
-			thread.CurrentBreakpoint.HitCount[g.Id]++
-		}
-		thread.CurrentBreakpoint.TotalHitCount++
+	if (thread.CurrentBreakpoint != nil) || (dbp.halt) {
 		return thread, nil
 	}
-	if dbp.halt {
-		return thread, nil
+
+	pc, err := thread.PC()
+	if err != nil {
+		return nil, err
 	}
 	fn := dbp.goSymTable.PCToFunc(pc)
 	if fn != nil && fn.Name == "runtime.breakpoint" {

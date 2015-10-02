@@ -327,3 +327,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	wpid, err := sys.Wait4(pid, &status, options, nil)
 	return wpid, &status, err
 }
+
+func (dbp *Process) exitGuard(err error) error {
+	return err
+}

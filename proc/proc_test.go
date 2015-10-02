@@ -94,6 +94,25 @@ func TestExit(t *testing.T) {
 	})
 }
 
+func TestExitAfterContinue(t *testing.T) {
+	withTestProcess("continuetestprog", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.sayhi")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(p.Continue(), t, "First Continue()")
+		err = p.Continue()
+		pe, ok := err.(ProcessExitedError)
+		if !ok {
+			t.Fatalf("Continue() returned unexpected error type %s", err)
+		}
+		if pe.Status != 0 {
+			t.Errorf("Unexpected error status: %d", pe.Status)
+		}
+		if pe.Pid != p.Pid {
+			t.Errorf("Unexpected process id: %d", pe.Pid)
+		}
+	})
+}
+
 func setFunctionBreakpoint(p *Process, fname string) (*Breakpoint, error) {
 	addr, err := p.FindFunctionLocation(fname, true, 0)
 	if err != nil {
@@ -1075,5 +1094,38 @@ func TestIssue325(t *testing.T) {
 		iface2fn2v, err := evalVariable(p, "iface2fn2")
 		assertNoError(err, t, "EvalVariable()")
 		t.Logf("iface2fn2: %v\n", iface2fn2v)
+	})
+}
+
+func TestBreakpointCounts(t *testing.T) {
+	withTestProcess("bpcountstest", t, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 12)
+		assertNoError(err, t, "LineToPC")
+		bp, err := p.SetBreakpoint(addr)
+		assertNoError(err, t, "SetBreakpoint()")
+
+		for {
+			if err := p.Continue(); err != nil {
+				if _, exited := err.(ProcessExitedError); exited {
+					break
+				}
+				assertNoError(err, t, "Continue()")
+			}
+		}
+
+		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
+		if bp.TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.TotalHitCount)
+		}
+
+		if len(bp.HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
+		}
+
+		for _, v := range bp.HitCount {
+			if v != 100 {
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
+			}
+		}
 	})
 }

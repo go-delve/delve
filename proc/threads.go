@@ -313,3 +313,22 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 	}
 	return locations[0].Scope(thread), nil
 }
+
+func (thread *Thread) SetCurrentBreakpoint() error {
+	thread.CurrentBreakpoint = nil
+	pc, err := thread.PC()
+	if err != nil {
+		return err
+	}
+	if bp, ok := thread.dbp.FindBreakpoint(pc); ok {
+		thread.CurrentBreakpoint = bp
+		if err = thread.SetPC(bp.Addr); err != nil {
+			return err
+		}
+		if g, err := thread.GetG(); err == nil {
+			thread.CurrentBreakpoint.HitCount[g.Id]++
+		}
+		thread.CurrentBreakpoint.TotalHitCount++
+	}
+	return nil
+}
