@@ -61,7 +61,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
 		{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
-		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: "Deletes all breakpoints."},
+		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: "clearall [<linespec>]. Deletes all breakpoints matching linespec."},
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
 		{aliases: []string{"goroutine"}, cmdFn: goroutine, helpMsg: "Sets current goroutine."},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
@@ -434,7 +434,26 @@ func clearAll(t *Term, args ...string) error {
 	if err != nil {
 		return err
 	}
+
+	var locPCs map[uint64]struct{}
+	if len(args) > 0 {
+		locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args[0])
+		if err != nil {
+			return err
+		}
+		locPCs = make(map[uint64]struct{})
+		for _, loc := range locs {
+			locPCs[loc.PC] = struct{}{}
+		}
+	}
+
 	for _, bp := range breakPoints {
+		if locPCs != nil {
+			if _, ok := locPCs[bp.Addr]; !ok {
+				continue
+			}
+		}
+
 		_, err := t.client.ClearBreakpoint(bp.ID)
 		if err != nil {
 			fmt.Printf("Couldn't delete breakpoint %d at %#v %s:%d: %s\n", bp.ID, bp.Addr, shortenFilePath(bp.File), bp.Line, err)
