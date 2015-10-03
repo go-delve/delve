@@ -234,7 +234,7 @@ func goroutines(t *Term, args ...string) error {
 	fmt.Printf("[%d goroutines]\n", len(gs))
 	for _, g := range gs {
 		prefix := "  "
-		if g.ID == state.SelectedGoroutine.ID {
+		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g))
