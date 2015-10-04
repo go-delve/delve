@@ -5,6 +5,30 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [0.10.0-alpha] 2015-10-04
+
+### Added
+
+- `set` command, allows user to set variable (currently only supports pointers / numeric values) (@aarzilli)
+- All deps are vendored with Godeps and leveraging GO15VENDOREXPERIMENT
+- `source` command and `--init` flag to run commands from a file (@aarzilli)
+- `clearall` commands now take linespec (@kostya-sh)
+- Support for multiple levels of struct nesting during variable eval (i.e. `print foo.bar.baz` now works) (@lukehoban)
+
+### Changed
+
+- Removed hardware assisted breakpoints (for now)
+- Remove Go 1.4.2 on Travis builds
+
+### Fixed
+
+- Limit string sizes, be more tolerant of uninitialized memory (@aarzilli)
+- `make` commands fixed for >= Go 1.5 on OSX
+- Fixed bug where process would not be killed upon detach (@aarzilli)
+- Fixed bug trying to detach/kill process that has already exited (@aarzilli)
+- Support for "dumb" terminals (@dlsniper)
+- Fix bug setting breakpoints at chanRecvAddrs (@aarzilli)
+
 ## [0.9.0-alpha] 2015-09-19
 
 ### Added
