@@ -319,6 +319,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 }
 
 func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
+	wg.Done()
 }
 
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
