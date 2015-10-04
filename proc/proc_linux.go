@@ -5,10 +5,12 @@ import (
 	"debug/gosym"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -51,7 +53,7 @@ func Launch(cmd []string) (*Process, error) {
 		return nil, err
 	}
 	dbp.Pid = proc.Process.Pid
-	_, _, err = wait(proc.Process.Pid, proc.Process.Pid, 0)
+	_, _, err = dbp.wait(proc.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
@@ -73,7 +75,7 @@ func (dbp *Process) Kill() (err error) {
 	if err = sys.Kill(-dbp.Pid, sys.SIGKILL); err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
-	if _, _, err = wait(dbp.Pid, dbp.Pid, 0); err != nil {
+	if _, _, err = dbp.wait(dbp.Pid, 0); err != nil {
 		return
 	}
 	dbp.exited = true
@@ -101,7 +103,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 			// if we truly don't have permissions.
 			return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 		}
-		pid, status, err := wait(tid, dbp.Pid, 0)
+		pid, status, err := dbp.wait(tid, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +114,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
-		if _, _, err = wait(tid, dbp.Pid, 0); err != nil {
+		if _, _, err = dbp.wait(tid, 0); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
 		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
@@ -239,7 +241,7 @@ func (dbp *Process) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	for {
-		wpid, status, err := wait(pid, dbp.Pid, 0)
+		wpid, status, err := dbp.wait(pid, 0)
 		if err != nil {
 			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
@@ -309,25 +311,44 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 }
 
-func status(pid int) rune {
+func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.Pid))
+	if err != nil {
+		fmt.Printf("Could not read process comm name: %v\n", err)
+		os.Exit(1)
+	}
+	// removes newline character
+	comm = comm[:len(comm)-1]
+	dbp.comm = strings.Replace(string(comm), "%", "%%", -1)
+}
+
+func status(pid int, comm string) rune {
+	// The second field of /proc/pid/stat is the name of the task in parenthesis.
+	// The name of the task is the base name of the executable for this process limited to 15 characters
+	// Since both parenthesis and spaces can appear inside the name of the task and no escaping happens we need to read the name of the executable first
+	// See: include/linux/sched.c:315 and include/linux/sched.c:1510
+
 	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return '\000'
 	}
+
 	defer f.Close()
 
 	var (
 		p     int
-		comm  string
 		state rune
 	)
-	fmt.Fscanf(f, "%d %s %c", &p, &comm, &state)
+
+	fmt.Fscanf(f, "%d ("+comm+")  %c", &p, &state)
 	return state
 }
 
-func wait(pid, tgid, options int) (int, *sys.WaitStatus, error) {
+func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
-	if (pid != tgid) || (options != 0) {
+	if (pid != dbp.Pid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
 		return wpid, &s, err
 	} else {
@@ -350,7 +371,7 @@ func wait(pid, tgid, options int) (int, *sys.WaitStatus, error) {
 			if wpid != 0 {
 				return wpid, &s, err
 			}
-			if status(pid) == STATUS_ZOMBIE {
+			if status(pid, dbp.comm) == STATUS_ZOMBIE {
 				return pid, nil, nil
 			}
 			time.Sleep(200 * time.Millisecond)

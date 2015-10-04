@@ -18,7 +18,7 @@ func (t *Thread) halt() (err error) {
 		err = fmt.Errorf("halt err %s on thread %d", err, t.Id)
 		return
 	}
-	_, _, err = wait(t.Id, t.dbp.Pid, 0)
+	_, _, err = t.dbp.wait(t.Id, 0)
 	if err != nil {
 		err = fmt.Errorf("wait err %s on thread %d", err, t.Id)
 		return
@@ -27,7 +27,7 @@ func (t *Thread) halt() (err error) {
 }
 
 func (thread *Thread) stopped() bool {
-	state := status(thread.Id)
+	state := status(thread.Id, thread.dbp.comm)
 	return state == STATUS_TRACE_STOP
 }
 
@@ -42,7 +42,7 @@ func (t *Thread) singleStep() (err error) {
 	if err != nil {
 		return err
 	}
-	_, _, err = wait(t.Id, t.dbp.Pid, 0)
+	_, _, err = t.dbp.wait(t.Id, 0)
 	return err
 }
 

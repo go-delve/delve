@@ -54,6 +54,7 @@ type Process struct {
 	exited                  bool
 	ptraceChan              chan func()
 	ptraceDoneChan          chan interface{}
+	comm                    string
 }
 
 func New(pid int) *Process {
@@ -142,7 +143,8 @@ func (dbp *Process) LoadInformation(path string) error {
 		return err
 	}
 
-	wg.Add(3)
+	wg.Add(4)
+	go dbp.loadProcessInformation(&wg)
 	go dbp.parseDebugFrame(exe, &wg)
 	go dbp.obtainGoSymbols(exe, &wg)
 	go dbp.parseDebugLineInfo(exe, &wg)
@@ -570,7 +572,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		if err != nil {
 			return nil, err
 		}
-		_, _, err = wait(dbp.Pid, dbp.Pid, 0)
+		_, _, err = dbp.wait(dbp.Pid, 0)
 		if err != nil {
 			return nil, err
 		}
