@@ -325,16 +325,10 @@ func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 }
 
 func status(pid int, comm string) rune {
-	// The second field of /proc/pid/stat is the name of the task in parenthesis.
-	// The name of the task is the base name of the executable for this process limited to 15 characters
-	// Since both parenthesis and spaces can appear inside the name of the task and no escaping happens we need to read the name of the executable first
-	// See: include/linux/sched.c:315 and include/linux/sched.c:1510
-
 	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return '\000'
 	}
-
 	defer f.Close()
 
 	var (
@@ -342,6 +336,10 @@ func status(pid int, comm string) rune {
 		state rune
 	)
 
+	// The second field of /proc/pid/stat is the name of the task in parenthesis.
+	// The name of the task is the base name of the executable for this process limited to TASK_COMM_LEN characters
+	// Since both parenthesis and spaces can appear inside the name of the task and no escaping happens we need to read the name of the executable first
+	// See: include/linux/sched.c:315 and include/linux/sched.c:1510
 	fmt.Fscanf(f, "%d ("+comm+")  %c", &p, &state)
 	return state
 }
