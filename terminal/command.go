@@ -41,9 +41,9 @@ func (c command) match(cmdstr string) bool {
 }
 
 type Commands struct {
-	cmds            []command
-	lastCmd         cmdfunc
-	client          service.Client
+	cmds    []command
+	lastCmd cmdfunc
+	client  service.Client
 }
 
 // Returns a Commands struct with default commands defined.

@@ -646,9 +646,9 @@ func TestClientServer_SetVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		assertNoError(c.SetVariable(api.EvalScope{ -1, 0 }, "a2", "8"), t, "SetVariable()")
+		assertNoError(c.SetVariable(api.EvalScope{-1, 0}, "a2", "8"), t, "SetVariable()")
 
-		a2, err := c.EvalVariable(api.EvalScope{ -1, 0 }, "a2")
+		a2, err := c.EvalVariable(api.EvalScope{-1, 0}, "a2")
 
 		t.Logf("a2: <%s>", a2.Value)
 

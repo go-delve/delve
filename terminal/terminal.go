@@ -21,11 +21,11 @@ const (
 )
 
 type Term struct {
-	client service.Client
-	prompt string
-	line   *liner.State
-	conf   *config.Config
-	dumb   bool
+	client   service.Client
+	prompt   string
+	line     *liner.State
+	conf     *config.Config
+	dumb     bool
 	InitFile string
 }
 
