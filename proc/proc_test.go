@@ -800,3 +800,13 @@ func TestProcessReceivesSIGCHLD(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue239(t *testing.T) {
+	withTestProcess("is sue239", t, func(p *Process, fixture protest.Fixture) {
+		pos, _, err := p.goSymTable.LineToPC(fixture.Source, 17)
+		assertNoError(err, t, "LineToPC()")
+		_, err = p.SetBreakpoint(pos)
+		assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%d)", pos))
+		assertNoError(p.Continue(), t, fmt.Sprintf("Continue()"))
+	})
+}
