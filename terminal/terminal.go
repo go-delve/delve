@@ -17,7 +17,7 @@ import (
 const (
 	historyFile             string = ".dbg_history"
 	TerminalBlueEscapeCode  string = "\033[34m"
-	TerminalWhiteEscapeCode string = "\033[37m"
+	TerminalResetEscapeCode string = "\033[0m"
 )
 
 type Term struct {
@@ -127,7 +127,7 @@ func (t *Term) Run() (error, int) {
 
 func (t *Term) Println(prefix, str string) {
 	if !t.dumb {
-		prefix = fmt.Sprintf("%s%s%s", TerminalBlueEscapeCode, prefix, TerminalWhiteEscapeCode)
+		prefix = fmt.Sprintf("%s%s%s", TerminalBlueEscapeCode, prefix, TerminalResetEscapeCode)
 	}
 	fmt.Printf("%s%s\n", prefix, str)
 }
