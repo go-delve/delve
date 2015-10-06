@@ -134,6 +134,9 @@ func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 			name = fmt.Sprintf("%s.%s", v.Name, field.Name)	
 		}
 	}
+	if v.Addr == 0 {
+		return nil, fmt.Errorf("%s is nil", v.Name)
+	}
 	return newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.thread)
 }
 
@@ -447,13 +450,6 @@ func (scope *EvalScope) packageVarAddr(name string) (*Variable, error) {
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
 }
 
-func (v *Variable) toFieldNilChecked(field *dwarf.StructField, name string) (*Variable, error) {
-	if v.Addr == 0 {
-		return nil, fmt.Errorf("%s is nil", name)
-	}
-	return v.toField(field)
-}
-
 func (v *Variable) structMember(memberName string) (*Variable, error) {
 	structVar, err := v.maybeDereference()
 	structVar.Name = v.Name
@@ -467,7 +463,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 			if field.Name != memberName {
 				continue
 			}
-			return structVar.toFieldNilChecked(field, v.Name)
+			return structVar.toField(field)
 		}
 		// Check for embedded field only if field was
 		// not a regular struct member
@@ -483,14 +479,14 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 			// Check for embedded field referenced by type name
 			parts := strings.Split(field.Name, ".")
 			if len(parts) > 1 && parts[1] == memberName {
-				embeddedVar, err := structVar.toFieldNilChecked(field, v.Name)
+				embeddedVar, err := structVar.toField(field)
 				if err != nil {
 					return nil, err
 				}
 				return embeddedVar, nil
 			}
 			// Recursively check for promoted fields on the embedded field
-			embeddedVar, err := structVar.toFieldNilChecked(field, v.Name)
+			embeddedVar, err := structVar.toField(field)
 			if err != nil {
 				return nil, err
 			}
