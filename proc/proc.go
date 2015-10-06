@@ -335,7 +335,6 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 		return 0, err
 	}
 
-	setBPs := make(map[uint64]struct{})
 	for _, g := range allg {
 		if g.ChanRecvBlocked() {
 			ret, err := g.chanRecvReturnAddr(dbp)
@@ -345,15 +344,14 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 				}
 				return 0, err
 			}
-			if _, ok := setBPs[ret]; ok {
-				// Do not set duplicate breakpoint in case if multiple
-				// goroutines waiting on the same channel
-				continue
-			}
 			if _, err = dbp.SetTempBreakpoint(ret); err != nil {
+				if _, ok := err.(BreakpointExistsError); ok {
+					// Ignore duplicate breakpoints in case if multiple
+					// goroutines wait on the same channel
+					continue
+				}
 				return 0, err
 			}
-			setBPs[ret] = struct{}{}
 			count++
 		}
 	}
