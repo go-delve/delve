@@ -125,17 +125,18 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 }
 
 func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
+	if v.Addr == 0 {
+		return nil, fmt.Errorf("%s is nil", v.Name)
+	}
+
 	name := ""
 	if v.Name != "" {
 		parts := strings.Split(field.Name, ".")
 		if len(parts) > 1 {
 			name = fmt.Sprintf("%s.%s", v.Name, parts[1])
 		} else {
-			name = fmt.Sprintf("%s.%s", v.Name, field.Name)	
+			name = fmt.Sprintf("%s.%s", v.Name, field.Name)
 		}
-	}
-	if v.Addr == 0 {
-		return nil, fmt.Errorf("%s is nil", v.Name)
 	}
 	return newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.thread)
 }
@@ -470,9 +471,9 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		for _, field := range t.Field {
 			isEmbeddedStructMember :=
 				(field.Type.String() == ("struct " + field.Name)) ||
-				(len(field.Name) > 1 &&
-					field.Name[0] == '*' &&
-					field.Type.String()[1:] == ("struct " + field.Name[1:]))
+					(len(field.Name) > 1 &&
+						field.Name[0] == '*' &&
+						field.Type.String()[1:] == ("struct "+field.Name[1:]))
 			if !isEmbeddedStructMember {
 				continue
 			}
