@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -106,6 +107,12 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 	execCommand := &cobra.Command{
 		Use:   "exec [./path/to/binary]",
 		Short: "Runs precompiled binary, attaches and begins debug session.",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New("you must provide a path to a binary")
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			os.Exit(execute(0, args, conf))
 		},
@@ -239,6 +246,12 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 		Use:   "attach [pid]",
 		Short: "Attach to running process and begin debugging.",
 		Long:  "Attach to running process and begin debugging.",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New("you must provide a PID")
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			pid, err := strconv.Atoi(args[0])
 			if err != nil {
