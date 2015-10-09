@@ -20,7 +20,7 @@
 		},
 		{
 			"ImportPath": "github.com/peterh/liner",
-			"Rev": "941195f85dd7a23971a3d55142972d396278ddcf"
+			"Rev": "b850cf8c6d0ee52309aad09ac610508c6c75e819"
 		},
 		{
 			"ImportPath": "github.com/russross/blackfriday",
@@ -33,7 +33,7 @@
 		},
 		{
 			"ImportPath": "github.com/spf13/cobra",
-			"Rev": "53d96508f5c9311f5dade714e1de7bd6a9d2af4a"
+			"Rev": "d732ab3a34e6e9e6b5bdac80707c2b6bad852936"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
@@ -41,7 +41,7 @@
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "342d6a85aa15bcd2ec54803cdffe90d52b6f35a7"
+			"Rev": "354f231ae1a9ca2d3a6a1a7c5d40b1213d761675"
 		},
 		{
 			"ImportPath": "gopkg.in/check.v1",

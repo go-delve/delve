@@ -48,13 +48,14 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/peterh/liner"
 )
 
 var (
-	history_fn = "/tmp/.liner_history"
+	history_fn = filepath.Join(os.TempDir(), ".liner_example_history")
 	names      = []string{"john", "james", "mary", "nancy"}
 )
 
