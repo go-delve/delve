@@ -772,3 +772,9 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 
 	return &out, nil
 }
+
+func (dbp *Process) postExit() {
+	dbp.exited = true
+	close(dbp.ptraceChan)
+	close(dbp.ptraceDoneChan)
+}

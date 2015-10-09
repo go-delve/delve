@@ -116,7 +116,7 @@ func (dbp *Process) Kill() (err error) {
 			break
 		}
 	}
-	dbp.exited = true
+	dbp.postExit()
 	return
 }
 
@@ -276,7 +276,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			if err != nil {
 				return nil, err
 			}
-			dbp.exited = true
+			dbp.postExit()
 			return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
 
 		case C.MACH_RCV_INTERRUPTED:

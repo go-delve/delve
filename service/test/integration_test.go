@@ -144,14 +144,8 @@ func TestClientServer_exit(t *testing.T) {
 			t.Fatalf("Expected exit after continue: %v", state)
 		}
 		state, err = c.GetState()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if state.CurrentThread == nil {
-			t.Fatalf("Expected CurrentThread")
-		}
-		if e, a := true, state.Exited; e != a {
-			t.Fatalf("Expected exited %v, got %v", e, a)
+		if err == nil {
+			t.Fatal("Expected error on querying state from exited process")
 		}
 	})
 }

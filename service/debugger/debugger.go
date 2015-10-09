@@ -105,6 +105,10 @@ func (d *Debugger) Restart() error {
 }
 
 func (d *Debugger) State() (*api.DebuggerState, error) {
+	if d.process.Exited() {
+		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
+	}
+
 	var (
 		state     *api.DebuggerState
 		thread    *api.Thread
@@ -226,18 +230,19 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.Continue:
 		log.Print("continuing")
 		err = d.process.Continue()
-		state, stateErr := d.State()
-		if stateErr != nil {
-			return state, stateErr
-		}
 		if err != nil {
 			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
+				state := &api.DebuggerState{}
 				state.Exited = true
 				state.ExitStatus = exitedErr.Status
 				state.Err = errors.New(exitedErr.Error())
 				return state, nil
 			}
 			return nil, err
+		}
+		state, stateErr := d.State()
+		if stateErr != nil {
+			return state, stateErr
 		}
 		err = d.collectBreakpointInformation(state)
 		return state, err

@@ -78,7 +78,7 @@ func (dbp *Process) Kill() (err error) {
 	if _, _, err = dbp.wait(dbp.Pid, 0); err != nil {
 		return
 	}
-	dbp.exited = true
+	dbp.postExit()
 	return
 }
 
@@ -254,7 +254,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		}
 		if status.Exited() {
 			if wpid == dbp.Pid {
-				dbp.exited = true
+				dbp.postExit()
 				return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
 			}
 			delete(dbp.Threads, wpid)
