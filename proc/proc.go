@@ -54,7 +54,6 @@ type Process struct {
 	exited                  bool
 	ptraceChan              chan func()
 	ptraceDoneChan          chan interface{}
-	comm                    string
 }
 
 func New(pid int) *Process {

@@ -27,7 +27,7 @@ func (t *Thread) halt() (err error) {
 }
 
 func (thread *Thread) stopped() bool {
-	state := status(thread.Id, thread.dbp.comm)
+	state := status(thread.Id, thread.dbp.os.comm)
 	return state == STATUS_TRACE_STOP
 }
 

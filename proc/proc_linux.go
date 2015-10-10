@@ -29,8 +29,9 @@ const (
 	STATUS_ZOMBIE     = 'Z'
 )
 
-// Not actually needed for Linux.
-type OSProcessDetails interface{}
+type OSProcessDetails struct {
+	comm string
+}
 
 // Create and begin debugging a new process. First entry in
 // `cmd` is the program to run, and then rest are the arguments
@@ -321,7 +322,7 @@ func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 	}
 	// removes newline character
 	comm = comm[:len(comm)-1]
-	dbp.comm = strings.Replace(string(comm), "%", "%%", -1)
+	dbp.os.comm = strings.Replace(string(comm), "%", "%%", -1)
 }
 
 func status(pid int, comm string) rune {
@@ -369,7 +370,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 			if wpid != 0 {
 				return wpid, &s, err
 			}
-			if status(pid, dbp.comm) == STATUS_ZOMBIE {
+			if status(pid, dbp.os.comm) == STATUS_ZOMBIE {
 				return pid, nil, nil
 			}
 			time.Sleep(200 * time.Millisecond)
