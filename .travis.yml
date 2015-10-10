@@ -1,5 +1,5 @@
 language: go
-sudo: required
+sudo: false
 
 os:
   - linux

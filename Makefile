@@ -41,7 +41,11 @@ endif
 
 test: check-cert
 ifeq "$(TRAVIS)" "true"
+ifdef DARWIN
 	sudo -E go test -v $(ALL_PACKAGES)
+else
+	go test $(FLAGS) $(ALL_PACKAGES)
+endif
 else
 	go test $(FLAGS) $(ALL_PACKAGES)
 endif
