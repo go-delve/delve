@@ -13,7 +13,7 @@ ALL_PACKAGES=$(shell go list ./... | grep -v /vendor/)
 # unable to execute.
 # See https://github.com/golang/go/issues/11887#issuecomment-126117692.
 ifeq "$(UNAME)" "Darwin"
-	FLAGS=-ldflags="-s"
+	FLAGS=-ldflags="-s" -exec=$(shell pwd)/scripts/testsign
 	DARWIN="true"
 endif
 
@@ -40,28 +40,14 @@ ifdef DARWIN
 endif
 
 test: check-cert
-ifdef DARWIN
 ifeq "$(TRAVIS)" "true"
 	sudo -E go test -v $(ALL_PACKAGES)
 else
-	go test $(PREFIX)/terminal $(PREFIX)/dwarf/frame $(PREFIX)/dwarf/op $(PREFIX)/dwarf/util $(PREFIX)/source $(PREFIX)/dwarf/line
-	go test -c $(FLAGS) $(PREFIX)/proc && codesign -s $(CERT) ./proc.test && ./proc.test $(TESTFLAGS) -test.v && rm ./proc.test
-	go test -c  $(FLAGS) $(PREFIX)/service/test && codesign -s $(CERT) ./test.test && ./test.test $(TESTFLAGS) -test.v && rm ./test.test
-endif
-else
-	go test -v $(ALL_PACKAGES)
+	go test $(FLAGS) $(ALL_PACKAGES)
 endif
 
 test-proc-run:
-ifdef DARWIN
-	go test -c $(FLAGS) $(PREFIX)/proc && codesign -s $(CERT) ./proc.test && ./proc.test -test.run $(RUN) && rm ./proc.test
-else
-	go test $(PREFIX) -run $(RUN)
-endif
+	go test $(FLAGS) $(PREFIX)/proc -run $(RUN)
 
 test-integration-run:
-ifdef DARWIN
-	go test -c $(FLAGS) $(PREFIX)/service/test && codesign -s $(CERT) ./test.test && ./test.test -test.run $(RUN) && rm ./test.test
-else
-	go test $(PREFIX)/service/rest -run $(RUN)
-endif
+	go test $(FLAGS) $(PREFIX)/service/test -run $(RUN)
