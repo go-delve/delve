@@ -70,6 +70,59 @@ func (n NullAddrError) Error() string {
 	return "NULL address"
 }
 
+type StackIterator struct {
+	pc, sp uint64
+	top    bool
+	frame  Stackframe
+	dbp    *Process
+	atend  bool
+	err    error
+}
+
+func newStackIterator(dbp *Process, pc, sp uint64) *StackIterator {
+	return &StackIterator{pc: pc, sp: sp, top: true, dbp: dbp, err: nil, atend: false}
+}
+
+func (it *StackIterator) Next() bool {
+	if it.err != nil || it.atend {
+		return false
+	}
+	it.frame, it.err = it.dbp.frameInfo(it.pc, it.sp, it.top)
+	if it.err != nil {
+		return false
+	}
+
+	if it.frame.Current.Fn == nil {
+		return false
+	}
+
+	if it.frame.Ret <= 0 {
+		it.atend = true
+		return true
+	}
+	// Look for "top of stack" functions.
+	if it.frame.Current.Fn.Name == "runtime.goexit" || it.frame.Current.Fn.Name == "runtime.rt0_go" {
+		it.atend = true
+		return true
+	}
+
+	it.top = false
+	it.pc = it.frame.Ret
+	it.sp = uint64(it.frame.CFA)
+	return true
+}
+
+func (it *StackIterator) Frame() Stackframe {
+	if it.err != nil {
+		panic(it.err)
+	}
+	return it.frame
+}
+
+func (it *StackIterator) Err() error {
+	return it.err
+}
+
 func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 	f, l, fn := dbp.PCToLine(pc)
 	fde, err := dbp.frameEntries.FDEForPC(pc)
@@ -99,26 +152,15 @@ func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 
 func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Stackframe, error) {
 	frames := make([]Stackframe, 0, depth+1)
-
-	for i := 0; i < depth+1; i++ {
-		frame, err := dbp.frameInfo(pc, sp, i == 0)
-		if err != nil {
-			return nil, err
-		}
-		if frame.Current.Fn == nil {
+	it := newStackIterator(dbp, pc, sp)
+	for it.Next() {
+		frames = append(frames, it.Frame())
+		if len(frames) >= depth+1 {
 			break
 		}
-		frames = append(frames, frame)
-		if frame.Ret <= 0 {
-			break
-		}
-		// Look for "top of stack" functions.
-		if frame.Current.Fn.Name == "runtime.goexit" || frame.Current.Fn.Name == "runtime.rt0_go" {
-			break
-		}
-
-		pc = frame.Ret
-		sp = uint64(frame.CFA)
+	}
+	if err := it.Err(); err != nil {
+		return nil, err
 	}
 	return frames, nil
 }

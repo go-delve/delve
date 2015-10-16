@@ -81,11 +81,10 @@ func ConvertFunction(fn *gosym.Func) *Function {
 // convertGoroutine converts an internal Goroutine to an API Goroutine.
 func ConvertGoroutine(g *proc.G) *Goroutine {
 	return &Goroutine{
-		ID:       g.Id,
-		PC:       g.PC,
-		File:     g.File,
-		Line:     g.Line,
-		Function: ConvertFunction(g.Func),
+		ID:          g.Id,
+		Current:     ConvertLocation(g.Current),
+		UserCurrent: ConvertLocation(g.UserCurrent()),
+		Go:          ConvertLocation(g.Go()),
 	}
 }
 

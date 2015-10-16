@@ -114,14 +114,12 @@ type Variable struct {
 type Goroutine struct {
 	// ID is a unique identifier for the goroutine.
 	ID int `json:"id"`
-	// PC is the current program counter for the goroutine.
-	PC uint64 `json:"pc"`
-	// File is the file for the program counter.
-	File string `json:"file"`
-	// Line is the line number for the program counter.
-	Line int `json:"line"`
-	// Function is function information at the program counter. May be nil.
-	Function *Function `json:"function,omitempty"`
+	// Current location of the goroutine
+	Current Location
+	// Current location of the goroutine, excluding calls inside runtime
+	UserCurrent Location
+	// Location of the go instruction that started this goroutine
+	Go Location
 }
 
 // DebuggerCommand is a command which changes the debugger's execution state.
