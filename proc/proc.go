@@ -488,9 +488,7 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 			}
 			g.thread = thread
 			// Prefer actual thread location information.
-			g.File = loc.File
-			g.Line = loc.Line
-			g.Func = loc.Fn
+			g.Current = *loc
 		}
 		if g.Status != Gdead {
 			allg = append(allg, g)

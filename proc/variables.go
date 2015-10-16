@@ -3,7 +3,6 @@ package proc
 import (
 	"bytes"
 	"debug/dwarf"
-	"debug/gosym"
 	"encoding/binary"
 	"fmt"
 	"go/ast"
@@ -73,16 +72,16 @@ type G struct {
 	WaitReason string // Reason for goroutine being parked.
 	Status     uint64
 
-	// Information on goroutine location.
-	File string
-	Line int
-	Func *gosym.Func
+	// Information on goroutine location
+	Current Location
 
 	// PC of entry to top-most deferred function.
 	DeferPC uint64
 
 	// Thread that this goroutine is currently allocated to
 	thread *Thread
+
+	dbp *Process
 }
 
 // Scope for variable evaluation
@@ -292,14 +291,46 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		GoPC:       gopc,
 		PC:         pc,
 		SP:         sp,
-		File:       f,
-		Line:       l,
-		Func:       fn,
+		Current:    Location{PC: pc, File: f, Line: l, Fn: fn},
 		WaitReason: waitreason,
 		DeferPC:    deferPC,
 		Status:     atomicStatus,
+		dbp:        thread.dbp,
 	}
 	return g, nil
+}
+
+// From $GOROOT/src/runtime/traceback.go:597
+// isExportedRuntime reports whether name is an exported runtime function.
+// It is only for runtime functions, so ASCII A-Z is fine.
+func isExportedRuntime(name string) bool {
+	const n = len("runtime.")
+	return len(name) > n && name[:n] == "runtime." && 'A' <= name[n] && name[n] <= 'Z'
+}
+
+func (g *G) UserCurrent() Location {
+	pc, sp := g.PC, g.SP
+	if g.thread != nil {
+		regs, err := g.thread.Registers()
+		if err != nil {
+			return g.Current
+		}
+		pc, sp = regs.PC(), regs.SP()
+	}
+	it := newStackIterator(g.dbp, pc, sp)
+	for it.Next() {
+		frame := it.Frame()
+		name := frame.Call.Fn.Name
+		if (strings.Index(name, ".") >= 0) && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
+			return frame.Call
+		}
+	}
+	return g.Current
+}
+
+func (g *G) Go() Location {
+	f, l, fn := g.dbp.goSymTable.PCToLine(g.GoPC)
+	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
 }
 
 // Returns information for the named variable.
