@@ -556,7 +556,7 @@ func findLocationHelper(t *testing.T, c service.Client, loc string, shouldErr bo
 
 func TestClientServer_FindLocations(t *testing.T) {
 	withTestClient("locationsprog", t, func(c service.Client) {
-		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
+		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
 		findLocationHelper(t, c, "anotherFunction:1", false, 1, someFunctionCallAddr)
 		findLocationHelper(t, c, "main.anotherFunction:1", false, 1, someFunctionCallAddr)
 		findLocationHelper(t, c, "anotherFunction", false, 1, someFunctionCallAddr)
@@ -567,12 +567,15 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "String", true, 0, 0)
 		findLocationHelper(t, c, "main.String", true, 0, 0)
 
-		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:14", false, 1, 0)[0]
-		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:18", false, 1, 0)[0]
+		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:15", false, 1, 0)[0]
+		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:19", false, 1, 0)[0]
 		findLocationHelper(t, c, "SomeType.String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "(*SomeType).String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "main.SomeType.String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "main.(*SomeType).String", false, 1, someTypeStringFuncAddr)
+
+		// Issue #275
+		findLocationHelper(t, c, "io/ioutil.ReadFile", false, 1, 0)
 
 		stringAddrs := findLocationHelper(t, c, "/^main.*Type.*String$/", false, 2, 0)
 
@@ -580,7 +583,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 			t.Fatalf("Wrong locations returned for \"/.*Type.*String/\", got: %v expected: %v and %v\n", stringAddrs, someTypeStringFuncAddr, otherTypeStringFuncAddr)
 		}
 
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 4, Tracepoint: false})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 3, Tracepoint: false})
 		if err != nil {
 			t.Fatalf("CreateBreakpoint(): %v\n", err)
 		}

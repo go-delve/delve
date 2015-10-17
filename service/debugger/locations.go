@@ -156,10 +156,6 @@ func readRegex(in string) (rx string, rest string) {
 }
 
 func parseFuncLocationSpec(in string) *FuncLocationSpec {
-	if strings.Index(in, "/") >= 0 {
-		return nil
-	}
-
 	v := strings.Split(in, ".")
 	var spec FuncLocationSpec
 	switch len(v) {
@@ -171,6 +167,8 @@ func parseFuncLocationSpec(in string) *FuncLocationSpec {
 		r := stripReceiverDecoration(v[0])
 		if r != v[0] {
 			spec.ReceiverName = r
+		} else if strings.Index(r, "/") >= 0 {
+			spec.PackageName = r
 		} else {
 			spec.PackageOrReceiverName = r
 		}
@@ -181,6 +179,10 @@ func parseFuncLocationSpec(in string) *FuncLocationSpec {
 		spec.PackageName = stripReceiverDecoration(v[0])
 
 	default:
+		return nil
+	}
+
+	if strings.Index(spec.BaseName, "/") >= 0 || strings.Index(spec.ReceiverName, "/") >= 0 {
 		return nil
 	}
 

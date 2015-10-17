@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 )
 
 type SomeType struct {
@@ -32,4 +33,5 @@ func main() {
 	fmt.Printf("%s %s\n", a.String(), b.String())
 	a.SomeFunction()
 	anotherFunction()
+	ioutil.ReadFile("nonexistent.file.txt")
 }
