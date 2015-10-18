@@ -63,7 +63,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
 		{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: "clearall [<linespec>]. Deletes all breakpoints. If <linespec> is provided, only matching breakpoints will be deleted."},
-		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "Print out info for every goroutine."},
+		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)] Print out info for every goroutine."},
 		{aliases: []string{"goroutine"}, cmdFn: goroutine, helpMsg: "Sets current goroutine."},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		{aliases: []string{"print", "p"}, cmdFn: g0f0(printVar), helpMsg: "Evaluate a variable."},
@@ -414,13 +414,13 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 	switch fgl {
 	case fglRuntimeCurrent:
 		locname = "Runtime"
-		loc = g.Current
+		loc = g.CurrentLoc
 	case fglUserCurrent:
 		locname = "User"
-		loc = g.UserCurrent
+		loc = g.UserCurrentLoc
 	case fglGo:
 		locname = "Go"
-		loc = g.Go
+		loc = g.GoStatementLoc
 	}
 	return fmt.Sprintf("%d - %s: %s", g.ID, locname, formatLocation(loc))
 }
@@ -428,9 +428,9 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 	fmt.Fprintf(w, "%sGoroutine %d:\n%s\tRuntime: %s\n%s\tUser: %s\n%s\tGo: %s\n",
 		prefix, g.ID,
-		prefix, formatLocation(g.Current),
-		prefix, formatLocation(g.UserCurrent),
-		prefix, formatLocation(g.Go))
+		prefix, formatLocation(g.CurrentLoc),
+		prefix, formatLocation(g.UserCurrentLoc),
+		prefix, formatLocation(g.GoStatementLoc))
 }
 
 func restart(t *Term, args ...string) error {

@@ -115,11 +115,11 @@ type Goroutine struct {
 	// ID is a unique identifier for the goroutine.
 	ID int `json:"id"`
 	// Current location of the goroutine
-	Current Location
+	CurrentLoc Location `json:"currentLoc"`
 	// Current location of the goroutine, excluding calls inside runtime
-	UserCurrent Location
+	UserCurrentLoc Location `json:"userCurrentLoc"`
 	// Location of the go instruction that started this goroutine
-	Go Location
+	GoStatementLoc Location `json:"goStatementLoc"`
 }
 
 // DebuggerCommand is a command which changes the debugger's execution state.

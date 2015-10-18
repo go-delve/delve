@@ -487,7 +487,7 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 			}
 			g.thread = thread
 			// Prefer actual thread location information.
-			g.Current = *loc
+			g.CurrentLoc = *loc
 		}
 		if g.Status != Gdead {
 			allg = append(allg, g)

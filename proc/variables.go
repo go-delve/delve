@@ -73,7 +73,7 @@ type G struct {
 	Status     uint64
 
 	// Information on goroutine location
-	Current Location
+	CurrentLoc Location
 
 	// PC of entry to top-most deferred function.
 	DeferPC uint64
@@ -291,7 +291,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		GoPC:       gopc,
 		PC:         pc,
 		SP:         sp,
-		Current:    Location{PC: pc, File: f, Line: l, Fn: fn},
+		CurrentLoc: Location{PC: pc, File: f, Line: l, Fn: fn},
 		WaitReason: waitreason,
 		DeferPC:    deferPC,
 		Status:     atomicStatus,
@@ -313,7 +313,7 @@ func (g *G) UserCurrent() Location {
 	if g.thread != nil {
 		regs, err := g.thread.Registers()
 		if err != nil {
-			return g.Current
+			return g.CurrentLoc
 		}
 		pc, sp = regs.PC(), regs.SP()
 	}
@@ -325,7 +325,7 @@ func (g *G) UserCurrent() Location {
 			return frame.Call
 		}
 	}
-	return g.Current
+	return g.CurrentLoc
 }
 
 func (g *G) Go() Location {
