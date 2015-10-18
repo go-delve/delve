@@ -186,9 +186,8 @@ func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOf
 		if len(lines) > 0 {
 			linePC, _, err := dbp.goSymTable.LineToPC(filename, lines[0])
 			return linePC, err
-		} else {
-			return fn.Entry, nil
 		}
+		return fn.Entry, nil
 	} else if lineOffset > 0 {
 		filename, lineno, _ := dbp.goSymTable.PCToLine(fn.Entry)
 		breakAddr, _, err := dbp.goSymTable.LineToPC(filename, lineno+lineOffset)
