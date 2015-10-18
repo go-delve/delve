@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -332,7 +334,7 @@ func TestNextConcurrent(t *testing.T) {
 			}
 			v, err := evalVariable(p, "n")
 			assertNoError(err, t, "EvalVariable")
-			if v.Value != initV.Value {
+			if v.Value.(int64) != initV.Value.(int64) {
 				t.Fatal("Did not end up on same goroutine")
 			}
 		}
@@ -807,5 +809,223 @@ func TestIssue239(t *testing.T) {
 		_, err = p.SetBreakpoint(pos)
 		assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%d)", pos))
 		assertNoError(p.Continue(), t, fmt.Sprintf("Continue()"))
+	})
+}
+
+func evalVariable(p *Process, symbol string) (*Variable, error) {
+	scope, err := p.CurrentThread.Scope()
+	if err != nil {
+		return nil, err
+	}
+	return scope.EvalVariable(symbol)
+}
+
+func setVariable(p *Process, symbol, value string) error {
+	scope, err := p.CurrentThread.Scope()
+	if err != nil {
+		return err
+	}
+	return scope.SetVariable(symbol, value)
+}
+
+func TestVariableEvaluation(t *testing.T) {
+	testcases := []struct {
+		name        string
+		st          reflect.Kind
+		value       interface{}
+		length, cap int64
+		childrenlen int
+	}{
+		{"a1", reflect.String, "foofoofoofoofoofoo", 18, 0, 0},
+		{"a11", reflect.Array, nil, 3, -1, 3},
+		{"a12", reflect.Slice, nil, 2, 2, 2},
+		{"a13", reflect.Slice, nil, 3, 3, 3},
+		{"a2", reflect.Int, int64(6), 0, 0, 0},
+		{"a3", reflect.Float64, float64(7.23), 0, 0, 0},
+		{"a4", reflect.Array, nil, 2, -1, 2},
+		{"a5", reflect.Slice, nil, 5, 5, 5},
+		{"a6", reflect.Struct, nil, 2, 0, 2},
+		{"a7", reflect.Ptr, nil, 1, 0, 1},
+		{"a8", reflect.Struct, nil, 2, 0, 2},
+		{"a9", reflect.Ptr, nil, 1, 0, 1},
+		{"baz", reflect.String, "bazburzum", 9, 0, 0},
+		{"neg", reflect.Int, int64(-1), 0, 0, 0},
+		{"f32", reflect.Float32, float64(float32(1.2)), 0, 0, 0},
+		{"c64", reflect.Complex64, nil, 2, 0, 2},
+		{"c128", reflect.Complex128, nil, 2, 0, 2},
+		{"a6.Baz", reflect.Int, int64(8), 0, 0, 0},
+		{"a7.Baz", reflect.Int, int64(5), 0, 0, 0},
+		{"a8.Baz", reflect.String, "feh", 3, 0, 0},
+		{"a8", reflect.Struct, nil, 2, 0, 2},
+		{"i32", reflect.Array, nil, 2, -1, 2},
+		{"b1", reflect.Bool, true, 0, 0, 0},
+		{"b2", reflect.Bool, false, 0, 0, 0},
+		{"f", reflect.Func, "main.barfoo", 0, 0, 0},
+		{"ba", reflect.Slice, nil, 200, 200, 64},
+	}
+
+	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+
+		for _, tc := range testcases {
+			v, err := evalVariable(p, tc.name)
+			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", tc.name))
+
+			if v.Kind != tc.st {
+				t.Fatalf("%s simple type: expected: %s got: %s", tc.name, tc.st, v.Kind.String())
+			}
+			if v.Value == nil && tc.value != nil {
+				t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+			} else {
+				switch x := v.Value.(type) {
+				case int64:
+					if y, ok := tc.value.(int64); !ok || x != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				case float64:
+					if y, ok := tc.value.(float64); !ok || x != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				case string:
+					if y, ok := tc.value.(string); !ok || x != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				}
+			}
+			if v.Len != tc.length {
+				t.Fatalf("%s len: expected: %d got: %d", tc.name, tc.length, v.Len)
+			}
+			if v.Cap != tc.cap {
+				t.Fatalf("%s cap: expected: %d got: %d", tc.name, tc.cap, v.Cap)
+			}
+			if len(v.Children) != tc.childrenlen {
+				t.Fatalf("%s children len: expected %d got: %d", tc.name, tc.childrenlen, len(v.Children))
+			}
+		}
+	})
+}
+
+func TestFrameEvaluation(t *testing.T) {
+	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.stacktraceme")
+		assertNoError(err, t, "setFunctionBreakpoint")
+		assertNoError(p.Continue(), t, "Continue()")
+
+		/**** Testing evaluation on goroutines ****/
+		gs, err := p.GoroutinesInfo()
+		assertNoError(err, t, "GoroutinesInfo")
+		found := make([]bool, 10)
+		for _, g := range gs {
+			frame := -1
+			frames, err := p.GoroutineStacktrace(g, 10)
+			assertNoError(err, t, "GoroutineStacktrace()")
+			for i := range frames {
+				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
+					frame = i
+					break
+				}
+			}
+
+			if frame < 0 {
+				t.Logf("Goroutine %d: could not find correct frame", g.Id)
+				continue
+			}
+
+			scope, err := p.ConvertEvalScope(g.Id, frame)
+			assertNoError(err, t, "ConvertEvalScope()")
+			t.Logf("scope = %v", scope)
+			v, err := scope.EvalVariable("i")
+			t.Logf("v = %v", v)
+			if err != nil {
+				t.Logf("Goroutine %d: %v\n", g.Id, err)
+				continue
+			}
+			found[v.Value.(int64)] = true
+		}
+
+		for i := range found {
+			if !found[i] {
+				t.Fatalf("Goroutine %d not found\n", i)
+			}
+		}
+
+		/**** Testing evaluation on frames ****/
+		assertNoError(p.Continue(), t, "Continue() 2")
+		g, err := p.CurrentThread.GetG()
+		assertNoError(err, t, "GetG()")
+
+		for i := 0; i <= 3; i++ {
+			scope, err := p.ConvertEvalScope(g.Id, i+1)
+			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
+			v, err := scope.EvalVariable("n")
+			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
+			n := v.Value.(int64)
+			t.Logf("frame %d n %d\n", i+1, n)
+			if n != int64(3-i) {
+				t.Fatalf("On frame %d value of n is %d (not %d)", i+1, n, 3-i)
+			}
+		}
+	})
+}
+
+func TestPointerSetting(t *testing.T) {
+	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+
+		pval := func(n int64) {
+			variable, err := evalVariable(p, "p1")
+			assertNoError(err, t, "EvalVariable()")
+			if variable.Children[0].Value.(int64) != n {
+				t.Fatalf("Wrong value of p1, *%d expected *%d", variable.Children[0].Value.(int64), n)
+			}
+		}
+
+		pval(1)
+
+		// change p1 to point to i2
+		scope, err := p.CurrentThread.Scope()
+		assertNoError(err, t, "Scope()")
+		i2addr, err := scope.ExtractVariableInfo("i2")
+		assertNoError(err, t, "EvalVariableAddr()")
+		assertNoError(setVariable(p, "p1", strconv.Itoa(int(i2addr.Addr))), t, "SetVariable()")
+		pval(2)
+
+		// change the value of i2 check that p1 also changes
+		assertNoError(setVariable(p, "i2", "5"), t, "SetVariable()")
+		pval(5)
+	})
+}
+
+func TestVariableFunctionScoping(t *testing.T) {
+	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
+		err := p.Continue()
+		assertNoError(err, t, "Continue() returned an error")
+
+		_, err = evalVariable(p, "a1")
+		assertNoError(err, t, "Unable to find variable a1")
+
+		_, err = evalVariable(p, "a2")
+		assertNoError(err, t, "Unable to find variable a1")
+
+		// Move scopes, a1 exists here by a2 does not
+		err = p.Continue()
+		assertNoError(err, t, "Continue() returned an error")
+
+		_, err = evalVariable(p, "a1")
+		assertNoError(err, t, "Unable to find variable a1")
+
+		_, err = evalVariable(p, "a2")
+		if err == nil {
+			t.Fatalf("Can eval out of scope variable a2")
+		}
+	})
+}
+
+func TestRecursiveStructure(t *testing.T) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		v, err := evalVariable(p, "aas")
+		assertNoError(err, t, "EvalVariable()")
+		t.Logf("v: %v\n", v)
 	})
 }

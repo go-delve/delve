@@ -629,7 +629,8 @@ func printVar(t *Term, scope api.EvalScope, args ...string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(val.Value)
+
+	fmt.Println(val.MultilineString(""))
 	return nil
 }
 
@@ -650,7 +651,7 @@ func filterVariables(vars []api.Variable, filter string) []string {
 	data := make([]string, 0, len(vars))
 	for _, v := range vars {
 		if reg == nil || reg.Match([]byte(v.Name)) {
-			data = append(data, fmt.Sprintf("%s = %s", v.Name, v.Value))
+			data = append(data, fmt.Sprintf("%s = %s", v.Name, v.SinglelineString()))
 		}
 	}
 	return data
@@ -801,10 +802,10 @@ func printStack(stack []api.Stackframe, ind string) {
 		fmt.Printf("%sat %s:%d\n", s, shortenFilePath(stack[i].File), stack[i].Line)
 
 		for j := range stack[i].Arguments {
-			fmt.Printf("%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].Value)
+			fmt.Printf("%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString())
 		}
 		for j := range stack[i].Locals {
-			fmt.Printf("%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].Value)
+			fmt.Printf("%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString())
 		}
 	}
 }
@@ -829,7 +830,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 		if state.Breakpoint.Tracepoint {
 			var arg []string
 			for _, ar := range state.CurrentThread.Function.Args {
-				arg = append(arg, ar.Value)
+				arg = append(arg, ar.SinglelineString())
 			}
 			args = strings.Join(arg, ", ")
 		}
@@ -864,7 +865,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 
 		ss := make([]string, len(bpi.Variables))
 		for i, v := range bpi.Variables {
-			ss[i] = fmt.Sprintf("%s: <%v>", v.Name, v.Value)
+			ss[i] = fmt.Sprintf("%s: %v", v.Name, v.MultilineString(""))
 		}
 		fmt.Printf("\t%s\n", strings.Join(ss, ", "))
 

@@ -10,5 +10,5 @@ func main() {
 	i2 := 2
 	p1 := &i1
 	runtime.Breakpoint()
-	fmt.Printf("%d %d %v\n", i1, i2, p1)
+	fmt.Println(i1, i2, p1)
 }

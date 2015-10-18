@@ -456,8 +456,12 @@ func TestClientServer_traceContinue(t *testing.T) {
 					t.Fatalf("Wrong variable returned %s", bpi.Variables[0].Name)
 				}
 
-				if bpi.Variables[0].Value != strconv.Itoa(count-1) {
-					t.Fatalf("Wrong variable value %s (%d)", bpi.Variables[0].Value, count)
+				t.Logf("Variable i is %v", bpi.Variables[0])
+
+				n, err := strconv.Atoi(bpi.Variables[0].Value)
+
+				if err != nil || n != count-1 {
+					t.Fatalf("Wrong variable value %q (%v %d)", bpi.Variables[0].Value, err, count)
 				}
 			}
 			if state.Exited {
@@ -604,10 +608,6 @@ func TestClientServer_FindLocations(t *testing.T) {
 
 func TestClientServer_EvalVariable(t *testing.T) {
 	withTestClient("testvariables", t, func(c service.Client) {
-		fp := testProgPath(t, "testvariables")
-		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 59})
-		assertNoError(err, t, "CreateBreakpoint()")
-
 		state := <-c.Continue()
 
 		if state.Err != nil {
@@ -617,20 +617,16 @@ func TestClientServer_EvalVariable(t *testing.T) {
 		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "a1")
 		assertNoError(err, t, "EvalVariable")
 
-		t.Logf("var1: <%s>", var1.Value)
+		t.Logf("var1: %s", var1.SinglelineString())
 
 		if var1.Value != "foofoofoofoofoofoo" {
-			t.Fatalf("Wrong variable value: %v", var1.Value)
+			t.Fatalf("Wrong variable value: %s", var1.Value)
 		}
 	})
 }
 
 func TestClientServer_SetVariable(t *testing.T) {
 	withTestClient("testvariables", t, func(c service.Client) {
-		fp := testProgPath(t, "testvariables")
-		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 59})
-		assertNoError(err, t, "CreateBreakpoint()")
-
 		state := <-c.Continue()
 
 		if state.Err != nil {
@@ -641,10 +637,12 @@ func TestClientServer_SetVariable(t *testing.T) {
 
 		a2, err := c.EvalVariable(api.EvalScope{-1, 0}, "a2")
 
-		t.Logf("a2: <%s>", a2.Value)
+		t.Logf("a2: %v", a2)
 
-		if a2.Value != "8" {
-			t.Fatalf("Wrong variable value: %v", a2.Value)
+		n, err := strconv.Atoi(a2.Value)
+
+		if err != nil && n != 8 {
+			t.Fatalf("Wrong variable value: %v", a2)
 		}
 	})
 }
@@ -676,9 +674,11 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 					if arg.Name != "i" {
 						continue
 					}
-					n, err := strconv.Atoi(arg.Value)
-					assertNoError(err, t, fmt.Sprintf("Wrong value for i in goroutine %d (%s)", g.ID, arg.Value))
-					found[n] = true
+					t.Logf("frame %d, variable i is %v\n", arg)
+					argn, err := strconv.Atoi(arg.Value)
+					if err == nil {
+						found[argn] = true
+					}
 				}
 			}
 		}
@@ -707,10 +707,9 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			if v == nil {
 				t.Fatalf("Could not find value of variable n in frame %d", i)
 			}
-			n, err := strconv.Atoi(v.Value)
-			assertNoError(err, t, fmt.Sprintf("Wrong value for n: %s", v.Value))
-			if n != cur {
-				t.Fatalf("Expected value %d got %d", cur, n)
+			vn, err := strconv.Atoi(v.Value)
+			if err != nil || vn != cur {
+				t.Fatalf("Expected value %d got %d (error: %v)", cur, vn, err)
 			}
 			cur--
 			if cur < 0 {
