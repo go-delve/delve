@@ -5,6 +5,7 @@ package terminal
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"regexp"
@@ -223,6 +224,25 @@ func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
 func goroutines(t *Term, args ...string) error {
+	var fgl = fglUserCurrent
+
+	switch len(args) {
+	case 0:
+		// nothing to do
+	case 1:
+		switch args[0] {
+		case "-u":
+			fgl = fglUserCurrent
+		case "-r":
+			fgl = fglRuntimeCurrent
+		case "-g":
+			fgl = fglGo
+		default:
+			fmt.Errorf("wrong argument: '%s'", args[0])
+		}
+	default:
+		return fmt.Errorf("too many arguments")
+	}
 	state, err := t.client.GetState()
 	if err != nil {
 		return err
@@ -238,7 +258,7 @@ func goroutines(t *Term, args ...string) error {
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = "* "
 		}
-		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g))
+		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
 	}
 	return nil
 }
@@ -355,7 +375,10 @@ func printscope(t *Term) error {
 		return err
 	}
 
-	fmt.Printf("Thread %s\nGoroutine %s\n", formatThread(state.CurrentThread), formatGoroutine(state.SelectedGoroutine))
+	fmt.Printf("Thread %s\n", formatThread(state.CurrentThread))
+	if state.SelectedGoroutine != nil {
+		writeGoroutineLong(os.Stdout, state.SelectedGoroutine, "")
+	}
 	return nil
 }
 
@@ -366,15 +389,48 @@ func formatThread(th *api.Thread) string {
 	return fmt.Sprintf("%d at %s:%d", th.ID, shortenFilePath(th.File), th.Line)
 }
 
-func formatGoroutine(g *api.Goroutine) string {
+type formatGoroutineLoc int
+
+const (
+	fglRuntimeCurrent = formatGoroutineLoc(iota)
+	fglUserCurrent
+	fglGo
+)
+
+func formatLocation(loc api.Location) string {
+	fname := ""
+	if loc.Function != nil {
+		fname = loc.Function.Name
+	}
+	return fmt.Sprintf("%s:%d %s (%#v)", shortenFilePath(loc.File), loc.Line, fname, loc.PC)
+}
+
+func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 	if g == nil {
 		return "<nil>"
 	}
-	fname := ""
-	if g.Function != nil {
-		fname = g.Function.Name
+	var locname string
+	var loc api.Location
+	switch fgl {
+	case fglRuntimeCurrent:
+		locname = "Runtime"
+		loc = g.Current
+	case fglUserCurrent:
+		locname = "User"
+		loc = g.UserCurrent
+	case fglGo:
+		locname = "Go"
+		loc = g.Go
 	}
-	return fmt.Sprintf("%d - %s:%d %s (%#v)", g.ID, shortenFilePath(g.File), g.Line, fname, g.PC)
+	return fmt.Sprintf("%d - %s: %s", g.ID, locname, formatLocation(loc))
+}
+
+func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
+	fmt.Fprintf(w, "%sGoroutine %d:\n%s\tRuntime: %s\n%s\tUser: %s\n%s\tGo: %s\n",
+		prefix, g.ID,
+		prefix, formatLocation(g.Current),
+		prefix, formatLocation(g.UserCurrent),
+		prefix, formatLocation(g.Go))
 }
 
 func restart(t *Term, args ...string) error {
@@ -803,7 +859,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 		bpi := state.BreakpointInfo
 
 		if bpi.Goroutine != nil {
-			fmt.Printf("\tGoroutine %s\n", formatGoroutine(bpi.Goroutine))
+			writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
 		}
 
 		ss := make([]string, len(bpi.Variables))
