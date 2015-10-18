@@ -992,8 +992,12 @@ func TestPointerSetting(t *testing.T) {
 		// change p1 to point to i2
 		scope, err := p.CurrentThread.Scope()
 		assertNoError(err, t, "Scope()")
-		i2addr, err := scope.ExtractVariableInfo("i2")
+		i2addrs, err := scope.ExtractVariableInfo("i2")
 		assertNoError(err, t, "EvalVariableAddr()")
+		if len(i2addrs) != 1 {
+			t.Fatalf("Wrong number of addresses retrieved for variable i2: %v", i2addrs)
+		}
+		i2addr := i2addrs[0]
 		assertNoError(setVariable(p, "p1", strconv.Itoa(int(i2addr.Addr))), t, "SetVariable()")
 		pval(2)
 
@@ -1034,5 +1038,16 @@ func TestRecursiveStructure(t *testing.T) {
 		v, err := evalVariable(p, "aas")
 		assertNoError(err, t, "EvalVariable()")
 		t.Logf("v: %v\n", v)
+	})
+}
+
+func TestAmbiguousVariable(t *testing.T) {
+	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+		variable, err := evalVariable(p, "amb1")
+		assertNoError(err, t, "EvalVariable()")
+		if variable.Kind != reflect.Invalid || variable.DwarfType != nil || len(variable.Children) <= 0 {
+			t.Fatalf("Wrong value for amb1: %v\n", variable)
+		}
 	})
 }
