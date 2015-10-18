@@ -25,10 +25,11 @@ import (
 const version string = "0.10.0-alpha"
 
 var (
-	Log      bool
-	Headless bool
-	Addr     string
-	InitFile string
+	Log        bool
+	Headless   bool
+	Addr       string
+	InitFile   string
+	BuildFlags string
 )
 
 func main() {
@@ -50,7 +51,8 @@ The goal of this tool is to provide a simple yet powerful interface for debuggin
 	rootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	rootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	rootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
-	rootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client")
+	rootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
+	rootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", "", "Build flags, to be passed to the compiler.")
 
 	// 'version' subcommand.
 	versionCommand := &cobra.Command{
@@ -82,7 +84,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		Run: func(cmd *cobra.Command, args []string) {
 			status := func() int {
 				const debugname = "debug"
-				goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
+				goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l", BuildFlags)
 				goBuild.Stderr = os.Stderr
 				err := goBuild.Run()
 				if err != nil {
@@ -130,7 +132,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 				const debugname = "debug"
 				var processArgs []string
 				if traceAttachPid == 0 {
-					goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l")
+					goBuild := exec.Command("go", "build", "-o", debugname, "-gcflags", "-N -l", BuildFlags)
 					goBuild.Stderr = os.Stderr
 					err := goBuild.Run()
 					if err != nil {
@@ -224,7 +226,7 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 					return 1
 				}
 				base := filepath.Base(wd)
-				goTest := exec.Command("go", "test", "-c", "-gcflags", "-N -l")
+				goTest := exec.Command("go", "test", "-c", "-gcflags", "-N -l", BuildFlags)
 				goTest.Stderr = os.Stderr
 				err = goTest.Run()
 				if err != nil {
