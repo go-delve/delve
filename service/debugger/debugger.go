@@ -312,11 +312,11 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		if err != nil {
 			return err
 		}
-		bpi.Variables[i] = api.ConvertVar(v)
+		bpi.Variables[i] = *api.ConvertVar(v)
 	}
-	vars, err := functionArguments(s)
+	args, err := s.FunctionArguments()
 	if err == nil {
-		bpi.Arguments = vars
+		bpi.Arguments = convertVars(args)
 	}
 	return nil
 }
@@ -376,7 +376,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 	}
 	for _, v := range pv {
 		if regex.Match([]byte(v.Name)) {
-			vars = append(vars, api.ConvertVar(v))
+			vars = append(vars, *api.ConvertVar(v))
 		}
 	}
 	return vars, err
@@ -397,7 +397,7 @@ func (d *Debugger) Registers(threadID int) (string, error) {
 func convertVars(pv []*proc.Variable) []api.Variable {
 	vars := make([]api.Variable, 0, len(pv))
 	for _, v := range pv {
-		vars = append(vars, api.ConvertVar(v))
+		vars = append(vars, *api.ConvertVar(v))
 	}
 	return vars
 }
@@ -419,19 +419,11 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error
 	if err != nil {
 		return nil, err
 	}
-	return functionArguments(s)
-}
-
-func functionArguments(s *proc.EvalScope) ([]api.Variable, error) {
 	pv, err := s.FunctionArguments()
 	if err != nil {
 		return nil, err
 	}
-	vars := make([]api.Variable, 0, len(pv))
-	for _, v := range pv {
-		vars = append(vars, api.ConvertVar(v))
-	}
-	return vars, nil
+	return convertVars(pv), nil
 }
 
 func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api.Variable, error) {
@@ -443,8 +435,7 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api
 	if err != nil {
 		return nil, err
 	}
-	converted := api.ConvertVar(v)
-	return &converted, err
+	return api.ConvertVar(v), err
 }
 
 func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string) error {
@@ -492,17 +483,19 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, full bool) ([]ap
 	for i := range rawlocs {
 		frame := api.Stackframe{Location: api.ConvertLocation(rawlocs[i].Call)}
 		if full {
+			var err error
 			scope := rawlocs[i].Scope(d.process.CurrentThread)
-			lv, err := scope.LocalVariables()
+			locals, err := scope.LocalVariables()
 			if err != nil {
 				return nil, err
 			}
-			av, err := scope.FunctionArguments()
+			arguments, err := scope.FunctionArguments()
 			if err != nil {
 				return nil, err
 			}
-			frame.Locals = convertVars(lv)
-			frame.Arguments = convertVars(av)
+
+			frame.Locals = convertVars(locals)
+			frame.Arguments = convertVars(arguments)
 		}
 		locations = append(locations, frame)
 	}

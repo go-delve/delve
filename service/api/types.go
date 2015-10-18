@@ -1,5 +1,7 @@
 package api
 
+import "reflect"
+
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
 	// Breakpoint is the current breakpoint at which the debugged process is
@@ -104,9 +106,35 @@ type Function struct {
 
 // Variable describes a variable.
 type Variable struct {
-	Name  string `json:"name"`
+	// Name of the variable or struct member
+	Name string `json:"name"`
+	// Address of the variable or struct member
+	Addr uintptr `json:"addr"`
+	// Go type of the variable
+	Type string `json:"type"`
+	// Type of the variable after resolving any typedefs
+	RealType string `json:"realType"`
+
+	Kind reflect.Kind `json:"kind"`
+
+	//Strings have their length capped at proc.maxArrayValues, use Len for the real length of a string
+	//Function variables will store the name of the function in this field
 	Value string `json:"value"`
-	Type  string `json:"type"`
+
+	// Number of elements in an array or a slice, number of keys for a map, number of struct members for a struct, length of strings
+	Len int64 `json:"len"`
+	// Cap value for slices
+	Cap int64 `json:"cap"`
+
+	// Array and slice elements, member fields of structs, key/value pairs of maps, value of complex numbers
+	// The Name field in this slice will always be the empty string except for structs (when it will be the field name) and for complex numbers (when it will be "real" and "imaginary")
+	// For maps each map entry will have to items in this slice, even numbered items will represent map keys and odd numbered items will represent their values
+	// This field's length is capped at proc.maxArrayValues for slices and arrays and 2*proc.maxArrayValues for maps, in the circumnstances where the cap takes effect len(Children) != Len
+	// The other length cap applied to this field is related to maximum recursion depth, when the maximum recursion depth is reached this field is left empty, contrary to the previous one this cap also applies to structs (otherwise structs will always have all thier member fields returned)
+	Children []Variable `json:"children"`
+
+	// Unreadable addresses will have this field set
+	Unreadable string `json:"unreadable"`
 }
 
 // Goroutine represents the information relevant to Delve from the runtime's

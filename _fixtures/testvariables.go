@@ -1,6 +1,7 @@
 package main
 
 import "fmt"
+import "runtime"
 
 type FooBar struct {
 	Baz int
@@ -19,6 +20,7 @@ type Nest struct {
 }
 
 func barfoo() {
+	runtime.Breakpoint()
 	a1 := "bur"
 	fmt.Println(a1)
 }
@@ -56,6 +58,7 @@ func foobar(baz string, bar FooBar) {
 		ba   = make([]int, 200, 200)                                // Test array size capping
 	)
 
+	runtime.Breakpoint()
 	barfoo()
 	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, c64, c128, i32, bar, f, ms, ba, p1)
 }

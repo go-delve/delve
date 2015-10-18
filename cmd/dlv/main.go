@@ -195,7 +195,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 						}
 						if state.BreakpointInfo != nil {
 							for _, arg := range state.BreakpointInfo.Arguments {
-								args = append(args, arg.Value)
+								args = append(args, arg.SinglelineString())
 							}
 						}
 						fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), state.CurrentThread.File, state.CurrentThread.Line)
