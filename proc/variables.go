@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/parser"
 	"go/token"
 	"reflect"
@@ -35,7 +36,7 @@ type Variable struct {
 	Kind      reflect.Kind
 	thread    *Thread
 
-	Value interface{}
+	Value constant.Value
 
 	Len int64
 	Cap int64
@@ -681,7 +682,9 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.Children[0].loadValueInternal(recurseLevel)
 
 	case reflect.String:
-		v.Value, v.Len, v.Unreadable = v.thread.readString(uintptr(v.Addr))
+		var val string
+		val, v.Len, v.Unreadable = v.thread.readString(uintptr(v.Addr))
+		v.Value = constant.MakeString(val)
 
 	case reflect.Slice, reflect.Array:
 		v.loadArrayValues(recurseLevel)
@@ -704,17 +707,24 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 	case reflect.Complex64, reflect.Complex128:
 		v.readComplex(v.RealType.(*dwarf.ComplexType).ByteSize)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		v.Value, v.Unreadable = v.thread.readIntRaw(v.Addr, v.RealType.(*dwarf.IntType).ByteSize)
+		var val int64
+		val, v.Unreadable = v.thread.readIntRaw(v.Addr, v.RealType.(*dwarf.IntType).ByteSize)
+		v.Value = constant.MakeInt64(val)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		v.Value, v.Unreadable = v.thread.readUintRaw(v.Addr, v.RealType.(*dwarf.UintType).ByteSize)
+		var val uint64
+		val, v.Unreadable = v.thread.readUintRaw(v.Addr, v.RealType.(*dwarf.UintType).ByteSize)
+		v.Value = constant.MakeUint64(val)
+
 	case reflect.Bool:
 		val, err := v.thread.readMemory(v.Addr, 1)
 		v.Unreadable = err
 		if err == nil {
-			v.Value = val[0] != 0
+			v.Value = constant.MakeBool(val[0] != 0)
 		}
 	case reflect.Float32, reflect.Float64:
-		v.Value, v.Unreadable = v.readFloatRaw(v.RealType.(*dwarf.FloatType).ByteSize)
+		var val float64
+		val, v.Unreadable = v.readFloatRaw(v.RealType.(*dwarf.FloatType).ByteSize)
+		v.Value = constant.MakeFloat64(val)
 	case reflect.Func:
 		v.readFunctionPtr()
 	case reflect.Map:
@@ -804,14 +814,14 @@ func (v *Variable) loadSliceInfo(t *dwarf.StructType) {
 			lstrAddr.loadValue()
 			err = lstrAddr.Unreadable
 			if err == nil {
-				v.Len = lstrAddr.Value.(int64)
+				v.Len, _ = constant.Int64Val(lstrAddr.Value)
 			}
 		case "cap":
 			cstrAddr, _ := v.toField(f)
 			cstrAddr.loadValue()
 			err = cstrAddr.Unreadable
 			if err == nil {
-				v.Cap = cstrAddr.Value.(int64)
+				v.Cap, _ = constant.Int64Val(cstrAddr.Value)
 			}
 		}
 		if err != nil {
@@ -875,6 +885,7 @@ func (v *Variable) readComplex(size int64) {
 	imagvar.loadValue()
 	v.Len = 2
 	v.Children = []Variable{*realvar, *imagvar}
+	v.Value = constant.BinaryOp(realvar.Value, token.ADD, imagvar.Value)
 }
 
 func (v *Variable) writeComplex(value string, size int64) error {
@@ -1114,7 +1125,7 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	v.Value = fn.Name
+	v.Value = constant.MakeString(fn.Name)
 }
 
 // Fetches all variables of a specific type in the current function scope

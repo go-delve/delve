@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"fmt"
+	"go/constant"
 	"net"
 	"net/http"
 	"os"
@@ -317,6 +318,7 @@ func TestNextConcurrent(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue")
 		f, ln := currentLineNumber(p, t)
 		initV, err := evalVariable(p, "n")
+		initVval, _ := constant.Int64Val(initV.Value)
 		assertNoError(err, t, "EvalVariable")
 		for _, tc := range testcases {
 			g, err := p.CurrentThread.GetG()
@@ -334,7 +336,8 @@ func TestNextConcurrent(t *testing.T) {
 			}
 			v, err := evalVariable(p, "n")
 			assertNoError(err, t, "EvalVariable")
-			if v.Value.(int64) != initV.Value.(int64) {
+			vval, _ := constant.Int64Val(v.Value)
+			if vval != initVval {
 				t.Fatal("Did not end up on same goroutine")
 			}
 		}
@@ -877,17 +880,19 @@ func TestVariableEvaluation(t *testing.T) {
 			if v.Value == nil && tc.value != nil {
 				t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
 			} else {
-				switch x := v.Value.(type) {
-				case int64:
+				switch v.Kind {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+					x, _ := constant.Int64Val(v.Value)
 					if y, ok := tc.value.(int64); !ok || x != y {
 						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
 					}
-				case float64:
+				case reflect.Float32, reflect.Float64:
+					x, _ := constant.Float64Val(v.Value)
 					if y, ok := tc.value.(float64); !ok || x != y {
 						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
 					}
-				case string:
-					if y, ok := tc.value.(string); !ok || x != y {
+				case reflect.String:
+					if y, ok := tc.value.(string); !ok || constant.StringVal(v.Value) != y {
 						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
 					}
 				}
@@ -940,7 +945,8 @@ func TestFrameEvaluation(t *testing.T) {
 				t.Logf("Goroutine %d: %v\n", g.Id, err)
 				continue
 			}
-			found[v.Value.(int64)] = true
+			vval, _ := constant.Int64Val(v.Value)
+			found[vval] = true
 		}
 
 		for i := range found {
@@ -959,7 +965,7 @@ func TestFrameEvaluation(t *testing.T) {
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
 			v, err := scope.EvalVariable("n")
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
-			n := v.Value.(int64)
+			n, _ := constant.Int64Val(v.Value)
 			t.Logf("frame %d n %d\n", i+1, n)
 			if n != int64(3-i) {
 				t.Fatalf("On frame %d value of n is %d (not %d)", i+1, n, 3-i)
@@ -975,8 +981,9 @@ func TestPointerSetting(t *testing.T) {
 		pval := func(n int64) {
 			variable, err := evalVariable(p, "p1")
 			assertNoError(err, t, "EvalVariable()")
-			if variable.Children[0].Value.(int64) != n {
-				t.Fatalf("Wrong value of p1, *%d expected *%d", variable.Children[0].Value.(int64), n)
+			c0val, _ := constant.Int64Val(variable.Children[0].Value)
+			if c0val != n {
+				t.Fatalf("Wrong value of p1, *%d expected *%d", c0val, n)
 			}
 		}
 
