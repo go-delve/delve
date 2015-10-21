@@ -5,6 +5,7 @@ import (
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
+	"go/constant"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -707,7 +708,7 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 		return
 	}
 
-	ver, ok := parseVersionString(vv.Value.(string))
+	ver, ok := parseVersionString(constant.StringVal(vv.Value))
 	if !ok {
 		err = fmt.Errorf("Could not parse version number: %v\n", vv.Value)
 		return

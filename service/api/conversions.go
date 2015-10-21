@@ -1,9 +1,9 @@
 package api
 
 import (
-	"debug/dwarf"
 	"debug/gosym"
-	"fmt"
+	"go/constant"
+	"reflect"
 	"strconv"
 
 	"github.com/derekparker/delve/proc"
@@ -80,12 +80,18 @@ func ConvertVar(v *proc.Variable) *Variable {
 		r.Unreadable = v.Unreadable.Error()
 	}
 
-	switch typ := v.RealType.(type) {
-	case *dwarf.FloatType:
-		r.Value = strconv.FormatFloat(v.Value.(float64), 'f', -1, int(typ.Size()*8))
-	default:
-		if v.Value != nil {
-			r.Value = fmt.Sprintf("%v", v.Value)
+	if v.Value != nil {
+		switch v.Kind {
+		case reflect.Float32:
+			f, _ := constant.Float64Val(v.Value)
+			r.Value = strconv.FormatFloat(f, 'f', -1, 32)
+		case reflect.Float64:
+			f, _ := constant.Float64Val(v.Value)
+			r.Value = strconv.FormatFloat(f, 'f', -1, 64)
+		case reflect.String, reflect.Func:
+			r.Value = constant.StringVal(v.Value)
+		default:
+			r.Value = v.Value.String()
 		}
 	}
 
