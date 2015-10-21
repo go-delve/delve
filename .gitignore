@@ -6,3 +6,4 @@ tags
 cmd/dlv/dlv
 .vagrant
 **/*.swp
+localtests
