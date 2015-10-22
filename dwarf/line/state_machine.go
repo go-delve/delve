@@ -109,9 +109,10 @@ func (dbl *DebugLines) AllPCsForFileLine(f string, l int) (pcs []uint64) {
 func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) []uint64 {
 	lineInfo := dbl.GetLineInfo(filename)
 	var (
-		pcs []uint64
-		sm  = newStateMachine(lineInfo)
-		buf = bytes.NewBuffer(lineInfo.Instructions)
+		pcs      []uint64
+		lastaddr uint64
+		sm       = newStateMachine(lineInfo)
+		buf      = bytes.NewBuffer(lineInfo.Instructions)
 	)
 
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
@@ -119,7 +120,8 @@ func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) []uint6
 		if sm.address > end {
 			break
 		}
-		if sm.address >= begin && sm.address <= end {
+		if sm.address >= begin && sm.address > lastaddr {
+			lastaddr = sm.address
 			pcs = append(pcs, sm.address)
 		}
 	}

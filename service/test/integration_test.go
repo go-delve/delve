@@ -232,16 +232,10 @@ func TestNextGeneral(t *testing.T) {
 	testnext(testcases, "main.testnext", t)
 }
 
-func TestNextGoroutine(t *testing.T) {
-	testcases := []nextTest{
-		{47, 42},
-	}
-	testnext(testcases, "main.testgoroutine", t)
-}
-
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
-		{14, 35},
+		{14, 15},
+		{15, 35},
 	}
 	testnext(testcases, "main.helloworld", t)
 }
@@ -598,7 +592,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 	})
 
 	withTestClient("testnextdefer", t, func(c service.Client) {
-		firstMainLine := findLocationHelper(t, c, "testnextdefer.go:9", false, 1, 0)[0]
+		firstMainLine := findLocationHelper(t, c, "testnextdefer.go:8", false, 1, 0)[0]
 		findLocationHelper(t, c, "main.main", false, 1, firstMainLine)
 	})
 

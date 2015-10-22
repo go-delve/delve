@@ -9,7 +9,6 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/dwarf/frame"
-	"github.com/derekparker/delve/source"
 )
 
 // Thread represents a single thread in the traced process
@@ -116,19 +115,6 @@ func (tbe ThreadBlockedError) Error() string {
 }
 
 // Set breakpoints for potential next lines.
-//
-// There are two modes of operation for this method. First,
-// if we are executing Go code, we can use the stdlib AST
-// information to determine which lines we could potentially
-// end up at. Parsing the source file into an AST and traversing
-// it lets us gain insight into whether we're at a branch, and
-// where that branch could end up at, etc...
-//
-// However, if we are executing C code, we use the DWARF
-// debug_line information and essentially set a breakpoint
-// at every single line within the current function, and
-// another at the functions return address, in case we're at
-// the end.
 func (thread *Thread) setNextBreakpoints() (err error) {
 	if thread.blocked() {
 		return ThreadBlockedError{}
@@ -136,15 +122,6 @@ func (thread *Thread) setNextBreakpoints() (err error) {
 	curpc, err := thread.PC()
 	if err != nil {
 		return err
-	}
-	g, err := thread.GetG()
-	if err != nil {
-		return err
-	}
-	if g.DeferPC != 0 {
-		if _, err = thread.dbp.SetTempBreakpoint(g.DeferPC); err != nil {
-			return err
-		}
 	}
 
 	// Grab info on our current stack frame. Used to determine
@@ -176,23 +153,37 @@ func (ge GoroutineExitingError) Error() string {
 	return fmt.Sprintf("goroutine %d is exiting", ge.goid)
 }
 
-// Use the AST to determine potential next lines.
+// Set breakpoints at every line, and the return address. Also look for
+// a deferred function and set a breakpoint there too.
 func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
-	lines, err := thread.dbp.ast.NextLines(file, line)
+	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End(), file)
+
+	g, err := thread.GetG()
 	if err != nil {
-		if _, ok := err.(source.NoNodeError); !ok {
-			return err
+		return err
+	}
+	if g.DeferPC != 0 {
+		f, lineno, _ := thread.dbp.goSymTable.PCToLine(g.DeferPC)
+		for {
+			lineno++
+			dpc, _, err := thread.dbp.goSymTable.LineToPC(f, lineno)
+			if err == nil {
+				// We want to avoid setting an actual breakpoint on the
+				// entry point of the deferred function so instead create
+				// a fake breakpoint which will be cleaned up later.
+				thread.dbp.Breakpoints[g.DeferPC] = new(Breakpoint)
+				defer func() { delete(thread.dbp.Breakpoints, g.DeferPC) }()
+				if _, err = thread.dbp.SetTempBreakpoint(dpc); err != nil {
+					return err
+				}
+				break
+			}
 		}
 	}
 
 	ret, err := thread.ReturnAddress()
 	if err != nil {
 		return err
-	}
-
-	pcs := make([]uint64, 0, len(lines))
-	for i := range lines {
-		pcs = append(pcs, thread.dbp.lineInfo.AllPCsForFileLine(file, lines[i])...)
 	}
 
 	var covered bool

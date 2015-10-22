@@ -16,7 +16,6 @@ import (
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 	"github.com/derekparker/delve/dwarf/reader"
-	"github.com/derekparker/delve/source"
 )
 
 // Process represents all of the information the debugger
@@ -47,7 +46,6 @@ type Process struct {
 	firstStart              bool
 	os                      *OSProcessDetails
 	arch                    Arch
-	ast                     *source.Searcher
 	breakpointIDCounter     int
 	tempBreakpointIDCounter int
 	halt                    bool
@@ -63,7 +61,6 @@ func New(pid int) *Process {
 		Breakpoints:    make(map[uint64]*Breakpoint),
 		firstStart:     true,
 		os:             new(OSProcessDetails),
-		ast:            source.New(),
 		ptraceChan:     make(chan func()),
 		ptraceDoneChan: make(chan interface{}),
 	}
@@ -167,34 +164,39 @@ func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error
 // Note that setting breakpoints at that address will cause surprising behavior:
 // https://github.com/derekparker/delve/issues/170
 func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	fn := dbp.goSymTable.LookupFunc(funcName)
-	if fn == nil {
+	origfn := dbp.goSymTable.LookupFunc(funcName)
+	if origfn == nil {
 		return 0, fmt.Errorf("Could not find function %s\n", funcName)
 	}
 
 	if firstLine {
-		filename, lineno, _ := dbp.goSymTable.PCToLine(fn.Entry)
+		filename, lineno, _ := dbp.goSymTable.PCToLine(origfn.Entry)
 		if filepath.Ext(filename) != ".go" {
-			return fn.Entry, nil
+			return origfn.Entry, nil
 		}
-
-		lines, err := dbp.ast.NextLines(filename, lineno)
-		if err != nil {
-			return 0, err
+		for {
+			lineno++
+			pc, fn, _ := dbp.goSymTable.LineToPC(filename, lineno)
+			if fn != nil {
+				if fn.Name != funcName {
+					if strings.Contains(fn.Name, funcName) {
+						continue
+					}
+					break
+				}
+				if fn.Name == funcName {
+					return pc, nil
+				}
+			}
 		}
-
-		if len(lines) > 0 {
-			linePC, _, err := dbp.goSymTable.LineToPC(filename, lines[0])
-			return linePC, err
-		}
-		return fn.Entry, nil
+		return origfn.Entry, nil
 	} else if lineOffset > 0 {
-		filename, lineno, _ := dbp.goSymTable.PCToLine(fn.Entry)
+		filename, lineno, _ := dbp.goSymTable.PCToLine(origfn.Entry)
 		breakAddr, _, err := dbp.goSymTable.LineToPC(filename, lineno+lineOffset)
 		return breakAddr, err
 	}
 
-	return fn.Entry, nil
+	return origfn.Entry, nil
 }
 
 // Sends out a request that the debugged process halt

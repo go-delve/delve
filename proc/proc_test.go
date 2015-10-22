@@ -339,25 +339,20 @@ func TestNextConcurrent(t *testing.T) {
 	})
 }
 
-func TestNextGoroutine(t *testing.T) {
-	testcases := []nextTest{
-		{47, 42},
-	}
-	testnext("testnextprog", testcases, "main.testgoroutine", t)
-}
-
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
-		{14, 35},
+		{14, 15},
+		{15, 35},
 	}
 	testnext("testnextprog", testcases, "main.helloworld", t)
 }
 
 func TestNextFunctionReturnDefer(t *testing.T) {
 	testcases := []nextTest{
-		{9, 6},
-		{6, 7},
-		{7, 10},
+		{8, 9},
+		{9, 10},
+		{10, 7},
+		{7, 8},
 	}
 	testnext("testnextdefer", testcases, "main.main", t)
 }
@@ -547,8 +542,8 @@ func (l1 *loc) match(l2 Stackframe) bool {
 
 func TestStacktrace(t *testing.T) {
 	stacks := [][]loc{
-		[]loc{{4, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
-		[]loc{{4, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
+		{{4, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
+		{{4, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
 	}
 	withTestProcess("stacktraceprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.stacktraceme")
@@ -586,7 +581,7 @@ func TestStacktrace2(t *testing.T) {
 
 		locations, err := p.CurrentThread.Stacktrace(40)
 		assertNoError(err, t, "Stacktrace()")
-		if !stackMatch([]loc{loc{-1, "main.f"}, loc{16, "main.main"}}, locations) {
+		if !stackMatch([]loc{{-1, "main.f"}, {16, "main.main"}}, locations) {
 			for i := range locations {
 				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
 			}
@@ -596,7 +591,7 @@ func TestStacktrace2(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 		locations, err = p.CurrentThread.Stacktrace(40)
 		assertNoError(err, t, "Stacktrace()")
-		if !stackMatch([]loc{loc{-1, "main.g"}, loc{17, "main.main"}}, locations) {
+		if !stackMatch([]loc{{-1, "main.g"}, {17, "main.main"}}, locations) {
 			for i := range locations {
 				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
 			}
