@@ -27,12 +27,13 @@ const (
 
 // Represents a variable.
 type Variable struct {
-	Addr      uintptr
-	Name      string
-	Value     string
-	Type      string
-	dwarfType dwarf.Type
-	thread    *Thread
+	Addr        uintptr
+	Name        string
+	Value       string
+	ValueObject interface{}
+	Type        string
+	dwarfType   dwarf.Type
+	thread      *Thread
 
 	Len       int64
 	Cap       int64
@@ -607,31 +608,35 @@ func (v *Variable) resolveTypedefs() *Variable {
 
 // Extracts the value of the variable at the given address.
 func (v *Variable) loadValue(printStructName bool) (err error) {
-	v.Value, err = v.loadValueInternal(printStructName, 0)
-	return
+	val, err := v.loadValueInternal(0)
+	if err != nil {
+		return err
+	}
+	v.Value = fmt.Sprintf("%s", val)
+	v.ValueObject = val
+	return nil
 }
 
-func (v *Variable) loadValueInternal(printStructName bool, recurseLevel int) (string, error) {
+func (v *Variable) loadValueInternal(recurseLevel int) (interface{}, error) {
 	v = v.resolveTypedefs()
 
 	switch t := v.dwarfType.(type) {
 	case *dwarf.PtrType:
 		ptrv, err := v.maybeDereference()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		if ptrv.Addr == 0 {
-			return fmt.Sprintf("%s nil", t.String()), nil
+			return nil, nil
 		}
 
 		// Don't increase the recursion level when dereferencing pointers
-		val, err := ptrv.loadValueInternal(printStructName, recurseLevel)
+		derefed, err := ptrv.loadValueInternal(recurseLevel)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-
-		return fmt.Sprintf("*%s", val), nil
+		return derefed, nil
 	case *dwarf.StructType:
 		switch {
 		case t.StructName == "string":
@@ -643,38 +648,39 @@ func (v *Variable) loadValueInternal(printStructName bool, recurseLevel int) (st
 			// the value of all the members of the struct.
 			if recurseLevel <= maxVariableRecurse {
 				errcount := 0
-				fields := make([]string, 0, len(t.Field))
+				fields := map[string]interface{}{}
 				for i, field := range t.Field {
 					var (
 						err      error
-						val      string
+						val      interface{}
 						fieldvar *Variable
 					)
 
 					fieldvar, err = v.toField(field)
 					if err == nil {
-						val, err = fieldvar.loadValueInternal(printStructName, recurseLevel+1)
+						val, err = fieldvar.loadValueInternal(recurseLevel + 1)
 					}
 					if err != nil {
 						errcount++
 						val = fmt.Sprintf("<unreadable: %s>", err.Error())
 					}
 
-					fields = append(fields, fmt.Sprintf("%s: %s", field.Name, val))
+					fields[field.Name] = val
 
 					if errcount > maxErrCount {
-						fields = append(fields, fmt.Sprintf("...+%d more", len(t.Field)-i))
+						fields[field.Name] = fmt.Sprintf("...+%d more", len(t.Field)-i)
 					}
 				}
-				if printStructName {
-					return fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", ")), nil
-				}
-				return fmt.Sprintf("{%s}", strings.Join(fields, ", ")), nil
+				// if printStructName {
+				// 	return fmt.Sprintf("%s {%s}", t.StructName, strings.Join(fields, ", ")), nil
+				// }
+				//return fmt.Sprintf("{%s}", strings.Join(fields, ", ")), nil
+				return fields, nil
 			}
 			// no fields
-			if printStructName {
-				return fmt.Sprintf("%s {...}", t.StructName), nil
-			}
+			// if printStructName {
+			// 	return fmt.Sprintf("%s {...}", t.StructName), nil
+			// }
 			return "{...}", nil
 		}
 	case *dwarf.ArrayType:
@@ -699,7 +705,7 @@ func (v *Variable) loadValueInternal(printStructName bool, recurseLevel int) (st
 		fmt.Printf("Unknown type: %T\n", t)
 	}
 
-	return "", fmt.Errorf("could not find value for type %s", v.dwarfType)
+	return nil, fmt.Errorf("could not find value for type %s", v.dwarfType)
 }
 
 func (v *Variable) setValue(value string) error {
@@ -813,8 +819,8 @@ func (v *Variable) loadSliceInfo(t *dwarf.StructType) error {
 	return nil
 }
 
-func (v *Variable) loadArrayValues(recurseLevel int) (string, error) {
-	vals := make([]string, 0)
+func (v *Variable) loadArrayValues(recurseLevel int) ([]interface{}, error) {
+	vals := make([]interface{}, 0)
 	errcount := 0
 
 	for i := int64(0); i < v.Len; i++ {
@@ -824,10 +830,10 @@ func (v *Variable) loadArrayValues(recurseLevel int) (string, error) {
 			break
 		}
 
-		var val string
+		var val interface{}
 		fieldvar, err := newVariable("", uintptr(int64(v.base)+(i*v.stride)), v.fieldType, v.thread)
 		if err == nil {
-			val, err = fieldvar.loadValueInternal(false, recurseLevel+1)
+			val, err = fieldvar.loadValueInternal(recurseLevel + 1)
 		}
 		if err != nil {
 			errcount++
@@ -841,11 +847,13 @@ func (v *Variable) loadArrayValues(recurseLevel int) (string, error) {
 		}
 	}
 
-	if v.Cap < 0 {
-		return fmt.Sprintf("%s [%s]", v.dwarfType, strings.Join(vals, ",")), nil
-	} else {
-		return fmt.Sprintf("[]%s len: %d, cap: %d, [%s]", v.fieldType, v.Len, v.Cap, strings.Join(vals, ",")), nil
-	}
+	// TODO: what's this for?
+	// if v.Cap < 0 {
+	// 	vals = append(vals, fmt.Sprintf("%s [%s]", v.dwarfType, strings.Join(vals, ",")))
+	// } else {
+	// 	vals = append(vals, fmt.Sprintf("[]%s len: %d, cap: %d, [%s]", v.fieldType, v.Len, v.Cap, strings.Join(vals, ",")))
+	// }
+	return vals, nil
 }
 
 func (v *Variable) readComplex(size int64) (string, error) {

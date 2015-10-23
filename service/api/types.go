@@ -104,9 +104,17 @@ type Function struct {
 
 // Variable describes a variable.
 type Variable struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-	Type  string `json:"type"`
+	Name        string      `json:"name"`
+	Value       string      `json:"value"`
+	Type        string      `json:"type"`
+	ValueObject ValueObject `json:"valueObject,omitempty"`
+}
+
+type ValueObject struct {
+	Type   string                  `json:"type"`
+	Map    *map[string]interface{} `json:"map,omitempty"`
+	String *string                 `json:"string,omitempty"`
+	Array  *[]interface{}          `json:"array,omitempty"`
 }
 
 // Goroutine represents the information relevant to Delve from the runtime's

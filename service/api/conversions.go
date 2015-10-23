@@ -58,10 +58,25 @@ func ConvertThread(th *proc.Thread) *Thread {
 
 // convertVar converts an internal variable to an API Variable.
 func ConvertVar(v *proc.Variable) Variable {
+	obj := ValueObject{}
+	switch val := v.ValueObject.(type) {
+	case map[string]interface{}:
+		obj.Type = "Map"
+		obj.Map = &val
+	case string:
+		obj.Type = "String"
+		obj.String = &val
+	case []interface{}:
+		obj.Type = "Array"
+		obj.Array = &val
+	default:
+		obj.Type = "Unknown"
+	}
 	return Variable{
-		Name:  v.Name,
-		Value: v.Value,
-		Type:  v.Type,
+		Name:        v.Name,
+		Value:       v.Value,
+		ValueObject: obj,
+		Type:        v.Type,
 	}
 }
 
