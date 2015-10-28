@@ -1,4 +1,4 @@
-// proc is a low-level package that provides methods to manipulate
+// Package proc is a low-level package that provides methods to manipulate
 // the process we are debugging.
 //
 // proc implements all core functionality including:

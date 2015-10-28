@@ -1,4 +1,4 @@
-// Package command implements functions for responding to user
+// Package terminal implements functions for responding to user
 // input and dispatching to appropriate backend commands.
 package terminal
 
