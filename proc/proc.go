@@ -470,9 +470,13 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 	allglen := binary.LittleEndian.Uint64(allglenBytes)
 
 	rdr.Seek(0)
-	allgentryaddr, err := rdr.AddrFor("runtime.allg")
+	allgentryaddr, err := rdr.AddrFor("runtime.allgs")
 	if err != nil {
-		return nil, err
+		// try old name (pre Go 1.6)
+		allgentryaddr, err = rdr.AddrFor("runtime.allg")
+		if err != nil {
+			return nil, err
+		}
 	}
 	faddr, err := dbp.CurrentThread.readMemory(uintptr(allgentryaddr), dbp.arch.PtrSize())
 	allgptr := binary.LittleEndian.Uint64(faddr)
