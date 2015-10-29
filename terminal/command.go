@@ -837,6 +837,15 @@ func printStack(stack []api.Stackframe, ind string) {
 }
 
 func printcontext(t *Term, state *api.DebuggerState) error {
+	for i := range state.Threads {
+		if (state.CurrentThread != nil) && (state.Threads[i].ID == state.CurrentThread.ID) {
+			continue
+		}
+		if state.Threads[i].Breakpoint != nil {
+			printcontextThread(t, state.Threads[i])
+		}
+	}
+
 	if state.CurrentThread == nil {
 		fmt.Println("No current thread available")
 		return nil
@@ -846,64 +855,70 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 		t.Println("=>", "no source available")
 		return nil
 	}
-	var fn *api.Function
-	if state.CurrentThread.Function != nil {
-		fn = state.CurrentThread.Function
+
+	printcontextThread(t, state.CurrentThread)
+
+	if state.CurrentThread.Breakpoint == nil || !state.CurrentThread.Breakpoint.Tracepoint {
+		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	}
+	return nil
+}
+
+func printcontextThread(t *Term, th *api.Thread) {
+	fn := th.Function
+
+	if th.Breakpoint == nil {
+		fmt.Printf("> %s() %s:%d\n", fn.Name, ShortenFilePath(th.File), th.Line)
+		return
 	}
 
-	if state.Breakpoint != nil {
-		args := ""
-		if state.Breakpoint.Tracepoint {
-			var arg []string
-			for _, ar := range state.CurrentThread.Function.Args {
-				arg = append(arg, ar.SinglelineString())
-			}
-			args = strings.Join(arg, ", ")
+	args := ""
+	if th.Breakpoint.Tracepoint && fn != nil {
+		var arg []string
+		for _, ar := range fn.Args {
+			arg = append(arg, ar.SinglelineString())
 		}
+		args = strings.Join(arg, ", ")
+	}
 
-		if hitCount, ok := state.Breakpoint.HitCount[strconv.Itoa(state.SelectedGoroutine.ID)]; ok {
-			fmt.Printf("> %s(%s) %s:%d (hits goroutine(%d):%d total:%d)\n",
-				fn.Name,
-				args,
-				ShortenFilePath(state.CurrentThread.File),
-				state.CurrentThread.Line,
-				state.SelectedGoroutine.ID,
-				hitCount,
-				state.Breakpoint.TotalHitCount)
-		} else {
-			fmt.Printf("> %s(%s) %s:%d (hits total:%d)\n",
-				fn.Name,
-				args,
-				ShortenFilePath(state.CurrentThread.File),
-				state.CurrentThread.Line,
-				state.Breakpoint.TotalHitCount)
-		}
+	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
+		fmt.Printf("> %s(%s) %s:%d (hits goroutine(%d):%d total:%d)\n",
+			fn.Name,
+			args,
+			ShortenFilePath(th.File),
+			th.Line,
+			th.GoroutineID,
+			hitCount,
+			th.Breakpoint.TotalHitCount)
 	} else {
-		fmt.Printf("> %s() %s:%d\n", fn.Name, ShortenFilePath(state.CurrentThread.File), state.CurrentThread.Line)
+		fmt.Printf("> %s(%s) %s:%d (hits total:%d)\n",
+			fn.Name,
+			args,
+			ShortenFilePath(th.File),
+			th.Line,
+			th.Breakpoint.TotalHitCount)
 	}
 
-	if state.BreakpointInfo != nil {
-		bpi := state.BreakpointInfo
+	if th.BreakpointInfo != nil {
+		bpi := th.BreakpointInfo
 
 		if bpi.Goroutine != nil {
 			writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
 		}
 
-		ss := make([]string, len(bpi.Variables))
-		for i, v := range bpi.Variables {
-			ss[i] = fmt.Sprintf("%s: %v", v.Name, v.MultilineString(""))
+		if len(bpi.Variables) > 0 {
+			ss := make([]string, len(bpi.Variables))
+			for i, v := range bpi.Variables {
+				ss[i] = fmt.Sprintf("%s: %s", v.Name, v.MultilineString(""))
+			}
+			fmt.Printf("\t%s\n", strings.Join(ss, ", "))
 		}
-		fmt.Printf("\t%s\n", strings.Join(ss, ", "))
 
 		if bpi.Stacktrace != nil {
 			fmt.Printf("\tStack:\n")
 			printStack(bpi.Stacktrace, "\t\t")
 		}
 	}
-	if state.Breakpoint != nil && state.Breakpoint.Tracepoint {
-		return nil
-	}
-	return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 }
 
 func printfile(t *Term, filename string, line int, showArrow bool) error {

@@ -4,19 +4,15 @@ import "reflect"
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
-	// Breakpoint is the current breakpoint at which the debugged process is
-	// suspended, and may be empty if the process is not suspended.
-	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// CurrentThread is the currently selected debugger thread.
 	CurrentThread *Thread `json:"currentThread,omitempty"`
 	// SelectedGoroutine is the currently selected goroutine
 	SelectedGoroutine *Goroutine `json:"currentGoroutine,omitempty"`
-	// Information requested by the current breakpoint
-	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
+	// List of all the process threads
+	Threads []*Thread
 	// Exited indicates whether the debugged process has exited.
 	Exited     bool `json:"exited"`
 	ExitStatus int  `json:"exitStatus"`
-
 	// Filled by RPCClient.Continue, indicates an error
 	Err error `json:"-"`
 }
@@ -62,6 +58,14 @@ type Thread struct {
 	Line int `json:"line"`
 	// Function is function information at the program counter. May be nil.
 	Function *Function `json:"function,omitempty"`
+
+	// ID of the goroutine running on this thread
+	GoroutineID int `json:"goroutineID"`
+
+	// Breakpoint this thread is stopped at
+	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
+	// Informations requested by the current breakpoint
+	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
 }
 
 type Location struct {

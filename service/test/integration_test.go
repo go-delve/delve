@@ -96,7 +96,7 @@ func TestRestart_duringStop(t *testing.T) {
 			t.Fatal(err)
 		}
 		state := <-c.Continue()
-		if state.Breakpoint == nil {
+		if state.CurrentThread.Breakpoint == nil {
 			t.Fatal("did not hit breakpoint")
 		}
 		if err := c.Restart(); err != nil {
@@ -433,12 +433,12 @@ func TestClientServer_traceContinue(t *testing.T) {
 		count := 0
 		contChan := c.Continue()
 		for state := range contChan {
-			if state.Breakpoint != nil {
+			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 				count++
 
 				t.Logf("%v", state)
 
-				bpi := state.BreakpointInfo
+				bpi := state.CurrentThread.BreakpointInfo
 
 				if bpi.Goroutine == nil {
 					t.Fatalf("No goroutine information")
@@ -494,8 +494,8 @@ func TestClientServer_traceContinue2(t *testing.T) {
 		countSayhi := 0
 		contChan := c.Continue()
 		for state := range contChan {
-			if state.Breakpoint != nil {
-				switch state.Breakpoint.ID {
+			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
+				switch state.CurrentThread.Breakpoint.ID {
 				case bp1.ID:
 					countMain++
 				case bp2.ID:

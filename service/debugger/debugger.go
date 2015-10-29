@@ -111,29 +111,24 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 
 	var (
 		state     *api.DebuggerState
-		thread    *api.Thread
 		goroutine *api.Goroutine
 	)
-
-	if d.process.CurrentThread != nil {
-		thread = api.ConvertThread(d.process.CurrentThread)
-	}
 
 	if d.process.SelectedGoroutine != nil {
 		goroutine = api.ConvertGoroutine(d.process.SelectedGoroutine)
 	}
 
-	var breakpoint *api.Breakpoint
-	bp := d.process.CurrentBreakpoint()
-	if bp != nil {
-		breakpoint = api.ConvertBreakpoint(bp)
-	}
-
 	state = &api.DebuggerState{
-		Breakpoint:        breakpoint,
-		CurrentThread:     thread,
 		SelectedGoroutine: goroutine,
 		Exited:            d.process.Exited(),
+	}
+
+	for i := range d.process.Threads {
+		th := api.ConvertThread(d.process.Threads[i])
+		state.Threads = append(state.Threads, th)
+		if i == d.process.CurrentThread.Id {
+			state.CurrentThread = th
+		}
 	}
 
 	return state, nil
@@ -272,52 +267,59 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 }
 
 func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error {
-	if state == nil || state.Breakpoint == nil {
+	if state == nil {
 		return nil
 	}
 
-	bp := state.Breakpoint
-	bpi := &api.BreakpointInfo{}
-	state.BreakpointInfo = bpi
+	for i := range state.Threads {
+		if state.Threads[i].Breakpoint == nil {
+			continue
+		}
 
-	if bp.Goroutine {
-		g, err := d.process.CurrentThread.GetG()
+		bp := state.Threads[i].Breakpoint
+		bpi := &api.BreakpointInfo{}
+		state.Threads[i].BreakpointInfo = bpi
+
+		if bp.Goroutine {
+			g, err := d.process.CurrentThread.GetG()
+			if err != nil {
+				return err
+			}
+			bpi.Goroutine = api.ConvertGoroutine(g)
+		}
+
+		if bp.Stacktrace > 0 {
+			rawlocs, err := d.process.CurrentThread.Stacktrace(bp.Stacktrace)
+			if err != nil {
+				return err
+			}
+			bpi.Stacktrace, err = d.convertStacktrace(rawlocs, false)
+			if err != nil {
+				return err
+			}
+		}
+
+		s, err := d.process.CurrentThread.Scope()
 		if err != nil {
 			return err
 		}
-		bpi.Goroutine = api.ConvertGoroutine(g)
+
+		if len(bp.Variables) > 0 {
+			bpi.Variables = make([]api.Variable, len(bp.Variables))
+		}
+		for i := range bp.Variables {
+			v, err := s.EvalVariable(bp.Variables[i])
+			if err != nil {
+				return err
+			}
+			bpi.Variables[i] = *api.ConvertVar(v)
+		}
+		vars, err := s.FunctionArguments()
+		if err == nil {
+			bpi.Arguments = convertVars(vars)
+		}
 	}
 
-	if bp.Stacktrace > 0 {
-		rawlocs, err := d.process.CurrentThread.Stacktrace(bp.Stacktrace)
-		if err != nil {
-			return err
-		}
-		bpi.Stacktrace, err = d.convertStacktrace(rawlocs, false)
-		if err != nil {
-			return err
-		}
-	}
-
-	s, err := d.process.CurrentThread.Scope()
-	if err != nil {
-		return err
-	}
-
-	if len(bp.Variables) > 0 {
-		bpi.Variables = make([]api.Variable, len(bp.Variables))
-	}
-	for i := range bp.Variables {
-		v, err := s.EvalVariable(bp.Variables[i])
-		if err != nil {
-			return err
-		}
-		bpi.Variables[i] = *api.ConvertVar(v)
-	}
-	args, err := s.FunctionArguments()
-	if err == nil {
-		bpi.Arguments = convertVars(args)
-	}
 	return nil
 }
 

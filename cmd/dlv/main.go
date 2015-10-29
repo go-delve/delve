@@ -193,18 +193,23 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 							fmt.Fprintln(os.Stderr, state.Err)
 							return 0
 						}
-						var args []string
-						var fname string
-						if state.CurrentThread != nil && state.CurrentThread.Function != nil {
-							fname = state.CurrentThread.Function.Name
-						}
-						if state.BreakpointInfo != nil {
-							for _, arg := range state.BreakpointInfo.Arguments {
-								args = append(args, arg.SinglelineString())
+						for i := range state.Threads {
+							th := state.Threads[i]
+							if th.Breakpoint == nil {
+								continue
 							}
+							var args []string
+							var fname string
+							if th.Function != nil {
+								fname = th.Function.Name
+							}
+							if th.BreakpointInfo != nil {
+								for _, arg := range th.BreakpointInfo.Arguments {
+									args = append(args, arg.SinglelineString())
+								}
+							}
+							fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), terminal.ShortenFilePath(th.File), th.Line)
 						}
-						fp := terminal.ShortenFilePath(state.CurrentThread.File)
-						fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), fp, state.CurrentThread.Line)
 					case <-sigChan:
 						server.Stop(traceAttachPid == 0)
 						return 1

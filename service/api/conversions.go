@@ -37,6 +37,7 @@ func ConvertThread(th *proc.Thread) *Thread {
 		file     string
 		line     int
 		pc       uint64
+		gid      int
 	)
 
 	loc, err := th.Location()
@@ -47,12 +48,24 @@ func ConvertThread(th *proc.Thread) *Thread {
 		function = ConvertFunction(loc.Fn)
 	}
 
+	var bp *Breakpoint
+
+	if th.CurrentBreakpoint != nil {
+		bp = ConvertBreakpoint(th.CurrentBreakpoint)
+	}
+
+	if g, _ := th.GetG(); g != nil {
+		gid = g.Id
+	}
+
 	return &Thread{
-		ID:       th.Id,
-		PC:       pc,
-		File:     file,
-		Line:     line,
-		Function: function,
+		ID:          th.Id,
+		PC:          pc,
+		File:        file,
+		Line:        line,
+		Function:    function,
+		GoroutineID: gid,
+		Breakpoint:  bp,
 	}
 }
 
