@@ -396,13 +396,14 @@ func (g *G) Go() Location {
 }
 
 // Returns information for the named variable.
-func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
+func (scope *EvalScope) ExtractVariableInfo(name string) ([]*Variable, error) {
 	parts := strings.Split(name, ".")
 	varName := parts[0]
 	memberNames := parts[1:]
 
-	v, err := scope.extractVarInfo(varName)
+	vars, err := scope.extractVarInfo(varName)
 	if err != nil {
+		var v *Variable
 		origErr := err
 		// Attempt to evaluate name as a package variable.
 		if len(memberNames) > 0 {
@@ -417,40 +418,59 @@ func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
 			return nil, origErr
 		}
 		v.Name = name
-		return v, nil
+		vars = []*Variable{v}
 	} else {
 		if len(memberNames) > 0 {
+			if len(vars) > 1 {
+				return nil, fmt.Errorf("Variable \"%s\" is ambiguous", varName)
+			}
+			v := vars[0]
 			for i := range memberNames {
 				v, err = v.structMember(memberNames[i])
 				if err != nil {
 					return nil, err
 				}
 			}
+			vars = []*Variable{v}
 		}
 	}
-	return v, nil
+	return vars, nil
 }
 
 // Returns the value of the named variable.
 func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
-	v, err := scope.ExtractVariableInfo(name)
+	vars, err := scope.ExtractVariableInfo(name)
 	if err != nil {
 		return nil, err
 	}
-	v.loadValue()
-	return v, nil
+	for i := range vars {
+		vars[i].loadValue()
+	}
+	if len(vars) > 1 {
+		v := &Variable{Name: name, Kind: reflect.Invalid}
+		v.Children = make([]Variable, len(vars))
+		for i := range vars {
+			v.Children[i] = *vars[i]
+		}
+		return v, nil
+	} else {
+		return vars[0], nil
+	}
 }
 
 // Sets the value of the named variable
 func (scope *EvalScope) SetVariable(name, value string) error {
-	v, err := scope.ExtractVariableInfo(name)
+	vars, err := scope.ExtractVariableInfo(name)
 	if err != nil {
 		return err
 	}
-	if v.Unreadable != nil {
-		return fmt.Errorf("Variable \"%s\" is unreadable: %v\n", name, v.Unreadable)
+	if len(vars) != 1 {
+		return fmt.Errorf("Variable \"%s\" is ambiguous", name)
 	}
-	return v.setValue(value)
+	if vars[0].Unreadable != nil {
+		return fmt.Errorf("Variable \"%s\" is unreadable: %v\n", name, vars[0].Unreadable)
+	}
+	return vars[0].setValue(value)
 }
 
 func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
@@ -463,13 +483,15 @@ func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable,
 	return v, nil
 }
 
-func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
+func (scope *EvalScope) extractVarInfo(varName string) ([]*Variable, error) {
 	reader := scope.DwarfReader()
 
 	_, err := reader.SeekToFunction(scope.PC)
 	if err != nil {
 		return nil, err
 	}
+
+	vars := []*Variable{}
 
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
@@ -482,10 +504,18 @@ func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
 		}
 
 		if n == varName {
-			return scope.extractVarInfoFromEntry(entry, reader)
+			v, err := scope.extractVarInfoFromEntry(entry, reader)
+			if err != nil {
+				return nil, err
+			}
+			vars = append(vars, v)
 		}
 	}
-	return nil, fmt.Errorf("could not find symbol value for %s", varName)
+	if len(vars) == 0 {
+		return nil, fmt.Errorf("could not find symbol value for %s", varName)
+	} else {
+		return vars, nil
+	}
 }
 
 // LocalVariables returns all local variables from the current function scope.

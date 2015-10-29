@@ -33,6 +33,18 @@ func (v *Variable) writeTo(buf *bytes.Buffer, newlines, includeType bool, indent
 		fmt.Fprintf(buf, "(unreadable %s)", v.Unreadable)
 		return
 	}
+	if v.Type == "" && len(v.Children) > 0 {
+		if newlines {
+			fmt.Fprintf(buf, "ApiVariable %s has multiple definitions:")
+			for i := range v.Children {
+				fmt.Fprintf(buf, "\n%s%s%d: ", indent, indentString, i)
+				v.Children[i].writeTo(buf, newlines, includeType, indent+indentString)
+			}
+		} else {
+			fmt.Fprintf(buf, "(ambiguous %s)", v.Name)
+		}
+		return
+	}
 
 	if v.Addr == 0 {
 		fmt.Fprintf(buf, "%s nil", v.Type)
