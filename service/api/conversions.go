@@ -9,7 +9,6 @@ import (
 	"github.com/derekparker/delve/proc"
 )
 
-// convertBreakpoint converts an internal breakpoint to an API Breakpoint.
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
 		ID:            bp.ID,
@@ -32,7 +31,6 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	return b
 }
 
-// convertThread converts an internal thread to an API Thread.
 func ConvertThread(th *proc.Thread) *Thread {
 	var (
 		function *Function
@@ -58,7 +56,6 @@ func ConvertThread(th *proc.Thread) *Thread {
 	}
 }
 
-// convertVar converts an internal variable to an API Variable.
 func ConvertVar(v *proc.Variable) *Variable {
 	r := Variable{
 		Addr: v.Addr,
@@ -117,7 +114,6 @@ func ConvertFunction(fn *gosym.Func) *Function {
 	}
 }
 
-// convertGoroutine converts an internal Goroutine to an API Goroutine.
 func ConvertGoroutine(g *proc.G) *Goroutine {
 	return &Goroutine{
 		ID:             g.Id,
