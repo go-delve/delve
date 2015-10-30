@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -854,8 +853,8 @@ func TestVariableEvaluation(t *testing.T) {
 		{"baz", reflect.String, "bazburzum", 9, 0, 0},
 		{"neg", reflect.Int, int64(-1), 0, 0, 0},
 		{"f32", reflect.Float32, float64(float32(1.2)), 0, 0, 0},
-		{"c64", reflect.Complex64, nil, 2, 0, 2},
-		{"c128", reflect.Complex128, nil, 2, 0, 2},
+		{"c64", reflect.Complex64, complex128(complex64(1 + 2i)), 0, 0, 0},
+		{"c128", reflect.Complex128, complex128(2 + 3i), 0, 0, 0},
 		{"a6.Baz", reflect.Int, int64(8), 0, 0, 0},
 		{"a7.Baz", reflect.Int, int64(5), 0, 0, 0},
 		{"a8.Baz", reflect.String, "feh", 3, 0, 0},
@@ -889,6 +888,12 @@ func TestVariableEvaluation(t *testing.T) {
 				case reflect.Float32, reflect.Float64:
 					x, _ := constant.Float64Val(v.Value)
 					if y, ok := tc.value.(float64); !ok || x != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				case reflect.Complex64, reflect.Complex128:
+					xr, _ := constant.Float64Val(constant.Real(v.Value))
+					xi, _ := constant.Float64Val(constant.Imag(v.Value))
+					if y, ok := tc.value.(complex128); !ok || complex(xr, xi) != y {
 						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
 					}
 				case reflect.String:
@@ -992,9 +997,9 @@ func TestPointerSetting(t *testing.T) {
 		// change p1 to point to i2
 		scope, err := p.CurrentThread.Scope()
 		assertNoError(err, t, "Scope()")
-		i2addr, err := scope.ExtractVariableInfo("i2")
-		assertNoError(err, t, "EvalVariableAddr()")
-		assertNoError(setVariable(p, "p1", strconv.Itoa(int(i2addr.Addr))), t, "SetVariable()")
+		i2addr, err := scope.EvalExpression("i2")
+		assertNoError(err, t, "EvalExpression()")
+		assertNoError(setVariable(p, "p1", fmt.Sprintf("(*int)(0x%x)", i2addr.Addr)), t, "SetVariable()")
 		pval(2)
 
 		// change the value of i2 check that p1 also changes

@@ -110,6 +110,8 @@ type Variable struct {
 	Name string `json:"name"`
 	// Address of the variable or struct member
 	Addr uintptr `json:"addr"`
+	// Only the address field is filled (result of evaluating expressions like &<expr>)
+	OnlyAddr bool `json:"onlyAddr"`
 	// Go type of the variable
 	Type string `json:"type"`
 	// Type of the variable after resolving any typedefs

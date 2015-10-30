@@ -58,11 +58,12 @@ func ConvertThread(th *proc.Thread) *Thread {
 
 func ConvertVar(v *proc.Variable) *Variable {
 	r := Variable{
-		Addr: v.Addr,
-		Name: v.Name,
-		Kind: v.Kind,
-		Len:  v.Len,
-		Cap:  v.Cap,
+		Addr:     v.Addr,
+		OnlyAddr: v.OnlyAddr,
+		Name:     v.Name,
+		Kind:     v.Kind,
+		Len:      v.Len,
+		Cap:      v.Cap,
 	}
 
 	if v.DwarfType != nil {
@@ -92,10 +93,42 @@ func ConvertVar(v *proc.Variable) *Variable {
 		}
 	}
 
-	r.Children = make([]Variable, len(v.Children))
+	switch v.Kind {
+	case reflect.Complex64:
+		r.Children = make([]Variable, 2)
+		r.Len = 2
 
-	for i := range v.Children {
-		r.Children[i] = *ConvertVar(&v.Children[i])
+		real, _ := constant.Float64Val(constant.Real(v.Value))
+		imag, _ := constant.Float64Val(constant.Imag(v.Value))
+
+		r.Children[0].Name = "real"
+		r.Children[0].Kind = reflect.Float32
+		r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 32)
+
+		r.Children[1].Name = "imaginary"
+		r.Children[1].Kind = reflect.Float32
+		r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 32)
+	case reflect.Complex128:
+		r.Children = make([]Variable, 2)
+		r.Len = 2
+
+		real, _ := constant.Float64Val(constant.Real(v.Value))
+		imag, _ := constant.Float64Val(constant.Imag(v.Value))
+
+		r.Children[0].Name = "real"
+		r.Children[0].Kind = reflect.Float64
+		r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 64)
+
+		r.Children[1].Name = "imaginary"
+		r.Children[1].Kind = reflect.Float64
+		r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 64)
+
+	default:
+		r.Children = make([]Variable, len(v.Children))
+
+		for i := range v.Children {
+			r.Children[i] = *ConvertVar(&v.Children[i])
+		}
 	}
 
 	return &r

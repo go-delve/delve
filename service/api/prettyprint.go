@@ -16,7 +16,7 @@ const (
 // Returns a representation of v on a single line
 func (v *Variable) SinglelineString() string {
 	var buf bytes.Buffer
-	v.writeTo(&buf, false, true, "")
+	v.writeTo(&buf, true, false, true, "")
 	return buf.String()
 }
 
@@ -24,17 +24,17 @@ func (v *Variable) SinglelineString() string {
 func (v *Variable) MultilineString(indent string) string {
 	var buf bytes.Buffer
 	buf.WriteString(indent)
-	v.writeTo(&buf, true, true, indent)
+	v.writeTo(&buf, true, true, true, indent)
 	return buf.String()
 }
 
-func (v *Variable) writeTo(buf *bytes.Buffer, newlines, includeType bool, indent string) {
+func (v *Variable) writeTo(buf *bytes.Buffer, top, newlines, includeType bool, indent string) {
 	if v.Unreadable != "" {
 		fmt.Fprintf(buf, "(unreadable %s)", v.Unreadable)
 		return
 	}
 
-	if v.Addr == 0 {
+	if !top && v.Addr == 0 {
 		fmt.Fprintf(buf, "%s nil", v.Type)
 		return
 	}
@@ -45,8 +45,14 @@ func (v *Variable) writeTo(buf *bytes.Buffer, newlines, includeType bool, indent
 	case reflect.Array:
 		v.writeArrayTo(buf, newlines, includeType, indent)
 	case reflect.Ptr:
-		fmt.Fprintf(buf, "*")
-		v.Children[0].writeTo(buf, newlines, includeType, indent)
+		if v.Type == "" {
+			fmt.Fprintf(buf, "nil")
+		} else if v.Children[0].OnlyAddr {
+			fmt.Fprintf(buf, "(%s)(0x%x)", v.Type, v.Children[0].Addr)
+		} else {
+			fmt.Fprintf(buf, "*")
+			v.Children[0].writeTo(buf, false, newlines, includeType, indent)
+		}
 	case reflect.String:
 		v.writeStringTo(buf)
 	case reflect.Struct:
@@ -54,14 +60,13 @@ func (v *Variable) writeTo(buf *bytes.Buffer, newlines, includeType bool, indent
 	case reflect.Map:
 		v.writeMapTo(buf, newlines, includeType, indent)
 	case reflect.Func:
-		fmt.Fprintf(buf, "%s", v.Value)
-	case reflect.Complex64, reflect.Complex128:
-		switch v.RealType {
-		case "complex64":
-			fmt.Fprintf(buf, "(%s + %si)", v.Children[0].Value, v.Children[1].Value)
-		case "complex128":
-			fmt.Fprintf(buf, "(%s + %si)", v.Children[0].Value, v.Children[1].Value)
+		if v.Value == "" {
+			fmt.Fprintf(buf, "nil")
+		} else {
+			fmt.Fprintf(buf, "%s", v.Value)
 		}
+	case reflect.Complex64, reflect.Complex128:
+		fmt.Fprintf(buf, "(%s + %si)", v.Children[0].Value, v.Children[1].Value)
 	default:
 		if v.Value != "" {
 			buf.Write([]byte(v.Value))
@@ -112,7 +117,7 @@ func (v *Variable) writeStructTo(buf *bytes.Buffer, newlines, includeType bool, 
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		}
 		fmt.Fprintf(buf, "%s: ", v.Children[i].Name)
-		v.Children[i].writeTo(buf, nl, true, indent+indentString)
+		v.Children[i].writeTo(buf, false, nl, true, indent+indentString)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprintf(buf, ",")
 			if !nl {
@@ -144,9 +149,9 @@ func (v *Variable) writeMapTo(buf *bytes.Buffer, newlines, includeType bool, ind
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		}
 
-		key.writeTo(buf, false, false, indent+indentString)
+		key.writeTo(buf, false, false, false, indent+indentString)
 		fmt.Fprintf(buf, ": ")
-		value.writeTo(buf, nl, false, indent+indentString)
+		value.writeTo(buf, false, nl, false, indent+indentString)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprintf(buf, ", ")
 		}
@@ -239,7 +244,7 @@ func (v *Variable) writeSliceOrArrayTo(buf *bytes.Buffer, newlines bool, indent 
 		if nl {
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		}
-		v.Children[i].writeTo(buf, nl, false, indent+indentString)
+		v.Children[i].writeTo(buf, false, nl, false, indent+indentString)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprintf(buf, ",")
 		}

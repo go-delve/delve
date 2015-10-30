@@ -151,6 +151,13 @@ func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
 			return nil, err
 		}
 
+		switch entry.Tag {
+		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
+			//ok
+		default:
+			continue
+		}
+
 		n, ok := entry.Val(dwarf.AttrName).(string)
 		if !ok {
 			continue

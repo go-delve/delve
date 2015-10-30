@@ -22,8 +22,9 @@ type B struct {
 
 func main() {
 	b := B{A: A{-314}, C: &C{"hello"}, a: A{42}, ptr: &A{1337}}
+	b2 := B{A: A{42}, a: A{47}}
 	runtime.Breakpoint()
-	fmt.Println(b)
+	fmt.Println(b, b2)
 	fmt.Println(b.val)
 	fmt.Println(b.A.val)
 	fmt.Println(b.a.val)

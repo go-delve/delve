@@ -5,12 +5,10 @@ import (
 	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
-	"go/ast"
 	"go/constant"
 	"go/parser"
 	"go/token"
 	"reflect"
-	"strconv"
 	"strings"
 	"unsafe"
 
@@ -30,6 +28,7 @@ const (
 // Represents a variable.
 type Variable struct {
 	Addr      uintptr
+	OnlyAddr  bool
 	Name      string
 	DwarfType dwarf.Type
 	RealType  dwarf.Type
@@ -41,6 +40,9 @@ type Variable struct {
 	Len int64
 	Cap int64
 
+	// base address of arrays, base address of the backing array for slices (0 for nil slices)
+	// base address of the backing byte array for strings
+	// address of the function entry point for function variables (0 for nil function pointers)
 	base      uintptr
 	stride    int64
 	fieldType dwarf.Type
@@ -125,6 +127,11 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 		switch {
 		case t.StructName == "string":
 			v.Kind = reflect.String
+			v.stride = 1
+			v.fieldType = &dwarf.UintType{dwarf.BasicType{dwarf.CommonType{1, "byte"}, 8, 0}}
+			if v.Addr != 0 {
+				v.base, v.Len, v.Unreadable = v.thread.readStringInfo(v.Addr)
+			}
 		case strings.HasPrefix(t.StructName, "[]"):
 			v.Kind = reflect.Slice
 			if v.Addr != 0 {
@@ -175,6 +182,31 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 	}
 
 	return v
+}
+
+func newConstant(val constant.Value, thread *Thread) *Variable {
+	v := &Variable{Value: val, thread: thread, loaded: true}
+	switch val.Kind() {
+	case constant.Int:
+		v.Kind = reflect.Int
+	case constant.Float:
+		v.Kind = reflect.Float64
+	case constant.Bool:
+		v.Kind = reflect.Bool
+	case constant.Complex:
+		v.Kind = reflect.Complex128
+	case constant.String:
+		v.Kind = reflect.String
+		v.Len = int64(len(constant.StringVal(val)))
+	}
+	return v
+}
+
+var nilVariable = &Variable{
+	Addr:     0,
+	base:     0,
+	Kind:     reflect.Ptr,
+	Children: []Variable{{Addr: 0, OnlyAddr: true}},
 }
 
 func (v *Variable) clone() *Variable {
@@ -395,62 +427,52 @@ func (g *G) Go() Location {
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
 }
 
-// Returns information for the named variable.
-func (scope *EvalScope) ExtractVariableInfo(name string) (*Variable, error) {
-	parts := strings.Split(name, ".")
-	varName := parts[0]
-	memberNames := parts[1:]
-
-	v, err := scope.extractVarInfo(varName)
-	if err != nil {
-		origErr := err
-		// Attempt to evaluate name as a package variable.
-		if len(memberNames) > 0 {
-			v, err = scope.packageVarAddr(name)
-		} else {
-			_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
-			if fn != nil {
-				v, err = scope.packageVarAddr(fn.PackageName() + "." + name)
-			}
-		}
-		if err != nil {
-			return nil, origErr
-		}
-		v.Name = name
-		return v, nil
-	} else {
-		if len(memberNames) > 0 {
-			for i := range memberNames {
-				v, err = v.structMember(memberNames[i])
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-	return v, nil
-}
-
-// Returns the value of the named variable.
+// Returns the value of the given expression (backwards compatibility).
 func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
-	v, err := scope.ExtractVariableInfo(name)
-	if err != nil {
-		return nil, err
-	}
-	v.loadValue()
-	return v, nil
+	return scope.EvalExpression(name)
 }
 
 // Sets the value of the named variable
 func (scope *EvalScope) SetVariable(name, value string) error {
-	v, err := scope.ExtractVariableInfo(name)
+	t, err := parser.ParseExpr(name)
 	if err != nil {
 		return err
 	}
-	if v.Unreadable != nil {
-		return fmt.Errorf("Variable \"%s\" is unreadable: %v\n", name, v.Unreadable)
+
+	xv, err := scope.evalAST(t)
+	if err != nil {
+		return err
 	}
-	return v.setValue(value)
+
+	if xv.Addr == 0 {
+		return fmt.Errorf("Can not assign to \"%s\"", name)
+	}
+
+	if xv.Unreadable != nil {
+		return fmt.Errorf("Expression \"%s\" is unreadable: %v", name, xv.Unreadable)
+	}
+
+	t, err = parser.ParseExpr(value)
+	if err != nil {
+		return err
+	}
+
+	yv, err := scope.evalAST(t)
+	if err != nil {
+		return err
+	}
+
+	yv.loadValue()
+
+	if err := yv.isType(xv.RealType, xv.Kind); err != nil {
+		return err
+	}
+
+	if yv.Unreadable != nil {
+		return fmt.Errorf("Expression \"%s\" is unreadable: %v", value, yv.Unreadable)
+	}
+
+	return xv.setValue(yv)
 }
 
 func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
@@ -601,7 +623,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		}
 		return nil, fmt.Errorf("%s has no member %s", v.Name, memberName)
 	default:
-		return nil, fmt.Errorf("%s type %s is not a struct", v.Name, structVar.DwarfType)
+		return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.DwarfType)
 	}
 }
 
@@ -670,7 +692,7 @@ func (v *Variable) loadValue() {
 }
 
 func (v *Variable) loadValueInternal(recurseLevel int) {
-	if v.Unreadable != nil || v.loaded || v.Addr == 0 {
+	if v.Unreadable != nil || v.loaded || (v.Addr == 0 && v.base == 0) {
 		return
 	}
 	v.loaded = true
@@ -683,7 +705,7 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 
 	case reflect.String:
 		var val string
-		val, v.Len, v.Unreadable = v.thread.readString(uintptr(v.Addr))
+		val, v.Unreadable = v.thread.readStringValue(v.base, v.Len)
 		v.Value = constant.MakeString(val)
 
 	case reflect.Slice, reflect.Array:
@@ -734,62 +756,87 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 	}
 }
 
-func (v *Variable) setValue(value string) error {
-	switch t := v.RealType.(type) {
-	case *dwarf.PtrType:
-		return v.writeUint(false, value, int64(v.thread.dbp.arch.PtrSize()))
-	case *dwarf.ComplexType:
-		return v.writeComplex(value, t.ByteSize)
-	case *dwarf.IntType:
-		return v.writeUint(true, value, t.ByteSize)
-	case *dwarf.UintType:
-		return v.writeUint(false, value, t.ByteSize)
-	case *dwarf.FloatType:
-		return v.writeFloat(value, t.ByteSize)
-	case *dwarf.BoolType:
-		return v.writeBool(value)
+func (v *Variable) setValue(y *Variable) error {
+	var err error
+	switch v.Kind {
+	case reflect.Float32, reflect.Float64:
+		f, _ := constant.Float64Val(y.Value)
+		err = v.writeFloatRaw(f, v.RealType.Size())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n, _ := constant.Int64Val(y.Value)
+		err = v.writeUint(uint64(n), v.RealType.Size())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		n, _ := constant.Uint64Val(y.Value)
+		err = v.writeUint(n, v.RealType.Size())
+	case reflect.Bool:
+		err = v.writeBool(constant.BoolVal(y.Value))
+	case reflect.Complex64, reflect.Complex128:
+		real, _ := constant.Float64Val(constant.Real(y.Value))
+		imag, _ := constant.Float64Val(constant.Imag(y.Value))
+		err = v.writeComplex(real, imag, v.RealType.Size())
 	default:
-		return fmt.Errorf("Can not set value of variables of kind: %s\n", v.RealType.String())
+		fmt.Printf("default\n")
+		if _, isptr := v.RealType.(*dwarf.PtrType); isptr {
+			err = v.writeUint(uint64(y.Children[0].Addr), int64(v.thread.dbp.arch.PtrSize()))
+		} else {
+			return fmt.Errorf("can not set variables of type %s (not implemented)", v.Kind.String())
+		}
 	}
+
+	return err
 }
 
-func (thread *Thread) readString(addr uintptr) (string, int64, error) {
+func (thread *Thread) readStringInfo(addr uintptr) (uintptr, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
 
 	// read len
 	val, err := thread.readMemory(addr+uintptr(thread.dbp.arch.PtrSize()), thread.dbp.arch.PtrSize())
 	if err != nil {
-		return "", 0, fmt.Errorf("could not read string len %s", err)
+		return 0, 0, fmt.Errorf("could not read string len %s", err)
 	}
 	strlen := int64(binary.LittleEndian.Uint64(val))
 	if strlen < 0 {
-		return "", 0, fmt.Errorf("invalid length: %d", strlen)
-	}
-
-	count := strlen
-	if count > maxArrayValues {
-		count = maxArrayValues
+		return 0, 0, fmt.Errorf("invalid length: %d", strlen)
 	}
 
 	// read addr
 	val, err = thread.readMemory(addr, thread.dbp.arch.PtrSize())
 	if err != nil {
-		return "", 0, fmt.Errorf("could not read string pointer %s", err)
+		return 0, 0, fmt.Errorf("could not read string pointer %s", err)
 	}
 	addr = uintptr(binary.LittleEndian.Uint64(val))
 	if addr == 0 {
-		return "", 0, nil
+		return 0, 0, nil
 	}
 
-	val, err = thread.readMemory(addr, int(count))
+	return addr, strlen, nil
+}
+
+func (thread *Thread) readStringValue(addr uintptr, strlen int64) (string, error) {
+	count := strlen
+	if count > maxArrayValues {
+		count = maxArrayValues
+	}
+
+	val, err := thread.readMemory(addr, int(count))
 	if err != nil {
-		return "", 0, fmt.Errorf("could not read string at %#v due to %s", addr, err)
+		return "", fmt.Errorf("could not read string at %#v due to %s", addr, err)
 	}
 
 	retstr := *(*string)(unsafe.Pointer(&val))
 
-	return retstr, strlen, nil
+	return retstr, nil
+}
+
+func (thread *Thread) readString(addr uintptr) (string, int64, error) {
+	addr, strlen, err := thread.readStringInfo(addr)
+	if err != nil {
+		return "", 0, err
+	}
+
+	retstr, err := thread.readStringValue(addr, strlen)
+	return retstr, strlen, err
 }
 
 func (v *Variable) loadSliceInfo(t *dwarf.StructType) {
@@ -883,78 +930,11 @@ func (v *Variable) readComplex(size int64) {
 	imagvar := newVariable("imaginary", v.Addr+uintptr(fs), ftyp, v.thread)
 	realvar.loadValue()
 	imagvar.loadValue()
-	v.Len = 2
-	v.Children = []Variable{*realvar, *imagvar}
-	v.Value = constant.BinaryOp(realvar.Value, token.ADD, imagvar.Value)
+	v.Value = constant.BinaryOp(realvar.Value, token.ADD, constant.MakeImag(imagvar.Value))
 }
 
-func (v *Variable) writeComplex(value string, size int64) error {
-	var real, imag float64
-
-	expr, err := parser.ParseExpr(value)
-	if err != nil {
-		return err
-	}
-
-	var lits []*ast.BasicLit
-
-	if e, ok := expr.(*ast.ParenExpr); ok {
-		expr = e.X
-	}
-
-	switch e := expr.(type) {
-	case *ast.BinaryExpr: // "<float> + <float>i" or "<float>i + <float>"
-		x, xok := e.X.(*ast.BasicLit)
-		y, yok := e.Y.(*ast.BasicLit)
-		if e.Op != token.ADD || !xok || !yok {
-			return fmt.Errorf("Not a complex constant: %s", value)
-		}
-		lits = []*ast.BasicLit{x, y}
-	case *ast.CallExpr: // "complex(<float>, <float>)"
-		tname, ok := e.Fun.(*ast.Ident)
-		if !ok {
-			return fmt.Errorf("Not a complex constant: %s", value)
-		}
-		if (tname.Name != "complex64") && (tname.Name != "complex128") {
-			return fmt.Errorf("Not a complex constant: %s", value)
-		}
-		if len(e.Args) != 2 {
-			return fmt.Errorf("Not a complex constant: %s", value)
-		}
-		for i := range e.Args {
-			lit, ok := e.Args[i].(*ast.BasicLit)
-			if !ok {
-				return fmt.Errorf("Not a complex constant: %s", value)
-			}
-			lits = append(lits, lit)
-		}
-		lits[1].Kind = token.IMAG
-		lits[1].Value = lits[1].Value + "i"
-	case *ast.BasicLit: // "<float>" or "<float>i"
-		lits = []*ast.BasicLit{e}
-	default:
-		return fmt.Errorf("Not a complex constant: %s", value)
-	}
-
-	for _, lit := range lits {
-		var err error
-		var v float64
-		switch lit.Kind {
-		case token.FLOAT, token.INT:
-			v, err = strconv.ParseFloat(lit.Value, int(size/2))
-			real += v
-		case token.IMAG:
-			v, err = strconv.ParseFloat(lit.Value[:len(lit.Value)-1], int(size/2))
-			imag += v
-		default:
-			return fmt.Errorf("Not a complex constant: %s", value)
-		}
-		if err != nil {
-			return err
-		}
-	}
-
-	err = v.writeFloatRaw(real, int64(size/2))
+func (v *Variable) writeComplex(real, imag float64, size int64) error {
+	err := v.writeFloatRaw(real, int64(size/2))
 	if err != nil {
 		return err
 	}
@@ -985,36 +965,21 @@ func (thread *Thread) readIntRaw(addr uintptr, size int64) (int64, error) {
 	return n, nil
 }
 
-func (v *Variable) writeUint(signed bool, value string, size int64) error {
-	var (
-		n   uint64
-		err error
-	)
-	if signed {
-		var m int64
-		m, err = strconv.ParseInt(value, 0, int(size*8))
-		n = uint64(m)
-	} else {
-		n, err = strconv.ParseUint(value, 0, int(size*8))
-	}
-	if err != nil {
-		return err
-	}
-
+func (v *Variable) writeUint(value uint64, size int64) error {
 	val := make([]byte, size)
 
 	switch size {
 	case 1:
-		val[0] = byte(n)
+		val[0] = byte(value)
 	case 2:
-		binary.LittleEndian.PutUint16(val, uint16(n))
+		binary.LittleEndian.PutUint16(val, uint16(value))
 	case 4:
-		binary.LittleEndian.PutUint32(val, uint32(n))
+		binary.LittleEndian.PutUint32(val, uint32(value))
 	case 8:
-		binary.LittleEndian.PutUint64(val, uint64(n))
+		binary.LittleEndian.PutUint64(val, uint64(value))
 	}
 
-	_, err = v.thread.writeMemory(v.Addr, val)
+	_, err := v.thread.writeMemory(v.Addr, val)
 	return err
 }
 
@@ -1061,14 +1026,6 @@ func (v *Variable) readFloatRaw(size int64) (float64, error) {
 	return 0.0, fmt.Errorf("could not read float")
 }
 
-func (v *Variable) writeFloat(value string, size int64) error {
-	f, err := strconv.ParseFloat(value, int(size*8))
-	if err != nil {
-		return err
-	}
-	return v.writeFloatRaw(f, size)
-}
-
 func (v *Variable) writeFloatRaw(f float64, size int64) error {
 	buf := bytes.NewBuffer(make([]byte, 0, size))
 
@@ -1085,16 +1042,10 @@ func (v *Variable) writeFloatRaw(f float64, size int64) error {
 	return err
 }
 
-func (v *Variable) writeBool(value string) error {
-	b, err := strconv.ParseBool(value)
-	if err != nil {
-		return err
-	}
+func (v *Variable) writeBool(value bool) error {
 	val := []byte{0}
-	if b {
-		val[0] = *(*byte)(unsafe.Pointer(&b))
-	}
-	_, err = v.thread.writeMemory(v.Addr, val)
+	val[0] = *(*byte)(unsafe.Pointer(&value))
+	_, err := v.thread.writeMemory(v.Addr, val)
 	return err
 }
 
@@ -1108,7 +1059,8 @@ func (v *Variable) readFunctionPtr() {
 	// dereference pointer to find function pc
 	fnaddr := uintptr(binary.LittleEndian.Uint64(val))
 	if fnaddr == 0 {
-		v.Unreadable = err
+		v.base = 0
+		v.Value = constant.MakeString("")
 		return
 	}
 
@@ -1118,10 +1070,10 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	funcAddr := binary.LittleEndian.Uint64(val)
-	fn := v.thread.dbp.goSymTable.PCToFunc(uint64(funcAddr))
+	v.base = uintptr(binary.LittleEndian.Uint64(val))
+	fn := v.thread.dbp.goSymTable.PCToFunc(uint64(v.base))
 	if fn == nil {
-		v.Unreadable = fmt.Errorf("could not find function for %#v", funcAddr)
+		v.Unreadable = fmt.Errorf("could not find function for %#v", v.base)
 		return
 	}
 
