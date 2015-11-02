@@ -5,6 +5,8 @@ package terminal
 import (
 	"bufio"
 	"fmt"
+	"go/parser"
+	"go/scanner"
 	"io"
 	"math"
 	"os"
@@ -19,8 +21,8 @@ import (
 	"github.com/derekparker/delve/service/debugger"
 )
 
-type cmdfunc func(t *Term, args ...string) error
-type scopedCmdfunc func(t *Term, scope api.EvalScope, args ...string) error
+type cmdfunc func(t *Term, args string) error
+type scopedCmdfunc func(t *Term, scope api.EvalScope, args string) error
 
 type filteringFunc func(t *Term, filter string) ([]string, error)
 type scopedFilteringFunc func(t *Term, scope api.EvalScope, filter string) ([]string, error)
@@ -129,20 +131,20 @@ func (c *Commands) Merge(allAliases map[string][]string) {
 }
 
 func CommandFunc(fn func() error) cmdfunc {
-	return func(t *Term, args ...string) error {
+	return func(t *Term, args string) error {
 		return fn()
 	}
 }
 
-func noCmdAvailable(t *Term, args ...string) error {
+func noCmdAvailable(t *Term, args string) error {
 	return fmt.Errorf("command not available")
 }
 
-func nullCommand(t *Term, args ...string) error {
+func nullCommand(t *Term, args string) error {
 	return nil
 }
 
-func (c *Commands) help(t *Term, args ...string) error {
+func (c *Commands) help(t *Term, args string) error {
 	fmt.Println("The following commands are available:")
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 0, 8, 0, '-', 0)
@@ -162,7 +164,7 @@ func (a byThreadID) Len() int           { return len(a) }
 func (a byThreadID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byThreadID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func threads(t *Term, args ...string) error {
+func threads(t *Term, args string) error {
 	threads, err := t.client.ListThreads()
 	if err != nil {
 		return err
@@ -188,11 +190,11 @@ func threads(t *Term, args ...string) error {
 	return nil
 }
 
-func thread(t *Term, args ...string) error {
+func thread(t *Term, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("you must specify a thread")
 	}
-	tid, err := strconv.Atoi(args[0])
+	tid, err := strconv.Atoi(args)
 	if err != nil {
 		return err
 	}
@@ -223,7 +225,8 @@ func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func goroutines(t *Term, args ...string) error {
+func goroutines(t *Term, argstr string) error {
+	args := strings.Split(argstr, " ")
 	var fgl = fglUserCurrent
 
 	switch len(args) {
@@ -263,13 +266,13 @@ func goroutines(t *Term, args ...string) error {
 	return nil
 }
 
-func goroutine(t *Term, args ...string) error {
-	switch len(args) {
-	case 0:
+func goroutine(t *Term, argstr string) error {
+	if argstr == "" {
 		return printscope(t)
+	}
 
-	case 1:
-		gid, err := strconv.Atoi(args[0])
+	if strings.Index(argstr, " ") < 0 {
+		gid, err := strconv.Atoi(argstr)
 		if err != nil {
 			return err
 		}
@@ -285,54 +288,61 @@ func goroutine(t *Term, args ...string) error {
 
 		fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
 		return nil
-
-	default:
-		return scopePrefix(t, "goroutine", args...)
 	}
+
+	return scopePrefix(t, "goroutine "+argstr)
 }
 
-func frame(t *Term, args ...string) error {
-	return scopePrefix(t, "frame", args...)
+func frame(t *Term, args string) error {
+	return scopePrefix(t, "frame "+args)
 }
 
-func scopePrefix(t *Term, cmdname string, pargs ...string) error {
-	fullargs := make([]string, 0, len(pargs)+1)
-	fullargs = append(fullargs, cmdname)
-	fullargs = append(fullargs, pargs...)
-
+func scopePrefix(t *Term, cmdstr string) error {
 	scope := api.EvalScope{-1, 0}
 	lastcmd := ""
+	rest := cmdstr
 
-	callFilterSortAndOutput := func(fn scopedFilteringFunc, fnargs []string) error {
+	nexttok := func() string {
+		v := strings.SplitN(rest, " ", 2)
+		if len(v) > 1 {
+			rest = v[1]
+		} else {
+			rest = ""
+		}
+		return v[0]
+	}
+
+	callFilterSortAndOutput := func(fn scopedFilteringFunc, fnargs string) error {
 		outfn := filterSortAndOutput(func(t *Term, filter string) ([]string, error) {
 			return fn(t, scope, filter)
 		})
-		return outfn(t, fnargs...)
+		return outfn(t, fnargs)
 	}
 
-	for i := 0; i < len(fullargs); i++ {
-		lastcmd = fullargs[i]
-		switch fullargs[i] {
+	for {
+		cmd := nexttok()
+		if cmd == "" && rest == "" {
+			break
+		}
+		switch cmd {
 		case "goroutine":
-			if i+1 >= len(fullargs) {
+			if rest == "" {
 				return fmt.Errorf("goroutine command needs an argument")
 			}
-			n, err := strconv.Atoi(fullargs[i+1])
+			n, err := strconv.Atoi(nexttok())
 			if err != nil {
 				return fmt.Errorf("invalid argument to goroutine, expected integer")
 			}
 			scope.GoroutineID = int(n)
-			i++
 		case "frame":
-			if i+1 >= len(fullargs) {
+			if rest == "" {
 				return fmt.Errorf("frame command needs an argument")
 			}
-			n, err := strconv.Atoi(fullargs[i+1])
+			n, err := strconv.Atoi(nexttok())
 			if err != nil {
 				return fmt.Errorf("invalid argument to frame, expected integer")
 			}
 			scope.Frame = int(n)
-			i++
 		case "list", "ls":
 			frame, gid := scope.Frame, scope.GoroutineID
 			locs, err := t.client.Stacktrace(gid, frame, false)
@@ -345,7 +355,7 @@ func scopePrefix(t *Term, cmdname string, pargs ...string) error {
 			loc := locs[frame]
 			return printfile(t, loc.File, loc.Line, true)
 		case "stack", "bt":
-			depth, full, err := parseStackArgs(fullargs[i+1:])
+			depth, full, err := parseStackArgs(rest)
 			if err != nil {
 				return err
 			}
@@ -356,14 +366,17 @@ func scopePrefix(t *Term, cmdname string, pargs ...string) error {
 			printStack(stack, "")
 			return nil
 		case "locals":
-			return callFilterSortAndOutput(locals, fullargs[i+1:])
+			return callFilterSortAndOutput(locals, rest)
 		case "args":
-			return callFilterSortAndOutput(args, fullargs[i+1:])
+			return callFilterSortAndOutput(args, rest)
 		case "print", "p":
-			return printVar(t, scope, fullargs[i+1:]...)
+			return printVar(t, scope, rest)
+		case "set":
+			return setVar(t, scope, rest)
 		default:
-			return fmt.Errorf("unknown command %s", fullargs[i])
+			return fmt.Errorf("unknown command %s", cmd)
 		}
+		lastcmd = cmd
 	}
 
 	return fmt.Errorf("no command passed to %s", lastcmd)
@@ -433,7 +446,7 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 		prefix, formatLocation(g.GoStatementLoc))
 }
 
-func restart(t *Term, args ...string) error {
+func restart(t *Term, args string) error {
 	if err := t.client.Restart(); err != nil {
 		return err
 	}
@@ -441,7 +454,7 @@ func restart(t *Term, args ...string) error {
 	return nil
 }
 
-func cont(t *Term, args ...string) error {
+func cont(t *Term, args string) error {
 	stateChan := t.client.Continue()
 	for state := range stateChan {
 		if state.Err != nil {
@@ -452,7 +465,7 @@ func cont(t *Term, args ...string) error {
 	return nil
 }
 
-func step(t *Term, args ...string) error {
+func step(t *Term, args string) error {
 	state, err := t.client.Step()
 	if err != nil {
 		return err
@@ -461,7 +474,7 @@ func step(t *Term, args ...string) error {
 	return nil
 }
 
-func next(t *Term, args ...string) error {
+func next(t *Term, args string) error {
 	state, err := t.client.Next()
 	if err != nil {
 		return err
@@ -470,11 +483,11 @@ func next(t *Term, args ...string) error {
 	return nil
 }
 
-func clear(t *Term, args ...string) error {
+func clear(t *Term, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
-	id, err := strconv.Atoi(args[0])
+	id, err := strconv.Atoi(args)
 	if err != nil {
 		return err
 	}
@@ -486,15 +499,15 @@ func clear(t *Term, args ...string) error {
 	return nil
 }
 
-func clearAll(t *Term, args ...string) error {
+func clearAll(t *Term, args string) error {
 	breakPoints, err := t.client.ListBreakpoints()
 	if err != nil {
 		return err
 	}
 
 	var locPCs map[uint64]struct{}
-	if len(args) > 0 {
-		locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args[0])
+	if args != "" {
+		locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args)
 		if err != nil {
 			return err
 		}
@@ -526,7 +539,7 @@ func (a ById) Len() int           { return len(a) }
 func (a ById) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ById) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func breakpoints(t *Term, args ...string) error {
+func breakpoints(t *Term, args string) error {
 	breakPoints, err := t.client.ListBreakpoints()
 	if err != nil {
 		return err
@@ -557,7 +570,8 @@ func breakpoints(t *Term, args ...string) error {
 	return nil
 }
 
-func setBreakpoint(t *Term, tracepoint bool, args ...string) error {
+func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
+	args := strings.Split(argstr, " ")
 	if len(args) < 1 {
 		return fmt.Errorf("address required, specify either a function name or <file:line>")
 	}
@@ -601,17 +615,17 @@ func setBreakpoint(t *Term, tracepoint bool, args ...string) error {
 	return nil
 }
 
-func breakpoint(t *Term, args ...string) error {
-	return setBreakpoint(t, false, args...)
+func breakpoint(t *Term, args string) error {
+	return setBreakpoint(t, false, args)
 }
 
-func tracepoint(t *Term, args ...string) error {
-	return setBreakpoint(t, true, args...)
+func tracepoint(t *Term, args string) error {
+	return setBreakpoint(t, true, args)
 }
 
 func g0f0(fn scopedCmdfunc) cmdfunc {
-	return func(t *Term, args ...string) error {
-		return fn(t, api.EvalScope{-1, 0}, args...)
+	return func(t *Term, args string) error {
+		return fn(t, api.EvalScope{-1, 0}, args)
 	}
 }
 
@@ -621,11 +635,11 @@ func g0f0filter(fn scopedFilteringFunc) filteringFunc {
 	}
 }
 
-func printVar(t *Term, scope api.EvalScope, args ...string) error {
+func printVar(t *Term, scope api.EvalScope, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
-	val, err := t.client.EvalVariable(scope, args[0])
+	val, err := t.client.EvalVariable(scope, args)
 	if err != nil {
 		return err
 	}
@@ -634,12 +648,21 @@ func printVar(t *Term, scope api.EvalScope, args ...string) error {
 	return nil
 }
 
-func setVar(t *Term, scope api.EvalScope, args ...string) error {
-	if len(args) != 2 {
-		return fmt.Errorf("wrong number of arguments")
+func setVar(t *Term, scope api.EvalScope, args string) error {
+	// HACK: in go '=' is not an operator, we detect the error and try to recover from it by splitting the input string
+	_, err := parser.ParseExpr(args)
+	if err == nil {
+		return fmt.Errorf("syntax error '=' not found")
 	}
 
-	return t.client.SetVariable(scope, args[0], args[1])
+	el, ok := err.(scanner.ErrorList)
+	if !ok || el[0].Msg != "expected '==', found '='" {
+		return err
+	}
+
+	lexpr := args[:el[0].Pos.Offset]
+	rexpr := args[el[0].Pos.Offset+1:]
+	return t.client.SetVariable(scope, lexpr, rexpr)
 }
 
 func filterVariables(vars []api.Variable, filter string) []string {
@@ -689,7 +712,7 @@ func vars(t *Term, filter string) ([]string, error) {
 	return filterVariables(vars, filter), nil
 }
 
-func regs(t *Term, args ...string) error {
+func regs(t *Term, args string) error {
 	regs, err := t.client.ListRegisters()
 	if err != nil {
 		return err
@@ -699,13 +722,13 @@ func regs(t *Term, args ...string) error {
 }
 
 func filterSortAndOutput(fn filteringFunc) cmdfunc {
-	return func(t *Term, args ...string) error {
+	return func(t *Term, args string) error {
 		var filter string
-		if len(args) == 1 {
-			if _, err := regexp.Compile(args[0]); err != nil {
+		if len(args) > 0 {
+			if _, err := regexp.Compile(args); err != nil {
 				return fmt.Errorf("invalid filter argument: %s", err.Error())
 			}
-			filter = args[0]
+			filter = args
 		}
 		data, err := fn(t, filter)
 		if err != nil {
@@ -719,7 +742,7 @@ func filterSortAndOutput(fn filteringFunc) cmdfunc {
 	}
 }
 
-func stackCommand(t *Term, args ...string) error {
+func stackCommand(t *Term, args string) error {
 	var (
 		err         error
 		goroutineid = -1
@@ -736,26 +759,29 @@ func stackCommand(t *Term, args ...string) error {
 	return nil
 }
 
-func parseStackArgs(args []string) (int, bool, error) {
+func parseStackArgs(argstr string) (int, bool, error) {
 	var (
 		depth = 10
 		full  = false
 	)
-	for i := range args {
-		if args[i] == "-full" {
-			full = true
-		} else {
-			n, err := strconv.Atoi(args[i])
-			if err != nil {
-				return 0, false, fmt.Errorf("depth must be a number")
+	if argstr != "" {
+		args := strings.Split(argstr, " ")
+		for i := range args {
+			if args[i] == "-full" {
+				full = true
+			} else {
+				n, err := strconv.Atoi(args[i])
+				if err != nil {
+					return 0, false, fmt.Errorf("depth must be a number")
+				}
+				depth = n
 			}
-			depth = n
 		}
 	}
 	return depth, full, nil
 }
 
-func listCommand(t *Term, args ...string) error {
+func listCommand(t *Term, args string) error {
 	if len(args) == 0 {
 		state, err := t.client.GetState()
 		if err != nil {
@@ -765,23 +791,23 @@ func listCommand(t *Term, args ...string) error {
 		return nil
 	}
 
-	locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args[0])
+	locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args)
 	if err != nil {
 		return err
 	}
 	if len(locs) > 1 {
-		return debugger.AmbiguousLocationError{Location: args[0], CandidatesLocation: locs}
+		return debugger.AmbiguousLocationError{Location: args, CandidatesLocation: locs}
 	}
 	printfile(t, locs[0].File, locs[0].Line, false)
 	return nil
 }
 
-func (cmds *Commands) sourceCommand(t *Term, args ...string) error {
+func (cmds *Commands) sourceCommand(t *Term, args string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("wrong number of arguments: source <filename>")
 	}
 
-	return cmds.executeFile(t, args[0])
+	return cmds.executeFile(t, args)
 }
 
 func digits(n int) int {
@@ -925,7 +951,7 @@ func (ere ExitRequestError) Error() string {
 	return ""
 }
 
-func exitCommand(t *Term, args ...string) error {
+func exitCommand(t *Term, args string) error {
 	return ExitRequestError{}
 }
 
@@ -953,7 +979,7 @@ func (cmds *Commands) executeFile(t *Term, name string) error {
 
 		cmdstr, args := parseCommand(line)
 		cmd := cmds.Find(cmdstr)
-		err := cmd(t, args...)
+		err := cmd(t, args)
 
 		if err != nil {
 			fmt.Printf("%s:%d: %v\n", name, lineno, err)

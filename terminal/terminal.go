@@ -107,7 +107,7 @@ func (t *Term) Run() (error, int) {
 
 		cmdstr, args := parseCommand(cmdstr)
 		cmd := cmds.Find(cmdstr)
-		if err := cmd(t, args...); err != nil {
+		if err := cmd(t, args); err != nil {
 			if _, ok := err.(ExitRequestError); ok {
 				return t.handleExit()
 			}
@@ -182,7 +182,10 @@ func (t *Term) handleExit() (error, int) {
 	return nil, 0
 }
 
-func parseCommand(cmdstr string) (string, []string) {
-	vals := strings.Split(cmdstr, " ")
-	return vals[0], vals[1:]
+func parseCommand(cmdstr string) (string, string) {
+	vals := strings.SplitN(cmdstr, " ", 2)
+	if len(vals) == 1 {
+		return vals[0], ""
+	}
+	return vals[0], strings.TrimSpace(vals[1])
 }

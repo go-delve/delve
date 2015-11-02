@@ -14,7 +14,7 @@ func TestCommandDefault(t *testing.T) {
 		cmd  = cmds.Find("non-existant-command")
 	)
 
-	err := cmd(nil)
+	err := cmd(nil, "")
 	if err == nil {
 		t.Fatal("cmd() did not default")
 	}
@@ -26,16 +26,16 @@ func TestCommandDefault(t *testing.T) {
 
 func TestCommandReplay(t *testing.T) {
 	cmds := DebugCommands(nil)
-	cmds.Register("foo", func(t *Term, args ...string) error { return fmt.Errorf("registered command") }, "foo command")
+	cmds.Register("foo", func(t *Term, args string) error { return fmt.Errorf("registered command") }, "foo command")
 	cmd := cmds.Find("foo")
 
-	err := cmd(nil)
+	err := cmd(nil, "")
 	if err.Error() != "registered command" {
 		t.Fatal("wrong command output")
 	}
 
 	cmd = cmds.Find("")
-	err = cmd(nil)
+	err = cmd(nil, "")
 	if err.Error() != "registered command" {
 		t.Fatal("wrong command output")
 	}
@@ -45,7 +45,7 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
 		cmd  = cmds.Find("")
-		err  = cmd(nil)
+		err  = cmd(nil, "")
 	)
 
 	if err != nil {
@@ -59,7 +59,7 @@ func TestCommandThread(t *testing.T) {
 		cmd  = cmds.Find("thread")
 	)
 
-	err := cmd(nil)
+	err := cmd(nil, "")
 	if err == nil {
 		t.Fatal("thread terminal command did not default")
 	}
@@ -75,11 +75,11 @@ func TestExecuteFile(t *testing.T) {
 	c := &Commands{
 		client: nil,
 		cmds: []command{
-			{aliases: []string{"trace"}, cmdFn: func(t *Term, args ...string) error {
+			{aliases: []string{"trace"}, cmdFn: func(t *Term, args string) error {
 				traceCount++
 				return nil
 			}},
-			{aliases: []string{"break"}, cmdFn: func(t *Term, args ...string) error {
+			{aliases: []string{"break"}, cmdFn: func(t *Term, args string) error {
 				breakCount++
 				return nil
 			}},
