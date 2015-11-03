@@ -385,6 +385,10 @@ func TestEvalExpression(t *testing.T) {
 		{"p3", true, "*int nil", "", "*int", nil},
 		{"*p3", false, "", "", "int", fmt.Errorf("nil pointer dereference")},
 
+		// channels
+		{"ch1", true, "chan int 0/2", "", "chan int", nil},
+		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
+
 		// combined expressions
 		{"c1.pb.a.A", true, "1", "", "int", nil},
 		{"c1.sa[1].B", false, "3", "", "int", nil},
@@ -455,6 +459,9 @@ func TestEvalExpression(t *testing.T) {
 		{"nilptr != nil", false, "false", "", "", nil},
 		{"p1 == nil", false, "false", "", "", nil},
 		{"p1 != nil", false, "true", "", "", nil},
+		{"ch1 == nil", false, "false", "", "", nil},
+		{"chnil == nil", false, "true", "", "", nil},
+		{"ch1 == chnil", false, "", "", "", fmt.Errorf("can not compare chan variables")},
 
 		// errors
 		{"&3", false, "", "", "", fmt.Errorf("can not take address of \"3\"")},

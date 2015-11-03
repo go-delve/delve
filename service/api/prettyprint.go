@@ -55,6 +55,12 @@ func (v *Variable) writeTo(buf *bytes.Buffer, top, newlines, includeType bool, i
 		}
 	case reflect.String:
 		v.writeStringTo(buf)
+	case reflect.Chan:
+		if newlines {
+			v.writeStructTo(buf, newlines, includeType, indent)
+		} else {
+			fmt.Fprintf(buf, "%s %s/%s", v.Type, v.Children[0].Value, v.Children[1].Value)
+		}
 	case reflect.Struct:
 		v.writeStructTo(buf, newlines, includeType, indent)
 	case reflect.Map:

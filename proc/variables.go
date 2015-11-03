@@ -42,6 +42,7 @@ type Variable struct {
 
 	// base address of arrays, base address of the backing array for slices (0 for nil slices)
 	// base address of the backing byte array for strings
+	// address of the struct backing a chan variable
 	// address of the function entry point for function variables (0 for nil function pointers)
 	base      uintptr
 	stride    int64
@@ -122,7 +123,12 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 
 	switch t := v.RealType.(type) {
 	case *dwarf.PtrType:
-		v.Kind = reflect.Ptr
+		structtyp, isstruct := t.Type.(*dwarf.StructType)
+		if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
+			v.Kind = reflect.Chan
+		} else {
+			v.Kind = reflect.Ptr
+		}
 	case *dwarf.StructType:
 		switch {
 		case t.StructName == "string":
@@ -702,6 +708,13 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.Children = []Variable{*v.maybeDereference()}
 		// Don't increase the recursion level when dereferencing pointers
 		v.Children[0].loadValueInternal(recurseLevel)
+
+	case reflect.Chan:
+		sv := v.maybeDereference()
+		sv.loadValueInternal(recurseLevel)
+		v.Children = sv.Children
+		v.Len = sv.Len
+		v.base = sv.Addr
 
 	case reflect.String:
 		var val string
