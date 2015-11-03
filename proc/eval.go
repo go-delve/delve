@@ -596,7 +596,7 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 			return false, fmt.Errorf("sturcture too deep for comparison")
 		}
 		eql, err = equalChildren(xv, yv, false)
-	case reflect.Slice, reflect.Map, reflect.Func:
+	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
 		if xv != nilVariable && yv != nilVariable {
 			return false, fmt.Errorf("can not compare %s variables", xv.Kind.String())
 		}

@@ -43,11 +43,13 @@ func main() {
 	var fn2 functype = nil
 	var nilslice []int = nil
 	var nilptr *int = nil
+	ch1 := make(chan int, 2)
+	var chnil chan int = nil
 
 	var amb1 = 1
 	runtime.Breakpoint()
 	for amb1 := 0; amb1 < 10; amb1++ {
 		fmt.Println(amb1)
 	}
-	fmt.Println(i1, i2, i3, p1, amb1, s1, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil)
 }
