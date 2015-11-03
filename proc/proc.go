@@ -4,6 +4,7 @@ import (
 	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"go/constant"
 	"os"
@@ -777,6 +778,19 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 	out.PC, out.CFA = locs[frame].Current.PC, locs[frame].CFA
 
 	return &out, nil
+}
+
+func (dbp *Process) Call(fn string, args ...interface{}) ([]*Variable, error) {
+	// Find function location
+	// Set breakpoint at function end
+	// Set up dummy stack frame
+	//  - Make room for return values
+	//  - Make room for arguments
+	// Jump into function
+	// Handle stack growth within called function
+	// Handle parsing return values
+	// Destroy dummy frame
+	return nil, errors.New("not implemented")
 }
 
 func (dbp *Process) postExit() {
