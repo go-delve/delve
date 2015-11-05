@@ -782,14 +782,19 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 
 func (dbp *Process) Call(fn string, args ...interface{}) ([]*Variable, error) {
 	// Find function location
+	// Save registers
+	// Determine stack size (sizeof(return args) + sizeof(function args) + sizeof(pointer))
+	// Copy stack to Delve memory
+	// Zero stack
+	// Write function args into stack
+	// Write current PC as return addr
 	// Set breakpoint at function end
-	// Set up dummy stack frame
-	//  - Make room for return values
-	//  - Make room for arguments
-	// Jump into function
-	// Handle stack growth within called function
-	// Handle parsing return values
-	// Destroy dummy frame
+	// Set PC to function entry
+	// Continue
+	// Extract return args
+	// Restore stack (using new SP value read from register)
+	// Restore registers (EXCEPT SP)
+	// FIN
 	return nil, errors.New("not implemented")
 }
 
