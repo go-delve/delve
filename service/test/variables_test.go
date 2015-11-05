@@ -565,5 +565,16 @@ func TestMapEvaluation(t *testing.T) {
 			t.Fatalf("Wrong number of children (after slicing): %d", len(m1sliced.Children)/2)
 		}
 	})
+}
 
+func TestUnsafePointer(t *testing.T) {
+	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+		up1v, err := evalVariable(p, "up1")
+		assertNoError(err, t, "EvalVariable(up1)")
+		up1 := api.ConvertVar(up1v)
+		if ss := up1.SinglelineString(); !strings.HasPrefix(ss, "unsafe.Pointer(") {
+			t.Fatalf("wrong value for up1: %s", ss)
+		}
+	})
 }

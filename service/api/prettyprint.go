@@ -53,6 +53,8 @@ func (v *Variable) writeTo(buf *bytes.Buffer, top, newlines, includeType bool, i
 			fmt.Fprintf(buf, "*")
 			v.Children[0].writeTo(buf, false, newlines, includeType, indent)
 		}
+	case reflect.UnsafePointer:
+		fmt.Fprintf(buf, "unsafe.Pointer(0x%x)", v.Children[0].Addr)
 	case reflect.String:
 		v.writeStringTo(buf)
 	case reflect.Chan:
