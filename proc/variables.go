@@ -23,6 +23,9 @@ const (
 
 	ChanRecv = "chan receive"
 	ChanSend = "chan send"
+
+	hashTophashEmpty = 0 // used by map reading code, indicates an empty bucket
+	hashMinTopHash   = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated
 )
 
 // Represents a variable.
@@ -42,11 +45,14 @@ type Variable struct {
 
 	// base address of arrays, base address of the backing array for slices (0 for nil slices)
 	// base address of the backing byte array for strings
-	// address of the struct backing a chan variable
+	// address of the struct backing chan and map variables
 	// address of the function entry point for function variables (0 for nil function pointers)
 	base      uintptr
 	stride    int64
 	fieldType dwarf.Type
+
+	// number of elements to skip when loading a map
+	mapSkip int
 
 	Children []Variable
 
@@ -126,6 +132,8 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 		structtyp, isstruct := t.Type.(*dwarf.StructType)
 		if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
 			v.Kind = reflect.Chan
+		} else if isstruct && strings.HasPrefix(structtyp.StructName, "hash<") {
+			v.Kind = reflect.Map
 		} else {
 			v.Kind = reflect.Ptr
 		}
@@ -716,6 +724,9 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.Len = sv.Len
 		v.base = sv.Addr
 
+	case reflect.Map:
+		v.loadMap(recurseLevel)
+
 	case reflect.String:
 		var val string
 		val, v.Unreadable = v.thread.readStringValue(v.base, v.Len)
@@ -762,8 +773,6 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.Value = constant.MakeFloat64(val)
 	case reflect.Func:
 		v.readFunctionPtr()
-	case reflect.Map:
-		fallthrough
 	default:
 		v.Unreadable = fmt.Errorf("unknown or unsupported kind: \"%s\"", v.Kind.String())
 	}
@@ -1091,6 +1100,249 @@ func (v *Variable) readFunctionPtr() {
 	}
 
 	v.Value = constant.MakeString(fn.Name)
+}
+
+func (v *Variable) loadMap(recurseLevel int) {
+	it := v.mapIterator()
+	if it == nil {
+		return
+	}
+
+	for skip := 0; skip < v.mapSkip; skip++ {
+		if ok := it.next(); !ok {
+			return
+		}
+	}
+
+	count := 0
+	errcount := 0
+	for it.next() {
+		if count >= maxArrayValues {
+			break
+		}
+		key := it.key()
+		val := it.value()
+		key.loadValue()
+		val.loadValue()
+		if key.Unreadable != nil || val.Unreadable != nil {
+			errcount++
+		}
+		v.Children = append(v.Children, *key)
+		v.Children = append(v.Children, *val)
+		count++
+		if errcount > maxErrCount {
+			break
+		}
+	}
+}
+
+type mapIterator struct {
+	v          *Variable
+	numbuckets uint64
+	oldmask    uint64
+	buckets    *Variable
+	oldbuckets *Variable
+	b          *Variable
+	bidx       uint64
+
+	tophashes *Variable
+	keys      *Variable
+	values    *Variable
+	overflow  *Variable
+
+	idx int64
+}
+
+// Code derived from go/src/runtime/hashmap.go
+func (v *Variable) mapIterator() *mapIterator {
+	sv := v.maybeDereference()
+	v.base = sv.Addr
+
+	maptype, ok := sv.RealType.(*dwarf.StructType)
+	if !ok {
+		v.Unreadable = fmt.Errorf("wrong real type for map")
+		return nil
+	}
+
+	it := &mapIterator{v: v, bidx: 0, b: nil, idx: 0}
+
+	if sv.Addr == 0 {
+		it.numbuckets = 0
+		return it
+	}
+
+	for _, f := range maptype.Field {
+		var err error
+		field, _ := sv.toField(f)
+		switch f.Name {
+		case "count":
+			v.Len, err = field.asInt()
+		case "B":
+			var b uint64
+			b, err = field.asUint()
+			it.numbuckets = 1 << b
+			it.oldmask = (1 << (b - 1)) - 1
+		case "buckets":
+			it.buckets = field.maybeDereference()
+		case "oldbuckets":
+			it.oldbuckets = field.maybeDereference()
+		}
+		if err != nil {
+			v.Unreadable = err
+			return nil
+		}
+	}
+
+	return it
+}
+
+func (it *mapIterator) nextBucket() bool {
+	if it.overflow != nil && it.overflow.Addr > 0 {
+		it.b = it.overflow
+	} else {
+		it.b = nil
+
+		for it.bidx < it.numbuckets {
+			it.b = it.buckets.clone()
+			it.b.Addr += uintptr(uint64(it.buckets.DwarfType.Size()) * it.bidx)
+
+			if it.oldbuckets.Addr <= 0 {
+				break
+			}
+
+			// if oldbuckets is not nil we are iterating through a map that is in
+			// the middle of a grow.
+			// if the bucket we are looking at hasn't been filled in we iterate
+			// instead through its corresponding "oldbucket" (i.e. the bucket the
+			// elements of this bucket are coming from) but only if this is the first
+			// of the two buckets being created from the same oldbucket (otherwise we
+			// would print some keys twice)
+
+			oldbidx := it.bidx & it.oldmask
+			oldb := it.oldbuckets.clone()
+			oldb.Addr += uintptr(uint64(it.oldbuckets.DwarfType.Size()) * oldbidx)
+
+			if mapEvacuated(oldb) {
+				break
+			}
+
+			if oldbidx == it.bidx {
+				it.b = oldb
+				break
+			}
+
+			// oldbucket origin for current bucket has not been evacuated but we have already
+			// iterated over it so we should just skip it
+			it.b = nil
+			it.bidx++
+		}
+
+		if it.b == nil {
+			return false
+		}
+		it.bidx++
+	}
+
+	if it.b.Addr <= 0 {
+		return false
+	}
+
+	it.tophashes = nil
+	it.keys = nil
+	it.values = nil
+	it.overflow = nil
+
+	for _, f := range it.b.DwarfType.(*dwarf.StructType).Field {
+		field, err := it.b.toField(f)
+		if err != nil {
+			it.v.Unreadable = err
+			return false
+		}
+		if field.Unreadable != nil {
+			it.v.Unreadable = field.Unreadable
+			return false
+		}
+
+		switch f.Name {
+		case "tophash":
+			it.tophashes = field
+		case "keys":
+			it.keys = field
+		case "values":
+			it.values = field
+		case "overflow":
+			it.overflow = field.maybeDereference()
+		}
+	}
+
+	// sanity checks
+	if it.tophashes == nil || it.keys == nil || it.values == nil {
+		it.v.Unreadable = fmt.Errorf("malformed map type")
+		return false
+	}
+
+	if it.tophashes.Kind != reflect.Array || it.keys.Kind != reflect.Array || it.values.Kind != reflect.Array {
+		it.v.Unreadable = fmt.Errorf("malformed map type: keys, values or tophash of a bucket is not an array")
+		return false
+	}
+
+	if it.tophashes.Len != it.keys.Len || it.tophashes.Len != it.values.Len {
+		it.v.Unreadable = fmt.Errorf("malformed map type: inconsistent array length in bucket")
+		return false
+	}
+
+	return true
+}
+
+func (it *mapIterator) next() bool {
+	for {
+		if it.b == nil || it.idx >= it.tophashes.Len {
+			r := it.nextBucket()
+			if !r {
+				return false
+			}
+			it.idx = 0
+		}
+		tophash, _ := it.tophashes.sliceAccess(int(it.idx))
+		h, err := tophash.asUint()
+		if err != nil {
+			it.v.Unreadable = fmt.Errorf("unreadable tophash: %v", err)
+			return false
+		}
+		it.idx++
+		if h != hashTophashEmpty {
+			return true
+		}
+	}
+}
+
+func (it *mapIterator) key() *Variable {
+	k, _ := it.keys.sliceAccess(int(it.idx - 1))
+	return k
+}
+
+func (it *mapIterator) value() *Variable {
+	v, _ := it.values.sliceAccess(int(it.idx - 1))
+	return v
+}
+
+func mapEvacuated(b *Variable) bool {
+	if b.Addr == 0 {
+		return true
+	}
+	for _, f := range b.DwarfType.(*dwarf.StructType).Field {
+		if f.Name != "tophash" {
+			continue
+		}
+		tophashes, _ := b.toField(f)
+		tophash0var, _ := tophashes.sliceAccess(0)
+		tophash0, err := tophash0var.asUint()
+		if err != nil {
+			return true
+		}
+		return tophash0 > hashTophashEmpty && tophash0 < hashMinTopHash
+	}
+	return true
 }
 
 // Fetches all variables of a specific type in the current function scope

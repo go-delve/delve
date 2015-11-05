@@ -389,6 +389,14 @@ func TestEvalExpression(t *testing.T) {
 		{"ch1", true, "chan int 0/2", "", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
 
+		// maps
+		{"m1[\"Malone\"]", false, "struct main.astruct {A: 2, B: 3}", "", "struct main.astruct", nil},
+		{"m2[1].B", false, "11", "", "int", nil},
+		{"m2[c1.sa[2].B-4].A", false, "10", "", "int", nil},
+		{"m2[*p1].B", false, "11", "", "int", nil},
+		{"m3[as1]", false, "42", "", "int", nil},
+		{"mnil[\"Malone\"]", false, "", "", "", fmt.Errorf("key not found")},
+
 		// combined expressions
 		{"c1.pb.a.A", true, "1", "", "int", nil},
 		{"c1.sa[1].B", false, "3", "", "int", nil},
@@ -462,6 +470,9 @@ func TestEvalExpression(t *testing.T) {
 		{"ch1 == nil", false, "false", "", "", nil},
 		{"chnil == nil", false, "true", "", "", nil},
 		{"ch1 == chnil", false, "", "", "", fmt.Errorf("can not compare chan variables")},
+		{"m1 == nil", false, "false", "", "", nil},
+		{"mnil == m1", false, "", "", "", fmt.Errorf("can not compare map variables")},
+		{"mnil == nil", false, "true", "", "", nil},
 
 		// errors
 		{"&3", false, "", "", "", fmt.Errorf("can not take address of \"3\"")},
@@ -520,4 +531,39 @@ func TestEvalAddrAndCast(t *testing.T) {
 		t.Logf("*%s → %s", aaddrstr, api.ConvertVar(a).SinglelineString())
 		assertVariable(t, a, varTest{aaddrstr, false, "struct main.astruct {A: 1, B: 2}", "", "struct main.astruct", nil})
 	})
+}
+
+func TestMapEvaluation(t *testing.T) {
+	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+		m1v, err := evalVariable(p, "m1")
+		assertNoError(err, t, "EvalVariable()")
+		m1 := api.ConvertVar(m1v)
+		t.Logf("m1 = %v", m1.MultilineString(""))
+
+		if m1.Type != "map[string]main.astruct" {
+			t.Fatalf("Wrong type: %s", m1.Type)
+		}
+
+		if len(m1.Children)/2 != 41 {
+			t.Fatalf("Wrong number of children: %d", len(m1.Children)/2)
+		}
+
+		found := false
+		for i := range m1.Children {
+			if i%2 == 0 && m1.Children[i].Value == "Malone" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Could not find Malone")
+		}
+
+		m1sliced, err := evalVariable(p, "m1[10:]")
+		assertNoError(err, t, "EvalVariable(m1[10:])")
+		if len(m1sliced.Children)/2 != int(m1.Len-10) {
+			t.Fatalf("Wrong number of children (after slicing): %d", len(m1sliced.Children)/2)
+		}
+	})
+
 }
