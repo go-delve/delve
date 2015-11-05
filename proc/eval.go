@@ -250,9 +250,6 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 	if xev.Unreadable != nil {
 		return nil, xev.Unreadable
 	}
-	if xev.base == 0 {
-		return nil, fmt.Errorf("can not index \"%s\"", exprToString(node.X))
-	}
 
 	idxev, err := scope.evalAST(node.Index)
 	if err != nil {
@@ -261,6 +258,9 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
+		if xev.base == 0 {
+			return nil, fmt.Errorf("can not index \"%s\"", exprToString(node.X))
+		}
 		n, err := idxev.asInt()
 		if err != nil {
 			return nil, err
@@ -268,7 +268,11 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return xev.sliceAccess(int(n))
 
 	case reflect.Map:
-		return nil, fmt.Errorf("map access not implemented")
+		idxev.loadValue()
+		if idxev.Unreadable != nil {
+			return nil, idxev.Unreadable
+		}
+		return xev.mapAccess(idxev)
 	default:
 		return nil, fmt.Errorf("invalid expression \"%s\" (type %s does not support indexing)", exprToString(node.X), xev.DwarfType.String())
 
@@ -284,16 +288,6 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 	}
 	if xev.Unreadable != nil {
 		return nil, xev.Unreadable
-	}
-	if xev.base == 0 {
-		return nil, fmt.Errorf("can not slice \"%s\"", exprToString(node.X))
-	}
-
-	switch xev.Kind {
-	case reflect.Slice, reflect.Array, reflect.String:
-		//ok
-	default:
-		return nil, fmt.Errorf("cannot slice \"%s\" (type %s)", exprToString(node.X), xev.DwarfType.String())
 	}
 
 	var low, high int64
@@ -322,8 +316,21 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 	}
 
-	r, err := xev.reslice(low, high)
-	return r, err
+	switch xev.Kind {
+	case reflect.Slice, reflect.Array, reflect.String:
+		if xev.base == 0 {
+			return nil, fmt.Errorf("can not slice \"%s\"", exprToString(node.X))
+		}
+		return xev.reslice(low, high)
+	case reflect.Map:
+		if node.High != nil {
+			return nil, fmt.Errorf("second slice argument must be empty for maps")
+		}
+		xev.mapSkip += int(low)
+		return xev, nil
+	default:
+		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.DwarfType.String())
+	}
 }
 
 // Evaluates a pointer dereference expression: *<subexpr>
@@ -654,6 +661,24 @@ func (v *Variable) asInt() (int64, error) {
 	return n, nil
 }
 
+func (v *Variable) asUint() (uint64, error) {
+	if v.DwarfType == nil {
+		if v.Value.Kind() != constant.Int {
+			return 0, fmt.Errorf("can not convert constant %s to uint", v.Value)
+		}
+	} else {
+		v.loadValue()
+		if v.Unreadable != nil {
+			return 0, v.Unreadable
+		}
+		if _, ok := v.DwarfType.(*dwarf.UintType); !ok {
+			return 0, fmt.Errorf("can not convert value of type %s to uint", v.DwarfType.String())
+		}
+	}
+	n, _ := constant.Uint64Val(v.Value)
+	return n, nil
+}
+
 func (v *Variable) isType(typ dwarf.Type, kind reflect.Kind) error {
 	if v.DwarfType != nil {
 		if typ != nil && typ.String() != v.RealType.String() {
@@ -721,6 +746,40 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 	return newVariable("", v.base+uintptr(int64(idx)*v.stride), v.fieldType, v.thread), nil
+}
+
+func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
+	it := v.mapIterator()
+	if it == nil {
+		return nil, fmt.Errorf("can not access unreadable map: %v", v.Unreadable)
+	}
+
+	first := true
+	for it.next() {
+		key := it.key()
+		key.loadValue()
+		if key.Unreadable != nil {
+			return nil, fmt.Errorf("can not access unreadable map: %v", key.Unreadable)
+		}
+		if first {
+			first = false
+			if err := idx.isType(key.DwarfType, key.Kind); err != nil {
+				return nil, err
+			}
+		}
+		eql, err := compareOp(token.EQL, key, idx)
+		if err != nil {
+			return nil, err
+		}
+		if eql {
+			return it.value(), nil
+		}
+	}
+	if v.Unreadable != nil {
+		return nil, v.Unreadable
+	}
+	// go would return zero for the map value type here, we do not have the ability to create zeroes
+	return nil, fmt.Errorf("key not found")
 }
 
 func (v *Variable) reslice(low int64, high int64) (*Variable, error) {

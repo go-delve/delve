@@ -163,13 +163,13 @@ func (v *Variable) writeMapTo(buf *bytes.Buffer, newlines, includeType bool, ind
 		}
 	}
 
-	if len(v.Children) != int(v.Len) {
+	if len(v.Children)/2 != int(v.Len) {
 		if nl {
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		} else {
 			fmt.Fprintf(buf, ",")
 		}
-		fmt.Fprintf(buf, "...+%d more", int(v.Len)-len(v.Children))
+		fmt.Fprintf(buf, "...+%d more", int(v.Len)-(len(v.Children)/2))
 	}
 
 	if nl {
