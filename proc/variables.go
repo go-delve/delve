@@ -130,10 +130,13 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 	switch t := v.RealType.(type) {
 	case *dwarf.PtrType:
 		structtyp, isstruct := t.Type.(*dwarf.StructType)
+		_, isvoid := t.Type.(*dwarf.VoidType)
 		if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
 			v.Kind = reflect.Chan
 		} else if isstruct && strings.HasPrefix(structtyp.StructName, "hash<") {
 			v.Kind = reflect.Map
+		} else if isvoid {
+			v.Kind = reflect.UnsafePointer
 		} else {
 			v.Kind = reflect.Ptr
 		}
@@ -711,7 +714,7 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 	}
 	v.loaded = true
 	switch v.Kind {
-	case reflect.Ptr:
+	case reflect.Ptr, reflect.UnsafePointer:
 		v.Len = 1
 		v.Children = []Variable{*v.maybeDereference()}
 		// Don't increase the recursion level when dereferencing pointers
