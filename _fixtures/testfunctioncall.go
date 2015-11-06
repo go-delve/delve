@@ -1,6 +1,9 @@
 package main
 
-import "runtime"
+import (
+	"fmt"
+	"runtime"
+)
 
 func double(i int) int {
 	return i * 2
@@ -8,4 +11,5 @@ func double(i int) int {
 
 func main() {
 	runtime.Breakpoint()
+	fmt.Println(double(4))
 }

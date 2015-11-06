@@ -4,7 +4,6 @@ import (
 	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"go/constant"
 	"os"
@@ -780,22 +779,148 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 	return &out, nil
 }
 
-func (dbp *Process) Call(fn string, args ...interface{}) ([]*Variable, error) {
+func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	// Find function location
+	fn := dbp.goSymTable.LookupFunc(name)
+	if fn == nil {
+		return nil, fmt.Errorf("no function named %s", name)
+	}
 	// Save registers
+	savedRegs, err := dbp.Registers()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(savedRegs)
 	// Determine stack size (sizeof(return args) + sizeof(function args) + sizeof(pointer))
+	rdr := dbp.DwarfReader()
+	_, err = rdr.SeekToFunction(fn.Entry)
+	if err != nil {
+		return nil, err
+	}
+	var params []*dwarf.Entry
+	for {
+		entry, err := rdr.Next()
+		if err != nil {
+			return nil, err
+		}
+		if entry.Tag != dwarf.TagFormalParameter {
+			break
+		}
+		params = append(params, entry)
+	}
+	stackSize := int64(dbp.arch.PtrSize())
+	for i := range params {
+		stackSize += dbp.size(params[i])
+	}
 	// Copy stack to Delve memory
-	// Zero stack
-	// Write function args into stack
-	// Write current PC as return addr
+	stackBase := savedRegs.SP() + uint64(stackSize)
+	savedStack, err := dbp.CurrentThread.readMemory(uintptr(stackBase), int(stackSize))
+	if err != nil {
+		return nil, err
+	}
+	// Zero the stack segment we plan to reuse
+	buf := make([]byte, stackSize, stackSize)
+	written, err := dbp.CurrentThread.writeMemory(uintptr(stackBase), buf)
+	if err != nil {
+		return nil, err
+	}
+	if int64(written) != stackSize {
+		return nil, fmt.Errorf("did not zero dummy stack, only wrote %d bytes", written)
+	}
+	// Write current PC as return addr in buffer
+	retAddrBuf := buf[stackSize-int64(dbp.arch.PtrSize()):]
+	if dbp.arch.PtrSize() == 8 {
+		binary.LittleEndian.PutUint64(retAddrBuf, savedRegs.PC())
+	} else {
+		binary.LittleEndian.PutUint32(retAddrBuf, uint32(savedRegs.PC()))
+	}
+	// Write function args into stack buffer
+	// TODO(dp) verify function arg count
+	// TODO(dp) verify function arg types
+	idx := len(buf) - dbp.arch.PtrSize()
+	for i := 0; i < len(args); i-- {
+		// TODO(dp) *Variable -> []byte
+		data := args[i].data
+		idx -= len(data)
+		copy(buf[idx:len(data)-1], data)
+	}
+	// Write buffer into stack region
+	_, err := dbp.CurrentThread.writeMemory(stackBase, buf)
+	if err != nil {
+		return nil, err
+	}
 	// Set breakpoint at function end
+	bp, err := dbp.SetBreakpoint(fn.End)
+	if err != nil {
+		return nil, err
+	}
+	defer bp.Clear(dbp.CurrentThread)
 	// Set PC to function entry
-	// Continue
+	regs, err := dbp.Registers()
+	if err != nil {
+		return nil, err
+	}
+	err = regs.SetPC(dbp.CurrentThread, fn.Entry)
+	if err != nil {
+		return nil, err
+	}
+	// Continue thread
+	err = dbp.CurrentThread.Continue()
+	if err != nil {
+		return nil, err
+	}
+	th, err := dbp.trapWait()
+	if err != nil {
+		return nil, err
+	}
 	// Extract return args
+	regs, err = dbp.Registers()
+	if err != nil {
+		return nil, err
+	}
+	idx = dbp.arch.PtrSize()
+	for i := 0; i < len(args); i++ {
+		idx += args[i].DwarfType.Size()
+	}
+	retParams := params[len(args):]
+	var retVars []*Variable
+	for i := 0; i < len(retParams); i++ {
+		size := dbp.size(retParams[i])
+		idx -= size
+		retval, err := dbp.CurrentThread.readMemory(regs.SP()+idx, size)
+		if err != nil {
+			return nil, err
+		}
+		v := constant.MakeFromBytes(retval)
+		retVars = append(retVars, &Variable{Value: v})
+	}
 	// Restore stack (using new SP value read from register)
+	_, err := th.writeMemory(regs.SP()+stackSize, savedStack)
+	if err != nil {
+		return nil, err
+	}
 	// Restore registers (EXCEPT SP)
-	// FIN
-	return nil, errors.New("not implemented")
+	err = savedRegs.SetSP(regs.SP())
+	if err != nil {
+		return nil, err
+	}
+	err = dbp.SetRegisters(savedRegs)
+	if err != nil {
+		return nil, err
+	}
+	return retVars, nil
+}
+
+func (dbp *Process) size(e *dwarf.Entry) int64 {
+	offset, ok := e.Val(dwarf.AttrType).(dwarf.Offset)
+	if !ok {
+		return 0
+	}
+	t, err := dbp.dwarf.Type(offset)
+	if err != nil {
+		return 0
+	}
+	return t.Size()
 }
 
 func (dbp *Process) postExit() {
