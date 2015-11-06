@@ -585,7 +585,7 @@ func TestStacktrace2(t *testing.T) {
 
 		locations, err := p.CurrentThread.Stacktrace(40)
 		assertNoError(err, t, "Stacktrace()")
-		if !stackMatch([]loc{{-1, "main.f"}, {16, "main.main"}}, locations) {
+		if !stackMatch([]loc{{-1, "main.f"}, {16, "main.main"}}, locations, false) {
 			for i := range locations {
 				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
 			}
@@ -595,7 +595,7 @@ func TestStacktrace2(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 		locations, err = p.CurrentThread.Stacktrace(40)
 		assertNoError(err, t, "Stacktrace()")
-		if !stackMatch([]loc{{-1, "main.g"}, {17, "main.main"}}, locations) {
+		if !stackMatch([]loc{{-1, "main.g"}, {17, "main.main"}}, locations, false) {
 			for i := range locations {
 				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
 			}
@@ -605,21 +605,32 @@ func TestStacktrace2(t *testing.T) {
 
 }
 
-func stackMatch(stack []loc, locations []Stackframe) bool {
+func stackMatch(stack []loc, locations []Stackframe, skipRuntime bool) bool {
 	if len(stack) > len(locations) {
 		return false
 	}
-	for i := range stack {
-		if !stack[i].match(locations[i]) {
+	i := 0
+	for j := range locations {
+		if i >= len(stack) {
+			break
+		}
+		if skipRuntime {
+			if locations[j].Call.Fn == nil || strings.HasPrefix(locations[j].Call.Fn.Name, "runtime.") {
+				continue
+			}
+		}
+		if !stack[i].match(locations[j]) {
 			return false
 		}
+		i++
 	}
-	return true
+	return i >= len(stack)
 }
 
 func TestStacktraceGoroutine(t *testing.T) {
-	mainStack := []loc{{12, "main.stacktraceme"}, {21, "main.main"}}
-	agoroutineStack := []loc{{-1, "runtime.gopark"}, {-1, "runtime.goparkunlock"}, {-1, "runtime.chansend"}, {-1, "runtime.chansend1"}, {8, "main.agoroutine"}}
+	mainStack := []loc{{13, "main.stacktraceme"}, {26, "main.main"}}
+	agoroutineStackA := []loc{{9, "main.agoroutine"}}
+	agoroutineStackB := []loc{{10, "main.agoroutine"}}
 
 	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.stacktraceme")
@@ -637,11 +648,13 @@ func TestStacktraceGoroutine(t *testing.T) {
 			locations, err := p.GoroutineStacktrace(g, 40)
 			assertNoError(err, t, "GoroutineStacktrace()")
 
-			if stackMatch(mainStack, locations) {
+			if stackMatch(mainStack, locations, false) {
 				mainCount++
 			}
 
-			if stackMatch(agoroutineStack, locations) {
+			if stackMatch(agoroutineStackA, locations, true) {
+				agoroutineCount++
+			} else if stackMatch(agoroutineStackB, locations, true) {
 				agoroutineCount++
 			} else {
 				t.Logf("Non-goroutine stack: %d (%d)", i, len(locations))
@@ -656,7 +669,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		}
 
 		if mainCount != 1 {
-			t.Fatalf("Main goroutine stack not found")
+			t.Fatalf("Main goroutine stack not found %d", mainCount)
 		}
 
 		if agoroutineCount != 10 {

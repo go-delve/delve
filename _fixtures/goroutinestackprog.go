@@ -4,7 +4,8 @@ import "runtime"
 
 const N = 10
 
-func agoroutine(done chan<- struct{}, i int) {
+func agoroutine(started chan<- struct{}, done chan<- struct{}, i int) {
+	started <- struct{}{}
 	done <- struct{}{}
 }
 
@@ -14,8 +15,12 @@ func stacktraceme() {
 
 func main() {
 	done := make(chan struct{})
+	started := make(chan struct{})
 	for i := 0; i < N; i++ {
-		go agoroutine(done, i)
+		go agoroutine(started, done, i)
+	}
+	for i := 0; i < N; i++ {
+		<-started
 	}
 	runtime.Gosched()
 	stacktraceme()
