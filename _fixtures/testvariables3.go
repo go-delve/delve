@@ -93,11 +93,14 @@ func main() {
 	m2 := map[int]*astruct{1: &astruct{10, 11}}
 	m3 := map[astruct]int{{1, 1}: 42, {2, 2}: 43}
 	up1 := unsafe.Pointer(&i1)
+	i4 := 800
+	i5 := -3
+	i6 := -500
 
 	var amb1 = 1
 	runtime.Breakpoint()
 	for amb1 := 0; amb1 < 10; amb1++ {
 		fmt.Println(amb1)
 	}
-	fmt.Println(i1, i2, i3, p1, amb1, s1, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6)
 }
