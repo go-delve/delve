@@ -396,6 +396,7 @@ func TestEvalExpression(t *testing.T) {
 		{"m2[*p1].B", false, "11", "", "int", nil},
 		{"m3[as1]", false, "42", "", "int", nil},
 		{"mnil[\"Malone\"]", false, "", "", "", fmt.Errorf("key not found")},
+		{"m1[80:]", false, "", "", "", fmt.Errorf("map index out of bounds")},
 
 		// combined expressions
 		{"c1.pb.a.A", true, "1", "", "int", nil},

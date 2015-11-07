@@ -327,6 +327,10 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 			return nil, fmt.Errorf("second slice argument must be empty for maps")
 		}
 		xev.mapSkip += int(low)
+		xev.loadValue()
+		if xev.Unreadable != nil {
+			return nil, xev.Unreadable
+		}
 		return xev, nil
 	default:
 		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.DwarfType.String())

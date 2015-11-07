@@ -1113,6 +1113,7 @@ func (v *Variable) loadMap(recurseLevel int) {
 
 	for skip := 0; skip < v.mapSkip; skip++ {
 		if ok := it.next(); !ok {
+			v.Unreadable = fmt.Errorf("map index out of bounds")
 			return
 		}
 	}
