@@ -118,14 +118,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 		thread:    thread,
 	}
 
-	v.RealType = v.DwarfType
-	for {
-		if tt, ok := v.RealType.(*dwarf.TypedefType); ok {
-			v.RealType = tt.Type
-		} else {
-			break
-		}
-	}
+	v.RealType = resolveTypedef(v.DwarfType)
 
 	switch t := v.RealType.(type) {
 	case *dwarf.PtrType:
@@ -199,6 +192,16 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 	}
 
 	return v
+}
+
+func resolveTypedef(typ dwarf.Type) dwarf.Type {
+	for {
+		if tt, ok := typ.(*dwarf.TypedefType); ok {
+			typ = tt.Type
+		} else {
+			return typ
+		}
+	}
 }
 
 func newConstant(val constant.Value, thread *Thread) *Variable {

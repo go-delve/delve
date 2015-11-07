@@ -487,6 +487,16 @@ func TestEvalExpression(t *testing.T) {
 		{"*(i2 + i3)", false, "", "", "", fmt.Errorf("expression \"(i2 + i3)\" (int) can not be dereferenced")},
 		{"i2.member", false, "", "", "", fmt.Errorf("i2 (type int) is not a struct")},
 		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("no type entry found")},
+
+		// typecasts
+		{"uint(i2)", false, "2", "", "uint", nil},
+		{"int8(i2)", false, "2", "", "int8", nil},
+		{"int(f1)", false, "3", "", "int", nil},
+		{"complex128(f1)", false, "(3 + 0i)", "", "complex128", nil},
+		{"uint8(i4)", false, "32", "", "uint8", nil},
+		{"uint8(i5)", false, "253", "", "uint8", nil},
+		{"int8(i5)", false, "-3", "", "int8", nil},
+		{"int8(i6)", false, "12", "", "int8", nil},
 	}
 
 	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
