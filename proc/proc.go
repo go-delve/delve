@@ -837,7 +837,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	// Write function args into stack buffer
 	// TODO(dp) verify function arg count
 	// TODO(dp) verify function arg types
-	idx := len(buf) - dbp.arch.PtrSize()
+	idx := int64(len(buf) - dbp.arch.PtrSize())
 	for i := 0; i < len(args); i-- {
 		// TODO(dp) *Variable -> []byte
 		data := args[i].data
@@ -845,7 +845,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 		copy(buf[idx:len(data)-1], data)
 	}
 	// Write buffer into stack region
-	_, err := dbp.CurrentThread.writeMemory(stackBase, buf)
+	_, err = dbp.CurrentThread.writeMemory(uintptr(stackBase), buf)
 	if err != nil {
 		return nil, err
 	}
@@ -869,7 +869,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	th, err := dbp.trapWait()
+	th, err := dbp.trapWait(-1)
 	if err != nil {
 		return nil, err
 	}
@@ -878,7 +878,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx = dbp.arch.PtrSize()
+	idx = int64(dbp.arch.PtrSize())
 	for i := 0; i < len(args); i++ {
 		idx += args[i].DwarfType.Size()
 	}
@@ -887,7 +887,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	for i := 0; i < len(retParams); i++ {
 		size := dbp.size(retParams[i])
 		idx -= size
-		retval, err := dbp.CurrentThread.readMemory(regs.SP()+idx, size)
+		retval, err := dbp.CurrentThread.readMemory(uintptr(regs.SP()+uint64(idx)), int(size))
 		if err != nil {
 			return nil, err
 		}
@@ -895,7 +895,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 		retVars = append(retVars, &Variable{Value: v})
 	}
 	// Restore stack (using new SP value read from register)
-	_, err := th.writeMemory(regs.SP()+stackSize, savedStack)
+	_, err = th.writeMemory(uintptr(regs.SP()+uint64(stackSize)), savedStack)
 	if err != nil {
 		return nil, err
 	}
