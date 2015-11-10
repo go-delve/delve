@@ -953,7 +953,7 @@ func TestFrameEvaluation(t *testing.T) {
 		assertNoError(err, t, "setFunctionBreakpoint")
 		assertNoError(p.Continue(), t, "Continue()")
 
-		/**** Testing evaluation on goroutines ****/
+		// Testing evaluation on goroutines
 		gs, err := p.GoroutinesInfo()
 		assertNoError(err, t, "GoroutinesInfo")
 		found := make([]bool, 10)
@@ -992,7 +992,7 @@ func TestFrameEvaluation(t *testing.T) {
 			}
 		}
 
-		/**** Testing evaluation on frames ****/
+		// Testing evaluation on frames
 		assertNoError(p.Continue(), t, "Continue() 2")
 		g, err := p.CurrentThread.GetG()
 		assertNoError(err, t, "GetG()")
@@ -1126,6 +1126,26 @@ func TestBreakpointCounts(t *testing.T) {
 			if v != 100 {
 				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
 			}
+		}
+	})
+}
+
+func TestIssue262(t *testing.T) {
+	// Continue does not work when the current breakpoint is set on a NOP instruction
+	withTestProcess("issue262", t, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 11)
+		assertNoError(err, t, "LineToPC")
+		_, err = p.SetBreakpoint(addr)
+		assertNoError(err, t, "SetBreakpoint()")
+
+		assertNoError(p.Continue(), t, "Continue()")
+		err = p.Continue()
+		if err == nil {
+			t.Fatalf("No error on second continue")
+		}
+		_, exited := err.(ProcessExitedError)
+		if !exited {
+			t.Fatalf("Process did not exit after second continue: %v", err)
 		}
 	})
 }

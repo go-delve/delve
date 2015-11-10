@@ -11,7 +11,7 @@ func demo(id int, wait *sync.WaitGroup) {
 	for i := 0; i < 100; i++ {
 		sleep := rand.Intn(10) + 1
 		fmt.Printf("id: %d step: %d sleeping %d\n", id, i, sleep)
-		time.Sleep(time.Duration(sleep) *  time.Millisecond)
+		time.Sleep(time.Duration(sleep) * time.Millisecond)
 	}
 
 	wait.Done()

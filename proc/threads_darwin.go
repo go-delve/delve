@@ -1,6 +1,7 @@
 package proc
 
 // #include "threads_darwin.h"
+// #include "proc_darwin.h"
 import "C"
 import (
 	"fmt"
@@ -11,6 +12,8 @@ type OSSpecificDetails struct {
 	thread_act C.thread_act_t
 	registers  C.x86_thread_state64_t
 }
+
+var ErrContinueThread = fmt.Errorf("could not continue thread")
 
 func (t *Thread) halt() (err error) {
 	kret := C.thread_suspend(t.os.thread_act)
@@ -27,7 +30,13 @@ func (t *Thread) singleStep() error {
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not single step")
 	}
-	t.dbp.trapWait(0)
+	for {
+		port := C.mach_port_wait(t.dbp.os.portSet)
+		if port == C.mach_port_t(t.Id) {
+			break
+		}
+	}
+
 	kret = C.clear_trap_flag(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not clear CPU trap flag")
@@ -45,7 +54,7 @@ func (t *Thread) resume() error {
 	}
 	kret := C.resume_thread(t.os.thread_act)
 	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not continue thread")
+		return ErrContinueThread
 	}
 	return nil
 }

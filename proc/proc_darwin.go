@@ -329,5 +329,13 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 }
 
 func (dbp *Process) exitGuard(err error) error {
+	if err != ErrContinueThread {
+		return err
+	}
+	_, status, werr := dbp.wait(dbp.Pid, sys.WNOHANG)
+	if werr == nil && status.Exited() {
+		dbp.postExit()
+		return ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+	}
 	return err
 }
