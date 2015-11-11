@@ -14,7 +14,10 @@ kern_return_t
 get_registers(mach_port_name_t, x86_thread_state64_t*);
 
 kern_return_t
-set_pc(thread_act_t, uint64_t);
+set_pc(thread_act_t, x86_thread_state64_t, uint64_t);
+
+kern_return_t
+set_sp(thread_act_t, x86_thread_state64_t, uint64_t);
 
 kern_return_t
 single_step(thread_act_t);

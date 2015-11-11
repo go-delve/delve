@@ -84,9 +84,19 @@ func (r *Regs) TLS() uint64 {
 }
 
 func (r *Regs) SetPC(thread *Thread, pc uint64) error {
-	kret := C.set_pc(thread.os.thread_act, C.uint64_t(pc))
+	r.regs.__rpc = C.uint64_t(pc)
+	return r.Set(thread)
+}
+
+func (r *Regs) SetSP(thread *Thread, sp uint64) error {
+	r.regs.__rsp = C.uint64_t(sp)
+	return r.Set(thread)
+}
+
+func (r *Regs) Set(thread *Thread) error {
+	kret := C.set_sp(thread.os.thread_act, r.regs)
 	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not set pc")
+		return fmt.Errorf("could not set registers")
 	}
 	return nil
 }

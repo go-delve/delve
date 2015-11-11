@@ -1082,13 +1082,13 @@ func TestIssue325(t *testing.T) {
 func TestFunctionCall(t *testing.T) {
 	calltests := []struct {
 		fn   string
-		args []interface{}
+		args []*Variable
 		ret  []*Variable
 		err  error
 	}{
-		{"main.double", []interface{}{2}, []*Variable{{Value: constant.MakeInt64(4)}}, nil},
-		{"main.double", []interface{}{}, []*Variable{}, errors.New("not enough arguments")},
-		{"main.double", []interface{}{"foo"}, []*Variable{}, errors.New("wrong type of argument in function call")},
+		{"main.double", []*Variable{&Variable{Value: constant.MakeInt64(2)}}, []*Variable{{Value: constant.MakeInt64(4)}}, nil},
+		{"main.double", []*Variable{}, []*Variable{}, errors.New("not enough arguments")},
+		{"main.double", []*Variable{&Variable{Value: constant.MakeString("foo")}}, []*Variable{}, errors.New("wrong type of argument in function call")},
 	}
 	withTestProcess("testfunctioncall", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")

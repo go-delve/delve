@@ -63,14 +63,11 @@ set_registers(mach_port_name_t task, x86_thread_state64_t *state) {
 }
 
 kern_return_t
-set_pc(thread_act_t task, uint64_t pc) {
+set_regs(thread_act_t task, x86_thread_state64_t state) {
 	kern_return_t kret;
-	x86_thread_state64_t state;
 	mach_msg_type_number_t stateCount = x86_THREAD_STATE64_COUNT;
 
-	kret = thread_get_state(task, x86_THREAD_STATE64, (thread_state_t)&state, &stateCount);
-	if (kret != KERN_SUCCESS) return kret;
-	state.__rip = pc;
+	state.__rsp = sp;
 
 	return thread_set_state(task, x86_THREAD_STATE64, (thread_state_t)&state, stateCount);
 }

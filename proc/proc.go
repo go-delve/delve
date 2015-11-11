@@ -1,5 +1,7 @@
 package proc
 
+// #include <string.h>
+import "C"
 import (
 	"debug/dwarf"
 	"debug/gosym"
@@ -11,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
@@ -838,10 +841,11 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	// TODO(dp) verify function arg count
 	// TODO(dp) verify function arg types
 	idx := int64(len(buf) - dbp.arch.PtrSize())
-	for i := 0; i < len(args); i-- {
-		// TODO(dp) *Variable -> []byte
-		data := args[i].data
-		idx -= len(data)
+	for i := 0; i < len(args); i++ {
+		data := make([]byte, 16, 16)
+		C.memcpy(unsafe.Pointer(&data[0]), unsafe.Pointer(&args[i].Value), C.size_t(16))
+		fmt.Println("DATA", data)
+		idx -= int64(len(data))
 		copy(buf[idx:len(data)-1], data)
 	}
 	// Write buffer into stack region
@@ -900,11 +904,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 		return nil, err
 	}
 	// Restore registers (EXCEPT SP)
-	err = savedRegs.SetSP(regs.SP())
-	if err != nil {
-		return nil, err
-	}
-	err = dbp.SetRegisters(savedRegs)
+	err = savedRegs.SetSP(dbp.CurrentThread, regs.SP())
 	if err != nil {
 		return nil, err
 	}

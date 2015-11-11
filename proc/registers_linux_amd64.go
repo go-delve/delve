@@ -1,8 +1,11 @@
 package proc
 
-import "fmt"
-import "bytes"
-import sys "golang.org/x/sys/unix"
+import (
+	"bytes"
+	"fmt"
+
+	sys "golang.org/x/sys/unix"
+)
 
 type Regs struct {
 	regs *sys.PtraceRegs
@@ -64,8 +67,17 @@ func (r *Regs) TLS() uint64 {
 	return r.regs.Fs_base
 }
 
-func (r *Regs) SetPC(thread *Thread, pc uint64) (err error) {
+func (r *Regs) SetPC(thread *Thread, pc uint64) error {
 	r.regs.SetPC(pc)
+	return r.Set(thread)
+}
+
+func (r *Regs) SetSP(thread *Thread, sp uint64) error {
+	r.regs.Rsp = sp
+	return r.Set(thread)
+}
+
+func (r *Regs) Set(thread *Thread) (err error) {
 	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.Id, r.regs) })
 	return
 }
