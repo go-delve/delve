@@ -345,7 +345,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		}
 		return xev.mapAccess(idxev)
 	default:
-		return nil, fmt.Errorf("invalid expression \"%s\" (type %s does not support indexing)", exprToString(node.X), xev.DwarfType.String())
+		return nil, fmt.Errorf("expression \"%s\" (%s) does not support indexing", exprToString(node.X), xev.TypeString())
 
 	}
 }
@@ -404,7 +404,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 		return xev, nil
 	default:
-		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.DwarfType.String())
+		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.TypeString())
 	}
 }
 
@@ -415,12 +415,12 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 		return nil, err
 	}
 
-	if xev.DwarfType == nil {
-		return nil, fmt.Errorf("expression \"%s\" can not be dereferenced", exprToString(node.X))
+	if xev.Kind != reflect.Ptr {
+		return nil, fmt.Errorf("expression \"%s\" (%s) can not be dereferenced", exprToString(node.X), xev.TypeString())
 	}
 
-	if xev.Kind != reflect.Ptr {
-		return nil, fmt.Errorf("expression \"%s\" (%s) can not be dereferenced", exprToString(node.X), xev.DwarfType.String())
+	if xev == nilVariable {
+		return nil, fmt.Errorf("nil can not be dereferenced")
 	}
 
 	if len(xev.Children) == 1 {
@@ -441,7 +441,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if xev.Addr == 0 {
+	if xev.Addr == 0 || xev.DwarfType == nil {
 		return nil, fmt.Errorf("can not take address of \"%s\"", exprToString(node.X))
 	}
 
@@ -519,6 +519,14 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 }
 
 func negotiateType(op token.Token, xv, yv *Variable) (dwarf.Type, error) {
+	if xv == nilVariable {
+		return nil, negotiateTypeNil(op, yv)
+	}
+
+	if yv == nilVariable {
+		return nil, negotiateTypeNil(op, xv)
+	}
+
 	if op == token.SHR || op == token.SHL {
 		if xv.Value == nil || xv.Value.Kind() != constant.Int {
 			return nil, fmt.Errorf("shift of type %s", xv.Kind)
@@ -560,6 +568,18 @@ func negotiateType(op token.Token, xv, yv *Variable) (dwarf.Type, error) {
 	}
 
 	panic("unreachable")
+}
+
+func negotiateTypeNil(op token.Token, v *Variable) error {
+	if op != token.EQL && op != token.NEQ {
+		return fmt.Errorf("operator %s can not be applied to \"nil\"", op.String())
+	}
+	switch v.Kind {
+	case reflect.Ptr, reflect.UnsafePointer, reflect.Chan, reflect.Map, reflect.Interface, reflect.Slice, reflect.Func:
+		return nil
+	default:
+		return fmt.Errorf("can not compare %s to nil", v.Kind.String())
+	}
 }
 
 func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
@@ -662,6 +682,24 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 	var eql bool
 	var err error
 
+	if xv == nilVariable {
+		switch op {
+		case token.EQL:
+			return yv.isNil(), nil
+		case token.NEQ:
+			return !yv.isNil(), nil
+		}
+	}
+
+	if yv == nilVariable {
+		switch op {
+		case token.EQL:
+			return xv.isNil(), nil
+		case token.NEQ:
+			return !xv.isNil(), nil
+		}
+	}
+
 	switch xv.Kind {
 	case reflect.Ptr:
 		eql = xv.Children[0].Addr == yv.Children[0].Addr
@@ -679,11 +717,13 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 		}
 		eql, err = equalChildren(xv, yv, false)
 	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
-		if xv != nilVariable && yv != nilVariable {
-			return false, fmt.Errorf("can not compare %s variables", xv.Kind.String())
+		return false, fmt.Errorf("can not compare %s variables", xv.Kind.String())
+	case reflect.Interface:
+		if xv.Children[0].RealType.String() != yv.Children[0].RealType.String() {
+			eql = false
+		} else {
+			eql, err = compareOp(token.EQL, &xv.Children[0], &yv.Children[0])
 		}
-
-		eql = xv.base == yv.base
 	default:
 		return false, fmt.Errorf("unimplemented comparison of %s variables", xv.Kind.String())
 	}
@@ -692,6 +732,18 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 		return !eql, err
 	}
 	return eql, err
+}
+
+func (v *Variable) isNil() bool {
+	switch v.Kind {
+	case reflect.Ptr:
+		return v.Children[0].Addr == 0
+	case reflect.Interface:
+		return false
+	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
+		return v.base == 0
+	}
+	return false
 }
 
 func equalChildren(xv, yv *Variable, shortcircuit bool) (bool, error) {
