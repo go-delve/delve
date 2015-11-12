@@ -5,6 +5,7 @@ import (
 	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
+	"github.com/derekparker/delve/dwarf/reader"
 	"go/ast"
 	"go/constant"
 	"go/parser"
@@ -31,12 +32,16 @@ func (scope *EvalScope) EvalExpression(expr string) (*Variable, error) {
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	switch node := t.(type) {
 	case *ast.CallExpr:
-		if fnnode, ok := node.Fun.(*ast.Ident); ok && len(node.Args) == 2 && (fnnode.Name == "complex64" || fnnode.Name == "complex128") {
-			// implement the special case type casts complex64(f1, f2) and complex128(f1, f2)
-			return scope.evalComplexCast(fnnode.Name, node)
+		if len(node.Args) == 1 {
+			v, err := scope.evalTypeCast(node)
+			if err == nil {
+				return v, nil
+			}
+			if err != reader.TypeNotFoundErr {
+				return v, err
+			}
 		}
-		// this must be a type cast because we do not support function calls
-		return scope.evalTypeCast(node)
+		return scope.evalBuiltinCall(node)
 
 	case *ast.Ident:
 		return scope.evalIdent(node)
@@ -99,56 +104,8 @@ func exprToString(t ast.Expr) string {
 	return buf.String()
 }
 
-// Eval expressions: complex64(<float const>, <float const>) and complex128(<float const>, <float const>)
-func (scope *EvalScope) evalComplexCast(typename string, node *ast.CallExpr) (*Variable, error) {
-	realev, err := scope.evalAST(node.Args[0])
-	if err != nil {
-		return nil, err
-	}
-	imagev, err := scope.evalAST(node.Args[1])
-	if err != nil {
-		return nil, err
-	}
-
-	sz := 128
-	ftypename := "float64"
-	if typename == "complex64" {
-		sz = 64
-		ftypename = "float32"
-	}
-
-	realev.loadValue()
-	imagev.loadValue()
-
-	if realev.Unreadable != nil {
-		return nil, realev.Unreadable
-	}
-
-	if imagev.Unreadable != nil {
-		return nil, imagev.Unreadable
-	}
-
-	if realev.Value == nil || ((realev.Value.Kind() != constant.Int) && (realev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), ftypename)
-	}
-
-	if imagev.Value == nil || ((imagev.Value.Kind() != constant.Int) && (imagev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[1]), ftypename)
-	}
-
-	typ := &dwarf.ComplexType{dwarf.BasicType{dwarf.CommonType{ByteSize: int64(sz / 8), Name: typename}, int64(sz), 0}}
-
-	r := newVariable("", 0, typ, scope.Thread)
-	r.Value = constant.BinaryOp(realev.Value, token.ADD, constant.MakeImag(imagev.Value))
-	return r, nil
-}
-
 // Eval type cast expressions
 func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
-	if len(node.Args) != 1 {
-		return nil, fmt.Errorf("wrong number of arguments for a type cast")
-	}
-
 	argv, err := scope.evalAST(node.Args[0])
 	if err != nil {
 		return nil, err
@@ -263,6 +220,200 @@ func convertInt(n uint64, signed bool, size int64) uint64 {
 		buf[i] = s
 	}
 	return uint64(binary.BigEndian.Uint64(buf))
+}
+
+func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
+	fnnode, ok := node.Fun.(*ast.Ident)
+	if !ok {
+		return nil, fmt.Errorf("function calls are not supported")
+	}
+
+	args := make([]*Variable, len(node.Args))
+
+	for i := range node.Args {
+		v, err := scope.evalAST(node.Args[i])
+		if err != nil {
+			return nil, err
+		}
+		args[i] = v
+	}
+
+	switch fnnode.Name {
+	case "cap":
+		return capBuiltin(args, node.Args)
+	case "len":
+		return lenBuiltin(args, node.Args)
+	case "complex":
+		return complexBuiltin(args, node.Args)
+	case "imag":
+		return imagBuiltin(args, node.Args)
+	case "real":
+		return realBuiltin(args, node.Args)
+	}
+
+	return nil, fmt.Errorf("function calls are not supported")
+}
+
+func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to cap: %d", len(args))
+	}
+
+	arg := args[0]
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for cap", exprToString(nodeargs[0]), arg.TypeString())
+
+	switch arg.Kind {
+	case reflect.Ptr:
+		arg = arg.maybeDereference()
+		if arg.Kind != reflect.Array {
+			return nil, invalidArgErr
+		}
+		fallthrough
+	case reflect.Array:
+		return newConstant(constant.MakeInt64(arg.Len), arg.thread), nil
+	case reflect.Slice:
+		return newConstant(constant.MakeInt64(arg.Cap), arg.thread), nil
+	case reflect.Chan:
+		arg.loadValue()
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		if arg.base == 0 {
+			return newConstant(constant.MakeInt64(0), arg.thread), nil
+		}
+		return newConstant(arg.Children[1].Value, arg.thread), nil
+	default:
+		return nil, invalidArgErr
+	}
+}
+
+func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to len: %d", len(args))
+	}
+	arg := args[0]
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for len", exprToString(nodeargs[0]), arg.TypeString())
+
+	switch arg.Kind {
+	case reflect.Ptr:
+		arg = arg.maybeDereference()
+		if arg.Kind != reflect.Array {
+			return nil, invalidArgErr
+		}
+		fallthrough
+	case reflect.Array, reflect.Slice, reflect.String:
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		return newConstant(constant.MakeInt64(arg.Len), arg.thread), nil
+	case reflect.Chan:
+		arg.loadValue()
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		if arg.base == 0 {
+			return newConstant(constant.MakeInt64(0), arg.thread), nil
+		}
+		return newConstant(arg.Children[0].Value, arg.thread), nil
+	case reflect.Map:
+		it := arg.mapIterator()
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		if it == nil {
+			return newConstant(constant.MakeInt64(0), arg.thread), nil
+		}
+		return newConstant(constant.MakeInt64(arg.Len), arg.thread), nil
+	default:
+		return nil, invalidArgErr
+	}
+}
+
+func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("wrong number of arguments to complex: %d", len(args))
+	}
+
+	realev := args[0]
+	imagev := args[1]
+
+	realev.loadValue()
+	imagev.loadValue()
+
+	if realev.Unreadable != nil {
+		return nil, realev.Unreadable
+	}
+
+	if imagev.Unreadable != nil {
+		return nil, imagev.Unreadable
+	}
+
+	if realev.Value == nil || ((realev.Value.Kind() != constant.Int) && (realev.Value.Kind() != constant.Float)) {
+		return nil, fmt.Errorf("invalid argument 1 %s (type %s) to complex", exprToString(nodeargs[0]), realev.TypeString())
+	}
+
+	if imagev.Value == nil || ((imagev.Value.Kind() != constant.Int) && (imagev.Value.Kind() != constant.Float)) {
+		return nil, fmt.Errorf("invalid argument 2 %s (type %s) to complex", exprToString(nodeargs[1]), imagev.TypeString())
+	}
+
+	sz := int64(0)
+	if realev.RealType != nil {
+		sz = realev.RealType.(*dwarf.FloatType).Size()
+	}
+	if imagev.RealType != nil {
+		isz := imagev.RealType.(*dwarf.FloatType).Size()
+		if isz > sz {
+			sz = isz
+		}
+	}
+
+	if sz == 0 {
+		sz = 128
+	}
+
+	typ := &dwarf.ComplexType{dwarf.BasicType{dwarf.CommonType{ByteSize: int64(sz / 8), Name: fmt.Sprintf("complex%d", sz)}, sz, 0}}
+
+	r := newVariable("", 0, typ, realev.thread)
+	r.Value = constant.BinaryOp(realev.Value, token.ADD, constant.MakeImag(imagev.Value))
+	return r, nil
+}
+
+func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to imag: %d", len(args))
+	}
+
+	arg := args[0]
+	arg.loadValue()
+
+	if arg.Unreadable != nil {
+		return nil, arg.Unreadable
+	}
+
+	if arg.Kind != reflect.Complex64 && arg.Kind != reflect.Complex128 {
+		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", exprToString(nodeargs[0]), arg.TypeString())
+	}
+
+	return newConstant(constant.Imag(arg.Value), arg.thread), nil
+}
+
+func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to real: %d", len(args))
+	}
+
+	arg := args[0]
+	arg.loadValue()
+
+	if arg.Unreadable != nil {
+		return nil, arg.Unreadable
+	}
+
+	if arg.Value == nil || ((arg.Value.Kind() != constant.Int) && (arg.Value.Kind() != constant.Float) && (arg.Value.Kind() != constant.Complex)) {
+		return nil, fmt.Errorf("invalid argument %s (type %s) to real", exprToString(nodeargs[0]), arg.TypeString())
+	}
+
+	return newConstant(constant.Real(arg.Value), arg.thread), nil
 }
 
 // Evaluates identifier expressions

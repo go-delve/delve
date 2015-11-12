@@ -41,6 +41,7 @@ func main() {
 	i3 := 3
 	p1 := &i1
 	s1 := []string{"one", "two", "three", "four", "five"}
+	s3 := make([]int, 0, 6)
 	a1 := [5]string{"one", "two", "three", "four", "five"}
 	c1 := cstruct{&bstruct{astruct{1, 2}}, []*astruct{&astruct{1, 2}, &astruct{2, 3}, &astruct{4, 5}}}
 	s2 := []astruct{{1, 2}, {3, 4}, {5, 6}, {7, 8}, {9, 10}, {11, 12}, {13, 14}, {15, 16}}
@@ -109,11 +110,14 @@ func main() {
 	var errnil error = nil
 	var iface1 interface{} = c1.sa[0]
 	var ifacenil interface{} = nil
+	arr1 := [4]int{0, 1, 2, 3}
+	parr := &arr1
+	cpx1 := complex(1, 2)
 
 	var amb1 = 1
 	runtime.Breakpoint()
 	for amb1 := 0; amb1 < 10; amb1++ {
 		fmt.Println(amb1)
 	}
-	fmt.Println(i1, i2, i3, p1, amb1, s1, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, ifacenil)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, ifacenil, arr1, parr, cpx1)
 }
