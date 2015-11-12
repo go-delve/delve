@@ -69,6 +69,19 @@ func (v *Variable) writeTo(buf *bytes.Buffer, top, newlines, includeType bool, i
 		}
 	case reflect.Struct:
 		v.writeStructTo(buf, newlines, includeType, indent)
+	case reflect.Interface:
+		if includeType {
+			if v.Children[0].Kind == reflect.Invalid {
+				fmt.Fprintf(buf, "%s ", v.Type)
+				if v.Children[0].Addr == 0 {
+					fmt.Fprintf(buf, "nil")
+					return
+				}
+			} else {
+				fmt.Fprintf(buf, "%s(%s) ", v.Type, v.Children[0].Type)
+			}
+		}
+		v.Children[0].writeTo(buf, false, newlines, false, indent)
 	case reflect.Map:
 		v.writeMapTo(buf, newlines, includeType, indent)
 	case reflect.Func:
@@ -192,7 +205,7 @@ func (v *Variable) shouldNewlineArray(newlines bool) bool {
 	kind, hasptr := (&v.Children[0]).recursiveKind()
 
 	switch kind {
-	case reflect.Slice, reflect.Array, reflect.Struct, reflect.Map:
+	case reflect.Slice, reflect.Array, reflect.Struct, reflect.Map, reflect.Interface:
 		return true
 	case reflect.String:
 		if hasptr {
@@ -233,7 +246,7 @@ func (v *Variable) shouldNewlineStruct(newlines bool) bool {
 		kind, hasptr := (&v.Children[i]).recursiveKind()
 
 		switch kind {
-		case reflect.Slice, reflect.Array, reflect.Struct, reflect.Map:
+		case reflect.Slice, reflect.Array, reflect.Struct, reflect.Map, reflect.Interface:
 			return true
 		case reflect.String:
 			if hasptr {

@@ -5,6 +5,7 @@ import (
 	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
+	"go/ast"
 	"go/constant"
 	"go/parser"
 	"go/token"
@@ -110,6 +111,14 @@ type EvalScope struct {
 	CFA    int64
 }
 
+type IsNilErr struct {
+	name string
+}
+
+func (err *IsNilErr) Error() string {
+	return fmt.Sprintf("%s is nil", err.name)
+}
+
 func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread) *Variable {
 	v := &Variable{
 		Name:      name,
@@ -142,6 +151,8 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 			if v.Addr != 0 {
 				v.base, v.Len, v.Unreadable = v.thread.readStringInfo(v.Addr)
 			}
+		case t.StructName == "runtime.iface" || t.StructName == "runtime.eface":
+			v.Kind = reflect.Interface
 		case strings.HasPrefix(t.StructName, "[]"):
 			v.Kind = reflect.Slice
 			if v.Addr != 0 {
@@ -249,7 +260,7 @@ func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 		return v.clone(), nil
 	}
 	if v.Addr == 0 {
-		return nil, fmt.Errorf("%s is nil", v.Name)
+		return nil, &IsNilErr{v.Name}
 	}
 
 	name := ""
@@ -769,6 +780,9 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 				v.Children[i].loadValueInternal(recurseLevel + 1)
 			}
 		}
+
+	case reflect.Interface:
+		v.loadInterface(recurseLevel, true)
 
 	case reflect.Complex64, reflect.Complex128:
 		v.readComplex(v.RealType.(*dwarf.ComplexType).ByteSize)
@@ -1364,6 +1378,101 @@ func mapEvacuated(b *Variable) bool {
 		return tophash0 > hashTophashEmpty && tophash0 < hashMinTopHash
 	}
 	return true
+}
+
+func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
+	var typestring, data *Variable
+	isnil := false
+
+	for _, f := range v.RealType.(*dwarf.StructType).Field {
+		switch f.Name {
+		case "tab": // for runtime.iface
+			tab, _ := v.toField(f)
+			_type, err := tab.structMember("_type")
+			if err != nil {
+				_, isnil = err.(*IsNilErr)
+				if !isnil {
+					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+					return
+				}
+			} else {
+				typestring, err = _type.structMember("_string")
+				if err != nil {
+					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+					return
+				}
+				typestring = typestring.maybeDereference()
+			}
+		case "_type": // for runtime.eface
+			var err error
+			_type, _ := v.toField(f)
+			typestring, err = _type.structMember("_string")
+			if err != nil {
+				_, isnil = err.(*IsNilErr)
+				if !isnil {
+					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+					return
+				}
+			} else {
+				typestring = typestring.maybeDereference()
+			}
+		case "data":
+			data, _ = v.toField(f)
+		}
+	}
+
+	if isnil {
+		// interface to nil
+		data = data.maybeDereference()
+		v.Children = []Variable{*data}
+		v.Children[0].loadValue()
+		return
+	}
+
+	if typestring == nil || data == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
+		v.Unreadable = fmt.Errorf("invalid interface type")
+		return
+	}
+	typestring.loadValue()
+	if typestring.Unreadable != nil {
+		v.Unreadable = fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
+		return
+	}
+
+	t, err := parser.ParseExpr(constant.StringVal(typestring.Value))
+	if err != nil {
+		v.Unreadable = fmt.Errorf("invalid interface type, unparsable data type: %v", err)
+		return
+	}
+
+	typ, err := v.thread.dbp.findTypeExpr(t)
+	if err != nil {
+		v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+		return
+	}
+
+	data = newVariable("data", data.Addr, typ, data.thread)
+
+	v.Children = []Variable{*data}
+	if loadData {
+		v.Children[0].loadValue()
+	}
+	return
+}
+
+func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
+	if snode, ok := expr.(*ast.StarExpr); ok {
+		// Pointer types only appear in the dwarf informations when
+		// a pointer to the type is used in the target program, here
+		// we create a pointer type on the fly so that the user can
+		// specify a pointer to any variable used in the target program
+		ptyp, err := dbp.findType(exprToString(snode.X))
+		if err != nil {
+			return nil, err
+		}
+		return &dwarf.PtrType{dwarf.CommonType{int64(dbp.arch.PtrSize()), exprToString(expr)}, ptyp}, nil
+	}
+	return dbp.findType(exprToString(expr))
 }
 
 // Fetches all variables of a specific type in the current function scope
