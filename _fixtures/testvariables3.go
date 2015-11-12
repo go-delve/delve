@@ -26,6 +26,14 @@ func afunc(x int) int {
 
 type functype func(int) int
 
+func (a *astruct) Error() string {
+	return "not an error"
+}
+
+func (b *bstruct) Error() string {
+	return "not an error"
+}
+
 func main() {
 	i1 := 1
 	i2 := 2
@@ -96,11 +104,16 @@ func main() {
 	i4 := 800
 	i5 := -3
 	i6 := -500
+	var err1 error = c1.sa[0]
+	var err2 error = c1.pb
+	var errnil error = nil
+	var iface1 interface{} = c1.sa[0]
+	var ifacenil interface{} = nil
 
 	var amb1 = 1
 	runtime.Breakpoint()
 	for amb1 := 0; amb1 < 10; amb1++ {
 		fmt.Println(amb1)
 	}
-	fmt.Println(i1, i2, i3, p1, amb1, s1, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, ifacenil)
 }

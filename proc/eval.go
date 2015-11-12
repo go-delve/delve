@@ -55,6 +55,9 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 		// if it's not a package variable then it must be a struct member access
 		return scope.evalStructSelector(node)
 
+	case *ast.TypeAssertExpr: // <expression>.(<type>)
+		return scope.evalTypeAssert(node)
+
 	case *ast.IndexExpr:
 		return scope.evalIndex(node)
 
@@ -166,26 +169,11 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		fnnode = p.X
 	}
 
-	var styp, typ dwarf.Type
-
-	if snode, ok := fnnode.(*ast.StarExpr); ok {
-		// Pointer types only appear in the dwarf informations when
-		// a pointer to the type is used in the target program, here
-		// we create a pointer type on the fly so that the user can
-		// specify a pointer to any variable used in the target program
-		ptyp, err := scope.findType(exprToString(snode.X))
-		if err != nil {
-			return nil, err
-		}
-		typ = &dwarf.PtrType{dwarf.CommonType{int64(scope.Thread.dbp.arch.PtrSize()), exprToString(fnnode)}, ptyp}
-		styp = typ
-	} else {
-		styp, err = scope.findType(exprToString(fnnode))
-		if err != nil {
-			return nil, err
-		}
-		typ = resolveTypedef(styp)
+	styp, err := scope.Thread.dbp.findTypeExpr(fnnode)
+	if err != nil {
+		return nil, err
 	}
+	typ := resolveTypedef(styp)
 
 	converr := fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), typ.String())
 
@@ -310,6 +298,35 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 		return nil, err
 	}
 	return xv.structMember(node.Sel.Name)
+}
+
+// Evaluates expressions <subexpr>.(<type>)
+func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, error) {
+	xv, err := scope.evalAST(node.X)
+	if err != nil {
+		return nil, err
+	}
+	if xv.Kind != reflect.Interface {
+		return nil, fmt.Errorf("expression \"%s\" not an interface", exprToString(node.X))
+	}
+	xv.loadInterface(0, false)
+	if xv.Unreadable != nil {
+		return nil, xv.Unreadable
+	}
+	if xv.Children[0].Unreadable != nil {
+		return nil, xv.Children[0].Unreadable
+	}
+	if xv.Children[0].Addr == 0 {
+		return nil, fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), exprToString(node.Type))
+	}
+	typ, err := scope.Thread.dbp.findTypeExpr(node.Type)
+	if err != nil {
+		return nil, err
+	}
+	if xv.Children[0].DwarfType.String() != typ.String() {
+		return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.String(), xv.Children[0].TypeString(), typ)
+	}
+	return &xv.Children[0], nil
 }
 
 // Evaluates expressions <subexpr>[<subexpr>] (subscript access to arrays, slices and maps)
@@ -761,13 +778,13 @@ func equalChildren(xv, yv *Variable, shortcircuit bool) (bool, error) {
 	return r, nil
 }
 
-func (scope *EvalScope) findType(name string) (dwarf.Type, error) {
-	reader := scope.DwarfReader()
+func (dbp *Process) findType(name string) (dwarf.Type, error) {
+	reader := dbp.DwarfReader()
 	typentry, err := reader.SeekToTypeNamed(name)
 	if err != nil {
 		return nil, err
 	}
-	return scope.Thread.dbp.dwarf.Type(typentry.Offset)
+	return dbp.dwarf.Type(typentry.Offset)
 }
 
 func (v *Variable) asInt() (int64, error) {
