@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/constant"
@@ -1104,6 +1105,36 @@ func TestFunctionCall(t *testing.T) {
 						test.ret[i].Value)
 				}
 			}
+		}
+	})
+}
+
+func TestCreateDummyStack(t *testing.T) {
+	withTestProcess("testfunctioncall", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		size, stack := p.createDummyStack("main.double", []*Variable{&Variable{Value: constant.MakeInt64(2)}})
+		if size != 0x18 {
+			t.Fatalf("incorrect stack size, expected %#v got %#v", 0x18, size)
+		}
+		// Assert about position and value of return addr
+		pc, err := p.PC()
+		if err != nil {
+			t.Fatal(err)
+		}
+		idx := size - p.arch.PtrSize() - 1
+		retAddr := binary.LittleEndian.Uint64(stack[idx:])
+		if retAddr != pc {
+			t.Fatalf("incorrect return addr, expected %#v got %#v", pc, retAddr)
+		}
+		// Assert about position and value of argument
+		idx -= 8
+		arg0 := binary.BigEndian.Uint64(stack[idx : idx+8])
+		if arg0 != 2 {
+			t.Fatalf("incorrect arg0, expected %d got %d", 2, arg0)
+		}
+		// Assert about blank space for return arg
+		if !bytes.Equal(stack[:7], []byte{0, 0, 0, 0, 0, 0, 0, 0}) {
+			t.Fatal("did not zero space for return addr")
 		}
 	})
 }

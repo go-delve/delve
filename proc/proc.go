@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
@@ -793,7 +792,6 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(savedRegs)
 	// Determine stack size (sizeof(return args) + sizeof(function args) + sizeof(pointer))
 	rdr := dbp.DwarfReader()
 	_, err = rdr.SeekToFunction(fn.Entry)
@@ -816,7 +814,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 		stackSize += dbp.size(params[i])
 	}
 	// Copy stack to Delve memory
-	stackBase := savedRegs.SP() + uint64(stackSize)
+	stackBase := savedRegs.SP() + uint64(stackSize) - uint64(dbp.arch.PtrSize())
 	savedStack, err := dbp.CurrentThread.readMemory(uintptr(stackBase), int(stackSize))
 	if err != nil {
 		return nil, err
@@ -840,13 +838,16 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	// Write function args into stack buffer
 	// TODO(dp) verify function arg count
 	// TODO(dp) verify function arg types
-	idx := int64(len(buf) - dbp.arch.PtrSize())
+	// Start index at len(buf) - return addr
+	idx := int64(len(buf) - dbp.arch.PtrSize() - 1)
+	// Write function args to stack
 	for i := 0; i < len(args); i++ {
-		data := make([]byte, 16, 16)
-		C.memcpy(unsafe.Pointer(&data[0]), unsafe.Pointer(&args[i].Value), C.size_t(16))
-		fmt.Println("DATA", data)
-		idx -= int64(len(data))
-		copy(buf[idx:len(data)-1], data)
+		size := int64(8) // int64(unsafe.Sizeof(args[i].Value))
+		fmt.Println("SIZE", size, "COPY ARG", args[i].Value)
+		idx -= size
+		// C.memcpy(unsafe.Pointer(&buf[idx : idx+size][0]), unsafe.Pointer(&args[i].Value), C.size_t(size))
+		binary.LittleEndian.PutUint64(buf[idx:idx+size], 2)
+		fmt.Println("DATA", buf[idx:idx+size])
 	}
 	// Write buffer into stack region
 	_, err = dbp.CurrentThread.writeMemory(uintptr(stackBase), buf)
@@ -873,10 +874,12 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("BEGIN trapwait")
 	th, err := dbp.trapWait(-1)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("FIN trapwait")
 	// Extract return args
 	regs, err = dbp.Registers()
 	if err != nil {
