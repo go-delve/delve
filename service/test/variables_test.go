@@ -344,7 +344,7 @@ func TestComplexSetting(t *testing.T) {
 		h("3.2i", "(0 + 3.2i)")
 		h("1.1", "(1.1 + 0i)")
 		h("1 + 3.3i", "(1 + 3.3i)")
-		h("complex128(1.2, 3.4)", "(1.2 + 3.4i)")
+		h("complex(1.2, 3.4)", "(1.2 + 3.4i)")
 	})
 }
 
@@ -462,6 +462,28 @@ func TestEvalExpression(t *testing.T) {
 		{"c1.pb.a == *(c1.sa[1])", false, "false", "", "", nil},
 		{"c1.pb.a != *(c1.sa[1])", false, "true", "", "", nil},
 
+		// builtins
+		{"cap(parr)", false, "4", "", "", nil},
+		{"len(parr)", false, "4", "", "", nil},
+		{"cap(p1)", false, "", "", "", fmt.Errorf("invalid argument p1 (type *int) for cap")},
+		{"len(p1)", false, "", "", "", fmt.Errorf("invalid argument p1 (type *int) for len")},
+		{"cap(a1)", false, "5", "", "", nil},
+		{"len(a1)", false, "5", "", "", nil},
+		{"cap(s3)", false, "6", "", "", nil},
+		{"len(s3)", false, "0", "", "", nil},
+		{"cap(nilslice)", false, "0", "", "", nil},
+		{"len(nilslice)", false, "0", "", "", nil},
+		{"cap(ch1)", false, "2", "", "", nil},
+		{"len(ch1)", false, "0", "", "", nil},
+		{"cap(chnil)", false, "0", "", "", nil},
+		{"len(chnil)", false, "0", "", "", nil},
+		{"len(m1)", false, "41", "", "", nil},
+		{"len(mnil)", false, "0", "", "", nil},
+		{"imag(cpx1)", false, "2", "", "", nil},
+		{"real(cpx1)", false, "1", "", "", nil},
+		{"imag(3i)", false, "3", "", "", nil},
+		{"real(4)", false, "4", "", "", nil},
+
 		// nil
 		{"nil", false, "nil", "", "", nil},
 		{"nil+1", false, "", "", "", fmt.Errorf("operator + can not be applied to \"nil\"")},
@@ -504,7 +526,7 @@ func TestEvalExpression(t *testing.T) {
 		{"i2 << i3", false, "", "", "int", fmt.Errorf("shift count type int, must be unsigned integer")},
 		{"*(i2 + i3)", false, "", "", "", fmt.Errorf("expression \"(i2 + i3)\" (int) can not be dereferenced")},
 		{"i2.member", false, "", "", "", fmt.Errorf("i2 (type int) is not a struct")},
-		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("no type entry found")},
+		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("function calls are not supported")},
 		{"*nil", false, "", "", "", fmt.Errorf("nil can not be dereferenced")},
 		{"!nil", false, "", "", "", fmt.Errorf("operator ! can not be applied to \"nil\"")},
 		{"&nil", false, "", "", "", fmt.Errorf("can not take address of \"nil\"")},
