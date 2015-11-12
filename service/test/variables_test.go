@@ -387,6 +387,7 @@ func TestEvalExpression(t *testing.T) {
 
 		// channels
 		{"ch1", true, "chan int 0/2", "", "chan int", nil},
+		{"chnil", true, "chan int nil", "", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
 
 		// maps
@@ -463,6 +464,7 @@ func TestEvalExpression(t *testing.T) {
 		{"c1.sa[0] == nil", false, "false", "", "", nil},
 		{"c1.sa[0] != nil", false, "true", "", "", nil},
 		{"nilslice == nil", false, "true", "", "", nil},
+		{"nil == nilslice", false, "true", "", "", nil},
 		{"nilslice != nil", false, "false", "", "", nil},
 		{"nilptr == nil", false, "true", "", "", nil},
 		{"nilptr != nil", false, "false", "", "", nil},
@@ -474,10 +476,12 @@ func TestEvalExpression(t *testing.T) {
 		{"m1 == nil", false, "false", "", "", nil},
 		{"mnil == m1", false, "", "", "", fmt.Errorf("can not compare map variables")},
 		{"mnil == nil", false, "true", "", "", nil},
+		{"nil == 2", false, "", "", "", fmt.Errorf("can not compare int to nil")},
+		{"2 == nil", false, "", "", "", fmt.Errorf("can not compare int to nil")},
 
 		// errors
 		{"&3", false, "", "", "", fmt.Errorf("can not take address of \"3\"")},
-		{"*3", false, "", "", "", fmt.Errorf("expression \"3\" can not be dereferenced")},
+		{"*3", false, "", "", "", fmt.Errorf("expression \"3\" (int) can not be dereferenced")},
 		{"&(i2 + i3)", false, "", "", "", fmt.Errorf("can not take address of \"(i2 + i3)\"")},
 		{"i2 + p1", false, "", "", "", fmt.Errorf("mismatched types \"int\" and \"*int\"")},
 		{"i2 + f1", false, "", "", "", fmt.Errorf("mismatched types \"int\" and \"float64\"")},
@@ -487,6 +491,12 @@ func TestEvalExpression(t *testing.T) {
 		{"*(i2 + i3)", false, "", "", "", fmt.Errorf("expression \"(i2 + i3)\" (int) can not be dereferenced")},
 		{"i2.member", false, "", "", "", fmt.Errorf("i2 (type int) is not a struct")},
 		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("no type entry found")},
+		{"*nil", false, "", "", "", fmt.Errorf("nil can not be dereferenced")},
+		{"!nil", false, "", "", "", fmt.Errorf("operator ! can not be applied to \"nil\"")},
+		{"&nil", false, "", "", "", fmt.Errorf("can not take address of \"nil\"")},
+		{"nil[0]", false, "", "", "", fmt.Errorf("expression \"nil\" (nil) does not support indexing")},
+		{"nil[2:10]", false, "", "", "", fmt.Errorf("can not slice \"nil\" (type nil)")},
+		{"nil.member", false, "", "", "", fmt.Errorf("type nil is not a struct")},
 
 		// typecasts
 		{"uint(i2)", false, "2", "", "uint", nil},
@@ -508,7 +518,7 @@ func TestEvalExpression(t *testing.T) {
 				assertVariable(t, variable, tc)
 			} else {
 				if err == nil {
-					t.Fatalf("Expected error %s, got non (%s)", tc.err.Error(), tc.name)
+					t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
 				}
 				if tc.err.Error() != err.Error() {
 					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())

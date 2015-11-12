@@ -234,6 +234,16 @@ func (v *Variable) clone() *Variable {
 	return &r
 }
 
+func (v *Variable) TypeString() string {
+	if v == nilVariable {
+		return "nil"
+	}
+	if v.DwarfType != nil {
+		return v.DwarfType.String()
+	}
+	return v.Kind.String()
+}
+
 func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 	if v.Unreadable != nil {
 		return v.clone(), nil
@@ -643,7 +653,11 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		}
 		return nil, fmt.Errorf("%s has no member %s", v.Name, memberName)
 	default:
-		return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.DwarfType)
+		if v.Name == "" {
+			return nil, fmt.Errorf("type %s is not a struct", structVar.TypeString())
+		} else {
+			return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.TypeString())
+		}
 	}
 }
 
