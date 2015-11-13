@@ -7,7 +7,9 @@ import (
 
 func double(i int) int {
 	fmt.Println("i is:", i)
-	return i * 2
+	i = i * 2
+	fmt.Println("i is now:", i)
+	return i
 }
 
 func main() {

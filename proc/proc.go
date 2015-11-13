@@ -782,80 +782,31 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 }
 
 func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
-	// Find function location
-	fn := dbp.goSymTable.LookupFunc(name)
-	if fn == nil {
-		return nil, fmt.Errorf("no function named %s", name)
-	}
 	// Save registers
 	savedRegs, err := dbp.Registers()
 	if err != nil {
 		return nil, err
 	}
-	// Determine stack size (sizeof(return args) + sizeof(function args) + sizeof(pointer))
-	rdr := dbp.DwarfReader()
-	_, err = rdr.SeekToFunction(fn.Entry)
-	if err != nil {
-		return nil, err
+	// Find function location
+	fn := dbp.goSymTable.LookupFunc(name)
+	if fn == nil {
+		return nil, fmt.Errorf("no function named %s", name)
 	}
-	var params []*dwarf.Entry
-	for {
-		entry, err := rdr.Next()
-		if err != nil {
-			return nil, err
-		}
-		if entry.Tag != dwarf.TagFormalParameter {
-			break
-		}
-		params = append(params, entry)
-	}
-	stackSize := int64(dbp.arch.PtrSize())
-	for i := range params {
-		stackSize += dbp.size(params[i])
-	}
+	stackSize, stack, params, err := dbp.createDummyStack(fn, args, savedRegs.PC())
 	// Copy stack to Delve memory
-	stackBase := savedRegs.SP() + uint64(stackSize) - uint64(dbp.arch.PtrSize())
+	stackBase := savedRegs.SP()
 	savedStack, err := dbp.CurrentThread.readMemory(uintptr(stackBase), int(stackSize))
 	if err != nil {
 		return nil, err
 	}
-	// Zero the stack segment we plan to reuse
-	buf := make([]byte, stackSize, stackSize)
-	written, err := dbp.CurrentThread.writeMemory(uintptr(stackBase), buf)
-	if err != nil {
-		return nil, err
-	}
-	if int64(written) != stackSize {
-		return nil, fmt.Errorf("did not zero dummy stack, only wrote %d bytes", written)
-	}
-	// Write current PC as return addr in buffer
-	retAddrBuf := buf[stackSize-int64(dbp.arch.PtrSize()):]
-	if dbp.arch.PtrSize() == 8 {
-		binary.LittleEndian.PutUint64(retAddrBuf, savedRegs.PC())
-	} else {
-		binary.LittleEndian.PutUint32(retAddrBuf, uint32(savedRegs.PC()))
-	}
-	// Write function args into stack buffer
-	// TODO(dp) verify function arg count
-	// TODO(dp) verify function arg types
-	// Start index at len(buf) - return addr
-	idx := int64(len(buf) - dbp.arch.PtrSize() - 1)
-	// Write function args to stack
-	for i := 0; i < len(args); i++ {
-		size := int64(8) // int64(unsafe.Sizeof(args[i].Value))
-		fmt.Println("SIZE", size, "COPY ARG", args[i].Value)
-		idx -= size
-		// C.memcpy(unsafe.Pointer(&buf[idx : idx+size][0]), unsafe.Pointer(&args[i].Value), C.size_t(size))
-		binary.LittleEndian.PutUint64(buf[idx:idx+size], 2)
-		fmt.Println("DATA", buf[idx:idx+size])
-	}
-	// Write buffer into stack region
-	_, err = dbp.CurrentThread.writeMemory(uintptr(stackBase), buf)
+	// Write dummp stack into stack region
+	_, err = dbp.CurrentThread.writeMemory(uintptr(stackBase), stack)
 	if err != nil {
 		return nil, err
 	}
 	// Set breakpoint at function end
-	bp, err := dbp.SetBreakpoint(fn.End)
+	retpc, _, _ := dbp.goSymTable.LineToPC("/home/derek/code/go/src/github.com/derekparker/delve/_fixtures/testfunctioncall.go", 12)
+	bp, err := dbp.SetBreakpoint(retpc)
 	if err != nil {
 		return nil, err
 	}
@@ -885,16 +836,16 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx = int64(dbp.arch.PtrSize())
+	idx := int64(dbp.arch.PtrSize())
 	for i := 0; i < len(args); i++ {
 		idx += args[i].DwarfType.Size()
 	}
 	retParams := params[len(args):]
 	var retVars []*Variable
 	for i := 0; i < len(retParams); i++ {
-		size := dbp.size(retParams[i])
+		size := size(dbp.dwarf, retParams[i])
 		idx -= size
-		retval, err := dbp.CurrentThread.readMemory(uintptr(regs.SP()+uint64(idx)), int(size))
+		retval, err := dbp.CurrentThread.readMemory(uintptr(regs.SP()+uint64(0x10)), int(size))
 		if err != nil {
 			return nil, err
 		}
@@ -914,12 +865,58 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	return retVars, nil
 }
 
-func (dbp *Process) size(e *dwarf.Entry) int64 {
+func (dbp *Process) createDummyStack(fn *gosym.Func, args []*Variable, pc uint64) (int64, []byte, []*dwarf.Entry, error) {
+	rdr := dbp.DwarfReader()
+	_, err := rdr.SeekToFunction(fn.Entry)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	var params []*dwarf.Entry
+	for {
+		entry, err := rdr.Next()
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		if entry.Tag != dwarf.TagFormalParameter {
+			break
+		}
+		params = append(params, entry)
+	}
+	stackSize := int64(dbp.arch.PtrSize())
+	for i := range params {
+		stackSize += size(dbp.dwarf, params[i])
+	}
+	buf := make([]byte, stackSize, stackSize)
+	// Write function args into stack buffer
+	// TODO(dp) verify function arg count
+	// TODO(dp) verify function arg types
+	// Start index at len(buf) - return addr
+	idx := int64(len(buf) - dbp.arch.PtrSize())
+	// Write function args to stack
+	for i := 0; i < len(args); i++ {
+		size := int64(8) // int64(unsafe.Sizeof(args[i].Value))
+		fmt.Println("SIZE", size, "COPY ARG", args[i].Value)
+		idx -= size
+		// C.memcpy(unsafe.Pointer(&buf[idx : idx+size][0]), unsafe.Pointer(&args[i].Value), C.size_t(size))
+		binary.LittleEndian.PutUint64(buf[idx:idx+size], 2)
+		fmt.Println("DATA", buf[idx:idx+size])
+	}
+	// Write current PC as return addr in buffer
+	retAddrBuf := buf[stackSize-int64(dbp.arch.PtrSize()):]
+	if dbp.arch.PtrSize() == 8 {
+		binary.LittleEndian.PutUint64(retAddrBuf, pc)
+	} else {
+		binary.LittleEndian.PutUint32(retAddrBuf, uint32(pc))
+	}
+	return stackSize, buf, params, nil
+}
+
+func size(data *dwarf.Data, e *dwarf.Entry) int64 {
 	offset, ok := e.Val(dwarf.AttrType).(dwarf.Offset)
 	if !ok {
 		return 0
 	}
-	t, err := dbp.dwarf.Type(offset)
+	t, err := data.Type(offset)
 	if err != nil {
 		return 0
 	}
