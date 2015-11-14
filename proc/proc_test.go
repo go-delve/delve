@@ -1098,6 +1098,9 @@ func TestFunctionCall(t *testing.T) {
 			if err != test.err {
 				t.Fatal("errors did not match:", err)
 			}
+			if len(test.ret) != len(retvals) {
+				t.Fatal("incorrect return value length")
+			}
 			for i := range test.ret {
 				if retvals[i].Value != test.ret[i].Value {
 					t.Fatalf("return value does not match, expected %v got %v",

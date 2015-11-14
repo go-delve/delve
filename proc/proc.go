@@ -805,6 +805,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 		return nil, err
 	}
 	// Set breakpoint at function end
+	// DONOTCOMMIT: properly set breakpoint for return
 	retpc, _, _ := dbp.goSymTable.LineToPC("/home/derek/code/go/src/github.com/derekparker/delve/_fixtures/testfunctioncall.go", 12)
 	bp, err := dbp.SetBreakpoint(retpc)
 	if err != nil {
@@ -825,12 +826,10 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("BEGIN trapwait")
 	th, err := dbp.trapWait(-1)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("FIN trapwait")
 	// Extract return args
 	regs, err = dbp.Registers()
 	if err != nil {
@@ -842,14 +841,17 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	}
 	retParams := params[len(args):]
 	var retVars []*Variable
+	// DONOTCOMMIT: probably reverse this
 	for i := 0; i < len(retParams); i++ {
-		size := size(dbp.dwarf, retParams[i])
-		idx -= size
-		retval, err := dbp.CurrentThread.readMemory(uintptr(regs.SP()+uint64(0x10)), int(size))
+		sz := size(dbp.dwarf, retParams[i])
+		idx -= sz
+		// DONOTCOMMIT: properly set SP offset
+		retval, err := dbp.CurrentThread.readMemory(uintptr(regs.SP()+uint64(0x10)), int(sz))
 		if err != nil {
 			return nil, err
 		}
 		v := constant.MakeFromBytes(retval)
+		fmt.Println("RET VAL----", retval)
 		retVars = append(retVars, &Variable{Value: v})
 	}
 	// Restore stack (using new SP value read from register)
