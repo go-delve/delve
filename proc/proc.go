@@ -388,13 +388,8 @@ func (dbp *Process) Continue() error {
 			return dbp.exitGuard(err)
 		}
 		dbp.SwitchThread(thread.Id)
-		for _, th := range dbp.Threads {
-			if th.CurrentBreakpoint == nil {
-				err := th.SetCurrentBreakpoint()
-				if err != nil {
-					return err
-				}
-			}
+		if err := dbp.setExtraBreakpoints(); err != nil {
+			return err
 		}
 		loc, err := thread.Location()
 		if err != nil {

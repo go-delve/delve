@@ -36,7 +36,7 @@ int
 thread_count(task_t task);
 
 mach_port_t
-mach_port_wait(mach_port_t);
+mach_port_wait(mach_port_t, int);
 
 kern_return_t
 mach_send_reply(mach_msg_header_t);

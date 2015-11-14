@@ -111,7 +111,7 @@ func (dbp *Process) Kill() (err error) {
 		}
 	}
 	for {
-		port := C.mach_port_wait(dbp.os.portSet)
+		port := C.mach_port_wait(dbp.os.portSet, C.int(0))
 		if port == dbp.os.notificationPort {
 			break
 		}
@@ -268,7 +268,7 @@ func (dbp *Process) findExecutable(path string) (*macho.File, error) {
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	for {
-		port := C.mach_port_wait(dbp.os.portSet)
+		port := C.mach_port_wait(dbp.os.portSet, C.int(0))
 
 		switch port {
 		case dbp.os.notificationPort:
@@ -315,6 +315,21 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			continue
 		}
 		return th, nil
+	}
+}
+
+func (dbp *Process) setExtraBreakpoints() error {
+	for {
+		port := C.mach_port_wait(dbp.os.portSet, C.int(1))
+		if port == 0 {
+			return nil
+		}
+		if th, ok := dbp.Threads[int(port)]; ok {
+			err := th.SetCurrentBreakpoint()
+			if err != nil {
+				return err
+			}
+		}
 	}
 }
 

@@ -110,7 +110,7 @@ thread_count(task_t task) {
 }
 
 mach_port_t
-mach_port_wait(mach_port_t port_set) {
+mach_port_wait(mach_port_t port_set, int nonblocking) {
 	kern_return_t kret;
 	thread_act_t thread;
 	NDR_record_t *ndr;
@@ -120,9 +120,13 @@ mach_port_wait(mach_port_t port_set) {
 		mach_msg_header_t hdr;
 		char data[256];
 	} msg;
+	mach_msg_option_t opts = MACH_RCV_MSG|MACH_RCV_INTERRUPT;
+	if (nonblocking) {
+		opts |= MACH_RCV_TIMEOUT;
+	}
 
 	// Wait for mach msg.
-	kret = mach_msg(&msg.hdr, MACH_RCV_MSG|MACH_RCV_INTERRUPT,
+	kret = mach_msg(&msg.hdr, opts,
 			0, sizeof(msg.data), port_set, 0, MACH_PORT_NULL);
 	if (kret == MACH_RCV_INTERRUPTED) return kret;
 	if (kret != MACH_MSG_SUCCESS) return 0;
@@ -142,7 +146,7 @@ mach_port_wait(mach_port_t port_set) {
 			if (data[2] == EXC_SOFT_SIGNAL) {
 				if (data[3] != SIGTRAP) {
 					if (thread_resume(thread) != KERN_SUCCESS) return 0;
-					return mach_port_wait(port_set);
+					return mach_port_wait(port_set, nonblocking);
 				}
 			}
 			return thread;
