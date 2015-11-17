@@ -799,7 +799,7 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Write dummp stack into stack region
+	// Write dummy stack into stack region
 	_, err = dbp.CurrentThread.writeMemory(uintptr(stackBase), stack)
 	if err != nil {
 		return nil, err
@@ -836,26 +836,27 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 		return nil, err
 	}
 	idx := int64(dbp.arch.PtrSize())
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		idx += args[i].DwarfType.Size()
 	}
 	retParams := params[len(args):]
 	var retVars []*Variable
 	// DONOTCOMMIT: probably reverse this
-	for i := 0; i < len(retParams); i++ {
+	for i := range retParams {
 		sz := size(dbp.dwarf, retParams[i])
-		idx -= sz
+		// idx -= sz
 		// DONOTCOMMIT: properly set SP offset
-		retval, err := dbp.CurrentThread.readMemory(uintptr(regs.SP()+uint64(0x10)), int(sz))
+		addr := uintptr(regs.SP())+0x10
+		retval, err := dbp.CurrentThread.readMemory(addr, int(sz))
 		if err != nil {
 			return nil, err
 		}
 		v := constant.MakeFromBytes(retval)
-		fmt.Println("RET VAL----", retval)
 		retVars = append(retVars, &Variable{Value: v})
 	}
 	// Restore stack (using new SP value read from register)
-	_, err = th.writeMemory(uintptr(regs.SP()+uint64(stackSize)), savedStack)
+	addr := uintptr(regs.SP()+uint64(stackSize))
+	_, err = th.writeMemory(addr, savedStack)
 	if err != nil {
 		return nil, err
 	}
