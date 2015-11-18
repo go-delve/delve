@@ -38,7 +38,8 @@ type Process struct {
 	CurrentThread *Thread
 
 	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
-	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
+	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only 
+	// if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	SelectedGoroutine *G
 
 	// Maps package names to package paths, needed to lookup types inside DWARF info
@@ -806,7 +807,8 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	}
 	// Set breakpoint at function end
 	// DONOTCOMMIT: properly set breakpoint for return
-	retpc, _, _ := dbp.goSymTable.LineToPC("/home/derek/code/go/src/github.com/derekparker/delve/_fixtures/testfunctioncall.go", 12)
+	f, l := "/home/derek/code/go/src/github.com/derekparker/delve/_fixtures/testfunctioncall.go", 12
+	retpc, _, _ := dbp.goSymTable.LineToPC(f, l)
 	bp, err := dbp.SetBreakpoint(retpc)
 	if err != nil {
 		return nil, err
