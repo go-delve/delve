@@ -78,7 +78,7 @@ func Launch(cmd []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = dbp.Continue()
+	err = dbp.continueOnce()
 	return dbp, err
 }
 

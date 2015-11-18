@@ -746,6 +746,10 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 		err = fmt.Errorf("Could not determine version number: %v\n", err)
 		return
 	}
+	if vv.Unreadable != nil {
+		err = fmt.Errorf("Unreadable version number: %v\n", vv.Unreadable)
+		return
+	}
 
 	ver, ok := parseVersionString(constant.StringVal(vv.Value))
 	if !ok {

@@ -15,6 +15,12 @@ fork_exec(char *argv0, char **argv, int size,
 	int fd[2];
 	if (pipe(fd) < 0) return -1;
 
+       // Create another pipe so that we know when we're about to exec. This ensures that control only returns
+       // back to Go-land when we call exec, effectively eliminating a race condition between launching the new
+       // process and trying to read its memory.
+       int wfd[2];
+       if (pipe(wfd) < 0) return -1;
+
 	kern_return_t kret;
 	pid_t pid = fork();
 	if (pid > 0) {
@@ -26,6 +32,11 @@ fork_exec(char *argv0, char **argv, int size,
 		char msg = 'c';
 		write(fd[1], &msg, 1);
 		close(fd[1]);
+
+               char w;
+               read(wfd[0], &w, 1);
+               close(wfd[0]);
+
 		return pid;
 	}
 
@@ -52,6 +63,10 @@ fork_exec(char *argv0, char **argv, int size,
 	errno = 0;
 	pret = ptrace(PT_SIGEXC, 0, 0, 0);
 	if (pret != 0 && errno != 0) return -errno;
+
+	char msg = 'd';
+	write(wfd[1], &msg, 1);
+	close(wfd[1]);
 
 	// Create the child process.
 	execve(argv0, argv, environ);
