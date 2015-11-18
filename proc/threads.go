@@ -17,9 +17,10 @@ import (
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type Thread struct {
-	Id                int             // Thread ID or mach port
-	Status            *sys.WaitStatus // Status returned from last wait call
-	CurrentBreakpoint *Breakpoint     // Breakpoint thread is currently stopped at
+	Id                     int             // Thread ID or mach port
+	Status                 *sys.WaitStatus // Status returned from last wait call
+	CurrentBreakpoint      *Breakpoint     // Breakpoint thread is currently stopped at
+	BreakpointConditionMet bool            // Output of evaluating the breakpoint's condition
 
 	dbp            *Process
 	singleStepping bool
@@ -331,4 +332,12 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 		thread.CurrentBreakpoint.TotalHitCount++
 	}
 	return nil
+}
+
+func (th *Thread) onTriggeredBreakpoint() bool {
+	return (th.CurrentBreakpoint != nil) && th.BreakpointConditionMet
+}
+
+func (th *Thread) onTriggeredTempBreakpoint() bool {
+	return th.onTriggeredBreakpoint() && th.CurrentBreakpoint.Temp
 }

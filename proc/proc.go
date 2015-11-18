@@ -244,35 +244,11 @@ func (dbp *Process) Status() *sys.WaitStatus {
 }
 
 // Step over function calls.
-func (dbp *Process) Next() error {
-	return dbp.run(dbp.next)
-}
-
-func (dbp *Process) next() (err error) {
-	defer func() {
-		// Always halt process at end of this function.
-		herr := dbp.Halt()
-		// Make sure we clean up the temp breakpoints.
-		cerr := dbp.clearTempBreakpoints()
-		// If we already had an error, return it.
-		if err != nil {
-			return
+func (dbp *Process) Next() (err error) {
+	for i := range dbp.Breakpoints {
+		if dbp.Breakpoints[i].Temp {
+			return fmt.Errorf("next while nexting")
 		}
-		if herr != nil {
-			err = herr
-			return
-		}
-		if cerr != nil {
-			err = cerr
-		}
-	}()
-
-	// Set breakpoints for any goroutine that is currently
-	// blocked trying to read from a channel. This is so that
-	// if control flow switches to that goroutine, we end up
-	// somewhere useful instead of in runtime code.
-	if _, err = dbp.setChanRecvBreakpoints(); err != nil {
-		return
 	}
 
 	// Get the goroutine for the current thread. We will
@@ -283,6 +259,14 @@ func (dbp *Process) next() (err error) {
 		return err
 	}
 
+	// Set breakpoints for any goroutine that is currently
+	// blocked trying to read from a channel. This is so that
+	// if control flow switches to that goroutine, we end up
+	// somewhere useful instead of in runtime code.
+	if _, err = dbp.setChanRecvBreakpoints(); err != nil {
+		return
+	}
+
 	var goroutineExiting bool
 	if err = dbp.CurrentThread.setNextBreakpoints(); err != nil {
 		switch t := err.(type) {
@@ -290,46 +274,20 @@ func (dbp *Process) next() (err error) {
 		case GoroutineExitingError:
 			goroutineExiting = t.goid == g.Id
 		default:
+			dbp.clearTempBreakpoints()
 			return
 		}
 	}
 
-	for _, th := range dbp.Threads {
-		if err = th.Continue(); err != nil {
-			return
+	if !goroutineExiting {
+		for i := range dbp.Breakpoints {
+			if dbp.Breakpoints[i].Temp {
+				dbp.Breakpoints[i].Cond = g.Id
+			}
 		}
 	}
 
-	for {
-		_, err := dbp.trapWait(-1)
-		if err != nil {
-			return err
-		}
-		for _, th := range dbp.Threads {
-			if !th.Stopped() {
-				continue
-			}
-			tg, err := th.GetG()
-			if err != nil {
-				return err
-			}
-			// Make sure we're on the same goroutine, unless it has exited.
-			if tg.Id == g.Id || goroutineExiting {
-				// Check to see if the goroutine has switched to another
-				// thread, if so make it the current thread.
-				if err := dbp.SwitchThread(th.Id); err != nil {
-					return err
-				}
-				return nil
-			}
-			// This thread was not running our goroutine.
-			// We continue it since our goroutine could
-			// potentially be on this threads queue.
-			if err = th.Continue(); err != nil {
-				return err
-			}
-		}
-	}
+	return dbp.Continue()
 }
 
 func (dbp *Process) setChanRecvBreakpoints() (int, error) {
@@ -362,8 +320,75 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 	return count, nil
 }
 
-// Resume process.
+// Resume process
 func (dbp *Process) Continue() error {
+	for {
+		if err := dbp.continueOnce(); err != nil {
+			return err
+		}
+		// if dbp.CurrentThread.CurrentBreakpoint is nil a manual stop was requested
+		exitAnyway := (dbp.CurrentThread.CurrentBreakpoint == nil)
+		if err := dbp.runBreakpointConditions(); err != nil {
+			return err
+		}
+		if dbp.CurrentThread.onTriggeredBreakpoint() {
+			if dbp.CurrentThread.onTriggeredTempBreakpoint() {
+				if err := dbp.clearTempBreakpoints(); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if exitAnyway {
+			return nil
+		}
+	}
+}
+
+func (dbp *Process) runBreakpointConditions() error {
+	// first thread stopped on a breakpoint with true condition
+	var trigth *Thread
+	// first thread stopped on a temp breakpoint with true condition
+	var tempth *Thread
+
+	for _, th := range dbp.Threads {
+		if th.CurrentBreakpoint == nil {
+			continue
+		}
+
+		th.BreakpointConditionMet = th.CurrentBreakpoint.checkCondition(th)
+
+		if th.onTriggeredBreakpoint() {
+			if th.onTriggeredTempBreakpoint() {
+				if tempth == nil {
+					tempth = th
+				}
+			} else {
+				if trigth == nil {
+					trigth = th
+				}
+			}
+		}
+	}
+
+	// If a temp breakpoint was encountered make its thread the CurrenThread
+	// otherwise ensure that CurrentThread is on a triggered breakpoint if there is one
+	cth := dbp.CurrentThread
+	var err error
+	if tempth != nil {
+		if !cth.onTriggeredTempBreakpoint() {
+			err = dbp.SwitchThread(tempth.Id)
+		}
+	} else if trigth != nil {
+		if !cth.onTriggeredBreakpoint() {
+			err = dbp.SwitchThread(trigth.Id)
+		}
+	}
+	return err
+}
+
+// Resume process, does not evaluate breakpoint conditionals
+func (dbp *Process) continueOnce() error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.Threads {
 		if thread.CurrentBreakpoint != nil {
@@ -644,6 +669,11 @@ func (dbp *Process) clearTempBreakpoints() error {
 		}
 		if _, err := dbp.ClearBreakpoint(bp.Addr); err != nil {
 			return err
+		}
+	}
+	for i := range dbp.Threads {
+		if dbp.Threads[i].CurrentBreakpoint != nil && dbp.Threads[i].CurrentBreakpoint.Temp {
+			dbp.Threads[i].CurrentBreakpoint = nil
 		}
 	}
 	return nil

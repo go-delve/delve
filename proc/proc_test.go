@@ -331,13 +331,15 @@ func TestNextConcurrent(t *testing.T) {
 		{10, 11},
 	}
 	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
-		_, err := setFunctionBreakpoint(p, "main.sayhi")
+		bp, err := setFunctionBreakpoint(p, "main.sayhi")
 		assertNoError(err, t, "SetBreakpoint")
 		assertNoError(p.Continue(), t, "Continue")
 		f, ln := currentLineNumber(p, t)
 		initV, err := evalVariable(p, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
 		assertNoError(err, t, "EvalVariable")
+		_, err = p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint()")
 		for _, tc := range testcases {
 			g, err := p.CurrentThread.GetG()
 			assertNoError(err, t, "GetG()")
@@ -357,6 +359,55 @@ func TestNextConcurrent(t *testing.T) {
 			vval, _ := constant.Int64Val(v.Value)
 			if vval != initVval {
 				t.Fatal("Did not end up on same goroutine")
+			}
+		}
+	})
+}
+
+func TestNextConcurrentVariant2(t *testing.T) {
+	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
+	testcases := []nextTest{
+		{9, 10},
+		{10, 11},
+	}
+	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.sayhi")
+		assertNoError(err, t, "SetBreakpoint")
+		assertNoError(p.Continue(), t, "Continue")
+		f, ln := currentLineNumber(p, t)
+		initV, err := evalVariable(p, "n")
+		initVval, _ := constant.Int64Val(initV.Value)
+		assertNoError(err, t, "EvalVariable")
+		for _, tc := range testcases {
+			g, err := p.CurrentThread.GetG()
+			assertNoError(err, t, "GetG()")
+			if p.SelectedGoroutine.Id != g.Id {
+				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.Id, p.SelectedGoroutine.Id)
+			}
+			if ln != tc.begin {
+				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
+			}
+			assertNoError(p.Next(), t, "Next() returned an error")
+			var vval int64
+			for {
+				v, err := evalVariable(p, "n")
+				assertNoError(err, t, "EvalVariable")
+				vval, _ = constant.Int64Val(v.Value)
+				if p.CurrentThread.CurrentBreakpoint == nil {
+					if vval != initVval {
+						t.Fatal("Did not end up on same goroutine")
+					}
+					break
+				} else {
+					if vval == initVval {
+						t.Fatal("Initial breakpoint triggered twice for the same goroutine")
+					}
+					assertNoError(p.Continue(), t, "Continue 2")
+				}
+			}
+			f, ln = currentLineNumber(p, t)
+			if ln != tc.end {
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
 			}
 		}
 	})

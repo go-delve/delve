@@ -165,6 +165,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	bp.Goroutine = requestedBp.Goroutine
 	bp.Stacktrace = requestedBp.Stacktrace
 	bp.Variables = requestedBp.Variables
+	bp.Cond = -1
 	createdBp = api.ConvertBreakpoint(bp)
 	log.Printf("created breakpoint: %#v", createdBp)
 	return createdBp, nil

@@ -50,7 +50,7 @@ func ConvertThread(th *proc.Thread) *Thread {
 
 	var bp *Breakpoint
 
-	if th.CurrentBreakpoint != nil {
+	if th.CurrentBreakpoint != nil && th.BreakpointConditionMet {
 		bp = ConvertBreakpoint(th.CurrentBreakpoint)
 	}
 

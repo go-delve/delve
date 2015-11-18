@@ -23,6 +23,8 @@ type Breakpoint struct {
 	Variables     []string       // Variables to evaluate
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached
+
+	Cond int // When Cond is greater than zero this breakpoint will trigger only when the current goroutine id is equal to it
 }
 
 func (bp *Breakpoint) String() string {
@@ -76,6 +78,7 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		Line:         l,
 		Addr:         addr,
 		Temp:         temp,
+		Cond:         -1,
 		HitCount:     map[int]uint64{},
 	}
 
@@ -104,6 +107,17 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
 	_, err := thread.writeMemory(uintptr(addr), dbp.arch.BreakpointInstruction())
 	return err
+}
+
+func (bp *Breakpoint) checkCondition(thread *Thread) bool {
+	if bp.Cond < 0 {
+		return true
+	}
+	g, err := thread.GetG()
+	if err != nil {
+		return false
+	}
+	return g.Id == bp.Cond
 }
 
 // Error thrown when trying to clear a breakpoint that does not exist.
