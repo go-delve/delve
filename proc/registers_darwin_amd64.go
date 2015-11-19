@@ -84,22 +84,33 @@ func (r *Regs) TLS() uint64 {
 }
 
 func (r *Regs) SetPC(thread *Thread, pc uint64) error {
-	r.regs.__rpc = C.uint64_t(pc)
-	return r.Set(thread)
-}
-
-func (r *Regs) SetSP(thread *Thread, sp uint64) error {
-	r.regs.__rsp = C.uint64_t(sp)
-	return r.Set(thread)
-}
-
-func (r *Regs) Set(thread *Thread) error {
-	kret := C.set_sp(thread.os.thread_act, r.regs)
+	var state C.x86_thread_state64_t
+	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &state)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not get registers")
+	}
+	state.__rip = C.__uint64_t(pc)
+	kret = C.set_registers(C.mach_port_name_t(thread.os.thread_act), &state)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not set registers")
 	}
 	return nil
 }
+
+func (r *Regs) SetSP(thread *Thread, sp uint64) error {
+	var state C.x86_thread_state64_t
+	kret := C.get_registers(C.mach_port_name_t(thread.os.thread_act), &state)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not get registers")
+	}
+	state.__rsp = C.__uint64_t(sp)
+	kret = C.set_registers(C.mach_port_name_t(thread.os.thread_act), &state)
+	if kret != C.KERN_SUCCESS {
+		return fmt.Errorf("could not set registers")
+	}
+	return nil
+}
+
 
 func registers(thread *Thread) (Registers, error) {
 	var state C.x86_thread_state64_t

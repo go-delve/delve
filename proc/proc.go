@@ -806,12 +806,10 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 		return nil, err
 	}
 	// Set breakpoint at function end
-	// DONOTCOMMIT: properly set breakpoint for return
-	f, l := "/home/derek/code/go/src/github.com/derekparker/delve/_fixtures/testfunctioncall.go", 12
-	retpc, _, _ := dbp.goSymTable.LineToPC(f, l)
-	bp, err := dbp.SetBreakpoint(retpc)
+	// DONOTCOMMIT: use constant here, and document it _only_ if offset is an invarient.
+	bp, err := dbp.SetBreakpoint(fn.End-0x93)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("set breakpoint: %v", err)
 	}
 	defer bp.Clear(dbp.CurrentThread)
 	// Set PC to function entry
@@ -844,11 +842,15 @@ func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
 	retParams := params[len(args):]
 	var retVars []*Variable
 	// DONOTCOMMIT: probably reverse this
+	fde, err := dbp.frameEntries.FDEForPC(regs.PC())
+	if err != nil {
+		 return nil, err
+	}
+	base, _ := fde.ReturnAddressOffset(regs.PC())
 	for i := range retParams {
 		sz := size(dbp.dwarf, retParams[i])
-		// idx -= sz
 		// DONOTCOMMIT: properly set SP offset
-		addr := uintptr(regs.SP())+0x10
+		addr := uintptr(regs.SP()+uint64(base))//+0x10
 		retval, err := dbp.CurrentThread.readMemory(addr, int(sz))
 		if err != nil {
 			return nil, err
@@ -899,12 +901,11 @@ func (dbp *Process) createDummyStack(fn *gosym.Func, args []*Variable, pc uint64
 	idx := int64(len(buf) - dbp.arch.PtrSize())
 	// Write function args to stack
 	for i := 0; i < len(args); i++ {
+		// DONOTCOMMIT: figure out actual size
 		size := int64(8) // int64(unsafe.Sizeof(args[i].Value))
-		fmt.Println("SIZE", size, "COPY ARG", args[i].Value)
 		idx -= size
 		// C.memcpy(unsafe.Pointer(&buf[idx : idx+size][0]), unsafe.Pointer(&args[i].Value), C.size_t(size))
 		binary.LittleEndian.PutUint64(buf[idx:idx+size], 2)
-		fmt.Println("DATA", buf[idx:idx+size])
 	}
 	// Write current PC as return addr in buffer
 	retAddrBuf := buf[stackSize-int64(dbp.arch.PtrSize()):]
