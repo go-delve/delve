@@ -35,8 +35,8 @@ type OSProcessDetails struct {
 
 // Create and begin debugging a new process. First entry in
 // `cmd` is the program to run, and then rest are the arguments
-// to be supplied to that process.
-func Launch(cmd []string) (*Process, error) {
+// to be supplied to that process. `wd` is working directory of the program.
+func Launch(cmd []string, wd string) (*Process, error) {
 	var (
 		proc *exec.Cmd
 		err  error
@@ -48,6 +48,7 @@ func Launch(cmd []string) (*Process, error) {
 		proc.Stdout = os.Stdout
 		proc.Stderr = os.Stderr
 		proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true}
+		proc.Dir = wd
 		err = proc.Start()
 	})
 	if err != nil {
