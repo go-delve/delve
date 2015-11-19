@@ -1181,6 +1181,70 @@ func TestBreakpointCounts(t *testing.T) {
 	})
 }
 
+const doTestBreakpointCountsWithDetection = false
+
+func TestBreakpointCountsWithDetection(t *testing.T) {
+	if !doTestBreakpointCountsWithDetection {
+		return
+	}
+	m := map[int64]int64{}
+	withTestProcess("bpcountstest", t, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 12)
+		assertNoError(err, t, "LineToPC")
+		bp, err := p.SetBreakpoint(addr)
+		assertNoError(err, t, "SetBreakpoint()")
+
+		for {
+			if err := p.Continue(); err != nil {
+				if _, exited := err.(ProcessExitedError); exited {
+					break
+				}
+				assertNoError(err, t, "Continue()")
+			}
+			fmt.Printf("Continue returned %d\n", bp.TotalHitCount)
+			for _, th := range p.Threads {
+				if th.CurrentBreakpoint == nil {
+					continue
+				}
+				scope, err := th.Scope()
+				assertNoError(err, t, "Scope()")
+				v, err := scope.EvalVariable("i")
+				assertNoError(err, t, "evalVariable")
+				i, _ := constant.Int64Val(v.Value)
+				v, err = scope.EvalVariable("id")
+				assertNoError(err, t, "evalVariable")
+				id, _ := constant.Int64Val(v.Value)
+				m[id] = i
+				fmt.Printf("\tgoroutine (%d) %d: %d\n", th.Id, id, i)
+			}
+
+			total := int64(0)
+			for i := range m {
+				total += m[i] + 1
+			}
+
+			if uint64(total) != bp.TotalHitCount {
+				t.Fatalf("Mismatched total count %d %d\n", total, bp.TotalHitCount)
+			}
+		}
+
+		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
+		if bp.TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.TotalHitCount)
+		}
+
+		if len(bp.HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
+		}
+
+		for _, v := range bp.HitCount {
+			if v != 100 {
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
+			}
+		}
+	})
+}
+
 func TestIssue262(t *testing.T) {
 	// Continue does not work when the current breakpoint is set on a NOP instruction
 	withTestProcess("issue262", t, func(p *Process, fixture protest.Fixture) {

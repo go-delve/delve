@@ -38,12 +38,19 @@ func (t *Thread) resume() (err error) {
 }
 
 func (t *Thread) singleStep() (err error) {
-	t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.Id) })
-	if err != nil {
-		return err
+	for {
+		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.Id) })
+		if err != nil {
+			return err
+		}
+		wpid, status, err := t.dbp.wait(t.Id, 0)
+		if err != nil {
+			return err
+		}
+		if wpid == t.Id && status.StopSignal() == sys.SIGTRAP {
+			return nil
+		}
 	}
-	_, _, err = t.dbp.wait(t.Id, 0)
-	return err
 }
 
 func (t *Thread) blocked() bool {
