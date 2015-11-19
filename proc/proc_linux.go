@@ -286,7 +286,9 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 			if err = dbp.Threads[int(wpid)].Continue(); err != nil {
-				return nil, fmt.Errorf("could not continue existing thread %d %s", cloned, err)
+				if err != sys.ESRCH {
+					return nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
+				}
 			}
 			continue
 		}
@@ -400,4 +402,23 @@ func (dbp *Process) exitGuard(err error) error {
 	}
 
 	return err
+}
+
+func (dbp *Process) resume() error {
+	// all threads stopped over a breakpoint are made to step over it
+	for _, thread := range dbp.Threads {
+		if thread.CurrentBreakpoint != nil {
+			if err := thread.Step(); err != nil {
+				return err
+			}
+			thread.CurrentBreakpoint = nil
+		}
+	}
+	// everything is resumed
+	for _, thread := range dbp.Threads {
+		if err := thread.resume(); err != nil && err != sys.ESRCH {
+			return err
+		}
+	}
+	return nil
 }

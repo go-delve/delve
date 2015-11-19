@@ -389,20 +389,8 @@ func (dbp *Process) runBreakpointConditions() error {
 
 // Resume process, does not evaluate breakpoint conditionals
 func (dbp *Process) continueOnce() error {
-	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.Threads {
-		if thread.CurrentBreakpoint != nil {
-			if err := thread.Step(); err != nil {
-				return err
-			}
-			thread.CurrentBreakpoint = nil
-		}
-	}
-	// everything is resumed
-	for _, thread := range dbp.Threads {
-		if err := thread.resume(); err != nil {
-			return dbp.exitGuard(err)
-		}
+	if err := dbp.resume(); err != nil {
+		return err
 	}
 	return dbp.run(func() error {
 		thread, err := dbp.trapWait(-1)
