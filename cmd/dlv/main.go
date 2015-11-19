@@ -30,6 +30,7 @@ var (
 	Addr       string
 	InitFile   string
 	BuildFlags string
+	Wd         string
 )
 
 func main() {
@@ -53,6 +54,7 @@ The goal of this tool is to provide a simple yet powerful interface for debuggin
 	rootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	rootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", "", "Build flags, to be passed to the compiler.")
+	rootCommand.PersistentFlags().StringVar(&Wd, "wd", ".", "Working directory of program.")
 
 	// 'version' subcommand.
 	versionCommand := &cobra.Command{
@@ -97,7 +99,10 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 				}
 				defer os.Remove(fp)
 
-				processArgs := append([]string{"./" + debugname}, args...)
+				// get absolute path to debug binary
+				// FIXME when error returned
+				abs, _ := filepath.Abs(debugname)
+				processArgs := append([]string{abs}, args...)
 				return execute(0, processArgs, conf)
 			}()
 			os.Exit(status)
@@ -318,6 +323,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		Listener:    listener,
 		ProcessArgs: processArgs,
 		AttachPid:   attachPid,
+		Wd:          Wd,
 	}, Log)
 	if err := server.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
