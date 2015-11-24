@@ -326,10 +326,13 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 		if err = thread.SetPC(bp.Addr); err != nil {
 			return err
 		}
-		if g, err := thread.GetG(); err == nil {
-			thread.CurrentBreakpoint.HitCount[g.Id]++
+		thread.BreakpointConditionMet = bp.checkCondition(thread)
+		if thread.onTriggeredBreakpoint() {
+			if g, err := thread.GetG(); err == nil {
+				thread.CurrentBreakpoint.HitCount[g.Id]++
+			}
+			thread.CurrentBreakpoint.TotalHitCount++
 		}
-		thread.CurrentBreakpoint.TotalHitCount++
 	}
 	return nil
 }
@@ -340,4 +343,12 @@ func (th *Thread) onTriggeredBreakpoint() bool {
 
 func (th *Thread) onTriggeredTempBreakpoint() bool {
 	return th.onTriggeredBreakpoint() && th.CurrentBreakpoint.Temp
+}
+
+func (th *Thread) onRuntimeBreakpoint() bool {
+	loc, err := th.Location()
+	if err != nil {
+		return false
+	}
+	return loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint"
 }

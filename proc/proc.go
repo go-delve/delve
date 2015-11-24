@@ -320,105 +320,71 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 	return count, nil
 }
 
-// Resume process
 func (dbp *Process) Continue() error {
 	for {
-		if err := dbp.continueOnce(); err != nil {
+		if err := dbp.resume(); err != nil {
 			return err
 		}
-		// if dbp.CurrentThread.CurrentBreakpoint is nil a manual stop was requested
-		exitAnyway := (dbp.CurrentThread.CurrentBreakpoint == nil)
-		if err := dbp.runBreakpointConditions(); err != nil {
-			return err
-		}
-		if dbp.CurrentThread.onTriggeredBreakpoint() {
-			if dbp.CurrentThread.onTriggeredTempBreakpoint() {
-				if err := dbp.clearTempBreakpoints(); err != nil {
-					return err
-				}
-			}
+
+		var trapthread *Thread
+		var err error
+
+		dbp.run(func() error {
+			trapthread, err = dbp.trapWait(-1)
 			return nil
-		}
-		if exitAnyway {
-			return nil
-		}
-	}
-}
-
-func (dbp *Process) runBreakpointConditions() error {
-	// first thread stopped on a breakpoint with true condition
-	var trigth *Thread
-	// first thread stopped on a temp breakpoint with true condition
-	var tempth *Thread
-
-	for _, th := range dbp.Threads {
-		if th.CurrentBreakpoint == nil {
-			continue
-		}
-
-		th.BreakpointConditionMet = th.CurrentBreakpoint.checkCondition(th)
-
-		if th.onTriggeredBreakpoint() {
-			if th.onTriggeredTempBreakpoint() {
-				if tempth == nil {
-					tempth = th
-				}
-			} else {
-				if trigth == nil {
-					trigth = th
-				}
-			}
-		}
-	}
-
-	// If a temp breakpoint was encountered make its thread the CurrenThread
-	// otherwise ensure that CurrentThread is on a triggered breakpoint if there is one
-	cth := dbp.CurrentThread
-	var err error
-	if tempth != nil {
-		if !cth.onTriggeredTempBreakpoint() {
-			err = dbp.SwitchThread(tempth.Id)
-		}
-	} else if trigth != nil {
-		if !cth.onTriggeredBreakpoint() {
-			err = dbp.SwitchThread(trigth.Id)
-		}
-	}
-	return err
-}
-
-// Resume process, does not evaluate breakpoint conditionals
-func (dbp *Process) continueOnce() error {
-	if err := dbp.resume(); err != nil {
-		return err
-	}
-	return dbp.run(func() error {
-		thread, err := dbp.trapWait(-1)
+		})
 		if err != nil {
 			return err
 		}
 		if err := dbp.Halt(); err != nil {
 			return dbp.exitGuard(err)
 		}
-		dbp.SwitchThread(thread.Id)
-		if err := dbp.setExtraBreakpoints(); err != nil {
+		if err := dbp.setCurrentBreakpoints(trapthread); err != nil {
 			return err
 		}
-		loc, err := thread.Location()
-		if err != nil {
+		if err := dbp.pickCurrentThread(trapthread); err != nil {
 			return err
 		}
-		// Check to see if we hit a runtime.breakpoint
-		if loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint" {
-			// Step twice to get back to user code
-			for i := 0; i < 2; i++ {
-				if err = thread.Step(); err != nil {
-					return err
+		switch {
+		case dbp.CurrentThread.CurrentBreakpoint == nil:
+			// runtime.Breakpoint or manual stop
+			if dbp.CurrentThread.onRuntimeBreakpoint() {
+				for i := 0; i < 2; i++ {
+					if err = dbp.CurrentThread.Step(); err != nil {
+						return err
+					}
 				}
 			}
+			return nil
+		case dbp.CurrentThread.onTriggeredTempBreakpoint():
+			return dbp.clearTempBreakpoints()
+		case dbp.CurrentThread.onTriggeredBreakpoint():
+			return nil
+		default:
+			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
 		}
-		return nil
-	})
+	}
+}
+
+// pick a new dbp.CurrentThread, with the following priority:
+// 	- a thread with onTriggeredTempBreakpoint() == true
+// 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
+// 	- trapthread
+func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
+	for _, th := range dbp.Threads {
+		if th.onTriggeredTempBreakpoint() {
+			return dbp.SwitchThread(th.Id)
+		}
+	}
+	if trapthread.onTriggeredBreakpoint() {
+		return dbp.SwitchThread(trapthread.Id)
+	}
+	for _, th := range dbp.Threads {
+		if th.onTriggeredBreakpoint() {
+			return dbp.SwitchThread(th.Id)
+		}
+	}
+	return dbp.SwitchThread(trapthread.Id)
 }
 
 // Single step, will execute a single instruction.
@@ -665,36 +631,6 @@ func (dbp *Process) clearTempBreakpoints() error {
 		}
 	}
 	return nil
-}
-
-func (dbp *Process) handleBreakpointOnThread(id int) (*Thread, error) {
-	thread, ok := dbp.Threads[id]
-	if !ok {
-		return nil, fmt.Errorf("could not find thread for %d", id)
-	}
-	// Check to see if we have hit a breakpoint.
-	err := thread.SetCurrentBreakpoint()
-	if err != nil {
-		return nil, err
-	}
-	if (thread.CurrentBreakpoint != nil) || (dbp.halt) {
-		return thread, nil
-	}
-
-	pc, err := thread.PC()
-	if err != nil {
-		return nil, err
-	}
-	fn := dbp.goSymTable.PCToFunc(pc)
-	if fn != nil && fn.Name == "runtime.breakpoint" {
-		for i := 0; i < 2; i++ {
-			if err := thread.Step(); err != nil {
-				return nil, err
-			}
-		}
-		return thread, nil
-	}
-	return nil, NoBreakpointError{addr: pc}
 }
 
 func (dbp *Process) run(fn func() error) error {

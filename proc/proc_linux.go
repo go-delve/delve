@@ -303,7 +303,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		}
 		if status.StopSignal() == sys.SIGTRAP {
 			th.running = false
-			return dbp.handleBreakpointOnThread(wpid)
+			return th, nil
 		}
 		if th != nil {
 			// TODO(dp) alert user about unexpected signals here.
@@ -380,7 +380,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	}
 }
 
-func (dbp *Process) setExtraBreakpoints() error {
+func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	for _, th := range dbp.Threads {
 		if th.CurrentBreakpoint == nil {
 			err := th.SetCurrentBreakpoint()

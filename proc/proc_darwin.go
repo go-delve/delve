@@ -78,7 +78,7 @@ func Launch(cmd []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = dbp.continueOnce()
+	err = dbp.Continue()
 	return dbp, err
 }
 
@@ -295,21 +295,17 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
 		dbp.updateThreadList()
-		th, err := dbp.handleBreakpointOnThread(int(port))
-		if err != nil {
-			if _, ok := err.(NoBreakpointError); !ok {
-				return nil, err
-			}
-			thread := dbp.Threads[int(port)]
+		th, ok := dbp.Threads[int(port)]
+		if !ok {
 			if dbp.halt {
 				dbp.halt = false
-				return thread, nil
+				return th, nil
 			}
-			if dbp.firstStart || thread.singleStepping {
+			if dbp.firstStart || th.singleStepping {
 				dbp.firstStart = false
-				return thread, nil
+				return th, nil
 			}
-			if err := thread.Continue(); err != nil {
+			if err := th.Continue(); err != nil {
 				return nil, err
 			}
 			continue
@@ -318,7 +314,8 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 }
 
-func (dbp *Process) setExtraBreakpoints() error {
+func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
+	trapthread.SetCurrentBreakpoint()
 	for {
 		port := C.mach_port_wait(dbp.os.portSet, C.int(1))
 		if port == 0 {
