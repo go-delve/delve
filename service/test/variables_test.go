@@ -533,6 +533,7 @@ func TestEvalExpression(t *testing.T) {
 		{"nil[0]", false, "", "", "", fmt.Errorf("expression \"nil\" (nil) does not support indexing")},
 		{"nil[2:10]", false, "", "", "", fmt.Errorf("can not slice \"nil\" (type nil)")},
 		{"nil.member", false, "", "", "", fmt.Errorf("type nil is not a struct")},
+		{"(map[string]int)(0x4000)", false, "", "", "", fmt.Errorf("can not convert \"0x4000\" to *struct hash<string,int>")},
 
 		// typecasts
 		{"uint(i2)", false, "2", "", "uint", nil},

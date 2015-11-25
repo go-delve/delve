@@ -139,6 +139,9 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 	switch ttyp := typ.(type) {
 	case *dwarf.PtrType:
+		if ptrTypeKind(ttyp) != reflect.Ptr {
+			return nil, converr
+		}
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			// ok
