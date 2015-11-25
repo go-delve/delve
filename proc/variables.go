@@ -119,6 +119,20 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
+func ptrTypeKind(t *dwarf.PtrType) reflect.Kind {
+	structtyp, isstruct := t.Type.(*dwarf.StructType)
+	_, isvoid := t.Type.(*dwarf.VoidType)
+	if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
+		return reflect.Chan
+	} else if isstruct && strings.HasPrefix(structtyp.StructName, "hash<") {
+		return reflect.Map
+	} else if isvoid {
+		return reflect.UnsafePointer
+	} else {
+		return reflect.Ptr
+	}
+}
+
 func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread) *Variable {
 	v := &Variable{
 		Name:      name,
@@ -131,17 +145,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 
 	switch t := v.RealType.(type) {
 	case *dwarf.PtrType:
-		structtyp, isstruct := t.Type.(*dwarf.StructType)
-		_, isvoid := t.Type.(*dwarf.VoidType)
-		if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
-			v.Kind = reflect.Chan
-		} else if isstruct && strings.HasPrefix(structtyp.StructName, "hash<") {
-			v.Kind = reflect.Map
-		} else if isvoid {
-			v.Kind = reflect.UnsafePointer
-		} else {
-			v.Kind = reflect.Ptr
-		}
+		v.Kind = ptrTypeKind(t)
 	case *dwarf.StructType:
 		switch {
 		case t.StructName == "string":
