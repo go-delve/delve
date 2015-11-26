@@ -404,6 +404,9 @@ func TestEvalExpression(t *testing.T) {
 		{"err2", true, "error(*struct main.bstruct) *{a: main.astruct {A: 1, B: 2}}", "", "error", nil},
 		{"errnil", true, "error nil", "", "error", nil},
 		{"iface1", true, "interface {}(*struct main.astruct) *{A: 1, B: 2}", "", "interface {}", nil},
+		{"iface2", true, "interface {}(*struct string) *\"test\"", "", "interface {}", nil},
+		{"iface3", true, "interface {}(map[string]go/constant.Value) []", "", "interface {}", nil},
+		{"iface4", true, "interface {}(*struct []go/constant.Value) *[*4]", "", "interface {}", nil},
 		{"ifacenil", true, "interface {} nil", "", "interface {}", nil},
 		{"err1 == err2", false, "false", "", "", nil},
 		{"err1 == iface1", false, "", "", "", fmt.Errorf("mismatched types \"error\" and \"interface {}\"")},
@@ -412,6 +415,7 @@ func TestEvalExpression(t *testing.T) {
 		{"err1.(*main.astruct)", false, "*struct main.astruct {A: 1, B: 2}", "", "*struct main.astruct", nil},
 		{"err1.(*main.bstruct)", false, "", "", "", fmt.Errorf("interface conversion: error is *struct main.astruct, not *struct main.bstruct")},
 		{"errnil.(*main.astruct)", false, "", "", "", fmt.Errorf("interface conversion: error is nil, not *main.astruct")},
+		{"const1", true, "go/constant.Value(*go/constant.int64Val) *3", "", "go/constant.Value", nil},
 
 		// combined expressions
 		{"c1.pb.a.A", true, "1", "", "int", nil},

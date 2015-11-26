@@ -932,15 +932,6 @@ func equalChildren(xv, yv *Variable, shortcircuit bool) (bool, error) {
 	return r, nil
 }
 
-func (dbp *Process) findType(name string) (dwarf.Type, error) {
-	reader := dbp.DwarfReader()
-	typentry, err := reader.SeekToTypeNamed(name)
-	if err != nil {
-		return nil, err
-	}
-	return dbp.dwarf.Type(typentry.Offset)
-}
-
 func (v *Variable) asInt() (int64, error) {
 	if v.DwarfType == nil {
 		if v.Value.Kind() != constant.Int {

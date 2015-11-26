@@ -5,7 +5,6 @@ import (
 	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
-	"go/ast"
 	"go/constant"
 	"go/parser"
 	"go/token"
@@ -1451,8 +1450,14 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 
 	typ, err := v.thread.dbp.findTypeExpr(t)
 	if err != nil {
-		v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+		v.Unreadable = fmt.Errorf("interface type \"%s\" not found for 0x%x: %v", constant.StringVal(typestring.Value), data.Addr, err)
 		return
+	}
+
+	realtyp := resolveTypedef(typ)
+	if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
+		// interface to non-pointer types are pointers even if the type says otherwise
+		typ = v.thread.dbp.pointerTo(typ)
 	}
 
 	data = newVariable("data", data.Addr, typ, data.thread)
@@ -1462,21 +1467,6 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 		v.Children[0].loadValue()
 	}
 	return
-}
-
-func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
-	if snode, ok := expr.(*ast.StarExpr); ok {
-		// Pointer types only appear in the dwarf informations when
-		// a pointer to the type is used in the target program, here
-		// we create a pointer type on the fly so that the user can
-		// specify a pointer to any variable used in the target program
-		ptyp, err := dbp.findType(exprToString(snode.X))
-		if err != nil {
-			return nil, err
-		}
-		return &dwarf.PtrType{dwarf.CommonType{int64(dbp.arch.PtrSize()), exprToString(expr)}, ptyp}, nil
-	}
-	return dbp.findType(exprToString(expr))
 }
 
 // Fetches all variables of a specific type in the current function scope
