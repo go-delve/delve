@@ -6,13 +6,14 @@ import (
 )
 
 func double(i int) int {
-	fmt.Println("i is:", i)
-	i = i * 2
-	fmt.Println("i is now:", i)
-	return i
+	return i * 2
+}
+
+func mult(a, b int) int {
+	return a * b
 }
 
 func main() {
 	runtime.Breakpoint()
-	fmt.Println(double(4))
+	fmt.Println(double(4), mult(2, 4))
 }
