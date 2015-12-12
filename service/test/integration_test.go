@@ -573,7 +573,11 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "main.(*SomeType).String", false, 1, someTypeStringFuncAddr)
 
 		// Issue #275
-		findLocationHelper(t, c, "io/ioutil.ReadFile", false, 1, 0)
+		readfile := findLocationHelper(t, c, "io/ioutil.ReadFile", false, 1, 0)[0]
+
+		// Issue #296
+		findLocationHelper(t, c, "/io/ioutil.ReadFile", false, 1, readfile)
+		findLocationHelper(t, c, "ioutil.ReadFile", false, 1, readfile)
 
 		stringAddrs := findLocationHelper(t, c, "/^main.*Type.*String$/", false, 2, 0)
 

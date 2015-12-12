@@ -40,6 +40,7 @@ type LineLocationSpec struct {
 
 type FuncLocationSpec struct {
 	PackageName           string
+	AbsolutePackage       bool
 	ReceiverName          string
 	PackageOrReceiverName string
 	BaseName              string
@@ -176,10 +177,15 @@ func parseFuncLocationSpec(in string) *FuncLocationSpec {
 	case 3:
 		spec.BaseName = v[2]
 		spec.ReceiverName = stripReceiverDecoration(v[1])
-		spec.PackageName = stripReceiverDecoration(v[0])
+		spec.PackageName = v[0]
 
 	default:
 		return nil
+	}
+
+	if strings.HasPrefix(spec.PackageName, "/") {
+		spec.PackageName = spec.PackageName[1:]
+		spec.AbsolutePackage = true
 	}
 
 	if strings.Index(spec.BaseName, "/") >= 0 || strings.Index(spec.ReceiverName, "/") >= 0 {
@@ -209,10 +215,18 @@ func (spec *FuncLocationSpec) Match(sym *gosym.Sym) bool {
 	if spec.ReceiverName != "" && spec.ReceiverName != recv {
 		return false
 	}
-	if spec.PackageName != "" && spec.PackageName != sym.PackageName() {
-		return false
+	if spec.PackageName != "" {
+		if spec.AbsolutePackage {
+			if spec.PackageName != sym.PackageName() {
+				return false
+			}
+		} else {
+			if !partialPathMatch(spec.PackageName, sym.PackageName()) {
+				return false
+			}
+		}
 	}
-	if spec.PackageOrReceiverName != "" && spec.PackageOrReceiverName != sym.PackageName() && spec.PackageOrReceiverName != recv {
+	if spec.PackageOrReceiverName != "" && !partialPathMatch(spec.PackageOrReceiverName, sym.PackageName()) && spec.PackageOrReceiverName != recv {
 		return false
 	}
 	return true
@@ -239,10 +253,14 @@ func (loc *AddrLocationSpec) Find(d *Debugger, pc uint64, locStr string) ([]api.
 }
 
 func (loc *NormalLocationSpec) FileMatch(path string) bool {
-	if len(loc.Base) < len(path)-1 {
-		return strings.HasSuffix(path, loc.Base) && (path[len(path)-len(loc.Base)-1] == filepath.Separator)
+	return partialPathMatch(loc.Base, path)
+}
+
+func partialPathMatch(expr, path string) bool {
+	if len(expr) < len(path)-1 {
+		return strings.HasSuffix(path, expr) && (path[len(path)-len(expr)-1] == filepath.Separator)
 	} else {
-		return loc.Base == path
+		return expr == path
 	}
 }
 
