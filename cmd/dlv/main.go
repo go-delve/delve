@@ -24,6 +24,8 @@ import (
 
 const version string = "0.10.0-alpha"
 
+var Build string
+
 var (
 	Log        bool
 	Headless   bool
@@ -59,7 +61,7 @@ The goal of this tool is to provide a simple yet powerful interface for debuggin
 		Use:   "version",
 		Short: "Prints version.",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Delve version: " + version)
+			fmt.Printf("Delve Debugger\nVersion: %s\nBuild: %s\n", version, Build)
 		},
 	}
 	rootCommand.AddCommand(versionCommand)
