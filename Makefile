@@ -2,6 +2,13 @@
 UNAME=$(shell uname)
 PREFIX=github.com/derekparker/delve
 GOVERSION=$(shell go version)
+BUILD_SHA=$(shell git rev-parse HEAD)
+
+ifeq "$(UNAME)" "Darwin"
+    BUILD_FLAGS=-ldflags="-s -X main.Build=$(BUILD_SHA)"
+else
+    BUILD_FLAGS=-ldflags="-X main.Build=$(BUILD_SHA)"
+endif
 
 # Workaround for GO15VENDOREXPERIMENT bug (https://github.com/golang/go/issues/11659)
 ALL_PACKAGES=$(shell go list ./... | grep -v /vendor/)
@@ -13,7 +20,6 @@ ALL_PACKAGES=$(shell go list ./... | grep -v /vendor/)
 # unable to execute.
 # See https://github.com/golang/go/issues/11887#issuecomment-126117692.
 ifeq "$(UNAME)" "Darwin"
-	BUILD_FLAGS=-ldflags="-s"
 	TEST_FLAGS=-exec=$(shell pwd)/scripts/testsign
 	DARWIN="true"
 endif
