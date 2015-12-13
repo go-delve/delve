@@ -52,7 +52,7 @@ else
 endif
 
 test-proc-run:
-	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/proc -run $(RUN)
+	go test $(TEST_FLAGS) $(BUILD_FLAGS) -test.run="$(RUN)" $(PREFIX)/proc
 
 test-integration-run:
-	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/service/test -run $(RUN)
+	go test $(TEST_FLAGS) $(BUILD_FLAGS) -test.run="$(RUN)" $(PREFIX)/service/test
