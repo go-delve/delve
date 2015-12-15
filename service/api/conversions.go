@@ -68,10 +68,16 @@ func ConvertVar(v *proc.Variable) *Variable {
 
 	if v.DwarfType != nil {
 		r.Type = v.DwarfType.String()
+		if r.Type == "*void" {
+			r.Type = "unsafe.Pointer"
+		}
 	}
 
 	if v.RealType != nil {
 		r.RealType = v.RealType.String()
+		if r.RealType == "*void" {
+			r.Type = "unsafe.Pointer"
+		}
 	}
 
 	if v.Unreadable != nil {

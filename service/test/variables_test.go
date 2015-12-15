@@ -344,7 +344,7 @@ func TestComplexSetting(t *testing.T) {
 		h("3.2i", "(0 + 3.2i)")
 		h("1.1", "(1.1 + 0i)")
 		h("1 + 3.3i", "(1 + 3.3i)")
-		h("complex128(1.2, 3.4)", "(1.2 + 3.4i)")
+		h("complex(1.2, 3.4)", "(1.2 + 3.4i)")
 	})
 }
 
@@ -387,6 +387,7 @@ func TestEvalExpression(t *testing.T) {
 
 		// channels
 		{"ch1", true, "chan int 0/2", "", "chan int", nil},
+		{"chnil", true, "chan int nil", "", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
 
 		// maps
@@ -397,6 +398,24 @@ func TestEvalExpression(t *testing.T) {
 		{"m3[as1]", false, "42", "", "int", nil},
 		{"mnil[\"Malone\"]", false, "", "", "", fmt.Errorf("key not found")},
 		{"m1[80:]", false, "", "", "", fmt.Errorf("map index out of bounds")},
+
+		// interfaces
+		{"err1", true, "error(*struct main.astruct) *{A: 1, B: 2}", "", "error", nil},
+		{"err2", true, "error(*struct main.bstruct) *{a: main.astruct {A: 1, B: 2}}", "", "error", nil},
+		{"errnil", true, "error nil", "", "error", nil},
+		{"iface1", true, "interface {}(*struct main.astruct) *{A: 1, B: 2}", "", "interface {}", nil},
+		{"iface2", true, "interface {}(*struct string) *\"test\"", "", "interface {}", nil},
+		{"iface3", true, "interface {}(map[string]go/constant.Value) []", "", "interface {}", nil},
+		{"iface4", true, "interface {}(*struct []go/constant.Value) *[*4]", "", "interface {}", nil},
+		{"ifacenil", true, "interface {} nil", "", "interface {}", nil},
+		{"err1 == err2", false, "false", "", "", nil},
+		{"err1 == iface1", false, "", "", "", fmt.Errorf("mismatched types \"error\" and \"interface {}\"")},
+		{"errnil == nil", false, "false", "", "", nil},
+		{"nil == errnil", false, "false", "", "", nil},
+		{"err1.(*main.astruct)", false, "*struct main.astruct {A: 1, B: 2}", "", "*struct main.astruct", nil},
+		{"err1.(*main.bstruct)", false, "", "", "", fmt.Errorf("interface conversion: error is *struct main.astruct, not *struct main.bstruct")},
+		{"errnil.(*main.astruct)", false, "", "", "", fmt.Errorf("interface conversion: error is nil, not *main.astruct")},
+		{"const1", true, "go/constant.Value(*go/constant.int64Val) *3", "", "go/constant.Value", nil},
 
 		// combined expressions
 		{"c1.pb.a.A", true, "1", "", "int", nil},
@@ -447,6 +466,28 @@ func TestEvalExpression(t *testing.T) {
 		{"c1.pb.a == *(c1.sa[1])", false, "false", "", "", nil},
 		{"c1.pb.a != *(c1.sa[1])", false, "true", "", "", nil},
 
+		// builtins
+		{"cap(parr)", false, "4", "", "", nil},
+		{"len(parr)", false, "4", "", "", nil},
+		{"cap(p1)", false, "", "", "", fmt.Errorf("invalid argument p1 (type *int) for cap")},
+		{"len(p1)", false, "", "", "", fmt.Errorf("invalid argument p1 (type *int) for len")},
+		{"cap(a1)", false, "5", "", "", nil},
+		{"len(a1)", false, "5", "", "", nil},
+		{"cap(s3)", false, "6", "", "", nil},
+		{"len(s3)", false, "0", "", "", nil},
+		{"cap(nilslice)", false, "0", "", "", nil},
+		{"len(nilslice)", false, "0", "", "", nil},
+		{"cap(ch1)", false, "2", "", "", nil},
+		{"len(ch1)", false, "0", "", "", nil},
+		{"cap(chnil)", false, "0", "", "", nil},
+		{"len(chnil)", false, "0", "", "", nil},
+		{"len(m1)", false, "41", "", "", nil},
+		{"len(mnil)", false, "0", "", "", nil},
+		{"imag(cpx1)", false, "2", "", "", nil},
+		{"real(cpx1)", false, "1", "", "", nil},
+		{"imag(3i)", false, "3", "", "", nil},
+		{"real(4)", false, "4", "", "", nil},
+
 		// nil
 		{"nil", false, "nil", "", "", nil},
 		{"nil+1", false, "", "", "", fmt.Errorf("operator + can not be applied to \"nil\"")},
@@ -463,6 +504,7 @@ func TestEvalExpression(t *testing.T) {
 		{"c1.sa[0] == nil", false, "false", "", "", nil},
 		{"c1.sa[0] != nil", false, "true", "", "", nil},
 		{"nilslice == nil", false, "true", "", "", nil},
+		{"nil == nilslice", false, "true", "", "", nil},
 		{"nilslice != nil", false, "false", "", "", nil},
 		{"nilptr == nil", false, "true", "", "", nil},
 		{"nilptr != nil", false, "false", "", "", nil},
@@ -474,10 +516,12 @@ func TestEvalExpression(t *testing.T) {
 		{"m1 == nil", false, "false", "", "", nil},
 		{"mnil == m1", false, "", "", "", fmt.Errorf("can not compare map variables")},
 		{"mnil == nil", false, "true", "", "", nil},
+		{"nil == 2", false, "", "", "", fmt.Errorf("can not compare int to nil")},
+		{"2 == nil", false, "", "", "", fmt.Errorf("can not compare int to nil")},
 
 		// errors
 		{"&3", false, "", "", "", fmt.Errorf("can not take address of \"3\"")},
-		{"*3", false, "", "", "", fmt.Errorf("expression \"3\" can not be dereferenced")},
+		{"*3", false, "", "", "", fmt.Errorf("expression \"3\" (int) can not be dereferenced")},
 		{"&(i2 + i3)", false, "", "", "", fmt.Errorf("can not take address of \"(i2 + i3)\"")},
 		{"i2 + p1", false, "", "", "", fmt.Errorf("mismatched types \"int\" and \"*int\"")},
 		{"i2 + f1", false, "", "", "", fmt.Errorf("mismatched types \"int\" and \"float64\"")},
@@ -486,7 +530,24 @@ func TestEvalExpression(t *testing.T) {
 		{"i2 << i3", false, "", "", "int", fmt.Errorf("shift count type int, must be unsigned integer")},
 		{"*(i2 + i3)", false, "", "", "", fmt.Errorf("expression \"(i2 + i3)\" (int) can not be dereferenced")},
 		{"i2.member", false, "", "", "", fmt.Errorf("i2 (type int) is not a struct")},
-		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("no type entry found")},
+		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("function calls are not supported")},
+		{"*nil", false, "", "", "", fmt.Errorf("nil can not be dereferenced")},
+		{"!nil", false, "", "", "", fmt.Errorf("operator ! can not be applied to \"nil\"")},
+		{"&nil", false, "", "", "", fmt.Errorf("can not take address of \"nil\"")},
+		{"nil[0]", false, "", "", "", fmt.Errorf("expression \"nil\" (nil) does not support indexing")},
+		{"nil[2:10]", false, "", "", "", fmt.Errorf("can not slice \"nil\" (type nil)")},
+		{"nil.member", false, "", "", "", fmt.Errorf("type nil is not a struct")},
+		{"(map[string]int)(0x4000)", false, "", "", "", fmt.Errorf("can not convert \"0x4000\" to *struct hash<string,int>")},
+
+		// typecasts
+		{"uint(i2)", false, "2", "", "uint", nil},
+		{"int8(i2)", false, "2", "", "int8", nil},
+		{"int(f1)", false, "3", "", "int", nil},
+		{"complex128(f1)", false, "(3 + 0i)", "", "complex128", nil},
+		{"uint8(i4)", false, "32", "", "uint8", nil},
+		{"uint8(i5)", false, "253", "", "uint8", nil},
+		{"int8(i5)", false, "-3", "", "int8", nil},
+		{"int8(i6)", false, "12", "", "int8", nil},
 	}
 
 	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
@@ -498,7 +559,7 @@ func TestEvalExpression(t *testing.T) {
 				assertVariable(t, variable, tc)
 			} else {
 				if err == nil {
-					t.Fatalf("Expected error %s, got non (%s)", tc.err.Error(), tc.name)
+					t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
 				}
 				if tc.err.Error() != err.Error() {
 					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())

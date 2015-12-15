@@ -110,6 +110,28 @@ type EvalScope struct {
 	CFA    int64
 }
 
+type IsNilErr struct {
+	name string
+}
+
+func (err *IsNilErr) Error() string {
+	return fmt.Sprintf("%s is nil", err.name)
+}
+
+func ptrTypeKind(t *dwarf.PtrType) reflect.Kind {
+	structtyp, isstruct := t.Type.(*dwarf.StructType)
+	_, isvoid := t.Type.(*dwarf.VoidType)
+	if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
+		return reflect.Chan
+	} else if isstruct && strings.HasPrefix(structtyp.StructName, "hash<") {
+		return reflect.Map
+	} else if isvoid {
+		return reflect.UnsafePointer
+	} else {
+		return reflect.Ptr
+	}
+}
+
 func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread) *Variable {
 	v := &Variable{
 		Name:      name,
@@ -118,28 +140,11 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 		thread:    thread,
 	}
 
-	v.RealType = v.DwarfType
-	for {
-		if tt, ok := v.RealType.(*dwarf.TypedefType); ok {
-			v.RealType = tt.Type
-		} else {
-			break
-		}
-	}
+	v.RealType = resolveTypedef(v.DwarfType)
 
 	switch t := v.RealType.(type) {
 	case *dwarf.PtrType:
-		structtyp, isstruct := t.Type.(*dwarf.StructType)
-		_, isvoid := t.Type.(*dwarf.VoidType)
-		if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
-			v.Kind = reflect.Chan
-		} else if isstruct && strings.HasPrefix(structtyp.StructName, "hash<") {
-			v.Kind = reflect.Map
-		} else if isvoid {
-			v.Kind = reflect.UnsafePointer
-		} else {
-			v.Kind = reflect.Ptr
-		}
+		v.Kind = ptrTypeKind(t)
 	case *dwarf.StructType:
 		switch {
 		case t.StructName == "string":
@@ -149,6 +154,8 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 			if v.Addr != 0 {
 				v.base, v.Len, v.Unreadable = v.thread.readStringInfo(v.Addr)
 			}
+		case t.StructName == "runtime.iface" || t.StructName == "runtime.eface":
+			v.Kind = reflect.Interface
 		case strings.HasPrefix(t.StructName, "[]"):
 			v.Kind = reflect.Slice
 			if v.Addr != 0 {
@@ -201,6 +208,16 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 	return v
 }
 
+func resolveTypedef(typ dwarf.Type) dwarf.Type {
+	for {
+		if tt, ok := typ.(*dwarf.TypedefType); ok {
+			typ = tt.Type
+		} else {
+			return typ
+		}
+	}
+}
+
 func newConstant(val constant.Value, thread *Thread) *Variable {
 	v := &Variable{Value: val, thread: thread, loaded: true}
 	switch val.Kind() {
@@ -231,12 +248,22 @@ func (v *Variable) clone() *Variable {
 	return &r
 }
 
+func (v *Variable) TypeString() string {
+	if v == nilVariable {
+		return "nil"
+	}
+	if v.DwarfType != nil {
+		return v.DwarfType.String()
+	}
+	return v.Kind.String()
+}
+
 func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 	if v.Unreadable != nil {
 		return v.clone(), nil
 	}
 	if v.Addr == 0 {
-		return nil, fmt.Errorf("%s is nil", v.Name)
+		return nil, &IsNilErr{v.Name}
 	}
 
 	name := ""
@@ -640,7 +667,11 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		}
 		return nil, fmt.Errorf("%s has no member %s", v.Name, memberName)
 	default:
-		return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.DwarfType)
+		if v.Name == "" {
+			return nil, fmt.Errorf("type %s is not a struct", structVar.TypeString())
+		} else {
+			return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.TypeString())
+		}
 	}
 }
 
@@ -752,6 +783,9 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 				v.Children[i].loadValueInternal(recurseLevel + 1)
 			}
 		}
+
+	case reflect.Interface:
+		v.loadInterface(recurseLevel, true)
 
 	case reflect.Complex64, reflect.Complex128:
 		v.readComplex(v.RealType.(*dwarf.ComplexType).ByteSize)
@@ -1347,6 +1381,92 @@ func mapEvacuated(b *Variable) bool {
 		return tophash0 > hashTophashEmpty && tophash0 < hashMinTopHash
 	}
 	return true
+}
+
+func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
+	var typestring, data *Variable
+	isnil := false
+
+	for _, f := range v.RealType.(*dwarf.StructType).Field {
+		switch f.Name {
+		case "tab": // for runtime.iface
+			tab, _ := v.toField(f)
+			_type, err := tab.structMember("_type")
+			if err != nil {
+				_, isnil = err.(*IsNilErr)
+				if !isnil {
+					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+					return
+				}
+			} else {
+				typestring, err = _type.structMember("_string")
+				if err != nil {
+					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+					return
+				}
+				typestring = typestring.maybeDereference()
+			}
+		case "_type": // for runtime.eface
+			var err error
+			_type, _ := v.toField(f)
+			typestring, err = _type.structMember("_string")
+			if err != nil {
+				_, isnil = err.(*IsNilErr)
+				if !isnil {
+					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+					return
+				}
+			} else {
+				typestring = typestring.maybeDereference()
+			}
+		case "data":
+			data, _ = v.toField(f)
+		}
+	}
+
+	if isnil {
+		// interface to nil
+		data = data.maybeDereference()
+		v.Children = []Variable{*data}
+		v.Children[0].loadValue()
+		return
+	}
+
+	if typestring == nil || data == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
+		v.Unreadable = fmt.Errorf("invalid interface type")
+		return
+	}
+	typestring.loadValue()
+	if typestring.Unreadable != nil {
+		v.Unreadable = fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
+		return
+	}
+
+	t, err := parser.ParseExpr(constant.StringVal(typestring.Value))
+	if err != nil {
+		v.Unreadable = fmt.Errorf("invalid interface type, unparsable data type: %v", err)
+		return
+	}
+
+	typ, err := v.thread.dbp.findTypeExpr(t)
+	if err != nil {
+		v.Unreadable = fmt.Errorf("interface type \"%s\" not found for 0x%x: %v", constant.StringVal(typestring.Value), data.Addr, err)
+		return
+	}
+
+	realtyp := resolveTypedef(typ)
+	if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
+		// interface to non-pointer types are pointers even if the type says otherwise
+		typ = v.thread.dbp.pointerTo(typ)
+	}
+
+	data = newVariable("data", data.Addr, typ, data.thread)
+
+	v.Children = []Variable{*data}
+	if loadData {
+		v.Children[0].loadValue()
+	}
+	return
 }
 
 // Fetches all variables of a specific type in the current function scope

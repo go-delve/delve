@@ -39,6 +39,9 @@ type Process struct {
 	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	SelectedGoroutine *G
 
+	// Maps package names to package paths, needed to lookup types inside DWARF info
+	packageMap map[string]string
+
 	allGCache               []*G
 	dwarf                   *dwarf.Data
 	goSymTable              *gosym.Table
