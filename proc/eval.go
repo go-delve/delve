@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"debug/dwarf"
+	"encoding/binary"
 	"fmt"
 	"go/ast"
 	"go/constant"
@@ -165,7 +166,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		fnnode = p.X
 	}
 
-	var typ dwarf.Type
+	var styp, typ dwarf.Type
 
 	if snode, ok := fnnode.(*ast.StarExpr); ok {
 		// Pointer types only appear in the dwarf informations when
@@ -177,33 +178,103 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 			return nil, err
 		}
 		typ = &dwarf.PtrType{dwarf.CommonType{int64(scope.Thread.dbp.arch.PtrSize()), exprToString(fnnode)}, ptyp}
+		styp = typ
 	} else {
-		typ, err = scope.findType(exprToString(fnnode))
+		styp, err = scope.findType(exprToString(fnnode))
 		if err != nil {
 			return nil, err
 		}
+		typ = resolveTypedef(styp)
 	}
 
-	// only supports cast of integer constants into pointers
-	ptyp, isptrtyp := typ.(*dwarf.PtrType)
-	if !isptrtyp {
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), typ.String())
+	converr := fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), typ.String())
+
+	v := newVariable("", 0, styp, scope.Thread)
+	v.loaded = true
+
+	switch ttyp := typ.(type) {
+	case *dwarf.PtrType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			// ok
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			// ok
+		default:
+			return nil, converr
+		}
+
+		n, _ := constant.Int64Val(argv.Value)
+
+		v.Children = []Variable{*newVariable("", uintptr(n), ttyp.Type, scope.Thread)}
+		return v, nil
+
+	case *dwarf.UintType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := constant.Int64Val(argv.Value)
+			v.Value = constant.MakeUint64(convertInt(uint64(n), false, ttyp.Size()))
+			return v, nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := constant.Uint64Val(argv.Value)
+			v.Value = constant.MakeUint64(convertInt(n, false, ttyp.Size()))
+			return v, nil
+		case reflect.Float32, reflect.Float64:
+			x, _ := constant.Float64Val(argv.Value)
+			v.Value = constant.MakeUint64(uint64(x))
+			return v, nil
+		}
+	case *dwarf.IntType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := constant.Int64Val(argv.Value)
+			v.Value = constant.MakeInt64(int64(convertInt(uint64(n), true, ttyp.Size())))
+			return v, nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := constant.Uint64Val(argv.Value)
+			v.Value = constant.MakeInt64(int64(convertInt(n, true, ttyp.Size())))
+			return v, nil
+		case reflect.Float32, reflect.Float64:
+			x, _ := constant.Float64Val(argv.Value)
+			v.Value = constant.MakeInt64(int64(x))
+			return v, nil
+		}
+	case *dwarf.FloatType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			fallthrough
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			fallthrough
+		case reflect.Float32, reflect.Float64:
+			v.Value = argv.Value
+			return v, nil
+		}
+	case *dwarf.ComplexType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			fallthrough
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			fallthrough
+		case reflect.Float32, reflect.Float64:
+			v.Value = argv.Value
+			return v, nil
+		}
 	}
 
-	switch argv.Kind {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		// ok
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		// ok
-	default:
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), typ.String())
+	return nil, converr
+}
+
+func convertInt(n uint64, signed bool, size int64) uint64 {
+	buf := make([]byte, 64/8)
+	binary.BigEndian.PutUint64(buf, n)
+	m := 64/8 - int(size)
+	s := byte(0)
+	if signed && (buf[m]&0x80 > 0) {
+		s = 0xff
 	}
-
-	n, _ := constant.Int64Val(argv.Value)
-
-	v := newVariable("", 0, ptyp, scope.Thread)
-	v.Children = []Variable{*newVariable("", uintptr(n), ptyp.Type, scope.Thread)}
-	return v, nil
+	for i := 0; i < m; i++ {
+		buf[i] = s
+	}
+	return uint64(binary.BigEndian.Uint64(buf))
 }
 
 // Evaluates identifier expressions
