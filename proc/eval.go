@@ -5,13 +5,14 @@ import (
 	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
-	"github.com/derekparker/delve/dwarf/reader"
 	"go/ast"
 	"go/constant"
 	"go/parser"
 	"go/printer"
 	"go/token"
 	"reflect"
+
+	"github.com/derekparker/delve/dwarf/reader"
 )
 
 // Returns the value of the given expression
@@ -132,7 +133,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	}
 	typ := resolveTypedef(styp)
 
-	converr := fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), typ.String())
+	converr := fmt.Errorf("can not convert %q to %s", exprToString(node.Args[0]), typ.String())
 
 	v := newVariable("", 0, styp, scope.Thread)
 	v.loaded = true
