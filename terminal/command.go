@@ -803,7 +803,7 @@ func listCommand(t *Term, args string) error {
 }
 
 func (cmds *Commands) sourceCommand(t *Term, args string) error {
-	if len(args) != 1 {
+	if len(args) == 0 {
 		return fmt.Errorf("wrong number of arguments: source <filename>")
 	}
 
