@@ -246,9 +246,8 @@ func (thread *Thread) SetPC(pc uint64) error {
 
 // Returns information on the G (goroutine) that is executing on this thread.
 //
-// The G structure for a thread is stored in thread local memory. Execute instructions
-// that move the *G structure into a CPU register, and then grab
-// the new registers and parse the G structure.
+// The G structure for a thread is stored in thread local storage. Here we simply
+// calculate the address and read and parse the G struct.
 //
 // We cannot simply use the allg linked list in order to find the M that represents
 // the given OS thread and follow its G pointer because on Darwin mach ports are not
