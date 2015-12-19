@@ -1054,3 +1054,12 @@ func TestRecursiveStructure(t *testing.T) {
 		t.Logf("v: %v\n", v)
 	})
 }
+
+func TestIssue316(t *testing.T) {
+	// A pointer loop that includes one interface should not send dlv into an infinite loop
+	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		_, err := evalVariable(p, "iface5")
+		assertNoError(err, t, "EvalVariable()")
+	})
+}

@@ -1464,7 +1464,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 
 	v.Children = []Variable{*data}
 	if loadData {
-		v.Children[0].loadValue()
+		v.Children[0].loadValueInternal(recurseLevel)
 	}
 	return
 }

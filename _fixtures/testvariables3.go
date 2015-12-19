@@ -35,6 +35,10 @@ func (b *bstruct) Error() string {
 	return "not an error"
 }
 
+type dstruct struct {
+	x interface{}
+}
+
 func main() {
 	i1 := 1
 	i2 := 2
@@ -118,6 +122,9 @@ func main() {
 	parr := &arr1
 	cpx1 := complex(1, 2)
 	const1 := constant.MakeInt64(3)
+	recursive1 := dstruct{}
+	recursive1.x = &recursive1
+	var iface5 interface{} = &recursive1
 
 	var amb1 = 1
 	runtime.Breakpoint()
@@ -125,5 +132,5 @@ func main() {
 		fmt.Println(amb1)
 	}
 	runtime.Breakpoint()
-	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5)
 }
