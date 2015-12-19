@@ -448,7 +448,7 @@ func TestEvalExpression(t *testing.T) {
 		// comparison operators
 		{"i2 == i3", false, "false", "", "", nil},
 		{"i2 == 2", false, "true", "", "", nil},
-		{"i2 == 2.0", false, "true", "", "", nil},
+		{"i2 == 2", false, "true", "", "", nil},
 		{"i2 == 3", false, "false", "", "", nil},
 		{"i2 != i3", false, "true", "", "", nil},
 		{"i2 < i3", false, "true", "", "", nil},
