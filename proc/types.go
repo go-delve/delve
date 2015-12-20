@@ -98,8 +98,10 @@ func (dbp *Process) expandPackagesInType(expr ast.Expr) {
 		for i := range e.Params.List {
 			dbp.expandPackagesInType(e.Params.List[i].Type)
 		}
-		for i := range e.Results.List {
-			dbp.expandPackagesInType(e.Results.List[i].Type)
+		if e.Results != nil {
+			for i := range e.Results.List {
+				dbp.expandPackagesInType(e.Results.List[i].Type)
+			}
 		}
 	case *ast.MapType:
 		dbp.expandPackagesInType(e.Key)
