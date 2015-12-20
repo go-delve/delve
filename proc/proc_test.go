@@ -1063,3 +1063,17 @@ func TestIssue316(t *testing.T) {
 		assertNoError(err, t, "EvalVariable()")
 	})
 }
+
+func TestIssue325(t *testing.T) {
+	// nil pointer dereference when evaluating interfaces to function pointers
+	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		iface2fn1v, err := evalVariable(p, "iface2fn1")
+		assertNoError(err, t, "EvalVariable()")
+		t.Logf("iface2fn1: %v\n", iface2fn1v)
+
+		iface2fn2v, err := evalVariable(p, "iface2fn2")
+		assertNoError(err, t, "EvalVariable()")
+		t.Logf("iface2fn2: %v\n", iface2fn2v)
+	})
+}
