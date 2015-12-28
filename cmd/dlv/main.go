@@ -186,6 +186,9 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 				for {
 					select {
 					case state := <-stateChan:
+						if state == nil {
+							return 0
+						}
 						if state.Err != nil {
 							fmt.Fprintln(os.Stderr, state.Err)
 							return 0
