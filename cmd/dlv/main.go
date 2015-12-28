@@ -203,7 +203,8 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 								args = append(args, arg.SinglelineString())
 							}
 						}
-						fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), state.CurrentThread.File, state.CurrentThread.Line)
+						fp := terminal.ShortenFilePath(state.CurrentThread.File)
+						fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), fp, state.CurrentThread.Line)
 					case <-sigChan:
 						server.Stop(traceAttachPid == 0)
 						return 1
