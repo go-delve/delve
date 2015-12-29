@@ -879,7 +879,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 				state.Breakpoint.TotalHitCount)
 		}
 	} else {
-		fmt.Printf("> %s() %s:%d\n", fn.Name, ShortenFilePath(state.CurrentThread.File), state.CurrentThread.Line)
+		fmt.Printf("> %s(%s) %s:%d\n", fn.Name, args, ShortenFilePath(state.CurrentThread.File), state.CurrentThread.Line)
 	}
 
 	if state.BreakpointInfo != nil {
