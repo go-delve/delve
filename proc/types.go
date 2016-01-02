@@ -38,16 +38,10 @@ func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
 }
 
 func complexType(typename string) bool {
-	dot := 0
 	for _, ch := range typename {
 		switch ch {
 		case '*', '[', '<', '{', '(', ' ':
 			return true
-		case '.':
-			dot++
-			if dot > 1 {
-				return true
-			}
 		}
 	}
 	return false
@@ -73,7 +67,7 @@ func (dbp *Process) loadPackageMap() error {
 			continue
 		}
 
-		dot := strings.Index(typename, ".")
+		dot := strings.LastIndex(typename, ".")
 		if dot < 0 {
 			continue
 		}
