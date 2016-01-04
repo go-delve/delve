@@ -548,6 +548,9 @@ func TestEvalExpression(t *testing.T) {
 		{"uint8(i5)", false, "253", "", "uint8", nil},
 		{"int8(i5)", false, "-3", "", "int8", nil},
 		{"int8(i6)", false, "12", "", "int8", nil},
+
+		// misc
+		{"i1", true, "1", "", "int", nil},
 	}
 
 	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
