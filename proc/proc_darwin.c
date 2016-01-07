@@ -127,7 +127,7 @@ mach_port_wait(mach_port_t port_set, int nonblocking) {
 
 	// Wait for mach msg.
 	kret = mach_msg(&msg.hdr, opts,
-			0, sizeof(msg.data), port_set, 0, MACH_PORT_NULL);
+			0, sizeof(msg.data), port_set, 10, MACH_PORT_NULL);
 	if (kret == MACH_RCV_INTERRUPTED) return kret;
 	if (kret != MACH_MSG_SUCCESS) return 0;
 

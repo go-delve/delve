@@ -33,3 +33,6 @@ get_identity(mach_port_name_t, thread_identifier_info_data_t *);
 
 int
 thread_blocked(thread_act_t thread);
+
+int
+num_running_threads(task_t task);

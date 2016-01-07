@@ -1,6 +1,7 @@
 package proc
 
 // #include "proc_darwin.h"
+// #include "threads_darwin.h"
 // #include "exec_darwin.h"
 // #include <stdlib.h>
 import "C"
@@ -314,20 +315,42 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 }
 
-func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	trapthread.SetCurrentBreakpoint()
+func (dbp *Process) waitForStop() ([]int, error) {
+	ports := make([]int, 0, len(dbp.Threads))
+	count := 0
 	for {
 		port := C.mach_port_wait(dbp.os.portSet, C.int(1))
-		if port == 0 {
-			return nil
+		if port != 0 {
+			count = 0
+			ports = append(ports, int(port))
+		} else {
+			n := C.num_running_threads(C.task_t(dbp.os.task))
+			if n == 0 {
+				return ports, nil
+			} else if n < 0 {
+				return nil, fmt.Errorf("error waiting for thread stop %d", n)
+			} else if count > 16 {
+				return nil, fmt.Errorf("could not stop porcess %d", n)
+			}
 		}
-		if th, ok := dbp.Threads[int(port)]; ok {
+	}
+}
+
+func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
+	ports, err := dbp.waitForStop()
+	if err != nil {
+		return err
+	}
+	trapthread.SetCurrentBreakpoint()
+	for _, port := range ports {
+		if th, ok := dbp.Threads[port]; ok {
 			err := th.SetCurrentBreakpoint()
 			if err != nil {
 				return err
 			}
 		}
 	}
+	return nil
 }
 
 func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
