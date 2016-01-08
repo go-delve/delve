@@ -138,20 +138,25 @@ func (dbp *Process) updateThreadList() error {
 	var (
 		err   error
 		kret  C.kern_return_t
-		count = C.thread_count(C.task_t(dbp.os.task))
+		count C.int
+		list  []uint32
 	)
-	if count == -1 {
-		return fmt.Errorf("could not get thread count")
-	}
-	list := make([]uint32, count)
 
-	// TODO(dp) might be better to malloc mem in C and then free it here
-	// instead of getting count above and passing in a slice
-	kret = C.get_threads(C.task_t(dbp.os.task), unsafe.Pointer(&list[0]))
-	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not get thread list")
+	for {
+		count = C.thread_count(C.task_t(dbp.os.task))
+		if count == -1 {
+			return fmt.Errorf("could not get thread count")
+		}
+		list = make([]uint32, count)
+
+		// TODO(dp) might be better to malloc mem in C and then free it here
+		// instead of getting count above and passing in a slice
+		kret = C.get_threads(C.task_t(dbp.os.task), unsafe.Pointer(&list[0]), count)
+		if kret != -2 {
+			break
+		}
 	}
-	if count < 0 {
+	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not get thread list")
 	}
 

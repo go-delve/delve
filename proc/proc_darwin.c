@@ -76,7 +76,7 @@ find_executable(int pid) {
 }
 
 kern_return_t
-get_threads(task_t task, void *slice) {
+get_threads(task_t task, void *slice, int limit) {
 	kern_return_t kret;
 	thread_act_array_t list;
 	mach_msg_type_number_t count;
@@ -84,6 +84,11 @@ get_threads(task_t task, void *slice) {
 	kret = task_threads(task, &list, &count);
 	if (kret != KERN_SUCCESS) {
 		return kret;
+	}
+
+	if (count > limit) {
+		vm_deallocate(mach_task_self(), (vm_address_t) list, count * sizeof(list[0]));
+		return -2;
 	}
 
 	memcpy(slice, (void*)list, count*sizeof(list[0]));
