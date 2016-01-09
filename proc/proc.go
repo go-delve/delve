@@ -36,7 +36,8 @@ type Process struct {
 	CurrentThread *Thread
 
 	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
-	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
+	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only
+	// if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	SelectedGoroutine *G
 
 	// Maps package names to package paths, needed to lookup types inside DWARF info
@@ -777,6 +778,207 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 	out.PC, out.CFA = locs[frame].Current.PC, locs[frame].CFA
 
 	return &out, nil
+}
+
+func (dbp *Process) Call(name string, args []*Variable) ([]*Variable, error) {
+	// Save registers
+	savedRegs, err := dbp.Registers()
+	if err != nil {
+		return nil, err
+	}
+	// Find function location
+	fn := dbp.goSymTable.LookupFunc(name)
+	if fn == nil {
+		return nil, fmt.Errorf("call: no function named %s", name)
+	}
+	stackSize, stack, params, err := dbp.createDummyStack(fn, args, savedRegs.PC())
+	if err != nil {
+		return nil, err
+	}
+	// Copy stack to Delve memory
+	stackPtr := savedRegs.SP()
+	savedStack, err := dbp.CurrentThread.readMemory(uintptr(stackPtr), int(stackSize))
+	if err != nil {
+		return nil, err
+	}
+	// Write dummy stack into stack region
+	_, err = dbp.CurrentThread.writeMemory(uintptr(stackPtr), stack)
+	if err != nil {
+		return nil, err
+	}
+	// Set breakpoint at function end
+	// endPC, _, _ := dbp.goSymTable.LineToPC("/Users/derekparker/code/go/src/github.com/derekparker/delve/_fixtures/testfunctioncall.go", 10)
+	endPC := uint64(fnEndPC(fn, dbp.lineInfo, dbp.goSymTable))
+	fmt.Printf("end pc: %#v\n", endPC)
+	bp, err := dbp.SetBreakpoint(endPC)
+	if err != nil {
+		return nil, fmt.Errorf("set breakpoint: %v", err)
+	}
+	defer bp.Clear(dbp.CurrentThread)
+	// Set PC to function entry
+	regs, err := dbp.Registers()
+	if err != nil {
+		return nil, err
+	}
+	err = regs.SetPC(dbp.CurrentThread, fn.Entry)
+	if err != nil {
+		return nil, err
+	}
+	// Continue thread
+	err = dbp.CurrentThread.Continue()
+	if err != nil {
+		return nil, err
+	}
+	th, err := dbp.trapWait(-1)
+	if err != nil {
+		return nil, err
+	}
+	// Extract return args
+	regs, err = dbp.Registers()
+	if err != nil {
+		return nil, err
+	}
+	retParams := params[len(args):]
+	var retVars []*Variable
+	fde, err := dbp.frameEntries.FDEForPC(endPC)
+	if err != nil {
+		return nil, err
+	}
+	frameOffset, _ := fde.ReturnAddressOffset(endPC)
+	f, l, _ := dbp.goSymTable.PCToLine(endPC)
+	fmt.Println(f, l)
+	fmt.Printf("PC: %#v\n", endPC)
+	s := EvalScope{
+		Thread: dbp.CurrentThread,
+		PC:     endPC,
+		CFA:    int64(regs.SP()) + frameOffset,
+	}
+	for i := range retParams {
+		name := retParams[i].Val(dwarf.AttrName).(string)
+		v, err := s.extractVarInfo(name)
+		if err != nil {
+			return nil, err
+		}
+		v.loadValue()
+		fmt.Printf("SP: %#v ", regs.SP())
+		fmt.Printf("Name: %q, Value: %q, Addr: %#v\n", name, v.Value, v.Addr)
+		if v.Unreadable != nil {
+			return nil, fmt.Errorf("unreadable: %s", v.Unreadable)
+		}
+		// sz := size(dbp.dwarf, retParams[i])
+		// fmt.Println("OFFSET", offset, retoff)
+		// addr := uintptr(regs.SP()) // + uint64(offset) - 0x8) // + 0x10)
+		// fmt.Printf("addr -- %#v\n", addr)
+		// retval, err := dbp.CurrentThread.readMemory(addr, int(sz))
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// offset += sz
+		// fmt.Printf("%#v\n", retval)
+		// v := constant.MakeFromBytes(retval)
+		// retVars = append(retVars, &Variable{Value: v})
+		retVars = append(retVars, v)
+	}
+	// Restore stack (using new SP value read from register)
+	addr := uintptr(regs.SP() + uint64(stackSize))
+	_, err = th.writeMemory(addr, savedStack)
+	if err != nil {
+		return nil, err
+	}
+	// Restore registers (EXCEPT SP)
+	err = savedRegs.SetSP(dbp.CurrentThread, regs.SP())
+	if err != nil {
+		return nil, err
+	}
+	return retVars, nil
+}
+
+func (dbp *Process) createDummyStack(fn *gosym.Func, args []*Variable, pc uint64) (int64, []byte, []*dwarf.Entry, error) {
+	rdr := dbp.DwarfReader()
+	fmt.Println(fn.Name)
+	e, err := rdr.SeekToFunction(fn.Entry)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	if e == nil {
+		return 0, nil, nil, fmt.Errorf("create dummy stack: could not find function: %s", fn.Name)
+	}
+	var params []*dwarf.Entry
+	stackSize := int64(dbp.arch.PtrSize())
+	for {
+		entry, err := rdr.Next()
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		if entry.Tag != dwarf.TagFormalParameter {
+			break
+		}
+		params = append(params, entry)
+		stackSize += size(dbp.dwarf, entry)
+	}
+	buf := make([]byte, stackSize, stackSize)
+	// Write current PC as return addr in buffer
+	retAddrBuf := buf[:dbp.arch.PtrSize()]
+	if dbp.arch.PtrSize() == 8 {
+		binary.LittleEndian.PutUint64(retAddrBuf, pc)
+	} else {
+		binary.LittleEndian.PutUint32(retAddrBuf, uint32(pc))
+	}
+	// Write function args into stack buffer
+	// TODO(dp) verify function arg count
+	// TODO(dp) verify function arg types
+	idx := dbp.arch.PtrSize()
+	// Write function args to stack
+	for i := 0; i < len(args); i++ {
+		b := bytesFromValue(args[i].Value)
+		copy(buf[idx:], b)
+		idx += len(b)
+	}
+	fmt.Println("BUF:", buf)
+	return stackSize, buf, params, nil
+}
+
+func bytesFromValue(v constant.Value) []byte {
+	switch v.Kind() {
+	case constant.Int:
+		buf := make([]byte, 8)
+		i, ok := constant.Int64Val(v)
+		if !ok {
+			return buf
+		}
+		binary.LittleEndian.PutUint64(buf, uint64(i))
+		return buf
+	}
+	return []byte{}
+}
+
+func size(data *dwarf.Data, e *dwarf.Entry) int64 {
+	offset, ok := e.Val(dwarf.AttrType).(dwarf.Offset)
+	if !ok {
+		return 0
+	}
+	t, err := data.Type(offset)
+	if err != nil {
+		return 0
+	}
+	return t.Size()
+}
+
+func fnEndPC(fn *gosym.Func, lines line.DebugLines, symtab *gosym.Table) uintptr {
+	name := fn.Name
+	f, _, _ := symtab.PCToLine(fn.Entry)
+	pcs := lines.AllPCsBetween(fn.Entry, fn.End, f)
+	for i := len(pcs) - 1; i >= 0; i-- {
+		fn := symtab.PCToFunc(pcs[i])
+		if fn == nil {
+			continue
+		}
+		fmt.Println("NAME: ", fn.Name)
+		if fn.Name == name {
+			return uintptr(pcs[i])
+		}
+	}
+	return 0
 }
 
 func (dbp *Process) postExit() {
