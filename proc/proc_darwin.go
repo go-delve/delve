@@ -335,7 +335,7 @@ func (dbp *Process) waitForStop() ([]int, error) {
 			} else if n < 0 {
 				return nil, fmt.Errorf("error waiting for thread stop %d", n)
 			} else if count > 16 {
-				return nil, fmt.Errorf("could not stop porcess %d", n)
+				return nil, fmt.Errorf("could not stop process %d", n)
 			}
 		}
 	}
