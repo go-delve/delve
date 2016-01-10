@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
@@ -247,6 +248,48 @@ func (thread *Thread) SetPC(pc uint64) error {
 	return regs.SetPC(thread, pc)
 }
 
+func (thread *Thread) getGVariable() (*Variable, error) {
+	regs, err := thread.Registers()
+	if err != nil {
+		return nil, err
+	}
+
+	if thread.dbp.arch.GStructOffset() == 0 {
+		// GetG was called through SwitchThread / updateThreadList during initialization
+		// thread.dbp.arch isn't setup yet (it needs a CurrentThread to read global variables from)
+		return nil, fmt.Errorf("g struct offset not initialized")
+	}
+
+	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), thread.dbp.arch.PtrSize())
+	if err != nil {
+		return nil, err
+	}
+	gaddr := uintptr(binary.LittleEndian.Uint64(gaddrbs))
+	
+	// On Windows, the value at TLS()+GStructOffset() is a 
+	// pointer to the G struct.
+	needsDeref := runtime.GOOS == "windows"
+
+	return thread.newGVariable(gaddr, needsDeref)
+}
+
+func (thread *Thread) newGVariable(gaddr uintptr, deref bool) (*Variable, error) {
+	typ, err := thread.dbp.findType("runtime.g")
+	if err != nil {
+		return nil, err
+	}
+
+	name := ""
+
+	if deref {
+		typ = &dwarf.PtrType{dwarf.CommonType{int64(thread.dbp.arch.PtrSize()), ""}, typ}
+	} else {
+		name = "runtime.curg"
+	}
+
+	return thread.newVariable(name, gaddr, typ), nil
+}
+
 // GetG returns information on the G (goroutine) that is executing on this thread.
 //
 // The G structure for a thread is stored in thread local storage. Here we simply
@@ -262,26 +305,12 @@ func (thread *Thread) SetPC(pc uint64) error {
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
 func (thread *Thread) GetG() (g *G, err error) {
-	regs, err := thread.Registers()
+	gaddr, err := thread.getGVariable()
 	if err != nil {
 		return nil, err
 	}
-	if thread.dbp.arch.GStructOffset() == 0 {
-		// GetG was called through SwitchThread / updateThreadList during initialization
-		// thread.dbp.arch isn't setup yet (it needs a CurrentThread to read global variables from)
-		return nil, fmt.Errorf("g struct offset not initialized")
-	}
-	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), thread.dbp.arch.PtrSize())
-	if err != nil {
-		return nil, err
-	}
-	gaddr := binary.LittleEndian.Uint64(gaddrbs)
-	
-	// On Windows, the value at TLS()+GStructOffset() is a 
-	// pointer to the G struct.
-	needsDeref := runtime.GOOS == "windows"
-	
-	g, err = parseG(thread, gaddr, needsDeref)
+
+	g, err = gaddr.parseG()
 	if err == nil {
 		g.thread = thread
 	}

@@ -143,6 +143,10 @@ func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType dwarf.T
 	return newVariable(name, addr, dwarfType, scope.Thread.dbp, scope.Thread)
 }
 
+func (t *Thread) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+	return newVariable(name, addr, dwarfType, t.dbp, t)
+}
+
 func (v *Variable) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, v.dbp, v.mem)
 }
@@ -338,32 +342,40 @@ func (ng NoGError) Error() string {
 	return fmt.Sprintf("no G executing on thread %d", ng.tid)
 }
 
-func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
-	initialInstructions := make([]byte, thread.dbp.arch.PtrSize()+1)
+func (gvar *Variable) parseG() (*G, error) {
+	mem := gvar.mem
+	dbp := gvar.dbp
+	gaddr := uint64(gvar.Addr)
+	_, deref := gvar.RealType.(*dwarf.PtrType)
+
+	initialInstructions := make([]byte, dbp.arch.PtrSize()+1)
 	initialInstructions[0] = op.DW_OP_addr
 	binary.LittleEndian.PutUint64(initialInstructions[1:], gaddr)
 	if deref {
-		gaddrbytes, err := thread.readMemory(uintptr(gaddr), thread.dbp.arch.PtrSize())
+		gaddrbytes, err := mem.readMemory(uintptr(gaddr), dbp.arch.PtrSize())
 		if err != nil {
 			return nil, fmt.Errorf("error derefing *G %s", err)
 		}
 		initialInstructions = append([]byte{op.DW_OP_addr}, gaddrbytes...)
 		gaddr = binary.LittleEndian.Uint64(gaddrbytes)
 		if gaddr == 0 {
-			return nil, NoGError{tid: thread.ID}
+			id := 0
+			if thread, ok := mem.(*Thread); ok {
+				id = thread.ID
+			}
+			return nil, NoGError{tid: id}
 		}
 	}
 
-	rdr := thread.dbp.DwarfReader()
+	rdr := dbp.DwarfReader()
 	rdr.Seek(0)
 	entry, err := rdr.SeekToTypeNamed("runtime.g")
 	if err != nil {
 		return nil, err
 	}
 
-	var mem memoryReadWriter = thread
-	if gtype, err := thread.dbp.dwarf.Type(entry.Offset); err == nil {
-		mem = cacheMemory(thread, uintptr(gaddr), int(gtype.Size()))
+	if gtype, err := dbp.dwarf.Type(entry.Offset); err == nil {
+		mem = cacheMemory(mem, uintptr(gaddr), int(gtype.Size()))
 	}
 
 	// Parse defer
@@ -373,7 +385,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	}
 	var deferPC uint64
 	// Dereference *defer pointer
-	deferAddrBytes, err := mem.readMemory(uintptr(deferAddr), thread.dbp.arch.PtrSize())
+	deferAddrBytes, err := mem.readMemory(uintptr(deferAddr), dbp.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error derefing defer %s", err)
 	}
@@ -412,7 +424,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	pc, err := readUintRaw(mem, uintptr(schedAddr+uint64(thread.dbp.arch.PtrSize())), 8)
+	pc, err := readUintRaw(mem, uintptr(schedAddr+uint64(dbp.arch.PtrSize())), 8)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +448,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	waitreason, _, err := readString(mem, thread.dbp.arch, uintptr(waitReasonAddr))
+	waitreason, _, err := readString(mem, dbp.arch, uintptr(waitReasonAddr))
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +462,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		return nil, err
 	}
 
-	f, l, fn := thread.dbp.goSymTable.PCToLine(pc)
+	f, l, fn := dbp.goSymTable.PCToLine(pc)
 	g := &G{
 		ID:         int(goid),
 		GoPC:       gopc,
@@ -460,7 +472,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		WaitReason: waitreason,
 		DeferPC:    deferPC,
 		Status:     atomicStatus,
-		dbp:        thread.dbp,
+		dbp:        dbp,
 	}
 	return g, nil
 }
