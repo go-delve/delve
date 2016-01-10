@@ -610,6 +610,18 @@ func TestClientServer_FindLocations(t *testing.T) {
 	})
 }
 
+func TestClientServer_FindLocationsAddr(t *testing.T) {
+	withTestClient("locationsprog2", t, func(c service.Client) {
+		<-c.Continue()
+
+		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
+		anonfunc := findLocationHelper(t, c, "locationsprog2.go:25", false, 1, 0)[0]
+
+		findLocationHelper(t, c, "*fn1", false, 1, afunction)
+		findLocationHelper(t, c, "*fn3", false, 1, anonfunc)
+	})
+}
+
 func TestClientServer_EvalVariable(t *testing.T) {
 	withTestClient("testvariables", t, func(c service.Client) {
 		state := <-c.Continue()

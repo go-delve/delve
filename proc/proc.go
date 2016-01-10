@@ -179,26 +179,7 @@ func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOf
 	}
 
 	if firstLine {
-		filename, lineno, _ := dbp.goSymTable.PCToLine(origfn.Entry)
-		if filepath.Ext(filename) != ".go" {
-			return origfn.Entry, nil
-		}
-		for {
-			lineno++
-			pc, fn, _ := dbp.goSymTable.LineToPC(filename, lineno)
-			if fn != nil {
-				if fn.Name != funcName {
-					if strings.Contains(fn.Name, funcName) {
-						continue
-					}
-					break
-				}
-				if fn.Name == funcName {
-					return pc, nil
-				}
-			}
-		}
-		return origfn.Entry, nil
+		return dbp.FunctionEntryToFirstLine(origfn.Entry)
 	} else if lineOffset > 0 {
 		filename, lineno, _ := dbp.goSymTable.PCToLine(origfn.Entry)
 		breakAddr, _, err := dbp.goSymTable.LineToPC(filename, lineno+lineOffset)
@@ -206,6 +187,34 @@ func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOf
 	}
 
 	return origfn.Entry, nil
+}
+
+func (dbp *Process) FunctionEntryToFirstLine(entry uint64) (uint64, error) {
+	filename, lineno, startfn := dbp.goSymTable.PCToLine(entry)
+	if filepath.Ext(filename) != ".go" {
+		return entry, nil
+	}
+	if startfn == nil {
+		return entry, nil
+	}
+	funcName := startfn.Name
+
+	for {
+		lineno++
+		pc, fn, _ := dbp.goSymTable.LineToPC(filename, lineno)
+		if fn != nil {
+			if fn.Name != funcName {
+				if strings.Contains(fn.Name, funcName) {
+					continue
+				}
+				break
+			}
+			if fn.Name == funcName {
+				return pc, nil
+			}
+		}
+	}
+	return entry, nil
 }
 
 // RequestManualStop sets the `halt` flag and

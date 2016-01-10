@@ -282,7 +282,7 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
-		if arg.base == 0 {
+		if arg.Base == 0 {
 			return newConstant(constant.MakeInt64(0), arg.mem), nil
 		}
 		return newConstant(arg.Children[1].Value, arg.mem), nil
@@ -315,7 +315,7 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
-		if arg.base == 0 {
+		if arg.Base == 0 {
 			return newConstant(constant.MakeInt64(0), arg.mem), nil
 		}
 		return newConstant(arg.Children[0].Value, arg.mem), nil
@@ -507,7 +507,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
-		if xev.base == 0 {
+		if xev.Base == 0 {
 			return nil, fmt.Errorf("can not index \"%s\"", exprToString(node.X))
 		}
 		n, err := idxev.asInt()
@@ -567,7 +567,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
-		if xev.base == 0 {
+		if xev.Base == 0 {
 			return nil, fmt.Errorf("can not slice \"%s\"", exprToString(node.X))
 		}
 		return xev.reslice(low, high)
@@ -917,7 +917,7 @@ func (v *Variable) isNil() bool {
 	case reflect.Interface:
 		return false
 	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
-		return v.base == 0
+		return v.Base == 0
 	}
 	return false
 }
@@ -1039,7 +1039,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	if idx < 0 || int64(idx) >= v.Len {
 		return nil, fmt.Errorf("index out of bounds")
 	}
-	return v.newVariable("", v.base+uintptr(int64(idx)*v.stride), v.fieldType), nil
+	return v.newVariable("", v.Base+uintptr(int64(idx)*v.stride), v.fieldType), nil
 }
 
 func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
@@ -1081,7 +1081,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 
-	base := v.base + uintptr(int64(low)*v.stride)
+	base := v.Base + uintptr(int64(low)*v.stride)
 	len := high - low
 
 	if high-low < 0 {
@@ -1104,7 +1104,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	r := v.newVariable("", 0, typ)
 	r.Cap = len
 	r.Len = len
-	r.base = base
+	r.Base = base
 	r.stride = v.stride
 	r.fieldType = v.fieldType
 
