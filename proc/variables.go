@@ -49,11 +49,11 @@ type Variable struct {
 	Len int64
 	Cap int64
 
-	// base address of arrays, base address of the backing array for slices (0 for nil slices)
-	// base address of the backing byte array for strings
+	// Base address of arrays, Base address of the backing array for slices (0 for nil slices)
+	// Base address of the backing byte array for strings
 	// address of the struct backing chan and map variables
 	// address of the function entry point for function variables (0 for nil function pointers)
-	base      uintptr
+	Base      uintptr
 	stride    int64
 	fieldType dwarf.Type
 
@@ -168,7 +168,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, dbp *Process, 
 			v.stride = 1
 			v.fieldType = &dwarf.UintType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
 			if v.Addr != 0 {
-				v.base, v.Len, v.Unreadable = readStringInfo(v.mem, v.dbp.arch, v.Addr)
+				v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.dbp.arch, v.Addr)
 			}
 		case t.StructName == "runtime.iface" || t.StructName == "runtime.eface":
 			v.Kind = reflect.Interface
@@ -182,7 +182,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, dbp *Process, 
 		}
 	case *dwarf.ArrayType:
 		v.Kind = reflect.Array
-		v.base = v.Addr
+		v.Base = v.Addr
 		v.Len = t.Count
 		v.Cap = -1
 		v.fieldType = t.Type
@@ -254,7 +254,7 @@ func newConstant(val constant.Value, mem memoryReadWriter) *Variable {
 
 var nilVariable = &Variable{
 	Addr:     0,
-	base:     0,
+	Base:     0,
 	Kind:     reflect.Ptr,
 	Children: []Variable{{Addr: 0, OnlyAddr: true}},
 }
@@ -771,7 +771,7 @@ func (v *Variable) loadValue() {
 }
 
 func (v *Variable) loadValueInternal(recurseLevel int) {
-	if v.Unreadable != nil || v.loaded || (v.Addr == 0 && v.base == 0) {
+	if v.Unreadable != nil || v.loaded || (v.Addr == 0 && v.Base == 0) {
 		return
 	}
 
@@ -788,14 +788,14 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		sv.loadValueInternal(recurseLevel)
 		v.Children = sv.Children
 		v.Len = sv.Len
-		v.base = sv.Addr
+		v.Base = sv.Addr
 
 	case reflect.Map:
 		v.loadMap(recurseLevel)
 
 	case reflect.String:
 		var val string
-		val, v.Unreadable = readStringValue(v.mem, v.base, v.Len)
+		val, v.Unreadable = readStringValue(v.mem, v.Base, v.Len)
 		v.Value = constant.MakeString(val)
 
 	case reflect.Slice, reflect.Array:
@@ -943,7 +943,7 @@ func (v *Variable) loadSliceInfo(t *dwarf.StructType) {
 			var base uint64
 			base, err = readUintRaw(v.mem, uintptr(int64(v.Addr)+f.ByteOffset), f.Type.Size())
 			if err == nil {
-				v.base = uintptr(base)
+				v.Base = uintptr(base)
 				// Dereference array type to get value type
 				ptrType, ok := f.Type.(*dwarf.PtrType)
 				if !ok {
@@ -993,13 +993,13 @@ func (v *Variable) loadArrayValues(recurseLevel int) {
 	}
 
 	if v.stride < maxArrayStridePrefetch {
-		v.mem = cacheMemory(v.mem, v.base, int(v.stride*count))
+		v.mem = cacheMemory(v.mem, v.Base, int(v.stride*count))
 	}
 
 	errcount := 0
 
 	for i := int64(0); i < count; i++ {
-		fieldvar := v.newVariable("", uintptr(int64(v.base)+(i*v.stride)), v.fieldType)
+		fieldvar := v.newVariable("", uintptr(int64(v.Base)+(i*v.stride)), v.fieldType)
 		fieldvar.loadValueInternal(recurseLevel + 1)
 
 		if fieldvar.Unreadable != nil {
@@ -1160,7 +1160,7 @@ func (v *Variable) readFunctionPtr() {
 	// dereference pointer to find function pc
 	fnaddr := uintptr(binary.LittleEndian.Uint64(val))
 	if fnaddr == 0 {
-		v.base = 0
+		v.Base = 0
 		v.Value = constant.MakeString("")
 		return
 	}
@@ -1171,10 +1171,10 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	v.base = uintptr(binary.LittleEndian.Uint64(val))
-	fn := v.dbp.goSymTable.PCToFunc(uint64(v.base))
+	v.Base = uintptr(binary.LittleEndian.Uint64(val))
+	fn := v.dbp.goSymTable.PCToFunc(uint64(v.Base))
 	if fn == nil {
-		v.Unreadable = fmt.Errorf("could not find function for %#v", v.base)
+		v.Unreadable = fmt.Errorf("could not find function for %#v", v.Base)
 		return
 	}
 
@@ -1238,7 +1238,7 @@ type mapIterator struct {
 // Code derived from go/src/runtime/hashmap.go
 func (v *Variable) mapIterator() *mapIterator {
 	sv := v.maybeDereference()
-	v.base = sv.Addr
+	v.Base = sv.Addr
 
 	maptype, ok := sv.RealType.(*dwarf.StructType)
 	if !ok {
@@ -1253,7 +1253,7 @@ func (v *Variable) mapIterator() *mapIterator {
 		return it
 	}
 
-	v.mem = cacheMemory(v.mem, v.base, int(v.RealType.Size()))
+	v.mem = cacheMemory(v.mem, v.Base, int(v.RealType.Size()))
 
 	for _, f := range maptype.Field {
 		var err error
