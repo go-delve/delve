@@ -54,7 +54,9 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	case *ast.SelectorExpr: // <expression>.<identifier>
 		// try to interpret the selector as a package variable
 		if maybePkg, ok := node.X.(*ast.Ident); ok {
-			if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
+			if maybePkg.Name == "runtime" && node.Sel.Name == "curg" {
+				return scope.Thread.getGVariable()
+			} else if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
 				return v, nil
 			}
 		}

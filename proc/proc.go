@@ -500,7 +500,11 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())), true)
+		gvar, err := dbp.CurrentThread.newGVariable(uintptr(allgptr+(i*uint64(dbp.arch.PtrSize()))), true)
+		if err != nil {
+			return nil, err
+		}
+		g, err := gvar.parseG()
 		if err != nil {
 			return nil, err
 		}
