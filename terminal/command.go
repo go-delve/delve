@@ -43,13 +43,14 @@ func (c command) match(cmdstr string) bool {
 	return false
 }
 
+// Commands represents the commands for Delve terminal process.
 type Commands struct {
 	cmds    []command
 	lastCmd cmdfunc
 	client  service.Client
 }
 
-// Returns a Commands struct with default commands defined.
+// DebugCommands returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
 	c := &Commands{client: client}
 
@@ -127,12 +128,6 @@ func (c *Commands) Merge(allAliases map[string][]string) {
 		if aliases, ok := allAliases[c.cmds[i].aliases[0]]; ok {
 			c.cmds[i].aliases = append(c.cmds[i].aliases, aliases...)
 		}
-	}
-}
-
-func CommandFunc(fn func() error) cmdfunc {
-	return func(t *Term, args string) error {
-		return fn()
 	}
 }
 
@@ -241,7 +236,7 @@ func goroutines(t *Term, argstr string) error {
 		case "-g":
 			fgl = fglGo
 		default:
-			fmt.Errorf("wrong argument: '%s'", args[0])
+			return fmt.Errorf("wrong argument: '%s'", args[0])
 		}
 	default:
 		return fmt.Errorf("too many arguments")
@@ -298,7 +293,7 @@ func frame(t *Term, args string) error {
 }
 
 func scopePrefix(t *Term, cmdstr string) error {
-	scope := api.EvalScope{-1, 0}
+	scope := api.EvalScope{GoroutineID: -1, Frame: 0}
 	lastcmd := ""
 	rest := cmdstr
 
@@ -507,7 +502,7 @@ func clearAll(t *Term, args string) error {
 
 	var locPCs map[uint64]struct{}
 	if args != "" {
-		locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args)
+		locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args)
 		if err != nil {
 			return err
 		}
@@ -533,18 +528,19 @@ func clearAll(t *Term, args string) error {
 	return nil
 }
 
-type ById []*api.Breakpoint
+// ByID sorts breakpoints by ID.
+type ByID []*api.Breakpoint
 
-func (a ById) Len() int           { return len(a) }
-func (a ById) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ById) Less(i, j int) bool { return a[i].ID < a[j].ID }
+func (a ByID) Len() int           { return len(a) }
+func (a ByID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
 func breakpoints(t *Term, args string) error {
 	breakPoints, err := t.client.ListBreakpoints()
 	if err != nil {
 		return err
 	}
-	sort.Sort(ById(breakPoints))
+	sort.Sort(ByID(breakPoints))
 	for _, bp := range breakPoints {
 		thing := "Breakpoint"
 		if bp.Tracepoint {
@@ -594,7 +590,7 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args[0])
+	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args[0])
 	if err != nil {
 		return err
 	}
@@ -625,13 +621,13 @@ func tracepoint(t *Term, args string) error {
 
 func g0f0(fn scopedCmdfunc) cmdfunc {
 	return func(t *Term, args string) error {
-		return fn(t, api.EvalScope{-1, 0}, args)
+		return fn(t, api.EvalScope{GoroutineID: -1, Frame: 0}, args)
 	}
 }
 
 func g0f0filter(fn scopedFilteringFunc) filteringFunc {
 	return func(t *Term, filter string) ([]string, error) {
-		return fn(t, api.EvalScope{-1, 0}, filter)
+		return fn(t, api.EvalScope{GoroutineID: -1, Frame: 0}, filter)
 	}
 }
 
@@ -791,7 +787,7 @@ func listCommand(t *Term, args string) error {
 		return nil
 	}
 
-	locs, err := t.client.FindLocation(api.EvalScope{-1, 0}, args)
+	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args)
 	if err != nil {
 		return err
 	}
@@ -802,12 +798,12 @@ func listCommand(t *Term, args string) error {
 	return nil
 }
 
-func (cmds *Commands) sourceCommand(t *Term, args string) error {
+func (c *Commands) sourceCommand(t *Term, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("wrong number of arguments: source <filename>")
 	}
 
-	return cmds.executeFile(t, args)
+	return c.executeFile(t, args)
 }
 
 func digits(n int) int {
@@ -960,6 +956,8 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 	return nil
 }
 
+// ExitRequestError is returned when the user
+// exits Delve.
 type ExitRequestError struct{}
 
 func (ere ExitRequestError) Error() string {
@@ -970,12 +968,14 @@ func exitCommand(t *Term, args string) error {
 	return ExitRequestError{}
 }
 
+// ShortenFilePath take a full file path and attempts to shorten
+// it by replacing the current directory to './'.
 func ShortenFilePath(fullPath string) string {
 	workingDir, _ := os.Getwd()
 	return strings.Replace(fullPath, workingDir, ".", 1)
 }
 
-func (cmds *Commands) executeFile(t *Term, name string) error {
+func (c *Commands) executeFile(t *Term, name string) error {
 	fh, err := os.Open(name)
 	if err != nil {
 		return err
@@ -993,7 +993,7 @@ func (cmds *Commands) executeFile(t *Term, name string) error {
 		}
 
 		cmdstr, args := parseCommand(line)
-		cmd := cmds.Find(cmdstr)
+		cmd := c.Find(cmdstr)
 		err := cmd(t, args)
 
 		if err != nil {

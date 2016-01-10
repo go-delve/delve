@@ -63,18 +63,24 @@ func New(config *Config) (*Debugger, error) {
 	return d, nil
 }
 
+// ProcessPid returns the PID of the process
+// the debugger is debugging.
 func (d *Debugger) ProcessPid() int {
 	return d.process.Pid
 }
 
+// Detach detaches from the target process.
+// If `kill` is true we will kill the process after
+// detaching.
 func (d *Debugger) Detach(kill bool) error {
 	if d.config.AttachPid != 0 {
 		return d.process.Detach(kill)
-	} else {
-		return d.process.Kill()
 	}
+	return d.process.Kill()
 }
 
+// Restart will restart the target process, first killing
+// and then exec'ing it again.
 func (d *Debugger) Restart() error {
 	if !d.process.Exited() {
 		if d.process.Running() {
@@ -104,6 +110,7 @@ func (d *Debugger) Restart() error {
 	return nil
 }
 
+// State returns the current state of the debugger.
 func (d *Debugger) State() (*api.DebuggerState, error) {
 	if d.process.Exited() {
 		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
@@ -126,7 +133,7 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 	for i := range d.process.Threads {
 		th := api.ConvertThread(d.process.Threads[i])
 		state.Threads = append(state.Threads, th)
-		if i == d.process.CurrentThread.Id {
+		if i == d.process.CurrentThread.ID {
 			state.CurrentThread = th
 		}
 	}
@@ -134,6 +141,7 @@ func (d *Debugger) State() (*api.DebuggerState, error) {
 	return state, nil
 }
 
+// CreateBreakpoint creates a breakpoint.
 func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	var (
 		createdBp *api.Breakpoint
@@ -171,6 +179,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	return createdBp, nil
 }
 
+// ClearBreakpoint clears a breakpoint.
 func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	var clearedBp *api.Breakpoint
 	bp, err := d.process.ClearBreakpoint(requestedBp.Addr)
@@ -182,6 +191,7 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 	return clearedBp, err
 }
 
+// Breakpoints returns the list of current breakpoints.
 func (d *Debugger) Breakpoints() []*api.Breakpoint {
 	bps := []*api.Breakpoint{}
 	for _, bp := range d.process.Breakpoints {
@@ -193,6 +203,7 @@ func (d *Debugger) Breakpoints() []*api.Breakpoint {
 	return bps
 }
 
+// FindBreakpoint returns the breakpoint specified by 'id'.
 func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 	for _, bp := range d.Breakpoints() {
 		if bp.ID == id {
@@ -202,6 +213,7 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 	return nil
 }
 
+// Threads returns the threads of the target process.
 func (d *Debugger) Threads() []*api.Thread {
 	threads := []*api.Thread{}
 	for _, th := range d.process.Threads {
@@ -210,6 +222,7 @@ func (d *Debugger) Threads() []*api.Thread {
 	return threads
 }
 
+// FindThread returns the thread for the given 'id'.
 func (d *Debugger) FindThread(id int) *api.Thread {
 	for _, thread := range d.Threads() {
 		if thread.ID == id {
@@ -324,6 +337,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 	return nil
 }
 
+// Sources returns a list of the source files for target binary.
 func (d *Debugger) Sources(filter string) ([]string, error) {
 	regex, err := regexp.Compile(filter)
 	if err != nil {
@@ -339,6 +353,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	return files, nil
 }
 
+// Functions returns a list of functions in the target process.
 func (d *Debugger) Functions(filter string) ([]string, error) {
 	return regexFilterFuncs(filter, d.process.Funcs())
 }
@@ -358,6 +373,8 @@ func regexFilterFuncs(filter string, allFuncs []gosym.Func) ([]string, error) {
 	return funcs, nil
 }
 
+// PackageVariables returns a list of package variables for the thread,
+// optionally regexp filtered using regexp described in 'filter'.
 func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable, error) {
 	regex, err := regexp.Compile(filter)
 	if err != nil {
@@ -385,6 +402,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 	return vars, err
 }
 
+// Registers returns string representation of the CPU registers.
 func (d *Debugger) Registers(threadID int) (string, error) {
 	thread, found := d.process.Threads[threadID]
 	if !found {
@@ -405,6 +423,7 @@ func convertVars(pv []*proc.Variable) []api.Variable {
 	return vars
 }
 
+// LocalVariables returns a list of the local variables.
 func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
 	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
 	if err != nil {
@@ -417,6 +436,7 @@ func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
 	return convertVars(pv), err
 }
 
+// FunctionArguments returns the arguments to the current function.
 func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error) {
 	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
 	if err != nil {
@@ -429,6 +449,8 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error
 	return convertVars(pv), nil
 }
 
+// EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
+// in the scope provided.
 func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api.Variable, error) {
 	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
 	if err != nil {
@@ -441,6 +463,8 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api
 	return api.ConvertVar(v), err
 }
 
+// SetVariableInScope will set the value of the variable represented by
+// 'symbol' to the value given, in the given scope.
 func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string) error {
 	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
 	if err != nil {
@@ -449,6 +473,7 @@ func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string)
 	return s.SetVariable(symbol, value)
 }
 
+// Goroutines will return a list of goroutines in the target process.
 func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	goroutines := []*api.Goroutine{}
 	gs, err := d.process.GoroutinesInfo()
@@ -461,10 +486,13 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	return goroutines, err
 }
 
-func (d *Debugger) Stacktrace(goroutineId, depth int, full bool) ([]api.Stackframe, error) {
+// Stacktrace returns a list of Stackframes for the given goroutine. The
+// length of the returned list will be min(stack_len, depth).
+// If 'full' is true, then local vars, function args, etc will be returned as well.
+func (d *Debugger) Stacktrace(goroutineID, depth int, full bool) ([]api.Stackframe, error) {
 	var rawlocs []proc.Stackframe
 
-	g, err := d.process.FindGoroutine(goroutineId)
+	g, err := d.process.FindGoroutine(goroutineID)
 	if err != nil {
 		return nil, err
 	}
@@ -506,6 +534,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, full bool) ([]ap
 	return locations, nil
 }
 
+// FindLocation will find the location specified by 'locStr'.
 func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Location, error) {
 	loc, err := parseLocationSpec(locStr)
 	if err != nil {

@@ -4,6 +4,7 @@ import "fmt"
 import "bytes"
 import sys "golang.org/x/sys/unix"
 
+// Regs is a wrapper for sys.PtraceRegs.
 type Regs struct {
 	regs *sys.PtraceRegs
 }
@@ -48,25 +49,31 @@ func (r *Regs) String() string {
 	return buf.String()
 }
 
+// PC returns the value of RIP register.
 func (r *Regs) PC() uint64 {
 	return r.regs.PC()
 }
 
+// SP returns the value of RSP register.
 func (r *Regs) SP() uint64 {
 	return r.regs.Rsp
 }
 
+// CX returns the value of RCX register.
 func (r *Regs) CX() uint64 {
 	return r.regs.Rcx
 }
 
+// TLS returns the address of the thread
+// local storage memory segment.
 func (r *Regs) TLS() uint64 {
 	return r.regs.Fs_base
 }
 
+// SetPC sets RIP to the value specified by 'pc'.
 func (r *Regs) SetPC(thread *Thread, pc uint64) (err error) {
 	r.regs.SetPC(pc)
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.Id, r.regs) })
+	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })
 	return
 }
 
@@ -75,7 +82,7 @@ func registers(thread *Thread) (Registers, error) {
 		regs sys.PtraceRegs
 		err  error
 	)
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(thread.Id, &regs) })
+	thread.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(thread.ID, &regs) })
 	if err != nil {
 		return nil, err
 	}

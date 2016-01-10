@@ -16,10 +16,11 @@ import (
 
 const (
 	historyFile             string = ".dbg_history"
-	TerminalBlueEscapeCode  string = "\033[34m"
-	TerminalResetEscapeCode string = "\033[0m"
+	terminalBlueEscapeCode  string = "\033[34m"
+	terminalResetEscapeCode string = "\033[0m"
 )
 
+// Term represents the terminal running dlv.
 type Term struct {
 	client   service.Client
 	prompt   string
@@ -29,6 +30,7 @@ type Term struct {
 	InitFile string
 }
 
+// New returns a new Term.
 func New(client service.Client, conf *config.Config) *Term {
 	return &Term{
 		prompt: "(dlv) ",
@@ -39,7 +41,8 @@ func New(client service.Client, conf *config.Config) *Term {
 	}
 }
 
-func (t *Term) Run() (error, int) {
+// Run begins running dlv in the terminal.
+func (t *Term) Run() (int, error) {
 	defer t.line.Close()
 
 	// Send the debugger a halt command on SIGINT
@@ -49,7 +52,7 @@ func (t *Term) Run() (error, int) {
 		for range ch {
 			_, err := t.client.Halt()
 			if err != nil {
-				fmt.Println(err)
+				fmt.Fprintf(os.Stderr, "%v", err)
 			}
 		}
 	}()
@@ -122,12 +125,13 @@ func (t *Term) Run() (error, int) {
 		}
 	}
 
-	return nil, status
+	return status, nil
 }
 
+// Println prints a line to the terminal.
 func (t *Term) Println(prefix, str string) {
 	if !t.dumb {
-		prefix = fmt.Sprintf("%s%s%s", TerminalBlueEscapeCode, prefix, TerminalResetEscapeCode)
+		prefix = fmt.Sprintf("%s%s%s", terminalBlueEscapeCode, prefix, terminalResetEscapeCode)
 	}
 	fmt.Printf("%s%s\n", prefix, str)
 }
@@ -146,7 +150,7 @@ func (t *Term) promptForInput() (string, error) {
 	return l, nil
 }
 
-func (t *Term) handleExit() (error, int) {
+func (t *Term) handleExit() (int, error) {
 	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Println("Error saving history file:", err)
@@ -162,24 +166,24 @@ func (t *Term) handleExit() (error, int) {
 
 	s, err := t.client.GetState()
 	if err != nil {
-		return err, 1
+		return 1, err
 	}
 	if !s.Exited {
 		kill := true
 		if t.client.AttachedToExistingProcess() {
 			answer, err := t.line.Prompt("Would you like to kill the process? [Y/n] ")
 			if err != nil {
-				return io.EOF, 2
+				return 2, io.EOF
 			}
 			answer = strings.ToLower(strings.TrimSpace(answer))
 			kill = (answer != "n" && answer != "no")
 		}
 		err = t.client.Detach(kill)
 		if err != nil {
-			return err, 1
+			return 1, err
 		}
 	}
-	return nil, 0
+	return 0, nil
 }
 
 func parseCommand(cmdstr string) (string, string) {

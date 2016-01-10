@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+// NoReturnAddr is returned when return address
+// could not be found during stack tracae.
 type NoReturnAddr struct {
 	fn string
 }
@@ -13,6 +15,7 @@ func (nra NoReturnAddr) Error() string {
 	return fmt.Sprintf("could not find return address for %s", nra.fn)
 }
 
+// Stackframe represents a frame in a system stack.
 type Stackframe struct {
 	// Address the function above this one on the call stack will return to.
 	Current Location
@@ -22,14 +25,15 @@ type Stackframe struct {
 	Ret  uint64
 }
 
+// Scope returns a new EvalScope using this frame.
 func (frame *Stackframe) Scope(thread *Thread) *EvalScope {
 	return &EvalScope{Thread: thread, PC: frame.Current.PC, CFA: frame.CFA}
 }
 
-// Takes an offset from RSP and returns the address of the
-// instruction the current function is going to return to.
-func (thread *Thread) ReturnAddress() (uint64, error) {
-	locations, err := thread.Stacktrace(2)
+// ReturnAddress returns the return address of the function
+// this thread is executing.
+func (t *Thread) ReturnAddress() (uint64, error) {
+	locations, err := t.Stacktrace(2)
 	if err != nil {
 		return 0, err
 	}
@@ -39,17 +43,17 @@ func (thread *Thread) ReturnAddress() (uint64, error) {
 	return locations[1].Current.PC, nil
 }
 
-// Returns the stack trace for thread.
+// Stacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func (thread *Thread) Stacktrace(depth int) ([]Stackframe, error) {
-	regs, err := thread.Registers()
+func (t *Thread) Stacktrace(depth int) ([]Stackframe, error) {
+	regs, err := t.Registers()
 	if err != nil {
 		return nil, err
 	}
-	return thread.dbp.stacktrace(regs.PC(), regs.SP(), depth)
+	return t.dbp.stacktrace(regs.PC(), regs.SP(), depth)
 }
 
-// Returns the stack trace for a goroutine.
+// GoroutineStacktrace returns the stack trace for a goroutine.
 // Note the locations in the array are return addresses not call addresses.
 func (dbp *Process) GoroutineStacktrace(g *G, depth int) ([]Stackframe, error) {
 	if g.thread != nil {
@@ -59,17 +63,23 @@ func (dbp *Process) GoroutineStacktrace(g *G, depth int) ([]Stackframe, error) {
 	return locs, err
 }
 
+// GoroutineLocation returns the location of the given
+// goroutine.
 func (dbp *Process) GoroutineLocation(g *G) *Location {
 	f, l, fn := dbp.PCToLine(g.PC)
 	return &Location{PC: g.PC, File: f, Line: l, Fn: fn}
 }
 
+// NullAddrError is an error for a null address.
 type NullAddrError struct{}
 
 func (n NullAddrError) Error() string {
 	return "NULL address"
 }
 
+// StackIterator holds information
+// required to iterate and walk the program
+// stack.
 type StackIterator struct {
 	pc, sp uint64
 	top    bool
@@ -83,6 +93,7 @@ func newStackIterator(dbp *Process, pc, sp uint64) *StackIterator {
 	return &StackIterator{pc: pc, sp: sp, top: true, dbp: dbp, err: nil, atend: false}
 }
 
+// Next points the iterator to the next stack frame.
 func (it *StackIterator) Next() bool {
 	if it.err != nil || it.atend {
 		return false
@@ -112,6 +123,7 @@ func (it *StackIterator) Next() bool {
 	return true
 }
 
+// Frame returns the frame the iterator is pointing at.
 func (it *StackIterator) Frame() Stackframe {
 	if it.err != nil {
 		panic(it.err)
@@ -119,6 +131,7 @@ func (it *StackIterator) Frame() Stackframe {
 	return it.frame
 }
 
+// Err returns the error encountered during stack iteration.
 func (it *StackIterator) Err() error {
 	return it.err
 }

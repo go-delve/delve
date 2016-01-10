@@ -2,7 +2,7 @@ package proc
 
 import "fmt"
 
-// Represents a single breakpoint. Stores information on the break
+// Breakpoint represents a breakpoint. Stores information on the break
 // point including the byte of data that originally was stored at that
 // address.
 type Breakpoint struct {
@@ -40,7 +40,7 @@ func (bp *Breakpoint) Clear(thread *Thread) (*Breakpoint, error) {
 	return bp, nil
 }
 
-// Returned when trying to set a breakpoint at
+// BreakpointExistsError is returned when trying to set a breakpoint at
 // an address that already has a breakpoint set for it.
 type BreakpointExistsError struct {
 	file string
@@ -117,10 +117,11 @@ func (bp *Breakpoint) checkCondition(thread *Thread) bool {
 	if err != nil {
 		return false
 	}
-	return g.Id == bp.Cond
+	return g.ID == bp.Cond
 }
 
-// Error thrown when trying to clear a breakpoint that does not exist.
+// NoBreakpointError is returned when trying to
+// clear a breakpoint that does not exist.
 type NoBreakpointError struct {
 	addr uint64
 }

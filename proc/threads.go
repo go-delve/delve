@@ -12,12 +12,12 @@ import (
 )
 
 // Thread represents a single thread in the traced process
-// Id represents the thread id or port, Process holds a reference to the
+// ID represents the thread id or port, Process holds a reference to the
 // Process struct that contains info on the process as
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type Thread struct {
-	Id                     int             // Thread ID or mach port
+	ID                     int             // Thread ID or mach port
 	Status                 *sys.WaitStatus // Status returned from last wait call
 	CurrentBreakpoint      *Breakpoint     // Breakpoint thread is currently stopped at
 	BreakpointConditionMet bool            // Output of evaluating the breakpoint's condition
@@ -28,7 +28,7 @@ type Thread struct {
 	os             *OSSpecificDetails
 }
 
-// Represents the location of a thread.
+// Location represents the location of a thread.
 // Holds information on the current instruction
 // address, the source file:line, and the function.
 type Location struct {
@@ -97,7 +97,7 @@ func (thread *Thread) Step() (err error) {
 	return nil
 }
 
-// Returns the threads location, including the file:line
+// Location returns the threads location, including the file:line
 // of the corresponding source code, the function we're in
 // and the current instruction address.
 func (thread *Thread) Location() (*Location, error) {
@@ -109,6 +109,8 @@ func (thread *Thread) Location() (*Location, error) {
 	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
+// ThreadBlockedError is returned when the thread
+// is blocked in the scheduler.
 type ThreadBlockedError struct{}
 
 func (tbe ThreadBlockedError) Error() string {
@@ -145,7 +147,9 @@ func (thread *Thread) setNextBreakpoints() (err error) {
 	return err
 }
 
-// Go routine is exiting.
+// GoroutineExitingError is returned when the
+// goroutine specified by `goid` is in the process
+// of exiting.
 type GoroutineExitingError struct {
 	goid int
 }
@@ -202,7 +206,7 @@ func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file 
 			if err != nil {
 				return err
 			}
-			return GoroutineExitingError{goid: g.Id}
+			return GoroutineExitingError{goid: g.ID}
 		}
 	}
 	pcs = append(pcs, ret)
@@ -236,7 +240,7 @@ func (thread *Thread) setNextTempBreakpoints(curpc uint64, pcs []uint64) error {
 	return nil
 }
 
-// Sets the PC for this thread.
+// SetPC sets the PC for this thread.
 func (thread *Thread) SetPC(pc uint64) error {
 	regs, err := thread.Registers()
 	if err != nil {
@@ -245,7 +249,7 @@ func (thread *Thread) SetPC(pc uint64) error {
 	return regs.SetPC(thread, pc)
 }
 
-// Returns information on the G (goroutine) that is executing on this thread.
+// GetG returns information on the G (goroutine) that is executing on this thread.
 //
 // The G structure for a thread is stored in thread local storage. Here we simply
 // calculate the address and read and parse the G struct.
@@ -284,14 +288,14 @@ func (thread *Thread) GetG() (g *G, err error) {
 	return
 }
 
-// Returns whether the thread is stopped at
+// Stopped returns whether the thread is stopped at
 // the operating system level. Actual implementation
 // is OS dependant, look in OS thread file.
 func (thread *Thread) Stopped() bool {
 	return thread.stopped()
 }
 
-// Stops this thread from executing. Actual
+// Halt stops this thread from executing. Actual
 // implementation is OS dependant. Look in OS
 // thread file.
 func (thread *Thread) Halt() (err error) {
@@ -307,6 +311,7 @@ func (thread *Thread) Halt() (err error) {
 	return
 }
 
+// Scope returns the current EvalScope for this thread.
 func (thread *Thread) Scope() (*EvalScope, error) {
 	locations, err := thread.Stacktrace(0)
 	if err != nil {
@@ -315,6 +320,8 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 	return locations[0].Scope(thread), nil
 }
 
+// SetCurrentBreakpoint sets the current breakpoint that this
+// thread is stopped at as CurrentBreakpoint on the thread struct.
 func (thread *Thread) SetCurrentBreakpoint() error {
 	thread.CurrentBreakpoint = nil
 	pc, err := thread.PC()
@@ -329,7 +336,7 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 		thread.BreakpointConditionMet = bp.checkCondition(thread)
 		if thread.onTriggeredBreakpoint() {
 			if g, err := thread.GetG(); err == nil {
-				thread.CurrentBreakpoint.HitCount[g.Id]++
+				thread.CurrentBreakpoint.HitCount[g.ID]++
 			}
 			thread.CurrentBreakpoint.TotalHitCount++
 		}
@@ -337,16 +344,16 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 	return nil
 }
 
-func (th *Thread) onTriggeredBreakpoint() bool {
-	return (th.CurrentBreakpoint != nil) && th.BreakpointConditionMet
+func (thread *Thread) onTriggeredBreakpoint() bool {
+	return (thread.CurrentBreakpoint != nil) && thread.BreakpointConditionMet
 }
 
-func (th *Thread) onTriggeredTempBreakpoint() bool {
-	return th.onTriggeredBreakpoint() && th.CurrentBreakpoint.Temp
+func (thread *Thread) onTriggeredTempBreakpoint() bool {
+	return thread.onTriggeredBreakpoint() && thread.CurrentBreakpoint.Temp
 }
 
-func (th *Thread) onRuntimeBreakpoint() bool {
-	loc, err := th.Location()
+func (thread *Thread) onRuntimeBreakpoint() bool {
+	loc, err := thread.Location()
 	if err != nil {
 		return false
 	}

@@ -21,7 +21,7 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
-// Darwin specific information.
+// OSProcessDetails holds Darwin specific information.
 type OSProcessDetails struct {
 	task             C.mach_port_name_t // mach task for the debugged process.
 	exceptionPort    C.mach_port_t      // mach port for receiving mach exceptions.
@@ -32,7 +32,7 @@ type OSProcessDetails struct {
 	portSet C.mach_port_t
 }
 
-// Create and begin debugging a new process. Uses a
+// Launch creates and begins debugging a new process. Uses a
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
@@ -98,6 +98,7 @@ func Attach(pid int) (*Process, error) {
 	return initializeDebugProcess(dbp, "", true)
 }
 
+// Kill kills the process.
 func (dbp *Process) Kill() (err error) {
 	if dbp.exited {
 		return nil
@@ -124,7 +125,7 @@ func (dbp *Process) Kill() (err error) {
 func (dbp *Process) requestManualStop() (err error) {
 	var (
 		task          = C.mach_port_t(dbp.os.task)
-		thread        = C.mach_port_t(dbp.CurrentThread.os.thread_act)
+		thread        = C.mach_port_t(dbp.CurrentThread.os.threadAct)
 		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
 	)
 	kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)
@@ -177,14 +178,14 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 		return thread, nil
 	}
 	thread := &Thread{
-		Id:  port,
+		ID:  port,
 		dbp: dbp,
 		os:  new(OSSpecificDetails),
 	}
 	dbp.Threads[port] = thread
-	thread.os.thread_act = C.thread_act_t(port)
+	thread.os.threadAct = C.thread_act_t(port)
 	if dbp.CurrentThread == nil {
-		dbp.SwitchThread(thread.Id)
+		dbp.SwitchThread(thread.ID)
 	}
 	return thread, nil
 }

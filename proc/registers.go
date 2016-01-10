@@ -2,7 +2,7 @@ package proc
 
 import "fmt"
 
-// An interface for a generic register type. The
+// Registers is an interface for a generic register type. The
 // interface encapsulates the generic values / actions
 // we need independant of arch. The concrete register types
 // will be different depending on OS/Arch.
@@ -15,18 +15,18 @@ type Registers interface {
 	String() string
 }
 
-// Obtains register values from the debugged process.
-func (thread *Thread) Registers() (Registers, error) {
-	regs, err := registers(thread)
+// Registers obtains register values from the debugged process.
+func (t *Thread) Registers() (Registers, error) {
+	regs, err := registers(t)
 	if err != nil {
 		return nil, fmt.Errorf("could not get registers: %s", err)
 	}
 	return regs, nil
 }
 
-// Returns the current PC for this thread.
-func (thread *Thread) PC() (uint64, error) {
-	regs, err := thread.Registers()
+// PC returns the current PC for this thread.
+func (t *Thread) PC() (uint64, error) {
+	regs, err := t.Registers()
 	if err != nil {
 		return 0, err
 	}

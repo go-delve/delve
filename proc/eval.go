@@ -15,7 +15,7 @@ import (
 	"github.com/derekparker/delve/dwarf/reader"
 )
 
-// Returns the value of the given expression
+// EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string) (*Variable, error) {
 	t, err := parser.ParseExpr(expr)
 	if err != nil {
@@ -375,7 +375,7 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		sz = 128
 	}
 
-	typ := &dwarf.ComplexType{dwarf.BasicType{dwarf.CommonType{ByteSize: int64(sz / 8), Name: fmt.Sprintf("complex%d", sz)}, sz, 0}}
+	typ := &dwarf.ComplexType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: int64(sz / 8), Name: fmt.Sprintf("complex%d", sz)}, BitSize: sz, BitOffset: 0}}
 
 	r := newVariable("", 0, typ, realev.thread)
 	r.Value = constant.BinaryOp(realev.Value, token.ADD, constant.MakeImag(imagev.Value))
@@ -445,10 +445,9 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 				}
 			}
 			return nil, origErr
-		} else {
-			v = v.maybeDereference()
-			v.Name = node.Name
 		}
+		v = v.maybeDereference()
+		v.Name = node.Name
 	}
 	return v, nil
 }
@@ -605,13 +604,12 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 	if len(xev.Children) == 1 {
 		// this branch is here to support pointers constructed with typecasts from ints
 		return &(xev.Children[0]), nil
-	} else {
-		rv := xev.maybeDereference()
-		if rv.Addr == 0 {
-			return nil, fmt.Errorf("nil pointer dereference")
-		}
-		return rv, nil
 	}
+	rv := xev.maybeDereference()
+	if rv.Addr == 0 {
+		return nil, fmt.Errorf("nil pointer dereference")
+	}
+	return rv, nil
 }
 
 // Evaluates expressions &<subexpr>
@@ -627,7 +625,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 	xev.OnlyAddr = true
 
 	typename := "*" + xev.DwarfType.String()
-	rv := newVariable("", 0, &dwarf.PtrType{dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, xev.DwarfType}, scope.Thread)
+	rv := newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, Type: xev.DwarfType}, scope.Thread)
 	rv.Children = []Variable{*xev}
 	rv.loaded = true
 
@@ -692,9 +690,8 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		r := newVariable("", 0, xv.DwarfType, xv.thread)
 		r.Value = rc
 		return r, nil
-	} else {
-		return newConstant(rc, xv.thread), nil
 	}
+	return newConstant(rc, xv.thread), nil
 }
 
 func negotiateType(op token.Token, xv, yv *Variable) (dwarf.Type, error) {
@@ -827,11 +824,11 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 
 		if typ == nil {
 			return newConstant(rc, xv.thread), nil
-		} else {
-			r := newVariable("", 0, typ, xv.thread)
-			r.Value = rc
-			return r, nil
 		}
+
+		r := newVariable("", 0, typ, xv.thread)
+		r.Value = rc
+		return r, nil
 	}
 }
 

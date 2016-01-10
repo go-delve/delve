@@ -6,48 +6,48 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
-// Not actually used, but necessary
-// to be defined.
+// OSSpecificDetails hold Linux specific
+// process details.
 type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
 func (t *Thread) halt() (err error) {
-	err = sys.Tgkill(t.dbp.Pid, t.Id, sys.SIGSTOP)
+	err = sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGSTOP)
 	if err != nil {
-		err = fmt.Errorf("halt err %s on thread %d", err, t.Id)
+		err = fmt.Errorf("halt err %s on thread %d", err, t.ID)
 		return
 	}
-	_, _, err = t.dbp.wait(t.Id, 0)
+	_, _, err = t.dbp.wait(t.ID, 0)
 	if err != nil {
-		err = fmt.Errorf("wait err %s on thread %d", err, t.Id)
+		err = fmt.Errorf("wait err %s on thread %d", err, t.ID)
 		return
 	}
 	return
 }
 
-func (thread *Thread) stopped() bool {
-	state := status(thread.Id, thread.dbp.os.comm)
-	return state == STATUS_TRACE_STOP
+func (t *Thread) stopped() bool {
+	state := status(t.ID, t.dbp.os.comm)
+	return state == StatusTraceStop
 }
 
 func (t *Thread) resume() (err error) {
 	t.running = true
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.Id, 0) })
+	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, 0) })
 	return
 }
 
 func (t *Thread) singleStep() (err error) {
 	for {
-		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.Id) })
+		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.ID) })
 		if err != nil {
 			return err
 		}
-		wpid, status, err := t.dbp.wait(t.Id, 0)
+		wpid, status, err := t.dbp.wait(t.ID, 0)
 		if err != nil {
 			return err
 		}
-		if wpid == t.Id && status.StopSignal() == sys.SIGTRAP {
+		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
 			return nil
 		}
 	}
@@ -62,33 +62,33 @@ func (t *Thread) blocked() bool {
 	return false
 }
 
-func (thread *Thread) saveRegisters() (Registers, error) {
+func (t *Thread) saveRegisters() (Registers, error) {
 	var err error
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(thread.Id, &thread.os.registers) })
+	t.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(t.ID, &t.os.registers) })
 	if err != nil {
 		return nil, fmt.Errorf("could not save register contents")
 	}
-	return &Regs{&thread.os.registers}, nil
+	return &Regs{&t.os.registers}, nil
 }
 
-func (thread *Thread) restoreRegisters() (err error) {
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.Id, &thread.os.registers) })
+func (t *Thread) restoreRegisters() (err error) {
+	t.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(t.ID, &t.os.registers) })
 	return
 }
 
-func (thread *Thread) writeMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error) {
 	if len(data) == 0 {
 		return
 	}
-	thread.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(thread.Id, addr, data) })
+	t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
 	return
 }
 
-func (thread *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
+func (t *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
 	if size == 0 {
 		return
 	}
 	data = make([]byte, size)
-	thread.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(thread.Id, addr, data) })
+	t.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
 	return
 }

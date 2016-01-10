@@ -21,14 +21,17 @@ const (
 	maxArrayValues     = 64 // Max value for reading large arrays.
 	maxErrCount        = 3  // Max number of read errors to accept while evaluating slices, arrays and structs
 
-	ChanRecv = "chan receive"
-	ChanSend = "chan send"
+	chanRecv = "chan receive"
+	chanSend = "chan send"
 
 	hashTophashEmpty = 0 // used by map reading code, indicates an empty bucket
 	hashMinTopHash   = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated
 )
 
-// Represents a variable.
+// Variable represents a variable. It contains the address, name,
+// type and other information parsed from both the Dwarf information
+// and the memory of the debugged process.
+// If OnlyAddr is true, the variables value has not been loaded.
 type Variable struct {
 	Addr      uintptr
 	OnlyAddr  bool
@@ -60,7 +63,7 @@ type Variable struct {
 	Unreadable error
 }
 
-// Represents a runtime M (OS thread) structure.
+// M represents a runtime M (OS thread) structure.
 type M struct {
 	procid   int     // Thread ID or port.
 	spinning uint8   // Busy looping.
@@ -68,23 +71,23 @@ type M struct {
 	curg     uintptr // Current G running on this thread.
 }
 
+// G status, from: src/runtime/runtime2.go
 const (
-	// G status, from: src/runtime/runtime2.go
-	Gidle            uint64 = iota // 0
-	Grunnable                      // 1 runnable and on a run queue
-	Grunning                       // 2
-	Gsyscall                       // 3
-	Gwaiting                       // 4
-	Gmoribund_unused               // 5 currently unused, but hardcoded in gdb scripts
-	Gdead                          // 6
-	Genqueue                       // 7 Only the Gscanenqueue is used.
-	Gcopystack                     // 8 in this state when newstack is moving the stack
+	Gidle           uint64 = iota // 0
+	Grunnable                     // 1 runnable and on a run queue
+	Grunning                      // 2
+	Gsyscall                      // 3
+	Gwaiting                      // 4
+	GmoribundUnused               // 5 currently unused, but hardcoded in gdb scripts
+	Gdead                         // 6
+	Genqueue                      // 7 Only the Gscanenqueue is used.
+	Gcopystack                    // 8 in this state when newstack is moving the stack
 )
 
-// Represents a runtime G (goroutine) structure (at least the
+// G represents a runtime G (goroutine) structure (at least the
 // fields that Delve is interested in).
 type G struct {
-	Id         int    // Goroutine ID
+	ID         int    // Goroutine ID
 	PC         uint64 // PC of goroutine when it was parked.
 	SP         uint64 // SP of goroutine when it was parked.
 	GoPC       uint64 // PC of 'go' statement that created this goroutine.
@@ -103,13 +106,15 @@ type G struct {
 	dbp *Process
 }
 
-// Scope for variable evaluation
+// EvalScope is the scope for variable evaluation. Contains the thread,
+// current location (PC), and canonical frame address.
 type EvalScope struct {
 	Thread *Thread
 	PC     uint64
 	CFA    int64
 }
 
+// IsNilErr is returned when a variable is nil.
 type IsNilErr struct {
 	name string
 }
@@ -127,9 +132,8 @@ func ptrTypeKind(t *dwarf.PtrType) reflect.Kind {
 		return reflect.Map
 	} else if isvoid {
 		return reflect.UnsafePointer
-	} else {
-		return reflect.Ptr
 	}
+	return reflect.Ptr
 }
 
 func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread) *Variable {
@@ -150,7 +154,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 		case t.StructName == "string":
 			v.Kind = reflect.String
 			v.stride = 1
-			v.fieldType = &dwarf.UintType{dwarf.BasicType{dwarf.CommonType{1, "byte"}, 8, 0}}
+			v.fieldType = &dwarf.UintType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
 			if v.Addr != 0 {
 				v.base, v.Len, v.Unreadable = v.thread.readStringInfo(v.Addr)
 			}
@@ -248,6 +252,8 @@ func (v *Variable) clone() *Variable {
 	return &r
 }
 
+// TypeString returns the string representation
+// of the type of this variable.
 func (v *Variable) TypeString() string {
 	if v == nilVariable {
 		return "nil"
@@ -278,22 +284,26 @@ func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 	return newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.thread), nil
 }
 
+// DwarfReader returns the DwarfReader containing the
+// Dwarf information for the target process.
 func (scope *EvalScope) DwarfReader() *reader.Reader {
 	return scope.Thread.dbp.DwarfReader()
 }
 
+// Type returns the Dwarf type entry at `offset`.
 func (scope *EvalScope) Type(offset dwarf.Offset) (dwarf.Type, error) {
 	return scope.Thread.dbp.dwarf.Type(offset)
 }
 
+// PtrSize returns the size of a pointer.
 func (scope *EvalScope) PtrSize() int {
 	return scope.Thread.dbp.arch.PtrSize()
 }
 
-// Returns whether the goroutine is blocked on
+// ChanRecvBlocked eturns whether the goroutine is blocked on
 // a channel read operation.
 func (g *G) ChanRecvBlocked() bool {
-	return g.WaitReason == ChanRecv
+	return g.WaitReason == chanRecv
 }
 
 // chanRecvReturnAddr returns the address of the return from a channel read.
@@ -328,7 +338,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		initialInstructions = append([]byte{op.DW_OP_addr}, gaddrbytes...)
 		gaddr = binary.LittleEndian.Uint64(gaddrbytes)
 		if gaddr == 0 {
-			return nil, NoGError{tid: thread.Id}
+			return nil, NoGError{tid: thread.ID}
 		}
 	}
 
@@ -425,7 +435,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 
 	f, l, fn := thread.dbp.goSymTable.PCToLine(pc)
 	g := &G{
-		Id:         int(goid),
+		ID:         int(goid),
 		GoPC:       gopc,
 		PC:         pc,
 		SP:         sp,
@@ -446,6 +456,8 @@ func isExportedRuntime(name string) bool {
 	return len(name) > n && name[:n] == "runtime." && 'A' <= name[n] && name[n] <= 'Z'
 }
 
+// UserCurrent returns the location the users code is at,
+// or was at before entering a runtime function.
 func (g *G) UserCurrent() Location {
 	pc, sp := g.PC, g.SP
 	if g.thread != nil {
@@ -466,17 +478,19 @@ func (g *G) UserCurrent() Location {
 	return g.CurrentLoc
 }
 
+// Go returns the location of the 'go' statement
+// that spawned this goroutine.
 func (g *G) Go() Location {
 	f, l, fn := g.dbp.goSymTable.PCToLine(g.GoPC)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
 }
 
-// Returns the value of the given expression (backwards compatibility).
+// EvalVariable returns the value of the given expression (backwards compatibility).
 func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
 	return scope.EvalExpression(name)
 }
 
-// Sets the value of the named variable
+// SetVariable sets the value of the named variable
 func (scope *EvalScope) SetVariable(name, value string) error {
 	t, err := parser.ParseExpr(name)
 	if err != nil {
@@ -566,9 +580,8 @@ func (scope *EvalScope) FunctionArguments() ([]*Variable, error) {
 
 // PackageVariables returns the name, value, and type of all package variables in the application.
 func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
+	var vars []*Variable
 	reader := scope.DwarfReader()
-
-	vars := make([]*Variable, 0)
 
 	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
 		if err != nil {
@@ -586,6 +599,8 @@ func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
 	return vars, nil
 }
 
+// EvalPackageVariable will evaluate the package level variable
+// specified by 'name'.
 func (dbp *Process) EvalPackageVariable(name string) (*Variable, error) {
 	scope := &EvalScope{Thread: dbp.CurrentThread, PC: 0, CFA: 0}
 
@@ -669,9 +684,8 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	default:
 		if v.Name == "" {
 			return nil, fmt.Errorf("type %s is not a struct", structVar.TypeString())
-		} else {
-			return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.TypeString())
 		}
+		return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.TypeString())
 	}
 }
 
@@ -1480,8 +1494,7 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
 		return nil, err
 	}
 
-	vars := make([]*Variable, 0)
-
+	var vars []*Variable
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
 			return nil, err

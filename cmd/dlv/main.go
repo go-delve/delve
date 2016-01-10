@@ -24,13 +24,19 @@ import (
 
 const version string = "0.10.0-alpha"
 
+// Build is the current git hash.
 var Build string
 
 var (
-	Log        bool
-	Headless   bool
-	Addr       string
-	InitFile   string
+	// Log is whether to log debug statements.
+	Log bool
+	// Headless is whether to run without terminal.
+	Headless bool
+	// Addr is the debugging server listen address.
+	Addr string
+	// InitFile is the path to initialization file.
+	InitFile string
+	// BuildFlags is the flags passed during compiler invocation.
 	BuildFlags string
 )
 
@@ -215,7 +221,6 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 						return 1
 					}
 				}
-				return 0
 			}()
 			os.Exit(status)
 		},
@@ -304,7 +309,7 @@ func connect(addr string, conf *config.Config) int {
 	var client service.Client
 	client = rpc.NewClient(addr)
 	term := terminal.New(client, conf)
-	err, status := term.Run()
+	status, err := term.Run()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -342,7 +347,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		client = rpc.NewClient(listener.Addr().String())
 		term := terminal.New(client, conf)
 		term.InitFile = InitFile
-		err, status = term.Run()
+		status, err = term.Run()
 	} else {
 		ch := make(chan os.Signal)
 		signal.Notify(ch, sys.SIGINT)

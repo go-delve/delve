@@ -129,7 +129,7 @@ func TestHalt(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue")
 		for _, th := range p.Threads {
 			if th.running != false {
-				t.Fatal("expected running = false for thread", th.Id)
+				t.Fatal("expected running = false for thread", th.ID)
 			}
 			_, err := th.Registers()
 			assertNoError(err, t, "Registers")
@@ -155,7 +155,7 @@ func TestHalt(t *testing.T) {
 				t.Fatal("expected thread to be stopped, but was not")
 			}
 			if th.running != false {
-				t.Fatal("expected running = false for thread", th.Id)
+				t.Fatal("expected running = false for thread", th.ID)
 			}
 			_, err := th.Registers()
 			assertNoError(err, t, "Registers")
@@ -343,8 +343,8 @@ func TestNextConcurrent(t *testing.T) {
 		for _, tc := range testcases {
 			g, err := p.CurrentThread.GetG()
 			assertNoError(err, t, "GetG()")
-			if p.SelectedGoroutine.Id != g.Id {
-				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.Id, p.SelectedGoroutine.Id)
+			if p.SelectedGoroutine.ID != g.ID {
+				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.ID, p.SelectedGoroutine.ID)
 			}
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
@@ -381,8 +381,8 @@ func TestNextConcurrentVariant2(t *testing.T) {
 		for _, tc := range testcases {
 			g, err := p.CurrentThread.GetG()
 			assertNoError(err, t, "GetG()")
-			if p.SelectedGoroutine.Id != g.Id {
-				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.Id, p.SelectedGoroutine.Id)
+			if p.SelectedGoroutine.ID != g.ID {
+				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.ID, p.SelectedGoroutine.ID)
 			}
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
@@ -552,7 +552,7 @@ func TestSwitchThread(t *testing.T) {
 			t.Fatal(err)
 		}
 		var nt int
-		ct := p.CurrentThread.Id
+		ct := p.CurrentThread.ID
 		for tid := range p.Threads {
 			if tid != ct {
 				nt = tid
@@ -567,7 +567,7 @@ func TestSwitchThread(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p.CurrentThread.Id != nt {
+		if p.CurrentThread.ID != nt {
 			t.Fatal("Did not switch threads")
 		}
 	})
@@ -659,7 +659,7 @@ func TestStacktrace2(t *testing.T) {
 			for i := range locations {
 				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
 			}
-			t.Fatalf("Stack error at main.f()\n", locations)
+			t.Fatalf("Stack error at main.f()\n%v\n", locations)
 		}
 
 		assertNoError(p.Continue(), t, "Continue()")
@@ -669,7 +669,7 @@ func TestStacktrace2(t *testing.T) {
 			for i := range locations {
 				t.Logf("\t%s:%d [%s]\n", locations[i].Call.File, locations[i].Call.Line, locations[i].Call.Fn.Name)
 			}
-			t.Fatalf("Stack error at main.g()\n", locations)
+			t.Fatalf("Stack error at main.g()\n%v\n", locations)
 		}
 	})
 
@@ -1020,17 +1020,17 @@ func TestFrameEvaluation(t *testing.T) {
 			}
 
 			if frame < 0 {
-				t.Logf("Goroutine %d: could not find correct frame", g.Id)
+				t.Logf("Goroutine %d: could not find correct frame", g.ID)
 				continue
 			}
 
-			scope, err := p.ConvertEvalScope(g.Id, frame)
+			scope, err := p.ConvertEvalScope(g.ID, frame)
 			assertNoError(err, t, "ConvertEvalScope()")
 			t.Logf("scope = %v", scope)
 			v, err := scope.EvalVariable("i")
 			t.Logf("v = %v", v)
 			if err != nil {
-				t.Logf("Goroutine %d: %v\n", g.Id, err)
+				t.Logf("Goroutine %d: %v\n", g.ID, err)
 				continue
 			}
 			vval, _ := constant.Int64Val(v.Value)
@@ -1049,7 +1049,7 @@ func TestFrameEvaluation(t *testing.T) {
 		assertNoError(err, t, "GetG()")
 
 		for i := 0; i <= 3; i++ {
-			scope, err := p.ConvertEvalScope(g.Id, i+1)
+			scope, err := p.ConvertEvalScope(g.ID, i+1)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
 			v, err := scope.EvalVariable("n")
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
@@ -1215,7 +1215,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				assertNoError(err, t, "evalVariable")
 				id, _ := constant.Int64Val(v.Value)
 				m[id] = i
-				fmt.Printf("\tgoroutine (%d) %d: %d\n", th.Id, id, i)
+				fmt.Printf("\tgoroutine (%d) %d: %d\n", th.ID, id, i)
 			}
 
 			total := int64(0)
