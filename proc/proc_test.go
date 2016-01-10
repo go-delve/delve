@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
-func withTestProcess(name string, t *testing.T, fn func(p *Process, fixture protest.Fixture)) {
+func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)
 	p, err := Launch([]string{fixture.Path})
 	if err != nil {
@@ -54,7 +54,7 @@ func dataAtAddr(thread *Thread, addr uint64) ([]byte, error) {
 	return thread.readMemory(uintptr(addr), 1)
 }
 
-func assertNoError(err error, t *testing.T, s string) {
+func assertNoError(err error, t testing.TB, s string) {
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
 		fname := filepath.Base(file)
@@ -1181,6 +1181,18 @@ func TestBreakpointCounts(t *testing.T) {
 	})
 }
 
+func BenchmarkArray(b *testing.B) {
+	// each bencharr struct is 128 bytes, bencharr is 64 elements long
+	b.SetBytes(int64(64 * 128))
+	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), b, "Continue()")
+		for i := 0; i < b.N; i++ {
+			_, err := evalVariable(p, "bencharr")
+			assertNoError(err, b, "EvalVariable()")
+		}
+	})
+}
+
 const doTestBreakpointCountsWithDetection = false
 
 func TestBreakpointCountsWithDetection(t *testing.T) {
@@ -1245,6 +1257,44 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 	})
 }
 
+func BenchmarkArrayPointer(b *testing.B) {
+	// each bencharr struct is 128 bytes, benchparr is an array of 64 pointers to bencharr
+	// each read will read 64 bencharr structs plus the 64 pointers of benchparr
+	b.SetBytes(int64(64*128 + 64*8))
+	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), b, "Continue()")
+		for i := 0; i < b.N; i++ {
+			_, err := evalVariable(p, "bencharr")
+			assertNoError(err, b, "EvalVariable()")
+		}
+	})
+}
+
+func BenchmarkMap(b *testing.B) {
+	// m1 contains 41 entries, each one has a value that's 2 int values (2* 8 bytes) and a string key
+	// each string key has an average of 9 character
+	// reading strings and the map structure imposes a overhead that we ignore here
+	b.SetBytes(int64(41 * (2*8 + 9)))
+	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), b, "Continue()")
+		for i := 0; i < b.N; i++ {
+			_, err := evalVariable(p, "m1")
+			assertNoError(err, b, "EvalVariable()")
+		}
+	})
+}
+
+func BenchmarkGoroutinesInfo(b *testing.B) {
+	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), b, "Continue()")
+		for i := 0; i < b.N; i++ {
+			p.allGCache = nil
+			_, err := p.GoroutinesInfo()
+			assertNoError(err, b, "GoroutinesInfo")
+		}
+	})
+}
+
 func TestIssue262(t *testing.T) {
 	// Continue does not work when the current breakpoint is set on a NOP instruction
 	withTestProcess("issue262", t, func(p *Process, fixture protest.Fixture) {
@@ -1273,5 +1323,17 @@ func TestIssue341(t *testing.T) {
 		mapinf, err := evalVariable(p, "mapinf")
 		assertNoError(err, t, "EvalVariable()")
 		t.Logf("mapinf: %v\n", mapinf)
+	})
+}
+
+func BenchmarkLocalVariables(b *testing.B) {
+	withTestProcess("testvariables", b, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), b, "Continue() returned an error")
+		scope, err := p.CurrentThread.Scope()
+		assertNoError(err, b, "Scope()")
+		for i := 0; i < b.N; i++ {
+			_, err := scope.LocalVariables()
+			assertNoError(err, b, "LocalVariables()")
+		}
 	})
 }

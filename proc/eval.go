@@ -135,7 +135,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 	converr := fmt.Errorf("can not convert %q to %s", exprToString(node.Args[0]), typ.String())
 
-	v := newVariable("", 0, styp, scope.Thread)
+	v := newVariable("", 0, styp, scope.Thread.dbp, scope.Thread)
 	v.loaded = true
 
 	switch ttyp := typ.(type) {
@@ -154,7 +154,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 		n, _ := constant.Int64Val(argv.Value)
 
-		v.Children = []Variable{*newVariable("", uintptr(n), ttyp.Type, scope.Thread)}
+		v.Children = []Variable{*(scope.newVariable("", uintptr(n), ttyp.Type))}
 		return v, nil
 
 	case *dwarf.UintType:
@@ -274,18 +274,18 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		}
 		fallthrough
 	case reflect.Array:
-		return newConstant(constant.MakeInt64(arg.Len), arg.thread), nil
+		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
 	case reflect.Slice:
-		return newConstant(constant.MakeInt64(arg.Cap), arg.thread), nil
+		return newConstant(constant.MakeInt64(arg.Cap), arg.mem), nil
 	case reflect.Chan:
 		arg.loadValue()
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
 		if arg.base == 0 {
-			return newConstant(constant.MakeInt64(0), arg.thread), nil
+			return newConstant(constant.MakeInt64(0), arg.mem), nil
 		}
-		return newConstant(arg.Children[1].Value, arg.thread), nil
+		return newConstant(arg.Children[1].Value, arg.mem), nil
 	default:
 		return nil, invalidArgErr
 	}
@@ -309,25 +309,25 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
-		return newConstant(constant.MakeInt64(arg.Len), arg.thread), nil
+		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
 	case reflect.Chan:
 		arg.loadValue()
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
 		if arg.base == 0 {
-			return newConstant(constant.MakeInt64(0), arg.thread), nil
+			return newConstant(constant.MakeInt64(0), arg.mem), nil
 		}
-		return newConstant(arg.Children[0].Value, arg.thread), nil
+		return newConstant(arg.Children[0].Value, arg.mem), nil
 	case reflect.Map:
 		it := arg.mapIterator()
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
 		if it == nil {
-			return newConstant(constant.MakeInt64(0), arg.thread), nil
+			return newConstant(constant.MakeInt64(0), arg.mem), nil
 		}
-		return newConstant(constant.MakeInt64(arg.Len), arg.thread), nil
+		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
 	default:
 		return nil, invalidArgErr
 	}
@@ -377,7 +377,7 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 
 	typ := &dwarf.ComplexType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: int64(sz / 8), Name: fmt.Sprintf("complex%d", sz)}, BitSize: sz, BitOffset: 0}}
 
-	r := newVariable("", 0, typ, realev.thread)
+	r := realev.newVariable("", 0, typ)
 	r.Value = constant.BinaryOp(realev.Value, token.ADD, constant.MakeImag(imagev.Value))
 	return r, nil
 }
@@ -398,7 +398,7 @@ func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", exprToString(nodeargs[0]), arg.TypeString())
 	}
 
-	return newConstant(constant.Imag(arg.Value), arg.thread), nil
+	return newConstant(constant.Imag(arg.Value), arg.mem), nil
 }
 
 func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
@@ -417,7 +417,7 @@ func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		return nil, fmt.Errorf("invalid argument %s (type %s) to real", exprToString(nodeargs[0]), arg.TypeString())
 	}
 
-	return newConstant(constant.Real(arg.Value), arg.thread), nil
+	return newConstant(constant.Real(arg.Value), arg.mem), nil
 }
 
 // Evaluates identifier expressions
@@ -625,7 +625,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 	xev.OnlyAddr = true
 
 	typename := "*" + xev.DwarfType.String()
-	rv := newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, Type: xev.DwarfType}, scope.Thread)
+	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
 	rv.Children = []Variable{*xev}
 	rv.loaded = true
 
@@ -687,11 +687,11 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, err
 	}
 	if xv.DwarfType != nil {
-		r := newVariable("", 0, xv.DwarfType, xv.thread)
+		r := xv.newVariable("", 0, xv.DwarfType)
 		r.Value = rc
 		return r, nil
 	}
-	return newConstant(rc, xv.thread), nil
+	return newConstant(rc, xv.mem), nil
 }
 
 func negotiateType(op token.Token, xv, yv *Variable) (dwarf.Type, error) {
@@ -806,7 +806,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newConstant(constant.MakeBool(v), xv.thread), nil
+		return newConstant(constant.MakeBool(v), xv.mem), nil
 
 	default:
 		if xv.Value == nil {
@@ -823,10 +823,10 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		}
 
 		if typ == nil {
-			return newConstant(rc, xv.thread), nil
+			return newConstant(rc, xv.mem), nil
 		}
 
-		r := newVariable("", 0, typ, xv.thread)
+		r := xv.newVariable("", 0, typ)
 		r.Value = rc
 		return r, nil
 	}
@@ -1039,7 +1039,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	if idx < 0 || int64(idx) >= v.Len {
 		return nil, fmt.Errorf("index out of bounds")
 	}
-	return newVariable("", v.base+uintptr(int64(idx)*v.stride), v.fieldType, v.thread), nil
+	return v.newVariable("", v.base+uintptr(int64(idx)*v.stride), v.fieldType), nil
 }
 
 func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
@@ -1101,7 +1101,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 		}
 	}
 
-	r := newVariable("", 0, typ, v.thread)
+	r := v.newVariable("", 0, typ)
 	r.Cap = len
 	r.Len = len
 	r.base = base

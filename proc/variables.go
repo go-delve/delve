@@ -20,6 +20,8 @@ const (
 	maxVariableRecurse = 1  // How far to recurse when evaluating nested types.
 	maxArrayValues     = 64 // Max value for reading large arrays.
 	maxErrCount        = 3  // Max number of read errors to accept while evaluating slices, arrays and structs
+	
+	maxArrayStridePrefetch = 1024 // Maximum size of array stride for which we will prefetch the array contents
 
 	chanRecv = "chan receive"
 	chanSend = "chan send"
@@ -39,7 +41,8 @@ type Variable struct {
 	DwarfType dwarf.Type
 	RealType  dwarf.Type
 	Kind      reflect.Kind
-	thread    *Thread
+	mem       memoryReadWriter
+	dbp       *Process
 
 	Value constant.Value
 
@@ -136,12 +139,21 @@ func ptrTypeKind(t *dwarf.PtrType) reflect.Kind {
 	return reflect.Ptr
 }
 
-func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread) *Variable {
+func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+	return newVariable(name, addr, dwarfType, scope.Thread.dbp, scope.Thread)
+}
+
+func (v *Variable) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+	return newVariable(name, addr, dwarfType, v.dbp, v.mem)
+}
+
+func newVariable(name string, addr uintptr, dwarfType dwarf.Type, dbp *Process, mem memoryReadWriter) *Variable {
 	v := &Variable{
 		Name:      name,
 		Addr:      addr,
 		DwarfType: dwarfType,
-		thread:    thread,
+		mem:       mem,
+		dbp:       dbp,
 	}
 
 	v.RealType = resolveTypedef(v.DwarfType)
@@ -156,7 +168,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, thread *Thread
 			v.stride = 1
 			v.fieldType = &dwarf.UintType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
 			if v.Addr != 0 {
-				v.base, v.Len, v.Unreadable = v.thread.readStringInfo(v.Addr)
+				v.base, v.Len, v.Unreadable = readStringInfo(v.mem, v.dbp.arch, v.Addr)
 			}
 		case t.StructName == "runtime.iface" || t.StructName == "runtime.eface":
 			v.Kind = reflect.Interface
@@ -222,8 +234,8 @@ func resolveTypedef(typ dwarf.Type) dwarf.Type {
 	}
 }
 
-func newConstant(val constant.Value, thread *Thread) *Variable {
-	v := &Variable{Value: val, thread: thread, loaded: true}
+func newConstant(val constant.Value, mem memoryReadWriter) *Variable {
+	v := &Variable{Value: val, mem: mem, loaded: true}
 	switch val.Kind() {
 	case constant.Int:
 		v.Kind = reflect.Int
@@ -281,7 +293,7 @@ func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 			name = fmt.Sprintf("%s.%s", v.Name, field.Name)
 		}
 	}
-	return newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.thread), nil
+	return v.newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type), nil
 }
 
 // DwarfReader returns the DwarfReader containing the
@@ -349,6 +361,11 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		return nil, err
 	}
 
+	var mem memoryReadWriter = thread
+	if gtype, err := thread.dbp.dwarf.Type(entry.Offset); err == nil {
+		mem = cacheMemory(thread, uintptr(gaddr), int(gtype.Size()))
+	}
+
 	// Parse defer
 	deferAddr, err := rdr.AddrForMember("_defer", initialInstructions)
 	if err != nil {
@@ -356,7 +373,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	}
 	var deferPC uint64
 	// Dereference *defer pointer
-	deferAddrBytes, err := thread.readMemory(uintptr(deferAddr), thread.dbp.arch.PtrSize())
+	deferAddrBytes, err := mem.readMemory(uintptr(deferAddr), thread.dbp.arch.PtrSize())
 	if err != nil {
 		return nil, fmt.Errorf("error derefing defer %s", err)
 	}
@@ -367,11 +384,11 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 			return nil, err
 		}
 		deferPCAddr, err := rdr.AddrForMember("fn", initialDeferInstructions)
-		deferPC, err = thread.readUintRaw(uintptr(deferPCAddr), 8)
+		deferPC, err = readUintRaw(mem, uintptr(deferPCAddr), 8)
 		if err != nil {
 			return nil, err
 		}
-		deferPC, err = thread.readUintRaw(uintptr(deferPC), 8)
+		deferPC, err = readUintRaw(mem, uintptr(deferPC), 8)
 		if err != nil {
 			return nil, err
 		}
@@ -391,11 +408,11 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 		return nil, err
 	}
 	// From sched, let's parse PC and SP.
-	sp, err := thread.readUintRaw(uintptr(schedAddr), 8)
+	sp, err := readUintRaw(mem, uintptr(schedAddr), 8)
 	if err != nil {
 		return nil, err
 	}
-	pc, err := thread.readUintRaw(uintptr(schedAddr+uint64(thread.dbp.arch.PtrSize())), 8)
+	pc, err := readUintRaw(mem, uintptr(schedAddr+uint64(thread.dbp.arch.PtrSize())), 8)
 	if err != nil {
 		return nil, err
 	}
@@ -404,13 +421,13 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	atomicStatus, err := thread.readUintRaw(uintptr(atomicStatusAddr), 4)
+	atomicStatus, err := readUintRaw(mem, uintptr(atomicStatusAddr), 4)
 	// Parse goid
 	goidAddr, err := rdr.AddrForMember("goid", initialInstructions)
 	if err != nil {
 		return nil, err
 	}
-	goid, err := thread.readIntRaw(uintptr(goidAddr), 8)
+	goid, err := readIntRaw(mem, uintptr(goidAddr), 8)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +436,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	waitreason, _, err := thread.readString(uintptr(waitReasonAddr))
+	waitreason, _, err := readString(mem, thread.dbp.arch, uintptr(waitReasonAddr))
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +445,7 @@ func parseG(thread *Thread, gaddr uint64, deref bool) (*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	gopc, err := thread.readUintRaw(uintptr(gopcAddr), 8)
+	gopc, err := readUintRaw(mem, uintptr(gopcAddr), 8)
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +742,7 @@ func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry, rdr *reader.
 		return nil, err
 	}
 
-	return newVariable(n, uintptr(addr), t, scope.Thread), nil
+	return scope.newVariable(n, uintptr(addr), t), nil
 }
 
 // If v is a pointer a new variable is returned containing the value pointed by v.
@@ -736,8 +753,8 @@ func (v *Variable) maybeDereference() *Variable {
 
 	switch t := v.RealType.(type) {
 	case *dwarf.PtrType:
-		ptrval, err := v.thread.readUintRaw(uintptr(v.Addr), int64(v.thread.dbp.arch.PtrSize()))
-		r := newVariable("", uintptr(ptrval), t.Type, v.thread)
+		ptrval, err := readUintRaw(v.mem, uintptr(v.Addr), t.ByteSize)
+		r := v.newVariable("", uintptr(ptrval), t.Type)
 		if err != nil {
 			r.Unreadable = err
 		}
@@ -757,6 +774,7 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 	if v.Unreadable != nil || v.loaded || (v.Addr == 0 && v.base == 0) {
 		return
 	}
+
 	v.loaded = true
 	switch v.Kind {
 	case reflect.Ptr, reflect.UnsafePointer:
@@ -777,13 +795,14 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 
 	case reflect.String:
 		var val string
-		val, v.Unreadable = v.thread.readStringValue(v.base, v.Len)
+		val, v.Unreadable = readStringValue(v.mem, v.base, v.Len)
 		v.Value = constant.MakeString(val)
 
 	case reflect.Slice, reflect.Array:
 		v.loadArrayValues(recurseLevel)
 
 	case reflect.Struct:
+		v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 		t := v.RealType.(*dwarf.StructType)
 		v.Len = int64(len(t.Field))
 		// Recursively call extractValue to grab
@@ -805,15 +824,15 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.readComplex(v.RealType.(*dwarf.ComplexType).ByteSize)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var val int64
-		val, v.Unreadable = v.thread.readIntRaw(v.Addr, v.RealType.(*dwarf.IntType).ByteSize)
+		val, v.Unreadable = readIntRaw(v.mem, v.Addr, v.RealType.(*dwarf.IntType).ByteSize)
 		v.Value = constant.MakeInt64(val)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		var val uint64
-		val, v.Unreadable = v.thread.readUintRaw(v.Addr, v.RealType.(*dwarf.UintType).ByteSize)
+		val, v.Unreadable = readUintRaw(v.mem, v.Addr, v.RealType.(*dwarf.UintType).ByteSize)
 		v.Value = constant.MakeUint64(val)
 
 	case reflect.Bool:
-		val, err := v.thread.readMemory(v.Addr, 1)
+		val, err := v.mem.readMemory(v.Addr, 1)
 		v.Unreadable = err
 		if err == nil {
 			v.Value = constant.MakeBool(val[0] != 0)
@@ -849,8 +868,8 @@ func (v *Variable) setValue(y *Variable) error {
 		err = v.writeComplex(real, imag, v.RealType.Size())
 	default:
 		fmt.Printf("default\n")
-		if _, isptr := v.RealType.(*dwarf.PtrType); isptr {
-			err = v.writeUint(uint64(y.Children[0].Addr), int64(v.thread.dbp.arch.PtrSize()))
+		if t, isptr := v.RealType.(*dwarf.PtrType); isptr {
+			err = v.writeUint(uint64(y.Children[0].Addr), int64(t.ByteSize))
 		} else {
 			return fmt.Errorf("can not set variables of type %s (not implemented)", v.Kind.String())
 		}
@@ -859,12 +878,14 @@ func (v *Variable) setValue(y *Variable) error {
 	return err
 }
 
-func (thread *Thread) readStringInfo(addr uintptr) (uintptr, int64, error) {
+func readStringInfo(mem memoryReadWriter, arch Arch, addr uintptr) (uintptr, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
 
+	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
+
 	// read len
-	val, err := thread.readMemory(addr+uintptr(thread.dbp.arch.PtrSize()), thread.dbp.arch.PtrSize())
+	val, err := mem.readMemory(addr+uintptr(arch.PtrSize()), arch.PtrSize())
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string len %s", err)
 	}
@@ -874,7 +895,7 @@ func (thread *Thread) readStringInfo(addr uintptr) (uintptr, int64, error) {
 	}
 
 	// read addr
-	val, err = thread.readMemory(addr, thread.dbp.arch.PtrSize())
+	val, err = mem.readMemory(addr, arch.PtrSize())
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string pointer %s", err)
 	}
@@ -886,13 +907,13 @@ func (thread *Thread) readStringInfo(addr uintptr) (uintptr, int64, error) {
 	return addr, strlen, nil
 }
 
-func (thread *Thread) readStringValue(addr uintptr, strlen int64) (string, error) {
+func readStringValue(mem memoryReadWriter, addr uintptr, strlen int64) (string, error) {
 	count := strlen
 	if count > maxArrayValues {
 		count = maxArrayValues
 	}
 
-	val, err := thread.readMemory(addr, int(count))
+	val, err := mem.readMemory(addr, int(count))
 	if err != nil {
 		return "", fmt.Errorf("could not read string at %#v due to %s", addr, err)
 	}
@@ -902,23 +923,25 @@ func (thread *Thread) readStringValue(addr uintptr, strlen int64) (string, error
 	return retstr, nil
 }
 
-func (thread *Thread) readString(addr uintptr) (string, int64, error) {
-	addr, strlen, err := thread.readStringInfo(addr)
+func readString(mem memoryReadWriter, arch Arch, addr uintptr) (string, int64, error) {
+	addr, strlen, err := readStringInfo(mem, arch, addr)
 	if err != nil {
 		return "", 0, err
 	}
 
-	retstr, err := thread.readStringValue(addr, strlen)
+	retstr, err := readStringValue(mem, addr, strlen)
 	return retstr, strlen, err
 }
 
 func (v *Variable) loadSliceInfo(t *dwarf.StructType) {
+	v.mem = cacheMemory(v.mem, v.Addr, int(t.Size()))
+
 	var err error
 	for _, f := range t.Field {
 		switch f.Name {
 		case "array":
 			var base uint64
-			base, err = v.thread.readUintRaw(uintptr(int64(v.Addr)+f.ByteOffset), int64(v.thread.dbp.arch.PtrSize()))
+			base, err = readUintRaw(v.mem, uintptr(int64(v.Addr)+f.ByteOffset), f.Type.Size())
 			if err == nil {
 				v.base = uintptr(base)
 				// Dereference array type to get value type
@@ -951,8 +974,8 @@ func (v *Variable) loadSliceInfo(t *dwarf.StructType) {
 	}
 
 	v.stride = v.fieldType.Size()
-	if _, ok := v.fieldType.(*dwarf.PtrType); ok {
-		v.stride = int64(v.thread.dbp.arch.PtrSize())
+	if t, ok := v.fieldType.(*dwarf.PtrType); ok {
+		v.stride = t.ByteSize
 	}
 
 	return
@@ -963,15 +986,20 @@ func (v *Variable) loadArrayValues(recurseLevel int) {
 		return
 	}
 
+	count := v.Len
+	// Cap number of elements
+	if count > maxArrayValues {
+		count = maxArrayValues
+	}
+
+	if v.stride < maxArrayStridePrefetch {
+		v.mem = cacheMemory(v.mem, v.base, int(v.stride*count))
+	}
+
 	errcount := 0
 
-	for i := int64(0); i < v.Len; i++ {
-		// Cap number of elements
-		if i >= maxArrayValues {
-			break
-		}
-
-		fieldvar := newVariable("", uintptr(int64(v.base)+(i*v.stride)), v.fieldType, v.thread)
+	for i := int64(0); i < count; i++ {
+		fieldvar := v.newVariable("", uintptr(int64(v.base)+(i*v.stride)), v.fieldType)
 		fieldvar.loadValueInternal(recurseLevel + 1)
 
 		if fieldvar.Unreadable != nil {
@@ -999,8 +1027,8 @@ func (v *Variable) readComplex(size int64) {
 
 	ftyp := &dwarf.FloatType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: fs, Name: fmt.Sprintf("float%d", fs)}, BitSize: fs * 8, BitOffset: 0}}
 
-	realvar := newVariable("real", v.Addr, ftyp, v.thread)
-	imagvar := newVariable("imaginary", v.Addr+uintptr(fs), ftyp, v.thread)
+	realvar := v.newVariable("real", v.Addr, ftyp)
+	imagvar := v.newVariable("imaginary", v.Addr+uintptr(fs), ftyp)
 	realvar.loadValue()
 	imagvar.loadValue()
 	v.Value = constant.BinaryOp(realvar.Value, token.ADD, constant.MakeImag(imagvar.Value))
@@ -1016,10 +1044,10 @@ func (v *Variable) writeComplex(real, imag float64, size int64) error {
 	return imagaddr.writeFloatRaw(imag, int64(size/2))
 }
 
-func (thread *Thread) readIntRaw(addr uintptr, size int64) (int64, error) {
+func readIntRaw(mem memoryReadWriter, addr uintptr, size int64) (int64, error) {
 	var n int64
 
-	val, err := thread.readMemory(addr, int(size))
+	val, err := mem.readMemory(addr, int(size))
 	if err != nil {
 		return 0, err
 	}
@@ -1052,14 +1080,14 @@ func (v *Variable) writeUint(value uint64, size int64) error {
 		binary.LittleEndian.PutUint64(val, uint64(value))
 	}
 
-	_, err := v.thread.writeMemory(v.Addr, val)
+	_, err := v.mem.writeMemory(v.Addr, val)
 	return err
 }
 
-func (thread *Thread) readUintRaw(addr uintptr, size int64) (uint64, error) {
+func readUintRaw(mem memoryReadWriter, addr uintptr, size int64) (uint64, error) {
 	var n uint64
 
-	val, err := thread.readMemory(addr, int(size))
+	val, err := mem.readMemory(addr, int(size))
 	if err != nil {
 		return 0, err
 	}
@@ -1079,7 +1107,7 @@ func (thread *Thread) readUintRaw(addr uintptr, size int64) (uint64, error) {
 }
 
 func (v *Variable) readFloatRaw(size int64) (float64, error) {
-	val, err := v.thread.readMemory(v.Addr, int(size))
+	val, err := v.mem.readMemory(v.Addr, int(size))
 	if err != nil {
 		return 0.0, err
 	}
@@ -1111,19 +1139,19 @@ func (v *Variable) writeFloatRaw(f float64, size int64) error {
 		binary.Write(buf, binary.LittleEndian, n)
 	}
 
-	_, err := v.thread.writeMemory(v.Addr, buf.Bytes())
+	_, err := v.mem.writeMemory(v.Addr, buf.Bytes())
 	return err
 }
 
 func (v *Variable) writeBool(value bool) error {
 	val := []byte{0}
 	val[0] = *(*byte)(unsafe.Pointer(&value))
-	_, err := v.thread.writeMemory(v.Addr, val)
+	_, err := v.mem.writeMemory(v.Addr, val)
 	return err
 }
 
 func (v *Variable) readFunctionPtr() {
-	val, err := v.thread.readMemory(v.Addr, v.thread.dbp.arch.PtrSize())
+	val, err := v.mem.readMemory(v.Addr, v.dbp.arch.PtrSize())
 	if err != nil {
 		v.Unreadable = err
 		return
@@ -1137,14 +1165,14 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	val, err = v.thread.readMemory(fnaddr, v.thread.dbp.arch.PtrSize())
+	val, err = v.mem.readMemory(fnaddr, v.dbp.arch.PtrSize())
 	if err != nil {
 		v.Unreadable = err
 		return
 	}
 
 	v.base = uintptr(binary.LittleEndian.Uint64(val))
-	fn := v.thread.dbp.goSymTable.PCToFunc(uint64(v.base))
+	fn := v.dbp.goSymTable.PCToFunc(uint64(v.base))
 	if fn == nil {
 		v.Unreadable = fmt.Errorf("could not find function for %#v", v.base)
 		return
@@ -1225,6 +1253,8 @@ func (v *Variable) mapIterator() *mapIterator {
 		return it
 	}
 
+	v.mem = cacheMemory(v.mem, v.base, int(v.RealType.Size()))
+
 	for _, f := range maptype.Field {
 		var err error
 		field, _ := sv.toField(f)
@@ -1300,6 +1330,8 @@ func (it *mapIterator) nextBucket() bool {
 	if it.b.Addr <= 0 {
 		return false
 	}
+
+	it.b.mem = cacheMemory(it.b.mem, it.b.Addr, int(it.b.RealType.Size()))
 
 	it.tophashes = nil
 	it.keys = nil
@@ -1403,6 +1435,8 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 	var typestring, data *Variable
 	isnil := false
 
+	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
+
 	for _, f := range v.RealType.(*dwarf.StructType).Field {
 		switch f.Name {
 		case "tab": // for runtime.iface
@@ -1464,7 +1498,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 		return
 	}
 
-	typ, err := v.thread.dbp.findTypeExpr(t)
+	typ, err := v.dbp.findTypeExpr(t)
 	if err != nil {
 		v.Unreadable = fmt.Errorf("interface type \"%s\" not found for 0x%x: %v", constant.StringVal(typestring.Value), data.Addr, err)
 		return
@@ -1473,10 +1507,10 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 	realtyp := resolveTypedef(typ)
 	if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
 		// interface to non-pointer types are pointers even if the type says otherwise
-		typ = v.thread.dbp.pointerTo(typ)
+		typ = v.dbp.pointerTo(typ)
 	}
 
-	data = newVariable("data", data.Addr, typ, data.thread)
+	data = data.newVariable("data", data.Addr, typ)
 
 	v.Children = []Variable{*data}
 	if loadData {
