@@ -1264,3 +1264,14 @@ func TestIssue262(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue341(t *testing.T) {
+	// pointer loop through map entries
+	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		t.Logf("requesting mapinf")
+		mapinf, err := evalVariable(p, "mapinf")
+		assertNoError(err, t, "EvalVariable()")
+		t.Logf("mapinf: %v\n", mapinf)
+	})
+}

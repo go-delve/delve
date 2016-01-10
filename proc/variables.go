@@ -1160,8 +1160,10 @@ func (v *Variable) loadMap(recurseLevel int) {
 		}
 		key := it.key()
 		val := it.value()
-		key.loadValue()
-		val.loadValue()
+		if recurseLevel <= maxVariableRecurse {
+			key.loadValueInternal(recurseLevel + 1)
+			val.loadValueInternal(recurseLevel + 1)
+		}
 		if key.Unreadable != nil || val.Unreadable != nil {
 			errcount++
 		}
@@ -1428,7 +1430,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 		// interface to nil
 		data = data.maybeDereference()
 		v.Children = []Variable{*data}
-		v.Children[0].loadValue()
+		v.Children[0].loadValueInternal(recurseLevel)
 		return
 	}
 
