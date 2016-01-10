@@ -300,7 +300,7 @@ func (scope *EvalScope) PtrSize() int {
 	return scope.Thread.dbp.arch.PtrSize()
 }
 
-// ChanRecvBlocked eturns whether the goroutine is blocked on
+// ChanRecvBlocked returns whether the goroutine is blocked on
 // a channel read operation.
 func (g *G) ChanRecvBlocked() bool {
 	return g.WaitReason == chanRecv

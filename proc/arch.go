@@ -12,7 +12,7 @@ type Arch interface {
 	GStructOffset() uint64
 }
 
-// AMD64 represents hte AMD64 CPU architecture.
+// AMD64 represents the AMD64 CPU architecture.
 type AMD64 struct {
 	ptrSize                 int
 	breakInstruction        []byte
