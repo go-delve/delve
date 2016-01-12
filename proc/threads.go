@@ -18,10 +18,11 @@ import (
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type Thread struct {
-	ID                     int             // Thread ID or mach port
-	Status                 *sys.WaitStatus // Status returned from last wait call
-	CurrentBreakpoint      *Breakpoint     // Breakpoint thread is currently stopped at
-	BreakpointConditionMet bool            // Output of evaluating the breakpoint's condition
+	ID                       int             // Thread ID or mach port
+	Status                   *sys.WaitStatus // Status returned from last wait call
+	CurrentBreakpoint        *Breakpoint     // Breakpoint thread is currently stopped at
+	BreakpointConditionMet   bool            // Output of evaluating the breakpoint's condition
+	BreakpointConditionError error           // Error evaluating the breakpoint's condition
 
 	dbp            *Process
 	singleStepping bool
@@ -360,7 +361,7 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 		if err = thread.SetPC(bp.Addr); err != nil {
 			return err
 		}
-		thread.BreakpointConditionMet = bp.checkCondition(thread)
+		thread.BreakpointConditionMet, thread.BreakpointConditionError = bp.checkCondition(thread)
 		if thread.onTriggeredBreakpoint() {
 			if g, err := thread.GetG(); err == nil {
 				thread.CurrentBreakpoint.HitCount[g.ID]++
@@ -388,7 +389,7 @@ func (thread *Thread) onRuntimeBreakpoint() bool {
 }
 
 // Returns true if this thread is on the goroutine requested by the current 'next' command
-func (th *Thread) onNextGoroutine() bool {
+func (th *Thread) onNextGoroutine() (bool, error) {
 	var bp *Breakpoint
 	for i := range th.dbp.Breakpoints {
 		if th.dbp.Breakpoints[i].Temp {
@@ -396,7 +397,7 @@ func (th *Thread) onNextGoroutine() bool {
 		}
 	}
 	if bp == nil {
-		return false
+		return false, nil
 	}
 	return bp.checkCondition(th)
 }
