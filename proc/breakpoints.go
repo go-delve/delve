@@ -1,6 +1,12 @@
 package proc
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/constant"
+	"reflect"
+)
 
 // Breakpoint represents a breakpoint. Stores information on the break
 // point including the byte of data that originally was stored at that
@@ -24,7 +30,7 @@ type Breakpoint struct {
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached
 
-	Cond int // When Cond is greater than zero this breakpoint will trigger only when the current goroutine id is equal to it
+	Cond ast.Expr // When Cond is not nil the breakpoint will be triggered only if evaluating Cond returns true
 }
 
 func (bp *Breakpoint) String() string {
@@ -78,7 +84,7 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		Line:         l,
 		Addr:         addr,
 		Temp:         temp,
-		Cond:         -1,
+		Cond:         nil,
 		HitCount:     map[int]uint64{},
 	}
 
@@ -109,15 +115,25 @@ func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
 	return err
 }
 
-func (bp *Breakpoint) checkCondition(thread *Thread) bool {
-	if bp.Cond < 0 {
-		return true
+func (bp *Breakpoint) checkCondition(thread *Thread) (bool, error) {
+	if bp.Cond == nil {
+		return true, nil
 	}
-	g, err := thread.GetG()
+	scope, err := thread.Scope()
 	if err != nil {
-		return false
+		return true, err
 	}
-	return g.ID == bp.Cond
+	v, err := scope.evalAST(bp.Cond)
+	if err != nil {
+		return true, fmt.Errorf("error evaluating expression: %v", err)
+	}
+	if v.Unreadable != nil {
+		return true, fmt.Errorf("condition expression unreadable: %v", v.Unreadable)
+	}
+	if v.Kind != reflect.Bool {
+		return true, errors.New("condition expression not boolean")
+	}
+	return constant.BoolVal(v.Value), nil
 }
 
 // NoBreakpointError is returned when trying to

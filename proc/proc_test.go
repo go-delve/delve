@@ -3,7 +3,9 @@ package proc
 import (
 	"bytes"
 	"fmt"
+	"go/ast"
 	"go/constant"
+	"go/token"
 	"net"
 	"net/http"
 	"os"
@@ -1353,6 +1355,74 @@ func BenchmarkLocalVariables(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_, err := scope.LocalVariables()
 			assertNoError(err, b, "LocalVariables()")
+		}
+	})
+}
+
+func TestCondBreakpoint(t *testing.T) {
+	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 9)
+		assertNoError(err, t, "LineToPC")
+		bp, err := p.SetBreakpoint(addr)
+		assertNoError(err, t, "SetBreakpoint()")
+		bp.Cond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "n"},
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+		}
+
+		assertNoError(p.Continue(), t, "Continue()")
+
+		nvar, err := evalVariable(p, "n")
+		assertNoError(err, t, "EvalVariable()")
+
+		n, _ := constant.Int64Val(nvar.Value)
+		if n != 7 {
+			t.Fatalf("Stoppend on wrong goroutine %d\n", n)
+		}
+	})
+}
+
+func TestCondBreakpointError(t *testing.T) {
+	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 9)
+		assertNoError(err, t, "LineToPC")
+		bp, err := p.SetBreakpoint(addr)
+		assertNoError(err, t, "SetBreakpoint()")
+		bp.Cond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "nonexistentvariable"},
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+		}
+
+		err = p.Continue()
+		if err == nil {
+			t.Fatalf("No error on first Continue()")
+		}
+
+		if err.Error() != "error evaluating expression: could not find symbol value for nonexistentvariable" && err.Error() != "multiple errors evaluating conditions" {
+			t.Fatalf("Unexpected error on first Continue(): %v", err)
+		}
+
+		bp.Cond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "n"},
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+		}
+
+		err = p.Continue()
+		if err != nil {
+			if _, exited := err.(ProcessExitedError); !exited {
+				t.Fatalf("Unexpected error on second Continue(): %v", err)
+			}
+		} else {
+			nvar, err := evalVariable(p, "n")
+			assertNoError(err, t, "EvalVariable()")
+
+			n, _ := constant.Int64Val(nvar.Value)
+			if n != 7 {
+				t.Fatalf("Stoppend on wrong goroutine %d\n", n)
+			}
 		}
 	})
 }
