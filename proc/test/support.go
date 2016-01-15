@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"runtime"
 )
 
 // Fixture is a test binary.
@@ -48,13 +49,22 @@ func BuildFixture(name string) Fixture {
 	path := filepath.Join(fixturesDir, name+".go")
 	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.%s", name, hex.EncodeToString(r)))
 
+	buildFlags := []string{"build"}
+	if runtime.GOOS == "windows" {
+		// Work-around for https://github.com/golang/go/issues/13154
+		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
+	}
+	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile, path)
+
 	// Build the test binary
-	if err := exec.Command("go", "build", "-gcflags=-N -l", "-o", tmpfile, path).Run(); err != nil {
+	if err := exec.Command("go", buildFlags...).Run(); err != nil {
 		fmt.Printf("Error compiling %s: %s\n", path, err)
 		os.Exit(1)
 	}
 
 	source, _ := filepath.Abs(path)
+	source = filepath.ToSlash(source)
+	
 	Fixtures[name] = Fixture{Name: name, Path: tmpfile, Source: source}
 	return Fixtures[name]
 }

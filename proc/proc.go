@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 
-	sys "golang.org/x/sys/unix"
-
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 	"github.com/derekparker/delve/dwarf/reader"
@@ -112,7 +110,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 			return
 		}
 		if kill {
-			err = sys.Kill(dbp.Pid, sys.SIGINT)
+			err = killProcess(dbp.Pid)
 		}
 	})
 	return
@@ -160,6 +158,7 @@ func (dbp *Process) LoadInformation(path string) error {
 
 // FindFileLocation returns the PC for a given file:line.
 func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
+	fileName = filepath.ToSlash(fileName)
 	pc, _, err := dbp.goSymTable.LineToPC(fileName, lineno)
 	if err != nil {
 		return 0, err
@@ -253,8 +252,9 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	return bp, nil
 }
 
+
 // Status returns the status of the current main thread context.
-func (dbp *Process) Status() *sys.WaitStatus {
+func (dbp *Process) Status() *WaitStatus {
 	return dbp.CurrentThread.Status
 }
 
@@ -592,7 +592,7 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
 func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, error) {
 	if attach {
 		var err error
-		dbp.execPtraceFunc(func() { err = sys.PtraceAttach(dbp.Pid) })
+		dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.Pid) })
 		if err != nil {
 			return nil, err
 		}

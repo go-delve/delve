@@ -6,7 +6,11 @@ import "C"
 import (
 	"fmt"
 	"unsafe"
+	sys "golang.org/x/sys/unix"
 )
+
+// WaitStatus is a synonym for the platform-specific WaitStatus
+type WaitStatus sys.WaitStatus
 
 // OSSpecificDetails holds information specific to the OSX/Darwin
 // operating system / kernel.

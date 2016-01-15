@@ -7,6 +7,11 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
+// PtraceAttach executes the sys.PtraceAttach call.
+func PtraceAttach(pid int) error {
+	return sys.PtraceAttach(pid)
+}
+
 // PtraceDetach calls ptrace(PTRACE_DETACH).
 func PtraceDetach(tid, sig int) error {
 	_, _, err := sys.Syscall6(sys.SYS_PTRACE, sys.PTRACE_DETACH, uintptr(tid), 1, uintptr(sig), 0, 0)

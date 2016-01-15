@@ -6,6 +6,8 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
+type WaitStatus sys.WaitStatus
+
 // OSSpecificDetails hold Linux specific
 // process details.
 type OSSpecificDetails struct {

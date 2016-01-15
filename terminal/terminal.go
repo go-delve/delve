@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/peterh/liner"
-	sys "golang.org/x/sys/unix"
+	"syscall"
 
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
@@ -47,7 +47,7 @@ func (t *Term) Run() (int, error) {
 
 	// Send the debugger a halt command on SIGINT
 	ch := make(chan os.Signal)
-	signal.Notify(ch, sys.SIGINT)
+	signal.Notify(ch, syscall.SIGINT)
 	go func() {
 		for range ch {
 			_, err := t.client.Halt()

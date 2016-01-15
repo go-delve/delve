@@ -95,7 +95,11 @@ func parseLocationSpecDefault(locStr, rest string) (LocationSpec, error) {
 		return fmt.Errorf("Malformed breakpoint location \"%s\" at %d: %s", locStr, len(locStr)-len(rest), reason)
 	}
 
-	v := strings.SplitN(rest, ":", 2)
+	v := strings.Split(rest, ":")
+	if len(v) > 2 {
+		// On Windows, path may contain ":", so split only on last ":"
+		v = []string { strings.Join(v[0:len(v)-1], ":"), v[len(v)-1] }
+	}
 
 	if len(v) == 1 {
 		n, err := strconv.ParseInt(v[0], 0, 64)
@@ -107,6 +111,7 @@ func parseLocationSpecDefault(locStr, rest string) (LocationSpec, error) {
 	spec := &NormalLocationSpec{}
 
 	spec.Base = v[0]
+	spec.Base = filepath.ToSlash(spec.Base)
 	spec.FuncBase = parseFuncLocationSpec(spec.Base)
 
 	if len(v) < 2 {
@@ -280,7 +285,7 @@ func (loc *NormalLocationSpec) FileMatch(path string) bool {
 
 func partialPathMatch(expr, path string) bool {
 	if len(expr) < len(path)-1 {
-		return strings.HasSuffix(path, expr) && (path[len(path)-len(expr)-1] == filepath.Separator)
+		return strings.HasSuffix(path, expr) && (path[len(path)-len(expr)-1] == '/')
 	} else {
 		return expr == path
 	}
@@ -337,7 +342,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	case 1:
 		var addr uint64
 		var err error
-		if candidates[0][0] == '/' {
+		if filepath.IsAbs(candidates[0]) {
 			if loc.LineOffset < 0 {
 				return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
 			}

@@ -5,8 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"path/filepath"
-
-	sys "golang.org/x/sys/unix"
+	"runtime"
 
 	"github.com/derekparker/delve/dwarf/frame"
 )
@@ -18,10 +17,9 @@ import (
 // on this thread.
 type Thread struct {
 	ID                     int             // Thread ID or mach port
-	Status                 *sys.WaitStatus // Status returned from last wait call
+	Status                 *WaitStatus     // Status returned from last wait call
 	CurrentBreakpoint      *Breakpoint     // Breakpoint thread is currently stopped at
 	BreakpointConditionMet bool            // Output of evaluating the breakpoint's condition
-
 	dbp            *Process
 	singleStepping bool
 	running        bool
@@ -268,20 +266,22 @@ func (thread *Thread) GetG() (g *G, err error) {
 	if err != nil {
 		return nil, err
 	}
-
 	if thread.dbp.arch.GStructOffset() == 0 {
 		// GetG was called through SwitchThread / updateThreadList during initialization
 		// thread.dbp.arch isn't setup yet (it needs a CurrentThread to read global variables from)
 		return nil, fmt.Errorf("g struct offset not initialized")
 	}
-
 	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), thread.dbp.arch.PtrSize())
 	if err != nil {
 		return nil, err
 	}
 	gaddr := binary.LittleEndian.Uint64(gaddrbs)
-
-	g, err = parseG(thread, gaddr, false)
+	
+	// On Windows, the value at TLS()+GStructOffset() is a 
+	// pointer to the G struct.
+	needsDeref := runtime.GOOS == "windows"
+	
+	g, err = parseG(thread, gaddr, needsDeref)
 	if err == nil {
 		g.thread = thread
 	}

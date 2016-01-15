@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	sys "golang.org/x/sys/unix"
+	"syscall"
+	"runtime"
 
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
@@ -56,11 +56,18 @@ evaluating variables, and providing information of thread / goroutine state, CPU
 The goal of this tool is to provide a simple yet powerful interface for debugging Go programs.
 `,
 	}
+	
+	buildFlagsDefault := ""
+	if runtime.GOOS == "windows" {
+		// Work-around for https://github.com/golang/go/issues/13154 
+		buildFlagsDefault = "-ldflags=-linkmode internal"
+	}
+	
 	rootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	rootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	rootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	rootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
-	rootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", "", "Build flags, to be passed to the compiler.")
+	rootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 
 	// 'version' subcommand.
 	versionCommand := &cobra.Command{
@@ -174,7 +181,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 					return 1
 				}
 				sigChan := make(chan os.Signal)
-				signal.Notify(sigChan, sys.SIGINT)
+				signal.Notify(sigChan, syscall.SIGINT)
 				client := rpc.NewClient(listener.Addr().String())
 				funcs, err := client.ListFunctions(args[0])
 				if err != nil {
@@ -350,7 +357,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		status, err = term.Run()
 	} else {
 		ch := make(chan os.Signal)
-		signal.Notify(ch, sys.SIGINT)
+		signal.Notify(ch, syscall.SIGINT)
 		<-ch
 		err = server.Stop(true)
 	}

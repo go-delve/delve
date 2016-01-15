@@ -254,7 +254,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		}
 		th, ok := dbp.Threads[wpid]
 		if ok {
-			th.Status = status
+			th.Status = (*WaitStatus)(status)
 		}
 		if status.Exited() {
 			if wpid == dbp.Pid {
@@ -423,4 +423,8 @@ func (dbp *Process) resume() error {
 		}
 	}
 	return nil
+}
+
+func killProcess(pid int) error {
+	return sys.Kill(pid, sys.SIGINT)
 }

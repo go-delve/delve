@@ -2,6 +2,11 @@ package proc
 
 import sys "golang.org/x/sys/unix"
 
+// PtraceAttach executes the sys.PtraceAttach call.
+func PtraceAttach(pid int) error {
+	return sys.PtraceAttach(pid)
+}
+
 // PtraceDetach executes the PT_DETACH ptrace call.
 func PtraceDetach(tid, sig int) error {
 	return ptrace(sys.PT_DETACH, tid, 1, uintptr(sig))

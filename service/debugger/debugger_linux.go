@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"syscall"
+	sys "golang.org/x/sys/unix"
 )
 
 func attachErrorMessage(pid int, err error) error {
@@ -27,4 +28,8 @@ func attachErrorMessage(pid int, err error) error {
 		}
 	}
 	return fallbackerr
+}
+
+func stopProcess(pid int) error {
+	return sys.Kill(pid, sys.SIGSTOP)
 }
