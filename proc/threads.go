@@ -359,3 +359,17 @@ func (thread *Thread) onRuntimeBreakpoint() bool {
 	}
 	return loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint"
 }
+
+// Returns true if this thread is on the goroutine requested by the current 'next' command
+func (th *Thread) onNextGoroutine() bool {
+	var bp *Breakpoint
+	for i := range th.dbp.Breakpoints {
+		if th.dbp.Breakpoints[i].Temp {
+			bp = th.dbp.Breakpoints[i]
+		}
+	}
+	if bp == nil {
+		return false
+	}
+	return bp.checkCondition(th)
+}

@@ -20,7 +20,7 @@ const (
 	maxVariableRecurse = 1  // How far to recurse when evaluating nested types.
 	maxArrayValues     = 64 // Max value for reading large arrays.
 	maxErrCount        = 3  // Max number of read errors to accept while evaluating slices, arrays and structs
-	
+
 	maxArrayStridePrefetch = 1024 // Maximum size of array stride for which we will prefetch the array contents
 
 	chanRecv = "chan receive"

@@ -1315,6 +1315,25 @@ func TestIssue262(t *testing.T) {
 	})
 }
 
+func TestIssue305(t *testing.T) {
+	// If 'next' hits a breakpoint on the goroutine it's stepping through the temp breakpoints aren't cleared
+	// preventing further use of 'next' command
+	withTestProcess("issue305", t, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 5)
+		assertNoError(err, t, "LineToPC()")
+		_, err = p.SetBreakpoint(addr)
+		assertNoError(err, t, "SetBreakpoint()")
+
+		assertNoError(p.Continue(), t, "Continue()")
+
+		assertNoError(p.Next(), t, "Next() 1")
+		assertNoError(p.Next(), t, "Next() 2")
+		assertNoError(p.Next(), t, "Next() 3")
+		assertNoError(p.Next(), t, "Next() 4")
+		assertNoError(p.Next(), t, "Next() 5")
+	})
+}
+
 func TestIssue341(t *testing.T) {
 	// pointer loop through map entries
 	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {

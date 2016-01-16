@@ -353,6 +353,7 @@ func (dbp *Process) Continue() error {
 		if err := dbp.pickCurrentThread(trapthread); err != nil {
 			return err
 		}
+
 		switch {
 		case dbp.CurrentThread.CurrentBreakpoint == nil:
 			// runtime.Breakpoint or manual stop
@@ -367,6 +368,9 @@ func (dbp *Process) Continue() error {
 		case dbp.CurrentThread.onTriggeredTempBreakpoint():
 			return dbp.clearTempBreakpoints()
 		case dbp.CurrentThread.onTriggeredBreakpoint():
+			if dbp.CurrentThread.onNextGoroutine() {
+				return dbp.clearTempBreakpoints()
+			}
 			return nil
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
