@@ -235,6 +235,8 @@ func goroutines(t *Term, argstr string) error {
 			fgl = fglRuntimeCurrent
 		case "-g":
 			fgl = fglGo
+		case "":
+			// nothing to do
 		default:
 			return fmt.Errorf("wrong argument: '%s'", args[0])
 		}
