@@ -366,115 +366,52 @@ func (gvar *Variable) parseG() (*G, error) {
 			return nil, NoGError{tid: id}
 		}
 	}
-
-	rdr := dbp.DwarfReader()
-	rdr.Seek(0)
-	entry, err := rdr.SeekToTypeNamed("runtime.g")
-	if err != nil {
-		return nil, err
+	if gaddr == 0 {
+		return nil, NoGError{}
 	}
-
-	if gtype, err := dbp.dwarf.Type(entry.Offset); err == nil {
-		mem = cacheMemory(mem, uintptr(gaddr), int(gtype.Size()))
+	gvar.loadValue()
+	if gvar.Unreadable != nil {
+		return nil, gvar.Unreadable
 	}
-
-	// Parse defer
-	deferAddr, err := rdr.AddrForMember("_defer", initialInstructions)
-	if err != nil {
-		return nil, err
+	schedVar := gvar.toFieldNamed("sched")
+	pc, _ := constant.Int64Val(schedVar.toFieldNamed("pc").Value)
+	sp, _ := constant.Int64Val(schedVar.toFieldNamed("sp").Value)
+	id, _ := constant.Int64Val(gvar.toFieldNamed("goid").Value)
+	gopc, _ := constant.Int64Val(gvar.toFieldNamed("gopc").Value)
+	waitReason := constant.StringVal(gvar.toFieldNamed("waitreason").Value)
+	d := gvar.toFieldNamed("_defer")
+	deferPC := int64(0)
+	fnvar := d.toFieldNamed("fn")
+	if fnvar != nil {
+		fnvalvar := fnvar.toFieldNamed("fn")
+		deferPC, _ = constant.Int64Val(fnvalvar.Value)
 	}
-	var deferPC uint64
-	// Dereference *defer pointer
-	deferAddrBytes, err := mem.readMemory(uintptr(deferAddr), dbp.arch.PtrSize())
-	if err != nil {
-		return nil, fmt.Errorf("error derefing defer %s", err)
-	}
-	if binary.LittleEndian.Uint64(deferAddrBytes) != 0 {
-		initialDeferInstructions := append([]byte{op.DW_OP_addr}, deferAddrBytes...)
-		_, err = rdr.SeekToTypeNamed("runtime._defer")
-		if err != nil {
-			return nil, err
-		}
-		deferPCAddr, err := rdr.AddrForMember("fn", initialDeferInstructions)
-		deferPC, err = readUintRaw(mem, uintptr(deferPCAddr), 8)
-		if err != nil {
-			return nil, err
-		}
-		deferPC, err = readUintRaw(mem, uintptr(deferPC), 8)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Let's parse all of the members we care about in order so that
-	// we don't have to spend any extra time seeking.
-
-	err = rdr.SeekToEntry(entry)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse sched
-	schedAddr, err := rdr.AddrForMember("sched", initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	// From sched, let's parse PC and SP.
-	sp, err := readUintRaw(mem, uintptr(schedAddr), 8)
-	if err != nil {
-		return nil, err
-	}
-	pc, err := readUintRaw(mem, uintptr(schedAddr+uint64(dbp.arch.PtrSize())), 8)
-	if err != nil {
-		return nil, err
-	}
-	// Parse atomicstatus
-	atomicStatusAddr, err := rdr.AddrForMember("atomicstatus", initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	atomicStatus, err := readUintRaw(mem, uintptr(atomicStatusAddr), 4)
-	// Parse goid
-	goidAddr, err := rdr.AddrForMember("goid", initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	goid, err := readIntRaw(mem, uintptr(goidAddr), 8)
-	if err != nil {
-		return nil, err
-	}
-	// Parse waitreason
-	waitReasonAddr, err := rdr.AddrForMember("waitreason", initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	waitreason, _, err := readString(mem, dbp.arch, uintptr(waitReasonAddr))
-	if err != nil {
-		return nil, err
-	}
-	// Parse gopc
-	gopcAddr, err := rdr.AddrForMember("gopc", initialInstructions)
-	if err != nil {
-		return nil, err
-	}
-	gopc, err := readUintRaw(mem, uintptr(gopcAddr), 8)
-	if err != nil {
-		return nil, err
-	}
-
-	f, l, fn := dbp.goSymTable.PCToLine(pc)
+	status, _ := constant.Int64Val(gvar.toFieldNamed("atomicstatus").Value)
+	f, l, fn := gvar.dbp.goSymTable.PCToLine(uint64(pc))
 	g := &G{
-		ID:         int(goid),
-		GoPC:       gopc,
-		PC:         pc,
-		SP:         sp,
-		CurrentLoc: Location{PC: pc, File: f, Line: l, Fn: fn},
-		WaitReason: waitreason,
-		DeferPC:    deferPC,
-		Status:     atomicStatus,
-		dbp:        dbp,
+		ID:         int(id),
+		GoPC:       uint64(gopc),
+		PC:         uint64(pc),
+		SP:         uint64(sp),
+		WaitReason: waitReason,
+		DeferPC:    uint64(deferPC),
+		Status:     uint64(status),
+		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
+		dbp:        gvar.dbp,
 	}
 	return g, nil
+}
+
+func (v *Variable) toFieldNamed(name string) *Variable {
+	v, err := v.structMember(name)
+	if err != nil {
+		return nil
+	}
+	v.loadValue()
+	if v.Unreadable != nil {
+		return nil
+	}
+	return v
 }
 
 // From $GOROOT/src/runtime/traceback.go:597
