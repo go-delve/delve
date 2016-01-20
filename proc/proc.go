@@ -6,10 +6,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/constant"
+	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -297,7 +300,17 @@ func (dbp *Process) Next() (err error) {
 	if !goroutineExiting {
 		for i := range dbp.Breakpoints {
 			if dbp.Breakpoints[i].Temp {
-				dbp.Breakpoints[i].Cond = g.ID
+				dbp.Breakpoints[i].Cond = &ast.BinaryExpr{
+					Op: token.EQL,
+					X: &ast.SelectorExpr{
+						X: &ast.SelectorExpr{
+							X:   &ast.Ident{Name: "runtime"},
+							Sel: &ast.Ident{Name: "curg"},
+						},
+						Sel: &ast.Ident{Name: "goid"},
+					},
+					Y: &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(g.ID)},
+				}
 			}
 		}
 	}
@@ -374,18 +387,43 @@ func (dbp *Process) Continue() error {
 					}
 				}
 			}
-			return nil
+			return dbp.conditionErrors()
 		case dbp.CurrentThread.onTriggeredTempBreakpoint():
-			return dbp.clearTempBreakpoints()
-		case dbp.CurrentThread.onTriggeredBreakpoint():
-			if dbp.CurrentThread.onNextGoroutine() {
-				return dbp.clearTempBreakpoints()
+			err := dbp.clearTempBreakpoints()
+			if err != nil {
+				return err
 			}
-			return nil
+			return dbp.conditionErrors()
+		case dbp.CurrentThread.onTriggeredBreakpoint():
+			onNextGoroutine, err := dbp.CurrentThread.onNextGoroutine()
+			if err != nil {
+				return err
+			}
+			if onNextGoroutine {
+				err := dbp.clearTempBreakpoints()
+				if err != nil {
+					return err
+				}
+			}
+			return dbp.conditionErrors()
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
 		}
 	}
+}
+
+func (dbp *Process) conditionErrors() error {
+	var condErr error
+	for _, th := range dbp.Threads {
+		if th.CurrentBreakpoint != nil && th.BreakpointConditionError != nil {
+			if condErr == nil {
+				condErr = th.BreakpointConditionError
+			} else {
+				return fmt.Errorf("multiple errors evaluating conditions")
+			}
+		}
+	}
+	return condErr
 }
 
 // pick a new dbp.CurrentThread, with the following priority:
@@ -497,7 +535,11 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		g, err := parseG(dbp.CurrentThread, allgptr+(i*uint64(dbp.arch.PtrSize())), true)
+		gvar, err := dbp.CurrentThread.newGVariable(uintptr(allgptr+(i*uint64(dbp.arch.PtrSize()))), true)
+		if err != nil {
+			return nil, err
+		}
+		g, err := gvar.parseG()
 		if err != nil {
 			return nil, err
 		}
@@ -661,6 +703,8 @@ func (dbp *Process) run(fn func() error) error {
 	}
 	for _, th := range dbp.Threads {
 		th.CurrentBreakpoint = nil
+		th.BreakpointConditionMet = false
+		th.BreakpointConditionError = nil
 	}
 	if err := fn(); err != nil {
 		return err
