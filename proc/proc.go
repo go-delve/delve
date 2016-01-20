@@ -4,6 +4,7 @@ import (
 	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"go/constant"
 	"os"
@@ -408,22 +409,18 @@ func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
 	return dbp.SwitchThread(trapthread.ID)
 }
 
-// Step will continue the debugged process for exactly
-// one instruction.
+// Step will continue the current thread for exactly
+// one instruction. This method affects only the thread
+// asssociated with the selected goroutine. All other
+// threads will remain stopped.
 func (dbp *Process) Step() (err error) {
-	fn := func() error {
-		for _, th := range dbp.Threads {
-			if th.blocked() {
-				continue
-			}
-			if err := th.Step(); err != nil {
-				return err
-			}
-		}
-		return nil
+	if dbp.SelectedGoroutine == nil {
+		return errors.New("cannot single step: no selected goroutine")
 	}
-
-	return dbp.run(fn)
+	if dbp.SelectedGoroutine.thread == nil {
+		return fmt.Errorf("cannot single step: no thread associated with goroutine %d", dbp.SelectedGoroutine.ID)
+	}
+	return dbp.run(dbp.SelectedGoroutine.thread.Step)
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.
