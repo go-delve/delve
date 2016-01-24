@@ -436,11 +436,6 @@ func TestNextNetHTTP(t *testing.T) {
 		{11, 12},
 		{12, 13},
 	}
-	if runtime.GOOS == "windows" {
-		// TODO: Reenable once we figure out why this test is hanging.
-		fmt.Println("Skipping TestNextNetHTTP test")
-		return
-	}
 	withTestProcess("testnextnethttp", t, func(p *Process, fixture protest.Fixture) {
 		go func() {
 			for !p.Running() {
@@ -448,7 +443,7 @@ func TestNextNetHTTP(t *testing.T) {
 			}
 			// Wait for program to start listening.
 			for {
-				conn, err := net.Dial("tcp", ":9191")
+				conn, err := net.Dial("tcp", "localhost:9191")
 				if err == nil {
 					conn.Close()
 					break
