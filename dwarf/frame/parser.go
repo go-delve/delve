@@ -23,7 +23,7 @@ type parseContext struct {
 // Parse takes in data (a byte slice) and returns a slice of
 // commonInformationEntry structures. Each commonInformationEntry
 // has a slice of frameDescriptionEntry structures.
-func Parse(data []byte) FrameDescriptionEntries {
+func Parse(data []byte, order binary.ByteOrder) FrameDescriptionEntries {
 	var (
 		buf  = bytes.NewBuffer(data)
 		pctx = &parseContext{buf: buf, entries: NewFrameIndex()}
@@ -31,6 +31,10 @@ func Parse(data []byte) FrameDescriptionEntries {
 
 	for fn := parselength; buf.Len() != 0; {
 		fn = fn(pctx)
+	}
+
+	for i := range pctx.entries {
+		pctx.entries[i].order = order
 	}
 
 	return pctx.entries
@@ -99,4 +103,23 @@ func parseCIE(ctx *parseContext) parsefunc {
 	ctx.length = 0
 
 	return parselength
+}
+
+// DwarfEndian determines the endianness of the DWARF by using the version number field in the debug_info section
+// Trick borrowed from "debug/dwarf".New()
+func DwarfEndian(infoSec []byte) binary.ByteOrder {
+	if len(infoSec) < 6 {
+		return binary.BigEndian
+	}
+	x, y := infoSec[4], infoSec[5]
+	switch {
+	case x == 0 && y == 0:
+		return binary.BigEndian
+	case x == 0:
+		return binary.BigEndian
+	case y == 0:
+		return binary.LittleEndian
+	default:
+		return binary.BigEndian
+	}
 }

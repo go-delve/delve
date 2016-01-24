@@ -1,6 +1,7 @@
 package frame
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sort"
 )
@@ -25,6 +26,7 @@ type FrameDescriptionEntry struct {
 	CIE          *CommonInformationEntry
 	Instructions []byte
 	begin, end   uint64
+	order        binary.ByteOrder
 }
 
 // Returns whether or not the given address is within the

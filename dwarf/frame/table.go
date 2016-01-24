@@ -24,6 +24,7 @@ type DWRule struct {
 
 type FrameContext struct {
 	loc           uint64
+	order         binary.ByteOrder
 	address       uint64
 	cfa           CurrentFrameAddress
 	regs          map[uint64]DWRule
@@ -138,6 +139,7 @@ func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
 // Unwind the stack to find the return address register.
 func executeDwarfProgramUntilPC(fde *FrameDescriptionEntry, pc uint64) *FrameContext {
 	frame := executeCIEInstructions(fde.CIE)
+	frame.order = fde.order
 	frame.loc = fde.Begin()
 	frame.address = pc
 	fdeInstructions := make([]byte, len(fde.Instructions))
@@ -237,14 +239,14 @@ func advanceloc1(frame *FrameContext) {
 
 func advanceloc2(frame *FrameContext) {
 	var delta uint16
-	binary.Read(frame.buf, binary.BigEndian, &delta)
+	binary.Read(frame.buf, frame.order, &delta)
 
 	frame.loc += uint64(delta) * frame.codeAlignment
 }
 
 func advanceloc4(frame *FrameContext) {
 	var delta uint32
-	binary.Read(frame.buf, binary.BigEndian, &delta)
+	binary.Read(frame.buf, frame.order, &delta)
 
 	frame.loc += uint64(delta) * frame.codeAlignment
 }
@@ -280,7 +282,7 @@ func restore(frame *FrameContext) {
 
 func setloc(frame *FrameContext) {
 	var loc uint64
-	binary.Read(frame.buf, binary.BigEndian, &loc)
+	binary.Read(frame.buf, frame.order, &loc)
 
 	frame.loc = loc
 }
