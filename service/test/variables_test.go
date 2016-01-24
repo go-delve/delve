@@ -94,26 +94,26 @@ func withTestProcess(name string, t *testing.T, fn func(p *proc.Process, fixture
 
 func TestVariableEvaluation(t *testing.T) {
 	testcases := []varTest{
-		{"a1", true, "\"foofoofoofoofoofoo\"", "", "struct string", nil},
+		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, "[3]main.FooBar [{Baz: 1, Bur: \"a\"},{Baz: 2, Bur: \"b\"},{Baz: 3, Bur: \"c\"}]", "", "[3]main.FooBar", nil},
-		{"a12", true, "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: \"d\"},{Baz: 5, Bur: \"e\"}]", "", "struct []main.FooBar", nil},
-		{"a13", true, "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: \"f\"},*{Baz: 7, Bur: \"g\"},*{Baz: 8, Bur: \"h\"}]", "", "struct []*main.FooBar", nil},
+		{"a12", true, "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: \"d\"},{Baz: 5, Bur: \"e\"}]", "", "[]main.FooBar", nil},
+		{"a13", true, "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: \"f\"},*{Baz: 7, Bur: \"g\"},*{Baz: 8, Bur: \"h\"}]", "", "[]*main.FooBar", nil},
 		{"a2", true, "6", "10", "int", nil},
 		{"a3", true, "7.23", "3.1", "float64", nil},
 		{"a4", true, "[2]int [1,2]", "", "[2]int", nil},
-		{"a5", true, "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "struct []int", nil},
+		{"a5", true, "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "[]int", nil},
 		{"a6", true, "main.FooBar {Baz: 8, Bur: \"word\"}", "", "main.FooBar", nil},
 		{"a7", true, "*main.FooBar {Baz: 5, Bur: \"strum\"}", "", "*main.FooBar", nil},
 		{"a8", true, "main.FooBar2 {Bur: 10, Baz: \"feh\"}", "", "main.FooBar2", nil},
 		{"a9", true, "*main.FooBar nil", "", "*main.FooBar", nil},
-		{"baz", true, "\"bazburzum\"", "", "struct string", nil},
+		{"baz", true, "\"bazburzum\"", "", "string", nil},
 		{"neg", true, "-1", "-20", "int", nil},
 		{"f32", true, "1.2", "1.1", "float32", nil},
 		{"c64", true, "(1 + 2i)", "(4 + 5i)", "complex64", nil},
 		{"c128", true, "(2 + 3i)", "(6.3 + 7i)", "complex128", nil},
 		{"a6.Baz", true, "8", "20", "int", nil},
 		{"a7.Baz", true, "5", "25", "int", nil},
-		{"a8.Baz", true, "\"feh\"", "", "struct string", nil},
+		{"a8.Baz", true, "\"feh\"", "", "string", nil},
 		{"a9.Baz", true, "nil", "", "int", fmt.Errorf("a9 is nil")},
 		{"a9.NonExistent", true, "nil", "", "int", fmt.Errorf("a9 has no member NonExistent")},
 		{"a8", true, "main.FooBar2 {Bur: 10, Baz: \"feh\"}", "", "main.FooBar2", nil}, // reread variable after member
@@ -127,7 +127,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"u8", true, "255", "3", "uint8", nil},
 		{"up", true, "5", "4", "uintptr", nil},
 		{"f", true, "main.barfoo", "", "func()", nil},
-		{"ba", true, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "struct []int", nil},
+		{"ba", true, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "[]int", nil},
 		{"ms", true, "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *(*main.Nest)(…", "", "main.Nest", nil},
 		{"ms.Nest.Nest", true, "*main.Nest {Level: 2, Nest: *main.Nest {Level: 3, Nest: *(*main.Nest)(…", "", "*main.Nest", nil},
 		{"ms.Nest.Nest.Nest.Nest.Nest", true, "*main.Nest nil", "", "*main.Nest", nil},
@@ -172,7 +172,7 @@ func TestVariableEvaluation(t *testing.T) {
 
 func TestMultilineVariableEvaluation(t *testing.T) {
 	testcases := []varTest{
-		{"a1", true, "\"foofoofoofoofoofoo\"", "", "struct string", nil},
+		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, `[3]main.FooBar [
 	{Baz: 1, Bur: "a"},
 	{Baz: 2, Bur: "b"},
@@ -181,22 +181,22 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 		{"a12", true, `[]main.FooBar len: 2, cap: 2, [
 	{Baz: 4, Bur: "d"},
 	{Baz: 5, Bur: "e"},
-]`, "", "struct []main.FooBar", nil},
+]`, "", "[]main.FooBar", nil},
 		{"a13", true, `[]*main.FooBar len: 3, cap: 3, [
 	*{Baz: 6, Bur: "f"},
 	*{Baz: 7, Bur: "g"},
 	*{Baz: 8, Bur: "h"},
-]`, "", "struct []*main.FooBar", nil},
+]`, "", "[]*main.FooBar", nil},
 		{"a2", true, "6", "10", "int", nil},
 		{"a4", true, "[2]int [1,2]", "", "[2]int", nil},
-		{"a5", true, "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "struct []int", nil},
+		{"a5", true, "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "[]int", nil},
 		{"a6", true, "main.FooBar {Baz: 8, Bur: \"word\"}", "", "main.FooBar", nil},
 		{"a7", true, "*main.FooBar {Baz: 5, Bur: \"strum\"}", "", "*main.FooBar", nil},
 		{"a8", true, "main.FooBar2 {Bur: 10, Baz: \"feh\"}", "", "main.FooBar2", nil},
 		{"a9", true, "*main.FooBar nil", "", "*main.FooBar", nil},
 		{"a8", true, "main.FooBar2 {Bur: 10, Baz: \"feh\"}", "", "main.FooBar2", nil}, // reread variable after member
 		{"i32", true, "[2]int32 [1,2]", "", "[2]int32", nil},
-		{"ba", true, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "struct []int", nil},
+		{"ba", true, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "[]int", nil},
 		{"ms", true, `main.Nest {
 	Level: 0,
 	Nest: *main.Nest {
@@ -242,22 +242,22 @@ func TestLocalVariables(t *testing.T) {
 	}{
 		{(*proc.EvalScope).LocalVariables,
 			[]varTest{
-				{"a1", true, "\"foofoofoofoofoofoo\"", "", "struct string", nil},
-				{"a10", true, "\"ofo\"", "", "struct string", nil},
+				{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
+				{"a10", true, "\"ofo\"", "", "string", nil},
 				{"a11", true, "[3]main.FooBar [{Baz: 1, Bur: \"a\"},{Baz: 2, Bur: \"b\"},{Baz: 3, Bur: \"c\"}]", "", "[3]main.FooBar", nil},
-				{"a12", true, "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: \"d\"},{Baz: 5, Bur: \"e\"}]", "", "struct []main.FooBar", nil},
-				{"a13", true, "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: \"f\"},*{Baz: 7, Bur: \"g\"},*{Baz: 8, Bur: \"h\"}]", "", "struct []*main.FooBar", nil},
+				{"a12", true, "[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: \"d\"},{Baz: 5, Bur: \"e\"}]", "", "[]main.FooBar", nil},
+				{"a13", true, "[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: \"f\"},*{Baz: 7, Bur: \"g\"},*{Baz: 8, Bur: \"h\"}]", "", "[]*main.FooBar", nil},
 				{"a2", true, "6", "", "int", nil},
 				{"a3", true, "7.23", "", "float64", nil},
 				{"a4", true, "[2]int [1,2]", "", "[2]int", nil},
-				{"a5", true, "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "struct []int", nil},
+				{"a5", true, "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "[]int", nil},
 				{"a6", true, "main.FooBar {Baz: 8, Bur: \"word\"}", "", "main.FooBar", nil},
 				{"a7", true, "*main.FooBar {Baz: 5, Bur: \"strum\"}", "", "*main.FooBar", nil},
 				{"a8", true, "main.FooBar2 {Bur: 10, Baz: \"feh\"}", "", "main.FooBar2", nil},
 				{"a9", true, "*main.FooBar nil", "", "*main.FooBar", nil},
 				{"b1", true, "true", "", "bool", nil},
 				{"b2", true, "false", "", "bool", nil},
-				{"ba", true, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "struct []int", nil},
+				{"ba", true, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", "", "[]int", nil},
 				{"c128", true, "(2 + 3i)", "", "complex128", nil},
 				{"c64", true, "(1 + 2i)", "", "complex64", nil},
 				{"f", true, "main.barfoo", "", "func()", nil},
@@ -274,7 +274,7 @@ func TestLocalVariables(t *testing.T) {
 		{(*proc.EvalScope).FunctionArguments,
 			[]varTest{
 				{"bar", true, "main.FooBar {Baz: 10, Bur: \"lorem\"}", "", "main.FooBar", nil},
-				{"baz", true, "\"bazburzum\"", "", "struct string", nil}}},
+				{"baz", true, "\"bazburzum\"", "", "string", nil}}},
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
@@ -307,8 +307,8 @@ func TestEmbeddedStruct(t *testing.T) {
 			{"b.A.val", true, "-314", "", "int", nil},
 			{"b.a.val", true, "42", "", "int", nil},
 			{"b.ptr.val", true, "1337", "", "int", nil},
-			{"b.C.s", true, "\"hello\"", "", "struct string", nil},
-			{"b.s", true, "\"hello\"", "", "struct string", nil},
+			{"b.C.s", true, "\"hello\"", "", "string", nil},
+			{"b.s", true, "\"hello\"", "", "string", nil},
 			{"b2", true, "main.B {main.A: struct main.A {val: 42}, *main.C: *struct main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "", "main.B", nil},
 		}
 		assertNoError(p.Continue(), t, "Continue()")
@@ -351,18 +351,18 @@ func TestComplexSetting(t *testing.T) {
 func TestEvalExpression(t *testing.T) {
 	testcases := []varTest{
 		// slice/array/string subscript
-		{"s1[0]", false, "\"one\"", "", "struct string", nil},
-		{"s1[1]", false, "\"two\"", "", "struct string", nil},
-		{"s1[2]", false, "\"three\"", "", "struct string", nil},
-		{"s1[3]", false, "\"four\"", "", "struct string", nil},
-		{"s1[4]", false, "\"five\"", "", "struct string", nil},
-		{"s1[5]", false, "", "", "struct string", fmt.Errorf("index out of bounds")},
-		{"a1[0]", false, "\"one\"", "", "struct string", nil},
-		{"a1[1]", false, "\"two\"", "", "struct string", nil},
-		{"a1[2]", false, "\"three\"", "", "struct string", nil},
-		{"a1[3]", false, "\"four\"", "", "struct string", nil},
-		{"a1[4]", false, "\"five\"", "", "struct string", nil},
-		{"a1[5]", false, "", "", "struct string", fmt.Errorf("index out of bounds")},
+		{"s1[0]", false, "\"one\"", "", "string", nil},
+		{"s1[1]", false, "\"two\"", "", "string", nil},
+		{"s1[2]", false, "\"three\"", "", "string", nil},
+		{"s1[3]", false, "\"four\"", "", "string", nil},
+		{"s1[4]", false, "\"five\"", "", "string", nil},
+		{"s1[5]", false, "", "", "string", fmt.Errorf("index out of bounds")},
+		{"a1[0]", false, "\"one\"", "", "string", nil},
+		{"a1[1]", false, "\"two\"", "", "string", nil},
+		{"a1[2]", false, "\"three\"", "", "string", nil},
+		{"a1[3]", false, "\"four\"", "", "string", nil},
+		{"a1[4]", false, "\"five\"", "", "string", nil},
+		{"a1[5]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 		{"str1[0]", false, "48", "", "byte", nil},
 		{"str1[1]", false, "49", "", "byte", nil},
 		{"str1[2]", false, "50", "", "byte", nil},
@@ -370,14 +370,14 @@ func TestEvalExpression(t *testing.T) {
 		{"str1[11]", false, "", "", "byte", fmt.Errorf("index out of bounds")},
 
 		// slice/array/string reslicing
-		{"a1[2:4]", false, "[]struct string len: 2, cap: 2, [\"three\",\"four\"]", "", "struct []struct string", nil},
-		{"s1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "", "struct []string", nil},
-		{"str1[2:4]", false, "\"23\"", "", "struct string", nil},
-		{"str1[0:11]", false, "\"01234567890\"", "", "struct string", nil},
-		{"str1[:3]", false, "\"012\"", "", "struct string", nil},
-		{"str1[3:]", false, "\"34567890\"", "", "struct string", nil},
-		{"str1[0:12]", false, "", "", "struct string", fmt.Errorf("index out of bounds")},
-		{"str1[5:3]", false, "", "", "struct string", fmt.Errorf("index out of bounds")},
+		{"a1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "", "[]string", nil},
+		{"s1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "", "[]string", nil},
+		{"str1[2:4]", false, "\"23\"", "", "string", nil},
+		{"str1[0:11]", false, "\"01234567890\"", "", "string", nil},
+		{"str1[:3]", false, "\"012\"", "", "string", nil},
+		{"str1[3:]", false, "\"34567890\"", "", "string", nil},
+		{"str1[0:12]", false, "", "", "string", fmt.Errorf("index out of bounds")},
+		{"str1[5:3]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 
 		// pointers
 		{"*p2", false, "5", "", "int", nil},
@@ -404,9 +404,9 @@ func TestEvalExpression(t *testing.T) {
 		{"err2", true, "error(*struct main.bstruct) *{a: main.astruct {A: 1, B: 2}}", "", "error", nil},
 		{"errnil", true, "error nil", "", "error", nil},
 		{"iface1", true, "interface {}(*struct main.astruct) *{A: 1, B: 2}", "", "interface {}", nil},
-		{"iface2", true, "interface {}(*struct string) *\"test\"", "", "interface {}", nil},
-		{"iface3", true, "interface {}(map[string]go/constant.Value) []", "", "interface {}", nil},
-		{"iface4", true, "interface {}(*struct []go/constant.Value) *[*4]", "", "interface {}", nil},
+		{"iface2", true, "interface {}(*string) *\"test\"", "", "interface {}", nil},
+		{"iface3", true, "interface {}(*map[string]go/constant.Value) *[]", "", "interface {}", nil},
+		{"iface4", true, "interface {}(*[]go/constant.Value) *[*4]", "", "interface {}", nil},
 		{"ifacenil", true, "interface {} nil", "", "interface {}", nil},
 		{"err1 == err2", false, "false", "", "", nil},
 		{"err1 == iface1", false, "", "", "", fmt.Errorf("mismatched types \"error\" and \"interface {}\"")},
@@ -493,7 +493,7 @@ func TestEvalExpression(t *testing.T) {
 		{"nil+1", false, "", "", "", fmt.Errorf("operator + can not be applied to \"nil\"")},
 		{"fn1", false, "main.afunc", "", "main.functype", nil},
 		{"fn2", false, "nil", "", "main.functype", nil},
-		{"nilslice", false, "[]int len: 0, cap: 0, []", "", "struct []int", nil},
+		{"nilslice", false, "[]int len: 0, cap: 0, []", "", "[]int", nil},
 		{"fn1 == fn2", false, "", "", "", fmt.Errorf("can not compare func variables")},
 		{"fn1 == nil", false, "false", "", "", nil},
 		{"fn1 != nil", false, "true", "", "", nil},
@@ -537,7 +537,7 @@ func TestEvalExpression(t *testing.T) {
 		{"nil[0]", false, "", "", "", fmt.Errorf("expression \"nil\" (nil) does not support indexing")},
 		{"nil[2:10]", false, "", "", "", fmt.Errorf("can not slice \"nil\" (type nil)")},
 		{"nil.member", false, "", "", "", fmt.Errorf("type nil is not a struct")},
-		{"(map[string]main.astruct)(0x4000)", false, "", "", "", fmt.Errorf("can not convert \"0x4000\" to *struct hash<string,main.astruct>")},
+		{"(map[string]main.astruct)(0x4000)", false, "", "", "", fmt.Errorf("can not convert \"0x4000\" to map[string]main.astruct")},
 
 		// typecasts
 		{"uint(i2)", false, "2", "", "uint", nil},
@@ -551,6 +551,8 @@ func TestEvalExpression(t *testing.T) {
 
 		// misc
 		{"i1", true, "1", "", "int", nil},
+		{"mainMenu", true, `main.Menu len: 3, cap: 3, [{Name: "home", Route: "/", Active: 1},{Name: "About", Route: "/about", Active: 1},{Name: "Login", Route: "/login", Active: 1}]`, "", "main.Menu", nil},
+		{"mainMenu[0]", false, `main.Item {Name: "home", Route: "/", Active: 1}`, "", "main.Item", nil},
 	}
 
 	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {

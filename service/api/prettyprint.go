@@ -111,7 +111,7 @@ func (v *Variable) writeStringTo(buf *bytes.Buffer) {
 
 func (v *Variable) writeSliceTo(buf *bytes.Buffer, newlines, includeType bool, indent string) {
 	if includeType {
-		fmt.Fprintf(buf, "%s len: %d, cap: %d, ", v.Type[len("struct "):], v.Len, v.Cap)
+		fmt.Fprintf(buf, "%s len: %d, cap: %d, ", v.Type, v.Len, v.Cap)
 	}
 	v.writeSliceOrArrayTo(buf, newlines, indent)
 }

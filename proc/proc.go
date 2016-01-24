@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
 	"errors"
@@ -9,6 +8,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"golang.org/x/debug/dwarf"
 	"os"
 	"path/filepath"
 	"runtime"

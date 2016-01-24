@@ -1,8 +1,9 @@
 package proc
 
 import (
-	"debug/dwarf"
 	"go/ast"
+	"golang.org/x/debug/dwarf"
+	"reflect"
 	"strings"
 )
 
@@ -17,7 +18,7 @@ func (dbp *Process) findType(name string) (dwarf.Type, error) {
 }
 
 func (dbp *Process) pointerTo(typ dwarf.Type) dwarf.Type {
-	return &dwarf.PtrType{dwarf.CommonType{int64(dbp.arch.PtrSize()), ""}, typ}
+	return &dwarf.PtrType{dwarf.CommonType{int64(dbp.arch.PtrSize()), "", reflect.Ptr, 0}, typ}
 }
 
 func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {

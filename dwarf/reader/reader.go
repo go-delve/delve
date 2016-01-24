@@ -1,9 +1,9 @@
 package reader
 
 import (
-	"debug/dwarf"
 	"errors"
 	"fmt"
+	"golang.org/x/debug/dwarf"
 
 	"github.com/derekparker/delve/dwarf/op"
 )

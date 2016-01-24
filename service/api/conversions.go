@@ -3,6 +3,7 @@ package api
 import (
 	"debug/gosym"
 	"go/constant"
+	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strconv"
 
@@ -73,6 +74,17 @@ func ConvertThread(th *proc.Thread) *Thread {
 	}
 }
 
+func prettyTypeName(typ dwarf.Type) string {
+	if typ == nil {
+		return ""
+	}
+	r := typ.String()
+	if r == "*void" {
+		return "unsafe.Pointer"
+	}
+	return r
+}
+
 // ConvertVar converts from proc.Variable to api.Variable.
 func ConvertVar(v *proc.Variable) *Variable {
 	r := Variable{
@@ -84,19 +96,8 @@ func ConvertVar(v *proc.Variable) *Variable {
 		Cap:      v.Cap,
 	}
 
-	if v.DwarfType != nil {
-		r.Type = v.DwarfType.String()
-		if r.Type == "*void" {
-			r.Type = "unsafe.Pointer"
-		}
-	}
-
-	if v.RealType != nil {
-		r.RealType = v.RealType.String()
-		if r.RealType == "*void" {
-			r.Type = "unsafe.Pointer"
-		}
-	}
+	r.Type = prettyTypeName(v.DwarfType)
+	r.RealType = prettyTypeName(v.RealType)
 
 	if v.Unreadable != nil {
 		r.Unreadable = v.Unreadable.Error()

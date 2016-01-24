@@ -2,7 +2,6 @@ package proc
 
 import (
 	"bytes"
-	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
 	"go/ast"
@@ -10,6 +9,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"golang.org/x/debug/dwarf"
 	"reflect"
 
 	"github.com/derekparker/delve/dwarf/reader"
@@ -142,9 +142,6 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 	switch ttyp := typ.(type) {
 	case *dwarf.PtrType:
-		if ptrTypeKind(ttyp) != reflect.Ptr {
-			return nil, converr
-		}
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			// ok
@@ -1002,7 +999,7 @@ func (v *Variable) isType(typ dwarf.Type, kind reflect.Kind) error {
 		return converr
 	}
 
-	switch t := typ.(type) {
+	switch typ.(type) {
 	case *dwarf.IntType:
 		if v.Value.Kind() != constant.Int {
 			return converr
@@ -1019,10 +1016,7 @@ func (v *Variable) isType(typ dwarf.Type, kind reflect.Kind) error {
 		if v.Value.Kind() != constant.Bool {
 			return converr
 		}
-	case *dwarf.StructType:
-		if t.StructName != "string" {
-			return converr
-		}
+	case *dwarf.StringType:
 		if v.Value.Kind() != constant.String {
 			return converr
 		}
@@ -1092,14 +1086,17 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 
 	typ := v.DwarfType
 	if _, isarr := v.DwarfType.(*dwarf.ArrayType); isarr {
-		typ = &dwarf.StructType{
-			CommonType: dwarf.CommonType{
-				ByteSize: 24,
-				Name:     "",
+		typ = &dwarf.SliceType{
+			StructType: dwarf.StructType{
+				CommonType: dwarf.CommonType{
+					ByteSize: 24,
+					Name:     "",
+				},
+				StructName: fmt.Sprintf("[]%s", v.fieldType),
+				Kind:       "struct",
+				Field:      nil,
 			},
-			StructName: fmt.Sprintf("[]%s", v.fieldType),
-			Kind:       "struct",
-			Field:      nil,
+			ElemType: v.fieldType,
 		}
 	}
 

@@ -7,9 +7,9 @@ package proc
 import "C"
 import (
 	"debug/gosym"
-	"debug/macho"
 	"errors"
 	"fmt"
+	"golang.org/x/debug/macho"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -273,11 +273,10 @@ func (dbp *Process) findExecutable(path string) (*macho.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := exe.DWARF()
+	dbp.dwarf, err = exe.DWARF()
 	if err != nil {
 		return nil, err
 	}
-	dbp.dwarf = data
 	return exe, nil
 }
 
