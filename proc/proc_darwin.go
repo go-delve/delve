@@ -369,7 +369,6 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	return wpid, &status, err
 }
 
-
 func killProcess(pid int) error {
 	return sys.Kill(pid, sys.SIGINT)
 }

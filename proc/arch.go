@@ -47,7 +47,7 @@ func (a *AMD64) SetGStructOffset(ver GoVersion, isextld bool) {
 			a.gStructOffset += 8
 		}
 	case "windows":
-		// Use ArbitraryUserPointer (0x28) as pointer to pointer 
+		// Use ArbitraryUserPointer (0x28) as pointer to pointer
 		// to G struct per:
 		// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
 		a.gStructOffset = 0x28

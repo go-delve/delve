@@ -255,7 +255,6 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	return bp, nil
 }
 
-
 // Status returns the status of the current main thread context.
 func (dbp *Process) Status() *WaitStatus {
 	return dbp.CurrentThread.Status

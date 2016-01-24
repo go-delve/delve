@@ -1,4 +1,4 @@
-﻿package proc
+package proc
 
 // #include "threads_windows.h"
 import "C"

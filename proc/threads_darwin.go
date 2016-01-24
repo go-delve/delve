@@ -5,8 +5,8 @@ package proc
 import "C"
 import (
 	"fmt"
-	"unsafe"
 	sys "golang.org/x/sys/unix"
+	"unsafe"
 )
 
 // WaitStatus is a synonym for the platform-specific WaitStatus
