@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"debug/gosym"
 	"go/constant"
+	"go/printer"
+	"go/token"
 	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strconv"
@@ -14,6 +17,7 @@ import (
 // an api.Breakpoint.
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
+		Name:          bp.Name,
 		ID:            bp.ID,
 		FunctionName:  bp.FunctionName,
 		File:          bp.File,
@@ -30,6 +34,10 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	for idx := range bp.HitCount {
 		b.HitCount[strconv.Itoa(idx)] = bp.HitCount[idx]
 	}
+
+	var buf bytes.Buffer
+	printer.Fprint(&buf, token.NewFileSet(), bp.Cond)
+	b.Cond = buf.String()
 
 	return b
 }

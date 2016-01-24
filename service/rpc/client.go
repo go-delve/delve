@@ -139,6 +139,12 @@ func (c *RPCClient) GetBreakpoint(id int) (*api.Breakpoint, error) {
 	return breakpoint, err
 }
 
+func (c *RPCClient) GetBreakpointByName(name string) (*api.Breakpoint, error) {
+	breakpoint := new(api.Breakpoint)
+	err := c.call("GetBreakpointByName", name, breakpoint)
+	return breakpoint, err
+}
+
 func (c *RPCClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoint, error) {
 	newBreakpoint := new(api.Breakpoint)
 	err := c.call("CreateBreakpoint", breakPoint, &newBreakpoint)
@@ -155,6 +161,17 @@ func (c *RPCClient) ClearBreakpoint(id int) (*api.Breakpoint, error) {
 	bp := new(api.Breakpoint)
 	err := c.call("ClearBreakpoint", id, bp)
 	return bp, err
+}
+
+func (c *RPCClient) ClearBreakpointByName(name string) (*api.Breakpoint, error) {
+	bp := new(api.Breakpoint)
+	err := c.call("ClearBreakpointByName", name, bp)
+	return bp, err
+}
+
+func (c *RPCClient) AmendBreakpoint(bp *api.Breakpoint) error {
+	err := c.call("AmendBreakpoint", bp, nil)
+	return err
 }
 
 func (c *RPCClient) ListThreads() ([]*api.Thread, error) {

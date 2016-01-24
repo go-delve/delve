@@ -36,12 +36,19 @@ type Client interface {
 
 	// GetBreakpoint gets a breakpoint by ID.
 	GetBreakpoint(id int) (*api.Breakpoint, error)
+	// GetBreakpointByName gets a breakpoint by name.
+	GetBreakpointByName(name string) (*api.Breakpoint, error)
 	// CreateBreakpoint creates a new breakpoint.
 	CreateBreakpoint(*api.Breakpoint) (*api.Breakpoint, error)
 	// ListBreakpoints gets all breakpoints.
 	ListBreakpoints() ([]*api.Breakpoint, error)
 	// ClearBreakpoint deletes a breakpoint by ID.
 	ClearBreakpoint(id int) (*api.Breakpoint, error)
+	// ClearBreakpointByName deletes a breakpoint by name
+	ClearBreakpointByName(name string) (*api.Breakpoint, error)
+	// Allows user to update an existing breakpoint for example to change the information
+	// retrieved when the breakpoint is hit or to change, add or remove the break condition
+	AmendBreakpoint(*api.Breakpoint) error
 
 	// ListThreads lists all threads.
 	ListThreads() ([]*api.Thread, error)

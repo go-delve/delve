@@ -57,7 +57,7 @@ func DebugCommands(client service.Client) *Commands {
 
 	c.cmds = []command{
 		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
-		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break <linespec> [-stack <n>|-goroutine|<variable name>]*"},
+		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break [name] <linespec>"},
 		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break."},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
@@ -85,6 +85,8 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"frame"}, cmdFn: frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: "Executes a file containing a list of delve commands"},
 		{aliases: []string{"disassemble", "disass"}, cmdFn: g0f0(disassCommand), helpMsg: "Displays disassembly of specific function or address range: disassemble [-a <start> <end>] [-l <locspec>]"},
+		{aliases: []string{"on"}, cmdFn: onCmd, helpMsg: "on <breakpoint name or id> <command>. Executes command when the specified breakpoint is hit (supported commands: print <expression>, stack [<depth>] [-full] and goroutine)"},
+		{aliases: []string{"condition", "cond"}, cmdFn: conditionCmd, helpMsg: "cond <breakpoint name or id> <boolean expression>. Specifies that the breakpoint or tracepoint should break only if the boolean expression is true."},
 	}
 
 	return c
@@ -499,14 +501,16 @@ func clear(t *Term, args string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 	id, err := strconv.Atoi(args)
+	var bp *api.Breakpoint
+	if err == nil {
+		bp, err = t.client.ClearBreakpoint(id)
+	} else {
+		bp, err = t.client.ClearBreakpointByName(args)
+	}
 	if err != nil {
 		return err
 	}
-	bp, err := t.client.ClearBreakpoint(id)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Breakpoint %d cleared at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, ShortenFilePath(bp.File), bp.Line)
+	fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
 	return nil
 }
 
@@ -537,9 +541,9 @@ func clearAll(t *Term, args string) error {
 
 		_, err := t.client.ClearBreakpoint(bp.ID)
 		if err != nil {
-			fmt.Printf("Couldn't delete breakpoint %d at %#v %s:%d: %s\n", bp.ID, bp.Addr, ShortenFilePath(bp.File), bp.Line, err)
+			fmt.Printf("Couldn't delete %s at %s: %s\n", formatBreakpointName(bp, false), formatBreakpointLocation(bp), err)
 		}
-		fmt.Printf("Breakpoint %d cleared at %#v for %s %s:%d\n", bp.ID, bp.Addr, bp.FunctionName, ShortenFilePath(bp.File), bp.Line)
+		fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
 	}
 	return nil
 }
@@ -558,61 +562,60 @@ func breakpoints(t *Term, args string) error {
 	}
 	sort.Sort(ByID(breakPoints))
 	for _, bp := range breakPoints {
-		thing := "Breakpoint"
-		if bp.Tracepoint {
-			thing = "Tracepoint"
-		}
-		fmt.Printf("%s %d at %#v %s:%d (%d)\n", thing, bp.ID, bp.Addr, ShortenFilePath(bp.File), bp.Line, bp.TotalHitCount)
+		fmt.Printf("%s at %v (%d)\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp), bp.TotalHitCount)
 
 		var attrs []string
+		if bp.Cond != "" {
+			attrs = append(attrs, fmt.Sprintf("\tcond %s", bp.Cond))
+		}
 		if bp.Stacktrace > 0 {
-			attrs = append(attrs, "-stack")
-			attrs = append(attrs, strconv.Itoa(bp.Stacktrace))
+			attrs = append(attrs, fmt.Sprintf("\tstack %d", bp.Stacktrace))
 		}
 		if bp.Goroutine {
-			attrs = append(attrs, "-goroutine")
+			attrs = append(attrs, "\tgoroutine")
 		}
 		for i := range bp.Variables {
-			attrs = append(attrs, bp.Variables[i])
+			attrs = append(attrs, fmt.Sprintf("\tprint %s", bp.Variables[i]))
 		}
 		if len(attrs) > 0 {
-			fmt.Printf("\t%s\n", strings.Join(attrs, " "))
+			fmt.Printf("%s\n", strings.Join(attrs, "\n"))
 		}
 	}
 	return nil
 }
 
 func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
-	args := strings.Split(argstr, " ")
-	if len(args) < 1 {
-		return fmt.Errorf("address required, specify either a function name or <file:line>")
-	}
-	requestedBp := &api.Breakpoint{}
+	args := strings.SplitN(argstr, " ", 2)
 
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "-stack":
-			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil {
-				return fmt.Errorf("argument of -stack must be a number")
-			}
-			requestedBp.Stacktrace = n
-		case "-goroutine":
-			requestedBp.Goroutine = true
-		default:
-			requestedBp.Variables = append(requestedBp.Variables, args[i])
+	requestedBp := &api.Breakpoint{}
+	locspec := ""
+	switch len(args) {
+	case 1:
+		locspec = argstr
+	case 2:
+		if api.ValidBreakpointName(args[0]) == nil {
+			requestedBp.Name = args[0]
+			locspec = args[1]
+		} else {
+			locspec = argstr
 		}
+	default:
+		return fmt.Errorf("address required")
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args[0])
+	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
 	if err != nil {
-		return err
-	}
-	thing := "Breakpoint"
-	if tracepoint {
-		thing = "Tracepoint"
+		if requestedBp.Name == "" {
+			return err
+		}
+		requestedBp.Name = ""
+		locspec = argstr
+		var err2 error
+		locs, err2 = t.client.FindLocation(api.EvalScope{-1, 0}, locspec)
+		if err2 != nil {
+			return err
+		}
 	}
 	for _, loc := range locs {
 		requestedBp.Addr = loc.PC
@@ -622,7 +625,7 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 			return err
 		}
 
-		fmt.Printf("%s %d set at %#v for %s %s:%d\n", thing, bp.ID, bp.Addr, bp.FunctionName, ShortenFilePath(bp.File), bp.Line)
+		fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
 	}
 	return nil
 }
@@ -960,8 +963,14 @@ func printcontextThread(t *Term, th *api.Thread) {
 		args = strings.Join(arg, ", ")
 	}
 
+	bpname := ""
+	if th.Breakpoint.Name != "" {
+		bpname = fmt.Sprintf("[%s] ", th.Breakpoint.Name)
+	}
+
 	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
-		fmt.Printf("> %s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
+		fmt.Printf("> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
+			bpname,
 			fn.Name,
 			args,
 			ShortenFilePath(th.File),
@@ -971,7 +980,8 @@ func printcontextThread(t *Term, th *api.Thread) {
 			th.Breakpoint.TotalHitCount,
 			th.PC)
 	} else {
-		fmt.Printf("> %s(%s) %s:%d (hits total:%d) (PC: %#v)\n",
+		fmt.Printf("> %s%s(%s) %s:%d (hits total:%d) (PC: %#v)\n",
+			bpname,
 			fn.Name,
 			args,
 			ShortenFilePath(th.File),
@@ -1053,6 +1063,65 @@ func exitCommand(t *Term, args string) error {
 	return ExitRequestError{}
 }
 
+func getBreakpointByIDOrName(t *Term, arg string) (bp *api.Breakpoint, err error) {
+	if id, err := strconv.Atoi(arg); err == nil {
+		bp, err = t.client.GetBreakpoint(id)
+	} else {
+		bp, err = t.client.GetBreakpointByName(arg)
+	}
+	return
+}
+
+func onCmd(t *Term, argstr string) error {
+	args := strings.SplitN(argstr, " ", 3)
+
+	if len(args) < 2 {
+		return fmt.Errorf("not enough arguments")
+	}
+
+	bp, err := getBreakpointByIDOrName(t, args[0])
+	if err != nil {
+		return err
+	}
+
+	switch args[1] {
+	case "p", "print":
+		if len(args) < 3 {
+			return fmt.Errorf("not enough arguments")
+		}
+		bp.Variables = append(bp.Variables, args[2])
+	case "stack", "bt":
+		depth, _, err := parseStackArgs(args[2])
+		if err != nil {
+			return err
+		}
+		bp.Stacktrace = depth
+	case "goroutine":
+		if len(args) != 2 {
+			return fmt.Errorf("too many arguments")
+		}
+		bp.Goroutine = true
+	}
+
+	return t.client.AmendBreakpoint(bp)
+}
+
+func conditionCmd(t *Term, argstr string) error {
+	args := strings.SplitN(argstr, " ", 2)
+
+	if len(args) < 2 {
+		return fmt.Errorf("not enough arguments")
+	}
+
+	bp, err := getBreakpointByIDOrName(t, args[0])
+	if err != nil {
+		return err
+	}
+	bp.Cond = args[1]
+
+	return t.client.AmendBreakpoint(bp)
+}
+
 // ShortenFilePath take a full file path and attempts to shorten
 // it by replacing the current directory to './'.
 func ShortenFilePath(fullPath string) string {
@@ -1087,4 +1156,28 @@ func (c *Commands) executeFile(t *Term, name string) error {
 	}
 
 	return scanner.Err()
+}
+
+func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
+	thing := "breakpoint"
+	if bp.Tracepoint {
+		thing = "tracepoint"
+	}
+	if upcase {
+		thing = strings.Title(thing)
+	}
+	id := bp.Name
+	if id == "" {
+		id = strconv.Itoa(bp.ID)
+	}
+	return fmt.Sprintf("%s %s", thing, id)
+}
+
+func formatBreakpointLocation(bp *api.Breakpoint) string {
+	p := ShortenFilePath(bp.File)
+	if bp.FunctionName != "" {
+		return fmt.Sprintf("%#v for %s() %s:%d", bp.Addr, bp.FunctionName, p, bp.Line)
+	} else {
+		return fmt.Sprintf("%#v for %s:%d", bp.Addr, p, bp.Line)
+	}
 }

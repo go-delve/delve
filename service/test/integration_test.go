@@ -97,6 +97,35 @@ func TestRestart_afterExit(t *testing.T) {
 	})
 }
 
+func TestRestart_breakpointPreservation(t *testing.T) {
+	withTestClient("continuetestprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
+		assertNoError(err, t, "CreateBreakpoint()")
+		stateCh := c.Continue()
+		
+		state := <- stateCh
+		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
+			t.Fatalf("Wrong breakpoint: %#v\n", state.CurrentThread.Breakpoint)
+		}
+		state = <- stateCh
+		if !state.Exited {
+			t.Fatal("Did not exit after first tracepoint")
+		}
+		
+		t.Log("Restart")
+		c.Restart()
+		stateCh = c.Continue()
+		state = <- stateCh
+		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
+			t.Fatalf("Wrong breakpoint (after restart): %#v\n", state.CurrentThread.Breakpoint)
+		}
+		state = <- stateCh
+		if !state.Exited {
+			t.Fatal("Did not exit after first tracepoint (after restart)")
+		}
+	})
+}
+
 func TestRestart_duringStop(t *testing.T) {
 	withTestClient("continuetestprog", t, func(c service.Client) {
 		origPid := c.ProcessPid()
@@ -964,5 +993,35 @@ func TestNegativeStackDepthBug(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 		_, err = c.Stacktrace(-1, -2, true)
 		assertError(err, t, "Stacktrace()")
+	})
+}
+
+func TestClientServer_CondBreakpoint(t *testing.T) {
+	withTestClient("parallel_next", t, func(c service.Client) {
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		bp.Cond = "n == 7"
+		assertNoError(c.AmendBreakpoint(bp), t, "AmendBreakpoint() 1")
+		bp, err = c.GetBreakpoint(bp.ID)
+		assertNoError(err, t, "GetBreakpoint() 1")
+		bp.Variables = append(bp.Variables, "n")
+		assertNoError(c.AmendBreakpoint(bp), t, "AmendBreakpoint() 2")
+		bp, err = c.GetBreakpoint(bp.ID)
+		assertNoError(err, t, "GetBreakpoint() 2")
+		if bp.Cond == "" {
+			t.Fatalf("No condition set on breakpoint %#v", bp)
+		}
+		if len(bp.Variables) != 1 {
+			t.Fatalf("Wrong number of expressions to evaluate on breakpoint %#v", bp)
+		}
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+
+		nvar, err := c.EvalVariable(api.EvalScope{-1, 0}, "n")
+		assertNoError(err, t, "EvalVariable()")
+
+		if nvar.SinglelineString() != "7" {
+			t.Fatalf("Stopped on wrong goroutine %s\n", nvar.Value)
+		}
 	})
 }
