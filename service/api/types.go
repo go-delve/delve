@@ -1,8 +1,12 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"github.com/derekparker/delve/proc"
 	"reflect"
+	"strconv"
+	"unicode"
 )
 
 // DebuggerState represents the current context of the debugger.
@@ -25,6 +29,8 @@ type DebuggerState struct {
 type Breakpoint struct {
 	// ID is a unique identifier for the breakpoint.
 	ID int `json:"id"`
+	// User defined name of the breakpoint
+	Name string `json:"name"`
 	// Addr is the address of the breakpoint.
 	Addr uint64 `json:"addr"`
 	// File is the source file for the breakpoint.
@@ -34,6 +40,9 @@ type Breakpoint struct {
 	// FunctionName is the name of the function at the current breakpoint, and
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
+
+	// Breakpoint condition
+	Cond string
 
 	// tracepoint flag
 	Tracepoint bool `json:"continue"`
@@ -47,6 +56,20 @@ type Breakpoint struct {
 	HitCount map[string]uint64 `json:"hitCount"`
 	// number of times a breakpoint has been reached
 	TotalHitCount uint64 `json:"totalHitCount"`
+}
+
+func ValidBreakpointName(name string) error {
+	if _, err := strconv.Atoi(name); err == nil {
+		return errors.New("breakpoint name can not be a number")
+	}
+
+	for _, ch := range name {
+		if !(unicode.IsLetter(ch) || unicode.IsDigit(ch)) {
+			return fmt.Errorf("invalid character in breakpoint name '%c'", ch)
+		}
+	}
+
+	return nil
 }
 
 // Thread is a thread within the debugged process.

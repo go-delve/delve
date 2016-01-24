@@ -4,6 +4,7 @@ import (
 	"debug/gosym"
 	"errors"
 	"fmt"
+	"go/parser"
 	"log"
 	"path/filepath"
 	"regexp"
@@ -100,11 +101,12 @@ func (d *Debugger) Restart() error {
 	if err != nil {
 		return fmt.Errorf("could not launch process: %s", err)
 	}
-	for addr, bp := range d.process.Breakpoints {
-		if bp.Temp {
-			continue
+	for _, oldBp := range d.Breakpoints() {
+		newBp, err := p.SetBreakpoint(oldBp.Addr)
+		if err != nil {
+			return err
 		}
-		if _, err := p.SetBreakpoint(addr); err != nil {
+		if err := copyBreakpointInfo(newBp, oldBp); err != nil {
 			return err
 		}
 	}
@@ -150,6 +152,16 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		addr      uint64
 		err       error
 	)
+
+	if requestedBp.Name != "" {
+		if err = api.ValidBreakpointName(requestedBp.Name); err != nil {
+			return nil, err
+		}
+		if d.FindBreakpointByName(requestedBp.Name) != nil {
+			return nil, errors.New("breakpoint name already exists")
+		}
+	}
+
 	switch {
 	case len(requestedBp.File) > 0:
 		fileName := requestedBp.File
@@ -182,14 +194,39 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	if err != nil {
 		return nil, err
 	}
-	bp.Tracepoint = requestedBp.Tracepoint
-	bp.Goroutine = requestedBp.Goroutine
-	bp.Stacktrace = requestedBp.Stacktrace
-	bp.Variables = requestedBp.Variables
-	bp.Cond = nil
+	if err := copyBreakpointInfo(bp, requestedBp); err != nil {
+		if _, err1 := d.process.ClearBreakpoint(bp.Addr); err1 != nil {
+			err = fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err, err1)
+		}
+		return nil, err
+	}
 	createdBp = api.ConvertBreakpoint(bp)
 	log.Printf("created breakpoint: %#v", createdBp)
 	return createdBp, nil
+}
+
+func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
+	original := d.findBreakpoint(amend.ID)
+	if original == nil {
+		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
+	}
+	if err := api.ValidBreakpointName(amend.Name); err != nil {
+		return err
+	}
+	return copyBreakpointInfo(original, amend)
+}
+
+func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
+	bp.Name = requested.Name
+	bp.Tracepoint = requested.Tracepoint
+	bp.Goroutine = requested.Goroutine
+	bp.Stacktrace = requested.Stacktrace
+	bp.Variables = requested.Variables
+	bp.Cond = nil
+	if requested.Cond != "" {
+		bp.Cond, err = parser.ParseExpr(requested.Cond)
+	}
+	return err
 }
 
 // ClearBreakpoint clears a breakpoint.
@@ -218,8 +255,26 @@ func (d *Debugger) Breakpoints() []*api.Breakpoint {
 
 // FindBreakpoint returns the breakpoint specified by 'id'.
 func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
-	for _, bp := range d.Breakpoints() {
+	bp := d.findBreakpoint(id)
+	if bp == nil {
+		return nil
+	}
+	return api.ConvertBreakpoint(bp)
+}
+
+func (d *Debugger) findBreakpoint(id int) *proc.Breakpoint {
+	for _, bp := range d.process.Breakpoints {
 		if bp.ID == id {
+			return bp
+		}
+	}
+	return nil
+}
+
+// FindBreakpointByName returns the breakpoint specified by 'name'
+func (d *Debugger) FindBreakpointByName(name string) *api.Breakpoint {
+	for _, bp := range d.Breakpoints() {
+		if bp.Name == name {
 			return bp
 		}
 	}

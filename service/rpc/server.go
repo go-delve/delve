@@ -121,6 +121,15 @@ func (s *RPCServer) GetBreakpoint(id int, breakpoint *api.Breakpoint) error {
 	return nil
 }
 
+func (s *RPCServer) GetBreakpointByName(name string, breakpoint *api.Breakpoint) error {
+	bp := s.debugger.FindBreakpointByName(name)
+	if bp == nil {
+		return fmt.Errorf("no breakpoint with name %s", name)
+	}
+	*breakpoint = *bp
+	return nil
+}
+
 type StacktraceGoroutineArgs struct {
 	Id    int
 	Depth int
@@ -161,6 +170,24 @@ func (s *RPCServer) ClearBreakpoint(id int, breakpoint *api.Breakpoint) error {
 	}
 	*breakpoint = *deleted
 	return nil
+}
+
+func (s *RPCServer) ClearBreakpointByName(name string, breakpoint *api.Breakpoint) error {
+	bp := s.debugger.FindBreakpointByName(name)
+	if bp == nil {
+		return fmt.Errorf("no breakpoint with name %s", name)
+	}
+	deleted, err := s.debugger.ClearBreakpoint(bp)
+	if err != nil {
+		return err
+	}
+	*breakpoint = *deleted
+	return nil
+}
+
+func (s *RPCServer) AmendBreakpoint(amend *api.Breakpoint, unused *int) error {
+	*unused = 0
+	return s.debugger.AmendBreakpoint(amend)
 }
 
 func (s *RPCServer) ListThreads(arg interface{}, threads *[]*api.Thread) (err error) {

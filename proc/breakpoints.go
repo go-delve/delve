@@ -19,6 +19,7 @@ type Breakpoint struct {
 
 	Addr         uint64 // Address breakpoint is set for.
 	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
+	Name         string // User defined name of the breakpoint
 	ID           int    // Monotonically increasing ID.
 	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
 
