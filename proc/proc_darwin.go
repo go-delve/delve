@@ -193,13 +193,21 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 func (dbp *Process) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	if sec := exe.Section("__debug_frame"); sec != nil {
+	debugFrameSec := exe.Section("__debug_frame")
+	debugInfoSec := exe.Section("__debug_info")
+
+	if debugFrameSec != nil && debugInfoSec != nil {
 		debugFrame, err := exe.Section("__debug_frame").Data()
 		if err != nil {
 			fmt.Println("could not get __debug_frame section", err)
 			os.Exit(1)
 		}
-		dbp.frameEntries = frame.Parse(debugFrame)
+		dat, err := debugInfoSec.Data()
+		if err != nil {
+			fmt.Println("could not get .debug_info section", err)
+			os.Exit(1)
+		}
+		dbp.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
 	} else {
 		fmt.Println("could not find __debug_frame section in binary")
 		os.Exit(1)

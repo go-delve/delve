@@ -158,16 +158,24 @@ func (dbp *Process) addThread(hThread sys.Handle, threadID int, attach bool) (*T
 func (dbp *Process) parseDebugFrame(exe *pe.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	if sec := exe.Section(".debug_frame"); sec != nil {
-		debugFrame, err := sec.Data()
-		if err != nil && uint32(len(debugFrame)) < sec.Size {
+	debugFrameSec := exe.Section(".debug_frame")
+	debugInfoSec := exe.Section(".debug_info")
+
+	if debugFrameSec != nil && debugInfoSec != nil {
+		debugFrame, err := debugFrameSec.Data()
+		if err != nil && uint32(len(debugFrame)) < debugFrameSec.Size {
 			fmt.Println("could not get .debug_frame section", err)
 			os.Exit(1)
 		}
-		if 0 < sec.VirtualSize && sec.VirtualSize < sec.Size {
-			debugFrame = debugFrame[:sec.VirtualSize]
+		if 0 < debugFrameSec.VirtualSize && debugFrameSec.VirtualSize < debugFrameSec.Size {
+			debugFrame = debugFrame[:debugFrameSec.VirtualSize]
 		}
-		dbp.frameEntries = frame.Parse(debugFrame)
+		dat, err := debugInfoSec.Data()
+		if err != nil {
+			fmt.Println("could not get .debug_info section", err)
+			os.Exit(1)
+		}
+		dbp.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
 	} else {
 		fmt.Println("could not find .debug_frame section in binary")
 		os.Exit(1)

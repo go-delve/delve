@@ -179,13 +179,21 @@ func (dbp *Process) findExecutable(path string) (*elf.File, error) {
 func (dbp *Process) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	if sec := exe.Section(".debug_frame"); sec != nil {
+	debugFrameSec := exe.Section(".debug_frame")
+	debugInfoSec := exe.Section(".debug_info")
+
+	if debugFrameSec != nil && debugInfoSec != nil {
 		debugFrame, err := exe.Section(".debug_frame").Data()
 		if err != nil {
 			fmt.Println("could not get .debug_frame section", err)
 			os.Exit(1)
 		}
-		dbp.frameEntries = frame.Parse(debugFrame)
+		dat, err := debugInfoSec.Data()
+		if err != nil {
+			fmt.Println("could not get .debug_info section", err)
+			os.Exit(1)
+		}
+		dbp.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
 	} else {
 		fmt.Println("could not find .debug_frame section in binary")
 		os.Exit(1)
