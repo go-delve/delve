@@ -25,6 +25,8 @@ type Client interface {
 	Next() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
 	Step() (*api.DebuggerState, error)
+	// SingleStep will step a single cpu instruction.
+	StepInstruction() (*api.DebuggerState, error)
 	// SwitchThread switches the current thread context.
 	SwitchThread(threadID int) (*api.DebuggerState, error)
 	// SwitchGoroutine switches the current goroutine (and the current thread as well)

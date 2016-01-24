@@ -461,7 +461,7 @@ func (dbp *Process) resume() error {
 	thread := dbp.Threads[dbp.os.breakThread]
 	// This relies on the same assumptions as dbp.setCurrentBreakpoints
 	if thread.CurrentBreakpoint != nil {
-		if err := thread.Step(); err != nil {
+		if err := thread.StepInstruction(); err != nil {
 			return err
 		}
 		thread.CurrentBreakpoint = nil

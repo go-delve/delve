@@ -4,10 +4,11 @@ import (
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
-	"golang.org/x/debug/dwarf"
 	"path/filepath"
 	"reflect"
 	"runtime"
+
+	"golang.org/x/debug/dwarf"
 
 	"github.com/derekparker/delve/dwarf/frame"
 )
@@ -53,20 +54,20 @@ func (thread *Thread) Continue() error {
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
 	if _, ok := thread.dbp.FindBreakpoint(pc); ok {
-		if err := thread.Step(); err != nil {
+		if err := thread.StepInstruction(); err != nil {
 			return err
 		}
 	}
 	return thread.resume()
 }
 
-// Step a single instruction.
+// StepInstruction steps a single instruction.
 //
 // Executes exactly one instruction and then returns.
 // If the thread is at a breakpoint, we first clear it,
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
-func (thread *Thread) Step() (err error) {
+func (thread *Thread) StepInstruction() (err error) {
 	thread.running = true
 	thread.singleStepping = true
 	defer func() {

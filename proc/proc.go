@@ -220,6 +220,11 @@ func (dbp *Process) FunctionEntryToFirstLine(entry uint64) (uint64, error) {
 	return entry, nil
 }
 
+// CurrentLocation returns the location of the current thread.
+func (dbp *Process) CurrentLocation() (*Location, error) {
+	return dbp.CurrentThread.Location()
+}
+
 // RequestManualStop sets the `halt` flag and
 // sends SIGSTOP to all threads.
 func (dbp *Process) RequestManualStop() error {
@@ -381,7 +386,7 @@ func (dbp *Process) Continue() error {
 			// runtime.Breakpoint or manual stop
 			if dbp.CurrentThread.onRuntimeBreakpoint() {
 				for i := 0; i < 2; i++ {
-					if err = dbp.CurrentThread.Step(); err != nil {
+					if err = dbp.CurrentThread.StepInstruction(); err != nil {
 						return err
 					}
 				}
@@ -446,18 +451,48 @@ func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
 	return dbp.SwitchThread(trapthread.ID)
 }
 
-// Step will continue the current thread for exactly
+// Step will continue until another source line is reached.
+// Will step into functions.
+func (dbp *Process) Step() (err error) {
+	fn := func() error {
+		var nloc *Location
+		th := dbp.CurrentThread
+		loc, err := th.Location()
+		if err != nil {
+			return err
+		}
+		for {
+			err = dbp.CurrentThread.singleStep()
+			if err != nil {
+				return err
+			}
+			nloc, err = th.Location()
+			if err != nil {
+				return err
+			}
+			if nloc.File != loc.File {
+				return nil
+			}
+			if nloc.File == loc.File && nloc.Line != loc.Line {
+				return nil
+			}
+		}
+	}
+	return dbp.run(fn)
+}
+
+// StepInstruction will continue the current thread for exactly
 // one instruction. This method affects only the thread
 // asssociated with the selected goroutine. All other
 // threads will remain stopped.
-func (dbp *Process) Step() (err error) {
+func (dbp *Process) StepInstruction() (err error) {
 	if dbp.SelectedGoroutine == nil {
 		return errors.New("cannot single step: no selected goroutine")
 	}
 	if dbp.SelectedGoroutine.thread == nil {
 		return fmt.Errorf("cannot single step: no thread associated with goroutine %d", dbp.SelectedGoroutine.ID)
 	}
-	return dbp.run(dbp.SelectedGoroutine.thread.Step)
+	return dbp.run(dbp.SelectedGoroutine.thread.StepInstruction)
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.

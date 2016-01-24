@@ -60,7 +60,8 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break."},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
-		{aliases: []string{"step", "si"}, cmdFn: step, helpMsg: "Single step through program."},
+		{aliases: []string{"step", "s"}, cmdFn: step, helpMsg: "Single step through program."},
+		{aliases: []string{"step-instruction", "si"}, cmdFn: stepInstruction, helpMsg: "Single step a single cpu instruction."},
 		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: "Switch to the specified thread."},
@@ -464,6 +465,15 @@ func cont(t *Term, args string) error {
 
 func step(t *Term, args string) error {
 	state, err := t.client.Step()
+	if err != nil {
+		return err
+	}
+	printcontext(t, state)
+	return nil
+}
+
+func stepInstruction(t *Term, args string) error {
+	state, err := t.client.StepInstruction()
 	if err != nil {
 		return err
 	}

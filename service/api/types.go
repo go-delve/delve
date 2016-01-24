@@ -184,8 +184,10 @@ type EvalScope struct {
 const (
 	// Continue resumes process execution.
 	Continue = "continue"
-	// Step continues for a single instruction, entering function calls.
+	// Step continues to next source line, entering function calls.
 	Step = "step"
+	// SingleStep continues for exactly 1 cpu instruction.
+	StepInstruction = "stepInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
 	// SwitchThread switches the debugger's current thread context.
