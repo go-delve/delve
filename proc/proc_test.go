@@ -1426,3 +1426,15 @@ func TestCondBreakpointError(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue356(t *testing.T) {
+	// slice with a typedef does not get printed correctly
+	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+		mmvar, err := evalVariable(p, "mainMenu")
+		assertNoError(err, t, "EvalVariable()")
+		if mmvar.Kind != reflect.Slice {
+			t.Fatalf("Wrong kind for mainMenu: %v\n", mmvar.Kind)
+		}
+	})
+}

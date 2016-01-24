@@ -1,10 +1,10 @@
 package proc
 
 import (
-	"debug/elf"
 	"debug/gosym"
 	"errors"
 	"fmt"
+	"golang.org/x/debug/elf"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -168,11 +168,10 @@ func (dbp *Process) findExecutable(path string) (*elf.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := elfFile.DWARF()
+	dbp.dwarf, err = elfFile.DWARF()
 	if err != nil {
 		return nil, err
 	}
-	dbp.dwarf = data
 	return elfFile, nil
 }
 

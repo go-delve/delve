@@ -1,11 +1,12 @@
 package proc
 
 import (
-	"debug/dwarf"
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
+	"golang.org/x/debug/dwarf"
 	"path/filepath"
+	"reflect"
 	"runtime"
 
 	"github.com/derekparker/delve/dwarf/frame"
@@ -284,7 +285,7 @@ func (thread *Thread) newGVariable(gaddr uintptr, deref bool) (*Variable, error)
 	name := ""
 
 	if deref {
-		typ = &dwarf.PtrType{dwarf.CommonType{int64(thread.dbp.arch.PtrSize()), ""}, typ}
+		typ = &dwarf.PtrType{dwarf.CommonType{int64(thread.dbp.arch.PtrSize()), "", reflect.Ptr, 0}, typ}
 	} else {
 		name = "runtime.curg"
 	}

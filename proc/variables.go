@@ -2,12 +2,12 @@ package proc
 
 import (
 	"bytes"
-	"debug/dwarf"
 	"encoding/binary"
 	"fmt"
 	"go/constant"
 	"go/parser"
 	"go/token"
+	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strings"
 	"unsafe"
@@ -126,19 +126,6 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
-func ptrTypeKind(t *dwarf.PtrType) reflect.Kind {
-	structtyp, isstruct := t.Type.(*dwarf.StructType)
-	_, isvoid := t.Type.(*dwarf.VoidType)
-	if isstruct && strings.HasPrefix(structtyp.StructName, "hchan<") {
-		return reflect.Chan
-	} else if isstruct && strings.HasPrefix(structtyp.StructName, "hash<") {
-		return reflect.Map
-	} else if isvoid {
-		return reflect.UnsafePointer
-	}
-	return reflect.Ptr
-}
-
 func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, scope.Thread.dbp, scope.Thread)
 }
@@ -164,26 +151,30 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, dbp *Process, 
 
 	switch t := v.RealType.(type) {
 	case *dwarf.PtrType:
-		v.Kind = ptrTypeKind(t)
-	case *dwarf.StructType:
-		switch {
-		case t.StructName == "string":
-			v.Kind = reflect.String
-			v.stride = 1
-			v.fieldType = &dwarf.UintType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
-			if v.Addr != 0 {
-				v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.dbp.arch, v.Addr)
-			}
-		case t.StructName == "runtime.iface" || t.StructName == "runtime.eface":
-			v.Kind = reflect.Interface
-		case strings.HasPrefix(t.StructName, "[]"):
-			v.Kind = reflect.Slice
-			if v.Addr != 0 {
-				v.loadSliceInfo(t)
-			}
-		default:
-			v.Kind = reflect.Struct
+		v.Kind = reflect.Ptr
+		if _, isvoid := t.Type.(*dwarf.VoidType); isvoid {
+			v.Kind = reflect.UnsafePointer
 		}
+	case *dwarf.ChanType:
+		v.Kind = reflect.Chan
+	case *dwarf.MapType:
+		v.Kind = reflect.Map
+	case *dwarf.StringType:
+		v.Kind = reflect.String
+		v.stride = 1
+		v.fieldType = &dwarf.UintType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
+		if v.Addr != 0 {
+			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.dbp.arch, v.Addr)
+		}
+	case *dwarf.SliceType:
+		v.Kind = reflect.Slice
+		if v.Addr != 0 {
+			v.loadSliceInfo(t)
+		}
+	case *dwarf.InterfaceType:
+		v.Kind = reflect.Interface
+	case *dwarf.StructType:
+		v.Kind = reflect.Struct
 	case *dwarf.ArrayType:
 		v.Kind = reflect.Array
 		v.Base = v.Addr
@@ -733,7 +724,9 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.Children[0].loadValueInternal(recurseLevel)
 
 	case reflect.Chan:
-		sv := v.maybeDereference()
+		sv := v.clone()
+		sv.RealType = resolveTypedef(&(sv.RealType.(*dwarf.ChanType).TypedefType))
+		sv = sv.maybeDereference()
 		sv.loadValueInternal(recurseLevel)
 		v.Children = sv.Children
 		v.Len = sv.Len
@@ -882,7 +875,7 @@ func readString(mem memoryReadWriter, arch Arch, addr uintptr) (string, int64, e
 	return retstr, strlen, err
 }
 
-func (v *Variable) loadSliceInfo(t *dwarf.StructType) {
+func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
 	v.mem = cacheMemory(v.mem, v.Addr, int(t.Size()))
 
 	var err error
@@ -1186,7 +1179,9 @@ type mapIterator struct {
 
 // Code derived from go/src/runtime/hashmap.go
 func (v *Variable) mapIterator() *mapIterator {
-	sv := v.maybeDereference()
+	sv := v.clone()
+	sv.RealType = resolveTypedef(&(sv.RealType.(*dwarf.MapType).TypedefType))
+	sv = sv.maybeDereference()
 	v.Base = sv.Addr
 
 	maptype, ok := sv.RealType.(*dwarf.StructType)
@@ -1386,7 +1381,9 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
-	for _, f := range v.RealType.(*dwarf.StructType).Field {
+	ityp := resolveTypedef(&v.RealType.(*dwarf.InterfaceType).TypedefType).(*dwarf.StructType)
+
+	for _, f := range ityp.Field {
 		switch f.Name {
 		case "tab": // for runtime.iface
 			tab, _ := v.toField(f)
