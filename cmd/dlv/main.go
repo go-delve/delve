@@ -256,6 +256,10 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 					return 1
 				}
 				debugname := "./" + base + ".test"
+                // On Windows, "go test" generates an executable with the ".exe" extension
+                if runtime.GOOS == "windows" {
+                    debugname += ".exe"
+                }				
 				defer os.Remove(debugname)
 				processArgs := append([]string{debugname}, args...)
 
