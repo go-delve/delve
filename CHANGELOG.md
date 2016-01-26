@@ -9,7 +9,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 
 ### Added
 
-- Windows support landed in master. Still work to be done, but %95 the way there. (@lukehoban)
+- Windows support landed in master. Still work to be done, but 95% the way there. (@lukehoban)
 - `step-instruction` command added, has same behavior of the old `step` command.
 - (Backend) Implementation for conditional breakpoints, front end command coming soon. (@aarzilli)
 - Implement expression evaluator, can now execute commands like `print i == 2`. (@aarzilli)
@@ -17,10 +17,10 @@ All changes mention the author, unless contributed by me (@derekparker).
 ### Changed
 
 - `step` command no longer steps single instruction but goes to next source line, stepping into functions.
-- Refactor or `parseG` command for clarity and speed improvements.
+- Refactor of `parseG` command for clarity and speed improvements.
 - Optimize reading from target process memory with cache. (prefetch + parse) (@aarzilli)
 - Shorten file paths in `trace` output.
-- Added git sha to version output.
+- Added Git SHA to version output.
 - Support function spec with partial package paths. (@aarzilli)
 - Bunch of misc variable evaluation fixes (@aarzilli)
 
