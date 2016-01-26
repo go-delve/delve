@@ -6,6 +6,7 @@ import (
 	"go/constant"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,13 @@ type FuncLocationSpec struct {
 	ReceiverName          string
 	PackageOrReceiverName string
 	BaseName              string
+}
+
+func normalizePath(path string) string {
+	if runtime.GOOS != "windows" {
+		return path
+	}
+	return strings.ToLower(filepath.ToSlash(path))
 }
 
 func parseLocationSpec(locStr string) (LocationSpec, error) {
@@ -98,7 +106,7 @@ func parseLocationSpecDefault(locStr, rest string) (LocationSpec, error) {
 	v := strings.Split(rest, ":")
 	if len(v) > 2 {
 		// On Windows, path may contain ":", so split only on last ":"
-		v = []string { strings.Join(v[0:len(v)-1], ":"), v[len(v)-1] }
+		v = []string{strings.Join(v[0:len(v)-1], ":"), v[len(v)-1]}
 	}
 
 	if len(v) == 1 {
@@ -111,7 +119,6 @@ func parseLocationSpecDefault(locStr, rest string) (LocationSpec, error) {
 	spec := &NormalLocationSpec{}
 
 	spec.Base = v[0]
-	spec.Base = filepath.ToSlash(spec.Base)
 	spec.FuncBase = parseFuncLocationSpec(spec.Base)
 
 	if len(v) < 2 {
@@ -284,6 +291,8 @@ func (loc *NormalLocationSpec) FileMatch(path string) bool {
 }
 
 func partialPathMatch(expr, path string) bool {
+	expr = normalizePath(expr)
+	path = normalizePath(path)
 	if len(expr) < len(path)-1 {
 		return strings.HasSuffix(path, expr) && (path[len(path)-len(expr)-1] == '/')
 	} else {
