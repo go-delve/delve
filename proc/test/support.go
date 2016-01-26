@@ -7,8 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"testing"
 	"runtime"
+	"strings"
+	"testing"
 )
 
 // Fixture is a test binary.
@@ -64,7 +65,10 @@ func BuildFixture(name string) Fixture {
 
 	source, _ := filepath.Abs(path)
 	source = filepath.ToSlash(source)
-	
+	if runtime.GOOS == "windows" {
+		source = strings.ToLower(source)
+	}
+
 	Fixtures[name] = Fixture{Name: name, Path: tmpfile, Source: source}
 	return Fixtures[name]
 }

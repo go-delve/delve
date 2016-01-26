@@ -149,7 +149,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	)
 	switch {
 	case len(requestedBp.File) > 0:
-		addr, err = d.process.FindFileLocation(requestedBp.File, requestedBp.Line)
+		addr, err = d.process.FindFileLocation(normalizePath(requestedBp.File), requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
 		if requestedBp.Line >= 0 {
 			addr, err = d.process.FindFunctionLocation(requestedBp.FunctionName, false, requestedBp.Line)
