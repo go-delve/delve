@@ -27,7 +27,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 ### Fixed
 
 - Misc fixes in preparation for Go 1.6. (@aarzilli, @derekparker)
-- Replace stdlib debug/dward with golang.org/x/debug/dwarf and fix Dwarf endian related parsing issues. (@aarzilli)
+- Replace stdlib debug/dwarf with golang.org/x/debug/dwarf and fix Dwarf endian related parsing issues. (@aarzilli)
 - Fix `goroutines` not working without an argument. (@aarzilli)
 - Always clear temp breakpoints, even if normal breakpoint is hit. (@aarzilli)
 - Infinite loading loop through maps. (@aarzilli)
