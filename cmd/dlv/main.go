@@ -8,10 +8,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
-	"runtime"
 
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version string = "0.10.0-alpha"
+const version string = "0.11.0-alpha"
 
 // Build is the current git hash.
 var Build string
@@ -56,13 +56,13 @@ evaluating variables, and providing information of thread / goroutine state, CPU
 The goal of this tool is to provide a simple yet powerful interface for debugging Go programs.
 `,
 	}
-	
+
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
-		// Work-around for https://github.com/golang/go/issues/13154 
+		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlagsDefault = "-ldflags=-linkmode internal"
 	}
-	
+
 	rootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	rootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	rootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
@@ -259,7 +259,7 @@ starts and attaches to it, and enable you to immediately begin debugging your pr
 				// On Windows, "go test" generates an executable with the ".exe" extension
 				if runtime.GOOS == "windows" {
 					debugname += ".exe"
-				}				
+				}
 				defer os.Remove(debugname)
 				processArgs := append([]string{debugname}, args...)
 
