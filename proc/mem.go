@@ -35,6 +35,9 @@ func cacheMemory(mem memoryReadWriter, addr uintptr, size int) memoryReadWriter 
 	if !cacheEnabled {
 		return mem
 	}
+	if size <= 0 {
+		return mem
+	}
 	if cacheMem, isCache := mem.(*memCache); isCache {
 		if cacheMem.contains(addr, size) {
 			return mem
