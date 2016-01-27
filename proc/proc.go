@@ -8,13 +8,14 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
-	"golang.org/x/debug/dwarf"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+
+	"golang.org/x/debug/dwarf"
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
@@ -462,7 +463,7 @@ func (dbp *Process) Step() (err error) {
 			return err
 		}
 		for {
-			err = dbp.CurrentThread.singleStep()
+			err = dbp.CurrentThread.StepInstruction()
 			if err != nil {
 				return err
 			}
