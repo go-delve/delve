@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/derekparker/delve/proc/test"
+	"github.com/derekparker/delve/service/api"
 )
 
 func TestCommandDefault(t *testing.T) {
@@ -97,4 +98,9 @@ func TestExecuteFile(t *testing.T) {
 	if breakCount != 1 || traceCount != 1 {
 		t.Fatalf("Wrong counts break: %d trace: %d\n", breakCount, traceCount)
 	}
+}
+
+func TestIssue354(t *testing.T) {
+	printStack([]api.Stackframe{ }, "")
+	printStack([]api.Stackframe{{api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil}, nil, nil}}, "")
 }
