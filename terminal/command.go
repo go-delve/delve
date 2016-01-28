@@ -826,6 +826,9 @@ func digits(n int) int {
 }
 
 func printStack(stack []api.Stackframe, ind string) {
+	if len(stack) == 0 {
+		return
+	}
 	d := digits(len(stack) - 1)
 	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
 	s := strings.Repeat(" ", d+2+len(ind))
@@ -884,9 +887,9 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	args := ""
-	if th.Breakpoint.Tracepoint && fn != nil {
+	if th.Breakpoint.Tracepoint {
 		var arg []string
-		for _, ar := range fn.Args {
+		for _, ar := range th.BreakpointInfo.Arguments {
 			arg = append(arg, ar.SinglelineString())
 		}
 		args = strings.Join(arg, ", ")
