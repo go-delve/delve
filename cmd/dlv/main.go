@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/derekparker/delve/config"
@@ -137,7 +136,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 	rootCommand.AddCommand(execCommand)
 
 	// 'trace' subcommand.
-	var traceAttachPid int
+	var traceAttachPid, traceStackDepth int
 	traceCommand := &cobra.Command{
 		Use:   "trace [regexp]",
 		Short: "Compile and begin tracing program.",
@@ -193,50 +192,26 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 					return 1
 				}
 				for i := range funcs {
-					_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: funcs[i], Line: -1, Tracepoint: true})
+					_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: funcs[i], Line: -1, Tracepoint: true, Stacktrace: traceStackDepth})
 					if err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						return 1
 					}
 				}
-				stateChan := client.Continue()
-				for {
-					select {
-					case state := <-stateChan:
-						if state == nil {
-							return 0
-						}
-						if state.Err != nil {
-							fmt.Fprintln(os.Stderr, state.Err)
-							return 0
-						}
-						for i := range state.Threads {
-							th := state.Threads[i]
-							if th.Breakpoint == nil {
-								continue
-							}
-							var args []string
-							var fname string
-							if th.Function != nil {
-								fname = th.Function.Name
-							}
-							if th.BreakpointInfo != nil {
-								for _, arg := range th.BreakpointInfo.Arguments {
-									args = append(args, arg.SinglelineString())
-								}
-							}
-							fmt.Printf("%s(%s) %s:%d\n", fname, strings.Join(args, ", "), terminal.ShortenFilePath(th.File), th.Line)
-						}
-					case <-sigChan:
-						server.Stop(traceAttachPid == 0)
-						return 1
-					}
+				cmds := terminal.DebugCommands(client)
+				cmd := cmds.Find("continue")
+				err = cmd(terminal.New(client, nil), "")
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
 				}
+				return 0
 			}()
 			os.Exit(status)
 		},
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
+	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
 	rootCommand.AddCommand(traceCommand)
 
 	// 'test' subcommand.
