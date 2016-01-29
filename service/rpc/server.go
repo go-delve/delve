@@ -14,6 +14,10 @@ import (
 	"github.com/derekparker/delve/service/debugger"
 )
 
+type ServerImpl struct {
+	s *RPCServer
+}
+
 type RPCServer struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
@@ -24,44 +28,46 @@ type RPCServer struct {
 }
 
 // NewServer creates a new RPCServer.
-func NewServer(config *service.Config, logEnabled bool) *RPCServer {
+func NewServer(config *service.Config, logEnabled bool) *ServerImpl {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	if !logEnabled {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	return &RPCServer{
-		config:   config,
-		listener: config.Listener,
+	return &ServerImpl{
+		&RPCServer{
+			config:   config,
+			listener: config.Listener,
+		},
 	}
 }
 
 // Stop detaches from the debugger and waits for it to stop.
-func (s *RPCServer) Stop(kill bool) error {
-	return s.debugger.Detach(kill)
+func (s *ServerImpl) Stop(kill bool) error {
+	return s.s.debugger.Detach(kill)
 }
 
 // Run starts a debugger and exposes it with an HTTP server. The debugger
 // itself can be stopped with the `detach` API. Run blocks until the HTTP
 // server stops.
-func (s *RPCServer) Run() error {
+func (s *ServerImpl) Run() error {
 	var err error
 	// Create and start the debugger
-	if s.debugger, err = debugger.New(&debugger.Config{
-		ProcessArgs: s.config.ProcessArgs,
-		AttachPid:   s.config.AttachPid,
+	if s.s.debugger, err = debugger.New(&debugger.Config{
+		ProcessArgs: s.s.config.ProcessArgs,
+		AttachPid:   s.s.config.AttachPid,
 	}); err != nil {
 		return err
 	}
 
 	go func() {
-		c, err := s.listener.Accept()
+		c, err := s.s.listener.Accept()
 		if err != nil {
 			panic(err)
 		}
 
 		rpcs := grpc.NewServer()
-		rpcs.Register(s)
+		rpcs.Register(s.s)
 		rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
 	}()
 	return nil
@@ -74,6 +80,10 @@ func (s *RPCServer) ProcessPid(arg1 interface{}, pid *int) error {
 
 func (s *RPCServer) Detach(kill bool, ret *int) error {
 	return s.debugger.Detach(kill)
+}
+
+func (s *ServerImpl) Restart() error {
+	return s.s.Restart(nil, nil)
 }
 
 func (s *RPCServer) Restart(arg1 interface{}, arg2 *int) error {
