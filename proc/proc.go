@@ -229,6 +229,9 @@ func (dbp *Process) CurrentLocation() (*Location, error) {
 // RequestManualStop sets the `halt` flag and
 // sends SIGSTOP to all threads.
 func (dbp *Process) RequestManualStop() error {
+	if dbp.exited {
+		return &ProcessExitedError{}
+	}
 	dbp.halt = true
 	return dbp.requestManualStop()
 }
@@ -237,6 +240,9 @@ func (dbp *Process) RequestManualStop() error {
 // break point table. Setting a break point must be thread specific due to
 // ptrace actions needing the thread to be in a signal-delivery-stop.
 func (dbp *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
+	if dbp.exited {
+		return nil, &ProcessExitedError{}
+	}
 	return dbp.setBreakpoint(dbp.CurrentThread.ID, addr, false)
 }
 
@@ -247,6 +253,9 @@ func (dbp *Process) SetTempBreakpoint(addr uint64) (*Breakpoint, error) {
 
 // ClearBreakpoint clears the breakpoint at addr.
 func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
+	if dbp.exited {
+		return nil, &ProcessExitedError{}
+	}
 	bp, ok := dbp.FindBreakpoint(addr)
 	if !ok {
 		return nil, NoBreakpointError{addr: addr}
@@ -268,6 +277,9 @@ func (dbp *Process) Status() *WaitStatus {
 
 // Next continues execution until the next source line.
 func (dbp *Process) Next() (err error) {
+	if dbp.exited {
+		return &ProcessExitedError{}
+	}
 	for i := range dbp.Breakpoints {
 		if dbp.Breakpoints[i].Temp {
 			return fmt.Errorf("next while nexting")
@@ -357,6 +369,9 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
 func (dbp *Process) Continue() error {
+	if dbp.exited {
+		return &ProcessExitedError{}
+	}
 	for {
 		if err := dbp.resume(); err != nil {
 			return err
@@ -498,6 +513,9 @@ func (dbp *Process) StepInstruction() (err error) {
 
 // SwitchThread changes from current thread to the thread specified by `tid`.
 func (dbp *Process) SwitchThread(tid int) error {
+	if dbp.exited {
+		return &ProcessExitedError{}
+	}
 	if th, ok := dbp.Threads[tid]; ok {
 		dbp.CurrentThread = th
 		dbp.SelectedGoroutine, _ = dbp.CurrentThread.GetG()
@@ -509,6 +527,9 @@ func (dbp *Process) SwitchThread(tid int) error {
 // SwitchGoroutine changes from current thread to the thread
 // running the specified goroutine.
 func (dbp *Process) SwitchGoroutine(gid int) error {
+	if dbp.exited {
+		return &ProcessExitedError{}
+	}
 	g, err := dbp.FindGoroutine(gid)
 	if err != nil {
 		return err
@@ -527,6 +548,9 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 // GoroutinesInfo returns an array of G structures representing the information
 // Delve cares about from the internal runtime G structure.
 func (dbp *Process) GoroutinesInfo() ([]*G, error) {
+	if dbp.exited {
+		return nil, &ProcessExitedError{}
+	}
 	if dbp.allGCache != nil {
 		return dbp.allGCache, nil
 	}
@@ -597,6 +621,9 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 
 // Halt stops all threads.
 func (dbp *Process) Halt() (err error) {
+	if dbp.exited {
+		return &ProcessExitedError{}
+	}
 	for _, th := range dbp.Threads {
 		if err := th.Halt(); err != nil {
 			return err
@@ -817,6 +844,9 @@ func (dbp *Process) FindGoroutine(gid int) (*G, error) {
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
+	if dbp.exited {
+		return nil, &ProcessExitedError{}
+	}
 	g, err := dbp.FindGoroutine(gid)
 	if err != nil {
 		return nil, err

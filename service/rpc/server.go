@@ -162,13 +162,16 @@ func (s *RPCServer) ClearBreakpoint(id int, breakpoint *api.Breakpoint) error {
 	return nil
 }
 
-func (s *RPCServer) ListThreads(arg interface{}, threads *[]*api.Thread) error {
-	*threads = s.debugger.Threads()
-	return nil
+func (s *RPCServer) ListThreads(arg interface{}, threads *[]*api.Thread) (err error) {
+	*threads, err = s.debugger.Threads()
+	return err
 }
 
 func (s *RPCServer) GetThread(id int, thread *api.Thread) error {
-	t := s.debugger.FindThread(id)
+	t, err := s.debugger.FindThread(id)
+	if err != nil {
+		return err
+	}
 	if t == nil {
 		return fmt.Errorf("no thread with id %d", id)
 	}
@@ -201,7 +204,11 @@ type ThreadListArgs struct {
 }
 
 func (s *RPCServer) ListThreadPackageVars(args *ThreadListArgs, variables *[]api.Variable) error {
-	if thread := s.debugger.FindThread(args.Id); thread == nil {
+	thread, err := s.debugger.FindThread(args.Id)
+	if err != nil {
+		return err
+	}
+	if thread == nil {
 		return fmt.Errorf("no thread with id %d", args.Id)
 	}
 

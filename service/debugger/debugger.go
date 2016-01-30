@@ -213,22 +213,29 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 }
 
 // Threads returns the threads of the target process.
-func (d *Debugger) Threads() []*api.Thread {
+func (d *Debugger) Threads() ([]*api.Thread, error) {
+	if d.process.Exited() {
+		return nil, &proc.ProcessExitedError{}
+	}
 	threads := []*api.Thread{}
 	for _, th := range d.process.Threads {
 		threads = append(threads, api.ConvertThread(th))
 	}
-	return threads
+	return threads, nil
 }
 
 // FindThread returns the thread for the given 'id'.
-func (d *Debugger) FindThread(id int) *api.Thread {
-	for _, thread := range d.Threads() {
+func (d *Debugger) FindThread(id int) (*api.Thread, error) {
+	threads, err := d.Threads()
+	if err != nil {
+		return nil, err
+	}
+	for _, thread := range threads {
 		if thread.ID == id {
-			return thread
+			return thread, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // Command handles commands which control the debugger lifecycle

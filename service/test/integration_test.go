@@ -28,6 +28,14 @@ func assertNoError(err error, t *testing.T, s string) {
 	}
 }
 
+func assertError(err error, t *testing.T, s string) {
+	if err == nil {
+		_, file, line, _ := runtime.Caller(1)
+		fname := filepath.Base(file)
+		t.Fatalf("failed assertion at %s:%d: %s (no error)\n", fname, line, s)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
@@ -732,5 +740,61 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 				break
 			}
 		}
+	})
+}
+
+func TestIssue355(t *testing.T) {
+	// After the target process has terminated should return an error but not crash
+	withTestClient("continuetestprog", t, func(c service.Client) {
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		ch := c.Continue()
+		state := <-ch
+		tid := state.CurrentThread.ID
+		gid := state.SelectedGoroutine.ID
+		assertNoError(state.Err, t, "First Continue()")
+		ch = c.Continue()
+		state = <-ch
+		if !state.Exited {
+			t.Fatalf("Target did not terminate after second continue")
+		}
+
+		ch = c.Continue()
+		state = <-ch
+		assertError(state.Err, t, "Continue()")
+
+		_, err = c.Next()
+		assertError(err, t, "Next()")
+		_, err = c.Step()
+		assertError(err, t, "Step()")
+		_, err = c.StepInstruction()
+		assertError(err, t, "StepInstruction()")
+		_, err = c.SwitchThread(tid)
+		assertError(err, t, "SwitchThread()")
+		_, err = c.SwitchGoroutine(gid)
+		assertError(err, t, "SwitchGoroutine()")
+		_, err = c.Halt()
+		assertError(err, t, "Halt()")
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
+		assertError(err, t, "CreateBreakpoint()")
+		_, err = c.ClearBreakpoint(bp.ID)
+		assertError(err, t, "ClearBreakpoint()")
+		_, err = c.ListThreads()
+		assertError(err, t, "ListThreads()")
+		_, err = c.GetThread(tid)
+		assertError(err, t, "GetThread()")
+		assertError(c.SetVariable(api.EvalScope{gid, 0}, "a", "10"), t, "SetVariable()")
+		_, err = c.ListLocalVariables(api.EvalScope{gid, 0})
+		assertError(err, t, "ListLocalVariables()")
+		_, err = c.ListFunctionArgs(api.EvalScope{gid, 0})
+		assertError(err, t, "ListFunctionArgs()")
+		_, err = c.ListRegisters()
+		assertError(err, t, "ListRegisters()")
+		_, err = c.ListGoroutines()
+		assertError(err, t, "ListGoroutines()")
+		_, err = c.Stacktrace(gid, 10, false)
+		assertError(err, t, "Stacktrace()")
+		_, err = c.FindLocation(api.EvalScope{gid, 0}, "+1")
+		assertError(err, t, "FindLocation()")
 	})
 }
