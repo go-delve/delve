@@ -50,13 +50,6 @@ type FuncLocationSpec struct {
 	BaseName              string
 }
 
-func normalizePath(path string) string {
-	if runtime.GOOS != "windows" {
-		return path
-	}
-	return strings.ToLower(filepath.ToSlash(path))
-}
-
 func parseLocationSpec(locStr string) (LocationSpec, error) {
 	rest := locStr
 
@@ -291,8 +284,11 @@ func (loc *NormalLocationSpec) FileMatch(path string) bool {
 }
 
 func partialPathMatch(expr, path string) bool {
-	expr = normalizePath(expr)
-	path = normalizePath(path)
+	if runtime.GOOS == "windows" {
+		// Accept `expr` which is case-insensitive and slash-insensitive match to `path`
+		expr = strings.ToLower(filepath.ToSlash(expr))
+		path = strings.ToLower(filepath.ToSlash(path))
+	}
 	if len(expr) < len(path)-1 {
 		return strings.HasSuffix(path, expr) && (path[len(path)-len(expr)-1] == '/')
 	} else {

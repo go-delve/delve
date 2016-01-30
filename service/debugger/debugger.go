@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"regexp"
+	"runtime"
+	"strings"
 
 	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service/api"
@@ -149,7 +152,18 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	)
 	switch {
 	case len(requestedBp.File) > 0:
-		addr, err = d.process.FindFileLocation(normalizePath(requestedBp.File), requestedBp.Line)
+		fileName := requestedBp.File
+		if runtime.GOOS == "windows" {
+			// Accept fileName which is case-insensitive and slash-insensitive match
+			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
+			for symFile := range d.process.Sources() {
+				if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
+					fileName = symFile
+					break
+				}
+			}
+		}
+		addr, err = d.process.FindFileLocation(fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
 		if requestedBp.Line >= 0 {
 			addr, err = d.process.FindFunctionLocation(requestedBp.FunctionName, false, requestedBp.Line)

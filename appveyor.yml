@@ -2,7 +2,7 @@ version: '{build}'
 os: Windows Server 2012 R2
 clone_folder: c:\gopath\src\github.com\derekparker\delve
 environment:
-  GOPATH: c:\gopath
+  GOPATH: C:\gopath
 install:
   - ps: |
       # Install MinGW.
