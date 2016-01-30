@@ -161,7 +161,7 @@ func (dbp *Process) LoadInformation(path string) error {
 }
 
 // FindFileLocation returns the PC for a given file:line.
-// Assumes that `file` is normailzed to lower case and '/' on Windows.
+// Assumes that `file` is normailzed to lower case and '/' on Windows. 
 func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
 	pc, _, err := dbp.goSymTable.LineToPC(fileName, lineno)
 	if err != nil {

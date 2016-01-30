@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 
 	protest "github.com/derekparker/delve/proc/test"
@@ -615,6 +616,44 @@ func TestClientServer_FindLocations(t *testing.T) {
 	withTestClient("stacktraceprog", t, func(c service.Client) {
 		stacktracemeAddr := findLocationHelper(t, c, "stacktraceprog.go:4", false, 1, 0)[0]
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
+	})
+
+	withTestClient("locationsUpperCase", t, func(c service.Client) {
+		// Upper case
+		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
+
+		// Fully qualified path
+		path := protest.Fixtures["locationsUpperCase"].Source
+		findLocationHelper(t, c, path+":6", false, 1, 0)
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: path, Line: 6})
+		if err != nil {
+			t.Fatalf("Could not set breakpoint in %s: %v\n", path, err)
+		}
+		c.ClearBreakpoint(bp.ID)
+
+		//  Allow `/` or `\` on Windows
+		if runtime.GOOS == "windows" {
+			findLocationHelper(t, c, filepath.FromSlash(path)+":6", false, 1, 0)
+			bp, err = c.CreateBreakpoint(&api.Breakpoint{File: filepath.FromSlash(path), Line: 6})
+			if err != nil {
+				t.Fatalf("Could not set breakpoint in %s: %v\n", filepath.FromSlash(path), err)
+			}
+			c.ClearBreakpoint(bp.ID)
+		}
+
+		// Case-insensitive on Windows, case-sensitive otherwise
+		shouldWrongCaseBeError := true
+		numExpectedMatches := 0
+		if runtime.GOOS == "windows" {
+			shouldWrongCaseBeError = false
+			numExpectedMatches = 1
+		}
+		findLocationHelper(t, c, strings.ToLower(path)+":6", shouldWrongCaseBeError, numExpectedMatches, 0)
+		bp, err = c.CreateBreakpoint(&api.Breakpoint{File: strings.ToLower(path), Line: 6})
+		if (err == nil) == shouldWrongCaseBeError {
+			t.Fatalf("Could not set breakpoint in %s: %v\n", strings.ToLower(path), err)
+		}
+		c.ClearBreakpoint(bp.ID)
 	})
 }
 
