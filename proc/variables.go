@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"go/constant"
 	"go/parser"
@@ -925,6 +926,10 @@ func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
 
 func (v *Variable) loadArrayValues(recurseLevel int) {
 	if v.Unreadable != nil {
+		return
+	}
+	if v.Len < 0 {
+		v.Unreadable = errors.New("Negative array length")
 		return
 	}
 

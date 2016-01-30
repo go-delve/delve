@@ -1462,3 +1462,16 @@ func TestStepIntoFunction(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue384(t *testing.T) {
+	// Crash related to reading uninitialized memory, introduced by the memory prefetching optimization
+	withTestProcess("issue384", t, func(p *Process, fixture protest.Fixture) {
+		start, _, err := p.goSymTable.LineToPC(fixture.Source, 13)
+		assertNoError(err, t, "LineToPC()")
+		_, err = p.SetBreakpoint(start)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		_, err = evalVariable(p, "st")
+		assertNoError(err, t, "EvalVariable()")
+	})
+}
