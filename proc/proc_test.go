@@ -19,6 +19,8 @@ import (
 	protest "github.com/derekparker/delve/proc/test"
 )
 
+const disableFailingTests = true
+
 func init() {
 	runtime.GOMAXPROCS(4)
 	os.Setenv("GOMAXPROCS", "4")
@@ -1473,5 +1475,67 @@ func TestIssue384(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 		_, err = evalVariable(p, "st")
 		assertNoError(err, t, "EvalVariable()")
+	})
+}
+
+func TestIssue332_Part1(t *testing.T) {
+	// Next shouldn't step inside a function call
+	withTestProcess("issue332", t, func(p *Process, fixture protest.Fixture) {
+		start, _, err := p.goSymTable.LineToPC(fixture.Source, 8)
+		assertNoError(err, t, "LineToPC()")
+		_, err = p.SetBreakpoint(start)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Next(), t, "first Next()")
+		locations, err := p.CurrentThread.Stacktrace(2)
+		assertNoError(err, t, "Stacktrace()")
+		if locations[0].Call.Fn == nil {
+			t.Fatalf("Not on a function")
+		}
+		if locations[0].Call.Fn.Name != "main.main" {
+			t.Fatalf("Not on main.main after Next: %s (%s:%d)", locations[0].Call.Fn.Name, locations[0].Call.File, locations[0].Call.Line)
+		}
+		if locations[0].Call.Line != 9 {
+			t.Fatalf("Not on line 9 after Next: %s (%s:%d)", locations[0].Call.Fn.Name, locations[0].Call.File, locations[0].Call.Line)
+		}
+	})
+}
+
+func TestIssue332_Part2(t *testing.T) {
+	// Step should skip a function's prologue
+	// In some parts of the prologue, for some functions, the FDE data is incorrect
+	// which leads to 'next' and 'stack' failing with error "could not find FDE for PC: <garbage>"
+	// because the incorrect FDE data leads to reading the wrong stack address as the return address
+	// TODO: the incorrect FDE data problem is fixed in go 1.6, reenable this test when 1.6 is released.
+	if disableFailingTests {
+		return
+	}
+	withTestProcess("issue332", t, func(p *Process, fixture protest.Fixture) {
+		start, _, err := p.goSymTable.LineToPC(fixture.Source, 8)
+		assertNoError(err, t, "LineToPC()")
+		_, err = p.SetBreakpoint(start)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+
+		// step until we enter changeMe
+		for {
+			assertNoError(p.Step(), t, "Step()")
+			locations, err := p.CurrentThread.Stacktrace(2)
+			assertNoError(err, t, "Stacktrace()")
+			if locations[0].Call.Fn == nil {
+				t.Fatalf("Not on a function")
+			}
+			if locations[0].Call.Fn.Name == "main.changeMe" {
+				break
+			}
+		}
+
+		assertNoError(p.Next(), t, "first Next()")
+		assertNoError(p.Next(), t, "second Next()")
+		assertNoError(p.Next(), t, "third Next()")
+		err = p.Continue()
+		if _, exited := err.(ProcessExitedError); !exited {
+			assertNoError(err, t, "final Continue()")
+		}
 	})
 }

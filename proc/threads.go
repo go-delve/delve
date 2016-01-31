@@ -164,7 +164,7 @@ func (ge GoroutineExitingError) Error() string {
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
 func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
-	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End(), file)
+	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End()-1, file)
 
 	g, err := thread.GetG()
 	if err != nil {

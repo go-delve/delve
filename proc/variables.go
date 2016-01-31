@@ -311,7 +311,7 @@ func (scope *EvalScope) PtrSize() int {
 // ChanRecvBlocked returns whether the goroutine is blocked on
 // a channel read operation.
 func (g *G) ChanRecvBlocked() bool {
-	return g.WaitReason == chanRecv
+	return (g.thread == nil) && (g.WaitReason == chanRecv)
 }
 
 // chanRecvReturnAddr returns the address of the return from a channel read.
