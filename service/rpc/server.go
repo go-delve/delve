@@ -65,6 +65,7 @@ func (s *ServerImpl) Run() error {
 		if err != nil {
 			panic(err)
 		}
+		defer s.s.listener.Close()
 
 		rpcs := grpc.NewServer()
 		rpcs.Register(s.s)
