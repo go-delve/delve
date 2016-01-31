@@ -144,6 +144,10 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		Long:  "Trace program execution. Will set a tracepoint on every function matching [regexp] and output information when tracepoint is hit.",
 		Run: func(cmd *cobra.Command, args []string) {
 			status := func() int {
+				if len(args) == 0 {
+					fmt.Fprintln(os.Stderr, "You must provide a function to trace.")
+					return 1
+				}
 				const debugname = "debug"
 				var processArgs []string
 				if traceAttachPid == 0 {
