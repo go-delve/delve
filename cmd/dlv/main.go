@@ -193,7 +193,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 					return 1
 				}
 				for i := range funcs {
-					_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: funcs[i], Tracepoint: true})
+					_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: funcs[i], Line: -1, Tracepoint: true})
 					if err != nil {
 						fmt.Fprintln(os.Stderr, err)
 						return 1
