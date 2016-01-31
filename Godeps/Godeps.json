@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/derekparker/delve",
-	"GoVersion": "go1.5.2",
+	"GoVersion": "go1.5",
 	"Packages": [
 		"./..."
 	],
@@ -53,7 +53,11 @@
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "354f231ae1a9ca2d3a6a1a7c5d40b1213d761675"
+			"Rev": "eb2c74142fd19a79b3f237334c7384d5167b1b46"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/windows",
+			"Rev": "eb2c74142fd19a79b3f237334c7384d5167b1b46"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
