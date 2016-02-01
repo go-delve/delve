@@ -32,6 +32,8 @@ var (
 	Log bool
 	// Headless is whether to run without terminal.
 	Headless bool
+	// Allows multiple clients to connect to the same server
+	AcceptMulti bool
 	// Addr is the debugging server listen address.
 	Addr string
 	// InitFile is the path to initialization file.
@@ -74,6 +76,7 @@ func init() {
 	rootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	rootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	rootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
+	rootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connection. Note that the server API is not reentrant and clients will have to coordinate")
 	rootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 
@@ -351,6 +354,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		Listener:    listener,
 		ProcessArgs: processArgs,
 		AttachPid:   attachPid,
+		AcceptMulti: AcceptMulti,
 	}, Log)
 	if err := server.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

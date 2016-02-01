@@ -23,6 +23,8 @@ type RPCServer struct {
 	config *service.Config
 	// listener is used to serve HTTP.
 	listener net.Listener
+	// stopChan is used to stop the listener goroutine
+	stopChan chan struct{}
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
 }
@@ -38,13 +40,22 @@ func NewServer(config *service.Config, logEnabled bool) *ServerImpl {
 		&RPCServer{
 			config:   config,
 			listener: config.Listener,
+			stopChan: make(chan struct{}),
 		},
 	}
 }
 
 // Stop detaches from the debugger and waits for it to stop.
 func (s *ServerImpl) Stop(kill bool) error {
-	return s.s.debugger.Detach(kill)
+	if s.s.config.AcceptMulti {
+		close(s.s.stopChan)
+		s.s.listener.Close()
+	}
+	err := s.s.debugger.Detach(kill)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Run starts a debugger and exposes it with an HTTP server. The debugger
@@ -60,16 +71,27 @@ func (s *ServerImpl) Run() error {
 		return err
 	}
 
-	go func() {
-		c, err := s.s.listener.Accept()
-		if err != nil {
-			panic(err)
-		}
-		defer s.s.listener.Close()
+	rpcs := grpc.NewServer()
+	rpcs.Register(s.s)
 
-		rpcs := grpc.NewServer()
-		rpcs.Register(s.s)
-		rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+	go func() {
+		defer s.s.listener.Close()
+		for {
+			c, err := s.s.listener.Accept()
+			if err != nil {
+				select {
+				case <-s.s.stopChan:
+					// We were supposed to exit, do nothing and return
+					return
+				default:
+					panic(err)
+				}
+			}
+			go rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+			if !s.s.config.AcceptMulti {
+				break
+			}
+		}
 	}()
 	return nil
 }
