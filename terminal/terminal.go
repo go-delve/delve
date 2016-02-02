@@ -41,9 +41,13 @@ func New(client service.Client, conf *config.Config) *Term {
 	}
 }
 
+func (t *Term) Close() {
+	t.line.Close()
+}
+
 // Run begins running dlv in the terminal.
 func (t *Term) Run() (int, error) {
-	defer t.line.Close()
+	defer t.Close()
 
 	// Send the debugger a halt command on SIGINT
 	ch := make(chan os.Signal)
