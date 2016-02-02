@@ -798,3 +798,16 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "FindLocation()")
 	})
 }
+
+func TestNegativeStackDepthBug(t *testing.T) {
+	// After the target process has terminated should return an error but not crash
+	withTestClient("continuetestprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		ch := c.Continue()
+		state := <-ch
+		assertNoError(state.Err, t, "Continue()")
+		_, err = c.Stacktrace(-1, -2, true)
+		assertError(err, t, "Stacktrace()")
+	})
+}

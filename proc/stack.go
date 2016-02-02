@@ -2,6 +2,7 @@ package proc
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 )
 
@@ -164,6 +165,9 @@ func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 }
 
 func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Stackframe, error) {
+	if depth < 0 {
+		return nil, errors.New("negative maximum stack depth")
+	}
 	frames := make([]Stackframe, 0, depth+1)
 	it := newStackIterator(dbp, pc, sp)
 	for it.Next() {
