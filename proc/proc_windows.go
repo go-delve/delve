@@ -342,6 +342,7 @@ func dwarfFromPE(f *pe.File) (*dwarf.Data, error) {
 
 func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 	var debugEvent C.DEBUG_EVENT
+	shouldExit := false
 	for {
 		// Wait for a debug event...
 		res := C.WaitForDebugEvent(&debugEvent, C.INFINITE)
@@ -400,7 +401,8 @@ func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 			return tid, 0, nil
 		case C.EXIT_PROCESS_DEBUG_EVENT:
 			debugInfo := (*C.EXIT_PROCESS_DEBUG_INFO)(unionPtr)
-			return 0, int(debugInfo.dwExitCode), nil
+			exitCode = int(debugInfo.dwExitCode)
+			shouldExit = true
 		default:
 			return 0, 0, fmt.Errorf("unknown debug event code: %d", debugEvent.dwDebugEventCode)
 		}
@@ -409,6 +411,10 @@ func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 		res = C.ContinueDebugEvent(debugEvent.dwProcessId, debugEvent.dwThreadId, C.DBG_CONTINUE)
 		if res == C.WINBOOL(0) {
 			return 0, 0, fmt.Errorf("could not ContinueDebugEvent")
+		}
+
+		if shouldExit {
+			return 0, exitCode, nil
 		}
 	}
 }
