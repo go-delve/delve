@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"go/parser"
 	"go/scanner"
@@ -83,6 +84,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth>] [-full]. Prints stack."},
 		{aliases: []string{"frame"}, cmdFn: frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: "Executes a file containing a list of delve commands"},
+		{aliases: []string{"diassemble", "disass"}, cmdFn: g0f0(disassCommand), helpMsg: "Disassembles memory"},
 	}
 
 	return c
@@ -371,6 +373,8 @@ func scopePrefix(t *Term, cmdstr string) error {
 			return printVar(t, scope, rest)
 		case "set":
 			return setVar(t, scope, rest)
+		case "disassemble", "disasm":
+			return disassCommand(t, scope, rest)
 		default:
 			return fmt.Errorf("unknown command %s", cmd)
 		}
@@ -816,6 +820,67 @@ func (c *Commands) sourceCommand(t *Term, args string) error {
 	}
 
 	return c.executeFile(t, args)
+}
+
+var disasmUsageError = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
+
+func disassCommand(t *Term, scope api.EvalScope, args string) error {
+	var cmd, rest string
+
+	if args != "" {
+		argv := strings.SplitN(args, " ", 2)
+		if len(argv) != 2 {
+			return disasmUsageError
+		}
+		cmd = argv[0]
+		rest = argv[1]
+	}
+
+	var disasm api.AsmInstructions
+	var disasmErr error
+
+	switch cmd {
+	case "":
+		locs, err := t.client.FindLocation(scope, "+0")
+		if err != nil {
+			return err
+		}
+		disasm, disasmErr = t.client.DisassemblePC(scope, locs[0].PC, api.IntelFlavour)
+	case "-a":
+		v := strings.SplitN(rest, " ", 2)
+		if len(v) != 2 {
+			return disasmUsageError
+		}
+		startpc, err := strconv.ParseInt(v[0], 0, 64)
+		if err != nil {
+			return fmt.Errorf("wrong argument: %s is not a number", v[0])
+		}
+		endpc, err := strconv.ParseInt(v[1], 0, 64)
+		if err != nil {
+			return fmt.Errorf("wrong argument: %s is not a number", v[1])
+		}
+		disasm, disasmErr = t.client.DisassembleRange(scope, uint64(startpc), uint64(endpc), api.IntelFlavour)
+	case "-l":
+		locs, err := t.client.FindLocation(scope, rest)
+		if err != nil {
+			return err
+		}
+		if len(locs) != 1 {
+			return errors.New("expression specifies multiple locations")
+		}
+		disasm, disasmErr = t.client.DisassemblePC(scope, locs[0].PC, api.IntelFlavour)
+	default:
+		return disasmUsageError
+	}
+
+	if disasmErr != nil {
+		return disasmErr
+	}
+
+	fmt.Printf("printing\n")
+	DisasmPrint(disasm, os.Stdout)
+
+	return nil
 }
 
 func digits(n int) int {

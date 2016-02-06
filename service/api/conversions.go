@@ -193,3 +193,19 @@ func ConvertLocation(loc proc.Location) Location {
 		Function: ConvertFunction(loc.Fn),
 	}
 }
+
+func ConvertAsmInstruction(inst proc.AsmInstruction, text string) AsmInstruction {
+	var destloc *Location
+	if inst.DestLoc != nil {
+		r := ConvertLocation(*inst.DestLoc)
+		destloc = &r
+	}
+	return AsmInstruction{
+		Loc:        ConvertLocation(inst.Loc),
+		DestLoc:    destloc,
+		Text:       text,
+		Bytes:      inst.Bytes,
+		Breakpoint: inst.Breakpoint,
+		AtPC:       inst.AtPC,
+	}
+}

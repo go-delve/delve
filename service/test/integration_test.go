@@ -835,6 +835,122 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "Stacktrace()")
 		_, err = c.FindLocation(api.EvalScope{gid, 0}, "+1")
 		assertError(err, t, "FindLocation()")
+		_, err = c.DisassemblePC(api.EvalScope{-1, 0}, 0x40100, api.IntelFlavour)
+		assertError(err, t, "DisassemblePC()")
+	})
+}
+
+func getCurinstr(d3 api.AsmInstructions) *api.AsmInstruction {
+	for i := range d3 {
+		if d3[i].AtPC {
+			return &d3[i]
+		}
+	}
+	return nil
+}
+
+func TestDisasm(t *testing.T) {
+	// Tests that disassembling by PC, range, and current PC all yeld similar results
+	// Tests that disassembly by current PC will return a disassembly containing the instruction at PC
+	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
+	// effective destination of the CALL instruction
+	withTestClient("locationsprog2", t, func(c service.Client) {
+		ch := c.Continue()
+		state := <-ch
+		assertNoError(state.Err, t, "Continue()")
+
+		locs, err := c.FindLocation(api.EvalScope{-1, 0}, "main.main")
+		assertNoError(err, t, "FindLocation()")
+		if len(locs) != 1 {
+			t.Fatalf("wrong number of locations for main.main: %d", len(locs))
+		}
+		d1, err := c.DisassemblePC(api.EvalScope{-1, 0}, locs[0].PC, api.IntelFlavour)
+		assertNoError(err, t, "DisassemblePC()")
+		if len(d1) < 2 {
+			t.Fatalf("wrong size of disassembly: %d", len(d1))
+		}
+
+		pcstart := d1[0].Loc.PC
+		pcend := d1[len(d1)-1].Loc.PC + uint64(len(d1[len(d1)-1].Bytes))
+		d2, err := c.DisassembleRange(api.EvalScope{-1, 0}, pcstart, pcend, api.IntelFlavour)
+		assertNoError(err, t, "DisassembleRange()")
+
+		if len(d1) != len(d2) {
+			t.Logf("d1: %v", d1)
+			t.Logf("d2: %v", d2)
+			t.Fatal("mismatched length between disassemble pc and disassemble range")
+		}
+
+		d3, err := c.DisassemblePC(api.EvalScope{-1, 0}, state.CurrentThread.PC, api.IntelFlavour)
+		assertNoError(err, t, "DisassemblePC() - second call")
+
+		if len(d1) != len(d3) {
+			t.Logf("d1: %v", d1)
+			t.Logf("d3: %v", d3)
+			t.Fatal("mismatched length between the two calls of disassemble pc")
+		}
+
+		// look for static call to afunction() on line 29
+		found := false
+		for i := range d3 {
+			if d3[i].Loc.Line == 29 && strings.HasPrefix(d3[i].Text, "call") && d3[i].DestLoc != nil && d3[i].DestLoc.Function != nil && d3[i].DestLoc.Function.Name == "main.afunction" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("Could not find call to main.afunction on line 29")
+		}
+
+		haspc := false
+		for i := range d3 {
+			if d3[i].AtPC {
+				haspc = true
+				break
+			}
+		}
+
+		if !haspc {
+			t.Logf("d3: %v", d3)
+			t.Fatal("PC instruction not found")
+		}
+
+		startinstr := getCurinstr(d3)
+
+		count := 0
+		for {
+			if count > 20 {
+				t.Fatal("too many step instructions executed without finding a call instruction")
+			}
+			state, err := c.StepInstruction()
+			assertNoError(err, t, fmt.Sprintf("StepInstruction() %d", count))
+
+			d3, err = c.DisassemblePC(api.EvalScope{-1, 0}, state.CurrentThread.PC, api.IntelFlavour)
+			assertNoError(err, t, fmt.Sprintf("StepInstruction() %d", count))
+
+			curinstr := getCurinstr(d3)
+
+			if curinstr == nil {
+				t.Fatalf("Could not find current instruction %d", count)
+			}
+
+			if curinstr.Loc.Line != startinstr.Loc.Line {
+				t.Fatal("Calling StepInstruction() repeatedly did not find the call instruction")
+			}
+
+			if strings.HasPrefix(curinstr.Text, "call") {
+				t.Logf("call: %v", curinstr)
+				if curinstr.DestLoc == nil || curinstr.DestLoc.Function == nil {
+					t.Fatalf("Call instruction does not have destination: %v", curinstr)
+				}
+				if curinstr.DestLoc.Function.Name != "main.afunction" {
+					t.Fatalf("Call instruction destination not main.afunction: %v", curinstr)
+				}
+				break
+			}
+
+			count++
+		}
 	})
 }
 
