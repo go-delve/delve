@@ -1,6 +1,9 @@
 package api
 
-import "reflect"
+import (
+	"github.com/derekparker/delve/proc"
+	"reflect"
+)
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
@@ -197,3 +200,28 @@ const (
 	// Halt suspends the process.
 	Halt = "halt"
 )
+
+type AssemblyFlavour int
+
+const (
+	GNUFlavour   = AssemblyFlavour(proc.GNUFlavour)
+	IntelFlavour = AssemblyFlavour(proc.IntelFlavour)
+)
+
+// AsmInstruction represents one assembly instruction at some address
+type AsmInstruction struct {
+	// Loc is the location of this instruction
+	Loc Location
+	// Destination of CALL instructions
+	DestLoc *Location
+	// Text is the formatted representation of the instruction
+	Text string
+	// Bytes is the instruction as read from memory
+	Bytes []byte
+	// If Breakpoint is true a breakpoint is set at this instruction
+	Breakpoint bool
+	// In AtPC is true this is the instruction the current thread is stopped at
+	AtPC bool
+}
+
+type AsmInstructions []AsmInstruction

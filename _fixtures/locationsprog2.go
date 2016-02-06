@@ -25,5 +25,7 @@ func main() {
 		fmt.Println("inline", s)
 	}
 	runtime.Breakpoint()
+	fn1("test")
+	afunction("test")
 	fmt.Println(fn1, fn2, fn3, o)
 }

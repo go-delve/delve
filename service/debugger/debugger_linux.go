@@ -2,10 +2,10 @@ package debugger
 
 import (
 	"fmt"
+	sys "golang.org/x/sys/unix"
 	"io/ioutil"
 	"os"
 	"syscall"
-	sys "golang.org/x/sys/unix"
 )
 
 func attachErrorMessage(pid int, err error) error {
