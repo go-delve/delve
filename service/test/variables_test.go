@@ -8,6 +8,7 @@ import (
 
 	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/service"
 
 	protest "github.com/derekparker/delve/proc/test"
 )
@@ -643,5 +644,21 @@ func TestUnsafePointer(t *testing.T) {
 		if ss := up1.SinglelineString(); !strings.HasPrefix(ss, "unsafe.Pointer(") {
 			t.Fatalf("wrong value for up1: %s", ss)
 		}
+	})
+}
+
+func TestIssue406(t *testing.T) {
+	withTestClient("issue406", t, func(c service.Client) {
+		locs, err := c.FindLocation(api.EvalScope{ -1, 0 },"issue406.go:146")
+		assertNoError(err, t, "FindLocation()")
+		_, err = c.CreateBreakpoint(&api.Breakpoint{ Addr: locs[0].PC })
+		assertNoError(err, t, "CreateBreakpoint()")
+		ch := c.Continue()
+		state := <-ch
+		assertNoError(state.Err, t, "Continue()")
+		v, err := c.EvalVariable(api.EvalScope{ -1, 0 }, "cfgtree")
+		assertNoError(err, t, "EvalVariable()")
+		vs := v.MultilineString("")
+		t.Logf("cfgtree formats to: %s\n", vs)
 	})
 }
