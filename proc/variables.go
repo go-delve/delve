@@ -734,7 +734,9 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.Base = sv.Addr
 
 	case reflect.Map:
-		v.loadMap(recurseLevel)
+		if recurseLevel <= maxVariableRecurse {
+			v.loadMap(recurseLevel)
+		}
 
 	case reflect.String:
 		var val string
@@ -1149,10 +1151,8 @@ func (v *Variable) loadMap(recurseLevel int) {
 		}
 		key := it.key()
 		val := it.value()
-		if recurseLevel <= maxVariableRecurse {
-			key.loadValueInternal(recurseLevel + 1)
-			val.loadValueInternal(recurseLevel + 1)
-		}
+		key.loadValueInternal(recurseLevel + 1)
+		val.loadValueInternal(recurseLevel + 1)
 		if key.Unreadable != nil || val.Unreadable != nil {
 			errcount++
 		}
@@ -1429,7 +1429,9 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 		// interface to nil
 		data = data.maybeDereference()
 		v.Children = []Variable{*data}
-		v.Children[0].loadValueInternal(recurseLevel)
+		if loadData {
+			v.Children[0].loadValueInternal(recurseLevel)
+		}
 		return
 	}
 
