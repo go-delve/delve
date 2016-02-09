@@ -1,10 +1,12 @@
 package proc
 
-// #include "threads_windows.h"
+// #include <windows.h>
 import "C"
 import (
 	"bytes"
 	"fmt"
+	"syscall"
+	"unsafe"
 )
 
 // Regs represents CPU registers on an AMD64 processor.
@@ -121,12 +123,11 @@ func registers(thread *Thread) (Registers, error) {
 		return nil, fmt.Errorf("failed to read ThreadContext")
 	}
 
-	var threadInfo C.THREAD_BASIC_INFORMATION
-	res = C.thread_basic_information(C.HANDLE(thread.os.hThread), &threadInfo)
-	if res == C.FALSE {
+	var threadInfo _THREAD_BASIC_INFORMATION
+	status := _NtQueryInformationThread(syscall.Handle(thread.os.hThread), ThreadBasicInformation, uintptr(unsafe.Pointer(&threadInfo)), uint32(unsafe.Sizeof(threadInfo)), nil)
+	if !_NT_SUCCESS(status) {
 		return nil, fmt.Errorf("failed to get thread_basic_information")
 	}
-	tls := uintptr(threadInfo.TebBaseAddress)
 
 	regs := &Regs{
 		rax:    uint64(context.Rax),
@@ -150,7 +151,7 @@ func registers(thread *Thread) (Registers, error) {
 		cs:     uint64(context.SegCs),
 		fs:     uint64(context.SegFs),
 		gs:     uint64(context.SegGs),
-		tls:    uint64(tls),
+		tls:    uint64(threadInfo.TebBaseAddress),
 	}
 	return regs, nil
 }
