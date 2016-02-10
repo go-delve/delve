@@ -23,7 +23,7 @@ type _THREAD_BASIC_INFORMATION struct {
 }
 
 const (
-	ThreadBasicInformation = 0
+	_ThreadBasicInformation = 0
 )
 
 func _NT_SUCCESS(x _NTSTATUS) bool {

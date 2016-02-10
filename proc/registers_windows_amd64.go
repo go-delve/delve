@@ -124,7 +124,7 @@ func registers(thread *Thread) (Registers, error) {
 	}
 
 	var threadInfo _THREAD_BASIC_INFORMATION
-	status := _NtQueryInformationThread(syscall.Handle(thread.os.hThread), ThreadBasicInformation, uintptr(unsafe.Pointer(&threadInfo)), uint32(unsafe.Sizeof(threadInfo)), nil)
+	status := _NtQueryInformationThread(syscall.Handle(thread.os.hThread), _ThreadBasicInformation, uintptr(unsafe.Pointer(&threadInfo)), uint32(unsafe.Sizeof(threadInfo)), nil)
 	if !_NT_SUCCESS(status) {
 		return nil, fmt.Errorf("failed to get thread_basic_information")
 	}
