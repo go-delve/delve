@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"debug/gosym"
 	"encoding/binary"
 	"rsc.io/x86/x86asm"
 )
@@ -110,4 +111,51 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		return nil
 	}
 	return &Location{PC: pc, File: file, Line: line, Fn: fn}
+}
+
+type instrseq []x86asm.Op
+
+var windowsPrologue = instrseq{x86asm.MOV, x86asm.MOV, x86asm.LEA, x86asm.CMP, x86asm.JBE}
+var windowsPrologue2 = instrseq{x86asm.MOV, x86asm.MOV, x86asm.CMP, x86asm.JBE}
+var unixPrologue = instrseq{x86asm.MOV, x86asm.LEA, x86asm.CMP, x86asm.JBE}
+var unixPrologue2 = instrseq{x86asm.MOV, x86asm.CMP, x86asm.JBE}
+var prologues = []instrseq{windowsPrologue, windowsPrologue2, unixPrologue, unixPrologue2}
+
+// FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
+// If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry
+func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
+	text, err := dbp.CurrentThread.Disassemble(fn.Entry, fn.End, false)
+	if err != nil {
+		return fn.Entry, err
+	}
+
+	if len(text) <= 0 {
+		return fn.Entry, nil
+	}
+
+	for _, prologue := range prologues {
+		if len(prologue) >= len(text) {
+			continue
+		}
+		if checkPrologue(text, prologue) {
+			r := &text[len(prologue)]
+			if sameline {
+				if r.Loc.Line != text[0].Loc.Line {
+					return fn.Entry, nil
+				}
+			}
+			return r.Loc.PC, nil
+		}
+	}
+
+	return fn.Entry, nil
+}
+
+func checkPrologue(s []AsmInstruction, prologuePattern instrseq) bool {
+	for i, op := range prologuePattern {
+		if s[i].Inst.Op != op {
+			return false
+		}
+	}
+	return true
 }
