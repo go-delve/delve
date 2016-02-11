@@ -31,10 +31,13 @@ func (thread *Thread) Disassemble(startPC, endPC uint64, currentGoroutine bool) 
 	r := make([]AsmInstruction, 0, len(mem)/15)
 	pc := startPC
 
-	regs, _ := thread.Registers()
 	var curpc uint64
-	if regs != nil {
-		curpc = regs.PC()
+	var regs Registers
+	if currentGoroutine {
+		regs, _ = thread.Registers()
+		if regs != nil {
+			curpc = regs.PC()
+		}
 	}
 
 	for len(mem) > 0 {

@@ -9,7 +9,6 @@ import (
 	"go/constant"
 	"go/token"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -161,11 +160,14 @@ func (dbp *Process) LoadInformation(path string) error {
 }
 
 // FindFileLocation returns the PC for a given file:line.
-// Assumes that `file` is normailzed to lower case and '/' on Windows. 
+// Assumes that `file` is normailzed to lower case and '/' on Windows.
 func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
-	pc, _, err := dbp.goSymTable.LineToPC(fileName, lineno)
+	pc, fn, err := dbp.goSymTable.LineToPC(fileName, lineno)
 	if err != nil {
 		return 0, err
+	}
+	if fn.Entry == pc {
+		pc, _ = dbp.FirstPCAfterPrologue(fn, true)
 	}
 	return pc, nil
 }
@@ -183,7 +185,7 @@ func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOf
 	}
 
 	if firstLine {
-		return dbp.FunctionEntryToFirstLine(origfn.Entry)
+		return dbp.FirstPCAfterPrologue(origfn, false)
 	} else if lineOffset > 0 {
 		filename, lineno, _ := dbp.goSymTable.PCToLine(origfn.Entry)
 		breakAddr, _, err := dbp.goSymTable.LineToPC(filename, lineno+lineOffset)
@@ -191,34 +193,6 @@ func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOf
 	}
 
 	return origfn.Entry, nil
-}
-
-func (dbp *Process) FunctionEntryToFirstLine(entry uint64) (uint64, error) {
-	filename, lineno, startfn := dbp.goSymTable.PCToLine(entry)
-	if filepath.Ext(filename) != ".go" {
-		return entry, nil
-	}
-	if startfn == nil {
-		return entry, nil
-	}
-	funcName := startfn.Name
-
-	for {
-		lineno++
-		pc, fn, _ := dbp.goSymTable.LineToPC(filename, lineno)
-		if fn != nil {
-			if fn.Name != funcName {
-				if strings.Contains(fn.Name, funcName) {
-					continue
-				}
-				break
-			}
-			if fn.Name == funcName {
-				return pc, nil
-			}
-		}
-	}
-	return entry, nil
 }
 
 // CurrentLocation returns the location of the current thread.

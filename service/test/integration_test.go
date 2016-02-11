@@ -252,6 +252,7 @@ func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 
 func TestNextGeneral(t *testing.T) {
 	testcases := []nextTest{
+		{17, 19},
 		{19, 20},
 		{20, 23},
 		{23, 24},
@@ -272,6 +273,7 @@ func TestNextGeneral(t *testing.T) {
 
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
+		{13, 14},
 		{14, 15},
 		{15, 35},
 	}
@@ -592,9 +594,10 @@ func findLocationHelper(t *testing.T, c service.Client, loc string, shouldErr bo
 
 func TestClientServer_FindLocations(t *testing.T) {
 	withTestClient("locationsprog", t, func(c service.Client) {
-		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
-		findLocationHelper(t, c, "anotherFunction:1", false, 1, someFunctionCallAddr)
-		findLocationHelper(t, c, "main.anotherFunction:1", false, 1, someFunctionCallAddr)
+		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
+		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
+		findLocationHelper(t, c, "anotherFunction:1", false, 1, someFunctionLine1)
+		findLocationHelper(t, c, "main.anotherFunction:1", false, 1, someFunctionLine1)
 		findLocationHelper(t, c, "anotherFunction", false, 1, someFunctionCallAddr)
 		findLocationHelper(t, c, "main.anotherFunction", false, 1, someFunctionCallAddr)
 		findLocationHelper(t, c, fmt.Sprintf("*0x%x", someFunctionCallAddr), false, 1, someFunctionCallAddr)
@@ -603,8 +606,8 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "String", true, 0, 0)
 		findLocationHelper(t, c, "main.String", true, 0, 0)
 
-		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:15", false, 1, 0)[0]
-		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:19", false, 1, 0)[0]
+		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:14", false, 1, 0)[0]
+		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:18", false, 1, 0)[0]
 		findLocationHelper(t, c, "SomeType.String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "(*SomeType).String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "main.SomeType.String", false, 1, someTypeStringFuncAddr)
@@ -638,7 +641,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 	})
 
 	withTestClient("testnextdefer", t, func(c service.Client) {
-		firstMainLine := findLocationHelper(t, c, "testnextdefer.go:8", false, 1, 0)[0]
+		firstMainLine := findLocationHelper(t, c, "testnextdefer.go:5", false, 1, 0)[0]
 		findLocationHelper(t, c, "main.main", false, 1, firstMainLine)
 	})
 
@@ -691,7 +694,7 @@ func TestClientServer_FindLocationsAddr(t *testing.T) {
 		<-c.Continue()
 
 		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
-		anonfunc := findLocationHelper(t, c, "locationsprog2.go:25", false, 1, 0)[0]
+		anonfunc := findLocationHelper(t, c, "main.main.func1", false, 1, 0)[0]
 
 		findLocationHelper(t, c, "*fn1", false, 1, afunction)
 		findLocationHelper(t, c, "*fn3", false, 1, anonfunc)
@@ -1022,6 +1025,48 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 
 		if nvar.SinglelineString() != "7" {
 			t.Fatalf("Stopped on wrong goroutine %s\n", nvar.Value)
+		}
+	})
+}
+
+func TestSkipPrologue(t *testing.T) {
+	withTestClient("locationsprog2", t, func(c service.Client) {
+		<-c.Continue()
+
+		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
+		findLocationHelper(t, c, "*fn1", false, 1, afunction)
+		findLocationHelper(t, c, "locationsprog2.go:8", false, 1, afunction)
+
+		afunction0 := findLocationHelper(t, c, "main.afunction:0", false, 1, 0)[0]
+
+		if afunction == afunction0 {
+			t.Fatal("Skip prologue failed")
+		}
+	})
+}
+
+func TestSkipPrologue2(t *testing.T) {
+	withTestClient("callme", t, func(c service.Client) {
+		callme := findLocationHelper(t, c, "main.callme", false, 1, 0)[0]
+		callmeZ := findLocationHelper(t, c, "main.callme:0", false, 1, 0)[0]
+		findLocationHelper(t, c, "callme.go:5", false, 1, callme)
+		if callme == callmeZ {
+			t.Fatal("Skip prologue failed")
+		}
+
+		callme2 := findLocationHelper(t, c, "main.callme2", false, 1, 0)[0]
+		callme2Z := findLocationHelper(t, c, "main.callme2:0", false, 1, 0)[0]
+		findLocationHelper(t, c, "callme.go:12", false, 1, callme2)
+		if callme2 == callme2Z {
+			t.Fatal("Skip prologue failed")
+		}
+
+		callme3 := findLocationHelper(t, c, "main.callme3", false, 1, 0)[0]
+		callme3Z := findLocationHelper(t, c, "main.callme3:0", false, 1, 0)[0]
+		// callme3 does not have local variables therefore the first line of the function is immediately after the prologue
+		findLocationHelper(t, c, "callme.go:18", false, 1, callme3Z)
+		if callme3 == callme3Z {
+			t.Fatal("Skip prologue failed")
 		}
 	})
 }

@@ -268,7 +268,8 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 			addr, _ := constant.Uint64Val(v.Value)
 			return []api.Location{{PC: addr}}, nil
 		case reflect.Func:
-			pc, err := d.process.FunctionEntryToFirstLine(uint64(v.Base))
+			_, _, fn := d.process.PCToLine(uint64(v.Base))
+			pc, err := d.process.FirstPCAfterPrologue(fn, false)
 			if err != nil {
 				return nil, err
 			}

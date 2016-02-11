@@ -311,6 +311,7 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 
 func TestNextGeneral(t *testing.T) {
 	testcases := []nextTest{
+		{17, 19},
 		{19, 20},
 		{20, 23},
 		{23, 24},
@@ -331,6 +332,7 @@ func TestNextGeneral(t *testing.T) {
 
 func TestNextConcurrent(t *testing.T) {
 	testcases := []nextTest{
+		{8, 9},
 		{9, 10},
 		{10, 11},
 	}
@@ -371,6 +373,7 @@ func TestNextConcurrent(t *testing.T) {
 func TestNextConcurrentVariant2(t *testing.T) {
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
+		{8, 9},
 		{9, 10},
 		{10, 11},
 	}
@@ -419,6 +422,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 
 func TestNextFunctionReturn(t *testing.T) {
 	testcases := []nextTest{
+		{13, 14},
 		{14, 15},
 		{15, 35},
 	}
@@ -427,6 +431,7 @@ func TestNextFunctionReturn(t *testing.T) {
 
 func TestNextFunctionReturnDefer(t *testing.T) {
 	testcases := []nextTest{
+		{5, 8},
 		{8, 9},
 		{9, 10},
 		{10, 7},
@@ -1537,5 +1542,12 @@ func TestIssue332_Part2(t *testing.T) {
 		if _, exited := err.(ProcessExitedError); !exited {
 			assertNoError(err, t, "final Continue()")
 		}
+	})
+}
+
+func TestIssue396(t *testing.T) {
+	withTestProcess("callme", t, func(p *Process, fixture protest.Fixture) {
+		_, err := p.FindFunctionLocation("main.init", true, -1)
+		assertNoError(err, t, "FindFunctionLocation()")
 	})
 }
