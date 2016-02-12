@@ -84,7 +84,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth>] [-full]. Prints stack."},
 		{aliases: []string{"frame"}, cmdFn: frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: "Executes a file containing a list of delve commands"},
-		{aliases: []string{"diassemble", "disass"}, cmdFn: g0f0(disassCommand), helpMsg: "Disassembles memory"},
+		{aliases: []string{"disassemble", "disass"}, cmdFn: g0f0(disassCommand), helpMsg: "Displays disassembly of specific function or address range: disassemble [-a <start> <end>] [-l <locspec>]"},
 	}
 
 	return c
