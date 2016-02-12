@@ -246,6 +246,20 @@ func (c *RPCClient) FindLocation(scope api.EvalScope, loc string) ([]api.Locatio
 	return answer, err
 }
 
+// Disassemble code between startPC and endPC
+func (c *RPCClient) DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+	var r api.AsmInstructions
+	err := c.call("Disassemble", DisassembleRequest{scope, startPC, endPC, flavour}, &r)
+	return r, err
+}
+
+// Disassemble function containing pc
+func (c *RPCClient) DisassemblePC(scope api.EvalScope, pc uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+	var r api.AsmInstructions
+	err := c.call("Disassemble", DisassembleRequest{scope, pc, 0, flavour}, &r)
+	return r, err
+}
+
 func (c *RPCClient) url(path string) string {
 	return fmt.Sprintf("http://%s%s", c.addr, path)
 }

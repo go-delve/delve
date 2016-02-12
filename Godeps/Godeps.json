@@ -62,6 +62,10 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "53feefa2559fb8dfa8d81baad31be332c97d6c77"
+		},
+		{
+			"ImportPath": "rsc.io/x86/x86asm",
+			"Rev": "01d8f0379593fd888e08a4c4057d69f5765ab2e4"
 		}
 	]
 }

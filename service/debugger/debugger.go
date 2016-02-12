@@ -575,3 +575,41 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 	}
 	return locs, err
 }
+
+// Disassembles code between startPC and endPC
+// if endPC == 0 it will find the function containing startPC and disassemble the whole function
+func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+	if endPC == 0 {
+		_, _, fn := d.process.PCToLine(startPC)
+		if fn == nil {
+			return nil, fmt.Errorf("Address 0x%x does not belong to any function", startPC)
+		}
+		startPC = fn.Entry
+		endPC = fn.End
+	}
+
+	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	if err != nil {
+		return nil, err
+	}
+
+	currentGoroutine := true
+	if scope.GoroutineID != -1 {
+		g, _ := s.Thread.GetG()
+		if g == nil || g.ID != scope.GoroutineID {
+			currentGoroutine = false
+		}
+	}
+
+	insts, err := s.Thread.Disassemble(startPC, endPC, currentGoroutine)
+	if err != nil {
+		return nil, err
+	}
+	disass := make(api.AsmInstructions, len(insts))
+
+	for i := range insts {
+		disass[i] = api.ConvertAsmInstruction(insts[i], insts[i].Text(proc.AssemblyFlavour(flavour)))
+	}
+
+	return disass, nil
+}

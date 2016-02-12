@@ -322,3 +322,15 @@ func (c *RPCServer) FindLocation(args FindLocationArgs, answer *[]api.Location) 
 	*answer, err = c.debugger.FindLocation(args.Scope, args.Loc)
 	return err
 }
+
+type DisassembleRequest struct {
+	Scope          api.EvalScope
+	StartPC, EndPC uint64
+	Flavour        api.AssemblyFlavour
+}
+
+func (c *RPCServer) Disassemble(args DisassembleRequest, answer *api.AsmInstructions) error {
+	var err error
+	*answer, err = c.debugger.Disassemble(args.Scope, args.StartPC, args.EndPC, args.Flavour)
+	return err
+}
