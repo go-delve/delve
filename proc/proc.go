@@ -452,6 +452,15 @@ func (dbp *Process) Step() (err error) {
 			return err
 		}
 		for {
+			pc, err := dbp.CurrentThread.PC()
+			if err != nil {
+				return err
+			}
+			text, err := dbp.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
+			if err == nil && len(text) > 0 && text[0].IsCall() && text[0].DestLoc != nil && text[0].DestLoc.Fn != nil {
+				return dbp.StepInto(text[0].DestLoc.Fn)
+			}
+
 			err = dbp.CurrentThread.StepInstruction()
 			if err != nil {
 				return err
@@ -469,6 +478,15 @@ func (dbp *Process) Step() (err error) {
 		}
 	}
 	return dbp.run(fn)
+}
+
+// StepInto sets a temp breakpoint after the prologue of fn and calls Continue
+func (dbp *Process) StepInto(fn *gosym.Func) error {
+	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
+	if _, err := dbp.SetTempBreakpoint(pc); err != nil {
+		return err
+	}
+	return dbp.Continue()
 }
 
 // StepInstruction will continue the current thread for exactly
