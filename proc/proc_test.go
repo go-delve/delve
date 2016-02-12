@@ -19,8 +19,6 @@ import (
 	protest "github.com/derekparker/delve/proc/test"
 )
 
-const disableFailingTests = true
-
 func init() {
 	runtime.GOMAXPROCS(4)
 	os.Setenv("GOMAXPROCS", "4")
@@ -1463,7 +1461,6 @@ func TestStepIntoFunction(t *testing.T) {
 		if !strings.Contains(loc.File, "teststep") {
 			t.Fatalf("debugger stopped at incorrect location: %s:%d", loc.File, loc.Line)
 		}
-		// TODO(derekparker) consider skipping function prologue when stepping into func.
 		if loc.Line != 8 {
 			t.Fatalf("debugger stopped at incorrect line: %d", loc.Line)
 		}
@@ -1511,10 +1508,6 @@ func TestIssue332_Part2(t *testing.T) {
 	// In some parts of the prologue, for some functions, the FDE data is incorrect
 	// which leads to 'next' and 'stack' failing with error "could not find FDE for PC: <garbage>"
 	// because the incorrect FDE data leads to reading the wrong stack address as the return address
-	// TODO: the incorrect FDE data problem is fixed in go 1.6, reenable this test when 1.6 is released.
-	if disableFailingTests {
-		return
-	}
 	withTestProcess("issue332", t, func(p *Process, fixture protest.Fixture) {
 		start, _, err := p.goSymTable.LineToPC(fixture.Source, 8)
 		assertNoError(err, t, "LineToPC()")
@@ -1533,6 +1526,18 @@ func TestIssue332_Part2(t *testing.T) {
 			if locations[0].Call.Fn.Name == "main.changeMe" {
 				break
 			}
+		}
+
+		pc, err := p.CurrentThread.PC()
+		assertNoError(err, t, "PC()")
+		pcAfterPrologue, err := p.FindFunctionLocation("main.changeMe", true, -1)
+		assertNoError(err, t, "FindFunctionLocation()")
+		pcEntry, err := p.FindFunctionLocation("main.changeMe", false, 0)
+		if pcAfterPrologue == pcEntry {
+			t.Fatalf("main.changeMe and main.changeMe:0 are the same (%x)", pcAfterPrologue)
+		}
+		if pc != pcAfterPrologue {
+			t.Fatalf("Step did not skip the prologue: current pc: %x, first instruction after prologue: %x", pc, pcAfterPrologue)
 		}
 
 		assertNoError(p.Next(), t, "first Next()")

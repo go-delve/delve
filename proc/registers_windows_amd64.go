@@ -5,9 +5,9 @@ import "C"
 import (
 	"bytes"
 	"fmt"
+	"rsc.io/x86/x86asm"
 	"syscall"
 	"unsafe"
-	"rsc.io/x86/x86asm"
 )
 
 // Regs represents CPU registers on an AMD64 processor.

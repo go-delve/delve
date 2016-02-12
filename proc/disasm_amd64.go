@@ -6,6 +6,8 @@ import (
 	"rsc.io/x86/x86asm"
 )
 
+var maxInstructionLength uint64 = 15
+
 type ArchInst x86asm.Inst
 
 func asmDecode(mem []byte, pc uint64) (*ArchInst, error) {
