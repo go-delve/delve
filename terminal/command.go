@@ -940,7 +940,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 
 	printcontextThread(t, state.CurrentThread)
 
-	if state.CurrentThread.Breakpoint == nil || !state.CurrentThread.Breakpoint.Tracepoint {
+	if state.CurrentThread.Breakpoint == nil || !state.CurrentThread.Breakpoint.Tracepoint || state.CurrentThread.BreakpointInfo == nil {
 		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 	}
 	return nil
@@ -955,7 +955,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	args := ""
-	if th.Breakpoint.Tracepoint {
+	if th.Breakpoint.Tracepoint && th.BreakpointInfo != nil {
 		var arg []string
 		for _, ar := range th.BreakpointInfo.Arguments {
 			arg = append(arg, ar.SinglelineString())

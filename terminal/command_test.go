@@ -2,12 +2,78 @@ package terminal
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/derekparker/delve/proc/test"
+	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/service/rpc"
 )
+
+type FakeTerminal struct {
+	t      testing.TB
+	client service.Client
+	cmds   *Commands
+	term   *Term
+}
+
+func (term *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
+	cmdstr, args := parseCommand(cmdstr)
+	cmd := term.cmds.Find(cmdstr)
+
+	outfh, err := ioutil.TempFile("", "cmdtestout")
+	if err != nil {
+		term.t.Fatalf("could not create temporary file: %v", err)
+	}
+
+	stdout, stderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outfh, outfh
+	defer func() {
+		os.Stdout, os.Stderr = stdout, stderr
+		outfh.Close()
+		outbs, err1 := ioutil.ReadFile(outfh.Name())
+		if err1 != nil {
+			term.t.Fatalf("could not read temporary output file: %v", err)
+		}
+		outstr = string(outbs)
+		os.Remove(outfh.Name())
+	}()
+	err = cmd(term.term, args)
+	return
+}
+
+func (term *FakeTerminal) MustExec(cmdstr string) string {
+	outstr, err := term.Exec(cmdstr)
+	if err != nil {
+		term.t.Fatalf("Error executing <%s>: %v", cmdstr, err)
+	}
+	return outstr
+}
+
+func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
+	listener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("couldn't start listener: %s\n", err)
+	}
+	defer listener.Close()
+	server := rpc.NewServer(&service.Config{
+		Listener:    listener,
+		ProcessArgs: []string{test.BuildFixture(name).Path},
+	}, false)
+	if err := server.Run(); err != nil {
+		t.Fatal(err)
+	}
+	client := rpc.NewClient(listener.Addr().String())
+	defer func() {
+		client.Detach(true)
+	}()
+	fn(&FakeTerminal{t, client, DebugCommands(client), New(client, nil)})
+}
 
 func TestCommandDefault(t *testing.T) {
 	var (
@@ -103,4 +169,16 @@ func TestExecuteFile(t *testing.T) {
 func TestIssue354(t *testing.T) {
 	printStack([]api.Stackframe{}, "")
 	printStack([]api.Stackframe{{api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil}, nil, nil}}, "")
+}
+
+func TestIssue411(t *testing.T) {
+	withTestTerminal("math", t, func(term *FakeTerminal) {
+		term.MustExec("break math.go:8")
+		term.MustExec("trace math.go:9")
+		term.MustExec("continue")
+		out := term.MustExec("next")
+		if !strings.HasPrefix(out, "> main.main()") {
+			t.Fatalf("Wrong output for next: <%s>", out)
+		}
+	})
 }
