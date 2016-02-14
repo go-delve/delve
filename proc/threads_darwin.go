@@ -39,8 +39,11 @@ func (t *Thread) singleStep() error {
 		return fmt.Errorf("could not single step")
 	}
 	for {
-		port := C.mach_port_wait(t.dbp.os.portSet, C.int(0))
-		if port == C.mach_port_t(t.ID) {
+		twthread, err := t.dbp.trapWait(t.dbp.Pid)
+		if err != nil {
+			return err
+		}
+		if twthread.ID == t.ID {
 			break
 		}
 	}

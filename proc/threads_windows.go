@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"fmt"
 	"syscall"
 
 	sys "golang.org/x/sys/windows"
@@ -48,10 +47,7 @@ func (t *Thread) singleStep() error {
 		if thread.ID == t.ID {
 			continue
 		}
-		_, err := _SuspendThread(thread.os.hThread)
-		if err != nil {
-			return fmt.Errorf("could not suspend thread: %d: %v", thread.ID, err)
-		}
+		_, _ = _SuspendThread(thread.os.hThread)
 	}
 
 	// Continue and wait for the step to complete
@@ -72,10 +68,7 @@ func (t *Thread) singleStep() error {
 		if thread.ID == t.ID {
 			continue
 		}
-		_, err := _ResumeThread(thread.os.hThread)
-		if err != nil {
-			return fmt.Errorf("could not resume thread: %d: %v", thread.ID, err)
-		}
+		_, _ = _ResumeThread(thread.os.hThread)
 	}
 
 	// Unset the processor TRAP flag
