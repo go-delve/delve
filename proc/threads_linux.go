@@ -53,6 +53,14 @@ func (t *Thread) singleStep() (err error) {
 		if err != nil {
 			return err
 		}
+		if (status == nil || status.Exited()) && wpid == t.dbp.Pid {
+			t.dbp.postExit()
+			rs := 0
+			if status != nil {
+				rs = status.ExitStatus()
+			}
+			return ProcessExitedError{Pid: t.dbp.Pid, Status: rs}
+		}
 		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
 			return nil
 		}

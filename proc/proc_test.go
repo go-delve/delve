@@ -1556,3 +1556,23 @@ func TestIssue396(t *testing.T) {
 		assertNoError(err, t, "FindFunctionLocation()")
 	})
 }
+
+func TestIssue414(t *testing.T) {
+	// Stepping until the program exits
+	withTestProcess("math", t, func(p *Process, fixture protest.Fixture) {
+		start, _, err := p.goSymTable.LineToPC(fixture.Source, 9)
+		assertNoError(err, t, "LineToPC()")
+		_, err = p.SetBreakpoint(start)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		for {
+			err := p.Step()
+			if err != nil {
+				if _, exited := err.(ProcessExitedError); exited {
+					break
+				}
+			}
+			assertNoError(err, t, "Step()")
+		}
+	})
+}

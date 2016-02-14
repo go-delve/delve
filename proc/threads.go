@@ -95,6 +95,9 @@ func (thread *Thread) StepInstruction() (err error) {
 
 	err = thread.singleStep()
 	if err != nil {
+		if _, exited := err.(ProcessExitedError); exited {
+			return err
+		}
 		return fmt.Errorf("step failed: %s", err.Error())
 	}
 	return nil
