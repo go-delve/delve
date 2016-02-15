@@ -33,9 +33,13 @@ func (t *Thread) stopped() bool {
 	return state == StatusTraceStop
 }
 
-func (t *Thread) resume() (err error) {
+func (t *Thread) resume() error {
+	return t.resumeWithSig(0)
+}
+
+func (t *Thread) resumeWithSig(sig int) (err error) {
 	t.running = true
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, 0) })
+	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
 	return
 }
 

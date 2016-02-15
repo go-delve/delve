@@ -317,7 +317,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		}
 		if th != nil {
 			// TODO(dp) alert user about unexpected signals here.
-			if err := th.Continue(); err != nil {
+			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
+				if err == sys.ESRCH {
+					return nil, ProcessExitedError{Pid: dbp.Pid}
+				}
 				return nil, err
 			}
 		}
