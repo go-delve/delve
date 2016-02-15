@@ -2,6 +2,7 @@ package servicetest
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	protest "github.com/derekparker/delve/proc/test"
 
@@ -1068,5 +1070,22 @@ func TestSkipPrologue2(t *testing.T) {
 		if callme3 == callme3Z {
 			t.Fatal("Skip prologue failed")
 		}
+	})
+}
+
+func TestIssue419(t *testing.T) {
+	// Calling service/rpc.(*Client).Halt could cause a crash because both Halt and Continue simultaneously
+	// try to read 'runtime.g' and debug/dwarf.Data.Type is not thread safe
+	withTestClient("issue419", t, func(c service.Client) {
+		go func() {
+			rand.Seed(time.Now().Unix())
+			d := time.Duration(rand.Intn(4) + 1)
+			time.Sleep(d * time.Second)
+			_, err := c.Halt()
+			assertNoError(err, t, "RequestManualStop()")
+		}()
+		statech := c.Continue()
+		state := <-statech
+		assertNoError(state.Err, t, "Continue()")
 	})
 }
