@@ -21,10 +21,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version string = "0.11.0-alpha"
-
-// Build is the current git hash.
-var Build string
+const (
+	version       = "0.11.0-alpha"
+	debugname     = "debug"
+	testdebugname = "debug.test"
+)
 
 var (
 	// Log is whether to log debug statements.
@@ -37,6 +38,8 @@ var (
 	InitFile string
 	// BuildFlags is the flags passed during compiler invocation.
 	BuildFlags string
+	// Build is the current git hash.
+	Build string
 
 	traceAttachPid  int
 	traceStackDepth int
@@ -97,7 +100,7 @@ func init() {
 
 	// 'debug' subcommand.
 	debugCommand := &cobra.Command{
-		Use:   "debug",
+		Use:   "debug [package]",
 		Short: "Compile and begin debugging program.",
 		Long: `Compiles your program with optimizations disabled,
 starts and attaches to it, and enables you to immediately begin debugging your program.`,
@@ -123,16 +126,10 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 
 	// 'trace' subcommand.
 	traceCommand := &cobra.Command{
-		Use:   "trace [regexp]",
+		Use:   "trace [package] regexp",
 		Short: "Compile and begin tracing program.",
-		Long:  "Trace program execution. Will set a tracepoint on every function matching [regexp] and output information when tracepoint is hit.",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return errors.New("you must provide a function to trace")
-			}
-			return nil
-		},
-		Run: traceCmd,
+		Long:  "Trace program execution. Will set a tracepoint on every function matching the provided regular expression and output information when tracepoint is hit.",
+		Run:   traceCmd,
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
@@ -140,7 +137,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 
 	// 'test' subcommand.
 	testCommand := &cobra.Command{
-		Use:   "test",
+		Use:   "test [package]",
 		Short: "Compile test binary and begin debugging program.",
 		Long:  `Compiles a test binary with optimizations disabled, starts and attaches to it, and enable you to immediately begin debugging your program.`,
 		Run:   testCmd,
@@ -149,7 +146,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
-		Use:   "attach [pid]",
+		Use:   "attach pid",
 		Short: "Attach to running process and begin debugging.",
 		Long:  "Attach to running process and begin debugging.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -164,7 +161,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 
 	// 'connect' subcommand.
 	connectCommand := &cobra.Command{
-		Use:   "connect [addr]",
+		Use:   "connect addr",
 		Short: "Connect to a headless debug server.",
 		Long:  "Connect to a headless debug server.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -176,7 +173,6 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		Run: connectCmd,
 	}
 	rootCommand.AddCommand(connectCommand)
-
 }
 
 func main() {
@@ -188,19 +184,25 @@ func main() {
 
 func debugCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		const debugname = "debug"
-		err := gobuild(debugname)
+		var pkg string
+		dlvArgs, targetArgs := splitArgs(cmd, args)
+
+		if len(dlvArgs) > 0 {
+			pkg = args[0]
+		}
+		err := gobuild(debugname, pkg)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
 		fp, err := filepath.Abs("./" + debugname)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, err.Error())
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
 		defer os.Remove(fp)
 
-		processArgs := append([]string{"./" + debugname}, args...)
+		processArgs := append([]string{"./" + debugname}, targetArgs...)
 		return execute(0, processArgs, conf)
 	}()
 	os.Exit(status)
@@ -208,20 +210,26 @@ func debugCmd(cmd *cobra.Command, args []string) {
 
 func traceCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		const debugname = "debug"
+		var regexp string
 		var processArgs []string
-		if traceAttachPid == 0 {
-			if err := gobuild(debugname); err != nil {
-				return 1
-			}
-			fp, err := filepath.Abs("./" + debugname)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, err.Error())
-				return 1
-			}
-			defer os.Remove(fp)
 
-			processArgs = append([]string{"./" + debugname}, args...)
+		dlvArgs, targetArgs := splitArgs(cmd, args)
+
+		if traceAttachPid == 0 {
+			var pkg string
+			switch len(dlvArgs) {
+			case 1:
+				regexp = args[0]
+			case 2:
+				pkg = args[0]
+				regexp = args[1]
+			}
+			if err := gobuild(debugname, pkg); err != nil {
+				return 1
+			}
+			defer os.Remove("./" + debugname)
+
+			processArgs = append([]string{"./" + debugname}, targetArgs...)
 		}
 		// Make a TCP listener
 		listener, err := net.Listen("tcp", Addr)
@@ -242,7 +250,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		client := rpc.NewClient(listener.Addr().String())
-		funcs, err := client.ListFunctions(args[0])
+		funcs, err := client.ListFunctions(regexp)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -270,23 +278,18 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 func testCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		wd, err := os.Getwd()
+		var pkg string
+		dlvArgs, targetArgs := splitArgs(cmd, args)
+
+		if len(dlvArgs) > 0 {
+			pkg = args[0]
+		}
+		err := gotestbuild(pkg)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, err.Error())
 			return 1
 		}
-		base := filepath.Base(wd)
-		err = gotestbuild()
-		if err != nil {
-			return 1
-		}
-		debugname := "./" + base + ".test"
-		// On Windows, "go test" generates an executable with the ".exe" extension
-		if runtime.GOOS == "windows" {
-			debugname += ".exe"
-		}
-		defer os.Remove(debugname)
-		processArgs := append([]string{debugname}, args...)
+		defer os.Remove("./" + testdebugname)
+		processArgs := append([]string{"./" + testdebugname}, targetArgs...)
 
 		return execute(0, processArgs, conf)
 	}()
@@ -309,6 +312,13 @@ func connectCmd(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 	os.Exit(connect(addr, conf))
+}
+
+func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
+	if cmd.ArgsLenAtDash() >= 0 {
+		return args[:cmd.ArgsLenAtDash()], args[cmd.ArgsLenAtDash():]
+	}
+	return args, []string{}
 }
 
 func connect(addr string, conf *config.Config) int {
@@ -369,16 +379,26 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 	return status
 }
 
-func gobuild(debugname string) error {
-	return gocommand("build", "-o", debugname, BuildFlags)
+func gobuild(debugname, pkg string) error {
+	args := []string{"-gcflags", "-N -l", "-o", debugname}
+	if BuildFlags != "" {
+		args = append(args, BuildFlags)
+	}
+	args = append(args, pkg)
+	return gocommand("build", args...)
 }
 
-func gotestbuild() error {
-	return gocommand("test", "-c", BuildFlags)
+func gotestbuild(pkg string) error {
+	args := []string{"-gcflags", "-N -l", "-c", "-o", testdebugname}
+	if BuildFlags != "" {
+		args = append(args, BuildFlags)
+	}
+	args = append(args, pkg)
+	return gocommand("test", args...)
 }
 
 func gocommand(command string, args ...string) error {
-	allargs := []string{command, "-gcflags", "-N -l"}
+	allargs := []string{command}
 	allargs = append(allargs, args...)
 	goBuild := exec.Command("go", allargs...)
 	goBuild.Stderr = os.Stderr
