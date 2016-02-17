@@ -1,12 +1,9 @@
 package proc
 
-// #include <windows.h>
-import "C"
 import (
 	"bytes"
 	"fmt"
 	"rsc.io/x86/x86asm"
-	"syscall"
 	"unsafe"
 )
 
@@ -97,22 +94,17 @@ func (r *Regs) TLS() uint64 {
 
 // SetPC sets the RIP register to the value specified by `pc`.
 func (r *Regs) SetPC(thread *Thread, pc uint64) error {
-	var context C.CONTEXT
-	context.ContextFlags = C.CONTEXT_ALL
+	context := newCONTEXT()
+	context.ContextFlags = _CONTEXT_ALL
 
-	res := C.GetThreadContext(C.HANDLE(thread.os.hThread), &context)
-	if res == C.FALSE {
-		return fmt.Errorf("could not GetThreadContext")
+	err := _GetThreadContext(thread.os.hThread, context)
+	if err != nil {
+		return err
 	}
 
-	context.Rip = C.DWORD64(pc)
+	context.Rip = pc
 
-	res = C.SetThreadContext(C.HANDLE(thread.os.hThread), &context)
-	if res == C.FALSE {
-		return fmt.Errorf("could not SetThreadContext")
-	}
-
-	return nil
+	return _SetThreadContext(thread.os.hThread, context)
 }
 
 func (r *Regs) Get(n int) (uint64, error) {
@@ -273,18 +265,18 @@ func (r *Regs) Get(n int) (uint64, error) {
 }
 
 func registers(thread *Thread) (Registers, error) {
-	var context C.CONTEXT
+	context := newCONTEXT()
 
-	context.ContextFlags = C.CONTEXT_ALL
-	res := C.GetThreadContext(C.HANDLE(thread.os.hThread), &context)
-	if res == C.FALSE {
-		return nil, fmt.Errorf("failed to read ThreadContext")
+	context.ContextFlags = _CONTEXT_ALL
+	err := _GetThreadContext(thread.os.hThread, context)
+	if err != nil {
+		return nil, err
 	}
 
 	var threadInfo _THREAD_BASIC_INFORMATION
-	status := _NtQueryInformationThread(syscall.Handle(thread.os.hThread), _ThreadBasicInformation, uintptr(unsafe.Pointer(&threadInfo)), uint32(unsafe.Sizeof(threadInfo)), nil)
+	status := _NtQueryInformationThread(thread.os.hThread, _ThreadBasicInformation, uintptr(unsafe.Pointer(&threadInfo)), uint32(unsafe.Sizeof(threadInfo)), nil)
 	if !_NT_SUCCESS(status) {
-		return nil, fmt.Errorf("failed to get thread_basic_information")
+		return nil, fmt.Errorf("NtQueryInformationThread failed: it returns 0x%x", status)
 	}
 
 	regs := &Regs{

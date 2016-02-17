@@ -1,10 +1,8 @@
 package proc
 
-// #include <windows.h>
-import "C"
 import (
 	"fmt"
-	"unsafe"
+	"syscall"
 
 	sys "golang.org/x/sys/windows"
 )
@@ -15,7 +13,7 @@ type WaitStatus sys.WaitStatus
 // OSSpecificDetails holds information specific to the Windows
 // operating system / kernel.
 type OSSpecificDetails struct {
-	hThread sys.Handle
+	hThread syscall.Handle
 }
 
 func (t *Thread) halt() (err error) {
@@ -29,20 +27,20 @@ func (t *Thread) halt() (err error) {
 }
 
 func (t *Thread) singleStep() error {
-	var context C.CONTEXT
-	context.ContextFlags = C.CONTEXT_ALL
+	context := newCONTEXT()
+	context.ContextFlags = _CONTEXT_ALL
 
 	// Set the processor TRAP flag
-	res := C.GetThreadContext(C.HANDLE(t.os.hThread), &context)
-	if res == C.FALSE {
-		return fmt.Errorf("could not GetThreadContext")
+	err := _GetThreadContext(t.os.hThread, context)
+	if err != nil {
+		return err
 	}
 
 	context.EFlags |= 0x100
 
-	res = C.SetThreadContext(C.HANDLE(t.os.hThread), &context)
-	if res == C.FALSE {
-		return fmt.Errorf("could not SetThreadContext")
+	err = _SetThreadContext(t.os.hThread, context)
+	if err != nil {
+		return err
 	}
 
 	// Suspend all threads except this one
@@ -50,20 +48,21 @@ func (t *Thread) singleStep() error {
 		if thread.ID == t.ID {
 			continue
 		}
-		res := C.SuspendThread(C.HANDLE(thread.os.hThread))
-		if res == C.DWORD(0xFFFFFFFF) {
-			return fmt.Errorf("could not suspend thread: %d", thread.ID)
+		_, err := _SuspendThread(thread.os.hThread)
+		if err != nil {
+			return fmt.Errorf("could not suspend thread: %d: %v", thread.ID, err)
 		}
 	}
 
 	// Continue and wait for the step to complete
+	err = nil
 	t.dbp.execPtraceFunc(func() {
-		res = C.ContinueDebugEvent(C.DWORD(t.dbp.Pid), C.DWORD(t.ID), C.DBG_CONTINUE)
+		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
 	})
-	if res == C.FALSE {
-		return fmt.Errorf("could not ContinueDebugEvent.")
+	if err != nil {
+		return err
 	}
-	_, err := t.dbp.trapWait(0)
+	_, err = t.dbp.trapWait(0)
 	if err != nil {
 		return err
 	}
@@ -73,40 +72,32 @@ func (t *Thread) singleStep() error {
 		if thread.ID == t.ID {
 			continue
 		}
-		res := C.ResumeThread(C.HANDLE(thread.os.hThread))
-		if res == C.DWORD(0xFFFFFFFF) {
-			return fmt.Errorf("ould not resume thread: %d", thread.ID)
+		_, err := _ResumeThread(thread.os.hThread)
+		if err != nil {
+			return fmt.Errorf("could not resume thread: %d: %v", thread.ID, err)
 		}
 	}
 
 	// Unset the processor TRAP flag
-	res = C.GetThreadContext(C.HANDLE(t.os.hThread), &context)
-	if res == C.FALSE {
-		return fmt.Errorf("could not GetThreadContext")
+	err = _GetThreadContext(t.os.hThread, context)
+	if err != nil {
+		return err
 	}
 
-	context.EFlags &= ^C.DWORD(0x100)
+	context.EFlags &= ^uint32(0x100)
 
-	res = C.SetThreadContext(C.HANDLE(t.os.hThread), &context)
-	if res == C.FALSE {
-		return fmt.Errorf("could not SetThreadContext")
-	}
-
-	return nil
+	return _SetThreadContext(t.os.hThread, context)
 }
 
 func (t *Thread) resume() error {
 	t.running = true
-	var res C.WINBOOL
+	var err error
 	t.dbp.execPtraceFunc(func() {
 		//TODO: Note that we are ignoring the thread we were asked to continue and are continuing the
 		//thread that we last broke on.
-		res = C.ContinueDebugEvent(C.DWORD(t.dbp.Pid), C.DWORD(t.ID), C.DBG_CONTINUE)
+		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
 	})
-	if res == C.FALSE {
-		return fmt.Errorf("could not ContinueDebugEvent.")
-	}
-	return nil
+	return err
 }
 
 func (t *Thread) blocked() bool {
@@ -135,15 +126,10 @@ func (t *Thread) stopped() bool {
 }
 
 func (t *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
-	var (
-		vmData = C.LPCVOID(unsafe.Pointer(&data[0]))
-		vmAddr = C.LPVOID(addr)
-		length = C.SIZE_T(len(data))
-		count  C.SIZE_T
-	)
-	ret := C.WriteProcessMemory(C.HANDLE(t.dbp.os.hProcess), vmAddr, vmData, length, &count)
-	if ret == C.FALSE {
-		return int(count), fmt.Errorf("could not write memory")
+	var count uintptr
+	err := _WriteProcessMemory(t.dbp.os.hProcess, addr, &data[0], uintptr(len(data)), &count)
+	if err != nil {
+		return 0, err
 	}
 	return int(count), nil
 }
@@ -152,16 +138,11 @@ func (t *Thread) readMemory(addr uintptr, size int) ([]byte, error) {
 	if size == 0 {
 		return nil, nil
 	}
-	var (
-		buf    = make([]byte, size)
-		vmData = C.LPVOID(unsafe.Pointer(&buf[0]))
-		vmAddr = C.LPCVOID(addr)
-		length = C.SIZE_T(size)
-		count  C.SIZE_T
-	)
-	ret := C.ReadProcessMemory(C.HANDLE(t.dbp.os.hProcess), vmAddr, vmData, length, &count)
-	if ret == C.FALSE {
-		return nil, fmt.Errorf("could not read memory")
+	var count uintptr
+	buf := make([]byte, size)
+	err := _ReadProcessMemory(t.dbp.os.hProcess, addr, &buf[0], uintptr(size), &count)
+	if err != nil {
+		return nil, err
 	}
-	return buf, nil
+	return buf[:count], nil
 }

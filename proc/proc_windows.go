@@ -1,7 +1,5 @@
 package proc
 
-// #include "windows.h"
-import "C"
 import (
 	"debug/gosym"
 	"debug/pe"
@@ -30,7 +28,7 @@ const (
 
 // OSProcessDetails holds Windows specific information.
 type OSProcessDetails struct {
-	hProcess    sys.Handle
+	hProcess    syscall.Handle
 	breakThread int
 }
 
@@ -121,17 +119,13 @@ func (dbp *Process) Kill() error {
 	// TODO: Should not have to ignore failures here,
 	// but some tests appear to Kill twice causing
 	// this to fail on second attempt.
-	_ = C.TerminateProcess(C.HANDLE(dbp.os.hProcess), 1)
+	_ = syscall.TerminateProcess(dbp.os.hProcess, 1)
 	dbp.exited = true
 	return nil
 }
 
 func (dbp *Process) requestManualStop() error {
-	res := C.DebugBreakProcess(C.HANDLE(dbp.os.hProcess))
-	if res == C.FALSE {
-		return fmt.Errorf("failed to break process %d", dbp.Pid)
-	}
-	return nil
+	return _DebugBreakProcess(dbp.os.hProcess)
 }
 
 func (dbp *Process) updateThreadList() error {
@@ -140,7 +134,7 @@ func (dbp *Process) updateThreadList() error {
 	return nil
 }
 
-func (dbp *Process) addThread(hThread sys.Handle, threadID int, attach bool) (*Thread, error) {
+func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach bool) (*Thread, error) {
 	if thread, ok := dbp.Threads[threadID]; ok {
 		return thread, nil
 	}
@@ -341,76 +335,76 @@ func dwarfFromPE(f *pe.File) (*dwarf.Data, error) {
 }
 
 func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
-	var debugEvent C.DEBUG_EVENT
+	var debugEvent _DEBUG_EVENT
 	shouldExit := false
 	for {
 		// Wait for a debug event...
-		res := C.WaitForDebugEvent(&debugEvent, C.INFINITE)
-		if res == C.FALSE {
-			return 0, 0, fmt.Errorf("could not WaitForDebugEvent")
+		err := _WaitForDebugEvent(&debugEvent, syscall.INFINITE)
+		if err != nil {
+			return 0, 0, err
 		}
 
 		// ... handle each event kind ...
-		unionPtr := unsafe.Pointer(&debugEvent.u[0])
-		switch debugEvent.dwDebugEventCode {
-		case C.CREATE_PROCESS_DEBUG_EVENT:
-			debugInfo := (*C.CREATE_PROCESS_DEBUG_INFO)(unionPtr)
-			hFile := debugInfo.hFile
-			if hFile != C.HANDLE(uintptr(0)) /* NULL */ && hFile != C.HANDLE(uintptr(0xFFFFFFFFFFFFFFFF)) /* INVALID_HANDLE_VALUE */ {
-				res = C.CloseHandle(hFile)
-				if res == C.FALSE {
-					return 0, 0, fmt.Errorf("could not close create process file handle")
+		unionPtr := unsafe.Pointer(&debugEvent.U[0])
+		switch debugEvent.DebugEventCode {
+		case _CREATE_PROCESS_DEBUG_EVENT:
+			debugInfo := (*_CREATE_PROCESS_DEBUG_INFO)(unionPtr)
+			hFile := debugInfo.File
+			if hFile != 0 && hFile != syscall.InvalidHandle {
+				err = syscall.CloseHandle(hFile)
+				if err != nil {
+					return 0, 0, err
 				}
 			}
-			dbp.os.hProcess = sys.Handle(debugInfo.hProcess)
-			_, err = dbp.addThread(sys.Handle(debugInfo.hThread), int(debugEvent.dwThreadId), false)
+			dbp.os.hProcess = debugInfo.Process
+			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
 			if err != nil {
 				return 0, 0, err
 			}
 			break
-		case C.CREATE_THREAD_DEBUG_EVENT:
-			debugInfo := (*C.CREATE_THREAD_DEBUG_INFO)(unionPtr)
-			_, err = dbp.addThread(sys.Handle(debugInfo.hThread), int(debugEvent.dwThreadId), false)
+		case _CREATE_THREAD_DEBUG_EVENT:
+			debugInfo := (*_CREATE_THREAD_DEBUG_INFO)(unionPtr)
+			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
 			if err != nil {
 				return 0, 0, err
 			}
 			break
-		case C.EXIT_THREAD_DEBUG_EVENT:
-			delete(dbp.Threads, int(debugEvent.dwThreadId))
+		case _EXIT_THREAD_DEBUG_EVENT:
+			delete(dbp.Threads, int(debugEvent.ThreadId))
 			break
-		case C.OUTPUT_DEBUG_STRING_EVENT:
+		case _OUTPUT_DEBUG_STRING_EVENT:
 			//TODO: Handle debug output strings
 			break
-		case C.LOAD_DLL_DEBUG_EVENT:
-			debugInfo := (*C.LOAD_DLL_DEBUG_INFO)(unionPtr)
-			hFile := debugInfo.hFile
-			if hFile != C.HANDLE(uintptr(0)) /* NULL */ && hFile != C.HANDLE(uintptr(0xFFFFFFFFFFFFFFFF)) /* INVALID_HANDLE_VALUE */ {
-				res = C.CloseHandle(hFile)
-				if res == C.FALSE {
-					return 0, 0, fmt.Errorf("could not close DLL load file handle")
+		case _LOAD_DLL_DEBUG_EVENT:
+			debugInfo := (*_LOAD_DLL_DEBUG_INFO)(unionPtr)
+			hFile := debugInfo.File
+			if hFile != 0 && hFile != syscall.InvalidHandle {
+				err = syscall.CloseHandle(hFile)
+				if err != nil {
+					return 0, 0, err
 				}
 			}
 			break
-		case C.UNLOAD_DLL_DEBUG_EVENT:
+		case _UNLOAD_DLL_DEBUG_EVENT:
 			break
-		case C.RIP_EVENT:
+		case _RIP_EVENT:
 			break
-		case C.EXCEPTION_DEBUG_EVENT:
-			tid := int(debugEvent.dwThreadId)
+		case _EXCEPTION_DEBUG_EVENT:
+			tid := int(debugEvent.ThreadId)
 			dbp.os.breakThread = tid
 			return tid, 0, nil
-		case C.EXIT_PROCESS_DEBUG_EVENT:
-			debugInfo := (*C.EXIT_PROCESS_DEBUG_INFO)(unionPtr)
-			exitCode = int(debugInfo.dwExitCode)
+		case _EXIT_PROCESS_DEBUG_EVENT:
+			debugInfo := (*_EXIT_PROCESS_DEBUG_INFO)(unionPtr)
+			exitCode = int(debugInfo.ExitCode)
 			shouldExit = true
 		default:
-			return 0, 0, fmt.Errorf("unknown debug event code: %d", debugEvent.dwDebugEventCode)
+			return 0, 0, fmt.Errorf("unknown debug event code: %d", debugEvent.DebugEventCode)
 		}
 
 		// .. and then continue unless we received an event that indicated we should break into debugger.
-		res = C.ContinueDebugEvent(debugEvent.dwProcessId, debugEvent.dwThreadId, C.DBG_CONTINUE)
-		if res == C.WINBOOL(0) {
-			return 0, 0, fmt.Errorf("could not ContinueDebugEvent")
+		err = _ContinueDebugEvent(debugEvent.ProcessId, debugEvent.ThreadId, _DBG_CONTINUE)
+		if err != nil {
+			return 0, 0, err
 		}
 
 		if shouldExit {
