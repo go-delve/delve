@@ -302,7 +302,7 @@ func TestLocalVariables(t *testing.T) {
 }
 
 func TestEmbeddedStruct(t *testing.T) {
-	withTestProcess("testvariables4", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
 		testcases := []varTest{
 			{"b.val", true, "-314", "", "int", nil},
 			{"b.A.val", true, "-314", "", "int", nil},
@@ -556,7 +556,7 @@ func TestEvalExpression(t *testing.T) {
 		{"mainMenu[0]", false, `main.Item {Name: "home", Route: "/", Active: 1}`, "", "main.Item", nil},
 	}
 
-	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name)
@@ -576,7 +576,7 @@ func TestEvalExpression(t *testing.T) {
 }
 
 func TestEvalAddrAndCast(t *testing.T) {
-	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		c1addr, err := evalVariable(p, "&c1")
 		assertNoError(err, t, "EvalExpression(&c1)")
@@ -602,7 +602,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 }
 
 func TestMapEvaluation(t *testing.T) {
-	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		m1v, err := evalVariable(p, "m1")
 		assertNoError(err, t, "EvalVariable()")
@@ -636,7 +636,7 @@ func TestMapEvaluation(t *testing.T) {
 }
 
 func TestUnsafePointer(t *testing.T) {
-	withTestProcess("testvariables3", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		up1v, err := evalVariable(p, "up1")
 		assertNoError(err, t, "EvalVariable(up1)")
