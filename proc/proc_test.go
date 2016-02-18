@@ -1070,7 +1070,7 @@ func TestFrameEvaluation(t *testing.T) {
 }
 
 func TestPointerSetting(t *testing.T) {
-	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 
 		pval := func(n int64) {
@@ -1134,7 +1134,7 @@ func TestRecursiveStructure(t *testing.T) {
 
 func TestIssue316(t *testing.T) {
 	// A pointer loop that includes one interface should not send dlv into an infinite loop
-	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
 		_, err := evalVariable(p, "iface5")
 		assertNoError(err, t, "EvalVariable()")
@@ -1143,7 +1143,7 @@ func TestIssue316(t *testing.T) {
 
 func TestIssue325(t *testing.T) {
 	// nil pointer dereference when evaluating interfaces to function pointers
-	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
 		iface2fn1v, err := evalVariable(p, "iface2fn1")
 		assertNoError(err, t, "EvalVariable()")
@@ -1191,7 +1191,7 @@ func TestBreakpointCounts(t *testing.T) {
 func BenchmarkArray(b *testing.B) {
 	// each bencharr struct is 128 bytes, bencharr is 64 elements long
 	b.SetBytes(int64(64 * 128))
-	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			_, err := evalVariable(p, "bencharr")
@@ -1268,7 +1268,7 @@ func BenchmarkArrayPointer(b *testing.B) {
 	// each bencharr struct is 128 bytes, benchparr is an array of 64 pointers to bencharr
 	// each read will read 64 bencharr structs plus the 64 pointers of benchparr
 	b.SetBytes(int64(64*128 + 64*8))
-	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			_, err := evalVariable(p, "bencharr")
@@ -1282,7 +1282,7 @@ func BenchmarkMap(b *testing.B) {
 	// each string key has an average of 9 character
 	// reading strings and the map structure imposes a overhead that we ignore here
 	b.SetBytes(int64(41 * (2*8 + 9)))
-	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			_, err := evalVariable(p, "m1")
@@ -1292,7 +1292,7 @@ func BenchmarkMap(b *testing.B) {
 }
 
 func BenchmarkGoroutinesInfo(b *testing.B) {
-	withTestProcess("testvariables3", b, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			p.allGCache = nil
@@ -1343,7 +1343,7 @@ func TestIssue305(t *testing.T) {
 
 func TestIssue341(t *testing.T) {
 	// pointer loop through map entries
-	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
 		t.Logf("requesting mapinf")
 		mapinf, err := evalVariable(p, "mapinf")
@@ -1434,7 +1434,7 @@ func TestCondBreakpointError(t *testing.T) {
 
 func TestIssue356(t *testing.T) {
 	// slice with a typedef does not get printed correctly
-	withTestProcess("testvariables3", t, func(p *Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		mmvar, err := evalVariable(p, "mainMenu")
 		assertNoError(err, t, "EvalVariable()")
