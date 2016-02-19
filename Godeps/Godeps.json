@@ -2,7 +2,34 @@
 	"ImportPath": "github.com/derekparker/delve",
 	"GoVersion": "go1.5",
 	"Packages": [
-		"./..."
+		"github.com/derekparker/delve/cmd/dlv",
+		"github.com/derekparker/delve/cmd/dlv/cmds",
+		"github.com/derekparker/delve/config",
+		"github.com/derekparker/delve/dwarf/frame",
+		"github.com/derekparker/delve/dwarf/line",
+		"github.com/derekparker/delve/dwarf/op",
+		"github.com/derekparker/delve/dwarf/reader",
+		"github.com/derekparker/delve/dwarf/util",
+		"github.com/derekparker/delve/localtests/bf",
+		"github.com/derekparker/delve/localtests/changeme",
+		"github.com/derekparker/delve/localtests/defer",
+		"github.com/derekparker/delve/localtests/fc",
+		"github.com/derekparker/delve/localtests/fosdem/debug",
+		"github.com/derekparker/delve/localtests/fosdem/exec",
+		"github.com/derekparker/delve/localtests/fosdem/trace",
+		"github.com/derekparker/delve/localtests/step",
+		"github.com/derekparker/delve/localtests/stepbug",
+		"github.com/derekparker/delve/localtests/test-on",
+		"github.com/derekparker/delve/proc",
+		"github.com/derekparker/delve/proc/test",
+		"github.com/derekparker/delve/scripts",
+		"github.com/derekparker/delve/service",
+		"github.com/derekparker/delve/service/api",
+		"github.com/derekparker/delve/service/debugger",
+		"github.com/derekparker/delve/service/rpc",
+		"github.com/derekparker/delve/service/test",
+		"github.com/derekparker/delve/terminal",
+		"github.com/derekparker/delve/version"
 	],
 	"Deps": [
 		{
@@ -33,7 +60,7 @@
 		},
 		{
 			"ImportPath": "github.com/spf13/cobra",
-			"Rev": "d732ab3a34e6e9e6b5bdac80707c2b6bad852936"
+			"Rev": "65a708cee0a4424f4e353d031ce440643e312f92"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",

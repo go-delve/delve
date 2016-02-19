@@ -1,12 +1,13 @@
 # Generating Man Pages For Your Own cobra.Command
 
-Generating bash completions from a cobra command is incredibly easy. An example is as follows:
+Generating man pages from a cobra command is incredibly easy. An example is as follows:
 
 ```go
 package main
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 )
 
 func main() {
@@ -18,7 +19,7 @@ func main() {
 		Title: "MINE",
 		Section: "3",
 	}
-	cmd.GenManTree(header, "/tmp")
+	doc.GenManTree(cmd, header, "/tmp")
 }
 ```
 

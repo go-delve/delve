@@ -11,57 +11,58 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cobra
+package doc
 
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	mangen "github.com/cpuguy83/go-md2man/md2man"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// GenManTree will call cmd.GenManTree(header, dir)
-func GenManTree(cmd *Command, header *GenManHeader, dir string) {
-	cmd.GenManTree(header, dir)
-}
 
 // GenManTree will generate a man page for this command and all decendants
 // in the directory given. The header may be nil. This function may not work
 // correctly if your command names have - in them. If you have `cmd` with two
 // subcmds, `sub` and `sub-third`. And `sub` has a subcommand called `third`
 // it is undefined which help output will be in the file `cmd-sub-third.1`.
-func (cmd *Command) GenManTree(header *GenManHeader, dir string) {
+func GenManTree(cmd *cobra.Command, header *GenManHeader, dir string) error {
 	if header == nil {
 		header = &GenManHeader{}
 	}
 	for _, c := range cmd.Commands() {
-		if !c.IsAvailableCommand() || c == cmd.helpCommand {
+		if !c.IsAvailableCommand() || c.IsHelpCommand() {
 			continue
 		}
-		GenManTree(c, header, dir)
+		if err := GenManTree(c, header, dir); err != nil {
+			return err
+		}
 	}
-	out := new(bytes.Buffer)
+	needToResetTitle := header.Title == ""
 
-	cmd.GenMan(header, out)
+	basename := strings.Replace(cmd.CommandPath(), " ", "_", -1) + ".1"
+	filename := filepath.Join(dir, basename)
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
 
-	filename := cmd.CommandPath()
-	filename = dir + strings.Replace(filename, " ", "-", -1) + ".1"
-	outFile, err := os.Create(filename)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	if err := GenMan(cmd, header, f); err != nil {
+		return err
 	}
-	defer outFile.Close()
-	_, err = outFile.Write(out.Bytes())
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+
+	if needToResetTitle {
+		header.Title = ""
 	}
+	return nil
 }
 
 // GenManHeader is a lot like the .TH header at the start of man pages. These
@@ -77,25 +78,21 @@ type GenManHeader struct {
 	Manual  string
 }
 
-// GenMan will call cmd.GenMan(header, out)
-func GenMan(cmd *Command, header *GenManHeader, out *bytes.Buffer) {
-	cmd.GenMan(header, out)
-}
-
-// GenMan will generate a man page for the given command in the out buffer.
-// The header argument may be nil, however obviously out may not.
-func (cmd *Command) GenMan(header *GenManHeader, out *bytes.Buffer) {
+// GenMan will generate a man page for the given command and write it to
+// w. The header argument may be nil, however obviously w may not.
+func GenMan(cmd *cobra.Command, header *GenManHeader, w io.Writer) error {
 	if header == nil {
 		header = &GenManHeader{}
 	}
-	buf := genMarkdown(cmd, header)
-	final := mangen.Render(buf)
-	out.Write(final)
+	b := genMan(cmd, header)
+	final := mangen.Render(b)
+	_, err := w.Write(final)
+	return err
 }
 
 func fillHeader(header *GenManHeader, name string) {
 	if header.Title == "" {
-		header.Title = name
+		header.Title = strings.ToUpper(strings.Replace(name, " ", "\\-", -1))
 	}
 	if header.Section == "" {
 		header.Section = "1"
@@ -110,20 +107,21 @@ func fillHeader(header *GenManHeader, name string) {
 	}
 }
 
-func manPreamble(out *bytes.Buffer, header *GenManHeader, name, short, long string) {
+func manPreamble(out io.Writer, header *GenManHeader, name, short, long string) {
+	dashName := strings.Replace(name, " ", "-", -1)
 	fmt.Fprintf(out, `%% %s(%s)%s
 %% %s
 %% %s
 # NAME
 `, header.Title, header.Section, header.date, header.Source, header.Manual)
-	fmt.Fprintf(out, "%s \\- %s\n\n", name, short)
+	fmt.Fprintf(out, "%s \\- %s\n\n", dashName, short)
 	fmt.Fprintf(out, "# SYNOPSIS\n")
 	fmt.Fprintf(out, "**%s** [OPTIONS]\n\n", name)
 	fmt.Fprintf(out, "# DESCRIPTION\n")
 	fmt.Fprintf(out, "%s\n\n", long)
 }
 
-func manPrintFlags(out *bytes.Buffer, flags *pflag.FlagSet) {
+func manPrintFlags(out io.Writer, flags *pflag.FlagSet) {
 	flags.VisitAll(func(flag *pflag.Flag) {
 		if len(flag.Deprecated) > 0 || flag.Hidden {
 			return
@@ -151,7 +149,7 @@ func manPrintFlags(out *bytes.Buffer, flags *pflag.FlagSet) {
 	})
 }
 
-func manPrintOptions(out *bytes.Buffer, command *Command) {
+func manPrintOptions(out io.Writer, command *cobra.Command) {
 	flags := command.NonInheritedFlags()
 	if flags.HasFlags() {
 		fmt.Fprintf(out, "# OPTIONS\n")
@@ -166,12 +164,13 @@ func manPrintOptions(out *bytes.Buffer, command *Command) {
 	}
 }
 
-func genMarkdown(cmd *Command, header *GenManHeader) []byte {
-	fillHeader(header, cmd.Name())
+func genMan(cmd *cobra.Command, header *GenManHeader) []byte {
 	// something like `rootcmd subcmd1 subcmd2`
 	commandName := cmd.CommandPath()
 	// something like `rootcmd-subcmd1-subcmd2`
 	dashCommandName := strings.Replace(commandName, " ", "-", -1)
+
+	fillHeader(header, commandName)
 
 	buf := new(bytes.Buffer)
 
@@ -183,31 +182,37 @@ func genMarkdown(cmd *Command, header *GenManHeader) []byte {
 
 	manPreamble(buf, header, commandName, short, long)
 	manPrintOptions(buf, cmd)
-
 	if len(cmd.Example) > 0 {
 		fmt.Fprintf(buf, "# EXAMPLE\n")
 		fmt.Fprintf(buf, "```\n%s\n```\n", cmd.Example)
 	}
-
-	if cmd.hasSeeAlso() {
+	if hasSeeAlso(cmd) {
 		fmt.Fprintf(buf, "# SEE ALSO\n")
 		if cmd.HasParent() {
 			parentPath := cmd.Parent().CommandPath()
 			dashParentPath := strings.Replace(parentPath, " ", "-", -1)
-			fmt.Fprintf(buf, "**%s(%s)**, ", dashParentPath, header.Section)
+			fmt.Fprintf(buf, "**%s(%s)**", dashParentPath, header.Section)
+			cmd.VisitParents(func(c *cobra.Command) {
+				if c.DisableAutoGenTag {
+					cmd.DisableAutoGenTag = c.DisableAutoGenTag
+				}
+			})
 		}
-
 		children := cmd.Commands()
 		sort.Sort(byName(children))
-		for _, c := range children {
-			if !c.IsAvailableCommand() || c == cmd.helpCommand {
+		for i, c := range children {
+			if !c.IsAvailableCommand() || c.IsHelpCommand() {
 				continue
 			}
-			fmt.Fprintf(buf, "**%s-%s(%s)**, ", dashCommandName, c.Name(), header.Section)
+			if cmd.HasParent() || i > 0 {
+				fmt.Fprintf(buf, ", ")
+			}
+			fmt.Fprintf(buf, "**%s-%s(%s)**", dashCommandName, c.Name(), header.Section)
 		}
 		fmt.Fprintf(buf, "\n")
 	}
-
-	fmt.Fprintf(buf, "# HISTORY\n%s Auto generated by spf13/cobra\n", header.Date.Format("2-Jan-2006"))
+	if !cmd.DisableAutoGenTag {
+		fmt.Fprintf(buf, "# HISTORY\n%s Auto generated by spf13/cobra\n", header.Date.Format("2-Jan-2006"))
+	}
 	return buf.Bytes()
 }
