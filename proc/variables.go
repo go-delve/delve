@@ -541,9 +541,19 @@ func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
 	var vars []*Variable
 	reader := scope.DwarfReader()
 
+	var utypoff dwarf.Offset
+	utypentry, err := reader.SeekToTypeNamed("<unspecified>")
+	if err == nil {
+		utypoff = utypentry.Offset
+	}
+
 	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
 		if err != nil {
 			return nil, err
+		}
+
+		if typoff, ok := entry.Val(dwarf.AttrType).(dwarf.Offset); !ok || typoff == utypoff {
+			continue
 		}
 
 		// Ignore errors trying to extract values
