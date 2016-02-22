@@ -143,11 +143,7 @@ func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resol
 	return nil, TypeNotFoundErr
 }
 
-// SeekToTypeNamed moves the reader to the type specified by the name.
-// If the reader is set to a struct type the NextMemberVariable call
-// can be used to walk all member data.
-func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
-	// Walk the types to the base
+func (reader *Reader) NextType() (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return nil, err
@@ -155,9 +151,21 @@ func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
 
 		switch entry.Tag {
 		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
-			//ok
-		default:
-			continue
+			return entry, nil
+		}
+	}
+
+	return nil, nil
+}
+
+// SeekToTypeNamed moves the reader to the type specified by the name.
+// If the reader is set to a struct type the NextMemberVariable call
+// can be used to walk all member data.
+func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
+	// Walk the types to the base
+	for entry, err := reader.NextType(); entry != nil; entry, err = reader.NextType() {
+		if err != nil {
+			return nil, err
 		}
 
 		n, ok := entry.Val(dwarf.AttrName).(string)
