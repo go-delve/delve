@@ -75,6 +75,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"set"}, cmdFn: g0f0(setVar), helpMsg: "Changes the value of a variable."},
 		{aliases: []string{"sources"}, cmdFn: filterSortAndOutput(sources), helpMsg: "Print list of source files, optionally filtered by a regexp."},
 		{aliases: []string{"funcs"}, cmdFn: filterSortAndOutput(funcs), helpMsg: "Print list of functions, optionally filtered by a regexp."},
+		{aliases: []string{"types"}, cmdFn: filterSortAndOutput(types), helpMsg: "Print list of types, optionally filtered by a regexp."},
 		{aliases: []string{"args"}, cmdFn: filterSortAndOutput(g0f0filter(args)), helpMsg: "Print function arguments, optionally filtered by a regexp."},
 		{aliases: []string{"locals"}, cmdFn: filterSortAndOutput(g0f0filter(locals)), helpMsg: "Print function locals, optionally filtered by a regexp."},
 		{aliases: []string{"vars"}, cmdFn: filterSortAndOutput(vars), helpMsg: "Print package variables, optionally filtered by a regexp."},
@@ -701,6 +702,10 @@ func sources(t *Term, filter string) ([]string, error) {
 
 func funcs(t *Term, filter string) ([]string, error) {
 	return t.client.ListFunctions(filter)
+}
+
+func types(t *Term, filter string) ([]string, error) {
+	return t.client.ListTypes(filter)
 }
 
 func args(t *Term, scope api.EvalScope, filter string) ([]string, error) {

@@ -656,6 +656,25 @@ func (dbp *Process) Funcs() []gosym.Func {
 	return dbp.goSymTable.Funcs
 }
 
+// Types returns list of types present in the debugged program.
+func (dbp *Process) Types() ([]string, error) {
+	reader := dbp.DwarfReader()
+	types := []string{}
+	seen := map[string]struct{}{}
+	for entry, err := reader.NextType(); entry != nil; entry, err = reader.NextType() {
+		if err != nil {
+			return nil, err
+		}
+		if n, ok := entry.Val(dwarf.AttrName).(string); ok {
+			if _, isseen := seen[n]; !isseen {
+				seen[n] = struct{}{}
+				types = append(types, n)
+			}
+		}
+	}
+	return types, nil
+}
+
 // PCToLine converts an instruction address to a file/line/function.
 func (dbp *Process) PCToLine(pc uint64) (string, int, *gosym.Func) {
 	return dbp.goSymTable.PCToLine(pc)

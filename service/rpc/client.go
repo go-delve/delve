@@ -209,6 +209,12 @@ func (c *RPCClient) ListFunctions(filter string) ([]string, error) {
 	return funcs, err
 }
 
+func (c *RPCClient) ListTypes(filter string) ([]string, error) {
+	var types []string
+	err := c.call("ListTypes", filter, &types)
+	return types, err
+}
+
 func (c *RPCClient) ListPackageVariables(filter string) ([]api.Variable, error) {
 	var vars []api.Variable
 	err := c.call("ListPackageVars", filter, &vars)
