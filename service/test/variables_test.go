@@ -598,7 +598,7 @@ func TestEvalExpression(t *testing.T) {
 		{"i2 << i3", false, "", "", "int", fmt.Errorf("shift count type int, must be unsigned integer")},
 		{"*(i2 + i3)", false, "", "", "", fmt.Errorf("expression \"(i2 + i3)\" (int) can not be dereferenced")},
 		{"i2.member", false, "", "", "", fmt.Errorf("i2 (type int) is not a struct")},
-		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("function calls are not supported")},
+		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("no type entry found, use 'types' for a list of valid types")},
 		{"*nil", false, "", "", "", fmt.Errorf("nil can not be dereferenced")},
 		{"!nil", false, "", "", "", fmt.Errorf("operator ! can not be applied to \"nil\"")},
 		{"&nil", false, "", "", "", fmt.Errorf("can not take address of \"nil\"")},
@@ -715,6 +715,37 @@ func TestUnsafePointer(t *testing.T) {
 		up1 := api.ConvertVar(up1v)
 		if ss := up1.SinglelineString(); !strings.HasPrefix(ss, "unsafe.Pointer(") {
 			t.Fatalf("wrong value for up1: %s", ss)
+		}
+	})
+}
+
+type issue426TestCase struct {
+	name string
+	typ  string
+}
+
+func TestIssue426(t *testing.T) {
+	// type casts using quoted type names
+	testcases := []issue426TestCase{
+		{"iface1", `interface {}`},
+		{"mapanonstruct1", `map[string]struct {}`},
+		{"anonstruct1", `struct { val go/constant.Value }`},
+		{"anonfunc", `func(struct { i int }, interface {}, struct { val go/constant.Value })`},
+		{"anonstruct2", `struct { i int; j int }`},
+		{"anoniface1", `interface { OtherFunction(int, int); SomeFunction(struct { val go/constant.Value }) }`},
+	}
+
+	// Serialization of type expressions (go/ast.Expr) containing anonymous structs or interfaces
+	// differs from the serialization used by the linker to produce DWARF type information
+	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+		for _, testcase := range testcases {
+			v, err := evalVariable(p, testcase.name, pnormalLoadConfig)
+			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
+			t.Logf("%s → %s", testcase.name, v.RealType.String())
+			expr := fmt.Sprintf("(*%q)(%d)", testcase.typ, v.Addr)
+			_, err = evalVariable(p, expr, pnormalLoadConfig)
+			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", expr))
 		}
 	})
 }

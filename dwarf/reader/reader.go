@@ -104,7 +104,7 @@ func (reader *Reader) AddrForMember(member string, initialInstructions []byte) (
 	}
 }
 
-var TypeNotFoundErr = errors.New("no type entry found")
+var TypeNotFoundErr = errors.New("no type entry found, use 'types' for a list of valid types")
 
 // SeekToType moves the reader to the type specified by the entry,
 // optionally resolving typedefs and pointer types. If the reader is set
