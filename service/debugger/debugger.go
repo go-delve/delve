@@ -447,7 +447,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			}
 		}
 
-		s, err := d.process.CurrentThread.Scope()
+		s, err := d.process.Threads[state.Threads[i].ID].Scope()
 		if err != nil {
 			return err
 		}
