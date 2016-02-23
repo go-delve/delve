@@ -22,16 +22,28 @@ import (
 	"github.com/derekparker/delve/service/debugger"
 )
 
-type cmdfunc func(t *Term, args string) error
-type scopedCmdfunc func(t *Term, scope api.EvalScope, args string) error
+type cmdPrefix int
 
-type filteringFunc func(t *Term, filter string) ([]string, error)
-type scopedFilteringFunc func(t *Term, scope api.EvalScope, filter string) ([]string, error)
+const (
+	noPrefix    = cmdPrefix(0)
+	scopePrefix = cmdPrefix(1 << iota)
+	onPrefix
+)
+
+type callContext struct {
+	Prefix     cmdPrefix
+	Scope      api.EvalScope
+	Breakpoint *api.Breakpoint
+}
+
+type cmdfunc func(t *Term, ctx callContext, args string) error
+type filteringFunc func(t *Term, ctx callContext, args string) ([]string, error)
 
 type command struct {
-	aliases []string
-	helpMsg string
-	cmdFn   cmdfunc
+	aliases         []string
+	allowedPrefixes cmdPrefix
+	helpMsg         string
+	cmdFn           cmdfunc
 }
 
 // Returns true if the command string matches one of the aliases for this command
@@ -69,24 +81,24 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"clear"}, cmdFn: clear, helpMsg: "Deletes breakpoint."},
 		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: "clearall [<linespec>]. Deletes all breakpoints. If <linespec> is provided, only matching breakpoints will be deleted."},
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: "goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)] Print out info for every goroutine."},
-		{aliases: []string{"goroutine"}, cmdFn: goroutine, helpMsg: "Sets current goroutine."},
+		{aliases: []string{"goroutine"}, allowedPrefixes: onPrefix | scopePrefix, cmdFn: c.goroutine, helpMsg: "Sets current goroutine."},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
-		{aliases: []string{"print", "p"}, cmdFn: g0f0(printVar), helpMsg: "Evaluate a variable."},
-		{aliases: []string{"set"}, cmdFn: g0f0(setVar), helpMsg: "Changes the value of a variable."},
+		{aliases: []string{"print", "p"}, allowedPrefixes: onPrefix | scopePrefix, cmdFn: printVar, helpMsg: "Evaluate a variable."},
+		{aliases: []string{"set"}, allowedPrefixes: scopePrefix, cmdFn: setVar, helpMsg: "Changes the value of a variable."},
 		{aliases: []string{"sources"}, cmdFn: filterSortAndOutput(sources), helpMsg: "Print list of source files, optionally filtered by a regexp."},
 		{aliases: []string{"funcs"}, cmdFn: filterSortAndOutput(funcs), helpMsg: "Print list of functions, optionally filtered by a regexp."},
 		{aliases: []string{"types"}, cmdFn: filterSortAndOutput(types), helpMsg: "Print list of types, optionally filtered by a regexp."},
-		{aliases: []string{"args"}, cmdFn: filterSortAndOutput(g0f0filter(args)), helpMsg: "Print function arguments, optionally filtered by a regexp."},
-		{aliases: []string{"locals"}, cmdFn: filterSortAndOutput(g0f0filter(locals)), helpMsg: "Print function locals, optionally filtered by a regexp."},
+		{aliases: []string{"args"}, allowedPrefixes: scopePrefix, cmdFn: filterSortAndOutput(args), helpMsg: "Print function arguments, optionally filtered by a regexp."},
+		{aliases: []string{"locals"}, allowedPrefixes: scopePrefix, cmdFn: filterSortAndOutput(locals), helpMsg: "Print function locals, optionally filtered by a regexp."},
 		{aliases: []string{"vars"}, cmdFn: filterSortAndOutput(vars), helpMsg: "Print package variables, optionally filtered by a regexp."},
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
-		{aliases: []string{"list", "ls"}, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
-		{aliases: []string{"stack", "bt"}, cmdFn: stackCommand, helpMsg: "stack [<depth>] [-full]. Prints stack."},
-		{aliases: []string{"frame"}, cmdFn: frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
+		{aliases: []string{"list", "ls"}, allowedPrefixes: scopePrefix, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
+		{aliases: []string{"stack", "bt"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: stackCommand, helpMsg: "stack [<depth>] [-full]. Prints stack."},
+		{aliases: []string{"frame"}, allowedPrefixes: scopePrefix, cmdFn: c.frame, helpMsg: "Sets current stack frame (0 is the top of the stack)"},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: "Executes a file containing a list of delve commands"},
-		{aliases: []string{"disassemble", "disass"}, cmdFn: g0f0(disassCommand), helpMsg: "Displays disassembly of specific function or address range: disassemble [-a <start> <end>] [-l <locspec>]"},
-		{aliases: []string{"on"}, cmdFn: onCmd, helpMsg: "on <breakpoint name or id> <command>. Executes command when the specified breakpoint is hit (supported commands: print <expression>, stack [<depth>] [-full] and goroutine)"},
+		{aliases: []string{"disassemble", "disass"}, allowedPrefixes: scopePrefix, cmdFn: disassCommand, helpMsg: "Displays disassembly of specific function or address range: disassemble [-a <start> <end>] [-l <locspec>]"},
+		{aliases: []string{"on"}, cmdFn: c.onCmd, helpMsg: "on <breakpoint name or id> <command>. Executes command when the specified breakpoint is hit (supported commands: print <expression>, stack [<depth>] [-full] and goroutine)"},
 		{aliases: []string{"condition", "cond"}, cmdFn: conditionCmd, helpMsg: "cond <breakpoint name or id> <boolean expression>. Specifies that the breakpoint or tracepoint should break only if the boolean expression is true."},
 	}
 
@@ -109,7 +121,7 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 // Find will look up the command function for the given command input.
 // If it cannot find the command it will default to noCmdAvailable().
 // If the command is an empty string it will replay the last command.
-func (c *Commands) Find(cmdstr string) cmdfunc {
+func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 	// If <enter> use last command, if there was one.
 	if cmdstr == "" {
 		if c.lastCmd != nil {
@@ -120,12 +132,24 @@ func (c *Commands) Find(cmdstr string) cmdfunc {
 
 	for _, v := range c.cmds {
 		if v.match(cmdstr) {
+			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
+				continue
+			}
 			c.lastCmd = v.cmdFn
 			return v.cmdFn
 		}
 	}
 
 	return noCmdAvailable
+}
+
+func (c *Commands) CallWithContext(cmdstr, args string, t *Term, ctx callContext) error {
+	return c.Find(cmdstr, ctx.Prefix)(t, ctx, args)
+}
+
+func (c *Commands) Call(cmdstr, args string, t *Term) error {
+	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: 0}}
+	return c.CallWithContext(cmdstr, args, t, ctx)
 }
 
 // Merge takes aliases defined in the config struct and merges them with the default aliases.
@@ -137,15 +161,15 @@ func (c *Commands) Merge(allAliases map[string][]string) {
 	}
 }
 
-func noCmdAvailable(t *Term, args string) error {
+func noCmdAvailable(t *Term, ctx callContext, args string) error {
 	return fmt.Errorf("command not available")
 }
 
-func nullCommand(t *Term, args string) error {
+func nullCommand(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func (c *Commands) help(t *Term, args string) error {
+func (c *Commands) help(t *Term, ctx callContext, args string) error {
 	fmt.Println("The following commands are available:")
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 0, 8, 0, '-', 0)
@@ -165,7 +189,7 @@ func (a byThreadID) Len() int           { return len(a) }
 func (a byThreadID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byThreadID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func threads(t *Term, args string) error {
+func threads(t *Term, ctx callContext, args string) error {
 	threads, err := t.client.ListThreads()
 	if err != nil {
 		return err
@@ -191,7 +215,7 @@ func threads(t *Term, args string) error {
 	return nil
 }
 
-func thread(t *Term, args string) error {
+func thread(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("you must specify a thread")
 	}
@@ -226,7 +250,7 @@ func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func goroutines(t *Term, argstr string) error {
+func goroutines(t *Term, ctx callContext, argstr string) error {
 	args := strings.Split(argstr, " ")
 	var fgl = fglUserCurrent
 
@@ -269,122 +293,73 @@ func goroutines(t *Term, argstr string) error {
 	return nil
 }
 
-func goroutine(t *Term, argstr string) error {
-	if argstr == "" {
-		return printscope(t)
-	}
+func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
+	args := strings.SplitN(argstr, " ", 3)
 
-	if strings.Index(argstr, " ") < 0 {
-		gid, err := strconv.Atoi(argstr)
-		if err != nil {
-			return err
+	if ctx.Prefix == onPrefix {
+		if len(args) != 1 || args[0] != "" {
+			return errors.New("too many arguments to goroutine")
 		}
-
-		oldState, err := t.client.GetState()
-		if err != nil {
-			return err
-		}
-		newState, err := t.client.SwitchGoroutine(gid)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
+		ctx.Breakpoint.Goroutine = true
 		return nil
 	}
 
-	return scopePrefix(t, "goroutine "+argstr)
-}
-
-func frame(t *Term, args string) error {
-	return scopePrefix(t, "frame "+args)
-}
-
-func scopePrefix(t *Term, cmdstr string) error {
-	scope := api.EvalScope{GoroutineID: -1, Frame: 0}
-	lastcmd := ""
-	rest := cmdstr
-
-	nexttok := func() string {
-		v := strings.SplitN(rest, " ", 2)
-		if len(v) > 1 {
-			rest = v[1]
+	switch len(args) {
+	case 1:
+		if ctx.Prefix == scopePrefix {
+			return errors.New("no command passed to goroutine")
+		}
+		if args[0] == "" {
+			return printscope(t)
 		} else {
-			rest = ""
-		}
-		return v[0]
-	}
+			gid, err := strconv.Atoi(argstr)
+			if err != nil {
+				return err
+			}
 
-	callFilterSortAndOutput := func(fn scopedFilteringFunc, fnargs string) error {
-		outfn := filterSortAndOutput(func(t *Term, filter string) ([]string, error) {
-			return fn(t, scope, filter)
-		})
-		return outfn(t, fnargs)
-	}
+			oldState, err := t.client.GetState()
+			if err != nil {
+				return err
+			}
+			newState, err := t.client.SwitchGoroutine(gid)
+			if err != nil {
+				return err
+			}
 
-	for {
-		cmd := nexttok()
-		if cmd == "" && rest == "" {
-			break
-		}
-		switch cmd {
-		case "goroutine":
-			if rest == "" {
-				return fmt.Errorf("goroutine command needs an argument")
-			}
-			n, err := strconv.Atoi(nexttok())
-			if err != nil {
-				return fmt.Errorf("invalid argument to goroutine, expected integer")
-			}
-			scope.GoroutineID = int(n)
-		case "frame":
-			if rest == "" {
-				return fmt.Errorf("frame command needs an argument")
-			}
-			n, err := strconv.Atoi(nexttok())
-			if err != nil {
-				return fmt.Errorf("invalid argument to frame, expected integer")
-			}
-			scope.Frame = int(n)
-		case "list", "ls":
-			frame, gid := scope.Frame, scope.GoroutineID
-			locs, err := t.client.Stacktrace(gid, frame, false)
-			if err != nil {
-				return err
-			}
-			if frame >= len(locs) {
-				return fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
-			}
-			loc := locs[frame]
-			return printfile(t, loc.File, loc.Line, true)
-		case "stack", "bt":
-			depth, full, err := parseStackArgs(rest)
-			if err != nil {
-				return err
-			}
-			stack, err := t.client.Stacktrace(scope.GoroutineID, depth, full)
-			if err != nil {
-				return err
-			}
-			printStack(stack, "")
+			fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
 			return nil
-		case "locals":
-			return callFilterSortAndOutput(locals, rest)
-		case "args":
-			return callFilterSortAndOutput(args, rest)
-		case "print", "p":
-			return printVar(t, scope, rest)
-		case "set":
-			return setVar(t, scope, rest)
-		case "disassemble", "disasm":
-			return disassCommand(t, scope, rest)
-		default:
-			return fmt.Errorf("unknown command %s", cmd)
 		}
-		lastcmd = cmd
+	case 2:
+		args = append(args, "")
 	}
 
-	return fmt.Errorf("no command passed to %s", lastcmd)
+	var err error
+	ctx.Prefix = scopePrefix
+	ctx.Scope.GoroutineID, err = strconv.Atoi(args[0])
+	if err != nil {
+		return err
+	}
+	return c.CallWithContext(args[1], args[2], t, ctx)
+}
+
+func (c *Commands) frame(t *Term, ctx callContext, args string) error {
+	v := strings.SplitN(args, " ", 3)
+
+	var err error
+
+	switch len(v) {
+	case 0, 1:
+		return errors.New("not enough arguments")
+	case 2:
+		v = append(v, "")
+	}
+
+	ctx.Prefix = scopePrefix
+	ctx.Scope.Frame, err = strconv.Atoi(v[0])
+	if err != nil {
+		return err
+	}
+	return c.CallWithContext(v[1], v[2], t, ctx)
 }
 
 func printscope(t *Term) error {
@@ -451,7 +426,7 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 		prefix, formatLocation(g.GoStatementLoc))
 }
 
-func restart(t *Term, args string) error {
+func restart(t *Term, ctx callContext, args string) error {
 	if err := t.client.Restart(); err != nil {
 		return err
 	}
@@ -459,7 +434,7 @@ func restart(t *Term, args string) error {
 	return nil
 }
 
-func cont(t *Term, args string) error {
+func cont(t *Term, ctx callContext, args string) error {
 	stateChan := t.client.Continue()
 	for state := range stateChan {
 		if state.Err != nil {
@@ -470,7 +445,7 @@ func cont(t *Term, args string) error {
 	return nil
 }
 
-func step(t *Term, args string) error {
+func step(t *Term, ctx callContext, args string) error {
 	state, err := t.client.Step()
 	if err != nil {
 		return err
@@ -479,7 +454,7 @@ func step(t *Term, args string) error {
 	return nil
 }
 
-func stepInstruction(t *Term, args string) error {
+func stepInstruction(t *Term, ctx callContext, args string) error {
 	state, err := t.client.StepInstruction()
 	if err != nil {
 		return err
@@ -488,7 +463,7 @@ func stepInstruction(t *Term, args string) error {
 	return nil
 }
 
-func next(t *Term, args string) error {
+func next(t *Term, ctx callContext, args string) error {
 	state, err := t.client.Next()
 	if err != nil {
 		return err
@@ -497,7 +472,7 @@ func next(t *Term, args string) error {
 	return nil
 }
 
-func clear(t *Term, args string) error {
+func clear(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
@@ -515,7 +490,7 @@ func clear(t *Term, args string) error {
 	return nil
 }
 
-func clearAll(t *Term, args string) error {
+func clearAll(t *Term, ctx callContext, args string) error {
 	breakPoints, err := t.client.ListBreakpoints()
 	if err != nil {
 		return err
@@ -556,7 +531,7 @@ func (a ByID) Len() int           { return len(a) }
 func (a ByID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func breakpoints(t *Term, args string) error {
+func breakpoints(t *Term, ctx callContext, args string) error {
 	breakPoints, err := t.client.ListBreakpoints()
 	if err != nil {
 		return err
@@ -631,31 +606,23 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 	return nil
 }
 
-func breakpoint(t *Term, args string) error {
+func breakpoint(t *Term, ctx callContext, args string) error {
 	return setBreakpoint(t, false, args)
 }
 
-func tracepoint(t *Term, args string) error {
+func tracepoint(t *Term, ctx callContext, args string) error {
 	return setBreakpoint(t, true, args)
 }
 
-func g0f0(fn scopedCmdfunc) cmdfunc {
-	return func(t *Term, args string) error {
-		return fn(t, api.EvalScope{GoroutineID: -1, Frame: 0}, args)
-	}
-}
-
-func g0f0filter(fn scopedFilteringFunc) filteringFunc {
-	return func(t *Term, filter string) ([]string, error) {
-		return fn(t, api.EvalScope{GoroutineID: -1, Frame: 0}, filter)
-	}
-}
-
-func printVar(t *Term, scope api.EvalScope, args string) error {
+func printVar(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
-	val, err := t.client.EvalVariable(scope, args)
+	if ctx.Prefix == onPrefix {
+		ctx.Breakpoint.Variables = append(ctx.Breakpoint.Variables, args)
+		return nil
+	}
+	val, err := t.client.EvalVariable(ctx.Scope, args)
 	if err != nil {
 		return err
 	}
@@ -664,7 +631,7 @@ func printVar(t *Term, scope api.EvalScope, args string) error {
 	return nil
 }
 
-func setVar(t *Term, scope api.EvalScope, args string) error {
+func setVar(t *Term, ctx callContext, args string) error {
 	// HACK: in go '=' is not an operator, we detect the error and try to recover from it by splitting the input string
 	_, err := parser.ParseExpr(args)
 	if err == nil {
@@ -678,7 +645,7 @@ func setVar(t *Term, scope api.EvalScope, args string) error {
 
 	lexpr := args[:el[0].Pos.Offset]
 	rexpr := args[el[0].Pos.Offset+1:]
-	return t.client.SetVariable(scope, lexpr, rexpr)
+	return t.client.SetVariable(ctx.Scope, lexpr, rexpr)
 }
 
 func filterVariables(vars []api.Variable, filter string) []string {
@@ -696,35 +663,35 @@ func filterVariables(vars []api.Variable, filter string) []string {
 	return data
 }
 
-func sources(t *Term, filter string) ([]string, error) {
+func sources(t *Term, ctx callContext, filter string) ([]string, error) {
 	return t.client.ListSources(filter)
 }
 
-func funcs(t *Term, filter string) ([]string, error) {
+func funcs(t *Term, ctx callContext, filter string) ([]string, error) {
 	return t.client.ListFunctions(filter)
 }
 
-func types(t *Term, filter string) ([]string, error) {
+func types(t *Term, ctx callContext, filter string) ([]string, error) {
 	return t.client.ListTypes(filter)
 }
 
-func args(t *Term, scope api.EvalScope, filter string) ([]string, error) {
-	vars, err := t.client.ListFunctionArgs(scope)
+func args(t *Term, ctx callContext, filter string) ([]string, error) {
+	vars, err := t.client.ListFunctionArgs(ctx.Scope)
 	if err != nil {
 		return nil, err
 	}
 	return filterVariables(vars, filter), nil
 }
 
-func locals(t *Term, scope api.EvalScope, filter string) ([]string, error) {
-	locals, err := t.client.ListLocalVariables(scope)
+func locals(t *Term, ctx callContext, filter string) ([]string, error) {
+	locals, err := t.client.ListLocalVariables(ctx.Scope)
 	if err != nil {
 		return nil, err
 	}
 	return filterVariables(locals, filter), nil
 }
 
-func vars(t *Term, filter string) ([]string, error) {
+func vars(t *Term, ctx callContext, filter string) ([]string, error) {
 	vars, err := t.client.ListPackageVariables(filter)
 	if err != nil {
 		return nil, err
@@ -732,7 +699,7 @@ func vars(t *Term, filter string) ([]string, error) {
 	return filterVariables(vars, filter), nil
 }
 
-func regs(t *Term, args string) error {
+func regs(t *Term, ctx callContext, args string) error {
 	regs, err := t.client.ListRegisters()
 	if err != nil {
 		return err
@@ -742,7 +709,7 @@ func regs(t *Term, args string) error {
 }
 
 func filterSortAndOutput(fn filteringFunc) cmdfunc {
-	return func(t *Term, args string) error {
+	return func(t *Term, ctx callContext, args string) error {
 		var filter string
 		if len(args) > 0 {
 			if _, err := regexp.Compile(args); err != nil {
@@ -750,7 +717,7 @@ func filterSortAndOutput(fn filteringFunc) cmdfunc {
 			}
 			filter = args
 		}
-		data, err := fn(t, filter)
+		data, err := fn(t, ctx, filter)
 		if err != nil {
 			return err
 		}
@@ -762,16 +729,16 @@ func filterSortAndOutput(fn filteringFunc) cmdfunc {
 	}
 }
 
-func stackCommand(t *Term, args string) error {
-	var (
-		err         error
-		goroutineid = -1
-	)
+func stackCommand(t *Term, ctx callContext, args string) error {
 	depth, full, err := parseStackArgs(args)
 	if err != nil {
 		return err
 	}
-	stack, err := t.client.Stacktrace(goroutineid, depth, full)
+	if ctx.Prefix == onPrefix {
+		ctx.Breakpoint.Stacktrace = depth
+		return nil
+	}
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, depth, full)
 	if err != nil {
 		return err
 	}
@@ -801,7 +768,19 @@ func parseStackArgs(argstr string) (int, bool, error) {
 	return depth, full, nil
 }
 
-func listCommand(t *Term, args string) error {
+func listCommand(t *Term, ctx callContext, args string) error {
+	if ctx.Prefix == scopePrefix {
+		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, false)
+		if err != nil {
+			return err
+		}
+		if ctx.Scope.Frame >= len(locs) {
+			return fmt.Errorf("Frame %d does not exist in goroutine %d", ctx.Scope.Frame, ctx.Scope.GoroutineID)
+		}
+		loc := locs[ctx.Scope.Frame]
+		return printfile(t, loc.File, loc.Line, true)
+	}
+
 	if len(args) == 0 {
 		state, err := t.client.GetState()
 		if err != nil {
@@ -822,7 +801,7 @@ func listCommand(t *Term, args string) error {
 	return nil
 }
 
-func (c *Commands) sourceCommand(t *Term, args string) error {
+func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("wrong number of arguments: source <filename>")
 	}
@@ -832,7 +811,7 @@ func (c *Commands) sourceCommand(t *Term, args string) error {
 
 var disasmUsageError = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
 
-func disassCommand(t *Term, scope api.EvalScope, args string) error {
+func disassCommand(t *Term, ctx callContext, args string) error {
 	var cmd, rest string
 
 	if args != "" {
@@ -849,11 +828,11 @@ func disassCommand(t *Term, scope api.EvalScope, args string) error {
 
 	switch cmd {
 	case "":
-		locs, err := t.client.FindLocation(scope, "+0")
+		locs, err := t.client.FindLocation(ctx.Scope, "+0")
 		if err != nil {
 			return err
 		}
-		disasm, disasmErr = t.client.DisassemblePC(scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
 	case "-a":
 		v := strings.SplitN(rest, " ", 2)
 		if len(v) != 2 {
@@ -867,16 +846,16 @@ func disassCommand(t *Term, scope api.EvalScope, args string) error {
 		if err != nil {
 			return fmt.Errorf("wrong argument: %s is not a number", v[1])
 		}
-		disasm, disasmErr = t.client.DisassembleRange(scope, uint64(startpc), uint64(endpc), api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), api.IntelFlavour)
 	case "-l":
-		locs, err := t.client.FindLocation(scope, rest)
+		locs, err := t.client.FindLocation(ctx.Scope, rest)
 		if err != nil {
 			return err
 		}
 		if len(locs) != 1 {
 			return errors.New("expression specifies multiple locations")
 		}
-		disasm, disasmErr = t.client.DisassemblePC(scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
 	default:
 		return disasmUsageError
 	}
@@ -1064,7 +1043,7 @@ func (ere ExitRequestError) Error() string {
 	return ""
 }
 
-func exitCommand(t *Term, args string) error {
+func exitCommand(t *Term, ctx callContext, args string) error {
 	return ExitRequestError{}
 }
 
@@ -1077,11 +1056,15 @@ func getBreakpointByIDOrName(t *Term, arg string) (bp *api.Breakpoint, err error
 	return
 }
 
-func onCmd(t *Term, argstr string) error {
+func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
 	args := strings.SplitN(argstr, " ", 3)
 
 	if len(args) < 2 {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
+	}
+
+	if len(args) < 3 {
+		args = append(args, "")
 	}
 
 	bp, err := getBreakpointByIDOrName(t, args[0])
@@ -1089,29 +1072,16 @@ func onCmd(t *Term, argstr string) error {
 		return err
 	}
 
-	switch args[1] {
-	case "p", "print":
-		if len(args) < 3 {
-			return fmt.Errorf("not enough arguments")
-		}
-		bp.Variables = append(bp.Variables, args[2])
-	case "stack", "bt":
-		depth, _, err := parseStackArgs(args[2])
-		if err != nil {
-			return err
-		}
-		bp.Stacktrace = depth
-	case "goroutine":
-		if len(args) != 2 {
-			return fmt.Errorf("too many arguments")
-		}
-		bp.Goroutine = true
+	ctx.Prefix = onPrefix
+	ctx.Breakpoint = bp
+	err = c.CallWithContext(args[1], args[2], t, ctx)
+	if err != nil {
+		return err
 	}
-
-	return t.client.AmendBreakpoint(bp)
+	return t.client.AmendBreakpoint(ctx.Breakpoint)
 }
 
-func conditionCmd(t *Term, argstr string) error {
+func conditionCmd(t *Term, ctx callContext, argstr string) error {
 	args := strings.SplitN(argstr, " ", 2)
 
 	if len(args) < 2 {
@@ -1152,10 +1122,8 @@ func (c *Commands) executeFile(t *Term, name string) error {
 		}
 
 		cmdstr, args := parseCommand(line)
-		cmd := c.Find(cmdstr)
-		err := cmd(t, args)
 
-		if err != nil {
+		if err := c.Call(cmdstr, args, t); err != nil {
 			fmt.Printf("%s:%d: %v\n", name, lineno, err)
 		}
 	}

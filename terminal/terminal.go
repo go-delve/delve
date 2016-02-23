@@ -115,8 +115,7 @@ func (t *Term) Run() (int, error) {
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
-		cmd := t.cmds.Find(cmdstr)
-		if err := cmd(t, args); err != nil {
+		if err := t.cmds.Call(cmdstr, args, t); err != nil {
 			if _, ok := err.(ExitRequestError); ok {
 				return t.handleExit()
 			}
