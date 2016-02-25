@@ -25,9 +25,9 @@ import (
 // functionality needed by clients, but not needed in
 // lower lever packages such as proc.
 type Debugger struct {
-	config  *Config
+	config       *Config
 	processMutex sync.Mutex
-	process *proc.Process
+	process      *proc.Process
 }
 
 // Config provides the configuration to start a Debugger.
@@ -406,7 +406,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		log.Printf("switching to goroutine %d", command.GoroutineID)
 		err = d.process.SwitchGoroutine(command.GoroutineID)
 	case api.Halt:
-		// RequestManualStop alread called
+		// RequestManualStop already called
 	}
 	if err != nil {
 		return nil, err
