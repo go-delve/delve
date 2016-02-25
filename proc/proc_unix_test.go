@@ -3,9 +3,9 @@
 package proc
 
 import (
+	"syscall"
 	"testing"
 	"time"
-	"syscall"
 
 	protest "github.com/derekparker/delve/proc/test"
 )
