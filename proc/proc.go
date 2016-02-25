@@ -813,7 +813,7 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 		return
 	}
 
-	ver, ok := parseVersionString(constant.StringVal(vv.Value))
+	ver, ok := ParseVersionString(constant.StringVal(vv.Value))
 	if !ok {
 		err = fmt.Errorf("Could not parse version number: %v\n", vv.Value)
 		return

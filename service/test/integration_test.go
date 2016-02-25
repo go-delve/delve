@@ -14,6 +14,7 @@ import (
 
 	protest "github.com/derekparker/delve/proc/test"
 
+	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc"
@@ -253,23 +254,49 @@ func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
 }
 
 func TestNextGeneral(t *testing.T) {
-	testcases := []nextTest{
-		{17, 19},
-		{19, 20},
-		{20, 23},
-		{23, 24},
-		{24, 26},
-		{26, 31},
-		{31, 23},
-		{23, 24},
-		{24, 26},
-		{26, 31},
-		{31, 23},
-		{23, 24},
-		{24, 26},
-		{26, 27},
-		{27, 34},
+	var testcases []nextTest
+
+	ver, _ := proc.ParseVersionString(runtime.Version())
+
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, 0, 0, 0}) {
+		testcases = []nextTest{
+			{17, 19},
+			{19, 20},
+			{20, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 27},
+			{27, 28},
+			{28, 34},
+		}
+	} else {
+		testcases = []nextTest{
+			{17, 19},
+			{19, 20},
+			{20, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 27},
+			{27, 34},
+		}
 	}
+
 	testnext(testcases, "main.testnext", t)
 }
 

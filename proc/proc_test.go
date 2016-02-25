@@ -308,23 +308,49 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 }
 
 func TestNextGeneral(t *testing.T) {
-	testcases := []nextTest{
-		{17, 19},
-		{19, 20},
-		{20, 23},
-		{23, 24},
-		{24, 26},
-		{26, 31},
-		{31, 23},
-		{23, 24},
-		{24, 26},
-		{26, 31},
-		{31, 23},
-		{23, 24},
-		{24, 26},
-		{26, 27},
-		{27, 34},
+	var testcases []nextTest
+
+	ver, _ := ParseVersionString(runtime.Version())
+
+	if ver.Major < 0 || ver.AfterOrEqual(GoVersion{1, 7, 0, 0, 0}) {
+		testcases = []nextTest{
+			{17, 19},
+			{19, 20},
+			{20, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 27},
+			{27, 28},
+			{28, 34},
+		}
+	} else {
+		testcases = []nextTest{
+			{17, 19},
+			{19, 20},
+			{20, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 31},
+			{31, 23},
+			{23, 24},
+			{24, 26},
+			{26, 27},
+			{27, 34},
+		}
 	}
+
 	testnext("testnextprog", testcases, "main.testnext", t)
 }
 
@@ -845,7 +871,7 @@ func TestContinueMulti(t *testing.T) {
 }
 
 func versionAfterOrEqual(t *testing.T, verStr string, ver GoVersion) {
-	pver, ok := parseVersionString(verStr)
+	pver, ok := ParseVersionString(verStr)
 	if !ok {
 		t.Fatalf("Could not parse version string <%s>", verStr)
 	}
@@ -861,7 +887,7 @@ func TestParseVersionString(t *testing.T) {
 	versionAfterOrEqual(t, "go1.4.2", GoVersion{1, 4, 2, 0, 0})
 	versionAfterOrEqual(t, "go1.5beta2", GoVersion{1, 5, -1, 2, 0})
 	versionAfterOrEqual(t, "go1.5rc2", GoVersion{1, 5, -1, 0, 2})
-	ver, ok := parseVersionString("devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64")
+	ver, ok := ParseVersionString("devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64")
 	if !ok {
 		t.Fatalf("Could not parse devel version string")
 	}
@@ -1595,5 +1621,17 @@ func TestPackageVariables(t *testing.T) {
 		if failed {
 			t.Fatalf("previous errors")
 		}
+	})
+}
+
+func TestIssue149(t *testing.T) {
+	ver, _ := ParseVersionString(runtime.Version())
+	if ver.Major	> 0 && !ver.AfterOrEqual(GoVersion{1, 7, 0, 0, 0}) {
+		return
+	}
+	// setting breakpoint on break statement
+	withTestProcess("break", t, func(p *Process, fixture protest.Fixture) {
+		_, err := p.FindFileLocation(fixture.Source, 8)
+		assertNoError(err, t, "FindFileLocation()")
 	})
 }
