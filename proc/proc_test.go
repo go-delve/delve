@@ -1556,3 +1556,24 @@ func TestIssue396(t *testing.T) {
 		assertNoError(err, t, "FindFunctionLocation()")
 	})
 }
+
+func TestPackageVariables(t *testing.T) {
+	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
+		err := p.Continue()
+		assertNoError(err, t, "Continue()")
+		scope, err := p.CurrentThread.Scope()
+		assertNoError(err, t, "Scope()")
+		vars, err := scope.PackageVariables()
+		assertNoError(err, t, "PackageVariables()")
+		failed := false
+		for _, v := range vars {
+			if v.Unreadable != nil {
+				failed = true
+				t.Logf("Unreadable variable %s: %v", v.Name, v.Unreadable)
+			}
+		}
+		if failed {
+			t.Fatalf("previous errors")
+		}
+	})
+}
