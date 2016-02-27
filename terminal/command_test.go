@@ -16,19 +16,17 @@ import (
 )
 
 type FakeTerminal struct {
-	t      testing.TB
-	client service.Client
-	cmds   *Commands
-	term   *Term
+	*Term
+	t testing.TB
 }
 
-func (term *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
+func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 	cmdstr, args := parseCommand(cmdstr)
-	cmd := term.cmds.Find(cmdstr)
+	cmd := ft.cmds.Find(cmdstr)
 
 	outfh, err := ioutil.TempFile("", "cmdtestout")
 	if err != nil {
-		term.t.Fatalf("could not create temporary file: %v", err)
+		ft.t.Fatalf("could not create temporary file: %v", err)
 	}
 
 	stdout, stderr := os.Stdout, os.Stderr
@@ -38,19 +36,19 @@ func (term *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 		outfh.Close()
 		outbs, err1 := ioutil.ReadFile(outfh.Name())
 		if err1 != nil {
-			term.t.Fatalf("could not read temporary output file: %v", err)
+			ft.t.Fatalf("could not read temporary output file: %v", err)
 		}
 		outstr = string(outbs)
 		os.Remove(outfh.Name())
 	}()
-	err = cmd(term.term, args)
+	err = cmd(ft.Term, args)
 	return
 }
 
-func (term *FakeTerminal) MustExec(cmdstr string) string {
-	outstr, err := term.Exec(cmdstr)
+func (ft *FakeTerminal) MustExec(cmdstr string) string {
+	outstr, err := ft.Exec(cmdstr)
 	if err != nil {
-		term.t.Fatalf("Error executing <%s>: %v", cmdstr, err)
+		ft.t.Fatalf("Error executing <%s>: %v", cmdstr, err)
 	}
 	return outstr
 }
@@ -72,7 +70,11 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 	defer func() {
 		client.Detach(true)
 	}()
-	fn(&FakeTerminal{t, client, DebugCommands(client), New(client, nil)})
+	ft := &FakeTerminal{
+		t:    t,
+		Term: New(client, nil),
+	}
+	fn(ft)
 }
 
 func TestCommandDefault(t *testing.T) {

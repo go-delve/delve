@@ -7,8 +7,9 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/peterh/liner"
 	"syscall"
+
+	"github.com/peterh/liner"
 
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
@@ -25,22 +26,27 @@ type Term struct {
 	client   service.Client
 	prompt   string
 	line     *liner.State
-	conf     *config.Config
+	cmds     *Commands
 	dumb     bool
 	InitFile string
 }
 
 // New returns a new Term.
 func New(client service.Client, conf *config.Config) *Term {
+	cmds := DebugCommands(client)
+	if conf != nil && conf.Aliases != nil {
+		cmds.Merge(conf.Aliases)
+	}
 	return &Term{
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		client: client,
-		conf:   conf,
+		cmds:   cmds,
 		dumb:   strings.ToLower(os.Getenv("TERM")) == "dumb",
 	}
 }
 
+// Close returns the terminal to its previous mode.
 func (t *Term) Close() {
 	t.line.Close()
 }
@@ -61,12 +67,8 @@ func (t *Term) Run() (int, error) {
 		}
 	}()
 
-	cmds := DebugCommands(t.client)
-	if t.conf != nil && t.conf.Aliases != nil {
-		cmds.Merge(t.conf.Aliases)
-	}
 	t.line.SetCompleter(func(line string) (c []string) {
-		for _, cmd := range cmds.cmds {
+		for _, cmd := range t.cmds.cmds {
 			for _, alias := range cmd.aliases {
 				if strings.HasPrefix(alias, strings.ToLower(line)) {
 					c = append(c, alias)
@@ -94,7 +96,7 @@ func (t *Term) Run() (int, error) {
 	fmt.Println("Type 'help' for list of commands.")
 
 	if t.InitFile != "" {
-		err := cmds.executeFile(t, t.InitFile)
+		err := t.cmds.executeFile(t, t.InitFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error executing init file: %s\n", err)
 		}
@@ -113,7 +115,7 @@ func (t *Term) Run() (int, error) {
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
-		cmd := cmds.Find(cmdstr)
+		cmd := t.cmds.Find(cmdstr)
 		if err := cmd(t, args); err != nil {
 			if _, ok := err.(ExitRequestError); ok {
 				return t.handleExit()
