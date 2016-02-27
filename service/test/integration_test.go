@@ -1108,10 +1108,10 @@ func TestTypesCommand(t *testing.T) {
 			t.Fatal("Type astruct not found in ListTypes output")
 		}
 
-		types, err = c.ListTypes("main.astruct")
+		types, err = c.ListTypes("^main.astruct$")
 		assertNoError(err, t, "ListTypes(\"main.astruct\")")
-		if len(types) <= 0 {
-			t.Fatal("ListTypes(\"main.astruct\") did not return anything")
+		if len(types) != 1 {
+			t.Fatalf("ListTypes(\"^main.astruct$\") did not filter properly, expected 1 got %d: %v", len(types), types)
 		}
 	})
 }
