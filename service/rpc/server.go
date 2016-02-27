@@ -345,6 +345,15 @@ func (s *RPCServer) ListFunctions(filter string, funcs *[]string) error {
 	return nil
 }
 
+func (s *RPCServer) ListTypes(filter string, types *[]string) error {
+	tps, err := s.debugger.Types(filter)
+	if err != nil {
+		return err
+	}
+	*types = tps
+	return nil
+}
+
 func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine) error {
 	gs, err := s.debugger.Goroutines()
 	if err != nil {

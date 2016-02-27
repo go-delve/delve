@@ -498,6 +498,30 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	return regexFilterFuncs(filter, d.process.Funcs())
 }
 
+func (d *Debugger) Types(filter string) ([]string, error) {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+
+	regex, err := regexp.Compile(filter)
+	if err != nil {
+		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
+	}
+
+	types, err := d.process.Types()
+	if err != nil {
+		return nil, err
+	}
+
+	r := make([]string, 0, len(types))
+	for _, typ := range types {
+		if regex.Match([]byte(typ)) {
+			r = append(r, typ)
+		}
+	}
+
+	return r, nil
+}
+
 func regexFilterFuncs(filter string, allFuncs []gosym.Func) ([]string, error) {
 	regex, err := regexp.Compile(filter)
 	if err != nil {

@@ -104,24 +104,24 @@ func TestRestart_breakpointPreservation(t *testing.T) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
 		assertNoError(err, t, "CreateBreakpoint()")
 		stateCh := c.Continue()
-		
-		state := <- stateCh
+
+		state := <-stateCh
 		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
 			t.Fatalf("Wrong breakpoint: %#v\n", state.CurrentThread.Breakpoint)
 		}
-		state = <- stateCh
+		state = <-stateCh
 		if !state.Exited {
 			t.Fatal("Did not exit after first tracepoint")
 		}
-		
+
 		t.Log("Restart")
 		c.Restart()
 		stateCh = c.Continue()
-		state = <- stateCh
+		state = <-stateCh
 		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
 			t.Fatalf("Wrong breakpoint (after restart): %#v\n", state.CurrentThread.Breakpoint)
 		}
-		state = <- stateCh
+		state = <-stateCh
 		if !state.Exited {
 			t.Fatal("Did not exit after first tracepoint (after restart)")
 		}
@@ -1087,5 +1087,31 @@ func TestIssue419(t *testing.T) {
 		statech := c.Continue()
 		state := <-statech
 		assertNoError(state.Err, t, "Continue()")
+	})
+}
+
+func TestTypesCommand(t *testing.T) {
+	withTestClient("testvariables2", t, func(c service.Client) {
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+		types, err := c.ListTypes("")
+		assertNoError(err, t, "ListTypes()")
+
+		found := false
+		for i := range types {
+			if types[i] == "main.astruct" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("Type astruct not found in ListTypes output")
+		}
+
+		types, err = c.ListTypes("main.astruct")
+		assertNoError(err, t, "ListTypes(\"main.astruct\")")
+		if len(types) <= 0 {
+			t.Fatal("ListTypes(\"main.astruct\") did not return anything")
+		}
 	})
 }
