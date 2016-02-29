@@ -37,13 +37,13 @@ endif
 build: check-cert
 	go build $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
 ifdef DARWIN
-	codesign -s $(CERT) ./dlv
+	codesign -s "$(CERT)" ./dlv
 endif
 
 install: check-cert
 	go install $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
 ifdef DARWIN
-	codesign -s $(CERT) $(GOPATH)/bin/dlv
+	codesign -s "$(CERT)" $(GOPATH)/bin/dlv
 endif
 
 test: check-cert
