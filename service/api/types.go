@@ -129,10 +129,6 @@ type Function struct {
 	Value  uint64 `json:"value"`
 	Type   byte   `json:"type"`
 	GoType uint64 `json:"goType"`
-	// Args are the function arguments in a thread context.
-	Args []Variable `json:"args"`
-	// Locals are the thread local variables.
-	Locals []Variable `json:"locals"`
 }
 
 // Variable describes a variable.
