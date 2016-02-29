@@ -18,9 +18,7 @@ import (
 
 type FakeTerminal struct {
 	*Term
-	t      testing.TB
-	client service.Client
-	cmds   *Commands
+	t testing.TB
 }
 
 func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
@@ -65,7 +63,7 @@ func (ft *FakeTerminal) AssertExec(cmdstr, tgt string) {
 func (ft *FakeTerminal) AssertExecError(cmdstr, tgterr string) {
 	_, err := ft.Exec(cmdstr)
 	if err == nil {
-		ft.t.Fatalf("Expected error executing %q")
+		ft.t.Fatalf("Expected error executing %q", cmdstr)
 	}
 	if err.Error() != tgterr {
 		ft.t.Fatalf("Expected error %q executing %q, got error %q", tgterr, cmdstr, err.Error())
@@ -91,10 +89,8 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 	}()
 
 	ft := &FakeTerminal{
-		t:      t,
-		client: client,
-		cmds:   DebugCommands(client),
-		Term:   New(client, nil),
+		t:    t,
+		Term: New(client, nil),
 	}
 	fn(ft)
 }
@@ -178,9 +174,7 @@ func TestExecuteFile(t *testing.T) {
 	}
 
 	fixturesDir := test.FindFixturesDir()
-
 	err := c.executeFile(nil, filepath.Join(fixturesDir, "bpfile"))
-
 	if err != nil {
 		t.Fatalf("executeFile: %v", err)
 	}
@@ -215,7 +209,6 @@ func TestScopePrefix(t *testing.T) {
 		term.MustExec("continue")
 
 		goroutinesOut := strings.Split(term.MustExec("goroutines"), "\n")
-
 		agoroutines := []int{}
 		curgid := -1
 
@@ -255,8 +248,6 @@ func TestScopePrefix(t *testing.T) {
 		}
 
 		seen := make([]bool, 10)
-		_ = seen
-
 		for _, gid := range agoroutines {
 			stackOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d stack", gid)), "\n")
 			fid := -1
