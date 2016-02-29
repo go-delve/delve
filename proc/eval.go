@@ -27,6 +27,9 @@ func (scope *EvalScope) EvalExpression(expr string) (*Variable, error) {
 		return nil, err
 	}
 	ev.loadValue()
+	if ev.Name == "" {
+		ev.Name = expr
+	}
 	return ev, nil
 }
 

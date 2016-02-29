@@ -536,7 +536,7 @@ func TestEvalExpression(t *testing.T) {
 		{"&nil", false, "", "", "", fmt.Errorf("can not take address of \"nil\"")},
 		{"nil[0]", false, "", "", "", fmt.Errorf("expression \"nil\" (nil) does not support indexing")},
 		{"nil[2:10]", false, "", "", "", fmt.Errorf("can not slice \"nil\" (type nil)")},
-		{"nil.member", false, "", "", "", fmt.Errorf("type nil is not a struct")},
+		{"nil.member", false, "", "", "", fmt.Errorf("nil (type nil) is not a struct")},
 		{"(map[string]main.astruct)(0x4000)", false, "", "", "", fmt.Errorf("can not convert \"0x4000\" to map[string]main.astruct")},
 
 		// typecasts

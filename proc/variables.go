@@ -250,6 +250,7 @@ func newConstant(val constant.Value, mem memoryReadWriter) *Variable {
 }
 
 var nilVariable = &Variable{
+	Name:     "nil",
 	Addr:     0,
 	Base:     0,
 	Kind:     reflect.Ptr,
