@@ -249,6 +249,8 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.Goroutine = requested.Goroutine
 	bp.Stacktrace = requested.Stacktrace
 	bp.Variables = requested.Variables
+	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
+	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	bp.Cond = nil
 	if requested.Cond != "" {
 		bp.Cond, err = parser.ParseExpr(requested.Cond)
@@ -444,7 +446,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			if err != nil {
 				return err
 			}
-			bpi.Stacktrace, err = d.convertStacktrace(rawlocs, false)
+			bpi.Stacktrace, err = d.convertStacktrace(rawlocs, nil)
 			if err != nil {
 				return err
 			}
@@ -459,15 +461,21 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			bpi.Variables = make([]api.Variable, len(bp.Variables))
 		}
 		for i := range bp.Variables {
-			v, err := s.EvalVariable(bp.Variables[i])
+			v, err := s.EvalVariable(bp.Variables[i], proc.LoadConfig{true, 1, 64, 64, -1})
 			if err != nil {
 				return err
 			}
 			bpi.Variables[i] = *api.ConvertVar(v)
 		}
-		vars, err := s.FunctionArguments()
-		if err == nil {
-			bpi.Arguments = convertVars(vars)
+		if bp.LoadArgs != nil {
+			if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {
+				bpi.Arguments = convertVars(vars)
+			}
+		}
+		if bp.LoadLocals != nil {
+			if locals, err := s.LocalVariables(*api.LoadConfigToProc(bp.LoadLocals)); err == nil {
+				bpi.Locals = convertVars(locals)
+			}
 		}
 	}
 
@@ -542,7 +550,7 @@ func regexFilterFuncs(filter string, allFuncs []gosym.Func) ([]string, error) {
 
 // PackageVariables returns a list of package variables for the thread,
 // optionally regexp filtered using regexp described in 'filter'.
-func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable, error) {
+func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadConfig) ([]api.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -560,7 +568,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string) ([]api.Variable
 	if err != nil {
 		return nil, err
 	}
-	pv, err := scope.PackageVariables()
+	pv, err := scope.PackageVariables(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -597,7 +605,7 @@ func convertVars(pv []*proc.Variable) []api.Variable {
 }
 
 // LocalVariables returns a list of the local variables.
-func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
+func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -605,7 +613,7 @@ func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	pv, err := s.LocalVariables()
+	pv, err := s.LocalVariables(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -613,7 +621,7 @@ func (d *Debugger) LocalVariables(scope api.EvalScope) ([]api.Variable, error) {
 }
 
 // FunctionArguments returns the arguments to the current function.
-func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error) {
+func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -621,7 +629,7 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error
 	if err != nil {
 		return nil, err
 	}
-	pv, err := s.FunctionArguments()
+	pv, err := s.FunctionArguments(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -630,7 +638,7 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope) ([]api.Variable, error
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
-func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api.Variable, error) {
+func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg proc.LoadConfig) (*api.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -638,7 +646,7 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string) (*api
 	if err != nil {
 		return nil, err
 	}
-	v, err := s.EvalVariable(symbol)
+	v, err := s.EvalVariable(symbol, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +685,7 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.
-func (d *Debugger) Stacktrace(goroutineID, depth int, full bool) ([]api.Stackframe, error) {
+func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -697,21 +705,21 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, full bool) ([]api.Stackfra
 		return nil, err
 	}
 
-	return d.convertStacktrace(rawlocs, full)
+	return d.convertStacktrace(rawlocs, cfg)
 }
 
-func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, full bool) ([]api.Stackframe, error) {
+func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
 	locations := make([]api.Stackframe, 0, len(rawlocs))
 	for i := range rawlocs {
 		frame := api.Stackframe{Location: api.ConvertLocation(rawlocs[i].Call)}
-		if full {
+		if cfg != nil {
 			var err error
 			scope := rawlocs[i].Scope(d.process.CurrentThread)
-			locals, err := scope.LocalVariables()
+			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {
 				return nil, err
 			}
-			arguments, err := scope.FunctionArguments()
+			arguments, err := scope.FunctionArguments(*cfg)
 			if err != nil {
 				return nil, err
 			}

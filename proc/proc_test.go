@@ -19,6 +19,8 @@ import (
 	protest "github.com/derekparker/delve/proc/test"
 )
 
+var normalLoadConfig = LoadConfig{true, 1, 64, 64, -1}
+
 func init() {
 	runtime.GOMAXPROCS(4)
 	os.Setenv("GOMAXPROCS", "4")
@@ -945,7 +947,7 @@ func evalVariable(p *Process, symbol string) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return scope.EvalVariable(symbol)
+	return scope.EvalVariable(symbol, normalLoadConfig)
 }
 
 func setVariable(p *Process, symbol, value string) error {
@@ -1070,7 +1072,7 @@ func TestFrameEvaluation(t *testing.T) {
 			scope, err := p.ConvertEvalScope(g.ID, frame)
 			assertNoError(err, t, "ConvertEvalScope()")
 			t.Logf("scope = %v", scope)
-			v, err := scope.EvalVariable("i")
+			v, err := scope.EvalVariable("i", normalLoadConfig)
 			t.Logf("v = %v", v)
 			if err != nil {
 				t.Logf("Goroutine %d: %v\n", g.ID, err)
@@ -1094,7 +1096,7 @@ func TestFrameEvaluation(t *testing.T) {
 		for i := 0; i <= 3; i++ {
 			scope, err := p.ConvertEvalScope(g.ID, i+1)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
-			v, err := scope.EvalVariable("n")
+			v, err := scope.EvalVariable("n", normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
 			n, _ := constant.Int64Val(v.Value)
 			t.Logf("frame %d n %d\n", i+1, n)
@@ -1123,7 +1125,7 @@ func TestPointerSetting(t *testing.T) {
 		// change p1 to point to i2
 		scope, err := p.CurrentThread.Scope()
 		assertNoError(err, t, "Scope()")
-		i2addr, err := scope.EvalExpression("i2")
+		i2addr, err := scope.EvalExpression("i2", normalLoadConfig)
 		assertNoError(err, t, "EvalExpression()")
 		assertNoError(setVariable(p, "p1", fmt.Sprintf("(*int)(0x%x)", i2addr.Addr)), t, "SetVariable()")
 		pval(2)
@@ -1263,10 +1265,10 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				}
 				scope, err := th.Scope()
 				assertNoError(err, t, "Scope()")
-				v, err := scope.EvalVariable("i")
+				v, err := scope.EvalVariable("i", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
 				i, _ := constant.Int64Val(v.Value)
-				v, err = scope.EvalVariable("id")
+				v, err = scope.EvalVariable("id", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
 				id, _ := constant.Int64Val(v.Value)
 				m[id] = i
@@ -1394,7 +1396,7 @@ func BenchmarkLocalVariables(b *testing.B) {
 		scope, err := p.CurrentThread.Scope()
 		assertNoError(err, b, "Scope()")
 		for i := 0; i < b.N; i++ {
-			_, err := scope.LocalVariables()
+			_, err := scope.LocalVariables(normalLoadConfig)
 			assertNoError(err, b, "LocalVariables()")
 		}
 	})
@@ -1619,7 +1621,7 @@ func TestPackageVariables(t *testing.T) {
 		assertNoError(err, t, "Continue()")
 		scope, err := p.CurrentThread.Scope()
 		assertNoError(err, t, "Scope()")
-		vars, err := scope.PackageVariables()
+		vars, err := scope.PackageVariables(normalLoadConfig)
 		assertNoError(err, t, "PackageVariables()")
 		failed := false
 		for _, v := range vars {

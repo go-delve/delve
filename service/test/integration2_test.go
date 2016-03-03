@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"os"
 
 	protest "github.com/derekparker/delve/proc/test"
 
@@ -18,6 +19,12 @@ import (
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc2"
 )
+
+var normalLoadConfig = api.LoadConfig{true, 1, 64, 64, -1}
+
+func TestMain(m *testing.M) {
+	os.Exit(protest.RunTestsWithFixtures(m))
+}
 
 func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 	listener, err := net.Listen("tcp", "localhost:0")
@@ -409,7 +416,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
-		locals, err := c.ListLocalVariables(api.EvalScope{-1, 0})
+		locals, err := c.ListLocalVariables(api.EvalScope{-1, 0}, normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -437,7 +444,7 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if regs == "" {
 			t.Fatal("Expected string showing registers values, got empty string")
 		}
-		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0})
+		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0}, normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -664,7 +671,7 @@ func TestClientServer_EvalVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "a1")
+		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "a1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
 
 		t.Logf("var1: %s", var1.SinglelineString())
@@ -685,7 +692,7 @@ func TestClientServer_SetVariable(t *testing.T) {
 
 		assertNoError(c.SetVariable(api.EvalScope{-1, 0}, "a2", "8"), t, "SetVariable()")
 
-		a2, err := c.EvalVariable(api.EvalScope{-1, 0}, "a2")
+		a2, err := c.EvalVariable(api.EvalScope{-1, 0}, "a2", normalLoadConfig)
 
 		t.Logf("a2: %v", a2)
 
@@ -710,7 +717,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 		assertNoError(err, t, "GoroutinesInfo()")
 		found := make([]bool, 10)
 		for _, g := range gs {
-			frames, err := c.Stacktrace(g.ID, 10, true)
+			frames, err := c.Stacktrace(g.ID, 10, &normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
 			for i, frame := range frames {
 				if frame.Function == nil {
@@ -744,7 +751,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		frames, err := c.Stacktrace(-1, 10, true)
+		frames, err := c.Stacktrace(-1, 10, &normalLoadConfig)
 		assertNoError(err, t, "Stacktrace")
 
 		cur := 3
@@ -810,15 +817,15 @@ func TestIssue355(t *testing.T) {
 		_, err = c.GetThread(tid)
 		assertError(err, t, "GetThread()")
 		assertError(c.SetVariable(api.EvalScope{gid, 0}, "a", "10"), t, "SetVariable()")
-		_, err = c.ListLocalVariables(api.EvalScope{gid, 0})
+		_, err = c.ListLocalVariables(api.EvalScope{gid, 0}, normalLoadConfig)
 		assertError(err, t, "ListLocalVariables()")
-		_, err = c.ListFunctionArgs(api.EvalScope{gid, 0})
+		_, err = c.ListFunctionArgs(api.EvalScope{gid, 0}, normalLoadConfig)
 		assertError(err, t, "ListFunctionArgs()")
 		_, err = c.ListRegisters()
 		assertError(err, t, "ListRegisters()")
 		_, err = c.ListGoroutines()
 		assertError(err, t, "ListGoroutines()")
-		_, err = c.Stacktrace(gid, 10, false)
+		_, err = c.Stacktrace(gid, 10, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 		_, err = c.FindLocation(api.EvalScope{gid, 0}, "+1")
 		assertError(err, t, "FindLocation()")
@@ -940,7 +947,7 @@ func TestNegativeStackDepthBug(t *testing.T) {
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
-		_, err = c.Stacktrace(-1, -2, true)
+		_, err = c.Stacktrace(-1, -2, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 	})
 }
@@ -966,7 +973,7 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
-		nvar, err := c.EvalVariable(api.EvalScope{-1, 0}, "n")
+		nvar, err := c.EvalVariable(api.EvalScope{-1, 0}, "n", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 
 		if nvar.SinglelineString() != "7" {
@@ -1069,7 +1076,7 @@ func TestIssue406(t *testing.T) {
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
-		v, err := c.EvalVariable(api.EvalScope{-1, 0}, "cfgtree")
+		v, err := c.EvalVariable(api.EvalScope{-1, 0}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		vs := v.MultilineString("")
 		t.Logf("cfgtree formats to: %s\n", vs)
@@ -1081,7 +1088,7 @@ func TestEvalExprName(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
-		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "i1+1")
+		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "i1+1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
 
 		const name = "i1+1"

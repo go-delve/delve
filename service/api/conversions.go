@@ -27,6 +27,8 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		Stacktrace:    bp.Stacktrace,
 		Goroutine:     bp.Goroutine,
 		Variables:     bp.Variables,
+		LoadArgs:      LoadConfigFromProc(bp.LoadArgs),
+		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
 		TotalHitCount: bp.TotalHitCount,
 	}
 
@@ -215,5 +217,31 @@ func ConvertAsmInstruction(inst proc.AsmInstruction, text string) AsmInstruction
 		Bytes:      inst.Bytes,
 		Breakpoint: inst.Breakpoint,
 		AtPC:       inst.AtPC,
+	}
+}
+
+func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &proc.LoadConfig{
+		cfg.FollowPointers,
+		cfg.MaxVariableRecurse,
+		cfg.MaxStringLen,
+		cfg.MaxArrayValues,
+		cfg.MaxStructFields,
+	}
+}
+
+func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &LoadConfig{
+		cfg.FollowPointers,
+		cfg.MaxVariableRecurse,
+		cfg.MaxStringLen,
+		cfg.MaxArrayValues,
+		cfg.MaxStructFields,
 	}
 }

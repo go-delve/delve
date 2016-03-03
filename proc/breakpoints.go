@@ -28,6 +28,8 @@ type Breakpoint struct {
 	Goroutine     bool           // Retrieve goroutine information
 	Stacktrace    int            // Number of stack frames to retrieve
 	Variables     []string       // Variables to evaluate
+	LoadArgs      *LoadConfig
+	LoadLocals    *LoadConfig
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached
 

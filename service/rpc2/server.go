@@ -195,6 +195,7 @@ type StacktraceIn struct {
 	Id    int
 	Depth int
 	Full  bool
+	Cfg *api.LoadConfig
 }
 
 type StacktraceOut struct {
@@ -202,7 +203,11 @@ type StacktraceOut struct {
 }
 
 func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
-	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Full)
+	cfg := arg.Cfg
+	if cfg == nil && arg.Full {
+		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+	}
+	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, api.LoadConfigToProc(cfg))
 	if err != nil {
 		return err
 	}
@@ -314,6 +319,7 @@ func (s *RPCServer) GetThread(arg GetThreadIn, out *GetThreadOut) error {
 
 type ListPackageVarsIn struct {
 	Filter string
+	Cfg api.LoadConfig
 }
 
 type ListPackageVarsOut struct {
@@ -331,7 +337,7 @@ func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsO
 		return fmt.Errorf("no current thread")
 	}
 
-	vars, err := s.debugger.PackageVariables(current.ID, arg.Filter)
+	vars, err := s.debugger.PackageVariables(current.ID, arg.Filter, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
@@ -362,6 +368,7 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 
 type ListLocalVarsIn struct {
 	Scope api.EvalScope
+	Cfg api.LoadConfig
 }
 
 type ListLocalVarsOut struct {
@@ -369,7 +376,7 @@ type ListLocalVarsOut struct {
 }
 
 func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) error {
-	vars, err := s.debugger.LocalVariables(arg.Scope)
+	vars, err := s.debugger.LocalVariables(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
@@ -379,6 +386,7 @@ func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) er
 
 type ListFunctionArgsIn struct {
 	Scope api.EvalScope
+	Cfg api.LoadConfig
 }
 
 type ListFunctionArgsOut struct {
@@ -386,7 +394,7 @@ type ListFunctionArgsOut struct {
 }
 
 func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionArgsOut) error {
-	vars, err := s.debugger.FunctionArguments(arg.Scope)
+	vars, err := s.debugger.FunctionArguments(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
@@ -397,6 +405,7 @@ func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionAr
 type EvalIn struct {
 	Scope api.EvalScope
 	Expr  string
+	Cfg *api.LoadConfig
 }
 
 type EvalOut struct {
@@ -404,7 +413,11 @@ type EvalOut struct {
 }
 
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
-	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr)
+	cfg := arg.Cfg
+	if cfg == nil {
+		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+	}
+	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *api.LoadConfigToProc(cfg))
 	if err != nil {
 		return err
 	}
