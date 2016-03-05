@@ -1,20 +1,21 @@
 package proc
 
 import (
+	"github.com/derekparker/delve/dwarf/reader"
 	"go/ast"
 	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 // Do not call this function directly it isn't able to deal correctly with package paths
 func (dbp *Process) findType(name string) (dwarf.Type, error) {
-	reader := dbp.DwarfReader()
-	typentry, err := reader.SeekToTypeNamed(name)
-	if err != nil {
-		return nil, err
+	off, found := dbp.types[name]
+	if !found {
+		return nil, reader.TypeNotFoundErr
 	}
-	return dbp.dwarf.Type(typentry.Offset)
+	return dbp.dwarf.Type(off)
 }
 
 func (dbp *Process) pointerTo(typ dwarf.Type) dwarf.Type {
@@ -81,6 +82,24 @@ func (dbp *Process) loadPackageMap() error {
 		dbp.packageMap[name] = path
 	}
 	return nil
+}
+
+func (dbp *Process) loadTypeMap(wg *sync.WaitGroup) {
+	defer wg.Done()
+	dbp.types = make(map[string]dwarf.Offset)
+	reader := dbp.DwarfReader()
+	for entry, err := reader.NextType(); entry != nil; entry, err = reader.NextType() {
+		if err != nil {
+			break
+		}
+		name, ok := entry.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+		if _, exists := dbp.types[name]; !exists {
+			dbp.types[name] = entry.Offset
+		}
+	}
 }
 
 func (dbp *Process) expandPackagesInType(expr ast.Expr) {

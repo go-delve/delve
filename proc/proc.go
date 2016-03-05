@@ -58,6 +58,7 @@ type Process struct {
 	exited                  bool
 	ptraceChan              chan func()
 	ptraceDoneChan          chan interface{}
+	types                   map[string]dwarf.Offset
 }
 
 // New returns an initialized Process struct. Before returning,
@@ -149,11 +150,12 @@ func (dbp *Process) LoadInformation(path string) error {
 		return err
 	}
 
-	wg.Add(4)
+	wg.Add(5)
 	go dbp.loadProcessInformation(&wg)
 	go dbp.parseDebugFrame(exe, &wg)
 	go dbp.obtainGoSymbols(exe, &wg)
 	go dbp.parseDebugLineInfo(exe, &wg)
+	go dbp.loadTypeMap(&wg)
 	wg.Wait()
 
 	return nil
@@ -658,19 +660,9 @@ func (dbp *Process) Funcs() []gosym.Func {
 
 // Types returns list of types present in the debugged program.
 func (dbp *Process) Types() ([]string, error) {
-	reader := dbp.DwarfReader()
-	types := []string{}
-	seen := map[string]struct{}{}
-	for entry, err := reader.NextType(); entry != nil; entry, err = reader.NextType() {
-		if err != nil {
-			return nil, err
-		}
-		if n, ok := entry.Val(dwarf.AttrName).(string); ok {
-			if _, isseen := seen[n]; !isseen {
-				seen[n] = struct{}{}
-				types = append(types, n)
-			}
-		}
+	types := make([]string, 0, len(dbp.types))
+	for k := range dbp.types {
+		types = append(types, k)
 	}
 	return types, nil
 }
