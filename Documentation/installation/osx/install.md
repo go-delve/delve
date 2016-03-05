@@ -14,7 +14,9 @@ You must create a self signed certificate and sign the binary with it:
 * In keychains select “System”, and you should find your new certificate. Use the context menu for the certificate, select “Get Info”, open the “Trust” item, and set “Code Signing” to “Always Trust”.
 * [At least on Yosemite:] In keychains select category Keys -> dlv-cert -> right click -> GetInfo -> Access Control -> select "Allow all applications to access this item" -> Save Changes.
 * You must quit “Keychain Access” application in order to use the certificate and restart “taskgated” service by killing the current running “taskgated” process. Alternatively you can restart your computer.
+* Clone this project: `git clone git@github.com:derekparker/delve.git && cd delve`
 * Run the following: `GO15VENDOREXPERIMENT=1 CERT=dlv-cert make install`, which will install the binary and codesign it.
+* for more info see this installation video http://www.youtube.com/watch?v=4ndjybtBg74
 
 
 ## 2) Install the binary
