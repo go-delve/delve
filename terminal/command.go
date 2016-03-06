@@ -515,6 +515,10 @@ func clearAll(t *Term, ctx callContext, args string) error {
 			}
 		}
 
+		if bp.ID < 0 {
+			continue
+		}
+
 		_, err := t.client.ClearBreakpoint(bp.ID)
 		if err != nil {
 			fmt.Printf("Couldn't delete %s at %s: %s\n", formatBreakpointName(bp, false), formatBreakpointLocation(bp), err)

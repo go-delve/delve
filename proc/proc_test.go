@@ -269,7 +269,7 @@ func TestClearBreakpointBreakpoint(t *testing.T) {
 			t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
 		}
 
-		if len(p.Breakpoints) != 0 {
+		if countBreakpoints(p) != 0 {
 			t.Fatal("Breakpoint not removed internally")
 		}
 	})
@@ -277,6 +277,16 @@ func TestClearBreakpointBreakpoint(t *testing.T) {
 
 type nextTest struct {
 	begin, end int
+}
+
+func countBreakpoints(p *Process) int {
+	bpcount := 0
+	for _, bp := range p.Breakpoints {
+		if bp.ID >= 0 {
+			bpcount++
+		}
+	}
+	return bpcount
 }
 
 func testnext(program string, testcases []nextTest, initialLocation string, t *testing.T) {
@@ -301,7 +311,7 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 			}
 		}
 
-		if len(p.Breakpoints) != 0 {
+		if countBreakpoints(p) != 0 {
 			t.Fatal("Not all breakpoints were cleaned up", len(p.Breakpoints))
 		}
 	})
@@ -1633,5 +1643,15 @@ func TestIssue149(t *testing.T) {
 	withTestProcess("break", t, func(p *Process, fixture protest.Fixture) {
 		_, err := p.FindFileLocation(fixture.Source, 8)
 		assertNoError(err, t, "FindFileLocation()")
+	})
+}
+
+func TestPanicBreakpoint(t *testing.T) {
+	withTestProcess("panic", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		bp := p.CurrentBreakpoint()
+		if bp == nil || bp.Name != "unrecovered-panic" {
+			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
+		}
 	})
 }

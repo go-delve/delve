@@ -358,6 +358,18 @@ func TestClientServer_breakAtNonexistentPoint(t *testing.T) {
 	})
 }
 
+func countBreakpoints(t *testing.T, c service.Client) int {
+	bps, err := c.ListBreakpoints()
+	assertNoError(err, t, "ListBreakpoints()")
+	bpcount := 0
+	for _, bp := range bps {
+		if bp.ID >= 0 {
+			bpcount++
+		}
+	}
+	return bpcount
+}
+
 func TestClientServer_clearBreakpoint(t *testing.T) {
 	withTestClient("testprog", t, func(c service.Client) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sleepytime", Line: 1})
@@ -365,8 +377,7 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		bps, err := c.ListBreakpoints()
-		if e, a := 1, len(bps); e != a {
+		if e, a := 1, countBreakpoints(t, c); e != a {
 			t.Fatalf("Expected breakpoint count %d, got %d", e, a)
 		}
 
@@ -379,8 +390,7 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 			t.Fatalf("Expected deleted breakpoint ID %v, got %v", bp.ID, deleted.ID)
 		}
 
-		bps, err = c.ListBreakpoints()
-		if e, a := 0, len(bps); e != a {
+		if e, a := 0, countBreakpoints(t, c); e != a {
 			t.Fatalf("Expected breakpoint count %d, got %d", e, a)
 		}
 	})
