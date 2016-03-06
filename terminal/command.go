@@ -449,14 +449,35 @@ func cont(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
+func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) error {
+	if !state.NextInProgress {
+		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+		return nil
+	}
+	for {
+		stateChan := t.client.Continue()
+		var state *api.DebuggerState
+		for state = range stateChan {
+			if state.Err != nil {
+				return state.Err
+			}
+			printcontext(t, state)
+		}
+		if !state.NextInProgress {
+			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+			return nil
+		}
+		fmt.Printf("\tbreakpoint hit during %s, continuing...\n", op)
+	}
+}
+
 func step(t *Term, ctx callContext, args string) error {
 	state, err := t.client.Step()
 	if err != nil {
 		return err
 	}
 	printcontext(t, state)
-	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
-	return nil
+	return continueUntilCompleteNext(t, state, "step")
 }
 
 func stepInstruction(t *Term, ctx callContext, args string) error {
@@ -475,8 +496,7 @@ func next(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
-	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
-	return nil
+	return continueUntilCompleteNext(t, state, "next")
 }
 
 func clear(t *Term, ctx callContext, args string) error {

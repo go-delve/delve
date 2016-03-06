@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"errors"
 
 	"github.com/derekparker/delve/service/api"
 	"sync"
@@ -18,6 +19,8 @@ type RPCClient struct {
 	haltMu     sync.Mutex
 	haltReq    bool
 }
+
+var unsupportedApiError = errors.New("unsupported")
 
 // NewClient creates a new RPCClient.
 func NewClient(addr string) *RPCClient {
@@ -184,6 +187,10 @@ func (c *RPCClient) ClearBreakpointByName(name string) (*api.Breakpoint, error) 
 func (c *RPCClient) AmendBreakpoint(bp *api.Breakpoint) error {
 	err := c.call("AmendBreakpoint", bp, nil)
 	return err
+}
+
+func (c *RPCClient) CancelNext() error {
+	return unsupportedApiError
 }
 
 func (c *RPCClient) ListThreads() ([]*api.Thread, error) {

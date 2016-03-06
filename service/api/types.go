@@ -18,6 +18,11 @@ type DebuggerState struct {
 	SelectedGoroutine *Goroutine `json:"currentGoroutine,omitempty"`
 	// List of all the process threads
 	Threads []*Thread
+	// NextInProgress indicates that a next or step operation was interrupted by another breakpoint
+	// or a manual stop and is waiting to complete.
+	// While NextInProgress is set further requests for next or step may be rejected.
+	// Either execute continue until NextInProgress is false or call CancelNext
+	NextInProgress bool
 	// Exited indicates whether the debugged process has exited.
 	Exited     bool `json:"exited"`
 	ExitStatus int  `json:"exitStatus"`

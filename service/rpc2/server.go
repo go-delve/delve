@@ -315,6 +315,16 @@ func (s *RPCServer) AmendBreakpoint(arg AmendBreakpointIn, out *AmendBreakpointO
 	return s.debugger.AmendBreakpoint(&arg.Breakpoint)
 }
 
+type CancelNextIn struct {
+}
+
+type CancelNextOut struct {
+}
+
+func (s *RPCServer) CancelNext(arg CancelNextIn, out *CancelNextOut) error {
+	return s.debugger.CancelNext()
+}
+
 type ListThreadsIn struct {
 }
 

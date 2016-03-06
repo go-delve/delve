@@ -163,6 +163,13 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 		}
 	}
 
+	for _, bp := range d.process.Breakpoints {
+		if bp.Temp {
+			state.NextInProgress = true
+			break
+		}
+	}
+
 	return state, nil
 }
 
@@ -241,6 +248,10 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 		return err
 	}
 	return copyBreakpointInfo(original, amend)
+}
+
+func (d *Debugger) CancelNext() error {
+	return d.process.ClearTempBreakpoints()
 }
 
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {

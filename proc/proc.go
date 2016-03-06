@@ -285,7 +285,7 @@ func (dbp *Process) Next() (err error) {
 		case GoroutineExitingError:
 			goroutineExiting = t.goid == g.ID
 		default:
-			dbp.clearTempBreakpoints()
+			dbp.ClearTempBreakpoints()
 			return
 		}
 	}
@@ -385,7 +385,7 @@ func (dbp *Process) Continue() error {
 			}
 			return dbp.conditionErrors()
 		case dbp.CurrentThread.onTriggeredTempBreakpoint():
-			err := dbp.clearTempBreakpoints()
+			err := dbp.ClearTempBreakpoints()
 			if err != nil {
 				return err
 			}
@@ -396,7 +396,7 @@ func (dbp *Process) Continue() error {
 				return err
 			}
 			if onNextGoroutine {
-				err := dbp.clearTempBreakpoints()
+				err := dbp.ClearTempBreakpoints()
 				if err != nil {
 					return err
 				}
@@ -759,7 +759,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	return dbp, nil
 }
 
-func (dbp *Process) clearTempBreakpoints() error {
+func (dbp *Process) ClearTempBreakpoints() error {
 	for _, bp := range dbp.Breakpoints {
 		if !bp.Temp {
 			continue
