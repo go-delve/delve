@@ -484,6 +484,11 @@ func (dbp *Process) Step() (err error) {
 
 // StepInto sets a temp breakpoint after the prologue of fn and calls Continue
 func (dbp *Process) StepInto(fn *gosym.Func) error {
+	for i := range dbp.Breakpoints {
+		if dbp.Breakpoints[i].Temp {
+			return fmt.Errorf("next while nexting")
+		}
+	}
 	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
 	if _, err := dbp.SetTempBreakpoint(pc); err != nil {
 		return err
