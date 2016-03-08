@@ -8,6 +8,7 @@ import (
 
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
+	"sync"
 )
 
 // Client is a RPC service.Client.
@@ -15,6 +16,8 @@ type RPCClient struct {
 	addr       string
 	processPid int
 	client     *rpc.Client
+	haltMu     sync.Mutex
+	haltReq    bool
 }
 
 // Ensure the implementation satisfies the interface.
@@ -54,8 +57,18 @@ func (c *RPCClient) GetState() (*api.DebuggerState, error) {
 
 func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 	ch := make(chan *api.DebuggerState)
+	c.haltMu.Lock()
+	c.haltReq = false
+	c.haltMu.Unlock()
 	go func() {
 		for {
+			c.haltMu.Lock()
+			if c.haltReq {
+				c.haltMu.Unlock()
+				close(ch)
+				return
+			}
+			c.haltMu.Unlock()
 			state := new(api.DebuggerState)
 			err := c.call("Command", &api.DebuggerCommand{Name: api.Continue}, state)
 			if err != nil {
@@ -129,6 +142,9 @@ func (c *RPCClient) SwitchGoroutine(goroutineID int) (*api.DebuggerState, error)
 
 func (c *RPCClient) Halt() (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
+	c.haltMu.Lock()
+	c.haltReq = true
+	c.haltMu.Unlock()
 	err := c.call("Command", &api.DebuggerCommand{Name: api.Halt}, state)
 	return state, err
 }
