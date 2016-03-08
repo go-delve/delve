@@ -762,20 +762,20 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 		endPC = fn.End
 	}
 
-	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
-	if err != nil {
-		return nil, err
-	}
-
 	currentGoroutine := true
-	if scope.GoroutineID != -1 {
-		g, _ := s.Thread.GetG()
-		if g == nil || g.ID != scope.GoroutineID {
-			currentGoroutine = false
+	thread := d.process.CurrentThread
+
+	if s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame); err == nil {
+		thread = s.Thread
+		if scope.GoroutineID != -1 {
+			g, _ := s.Thread.GetG()
+			if g == nil || g.ID != scope.GoroutineID {
+				currentGoroutine = false
+			}
 		}
 	}
 
-	insts, err := s.Thread.Disassemble(startPC, endPC, currentGoroutine)
+	insts, err := thread.Disassemble(startPC, endPC, currentGoroutine)
 	if err != nil {
 		return nil, err
 	}
