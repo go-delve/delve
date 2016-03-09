@@ -3,10 +3,11 @@ package api
 import (
 	"errors"
 	"fmt"
-	"github.com/derekparker/delve/proc"
 	"reflect"
 	"strconv"
 	"unicode"
+
+	"github.com/derekparker/delve/proc"
 )
 
 // DebuggerState represents the current context of the debugger.
@@ -46,10 +47,10 @@ type Breakpoint struct {
 
 	// tracepoint flag
 	Tracepoint bool `json:"continue"`
-	// number of stack frames to retrieve
-	Stacktrace int `json:"stacktrace"`
 	// retrieve goroutine information
 	Goroutine bool `json:"goroutine"`
+	// number of stack frames to retrieve
+	Stacktrace int `json:"stacktrace"`
 	// variables to evaluate
 	Variables []string `json:"variables,omitempty"`
 	// number of times a breakpoint has been reached in a certain goroutine

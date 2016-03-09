@@ -9,10 +9,10 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"golang.org/x/debug/dwarf"
 	"reflect"
 
 	"github.com/derekparker/delve/dwarf/reader"
+	"golang.org/x/debug/dwarf"
 )
 
 // EvalExpression returns the value of the given expression.
@@ -430,25 +430,26 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 
 	// try to interpret this as a local variable
 	v, err := scope.extractVarInfo(node.Name)
-	if err != nil {
-		origErr := err
-		// workaround: sometimes go inserts an entry for '&varname' instead of varname
-		v, err = scope.extractVarInfo("&" + node.Name)
-		if err != nil {
-			// if it's not a local variable then it could be a package variable w/o explicit package name
-			_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
-			if fn != nil {
-				if v, err := scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
-					v.Name = node.Name
-					return v, nil
-				}
-			}
-			return nil, origErr
-		}
+	if err == nil {
+		return v, nil
+	}
+	origErr := err
+	// workaround: sometimes go inserts an entry for '&varname' instead of varname
+	v, err = scope.extractVarInfo("&" + node.Name)
+	if err == nil {
 		v = v.maybeDereference()
 		v.Name = node.Name
+		return v, nil
 	}
-	return v, nil
+	// if it's not a local variable then it could be a package variable w/o explicit package name
+	_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
+	if fn != nil {
+		if v, err = scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
+			v.Name = node.Name
+			return v, nil
+		}
+	}
+	return nil, origErr
 }
 
 // Evaluates expressions <subexpr>.<field name> where subexpr is not a package name

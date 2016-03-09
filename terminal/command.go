@@ -311,24 +311,23 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 		}
 		if args[0] == "" {
 			return printscope(t)
-		} else {
-			gid, err := strconv.Atoi(argstr)
-			if err != nil {
-				return err
-			}
-
-			oldState, err := t.client.GetState()
-			if err != nil {
-				return err
-			}
-			newState, err := t.client.SwitchGoroutine(gid)
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
-			return nil
 		}
+		gid, err := strconv.Atoi(argstr)
+		if err != nil {
+			return err
+		}
+
+		oldState, err := t.client.GetState()
+		if err != nil {
+			return err
+		}
+		newState, err := t.client.SwitchGoroutine(gid)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
+		return nil
 	case 2:
 		args = append(args, "")
 	}
@@ -345,8 +344,6 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 func (c *Commands) frame(t *Term, ctx callContext, args string) error {
 	v := strings.SplitN(args, " ", 3)
 
-	var err error
-
 	switch len(v) {
 	case 0, 1:
 		return errors.New("not enough arguments")
@@ -354,6 +351,7 @@ func (c *Commands) frame(t *Term, ctx callContext, args string) error {
 		v = append(v, "")
 	}
 
+	var err error
 	ctx.Prefix = scopePrefix
 	ctx.Scope.Frame, err = strconv.Atoi(v[0])
 	if err != nil {
@@ -588,7 +586,7 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 		requestedBp.Name = ""
 		locspec = argstr
 		var err2 error
-		locs, err2 = t.client.FindLocation(api.EvalScope{-1, 0}, locspec)
+		locs, err2 = t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
 		if err2 != nil {
 			return err
 		}
@@ -1047,13 +1045,11 @@ func exitCommand(t *Term, ctx callContext, args string) error {
 	return ExitRequestError{}
 }
 
-func getBreakpointByIDOrName(t *Term, arg string) (bp *api.Breakpoint, err error) {
+func getBreakpointByIDOrName(t *Term, arg string) (*api.Breakpoint, error) {
 	if id, err := strconv.Atoi(arg); err == nil {
-		bp, err = t.client.GetBreakpoint(id)
-	} else {
-		bp, err = t.client.GetBreakpointByName(arg)
+		return t.client.GetBreakpoint(id)
 	}
-	return
+	return t.client.GetBreakpointByName(arg)
 }
 
 func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
@@ -1150,7 +1146,6 @@ func formatBreakpointLocation(bp *api.Breakpoint) string {
 	p := ShortenFilePath(bp.File)
 	if bp.FunctionName != "" {
 		return fmt.Sprintf("%#v for %s() %s:%d", bp.Addr, bp.FunctionName, p, bp.Line)
-	} else {
-		return fmt.Sprintf("%#v for %s:%d", bp.Addr, p, bp.Line)
 	}
+	return fmt.Sprintf("%#v for %s:%d", bp.Addr, p, bp.Line)
 }

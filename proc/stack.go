@@ -84,9 +84,9 @@ func (n NullAddrError) Error() string {
 type StackIterator struct {
 	pc, sp uint64
 	top    bool
+	atend  bool
 	frame  Stackframe
 	dbp    *Process
-	atend  bool
 	err    error
 }
 
