@@ -24,7 +24,7 @@ type Config struct {
 func LoadConfig() *Config {
 	err := createConfigPath()
 	if err != nil {
-		fmt.Printf("Could not create config directory: %v.")
+		fmt.Printf("Could not create config directory: %v.", err)
 		return nil
 	}
 	fullConfigFile, err := GetConfigFilePath(configFile)

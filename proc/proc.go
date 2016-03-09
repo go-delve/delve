@@ -49,11 +49,11 @@ type Process struct {
 	goSymTable              *gosym.Table
 	frameEntries            frame.FrameDescriptionEntries
 	lineInfo                line.DebugLines
-	firstStart              bool
 	os                      *OSProcessDetails
 	arch                    Arch
 	breakpointIDCounter     int
 	tempBreakpointIDCounter int
+	firstStart              bool
 	halt                    bool
 	exited                  bool
 	ptraceChan              chan func()
