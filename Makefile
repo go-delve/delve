@@ -34,19 +34,25 @@ endif
 endif
 endif
 
-build: check-cert
+install-wrapper:
+ifdef DARWIN
+	cc dlv-exec-wrapper.c
+	mv a.out $(GOPATH)/bin/
+endif
+
+build: check-cert install-wrapper
 	go build $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
 ifdef DARWIN
 	codesign -s "$(CERT)" ./dlv
 endif
 
-install: check-cert
+install: check-cert install-wrapper
 	go install $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
 ifdef DARWIN
 	codesign -s "$(CERT)" $(GOPATH)/bin/dlv
 endif
 
-test: check-cert
+test: check-cert install-wrapper
 ifeq "$(TRAVIS)" "true"
 ifdef DARWIN
 	sudo -E go test -v $(ALL_PACKAGES)
