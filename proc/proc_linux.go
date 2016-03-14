@@ -30,6 +30,9 @@ const (
 	StatusZombie    = 'Z'
 
 	// Kernel 2.6 has TraceStop as T
+	// TODO(derekparker) Since this means something different based on the
+	// version of the kernel ('T' is job control stop on modern 3.x+ kernels) we
+	// may want to differentiate at some point.
 	StatusTraceStopT = 'T'
 )
 
