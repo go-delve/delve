@@ -4,7 +4,6 @@ import (
 	"debug/gosym"
 	"errors"
 	"fmt"
-	"golang.org/x/debug/elf"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/debug/elf"
 
 	sys "golang.org/x/sys/unix"
 
@@ -27,7 +28,7 @@ const (
 	StatusRunning   = 'R'
 	StatusTraceStop = 't'
 	StatusZombie    = 'Z'
-  
+
 	// Kernel 2.6 has TraceStop as T
 	StatusTraceStopT = 'T'
 )
