@@ -30,7 +30,7 @@ func (t *Thread) halt() (err error) {
 
 func (t *Thread) stopped() bool {
 	state := status(t.ID, t.dbp.os.comm)
-	return state == StatusTraceStop
+	return state == StatusTraceStop || state == StatusTraceStopT
 }
 
 func (t *Thread) resume() error {

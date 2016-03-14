@@ -27,6 +27,9 @@ const (
 	StatusRunning   = 'R'
 	StatusTraceStop = 't'
 	StatusZombie    = 'Z'
+  
+	// Kernel 2.6 has TraceStop as T
+	StatusTraceStopT = 'T'
 )
 
 // OSProcessDetails contains Linux specific
