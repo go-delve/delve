@@ -13,7 +13,7 @@ import (
 	"github.com/derekparker/delve/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/rpc"
+	"github.com/derekparker/delve/service/rpc2"
 )
 
 type FakeTerminal struct {
@@ -76,14 +76,14 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
 	defer listener.Close()
-	server := rpc.NewServer(&service.Config{
+	server := rpc2.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{test.BuildFixture(name).Path},
 	}, false)
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}
-	client := rpc.NewClient(listener.Addr().String())
+	client := rpc2.NewClient(listener.Addr().String())
 	defer func() {
 		client.Detach(true)
 	}()

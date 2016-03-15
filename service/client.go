@@ -59,8 +59,6 @@ type Client interface {
 	ListPackageVariables(filter string) ([]api.Variable, error)
 	// EvalVariable returns a variable in the context of the current thread.
 	EvalVariable(scope api.EvalScope, symbol string) (*api.Variable, error)
-	// ListPackageVariablesFor lists all package variables in the context of a thread.
-	ListPackageVariablesFor(threadID int, filter string) ([]api.Variable, error)
 
 	// SetVariable sets the value of a variable
 	SetVariable(scope api.EvalScope, symbol, value string) error

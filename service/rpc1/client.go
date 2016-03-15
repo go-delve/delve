@@ -1,4 +1,4 @@
-package rpc
+package rpc1
 
 import (
 	"fmt"
