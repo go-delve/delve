@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"reflect"
 )
 
@@ -13,14 +14,14 @@ const (
 	indentString = "\t"
 )
 
-// Returns a representation of v on a single line
+// SinglelineString returns a representation of v on a single line.
 func (v *Variable) SinglelineString() string {
 	var buf bytes.Buffer
 	v.writeTo(&buf, true, false, true, "")
 	return buf.String()
 }
 
-// Returns a representation of v on multiple lines
+// MultilineString returns a representation of v on multiple lines.
 func (v *Variable) MultilineString(indent string) string {
 	var buf bytes.Buffer
 	buf.WriteString(indent)
@@ -28,7 +29,7 @@ func (v *Variable) MultilineString(indent string) string {
 	return buf.String()
 }
 
-func (v *Variable) writeTo(buf *bytes.Buffer, top, newlines, includeType bool, indent string) {
+func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, indent string) {
 	if v.Unreadable != "" {
 		fmt.Fprintf(buf, "(unreadable %s)", v.Unreadable)
 		return
@@ -101,7 +102,7 @@ func (v *Variable) writeTo(buf *bytes.Buffer, top, newlines, includeType bool, i
 	}
 }
 
-func (v *Variable) writeStringTo(buf *bytes.Buffer) {
+func (v *Variable) writeStringTo(buf io.Writer) {
 	s := v.Value
 	if len(s) != int(v.Len) {
 		s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
@@ -109,21 +110,21 @@ func (v *Variable) writeStringTo(buf *bytes.Buffer) {
 	fmt.Fprintf(buf, "%q", s)
 }
 
-func (v *Variable) writeSliceTo(buf *bytes.Buffer, newlines, includeType bool, indent string) {
+func (v *Variable) writeSliceTo(buf io.Writer, newlines, includeType bool, indent string) {
 	if includeType {
 		fmt.Fprintf(buf, "%s len: %d, cap: %d, ", v.Type, v.Len, v.Cap)
 	}
 	v.writeSliceOrArrayTo(buf, newlines, indent)
 }
 
-func (v *Variable) writeArrayTo(buf *bytes.Buffer, newlines, includeType bool, indent string) {
+func (v *Variable) writeArrayTo(buf io.Writer, newlines, includeType bool, indent string) {
 	if includeType {
 		fmt.Fprintf(buf, "%s ", v.Type)
 	}
 	v.writeSliceOrArrayTo(buf, newlines, indent)
 }
 
-func (v *Variable) writeStructTo(buf *bytes.Buffer, newlines, includeType bool, indent string) {
+func (v *Variable) writeStructTo(buf io.Writer, newlines, includeType bool, indent string) {
 	if int(v.Len) != len(v.Children) {
 		fmt.Fprintf(buf, "(*%s)(0x%x)", v.Type, v.Addr)
 		return
@@ -157,7 +158,7 @@ func (v *Variable) writeStructTo(buf *bytes.Buffer, newlines, includeType bool, 
 	fmt.Fprintf(buf, "}")
 }
 
-func (v *Variable) writeMapTo(buf *bytes.Buffer, newlines, includeType bool, indent string) {
+func (v *Variable) writeMapTo(buf io.Writer, newlines, includeType bool, indent string) {
 	if includeType {
 		fmt.Fprintf(buf, "%s ", v.Type)
 	}
@@ -261,7 +262,7 @@ func (v *Variable) shouldNewlineStruct(newlines bool) bool {
 	return false
 }
 
-func (v *Variable) writeSliceOrArrayTo(buf *bytes.Buffer, newlines bool, indent string) {
+func (v *Variable) writeSliceOrArrayTo(buf io.Writer, newlines bool, indent string) {
 	nl := v.shouldNewlineArray(newlines)
 	fmt.Fprintf(buf, "[")
 

@@ -8,10 +8,11 @@ import (
 	"go/constant"
 	"go/parser"
 	"go/token"
-	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strings"
 	"unsafe"
+
+	"golang.org/x/debug/dwarf"
 
 	"github.com/derekparker/delve/dwarf/op"
 	"github.com/derekparker/delve/dwarf/reader"

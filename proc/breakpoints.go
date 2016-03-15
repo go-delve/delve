@@ -25,8 +25,8 @@ type Breakpoint struct {
 
 	// Breakpoint information
 	Tracepoint    bool           // Tracepoint flag
-	Stacktrace    int            // Number of stack frames to retrieve
 	Goroutine     bool           // Retrieve goroutine information
+	Stacktrace    int            // Number of stack frames to retrieve
 	Variables     []string       // Variables to evaluate
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached

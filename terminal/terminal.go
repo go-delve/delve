@@ -102,7 +102,6 @@ func (t *Term) Run() (int, error) {
 		}
 	}
 
-	var status int
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
@@ -110,8 +109,7 @@ func (t *Term) Run() (int, error) {
 				fmt.Println("exit")
 				return t.handleExit()
 			}
-			err, status = fmt.Errorf("Prompt for input failed.\n"), 1
-			break
+			return 1, fmt.Errorf("Prompt for input failed.\n")
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
@@ -129,8 +127,6 @@ func (t *Term) Run() (int, error) {
 			}
 		}
 	}
-
-	return status, nil
 }
 
 // Println prints a line to the terminal.
@@ -158,10 +154,10 @@ func (t *Term) promptForInput() (string, error) {
 func (t *Term) handleExit() (int, error) {
 	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
-		fmt.Println("Error saving history file:", err)
+		fmt.Println("Error saving history file: ", err)
 	} else {
 		if f, err := os.OpenFile(fullHistoryFile, os.O_RDWR, 0666); err == nil {
-			_, err := t.line.WriteHistory(f)
+			_, err = t.line.WriteHistory(f)
 			if err != nil {
 				fmt.Println("readline history error: ", err)
 			}
@@ -183,8 +179,7 @@ func (t *Term) handleExit() (int, error) {
 			answer = strings.ToLower(strings.TrimSpace(answer))
 			kill = (answer != "n" && answer != "no")
 		}
-		err = t.client.Detach(kill)
-		if err != nil {
+		if err := t.client.Detach(kill); err != nil {
 			return 1, err
 		}
 	}
