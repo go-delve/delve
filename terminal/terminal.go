@@ -42,7 +42,7 @@ func New(client service.Client, conf *config.Config) *Term {
 		line:   liner.NewLiner(),
 		client: client,
 		cmds:   cmds,
-		dumb:   strings.ToLower(os.Getenv("TERM")) == "dumb",
+		dumb:   !supportsEscapeCodes(),
 	}
 }
 
