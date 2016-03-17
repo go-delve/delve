@@ -154,12 +154,12 @@ func (t *Term) promptForInput() (string, error) {
 func (t *Term) handleExit() (int, error) {
 	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
-		fmt.Println("Error saving history file: ", err)
+		fmt.Println("Error saving history file:", err)
 	} else {
 		if f, err := os.OpenFile(fullHistoryFile, os.O_RDWR, 0666); err == nil {
 			_, err = t.line.WriteHistory(f)
 			if err != nil {
-				fmt.Println("readline history error: ", err)
+				fmt.Println("readline history error:", err)
 			}
 			f.Close()
 		}
