@@ -2,6 +2,14 @@
 
 Please use the following steps to build and install Delve on OSX.
 
+## 0) Prerequisites
+
+Ensure you have a proper compilation toolchain.
+
+This should be as simple as:
+
+`xcode-select --install`
+
 ## 1) Create a self-signed certificate
 
 You must create a self signed certificate and sign the binary with it:
