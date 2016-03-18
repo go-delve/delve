@@ -1655,3 +1655,33 @@ func TestPanicBreakpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue462(t *testing.T) {
+	// Stacktrace of Goroutine 0 fails with an error
+	if runtime.GOOS == "windows" {
+		return
+	}
+	withTestProcess("testnextnethttp", t, func(p *Process, fixture protest.Fixture) {
+		go func() {
+			for !p.Running() {
+				time.Sleep(50 * time.Millisecond)
+			}
+
+			// Wait for program to start listening.
+			for {
+				conn, err := net.Dial("tcp", "localhost:9191")
+				if err == nil {
+					conn.Close()
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+
+			p.RequestManualStop()
+		}()
+
+		assertNoError(p.Continue(), t, "Continue()")
+		_, err := p.CurrentThread.Stacktrace(40)
+		assertNoError(err, t, "Stacktrace()")
+	})
+}
