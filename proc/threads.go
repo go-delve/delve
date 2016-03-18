@@ -3,6 +3,7 @@ package proc
 import (
 	"debug/gosym"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -352,6 +353,9 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 	locations, err := thread.Stacktrace(0)
 	if err != nil {
 		return nil, err
+	}
+	if len(locations) < 1 {
+		return nil, errors.New("could not decode first frame")
 	}
 	return locations[0].Scope(thread), nil
 }

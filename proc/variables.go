@@ -422,9 +422,11 @@ func (g *G) UserCurrent() Location {
 	it := newStackIterator(g.dbp, pc, sp)
 	for it.Next() {
 		frame := it.Frame()
-		name := frame.Call.Fn.Name
-		if (strings.Index(name, ".") >= 0) && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
-			return frame.Call
+		if frame.Call.Fn != nil {
+			name := frame.Call.Fn.Name
+			if (strings.Index(name, ".") >= 0) && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
+				return frame.Call
+			}
 		}
 	}
 	return g.CurrentLoc
