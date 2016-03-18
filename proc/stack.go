@@ -45,24 +45,39 @@ func (t *Thread) ReturnAddress() (uint64, error) {
 	return locations[1].Current.PC, nil
 }
 
-// Stacktrace returns the stack trace for thread.
-// Note the locations in the array are return addresses not call addresses.
-func (t *Thread) Stacktrace(depth int) ([]Stackframe, error) {
+func (t *Thread) stackIterator() (*stackIterator, error) {
 	regs, err := t.Registers()
 	if err != nil {
 		return nil, err
 	}
-	return t.dbp.stacktrace(regs.PC(), regs.SP(), depth)
+	return newStackIterator(t.dbp, regs.PC(), regs.SP()), nil
 }
 
-// GoroutineStacktrace returns the stack trace for a goroutine.
+// Stacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func (dbp *Process) GoroutineStacktrace(g *G, depth int) ([]Stackframe, error) {
-	if g.thread != nil {
-		return g.thread.Stacktrace(depth)
+func (t *Thread) Stacktrace(depth int) ([]Stackframe, error) {
+	it, err := t.stackIterator()
+	if err != nil {
+		return nil, err
 	}
-	locs, err := dbp.stacktrace(g.PC, g.SP, depth)
-	return locs, err
+	return it.stacktrace(depth)
+}
+
+func (g *G) stackIterator() (*stackIterator, error) {
+	if g.thread != nil {
+		return g.thread.stackIterator()
+	}
+	return newStackIterator(g.dbp, g.PC, g.SP), nil
+}
+
+// Stacktrace returns the stack trace for a goroutine.
+// Note the locations in the array are return addresses not call addresses.
+func (g *G) Stacktrace(depth int) ([]Stackframe, error) {
+	it, err := g.stackIterator()
+	if err != nil {
+		return nil, err
+	}
+	return it.stacktrace(depth)
 }
 
 // GoroutineLocation returns the location of the given
@@ -79,10 +94,10 @@ func (n NullAddrError) Error() string {
 	return "NULL address"
 }
 
-// StackIterator holds information
+// stackIterator holds information
 // required to iterate and walk the program
 // stack.
-type StackIterator struct {
+type stackIterator struct {
 	pc, sp uint64
 	top    bool
 	atend  bool
@@ -91,12 +106,12 @@ type StackIterator struct {
 	err    error
 }
 
-func newStackIterator(dbp *Process, pc, sp uint64) *StackIterator {
-	return &StackIterator{pc: pc, sp: sp, top: true, dbp: dbp, err: nil, atend: false}
+func newStackIterator(dbp *Process, pc, sp uint64) *stackIterator {
+	return &stackIterator{pc: pc, sp: sp, top: true, dbp: dbp, err: nil, atend: false}
 }
 
 // Next points the iterator to the next stack frame.
-func (it *StackIterator) Next() bool {
+func (it *stackIterator) Next() bool {
 	if it.err != nil || it.atend {
 		return false
 	}
@@ -132,7 +147,7 @@ func (it *StackIterator) Next() bool {
 }
 
 // Frame returns the frame the iterator is pointing at.
-func (it *StackIterator) Frame() Stackframe {
+func (it *stackIterator) Frame() Stackframe {
 	if it.err != nil {
 		panic(it.err)
 	}
@@ -140,7 +155,7 @@ func (it *StackIterator) Frame() Stackframe {
 }
 
 // Err returns the error encountered during stack iteration.
-func (it *StackIterator) Err() error {
+func (it *stackIterator) Err() error {
 	return it.err
 }
 
@@ -171,12 +186,11 @@ func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 	return r, nil
 }
 
-func (dbp *Process) stacktrace(pc, sp uint64, depth int) ([]Stackframe, error) {
+func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 	if depth < 0 {
 		return nil, errors.New("negative maximum stack depth")
 	}
 	frames := make([]Stackframe, 0, depth+1)
-	it := newStackIterator(dbp, pc, sp)
 	for it.Next() {
 		frames = append(frames, it.Frame())
 		if len(frames) >= depth+1 {

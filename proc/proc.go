@@ -876,7 +876,7 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 		out.Thread = g.thread
 	}
 
-	locs, err := dbp.GoroutineStacktrace(g, frame)
+	locs, err := g.Stacktrace(frame)
 	if err != nil {
 		return nil, err
 	}

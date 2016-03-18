@@ -691,7 +691,7 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, full bool) ([]api.Stackfra
 	if g == nil {
 		rawlocs, err = d.process.CurrentThread.Stacktrace(depth)
 	} else {
-		rawlocs, err = d.process.GoroutineStacktrace(g, depth)
+		rawlocs, err = g.Stacktrace(depth)
 	}
 	if err != nil {
 		return nil, err
