@@ -758,7 +758,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		mainCount := 0
 
 		for i, g := range gs {
-			locations, err := p.GoroutineStacktrace(g, 40)
+			locations, err := g.Stacktrace(40)
 			assertNoError(err, t, "GoroutineStacktrace()")
 
 			if stackMatch(mainStack, locations, false) {
@@ -1053,7 +1053,7 @@ func TestFrameEvaluation(t *testing.T) {
 		found := make([]bool, 10)
 		for _, g := range gs {
 			frame := -1
-			frames, err := p.GoroutineStacktrace(g, 10)
+			frames, err := g.Stacktrace(10)
 			assertNoError(err, t, "GoroutineStacktrace()")
 			for i := range frames {
 				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {

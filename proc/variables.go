@@ -317,7 +317,7 @@ func (g *G) ChanRecvBlocked() bool {
 
 // chanRecvReturnAddr returns the address of the return from a channel read.
 func (g *G) chanRecvReturnAddr(dbp *Process) (uint64, error) {
-	locs, err := dbp.GoroutineStacktrace(g, 4)
+	locs, err := g.Stacktrace(4)
 	if err != nil {
 		return 0, err
 	}
@@ -418,15 +418,10 @@ func isExportedRuntime(name string) bool {
 // UserCurrent returns the location the users code is at,
 // or was at before entering a runtime function.
 func (g *G) UserCurrent() Location {
-	pc, sp := g.PC, g.SP
-	if g.thread != nil {
-		regs, err := g.thread.Registers()
-		if err != nil {
-			return g.CurrentLoc
-		}
-		pc, sp = regs.PC(), regs.SP()
+	it, err := g.stackIterator()
+	if err != nil {
+		return g.CurrentLoc
 	}
-	it := newStackIterator(g.dbp, pc, sp)
 	for it.Next() {
 		frame := it.Frame()
 		if frame.Call.Fn != nil {
