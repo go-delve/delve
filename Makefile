@@ -43,7 +43,9 @@ endif
 install: check-cert
 	go install $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
 ifdef DARWIN
-	codesign -s "$(CERT)" $(GOPATH)/bin/dlv
+	#go install install alsways into the first subpath of GOPATH, so a cut at 
+	#the first colon is safe.
+	codesign -s "$(CERT)" `echo ${GOPATH} | cut -f 1 -d ':'`/bin/dlv
 endif
 
 test: check-cert
