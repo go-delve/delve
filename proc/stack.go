@@ -135,7 +135,7 @@ func (it *stackIterator) Next() bool {
 		return true
 	}
 	// Look for "top of stack" functions.
-	if it.frame.Current.Fn.Name == "runtime.goexit" || it.frame.Current.Fn.Name == "runtime.rt0_go" {
+	if it.frame.Current.Fn.Name == "runtime.goexit" || it.frame.Current.Fn.Name == "runtime.rt0_go" || it.frame.Current.Fn.Name == "runtime.mcall" {
 		it.atend = true
 		return true
 	}
