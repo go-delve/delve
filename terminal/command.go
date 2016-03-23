@@ -68,7 +68,7 @@ func DebugCommands(client service.Client) *Commands {
 	c := &Commands{client: client}
 
 	c.cmds = []command{
-		{aliases: []string{"help"}, cmdFn: c.help, helpMsg: "Prints the help message."},
+		{aliases: []string{"help", "h"}, cmdFn: c.help, helpMsg: "Prints the help message."},
 		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: "break [name] <linespec>"},
 		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: "Set tracepoint, takes the same arguments as break."},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
