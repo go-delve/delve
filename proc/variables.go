@@ -341,26 +341,19 @@ func (gvar *Variable) parseG() (*G, error) {
 	gaddr := uint64(gvar.Addr)
 	_, deref := gvar.RealType.(*dwarf.PtrType)
 
-	initialInstructions := make([]byte, dbp.arch.PtrSize()+1)
-	initialInstructions[0] = op.DW_OP_addr
-	binary.LittleEndian.PutUint64(initialInstructions[1:], gaddr)
 	if deref {
 		gaddrbytes, err := mem.readMemory(uintptr(gaddr), dbp.arch.PtrSize())
 		if err != nil {
 			return nil, fmt.Errorf("error derefing *G %s", err)
 		}
-		initialInstructions = append([]byte{op.DW_OP_addr}, gaddrbytes...)
 		gaddr = binary.LittleEndian.Uint64(gaddrbytes)
-		if gaddr == 0 {
-			id := 0
-			if thread, ok := mem.(*Thread); ok {
-				id = thread.ID
-			}
-			return nil, NoGError{tid: id}
-		}
 	}
 	if gaddr == 0 {
-		return nil, NoGError{}
+		id := 0
+		if thread, ok := mem.(*Thread); ok {
+			id = thread.ID
+		}
+		return nil, NoGError{ tid: id }
 	}
 	gvar.loadValue()
 	if gvar.Unreadable != nil {
