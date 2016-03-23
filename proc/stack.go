@@ -127,6 +127,9 @@ func (it *stackIterator) Next() bool {
 	}
 
 	if it.frame.Current.Fn == nil {
+		if it.top {
+			it.err = fmt.Errorf("PC not associated to any function")
+		}
 		return false
 	}
 
