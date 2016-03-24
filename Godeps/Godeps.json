@@ -36,6 +36,15 @@
 			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
 		},
 		{
+			"ImportPath": "github.com/mattn/go-colorable",
+			"Rev": "9cbef7c35391cca05f15f8181dc0b18bc9736dbb"
+		},
+		{
+			"ImportPath": "github.com/mattn/go-isatty",
+			"Comment": "v0.0.1",
+			"Rev": "3a115632dcd687f9c8cd01679c83a06a0e21c1f3"
+		},
+		{
 			"ImportPath": "github.com/peterh/liner",
 			"Rev": "b850cf8c6d0ee52309aad09ac610508c6c75e819"
 		},
@@ -50,6 +59,10 @@
 		},
 		{
 			"ImportPath": "github.com/spf13/cobra",
+			"Rev": "65a708cee0a4424f4e353d031ce440643e312f92"
+		},
+		{
+			"ImportPath": "github.com/spf13/cobra/doc",
 			"Rev": "65a708cee0a4424f4e353d031ce440643e312f92"
 		},
 		{
