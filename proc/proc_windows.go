@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -47,9 +48,9 @@ func Launch(cmd []string) (*Process, error) {
 	if _, err := os.Stat(argv0Go); err != nil {
 		return nil, err
 	}
-
-	argv0, _ := syscall.UTF16PtrFromString(argv0Go)
-
+	//CreateProcess commandLines, https://msdn.microsoft.com/en-us/library/windows/desktop/ms682425.aspx
+	cmdLines := append([]string{"\"" + argv0Go + "\""}, cmd[1:]...)
+	cmdLine, _ := syscall.UTF16PtrFromString(strings.Join(cmdLines, " "))
 	// Duplicate the stdin/stdout/stderr handles
 	files := []uintptr{uintptr(syscall.Stdin), uintptr(syscall.Stdout), uintptr(syscall.Stderr)}
 	p, _ := syscall.GetCurrentProcess()
@@ -70,7 +71,7 @@ func Launch(cmd []string) (*Process, error) {
 	si.StdOutput = sys.Handle(fd[1])
 	si.StdErr = sys.Handle(fd[2])
 	pi := new(sys.ProcessInformation)
-	err = sys.CreateProcess(argv0, nil, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	err = sys.CreateProcess(nil, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
 	if err != nil {
 		return nil, err
 	}
