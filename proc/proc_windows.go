@@ -48,9 +48,6 @@ func Launch(cmd []string) (*Process, error) {
 	if _, err := os.Stat(argv0Go); err != nil {
 		return nil, err
 	}
-
-	argv0, _ := syscall.UTF16PtrFromString(argv0Go)
-
 	// Duplicate the stdin/stdout/stderr handles
 	files := []uintptr{uintptr(syscall.Stdin), uintptr(syscall.Stdout), uintptr(syscall.Stderr)}
 	p, _ := syscall.GetCurrentProcess()
@@ -62,7 +59,9 @@ func Launch(cmd []string) (*Process, error) {
 		}
 		defer syscall.CloseHandle(syscall.Handle(fd[i]))
 	}
-
+	// create suitable command line for CreateProcess - quote the executable name with absolute path
+	// and pass on the rest of the parameters. see https://msdn.microsoft.com/en-us/library/windows/desktop/ms682425.aspx
+	cmdLine, _ := syscall.UTF16PtrFromString(strings.Join(append([]string{"\"" + argv0Go + "\""}, cmd[1:]...), " "))
 	// Initialize the startup info and create process
 	si := new(sys.StartupInfo)
 	si.Cb = uint32(unsafe.Sizeof(*si))
@@ -71,8 +70,7 @@ func Launch(cmd []string) (*Process, error) {
 	si.StdOutput = sys.Handle(fd[1])
 	si.StdErr = sys.Handle(fd[2])
 	pi := new(sys.ProcessInformation)
-	cmdline, _ := syscall.UTF16PtrFromString(strings.Join(append([]string{argv0Go}, cmd[1:]...), " "))
-	err = sys.CreateProcess(argv0, cmdline, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	err = sys.CreateProcess(nil, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
 	if err != nil {
 		return nil, err
 	}
