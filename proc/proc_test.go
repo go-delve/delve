@@ -1689,7 +1689,7 @@ func TestCmdLineArgs(t *testing.T) {
 
 	}, []string{"test", "-passFlag"})
 	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
+		p.Continue()
 		bp := p.CurrentBreakpoint()
 		if bp == nil || bp.Name != "unrecovered-panic" {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
