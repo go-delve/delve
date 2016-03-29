@@ -1694,10 +1694,6 @@ func TestCmdLineArgs(t *testing.T) {
 		if bp == nil || bp.Name != "unrecovered-panic" {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
 		}
-		_, exited := err.(ProcessExitedError)
-		if exited {
-			t.Fatalf("Process exited unexpectedly!", err)
-		}
 	}, []string{"txest", "-pxassFlag"})
 }
 
