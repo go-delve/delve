@@ -1689,18 +1689,14 @@ func TestCmdLineArgs(t *testing.T) {
 
 	}, []string{"test", "-passFlag"})
 	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
-		err = p.Continue()
+		err := p.Continue()
 		bp := p.CurrentBreakpoint()
 		if bp == nil || bp.Name != "unrecovered-panic" {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
 		}
-		exit, exited := err.(ProcessExitedError)
-		if !exited {
-			t.Fatalf("Process did not exit!", err)
-		} else {
-			if exit.Status != 0 {
-				t.Fatalf("process exited with invalid status", exit.Status)
-			}
+		_, exited := err.(ProcessExitedError)
+		if exited {
+			t.Fatalf("Process exited unexpectedly!", err)
 		}
 	}, []string{"txest", "-pxassFlag"})
 }
