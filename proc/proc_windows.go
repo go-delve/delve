@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -70,7 +71,8 @@ func Launch(cmd []string) (*Process, error) {
 	si.StdOutput = sys.Handle(fd[1])
 	si.StdErr = sys.Handle(fd[2])
 	pi := new(sys.ProcessInformation)
-	err = sys.CreateProcess(argv0, nil, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	cmdline, _ := syscall.UTF16PtrFromString(strings.Join(cmd, " "))
+	err = sys.CreateProcess(argv0, cmdline, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
 	if err != nil {
 		return nil, err
 	}
