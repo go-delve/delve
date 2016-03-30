@@ -19,7 +19,7 @@ You must create a self signed certificate and sign the binary with it:
 * Choose a name (dlv-cert in the example), set “Identity Type” to “Self Signed Root”, set “Certificate Type” to “Code Signing” and select the “Let me override defaults”. Click “Continue”. You might want to extend the predefined 365 days period to 3650 days.
 * Click several times on “Continue” until you get to the “Specify a Location For The Certificate” screen, then set “Keychain to System”.
 * If you can't store the certificate in the “System” keychain, create it in the “login” keychain, then export it. You can then import it into the “System” keychain.
-* In keychains select “System”, and you should find your new certificate. Use the context menu for the certificate, select “Get Info”, open the “Trust” item, and set “Code Signing” to “Always Trust”.
+* In keychains select “System”, and you should find your new certificate. Use the context menu for the *certificate* (not the public or private keys), select “Get Info”, open the “Trust” item, and set “Code Signing” to “Always Trust”.
 * [At least on Yosemite:] In keychains select category Keys -> dlv-cert -> right click -> GetInfo -> Access Control -> select "Allow all applications to access this item" -> Save Changes.
 * You must quit “Keychain Access” application in order to use the certificate and restart “taskgated” service by killing the current running “taskgated” process. Alternatively you can restart your computer.
 * Clone this project: `git clone git@github.com:derekparker/delve.git && cd delve`
