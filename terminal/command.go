@@ -682,7 +682,7 @@ func args(t *Term, ctx callContext, filter string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filterVariables(vars, filter), nil
+	return describeNoVars("args", filterVariables(vars, filter)), nil
 }
 
 func locals(t *Term, ctx callContext, filter string) ([]string, error) {
@@ -690,7 +690,7 @@ func locals(t *Term, ctx callContext, filter string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filterVariables(locals, filter), nil
+	return describeNoVars("locals", filterVariables(locals, filter)), nil
 }
 
 func vars(t *Term, ctx callContext, filter string) ([]string, error) {
@@ -698,7 +698,7 @@ func vars(t *Term, ctx callContext, filter string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filterVariables(vars, filter), nil
+	return describeNoVars("vars", filterVariables(vars, filter)), nil
 }
 
 func regs(t *Term, ctx callContext, args string) error {
@@ -1152,4 +1152,11 @@ func formatBreakpointLocation(bp *api.Breakpoint) string {
 		return fmt.Sprintf("%#v for %s() %s:%d", bp.Addr, bp.FunctionName, p, bp.Line)
 	}
 	return fmt.Sprintf("%#v for %s:%d", bp.Addr, p, bp.Line)
+}
+
+func describeNoVars(varType string, data []string) []string {
+	if len(data) == 0 {
+		return []string{fmt.Sprintf("(no %s)", varType)}
+	}
+	return data
 }

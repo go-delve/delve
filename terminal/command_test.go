@@ -269,7 +269,7 @@ func TestScopePrefix(t *testing.T) {
 			if fid < 0 {
 				t.Fatalf("Could not find frame for goroutine %d: %v", gid, stackOut)
 			}
-			term.AssertExec(fmt.Sprintf("goroutine %d frame %d locals", gid, fid), "")
+			term.AssertExec(fmt.Sprintf("goroutine %d frame %d locals", gid, fid), "(no locals)\n")
 			argsOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d frame %d args", gid, fid)), "\n")
 			if len(argsOut) != 4 || argsOut[3] != "" {
 				t.Fatalf("Wrong number of arguments in goroutine %d frame %d: %v", gid, fid, argsOut)
@@ -345,5 +345,15 @@ func TestOnPrefix(t *testing.T) {
 				t.Fatalf("Goroutine %d not seen\n", i)
 			}
 		}
+	})
+}
+
+func TestNoVars(t *testing.T) {
+	withTestTerminal("locationsUpperCase", t, func(term *FakeTerminal) {
+		term.MustExec("b main.main")
+		term.MustExec("continue")
+		term.AssertExec("args", "(no args)\n")
+		term.AssertExec("locals", "(no locals)\n")
+		term.AssertExec("vars filterThatMatchesNothing", "(no vars)\n")
 	})
 }
