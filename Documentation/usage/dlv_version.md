@@ -14,7 +14,7 @@ dlv version
 ### Options inherited from parent commands
 
 ```
-      --accept-multiclient[=false]: Allows a headless server to accept multiple client connection. Note that the server API is not reentrant and clients will have to coordinate
+      --accept-multiclient[=false]: Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate
       --build-flags="": Build flags, to be passed to the compiler.
       --headless[=false]: Run debug server only, in headless mode.
       --init="": Init file, executed by the terminal client.
