@@ -358,6 +358,8 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 
 	var status int
 	if Headless {
+		// Print listener address
+		fmt.Printf("start listener addr %s\n", listener.Addr())
 		ch := make(chan os.Signal)
 		signal.Notify(ch, syscall.SIGINT)
 		<-ch
