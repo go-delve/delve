@@ -6,3 +6,4 @@ Documentation for the project will reside in this directory.
 - [Usage](usage)
 - [API](api)
 - [Internal](internal)
+- [Editor Integration](EditorIntegration.md)
