@@ -2,7 +2,6 @@ package proc
 
 // #include "proc_darwin.h"
 // #include "threads_darwin.h"
-// #include "exec_darwin.h"
 // #include <stdlib.h>
 import "C"
 import (
@@ -14,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"unsafe"
 
 	"github.com/derekparker/delve/dwarf/frame"
@@ -37,6 +37,7 @@ type OSProcessDetails struct {
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
 func Launch(cmd []string) (*Process, error) {
+	var proc *exec.Cmd
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -51,35 +52,40 @@ func Launch(cmd []string) (*Process, error) {
 		return nil, err
 	}
 
-	argv0 := C.CString(argv0Go)
-	argvSlice := make([]*C.char, 0, len(cmd)+1)
-	for _, arg := range cmd {
-		argvSlice = append(argvSlice, C.CString(arg))
-	}
-	// argv array must be null terminated.
-	argvSlice = append(argvSlice, nil)
+	cmd1 := make([]string, 0, len(cmd))
+	cmd1 = append(cmd1, "dlv-exec-wrapper")
+	cmd1 = append(cmd1, cmd...)
+	cmd = cmd1
 
 	dbp := New(0)
-	var pid int
 	dbp.execPtraceFunc(func() {
-		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
-			&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
-			&dbp.os.notificationPort)
-		pid = int(ret)
+		proc = exec.Command(cmd[0])
+		proc.Args = cmd
+		proc.Stdout = os.Stdout
+		proc.Stderr = os.Stderr
+		proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true}
+		err = proc.Start()
+		if err != nil {
+			return
+		}
+		_, _, err = dbp.wait(proc.Process.Pid, 0)
+		if err != nil {
+			return
+		}
+		PtraceCont(proc.Process.Pid, 0)
+		if C.acquire_mach_task(C.int(proc.Process.Pid), &dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort, &dbp.os.notificationPort) != C.KERN_SUCCESS {
+			err = errors.New("could not acquire mach task")
+			return
+		}
+		dbp.Pid = proc.Process.Pid
+		C.mach_port_wait(dbp.os.portSet, C.int(0))
+		PtraceCont(proc.Process.Pid, 0)
+		dbp, err = initializeDebugProcess(dbp, argv0Go, false)
+		if err != nil {
+			return
+		}
 	})
-	if pid <= 0 {
-		return nil, fmt.Errorf("could not fork/exec")
-	}
-	dbp.Pid = pid
-	for i := range argvSlice {
-		C.free(unsafe.Pointer(argvSlice[i]))
-	}
 
-	dbp, err = initializeDebugProcess(dbp, argv0Go, false)
-	if err != nil {
-		return nil, err
-	}
-	err = dbp.Continue()
 	return dbp, err
 }
 
@@ -354,6 +360,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	if err != nil {
 		return err
 	}
+	dbp.updateThreadList()
 	trapthread.SetCurrentBreakpoint()
 	for _, port := range ports {
 		if th, ok := dbp.Threads[port]; ok {
