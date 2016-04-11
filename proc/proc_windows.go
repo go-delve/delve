@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -59,9 +58,33 @@ func Launch(cmd []string) (*Process, error) {
 		}
 		defer syscall.CloseHandle(syscall.Handle(fd[i]))
 	}
-	// create suitable command line for CreateProcess - quote the executable name with absolute path
-	// and pass on the rest of the parameters. see https://msdn.microsoft.com/en-us/library/windows/desktop/ms682425.aspx
-	cmdLine, _ := syscall.UTF16PtrFromString(strings.Join(append([]string{"\"" + argv0Go + "\""}, cmd[1:]...), " "))
+
+	argv0, err := syscall.UTF16PtrFromString(argv0Go)
+	if err != nil {
+		return nil, err
+	}
+
+	// create suitable command line for CreateProcess
+	// see https://github.com/golang/go/blob/master/src/syscall/exec_windows.go#L326
+	// adapted from standard library makeCmdLine
+	// see https://github.com/golang/go/blob/master/src/syscall/exec_windows.go#L86
+	var cmdLineGo string
+	if len(cmd) > 1 {
+		for _, v := range cmd {
+			if cmdLineGo != "" {
+				cmdLineGo += " "
+			}
+			cmdLineGo += syscall.EscapeArg(v)
+		}
+	}
+
+	var cmdLine *uint16
+	if cmdLineGo != "" {
+		if cmdLine, err = syscall.UTF16PtrFromString(cmdLineGo); err != nil {
+			return nil, err
+		}
+	}
+
 	// Initialize the startup info and create process
 	si := new(sys.StartupInfo)
 	si.Cb = uint32(unsafe.Sizeof(*si))
@@ -70,7 +93,7 @@ func Launch(cmd []string) (*Process, error) {
 	si.StdOutput = sys.Handle(fd[1])
 	si.StdErr = sys.Handle(fd[2])
 	pi := new(sys.ProcessInformation)
-	err = sys.CreateProcess(nil, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
 	if err != nil {
 		return nil, err
 	}
