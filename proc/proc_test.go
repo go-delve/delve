@@ -485,7 +485,8 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 		{5, 8},
 		{8, 9},
 		{9, 10},
-		{10, 7},
+		{10, 6},
+		{6, 7},
 		{7, 8},
 	}
 	testnext("testnextdefer", testcases, "main.main", t)
@@ -1749,4 +1750,41 @@ func TestIssue554(t *testing.T) {
 	if mem.contains(0xffffffffffffffff, 40) {
 		t.Fatalf("should be false")
 	}
+}
+
+func TestNextParked(t *testing.T) {
+	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
+		bp, err := setFunctionBreakpoint(p, "main.sayhi")
+		assertNoError(err, t, "SetBreakpoint()")
+
+		// continue until a parked goroutine exists
+		var parkedg *G
+	LookForParkedG:
+		for {
+			err := p.Continue()
+			if _, exited := err.(ProcessExitedError); exited {
+				t.Log("could not find parked goroutine")
+				return
+			}
+			assertNoError(err, t, "Continue()")
+
+			gs, err := p.GoroutinesInfo()
+			assertNoError(err, t, "GoroutinesInfo()")
+
+			for _, g := range gs {
+				if g.thread == nil {
+					parkedg = g
+					break LookForParkedG
+				}
+			}
+		}
+
+		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
+		p.ClearBreakpoint(bp.Addr)
+		assertNoError(p.Next(), t, "Next()")
+
+		if p.SelectedGoroutine.ID != parkedg.ID {
+			t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", parkedg.ID, p.SelectedGoroutine.ID)
+		}
+	})
 }
