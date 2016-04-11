@@ -101,7 +101,7 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, cmdFn: stepInstruction, helpMsg: "Single step a single cpu instruction."},
-		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
+		{aliases: []string{"next", "n"}, allowedPrefixes: scopePrefix, cmdFn: next, helpMsg: "Step over to next source line."},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: `Switch to the specified thread.
 
@@ -625,6 +625,17 @@ func stepInstruction(t *Term, ctx callContext, args string) error {
 }
 
 func next(t *Term, ctx callContext, args string) error {
+	if ctx.Prefix == scopePrefix {
+		if ctx.Scope.Frame != 0 {
+			return errors.New("can not prefix next with frame")
+		}
+		if ctx.Scope.GoroutineID > 0 {
+			_, err := t.client.SwitchGoroutine(ctx.Scope.GoroutineID)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	state, err := t.client.Next()
 	if err != nil {
 		return err
