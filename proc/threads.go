@@ -124,37 +124,47 @@ func (tbe ThreadBlockedError) Error() string {
 	return ""
 }
 
-// Set breakpoints for potential next lines.
-func (dbp *Process) setNextBreakpoints() (err error) {
+// returns topmost frame of selected goroutine
+func (dbp *Process) topframe() (Stackframe, error) {
 	var frames []Stackframe
+	var err error
 
 	if dbp.SelectedGoroutine == nil {
 		if dbp.CurrentThread.blocked() {
-			return ThreadBlockedError{}
+			return Stackframe{}, ThreadBlockedError{}
 		}
 		frames, err = dbp.CurrentThread.Stacktrace(0)
 	} else {
 		frames, err = dbp.SelectedGoroutine.Stacktrace(0)
 	}
 	if err != nil {
-		return err
+		return Stackframe{}, err
 	}
 	if len(frames) < 1 {
-		return errors.New("empty stack trace")
+		return Stackframe{}, errors.New("empty stack trace")
 	}
+	return frames[0], nil
+}
 
-	// Grab info on our current stack frame. Used to determine
-	// whether we may be stepping outside of the current function.
-	fde, err := dbp.frameEntries.FDEForPC(frames[0].Current.PC)
+// Set breakpoints for potential next lines.
+func (dbp *Process) setNextBreakpoints() (err error) {
+	topframe, err := dbp.topframe()
 	if err != nil {
 		return err
 	}
 
-	if filepath.Ext(frames[0].Current.File) != ".go" {
-		return dbp.cnext(frames[0], fde)
+	// Grab info on our current stack frame. Used to determine
+	// whether we may be stepping outside of the current function.
+	fde, err := dbp.frameEntries.FDEForPC(topframe.Current.PC)
+	if err != nil {
+		return err
 	}
 
-	return dbp.next(dbp.SelectedGoroutine, frames[0], fde)
+	if filepath.Ext(topframe.Current.File) != ".go" {
+		return dbp.cnext(topframe, fde)
+	}
+
+	return dbp.next(dbp.SelectedGoroutine, topframe, fde)
 }
 
 // Set breakpoints at every line, and the return address. Also look for
@@ -212,6 +222,7 @@ func (dbp *Process) setTempBreakpoints(curpc uint64, pcs []uint64, cond ast.Expr
 		}
 		if _, err := dbp.SetTempBreakpoint(pcs[i], cond); err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
+				dbp.ClearTempBreakpoints()
 				return err
 			}
 		}
