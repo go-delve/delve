@@ -424,6 +424,10 @@ func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
 // Step will continue until another source line is reached.
 // Will step into functions.
 func (dbp *Process) Step() (err error) {
+	if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.thread == nil {
+		// Step called on parked goroutine
+		return dbp.stepToPC(dbp.SelectedGoroutine.PC)
+	}
 	fn := func() error {
 		var nloc *Location
 		th := dbp.CurrentThread
@@ -468,6 +472,10 @@ func (dbp *Process) StepInto(fn *gosym.Func) error {
 		}
 	}
 	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
+	return dbp.stepToPC(pc)
+}
+
+func (dbp *Process) stepToPC(pc uint64) error {
 	if _, err := dbp.SetTempBreakpoint(pc, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
 		return err
 	}
