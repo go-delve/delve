@@ -12,7 +12,7 @@ close_exec_pipe(int fd[2]) {
 
 int
 fork_exec(char *argv0, char **argv, int size,
-		mach_port_name_t *task,
+		task_t *task,
 		mach_port_t *port_set,
 		mach_port_t *exception_port,
 		mach_port_t *notification_port)

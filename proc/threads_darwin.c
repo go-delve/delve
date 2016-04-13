@@ -1,7 +1,7 @@
 #include "threads_darwin.h"
 
 int
-write_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
+write_memory(task_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
 	kern_return_t kret;
 	vm_region_submap_short_info_data_64_t info;
 	mach_msg_type_number_t count = VM_REGION_SUBMAP_SHORT_INFO_COUNT_64;
@@ -27,7 +27,7 @@ write_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_ty
 }
 
 int
-read_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
+read_memory(task_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
 	kern_return_t kret;
 	pointer_t data;
 	mach_msg_type_number_t count;

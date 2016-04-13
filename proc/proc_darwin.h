@@ -24,7 +24,7 @@ boolean_t mach_exc_server(
 		mach_msg_header_t *OutHeadP);
 
 kern_return_t
-acquire_mach_task(int, mach_port_name_t*, mach_port_t*, mach_port_t*, mach_port_t*);
+acquire_mach_task(int, task_t*, mach_port_t*, mach_port_t*, mach_port_t*);
 
 char *
 find_executable(int pid);
