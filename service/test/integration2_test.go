@@ -199,6 +199,23 @@ func TestClientServer_step(t *testing.T) {
 	})
 }
 
+func TestClientServer_stepout(t *testing.T) {
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: -1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		stateBefore := <-c.Continue()
+		assertNoError(stateBefore.Err, t, "Continue()")
+		if stateBefore.CurrentThread.Line != 13 {
+			t.Fatalf("wrong line number %s:%d, expected %d", stateBefore.CurrentThread.File, stateBefore.CurrentThread.Line, 13)
+		}
+		stateAfter, err := c.StepOut()
+		assertNoError(err, t, "StepOut()")
+		if stateAfter.CurrentThread.Line != 35 {
+			t.Fatalf("wrong line number %s:%d, expected %d", stateAfter.CurrentThread.File, stateAfter.CurrentThread.Line, 13)
+		}
+	})
+}
+
 func testnext2(testcases []nextTest, initialLocation string, t *testing.T) {
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: initialLocation, Line: -1})
@@ -278,7 +295,7 @@ func TestNextGeneral(t *testing.T) {
 		}
 	}
 
-	testnext(testcases, "main.testnext", t)
+	testnext2(testcases, "main.testnext", t)
 }
 
 func TestNextFunctionReturn(t *testing.T) {
@@ -287,7 +304,7 @@ func TestNextFunctionReturn(t *testing.T) {
 		{14, 15},
 		{15, 35},
 	}
-	testnext(testcases, "main.helloworld", t)
+	testnext2(testcases, "main.helloworld", t)
 }
 
 func TestClientServer_breakpointInMainThread(t *testing.T) {

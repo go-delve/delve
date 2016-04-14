@@ -103,6 +103,12 @@ func (c *RPCClient) Step() (*api.DebuggerState, error) {
 	return &out.State, err
 }
 
+func (c *RPCClient) StepOut() (*api.DebuggerState, error) {
+	var out CommandOut
+	err := c.call("Command", &api.DebuggerCommand{ Name: api.StepOut}, &out)
+	return &out.State, err
+}
+
 func (c *RPCClient) StepInstruction() (*api.DebuggerState, error) {
 	var out CommandOut
 	err := c.call("Command", api.DebuggerCommand{Name: api.StepInstruction}, &out)

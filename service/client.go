@@ -25,6 +25,9 @@ type Client interface {
 	Next() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
 	Step() (*api.DebuggerState, error)
+	// StepOut continues to the return address of the current function
+	StepOut() (*api.DebuggerState, error)
+
 	// SingleStep will step a single cpu instruction.
 	StepInstruction() (*api.DebuggerState, error)
 	// SwitchThread switches the current thread context.
