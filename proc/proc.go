@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/token"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -503,6 +504,59 @@ func (dbp *Process) StepInstruction() (err error) {
 		return err
 	}
 	return dbp.SelectedGoroutine.thread.SetCurrentBreakpoint()
+}
+
+// StepOut will continue until the current goroutine exits the
+// function currently being executed or a deferred function is executed
+func (dbp *Process) StepOut() error {
+	cond := sameGoroutineCondition(dbp.SelectedGoroutine)
+
+	topframe, err := topframe(dbp.SelectedGoroutine, dbp.CurrentThread)
+	if err != nil {
+		return err
+	}
+
+	pcs := []uint64{}
+
+	var deferpc uint64 = 0
+	if filepath.Ext(topframe.Current.File) == ".go" {
+		if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.DeferPC != 0 {
+			_, _, deferfn := dbp.goSymTable.PCToLine(dbp.SelectedGoroutine.DeferPC)
+			deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
+			if err != nil {
+				return err
+			}
+			pcs = append(pcs, deferpc)
+		}
+	}
+
+	if topframe.Ret == 0 && deferpc == 0 {
+		return errors.New("nothing to stepout to")
+	}
+
+	if deferpc != 0 && deferpc != topframe.Current.PC {
+		bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, cond)
+		if err != nil {
+			if _, ok := err.(BreakpointExistsError); !ok {
+				dbp.ClearInternalBreakpoints()
+				return err
+			}
+		}
+		if bp != nil {
+			// For StepOut we do not want to step into the deferred function
+			// when it's called by runtime.deferreturn so we do not populate
+			// DeferReturns.
+			bp.DeferReturns = []uint64{}
+		}
+	}
+
+	if topframe.Ret != 0 {
+		if err := dbp.setInternalBreakpoints(topframe.Current.PC, []uint64{topframe.Ret}, NextBreakpoint, cond); err != nil {
+			return err
+		}
+	}
+
+	return dbp.Continue()
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.

@@ -141,6 +141,18 @@ func setFunctionBreakpoint(p *Process, fname string) (*Breakpoint, error) {
 	return p.SetBreakpoint(addr, UserBreakpoint, nil)
 }
 
+func setFileBreakpoint(p *Process, t *testing.T, fixture protest.Fixture, lineno int) *Breakpoint {
+	addr, err := p.FindFileLocation(fixture.Source, lineno)
+	if err != nil {
+		t.Fatalf("FindFileLocation: %v", err)
+	}
+	bp, err := p.SetBreakpoint(addr, UserBreakpoint, nil)
+	if err != nil {
+		t.Fatalf("SetBreakpoint: %v", err)
+	}
+	return bp
+}
+
 func TestHalt(t *testing.T) {
 	stopChan := make(chan interface{})
 	withTestProcess("loopprog", t, func(p *Process, fixture protest.Fixture) {
@@ -2044,6 +2056,27 @@ func TestIssue561(t *testing.T) {
 	})
 }
 
+func TestStepOut(t *testing.T) {
+	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
+		bp, err := setFunctionBreakpoint(p, "main.helloworld")
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		f, lno := currentLineNumber(p, t)
+		if lno != 13 {
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 13)
+		}
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, lno = currentLineNumber(p, t)
+		if lno != 35 {
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 34)
+		}
+	})
+}
+
 func TestStepConcurrentDirect(t *testing.T) {
 	withTestProcess("teststepconcurrent", t, func(p *Process, fixture protest.Fixture) {
 		pc, err := p.FindFileLocation(fixture.Source, 37)
@@ -2161,6 +2194,47 @@ func TestStepConcurrentPtr(t *testing.T) {
 	})
 }
 
+func TestStepOutDefer(t *testing.T) {
+	withTestProcess("testnextdefer", t, func(p *Process, fixture protest.Fixture) {
+		pc, err := p.FindFileLocation(fixture.Source, 9)
+		assertNoError(err, t, "FindFileLocation()")
+		bp, err := p.SetBreakpoint(pc, UserBreakpoint, nil)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		f, lno := currentLineNumber(p, t)
+		if lno != 9 {
+			t.Fatalf("worng line number %s:%d, expected %d", f, lno, 5)
+		}
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, l, _ := p.goSymTable.PCToLine(currentPC(p, t))
+		if f == fixture.Source || l == 6 {
+			t.Fatalf("wrong location %s:%d, expected to end somewhere in runtime", f, l)
+		}
+	})
+}
+
+func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
+	// StepOut should not step into a deferred function if it is called
+	// directly, only if it is called through a panic.
+	// Here we test the case where the function is called by a deferreturn
+	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture, 11)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, ln := currentLineNumber(p, t)
+		if ln != 28 {
+			t.Fatalf("wrong line number, expected %d got %s:%d", 28, f, ln)
+		}
+	})
+}
+
 func TestStepOnCallPtrInstr(t *testing.T) {
 	withTestProcess("teststepprog", t, func(p *Process, fixture protest.Fixture) {
 		pc, err := p.FindFileLocation(fixture.Source, 10)
@@ -2211,6 +2285,24 @@ func TestIssue594(t *testing.T) {
 		f, ln := currentLineNumber(p, t)
 		if ln != 21 {
 			t.Fatalf("Program stopped at %s:%d, expected :21", f, ln)
+		}
+	})
+}
+
+func TestStepOutPanicAndDirectCall(t *testing.T) {
+	// StepOut should not step into a deferred function if it is called
+	// directly, only if it is called through a panic.
+	// Here we test the case where the function is called by a panic
+	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture, 17)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, ln := currentLineNumber(p, t)
+		if ln != 5 {
+			t.Fatalf("wrong line number, expected %d got %s:%d", 5, f, ln)
 		}
 	})
 }
