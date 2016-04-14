@@ -418,6 +418,9 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.StepInstruction:
 		log.Print("single stepping")
 		err = d.process.StepInstruction()
+	case api.StepOut:
+		log.Print("step out")
+		err = d.process.StepOut()
 	case api.SwitchThread:
 		log.Printf("switching to thread %d", command.ThreadID)
 		err = d.process.SwitchThread(command.ThreadID)
