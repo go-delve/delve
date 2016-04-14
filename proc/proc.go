@@ -620,6 +620,10 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 	return allg, nil
 }
 
+func (g *G) Thread() *Thread {
+	return g.thread
+}
+
 // Halt stops all threads.
 func (dbp *Process) Halt() (err error) {
 	if dbp.exited {

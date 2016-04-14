@@ -200,6 +200,8 @@ type Goroutine struct {
 	UserCurrentLoc Location `json:"userCurrentLoc"`
 	// Location of the go instruction that started this goroutine
 	GoStatementLoc Location `json:"goStatementLoc"`
+	// ID of the associated thread for running goroutines
+	ThreadID int `json:"threadID"`
 }
 
 // DebuggerCommand is a command which changes the debugger's execution state.

@@ -186,11 +186,17 @@ func ConvertFunction(fn *gosym.Func) *Function {
 
 // ConvertGoroutine converts from proc.G to api.Goroutine.
 func ConvertGoroutine(g *proc.G) *Goroutine {
+	th := g.Thread()
+	tid := 0
+	if th != nil {
+		tid = th.ID
+	}
 	return &Goroutine{
 		ID:             g.ID,
 		CurrentLoc:     ConvertLocation(g.CurrentLoc),
 		UserCurrentLoc: ConvertLocation(g.UserCurrent()),
 		GoStatementLoc: ConvertLocation(g.Go()),
+		ThreadID: tid,
 	}
 }
 
