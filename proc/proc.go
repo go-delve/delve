@@ -509,7 +509,8 @@ func (dbp *Process) StepInstruction() (err error) {
 		return errors.New("cannot single step: no selected goroutine")
 	}
 	if dbp.SelectedGoroutine.thread == nil {
-		return fmt.Errorf("cannot single step: no thread associated with goroutine %d", dbp.SelectedGoroutine.ID)
+		// Step called on parked goroutine
+		return dbp.stepToPC(dbp.SelectedGoroutine.PC)
 	}
 	return dbp.run(dbp.SelectedGoroutine.thread.StepInstruction)
 }
