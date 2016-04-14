@@ -233,6 +233,8 @@ const (
 	Continue = "continue"
 	// Step continues to next source line, entering function calls.
 	Step = "step"
+	// StepOut continues to the return address of the current function
+	StepOut = "stepOut"
 	// SingleStep continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"
 	// Next continues to the next source line, not entering function calls.

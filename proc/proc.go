@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/token"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -513,6 +514,42 @@ func (dbp *Process) StepInstruction() (err error) {
 		return dbp.stepToPC(dbp.SelectedGoroutine.PC)
 	}
 	return dbp.run(dbp.SelectedGoroutine.thread.StepInstruction)
+}
+
+// StepOut will continue until the current goroutine exits the
+// function currently being executed or a deferred function is executed
+func (dbp *Process) StepOut() error {
+	topframe, err := dbp.topframe()
+	if err != nil {
+		return err
+	}
+
+	pcs := []uint64{}
+
+	if filepath.Ext(topframe.Current.File) == ".go" {
+		if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.DeferPC != 0 {
+			_, _, deferfn := dbp.goSymTable.PCToLine(dbp.SelectedGoroutine.DeferPC)
+			deferpc, err := dbp.FirstPCAfterPrologue(deferfn, false)
+			if err != nil {
+				return err
+			}
+			pcs = append(pcs, deferpc)
+		}
+	}
+
+	if topframe.Ret != 0 {
+		pcs = append(pcs, topframe.Ret)
+	}
+
+	if len(pcs) == 0 {
+		return errors.New("nothing to stepout to")
+	}
+
+	if err := dbp.setTempBreakpoints(topframe.Current.PC, pcs, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
+		return err
+	}
+
+	return dbp.Continue()
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.

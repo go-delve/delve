@@ -1825,3 +1825,47 @@ func TestStepParked(t *testing.T) {
 		}
 	})
 }
+
+func TestStepOut(t *testing.T) {
+	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
+		bp, err := setFunctionBreakpoint(p, "main.helloworld")
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		f, lno := currentLineNumber(p, t)
+		if lno != 13 {
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 13)
+		}
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, lno = currentLineNumber(p, t)
+		if lno != 35 {
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 34)
+		}
+	})
+}
+
+func TestStepOutDefer(t *testing.T) {
+	withTestProcess("testnextdefer", t, func(p *Process, fixture protest.Fixture) {
+		pc, err := p.FindFileLocation(fixture.Source, 9)
+		assertNoError(err, t, "FindFileLocation()")
+		bp, err := p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		f, lno := currentLineNumber(p, t)
+		if lno != 9 {
+			t.Fatalf("worng line number %s:%d, expected %d", f, lno, 5)
+		}
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, lno = currentLineNumber(p, t)
+		if lno != 6 {
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 6)
+		}
+	})
+}

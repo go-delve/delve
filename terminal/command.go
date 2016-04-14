@@ -102,6 +102,7 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"step", "s"}, allowedPrefixes: scopePrefix, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: scopePrefix, cmdFn: stepInstruction, helpMsg: "Single step a single cpu instruction."},
 		{aliases: []string{"next", "n"}, allowedPrefixes: scopePrefix, cmdFn: next, helpMsg: "Step over to next source line."},
+		{aliases: []string{"stepout"}, allowedPrefixes: scopePrefix, cmdFn: stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: `Switch to the specified thread.
 
@@ -652,6 +653,18 @@ func next(t *Term, ctx callContext, args string) error {
 	}
 	printcontext(t, state)
 	return continueUntilCompleteNext(t, state, "next")
+}
+
+func stepout(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
+	state, err := t.client.StepOut()
+	if err != nil {
+		return err
+	}
+	printcontext(t, state)
+	return continueUntilCompleteNext(t, state, "stepout")
 }
 
 func clear(t *Term, ctx callContext, args string) error {
