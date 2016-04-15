@@ -43,6 +43,21 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 	fn(p, fixture)
 }
 
+func withTestProcessArgs(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture), Args []string) {
+	fixture := protest.BuildFixture(name)
+	p, err := Launch(append([]string{fixture.Path}, Args...))
+	if err != nil {
+		t.Fatal("Launch():", err)
+	}
+
+	defer func() {
+		p.Halt()
+		p.Kill()
+	}()
+
+	fn(p, fixture)
+}
+
 func getRegisters(p *Process, t *testing.T) Registers {
 	regs, err := p.Registers()
 	if err != nil {
@@ -1654,6 +1669,32 @@ func TestPanicBreakpoint(t *testing.T) {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
 		}
 	})
+}
+
+func TestCmdLineArgs(t *testing.T) {
+	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
+		err := p.Continue()
+		bp := p.CurrentBreakpoint()
+		if bp != nil && bp.Name == "unrecovered-panic" {
+			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
+		}
+		exit, exited := err.(ProcessExitedError)
+		if !exited {
+			t.Fatalf("Process did not exit!", err)
+		} else {
+			if exit.Status != 0 {
+				t.Fatalf("process exited with invalid status", exit.Status)
+			}
+		}
+
+	}, []string{"test", "-passFlag"})
+	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
+		p.Continue()
+		bp := p.CurrentBreakpoint()
+		if bp == nil || bp.Name != "unrecovered-panic" {
+			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
+		}
+	}, []string{"txest", "-pxassFlag"})
 }
 
 func TestIssue462(t *testing.T) {
