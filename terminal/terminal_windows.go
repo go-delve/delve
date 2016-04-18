@@ -9,8 +9,8 @@ import (
 	"github.com/mattn/go-colorable"
 )
 
-// getColorableWriter returns two values. First is Writer supported colors.
-// If return nil, colors will be disabled.
+// getColorableWriter will return a writer that is capable
+// of interpreting ANSI escape codes for terminal colors.
 func getColorableWriter() io.Writer {
 	if strings.ToLower(os.Getenv("ConEmuANSI")) == "on" {
 		// The ConEmu terminal is installed. Use it.

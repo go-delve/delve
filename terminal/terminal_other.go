@@ -7,8 +7,8 @@ import (
 	"os"
 )
 
-// getColorableWriter returns two values. First is Writer supported colors.
-// If return nil, colors will be disabled.
+// getColorableWriter simply returns stdout on
+// *nix machines.
 func getColorableWriter() io.Writer {
 	return os.Stdout
 }
