@@ -1,4 +1,4 @@
-package rpc
+package rpc1
 
 import (
 	"errors"
@@ -35,6 +35,7 @@ func NewServer(config *service.Config, logEnabled bool) *ServerImpl {
 	if !logEnabled {
 		log.SetOutput(ioutil.Discard)
 	}
+	log.Printf("Using API v1")
 
 	return &ServerImpl{
 		&RPCServer{

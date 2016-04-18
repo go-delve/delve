@@ -15,7 +15,8 @@ import (
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/rpc"
+	"github.com/derekparker/delve/service/rpc1"
+	"github.com/derekparker/delve/service/rpc2"
 	"github.com/derekparker/delve/terminal"
 	"github.com/derekparker/delve/version"
 	"github.com/spf13/cobra"
@@ -26,6 +27,8 @@ var (
 	Log bool
 	// Headless is whether to run without terminal.
 	Headless bool
+	// ApiVersion is the requested API version while running headless
+	ApiVersion int
 	// AcceptMulti allows multiple clients to connect to the same server
 	AcceptMulti bool
 	// Addr is the debugging server listen address.
@@ -78,6 +81,7 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate")
+	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 
@@ -239,7 +243,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		defer listener.Close()
 
 		// Create and start a debug server
-		server := rpc.NewServer(&service.Config{
+		server := rpc2.NewServer(&service.Config{
 			Listener:    listener,
 			ProcessArgs: processArgs,
 			AttachPid:   traceAttachPid,
@@ -248,7 +252,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		client := rpc.NewClient(listener.Addr().String())
+		client := rpc2.NewClient(listener.Addr().String())
 		funcs, err := client.ListFunctions(regexp)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -322,7 +326,7 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 func connect(addr string, conf *config.Config) int {
 	// Create and start a terminal - attach to running instance
 	var client service.Client
-	client = rpc.NewClient(addr)
+	client = rpc2.NewClient(addr)
 	term := terminal.New(client, conf)
 	status, err := term.Run()
 	if err != nil {
@@ -344,13 +348,37 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		fmt.Fprintf(os.Stderr, "Warning: init file ignored\n")
 	}
 
+	var server interface {
+		Run() error
+		Stop(bool) error
+	}
+
+
+	if !Headless {
+		ApiVersion = 2
+	}
+
 	// Create and start a debugger server
-	server := rpc.NewServer(&service.Config{
-		Listener:    listener,
-		ProcessArgs: processArgs,
-		AttachPid:   attachPid,
-		AcceptMulti: AcceptMulti,
-	}, Log)
+	switch ApiVersion {
+	case 1:
+		server = rpc1.NewServer(&service.Config{
+			Listener:    listener,
+			ProcessArgs: processArgs,
+			AttachPid:   attachPid,
+			AcceptMulti: AcceptMulti,
+		}, Log)
+	case 2:
+		server = rpc2.NewServer(&service.Config{
+			Listener:    listener,
+			ProcessArgs: processArgs,
+			AttachPid:   attachPid,
+			AcceptMulti: AcceptMulti,
+		}, Log)
+	default:
+		fmt.Println("Unknown API version %d", ApiVersion)
+		return 1
+	}
+
 	if err := server.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -365,7 +393,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 	} else {
 		// Create and start a terminal
 		var client service.Client
-		client = rpc.NewClient(listener.Addr().String())
+		client = rpc2.NewClient(listener.Addr().String())
 		term := terminal.New(client, conf)
 		term.InitFile = InitFile
 		status, err = term.Run()
