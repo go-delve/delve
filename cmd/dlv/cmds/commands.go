@@ -358,7 +358,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 
 	var status int
 	if Headless {
-		if Addr == "localhost:0" {
+		if !RootCommand.Flags().Changed("listen") {
 			// Print listener address
 			fmt.Printf("API server listening at: %s\n", listener.Addr())
 		}
