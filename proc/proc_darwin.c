@@ -23,7 +23,7 @@ __attribute__ ((section ("__TEXT,__info_plist"),used)) =
 
 kern_return_t
 acquire_mach_task(int tid,
-		mach_port_name_t *task,
+		task_t *task,
 		mach_port_t *port_set,
 		mach_port_t *exception_port,
 		mach_port_t *notification_port)

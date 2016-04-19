@@ -3,11 +3,12 @@
 package terminal
 
 import (
+	"io"
 	"os"
-	"strings"
 )
 
-// supportsEscapeCodes returns true if console handles escape codes.
-func supportsEscapeCodes() bool {
-	return strings.ToLower(os.Getenv("TERM")) != "dumb"
+// getColorableWriter simply returns stdout on
+// *nix machines.
+func getColorableWriter() io.Writer {
+	return os.Stdout
 }

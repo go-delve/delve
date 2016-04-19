@@ -9,12 +9,13 @@ import (
 	"debug/gosym"
 	"errors"
 	"fmt"
-	"golang.org/x/debug/macho"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 	"unsafe"
+
+	"golang.org/x/debug/macho"
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
@@ -23,9 +24,9 @@ import (
 
 // OSProcessDetails holds Darwin specific information.
 type OSProcessDetails struct {
-	task             C.mach_port_name_t // mach task for the debugged process.
-	exceptionPort    C.mach_port_t      // mach port for receiving mach exceptions.
-	notificationPort C.mach_port_t      // mach port for dead name notification (process exit).
+	task             C.task_t      // mach task for the debugged process.
+	exceptionPort    C.mach_port_t // mach port for receiving mach exceptions.
+	notificationPort C.mach_port_t // mach port for dead name notification (process exit).
 
 	// the main port we use, will return messages from both the
 	// exception and notification ports.
@@ -144,7 +145,7 @@ func (dbp *Process) updateThreadList() error {
 	)
 
 	for {
-		count = C.thread_count(C.task_t(dbp.os.task))
+		count = C.thread_count(dbp.os.task)
 		if count == -1 {
 			return fmt.Errorf("could not get thread count")
 		}
@@ -152,7 +153,7 @@ func (dbp *Process) updateThreadList() error {
 
 		// TODO(dp) might be better to malloc mem in C and then free it here
 		// instead of getting count above and passing in a slice
-		kret = C.get_threads(C.task_t(dbp.os.task), unsafe.Pointer(&list[0]), count)
+		kret = C.get_threads(dbp.os.task, unsafe.Pointer(&list[0]), count)
 		if kret != -2 {
 			break
 		}
@@ -337,7 +338,7 @@ func (dbp *Process) waitForStop() ([]int, error) {
 			count = 0
 			ports = append(ports, int(port))
 		} else {
-			n := C.num_running_threads(C.task_t(dbp.os.task))
+			n := C.num_running_threads(dbp.os.task)
 			if n == 0 {
 				return ports, nil
 			} else if n < 0 {
