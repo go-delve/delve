@@ -69,7 +69,7 @@ func Launch(cmd []string) (*Process, error) {
 	// adapted from standard library makeCmdLine
 	// see https://github.com/golang/go/blob/master/src/syscall/exec_windows.go#L86
 	var cmdLineGo string
-	if len(cmd) > 1 {
+	if len(cmd) >= 1 {
 		for _, v := range cmd {
 			if cmdLineGo != "" {
 				cmdLineGo += " "
