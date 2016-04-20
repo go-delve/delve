@@ -17,7 +17,7 @@ kern_return_t
 set_pc(thread_act_t, uint64_t);
 
 kern_return_t
-single_step(thread_act_t);
+set_single_step_flag(thread_act_t);
 
 kern_return_t
 clear_trap_flag(thread_act_t);

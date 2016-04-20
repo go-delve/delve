@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -375,6 +376,9 @@ func (dbp *Process) Continue() error {
 
 		switch {
 		case dbp.CurrentThread.CurrentBreakpoint == nil:
+			if dbp.halt {
+				return nil
+			}
 			// runtime.Breakpoint or manual stop
 			if dbp.CurrentThread.onRuntimeBreakpoint() {
 				for i := 0; i < 2; i++ {
@@ -896,6 +900,11 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 }
 
 func (dbp *Process) postExit() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("error during postExit: %v", err)
+		}
+	}()
 	dbp.exited = true
 	close(dbp.ptraceChan)
 	close(dbp.ptraceDoneChan)

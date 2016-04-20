@@ -363,6 +363,9 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
 func (thread *Thread) SetCurrentBreakpoint() error {
+	if thread == nil {
+		return nil
+	}
 	thread.CurrentBreakpoint = nil
 	pc, err := thread.PC()
 	if err != nil {

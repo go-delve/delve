@@ -38,8 +38,14 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 	}
 
 	defer func() {
-		p.Halt()
-		p.Kill()
+		if !p.Exited() {
+			if err := p.Halt(); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.Kill(); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}()
 
 	fn(p, fixture)
@@ -141,31 +147,18 @@ func setFunctionBreakpoint(p *Process, fname string) (*Breakpoint, error) {
 }
 
 func TestHalt(t *testing.T) {
-	stopChan := make(chan interface{})
 	withTestProcess("loopprog", t, func(p *Process, fixture protest.Fixture) {
-		_, err := setFunctionBreakpoint(p, "main.loop")
-		assertNoError(err, t, "SetBreakpoint")
-		assertNoError(p.Continue(), t, "Continue")
-		for _, th := range p.Threads {
-			if th.running != false {
-				t.Fatal("expected running = false for thread", th.ID)
-			}
-			_, err := th.Registers()
-			assertNoError(err, t, "Registers")
-		}
 		go func() {
 			for {
 				if p.Running() {
 					if err := p.RequestManualStop(); err != nil {
 						t.Fatal(err)
 					}
-					stopChan <- nil
-					return
+					break
 				}
 			}
 		}()
 		assertNoError(p.Continue(), t, "Continue")
-		<-stopChan
 		// Loop through threads and make sure they are all
 		// actually stopped, err will not be nil if the process
 		// is still running.
@@ -942,7 +935,7 @@ func TestProcessReceivesSIGCHLD(t *testing.T) {
 		err := p.Continue()
 		_, ok := err.(ProcessExitedError)
 		if !ok {
-			t.Fatalf("Continue() returned unexpected error type %s", err)
+			t.Fatalf("Continue() returned unexpected error type %v", err)
 		}
 	})
 }

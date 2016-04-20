@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/debug/macho"
@@ -76,12 +77,25 @@ func Launch(cmd []string) (*Process, error) {
 		C.free(unsafe.Pointer(argvSlice[i]))
 	}
 
+	var hdr C.mach_msg_header_t
+	var sig C.int
+	port := C.mach_port_wait(dbp.os.portSet, &hdr, &sig, C.int(0))
+	if port == 0 {
+		return nil, errors.New("error while waiting for process to exec")
+	}
 	dbp, err = initializeDebugProcess(dbp, argv0Go, false)
 	if err != nil {
-		return nil, err
+		return dbp, err
 	}
-	err = dbp.Continue()
-	return dbp, err
+	th, ok := dbp.Threads[int(port)]
+	if !ok {
+		return nil, errors.New("could not find thread")
+	}
+	th.os.msgStop = true
+	th.os.hdr = hdr
+	th.os.sig = sig
+
+	return dbp, nil
 }
 
 // Attach to an existing process with the given PID.
@@ -100,27 +114,40 @@ func Attach(pid int) (*Process, error) {
 }
 
 // Kill kills the process.
-func (dbp *Process) Kill() (err error) {
+func (dbp *Process) Kill() error {
 	if dbp.exited {
 		return nil
 	}
-	err = sys.Kill(-dbp.Pid, sys.SIGKILL)
-	if err != nil {
-		return errors.New("could not deliver signal: " + err.Error())
+
+	for _, th := range dbp.Threads {
+		th.halt()
 	}
-	for port := range dbp.Threads {
-		if C.thread_resume(C.thread_act_t(port)) != C.KERN_SUCCESS {
-			return errors.New("could not resume task")
-		}
+	for _, th := range dbp.Threads {
+		th.sendMachReply()
 	}
-	for {
-		port := C.mach_port_wait(dbp.os.portSet, C.int(0))
-		if port == dbp.os.notificationPort {
-			break
-		}
+	kret := C.task_set_exception_ports(dbp.os.task, C.EXC_MASK_ALL, C.MACH_PORT_NULL, C.EXCEPTION_DEFAULT, C.THREAD_STATE_NONE)
+	if kret != C.KERN_SUCCESS {
+		return errors.New("could not restore exception ports")
 	}
+	if err := syscall.Kill(-dbp.Pid, syscall.SIGKILL); err != nil {
+		return err
+	}
+	for _, th := range dbp.Threads {
+		C.resume_thread(th.os.threadAct)
+	}
+	_, err := dbp.trapWait(-1)
+	if _, ok := err.(ProcessExitedError); !ok {
+		return errors.New("process did not exit")
+	}
+	selfTask := C.ipc_space_t(C.mach_task())
+	for _, th := range dbp.Threads {
+		C.mach_port_deallocate(selfTask, C.mach_port_name_t(th.os.threadAct))
+	}
+	C.mach_port_destroy(selfTask, C.mach_port_name_t(dbp.os.notificationPort))
+	C.mach_port_deallocate(selfTask, C.mach_port_name_t(dbp.os.exceptionPort))
+	C.mach_port_deallocate(selfTask, C.mach_port_name_t(dbp.os.task))
 	dbp.postExit()
-	return
+	return nil
 }
 
 func (dbp *Process) requestManualStop() (err error) {
@@ -283,7 +310,15 @@ func (dbp *Process) findExecutable(path string) (*macho.File, error) {
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	for {
-		port := C.mach_port_wait(dbp.os.portSet, C.int(0))
+		var hdr C.mach_msg_header_t
+		var sig C.int
+		port := C.mach_port_wait(dbp.os.portSet, &hdr, &sig, C.int(0))
+		th, ok := dbp.Threads[int(port)]
+		if ok {
+			th.os.msgStop = true
+			th.os.hdr = hdr
+			th.os.sig = sig
+		}
 
 		switch port {
 		case dbp.os.notificationPort:
@@ -301,7 +336,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				// process natural death _sometimes_.
 				continue
 			}
-			return nil, nil
+			return th, nil
 
 		case 0:
 			return nil, fmt.Errorf("error while waiting for task")
@@ -310,58 +345,46 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
 		dbp.updateThreadList()
-		th, ok := dbp.Threads[int(port)]
-		if !ok {
-			if dbp.halt {
-				dbp.halt = false
-				return th, nil
-			}
-			if dbp.firstStart || th.singleStepping {
-				dbp.firstStart = false
-				return th, nil
-			}
-			if err := th.Continue(); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		return th, nil
+		_, err := dbp.drainPendingMesages()
+		return th, err
 	}
 }
 
-func (dbp *Process) waitForStop() ([]int, error) {
+func (dbp *Process) drainPendingMesages() ([]int, error) {
 	ports := make([]int, 0, len(dbp.Threads))
-	count := 0
 	for {
-		port := C.mach_port_wait(dbp.os.portSet, C.int(1))
-		if port != 0 {
-			count = 0
-			ports = append(ports, int(port))
-		} else {
-			n := C.num_running_threads(dbp.os.task)
-			if n == 0 {
-				return ports, nil
-			} else if n < 0 {
-				return nil, fmt.Errorf("error waiting for thread stop %d", n)
-			} else if count > 16 {
-				return nil, fmt.Errorf("could not stop process %d", n)
+		var hdr C.mach_msg_header_t
+		var sig C.int
+		port := C.mach_port_wait(dbp.os.portSet, &hdr, &sig, C.int(1))
+		if port == 0 {
+			return ports, nil
+		}
+		if port == C.MACH_RCV_TIMED_OUT {
+			return ports, nil
+		}
+		if port == dbp.os.notificationPort {
+			_, status, err := dbp.wait(dbp.Pid, 0)
+			if err != nil {
+				return nil, err
 			}
+			dbp.postExit()
+			return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+		}
+		th, ok := dbp.Threads[int(port)]
+		if ok {
+			th.os.msgStop = true
+			th.os.hdr = hdr
+			th.os.sig = sig
+			ports = append(ports, int(port))
 		}
 	}
 }
 
 func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	ports, err := dbp.waitForStop()
-	if err != nil {
-		return err
-	}
-	trapthread.SetCurrentBreakpoint()
-	for _, port := range ports {
-		if th, ok := dbp.Threads[port]; ok {
-			err := th.SetCurrentBreakpoint()
-			if err != nil {
-				return err
-			}
+	for _, th := range dbp.Threads {
+		err := th.SetCurrentBreakpoint()
+		if err != nil {
+			return err
 		}
 	}
 	return nil

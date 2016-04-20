@@ -4,9 +4,13 @@ package proc
 // #include "proc_darwin.h"
 import "C"
 import (
+	"errors"
 	"fmt"
-	sys "golang.org/x/sys/unix"
+	"log"
+	"syscall"
 	"unsafe"
+
+	sys "golang.org/x/sys/unix"
 )
 
 // WaitStatus is a synonym for the platform-specific WaitStatus
@@ -17,39 +21,43 @@ type WaitStatus sys.WaitStatus
 type OSSpecificDetails struct {
 	threadAct C.thread_act_t
 	registers C.x86_thread_state64_t
+	hdr       C.mach_msg_header_t
+	sig       C.int
+	msgStop   bool
 }
 
 // ErrContinueThread is the error returned when a thread could not
 // be continued.
 var ErrContinueThread = fmt.Errorf("could not continue thread")
 
-func (t *Thread) halt() (err error) {
+func (t *Thread) halt() error {
 	kret := C.thread_suspend(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
 		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
-		err = fmt.Errorf("could not suspend thread %d %s", t.ID, errStr)
-		return
+		return fmt.Errorf("could not suspend thread %d %s", t.ID, errStr)
 	}
-	return
+	return nil
 }
 
 func (t *Thread) singleStep() error {
-	kret := C.single_step(t.os.threadAct)
-	if kret != C.KERN_SUCCESS {
+	if C.set_single_step_flag(t.os.threadAct) != C.KERN_SUCCESS {
 		return fmt.Errorf("could not single step")
 	}
-	for {
-		twthread, err := t.dbp.trapWait(t.dbp.Pid)
-		if err != nil {
+	C.task_suspend(t.dbp.os.task)
+	for _, th := range t.dbp.Threads {
+		if err := th.halt(); err != nil {
 			return err
 		}
-		if twthread.ID == t.ID {
-			break
-		}
 	}
-
-	kret = C.clear_trap_flag(t.os.threadAct)
-	if kret != C.KERN_SUCCESS {
+	if err := t.resume(); err != nil {
+		return err
+	}
+	C.task_resume(t.dbp.os.task)
+	_, err := t.dbp.trapWait(t.dbp.Pid)
+	if err != nil {
+		return err
+	}
+	if C.clear_trap_flag(t.os.threadAct) != C.KERN_SUCCESS {
 		return fmt.Errorf("could not clear CPU trap flag")
 	}
 	return nil
@@ -57,15 +65,40 @@ func (t *Thread) singleStep() error {
 
 func (t *Thread) resume() error {
 	t.running = true
-	// TODO(dp) set flag for ptrace stops
-	var err error
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.Pid, 0) })
-	if err == nil {
-		return nil
+	var kret C.kern_return_t
+	if err := t.sendMachReply(); err != nil {
+		return ErrContinueThread
 	}
-	kret := C.resume_thread(t.os.threadAct)
+	kret = C.resume_thread(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
 		return ErrContinueThread
+	}
+	return nil
+}
+
+func (t *Thread) sendMachReply() error {
+	var emptyhdr C.mach_msg_header_t
+	var kret C.kern_return_t
+	if t.os.msgStop {
+		t.os.msgStop = false
+		sig := int(t.os.sig)
+		s := syscall.Signal(sig)
+		// TODO(derekparker) ugly hack... we need to
+		// handle signals in a more general way
+		if s == syscall.SIGTRAP {
+			sig = 0
+		}
+		var err error
+		t.dbp.execPtraceFunc(func() { err = PtraceThupdate(t.dbp.Pid, t.os.threadAct, sig) })
+		if err != nil {
+			log.Println("could not thupdate:", err)
+		}
+
+		kret = C.mach_send_reply(t.os.hdr)
+		if kret != C.KERN_SUCCESS {
+			return errors.New("could not send mach reply")
+		}
+		t.os.hdr = emptyhdr
 	}
 	return nil
 }
