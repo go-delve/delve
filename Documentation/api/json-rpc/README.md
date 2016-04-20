@@ -28,7 +28,7 @@ The first step will be calling the method `FindLocation` with `Scope = api.EvalS
 the response packet will look like this:
 
 ```
-"id":2,"result":{"Locations":[{"pc":4199019,"file":"/home/a/temp/callme/callme.go","line":31,"function":{"name":"main.main","value":4198992,"type":84,"goType":0}}]},"error":null}
+{"id":2,"result":{"Locations":[{"pc":4199019,"file":"/home/a/temp/callme/callme.go","line":31,"function":{"name":"main.main","value":4198992,"type":84,"goType":0}}]},"error":null}
 ```
 
 Now your client should call the method `CreateBreakpoint` and specify `4199019` (the `pc` field in the response object) as the target address:
