@@ -353,7 +353,6 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		Stop(bool) error
 	}
 
-
 	if !Headless {
 		ApiVersion = 2
 	}
@@ -386,10 +385,8 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 
 	var status int
 	if Headless {
-		if !RootCommand.Flags().Changed("listen") {
-			// Print listener address
-			fmt.Printf("API server listening at: %s\n", listener.Addr())
-		}
+		// Print listener address
+		fmt.Printf("API server listening at: %s\n", listener.Addr())
 		ch := make(chan os.Signal)
 		signal.Notify(ch, syscall.SIGINT)
 		<-ch
