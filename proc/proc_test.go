@@ -43,6 +43,21 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 	fn(p, fixture)
 }
 
+func withTestProcessArgs(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture), args []string) {
+	fixture := protest.BuildFixture(name)
+	p, err := Launch(append([]string{fixture.Path}, args...))
+	if err != nil {
+		t.Fatal("Launch():", err)
+	}
+
+	defer func() {
+		p.Halt()
+		p.Kill()
+	}()
+
+	fn(p, fixture)
+}
+
 func getRegisters(p *Process, t *testing.T) Registers {
 	regs, err := p.Registers()
 	if err != nil {
@@ -1654,6 +1669,45 @@ func TestPanicBreakpoint(t *testing.T) {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
 		}
 	})
+}
+
+func TestCmdLineArgs(t *testing.T) {
+	expectSuccess := func(p *Process, fixture protest.Fixture) {
+		err := p.Continue()
+		bp := p.CurrentBreakpoint()
+		if bp != nil && bp.Name == "unrecovered-panic" {
+			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
+		}
+		exit, exited := err.(ProcessExitedError)
+		if !exited {
+			t.Fatalf("Process did not exit!", err)
+		} else {
+			if exit.Status != 0 {
+				t.Fatalf("process exited with invalid status", exit.Status)
+			}
+		}
+	}
+
+	expectPanic := func(p *Process, fixture protest.Fixture) {
+		p.Continue()
+		bp := p.CurrentBreakpoint()
+		if bp == nil || bp.Name != "unrecovered-panic" {
+			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
+		}
+	}
+
+	// make sure multiple arguments (including one with spaces) are passed to the binary correctly
+	withTestProcessArgs("testargs", t, expectSuccess, []string{"test"})
+	withTestProcessArgs("testargs", t, expectSuccess, []string{"test", "pass flag"})
+	// check that arguments with spaces are *only* passed correctly when correctly called
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test pass", "flag"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test", "pass", "flag"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test pass flag"})
+	// and that invalid cases (wrong arguments or no arguments) panic
+	withTestProcess("testargs", t, expectPanic)
+	withTestProcessArgs("testargs", t, expectPanic, []string{"invalid"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test", "invalid"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"invalid", "pass flag"})
 }
 
 func TestIssue462(t *testing.T) {
