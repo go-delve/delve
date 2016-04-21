@@ -1672,8 +1672,7 @@ func TestPanicBreakpoint(t *testing.T) {
 }
 
 func TestCmdLineArgs(t *testing.T) {
-	// make sure first and second flag pass
-	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
+	expectSuccess := func(p *Process, fixture protest.Fixture) {
 		err := p.Continue()
 		bp := p.CurrentBreakpoint()
 		if bp != nil && bp.Name == "unrecovered-panic" {
@@ -1687,51 +1686,28 @@ func TestCmdLineArgs(t *testing.T) {
 				t.Fatalf("process exited with invalid status", exit.Status)
 			}
 		}
-	}, []string{"test"})
-	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
-		bp := p.CurrentBreakpoint()
-		if bp != nil && bp.Name == "unrecovered-panic" {
-			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
-		}
-		exit, exited := err.(ProcessExitedError)
-		if !exited {
-			t.Fatalf("Process did not exit!", err)
-		} else {
-			if exit.Status != 0 {
-				t.Fatalf("process exited with invalid status", exit.Status)
-			}
-		}
-	}, []string{"test", "-passFlag"})
-	// and that invalid cases (wrong flags or no flags) panic
-	withTestProcess("testargs", t, func(p *Process, fixture protest.Fixture) {
+	}
+
+	expectPanic := func(p *Process, fixture protest.Fixture) {
 		p.Continue()
 		bp := p.CurrentBreakpoint()
 		if bp == nil || bp.Name != "unrecovered-panic" {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
 		}
-	})
-	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
-		p.Continue()
-		bp := p.CurrentBreakpoint()
-		if bp == nil || bp.Name != "unrecovered-panic" {
-			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
-		}
-	}, []string{"txest"})
-	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
-		p.Continue()
-		bp := p.CurrentBreakpoint()
-		if bp == nil || bp.Name != "unrecovered-panic" {
-			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
-		}
-	}, []string{"test", "-pxassFlag"})
-	withTestProcessArgs("testargs", t, func(p *Process, fixture protest.Fixture) {
-		p.Continue()
-		bp := p.CurrentBreakpoint()
-		if bp == nil || bp.Name != "unrecovered-panic" {
-			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint)
-		}
-	}, []string{"txest", "-passFlag"})
+	}
+
+	// make sure multiple arguments (including one with spaces) are passed to the binary correctly
+	withTestProcessArgs("testargs", t, expectSuccess, []string{"test"})
+	withTestProcessArgs("testargs", t, expectSuccess, []string{"test", "pass flag"})
+	// check that arguments with spaces are *only* passed correctly when correctly called
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test pass", "flag"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test", "pass", "flag"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test pass flag"})
+	// and that invalid cases (wrong arguments or no arguments) panic
+	withTestProcess("testargs", t, expectPanic)
+	withTestProcessArgs("testargs", t, expectPanic, []string{"invalid"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"test", "invalid"})
+	withTestProcessArgs("testargs", t, expectPanic, []string{"invalid", "pass flag"})
 }
 
 func TestIssue462(t *testing.T) {
