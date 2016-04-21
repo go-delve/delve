@@ -10,6 +10,8 @@ import (
 	"github.com/derekparker/delve/proc"
 )
 
+var NotExecutableErr = proc.NotExecutableErr
+
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
 	// CurrentThread is the currently selected debugger thread.

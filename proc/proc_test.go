@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -1825,4 +1826,58 @@ func TestStepParked(t *testing.T) {
 			t.Fatalf("Step did not continue on the selected goroutine, expected %d got %d", parkedg.ID, p.SelectedGoroutine.ID)
 		}
 	})
+}
+
+func TestIssue509(t *testing.T) {
+	fixturesDir := protest.FindFixturesDir()
+	nomaindir := filepath.Join(fixturesDir, "nomaindir")
+	cmd := exec.Command("go", "build", "-gcflags=-N -l", "-o", "debug")
+	cmd.Dir = nomaindir
+	assertNoError(cmd.Run(), t, "go build")
+	exepath := filepath.Join(nomaindir, "debug")
+	_, err := Launch([]string{exepath})
+	if err == nil {
+		t.Fatalf("expected error but none was generated")
+	}
+	if err != NotExecutableErr {
+		t.Fatalf("expected error \"%v\" got \"%v\"", NotExecutableErr, err)
+	}
+	os.Remove(exepath)
+}
+
+func TestUnsupportedArch(t *testing.T) {
+	ver, _ := ParseVersionString(runtime.Version())
+	if ver.Major < 0 || !ver.AfterOrEqual(GoVersion{1, 6, -1, 0, 0}) {
+		// cross compile (with -N?) works only on select versions of go
+		return
+	}
+	
+	fixturesDir := protest.FindFixturesDir()
+	infile := filepath.Join(fixturesDir, "math.go")
+	outfile := filepath.Join(fixturesDir, "_math_debug_386")
+	
+	cmd := exec.Command("go", "build", "-gcflags=-N -l", "-o", outfile, infile)
+	for _, v := range os.Environ() {
+		if !strings.HasPrefix(v, "GOARCH=") {
+			cmd.Env = append(cmd.Env, v)
+		}
+	}
+	cmd.Env = append(cmd.Env, "GOARCH=386")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go build failed: %v: %v", err, string(out))
+	}
+	defer os.Remove(outfile)
+	
+	p, err := Launch([]string{outfile})
+	switch err {
+	case UnsupportedArchErr:
+		// all good
+	case nil:
+		p.Halt()
+		p.Kill()
+		t.Fatal("Launch is expected to fail, but succeeded")
+	default:
+		t.Fatal(err)
+	}
 }

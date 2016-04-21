@@ -37,15 +37,20 @@ func Launch(cmd []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Make sure the binary exists.
+
+	// Make sure the binary exists and is an executable file
 	if filepath.Base(cmd[0]) == cmd[0] {
 		if _, err := exec.LookPath(cmd[0]); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := os.Stat(argv0Go); err != nil {
-		return nil, err
+
+	peFile, err := openExecutablePath(argv0Go)
+	if err != nil {
+		return nil, NotExecutableErr
 	}
+	peFile.Close()
+
 	// Duplicate the stdin/stdout/stderr handles
 	files := []uintptr{uintptr(syscall.Stdin), uintptr(syscall.Stdout), uintptr(syscall.Stderr)}
 	p, _ := syscall.GetCurrentProcess()
@@ -308,25 +313,34 @@ func (dbp *Process) parseDebugLineInfo(exe *pe.File, wg *sync.WaitGroup) {
 	}
 }
 
+var UnsupportedArchErr = errors.New("unsupported architecture of windows/386 - only windows/amd64 is supported")
+
 func (dbp *Process) findExecutable(path string) (*pe.File, error) {
 	if path == "" {
 		// TODO: Find executable path from PID/handle on Windows:
 		// https://msdn.microsoft.com/en-us/library/aa366789(VS.85).aspx
 		return nil, fmt.Errorf("not yet implemented")
 	}
-	f, err := os.OpenFile(path, 0, os.ModePerm)
+	peFile, err := openExecutablePath(path)
 	if err != nil {
 		return nil, err
 	}
-	peFile, err := pe.NewFile(f)
-	if err != nil {
-		return nil, err
+	if peFile.Machine != pe.IMAGE_FILE_MACHINE_AMD64 {
+		return nil, UnsupportedArchErr
 	}
 	dbp.dwarf, err = dwarfFromPE(peFile)
 	if err != nil {
 		return nil, err
 	}
 	return peFile, nil
+}
+
+func openExecutablePath(path string) (*pe.File, error) {
+	f, err := os.OpenFile(path, 0, os.ModePerm)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+	return pe.NewFile(f)
 }
 
 // Adapted from src/debug/pe/file.go: pe.(*File).DWARF()

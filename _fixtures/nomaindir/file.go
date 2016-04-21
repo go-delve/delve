@@ -1,0 +1,4 @@
+package nomaindir
+
+func AFunction() {
+}

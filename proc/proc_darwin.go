@@ -38,6 +38,11 @@ type OSProcessDetails struct {
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
 func Launch(cmd []string) (*Process, error) {
+	// check that the argument to Launch is an executable file
+	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
+		return nil, NotExecutableErr
+	}
+
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -266,6 +271,8 @@ func (dbp *Process) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
 	}
 }
 
+var UnsupportedArchErr = errors.New("unsupported architecture - only darwin/amd64 is supported")
+
 func (dbp *Process) findExecutable(path string) (*macho.File, error) {
 	if path == "" {
 		path = C.GoString(C.find_executable(C.int(dbp.Pid)))
@@ -273,6 +280,9 @@ func (dbp *Process) findExecutable(path string) (*macho.File, error) {
 	exe, err := macho.Open(path)
 	if err != nil {
 		return nil, err
+	}
+	if exe.Cpu != macho.CpuAmd64 {
+		return nil, UnsupportedArchErr
 	}
 	dbp.dwarf, err = exe.DWARF()
 	if err != nil {

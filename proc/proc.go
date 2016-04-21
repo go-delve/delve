@@ -63,6 +63,8 @@ type Process struct {
 	moduleData         []moduleData
 }
 
+var NotExecutableErr = errors.New("not an executable file")
+
 // New returns an initialized Process struct. Before returning,
 // it will also launch a goroutine in order to handle ptrace(2)
 // functions. For more information, see the documentation on

@@ -61,7 +61,10 @@ func New(config *Config) (*Debugger, error) {
 		log.Printf("launching process with args: %v", d.config.ProcessArgs)
 		p, err := proc.Launch(d.config.ProcessArgs)
 		if err != nil {
-			return nil, fmt.Errorf("could not launch process: %s", err)
+			if err != proc.NotExecutableErr && err != proc.UnsupportedArchErr {
+				err = fmt.Errorf("could not launch process: %s", err)
+			}
+			return nil, err
 		}
 		d.process = p
 	}

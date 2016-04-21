@@ -151,7 +151,7 @@ consider compiling debugging binaries with -gcflags="-N -l".`,
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(execute(0, args, conf))
+			os.Exit(execute(0, args, conf, executingExistingFile))
 		},
 	}
 	RootCommand.AddCommand(execCommand)
@@ -231,7 +231,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 		defer os.Remove(fp)
 
 		processArgs := append([]string{"./" + debugname}, targetArgs...)
-		return execute(0, processArgs, conf)
+		return execute(0, processArgs, conf, executingGeneratedFile)
 	}()
 	os.Exit(status)
 }
@@ -318,7 +318,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		defer os.Remove("./" + testdebugname)
 		processArgs := append([]string{"./" + testdebugname}, targetArgs...)
 
-		return execute(0, processArgs, conf)
+		return execute(0, processArgs, conf, executingOther)
 	}()
 	os.Exit(status)
 }
@@ -329,7 +329,7 @@ func attachCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
 		os.Exit(1)
 	}
-	os.Exit(execute(pid, nil, conf))
+	os.Exit(execute(pid, nil, conf, executingOther))
 }
 
 func connectCmd(cmd *cobra.Command, args []string) {
@@ -360,7 +360,15 @@ func connect(addr string, conf *config.Config) int {
 	return status
 }
 
-func execute(attachPid int, processArgs []string, conf *config.Config) int {
+type executeKind int
+
+const (
+	executingExistingFile = executeKind(iota)
+	executingGeneratedFile
+	executingOther
+)
+
+func execute(attachPid int, processArgs []string, conf *config.Config, kind executeKind) int {
 	// Make a TCP listener
 	listener, err := net.Listen("tcp", Addr)
 	if err != nil {
@@ -404,6 +412,18 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 	}
 
 	if err := server.Run(); err != nil {
+		if err == api.NotExecutableErr {
+			switch kind {
+			case executingGeneratedFile:
+				fmt.Fprintln(os.Stderr, "Can not debug non-main package")
+				return 1
+			case executingExistingFile:
+				fmt.Fprintf(os.Stderr, "%s is not executable\n", processArgs[0])
+				return 1
+			default:
+				// fallthrough
+			}
+		}
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

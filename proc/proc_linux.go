@@ -49,6 +49,10 @@ func Launch(cmd []string) (*Process, error) {
 		proc *exec.Cmd
 		err  error
 	)
+	// check that the argument to Launch is an executable file
+	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
+		return nil, NotExecutableErr
+	}
 	dbp := New(0)
 	dbp.execPtraceFunc(func() {
 		proc = exec.Command(cmd[0])
@@ -162,6 +166,8 @@ func (dbp *Process) updateThreadList() error {
 	return nil
 }
 
+var UnsupportedArchErr = errors.New("unsupported architecture - only linux/amd64 is supported")
+
 func (dbp *Process) findExecutable(path string) (*elf.File, error) {
 	if path == "" {
 		path = fmt.Sprintf("/proc/%d/exe", dbp.Pid)
@@ -173,6 +179,9 @@ func (dbp *Process) findExecutable(path string) (*elf.File, error) {
 	elfFile, err := elf.NewFile(f)
 	if err != nil {
 		return nil, err
+	}
+	if elfFile.Machine != elf.EM_X86_64 {
+		return nil, UnsupportedArchErr
 	}
 	dbp.dwarf, err = elfFile.DWARF()
 	if err != nil {
