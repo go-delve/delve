@@ -19,9 +19,7 @@ import (
 )
 
 const (
-	maxVariableRecurse = 1  // How far to recurse when evaluating nested types.
-	maxArrayValues     = 64 // Max value for reading large arrays.
-	maxErrCount        = 3  // Max number of read errors to accept while evaluating slices, arrays and structs
+	maxErrCount = 3 // Max number of read errors to accept while evaluating slices, arrays and structs
 
 	maxArrayStridePrefetch = 1024 // Maximum size of array stride for which we will prefetch the array contents
 
@@ -67,6 +65,22 @@ type Variable struct {
 	loaded     bool
 	Unreadable error
 }
+
+type LoadConfig struct {
+	// FollowPointers requests pointers to be automatically dereferenced.
+	FollowPointers bool
+	// MaxVariableRecurse is how far to recurse when evaluating nested types.
+	MaxVariableRecurse int
+	// MaxStringLen is the maximum number of bytes read from a string
+	MaxStringLen int
+	// MaxArrayValues is the maximum number of elements read from an array, a slice or a map.
+	MaxArrayValues int
+	// MaxStructFields is the maximum number of fields read from a struct, -1 will read all fields.
+	MaxStructFields int
+}
+
+var loadSingleValue = LoadConfig{false, 0, 64, 0, 0}
+var loadFullValue = LoadConfig{true, 1, 64, 64, -1}
 
 // M represents a runtime M (OS thread) structure.
 type M struct {
@@ -250,6 +264,7 @@ func newConstant(val constant.Value, mem memoryReadWriter) *Variable {
 }
 
 var nilVariable = &Variable{
+	Name:     "nil",
 	Addr:     0,
 	Base:     0,
 	Kind:     reflect.Ptr,
@@ -355,7 +370,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		}
 		return nil, NoGError{ tid: id }
 	}
-	gvar.loadValue()
+	gvar.loadValue(loadFullValue)
 	if gvar.Unreadable != nil {
 		return nil, gvar.Unreadable
 	}
@@ -393,7 +408,7 @@ func (v *Variable) toFieldNamed(name string) *Variable {
 	if err != nil {
 		return nil
 	}
-	v.loadValue()
+	v.loadValue(loadFullValue)
 	if v.Unreadable != nil {
 		return nil
 	}
@@ -435,8 +450,8 @@ func (g *G) Go() Location {
 }
 
 // EvalVariable returns the value of the given expression (backwards compatibility).
-func (scope *EvalScope) EvalVariable(name string) (*Variable, error) {
-	return scope.EvalExpression(name)
+func (scope *EvalScope) EvalVariable(name string, cfg LoadConfig) (*Variable, error) {
+	return scope.EvalExpression(name, cfg)
 }
 
 // SetVariable sets the value of the named variable
@@ -469,7 +484,7 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 		return err
 	}
 
-	yv.loadValue()
+	yv.loadValue(loadSingleValue)
 
 	if err := yv.isType(xv.RealType, xv.Kind); err != nil {
 		return err
@@ -482,13 +497,13 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 	return xv.setValue(yv)
 }
 
-func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
+func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry, cfg LoadConfig) (*Variable, error) {
 	rdr := scope.DwarfReader()
 	v, err := scope.extractVarInfoFromEntry(entry, rdr)
 	if err != nil {
 		return nil, err
 	}
-	v.loadValue()
+	v.loadValue(cfg)
 	return v, nil
 }
 
@@ -518,17 +533,17 @@ func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
 }
 
 // LocalVariables returns all local variables from the current function scope.
-func (scope *EvalScope) LocalVariables() ([]*Variable, error) {
-	return scope.variablesByTag(dwarf.TagVariable)
+func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
+	return scope.variablesByTag(dwarf.TagVariable, cfg)
 }
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
-func (scope *EvalScope) FunctionArguments() ([]*Variable, error) {
-	return scope.variablesByTag(dwarf.TagFormalParameter)
+func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
+	return scope.variablesByTag(dwarf.TagFormalParameter, cfg)
 }
 
 // PackageVariables returns the name, value, and type of all package variables in the application.
-func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
+func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 	var vars []*Variable
 	reader := scope.DwarfReader()
 
@@ -548,7 +563,7 @@ func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		val, err := scope.extractVariableFromEntry(entry)
+		val, err := scope.extractVariableFromEntry(entry, cfg)
 		if err != nil {
 			continue
 		}
@@ -560,14 +575,14 @@ func (scope *EvalScope) PackageVariables() ([]*Variable, error) {
 
 // EvalPackageVariable will evaluate the package level variable
 // specified by 'name'.
-func (dbp *Process) EvalPackageVariable(name string) (*Variable, error) {
+func (dbp *Process) EvalPackageVariable(name string, cfg LoadConfig) (*Variable, error) {
 	scope := &EvalScope{Thread: dbp.CurrentThread, PC: 0, CFA: 0}
 
 	v, err := scope.packageVarAddr(name)
 	if err != nil {
 		return nil, err
 	}
-	v.loadValue()
+	v.loadValue(cfg)
 	return v, nil
 }
 
@@ -708,11 +723,11 @@ func (v *Variable) maybeDereference() *Variable {
 }
 
 // Extracts the value of the variable at the given address.
-func (v *Variable) loadValue() {
-	v.loadValueInternal(0)
+func (v *Variable) loadValue(cfg LoadConfig) {
+	v.loadValueInternal(0, cfg)
 }
 
-func (v *Variable) loadValueInternal(recurseLevel int) {
+func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 	if v.Unreadable != nil || v.loaded || (v.Addr == 0 && v.Base == 0) {
 		return
 	}
@@ -722,30 +737,34 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 	case reflect.Ptr, reflect.UnsafePointer:
 		v.Len = 1
 		v.Children = []Variable{*v.maybeDereference()}
-		// Don't increase the recursion level when dereferencing pointers
-		v.Children[0].loadValueInternal(recurseLevel)
+		if cfg.FollowPointers {
+			// Don't increase the recursion level when dereferencing pointers
+			v.Children[0].loadValueInternal(recurseLevel, cfg)
+		} else {
+			v.Children[0].OnlyAddr = true
+		}
 
 	case reflect.Chan:
 		sv := v.clone()
 		sv.RealType = resolveTypedef(&(sv.RealType.(*dwarf.ChanType).TypedefType))
 		sv = sv.maybeDereference()
-		sv.loadValueInternal(recurseLevel)
+		sv.loadValueInternal(0, loadFullValue)
 		v.Children = sv.Children
 		v.Len = sv.Len
 		v.Base = sv.Addr
 
 	case reflect.Map:
-		if recurseLevel <= maxVariableRecurse {
-			v.loadMap(recurseLevel)
+		if recurseLevel <= cfg.MaxVariableRecurse {
+			v.loadMap(recurseLevel, cfg)
 		}
 
 	case reflect.String:
 		var val string
-		val, v.Unreadable = readStringValue(v.mem, v.Base, v.Len)
+		val, v.Unreadable = readStringValue(v.mem, v.Base, v.Len, cfg)
 		v.Value = constant.MakeString(val)
 
 	case reflect.Slice, reflect.Array:
-		v.loadArrayValues(recurseLevel)
+		v.loadArrayValues(recurseLevel, cfg)
 
 	case reflect.Struct:
 		v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
@@ -753,18 +772,21 @@ func (v *Variable) loadValueInternal(recurseLevel int) {
 		v.Len = int64(len(t.Field))
 		// Recursively call extractValue to grab
 		// the value of all the members of the struct.
-		if recurseLevel <= maxVariableRecurse {
+		if recurseLevel <= cfg.MaxVariableRecurse {
 			v.Children = make([]Variable, 0, len(t.Field))
 			for i, field := range t.Field {
+				if cfg.MaxStructFields >= 0 && len(v.Children) >= cfg.MaxStructFields {
+					break
+				}
 				f, _ := v.toField(field)
 				v.Children = append(v.Children, *f)
 				v.Children[i].Name = field.Name
-				v.Children[i].loadValueInternal(recurseLevel + 1)
+				v.Children[i].loadValueInternal(recurseLevel+1, cfg)
 			}
 		}
 
 	case reflect.Interface:
-		v.loadInterface(recurseLevel, true)
+		v.loadInterface(recurseLevel, true, cfg)
 
 	case reflect.Complex64, reflect.Complex128:
 		v.readComplex(v.RealType.(*dwarf.ComplexType).ByteSize)
@@ -853,10 +875,10 @@ func readStringInfo(mem memoryReadWriter, arch Arch, addr uintptr) (uintptr, int
 	return addr, strlen, nil
 }
 
-func readStringValue(mem memoryReadWriter, addr uintptr, strlen int64) (string, error) {
+func readStringValue(mem memoryReadWriter, addr uintptr, strlen int64, cfg LoadConfig) (string, error) {
 	count := strlen
-	if count > maxArrayValues {
-		count = maxArrayValues
+	if count > int64(cfg.MaxStringLen) {
+		count = int64(cfg.MaxStringLen)
 	}
 
 	val, err := mem.readMemory(addr, int(count))
@@ -867,16 +889,6 @@ func readStringValue(mem memoryReadWriter, addr uintptr, strlen int64) (string, 
 	retstr := *(*string)(unsafe.Pointer(&val))
 
 	return retstr, nil
-}
-
-func readString(mem memoryReadWriter, arch Arch, addr uintptr) (string, int64, error) {
-	addr, strlen, err := readStringInfo(mem, arch, addr)
-	if err != nil {
-		return "", 0, err
-	}
-
-	retstr, err := readStringValue(mem, addr, strlen)
-	return retstr, strlen, err
 }
 
 func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
@@ -900,14 +912,14 @@ func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
 			}
 		case "len":
 			lstrAddr, _ := v.toField(f)
-			lstrAddr.loadValue()
+			lstrAddr.loadValue(loadSingleValue)
 			err = lstrAddr.Unreadable
 			if err == nil {
 				v.Len, _ = constant.Int64Val(lstrAddr.Value)
 			}
 		case "cap":
 			cstrAddr, _ := v.toField(f)
-			cstrAddr.loadValue()
+			cstrAddr.loadValue(loadSingleValue)
 			err = cstrAddr.Unreadable
 			if err == nil {
 				v.Cap, _ = constant.Int64Val(cstrAddr.Value)
@@ -927,7 +939,7 @@ func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
 	return
 }
 
-func (v *Variable) loadArrayValues(recurseLevel int) {
+func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 	if v.Unreadable != nil {
 		return
 	}
@@ -938,8 +950,8 @@ func (v *Variable) loadArrayValues(recurseLevel int) {
 
 	count := v.Len
 	// Cap number of elements
-	if count > maxArrayValues {
-		count = maxArrayValues
+	if count > int64(cfg.MaxArrayValues) {
+		count = int64(cfg.MaxArrayValues)
 	}
 
 	if v.stride < maxArrayStridePrefetch {
@@ -950,7 +962,7 @@ func (v *Variable) loadArrayValues(recurseLevel int) {
 
 	for i := int64(0); i < count; i++ {
 		fieldvar := v.newVariable("", uintptr(int64(v.Base)+(i*v.stride)), v.fieldType)
-		fieldvar.loadValueInternal(recurseLevel + 1)
+		fieldvar.loadValueInternal(recurseLevel+1, cfg)
 
 		if fieldvar.Unreadable != nil {
 			errcount++
@@ -979,8 +991,8 @@ func (v *Variable) readComplex(size int64) {
 
 	realvar := v.newVariable("real", v.Addr, ftyp)
 	imagvar := v.newVariable("imaginary", v.Addr+uintptr(fs), ftyp)
-	realvar.loadValue()
-	imagvar.loadValue()
+	realvar.loadValue(loadSingleValue)
+	imagvar.loadValue(loadSingleValue)
 	v.Value = constant.BinaryOp(realvar.Value, token.ADD, constant.MakeImag(imagvar.Value))
 }
 
@@ -1131,7 +1143,7 @@ func (v *Variable) readFunctionPtr() {
 	v.Value = constant.MakeString(fn.Name)
 }
 
-func (v *Variable) loadMap(recurseLevel int) {
+func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 	it := v.mapIterator()
 	if it == nil {
 		return
@@ -1147,13 +1159,13 @@ func (v *Variable) loadMap(recurseLevel int) {
 	count := 0
 	errcount := 0
 	for it.next() {
-		if count >= maxArrayValues {
+		if count >= cfg.MaxArrayValues {
 			break
 		}
 		key := it.key()
 		val := it.value()
-		key.loadValueInternal(recurseLevel + 1)
-		val.loadValueInternal(recurseLevel + 1)
+		key.loadValueInternal(recurseLevel+1, cfg)
+		val.loadValueInternal(recurseLevel+1, cfg)
 		if key.Unreadable != nil || val.Unreadable != nil {
 			errcount++
 		}
@@ -1381,7 +1393,7 @@ func mapEvacuated(b *Variable) bool {
 	return true
 }
 
-func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
+func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig) {
 	var typestring, data *Variable
 	isnil := false
 
@@ -1431,7 +1443,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 		data = data.maybeDereference()
 		v.Children = []Variable{*data}
 		if loadData {
-			v.Children[0].loadValueInternal(recurseLevel)
+			v.Children[0].loadValueInternal(recurseLevel, cfg)
 		}
 		return
 	}
@@ -1440,7 +1452,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 		v.Unreadable = fmt.Errorf("invalid interface type")
 		return
 	}
-	typestring.loadValue()
+	typestring.loadValue(LoadConfig{false, 0, 512, 0, 0})
 	if typestring.Unreadable != nil {
 		v.Unreadable = fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
 		return
@@ -1468,13 +1480,15 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool) {
 
 	v.Children = []Variable{*data}
 	if loadData {
-		v.Children[0].loadValueInternal(recurseLevel)
+		v.Children[0].loadValueInternal(recurseLevel, cfg)
+	} else {
+		v.Children[0].OnlyAddr = true
 	}
 	return
 }
 
 // Fetches all variables of a specific type in the current function scope
-func (scope *EvalScope) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
+func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variable, error) {
 	reader := scope.DwarfReader()
 
 	_, err := reader.SeekToFunction(scope.PC)
@@ -1489,7 +1503,7 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag) ([]*Variable, error) {
 		}
 
 		if entry.Tag == tag {
-			val, err := scope.extractVariableFromEntry(entry)
+			val, err := scope.extractVariableFromEntry(entry, cfg)
 			if err != nil {
 				// skip variables that we can't parse yet
 				continue

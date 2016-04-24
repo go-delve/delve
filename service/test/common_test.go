@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 )
 
@@ -35,18 +34,6 @@ type nextTest struct {
 	begin, end int
 }
 
-func countBreakpoints(t *testing.T, c service.Client) int {
-	bps, err := c.ListBreakpoints()
-	assertNoError(err, t, "ListBreakpoints()")
-	bpcount := 0
-	for _, bp := range bps {
-		if bp.ID >= 0 {
-			bpcount++
-		}
-	}
-	return bpcount
-}
-
 func testProgPath(t *testing.T, name string) string {
 	fp, err := filepath.Abs(fmt.Sprintf("_fixtures/%s.go", name))
 	if err != nil {
@@ -61,7 +48,27 @@ func testProgPath(t *testing.T, name string) string {
 	return fp
 }
 
-func findLocationHelper(t *testing.T, c service.Client, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
+type BreakpointLister interface {
+	ListBreakpoints() ([]*api.Breakpoint, error)
+}
+
+func countBreakpoints(t *testing.T, c BreakpointLister) int {
+	bps, err := c.ListBreakpoints()
+	assertNoError(err, t, "ListBreakpoints()")
+	bpcount := 0
+	for _, bp := range bps {
+		if bp.ID >= 0 {
+			bpcount++
+		}
+	}
+	return bpcount
+}
+
+type LocationFinder interface {
+	FindLocation(api.EvalScope, string) ([]api.Location, error)
+}
+
+func findLocationHelper(t *testing.T, c LocationFinder, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
 	locs, err := c.FindLocation(api.EvalScope{-1, 0}, loc)
 	t.Logf("FindLocation(\"%s\") → %v\n", loc, locs)
 

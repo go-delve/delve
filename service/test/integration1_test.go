@@ -19,7 +19,7 @@ import (
 	"github.com/derekparker/delve/service/rpc1"
 )
 
-func withTestClient1(name string, t *testing.T, fn func(c service.Client)) {
+func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
@@ -56,7 +56,7 @@ func Test1RunWithInvalidPath(t *testing.T) {
 }
 
 func Test1Restart_afterExit(t *testing.T) {
-	withTestClient1("continuetestprog", t, func(c service.Client) {
+	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		origPid := c.ProcessPid()
 		state := <-c.Continue()
 		if !state.Exited {
@@ -76,7 +76,7 @@ func Test1Restart_afterExit(t *testing.T) {
 }
 
 func Test1Restart_breakpointPreservation(t *testing.T) {
-	withTestClient1("continuetestprog", t, func(c service.Client) {
+	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
 		assertNoError(err, t, "CreateBreakpoint()")
 		stateCh := c.Continue()
@@ -105,7 +105,7 @@ func Test1Restart_breakpointPreservation(t *testing.T) {
 }
 
 func Test1Restart_duringStop(t *testing.T) {
-	withTestClient1("continuetestprog", t, func(c service.Client) {
+	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		origPid := c.ProcessPid()
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1})
 		if err != nil {
@@ -144,7 +144,7 @@ func Test1Restart_attachPid(t *testing.T) {
 }
 
 func Test1ClientServer_exit(t *testing.T) {
-	withTestClient1("continuetestprog", t, func(c service.Client) {
+	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		state, err := c.GetState()
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -167,7 +167,7 @@ func Test1ClientServer_exit(t *testing.T) {
 }
 
 func Test1ClientServer_step(t *testing.T) {
-	withTestClient1("testprog", t, func(c service.Client) {
+	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -190,7 +190,7 @@ func Test1ClientServer_step(t *testing.T) {
 }
 
 func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
-	withTestClient1("testnextprog", t, func(c service.Client) {
+	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: initialLocation, Line: -1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -281,7 +281,7 @@ func Test1NextFunctionReturn(t *testing.T) {
 }
 
 func Test1ClientServer_breakpointInMainThread(t *testing.T) {
-	withTestClient1("testprog", t, func(c service.Client) {
+	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -302,7 +302,7 @@ func Test1ClientServer_breakpointInMainThread(t *testing.T) {
 }
 
 func Test1ClientServer_breakpointInSeparateGoroutine(t *testing.T) {
-	withTestClient1("testthreads", t, func(c service.Client) {
+	withTestClient1("testthreads", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.anotherthread", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -321,7 +321,7 @@ func Test1ClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 }
 
 func Test1ClientServer_breakAtNonexistentPoint(t *testing.T) {
-	withTestClient1("testprog", t, func(c service.Client) {
+	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "nowhere", Line: 1})
 		if err == nil {
 			t.Fatal("Should not be able to break at non existent function")
@@ -330,7 +330,7 @@ func Test1ClientServer_breakAtNonexistentPoint(t *testing.T) {
 }
 
 func Test1ClientServer_clearBreakpoint(t *testing.T) {
-	withTestClient1("testprog", t, func(c service.Client) {
+	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sleepytime", Line: 1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -356,7 +356,7 @@ func Test1ClientServer_clearBreakpoint(t *testing.T) {
 }
 
 func Test1ClientServer_switchThread(t *testing.T) {
-	withTestClient1("testnextprog", t, func(c service.Client) {
+	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		// With invalid thread id
 		_, err := c.SwitchThread(-1)
 		if err == nil {
@@ -399,7 +399,7 @@ func Test1ClientServer_switchThread(t *testing.T) {
 }
 
 func Test1ClientServer_infoLocals(t *testing.T) {
-	withTestClient1("testnextprog", t, func(c service.Client) {
+	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "testnextprog")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
 		if err != nil {
@@ -420,7 +420,7 @@ func Test1ClientServer_infoLocals(t *testing.T) {
 }
 
 func Test1ClientServer_infoArgs(t *testing.T) {
-	withTestClient1("testnextprog", t, func(c service.Client) {
+	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "testnextprog")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 47})
 		if err != nil {
@@ -448,7 +448,7 @@ func Test1ClientServer_infoArgs(t *testing.T) {
 }
 
 func Test1ClientServer_traceContinue(t *testing.T) {
-	withTestClient1("integrationprog", t, func(c service.Client) {
+	withTestClient1("integrationprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "integrationprog")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 15, Tracepoint: true, Goroutine: true, Stacktrace: 5, Variables: []string{"i"}})
 		if err != nil {
@@ -505,7 +505,7 @@ func Test1ClientServer_traceContinue(t *testing.T) {
 }
 
 func Test1ClientServer_traceContinue2(t *testing.T) {
-	withTestClient1("integrationprog", t, func(c service.Client) {
+	withTestClient1("integrationprog", t, func(c *rpc1.RPCClient) {
 		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Tracepoint: true})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v\n", err)
@@ -548,7 +548,7 @@ func Test1ClientServer_traceContinue2(t *testing.T) {
 }
 
 func Test1ClientServer_FindLocations(t *testing.T) {
-	withTestClient1("locationsprog", t, func(c service.Client) {
+	withTestClient1("locationsprog", t, func(c *rpc1.RPCClient) {
 		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
 		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
 		findLocationHelper(t, c, "anotherFunction:1", false, 1, someFunctionLine1)
@@ -595,17 +595,17 @@ func Test1ClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:32", false, 1, 0)[0])
 	})
 
-	withTestClient1("testnextdefer", t, func(c service.Client) {
+	withTestClient1("testnextdefer", t, func(c *rpc1.RPCClient) {
 		firstMainLine := findLocationHelper(t, c, "testnextdefer.go:5", false, 1, 0)[0]
 		findLocationHelper(t, c, "main.main", false, 1, firstMainLine)
 	})
 
-	withTestClient1("stacktraceprog", t, func(c service.Client) {
+	withTestClient1("stacktraceprog", t, func(c *rpc1.RPCClient) {
 		stacktracemeAddr := findLocationHelper(t, c, "stacktraceprog.go:4", false, 1, 0)[0]
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 
-	withTestClient1("locationsUpperCase", t, func(c service.Client) {
+	withTestClient1("locationsUpperCase", t, func(c *rpc1.RPCClient) {
 		// Upper case
 		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
 
@@ -645,7 +645,7 @@ func Test1ClientServer_FindLocations(t *testing.T) {
 }
 
 func Test1ClientServer_FindLocationsAddr(t *testing.T) {
-	withTestClient1("locationsprog2", t, func(c service.Client) {
+	withTestClient1("locationsprog2", t, func(c *rpc1.RPCClient) {
 		<-c.Continue()
 
 		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
@@ -657,7 +657,7 @@ func Test1ClientServer_FindLocationsAddr(t *testing.T) {
 }
 
 func Test1ClientServer_EvalVariable(t *testing.T) {
-	withTestClient1("testvariables", t, func(c service.Client) {
+	withTestClient1("testvariables", t, func(c *rpc1.RPCClient) {
 		state := <-c.Continue()
 
 		if state.Err != nil {
@@ -676,7 +676,7 @@ func Test1ClientServer_EvalVariable(t *testing.T) {
 }
 
 func Test1ClientServer_SetVariable(t *testing.T) {
-	withTestClient1("testvariables", t, func(c service.Client) {
+	withTestClient1("testvariables", t, func(c *rpc1.RPCClient) {
 		state := <-c.Continue()
 
 		if state.Err != nil {
@@ -698,7 +698,7 @@ func Test1ClientServer_SetVariable(t *testing.T) {
 }
 
 func Test1ClientServer_FullStacktrace(t *testing.T) {
-	withTestClient1("goroutinestackprog", t, func(c service.Client) {
+	withTestClient1("goroutinestackprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
 		state := <-c.Continue()
@@ -771,7 +771,7 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 
 func Test1Issue355(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
-	withTestClient1("continuetestprog", t, func(c service.Client) {
+	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
 		ch := c.Continue()
@@ -832,7 +832,7 @@ func Test1Disasm(t *testing.T) {
 	// Tests that disassembly by current PC will return a disassembly containing the instruction at PC
 	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
 	// effective destination of the CALL instruction
-	withTestClient1("locationsprog2", t, func(c service.Client) {
+	withTestClient1("locationsprog2", t, func(c *rpc1.RPCClient) {
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
@@ -934,7 +934,7 @@ func Test1Disasm(t *testing.T) {
 
 func Test1NegativeStackDepthBug(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
-	withTestClient1("continuetestprog", t, func(c service.Client) {
+	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
 		ch := c.Continue()
@@ -946,7 +946,7 @@ func Test1NegativeStackDepthBug(t *testing.T) {
 }
 
 func Test1ClientServer_CondBreakpoint(t *testing.T) {
-	withTestClient1("parallel_next", t, func(c service.Client) {
+	withTestClient1("parallel_next", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})
 		assertNoError(err, t, "CreateBreakpoint()")
 		bp.Cond = "n == 7"
@@ -976,7 +976,7 @@ func Test1ClientServer_CondBreakpoint(t *testing.T) {
 }
 
 func Test1SkipPrologue(t *testing.T) {
-	withTestClient1("locationsprog2", t, func(c service.Client) {
+	withTestClient1("locationsprog2", t, func(c *rpc1.RPCClient) {
 		<-c.Continue()
 
 		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
@@ -992,7 +992,7 @@ func Test1SkipPrologue(t *testing.T) {
 }
 
 func Test1SkipPrologue2(t *testing.T) {
-	withTestClient1("callme", t, func(c service.Client) {
+	withTestClient1("callme", t, func(c *rpc1.RPCClient) {
 		callme := findLocationHelper(t, c, "main.callme", false, 1, 0)[0]
 		callmeZ := findLocationHelper(t, c, "main.callme:0", false, 1, 0)[0]
 		findLocationHelper(t, c, "callme.go:5", false, 1, callme)
@@ -1020,7 +1020,7 @@ func Test1SkipPrologue2(t *testing.T) {
 func Test1Issue419(t *testing.T) {
 	// Calling service/rpc.(*Client).Halt could cause a crash because both Halt and Continue simultaneously
 	// try to read 'runtime.g' and debug/dwarf.Data.Type is not thread safe
-	withTestClient1("issue419", t, func(c service.Client) {
+	withTestClient1("issue419", t, func(c *rpc1.RPCClient) {
 		go func() {
 			rand.Seed(time.Now().Unix())
 			d := time.Duration(rand.Intn(4) + 1)
@@ -1035,7 +1035,7 @@ func Test1Issue419(t *testing.T) {
 }
 
 func Test1TypesCommand(t *testing.T) {
-	withTestClient1("testvariables2", t, func(c service.Client) {
+	withTestClient1("testvariables2", t, func(c *rpc1.RPCClient) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 		types, err := c.ListTypes("")
@@ -1061,7 +1061,7 @@ func Test1TypesCommand(t *testing.T) {
 }
 
 func Test1Issue406(t *testing.T) {
-	withTestClient1("issue406", t, func(c service.Client) {
+	withTestClient1("issue406", t, func(c *rpc1.RPCClient) {
 		locs, err := c.FindLocation(api.EvalScope{-1, 0}, "issue406.go:146")
 		assertNoError(err, t, "FindLocation()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{Addr: locs[0].PC})

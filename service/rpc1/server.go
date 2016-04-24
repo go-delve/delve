@@ -9,10 +9,13 @@ import (
 	grpc "net/rpc"
 	"net/rpc/jsonrpc"
 
+	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
 )
+
+var defaultLoadConfig = proc.LoadConfig{ true, 1, 64, 64, -1 }
 
 type ServerImpl struct {
 	s *RPCServer
@@ -160,7 +163,11 @@ type StacktraceGoroutineArgs struct {
 }
 
 func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations *[]api.Stackframe) error {
-	locs, err := s.debugger.Stacktrace(args.Id, args.Depth, args.Full)
+	var loadcfg *proc.LoadConfig = nil
+	if args.Full {
+		loadcfg = &defaultLoadConfig
+	}
+	locs, err := s.debugger.Stacktrace(args.Id, args.Depth, loadcfg)
 	if err != nil {
 		return err
 	}
@@ -241,7 +248,7 @@ func (s *RPCServer) ListPackageVars(filter string, variables *[]api.Variable) er
 		return fmt.Errorf("no current thread")
 	}
 
-	vars, err := s.debugger.PackageVariables(current.ID, filter)
+	vars, err := s.debugger.PackageVariables(current.ID, filter, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
@@ -263,7 +270,7 @@ func (s *RPCServer) ListThreadPackageVars(args *ThreadListArgs, variables *[]api
 		return fmt.Errorf("no thread with id %d", args.Id)
 	}
 
-	vars, err := s.debugger.PackageVariables(args.Id, args.Filter)
+	vars, err := s.debugger.PackageVariables(args.Id, args.Filter, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
@@ -286,7 +293,7 @@ func (s *RPCServer) ListRegisters(arg interface{}, registers *string) error {
 }
 
 func (s *RPCServer) ListLocalVars(scope api.EvalScope, variables *[]api.Variable) error {
-	vars, err := s.debugger.LocalVariables(scope)
+	vars, err := s.debugger.LocalVariables(scope, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
@@ -295,7 +302,7 @@ func (s *RPCServer) ListLocalVars(scope api.EvalScope, variables *[]api.Variable
 }
 
 func (s *RPCServer) ListFunctionArgs(scope api.EvalScope, variables *[]api.Variable) error {
-	vars, err := s.debugger.FunctionArguments(scope)
+	vars, err := s.debugger.FunctionArguments(scope, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
@@ -309,7 +316,7 @@ type EvalSymbolArgs struct {
 }
 
 func (s *RPCServer) EvalSymbol(args EvalSymbolArgs, variable *api.Variable) error {
-	v, err := s.debugger.EvalVariableInScope(args.Scope, args.Symbol)
+	v, err := s.debugger.EvalVariableInScope(args.Scope, args.Symbol, defaultLoadConfig)
 	if err != nil {
 		return err
 	}

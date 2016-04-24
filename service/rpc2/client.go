@@ -190,9 +190,9 @@ func (c *RPCClient) GetThread(id int) (*api.Thread, error) {
 	return out.Thread, err
 }
 
-func (c *RPCClient) EvalVariable(scope api.EvalScope, expr string) (*api.Variable, error) {
+func (c *RPCClient) EvalVariable(scope api.EvalScope, expr string, cfg api.LoadConfig) (*api.Variable, error) {
 	var out EvalOut
-	err := c.call("Eval", EvalIn{scope, expr}, &out)
+	err := c.call("Eval", EvalIn{scope, expr, &cfg}, &out)
 	return out.Variable, err
 }
 
@@ -219,15 +219,15 @@ func (c *RPCClient) ListTypes(filter string) ([]string, error) {
 	return types.Types, err
 }
 
-func (c *RPCClient) ListPackageVariables(filter string) ([]api.Variable, error) {
+func (c *RPCClient) ListPackageVariables(filter string, cfg api.LoadConfig) ([]api.Variable, error) {
 	var out ListPackageVarsOut
-	err := c.call("ListPackageVars", ListPackageVarsIn{filter}, &out)
+	err := c.call("ListPackageVars", ListPackageVarsIn{filter, cfg}, &out)
 	return out.Variables, err
 }
 
-func (c *RPCClient) ListLocalVariables(scope api.EvalScope) ([]api.Variable, error) {
+func (c *RPCClient) ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error) {
 	var out ListLocalVarsOut
-	err := c.call("ListLocalVars", ListLocalVarsIn{scope}, &out)
+	err := c.call("ListLocalVars", ListLocalVarsIn{scope, cfg}, &out)
 	return out.Variables, err
 }
 
@@ -237,9 +237,9 @@ func (c *RPCClient) ListRegisters() (string, error) {
 	return out.Registers, err
 }
 
-func (c *RPCClient) ListFunctionArgs(scope api.EvalScope) ([]api.Variable, error) {
+func (c *RPCClient) ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error) {
 	var out ListFunctionArgsOut
-	err := c.call("ListFunctionArgs", ListFunctionArgsIn{scope}, &out)
+	err := c.call("ListFunctionArgs", ListFunctionArgsIn{scope, cfg}, &out)
 	return out.Args, err
 }
 
@@ -249,9 +249,9 @@ func (c *RPCClient) ListGoroutines() ([]*api.Goroutine, error) {
 	return out.Goroutines, err
 }
 
-func (c *RPCClient) Stacktrace(goroutineId, depth int, full bool) ([]api.Stackframe, error) {
+func (c *RPCClient) Stacktrace(goroutineId, depth int, cfg *api.LoadConfig) ([]api.Stackframe, error) {
 	var out StacktraceOut
-	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, full}, &out)
+	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, false, cfg}, &out)
 	return out.Locations, err
 }
 

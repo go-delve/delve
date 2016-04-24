@@ -256,7 +256,7 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 		}
 		return []api.Location{{PC: uint64(addr)}}, nil
 	} else {
-		v, err := scope.EvalExpression(loc.AddrExpr)
+		v, err := scope.EvalExpression(loc.AddrExpr, proc.LoadConfig{true, 0, 0, 0, 0})
 		if err != nil {
 			return nil, err
 		}

@@ -37,7 +37,6 @@ type callContext struct {
 }
 
 type cmdfunc func(t *Term, ctx callContext, args string) error
-type filteringFunc func(t *Term, ctx callContext, args string) ([]string, error)
 
 type command struct {
 	aliases         []string
@@ -63,6 +62,11 @@ type Commands struct {
 	client  service.Client
 }
 
+var (
+	LongLoadConfig  = api.LoadConfig{true, 1, 64, 64, -1}
+	ShortLoadConfig = api.LoadConfig{false, 0, 64, 0, 3}
+)
+
 // DebugCommands returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
 	c := &Commands{client: client}
@@ -85,12 +89,12 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		{aliases: []string{"print", "p"}, allowedPrefixes: onPrefix | scopePrefix, cmdFn: printVar, helpMsg: "Evaluate a variable."},
 		{aliases: []string{"set"}, allowedPrefixes: scopePrefix, cmdFn: setVar, helpMsg: "Changes the value of a variable."},
-		{aliases: []string{"sources"}, cmdFn: filterSortAndOutput(sources), helpMsg: "Print list of source files, optionally filtered by a regexp."},
-		{aliases: []string{"funcs"}, cmdFn: filterSortAndOutput(funcs), helpMsg: "Print list of functions, optionally filtered by a regexp."},
-		{aliases: []string{"types"}, cmdFn: filterSortAndOutput(types), helpMsg: "Print list of types, optionally filtered by a regexp."},
-		{aliases: []string{"args"}, allowedPrefixes: scopePrefix, cmdFn: filterSortAndOutput(args), helpMsg: "Print function arguments, optionally filtered by a regexp."},
-		{aliases: []string{"locals"}, allowedPrefixes: scopePrefix, cmdFn: filterSortAndOutput(locals), helpMsg: "Print function locals, optionally filtered by a regexp."},
-		{aliases: []string{"vars"}, cmdFn: filterSortAndOutput(vars), helpMsg: "Print package variables, optionally filtered by a regexp."},
+		{aliases: []string{"sources"}, cmdFn: sources, helpMsg: "Print list of source files, optionally filtered by a regexp."},
+		{aliases: []string{"funcs"}, cmdFn: funcs, helpMsg: "Print list of functions, optionally filtered by a regexp."},
+		{aliases: []string{"types"}, cmdFn: types, helpMsg: "Print list of types, optionally filtered by a regexp."},
+		{aliases: []string{"args"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: args, helpMsg: "args [-v] <filter>. Print function arguments, optionally filtered by a regexp."},
+		{aliases: []string{"locals"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: locals, helpMsg: "locals [-v] <filter>. Print function locals, optionally filtered by a regexp."},
+		{aliases: []string{"vars"}, cmdFn: vars, helpMsg: "vars [-v] <filter>. Print package variables, optionally filtered by a regexp."},
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"list", "ls"}, allowedPrefixes: scopePrefix, cmdFn: listCommand, helpMsg: "list <linespec>.  Show source around current point or provided linespec."},
@@ -552,6 +556,20 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 		if bp.Goroutine {
 			attrs = append(attrs, "\tgoroutine")
 		}
+		if bp.LoadArgs != nil {
+			if *(bp.LoadArgs) == LongLoadConfig {
+				attrs = append(attrs, "\targs -v")
+			} else {
+				attrs = append(attrs, "\targs")
+			}
+		}
+		if bp.LoadLocals != nil {
+			if *(bp.LoadLocals) == LongLoadConfig {
+				attrs = append(attrs, "\tlocals -v")
+			} else {
+				attrs = append(attrs, "\tlocals")
+			}
+		}
 		for i := range bp.Variables {
 			attrs = append(attrs, fmt.Sprintf("\tprint %s", bp.Variables[i]))
 		}
@@ -624,7 +642,7 @@ func printVar(t *Term, ctx callContext, args string) error {
 		ctx.Breakpoint.Variables = append(ctx.Breakpoint.Variables, args)
 		return nil
 	}
-	val, err := t.client.EvalVariable(ctx.Scope, args)
+	val, err := t.client.EvalVariable(ctx.Scope, args, LongLoadConfig)
 	if err != nil {
 		return err
 	}
@@ -650,55 +668,101 @@ func setVar(t *Term, ctx callContext, args string) error {
 	return t.client.SetVariable(ctx.Scope, lexpr, rexpr)
 }
 
-func filterVariables(vars []api.Variable, filter string) []string {
+func printFilteredVariables(varType string, vars []api.Variable, filter string, cfg api.LoadConfig) error {
 	reg, err := regexp.Compile(filter)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
-		return nil
+		return err
 	}
-	data := make([]string, 0, len(vars))
+	match := false
 	for _, v := range vars {
 		if reg == nil || reg.Match([]byte(v.Name)) {
-			data = append(data, fmt.Sprintf("%s = %s", v.Name, v.SinglelineString()))
+			match = true
+			if cfg == ShortLoadConfig {
+				fmt.Printf("%s = %s\n", v.Name, v.SinglelineString())
+			} else {
+				fmt.Printf("%s = %s\n", v.Name, v.MultilineString(""))
+			}
 		}
 	}
-	return data
-}
-
-func sources(t *Term, ctx callContext, filter string) ([]string, error) {
-	return t.client.ListSources(filter)
-}
-
-func funcs(t *Term, ctx callContext, filter string) ([]string, error) {
-	return t.client.ListFunctions(filter)
-}
-
-func types(t *Term, ctx callContext, filter string) ([]string, error) {
-	return t.client.ListTypes(filter)
-}
-
-func args(t *Term, ctx callContext, filter string) ([]string, error) {
-	vars, err := t.client.ListFunctionArgs(ctx.Scope)
-	if err != nil {
-		return nil, err
+	if !match {
+		fmt.Printf("(no %s)\n", varType)
 	}
-	return describeNoVars("args", filterVariables(vars, filter)), nil
+	return nil
 }
 
-func locals(t *Term, ctx callContext, filter string) ([]string, error) {
-	locals, err := t.client.ListLocalVariables(ctx.Scope)
+func printSortedStrings(v []string, err error) error {
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return describeNoVars("locals", filterVariables(locals, filter)), nil
+	sort.Strings(v)
+	for _, d := range v {
+		fmt.Println(d)
+	}
+	return nil
 }
 
-func vars(t *Term, ctx callContext, filter string) ([]string, error) {
-	vars, err := t.client.ListPackageVariables(filter)
-	if err != nil {
-		return nil, err
+func sources(t *Term, ctx callContext, args string) error {
+	return printSortedStrings(t.client.ListSources(args))
+}
+
+func funcs(t *Term, ctx callContext, args string) error {
+	return printSortedStrings(t.client.ListFunctions(args))
+}
+
+func types(t *Term, ctx callContext, args string) error {
+	return printSortedStrings(t.client.ListTypes(args))
+}
+
+func parseVarArguments(args string) (filter string, cfg api.LoadConfig) {
+	if v := strings.SplitN(args, " ", 2); len(v) >= 1 && v[0] == "-v" {
+		if len(v) == 2 {
+			return v[1], LongLoadConfig
+		} else {
+			return "", LongLoadConfig
+		}
 	}
-	return describeNoVars("vars", filterVariables(vars, filter)), nil
+	return args, ShortLoadConfig
+}
+
+func args(t *Term, ctx callContext, args string) error {
+	filter, cfg := parseVarArguments(args)
+	if ctx.Prefix == onPrefix {
+		if filter != "" {
+			return fmt.Errorf("filter not supported on breakpoint")
+		}
+		ctx.Breakpoint.LoadArgs = &cfg
+		return nil
+	}
+	vars, err := t.client.ListFunctionArgs(ctx.Scope, cfg)
+	if err != nil {
+		return err
+	}
+	return printFilteredVariables("args", vars, filter, cfg)
+}
+
+func locals(t *Term, ctx callContext, args string) error {
+	filter, cfg := parseVarArguments(args)
+	if ctx.Prefix == onPrefix {
+		if filter != "" {
+			return fmt.Errorf("filter not supported on breakpoint")
+		}
+		ctx.Breakpoint.LoadLocals = &cfg
+		return nil
+	}
+	locals, err := t.client.ListLocalVariables(ctx.Scope, cfg)
+	if err != nil {
+		return err
+	}
+	return printFilteredVariables("locals", locals, filter, cfg)
+}
+
+func vars(t *Term, ctx callContext, args string) error {
+	filter, cfg := parseVarArguments(args)
+	vars, err := t.client.ListPackageVariables(filter, cfg)
+	if err != nil {
+		return err
+	}
+	return printFilteredVariables("vars", vars, filter, cfg)
 }
 
 func regs(t *Term, ctx callContext, args string) error {
@@ -710,27 +774,6 @@ func regs(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func filterSortAndOutput(fn filteringFunc) cmdfunc {
-	return func(t *Term, ctx callContext, args string) error {
-		var filter string
-		if len(args) > 0 {
-			if _, err := regexp.Compile(args); err != nil {
-				return fmt.Errorf("invalid filter argument: %s", err.Error())
-			}
-			filter = args
-		}
-		data, err := fn(t, ctx, filter)
-		if err != nil {
-			return err
-		}
-		sort.Sort(sort.StringSlice(data))
-		for _, d := range data {
-			fmt.Println(d)
-		}
-		return nil
-	}
-}
-
 func stackCommand(t *Term, ctx callContext, args string) error {
 	depth, full, err := parseStackArgs(args)
 	if err != nil {
@@ -740,7 +783,11 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 		ctx.Breakpoint.Stacktrace = depth
 		return nil
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, depth, full)
+	var cfg *api.LoadConfig
+	if full {
+		cfg = &ShortLoadConfig
+	}
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, depth, cfg)
 	if err != nil {
 		return err
 	}
@@ -772,7 +819,7 @@ func parseStackArgs(argstr string) (int, bool, error) {
 
 func listCommand(t *Term, ctx callContext, args string) error {
 	if ctx.Prefix == scopePrefix {
-		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, false)
+		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, nil)
 		if err != nil {
 			return err
 		}
@@ -885,7 +932,7 @@ func printStack(stack []api.Stackframe, ind string) {
 	}
 	d := digits(len(stack) - 1)
 	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
-	s := strings.Repeat(" ", d+2+len(ind))
+	s := ind + strings.Repeat(" ", d+2+len(ind))
 
 	for i := range stack {
 		name := "(nil)"
@@ -941,7 +988,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	args := ""
-	if th.Breakpoint.Tracepoint && th.BreakpointInfo != nil {
+	if th.BreakpointInfo != nil && th.Breakpoint.LoadArgs != nil && *th.Breakpoint.LoadArgs == ShortLoadConfig {
 		var arg []string
 		for _, ar := range th.BreakpointInfo.Arguments {
 			arg = append(arg, ar.SinglelineString())
@@ -977,18 +1024,29 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	if th.BreakpointInfo != nil {
+		bp := th.Breakpoint
 		bpi := th.BreakpointInfo
 
 		if bpi.Goroutine != nil {
 			writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
 		}
 
-		if len(bpi.Variables) > 0 {
-			ss := make([]string, len(bpi.Variables))
-			for i, v := range bpi.Variables {
-				ss[i] = fmt.Sprintf("%s: %s", v.Name, v.MultilineString(""))
+		for _, v := range bpi.Variables {
+			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+		}
+
+		for _, v := range bpi.Locals {
+			if *bp.LoadLocals == LongLoadConfig {
+				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+			} else {
+				fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
 			}
-			fmt.Printf("\t%s\n", strings.Join(ss, ", "))
+		}
+
+		if bp.LoadArgs != nil && *bp.LoadArgs == LongLoadConfig {
+			for _, v := range bpi.Arguments {
+				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+			}
 		}
 
 		if bpi.Stacktrace != nil {
@@ -1152,11 +1210,4 @@ func formatBreakpointLocation(bp *api.Breakpoint) string {
 		return fmt.Sprintf("%#v for %s() %s:%d", bp.Addr, bp.FunctionName, p, bp.Line)
 	}
 	return fmt.Sprintf("%#v for %s:%d", bp.Addr, p, bp.Line)
-}
-
-func describeNoVars(varType string, data []string) []string {
-	if len(data) == 0 {
-		return []string{fmt.Sprintf("(no %s)", varType)}
-	}
-	return data
 }

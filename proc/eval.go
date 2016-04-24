@@ -16,7 +16,7 @@ import (
 )
 
 // EvalExpression returns the value of the given expression.
-func (scope *EvalScope) EvalExpression(expr string) (*Variable, error) {
+func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
 	t, err := parser.ParseExpr(expr)
 	if err != nil {
 		return nil, err
@@ -26,7 +26,10 @@ func (scope *EvalScope) EvalExpression(expr string) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	ev.loadValue()
+	ev.loadValue(cfg)
+	if ev.Name == "" {
+		ev.Name = expr
+	}
 	return ev, nil
 }
 
@@ -113,7 +116,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	argv.loadValue()
+	argv.loadValue(loadSingleValue)
 	if argv.Unreadable != nil {
 		return nil, argv.Unreadable
 	}
@@ -277,7 +280,7 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	case reflect.Slice:
 		return newConstant(constant.MakeInt64(arg.Cap), arg.mem), nil
 	case reflect.Chan:
-		arg.loadValue()
+		arg.loadValue(loadFullValue)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
@@ -310,7 +313,7 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		}
 		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
 	case reflect.Chan:
-		arg.loadValue()
+		arg.loadValue(loadFullValue)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
@@ -340,8 +343,8 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	realev := args[0]
 	imagev := args[1]
 
-	realev.loadValue()
-	imagev.loadValue()
+	realev.loadValue(loadSingleValue)
+	imagev.loadValue(loadSingleValue)
 
 	if realev.Unreadable != nil {
 		return nil, realev.Unreadable
@@ -387,7 +390,7 @@ func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	arg := args[0]
-	arg.loadValue()
+	arg.loadValue(loadSingleValue)
 
 	if arg.Unreadable != nil {
 		return nil, arg.Unreadable
@@ -406,7 +409,7 @@ func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	arg := args[0]
-	arg.loadValue()
+	arg.loadValue(loadSingleValue)
 
 	if arg.Unreadable != nil {
 		return nil, arg.Unreadable
@@ -470,7 +473,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 	if xv.Kind != reflect.Interface {
 		return nil, fmt.Errorf("expression \"%s\" not an interface", exprToString(node.X))
 	}
-	xv.loadInterface(0, false)
+	xv.loadInterface(0, false, loadFullValue)
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
 	}
@@ -517,7 +520,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return xev.sliceAccess(int(n))
 
 	case reflect.Map:
-		idxev.loadValue()
+		idxev.loadValue(loadFullValue)
 		if idxev.Unreadable != nil {
 			return nil, idxev.Unreadable
 		}
@@ -576,7 +579,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 			return nil, fmt.Errorf("second slice argument must be empty for maps")
 		}
 		xev.mapSkip += int(low)
-		xev.loadValue()
+		xev.loadValue(loadFullValue)
 		if xev.Unreadable != nil {
 			return nil, xev.Unreadable
 		}
@@ -675,7 +678,7 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	xv.loadValue()
+	xv.loadValue(loadSingleValue)
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
 	}
@@ -774,8 +777,8 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	xv.loadValue()
-	yv.loadValue()
+	xv.loadValue(loadFullValue)
+	yv.loadValue(loadFullValue)
 
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
@@ -943,7 +946,7 @@ func (v *Variable) asInt() (int64, error) {
 			return 0, fmt.Errorf("can not convert constant %s to int", v.Value)
 		}
 	} else {
-		v.loadValue()
+		v.loadValue(loadSingleValue)
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
@@ -961,7 +964,7 @@ func (v *Variable) asUint() (uint64, error) {
 			return 0, fmt.Errorf("can not convert constant %s to uint", v.Value)
 		}
 	} else {
-		v.loadValue()
+		v.loadValue(loadSingleValue)
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
@@ -1048,7 +1051,7 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 	first := true
 	for it.next() {
 		key := it.key()
-		key.loadValue()
+		key.loadValue(loadFullValue)
 		if key.Unreadable != nil {
 			return nil, fmt.Errorf("can not access unreadable map: %v", key.Unreadable)
 		}

@@ -805,7 +805,7 @@ func (dbp *Process) execPtraceFunc(fn func()) {
 }
 
 func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
-	vv, err := dbp.EvalPackageVariable("runtime.buildVersion")
+	vv, err := dbp.EvalPackageVariable("runtime.buildVersion", LoadConfig{true, 0, 64, 0, 0})
 	if err != nil {
 		err = fmt.Errorf("Could not determine version number: %v\n", err)
 		return

@@ -6,7 +6,6 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 
-	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 )
 
@@ -16,9 +15,6 @@ type RPCClient struct {
 	processPid int
 	client     *rpc.Client
 }
-
-// Ensure the implementation satisfies the interface.
-var _ service.Client = &RPCClient{}
 
 // NewClient creates a new RPCClient.
 func NewClient(addr string) *RPCClient {
