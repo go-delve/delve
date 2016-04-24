@@ -178,6 +178,11 @@ func (c *RPCClient) AmendBreakpoint(bp *api.Breakpoint) error {
 	return err
 }
 
+func (c *RPCClient) CancelNext() error {
+	var out CancelNextOut
+	return c.call("CancelNext", CancelNextIn{}, &out)
+}
+
 func (c *RPCClient) ListThreads() ([]*api.Thread, error) {
 	var out ListThreadsOut
 	err := c.call("ListThreads", ListThreadsIn{}, &out)

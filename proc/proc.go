@@ -285,7 +285,7 @@ func (dbp *Process) Next() (err error) {
 		case GoroutineExitingError:
 			goroutineExiting = t.goid == g.ID
 		default:
-			dbp.clearTempBreakpoints()
+			dbp.ClearTempBreakpoints()
 			return
 		}
 	}
@@ -385,7 +385,7 @@ func (dbp *Process) Continue() error {
 			}
 			return dbp.conditionErrors()
 		case dbp.CurrentThread.onTriggeredTempBreakpoint():
-			err := dbp.clearTempBreakpoints()
+			err := dbp.ClearTempBreakpoints()
 			if err != nil {
 				return err
 			}
@@ -396,7 +396,7 @@ func (dbp *Process) Continue() error {
 				return err
 			}
 			if onNextGoroutine {
-				err := dbp.clearTempBreakpoints()
+				err := dbp.ClearTempBreakpoints()
 				if err != nil {
 					return err
 				}
@@ -484,6 +484,11 @@ func (dbp *Process) Step() (err error) {
 
 // StepInto sets a temp breakpoint after the prologue of fn and calls Continue
 func (dbp *Process) StepInto(fn *gosym.Func) error {
+	for i := range dbp.Breakpoints {
+		if dbp.Breakpoints[i].Temp {
+			return fmt.Errorf("next while nexting")
+		}
+	}
 	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
 	if _, err := dbp.SetTempBreakpoint(pc); err != nil {
 		return err
@@ -754,7 +759,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	return dbp, nil
 }
 
-func (dbp *Process) clearTempBreakpoints() error {
+func (dbp *Process) ClearTempBreakpoints() error {
 	for _, bp := range dbp.Breakpoints {
 		if !bp.Temp {
 			continue

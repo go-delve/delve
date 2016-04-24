@@ -49,6 +49,8 @@ type Client interface {
 	// Allows user to update an existing breakpoint for example to change the information
 	// retrieved when the breakpoint is hit or to change, add or remove the break condition
 	AmendBreakpoint(*api.Breakpoint) error
+	// Cancels a Next or Step call that was interrupted by a manual stop or by another breakpoint
+	CancelNext() error
 
 	// ListThreads lists all threads.
 	ListThreads() ([]*api.Thread, error)

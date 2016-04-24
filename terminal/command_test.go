@@ -71,6 +71,7 @@ func (ft *FakeTerminal) AssertExecError(cmdstr, tgterr string) {
 }
 
 func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
+	os.Setenv("TERM", "dumb")
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
@@ -395,6 +396,57 @@ func TestOnPrefixLocals(t *testing.T) {
 			if !seen[i] {
 				t.Fatalf("Goroutine %d not seen\n", i)
 			}
+		}
+	})
+}
+
+
+func countOccourences(s string, needle string) int {
+	count := 0
+	for {
+		idx := strings.Index(s, needle)
+		if idx < 0 {
+			break
+		}
+		count++
+		s = s[idx+len(needle):]
+	}
+	return count
+}
+
+func TestIssue387(t *testing.T) {
+	// a breakpoint triggering during a 'next' operation will interrupt it
+	withTestTerminal("issue387", t, func(term *FakeTerminal) {
+		breakpointHitCount := 0
+		term.MustExec("break dostuff")
+		for {
+			outstr, err := term.Exec("continue")
+			breakpointHitCount += countOccourences(outstr, "issue387.go:8")
+			t.Log(outstr)
+			if err != nil {
+				if strings.Index(err.Error(), "exited") < 0 {
+					t.Fatalf("Unexpected error executing 'continue': %v", err)
+				}
+				break
+			}
+
+			pos := 9
+
+			for {
+				outstr = term.MustExec("next")
+				breakpointHitCount += countOccourences(outstr, "issue387.go:8")
+				t.Log(outstr)
+				if countOccourences(outstr, fmt.Sprintf("issue387.go:%d", pos)) == 0 {
+					t.Fatalf("did not continue to expected position %d", pos)
+				}
+				pos++
+				if pos > 11 {
+					break
+				}
+			}
+		}
+		if breakpointHitCount != 10 {
+			t.Fatalf("Breakpoint hit wrong number of times, expected 10 got %d", breakpointHitCount)
 		}
 	})
 }
