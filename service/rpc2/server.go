@@ -107,6 +107,7 @@ type ProcessPidOut struct {
 	Pid int
 }
 
+// ProcessPid returns the pid of the process we are debugging.
 func (s *RPCServer) ProcessPid(arg ProcessPidIn, out *ProcessPidOut) error {
 	out.Pid = s.debugger.ProcessPid()
 	return nil
@@ -119,6 +120,7 @@ type DetachIn struct {
 type DetachOut struct {
 }
 
+// Detach detaches the debugger, optionally killing the process.
 func (s *RPCServer) Detach(arg DetachIn, out *DetachOut) error {
 	return s.debugger.Detach(arg.Kill)
 }
@@ -129,6 +131,7 @@ type RestartIn struct {
 type RestartOut struct {
 }
 
+// Restart restarts program.
 func (s *RPCServer) Restart(arg RestartIn, out *RestartOut) error {
 	if s.config.AttachPid != 0 {
 		return errors.New("cannot restart process Delve did not create")
@@ -143,6 +146,7 @@ type StateOut struct {
 	State *api.DebuggerState
 }
 
+// State returns the current debugger state.
 func (s *RPCServer) State(arg StateIn, out *StateOut) error {
 	st, err := s.debugger.State()
 	if err != nil {
@@ -156,6 +160,7 @@ type CommandOut struct {
 	State api.DebuggerState
 }
 
+// Command interrupts, continues and steps through the program.
 func (s *RPCServer) Command(command api.DebuggerCommand, out *CommandOut) error {
 	st, err := s.debugger.Command(&command)
 	if err != nil {
@@ -174,6 +179,7 @@ type GetBreakpointOut struct {
 	Breakpoint api.Breakpoint
 }
 
+// GetBreakpoint gets a breakpoint by Name (if Name is not an empty string) or by ID.
 func (s *RPCServer) GetBreakpoint(arg GetBreakpointIn, out *GetBreakpointOut) error {
 	var bp *api.Breakpoint
 	if arg.Name != "" {
@@ -202,6 +208,10 @@ type StacktraceOut struct {
 	Locations []api.Stackframe
 }
 
+// Stacktrace returns stacktrace of goroutine Id up to the specified Depth.
+//
+// If Full is set it will also the variable of all local variables
+// and function arguments of all stack frames.
 func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	cfg := arg.Cfg
 	if cfg == nil && arg.Full {
@@ -222,6 +232,7 @@ type ListBreakpointsOut struct {
 	Breakpoints []*api.Breakpoint
 }
 
+// ListBreakpoints gets all breakpoints.
 func (s *RPCServer) ListBreakpoints(arg ListBreakpointsIn, out *ListBreakpointsOut) error {
 	out.Breakpoints = s.debugger.Breakpoints()
 	return nil
@@ -235,6 +246,18 @@ type CreateBreakpointOut struct {
 	Breakpoint api.Breakpoint
 }
 
+// CreateBreakpoint creates a new breakpoint.
+//
+// - If arg.Breakpoint.File is not an empty string the breakpoint
+// will be created on the specified file:line location
+//
+// - If arg.Breakpoint.FunctionName is not an empty string
+// the breakpoint will be created on the specified function:line
+// location. Note that setting a breakpoint on a function's entry point
+// (line == 0) can have surprising consequences, it is advisable to
+// use line = -1 instead which will skip the prologue.
+//
+// - Otherwise the value specified by arg.Breakpoint.Addr will be used.
 func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpointOut) error {
 	createdbp, err := s.debugger.CreateBreakpoint(&arg.Breakpoint)
 	if err != nil {
@@ -253,6 +276,8 @@ type ClearBreakpointOut struct {
 	Breakpoint *api.Breakpoint
 }
 
+// ClearBreakpoint deletes a breakpoint by Name (if Name is not an
+// empty string) or by ID.
 func (s *RPCServer) ClearBreakpoint(arg ClearBreakpointIn, out *ClearBreakpointOut) error {
 	var bp *api.Breakpoint
 	if arg.Name != "" {
@@ -281,6 +306,11 @@ type AmendBreakpointIn struct {
 type AmendBreakpointOut struct {
 }
 
+// AmendBreakpoint allows user to update an existing breakpoint
+// for example to change the information retrieved when the
+// breakpoint is hit or to change, add or remove the break condition.
+//
+// arg.Breakpoint.ID must be a valid breakpoint ID
 func (s *RPCServer) AmendBreakpoint(arg AmendBreakpointIn, out *AmendBreakpointOut) error {
 	return s.debugger.AmendBreakpoint(&arg.Breakpoint)
 }
@@ -292,6 +322,7 @@ type ListThreadsOut struct {
 	Threads []*api.Thread
 }
 
+// ListThreads lists all threads.
 func (s *RPCServer) ListThreads(arg ListThreadsIn, out *ListThreadsOut) (err error) {
 	out.Threads, err = s.debugger.Threads()
 	return err
@@ -305,6 +336,7 @@ type GetThreadOut struct {
 	Thread *api.Thread
 }
 
+// GetThread gets a thread by its ID.
 func (s *RPCServer) GetThread(arg GetThreadIn, out *GetThreadOut) error {
 	t, err := s.debugger.FindThread(arg.Id)
 	if err != nil {
@@ -326,6 +358,7 @@ type ListPackageVarsOut struct {
 	Variables []api.Variable
 }
 
+// ListPackageVars lists all package variables in the context of the current thread.
 func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsOut) error {
 	state, err := s.debugger.State()
 	if err != nil {
@@ -352,6 +385,7 @@ type ListRegistersOut struct {
 	Registers string
 }
 
+// ListRegisters lists registers and their values.
 func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) error {
 	state, err := s.debugger.State()
 	if err != nil {
@@ -375,6 +409,7 @@ type ListLocalVarsOut struct {
 	Variables []api.Variable
 }
 
+// ListLocalVars lists all local variables in scope.
 func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) error {
 	vars, err := s.debugger.LocalVariables(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
@@ -393,6 +428,7 @@ type ListFunctionArgsOut struct {
 	Args []api.Variable
 }
 
+// ListFunctionArgs lists all arguments to the current function
 func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionArgsOut) error {
 	vars, err := s.debugger.FunctionArguments(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
@@ -412,6 +448,10 @@ type EvalOut struct {
 	Variable *api.Variable
 }
 
+// EvalVariable returns a variable in the specified context.
+//
+// See https://github.com/derekparker/delve/wiki/Expressions for
+// a description of acceptable values of arg.Expr.
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {
@@ -434,6 +474,8 @@ type SetIn struct {
 type SetOut struct {
 }
 
+// Set sets the value of a variable. Only numerical types and
+// pointers are currently supported.
 func (s *RPCServer) Set(arg SetIn, out *SetOut) error {
 	return s.debugger.SetVariableInScope(arg.Scope, arg.Symbol, arg.Value)
 }
@@ -446,6 +488,7 @@ type ListSourcesOut struct {
 	Sources []string
 }
 
+// ListSources lists all source files in the process matching filter.
 func (s *RPCServer) ListSources(arg ListSourcesIn, out *ListSourcesOut) error {
 	ss, err := s.debugger.Sources(arg.Filter)
 	if err != nil {
@@ -463,6 +506,7 @@ type ListFunctionsOut struct {
 	Funcs []string
 }
 
+// ListFunctions lists all functions in the process matching filter.
 func (s *RPCServer) ListFunctions(arg ListFunctionsIn, out *ListFunctionsOut) error {
 	fns, err := s.debugger.Functions(arg.Filter)
 	if err != nil {
@@ -480,6 +524,7 @@ type ListTypesOut struct {
 	Types []string
 }
 
+// ListTypes lists all types in the process matching filter.
 func (s *RPCServer) ListTypes(arg ListTypesIn, out *ListTypesOut) error {
 	tps, err := s.debugger.Types(arg.Filter)
 	if err != nil {
@@ -496,6 +541,7 @@ type ListGoroutinesOut struct {
 	Goroutines []*api.Goroutine
 }
 
+// ListGoroutines lists all goroutines.
 func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut) error {
 	gs, err := s.debugger.Goroutines()
 	if err != nil {
@@ -512,6 +558,7 @@ type AttachedToExistingProcessOut struct {
 	Answer bool
 }
 
+// AttachedToExistingProcess returns whether we attached to a running process or not
 func (c *RPCServer) AttachedToExistingProcess(arg AttachedToExistingProcessIn, out *AttachedToExistingProcessOut) error {
 	if c.config.AttachPid != 0 {
 		out.Answer = true
@@ -528,6 +575,19 @@ type FindLocationOut struct {
 	Locations []api.Location
 }
 
+// FindLocation returns concrete location information described by a location expression
+//
+//  loc ::= <filename>:<line> | <function>[:<line>] | /<regex>/ | (+|-)<offset> | <line> | *<address>
+//  * <filename> can be the full path of a file or just a suffix
+//  * <function> ::= <package>.<receiver type>.<name> | <package>.(*<receiver type>).<name> | <receiver type>.<name> | <package>.<name> | (*<receiver type>).<name> | <name>
+//  * <function> must be unambiguous
+//  * /<regex>/ will return a location for each function matched by regex
+//  * +<offset> returns a location for the line that is <offset> lines after the current line
+//  * -<offset> returns a location for the line that is <offset> lines before the current line
+//  * <line> returns a location for a line in the current file
+//  * *<address> returns the location corresponding to the specified address
+//
+// NOTE: this function does not actually set breakpoints.
 func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {
 	var err error
 	out.Locations, err = c.debugger.FindLocation(arg.Scope, arg.Loc)
@@ -544,6 +604,13 @@ type DisassembleOut struct {
 	Disassemble api.AsmInstructions
 }
 
+// Disassemble code.
+//
+// If both StartPC and EndPC are non-zero the specified range will be disassembled, otherwise the function containing StartPC will be disassembled.
+//
+// Scope is used to mark the instruction the specified gorutine is stopped at.
+//
+// Disassemble will also try to calculate the destination address of an absolute indirect CALL if it happens to be the instruction the selected goroutine is stopped at.
 func (c *RPCServer) Disassemble(arg DisassembleIn, out *DisassembleOut) error {
 	var err error
 	out.Disassemble, err = c.debugger.Disassemble(arg.Scope, arg.StartPC, arg.EndPC, arg.Flavour)
