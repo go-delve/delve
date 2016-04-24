@@ -41,7 +41,13 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 			if err == nil {
 				return v, nil
 			}
-			if err != reader.TypeNotFoundErr {
+			_, isident := node.Fun.(*ast.Ident)
+			// we don't support function calls at the moment except for a few
+			// builtin functions so just return the type error here if the function
+			// isn't an identifier.
+			// More sophisticated logic will be required when function calls
+			// are implemented.
+			if err != reader.TypeNotFoundErr || !isident {
 				return v, err
 			}
 		}

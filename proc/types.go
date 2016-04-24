@@ -3,8 +3,10 @@ package proc
 import (
 	"github.com/derekparker/delve/dwarf/reader"
 	"go/ast"
+	"go/token"
 	"golang.org/x/debug/dwarf"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -24,13 +26,20 @@ func (dbp *Process) pointerTo(typ dwarf.Type) dwarf.Type {
 
 func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
 	dbp.loadPackageMap()
+	if lit, islit := expr.(*ast.BasicLit); islit && lit.Kind == token.STRING {
+		// Allow users to specify type names verbatim as quoted
+		// string. Useful as a catch-all workaround for cases where we don't
+		// parse/serialize types correctly or can not resolve package paths.
+		typn, _ := strconv.Unquote(lit.Value)
+		return dbp.findType(typn)
+	}
 	dbp.expandPackagesInType(expr)
 	if snode, ok := expr.(*ast.StarExpr); ok {
 		// Pointer types only appear in the dwarf informations when
 		// a pointer to the type is used in the target program, here
 		// we create a pointer type on the fly so that the user can
 		// specify a pointer to any variable used in the target program
-		ptyp, err := dbp.findType(exprToString(snode.X))
+		ptyp, err := dbp.findTypeExpr(snode.X)
 		if err != nil {
 			return nil, err
 		}
