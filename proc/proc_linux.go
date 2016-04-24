@@ -51,7 +51,7 @@ func Launch(cmd []string) (*Process, error) {
 		err  error
 	)
 	dbp := New(0)
-	dbp.execPtraceFunc(func() {
+	execOnPtraceThread(func() {
 		proc = exec.Command(cmd[0])
 		proc.Args = cmd
 		proc.Stdout = os.Stdout
@@ -106,7 +106,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 	var err error
 	if attach {
-		dbp.execPtraceFunc(func() { err = sys.PtraceAttach(tid) })
+		execOnPtraceThread(func() { err = sys.PtraceAttach(tid) })
 		if err != nil && err != sys.EPERM {
 			// Do not return err if err == EPERM,
 			// we may already be tracing this thread due to
@@ -123,12 +123,12 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
+	execOnPtraceThread(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
 		if _, _, err = dbp.wait(tid, 0); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
-		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
+		execOnPtraceThread(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 		if err == syscall.ESRCH {
 			return nil, err
 		}
@@ -282,7 +282,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
 			var cloned uint
-			dbp.execPtraceFunc(func() { cloned, err = sys.PtraceGetEventMsg(wpid) })
+			execOnPtraceThread(func() { cloned, err = sys.PtraceGetEventMsg(wpid) })
 			if err != nil {
 				return nil, fmt.Errorf("could not get event message: %s", err)
 			}

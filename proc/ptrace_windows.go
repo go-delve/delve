@@ -1,13 +1,11 @@
 package proc
 
-import (
-	"fmt"
-)
+import "errors"
 
 func PtraceAttach(pid int) error {
-	return fmt.Errorf("not implemented: PtraceAttach")
+	return errors.New("not implemented: PtraceAttach")
 }
 
 func PtraceDetach(tid, sig int) error {
-	return fmt.Errorf("not implemented: PtraceDetach")
+	return errors.New("not implemented: PtraceDetach")
 }

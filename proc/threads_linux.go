@@ -39,13 +39,13 @@ func (t *Thread) resume() error {
 
 func (t *Thread) resumeWithSig(sig int) (err error) {
 	t.running = true
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
+	err = PtraceCont(t.ID, sig)
 	return
 }
 
 func (t *Thread) singleStep() (err error) {
 	for {
-		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.ID) })
+		execOnPtraceThread(func() { err = sys.PtraceSingleStep(t.ID) })
 		if err != nil {
 			return err
 		}
@@ -78,7 +78,7 @@ func (t *Thread) blocked() bool {
 
 func (t *Thread) saveRegisters() (Registers, error) {
 	var err error
-	t.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(t.ID, &t.os.registers) })
+	execOnPtraceThread(func() { err = sys.PtraceGetRegs(t.ID, &t.os.registers) })
 	if err != nil {
 		return nil, fmt.Errorf("could not save register contents")
 	}
@@ -86,7 +86,7 @@ func (t *Thread) saveRegisters() (Registers, error) {
 }
 
 func (t *Thread) restoreRegisters() (err error) {
-	t.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(t.ID, &t.os.registers) })
+	execOnPtraceThread(func() { err = sys.PtraceSetRegs(t.ID, &t.os.registers) })
 	return
 }
 
@@ -94,7 +94,7 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error)
 	if len(data) == 0 {
 		return
 	}
-	t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
+	execOnPtraceThread(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
 	return
 }
 
@@ -103,6 +103,6 @@ func (t *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
 		return
 	}
 	data = make([]byte, size)
-	t.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
+	execOnPtraceThread(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
 	return
 }

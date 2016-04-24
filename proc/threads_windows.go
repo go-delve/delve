@@ -52,7 +52,7 @@ func (t *Thread) singleStep() error {
 
 	// Continue and wait for the step to complete
 	err = nil
-	t.dbp.execPtraceFunc(func() {
+	execOnPtraceThread(func() {
 		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
 	})
 	if err != nil {
@@ -85,7 +85,7 @@ func (t *Thread) singleStep() error {
 func (t *Thread) resume() error {
 	t.running = true
 	var err error
-	t.dbp.execPtraceFunc(func() {
+	execOnPtraceThread(func() {
 		//TODO: Note that we are ignoring the thread we were asked to continue and are continuing the
 		//thread that we last broke on.
 		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)

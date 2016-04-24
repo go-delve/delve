@@ -10,7 +10,9 @@ import (
 
 // PtraceAttach executes the sys.PtraceAttach call.
 func PtraceAttach(pid int) error {
-	return sys.PtraceAttach(pid)
+	var err error
+	execOnPtraceThread(func() { err = sys.PtraceAttach(pid) })
+	return err
 }
 
 // PtraceDetach executes the PT_DETACH ptrace call.
@@ -34,7 +36,10 @@ func PtraceSingleStep(tid int) error {
 }
 
 func ptrace(request, pid int, addr uintptr, data uintptr) error {
-	_, _, err := sys.Syscall6(sys.SYS_PTRACE, uintptr(request), uintptr(pid), uintptr(addr), uintptr(data), 0, 0)
+	var err error
+	execOnPtraceThread(func() {
+		_, _, err = sys.Syscall6(sys.SYS_PTRACE, uintptr(request), uintptr(pid), uintptr(addr), uintptr(data), 0, 0)
+	})
 	if err != syscall.Errno(0) {
 		return err
 	}

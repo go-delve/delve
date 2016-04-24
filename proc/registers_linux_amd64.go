@@ -74,7 +74,7 @@ func (r *Regs) TLS() uint64 {
 // SetPC sets RIP to the value specified by 'pc'.
 func (r *Regs) SetPC(thread *Thread, pc uint64) (err error) {
 	r.regs.SetPC(pc)
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })
+	execOnPtraceThread(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })
 	return
 }
 
@@ -240,7 +240,7 @@ func registers(thread *Thread) (Registers, error) {
 		regs sys.PtraceRegs
 		err  error
 	)
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(thread.ID, &regs) })
+	execOnPtraceThread(func() { err = sys.PtraceGetRegs(thread.ID, &regs) })
 	if err != nil {
 		return nil, err
 	}

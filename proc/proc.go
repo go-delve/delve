@@ -57,27 +57,18 @@ type Process struct {
 	firstStart              bool
 	halt                    bool
 	exited                  bool
-	ptraceChan              chan func()
-	ptraceDoneChan          chan interface{}
 	types                   map[string]dwarf.Offset
 }
 
-// New returns an initialized Process struct. Before returning,
-// it will also launch a goroutine in order to handle ptrace(2)
-// functions. For more information, see the documentation on
-// `handlePtraceFuncs`.
+// New returns an initialized Process struct.
 func New(pid int) *Process {
-	dbp := &Process{
-		Pid:            pid,
-		Threads:        make(map[int]*Thread),
-		Breakpoints:    make(map[uint64]*Breakpoint),
-		firstStart:     true,
-		os:             new(OSProcessDetails),
-		ptraceChan:     make(chan func()),
-		ptraceDoneChan: make(chan interface{}),
+	return &Process{
+		Pid:         pid,
+		firstStart:  true,
+		Threads:     make(map[int]*Thread),
+		Breakpoints: make(map[uint64]*Breakpoint),
+		os:          new(OSProcessDetails),
 	}
-	go dbp.handlePtraceFuncs()
-	return dbp
 }
 
 // ProcessExitedError indicates that the process has exited and contains both
@@ -109,15 +100,13 @@ func (dbp *Process) Detach(kill bool) (err error) {
 			}
 		}
 	}
-	dbp.execPtraceFunc(func() {
-		err = PtraceDetach(dbp.Pid, 0)
-		if err != nil {
-			return
-		}
-		if kill {
-			err = killProcess(dbp.Pid)
-		}
-	})
+	err = PtraceDetach(dbp.Pid, 0)
+	if err != nil {
+		return
+	}
+	if kill {
+		err = killProcess(dbp.Pid)
+	}
 	return
 }
 
@@ -708,7 +697,7 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
 func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, error) {
 	if attach {
 		var err error
-		dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.Pid) })
+		err = PtraceAttach(dbp.Pid)
 		if err != nil {
 			return nil, err
 		}
@@ -794,23 +783,6 @@ func (dbp *Process) run(fn func() error) error {
 		return err
 	}
 	return nil
-}
-
-func (dbp *Process) handlePtraceFuncs() {
-	// We must ensure here that we are running on the same thread during
-	// while invoking the ptrace(2) syscall. This is due to the fact that ptrace(2) expects
-	// all commands after PTRACE_ATTACH to come from the same thread.
-	runtime.LockOSThread()
-
-	for fn := range dbp.ptraceChan {
-		fn()
-		dbp.ptraceDoneChan <- nil
-	}
-}
-
-func (dbp *Process) execPtraceFunc(fn func()) {
-	dbp.ptraceChan <- fn
-	<-dbp.ptraceDoneChan
 }
 
 func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
@@ -906,6 +878,4 @@ func (dbp *Process) postExit() {
 		}
 	}()
 	dbp.exited = true
-	close(dbp.ptraceChan)
-	close(dbp.ptraceDoneChan)
 }

@@ -112,7 +112,7 @@ func Launch(cmd []string) (*Process, error) {
 	// will always fire a CreateProcess event immediately
 	// after launching under DEBUGONLYTHISPROCESS.
 	var tid, exitCode int
-	dbp.execPtraceFunc(func() {
+	execOnPtraceThread(func() {
 		tid, exitCode, err = dbp.waitForDebugEvent()
 	})
 	if err != nil {
@@ -439,7 +439,7 @@ func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	var err error
 	var tid, exitCode int
-	dbp.execPtraceFunc(func() {
+	execOnPtraceThread(func() {
 		tid, exitCode, err = dbp.waitForDebugEvent()
 	})
 	if err != nil {

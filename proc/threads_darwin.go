@@ -88,8 +88,7 @@ func (t *Thread) sendMachReply() error {
 		if s == syscall.SIGTRAP {
 			sig = 0
 		}
-		var err error
-		t.dbp.execPtraceFunc(func() { err = PtraceThupdate(t.dbp.Pid, t.os.threadAct, sig) })
+		err := PtraceThupdate(t.dbp.Pid, t.os.threadAct, sig)
 		if err != nil {
 			log.Println("could not thupdate:", err)
 		}
