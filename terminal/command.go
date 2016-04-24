@@ -438,12 +438,14 @@ func restart(t *Term, ctx callContext, args string) error {
 
 func cont(t *Term, ctx callContext, args string) error {
 	stateChan := t.client.Continue()
-	for state := range stateChan {
+	var state *api.DebuggerState
+	for state = range stateChan {
 		if state.Err != nil {
 			return state.Err
 		}
 		printcontext(t, state)
 	}
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 	return nil
 }
 
@@ -453,6 +455,7 @@ func step(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 	return nil
 }
 
@@ -462,6 +465,7 @@ func stepInstruction(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 	return nil
 }
 
@@ -471,6 +475,7 @@ func next(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 	return nil
 }
 
@@ -836,6 +841,7 @@ func listCommand(t *Term, ctx callContext, args string) error {
 			return err
 		}
 		printcontext(t, state)
+		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 		return nil
 	}
 
@@ -973,9 +979,6 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 
 	printcontextThread(t, state.CurrentThread)
 
-	if state.CurrentThread.Breakpoint == nil || !state.CurrentThread.Breakpoint.Tracepoint || state.CurrentThread.BreakpointInfo == nil {
-		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
-	}
 	return nil
 }
 
