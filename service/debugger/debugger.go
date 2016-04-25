@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/derekparker/delve/proc"
-	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/service/types"
 )
 
 // Debugger service.
@@ -130,33 +130,33 @@ func (d *Debugger) Restart() error {
 }
 
 // State returns the current state of the debugger.
-func (d *Debugger) State() (*api.DebuggerState, error) {
+func (d *Debugger) State() (*types.DebuggerState, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 	return d.state()
 }
 
-func (d *Debugger) state() (*api.DebuggerState, error) {
+func (d *Debugger) state() (*types.DebuggerState, error) {
 	if d.process.Exited() {
 		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
 	}
 
 	var (
-		state     *api.DebuggerState
-		goroutine *api.Goroutine
+		state     *types.DebuggerState
+		goroutine *types.Goroutine
 	)
 
 	if d.process.SelectedGoroutine != nil {
-		goroutine = api.ConvertGoroutine(d.process.SelectedGoroutine)
+		goroutine = types.ConvertGoroutine(d.process.SelectedGoroutine)
 	}
 
-	state = &api.DebuggerState{
+	state = &types.DebuggerState{
 		SelectedGoroutine: goroutine,
 		Exited:            d.process.Exited(),
 	}
 
 	for i := range d.process.Threads {
-		th := api.ConvertThread(d.process.Threads[i])
+		th := types.ConvertThread(d.process.Threads[i])
 		state.Threads = append(state.Threads, th)
 		if i == d.process.CurrentThread.ID {
 			state.CurrentThread = th
@@ -174,18 +174,18 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 }
 
 // CreateBreakpoint creates a breakpoint.
-func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+func (d *Debugger) CreateBreakpoint(requestedBp *types.Breakpoint) (*types.Breakpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
 	var (
-		createdBp *api.Breakpoint
+		createdBp *types.Breakpoint
 		addr      uint64
 		err       error
 	)
 
 	if requestedBp.Name != "" {
-		if err = api.ValidBreakpointName(requestedBp.Name); err != nil {
+		if err = types.ValidBreakpointName(requestedBp.Name); err != nil {
 			return nil, err
 		}
 		if d.findBreakpointByName(requestedBp.Name) != nil {
@@ -231,12 +231,12 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		}
 		return nil, err
 	}
-	createdBp = api.ConvertBreakpoint(bp)
+	createdBp = types.ConvertBreakpoint(bp)
 	log.Printf("created breakpoint: %#v", createdBp)
 	return createdBp, nil
 }
 
-func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
+func (d *Debugger) AmendBreakpoint(amend *types.Breakpoint) error {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -244,7 +244,7 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	if original == nil {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
 	}
-	if err := api.ValidBreakpointName(amend.Name); err != nil {
+	if err := types.ValidBreakpointName(amend.Name); err != nil {
 		return err
 	}
 	return copyBreakpointInfo(original, amend)
@@ -254,14 +254,14 @@ func (d *Debugger) CancelNext() error {
 	return d.process.ClearTempBreakpoints()
 }
 
-func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
+func copyBreakpointInfo(bp *proc.Breakpoint, requested *types.Breakpoint) (err error) {
 	bp.Name = requested.Name
 	bp.Tracepoint = requested.Tracepoint
 	bp.Goroutine = requested.Goroutine
 	bp.Stacktrace = requested.Stacktrace
 	bp.Variables = requested.Variables
-	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
-	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
+	bp.LoadArgs = types.LoadConfigToProc(requested.LoadArgs)
+	bp.LoadLocals = types.LoadConfigToProc(requested.LoadLocals)
 	bp.Cond = nil
 	if requested.Cond != "" {
 		bp.Cond, err = parser.ParseExpr(requested.Cond)
@@ -270,40 +270,40 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 }
 
 // ClearBreakpoint clears a breakpoint.
-func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+func (d *Debugger) ClearBreakpoint(requestedBp *types.Breakpoint) (*types.Breakpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	var clearedBp *api.Breakpoint
+	var clearedBp *types.Breakpoint
 	bp, err := d.process.ClearBreakpoint(requestedBp.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("Can't clear breakpoint @%x: %s", requestedBp.Addr, err)
 	}
-	clearedBp = api.ConvertBreakpoint(bp)
+	clearedBp = types.ConvertBreakpoint(bp)
 	log.Printf("cleared breakpoint: %#v", clearedBp)
 	return clearedBp, err
 }
 
 // Breakpoints returns the list of current breakpoints.
-func (d *Debugger) Breakpoints() []*api.Breakpoint {
+func (d *Debugger) Breakpoints() []*types.Breakpoint {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 	return d.breakpoints()
 }
 
-func (d *Debugger) breakpoints() []*api.Breakpoint {
-	bps := []*api.Breakpoint{}
+func (d *Debugger) breakpoints() []*types.Breakpoint {
+	bps := []*types.Breakpoint{}
 	for _, bp := range d.process.Breakpoints {
 		if bp.Temp {
 			continue
 		}
-		bps = append(bps, api.ConvertBreakpoint(bp))
+		bps = append(bps, types.ConvertBreakpoint(bp))
 	}
 	return bps
 }
 
 // FindBreakpoint returns the breakpoint specified by 'id'.
-func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
+func (d *Debugger) FindBreakpoint(id int) *types.Breakpoint {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -311,7 +311,7 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 	if bp == nil {
 		return nil
 	}
-	return api.ConvertBreakpoint(bp)
+	return types.ConvertBreakpoint(bp)
 }
 
 func (d *Debugger) findBreakpoint(id int) *proc.Breakpoint {
@@ -324,13 +324,13 @@ func (d *Debugger) findBreakpoint(id int) *proc.Breakpoint {
 }
 
 // FindBreakpointByName returns the breakpoint specified by 'name'
-func (d *Debugger) FindBreakpointByName(name string) *api.Breakpoint {
+func (d *Debugger) FindBreakpointByName(name string) *types.Breakpoint {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 	return d.findBreakpointByName(name)
 }
 
-func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
+func (d *Debugger) findBreakpointByName(name string) *types.Breakpoint {
 	for _, bp := range d.breakpoints() {
 		if bp.Name == name {
 			return bp
@@ -340,22 +340,22 @@ func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
 }
 
 // Threads returns the threads of the target process.
-func (d *Debugger) Threads() ([]*api.Thread, error) {
+func (d *Debugger) Threads() ([]*types.Thread, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
 	if d.process.Exited() {
 		return nil, &proc.ProcessExitedError{}
 	}
-	threads := []*api.Thread{}
+	threads := []*types.Thread{}
 	for _, th := range d.process.Threads {
-		threads = append(threads, api.ConvertThread(th))
+		threads = append(threads, types.ConvertThread(th))
 	}
 	return threads, nil
 }
 
 // FindThread returns the thread for the given 'id'.
-func (d *Debugger) FindThread(id int) (*api.Thread, error) {
+func (d *Debugger) FindThread(id int) (*types.Thread, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -365,17 +365,17 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 
 	for _, th := range d.process.Threads {
 		if th.ID == id {
-			return api.ConvertThread(th), nil
+			return types.ConvertThread(th), nil
 		}
 	}
 	return nil, nil
 }
 
 // Command handles commands which control the debugger lifecycle
-func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, error) {
+func (d *Debugger) Command(command *types.DebuggerCommand) (*types.DebuggerState, error) {
 	var err error
 
-	if command.Name == api.Halt {
+	if command.Name == types.Halt {
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
 		log.Print("halting")
@@ -386,12 +386,12 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	defer d.processMutex.Unlock()
 
 	switch command.Name {
-	case api.Continue:
+	case types.Continue:
 		log.Print("continuing")
 		err = d.process.Continue()
 		if err != nil {
 			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
-				state := &api.DebuggerState{}
+				state := &types.DebuggerState{}
 				state.Exited = true
 				state.ExitStatus = exitedErr.Status
 				state.Err = errors.New(exitedErr.Error())
@@ -406,22 +406,22 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = d.collectBreakpointInformation(state)
 		return state, err
 
-	case api.Next:
+	case types.Next:
 		log.Print("nexting")
 		err = d.process.Next()
-	case api.Step:
+	case types.Step:
 		log.Print("stepping")
 		err = d.process.Step()
-	case api.StepInstruction:
+	case types.StepInstruction:
 		log.Print("single stepping")
 		err = d.process.StepInstruction()
-	case api.SwitchThread:
+	case types.SwitchThread:
 		log.Printf("switching to thread %d", command.ThreadID)
 		err = d.process.SwitchThread(command.ThreadID)
-	case api.SwitchGoroutine:
+	case types.SwitchGoroutine:
 		log.Printf("switching to goroutine %d", command.GoroutineID)
 		err = d.process.SwitchGoroutine(command.GoroutineID)
-	case api.Halt:
+	case types.Halt:
 		// RequestManualStop already called
 	}
 	if err != nil {
@@ -430,7 +430,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	return d.state()
 }
 
-func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error {
+func (d *Debugger) collectBreakpointInformation(state *types.DebuggerState) error {
 	if state == nil {
 		return nil
 	}
@@ -441,7 +441,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		}
 
 		bp := state.Threads[i].Breakpoint
-		bpi := &api.BreakpointInfo{}
+		bpi := &types.BreakpointInfo{}
 		state.Threads[i].BreakpointInfo = bpi
 
 		if bp.Goroutine {
@@ -449,7 +449,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			if err != nil {
 				return err
 			}
-			bpi.Goroutine = api.ConvertGoroutine(g)
+			bpi.Goroutine = types.ConvertGoroutine(g)
 		}
 
 		if bp.Stacktrace > 0 {
@@ -469,22 +469,22 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		}
 
 		if len(bp.Variables) > 0 {
-			bpi.Variables = make([]api.Variable, len(bp.Variables))
+			bpi.Variables = make([]types.Variable, len(bp.Variables))
 		}
 		for i := range bp.Variables {
 			v, err := s.EvalVariable(bp.Variables[i], proc.LoadConfig{true, 1, 64, 64, -1})
 			if err != nil {
 				return err
 			}
-			bpi.Variables[i] = *api.ConvertVar(v)
+			bpi.Variables[i] = *types.ConvertVar(v)
 		}
 		if bp.LoadArgs != nil {
-			if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {
+			if vars, err := s.FunctionArguments(*types.LoadConfigToProc(bp.LoadArgs)); err == nil {
 				bpi.Arguments = convertVars(vars)
 			}
 		}
 		if bp.LoadLocals != nil {
-			if locals, err := s.LocalVariables(*api.LoadConfigToProc(bp.LoadLocals)); err == nil {
+			if locals, err := s.LocalVariables(*types.LoadConfigToProc(bp.LoadLocals)); err == nil {
 				bpi.Locals = convertVars(locals)
 			}
 		}
@@ -561,7 +561,7 @@ func regexFilterFuncs(filter string, allFuncs []gosym.Func) ([]string, error) {
 
 // PackageVariables returns a list of package variables for the thread,
 // optionally regexp filtered using regexp described in 'filter'.
-func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadConfig) ([]api.Variable, error) {
+func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadConfig) ([]types.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -570,7 +570,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	vars := []api.Variable{}
+	vars := []types.Variable{}
 	thread, found := d.process.Threads[threadID]
 	if !found {
 		return nil, fmt.Errorf("couldn't find thread %d", threadID)
@@ -585,7 +585,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 	}
 	for _, v := range pv {
 		if regex.Match([]byte(v.Name)) {
-			vars = append(vars, *api.ConvertVar(v))
+			vars = append(vars, *types.ConvertVar(v))
 		}
 	}
 	return vars, err
@@ -607,16 +607,16 @@ func (d *Debugger) Registers(threadID int) (string, error) {
 	return regs.String(), err
 }
 
-func convertVars(pv []*proc.Variable) []api.Variable {
-	vars := make([]api.Variable, 0, len(pv))
+func convertVars(pv []*proc.Variable) []types.Variable {
+	vars := make([]types.Variable, 0, len(pv))
 	for _, v := range pv {
-		vars = append(vars, *api.ConvertVar(v))
+		vars = append(vars, *types.ConvertVar(v))
 	}
 	return vars
 }
 
 // LocalVariables returns a list of the local variables.
-func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
+func (d *Debugger) LocalVariables(scope types.EvalScope, cfg proc.LoadConfig) ([]types.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -632,7 +632,7 @@ func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]a
 }
 
 // FunctionArguments returns the arguments to the current function.
-func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
+func (d *Debugger) FunctionArguments(scope types.EvalScope, cfg proc.LoadConfig) ([]types.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -649,7 +649,7 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) (
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
-func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg proc.LoadConfig) (*api.Variable, error) {
+func (d *Debugger) EvalVariableInScope(scope types.EvalScope, symbol string, cfg proc.LoadConfig) (*types.Variable, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -661,12 +661,12 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg p
 	if err != nil {
 		return nil, err
 	}
-	return api.ConvertVar(v), err
+	return types.ConvertVar(v), err
 }
 
 // SetVariableInScope will set the value of the variable represented by
 // 'symbol' to the value given, in the given scope.
-func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string) error {
+func (d *Debugger) SetVariableInScope(scope types.EvalScope, symbol, value string) error {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -678,17 +678,17 @@ func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string)
 }
 
 // Goroutines will return a list of goroutines in the target process.
-func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
+func (d *Debugger) Goroutines() ([]*types.Goroutine, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	goroutines := []*api.Goroutine{}
+	goroutines := []*types.Goroutine{}
 	gs, err := d.process.GoroutinesInfo()
 	if err != nil {
 		return nil, err
 	}
 	for _, g := range gs {
-		goroutines = append(goroutines, api.ConvertGoroutine(g))
+		goroutines = append(goroutines, types.ConvertGoroutine(g))
 	}
 	return goroutines, err
 }
@@ -696,7 +696,7 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.
-func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
+func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]types.Stackframe, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -719,10 +719,10 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]a
 	return d.convertStacktrace(rawlocs, cfg)
 }
 
-func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
-	locations := make([]api.Stackframe, 0, len(rawlocs))
+func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadConfig) ([]types.Stackframe, error) {
+	locations := make([]types.Stackframe, 0, len(rawlocs))
 	for i := range rawlocs {
-		frame := api.Stackframe{Location: api.ConvertLocation(rawlocs[i].Call)}
+		frame := types.Stackframe{Location: types.ConvertLocation(rawlocs[i].Call)}
 		if cfg != nil {
 			var err error
 			scope := rawlocs[i].Scope(d.process.CurrentThread)
@@ -745,7 +745,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 }
 
 // FindLocation will find the location specified by 'locStr'.
-func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Location, error) {
+func (d *Debugger) FindLocation(scope types.EvalScope, locStr string) ([]types.Location, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -761,14 +761,14 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 		file, line, fn := d.process.PCToLine(locs[i].PC)
 		locs[i].File = file
 		locs[i].Line = line
-		locs[i].Function = api.ConvertFunction(fn)
+		locs[i].Function = types.ConvertFunction(fn)
 	}
 	return locs, err
 }
 
 // Disassembles code between startPC and endPC
 // if endPC == 0 it will find the function containing startPC and disassemble the whole function
-func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+func (d *Debugger) Disassemble(scope types.EvalScope, startPC, endPC uint64, flavour types.AssemblyFlavour) (types.AsmInstructions, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -798,10 +798,10 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 	if err != nil {
 		return nil, err
 	}
-	disass := make(api.AsmInstructions, len(insts))
+	disass := make(types.AsmInstructions, len(insts))
 
 	for i := range insts {
-		disass[i] = api.ConvertAsmInstruction(insts[i], insts[i].Text(proc.AssemblyFlavour(flavour)))
+		disass[i] = types.ConvertAsmInstruction(insts[i], insts[i].Text(proc.AssemblyFlavour(flavour)))
 	}
 
 	return disass, nil

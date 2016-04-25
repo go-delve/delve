@@ -1,4 +1,4 @@
-package api
+package types
 
 import (
 	"bytes"
@@ -6,9 +6,10 @@ import (
 	"go/constant"
 	"go/printer"
 	"go/token"
-	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strconv"
+
+	"golang.org/x/debug/dwarf"
 
 	"github.com/derekparker/delve/proc"
 )
