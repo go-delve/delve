@@ -1,4 +1,4 @@
-package servicetest
+package apitest
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/api/types"
 )
 
 func assertNoError(err error, t *testing.T, s string) {
@@ -49,7 +49,7 @@ func testProgPath(t *testing.T, name string) string {
 }
 
 type BreakpointLister interface {
-	ListBreakpoints() ([]*api.Breakpoint, error)
+	ListBreakpoints() ([]*types.Breakpoint, error)
 }
 
 func countBreakpoints(t *testing.T, c BreakpointLister) int {
@@ -65,11 +65,11 @@ func countBreakpoints(t *testing.T, c BreakpointLister) int {
 }
 
 type LocationFinder interface {
-	FindLocation(api.EvalScope, string) ([]api.Location, error)
+	FindLocation(types.EvalScope, string) ([]types.Location, error)
 }
 
 func findLocationHelper(t *testing.T, c LocationFinder, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
-	locs, err := c.FindLocation(api.EvalScope{-1, 0}, loc)
+	locs, err := c.FindLocation(types.EvalScope{-1, 0}, loc)
 	t.Logf("FindLocation(\"%s\") → %v\n", loc, locs)
 
 	if shouldErr {
@@ -97,7 +97,7 @@ func findLocationHelper(t *testing.T, c LocationFinder, loc string, shouldErr bo
 	return addrs
 }
 
-func getCurinstr(d3 api.AsmInstructions) *api.AsmInstruction {
+func getCurinstr(d3 types.AsmInstructions) *types.AsmInstruction {
 	for i := range d3 {
 		if d3[i].AtPC {
 			return &d3[i]

@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/derekparker/delve/api"
+	"github.com/derekparker/delve/api/rpc1"
+	"github.com/derekparker/delve/api/rpc2"
+	"github.com/derekparker/delve/api/types"
 	"github.com/derekparker/delve/config"
-	"github.com/derekparker/delve/service"
-	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/rpc1"
-	"github.com/derekparker/delve/service/rpc2"
 	"github.com/derekparker/delve/terminal"
 	"github.com/derekparker/delve/version"
 	"github.com/spf13/cobra"
@@ -81,7 +81,7 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate")
-	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless")
+	RootCommand.PersistentFlags().IntVar(&ApiVersion, "types.version", 1, "Selects API version when headless")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 
@@ -243,7 +243,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		defer listener.Close()
 
 		// Create and start a debug server
-		server := rpc2.NewServer(&service.Config{
+		server := rpc2.NewServer(&api.Config{
 			Listener:    listener,
 			ProcessArgs: processArgs,
 			AttachPid:   traceAttachPid,
@@ -259,7 +259,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		for i := range funcs {
-			_, err = client.CreateBreakpoint(&api.Breakpoint{FunctionName: funcs[i], Tracepoint: true, Line: -1, Stacktrace: traceStackDepth, LoadArgs: &terminal.ShortLoadConfig})
+			_, err = client.CreateBreakpoint(&types.Breakpoint{FunctionName: funcs[i], Tracepoint: true, Line: -1, Stacktrace: traceStackDepth, LoadArgs: &terminal.ShortLoadConfig})
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
@@ -325,7 +325,7 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 
 func connect(addr string, conf *config.Config) int {
 	// Create and start a terminal - attach to running instance
-	var client service.Client
+	var client api.Client
 	client = rpc2.NewClient(addr)
 	term := terminal.New(client, conf)
 	status, err := term.Run()
@@ -360,14 +360,14 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 	// Create and start a debugger server
 	switch ApiVersion {
 	case 1:
-		server = rpc1.NewServer(&service.Config{
+		server = rpc1.NewServer(&api.Config{
 			Listener:    listener,
 			ProcessArgs: processArgs,
 			AttachPid:   attachPid,
 			AcceptMulti: AcceptMulti,
 		}, Log)
 	case 2:
-		server = rpc2.NewServer(&service.Config{
+		server = rpc2.NewServer(&api.Config{
 			Listener:    listener,
 			ProcessArgs: processArgs,
 			AttachPid:   attachPid,
@@ -393,7 +393,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 		err = server.Stop(true)
 	} else {
 		// Create and start a terminal
-		var client service.Client
+		var client api.Client
 		client = rpc2.NewClient(listener.Addr().String())
 		term := terminal.New(client, conf)
 		term.InitFile = InitFile

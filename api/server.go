@@ -1,4 +1,4 @@
-package service
+package api
 
 // Server represents a server for a remote client
 // to connect to.

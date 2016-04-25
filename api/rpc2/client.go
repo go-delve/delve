@@ -6,8 +6,8 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 
-	"github.com/derekparker/delve/service"
-	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/api"
+	"github.com/derekparker/delve/api/types"
 )
 
 // Client is a RPC service.Client.
@@ -18,7 +18,7 @@ type RPCClient struct {
 }
 
 // Ensure the implementation satisfies the interface.
-var _ service.Client = &RPCClient{}
+var _ api.Client = &RPCClient{}
 
 // NewClient creates a new RPCClient.
 func NewClient(addr string) *RPCClient {
@@ -48,18 +48,18 @@ func (c *RPCClient) Restart() error {
 	return c.call("Restart", RestartIn{}, out)
 }
 
-func (c *RPCClient) GetState() (*api.DebuggerState, error) {
+func (c *RPCClient) GetState() (*types.DebuggerState, error) {
 	var out StateOut
 	err := c.call("State", StateIn{}, &out)
 	return out.State, err
 }
 
-func (c *RPCClient) Continue() <-chan *api.DebuggerState {
-	ch := make(chan *api.DebuggerState)
+func (c *RPCClient) Continue() <-chan *types.DebuggerState {
+	ch := make(chan *types.DebuggerState)
 	go func() {
 		for {
 			out := new(CommandOut)
-			err := c.call("Command", &api.DebuggerCommand{Name: api.Continue}, &out)
+			err := c.call("Command", &types.DebuggerCommand{Name: types.Continue}, &out)
 			state := out.State
 			if err != nil {
 				state.Err = err
@@ -92,87 +92,87 @@ func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 	return ch
 }
 
-func (c *RPCClient) Next() (*api.DebuggerState, error) {
+func (c *RPCClient) Next() (*types.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", api.DebuggerCommand{Name: api.Next}, &out)
+	err := c.call("Command", types.DebuggerCommand{Name: types.Next}, &out)
 	return &out.State, err
 }
 
-func (c *RPCClient) Step() (*api.DebuggerState, error) {
+func (c *RPCClient) Step() (*types.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", api.DebuggerCommand{Name: api.Step}, &out)
+	err := c.call("Command", types.DebuggerCommand{Name: types.Step}, &out)
 	return &out.State, err
 }
 
-func (c *RPCClient) StepInstruction() (*api.DebuggerState, error) {
+func (c *RPCClient) StepInstruction() (*types.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", api.DebuggerCommand{Name: api.StepInstruction}, &out)
+	err := c.call("Command", types.DebuggerCommand{Name: types.StepInstruction}, &out)
 	return &out.State, err
 }
 
-func (c *RPCClient) SwitchThread(threadID int) (*api.DebuggerState, error) {
+func (c *RPCClient) SwitchThread(threadID int) (*types.DebuggerState, error) {
 	var out CommandOut
-	cmd := api.DebuggerCommand{
-		Name:     api.SwitchThread,
+	cmd := types.DebuggerCommand{
+		Name:     types.SwitchThread,
 		ThreadID: threadID,
 	}
 	err := c.call("Command", cmd, &out)
 	return &out.State, err
 }
 
-func (c *RPCClient) SwitchGoroutine(goroutineID int) (*api.DebuggerState, error) {
+func (c *RPCClient) SwitchGoroutine(goroutineID int) (*types.DebuggerState, error) {
 	var out CommandOut
-	cmd := api.DebuggerCommand{
-		Name:        api.SwitchGoroutine,
+	cmd := types.DebuggerCommand{
+		Name:        types.SwitchGoroutine,
 		GoroutineID: goroutineID,
 	}
 	err := c.call("Command", cmd, &out)
 	return &out.State, err
 }
 
-func (c *RPCClient) Halt() (*api.DebuggerState, error) {
+func (c *RPCClient) Halt() (*types.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", api.DebuggerCommand{Name: api.Halt}, &out)
+	err := c.call("Command", types.DebuggerCommand{Name: types.Halt}, &out)
 	return &out.State, err
 }
 
-func (c *RPCClient) GetBreakpoint(id int) (*api.Breakpoint, error) {
+func (c *RPCClient) GetBreakpoint(id int) (*types.Breakpoint, error) {
 	var out GetBreakpointOut
 	err := c.call("GetBreakpoint", GetBreakpointIn{id, ""}, &out)
 	return &out.Breakpoint, err
 }
 
-func (c *RPCClient) GetBreakpointByName(name string) (*api.Breakpoint, error) {
+func (c *RPCClient) GetBreakpointByName(name string) (*types.Breakpoint, error) {
 	var out GetBreakpointOut
 	err := c.call("GetBreakpoint", GetBreakpointIn{0, name}, &out)
 	return &out.Breakpoint, err
 }
 
-func (c *RPCClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoint, error) {
+func (c *RPCClient) CreateBreakpoint(breakPoint *types.Breakpoint) (*types.Breakpoint, error) {
 	var out CreateBreakpointOut
 	err := c.call("CreateBreakpoint", CreateBreakpointIn{*breakPoint}, &out)
 	return &out.Breakpoint, err
 }
 
-func (c *RPCClient) ListBreakpoints() ([]*api.Breakpoint, error) {
+func (c *RPCClient) ListBreakpoints() ([]*types.Breakpoint, error) {
 	var out ListBreakpointsOut
 	err := c.call("ListBreakpoints", ListBreakpointsIn{}, &out)
 	return out.Breakpoints, err
 }
 
-func (c *RPCClient) ClearBreakpoint(id int) (*api.Breakpoint, error) {
+func (c *RPCClient) ClearBreakpoint(id int) (*types.Breakpoint, error) {
 	var out ClearBreakpointOut
 	err := c.call("ClearBreakpoint", ClearBreakpointIn{id, ""}, &out)
 	return out.Breakpoint, err
 }
 
-func (c *RPCClient) ClearBreakpointByName(name string) (*api.Breakpoint, error) {
+func (c *RPCClient) ClearBreakpointByName(name string) (*types.Breakpoint, error) {
 	var out ClearBreakpointOut
 	err := c.call("ClearBreakpoint", ClearBreakpointIn{0, name}, &out)
 	return out.Breakpoint, err
 }
 
-func (c *RPCClient) AmendBreakpoint(bp *api.Breakpoint) error {
+func (c *RPCClient) AmendBreakpoint(bp *types.Breakpoint) error {
 	out := new(AmendBreakpointOut)
 	err := c.call("AmendBreakpoint", AmendBreakpointIn{*bp}, out)
 	return err
@@ -183,25 +183,25 @@ func (c *RPCClient) CancelNext() error {
 	return c.call("CancelNext", CancelNextIn{}, &out)
 }
 
-func (c *RPCClient) ListThreads() ([]*api.Thread, error) {
+func (c *RPCClient) ListThreads() ([]*types.Thread, error) {
 	var out ListThreadsOut
 	err := c.call("ListThreads", ListThreadsIn{}, &out)
 	return out.Threads, err
 }
 
-func (c *RPCClient) GetThread(id int) (*api.Thread, error) {
+func (c *RPCClient) GetThread(id int) (*types.Thread, error) {
 	var out GetThreadOut
 	err := c.call("GetThread", GetThreadIn{id}, &out)
 	return out.Thread, err
 }
 
-func (c *RPCClient) EvalVariable(scope api.EvalScope, expr string, cfg api.LoadConfig) (*api.Variable, error) {
+func (c *RPCClient) EvalVariable(scope types.EvalScope, expr string, cfg types.LoadConfig) (*types.Variable, error) {
 	var out EvalOut
 	err := c.call("Eval", EvalIn{scope, expr, &cfg}, &out)
 	return out.Variable, err
 }
 
-func (c *RPCClient) SetVariable(scope api.EvalScope, symbol, value string) error {
+func (c *RPCClient) SetVariable(scope types.EvalScope, symbol, value string) error {
 	out := new(SetOut)
 	return c.call("Set", SetIn{scope, symbol, value}, out)
 }
@@ -224,13 +224,13 @@ func (c *RPCClient) ListTypes(filter string) ([]string, error) {
 	return types.Types, err
 }
 
-func (c *RPCClient) ListPackageVariables(filter string, cfg api.LoadConfig) ([]api.Variable, error) {
+func (c *RPCClient) ListPackageVariables(filter string, cfg types.LoadConfig) ([]types.Variable, error) {
 	var out ListPackageVarsOut
 	err := c.call("ListPackageVars", ListPackageVarsIn{filter, cfg}, &out)
 	return out.Variables, err
 }
 
-func (c *RPCClient) ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error) {
+func (c *RPCClient) ListLocalVariables(scope types.EvalScope, cfg types.LoadConfig) ([]types.Variable, error) {
 	var out ListLocalVarsOut
 	err := c.call("ListLocalVars", ListLocalVarsIn{scope, cfg}, &out)
 	return out.Variables, err
@@ -242,19 +242,19 @@ func (c *RPCClient) ListRegisters() (string, error) {
 	return out.Registers, err
 }
 
-func (c *RPCClient) ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error) {
+func (c *RPCClient) ListFunctionArgs(scope types.EvalScope, cfg types.LoadConfig) ([]types.Variable, error) {
 	var out ListFunctionArgsOut
 	err := c.call("ListFunctionArgs", ListFunctionArgsIn{scope, cfg}, &out)
 	return out.Args, err
 }
 
-func (c *RPCClient) ListGoroutines() ([]*api.Goroutine, error) {
+func (c *RPCClient) ListGoroutines() ([]*types.Goroutine, error) {
 	var out ListGoroutinesOut
 	err := c.call("ListGoroutines", ListGoroutinesIn{}, &out)
 	return out.Goroutines, err
 }
 
-func (c *RPCClient) Stacktrace(goroutineId, depth int, cfg *api.LoadConfig) ([]api.Stackframe, error) {
+func (c *RPCClient) Stacktrace(goroutineId, depth int, cfg *types.LoadConfig) ([]types.Stackframe, error) {
 	var out StacktraceOut
 	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, false, cfg}, &out)
 	return out.Locations, err
@@ -266,21 +266,21 @@ func (c *RPCClient) AttachedToExistingProcess() bool {
 	return out.Answer
 }
 
-func (c *RPCClient) FindLocation(scope api.EvalScope, loc string) ([]api.Location, error) {
+func (c *RPCClient) FindLocation(scope types.EvalScope, loc string) ([]types.Location, error) {
 	var out FindLocationOut
 	err := c.call("FindLocation", FindLocationIn{scope, loc}, &out)
 	return out.Locations, err
 }
 
 // Disassemble code between startPC and endPC
-func (c *RPCClient) DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+func (c *RPCClient) DisassembleRange(scope types.EvalScope, startPC, endPC uint64, flavour types.AssemblyFlavour) (types.AsmInstructions, error) {
 	var out DisassembleOut
 	err := c.call("Disassemble", DisassembleIn{scope, startPC, endPC, flavour}, &out)
 	return out.Disassemble, err
 }
 
 // Disassemble function containing pc
-func (c *RPCClient) DisassemblePC(scope api.EvalScope, pc uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+func (c *RPCClient) DisassemblePC(scope types.EvalScope, pc uint64, flavour types.AssemblyFlavour) (types.AsmInstructions, error) {
 	var out DisassembleOut
 	err := c.call("Disassemble", DisassembleIn{scope, pc, 0, flavour}, &out)
 	return out.Disassemble, err

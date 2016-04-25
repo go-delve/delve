@@ -25,7 +25,7 @@ func grabDebugLineSection(p string, t *testing.T) []byte {
 		data, _ := ef.Section(".debug_line").Data()
 		return data
 	}
-	
+
 	pf, err := pe.NewFile(f)
 	if err == nil {
 		data, _ := pf.Section(".debug_line").Data()
@@ -40,7 +40,7 @@ func grabDebugLineSection(p string, t *testing.T) []byte {
 
 func TestDebugLinePrologueParser(t *testing.T) {
 	// Test against known good values, from readelf --debug-dump=rawline _fixtures/testnextprog
-	p, err := filepath.Abs("../../_fixtures/testnextprog")
+	p, err := filepath.Abs("../../../_fixtures/testnextprog")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestDebugLinePrologueParser(t *testing.T) {
 
 func BenchmarkLineParser(b *testing.B) {
 	defer profile.Start(profile.MemProfile).Stop()
-	p, err := filepath.Abs("../../_fixtures/testnextprog")
+	p, err := filepath.Abs("../../../_fixtures/testnextprog")
 	if err != nil {
 		b.Fatal(err)
 	}

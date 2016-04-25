@@ -1,8 +1,6 @@
-package service
+package api
 
-import (
-	"github.com/derekparker/delve/service/api"
-)
+import "github.com/derekparker/delve/api/types"
 
 // Client represents a debugger service client. All client methods are
 // synchronous.
@@ -17,53 +15,53 @@ type Client interface {
 	Restart() error
 
 	// GetState returns the current debugger state.
-	GetState() (*api.DebuggerState, error)
+	GetState() (*types.DebuggerState, error)
 
 	// Continue resumes process execution.
-	Continue() <-chan *api.DebuggerState
+	Continue() <-chan *types.DebuggerState
 	// Next continues to the next source line, not entering function calls.
-	Next() (*api.DebuggerState, error)
+	Next() (*types.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
-	Step() (*api.DebuggerState, error)
+	Step() (*types.DebuggerState, error)
 	// SingleStep will step a single cpu instruction.
-	StepInstruction() (*api.DebuggerState, error)
+	StepInstruction() (*types.DebuggerState, error)
 	// SwitchThread switches the current thread context.
-	SwitchThread(threadID int) (*api.DebuggerState, error)
+	SwitchThread(threadID int) (*types.DebuggerState, error)
 	// SwitchGoroutine switches the current goroutine (and the current thread as well)
-	SwitchGoroutine(goroutineID int) (*api.DebuggerState, error)
+	SwitchGoroutine(goroutineID int) (*types.DebuggerState, error)
 	// Halt suspends the process.
-	Halt() (*api.DebuggerState, error)
+	Halt() (*types.DebuggerState, error)
 
 	// GetBreakpoint gets a breakpoint by ID.
-	GetBreakpoint(id int) (*api.Breakpoint, error)
+	GetBreakpoint(id int) (*types.Breakpoint, error)
 	// GetBreakpointByName gets a breakpoint by name.
-	GetBreakpointByName(name string) (*api.Breakpoint, error)
+	GetBreakpointByName(name string) (*types.Breakpoint, error)
 	// CreateBreakpoint creates a new breakpoint.
-	CreateBreakpoint(*api.Breakpoint) (*api.Breakpoint, error)
+	CreateBreakpoint(*types.Breakpoint) (*types.Breakpoint, error)
 	// ListBreakpoints gets all breakpoints.
-	ListBreakpoints() ([]*api.Breakpoint, error)
+	ListBreakpoints() ([]*types.Breakpoint, error)
 	// ClearBreakpoint deletes a breakpoint by ID.
-	ClearBreakpoint(id int) (*api.Breakpoint, error)
+	ClearBreakpoint(id int) (*types.Breakpoint, error)
 	// ClearBreakpointByName deletes a breakpoint by name
-	ClearBreakpointByName(name string) (*api.Breakpoint, error)
+	ClearBreakpointByName(name string) (*types.Breakpoint, error)
 	// Allows user to update an existing breakpoint for example to change the information
 	// retrieved when the breakpoint is hit or to change, add or remove the break condition
-	AmendBreakpoint(*api.Breakpoint) error
+	AmendBreakpoint(*types.Breakpoint) error
 	// Cancels a Next or Step call that was interrupted by a manual stop or by another breakpoint
 	CancelNext() error
 
 	// ListThreads lists all threads.
-	ListThreads() ([]*api.Thread, error)
+	ListThreads() ([]*types.Thread, error)
 	// GetThread gets a thread by its ID.
-	GetThread(id int) (*api.Thread, error)
+	GetThread(id int) (*types.Thread, error)
 
 	// ListPackageVariables lists all package variables in the context of the current thread.
-	ListPackageVariables(filter string, cfg api.LoadConfig) ([]api.Variable, error)
+	ListPackageVariables(filter string, cfg types.LoadConfig) ([]types.Variable, error)
 	// EvalVariable returns a variable in the context of the current thread.
-	EvalVariable(scope api.EvalScope, symbol string, cfg api.LoadConfig) (*api.Variable, error)
+	EvalVariable(scope types.EvalScope, symbol string, cfg types.LoadConfig) (*types.Variable, error)
 
 	// SetVariable sets the value of a variable
-	SetVariable(scope api.EvalScope, symbol, value string) error
+	SetVariable(scope types.EvalScope, symbol, value string) error
 
 	// ListSources lists all source files in the process matching filter.
 	ListSources(filter string) ([]string, error)
@@ -72,17 +70,17 @@ type Client interface {
 	// ListTypes lists all types in the process matching filter.
 	ListTypes(filter string) ([]string, error)
 	// ListLocals lists all local variables in scope.
-	ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
+	ListLocalVariables(scope types.EvalScope, cfg types.LoadConfig) ([]types.Variable, error)
 	// ListFunctionArgs lists all arguments to the current function.
-	ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
+	ListFunctionArgs(scope types.EvalScope, cfg types.LoadConfig) ([]types.Variable, error)
 	// ListRegisters lists registers and their values.
 	ListRegisters() (string, error)
 
 	// ListGoroutines lists all goroutines.
-	ListGoroutines() ([]*api.Goroutine, error)
+	ListGoroutines() ([]*types.Goroutine, error)
 
 	// Returns stacktrace
-	Stacktrace(int, int, *api.LoadConfig) ([]api.Stackframe, error)
+	Stacktrace(int, int, *types.LoadConfig) ([]types.Stackframe, error)
 
 	// Returns whether we attached to a running process or not
 	AttachedToExistingProcess() bool
@@ -98,10 +96,10 @@ type Client interface {
 	// * <line> returns a location for a line in the current file
 	// * *<address> returns the location corresponding to the specified address
 	// NOTE: this function does not actually set breakpoints.
-	FindLocation(scope api.EvalScope, loc string) ([]api.Location, error)
+	FindLocation(scope types.EvalScope, loc string) ([]types.Location, error)
 
 	// Disassemble code between startPC and endPC
-	DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error)
+	DisassembleRange(scope types.EvalScope, startPC, endPC uint64, flavour types.AssemblyFlavour) (types.AsmInstructions, error)
 	// Disassemble code of the function containing PC
-	DisassemblePC(scope api.EvalScope, pc uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error)
+	DisassemblePC(scope types.EvalScope, pc uint64, flavour types.AssemblyFlavour) (types.AsmInstructions, error)
 }

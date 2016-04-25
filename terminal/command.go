@@ -17,9 +17,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/derekparker/delve/service"
-	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/debugger"
+	"github.com/derekparker/delve/api"
+	"github.com/derekparker/delve/api/debugger"
+	"github.com/derekparker/delve/api/types"
 )
 
 type cmdPrefix int
@@ -32,8 +32,8 @@ const (
 
 type callContext struct {
 	Prefix     cmdPrefix
-	Scope      api.EvalScope
-	Breakpoint *api.Breakpoint
+	Scope      types.EvalScope
+	Breakpoint *types.Breakpoint
 }
 
 type cmdfunc func(t *Term, ctx callContext, args string) error
@@ -59,16 +59,16 @@ func (c command) match(cmdstr string) bool {
 type Commands struct {
 	cmds    []command
 	lastCmd cmdfunc
-	client  service.Client
+	client  api.Client
 }
 
 var (
-	LongLoadConfig  = api.LoadConfig{true, 1, 64, 64, -1}
-	ShortLoadConfig = api.LoadConfig{false, 0, 64, 0, 3}
+	LongLoadConfig  = types.LoadConfig{true, 1, 64, 64, -1}
+	ShortLoadConfig = types.LoadConfig{false, 0, 64, 0, 3}
 )
 
 // DebugCommands returns a Commands struct with default commands defined.
-func DebugCommands(client service.Client) *Commands {
+func DebugCommands(client api.Client) *Commands {
 	c := &Commands{client: client}
 
 	c.cmds = []command{
@@ -149,7 +149,7 @@ If regex is specified only the source files matching it will be returned.`},
 	funcs [<regex>]
 
 If regex is specified only the functions matching it will be returned.`},
-		{aliases: []string{"types"}, cmdFn: types, helpMsg: `Print list of types
+		{aliases: []string{"types"}, cmdFn: typesfn, helpMsg: `Print list of types
 
 	types [<regex>]
 
@@ -253,7 +253,7 @@ func (c *Commands) CallWithContext(cmdstr, args string, t *Term, ctx callContext
 }
 
 func (c *Commands) Call(cmdstr, args string, t *Term) error {
-	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: 0}}
+	ctx := callContext{Prefix: noPrefix, Scope: types.EvalScope{GoroutineID: -1, Frame: 0}}
 	return c.CallWithContext(cmdstr, args, t, ctx)
 }
 
@@ -310,7 +310,7 @@ func (c *Commands) help(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-type byThreadID []*api.Thread
+type byThreadID []*types.Thread
 
 func (a byThreadID) Len() int           { return len(a) }
 func (a byThreadID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -371,7 +371,7 @@ func thread(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-type byGoroutineID []*api.Goroutine
+type byGoroutineID []*types.Goroutine
 
 func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -500,7 +500,7 @@ func printscope(t *Term) error {
 	return nil
 }
 
-func formatThread(th *api.Thread) string {
+func formatThread(th *types.Thread) string {
 	if th == nil {
 		return "<nil>"
 	}
@@ -515,7 +515,7 @@ const (
 	fglGo
 )
 
-func formatLocation(loc api.Location) string {
+func formatLocation(loc types.Location) string {
 	fname := ""
 	if loc.Function != nil {
 		fname = loc.Function.Name
@@ -523,12 +523,12 @@ func formatLocation(loc api.Location) string {
 	return fmt.Sprintf("%s:%d %s (%#v)", ShortenFilePath(loc.File), loc.Line, fname, loc.PC)
 }
 
-func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
+func formatGoroutine(g *types.Goroutine, fgl formatGoroutineLoc) string {
 	if g == nil {
 		return "<nil>"
 	}
 	var locname string
-	var loc api.Location
+	var loc types.Location
 	switch fgl {
 	case fglRuntimeCurrent:
 		locname = "Runtime"
@@ -543,7 +543,7 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 	return fmt.Sprintf("%d - %s: %s", g.ID, locname, formatLocation(loc))
 }
 
-func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
+func writeGoroutineLong(w io.Writer, g *types.Goroutine, prefix string) {
 	fmt.Fprintf(w, "%sGoroutine %d:\n%s\tRuntime: %s\n%s\tUser: %s\n%s\tGo: %s\n",
 		prefix, g.ID,
 		prefix, formatLocation(g.CurrentLoc),
@@ -561,7 +561,7 @@ func restart(t *Term, ctx callContext, args string) error {
 
 func cont(t *Term, ctx callContext, args string) error {
 	stateChan := t.client.Continue()
-	var state *api.DebuggerState
+	var state *types.DebuggerState
 	for state = range stateChan {
 		if state.Err != nil {
 			return state.Err
@@ -572,14 +572,14 @@ func cont(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) error {
+func continueUntilCompleteNext(t *Term, state *types.DebuggerState, op string) error {
 	if !state.NextInProgress {
 		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 		return nil
 	}
 	for {
 		stateChan := t.client.Continue()
-		var state *api.DebuggerState
+		var state *types.DebuggerState
 		for state = range stateChan {
 			if state.Err != nil {
 				return state.Err
@@ -627,7 +627,7 @@ func clear(t *Term, ctx callContext, args string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 	id, err := strconv.Atoi(args)
-	var bp *api.Breakpoint
+	var bp *types.Breakpoint
 	if err == nil {
 		bp, err = t.client.ClearBreakpoint(id)
 	} else {
@@ -648,7 +648,7 @@ func clearAll(t *Term, ctx callContext, args string) error {
 
 	var locPCs map[uint64]struct{}
 	if args != "" {
-		locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args)
+		locs, err := t.client.FindLocation(types.EvalScope{GoroutineID: -1, Frame: 0}, args)
 		if err != nil {
 			return err
 		}
@@ -679,7 +679,7 @@ func clearAll(t *Term, ctx callContext, args string) error {
 }
 
 // ByID sorts breakpoints by ID.
-type ByID []*api.Breakpoint
+type ByID []*types.Breakpoint
 
 func (a ByID) Len() int           { return len(a) }
 func (a ByID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -731,13 +731,13 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 	args := strings.SplitN(argstr, " ", 2)
 
-	requestedBp := &api.Breakpoint{}
+	requestedBp := &types.Breakpoint{}
 	locspec := ""
 	switch len(args) {
 	case 1:
 		locspec = argstr
 	case 2:
-		if api.ValidBreakpointName(args[0]) == nil {
+		if types.ValidBreakpointName(args[0]) == nil {
 			requestedBp.Name = args[0]
 			locspec = args[1]
 		} else {
@@ -748,7 +748,7 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
+	locs, err := t.client.FindLocation(types.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
 	if err != nil {
 		if requestedBp.Name == "" {
 			return err
@@ -756,7 +756,7 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 		requestedBp.Name = ""
 		locspec = argstr
 		var err2 error
-		locs, err2 = t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
+		locs, err2 = t.client.FindLocation(types.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
 		if err2 != nil {
 			return err
 		}
@@ -816,7 +816,7 @@ func setVar(t *Term, ctx callContext, args string) error {
 	return t.client.SetVariable(ctx.Scope, lexpr, rexpr)
 }
 
-func printFilteredVariables(varType string, vars []api.Variable, filter string, cfg api.LoadConfig) error {
+func printFilteredVariables(varType string, vars []types.Variable, filter string, cfg types.LoadConfig) error {
 	reg, err := regexp.Compile(filter)
 	if err != nil {
 		return err
@@ -857,11 +857,11 @@ func funcs(t *Term, ctx callContext, args string) error {
 	return printSortedStrings(t.client.ListFunctions(args))
 }
 
-func types(t *Term, ctx callContext, args string) error {
+func typesfn(t *Term, ctx callContext, args string) error {
 	return printSortedStrings(t.client.ListTypes(args))
 }
 
-func parseVarArguments(args string) (filter string, cfg api.LoadConfig) {
+func parseVarArguments(args string) (filter string, cfg types.LoadConfig) {
 	if v := strings.SplitN(args, " ", 2); len(v) >= 1 && v[0] == "-v" {
 		if len(v) == 2 {
 			return v[1], LongLoadConfig
@@ -931,7 +931,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 		ctx.Breakpoint.Stacktrace = depth
 		return nil
 	}
-	var cfg *api.LoadConfig
+	var cfg *types.LoadConfig
 	if full {
 		cfg = &ShortLoadConfig
 	}
@@ -988,7 +988,7 @@ func listCommand(t *Term, ctx callContext, args string) error {
 		return nil
 	}
 
-	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args)
+	locs, err := t.client.FindLocation(types.EvalScope{GoroutineID: -1, Frame: 0}, args)
 	if err != nil {
 		return err
 	}
@@ -1021,7 +1021,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		rest = argv[1]
 	}
 
-	var disasm api.AsmInstructions
+	var disasm types.AsmInstructions
 	var disasmErr error
 
 	switch cmd {
@@ -1030,7 +1030,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if err != nil {
 			return err
 		}
-		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, types.IntelFlavour)
 	case "-a":
 		v := strings.SplitN(rest, " ", 2)
 		if len(v) != 2 {
@@ -1044,7 +1044,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if err != nil {
 			return fmt.Errorf("wrong argument: %s is not a number", v[1])
 		}
-		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), types.IntelFlavour)
 	case "-l":
 		locs, err := t.client.FindLocation(ctx.Scope, rest)
 		if err != nil {
@@ -1053,7 +1053,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if len(locs) != 1 {
 			return errors.New("expression specifies multiple locations")
 		}
-		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, types.IntelFlavour)
 	default:
 		return disasmUsageError
 	}
@@ -1075,7 +1075,7 @@ func digits(n int) int {
 	return int(math.Floor(math.Log10(float64(n)))) + 1
 }
 
-func printStack(stack []api.Stackframe, ind string) {
+func printStack(stack []types.Stackframe, ind string) {
 	if len(stack) == 0 {
 		return
 	}
@@ -1100,7 +1100,7 @@ func printStack(stack []api.Stackframe, ind string) {
 	}
 }
 
-func printcontext(t *Term, state *api.DebuggerState) error {
+func printcontext(t *Term, state *types.DebuggerState) error {
 	for i := range state.Threads {
 		if (state.CurrentThread != nil) && (state.Threads[i].ID == state.CurrentThread.ID) {
 			continue
@@ -1125,7 +1125,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 	return nil
 }
 
-func printcontextThread(t *Term, th *api.Thread) {
+func printcontextThread(t *Term, th *types.Thread) {
 	fn := th.Function
 
 	if th.Breakpoint == nil {
@@ -1253,7 +1253,7 @@ func exitCommand(t *Term, ctx callContext, args string) error {
 	return ExitRequestError{}
 }
 
-func getBreakpointByIDOrName(t *Term, arg string) (*api.Breakpoint, error) {
+func getBreakpointByIDOrName(t *Term, arg string) (*types.Breakpoint, error) {
 	if id, err := strconv.Atoi(arg); err == nil {
 		return t.client.GetBreakpoint(id)
 	}
@@ -1335,7 +1335,7 @@ func (c *Commands) executeFile(t *Term, name string) error {
 	return scanner.Err()
 }
 
-func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
+func formatBreakpointName(bp *types.Breakpoint, upcase bool) string {
 	thing := "breakpoint"
 	if bp.Tracepoint {
 		thing = "tracepoint"
@@ -1350,7 +1350,7 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	return fmt.Sprintf("%s %s", thing, id)
 }
 
-func formatBreakpointLocation(bp *api.Breakpoint) string {
+func formatBreakpointLocation(bp *types.Breakpoint) string {
 	p := ShortenFilePath(bp.File)
 	if bp.FunctionName != "" {
 		return fmt.Sprintf("%#v for %s() %s:%d", bp.Addr, bp.FunctionName, p, bp.Line)

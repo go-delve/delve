@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/davecheney/profile"
-	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/pkg/dwarf/frame"
 )
 
 func BenchmarkParse(b *testing.B) {

@@ -9,9 +9,9 @@ import (
 	grpc "net/rpc"
 	"net/rpc/jsonrpc"
 
-	"github.com/derekparker/delve/service"
-	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/debugger"
+	"github.com/derekparker/delve/api"
+	"github.com/derekparker/delve/api/debugger"
+	"github.com/derekparker/delve/api/types"
 )
 
 type ServerImpl struct {
@@ -20,7 +20,7 @@ type ServerImpl struct {
 
 type RPCServer struct {
 	// config is all the information necessary to start the debugger and server.
-	config *service.Config
+	config *api.Config
 	// listener is used to serve HTTP.
 	listener net.Listener
 	// stopChan is used to stop the listener goroutine
@@ -30,7 +30,7 @@ type RPCServer struct {
 }
 
 // NewServer creates a new RPCServer.
-func NewServer(config *service.Config, logEnabled bool) *ServerImpl {
+func NewServer(config *api.Config, logEnabled bool) *ServerImpl {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	if !logEnabled {
 		log.SetOutput(ioutil.Discard)
@@ -143,7 +143,7 @@ type StateIn struct {
 }
 
 type StateOut struct {
-	State *api.DebuggerState
+	State *types.DebuggerState
 }
 
 // State returns the current debugger state.
@@ -157,11 +157,11 @@ func (s *RPCServer) State(arg StateIn, out *StateOut) error {
 }
 
 type CommandOut struct {
-	State api.DebuggerState
+	State types.DebuggerState
 }
 
 // Command interrupts, continues and steps through the program.
-func (s *RPCServer) Command(command api.DebuggerCommand, out *CommandOut) error {
+func (s *RPCServer) Command(command types.DebuggerCommand, out *CommandOut) error {
 	st, err := s.debugger.Command(&command)
 	if err != nil {
 		return err
@@ -176,12 +176,12 @@ type GetBreakpointIn struct {
 }
 
 type GetBreakpointOut struct {
-	Breakpoint api.Breakpoint
+	Breakpoint types.Breakpoint
 }
 
 // GetBreakpoint gets a breakpoint by Name (if Name is not an empty string) or by ID.
 func (s *RPCServer) GetBreakpoint(arg GetBreakpointIn, out *GetBreakpointOut) error {
-	var bp *api.Breakpoint
+	var bp *types.Breakpoint
 	if arg.Name != "" {
 		bp = s.debugger.FindBreakpointByName(arg.Name)
 		if bp == nil {
@@ -201,11 +201,11 @@ type StacktraceIn struct {
 	Id    int
 	Depth int
 	Full  bool
-	Cfg *api.LoadConfig
+	Cfg   *types.LoadConfig
 }
 
 type StacktraceOut struct {
-	Locations []api.Stackframe
+	Locations []types.Stackframe
 }
 
 // Stacktrace returns stacktrace of goroutine Id up to the specified Depth.
@@ -215,9 +215,9 @@ type StacktraceOut struct {
 func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	cfg := arg.Cfg
 	if cfg == nil && arg.Full {
-		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+		cfg = &types.LoadConfig{true, 1, 64, 64, -1}
 	}
-	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, api.LoadConfigToProc(cfg))
+	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, types.LoadConfigToProc(cfg))
 	if err != nil {
 		return err
 	}
@@ -229,7 +229,7 @@ type ListBreakpointsIn struct {
 }
 
 type ListBreakpointsOut struct {
-	Breakpoints []*api.Breakpoint
+	Breakpoints []*types.Breakpoint
 }
 
 // ListBreakpoints gets all breakpoints.
@@ -239,11 +239,11 @@ func (s *RPCServer) ListBreakpoints(arg ListBreakpointsIn, out *ListBreakpointsO
 }
 
 type CreateBreakpointIn struct {
-	Breakpoint api.Breakpoint
+	Breakpoint types.Breakpoint
 }
 
 type CreateBreakpointOut struct {
-	Breakpoint api.Breakpoint
+	Breakpoint types.Breakpoint
 }
 
 // CreateBreakpoint creates a new breakpoint.
@@ -273,13 +273,13 @@ type ClearBreakpointIn struct {
 }
 
 type ClearBreakpointOut struct {
-	Breakpoint *api.Breakpoint
+	Breakpoint *types.Breakpoint
 }
 
 // ClearBreakpoint deletes a breakpoint by Name (if Name is not an
 // empty string) or by ID.
 func (s *RPCServer) ClearBreakpoint(arg ClearBreakpointIn, out *ClearBreakpointOut) error {
-	var bp *api.Breakpoint
+	var bp *types.Breakpoint
 	if arg.Name != "" {
 		bp = s.debugger.FindBreakpointByName(arg.Name)
 		if bp == nil {
@@ -300,7 +300,7 @@ func (s *RPCServer) ClearBreakpoint(arg ClearBreakpointIn, out *ClearBreakpointO
 }
 
 type AmendBreakpointIn struct {
-	Breakpoint api.Breakpoint
+	Breakpoint types.Breakpoint
 }
 
 type AmendBreakpointOut struct {
@@ -329,7 +329,7 @@ type ListThreadsIn struct {
 }
 
 type ListThreadsOut struct {
-	Threads []*api.Thread
+	Threads []*types.Thread
 }
 
 // ListThreads lists all threads.
@@ -343,7 +343,7 @@ type GetThreadIn struct {
 }
 
 type GetThreadOut struct {
-	Thread *api.Thread
+	Thread *types.Thread
 }
 
 // GetThread gets a thread by its ID.
@@ -361,11 +361,11 @@ func (s *RPCServer) GetThread(arg GetThreadIn, out *GetThreadOut) error {
 
 type ListPackageVarsIn struct {
 	Filter string
-	Cfg api.LoadConfig
+	Cfg    types.LoadConfig
 }
 
 type ListPackageVarsOut struct {
-	Variables []api.Variable
+	Variables []types.Variable
 }
 
 // ListPackageVars lists all package variables in the context of the current thread.
@@ -380,7 +380,7 @@ func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsO
 		return fmt.Errorf("no current thread")
 	}
 
-	vars, err := s.debugger.PackageVariables(current.ID, arg.Filter, *api.LoadConfigToProc(&arg.Cfg))
+	vars, err := s.debugger.PackageVariables(current.ID, arg.Filter, *types.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
@@ -411,17 +411,17 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 }
 
 type ListLocalVarsIn struct {
-	Scope api.EvalScope
-	Cfg api.LoadConfig
+	Scope types.EvalScope
+	Cfg   types.LoadConfig
 }
 
 type ListLocalVarsOut struct {
-	Variables []api.Variable
+	Variables []types.Variable
 }
 
 // ListLocalVars lists all local variables in scope.
 func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) error {
-	vars, err := s.debugger.LocalVariables(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
+	vars, err := s.debugger.LocalVariables(arg.Scope, *types.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
@@ -430,17 +430,17 @@ func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) er
 }
 
 type ListFunctionArgsIn struct {
-	Scope api.EvalScope
-	Cfg api.LoadConfig
+	Scope types.EvalScope
+	Cfg   types.LoadConfig
 }
 
 type ListFunctionArgsOut struct {
-	Args []api.Variable
+	Args []types.Variable
 }
 
 // ListFunctionArgs lists all arguments to the current function
 func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionArgsOut) error {
-	vars, err := s.debugger.FunctionArguments(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
+	vars, err := s.debugger.FunctionArguments(arg.Scope, *types.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
@@ -449,13 +449,13 @@ func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionAr
 }
 
 type EvalIn struct {
-	Scope api.EvalScope
+	Scope types.EvalScope
 	Expr  string
-	Cfg *api.LoadConfig
+	Cfg   *types.LoadConfig
 }
 
 type EvalOut struct {
-	Variable *api.Variable
+	Variable *types.Variable
 }
 
 // EvalVariable returns a variable in the specified context.
@@ -465,9 +465,9 @@ type EvalOut struct {
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {
-		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+		cfg = &types.LoadConfig{true, 1, 64, 64, -1}
 	}
-	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *api.LoadConfigToProc(cfg))
+	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *types.LoadConfigToProc(cfg))
 	if err != nil {
 		return err
 	}
@@ -476,7 +476,7 @@ func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 }
 
 type SetIn struct {
-	Scope  api.EvalScope
+	Scope  types.EvalScope
 	Symbol string
 	Value  string
 }
@@ -548,7 +548,7 @@ type ListGoroutinesIn struct {
 }
 
 type ListGoroutinesOut struct {
-	Goroutines []*api.Goroutine
+	Goroutines []*types.Goroutine
 }
 
 // ListGoroutines lists all goroutines.
@@ -577,12 +577,12 @@ func (c *RPCServer) AttachedToExistingProcess(arg AttachedToExistingProcessIn, o
 }
 
 type FindLocationIn struct {
-	Scope api.EvalScope
+	Scope types.EvalScope
 	Loc   string
 }
 
 type FindLocationOut struct {
-	Locations []api.Location
+	Locations []types.Location
 }
 
 // FindLocation returns concrete location information described by a location expression
@@ -605,13 +605,13 @@ func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error
 }
 
 type DisassembleIn struct {
-	Scope          api.EvalScope
+	Scope          types.EvalScope
 	StartPC, EndPC uint64
-	Flavour        api.AssemblyFlavour
+	Flavour        types.AssemblyFlavour
 }
 
 type DisassembleOut struct {
-	Disassemble api.AsmInstructions
+	Disassemble types.AsmInstructions
 }
 
 // Disassemble code.
