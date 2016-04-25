@@ -1,14 +1,15 @@
 package proc
 
 import (
-	"github.com/derekparker/delve/dwarf/reader"
 	"go/ast"
 	"go/token"
-	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"golang.org/x/debug/dwarf"
 )
 
 // Do not call this function directly it isn't able to deal correctly with package paths

@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/debug/dwarf"
 
-	"github.com/derekparker/delve/dwarf/op"
-	"github.com/derekparker/delve/dwarf/reader"
+	"github.com/derekparker/delve/pkg/dwarf/op"
+	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
 const (
@@ -368,7 +368,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		if thread, ok := mem.(*Thread); ok {
 			id = thread.ID
 		}
-		return nil, NoGError{ tid: id }
+		return nil, NoGError{tid: id}
 	}
 	gvar.loadValue(loadFullValue)
 	if gvar.Unreadable != nil {

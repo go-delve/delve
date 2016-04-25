@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/debug/dwarf"
 
-	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/pkg/dwarf/frame"
 )
 
 // Thread represents a single thread in the traced process

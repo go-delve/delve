@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/derekparker/delve/dwarf/util"
+	"github.com/derekparker/delve/pkg/dwarf/internal/util"
 )
 
 type Location struct {
