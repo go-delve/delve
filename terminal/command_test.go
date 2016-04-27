@@ -400,7 +400,6 @@ func TestOnPrefixLocals(t *testing.T) {
 	})
 }
 
-
 func countOccourences(s string, needle string) int {
 	count := 0
 	for {
