@@ -7,4 +7,4 @@
 #include <fcntl.h>
 
 int
-fork_exec(char *, char **, int, task_t*, mach_port_t*, mach_port_t*, mach_port_t*);
+fork_exec(char *, char **, int, char *, task_t*, mach_port_t*, mach_port_t*, mach_port_t*);

@@ -12,6 +12,7 @@ close_exec_pipe(int fd[2]) {
 
 int
 fork_exec(char *argv0, char **argv, int size,
+		char *wd,
 		task_t *task,
 		mach_port_t *port_set,
 		mach_port_t *exception_port,
@@ -71,6 +72,9 @@ fork_exec(char *argv0, char **argv, int size,
 	errno = 0;
 	pret = ptrace(PT_TRACE_ME, 0, 0, 0);
 	if (pret != 0 && errno != 0) return -errno;
+
+	// change working directory
+	chdir(wd);
 
 	errno = 0;
 	pret = ptrace(PT_SIGEXC, 0, 0, 0);
