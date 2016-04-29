@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 
 func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)
-	p, err := Launch([]string{fixture.Path})
+	p, err := Launch([]string{fixture.Path}, "")
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
@@ -47,7 +47,7 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 
 func withTestProcessArgs(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture), args []string) {
 	fixture := protest.BuildFixture(name)
-	p, err := Launch(append([]string{fixture.Path}, args...))
+	p, err := Launch(append([]string{fixture.Path}, args...), "")
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
