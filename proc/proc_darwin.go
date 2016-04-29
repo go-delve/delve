@@ -64,6 +64,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	var pid int
 	dbp.execPtraceFunc(func() {
 		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
+			C.CString(wd),
 			&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
 			&dbp.os.notificationPort)
 		pid = int(ret)
