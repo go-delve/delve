@@ -5,10 +5,10 @@
 #include <mach/thread_info.h>
 
 int
-write_memory(mach_port_name_t, mach_vm_address_t, void *, mach_msg_type_number_t);
+write_memory(task_t, mach_vm_address_t, void *, mach_msg_type_number_t);
 
 int
-read_memory(mach_port_name_t, mach_vm_address_t, void *, mach_msg_type_number_t);
+read_memory(task_t, mach_vm_address_t, void *, mach_msg_type_number_t);
 
 kern_return_t
 get_registers(mach_port_name_t, x86_thread_state64_t*);
@@ -33,3 +33,6 @@ get_identity(mach_port_name_t, thread_identifier_info_data_t *);
 
 int
 thread_blocked(thread_act_t thread);
+
+int
+num_running_threads(task_t task);

@@ -24,23 +24,22 @@ boolean_t mach_exc_server(
 		mach_msg_header_t *OutHeadP);
 
 kern_return_t
-acquire_mach_task(int, mach_port_name_t*, mach_port_t*, mach_port_t*, mach_port_t*);
+acquire_mach_task(int, task_t*, mach_port_t*, mach_port_t*, mach_port_t*);
 
 char *
 find_executable(int pid);
 
 kern_return_t
-get_threads(task_t task, void *);
+get_threads(task_t task, void *data,int limit);
 
 int
 thread_count(task_t task);
 
 mach_port_t
-mach_port_wait(mach_port_t);
+mach_port_wait(mach_port_t, int);
 
 kern_return_t
 mach_send_reply(mach_msg_header_t);
 
 kern_return_t
 raise_exception(mach_port_t, mach_port_t, mach_port_t, exception_type_t);
-

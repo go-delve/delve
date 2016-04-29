@@ -1,22 +1,31 @@
 package api
 
-import "reflect"
+import (
+	"errors"
+	"fmt"
+	"reflect"
+	"strconv"
+	"unicode"
+
+	"github.com/derekparker/delve/proc"
+)
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
-	// Breakpoint is the current breakpoint at which the debugged process is
-	// suspended, and may be empty if the process is not suspended.
-	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// CurrentThread is the currently selected debugger thread.
 	CurrentThread *Thread `json:"currentThread,omitempty"`
 	// SelectedGoroutine is the currently selected goroutine
 	SelectedGoroutine *Goroutine `json:"currentGoroutine,omitempty"`
-	// Information requested by the current breakpoint
-	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
+	// List of all the process threads
+	Threads []*Thread
+	// NextInProgress indicates that a next or step operation was interrupted by another breakpoint
+	// or a manual stop and is waiting to complete.
+	// While NextInProgress is set further requests for next or step may be rejected.
+	// Either execute continue until NextInProgress is false or call CancelNext
+	NextInProgress bool
 	// Exited indicates whether the debugged process has exited.
 	Exited     bool `json:"exited"`
 	ExitStatus int  `json:"exitStatus"`
-
 	// Filled by RPCClient.Continue, indicates an error
 	Err error `json:"-"`
 }
@@ -26,6 +35,8 @@ type DebuggerState struct {
 type Breakpoint struct {
 	// ID is a unique identifier for the breakpoint.
 	ID int `json:"id"`
+	// User defined name of the breakpoint
+	Name string `json:"name"`
 	// Addr is the address of the breakpoint.
 	Addr uint64 `json:"addr"`
 	// File is the source file for the breakpoint.
@@ -36,18 +47,39 @@ type Breakpoint struct {
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
 
+	// Breakpoint condition
+	Cond string
+
 	// tracepoint flag
 	Tracepoint bool `json:"continue"`
-	// number of stack frames to retrieve
-	Stacktrace int `json:"stacktrace"`
 	// retrieve goroutine information
 	Goroutine bool `json:"goroutine"`
-	// variables to evaluate
+	// number of stack frames to retrieve
+	Stacktrace int `json:"stacktrace"`
+	// expressions to evaluate
 	Variables []string `json:"variables,omitempty"`
+	// LoadArgs requests loading function arguments when the breakpoint is hit
+	LoadArgs *LoadConfig
+	// LoadLocals requests loading function locals when the breakpoint is hit
+	LoadLocals *LoadConfig
 	// number of times a breakpoint has been reached in a certain goroutine
 	HitCount map[string]uint64 `json:"hitCount"`
 	// number of times a breakpoint has been reached
 	TotalHitCount uint64 `json:"totalHitCount"`
+}
+
+func ValidBreakpointName(name string) error {
+	if _, err := strconv.Atoi(name); err == nil {
+		return errors.New("breakpoint name can not be a number")
+	}
+
+	for _, ch := range name {
+		if !(unicode.IsLetter(ch) || unicode.IsDigit(ch)) {
+			return fmt.Errorf("invalid character in breakpoint name '%c'", ch)
+		}
+	}
+
+	return nil
 }
 
 // Thread is a thread within the debugged process.
@@ -62,6 +94,14 @@ type Thread struct {
 	Line int `json:"line"`
 	// Function is function information at the program counter. May be nil.
 	Function *Function `json:"function,omitempty"`
+
+	// ID of the goroutine running on this thread
+	GoroutineID int `json:"goroutineID"`
+
+	// Breakpoint this thread is stopped at
+	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
+	// Informations requested by the current breakpoint
+	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
 }
 
 type Location struct {
@@ -98,10 +138,6 @@ type Function struct {
 	Value  uint64 `json:"value"`
 	Type   byte   `json:"type"`
 	GoType uint64 `json:"goType"`
-	// Args are the function arguments in a thread context.
-	Args []Variable `json:"args"`
-	// Locals are the thread local variables.
-	Locals []Variable `json:"locals"`
 }
 
 // Variable describes a variable.
@@ -139,6 +175,20 @@ type Variable struct {
 	Unreadable string `json:"unreadable"`
 }
 
+// LoadConfig describes how to load values from target's memory
+type LoadConfig struct {
+	// FollowPointers requests pointers to be automatically dereferenced.
+	FollowPointers bool
+	// MaxVariableRecurse is how far to recurse when evaluating nested types.
+	MaxVariableRecurse int
+	// MaxStringLen is the maximum number of bytes read from a string
+	MaxStringLen int
+	// MaxArrayValues is the maximum number of elements read from an array, a slice or a map.
+	MaxArrayValues int
+	// MaxStructFields is the maximum number of fields read from a struct, -1 will read all fields.
+	MaxStructFields int
+}
+
 // Goroutine represents the information relevant to Delve from the runtime's
 // internal G structure.
 type Goroutine struct {
@@ -170,6 +220,7 @@ type BreakpointInfo struct {
 	Goroutine  *Goroutine   `json:"goroutine,omitempty"`
 	Variables  []Variable   `json:"variables,omitempty"`
 	Arguments  []Variable   `json:"arguments,omitempty"`
+	Locals     []Variable   `json:"locals,omitempty"`
 }
 
 type EvalScope struct {
@@ -180,8 +231,10 @@ type EvalScope struct {
 const (
 	// Continue resumes process execution.
 	Continue = "continue"
-	// Step continues for a single instruction, entering function calls.
+	// Step continues to next source line, entering function calls.
 	Step = "step"
+	// SingleStep continues for exactly 1 cpu instruction.
+	StepInstruction = "stepInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
 	// SwitchThread switches the debugger's current thread context.
@@ -191,3 +244,28 @@ const (
 	// Halt suspends the process.
 	Halt = "halt"
 )
+
+type AssemblyFlavour int
+
+const (
+	GNUFlavour   = AssemblyFlavour(proc.GNUFlavour)
+	IntelFlavour = AssemblyFlavour(proc.IntelFlavour)
+)
+
+// AsmInstruction represents one assembly instruction at some address
+type AsmInstruction struct {
+	// Loc is the location of this instruction
+	Loc Location
+	// Destination of CALL instructions
+	DestLoc *Location
+	// Text is the formatted representation of the instruction
+	Text string
+	// Bytes is the instruction as read from memory
+	Bytes []byte
+	// If Breakpoint is true a breakpoint is set at this instruction
+	Breakpoint bool
+	// In AtPC is true this is the instruction the current thread is stopped at
+	AtPC bool
+}
+
+type AsmInstructions []AsmInstruction

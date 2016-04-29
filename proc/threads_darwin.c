@@ -1,7 +1,7 @@
 #include "threads_darwin.h"
 
 int
-write_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
+write_memory(task_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
 	kern_return_t kret;
 	vm_region_submap_short_info_data_64_t info;
 	mach_msg_type_number_t count = VM_REGION_SUBMAP_SHORT_INFO_COUNT_64;
@@ -27,7 +27,7 @@ write_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_ty
 }
 
 int
-read_memory(mach_port_name_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
+read_memory(task_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t len) {
 	kern_return_t kret;
 	pointer_t data;
 	mach_msg_type_number_t count;
@@ -134,4 +134,37 @@ thread_blocked(thread_act_t thread) {
 	if (kret != KERN_SUCCESS) return -1;
 
 	return info.suspend_count;
+}
+
+int
+num_running_threads(task_t task) {
+	kern_return_t kret;
+	thread_act_array_t list;
+	mach_msg_type_number_t count;
+	int i, n = 0;
+
+	kret = task_threads(task, &list, &count);
+	if (kret != KERN_SUCCESS) {
+		return -kret;
+	}
+
+	for (i = 0; i < count; ++i) {
+		thread_act_t thread = list[i];
+		struct thread_basic_info info;
+		unsigned int info_count = THREAD_BASIC_INFO_COUNT;
+
+		kret = thread_info((thread_t)thread, THREAD_BASIC_INFO, (thread_info_t)&info, &info_count);
+
+		if (kret == KERN_SUCCESS) {
+			if (info.suspend_count == 0) {
+				++n;
+			} else {
+			}
+		}
+	}
+
+	kret = vm_deallocate(mach_task_self(), (vm_address_t) list, count * sizeof(list[0]));
+	if (kret != KERN_SUCCESS) return -kret;
+
+	return n;
 }

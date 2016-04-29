@@ -2,7 +2,7 @@ package proc
 
 import (
 	"bytes"
-	"debug/dwarf"
+	"encoding/binary"
 	"fmt"
 	"go/ast"
 	"go/constant"
@@ -10,10 +10,13 @@ import (
 	"go/printer"
 	"go/token"
 	"reflect"
+
+	"github.com/derekparker/delve/dwarf/reader"
+	"golang.org/x/debug/dwarf"
 )
 
-// Returns the value of the given expression
-func (scope *EvalScope) EvalExpression(expr string) (*Variable, error) {
+// EvalExpression returns the value of the given expression.
+func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
 	t, err := parser.ParseExpr(expr)
 	if err != nil {
 		return nil, err
@@ -23,19 +26,32 @@ func (scope *EvalScope) EvalExpression(expr string) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	ev.loadValue()
+	ev.loadValue(cfg)
+	if ev.Name == "" {
+		ev.Name = expr
+	}
 	return ev, nil
 }
 
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	switch node := t.(type) {
 	case *ast.CallExpr:
-		if fnnode, ok := node.Fun.(*ast.Ident); ok && len(node.Args) == 2 && (fnnode.Name == "complex64" || fnnode.Name == "complex128") {
-			// implement the special case type casts complex64(f1, f2) and complex128(f1, f2)
-			return scope.evalComplexCast(fnnode.Name, node)
+		if len(node.Args) == 1 {
+			v, err := scope.evalTypeCast(node)
+			if err == nil {
+				return v, nil
+			}
+			_, isident := node.Fun.(*ast.Ident)
+			// we don't support function calls at the moment except for a few
+			// builtin functions so just return the type error here if the function
+			// isn't an identifier.
+			// More sophisticated logic will be required when function calls
+			// are implemented.
+			if err != reader.TypeNotFoundErr || !isident {
+				return v, err
+			}
 		}
-		// this must be a type cast because we do not support function calls
-		return scope.evalTypeCast(node)
+		return scope.evalBuiltinCall(node)
 
 	case *ast.Ident:
 		return scope.evalIdent(node)
@@ -47,12 +63,17 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	case *ast.SelectorExpr: // <expression>.<identifier>
 		// try to interpret the selector as a package variable
 		if maybePkg, ok := node.X.(*ast.Ident); ok {
-			if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
+			if maybePkg.Name == "runtime" && node.Sel.Name == "curg" {
+				return scope.Thread.getGVariable()
+			} else if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
 				return v, nil
 			}
 		}
 		// if it's not a package variable then it must be a struct member access
 		return scope.evalStructSelector(node)
+
+	case *ast.TypeAssertExpr: // <expression>.(<type>)
+		return scope.evalTypeAssert(node)
 
 	case *ast.IndexExpr:
 		return scope.evalIndex(node)
@@ -95,61 +116,13 @@ func exprToString(t ast.Expr) string {
 	return buf.String()
 }
 
-// Eval expressions: complex64(<float const>, <float const>) and complex128(<float const>, <float const>)
-func (scope *EvalScope) evalComplexCast(typename string, node *ast.CallExpr) (*Variable, error) {
-	realev, err := scope.evalAST(node.Args[0])
-	if err != nil {
-		return nil, err
-	}
-	imagev, err := scope.evalAST(node.Args[1])
-	if err != nil {
-		return nil, err
-	}
-
-	sz := 128
-	ftypename := "float64"
-	if typename == "complex64" {
-		sz = 64
-		ftypename = "float32"
-	}
-
-	realev.loadValue()
-	imagev.loadValue()
-
-	if realev.Unreadable != nil {
-		return nil, realev.Unreadable
-	}
-
-	if imagev.Unreadable != nil {
-		return nil, imagev.Unreadable
-	}
-
-	if realev.Value == nil || ((realev.Value.Kind() != constant.Int) && (realev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), ftypename)
-	}
-
-	if imagev.Value == nil || ((imagev.Value.Kind() != constant.Int) && (imagev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[1]), ftypename)
-	}
-
-	typ := &dwarf.ComplexType{dwarf.BasicType{dwarf.CommonType{ByteSize: int64(sz / 8), Name: typename}, int64(sz), 0}}
-
-	r := newVariable("", 0, typ, scope.Thread)
-	r.Value = constant.BinaryOp(realev.Value, token.ADD, constant.MakeImag(imagev.Value))
-	return r, nil
-}
-
 // Eval type cast expressions
 func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
-	if len(node.Args) != 1 {
-		return nil, fmt.Errorf("wrong number of arguments for a type cast")
-	}
-
 	argv, err := scope.evalAST(node.Args[0])
 	if err != nil {
 		return nil, err
 	}
-	argv.loadValue()
+	argv.loadValue(loadSingleValue)
 	if argv.Unreadable != nil {
 		return nil, argv.Unreadable
 	}
@@ -165,45 +138,294 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		fnnode = p.X
 	}
 
-	var typ dwarf.Type
+	styp, err := scope.Thread.dbp.findTypeExpr(fnnode)
+	if err != nil {
+		return nil, err
+	}
+	typ := resolveTypedef(styp)
 
-	if snode, ok := fnnode.(*ast.StarExpr); ok {
-		// Pointer types only appear in the dwarf informations when
-		// a pointer to the type is used in the target program, here
-		// we create a pointer type on the fly so that the user can
-		// specify a pointer to any variable used in the target program
-		ptyp, err := scope.findType(exprToString(snode.X))
-		if err != nil {
-			return nil, err
+	converr := fmt.Errorf("can not convert %q to %s", exprToString(node.Args[0]), typ.String())
+
+	v := newVariable("", 0, styp, scope.Thread.dbp, scope.Thread)
+	v.loaded = true
+
+	switch ttyp := typ.(type) {
+	case *dwarf.PtrType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			// ok
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			// ok
+		default:
+			return nil, converr
 		}
-		typ = &dwarf.PtrType{dwarf.CommonType{int64(scope.Thread.dbp.arch.PtrSize()), exprToString(fnnode)}, ptyp}
-	} else {
-		typ, err = scope.findType(exprToString(fnnode))
-		if err != nil {
-			return nil, err
+
+		n, _ := constant.Int64Val(argv.Value)
+
+		v.Children = []Variable{*(scope.newVariable("", uintptr(n), ttyp.Type))}
+		return v, nil
+
+	case *dwarf.UintType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := constant.Int64Val(argv.Value)
+			v.Value = constant.MakeUint64(convertInt(uint64(n), false, ttyp.Size()))
+			return v, nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := constant.Uint64Val(argv.Value)
+			v.Value = constant.MakeUint64(convertInt(n, false, ttyp.Size()))
+			return v, nil
+		case reflect.Float32, reflect.Float64:
+			x, _ := constant.Float64Val(argv.Value)
+			v.Value = constant.MakeUint64(uint64(x))
+			return v, nil
+		}
+	case *dwarf.IntType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := constant.Int64Val(argv.Value)
+			v.Value = constant.MakeInt64(int64(convertInt(uint64(n), true, ttyp.Size())))
+			return v, nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := constant.Uint64Val(argv.Value)
+			v.Value = constant.MakeInt64(int64(convertInt(n, true, ttyp.Size())))
+			return v, nil
+		case reflect.Float32, reflect.Float64:
+			x, _ := constant.Float64Val(argv.Value)
+			v.Value = constant.MakeInt64(int64(x))
+			return v, nil
+		}
+	case *dwarf.FloatType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			fallthrough
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			fallthrough
+		case reflect.Float32, reflect.Float64:
+			v.Value = argv.Value
+			return v, nil
+		}
+	case *dwarf.ComplexType:
+		switch argv.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			fallthrough
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			fallthrough
+		case reflect.Float32, reflect.Float64:
+			v.Value = argv.Value
+			return v, nil
 		}
 	}
 
-	// only supports cast of integer constants into pointers
-	ptyp, isptrtyp := typ.(*dwarf.PtrType)
-	if !isptrtyp {
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), typ.String())
+	return nil, converr
+}
+
+func convertInt(n uint64, signed bool, size int64) uint64 {
+	buf := make([]byte, 64/8)
+	binary.BigEndian.PutUint64(buf, n)
+	m := 64/8 - int(size)
+	s := byte(0)
+	if signed && (buf[m]&0x80 > 0) {
+		s = 0xff
+	}
+	for i := 0; i < m; i++ {
+		buf[i] = s
+	}
+	return uint64(binary.BigEndian.Uint64(buf))
+}
+
+func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
+	fnnode, ok := node.Fun.(*ast.Ident)
+	if !ok {
+		return nil, fmt.Errorf("function calls are not supported")
 	}
 
-	switch argv.Kind {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		// ok
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		// ok
+	args := make([]*Variable, len(node.Args))
+
+	for i := range node.Args {
+		v, err := scope.evalAST(node.Args[i])
+		if err != nil {
+			return nil, err
+		}
+		args[i] = v
+	}
+
+	switch fnnode.Name {
+	case "cap":
+		return capBuiltin(args, node.Args)
+	case "len":
+		return lenBuiltin(args, node.Args)
+	case "complex":
+		return complexBuiltin(args, node.Args)
+	case "imag":
+		return imagBuiltin(args, node.Args)
+	case "real":
+		return realBuiltin(args, node.Args)
+	}
+
+	return nil, fmt.Errorf("function calls are not supported")
+}
+
+func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to cap: %d", len(args))
+	}
+
+	arg := args[0]
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for cap", exprToString(nodeargs[0]), arg.TypeString())
+
+	switch arg.Kind {
+	case reflect.Ptr:
+		arg = arg.maybeDereference()
+		if arg.Kind != reflect.Array {
+			return nil, invalidArgErr
+		}
+		fallthrough
+	case reflect.Array:
+		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
+	case reflect.Slice:
+		return newConstant(constant.MakeInt64(arg.Cap), arg.mem), nil
+	case reflect.Chan:
+		arg.loadValue(loadFullValue)
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		if arg.Base == 0 {
+			return newConstant(constant.MakeInt64(0), arg.mem), nil
+		}
+		return newConstant(arg.Children[1].Value, arg.mem), nil
 	default:
-		return nil, fmt.Errorf("can not convert \"%s\" to %s", exprToString(node.Args[0]), typ.String())
+		return nil, invalidArgErr
+	}
+}
+
+func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to len: %d", len(args))
+	}
+	arg := args[0]
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for len", exprToString(nodeargs[0]), arg.TypeString())
+
+	switch arg.Kind {
+	case reflect.Ptr:
+		arg = arg.maybeDereference()
+		if arg.Kind != reflect.Array {
+			return nil, invalidArgErr
+		}
+		fallthrough
+	case reflect.Array, reflect.Slice, reflect.String:
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
+	case reflect.Chan:
+		arg.loadValue(loadFullValue)
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		if arg.Base == 0 {
+			return newConstant(constant.MakeInt64(0), arg.mem), nil
+		}
+		return newConstant(arg.Children[0].Value, arg.mem), nil
+	case reflect.Map:
+		it := arg.mapIterator()
+		if arg.Unreadable != nil {
+			return nil, arg.Unreadable
+		}
+		if it == nil {
+			return newConstant(constant.MakeInt64(0), arg.mem), nil
+		}
+		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
+	default:
+		return nil, invalidArgErr
+	}
+}
+
+func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("wrong number of arguments to complex: %d", len(args))
 	}
 
-	n, _ := constant.Int64Val(argv.Value)
+	realev := args[0]
+	imagev := args[1]
 
-	v := newVariable("", 0, ptyp, scope.Thread)
-	v.Children = []Variable{*newVariable("", uintptr(n), ptyp.Type, scope.Thread)}
-	return v, nil
+	realev.loadValue(loadSingleValue)
+	imagev.loadValue(loadSingleValue)
+
+	if realev.Unreadable != nil {
+		return nil, realev.Unreadable
+	}
+
+	if imagev.Unreadable != nil {
+		return nil, imagev.Unreadable
+	}
+
+	if realev.Value == nil || ((realev.Value.Kind() != constant.Int) && (realev.Value.Kind() != constant.Float)) {
+		return nil, fmt.Errorf("invalid argument 1 %s (type %s) to complex", exprToString(nodeargs[0]), realev.TypeString())
+	}
+
+	if imagev.Value == nil || ((imagev.Value.Kind() != constant.Int) && (imagev.Value.Kind() != constant.Float)) {
+		return nil, fmt.Errorf("invalid argument 2 %s (type %s) to complex", exprToString(nodeargs[1]), imagev.TypeString())
+	}
+
+	sz := int64(0)
+	if realev.RealType != nil {
+		sz = realev.RealType.(*dwarf.FloatType).Size()
+	}
+	if imagev.RealType != nil {
+		isz := imagev.RealType.(*dwarf.FloatType).Size()
+		if isz > sz {
+			sz = isz
+		}
+	}
+
+	if sz == 0 {
+		sz = 128
+	}
+
+	typ := &dwarf.ComplexType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: int64(sz / 8), Name: fmt.Sprintf("complex%d", sz)}, BitSize: sz, BitOffset: 0}}
+
+	r := realev.newVariable("", 0, typ)
+	r.Value = constant.BinaryOp(realev.Value, token.ADD, constant.MakeImag(imagev.Value))
+	return r, nil
+}
+
+func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to imag: %d", len(args))
+	}
+
+	arg := args[0]
+	arg.loadValue(loadSingleValue)
+
+	if arg.Unreadable != nil {
+		return nil, arg.Unreadable
+	}
+
+	if arg.Kind != reflect.Complex64 && arg.Kind != reflect.Complex128 {
+		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", exprToString(nodeargs[0]), arg.TypeString())
+	}
+
+	return newConstant(constant.Imag(arg.Value), arg.mem), nil
+}
+
+func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("wrong number of arguments to real: %d", len(args))
+	}
+
+	arg := args[0]
+	arg.loadValue(loadSingleValue)
+
+	if arg.Unreadable != nil {
+		return nil, arg.Unreadable
+	}
+
+	if arg.Value == nil || ((arg.Value.Kind() != constant.Int) && (arg.Value.Kind() != constant.Float) && (arg.Value.Kind() != constant.Complex)) {
+		return nil, fmt.Errorf("invalid argument %s (type %s) to real", exprToString(nodeargs[0]), arg.TypeString())
+	}
+
+	return newConstant(constant.Real(arg.Value), arg.mem), nil
 }
 
 // Evaluates identifier expressions
@@ -217,19 +439,26 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 
 	// try to interpret this as a local variable
 	v, err := scope.extractVarInfo(node.Name)
-	if err != nil {
-		// if it's not a local variable then it could be a package variable w/o explicit package name
-		origErr := err
-		_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
-		if fn != nil {
-			if v, err := scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
-				v.Name = node.Name
-				return v, nil
-			}
-		}
-		return nil, origErr
+	if err == nil {
+		return v, nil
 	}
-	return v, nil
+	origErr := err
+	// workaround: sometimes go inserts an entry for '&varname' instead of varname
+	v, err = scope.extractVarInfo("&" + node.Name)
+	if err == nil {
+		v = v.maybeDereference()
+		v.Name = node.Name
+		return v, nil
+	}
+	// if it's not a local variable then it could be a package variable w/o explicit package name
+	_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
+	if fn != nil {
+		if v, err = scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
+			v.Name = node.Name
+			return v, nil
+		}
+	}
+	return nil, origErr
 }
 
 // Evaluates expressions <subexpr>.<field name> where subexpr is not a package name
@@ -239,6 +468,35 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 		return nil, err
 	}
 	return xv.structMember(node.Sel.Name)
+}
+
+// Evaluates expressions <subexpr>.(<type>)
+func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, error) {
+	xv, err := scope.evalAST(node.X)
+	if err != nil {
+		return nil, err
+	}
+	if xv.Kind != reflect.Interface {
+		return nil, fmt.Errorf("expression \"%s\" not an interface", exprToString(node.X))
+	}
+	xv.loadInterface(0, false, loadFullValue)
+	if xv.Unreadable != nil {
+		return nil, xv.Unreadable
+	}
+	if xv.Children[0].Unreadable != nil {
+		return nil, xv.Children[0].Unreadable
+	}
+	if xv.Children[0].Addr == 0 {
+		return nil, fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), exprToString(node.Type))
+	}
+	typ, err := scope.Thread.dbp.findTypeExpr(node.Type)
+	if err != nil {
+		return nil, err
+	}
+	if xv.Children[0].DwarfType.String() != typ.String() {
+		return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.String(), xv.Children[0].TypeString(), typ)
+	}
+	return &xv.Children[0], nil
 }
 
 // Evaluates expressions <subexpr>[<subexpr>] (subscript access to arrays, slices and maps)
@@ -258,7 +516,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
-		if xev.base == 0 {
+		if xev.Base == 0 {
 			return nil, fmt.Errorf("can not index \"%s\"", exprToString(node.X))
 		}
 		n, err := idxev.asInt()
@@ -268,13 +526,13 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return xev.sliceAccess(int(n))
 
 	case reflect.Map:
-		idxev.loadValue()
+		idxev.loadValue(loadFullValue)
 		if idxev.Unreadable != nil {
 			return nil, idxev.Unreadable
 		}
 		return xev.mapAccess(idxev)
 	default:
-		return nil, fmt.Errorf("invalid expression \"%s\" (type %s does not support indexing)", exprToString(node.X), xev.DwarfType.String())
+		return nil, fmt.Errorf("expression \"%s\" (%s) does not support indexing", exprToString(node.X), xev.TypeString())
 
 	}
 }
@@ -318,7 +576,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
-		if xev.base == 0 {
+		if xev.Base == 0 {
 			return nil, fmt.Errorf("can not slice \"%s\"", exprToString(node.X))
 		}
 		return xev.reslice(low, high)
@@ -327,13 +585,13 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 			return nil, fmt.Errorf("second slice argument must be empty for maps")
 		}
 		xev.mapSkip += int(low)
-		xev.loadValue()
+		xev.loadValue(loadFullValue)
 		if xev.Unreadable != nil {
 			return nil, xev.Unreadable
 		}
 		return xev, nil
 	default:
-		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.DwarfType.String())
+		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.TypeString())
 	}
 }
 
@@ -344,24 +602,23 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 		return nil, err
 	}
 
-	if xev.DwarfType == nil {
-		return nil, fmt.Errorf("expression \"%s\" can not be dereferenced", exprToString(node.X))
+	if xev.Kind != reflect.Ptr {
+		return nil, fmt.Errorf("expression \"%s\" (%s) can not be dereferenced", exprToString(node.X), xev.TypeString())
 	}
 
-	if xev.Kind != reflect.Ptr {
-		return nil, fmt.Errorf("expression \"%s\" (%s) can not be dereferenced", exprToString(node.X), xev.DwarfType.String())
+	if xev == nilVariable {
+		return nil, fmt.Errorf("nil can not be dereferenced")
 	}
 
 	if len(xev.Children) == 1 {
 		// this branch is here to support pointers constructed with typecasts from ints
 		return &(xev.Children[0]), nil
-	} else {
-		rv := xev.maybeDereference()
-		if rv.Addr == 0 {
-			return nil, fmt.Errorf("nil pointer dereference")
-		}
-		return rv, nil
 	}
+	rv := xev.maybeDereference()
+	if rv.Addr == 0 {
+		return nil, fmt.Errorf("nil pointer dereference")
+	}
+	return rv, nil
 }
 
 // Evaluates expressions &<subexpr>
@@ -370,14 +627,14 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if xev.Addr == 0 {
+	if xev.Addr == 0 || xev.DwarfType == nil {
 		return nil, fmt.Errorf("can not take address of \"%s\"", exprToString(node.X))
 	}
 
 	xev.OnlyAddr = true
 
 	typename := "*" + xev.DwarfType.String()
-	rv := newVariable("", 0, &dwarf.PtrType{dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, xev.DwarfType}, scope.Thread)
+	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
 	rv.Children = []Variable{*xev}
 	rv.loaded = true
 
@@ -427,7 +684,7 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	xv.loadValue()
+	xv.loadValue(loadSingleValue)
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
 	}
@@ -439,15 +696,22 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, err
 	}
 	if xv.DwarfType != nil {
-		r := newVariable("", 0, xv.DwarfType, xv.thread)
+		r := xv.newVariable("", 0, xv.DwarfType)
 		r.Value = rc
 		return r, nil
-	} else {
-		return newConstant(rc, xv.thread), nil
 	}
+	return newConstant(rc, xv.mem), nil
 }
 
 func negotiateType(op token.Token, xv, yv *Variable) (dwarf.Type, error) {
+	if xv == nilVariable {
+		return nil, negotiateTypeNil(op, yv)
+	}
+
+	if yv == nilVariable {
+		return nil, negotiateTypeNil(op, xv)
+	}
+
 	if op == token.SHR || op == token.SHL {
 		if xv.Value == nil || xv.Value.Kind() != constant.Int {
 			return nil, fmt.Errorf("shift of type %s", xv.Kind)
@@ -491,6 +755,18 @@ func negotiateType(op token.Token, xv, yv *Variable) (dwarf.Type, error) {
 	panic("unreachable")
 }
 
+func negotiateTypeNil(op token.Token, v *Variable) error {
+	if op != token.EQL && op != token.NEQ {
+		return fmt.Errorf("operator %s can not be applied to \"nil\"", op.String())
+	}
+	switch v.Kind {
+	case reflect.Ptr, reflect.UnsafePointer, reflect.Chan, reflect.Map, reflect.Interface, reflect.Slice, reflect.Func:
+		return nil
+	default:
+		return fmt.Errorf("can not compare %s to nil", v.Kind.String())
+	}
+}
+
 func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	switch node.Op {
 	case token.INC, token.DEC, token.ARROW:
@@ -507,8 +783,8 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	xv.loadValue()
-	yv.loadValue()
+	xv.loadValue(loadFullValue)
+	yv.loadValue(loadFullValue)
 
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
@@ -539,7 +815,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newConstant(constant.MakeBool(v), xv.thread), nil
+		return newConstant(constant.MakeBool(v), xv.mem), nil
 
 	default:
 		if xv.Value == nil {
@@ -556,12 +832,12 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		}
 
 		if typ == nil {
-			return newConstant(rc, xv.thread), nil
-		} else {
-			r := newVariable("", 0, typ, xv.thread)
-			r.Value = rc
-			return r, nil
+			return newConstant(rc, xv.mem), nil
 		}
+
+		r := xv.newVariable("", 0, typ)
+		r.Value = rc
+		return r, nil
 	}
 }
 
@@ -591,6 +867,24 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 	var eql bool
 	var err error
 
+	if xv == nilVariable {
+		switch op {
+		case token.EQL:
+			return yv.isNil(), nil
+		case token.NEQ:
+			return !yv.isNil(), nil
+		}
+	}
+
+	if yv == nilVariable {
+		switch op {
+		case token.EQL:
+			return xv.isNil(), nil
+		case token.NEQ:
+			return !xv.isNil(), nil
+		}
+	}
+
 	switch xv.Kind {
 	case reflect.Ptr:
 		eql = xv.Children[0].Addr == yv.Children[0].Addr
@@ -608,11 +902,13 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 		}
 		eql, err = equalChildren(xv, yv, false)
 	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
-		if xv != nilVariable && yv != nilVariable {
-			return false, fmt.Errorf("can not compare %s variables", xv.Kind.String())
+		return false, fmt.Errorf("can not compare %s variables", xv.Kind.String())
+	case reflect.Interface:
+		if xv.Children[0].RealType.String() != yv.Children[0].RealType.String() {
+			eql = false
+		} else {
+			eql, err = compareOp(token.EQL, &xv.Children[0], &yv.Children[0])
 		}
-
-		eql = xv.base == yv.base
 	default:
 		return false, fmt.Errorf("unimplemented comparison of %s variables", xv.Kind.String())
 	}
@@ -621,6 +917,18 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 		return !eql, err
 	}
 	return eql, err
+}
+
+func (v *Variable) isNil() bool {
+	switch v.Kind {
+	case reflect.Ptr:
+		return v.Children[0].Addr == 0
+	case reflect.Interface:
+		return false
+	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
+		return v.Base == 0
+	}
+	return false
 }
 
 func equalChildren(xv, yv *Variable, shortcircuit bool) (bool, error) {
@@ -638,22 +946,13 @@ func equalChildren(xv, yv *Variable, shortcircuit bool) (bool, error) {
 	return r, nil
 }
 
-func (scope *EvalScope) findType(name string) (dwarf.Type, error) {
-	reader := scope.DwarfReader()
-	typentry, err := reader.SeekToTypeNamed(name)
-	if err != nil {
-		return nil, err
-	}
-	return scope.Thread.dbp.dwarf.Type(typentry.Offset)
-}
-
 func (v *Variable) asInt() (int64, error) {
 	if v.DwarfType == nil {
 		if v.Value.Kind() != constant.Int {
 			return 0, fmt.Errorf("can not convert constant %s to int", v.Value)
 		}
 	} else {
-		v.loadValue()
+		v.loadValue(loadSingleValue)
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
@@ -671,7 +970,7 @@ func (v *Variable) asUint() (uint64, error) {
 			return 0, fmt.Errorf("can not convert constant %s to uint", v.Value)
 		}
 	} else {
-		v.loadValue()
+		v.loadValue(loadSingleValue)
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
@@ -710,7 +1009,7 @@ func (v *Variable) isType(typ dwarf.Type, kind reflect.Kind) error {
 		return converr
 	}
 
-	switch t := typ.(type) {
+	switch typ.(type) {
 	case *dwarf.IntType:
 		if v.Value.Kind() != constant.Int {
 			return converr
@@ -727,10 +1026,7 @@ func (v *Variable) isType(typ dwarf.Type, kind reflect.Kind) error {
 		if v.Value.Kind() != constant.Bool {
 			return converr
 		}
-	case *dwarf.StructType:
-		if t.StructName != "string" {
-			return converr
-		}
+	case *dwarf.StringType:
 		if v.Value.Kind() != constant.String {
 			return converr
 		}
@@ -749,7 +1045,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	if idx < 0 || int64(idx) >= v.Len {
 		return nil, fmt.Errorf("index out of bounds")
 	}
-	return newVariable("", v.base+uintptr(int64(idx)*v.stride), v.fieldType, v.thread), nil
+	return v.newVariable("", v.Base+uintptr(int64(idx)*v.stride), v.fieldType), nil
 }
 
 func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
@@ -761,7 +1057,7 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 	first := true
 	for it.next() {
 		key := it.key()
-		key.loadValue()
+		key.loadValue(loadFullValue)
 		if key.Unreadable != nil {
 			return nil, fmt.Errorf("can not access unreadable map: %v", key.Unreadable)
 		}
@@ -791,7 +1087,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 
-	base := v.base + uintptr(int64(low)*v.stride)
+	base := v.Base + uintptr(int64(low)*v.stride)
 	len := high - low
 
 	if high-low < 0 {
@@ -800,21 +1096,24 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 
 	typ := v.DwarfType
 	if _, isarr := v.DwarfType.(*dwarf.ArrayType); isarr {
-		typ = &dwarf.StructType{
-			CommonType: dwarf.CommonType{
-				ByteSize: 24,
-				Name:     "",
+		typ = &dwarf.SliceType{
+			StructType: dwarf.StructType{
+				CommonType: dwarf.CommonType{
+					ByteSize: 24,
+					Name:     "",
+				},
+				StructName: fmt.Sprintf("[]%s", v.fieldType),
+				Kind:       "struct",
+				Field:      nil,
 			},
-			StructName: fmt.Sprintf("[]%s", v.fieldType),
-			Kind:       "struct",
-			Field:      nil,
+			ElemType: v.fieldType,
 		}
 	}
 
-	r := newVariable("", 0, typ, v.thread)
+	r := v.newVariable("", 0, typ)
 	r.Cap = len
 	r.Len = len
-	r.base = base
+	r.Base = base
 	r.stride = v.stride
 	r.fieldType = v.fieldType
 

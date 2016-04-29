@@ -5,6 +5,36 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [0.11.0-alpha] 2016-01-26
+
+### Added
+
+- Windows support landed in master. Still work to be done, but 95% the way there. (@lukehoban)
+- `step-instruction` command added, has same behavior of the old `step` command.
+- (Backend) Implementation for conditional breakpoints, front end command coming soon. (@aarzilli)
+- Implement expression evaluator, can now execute commands like `print i == 2`. (@aarzilli)
+
+### Changed
+
+- `step` command no longer steps single instruction but goes to next source line, stepping into functions.
+- Refactor of `parseG` command for clarity and speed improvements.
+- Optimize reading from target process memory with cache. (prefetch + parse) (@aarzilli)
+- Shorten file paths in `trace` output.
+- Added Git SHA to version output.
+- Support function spec with partial package paths. (@aarzilli)
+- Bunch of misc variable evaluation fixes (@aarzilli)
+
+### Fixed
+
+- Misc fixes in preparation for Go 1.6. (@aarzilli, @derekparker)
+- Replace stdlib debug/dwarf with golang.org/x/debug/dwarf and fix Dwarf endian related parsing issues. (@aarzilli)
+- Fix `goroutines` not working without an argument. (@aarzilli)
+- Always clear temp breakpoints, even if normal breakpoint is hit. (@aarzilli)
+- Infinite loading loop through maps. (@aarzilli)
+- Fix OSX issues related to CGO memory corruption (array overrun in CGO). (@aarzilli)
+- Fix OSX issue related to reporting multiple breakpoints hit at same time. (@aarzilli)
+- Fix panic when using the `trace` subcommand.
+
 ## [0.10.0-alpha] 2015-10-04
 
 ### Added

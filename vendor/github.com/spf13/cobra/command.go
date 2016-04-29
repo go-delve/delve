@@ -20,11 +20,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
+	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/inconshreveable/mousetrap"
 	flag "github.com/spf13/pflag"
 )
 
@@ -61,6 +59,10 @@ type Command struct {
 	pflags *flag.FlagSet
 	// Flags that are declared specifically by this command (not inherited).
 	lflags *flag.FlagSet
+	// SilenceErrors is an option to quiet errors down stream
+	SilenceErrors bool
+	// Silence Usage is an option to silence usage when an error occurs.
+	SilenceUsage bool
 	// The *Run functions are executed in the following order:
 	//   * PersistentPreRun()
 	//   * PreRun()
@@ -88,6 +90,8 @@ type Command struct {
 	PersistentPostRun func(cmd *Command, args []string)
 	// PersistentPostRunE: PersistentPostRun but returns an error
 	PersistentPostRunE func(cmd *Command, args []string) error
+	// DisableAutoGenTag remove
+	DisableAutoGenTag bool
 	// Commands is the list of commands supported by this program.
 	commands []*Command
 	// Parent Command for this command
@@ -469,20 +473,38 @@ func (c *Command) SuggestionsFor(typedName string) []string {
 	return suggestions
 }
 
+func (c *Command) VisitParents(fn func(*Command)) {
+	var traverse func(*Command) *Command
+
+	traverse = func(x *Command) *Command {
+		if x != c {
+			fn(x)
+		}
+		if x.HasParent() {
+			return traverse(x.parent)
+		}
+		return x
+	}
+	traverse(c)
+}
+
 func (c *Command) Root() *Command {
 	var findRoot func(*Command) *Command
 
 	findRoot = func(x *Command) *Command {
 		if x.HasParent() {
 			return findRoot(x.parent)
-		} else {
-			return x
 		}
+		return x
 	}
 
 	return findRoot(c)
 }
 
+// ArgsLenAtDash will return the length of f.Args at the moment when a -- was
+// found during arg parsing. This allows your program to know which args were
+// before the -- and which came after. (Description from
+// https://godoc.org/github.com/spf13/pflag#FlagSet.ArgsLenAtDash).
 func (c *Command) ArgsLenAtDash() int {
 	return c.Flags().ArgsLenAtDash()
 }
@@ -589,19 +611,21 @@ func (c *Command) errorMsgFromParse() string {
 // Call execute to use the args (os.Args[1:] by default)
 // and run through the command tree finding appropriate matches
 // for commands and then corresponding flags.
-func (c *Command) Execute() (err error) {
+func (c *Command) Execute() error {
+	_, err := c.ExecuteC()
+	return err
+}
+
+func (c *Command) ExecuteC() (cmd *Command, err error) {
 
 	// Regardless of what command execute is called on, run on Root only
 	if c.HasParent() {
-		return c.Root().Execute()
+		return c.Root().ExecuteC()
 	}
 
-	if EnableWindowsMouseTrap && runtime.GOOS == "windows" {
-		if mousetrap.StartedByExplorer() {
-			c.Print(MousetrapHelpText)
-			time.Sleep(5 * time.Second)
-			os.Exit(1)
-		}
+	// windows hook
+	if preExecHookFn != nil {
+		preExecHookFn(c)
 	}
 
 	// initialize help as the last point possible to allow for user
@@ -610,7 +634,8 @@ func (c *Command) Execute() (err error) {
 
 	var args []string
 
-	if len(c.args) == 0 {
+	// Workaround FAIL with "go test -v" or "cobra.test -test.v", see #155
+	if c.args == nil && filepath.Base(os.Args[0]) != "cobra.test" {
 		args = os.Args[1:]
 	} else {
 		args = c.args
@@ -622,22 +647,35 @@ func (c *Command) Execute() (err error) {
 		if cmd != nil {
 			c = cmd
 		}
-		c.Println("Error:", err.Error())
-		c.Printf("Run '%v --help' for usage.\n", c.CommandPath())
-		return err
+		if !c.SilenceErrors {
+			c.Println("Error:", err.Error())
+			c.Printf("Run '%v --help' for usage.\n", c.CommandPath())
+		}
+		return c, err
 	}
-
 	err = cmd.execute(flags)
 	if err != nil {
+		// Always show help if requested, even if SilenceErrors is in
+		// effect
 		if err == flag.ErrHelp {
 			cmd.HelpFunc()(cmd, args)
-			return nil
+			return cmd, nil
 		}
-		c.Println(cmd.UsageString())
-		c.Println("Error:", err.Error())
-	}
 
-	return
+		// If root command has SilentErrors flagged,
+		// all subcommands should respect it
+		if !cmd.SilenceErrors && !c.SilenceErrors {
+			c.Println("Error:", err.Error())
+		}
+
+		// If root command has SilentUsage flagged,
+		// all subcommands should respect it
+		if !cmd.SilenceUsage && !c.SilenceUsage {
+			c.Println(cmd.UsageString())
+		}
+		return cmd, err
+	}
+	return cmd, nil
 }
 
 func (c *Command) initHelpFlag() {
@@ -706,7 +744,7 @@ func (c *Command) AddCommand(cmds ...*Command) {
 		if nameLen > c.commandsMaxNameLen {
 			c.commandsMaxNameLen = nameLen
 		}
-		// If glabal normalization function exists, update all children
+		// If global normalization function exists, update all children
 		if c.globNormFunc != nil {
 			x.SetGlobalNormalizationFunc(c.globNormFunc)
 		}

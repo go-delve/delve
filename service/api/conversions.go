@@ -1,16 +1,23 @@
 package api
 
 import (
+	"bytes"
 	"debug/gosym"
 	"go/constant"
+	"go/printer"
+	"go/token"
+	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strconv"
 
 	"github.com/derekparker/delve/proc"
 )
 
+// ConvertBreakpoint converts from a proc.Breakpoint to
+// an api.Breakpoint.
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
+		Name:          bp.Name,
 		ID:            bp.ID,
 		FunctionName:  bp.FunctionName,
 		File:          bp.File,
@@ -20,6 +27,8 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		Stacktrace:    bp.Stacktrace,
 		Goroutine:     bp.Goroutine,
 		Variables:     bp.Variables,
+		LoadArgs:      LoadConfigFromProc(bp.LoadArgs),
+		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
 		TotalHitCount: bp.TotalHitCount,
 	}
 
@@ -28,15 +37,22 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		b.HitCount[strconv.Itoa(idx)] = bp.HitCount[idx]
 	}
 
+	var buf bytes.Buffer
+	printer.Fprint(&buf, token.NewFileSet(), bp.Cond)
+	b.Cond = buf.String()
+
 	return b
 }
 
+// ConvertThread converts a proc.Thread into an
+// api thread.
 func ConvertThread(th *proc.Thread) *Thread {
 	var (
 		function *Function
 		file     string
 		line     int
 		pc       uint64
+		gid      int
 	)
 
 	loc, err := th.Location()
@@ -47,15 +63,39 @@ func ConvertThread(th *proc.Thread) *Thread {
 		function = ConvertFunction(loc.Fn)
 	}
 
+	var bp *Breakpoint
+
+	if th.CurrentBreakpoint != nil && th.BreakpointConditionMet {
+		bp = ConvertBreakpoint(th.CurrentBreakpoint)
+	}
+
+	if g, _ := th.GetG(); g != nil {
+		gid = g.ID
+	}
+
 	return &Thread{
-		ID:       th.Id,
-		PC:       pc,
-		File:     file,
-		Line:     line,
-		Function: function,
+		ID:          th.ID,
+		PC:          pc,
+		File:        file,
+		Line:        line,
+		Function:    function,
+		GoroutineID: gid,
+		Breakpoint:  bp,
 	}
 }
 
+func prettyTypeName(typ dwarf.Type) string {
+	if typ == nil {
+		return ""
+	}
+	r := typ.String()
+	if r == "*void" {
+		return "unsafe.Pointer"
+	}
+	return r
+}
+
+// ConvertVar converts from proc.Variable to api.Variable.
 func ConvertVar(v *proc.Variable) *Variable {
 	r := Variable{
 		Addr:     v.Addr,
@@ -66,13 +106,8 @@ func ConvertVar(v *proc.Variable) *Variable {
 		Cap:      v.Cap,
 	}
 
-	if v.DwarfType != nil {
-		r.Type = v.DwarfType.String()
-	}
-
-	if v.RealType != nil {
-		r.RealType = v.RealType.String()
-	}
+	r.Type = prettyTypeName(v.DwarfType)
+	r.RealType = prettyTypeName(v.RealType)
 
 	if v.Unreadable != nil {
 		r.Unreadable = v.Unreadable.Error()
@@ -134,6 +169,8 @@ func ConvertVar(v *proc.Variable) *Variable {
 	return &r
 }
 
+// ConvertFunction converts from gosym.Func to
+// api.Function.
 func ConvertFunction(fn *gosym.Func) *Function {
 	if fn == nil {
 		return nil
@@ -147,20 +184,64 @@ func ConvertFunction(fn *gosym.Func) *Function {
 	}
 }
 
+// ConvertGoroutine converts from proc.G to api.Goroutine.
 func ConvertGoroutine(g *proc.G) *Goroutine {
 	return &Goroutine{
-		ID:             g.Id,
+		ID:             g.ID,
 		CurrentLoc:     ConvertLocation(g.CurrentLoc),
 		UserCurrentLoc: ConvertLocation(g.UserCurrent()),
 		GoStatementLoc: ConvertLocation(g.Go()),
 	}
 }
 
+// ConvertLocation converts from proc.Location to api.Location.
 func ConvertLocation(loc proc.Location) Location {
 	return Location{
 		PC:       loc.PC,
 		File:     loc.File,
 		Line:     loc.Line,
 		Function: ConvertFunction(loc.Fn),
+	}
+}
+
+func ConvertAsmInstruction(inst proc.AsmInstruction, text string) AsmInstruction {
+	var destloc *Location
+	if inst.DestLoc != nil {
+		r := ConvertLocation(*inst.DestLoc)
+		destloc = &r
+	}
+	return AsmInstruction{
+		Loc:        ConvertLocation(inst.Loc),
+		DestLoc:    destloc,
+		Text:       text,
+		Bytes:      inst.Bytes,
+		Breakpoint: inst.Breakpoint,
+		AtPC:       inst.AtPC,
+	}
+}
+
+func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &proc.LoadConfig{
+		cfg.FollowPointers,
+		cfg.MaxVariableRecurse,
+		cfg.MaxStringLen,
+		cfg.MaxArrayValues,
+		cfg.MaxStructFields,
+	}
+}
+
+func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &LoadConfig{
+		cfg.FollowPointers,
+		cfg.MaxVariableRecurse,
+		cfg.MaxStringLen,
+		cfg.MaxArrayValues,
+		cfg.MaxStructFields,
 	}
 }

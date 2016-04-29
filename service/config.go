@@ -20,4 +20,7 @@ type Config struct {
 	// AttachPid is the PID of an existing process to which the debugger should
 	// attach.
 	AttachPid int
+	// AcceptMulti configures the server to accept multiple connection
+	// Note that the server API is not reentrant and clients will have to coordinate
+	AcceptMulti bool
 }

@@ -1,0 +1,27 @@
+version: '{build}'
+os: Windows Server 2012 R2
+clone_folder: c:\gopath\src\github.com\derekparker\delve
+environment:
+  GOPATH: C:\gopath
+install:
+  - ps: |
+      # Install MinGW.
+      if (-Not (Test-Path "C:\mingw64")) {
+              $file = "x86_64-4.9.2-release-win32-seh-rt_v4-rev3.7z"
+              $url  = "https://bintray.com/artifact/download/drewwells/generic/"
+              $url += $file
+              Invoke-WebRequest -UserAgent wget -Uri $url -OutFile $file
+              &7z x -oC:\ $file > $null
+      }
+  - set PATH=c:\mingw64\bin;%GOPATH%\bin;%PATH%
+  - echo %PATH%
+  - echo %GOPATH%
+  - go version
+  - go env
+  - go get github.com/tools/godep
+  - godep restore
+cache: C:\mingw64
+build_script:
+- mingw32-make install
+test_script:
+- mingw32-make test

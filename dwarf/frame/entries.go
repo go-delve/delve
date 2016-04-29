@@ -1,6 +1,7 @@
 package frame
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sort"
 )
@@ -25,6 +26,7 @@ type FrameDescriptionEntry struct {
 	CIE          *CommonInformationEntry
 	Instructions []byte
 	begin, end   uint64
+	order        binary.ByteOrder
 }
 
 // Returns whether or not the given address is within the
@@ -63,6 +65,14 @@ func NewFrameIndex() FrameDescriptionEntries {
 	return make(FrameDescriptionEntries, 0, 1000)
 }
 
+type NoFDEForPCError struct {
+	PC uint64
+}
+
+func (err *NoFDEForPCError) Error() string {
+	return fmt.Sprintf("could not find FDE for PC %#v", err.PC)
+}
+
 // Returns the Frame Description Entry for the given PC.
 func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry, error) {
 	idx := sort.Search(len(fdes), func(i int) bool {
@@ -75,7 +85,7 @@ func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry,
 		return true
 	})
 	if idx == len(fdes) {
-		return nil, fmt.Errorf("could not find FDE for PC %#v", pc)
+		return nil, &NoFDEForPCError{pc}
 	}
 	return fdes[idx], nil
 }

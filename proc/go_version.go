@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// GoVersion represents the Go version of
+// the Go compiler version used to compile
+// the target binary.
 type GoVersion struct {
 	Major int
 	Minor int
@@ -13,7 +16,7 @@ type GoVersion struct {
 	RC    int
 }
 
-func parseVersionString(ver string) (GoVersion, bool) {
+func ParseVersionString(ver string) (GoVersion, bool) {
 	var r GoVersion
 	var err1, err2, err3 error
 
@@ -70,36 +73,40 @@ func parseVersionString(ver string) (GoVersion, bool) {
 	return GoVersion{}, false
 }
 
-func (a *GoVersion) AfterOrEqual(b GoVersion) bool {
-	if a.Major < b.Major {
+// AfterOrEqual returns whether one GoVersion is after or
+// equal to the other.
+func (v *GoVersion) AfterOrEqual(b GoVersion) bool {
+	if v.Major < b.Major {
 		return false
-	} else if a.Major > b.Major {
+	} else if v.Major > b.Major {
 		return true
 	}
 
-	if a.Minor < b.Minor {
+	if v.Minor < b.Minor {
 		return false
-	} else if a.Minor > b.Minor {
+	} else if v.Minor > b.Minor {
 		return true
 	}
 
-	if a.Rev < b.Rev {
+	if v.Rev < b.Rev {
 		return false
-	} else if a.Rev > b.Rev {
+	} else if v.Rev > b.Rev {
 		return true
 	}
 
-	if a.Beta < b.Beta {
+	if v.Beta < b.Beta {
 		return false
 	}
 
-	if a.RC < b.RC {
+	if v.RC < b.RC {
 		return false
 	}
 
 	return true
 }
 
+// IsDevel returns whether the GoVersion
+// is a development version.
 func (v *GoVersion) IsDevel() bool {
 	return v.Major < 0
 }

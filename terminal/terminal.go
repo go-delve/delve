@@ -7,8 +7,9 @@ import (
 	"os/signal"
 	"strings"
 
+	"syscall"
+
 	"github.com/peterh/liner"
-	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
@@ -16,50 +17,71 @@ import (
 
 const (
 	historyFile             string = ".dbg_history"
-	TerminalBlueEscapeCode  string = "\033[34m"
-	TerminalResetEscapeCode string = "\033[0m"
+	terminalBlueEscapeCode  string = "\033[34m"
+	terminalResetEscapeCode string = "\033[0m"
 )
 
+// Term represents the terminal running dlv.
 type Term struct {
 	client   service.Client
 	prompt   string
 	line     *liner.State
-	conf     *config.Config
+	cmds     *Commands
 	dumb     bool
+	stdout   io.Writer
 	InitFile string
 }
 
+// New returns a new Term.
 func New(client service.Client, conf *config.Config) *Term {
+	cmds := DebugCommands(client)
+	if conf != nil && conf.Aliases != nil {
+		cmds.Merge(conf.Aliases)
+	}
+
+	var w io.Writer
+
+	dumb := strings.ToLower(os.Getenv("TERM")) == "dumb"
+	if dumb {
+		w = os.Stdout
+	} else {
+		w = getColorableWriter()
+	}
+
 	return &Term{
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		client: client,
-		conf:   conf,
-		dumb:   strings.ToLower(os.Getenv("TERM")) == "dumb",
+		cmds:   cmds,
+		dumb:   dumb,
+		stdout: w,
 	}
 }
 
-func (t *Term) Run() (error, int) {
-	defer t.line.Close()
+// Close returns the terminal to its previous mode.
+func (t *Term) Close() {
+	t.line.Close()
+}
+
+// Run begins running dlv in the terminal.
+func (t *Term) Run() (int, error) {
+	defer t.Close()
 
 	// Send the debugger a halt command on SIGINT
 	ch := make(chan os.Signal)
-	signal.Notify(ch, sys.SIGINT)
+	signal.Notify(ch, syscall.SIGINT)
 	go func() {
 		for range ch {
+			fmt.Printf("recieved SIGINT, stopping process (will not forward signal)")
 			_, err := t.client.Halt()
 			if err != nil {
-				fmt.Println(err)
+				fmt.Fprintf(os.Stderr, "%v", err)
 			}
 		}
 	}()
 
-	cmds := DebugCommands(t.client)
-	if t.conf != nil && t.conf.Aliases != nil {
-		cmds.Merge(t.conf.Aliases)
-	}
 	t.line.SetCompleter(func(line string) (c []string) {
-		for _, cmd := range cmds.cmds {
+		for _, cmd := range t.cmds.cmds {
 			for _, alias := range cmd.aliases {
 				if strings.HasPrefix(alias, strings.ToLower(line)) {
 					c = append(c, alias)
@@ -87,13 +109,12 @@ func (t *Term) Run() (error, int) {
 	fmt.Println("Type 'help' for list of commands.")
 
 	if t.InitFile != "" {
-		err := cmds.executeFile(t, t.InitFile)
+		err := t.cmds.executeFile(t, t.InitFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error executing init file: %s\n", err)
 		}
 	}
 
-	var status int
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
@@ -101,13 +122,11 @@ func (t *Term) Run() (error, int) {
 				fmt.Println("exit")
 				return t.handleExit()
 			}
-			err, status = fmt.Errorf("Prompt for input failed.\n"), 1
-			break
+			return 1, fmt.Errorf("Prompt for input failed.\n")
 		}
 
 		cmdstr, args := parseCommand(cmdstr)
-		cmd := cmds.Find(cmdstr)
-		if err := cmd(t, args); err != nil {
+		if err := t.cmds.Call(cmdstr, args, t); err != nil {
 			if _, ok := err.(ExitRequestError); ok {
 				return t.handleExit()
 			}
@@ -121,15 +140,14 @@ func (t *Term) Run() (error, int) {
 			}
 		}
 	}
-
-	return nil, status
 }
 
+// Println prints a line to the terminal.
 func (t *Term) Println(prefix, str string) {
 	if !t.dumb {
-		prefix = fmt.Sprintf("%s%s%s", TerminalBlueEscapeCode, prefix, TerminalResetEscapeCode)
+		prefix = fmt.Sprintf("%s%s%s", terminalBlueEscapeCode, prefix, terminalResetEscapeCode)
 	}
-	fmt.Printf("%s%s\n", prefix, str)
+	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
 }
 
 func (t *Term) promptForInput() (string, error) {
@@ -146,15 +164,15 @@ func (t *Term) promptForInput() (string, error) {
 	return l, nil
 }
 
-func (t *Term) handleExit() (error, int) {
+func (t *Term) handleExit() (int, error) {
 	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Println("Error saving history file:", err)
 	} else {
 		if f, err := os.OpenFile(fullHistoryFile, os.O_RDWR, 0666); err == nil {
-			_, err := t.line.WriteHistory(f)
+			_, err = t.line.WriteHistory(f)
 			if err != nil {
-				fmt.Println("readline history error: ", err)
+				fmt.Println("readline history error:", err)
 			}
 			f.Close()
 		}
@@ -162,24 +180,23 @@ func (t *Term) handleExit() (error, int) {
 
 	s, err := t.client.GetState()
 	if err != nil {
-		return err, 1
+		return 1, err
 	}
 	if !s.Exited {
 		kill := true
 		if t.client.AttachedToExistingProcess() {
 			answer, err := t.line.Prompt("Would you like to kill the process? [Y/n] ")
 			if err != nil {
-				return io.EOF, 2
+				return 2, io.EOF
 			}
 			answer = strings.ToLower(strings.TrimSpace(answer))
 			kill = (answer != "n" && answer != "no")
 		}
-		err = t.client.Detach(kill)
-		if err != nil {
-			return err, 1
+		if err := t.client.Detach(kill); err != nil {
+			return 1, err
 		}
 	}
-	return nil, 0
+	return 0, nil
 }
 
 func parseCommand(cmdstr string) (string, string) {

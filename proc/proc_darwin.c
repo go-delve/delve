@@ -23,7 +23,7 @@ __attribute__ ((section ("__TEXT,__info_plist"),used)) =
 
 kern_return_t
 acquire_mach_task(int tid,
-		mach_port_name_t *task,
+		task_t *task,
 		mach_port_t *port_set,
 		mach_port_t *exception_port,
 		mach_port_t *notification_port)
@@ -76,7 +76,7 @@ find_executable(int pid) {
 }
 
 kern_return_t
-get_threads(task_t task, void *slice) {
+get_threads(task_t task, void *slice, int limit) {
 	kern_return_t kret;
 	thread_act_array_t list;
 	mach_msg_type_number_t count;
@@ -84,6 +84,11 @@ get_threads(task_t task, void *slice) {
 	kret = task_threads(task, &list, &count);
 	if (kret != KERN_SUCCESS) {
 		return kret;
+	}
+
+	if (count > limit) {
+		vm_deallocate(mach_task_self(), (vm_address_t) list, count * sizeof(list[0]));
+		return -2;
 	}
 
 	memcpy(slice, (void*)list, count*sizeof(list[0]));
@@ -110,7 +115,7 @@ thread_count(task_t task) {
 }
 
 mach_port_t
-mach_port_wait(mach_port_t port_set) {
+mach_port_wait(mach_port_t port_set, int nonblocking) {
 	kern_return_t kret;
 	thread_act_t thread;
 	NDR_record_t *ndr;
@@ -120,10 +125,14 @@ mach_port_wait(mach_port_t port_set) {
 		mach_msg_header_t hdr;
 		char data[256];
 	} msg;
+	mach_msg_option_t opts = MACH_RCV_MSG|MACH_RCV_INTERRUPT;
+	if (nonblocking) {
+		opts |= MACH_RCV_TIMEOUT;
+	}
 
 	// Wait for mach msg.
-	kret = mach_msg(&msg.hdr, MACH_RCV_MSG|MACH_RCV_INTERRUPT,
-			0, sizeof(msg.data), port_set, 0, MACH_PORT_NULL);
+	kret = mach_msg(&msg.hdr, opts,
+			0, sizeof(msg.data), port_set, 10, MACH_PORT_NULL);
 	if (kret == MACH_RCV_INTERRUPTED) return kret;
 	if (kret != MACH_MSG_SUCCESS) return 0;
 
@@ -142,7 +151,7 @@ mach_port_wait(mach_port_t port_set) {
 			if (data[2] == EXC_SOFT_SIGNAL) {
 				if (data[3] != SIGTRAP) {
 					if (thread_resume(thread) != KERN_SUCCESS) return 0;
-					return mach_port_wait(port_set);
+					return mach_port_wait(port_set, nonblocking);
 				}
 			}
 			return thread;

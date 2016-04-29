@@ -649,7 +649,7 @@ func IoctlGetTermio(fd int, req int) (*Termio, error) {
 //sysnb	Uname(buf *Utsname) (err error)
 //sys	Unmount(target string, flags int) (err error) = libc.umount
 //sys	Unlink(path string) (err error)
-//sys	Unlinkat(dirfd int, path string) (err error)
+//sys	Unlinkat(dirfd int, path string, flags int) (err error)
 //sys	Ustat(dev int, ubuf *Ustat_t) (err error)
 //sys	Utime(path string, buf *Utimbuf) (err error)
 //sys	bind(s int, addr unsafe.Pointer, addrlen _Socklen) (err error) = libsocket.bind

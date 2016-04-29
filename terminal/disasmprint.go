@@ -1,0 +1,31 @@
+package terminal
+
+import (
+	"bufio"
+	"fmt"
+	"github.com/derekparker/delve/service/api"
+	"io"
+	"path/filepath"
+	"text/tabwriter"
+)
+
+func DisasmPrint(dv api.AsmInstructions, out io.Writer) {
+	bw := bufio.NewWriter(out)
+	defer bw.Flush()
+	if len(dv) > 0 && dv[0].Loc.Function != nil {
+		fmt.Fprintf(bw, "TEXT %s(SB) %s\n", dv[0].Loc.Function.Name, dv[0].Loc.File)
+	}
+	tw := tabwriter.NewWriter(bw, 1, 8, 1, '\t', 0)
+	defer tw.Flush()
+	for _, inst := range dv {
+		atbp := ""
+		if inst.Breakpoint {
+			atbp = "*"
+		}
+		atpc := ""
+		if inst.AtPC {
+			atpc = "=>"
+		}
+		fmt.Fprintf(tw, "%s\t%s:%d\t%#x%s\t%x\t%s\n", atpc, filepath.Base(inst.Loc.File), inst.Loc.Line, inst.Loc.PC, atbp, inst.Bytes, inst.Text)
+	}
+}

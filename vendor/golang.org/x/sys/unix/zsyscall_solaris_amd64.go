@@ -1401,13 +1401,13 @@ func Unlink(path string) (err error) {
 	return
 }
 
-func Unlinkat(dirfd int, path string) (err error) {
+func Unlinkat(dirfd int, path string, flags int) (err error) {
 	var _p0 *byte
 	_p0, err = BytePtrFromString(path)
 	if err != nil {
 		return
 	}
-	_, _, e1 := sysvicall6(uintptr(unsafe.Pointer(&procUnlinkat)), 2, uintptr(dirfd), uintptr(unsafe.Pointer(_p0)), 0, 0, 0, 0)
+	_, _, e1 := sysvicall6(uintptr(unsafe.Pointer(&procUnlinkat)), 3, uintptr(dirfd), uintptr(unsafe.Pointer(_p0)), uintptr(flags), 0, 0, 0)
 	use(unsafe.Pointer(_p0))
 	if e1 != 0 {
 		err = e1

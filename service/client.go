@@ -25,6 +25,8 @@ type Client interface {
 	Next() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
 	Step() (*api.DebuggerState, error)
+	// SingleStep will step a single cpu instruction.
+	StepInstruction() (*api.DebuggerState, error)
 	// SwitchThread switches the current thread context.
 	SwitchThread(threadID int) (*api.DebuggerState, error)
 	// SwitchGoroutine switches the current goroutine (and the current thread as well)
@@ -34,12 +36,21 @@ type Client interface {
 
 	// GetBreakpoint gets a breakpoint by ID.
 	GetBreakpoint(id int) (*api.Breakpoint, error)
+	// GetBreakpointByName gets a breakpoint by name.
+	GetBreakpointByName(name string) (*api.Breakpoint, error)
 	// CreateBreakpoint creates a new breakpoint.
 	CreateBreakpoint(*api.Breakpoint) (*api.Breakpoint, error)
 	// ListBreakpoints gets all breakpoints.
 	ListBreakpoints() ([]*api.Breakpoint, error)
 	// ClearBreakpoint deletes a breakpoint by ID.
 	ClearBreakpoint(id int) (*api.Breakpoint, error)
+	// ClearBreakpointByName deletes a breakpoint by name
+	ClearBreakpointByName(name string) (*api.Breakpoint, error)
+	// Allows user to update an existing breakpoint for example to change the information
+	// retrieved when the breakpoint is hit or to change, add or remove the break condition
+	AmendBreakpoint(*api.Breakpoint) error
+	// Cancels a Next or Step call that was interrupted by a manual stop or by another breakpoint
+	CancelNext() error
 
 	// ListThreads lists all threads.
 	ListThreads() ([]*api.Thread, error)
@@ -47,11 +58,9 @@ type Client interface {
 	GetThread(id int) (*api.Thread, error)
 
 	// ListPackageVariables lists all package variables in the context of the current thread.
-	ListPackageVariables(filter string) ([]api.Variable, error)
+	ListPackageVariables(filter string, cfg api.LoadConfig) ([]api.Variable, error)
 	// EvalVariable returns a variable in the context of the current thread.
-	EvalVariable(scope api.EvalScope, symbol string) (*api.Variable, error)
-	// ListPackageVariablesFor lists all package variables in the context of a thread.
-	ListPackageVariablesFor(threadID int, filter string) ([]api.Variable, error)
+	EvalVariable(scope api.EvalScope, symbol string, cfg api.LoadConfig) (*api.Variable, error)
 
 	// SetVariable sets the value of a variable
 	SetVariable(scope api.EvalScope, symbol, value string) error
@@ -60,10 +69,12 @@ type Client interface {
 	ListSources(filter string) ([]string, error)
 	// ListFunctions lists all functions in the process matching filter.
 	ListFunctions(filter string) ([]string, error)
+	// ListTypes lists all types in the process matching filter.
+	ListTypes(filter string) ([]string, error)
 	// ListLocals lists all local variables in scope.
-	ListLocalVariables(scope api.EvalScope) ([]api.Variable, error)
+	ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
 	// ListFunctionArgs lists all arguments to the current function.
-	ListFunctionArgs(scope api.EvalScope) ([]api.Variable, error)
+	ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
 	// ListRegisters lists registers and their values.
 	ListRegisters() (string, error)
 
@@ -71,7 +82,7 @@ type Client interface {
 	ListGoroutines() ([]*api.Goroutine, error)
 
 	// Returns stacktrace
-	Stacktrace(goroutineId, depth int, full bool) ([]api.Stackframe, error)
+	Stacktrace(int, int, *api.LoadConfig) ([]api.Stackframe, error)
 
 	// Returns whether we attached to a running process or not
 	AttachedToExistingProcess() bool
@@ -88,4 +99,9 @@ type Client interface {
 	// * *<address> returns the location corresponding to the specified address
 	// NOTE: this function does not actually set breakpoints.
 	FindLocation(scope api.EvalScope, loc string) ([]api.Location, error)
+
+	// Disassemble code between startPC and endPC
+	DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error)
+	// Disassemble code of the function containing PC
+	DisassemblePC(scope api.EvalScope, pc uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error)
 }

@@ -2,6 +2,7 @@ package debugger
 
 import (
 	"fmt"
+	sys "golang.org/x/sys/unix"
 	"io/ioutil"
 	"os"
 	"syscall"
@@ -27,4 +28,8 @@ func attachErrorMessage(pid int, err error) error {
 		}
 	}
 	return fallbackerr
+}
+
+func stopProcess(pid int) error {
+	return sys.Kill(pid, sys.SIGSTOP)
 }
