@@ -11,7 +11,7 @@ else
 endif
 
 # Workaround for GO15VENDOREXPERIMENT bug (https://github.com/golang/go/issues/11659)
-ALL_PACKAGES=$(shell go list ./... | grep -v /vendor/)
+ALL_PACKAGES=$(shell go list ./... | grep -v /vendor/ | grep -v /scripts)
 
 # We must compile with -ldflags="-s" to omit
 # DWARF info on OSX when compiling with the
