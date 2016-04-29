@@ -79,7 +79,7 @@ const varTestBreakpointLineNumber = 59
 
 func withTestProcess(name string, t *testing.T, fn func(p *proc.Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)
-	p, err := proc.Launch([]string{fixture.Path})
+	p, err := proc.Launch([]string{fixture.Path}, "")
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}

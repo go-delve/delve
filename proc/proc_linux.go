@@ -62,7 +62,9 @@ func Launch(cmd []string, wd string) (*Process, error) {
 		proc.Stdout = os.Stdout
 		proc.Stderr = os.Stderr
 		proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true}
-		proc.Dir = wd
+		if wd != "" {
+			proc.Dir = wd
+		}
 		err = proc.Start()
 	})
 	if err != nil {
