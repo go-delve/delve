@@ -270,14 +270,6 @@ func (dbp *Process) Next() (err error) {
 		}
 	}
 
-	// Set breakpoints for any goroutine that is currently
-	// blocked trying to read from a channel. This is so that
-	// if control flow switches to that goroutine, we end up
-	// somewhere useful instead of in runtime code.
-	if _, err = dbp.setChanRecvBreakpoints(); err != nil {
-		return
-	}
-
 	if err = dbp.setNextBreakpoints(); err != nil {
 		switch err.(type) {
 		case ThreadBlockedError, NoReturnAddr: // Noop
@@ -288,36 +280,6 @@ func (dbp *Process) Next() (err error) {
 	}
 
 	return dbp.Continue()
-}
-
-func (dbp *Process) setChanRecvBreakpoints() (int, error) {
-	var count int
-	allg, err := dbp.GoroutinesInfo()
-	if err != nil {
-		return 0, err
-	}
-
-	for _, g := range allg {
-		if g.ChanRecvBlocked() {
-			ret, err := g.chanRecvReturnAddr(dbp)
-			if err != nil {
-				if _, ok := err.(NullAddrError); ok {
-					continue
-				}
-				return 0, err
-			}
-			if _, err = dbp.SetTempBreakpoint(ret, nil); err != nil {
-				if _, ok := err.(BreakpointExistsError); ok {
-					// Ignore duplicate breakpoints in case if multiple
-					// goroutines wait on the same channel
-					continue
-				}
-				return 0, err
-			}
-			count++
-		}
-	}
-	return count, nil
 }
 
 // Continue continues execution of the debugged
