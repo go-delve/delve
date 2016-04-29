@@ -12,6 +12,7 @@ import (
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
+	"io"
 )
 
 type ServerImpl struct {
@@ -87,13 +88,23 @@ func (s *ServerImpl) Run() error {
 					panic(err)
 				}
 			}
-			go rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+			go serveRequestsSynchronously(rpcs, c)
 			if !s.s.config.AcceptMulti {
 				break
 			}
 		}
 	}()
 	return nil
+}
+
+func serveRequestsSynchronously(server *grpc.Server, connection io.ReadWriteCloser) {
+	codec := jsonrpc.NewServerCodec(connection)
+	for {
+		err := server.ServeRequest(codec)
+		if err != nil {
+			break
+		}
+	}
 }
 
 func (s *ServerImpl) Restart() error {
@@ -201,7 +212,7 @@ type StacktraceIn struct {
 	Id    int
 	Depth int
 	Full  bool
-	Cfg *api.LoadConfig
+	Cfg   *api.LoadConfig
 }
 
 type StacktraceOut struct {
@@ -215,7 +226,7 @@ type StacktraceOut struct {
 func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	cfg := arg.Cfg
 	if cfg == nil && arg.Full {
-		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
 	}
 	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, api.LoadConfigToProc(cfg))
 	if err != nil {
@@ -361,7 +372,7 @@ func (s *RPCServer) GetThread(arg GetThreadIn, out *GetThreadOut) error {
 
 type ListPackageVarsIn struct {
 	Filter string
-	Cfg api.LoadConfig
+	Cfg    api.LoadConfig
 }
 
 type ListPackageVarsOut struct {
@@ -412,7 +423,7 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 
 type ListLocalVarsIn struct {
 	Scope api.EvalScope
-	Cfg api.LoadConfig
+	Cfg   api.LoadConfig
 }
 
 type ListLocalVarsOut struct {
@@ -431,7 +442,7 @@ func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) er
 
 type ListFunctionArgsIn struct {
 	Scope api.EvalScope
-	Cfg api.LoadConfig
+	Cfg   api.LoadConfig
 }
 
 type ListFunctionArgsOut struct {
@@ -451,7 +462,7 @@ func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionAr
 type EvalIn struct {
 	Scope api.EvalScope
 	Expr  string
-	Cfg *api.LoadConfig
+	Cfg   *api.LoadConfig
 }
 
 type EvalOut struct {
@@ -465,7 +476,7 @@ type EvalOut struct {
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {
-		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
 	}
 	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *api.LoadConfigToProc(cfg))
 	if err != nil {

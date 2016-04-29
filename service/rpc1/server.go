@@ -13,9 +13,10 @@ import (
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
+	"io"
 )
 
-var defaultLoadConfig = proc.LoadConfig{ true, 1, 64, 64, -1 }
+var defaultLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1}
 
 type ServerImpl struct {
 	s *RPCServer
@@ -91,13 +92,23 @@ func (s *ServerImpl) Run() error {
 					panic(err)
 				}
 			}
-			go rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
+			go serveRequestsSynchronously(rpcs, c)
 			if !s.s.config.AcceptMulti {
 				break
 			}
 		}
 	}()
 	return nil
+}
+
+func serveRequestsSynchronously(server *grpc.Server, connection io.ReadWriteCloser) {
+	codec := jsonrpc.NewServerCodec(connection)
+	for {
+		err := server.ServeRequest(codec)
+		if err != nil {
+			break
+		}
+	}
 }
 
 func (s *RPCServer) ProcessPid(arg1 interface{}, pid *int) error {
