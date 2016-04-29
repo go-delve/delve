@@ -92,8 +92,13 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	si.StdInput = sys.Handle(fd[0])
 	si.StdOutput = sys.Handle(fd[1])
 	si.StdErr = sys.Handle(fd[2])
+	si.
 	pi := new(sys.ProcessInformation)
-	err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	if wd == "" {
+		err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	} else {
+		err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, wd, si, pi)
+	}
 	if err != nil {
 		return nil, err
 	}
