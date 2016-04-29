@@ -84,6 +84,13 @@ func Launch(cmd []string, wd string) (*Process, error) {
 			return nil, err
 		}
 	}
+	
+	var workingDir *uint16
+	if wd != "" {
+		if workingDir, err = syscall.UTF16PtrFromString(wd); err != nil {
+			return nil, err
+		}
+	}
 
 	// Initialize the startup info and create process
 	si := new(sys.StartupInfo)
@@ -94,11 +101,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	si.StdErr = sys.Handle(fd[2])
 	si.
 	pi := new(sys.ProcessInformation)
-	if wd == "" {
-		err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
-	} else {
-		err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, wd, si, pi)
-	}
+	err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, workingDir, si, pi)
 	if err != nil {
 		return nil, err
 	}
