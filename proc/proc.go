@@ -58,6 +58,9 @@ type Process struct {
 	ptraceChan              chan func()
 	ptraceDoneChan          chan interface{}
 	types                   map[string]dwarf.Offset
+
+	loadModuleDataOnce sync.Once
+	moduleData         []moduleData
 }
 
 // New returns an initialized Process struct. Before returning,

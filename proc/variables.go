@@ -1393,8 +1393,37 @@ func mapEvacuated(b *Variable) bool {
 }
 
 func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig) {
-	var typestring, data *Variable
+	var _type, str, typestring, data *Variable
+	var typename string
+	var err error
 	isnil := false
+
+	// An interface variable is implemented either by a runtime.iface
+	// struct or a runtime.eface struct. The difference being that empty
+	// interfaces (i.e. "interface {}") are represented by runtime.eface
+	// and non-empty interfaces by runtime.iface.
+	//
+	// For both runtime.ifaces and runtime.efaces the data is stored in v.data
+	//
+	// The concrete type however is stored in v.tab._type for non-empty
+	// interfaces and in v._type for empty interfaces.
+	//
+	// For nil empty interface variables _type will be nil, for nil
+	// non-empty interface variables tab will be nil
+	//
+	// In either case the _type field is a pointer to a runtime._type struct.
+	//
+	// Before go1.7 _type used to have a field named 'string' containing
+	// the name of the type. Since go1.7 the field has been replaced by a
+	// str field that contains an offset in the module data, the concrete
+	// type must be calculated using the str address along with the value
+	// of v.tab._type (v._type for empty interfaces).
+	//
+	// The following code works for both runtime.iface and runtime.eface
+	// and sets the go17 flag when the 'string' field can not be found
+	// but the str field was found
+
+	go17 := false
 
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
@@ -1404,33 +1433,42 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		switch f.Name {
 		case "tab": // for runtime.iface
 			tab, _ := v.toField(f)
-			_type, err := tab.structMember("_type")
-			if err != nil {
-				_, isnil = err.(*IsNilErr)
-				if !isnil {
-					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
-					return
-				}
-			} else {
-				typestring, err = _type.structMember("_string")
+			tab = tab.maybeDereference()
+			isnil = tab.Addr == 0
+			if !isnil {
+				_type, err = tab.structMember("_type")
 				if err != nil {
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 					return
 				}
-				typestring = typestring.maybeDereference()
+				typestring, err = _type.structMember("_string")
+				if err == nil {
+					typestring = typestring.maybeDereference()
+				} else {
+					go17 = true
+					str, err = _type.structMember("str")
+					if err != nil {
+						v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+						return
+					}
+				}
 			}
 		case "_type": // for runtime.eface
-			var err error
-			_type, _ := v.toField(f)
-			typestring, err = _type.structMember("_string")
-			if err != nil {
-				_, isnil = err.(*IsNilErr)
-				if !isnil {
-					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
-					return
+			_type, _ = v.toField(f)
+			_type = _type.maybeDereference()
+			isnil = _type.Addr == 0
+			if !isnil {
+				typestring, err = _type.structMember("_string")
+				if err == nil {
+					typestring = typestring.maybeDereference()
+				} else {
+					go17 = true
+					str, err = _type.structMember("str")
+					if err != nil {
+						v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+						return
+					}
 				}
-			} else {
-				typestring = typestring.maybeDereference()
 			}
 		case "data":
 			data, _ = v.toField(f)
@@ -1447,17 +1485,56 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		return
 	}
 
-	if typestring == nil || data == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
+	if data == nil {
 		v.Unreadable = fmt.Errorf("invalid interface type")
 		return
 	}
-	typestring.loadValue(LoadConfig{false, 0, 512, 0, 0})
-	if typestring.Unreadable != nil {
-		v.Unreadable = fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
-		return
+
+	if go17 {
+		// No 'string' field use 'str' and 'runtime.firstmoduledata' to
+		// find out what the concrete type is
+
+		typeAddr := _type.maybeDereference().Addr
+		strOff, err := str.asInt()
+		if err != nil {
+			v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+			return
+		}
+
+		res, err := v.dbp.resolveNameOff(typeAddr, uintptr(strOff))
+		if err != nil {
+			v.Unreadable = fmt.Errorf("could not resolve concrete type (data: %#x): %v", data.Addr, err)
+			return
+		}
+
+		// For a description of how memory is organized for type names read
+		// the comment to 'type name struct' in $GOROOT/src/reflect/type.go
+
+		typdata, err := v.dbp.CurrentThread.readMemory(res, 3+v.dbp.arch.PtrSize())
+		if err != nil {
+			v.Unreadable = fmt.Errorf("could not read concrete type (data: %#v): %v", data.Addr, err)
+		}
+
+		nl := int(typdata[1]<<8 | typdata[2])
+
+		rawstr, err := v.dbp.CurrentThread.readMemory(res+3, nl)
+
+		typename = string(rawstr)
+	} else {
+		if typestring == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
+			v.Unreadable = fmt.Errorf("invalid interface type")
+			return
+		}
+		typestring.loadValue(LoadConfig{false, 0, 512, 0, 0})
+		if typestring.Unreadable != nil {
+			v.Unreadable = fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
+			return
+		}
+
+		typename = constant.StringVal(typestring.Value)
 	}
 
-	t, err := parser.ParseExpr(constant.StringVal(typestring.Value))
+	t, err := parser.ParseExpr(typename)
 	if err != nil {
 		v.Unreadable = fmt.Errorf("invalid interface type, unparsable data type: %v", err)
 		return
@@ -1465,7 +1542,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 
 	typ, err := v.dbp.findTypeExpr(t)
 	if err != nil {
-		v.Unreadable = fmt.Errorf("interface type \"%s\" not found for 0x%x: %v", constant.StringVal(typestring.Value), data.Addr, err)
+		v.Unreadable = fmt.Errorf("interface type \"%s\" not found for 0x%x: %v", typename, data.Addr, err)
 		return
 	}
 
