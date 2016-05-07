@@ -9,8 +9,7 @@ import (
 	"reflect"
 	"runtime"
 
-	"golang.org/x/debug/dwarf"
-
+	"github.com/derekparker/delve/dwarf/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 )
 
