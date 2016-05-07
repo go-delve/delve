@@ -626,10 +626,10 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		// not a regular struct member
 		for _, field := range t.Field {
 			isEmbeddedStructMember :=
-				(field.Type.String() == ("struct " + field.Name)) ||
+				(field.Type.String() == field.Name) ||
 					(len(field.Name) > 1 &&
 						field.Name[0] == '*' &&
-						field.Type.String()[1:] == ("struct "+field.Name[1:]))
+						field.Type.String()[1:] == field.Name[1:])
 			if !isEmbeddedStructMember {
 				continue
 			}

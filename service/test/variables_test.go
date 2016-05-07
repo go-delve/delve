@@ -374,7 +374,7 @@ func TestEmbeddedStruct(t *testing.T) {
 			{"b.ptr.val", true, "1337", "1337", "int", nil},
 			{"b.C.s", true, "\"hello\"", "\"hello\"", "string", nil},
 			{"b.s", true, "\"hello\"", "\"hello\"", "string", nil},
-			{"b2", true, "main.B {main.A: struct main.A {val: 42}, *main.C: *struct main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "main.B {main.A: (*struct main.A)(0x…", "main.B", nil},
+			{"b2", true, "main.B {main.A: main.A {val: 42}, *main.C: *main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "main.B {main.A: (*main.A)(0x…", "main.B", nil},
 		}
 		assertNoError(p.Continue(), t, "Continue()")
 
@@ -459,7 +459,7 @@ func TestEvalExpression(t *testing.T) {
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
 
 		// maps
-		{"m1[\"Malone\"]", false, "struct main.astruct {A: 2, B: 3}", "struct main.astruct {A: 2, B: 3}", "struct main.astruct", nil},
+		{"m1[\"Malone\"]", false, "main.astruct {A: 2, B: 3}", "main.astruct {A: 2, B: 3}", "main.astruct", nil},
 		{"m2[1].B", false, "11", "11", "int", nil},
 		{"m2[c1.sa[2].B-4].A", false, "10", "10", "int", nil},
 		{"m2[*p1].B", false, "11", "11", "int", nil},
@@ -468,10 +468,10 @@ func TestEvalExpression(t *testing.T) {
 		{"m1[80:]", false, "", "", "", fmt.Errorf("map index out of bounds")},
 
 		// interfaces
-		{"err1", true, "error(*struct main.astruct) *{A: 1, B: 2}", "error(*struct main.astruct) 0x…", "error", nil},
-		{"err2", true, "error(*struct main.bstruct) *{a: main.astruct {A: 1, B: 2}}", "error(*struct main.bstruct) 0x…", "error", nil},
+		{"err1", true, "error(*main.astruct) *{A: 1, B: 2}", "error(*main.astruct) 0x…", "error", nil},
+		{"err2", true, "error(*main.bstruct) *{a: main.astruct {A: 1, B: 2}}", "error(*main.bstruct) 0x…", "error", nil},
 		{"errnil", true, "error nil", "error nil", "error", nil},
-		{"iface1", true, "interface {}(*struct main.astruct) *{A: 1, B: 2}", "interface {}(*struct main.astruct) 0x…", "interface {}", nil},
+		{"iface1", true, "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}(*main.astruct) 0x…", "interface {}", nil},
 		{"iface2", true, "interface {}(*string) *\"test\"", "interface {}(*string) 0x…", "interface {}", nil},
 		{"iface3", true, "interface {}(*map[string]go/constant.Value) *[]", "interface {}(*map[string]go/constant.Value) 0x…", "interface {}", nil},
 		{"iface4", true, "interface {}(*[]go/constant.Value) *[*4]", "interface {}(*[]go/constant.Value) 0x…", "interface {}", nil},
@@ -480,8 +480,8 @@ func TestEvalExpression(t *testing.T) {
 		{"err1 == iface1", false, "", "", "", fmt.Errorf("mismatched types \"error\" and \"interface {}\"")},
 		{"errnil == nil", false, "false", "false", "", nil},
 		{"nil == errnil", false, "false", "false", "", nil},
-		{"err1.(*main.astruct)", false, "*struct main.astruct {A: 1, B: 2}", "(*struct main.astruct)(0x…", "*struct main.astruct", nil},
-		{"err1.(*main.bstruct)", false, "", "", "", fmt.Errorf("interface conversion: error is *struct main.astruct, not *struct main.bstruct")},
+		{"err1.(*main.astruct)", false, "*main.astruct {A: 1, B: 2}", "(*main.astruct)(0x…", "*main.astruct", nil},
+		{"err1.(*main.bstruct)", false, "", "", "", fmt.Errorf("interface conversion: error is *main.astruct, not *main.bstruct")},
 		{"errnil.(*main.astruct)", false, "", "", "", fmt.Errorf("interface conversion: error is nil, not *main.astruct")},
 		{"const1", true, "go/constant.Value(*go/constant.int64Val) *3", "go/constant.Value(*go/constant.int64Val) 0x…", "go/constant.Value", nil},
 
@@ -669,7 +669,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 		a, err := evalVariable(p, "*"+aaddrstr, pnormalLoadConfig)
 		assertNoError(err, t, fmt.Sprintf("EvalExpression(*%s)", aaddrstr))
 		t.Logf("*%s → %s", aaddrstr, api.ConvertVar(a).SinglelineString())
-		assertVariable(t, a, varTest{aaddrstr, false, "struct main.astruct {A: 1, B: 2}", "", "struct main.astruct", nil})
+		assertVariable(t, a, varTest{aaddrstr, false, "main.astruct {A: 1, B: 2}", "", "main.astruct", nil})
 	})
 }
 
