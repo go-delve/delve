@@ -24,10 +24,10 @@ type Breakpoint struct {
 	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
 
 	// Breakpoint information
-	Tracepoint    bool           // Tracepoint flag
-	Goroutine     bool           // Retrieve goroutine information
-	Stacktrace    int            // Number of stack frames to retrieve
-	Variables     []string       // Variables to evaluate
+	Tracepoint    bool     // Tracepoint flag
+	Goroutine     bool     // Retrieve goroutine information
+	Stacktrace    int      // Number of stack frames to retrieve
+	Variables     []string // Variables to evaluate
 	LoadArgs      *LoadConfig
 	LoadLocals    *LoadConfig
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
@@ -76,7 +76,7 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 	}
 
-	f, l, fn := dbp.goSymTable.PCToLine(uint64(addr))
+	f, l, fn := dbp.Dwarf.PCToLine(uint64(addr))
 	if fn == nil {
 		return nil, InvalidAddressError{address: addr}
 	}

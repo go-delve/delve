@@ -6,20 +6,14 @@ package proc
 // #include <stdlib.h>
 import "C"
 import (
-	"debug/gosym"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"unsafe"
 
-	"golang.org/x/debug/macho"
-
-	"github.com/derekparker/delve/dwarf/frame"
-	"github.com/derekparker/delve/dwarf/line"
 	sys "golang.org/x/sys/unix"
 )
 
@@ -218,94 +212,11 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 	return thread, nil
 }
 
-func (dbp *Process) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	debugFrameSec := exe.Section("__debug_frame")
-	debugInfoSec := exe.Section("__debug_info")
-
-	if debugFrameSec != nil && debugInfoSec != nil {
-		debugFrame, err := exe.Section("__debug_frame").Data()
-		if err != nil {
-			fmt.Println("could not get __debug_frame section", err)
-			os.Exit(1)
-		}
-		dat, err := debugInfoSec.Data()
-		if err != nil {
-			fmt.Println("could not get .debug_info section", err)
-			os.Exit(1)
-		}
-		dbp.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
-	} else {
-		fmt.Println("could not find __debug_frame section in binary")
-		os.Exit(1)
-	}
-}
-
-func (dbp *Process) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	var (
-		symdat  []byte
-		pclndat []byte
-		err     error
-	)
-
-	if sec := exe.Section("__gosymtab"); sec != nil {
-		symdat, err = sec.Data()
-		if err != nil {
-			fmt.Println("could not get .gosymtab section", err)
-			os.Exit(1)
-		}
-	}
-
-	if sec := exe.Section("__gopclntab"); sec != nil {
-		pclndat, err = sec.Data()
-		if err != nil {
-			fmt.Println("could not get .gopclntab section", err)
-			os.Exit(1)
-		}
-	}
-
-	pcln := gosym.NewLineTable(pclndat, exe.Section("__text").Addr)
-	tab, err := gosym.NewTable(symdat, pcln)
-	if err != nil {
-		fmt.Println("could not get initialize line table", err)
-		os.Exit(1)
-	}
-
-	dbp.goSymTable = tab
-}
-
-func (dbp *Process) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	if sec := exe.Section("__debug_line"); sec != nil {
-		debugLine, err := exe.Section("__debug_line").Data()
-		if err != nil {
-			fmt.Println("could not get __debug_line section", err)
-			os.Exit(1)
-		}
-		dbp.lineInfo = line.Parse(debugLine)
-	} else {
-		fmt.Println("could not find __debug_line section in binary")
-		os.Exit(1)
-	}
-}
-
-func (dbp *Process) findExecutable(path string) (*macho.File, error) {
+func (dbp *Process) findExecutable(path string) (string, error) {
 	if path == "" {
 		path = C.GoString(C.find_executable(C.int(dbp.Pid)))
 	}
-	exe, err := macho.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	dbp.dwarf, err = exe.DWARF()
-	if err != nil {
-		return nil, err
-	}
-	return exe, nil
+	return path, nil
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
@@ -390,8 +301,8 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	return nil
 }
 
-func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
-	wg.Done()
+func (dbp *Process) loadProcessInformation() {
+	return
 }
 
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {

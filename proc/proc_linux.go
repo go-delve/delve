@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"debug/gosym"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -10,16 +9,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
-	"golang.org/x/debug/elf"
-
 	sys "golang.org/x/sys/unix"
-
-	"github.com/derekparker/delve/pkg/dwarf/frame"
-	"github.com/derekparker/delve/pkg/dwarf/line"
 )
 
 // Process statuses
@@ -163,98 +156,11 @@ func (dbp *Process) updateThreadList() error {
 	return nil
 }
 
-func (dbp *Process) findExecutable(path string) (*elf.File, error) {
+func (dbp *Process) findExecutable(path string) (string, error) {
 	if path == "" {
 		path = fmt.Sprintf("/proc/%d/exe", dbp.Pid)
 	}
-	f, err := os.OpenFile(path, 0, os.ModePerm)
-	if err != nil {
-		return nil, err
-	}
-	elfFile, err := elf.NewFile(f)
-	if err != nil {
-		return nil, err
-	}
-	dbp.dwarf, err = elfFile.DWARF()
-	if err != nil {
-		return nil, err
-	}
-	return elfFile, nil
-}
-
-func (dbp *Process) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	debugFrameSec := exe.Section(".debug_frame")
-	debugInfoSec := exe.Section(".debug_info")
-
-	if debugFrameSec != nil && debugInfoSec != nil {
-		debugFrame, err := exe.Section(".debug_frame").Data()
-		if err != nil {
-			fmt.Println("could not get .debug_frame section", err)
-			os.Exit(1)
-		}
-		dat, err := debugInfoSec.Data()
-		if err != nil {
-			fmt.Println("could not get .debug_info section", err)
-			os.Exit(1)
-		}
-		dbp.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
-	} else {
-		fmt.Println("could not find .debug_frame section in binary")
-		os.Exit(1)
-	}
-}
-
-func (dbp *Process) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	var (
-		symdat  []byte
-		pclndat []byte
-		err     error
-	)
-
-	if sec := exe.Section(".gosymtab"); sec != nil {
-		symdat, err = sec.Data()
-		if err != nil {
-			fmt.Println("could not get .gosymtab section", err)
-			os.Exit(1)
-		}
-	}
-
-	if sec := exe.Section(".gopclntab"); sec != nil {
-		pclndat, err = sec.Data()
-		if err != nil {
-			fmt.Println("could not get .gopclntab section", err)
-			os.Exit(1)
-		}
-	}
-
-	pcln := gosym.NewLineTable(pclndat, exe.Section(".text").Addr)
-	tab, err := gosym.NewTable(symdat, pcln)
-	if err != nil {
-		fmt.Println("could not get initialize line table", err)
-		os.Exit(1)
-	}
-
-	dbp.goSymTable = tab
-}
-
-func (dbp *Process) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	if sec := exe.Section(".debug_line"); sec != nil {
-		debugLine, err := exe.Section(".debug_line").Data()
-		if err != nil {
-			fmt.Println("could not get .debug_line section", err)
-			os.Exit(1)
-		}
-		dbp.lineInfo = line.Parse(debugLine)
-	} else {
-		fmt.Println("could not find .debug_line section in binary")
-		os.Exit(1)
-	}
+	return path, nil
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
@@ -334,9 +240,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 }
 
-func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func (dbp *Process) loadProcessInformation() {
 	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.Pid))
 	if err != nil {
 		fmt.Printf("Could not read process comm name: %v\n", err)

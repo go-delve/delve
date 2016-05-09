@@ -5,8 +5,6 @@ import (
 	"go/token"
 	"reflect"
 	"strconv"
-	"strings"
-	"sync"
 
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 	"golang.org/x/debug/dwarf"
@@ -14,11 +12,11 @@ import (
 
 // Do not call this function directly it isn't able to deal correctly with package paths
 func (dbp *Process) findType(name string) (dwarf.Type, error) {
-	off, found := dbp.types[name]
+	off, found := dbp.Dwarf.Types[name]
 	if !found {
 		return nil, reader.TypeNotFoundErr
 	}
-	return dbp.dwarf.Type(off)
+	return dbp.Dwarf.Type(off)
 }
 
 func (dbp *Process) pointerTo(typ dwarf.Type) dwarf.Type {
@@ -26,7 +24,6 @@ func (dbp *Process) pointerTo(typ dwarf.Type) dwarf.Type {
 }
 
 func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
-	dbp.loadPackageMap()
 	if lit, islit := expr.(*ast.BasicLit); islit && lit.Kind == token.STRING {
 		// Allow users to specify type names verbatim as quoted
 		// string. Useful as a catch-all workaround for cases where we don't
@@ -59,59 +56,6 @@ func complexType(typename string) bool {
 	return false
 }
 
-func (dbp *Process) loadPackageMap() error {
-	if dbp.packageMap != nil {
-		return nil
-	}
-	dbp.packageMap = map[string]string{}
-	reader := dbp.DwarfReader()
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
-		if err != nil {
-			return err
-		}
-
-		if entry.Tag != dwarf.TagTypedef && entry.Tag != dwarf.TagBaseType && entry.Tag != dwarf.TagClassType && entry.Tag != dwarf.TagStructType {
-			continue
-		}
-
-		typename, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok || complexType(typename) {
-			continue
-		}
-
-		dot := strings.LastIndex(typename, ".")
-		if dot < 0 {
-			continue
-		}
-		path := typename[:dot]
-		slash := strings.LastIndex(path, "/")
-		if slash < 0 || slash+1 >= len(path) {
-			continue
-		}
-		name := path[slash+1:]
-		dbp.packageMap[name] = path
-	}
-	return nil
-}
-
-func (dbp *Process) loadTypeMap(wg *sync.WaitGroup) {
-	defer wg.Done()
-	dbp.types = make(map[string]dwarf.Offset)
-	reader := dbp.DwarfReader()
-	for entry, err := reader.NextType(); entry != nil; entry, err = reader.NextType() {
-		if err != nil {
-			break
-		}
-		name, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok {
-			continue
-		}
-		if _, exists := dbp.types[name]; !exists {
-			dbp.types[name] = entry.Offset
-		}
-	}
-}
-
 func (dbp *Process) expandPackagesInType(expr ast.Expr) {
 	switch e := expr.(type) {
 	case *ast.ArrayType:
@@ -135,7 +79,7 @@ func (dbp *Process) expandPackagesInType(expr ast.Expr) {
 	case *ast.SelectorExpr:
 		switch x := e.X.(type) {
 		case *ast.Ident:
-			if path, ok := dbp.packageMap[x.Name]; ok {
+			if path, ok := dbp.Dwarf.Packages[x.Name]; ok {
 				x.Name = path
 			}
 		default:

@@ -47,7 +47,7 @@ func (thread *Thread) Disassemble(startPC, endPC uint64, currentGoroutine bool) 
 				mem[i] = bp.OriginalData[i]
 			}
 		}
-		file, line, fn := thread.dbp.PCToLine(pc)
+		file, line, fn := thread.dbp.Dwarf.PCToLine(pc)
 		loc := Location{PC: pc, File: file, Line: line, Fn: fn}
 		inst, err := asmDecode(mem, pc)
 		if err == nil {

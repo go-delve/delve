@@ -9,47 +9,36 @@ import (
 	"go/constant"
 	"go/token"
 	"log"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 
 	"golang.org/x/debug/dwarf"
 
-	"github.com/derekparker/delve/pkg/dwarf/frame"
-	"github.com/derekparker/delve/pkg/dwarf/line"
+	pdwarf "github.com/derekparker/delve/pkg/dwarf"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	Pid     int         // Process Pid
-	Process *os.Process // Pointer to process struct for the actual process we are debugging
-
+	// Process Pid
+	Pid int
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
 	Breakpoints map[uint64]*Breakpoint
-
 	// List of threads mapped as such: pid -> *Thread
 	Threads map[int]*Thread
-
 	// Active thread
 	CurrentThread *Thread
-
 	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
 	// Normally SelectedGoroutine is CurrentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	SelectedGoroutine *G
+	// Dwarf is the dwarf debugging information for this process.
+	Dwarf *pdwarf.Dwarf
 
-	// Maps package names to package paths, needed to lookup types inside DWARF info
-	packageMap map[string]string
+	allGCache []*G
 
-	allGCache               []*G
-	dwarf                   *dwarf.Data
-	goSymTable              *gosym.Table
-	frameEntries            frame.FrameDescriptionEntries
-	lineInfo                line.DebugLines
 	os                      *OSProcessDetails
 	arch                    Arch
 	breakpointIDCounter     int
@@ -57,7 +46,6 @@ type Process struct {
 	firstStart              bool
 	halt                    bool
 	exited                  bool
-	types                   map[string]dwarf.Offset
 }
 
 // New returns an initialized Process struct.
@@ -133,28 +121,23 @@ func (dbp *Process) Running() bool {
 // * Dwarf .debug_line section
 // * Go symbol table.
 func (dbp *Process) LoadInformation(path string) error {
-	var wg sync.WaitGroup
-
-	exe, err := dbp.findExecutable(path)
+	path, err := dbp.findExecutable(path)
 	if err != nil {
 		return err
 	}
-
-	wg.Add(5)
-	go dbp.loadProcessInformation(&wg)
-	go dbp.parseDebugFrame(exe, &wg)
-	go dbp.obtainGoSymbols(exe, &wg)
-	go dbp.parseDebugLineInfo(exe, &wg)
-	go dbp.loadTypeMap(&wg)
-	wg.Wait()
-
+	d, err := pdwarf.Parse(path)
+	if err != nil {
+		return err
+	}
+	dbp.Dwarf = d
+	dbp.loadProcessInformation()
 	return nil
 }
 
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normailzed to lower case and '/' on Windows.
 func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
-	pc, fn, err := dbp.goSymTable.LineToPC(fileName, lineno)
+	pc, fn, err := dbp.Dwarf.LineToPC(fileName, lineno)
 	if err != nil {
 		return 0, err
 	}
@@ -171,7 +154,7 @@ func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error
 // Note that setting breakpoints at that address will cause surprising behavior:
 // https://github.com/derekparker/delve/issues/170
 func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	origfn := dbp.goSymTable.LookupFunc(funcName)
+	origfn := dbp.Dwarf.LookupFunc(funcName)
 	if origfn == nil {
 		return 0, fmt.Errorf("Could not find function %s\n", funcName)
 	}
@@ -179,8 +162,8 @@ func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOf
 	if firstLine {
 		return dbp.FirstPCAfterPrologue(origfn, false)
 	} else if lineOffset > 0 {
-		filename, lineno, _ := dbp.goSymTable.PCToLine(origfn.Entry)
-		breakAddr, _, err := dbp.goSymTable.LineToPC(filename, lineno+lineOffset)
+		filename, lineno, _ := dbp.Dwarf.PCToLine(origfn.Entry)
+		breakAddr, _, err := dbp.Dwarf.LineToPC(filename, lineno+lineOffset)
 		return breakAddr, err
 	}
 
@@ -643,31 +626,7 @@ func (dbp *Process) CurrentBreakpoint() *Breakpoint {
 
 // DwarfReader returns a reader for the dwarf data
 func (dbp *Process) DwarfReader() *reader.Reader {
-	return reader.New(dbp.dwarf)
-}
-
-// Sources returns list of source files that comprise the debugged binary.
-func (dbp *Process) Sources() map[string]*gosym.Obj {
-	return dbp.goSymTable.Files
-}
-
-// Funcs returns list of functions present in the debugged program.
-func (dbp *Process) Funcs() []gosym.Func {
-	return dbp.goSymTable.Funcs
-}
-
-// Types returns list of types present in the debugged program.
-func (dbp *Process) Types() ([]string, error) {
-	types := make([]string, 0, len(dbp.types))
-	for k := range dbp.types {
-		types = append(types, k)
-	}
-	return types, nil
-}
-
-// PCToLine converts an instruction address to a file/line/function.
-func (dbp *Process) PCToLine(pc uint64) (string, int, *gosym.Func) {
-	return dbp.goSymTable.PCToLine(pc)
+	return dbp.Dwarf.Reader()
 }
 
 // FindBreakpointByID finds the breakpoint for the given ID.
@@ -707,13 +666,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		}
 	}
 
-	proc, err := os.FindProcess(dbp.Pid)
-	if err != nil {
-		return nil, err
-	}
-
-	dbp.Process = proc
-	err = dbp.LoadInformation(path)
+	err := dbp.LoadInformation(path)
 	if err != nil {
 		return nil, err
 	}

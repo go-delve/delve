@@ -452,7 +452,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return v, nil
 	}
 	// if it's not a local variable then it could be a package variable w/o explicit package name
-	_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
+	_, _, fn := scope.Thread.dbp.Dwarf.PCToLine(scope.PC)
 	if fn != nil {
 		if v, err = scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
 			v.Name = node.Name

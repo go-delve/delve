@@ -199,7 +199,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *types.Breakpoint) (*types.Break
 		if runtime.GOOS == "windows" {
 			// Accept fileName which is case-insensitive and slash-insensitive match
 			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
-			for symFile := range d.process.Sources() {
+			for symFile := range d.process.Dwarf.Files() {
 				if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
 					fileName = symFile
 					break
@@ -504,7 +504,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	}
 
 	files := []string{}
-	for f := range d.process.Sources() {
+	for f := range d.process.Dwarf.Files() {
 		if regex.Match([]byte(f)) {
 			files = append(files, f)
 		}
@@ -517,7 +517,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	return regexFilterFuncs(filter, d.process.Funcs())
+	return regexFilterFuncs(filter, d.process.Dwarf.Funcs())
 }
 
 func (d *Debugger) Types(filter string) ([]string, error) {
@@ -529,7 +529,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	types, err := d.process.Types()
+	types, err := d.process.Dwarf.TypeList()
 	if err != nil {
 		return nil, err
 	}
@@ -758,7 +758,7 @@ func (d *Debugger) FindLocation(scope types.EvalScope, locStr string) ([]types.L
 
 	locs, err := loc.Find(d, s, locStr)
 	for i := range locs {
-		file, line, fn := d.process.PCToLine(locs[i].PC)
+		file, line, fn := d.process.Dwarf.PCToLine(locs[i].PC)
 		locs[i].File = file
 		locs[i].Line = line
 		locs[i].Function = types.ConvertFunction(fn)
@@ -773,7 +773,7 @@ func (d *Debugger) Disassemble(scope types.EvalScope, startPC, endPC uint64, fla
 	defer d.processMutex.Unlock()
 
 	if endPC == 0 {
-		_, _, fn := d.process.PCToLine(startPC)
+		_, _, fn := d.process.Dwarf.PCToLine(startPC)
 		if fn == nil {
 			return nil, fmt.Errorf("Address 0x%x does not belong to any function", startPC)
 		}

@@ -3,6 +3,7 @@ package proc
 import (
 	"debug/gosym"
 	"encoding/binary"
+
 	"rsc.io/x86/x86asm"
 )
 
@@ -108,7 +109,7 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		return nil
 	}
 
-	file, line, fn := thread.dbp.PCToLine(pc)
+	file, line, fn := thread.dbp.Dwarf.PCToLine(pc)
 	if fn == nil {
 		return nil
 	}

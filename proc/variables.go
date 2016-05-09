@@ -316,7 +316,7 @@ func (scope *EvalScope) DwarfReader() *reader.Reader {
 
 // Type returns the Dwarf type entry at `offset`.
 func (scope *EvalScope) Type(offset dwarf.Offset) (dwarf.Type, error) {
-	return scope.Thread.dbp.dwarf.Type(offset)
+	return scope.Thread.dbp.Dwarf.Type(offset)
 }
 
 // PtrSize returns the size of a pointer.
@@ -388,7 +388,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		deferPC, _ = constant.Int64Val(fnvalvar.Value)
 	}
 	status, _ := constant.Int64Val(gvar.toFieldNamed("atomicstatus").Value)
-	f, l, fn := gvar.dbp.goSymTable.PCToLine(uint64(pc))
+	f, l, fn := gvar.dbp.Dwarf.PCToLine(uint64(pc))
 	g := &G{
 		ID:         int(id),
 		GoPC:       uint64(gopc),
@@ -445,7 +445,7 @@ func (g *G) UserCurrent() Location {
 // Go returns the location of the 'go' statement
 // that spawned this goroutine.
 func (g *G) Go() Location {
-	f, l, fn := g.dbp.goSymTable.PCToLine(g.GoPC)
+	f, l, fn := g.dbp.Dwarf.PCToLine(g.GoPC)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
 }
 
@@ -1134,7 +1134,7 @@ func (v *Variable) readFunctionPtr() {
 	}
 
 	v.Base = uintptr(binary.LittleEndian.Uint64(val))
-	fn := v.dbp.goSymTable.PCToFunc(uint64(v.Base))
+	fn := v.dbp.Dwarf.PCToFunc(uint64(v.Base))
 	if fn == nil {
 		v.Unreadable = fmt.Errorf("could not find function for %#v", v.Base)
 		return

@@ -112,7 +112,7 @@ func (thread *Thread) Location() (*Location, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, l, fn := thread.dbp.PCToLine(pc)
+	f, l, fn := thread.dbp.Dwarf.PCToLine(pc)
 	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
@@ -136,7 +136,7 @@ func (thread *Thread) setNextBreakpoints() (err error) {
 
 	// Grab info on our current stack frame. Used to determine
 	// whether we may be stepping outside of the current function.
-	fde, err := thread.dbp.frameEntries.FDEForPC(curpc)
+	fde, err := thread.dbp.Dwarf.Frame.FDEForPC(curpc)
 	if err != nil {
 		return err
 	}
@@ -168,17 +168,17 @@ func (ge GoroutineExitingError) Error() string {
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
 func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
-	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End()-1, file)
+	pcs := thread.dbp.Dwarf.Line.AllPCsBetween(fde.Begin(), fde.End()-1, file)
 
 	g, err := thread.GetG()
 	if err != nil {
 		return err
 	}
 	if g.DeferPC != 0 {
-		f, lineno, _ := thread.dbp.goSymTable.PCToLine(g.DeferPC)
+		f, lineno, _ := thread.dbp.Dwarf.PCToLine(g.DeferPC)
 		for {
 			lineno++
-			dpc, _, err := thread.dbp.goSymTable.LineToPC(f, lineno)
+			dpc, _, err := thread.dbp.Dwarf.LineToPC(f, lineno)
 			if err == nil {
 				// We want to avoid setting an actual breakpoint on the
 				// entry point of the deferred function so instead create
@@ -207,7 +207,7 @@ func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file 
 	}
 
 	if !covered {
-		fn := thread.dbp.goSymTable.PCToFunc(ret)
+		fn := thread.dbp.Dwarf.PCToFunc(ret)
 		if fn != nil && fn.Name == "runtime.goexit" {
 			g, err := thread.GetG()
 			if err != nil {
@@ -224,7 +224,7 @@ func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file 
 // the benefit of an AST we can't be sure we're not at a branching statement and thus
 // cannot accurately predict where we may end up.
 func (thread *Thread) cnext(curpc uint64, fde *frame.FrameDescriptionEntry, file string) error {
-	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End(), file)
+	pcs := thread.dbp.Dwarf.Line.AllPCsBetween(fde.Begin(), fde.End(), file)
 	ret, err := thread.ReturnAddress()
 	if err != nil {
 		return err

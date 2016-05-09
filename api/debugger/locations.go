@@ -233,7 +233,7 @@ func (spec *FuncLocationSpec) Match(sym *gosym.Sym) bool {
 }
 
 func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]types.Location, error) {
-	funcs := d.process.Funcs()
+	funcs := d.process.Dwarf.Funcs()
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
 	if err != nil {
 		return nil, err
@@ -268,7 +268,7 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 			addr, _ := constant.Uint64Val(v.Value)
 			return []types.Location{{PC: addr}}, nil
 		case reflect.Func:
-			_, _, fn := d.process.PCToLine(uint64(v.Base))
+			_, _, fn := d.process.Dwarf.PCToLine(uint64(v.Base))
 			pc, err := d.process.FirstPCAfterPrologue(fn, false)
 			if err != nil {
 				return nil, err
@@ -317,8 +317,8 @@ func (ale AmbiguousLocationError) Error() string {
 }
 
 func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]types.Location, error) {
-	funcs := d.process.Funcs()
-	files := d.process.Sources()
+	funcs := d.process.Dwarf.Funcs()
+	files := d.process.Dwarf.Files()
 
 	candidates := []string{}
 	for file := range files {
@@ -376,7 +376,7 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
-	file, line, fn := d.process.PCToLine(scope.PC)
+	file, line, fn := d.process.Dwarf.PCToLine(scope.PC)
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
@@ -388,7 +388,7 @@ func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
-	file, _, fn := d.process.PCToLine(scope.PC)
+	file, _, fn := d.process.Dwarf.PCToLine(scope.PC)
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
