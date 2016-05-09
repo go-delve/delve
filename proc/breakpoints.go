@@ -8,6 +8,11 @@ import (
 	"reflect"
 )
 
+var (
+	breakpointIDCounter     int
+	tempBreakpointIDCounter int
+)
+
 // Breakpoint represents a breakpoint. Stores information on the break
 // point including the byte of data that originally was stored at that
 // address.
@@ -92,11 +97,11 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 	}
 
 	if temp {
-		dbp.tempBreakpointIDCounter++
-		newBreakpoint.ID = dbp.tempBreakpointIDCounter
+		tempBreakpointIDCounter++
+		newBreakpoint.ID = tempBreakpointIDCounter
 	} else {
-		dbp.breakpointIDCounter++
-		newBreakpoint.ID = dbp.breakpointIDCounter
+		breakpointIDCounter++
+		newBreakpoint.ID = breakpointIDCounter
 	}
 
 	thread := dbp.Threads[tid]
