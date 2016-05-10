@@ -19,6 +19,14 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
+type ResumeMode int
+
+const (
+	ModeStepInstruction = ResumeMode(0)
+	ModeStep            = iota
+	ModeResume
+)
+
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
@@ -315,67 +323,115 @@ func (dbp *Process) setChanRecvBreakpoints() (int, error) {
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
 func (dbp *Process) Continue() error {
-	if dbp.exited {
+	return resume(dbp, ModeResume)
+}
+
+func resume(p *Process, mode ResumeMode) error {
+	if p.exited {
 		return &ProcessExitedError{}
 	}
-	for {
-		var trapthread *Thread
-		err := dbp.resume()
+	p.allGCache = nil
+	switch mode {
+	case ModeStepInstruction:
+		if p.SelectedGoroutine == nil {
+			return errors.New("cannot single step: no selected goroutine")
+		}
+		if p.SelectedGoroutine.thread == nil {
+			return fmt.Errorf("cannot single step: no thread associated with goroutine %d", p.SelectedGoroutine.ID)
+		}
+		return p.SelectedGoroutine.thread.StepInstruction()
+	case ModeStep:
+		var nloc *Location
+		th := p.CurrentThread
+		loc, err := th.Location()
 		if err != nil {
 			return err
 		}
-		if err := dbp.run(func() error {
-			var err error
-			trapthread, err = dbp.trapWait(-1)
-			return err
-		}); err != nil {
-			return err
-		}
-		if err := dbp.Halt(); err != nil {
-			return dbp.exitGuard(err)
-		}
-		if err := dbp.setCurrentBreakpoints(trapthread); err != nil {
-			return err
-		}
-		if err := dbp.pickCurrentThread(trapthread); err != nil {
-			return err
-		}
+		for {
+			pc, err := p.CurrentThread.PC()
+			if err != nil {
+				return err
+			}
+			text, err := p.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
+			if err == nil && len(text) > 0 && text[0].IsCall() && text[0].DestLoc != nil && text[0].DestLoc.Fn != nil {
+				return p.StepInto(text[0].DestLoc.Fn)
+			}
 
-		switch {
-		case dbp.CurrentThread.CurrentBreakpoint == nil:
-			if dbp.halt {
+			err = p.CurrentThread.StepInstruction()
+			if err != nil {
+				return err
+			}
+			nloc, err = th.Location()
+			if err != nil {
+				return err
+			}
+			if nloc.File != loc.File {
 				return nil
 			}
-			// runtime.Breakpoint or manual stop
-			if dbp.CurrentThread.onRuntimeBreakpoint() {
-				for i := 0; i < 2; i++ {
-					if err = dbp.CurrentThread.StepInstruction(); err != nil {
-						return err
+			if nloc.File == loc.File && nloc.Line != loc.Line {
+				return nil
+			}
+		}
+	case ModeResume:
+		for {
+			err := p.resume()
+			if err != nil {
+				return err
+			}
+			trapthread, err := p.trapWait(-1)
+			if err != nil {
+				return err
+			}
+			// Make sure process is fully stopped.
+			if err := p.Halt(); err != nil {
+				return p.exitGuard(err)
+			}
+			if err := p.setCurrentBreakpoints(trapthread); err != nil {
+				return err
+			}
+			if err := p.pickCurrentThread(trapthread); err != nil {
+				return err
+			}
+
+			switch {
+			case p.CurrentThread.CurrentBreakpoint == nil:
+				if p.halt {
+					return nil
+				}
+				// runtime.Breakpoint or manual stop
+				if p.CurrentThread.onRuntimeBreakpoint() {
+					for i := 0; i < 2; i++ {
+						if err = p.CurrentThread.StepInstruction(); err != nil {
+							return err
+						}
 					}
 				}
-			}
-			return dbp.conditionErrors()
-		case dbp.CurrentThread.onTriggeredTempBreakpoint():
-			err := dbp.ClearTempBreakpoints()
-			if err != nil {
-				return err
-			}
-			return dbp.conditionErrors()
-		case dbp.CurrentThread.onTriggeredBreakpoint():
-			onNextGoroutine, err := dbp.CurrentThread.onNextGoroutine()
-			if err != nil {
-				return err
-			}
-			if onNextGoroutine {
-				err := dbp.ClearTempBreakpoints()
+				return p.conditionErrors()
+			case p.CurrentThread.onTriggeredTempBreakpoint():
+				err := p.ClearTempBreakpoints()
 				if err != nil {
 					return err
 				}
+				return p.conditionErrors()
+			case p.CurrentThread.onTriggeredBreakpoint():
+				onNextGoroutine, err := p.CurrentThread.onNextGoroutine()
+				if err != nil {
+					return err
+				}
+				if onNextGoroutine {
+					err := p.ClearTempBreakpoints()
+					if err != nil {
+						return err
+					}
+				}
+				return p.conditionErrors()
+			default:
+				// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
 			}
-			return dbp.conditionErrors()
-		default:
-			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
 		}
+	default:
+		// Programmer error, safe to panic here.
+		panic("invalid mode passed to resume")
 	}
 }
 
@@ -417,40 +473,7 @@ func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
 // Step will continue until another source line is reached.
 // Will step into functions.
 func (dbp *Process) Step() (err error) {
-	fn := func() error {
-		var nloc *Location
-		th := dbp.CurrentThread
-		loc, err := th.Location()
-		if err != nil {
-			return err
-		}
-		for {
-			pc, err := dbp.CurrentThread.PC()
-			if err != nil {
-				return err
-			}
-			text, err := dbp.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
-			if err == nil && len(text) > 0 && text[0].IsCall() && text[0].DestLoc != nil && text[0].DestLoc.Fn != nil {
-				return dbp.StepInto(text[0].DestLoc.Fn)
-			}
-
-			err = dbp.CurrentThread.StepInstruction()
-			if err != nil {
-				return err
-			}
-			nloc, err = th.Location()
-			if err != nil {
-				return err
-			}
-			if nloc.File != loc.File {
-				return nil
-			}
-			if nloc.File == loc.File && nloc.Line != loc.Line {
-				return nil
-			}
-		}
-	}
-	return dbp.run(fn)
+	return resume(dbp, ModeStep)
 }
 
 // StepInto sets a temp breakpoint after the prologue of fn and calls Continue
@@ -472,13 +495,7 @@ func (dbp *Process) StepInto(fn *gosym.Func) error {
 // asssociated with the selected goroutine. All other
 // threads will remain stopped.
 func (dbp *Process) StepInstruction() (err error) {
-	if dbp.SelectedGoroutine == nil {
-		return errors.New("cannot single step: no selected goroutine")
-	}
-	if dbp.SelectedGoroutine.thread == nil {
-		return fmt.Errorf("cannot single step: no thread associated with goroutine %d", dbp.SelectedGoroutine.ID)
-	}
-	return dbp.run(dbp.SelectedGoroutine.thread.StepInstruction)
+	return resume(dbp, ModeStepInstruction)
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.
@@ -713,22 +730,6 @@ func (dbp *Process) ClearTempBreakpoints() error {
 		if dbp.Threads[i].CurrentBreakpoint != nil && dbp.Threads[i].CurrentBreakpoint.Temp {
 			dbp.Threads[i].CurrentBreakpoint = nil
 		}
-	}
-	return nil
-}
-
-func (dbp *Process) run(fn func() error) error {
-	dbp.allGCache = nil
-	if dbp.exited {
-		return fmt.Errorf("process has already exited")
-	}
-	for _, th := range dbp.Threads {
-		th.CurrentBreakpoint = nil
-		th.BreakpointConditionMet = false
-		th.BreakpointConditionError = nil
-	}
-	if err := fn(); err != nil {
-		return err
 	}
 	return nil
 }

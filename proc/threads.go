@@ -48,18 +48,7 @@ type Location struct {
 // first and then resume execution. Thread will continue until
 // it hits a breakpoint or is signaled.
 func (thread *Thread) Continue() error {
-	pc, err := thread.PC()
-	if err != nil {
-		return err
-	}
-	// Check whether we are stopped at a breakpoint, and
-	// if so, single step over it before continuing.
-	if _, ok := thread.dbp.FindBreakpoint(pc); ok {
-		if err := thread.StepInstruction(); err != nil {
-			return err
-		}
-	}
-	return thread.resume()
+	return threadResume(thread, ModeResume)
 }
 
 // StepInstruction steps a single instruction.
@@ -69,39 +58,68 @@ func (thread *Thread) Continue() error {
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
 func (thread *Thread) StepInstruction() (err error) {
-	thread.running = true
-	thread.singleStepping = true
-	defer func() {
-		thread.singleStepping = false
-		thread.running = false
-	}()
-	pc, err := thread.PC()
-	if err != nil {
-		return err
-	}
+	return threadResume(thread, ModeStepInstruction)
+}
 
-	bp, ok := thread.dbp.FindBreakpoint(pc)
-	if ok {
-		// Clear the breakpoint so that we can continue execution.
-		_, err = bp.Clear(thread)
+func threadResume(thread *Thread, mode ResumeMode) error {
+	// Clear state.
+	// TODO(derekparker) Can we make threads stateless?
+	thread.CurrentBreakpoint = nil
+	thread.BreakpointConditionMet = false
+	thread.BreakpointConditionError = nil
+	thread.running = true
+
+	switch mode {
+	case ModeStepInstruction:
+		thread.singleStepping = true
+		defer func() {
+			thread.singleStepping = false
+			thread.running = false
+		}()
+		pc, err := thread.PC()
 		if err != nil {
 			return err
 		}
 
-		// Restore breakpoint now that we have passed it.
-		defer func() {
-			err = thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
-		}()
-	}
+		bp, ok := thread.dbp.FindBreakpoint(pc)
+		if ok {
+			// Clear the breakpoint so that we can continue execution.
+			_, err = bp.Clear(thread)
+			if err != nil {
+				return err
+			}
 
-	err = thread.singleStep()
-	if err != nil {
-		if _, exited := err.(ProcessExitedError); exited {
+			// Restore breakpoint now that we have passed it.
+			defer func() {
+				err = thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
+			}()
+		}
+
+		err = thread.singleStep()
+		if err != nil {
+			if _, exited := err.(ProcessExitedError); exited {
+				return err
+			}
+			return fmt.Errorf("step failed: %s", err.Error())
+		}
+		return nil
+	case ModeResume:
+		pc, err := thread.PC()
+		if err != nil {
 			return err
 		}
-		return fmt.Errorf("step failed: %s", err.Error())
+		// Check whether we are stopped at a breakpoint, and
+		// if so, single step over it before continuing.
+		if _, ok := thread.dbp.FindBreakpoint(pc); ok {
+			if err := thread.StepInstruction(); err != nil {
+				return err
+			}
+		}
+		return thread.resume()
+	default:
+		// Programmer error, safe to panic here.
+		panic("unknown mode passed to threadResume")
 	}
-	return nil
 }
 
 // Location returns the threads location, including the file:line
