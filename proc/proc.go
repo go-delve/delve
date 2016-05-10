@@ -319,18 +319,16 @@ func (dbp *Process) Continue() error {
 		return &ProcessExitedError{}
 	}
 	for {
-		if err := dbp.resume(); err != nil {
+		var trapthread *Thread
+		err := dbp.resume()
+		if err != nil {
 			return err
 		}
-
-		var trapthread *Thread
-		var err error
-
-		dbp.run(func() error {
+		if err := dbp.run(func() error {
+			var err error
 			trapthread, err = dbp.trapWait(-1)
-			return nil
-		})
-		if err != nil {
+			return err
+		}); err != nil {
 			return err
 		}
 		if err := dbp.Halt(); err != nil {
