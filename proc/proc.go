@@ -444,7 +444,6 @@ func resume(p *Process, mode ResumeMode) error {
 				if err != nil {
 					return err
 				}
-				log.Printf("onNextGoroutine: %v\n", onNextGoroutine)
 				if onNextGoroutine {
 					err := p.ClearTempBreakpoints()
 					if err != nil {

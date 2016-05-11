@@ -4,9 +4,10 @@ import (
 	"errors"
 	"fmt"
 
-	"debug/dwarf"
 	"debug/gosym"
 	"debug/pe"
+
+	"golang.org/x/debug/dwarf"
 
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 	"github.com/derekparker/delve/pkg/dwarf/line"
