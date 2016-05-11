@@ -75,7 +75,7 @@ func (c *RPCClient) Continue() <-chan *types.DebuggerState {
 				state.Err = err
 			}
 			if state.Exited {
-				// Error types apparantly cannot be marshalled by Go correctly. Must reset error here.
+				// Error types apparently cannot be marshalled by Go correctly. Must reset error here.
 				state.Err = fmt.Errorf("Process %d has exited with status %d", c.ProcessPid(), state.ExitStatus)
 			}
 			ch <- state
