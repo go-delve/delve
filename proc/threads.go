@@ -43,6 +43,14 @@ type Location struct {
 	Fn   *gosym.Func
 }
 
+func (l *Location) String() string {
+	var fname string
+	if l.Fn != nil {
+		fname = l.Fn.Name
+	}
+	return fmt.Sprintf("%#v - %s:%d %s", l.PC, l.File, l.Line, fname)
+}
+
 // Continue the execution of this thread.
 //
 // If we are currently at a breakpoint, we'll clear it
@@ -78,7 +86,9 @@ func threadResume(thread *Thread, mode ResumeMode) (err error) {
 		}
 		// Restore breakpoint now that we have passed it.
 		defer func() {
-			nerr := thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
+			fn := thread.dbp.Dwarf.LookupFunc(bp.FunctionName)
+			loc := &Location{Fn: fn, File: bp.File, Line: bp.Line, PC: bp.Addr}
+			_, nerr := createAndWriteBreakpoint(thread, loc, bp.Temp, thread.dbp.arch.BreakpointInstruction())
 			if nerr != nil {
 				log.Printf("could not restore breakpoint on thread: %v\n", nerr)
 			}

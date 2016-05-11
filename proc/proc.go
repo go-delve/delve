@@ -19,16 +19,20 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
+// ResumeMode indicates how we should resume the
+// debugged process.
 type ResumeMode int
 
 const (
+	// Step a single CPU instruction.
 	ModeStepInstruction = ResumeMode(0)
-	ModeStep            = iota
+	// Step to next source line, stepping into functions.
+	ModeStep = iota
+	// Resume until breakpoint/signal/manual stop.
 	ModeResume
 )
 
-// Process represents all of the information the debugger
-// is holding onto regarding the process we are debugging.
+// Process represents a process we are debugging.
 type Process struct {
 	// Process Pid
 	Pid int
@@ -185,22 +189,39 @@ func (dbp *Process) RequestManualStop() error {
 		return &ProcessExitedError{}
 	}
 	dbp.halt = true
-	return dbp.requestManualStop()
+	return requestManualStop(dbp)
 }
 
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table. Setting a break point must be thread specific due to
 // ptrace actions needing the thread to be in a signal-delivery-stop.
 func (dbp *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
-	if dbp.exited {
-		return nil, &ProcessExitedError{}
-	}
-	return dbp.setBreakpoint(dbp.CurrentThread.ID, addr, false)
+	return setBreakpoint(dbp, dbp.CurrentThread, addr, false, dbp.arch.BreakpointInstruction())
 }
 
 // SetTempBreakpoint sets a temp breakpoint. Used during 'next' operations.
 func (dbp *Process) SetTempBreakpoint(addr uint64) (*Breakpoint, error) {
-	return dbp.setBreakpoint(dbp.CurrentThread.ID, addr, true)
+	return setBreakpoint(dbp, dbp.CurrentThread, addr, true, dbp.arch.BreakpointInstruction())
+}
+
+func setBreakpoint(dbp *Process, mem memoryReadWriter, addr uint64, temp bool, instr []byte) (*Breakpoint, error) {
+	if dbp.exited {
+		return nil, &ProcessExitedError{}
+	}
+	if bp, ok := dbp.FindBreakpoint(addr); ok {
+		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+	}
+	f, l, fn := dbp.Dwarf.PCToLine(uint64(addr))
+	if fn == nil {
+		return nil, InvalidAddressError{address: addr}
+	}
+	loc := &Location{Fn: fn, File: f, Line: l, PC: addr}
+	bp, err := createAndWriteBreakpoint(dbp.CurrentThread, loc, temp, instr)
+	if err != nil {
+		return nil, err
+	}
+	dbp.Breakpoints[addr] = bp
+	return bp, nil
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
@@ -267,7 +288,7 @@ func (dbp *Process) Next() (err error) {
 	// blocked trying to read from a channel. This is so that
 	// if control flow switches to that goroutine, we end up
 	// somewhere useful instead of in runtime code.
-	if _, err = dbp.setChanRecvBreakpoints(); err != nil {
+	if _, err = setChanRecvBreakpoints(dbp); err != nil {
 		return
 	}
 
@@ -302,36 +323,6 @@ func (dbp *Process) Next() (err error) {
 	}
 
 	return dbp.Continue()
-}
-
-func (dbp *Process) setChanRecvBreakpoints() (int, error) {
-	var count int
-	allg, err := dbp.GoroutinesInfo()
-	if err != nil {
-		return 0, err
-	}
-
-	for _, g := range allg {
-		if g.ChanRecvBlocked() {
-			ret, err := g.chanRecvReturnAddr(dbp)
-			if err != nil {
-				if _, ok := err.(NullAddrError); ok {
-					continue
-				}
-				return 0, err
-			}
-			if _, err = dbp.SetTempBreakpoint(ret); err != nil {
-				if _, ok := err.(BreakpointExistsError); ok {
-					// Ignore duplicate breakpoints in case if multiple
-					// goroutines wait on the same channel
-					continue
-				}
-				return 0, err
-			}
-			count++
-		}
-	}
-	return count, nil
 }
 
 // Continue continues execution of the debugged
@@ -715,7 +706,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		dbp.arch = AMD64Arch()
 	}
 
-	if err := dbp.updateThreadList(); err != nil {
+	if err := updateThreadList(dbp); err != nil {
 		return nil, err
 	}
 
@@ -849,4 +840,34 @@ func (dbp *Process) postExit() {
 		}
 	}()
 	dbp.exited = true
+}
+
+func setChanRecvBreakpoints(dbp *Process) (int, error) {
+	var count int
+	allg, err := dbp.GoroutinesInfo()
+	if err != nil {
+		return 0, err
+	}
+
+	for _, g := range allg {
+		if g.ChanRecvBlocked() {
+			ret, err := g.chanRecvReturnAddr(dbp)
+			if err != nil {
+				if _, ok := err.(NullAddrError); ok {
+					continue
+				}
+				return 0, err
+			}
+			if _, err = dbp.SetTempBreakpoint(ret); err != nil {
+				if _, ok := err.(BreakpointExistsError); ok {
+					// Ignore duplicate breakpoints in case if multiple
+					// goroutines wait on the same channel
+					continue
+				}
+				return 0, err
+			}
+			count++
+		}
+	}
+	return count, nil
 }

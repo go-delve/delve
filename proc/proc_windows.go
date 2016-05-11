@@ -141,11 +141,11 @@ func (dbp *Process) Kill() error {
 	return nil
 }
 
-func (dbp *Process) requestManualStop() error {
+func requestManualStop(dbp *Process) error {
 	return _DebugBreakProcess(dbp.os.hProcess)
 }
 
-func (dbp *Process) updateThreadList() error {
+func updateThreadList(dbp *Process) error {
 	// We ignore this request since threads are being
 	// tracked as they are created/killed in waitForDebugEvent.
 	return nil

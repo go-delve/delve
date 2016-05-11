@@ -87,7 +87,7 @@ func (dbp *Process) Kill() (err error) {
 	return
 }
 
-func (dbp *Process) requestManualStop() (err error) {
+func requestManualStop(dbp *Process) (err error) {
 	return sys.Kill(dbp.Pid, sys.SIGTRAP)
 }
 
@@ -142,7 +142,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 	return dbp.Threads[tid], nil
 }
 
-func (dbp *Process) updateThreadList() error {
+func updateThreadList(dbp *Process) error {
 	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.Pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)

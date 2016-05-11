@@ -77,22 +77,14 @@ func (iae InvalidAddressError) Error() string {
 	return fmt.Sprintf("Invalid address %#v\n", iae.address)
 }
 
-func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
-	if bp, ok := dbp.FindBreakpoint(addr); ok {
-		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
-	}
-
-	f, l, fn := dbp.Dwarf.PCToLine(uint64(addr))
-	if fn == nil {
-		return nil, InvalidAddressError{address: addr}
-	}
-	log.Printf("setting breakpoint at %#v - %s:%d\n", addr, f, l)
+func createAndWriteBreakpoint(mem memoryReadWriter, loc *Location, temp bool, instr []byte) (*Breakpoint, error) {
+	log.Printf("setting breakpoint at %s\n", loc.String())
 
 	newBreakpoint := &Breakpoint{
-		FunctionName: fn.Name,
-		File:         f,
-		Line:         l,
-		Addr:         addr,
+		FunctionName: loc.Fn.Name,
+		File:         loc.File,
+		Line:         loc.Line,
+		Addr:         loc.PC,
 		Temp:         temp,
 		Cond:         nil,
 		HitCount:     map[int]uint64{},
@@ -106,22 +98,19 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		newBreakpoint.ID = breakpointIDCounter
 	}
 
-	thread := dbp.Threads[tid]
-	originalData, err := thread.readMemory(uintptr(addr), dbp.arch.BreakpointSize())
+	originalData, err := mem.readMemory(uintptr(loc.PC), len(instr))
 	if err != nil {
 		return nil, err
 	}
-	if err := dbp.writeSoftwareBreakpoint(thread, addr); err != nil {
+	if err := writeSoftwareBreakpoint(mem, loc.PC, instr); err != nil {
 		return nil, err
 	}
 	newBreakpoint.OriginalData = originalData
-	dbp.Breakpoints[addr] = newBreakpoint
-
 	return newBreakpoint, nil
 }
 
-func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
-	_, err := thread.writeMemory(uintptr(addr), dbp.arch.BreakpointInstruction())
+func writeSoftwareBreakpoint(mem memoryReadWriter, addr uint64, instr []byte) error {
+	_, err := mem.writeMemory(uintptr(addr), instr)
 	return err
 }
 

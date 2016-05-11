@@ -144,7 +144,7 @@ func (dbp *Process) Kill() error {
 	return nil
 }
 
-func (dbp *Process) requestManualStop() (err error) {
+func requestManualStop(dbp *Process) (err error) {
 	var (
 		task          = C.mach_port_t(dbp.os.task)
 		thread        = C.mach_port_t(dbp.CurrentThread.os.threadAct)
@@ -157,7 +157,7 @@ func (dbp *Process) requestManualStop() (err error) {
 	return nil
 }
 
-func (dbp *Process) updateThreadList() error {
+func updateThreadList(dbp *Process) error {
 	var (
 		err   error
 		kret  C.kern_return_t
