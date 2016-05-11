@@ -124,3 +124,41 @@ func parseDwarf(f *pe.File) (*dwarf.Data, error) {
 	abbrev, info, line, str := dat[0], dat[1], dat[2], dat[3]
 	return dwarf.New(abbrev, nil, nil, info, line, nil, nil, str)
 }
+
+// Borrowed from https://golang.org/src/cmd/internal/objfile/pe.go
+func findPESymbol(f *pe.File, name string) (*pe.Symbol, error) {
+	for _, s := range f.Symbols {
+		if s.Name != name {
+			continue
+		}
+		if s.SectionNumber <= 0 {
+			return nil, fmt.Errorf("symbol %s: invalid section number %d", name, s.SectionNumber)
+		}
+		if len(f.Sections) < int(s.SectionNumber) {
+			return nil, fmt.Errorf("symbol %s: section number %d is larger than max %d", name, s.SectionNumber, len(f.Sections))
+		}
+		return s, nil
+	}
+	return nil, fmt.Errorf("no %s symbol found", name)
+}
+
+// Borrowed from https://golang.org/src/cmd/internal/objfile/pe.go
+func loadPETable(f *pe.File, sname, ename string) ([]byte, error) {
+	ssym, err := findPESymbol(f, sname)
+	if err != nil {
+		return nil, err
+	}
+	esym, err := findPESymbol(f, ename)
+	if err != nil {
+		return nil, err
+	}
+	if ssym.SectionNumber != esym.SectionNumber {
+		return nil, fmt.Errorf("%s and %s symbols must be in the same section", sname, ename)
+	}
+	sect := f.Sections[ssym.SectionNumber-1]
+	data, err := sect.Data()
+	if err != nil {
+		return nil, err
+	}
+	return data[ssym.Value:esym.Value], nil
+}
