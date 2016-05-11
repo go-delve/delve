@@ -31,7 +31,7 @@ func Parse(path string) (*Dwarf, error) {
 	if err != nil {
 		return nil, err
 	}
-	d, err := exe.DWARF()
+	d, err := parseDwarf(exe)
 	if err != nil {
 		return nil, err
 	}

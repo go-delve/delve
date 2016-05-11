@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"golang.org/x/debug/dwarf"
 	"golang.org/x/debug/elf"
 
 	"github.com/derekparker/delve/pkg/dwarf/frame"
@@ -72,4 +73,8 @@ func parseGoSymbols(exe *elf.File) (*gosym.Table, error) {
 	}
 
 	return tab, nil
+}
+
+func parseDwarf(f *elf.File) (*dwarf.Data, error) {
+	return f.DWARF()
 }

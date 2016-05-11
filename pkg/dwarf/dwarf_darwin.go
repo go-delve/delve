@@ -7,6 +7,8 @@ import (
 
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 	"github.com/derekparker/delve/pkg/dwarf/line"
+
+	"golang.org/x/debug/dwarf"
 	"golang.org/x/debug/macho"
 )
 
@@ -71,4 +73,8 @@ func parseGoSymbols(exe *macho.File) (*gosym.Table, error) {
 	}
 
 	return tab, nil
+}
+
+func parseDwarf(f *macho.File) (*dwarf.Data, error) {
+	return f.DWARF()
 }
