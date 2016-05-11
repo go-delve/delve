@@ -47,7 +47,7 @@ func parseLine(exe *pe.File) (line.DebugLines, error) {
 		if 0 < sec.VirtualSize && sec.VirtualSize < sec.Size {
 			debugLine = debugLine[:sec.VirtualSize]
 		}
-		return line.Parse(debugLine)
+		return line.Parse(debugLine), nil
 	}
 	return nil, errors.New("dwarf: could not find .debug_line section in binary")
 }
