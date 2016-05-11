@@ -85,7 +85,9 @@ func Launch(cmd []string) (*Process, error) {
 	si.StdOutput = sys.Handle(fd[1])
 	si.StdErr = sys.Handle(fd[2])
 	pi := new(sys.ProcessInformation)
-	err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	execOnPtraceThread(func() {
+		err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	})
 	if err != nil {
 		return nil, err
 	}
