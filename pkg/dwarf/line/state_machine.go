@@ -117,10 +117,13 @@ func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) []uint6
 
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
+		if sm.address < begin {
+			continue
+		}
 		if sm.address > end {
 			break
 		}
-		if sm.address >= begin && sm.address > lastaddr {
+		if sm.address > lastaddr {
 			lastaddr = sm.address
 			pcs = append(pcs, sm.address)
 		}

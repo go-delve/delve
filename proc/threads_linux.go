@@ -94,7 +94,7 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error)
 	if len(data) == 0 {
 		return
 	}
-	execOnPtraceThread(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
+	execOnPtraceThread(func() { written, err = sys.PtracePokeData(t.dbp.Pid, addr, data) })
 	return
 }
 
@@ -103,6 +103,6 @@ func (t *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
 		return
 	}
 	data = make([]byte, size)
-	execOnPtraceThread(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
+	execOnPtraceThread(func() { _, err = sys.PtracePeekData(t.dbp.Pid, addr, data) })
 	return
 }

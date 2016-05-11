@@ -45,19 +45,17 @@ type Process struct {
 	// Dwarf is the dwarf debugging information for this process.
 	Dwarf *pdwarf.Dwarf
 
-	allGCache  []*G
-	os         *OSProcessDetails
-	arch       Arch
-	firstStart bool
-	halt       bool
-	exited     bool
+	allGCache []*G
+	os        *OSProcessDetails
+	arch      Arch
+	halt      bool
+	exited    bool
 }
 
 // New returns an initialized Process struct.
 func New(pid int) *Process {
 	return &Process{
 		Pid:         pid,
-		firstStart:  true,
 		Threads:     make(map[int]*Thread),
 		Breakpoints: make(map[uint64]*Breakpoint),
 		os:          new(OSProcessDetails),
@@ -207,6 +205,7 @@ func (dbp *Process) SetTempBreakpoint(addr uint64) (*Breakpoint, error) {
 
 // ClearBreakpoint clears the breakpoint at addr.
 func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
+	log.Printf("clear breakpoint at: %#v\n", addr)
 	if dbp.exited {
 		return nil, &ProcessExitedError{}
 	}
@@ -219,8 +218,23 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 		return nil, err
 	}
 
-	delete(dbp.Breakpoints, addr)
+	// Restore any thread that was stopped on this
+	// breakpoint to the correct instruction.
+	for _, th := range dbp.Threads {
+		if tbp := th.CurrentBreakpoint; tbp != nil {
+			if tbp.Addr == bp.Addr {
+				th.CurrentBreakpoint = nil
+				th.BreakpointConditionMet = false
+				th.BreakpointConditionError = nil
+				err := th.SetPC(bp.Addr)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 
+	delete(dbp.Breakpoints, addr)
 	return bp, nil
 }
 
@@ -231,6 +245,7 @@ func (dbp *Process) Status() *WaitStatus {
 
 // Next continues execution until the next source line.
 func (dbp *Process) Next() (err error) {
+	log.Println("nexting")
 	if dbp.exited {
 		return &ProcessExitedError{}
 	}
@@ -374,32 +389,41 @@ func resume(p *Process, mode ResumeMode) error {
 		}
 	case ModeResume:
 		for {
+			log.Println("begin resume")
 			err := p.resume()
 			if err != nil {
+				log.Printf("resume error: %v\n", err)
 				return err
 			}
-			trapthread, err := p.trapWait(-1)
+			trapthread, err := p.trapWait(-p.Pid)
 			if err != nil {
+				log.Printf("trapWait error: %v\n", err)
 				return err
 			}
 			// Make sure process is fully stopped.
 			if err := p.Halt(); err != nil {
+				log.Printf("Halt error: %v\n", err)
 				return p.exitGuard(err)
 			}
 			if err := p.setCurrentBreakpoints(trapthread); err != nil {
+				log.Printf("setCurrentBreakpoints error: %v\n", err)
 				return err
 			}
 			if err := p.pickCurrentThread(trapthread); err != nil {
+				log.Printf("pickCurrentThread error: %v\n", err)
 				return err
 			}
 
+			log.Println("checking breakpoint conditions")
 			switch {
 			case p.CurrentThread.CurrentBreakpoint == nil:
+				log.Printf("no current breakpoint, halt=%v", p.halt)
 				if p.halt {
-					return nil
+					p.halt = false
 				}
 				// runtime.Breakpoint or manual stop
 				if p.CurrentThread.onRuntimeBreakpoint() {
+					log.Println("on runtime breakpoint")
 					for i := 0; i < 2; i++ {
 						if err = p.CurrentThread.StepInstruction(); err != nil {
 							return err
@@ -408,16 +432,19 @@ func resume(p *Process, mode ResumeMode) error {
 				}
 				return p.conditionErrors()
 			case p.CurrentThread.onTriggeredTempBreakpoint():
-				err := p.ClearTempBreakpoints()
+				log.Println("on triggered temp breakpoint")
+				err = p.ClearTempBreakpoints()
 				if err != nil {
 					return err
 				}
 				return p.conditionErrors()
 			case p.CurrentThread.onTriggeredBreakpoint():
+				log.Println("on triggered breakpoint")
 				onNextGoroutine, err := p.CurrentThread.onNextGoroutine()
 				if err != nil {
 					return err
 				}
+				log.Printf("onNextGoroutine: %v\n", onNextGoroutine)
 				if onNextGoroutine {
 					err := p.ClearTempBreakpoints()
 					if err != nil {
@@ -433,6 +460,7 @@ func resume(p *Process, mode ResumeMode) error {
 		// Programmer error, safe to panic here.
 		panic("invalid mode passed to resume")
 	}
+	return nil
 }
 
 func (dbp *Process) conditionErrors() error {
@@ -724,11 +752,6 @@ func (dbp *Process) ClearTempBreakpoints() error {
 		}
 		if _, err := dbp.ClearBreakpoint(bp.Addr); err != nil {
 			return err
-		}
-	}
-	for i := range dbp.Threads {
-		if dbp.Threads[i].CurrentBreakpoint != nil && dbp.Threads[i].CurrentBreakpoint.Temp {
-			dbp.Threads[i].CurrentBreakpoint = nil
 		}
 	}
 	return nil

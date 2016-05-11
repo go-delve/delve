@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"log"
 	"reflect"
 )
 
@@ -85,6 +86,7 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 	if fn == nil {
 		return nil, InvalidAddressError{address: addr}
 	}
+	log.Printf("setting breakpoint at %#v - %s:%d\n", addr, f, l)
 
 	newBreakpoint := &Breakpoint{
 		FunctionName: fn.Name,

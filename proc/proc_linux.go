@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -169,6 +170,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		if err != nil {
 			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
+		log.Println("signal:", status.StopSignal(), status.TrapCause())
 		if wpid == 0 {
 			continue
 		}
@@ -219,17 +221,22 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			// Sometimes we get an unknown thread, ignore it?
 			continue
 		}
-		if status.StopSignal() == sys.SIGTRAP && dbp.halt {
-			th.running = false
-			dbp.halt = false
-			return th, nil
+		// Drain
+		for {
+			wpid, _, err := dbp.wait(pid, sys.WNOHANG)
+			if err != nil {
+				return nil, err
+			}
+			if wpid == 0 {
+				break
+			}
 		}
-		if status.StopSignal() == sys.SIGTRAP {
+		switch status.StopSignal() {
+		case sys.SIGTRAP:
 			th.running = false
 			return th, nil
-		}
-		if th != nil {
-			// TODO(dp) alert user about unexpected signals here.
+		default:
+			// TODO(derekparker) alert user about unexpected signals here.
 			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
 				if err == sys.ESRCH {
 					return nil, ProcessExitedError{Pid: dbp.Pid}

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -57,13 +58,34 @@ func (thread *Thread) Continue() error {
 // If the thread is at a breakpoint, we first clear it,
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
-func (thread *Thread) StepInstruction() (err error) {
+func (thread *Thread) StepInstruction() error {
 	return threadResume(thread, ModeStepInstruction)
 }
 
-func threadResume(thread *Thread, mode ResumeMode) error {
+func threadResume(thread *Thread, mode ResumeMode) (err error) {
+	// Check and see if this thread is stopped at a breakpoint. If so,
+	// clear it and set a deferred function to reinsert it once we are
+	// past it.
+	if bp := thread.CurrentBreakpoint; bp != nil {
+		// Clear the breakpoint so that we can continue execution.
+		_, err = bp.Clear(thread)
+		if err != nil {
+			return err
+		}
+		err = thread.SetPC(bp.Addr)
+		if err != nil {
+			return err
+		}
+		// Restore breakpoint now that we have passed it.
+		defer func() {
+			nerr := thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
+			if nerr != nil {
+				log.Printf("could not restore breakpoint on thread: %v\n", nerr)
+			}
+		}()
+	}
+
 	// Clear state.
-	// TODO(derekparker) Can we make threads stateless?
 	thread.CurrentBreakpoint = nil
 	thread.BreakpointConditionMet = false
 	thread.BreakpointConditionError = nil
@@ -76,45 +98,8 @@ func threadResume(thread *Thread, mode ResumeMode) error {
 			thread.singleStepping = false
 			thread.running = false
 		}()
-		pc, err := thread.PC()
-		if err != nil {
-			return err
-		}
-
-		bp, ok := thread.dbp.FindBreakpoint(pc)
-		if ok {
-			// Clear the breakpoint so that we can continue execution.
-			_, err = bp.Clear(thread)
-			if err != nil {
-				return err
-			}
-
-			// Restore breakpoint now that we have passed it.
-			defer func() {
-				err = thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
-			}()
-		}
-
-		err = thread.singleStep()
-		if err != nil {
-			if _, exited := err.(ProcessExitedError); exited {
-				return err
-			}
-			return fmt.Errorf("step failed: %s", err.Error())
-		}
-		return nil
+		return thread.singleStep()
 	case ModeResume:
-		pc, err := thread.PC()
-		if err != nil {
-			return err
-		}
-		// Check whether we are stopped at a breakpoint, and
-		// if so, single step over it before continuing.
-		if _, ok := thread.dbp.FindBreakpoint(pc); ok {
-			if err := thread.StepInstruction(); err != nil {
-				return err
-			}
-		}
 		return thread.resume()
 	default:
 		// Programmer error, safe to panic here.
@@ -147,27 +132,22 @@ func (thread *Thread) setNextBreakpoints() (err error) {
 	if thread.blocked() {
 		return ThreadBlockedError{}
 	}
-	curpc, err := thread.PC()
-	if err != nil {
-		return err
-	}
-
-	// Grab info on our current stack frame. Used to determine
-	// whether we may be stepping outside of the current function.
-	fde, err := thread.dbp.Dwarf.Frame.FDEForPC(curpc)
-	if err != nil {
-		return err
-	}
 
 	// Get current file/line.
 	loc, err := thread.Location()
 	if err != nil {
 		return err
 	}
+	// Grab info on our current stack frame. Used to determine
+	// whether we may be stepping outside of the current function.
+	fde, err := thread.dbp.Dwarf.Frame.FDEForPC(loc.PC)
+	if err != nil {
+		return err
+	}
 	if filepath.Ext(loc.File) == ".go" {
-		err = thread.next(curpc, fde, loc.File, loc.Line)
+		err = thread.next(loc, fde)
 	} else {
-		err = thread.cnext(curpc, fde, loc.File)
+		err = thread.cnext(loc.PC, fde, loc.File)
 	}
 	return err
 }
@@ -185,8 +165,8 @@ func (ge GoroutineExitingError) Error() string {
 
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
-func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
-	pcs := thread.dbp.Dwarf.Line.AllPCsBetween(fde.Begin(), fde.End()-1, file)
+func (thread *Thread) next(curloc *Location, fde *frame.FrameDescriptionEntry) error {
+	pcs := thread.dbp.Dwarf.Line.AllPCsBetween(fde.Begin(), fde.End()-1, curloc.File)
 
 	g, err := thread.GetG()
 	if err != nil {
@@ -235,7 +215,7 @@ func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file 
 		}
 	}
 	pcs = append(pcs, ret)
-	return thread.setNextTempBreakpoints(curpc, pcs)
+	return thread.setNextTempBreakpoints(curloc.PC, pcs)
 }
 
 // Set a breakpoint at every reachable location, as well as the return address. Without
@@ -423,14 +403,10 @@ func (thread *Thread) onRuntimeBreakpoint() bool {
 
 // onNextGorutine returns true if this thread is on the goroutine requested by the current 'next' command
 func (thread *Thread) onNextGoroutine() (bool, error) {
-	var bp *Breakpoint
-	for i := range thread.dbp.Breakpoints {
-		if thread.dbp.Breakpoints[i].Temp {
-			bp = thread.dbp.Breakpoints[i]
+	for _, bp := range thread.dbp.Breakpoints {
+		if bp.Temp {
+			return bp.checkCondition(thread)
 		}
 	}
-	if bp == nil {
-		return false, nil
-	}
-	return bp.checkCondition(thread)
+	return false, nil
 }

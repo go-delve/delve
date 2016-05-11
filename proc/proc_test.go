@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -38,6 +39,7 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 	}
 
 	defer func() {
+		log.Println("after test kill/halt")
 		if !p.Exited() {
 			if err := p.Halt(); err != nil {
 				t.Fatal(err)
@@ -383,13 +385,16 @@ func TestNextConcurrent(t *testing.T) {
 	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.sayhi")
 		assertNoError(err, t, "SetBreakpoint")
+
 		assertNoError(p.Continue(), t, "Continue")
 		f, ln := currentLineNumber(p, t)
+
+		_, err = p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint()")
+
 		initV, err := evalVariable(p, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
 		assertNoError(err, t, "EvalVariable")
-		_, err = p.ClearBreakpoint(bp.Addr)
-		assertNoError(err, t, "ClearBreakpoint()")
 		for _, tc := range testcases {
 			g, err := p.CurrentThread.GetG()
 			assertNoError(err, t, "GetG()")
@@ -400,15 +405,16 @@ func TestNextConcurrent(t *testing.T) {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
 			assertNoError(p.Next(), t, "Next() returned an error")
-			f, ln = currentLineNumber(p, t)
-			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
-			}
 			v, err := evalVariable(p, "n")
 			assertNoError(err, t, "EvalVariable")
 			vval, _ := constant.Int64Val(v.Value)
 			if vval != initVval {
-				t.Fatal("Did not end up on same goroutine")
+				log.Println("not same goroutine")
+				t.Fatalf("Did not end up on same goroutine, wanted: %d, got: %d", initVval, vval)
+			}
+			f, ln = currentLineNumber(p, t)
+			if ln != tc.end {
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
 			}
 		}
 	})
@@ -1534,14 +1540,24 @@ func TestIssue332_Part1(t *testing.T) {
 		_, err = p.SetBreakpoint(start)
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(p.Continue(), t, "Continue()")
-		assertNoError(p.Next(), t, "first Next()")
+
 		locations, err := p.CurrentThread.Stacktrace(2)
 		assertNoError(err, t, "Stacktrace()")
 		if locations[0].Call.Fn == nil {
 			t.Fatalf("Not on a function")
 		}
 		if locations[0].Call.Fn.Name != "main.main" {
-			t.Fatalf("Not on main.main after Next: %s (%s:%d)", locations[0].Call.Fn.Name, locations[0].Call.File, locations[0].Call.Line)
+			t.Fatalf("Not on main.main after Continue: %s (%s:%d)", locations[0].Call.Fn.Name, locations[0].Call.File, locations[0].Call.Line)
+		}
+
+		assertNoError(p.Next(), t, "first Next()")
+		locations, err = p.CurrentThread.Stacktrace(2)
+		assertNoError(err, t, "Stacktrace()")
+		if locations[0].Call.Fn == nil {
+			t.Fatalf("Not on a function")
+		}
+		if locations[0].Call.Fn.Name != "main.main" {
+			t.Fatalf("Not on main.main after Next: %#v - %s (%s:%d)", locations[0].Call.PC, locations[0].Call.Fn.Name, locations[0].Call.File, locations[0].Call.Line)
 		}
 		if locations[0].Call.Line != 9 {
 			t.Fatalf("Not on line 9 after Next: %s (%s:%d)", locations[0].Call.Fn.Name, locations[0].Call.File, locations[0].Call.Line)
