@@ -8,7 +8,7 @@ import (
 )
 
 // NoReturnAddr is returned when return address
-// could not be found during stack tracae.
+// could not be found during stack trace.
 type NoReturnAddr struct {
 	fn string
 }
