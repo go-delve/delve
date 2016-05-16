@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -338,12 +339,32 @@ func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.Pid))
-	if err != nil {
+	if err == nil {
+		// removes newline character
+		comm = comm[:len(comm)-1]
+	}
+	for comm == nil || len(comm) <= 0 {
+		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.Pid))
+		if err != nil {
+			break
+		}
+		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.Pid)
+		rexp, err := regexp.Compile(expr)
+		if err != nil {
+			break
+		}
+		match := rexp.FindSubmatch(stat)
+		if match == nil {
+			err = errors.New(fmt.Sprintf("no match found using regexp '%s' in /proc/%d/stat", expr, dbp.Pid))
+			break
+		}
+		comm = match[1]
+		break
+	}
+	if comm == nil || len(comm) <= 0 {
 		fmt.Printf("Could not read process comm name: %v\n", err)
 		os.Exit(1)
 	}
-	// removes newline character
-	comm = comm[:len(comm)-1]
 	dbp.os.comm = strings.Replace(string(comm), "%", "%%", -1)
 }
 
