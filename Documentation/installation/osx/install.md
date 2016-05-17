@@ -22,27 +22,18 @@ You must create a self signed certificate and sign the binary with it:
 * In keychains select “System”, and you should find your new certificate. Use the context menu for the *certificate* (not the public or private keys), select “Get Info”, open the “Trust” item, and set “Code Signing” to “Always Trust”.
 * [At least on Yosemite:] In keychains select category Keys -> dlv-cert -> right click -> GetInfo -> Access Control -> select "Allow all applications to access this item" -> Save Changes.
 * You must quit “Keychain Access” application in order to use the certificate and restart “taskgated” service by killing the current running “taskgated” process. Alternatively you can restart your computer.
-* Make directory `mkdir $GOPATH/src/github.com/derekparker && cd $GOPATH/src/github.com/derekparker` as typical in [Writing go programs](https://golang.org/doc/code.html)
-* Clone this project: `git clone git@github.com:derekparker/delve.git && cd delve`
-* Run the following: `GO15VENDOREXPERIMENT=1 CERT=dlv-cert make install`, which will install the binary and codesign it.
-* for more info see this installation video http://www.youtube.com/watch?v=4ndjybtBg74
-
 
 ## 2) Install the binary
 
-Note: If you are using Go 1.5 you must set `GO15VENDOREXPERIMENT=1` before continuing. The `GO15VENDOREXPERIMENT` env var simply opts into the [Go 1.5 Vendor Experiment](https://docs.google.com/document/d/1Bz5-UB7g2uPBdOx-rw5t9MxJwkfpx90cqG9AFL0JAYo/).
+* Make directory `mkdir $GOPATH/src/github.com/derekparker && cd $GOPATH/src/github.com/derekparker` as typical in [Writing go programs](https://golang.org/doc/code.html)
+* Clone this project: `git clone https://github.com/derekparker/delve.git && cd delve`
 
-All `make` commands assume a CERT environment variables that contains the name of the cert you created above.
+Note: If you are using Go 1.5 you must set `GO15VENDOREXPERIMENT=1` before continuing. The `GO15VENDOREXPERIMENT` env var simply opts into the [Go 1.5 Vendor Experiment](https://docs.google.com/document/d/1Bz5-UB7g2uPBdOx-rw5t9MxJwkfpx90cqG9AFL0JAYo/). (Not needed for 1.6)
 
-Now, simply run:
+All `make` commands assume a CERT environment variables that contains the name of the cert you created above. The Makefile also assumes that `GOPATH` is single-valued, not colon-separated. The makefile is only necessary to help facilitate the process of building and codesigning.
 
-```
-$ CERT=mycert make install
-```
-
-The Makefile also assumes that `GOPATH` is single-valued, not colon-separated.
-
-The makefile is only necessary to help facilitate the process of building and codesigning.
+* Run the following: `CERT=dlv-cert make install`, which will install the binary and codesign it.
+* for more info see this installation video http://www.youtube.com/watch?v=4ndjybtBg74
 
 ## Notes
 
