@@ -310,7 +310,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	}
 }
 
-func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
+func (dbp *Process) setCurrentBreakpoints() error {
 	for _, th := range dbp.Threads {
 		if th.CurrentBreakpoint == nil {
 			err := th.SetCurrentBreakpoint()

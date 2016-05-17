@@ -89,10 +89,6 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		if arg.Segment != 0 {
 			return nil
 		}
-		regs, err := thread.Registers()
-		if err != nil {
-			return nil
-		}
 		base, err1 := regs.Get(int(arg.Base))
 		index, err2 := regs.Get(int(arg.Index))
 		if err1 != nil || err2 != nil {

@@ -396,7 +396,7 @@ func resume(p *Process, mode ResumeMode) error {
 				log.Printf("Halt error: %v\n", err)
 				return p.exitGuard(err)
 			}
-			if err := p.setCurrentBreakpoints(trapthread); err != nil {
+			if err := p.setCurrentBreakpoints(); err != nil {
 				log.Printf("setCurrentBreakpoints error: %v\n", err)
 				return err
 			}
