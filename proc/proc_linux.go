@@ -310,18 +310,6 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	}
 }
 
-func (dbp *Process) setCurrentBreakpoints() error {
-	for _, th := range dbp.Threads {
-		if th.CurrentBreakpoint == nil {
-			err := th.SetCurrentBreakpoint()
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (dbp *Process) exitGuard(err error) error {
 	if err != sys.ESRCH {
 		return err

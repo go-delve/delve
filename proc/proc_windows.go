@@ -281,20 +281,6 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	return 0, nil, fmt.Errorf("not implemented: wait")
 }
 
-func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	// TODO: In theory, we should also be setting the breakpoints on other
-	// threads that happen to have hit this BP. But doing so leads to periodic
-	// failures in the TestBreakpointsCounts test with hit counts being too high,
-	// which can be traced back to occurrences of multiple threads hitting a BP
-	// at the same time.
-
-	// My guess is that Windows will correctly trigger multiple DEBUG_EVENT's
-	// in this case, one for each thread, so we should only handle the BP hit
-	// on the thread that the debugger was evented on.
-
-	return trapthread.SetCurrentBreakpoint()
-}
-
 func (dbp *Process) exitGuard(err error) error {
 	return err
 }

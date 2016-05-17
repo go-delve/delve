@@ -831,6 +831,16 @@ func (dbp *Process) postExit() {
 	dbp.exited = true
 }
 
+func (dbp *Process) setCurrentBreakpoints() error {
+	for _, th := range dbp.Threads {
+		err := th.SetCurrentBreakpoint()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func setChanRecvBreakpoints(dbp *Process) (int, error) {
 	var count int
 	allg, err := dbp.GoroutinesInfo()

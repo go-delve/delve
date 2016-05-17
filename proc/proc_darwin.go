@@ -291,16 +291,6 @@ func (dbp *Process) drainPendingMesages() ([]int, error) {
 	}
 }
 
-func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	for _, th := range dbp.Threads {
-		err := th.SetCurrentBreakpoint()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (dbp *Process) loadProcessInformation() {
 	return
 }
