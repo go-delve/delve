@@ -78,7 +78,7 @@ func (iae InvalidAddressError) Error() string {
 }
 
 func createAndWriteBreakpoint(mem memoryReadWriter, loc *Location, temp bool, instr []byte) (*Breakpoint, error) {
-	log.Printf("setting breakpoint at %s\n", loc.String())
+	log.Printf("setting breakpoint at %s temp=%v\n", loc.String(), temp)
 
 	newBreakpoint := &Breakpoint{
 		FunctionName: loc.Fn.Name,

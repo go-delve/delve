@@ -7,7 +7,7 @@ import (
 	"rsc.io/x86/x86asm"
 )
 
-var maxInstructionLength uint64 = 15
+var maxInstructionLength uint64 = 64
 
 type ArchInst x86asm.Inst
 

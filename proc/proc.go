@@ -347,37 +347,26 @@ func resume(p *Process, mode ResumeMode) error {
 		}
 		return p.SelectedGoroutine.thread.StepInstruction()
 	case ModeStep:
-		var nloc *Location
 		th := p.CurrentThread
-		loc, err := th.Location()
+		pc, err := th.PC()
 		if err != nil {
 			return err
 		}
-		for {
-			pc, err := p.CurrentThread.PC()
-			if err != nil {
-				return err
+		text, err := th.Disassemble(pc, pc+maxInstructionLength, true)
+		if err != nil {
+			return err
+		}
+		loc := text[0].Loc
+		for _, txt := range text {
+			if txt.Loc.Line != loc.Line {
+				break
 			}
-			text, err := p.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
-			if err == nil && len(text) > 0 && text[0].IsCall() && text[0].DestLoc != nil && text[0].DestLoc.Fn != nil {
-				return p.StepInto(text[0].DestLoc.Fn)
-			}
-
-			err = p.CurrentThread.StepInstruction()
-			if err != nil {
-				return err
-			}
-			nloc, err = th.Location()
-			if err != nil {
-				return err
-			}
-			if nloc.File != loc.File {
-				return nil
-			}
-			if nloc.File == loc.File && nloc.Line != loc.Line {
-				return nil
+			if txt.IsCall() && txt.DestLoc != nil && txt.DestLoc.Fn != nil {
+				log.Printf("stepping into function: %s", txt.DestLoc.Fn.Name)
+				return p.StepInto(txt.DestLoc.Fn)
 			}
 		}
+		return p.Next()
 	case ModeResume:
 		for {
 			log.Println("begin resume")
