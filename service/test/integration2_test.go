@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-	"os"
 
 	protest "github.com/derekparker/delve/proc/test"
 
@@ -1098,5 +1098,22 @@ func TestEvalExprName(t *testing.T) {
 		if var1.Name != name {
 			t.Fatalf("Wrong variable name %q, expected %q", var1.Name, name)
 		}
+	})
+}
+
+func TestClientServer_Issue528(t *testing.T) {
+	// FindLocation with Receiver.MethodName syntax does not work
+	// on remote package names due to a bug in debug/gosym that
+	// Was fixed in go 1.7 // Commit that fixes the issue in go:
+	// f744717d1924340b8f5e5a385e99078693ad9097
+
+	ver, _ := proc.ParseVersionString(runtime.Version())
+	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, 0, 0, 0}) {
+		t.Log("Test skipped")
+		return
+	}
+
+	withTestClient2("issue528", t, func(c service.Client) {
+		findLocationHelper(t, c, "State.Close", false, 1, 0)
 	})
 }
