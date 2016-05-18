@@ -113,7 +113,9 @@ func Launch(cmd []string) (*Process, error) {
 		return nil, err
 	}
 	if tid == 0 {
-		dbp.postExit()
+		if _, err := dbp.Mourn(); err != nil {
+			return nil, err
+		}
 		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
 	}
 
@@ -256,21 +258,20 @@ func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 	}
 }
 
-func (dbp *Process) trapWait(pid int) (*Thread, error) {
+func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	var err error
 	var tid, exitCode int
 	execOnPtraceThread(func() {
 		tid, exitCode, err = dbp.waitForDebugEvent()
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if tid == 0 {
-		dbp.postExit()
-		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
+		return &WaitStatus{exited: true, exitstatus: exitCode}, nil, nil
 	}
 	th := dbp.Threads[tid]
-	return th, nil
+	return &WaitStatus{signal: syscall.SIGTRAP}, th, nil
 }
 
 func (dbp *Process) loadProcessInformation() {

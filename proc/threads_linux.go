@@ -6,26 +6,22 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
-type WaitStatus sys.WaitStatus
-
 // OSSpecificDetails hold Linux specific
 // process details.
 type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
-func (t *Thread) halt() (err error) {
-	err = sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGSTOP)
+func (t *Thread) halt() error {
+	err := sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGTRAP)
 	if err != nil {
-		err = fmt.Errorf("halt err %s on thread %d", err, t.ID)
-		return
+		return fmt.Errorf("halt err %s on thread %d for process %d", err, t.ID, t.dbp.Pid)
 	}
 	_, _, err = t.dbp.wait(t.ID, 0)
 	if err != nil {
-		err = fmt.Errorf("wait err %s on thread %d", err, t.ID)
-		return
+		return fmt.Errorf("wait err %s on thread %d", err, t.ID)
 	}
-	return
+	return nil
 }
 
 func (t *Thread) stopped() bool {
@@ -37,34 +33,33 @@ func (t *Thread) resume() error {
 	return t.resumeWithSig(0)
 }
 
-func (t *Thread) resumeWithSig(sig int) (err error) {
+func (t *Thread) resumeWithSig(sig int) error {
 	t.running = true
-	err = PtraceCont(t.ID, sig)
-	return
+	return PtraceCont(t.ID, sig)
 }
 
-func (t *Thread) singleStep() (err error) {
-	for {
-		execOnPtraceThread(func() { err = sys.PtraceSingleStep(t.ID) })
-		if err != nil {
-			return err
-		}
-		wpid, status, err := t.dbp.wait(t.ID, 0)
-		if err != nil {
-			return err
-		}
-		if (status == nil || status.Exited()) && wpid == t.dbp.Pid {
-			t.dbp.postExit()
-			rs := 0
-			if status != nil {
-				rs = status.ExitStatus()
-			}
-			return ProcessExitedError{Pid: t.dbp.Pid, Status: rs}
-		}
-		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
-			return nil
-		}
+func (t *Thread) singleStep() error {
+	err := PtraceSingleStep(t.ID)
+	if err != nil {
+		return err
 	}
+	// TODO(derekparker) consolidate all wait calls into threadResume
+	_, status, err := t.dbp.wait(t.ID, 0)
+	if err != nil {
+		return err
+	}
+	if status.Exited() {
+		_, err := t.dbp.Mourn()
+		if err != nil {
+			return err
+		}
+		rs := 0
+		if status != nil {
+			rs = status.ExitStatus()
+		}
+		return ProcessExitedError{Pid: t.dbp.Pid, Status: rs}
+	}
+	return nil
 }
 
 func (t *Thread) blocked() bool {

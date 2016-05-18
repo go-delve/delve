@@ -9,12 +9,7 @@ import (
 	"log"
 	"syscall"
 	"unsafe"
-
-	sys "golang.org/x/sys/unix"
 )
-
-// WaitStatus is a synonym for the platform-specific WaitStatus
-type WaitStatus sys.WaitStatus
 
 // OSSpecificDetails holds information specific to the OSX/Darwin
 // operating system / kernel.
@@ -53,7 +48,7 @@ func (t *Thread) singleStep() error {
 		return err
 	}
 	C.task_resume(t.dbp.os.task)
-	_, err := t.dbp.trapWait(t.dbp.Pid)
+	_, _, err := t.dbp.Wait()
 	if err != nil {
 		return err
 	}
@@ -74,6 +69,15 @@ func (t *Thread) resume() error {
 		return ErrContinueThread
 	}
 	return nil
+}
+
+func (t *Thread) resumeWithSig(sig int) error {
+	// TODO(derekparker) Maybe keep state around regarding whether we are in
+	// a signal stop?
+	if err := PtraceThupdate(t.dbp.Pid, t.os.threadAct, sig); err != nil {
+		log.Printf("error during PtraceThupdate: %v\n", err)
+	}
+	return t.resume()
 }
 
 func (t *Thread) sendMachReply() error {

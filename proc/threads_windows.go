@@ -1,13 +1,6 @@
 package proc
 
-import (
-	"syscall"
-
-	sys "golang.org/x/sys/windows"
-)
-
-// WaitStatus is a synonym for the platform-specific WaitStatus
-type WaitStatus sys.WaitStatus
+import "syscall"
 
 // OSSpecificDetails holds information specific to the Windows
 // operating system / kernel.
@@ -58,7 +51,7 @@ func (t *Thread) singleStep() error {
 	if err != nil {
 		return err
 	}
-	_, err = t.dbp.trapWait(0)
+	_, _, err = t.dbp.Wait()
 	if err != nil {
 		return err
 	}
@@ -91,6 +84,11 @@ func (t *Thread) resume() error {
 		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
 	})
 	return err
+}
+
+func (t *Thread) resumeWithSig(sig int) error {
+	// TODO(derekparker) Do we need to handle passing along exceptions?
+	return t.resume()
 }
 
 func (t *Thread) blocked() bool {

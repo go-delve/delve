@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -80,11 +81,8 @@ func (dbp *Process) Kill() (err error) {
 	if err = sys.Kill(-dbp.Pid, sys.SIGKILL); err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
-	if _, _, err = dbp.wait(dbp.Pid, 0); err != nil {
-		return
-	}
-	dbp.postExit()
-	return
+	_, err = dbp.Mourn()
+	return err
 }
 
 func requestManualStop(dbp *Process) (err error) {
@@ -164,24 +162,20 @@ func (dbp *Process) findExecutable(path string) (string, error) {
 	return path, nil
 }
 
-func (dbp *Process) trapWait(pid int) (*Thread, error) {
+func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	for {
 		wpid, status, err := dbp.wait(pid, 0)
 		if err != nil {
-			return nil, fmt.Errorf("wait err %s %d", err, pid)
+			return nil, nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
-		log.Println("signal:", status.StopSignal(), status.TrapCause())
-		if wpid == 0 {
-			continue
-		}
-		th, ok := dbp.Threads[wpid]
-		if ok {
-			th.Status = (*WaitStatus)(status)
-		}
-		if status.Exited() {
+		th := dbp.Threads[wpid]
+		if status.Exited() || status.Signal() == syscall.SIGKILL {
 			if wpid == dbp.Pid {
-				dbp.postExit()
-				return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
+				_, err := dbp.Mourn()
+				if err != nil {
+					return nil, nil, err
+				}
+				return &WaitStatus{exited: true, exitstatus: status.ExitStatus()}, nil, nil
 			}
 			delete(dbp.Threads, wpid)
 			continue
@@ -192,7 +186,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			var cloned uint
 			execOnPtraceThread(func() { cloned, err = sys.PtraceGetEventMsg(wpid) })
 			if err != nil {
-				return nil, fmt.Errorf("could not get event message: %s", err)
+				return nil, nil, fmt.Errorf("could not get event message: %s", err)
 			}
 			th, err = dbp.addThread(int(cloned), false)
 			if err != nil {
@@ -200,7 +194,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 					// thread died while we were adding it
 					continue
 				}
-				return nil, err
+				return nil, nil, err
 			}
 			if err = th.Continue(); err != nil {
 				if err == sys.ESRCH {
@@ -208,11 +202,11 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 					delete(dbp.Threads, th.ID)
 					continue
 				}
-				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
+				return nil, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 			if err = dbp.Threads[int(wpid)].Continue(); err != nil {
 				if err != sys.ESRCH {
-					return nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
+					return nil, nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
 				}
 			}
 			continue
@@ -223,27 +217,22 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		}
 		// Drain
 		for {
-			wpid, _, err := dbp.wait(pid, sys.WNOHANG)
+			wpid, status, err := dbp.wait(pid, sys.WNOHANG)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if wpid == 0 {
 				break
 			}
-		}
-		switch status.StopSignal() {
-		case sys.SIGTRAP:
-			th.running = false
-			return th, nil
-		default:
-			// TODO(derekparker) alert user about unexpected signals here.
-			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
-				if err == sys.ESRCH {
-					return nil, ProcessExitedError{Pid: dbp.Pid}
+			if status != nil && status.Exited() {
+				_, err := dbp.Mourn()
+				if err != nil {
+					return nil, nil, err
 				}
-				return nil, err
+				return &WaitStatus{exited: true, exitstatus: status.ExitStatus()}, nil, nil
 			}
 		}
+		return &WaitStatus{exited: status.Exited(), exitstatus: status.ExitStatus(), signaled: true, signal: status.StopSignal()}, th, nil
 	}
 }
 
@@ -279,6 +268,8 @@ func status(pid int, comm string) rune {
 }
 
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+	_, f, l, _ := runtime.Caller(1)
+	log.Printf("wait called from %s:%d\n", f, l)
 	var s sys.WaitStatus
 	if (pid != dbp.Pid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
@@ -304,22 +295,12 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 			return wpid, &s, err
 		}
 		if status(pid, dbp.os.comm) == StatusZombie {
-			return pid, nil, nil
+			// TODO(derekparker) properly handle when group leader becomes a zombie.
+			log.Printf("process %d is a zombie\n", pid)
+			return pid, &s, nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-}
-
-func (dbp *Process) exitGuard(err error) error {
-	if err != sys.ESRCH {
-		return err
-	}
-	if status(dbp.Pid, dbp.os.comm) == StatusZombie {
-		_, err := dbp.trapWait(-1)
-		return err
-	}
-
-	return err
 }
 
 func (dbp *Process) resume() error {

@@ -57,7 +57,11 @@ func (l *Location) String() string {
 // first and then resume execution. Thread will continue until
 // it hits a breakpoint or is signaled.
 func (thread *Thread) Continue() error {
-	return threadResume(thread, ModeResume)
+	return threadResume(thread, ModeResume, 0)
+}
+
+func (thread *Thread) ContinueWithSignal(sig int) error {
+	return threadResume(thread, ModeResume, sig)
 }
 
 // StepInstruction steps a single instruction.
@@ -67,20 +71,16 @@ func (thread *Thread) Continue() error {
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
 func (thread *Thread) StepInstruction() error {
-	return threadResume(thread, ModeStepInstruction)
+	return threadResume(thread, ModeStepInstruction, 0)
 }
 
-func threadResume(thread *Thread, mode ResumeMode) (err error) {
+func threadResume(thread *Thread, mode ResumeMode, sig int) (err error) {
 	// Check and see if this thread is stopped at a breakpoint. If so,
 	// clear it and set a deferred function to reinsert it once we are
 	// past it.
 	if bp := thread.CurrentBreakpoint; bp != nil {
 		// Clear the breakpoint so that we can continue execution.
 		_, err = bp.Clear(thread)
-		if err != nil {
-			return err
-		}
-		err = thread.SetPC(bp.Addr)
 		if err != nil {
 			return err
 		}
@@ -110,7 +110,7 @@ func threadResume(thread *Thread, mode ResumeMode) (err error) {
 		}()
 		return thread.singleStep()
 	case ModeResume:
-		return thread.resume()
+		return thread.resumeWithSig(sig)
 	default:
 		// Programmer error, safe to panic here.
 		panic("unknown mode passed to threadResume")
@@ -374,12 +374,11 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 	if thread == nil {
 		return nil
 	}
-	thread.CurrentBreakpoint = nil
 	pc, err := thread.PC()
 	if err != nil {
 		return err
 	}
-	if bp, ok := thread.dbp.FindBreakpoint(pc); ok {
+	if bp, ok := thread.dbp.Breakpoints[pc-uint64(thread.dbp.arch.BreakpointSize())]; ok {
 		thread.CurrentBreakpoint = bp
 		if err = thread.SetPC(bp.Addr); err != nil {
 			return err

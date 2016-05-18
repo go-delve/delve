@@ -129,9 +129,9 @@ func (dbp *Process) Kill() error {
 	for _, th := range dbp.Threads {
 		C.resume_thread(th.os.threadAct)
 	}
-	_, err := dbp.trapWait(-1)
-	if _, ok := err.(ProcessExitedError); !ok {
-		return errors.New("process did not exit")
+	_, err := dbp.Mourn()
+	if err != nil {
+		return err
 	}
 	selfTask := C.ipc_space_t(C.mach_task())
 	for _, th := range dbp.Threads {
@@ -140,7 +140,6 @@ func (dbp *Process) Kill() error {
 	C.mach_port_destroy(selfTask, C.mach_port_name_t(dbp.os.notificationPort))
 	C.mach_port_deallocate(selfTask, C.mach_port_name_t(dbp.os.exceptionPort))
 	C.mach_port_deallocate(selfTask, C.mach_port_name_t(dbp.os.task))
-	dbp.postExit()
 	return nil
 }
 
@@ -219,7 +218,7 @@ func (dbp *Process) findExecutable(path string) (string, error) {
 	return path, nil
 }
 
-func (dbp *Process) trapWait(pid int) (*Thread, error) {
+func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	for {
 		var hdr C.mach_msg_header_t
 		var sig C.int
@@ -230,15 +229,13 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			th.os.hdr = hdr
 			th.os.sig = sig
 		}
-
 		switch port {
 		case dbp.os.notificationPort:
-			_, status, err := dbp.wait(dbp.Pid, 0)
+			exitcode, err := dbp.Mourn()
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			dbp.postExit()
-			return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+			return &WaitStatus{exited: true, exitstatus: exitcode}, nil, nil
 
 		case C.MACH_RCV_INTERRUPTED:
 			if !dbp.halt {
@@ -247,17 +244,19 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				// process natural death _sometimes_.
 				continue
 			}
-			return th, nil
 
 		case 0:
-			return nil, fmt.Errorf("error while waiting for task")
+			return nil, nil, fmt.Errorf("error while waiting for task")
 		}
 
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
-		dbp.updateThreadList()
+		updateThreadList(dbp)
 		_, err := dbp.drainPendingMesages()
-		return th, err
+		if err != nil {
+			return nil, nil, err
+		}
+		return &WaitStatus{signal: syscall.Signal(int(sig)), signaled: true}, th, nil
 	}
 }
 
@@ -274,12 +273,11 @@ func (dbp *Process) drainPendingMesages() ([]int, error) {
 			return ports, nil
 		}
 		if port == dbp.os.notificationPort {
-			_, status, err := dbp.wait(dbp.Pid, 0)
+			exitcode, err := dbp.Mourn()
 			if err != nil {
-				return nil, err
+				return ports, err
 			}
-			dbp.postExit()
-			return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+			return ports, ProcessExitedError{Pid: dbp.Pid, Status: exitcode}
 		}
 		th, ok := dbp.Threads[int(port)]
 		if ok {
@@ -311,7 +309,7 @@ func (dbp *Process) exitGuard(err error) error {
 	}
 	_, status, werr := dbp.wait(dbp.Pid, sys.WNOHANG)
 	if werr == nil && status.Exited() {
-		dbp.postExit()
+		dbp.Mourn()
 		return ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
 	}
 	return err

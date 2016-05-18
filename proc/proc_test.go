@@ -44,8 +44,13 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 			if err := p.Halt(); err != nil {
 				t.Fatal(err)
 			}
+			log.Println("killing...")
 			if err := p.Kill(); err != nil {
-				t.Fatal(err)
+				switch err.(type) {
+				case ProcessExitedError:
+				default:
+					t.Fatal(err)
+				}
 			}
 		}
 	}()
@@ -129,7 +134,7 @@ func TestExitAfterContinue(t *testing.T) {
 		err = p.Continue()
 		pe, ok := err.(ProcessExitedError)
 		if !ok {
-			t.Fatalf("Continue() returned unexpected error type %s", pe)
+			t.Fatalf("Continue() returned unexpected error type %s", err)
 		}
 		if pe.Status != 0 {
 			t.Errorf("Unexpected error status: %d", pe.Status)
@@ -812,7 +817,8 @@ func TestStacktraceGoroutine(t *testing.T) {
 
 func TestKill(t *testing.T) {
 	withTestProcess("testprog", t, func(p *Process, fixture protest.Fixture) {
-		if err := p.Kill(); err != nil {
+		err := p.Kill()
+		if err != nil {
 			t.Fatal(err)
 		}
 		if p.Exited() != true {
@@ -1225,7 +1231,7 @@ func TestBreakpointCounts(t *testing.T) {
 
 		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
 		if bp.TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.TotalHitCount)
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d), expected %d", bp.TotalHitCount, 200)
 		}
 
 		if len(bp.HitCount) != 2 {

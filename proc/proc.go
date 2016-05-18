@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/debug/dwarf"
 
@@ -54,6 +55,33 @@ type Process struct {
 	arch      Arch
 	halt      bool
 	exited    bool
+}
+
+type WaitStatus struct {
+	exitstatus int
+	exited     bool
+	signaled   bool
+	signal     syscall.Signal
+}
+
+func (ws *WaitStatus) Exited() bool {
+	return ws.exited
+}
+
+func (ws *WaitStatus) ExitStatus() int {
+	return ws.exitstatus
+}
+
+func (ws *WaitStatus) Signaled() bool {
+	return ws.signaled
+}
+
+func (ws *WaitStatus) Signal() syscall.Signal {
+	return ws.signal
+}
+
+func (ws *WaitStatus) Trap() bool {
+	return ws.signal == syscall.SIGTRAP
 }
 
 // New returns an initialized Process struct.
@@ -120,6 +148,22 @@ func (dbp *Process) Running() bool {
 		}
 	}
 	return false
+}
+
+func (dbp *Process) Mourn() (int, error) {
+	dbp.exited = true
+	_, ws, err := dbp.wait(dbp.Pid, 0)
+	if err != nil {
+		if err != syscall.ECHILD {
+			return 0, err
+		}
+		return 0, nil
+	}
+	sig := syscall.Signal(ws.Signal())
+	if !ws.Exited() && sig != syscall.SIGKILL {
+		return 0, fmt.Errorf("process did not exit")
+	}
+	return ws.ExitStatus(), nil
 }
 
 // LoadInformation finds the executable and then uses it
@@ -333,12 +377,16 @@ func (dbp *Process) Continue() error {
 }
 
 func resume(p *Process, mode ResumeMode) error {
+	log.Printf("resume called on process %d with mode %d\n", p.Pid, mode)
 	if p.exited {
 		return &ProcessExitedError{}
 	}
+	// Clear state.
 	p.allGCache = nil
+	// Resume process.
 	switch mode {
 	case ModeStepInstruction:
+		log.Println("begin step instruction")
 		if p.SelectedGoroutine == nil {
 			return errors.New("cannot single step: no selected goroutine")
 		}
@@ -347,99 +395,146 @@ func resume(p *Process, mode ResumeMode) error {
 		}
 		return p.SelectedGoroutine.thread.StepInstruction()
 	case ModeStep:
+		log.Println("begin step")
 		th := p.CurrentThread
-		pc, err := th.PC()
-		if err != nil {
-			return err
-		}
-		text, err := th.Disassemble(pc, pc+maxInstructionLength, true)
-		if err != nil {
-			return err
-		}
-		loc := text[0].Loc
-		for _, txt := range text {
-			if txt.Loc.Line != loc.Line {
-				break
-			}
-			if txt.IsCall() && txt.DestLoc != nil && txt.DestLoc.Fn != nil {
-				log.Printf("stepping into function: %s", txt.DestLoc.Fn.Name)
-				return p.StepInto(txt.DestLoc.Fn)
-			}
+		if fn, ok := atFunctionCall(th); ok {
+			log.Printf("stepping into function: %s", fn.Name)
+			return p.StepInto(fn)
 		}
 		return p.Next()
 	case ModeResume:
-		for {
-			log.Println("begin resume")
-			err := p.resume()
-			if err != nil {
-				log.Printf("resume error: %v\n", err)
-				return err
-			}
-			trapthread, err := p.trapWait(-p.Pid)
-			if err != nil {
-				log.Printf("trapWait error: %v\n", err)
-				return err
-			}
-			// Make sure process is fully stopped.
-			if err := p.Halt(); err != nil {
-				log.Printf("Halt error: %v\n", err)
-				return p.exitGuard(err)
-			}
-			if err := p.setCurrentBreakpoints(); err != nil {
-				log.Printf("setCurrentBreakpoints error: %v\n", err)
-				return err
-			}
-			if err := p.pickCurrentThread(trapthread); err != nil {
-				log.Printf("pickCurrentThread error: %v\n", err)
-				return err
-			}
-
-			log.Println("checking breakpoint conditions")
-			switch {
-			case p.CurrentThread.CurrentBreakpoint == nil:
-				log.Printf("no current breakpoint, halt=%v", p.halt)
-				if p.halt {
-					p.halt = false
-				}
-				// runtime.Breakpoint or manual stop
-				if p.CurrentThread.onRuntimeBreakpoint() {
-					log.Println("on runtime breakpoint")
-					for i := 0; i < 2; i++ {
-						if err = p.CurrentThread.StepInstruction(); err != nil {
-							return err
-						}
-					}
-				}
-				return p.conditionErrors()
-			case p.CurrentThread.onTriggeredTempBreakpoint():
-				log.Println("on triggered temp breakpoint")
-				err = p.ClearTempBreakpoints()
-				if err != nil {
-					return err
-				}
-				return p.conditionErrors()
-			case p.CurrentThread.onTriggeredBreakpoint():
-				log.Println("on triggered breakpoint")
-				onNextGoroutine, err := p.CurrentThread.onNextGoroutine()
-				if err != nil {
-					return err
-				}
-				if onNextGoroutine {
-					err := p.ClearTempBreakpoints()
-					if err != nil {
-						return err
-					}
-				}
-				return p.conditionErrors()
-			default:
-				// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
-			}
+		log.Println("begin resume")
+		if err := p.resume(); err != nil {
+			log.Printf("resume error: %v\n", err)
+			return err
 		}
 	default:
 		// Programmer error, safe to panic here.
 		panic("invalid mode passed to resume")
 	}
+	status, trapthread, err := p.Wait()
+	if err != nil {
+		log.Printf("Wait error: %v\n", err)
+		return err
+	}
+	if status.Exited() {
+		return ProcessExitedError{Pid: p.Pid, Status: status.ExitStatus()}
+	}
+	// Make sure process is fully stopped.
+	if err := p.Halt(); err != nil {
+		log.Printf("Halt error: %v\n", err)
+		return err
+	}
+	if err := p.setCurrentBreakpoints(); err != nil {
+		log.Printf("setCurrentBreakpoints error: %v\n", err)
+		return err
+	}
+	if err := p.pickCurrentThread(trapthread); err != nil {
+		log.Printf("pickCurrentThread error: %v\n", err)
+		return err
+	}
+	switch {
+	case status.Trap():
+		log.Println("handling SIGTRAP")
+		err := handleSigTrap(p)
+		switch err.(type) {
+		case BreakpointConditionNotMetError:
+			// Do not stop for a breakpoint whose condition has not been met.
+			return resume(p, mode)
+		default:
+			return err
+		}
+	case status.Signaled():
+		log.Printf("got signal: %v\n", status.Signal())
+		// TODO(derekparker) alert users of signals.
+		if err := trapthread.ContinueWithSignal(int(status.Signal())); err != nil {
+			// TODO(derekparker) should go through regular resume flow.
+			if err == syscall.ESRCH {
+				exitcode, err := p.Mourn()
+				if err != nil {
+					return err
+				}
+				return ProcessExitedError{Pid: p.Pid, Status: exitcode}
+			}
+			return err
+		}
+		return resume(p, mode)
+	default:
+		panic("unhandled stop event")
+	}
 	return nil
+}
+
+func atFunctionCall(th *Thread) (*gosym.Func, bool) {
+	log.Println("begin step")
+	pc, err := th.PC()
+	if err != nil {
+		return nil, false
+	}
+	text, err := th.Disassemble(pc, pc+maxInstructionLength, true)
+	if err != nil {
+		return nil, false
+	}
+	loc := text[0].Loc
+	for _, txt := range text {
+		if txt.Loc.Line != loc.Line {
+			break
+		}
+		if txt.IsCall() && txt.DestLoc != nil && txt.DestLoc.Fn != nil {
+			return txt.DestLoc.Fn, true
+		}
+	}
+	return nil, false
+}
+
+func handleSigTrap(p *Process) error {
+	log.Println("checking breakpoint conditions")
+	switch {
+	case p.CurrentThread.CurrentBreakpoint == nil:
+		log.Printf("no current breakpoint, halt=%v", p.halt)
+		if p.halt {
+			p.halt = false
+		}
+		// runtime.Breakpoint or manual stop
+		if p.CurrentThread.onRuntimeBreakpoint() {
+			log.Println("on runtime breakpoint")
+			for i := 0; i < 2; i++ {
+				if err := p.CurrentThread.StepInstruction(); err != nil {
+					return err
+				}
+			}
+		}
+		return p.conditionErrors()
+	case p.CurrentThread.onTriggeredTempBreakpoint():
+		log.Println("on triggered temp breakpoint")
+		if err := p.ClearTempBreakpoints(); err != nil {
+			return err
+		}
+		return p.conditionErrors()
+	case p.CurrentThread.onTriggeredBreakpoint():
+		log.Println("on triggered breakpoint")
+		onNextGoroutine, err := p.CurrentThread.onNextGoroutine()
+		if err != nil {
+			return err
+		}
+		if onNextGoroutine {
+			if err := p.ClearTempBreakpoints(); err != nil {
+				return err
+			}
+		}
+		return p.conditionErrors()
+	}
+	return BreakpointConditionNotMetError{}
+}
+
+type BreakpointConditionNotMetError struct{}
+
+func (b BreakpointConditionNotMetError) Error() string {
+	return "breakpoint condition not met"
+}
+
+func (dbp *Process) Wait() (*WaitStatus, *Thread, error) {
+	return dbp.trapWait(-dbp.Pid)
 }
 
 func (dbp *Process) conditionErrors() error {
@@ -461,19 +556,26 @@ func (dbp *Process) conditionErrors() error {
 // 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
 // 	- trapthread
 func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
+	if trapthread == nil {
+		panic("pickCurrentThread got nil thread")
+	}
 	for _, th := range dbp.Threads {
 		if th.onTriggeredTempBreakpoint() {
+			log.Printf("thread %d triggered temp breakpoint\n", th.ID)
 			return dbp.SwitchThread(th.ID)
 		}
 	}
 	if trapthread.onTriggeredBreakpoint() {
+		log.Printf("thread %d triggered breakpoint\n", trapthread.ID)
 		return dbp.SwitchThread(trapthread.ID)
 	}
 	for _, th := range dbp.Threads {
 		if th.onTriggeredBreakpoint() {
+			log.Printf("thread %d triggered breakpoint\n", th.ID)
 			return dbp.SwitchThread(th.ID)
 		}
 	}
+	log.Printf("switching to default thread %d\n", trapthread.ID)
 	return dbp.SwitchThread(trapthread.ID)
 }
 
@@ -820,15 +922,6 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 	out.PC, out.CFA = locs[frame].Current.PC, locs[frame].CFA
 
 	return &out, nil
-}
-
-func (dbp *Process) postExit() {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Printf("error during postExit: %v", err)
-		}
-	}()
-	dbp.exited = true
 }
 
 func (dbp *Process) setCurrentBreakpoints() error {
