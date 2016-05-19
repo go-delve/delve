@@ -294,7 +294,6 @@ func (dbp *Process) resume() error {
 		if err := thread.StepInstruction(); err != nil {
 			return err
 		}
-		thread.CurrentBreakpoint = nil
 	}
 	// In case we are now on a different thread, make sure we resume
 	// the thread that is broken.

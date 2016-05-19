@@ -371,9 +371,6 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
 func (thread *Thread) SetCurrentBreakpoint() error {
-	if thread == nil {
-		return nil
-	}
 	pc, err := thread.PC()
 	if err != nil {
 		return err
@@ -410,7 +407,7 @@ func (thread *Thread) onRuntimeBreakpoint() bool {
 	return loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint"
 }
 
-// onNextGorutine returns true if this thread is on the goroutine requested by the current 'next' command
+// onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
 func (thread *Thread) onNextGoroutine() (bool, error) {
 	for _, bp := range thread.dbp.Breakpoints {
 		if bp.Temp {

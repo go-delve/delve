@@ -13,7 +13,7 @@ type OSSpecificDetails struct {
 }
 
 func (t *Thread) halt() error {
-	err := sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGTRAP)
+	err := sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGSTOP)
 	if err != nil {
 		return fmt.Errorf("halt err %s on thread %d for process %d", err, t.ID, t.dbp.Pid)
 	}

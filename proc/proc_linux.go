@@ -310,7 +310,6 @@ func (dbp *Process) resume() error {
 			if err := thread.StepInstruction(); err != nil {
 				return err
 			}
-			thread.CurrentBreakpoint = nil
 		}
 	}
 	// everything is resumed

@@ -1229,11 +1229,6 @@ func TestBreakpointCounts(t *testing.T) {
 			}
 		}
 
-		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
-		if bp.TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d), expected %d", bp.TotalHitCount, 200)
-		}
-
 		if len(bp.HitCount) != 2 {
 			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
 		}
@@ -1242,6 +1237,11 @@ func TestBreakpointCounts(t *testing.T) {
 			if v != 100 {
 				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
 			}
+		}
+
+		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
+		if bp.TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d), expected %d", bp.TotalHitCount, 200)
 		}
 	})
 }

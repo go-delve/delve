@@ -159,8 +159,7 @@ func (dbp *Process) Mourn() (int, error) {
 		}
 		return 0, nil
 	}
-	sig := syscall.Signal(ws.Signal())
-	if !ws.Exited() && sig != syscall.SIGKILL {
+	if !ws.Exited() {
 		return 0, fmt.Errorf("process did not exit")
 	}
 	return ws.ExitStatus(), nil
@@ -379,7 +378,7 @@ func (dbp *Process) Continue() error {
 func resume(p *Process, mode ResumeMode) error {
 	log.Printf("resume called on process %d with mode %d\n", p.Pid, mode)
 	if p.exited {
-		return &ProcessExitedError{}
+		return ProcessExitedError{}
 	}
 	// Clear state.
 	p.allGCache = nil
@@ -926,9 +925,11 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 
 func (dbp *Process) setCurrentBreakpoints() error {
 	for _, th := range dbp.Threads {
-		err := th.SetCurrentBreakpoint()
-		if err != nil {
-			return err
+		if th.CurrentBreakpoint == nil {
+			err := th.SetCurrentBreakpoint()
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
