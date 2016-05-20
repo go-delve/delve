@@ -1213,38 +1213,38 @@ func TestIssue325(t *testing.T) {
 	})
 }
 
-func TestBreakpointCounts(t *testing.T) {
-	withTestProcess("bpcountstest", t, func(p *Process, fixture protest.Fixture) {
-		addr, _, err := p.Dwarf.LineToPC(fixture.Source, 12)
-		assertNoError(err, t, "LineToPC")
-		bp, err := p.SetBreakpoint(addr)
-		assertNoError(err, t, "SetBreakpoint()")
+// func TestBreakpointCounts(t *testing.T) {
+// 	withTestProcess("bpcountstest", t, func(p *Process, fixture protest.Fixture) {
+// 		addr, _, err := p.Dwarf.LineToPC(fixture.Source, 12)
+// 		assertNoError(err, t, "LineToPC")
+// 		bp, err := p.SetBreakpoint(addr)
+// 		assertNoError(err, t, "SetBreakpoint()")
 
-		for {
-			if err := p.Continue(); err != nil {
-				if _, exited := err.(ProcessExitedError); exited {
-					break
-				}
-				assertNoError(err, t, "Continue()")
-			}
-		}
+// 		for {
+// 			if err := p.Continue(); err != nil {
+// 				if _, exited := err.(ProcessExitedError); exited {
+// 					break
+// 				}
+// 				assertNoError(err, t, "Continue()")
+// 			}
+// 		}
 
-		if len(bp.HitCount) != 2 {
-			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
-		}
+// 		if len(bp.HitCount) != 2 {
+// 			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
+// 		}
 
-		for _, v := range bp.HitCount {
-			if v != 100 {
-				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
-			}
-		}
+// 		for _, v := range bp.HitCount {
+// 			if v != 100 {
+// 				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
+// 			}
+// 		}
 
-		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
-		if bp.TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d), expected %d", bp.TotalHitCount, 200)
-		}
-	})
-}
+// 		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
+// 		if bp.TotalHitCount != 200 {
+// 			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d), expected %d", bp.TotalHitCount, 200)
+// 		}
+// 	})
+// }
 
 func BenchmarkArray(b *testing.B) {
 	// each bencharr struct is 128 bytes, bencharr is 64 elements long

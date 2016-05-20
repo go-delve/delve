@@ -159,9 +159,6 @@ func (dbp *Process) Mourn() (int, error) {
 		}
 		return 0, nil
 	}
-	if !ws.Exited() {
-		return 0, fmt.Errorf("process did not exit")
-	}
 	return ws.ExitStatus(), nil
 }
 

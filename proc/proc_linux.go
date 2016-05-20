@@ -215,23 +215,6 @@ func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 			// Sometimes we get an unknown thread, ignore it?
 			continue
 		}
-		// Drain
-		for {
-			wpid, status, err := dbp.wait(pid, sys.WNOHANG)
-			if err != nil {
-				return nil, nil, err
-			}
-			if wpid == 0 {
-				break
-			}
-			if status != nil && status.Exited() {
-				_, err := dbp.Mourn()
-				if err != nil {
-					return nil, nil, err
-				}
-				return &WaitStatus{exited: true, exitstatus: status.ExitStatus()}, nil, nil
-			}
-		}
 		return &WaitStatus{exited: status.Exited(), exitstatus: status.ExitStatus(), signaled: true, signal: status.StopSignal()}, th, nil
 	}
 }
