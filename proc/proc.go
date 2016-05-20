@@ -421,18 +421,10 @@ func resume(p *Process, mode ResumeMode) error {
 		log.Printf("Halt error: %v\n", err)
 		return err
 	}
-	if err := p.setCurrentBreakpoints(); err != nil {
-		log.Printf("setCurrentBreakpoints error: %v\n", err)
-		return err
-	}
-	if err := p.pickCurrentThread(trapthread); err != nil {
-		log.Printf("pickCurrentThread error: %v\n", err)
-		return err
-	}
 	switch {
 	case status.Trap():
 		log.Println("handling SIGTRAP")
-		err := handleSigTrap(p)
+		err := handleSigTrap(p, trapthread)
 		switch err.(type) {
 		case BreakpointConditionNotMetError:
 			// Do not stop for a breakpoint whose condition has not been met.
@@ -483,8 +475,16 @@ func atFunctionCall(th *Thread) (*gosym.Func, bool) {
 	return nil, false
 }
 
-func handleSigTrap(p *Process) error {
+func handleSigTrap(p *Process, trapthread *Thread) error {
 	log.Println("checking breakpoint conditions")
+	if err := p.setCurrentBreakpoints(); err != nil {
+		log.Printf("setCurrentBreakpoints error: %v\n", err)
+		return err
+	}
+	if err := p.pickCurrentThread(trapthread); err != nil {
+		log.Printf("pickCurrentThread error: %v\n", err)
+		return err
+	}
 	switch {
 	case p.CurrentThread.CurrentBreakpoint == nil:
 		log.Printf("no current breakpoint, halt=%v", p.halt)
