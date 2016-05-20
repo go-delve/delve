@@ -86,9 +86,9 @@ func (d *Debugger) Detach(kill bool) error {
 
 func (d *Debugger) detach(kill bool) error {
 	if d.config.AttachPid != 0 {
-		return d.process.Detach(kill)
+		return proc.Detach(d.process, kill)
 	}
-	return d.process.Kill()
+	return proc.Kill(d.process)
 }
 
 // Restart will restart the target process, first killing
@@ -99,7 +99,7 @@ func (d *Debugger) Restart() error {
 
 	if !d.process.Exited() {
 		if d.process.Running() {
-			d.process.Halt()
+			proc.Halt(d.process)
 		}
 		// Ensure the process is in a PTRACE_STOP.
 		if err := stopProcess(d.ProcessPid()); err != nil {
@@ -117,7 +117,7 @@ func (d *Debugger) Restart() error {
 		if oldBp.ID < 0 {
 			continue
 		}
-		newBp, err := p.SetBreakpoint(oldBp.Addr)
+		newBp, err := proc.SetBreakpoint(p, oldBp.Addr)
 		if err != nil {
 			return err
 		}
@@ -206,12 +206,12 @@ func (d *Debugger) CreateBreakpoint(requestedBp *types.Breakpoint) (*types.Break
 				}
 			}
 		}
-		addr, err = d.process.FindFileLocation(fileName, requestedBp.Line)
+		addr, err = proc.FindFileLocation(d.process, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
 		if requestedBp.Line >= 0 {
-			addr, err = d.process.FindFunctionLocation(requestedBp.FunctionName, false, requestedBp.Line)
+			addr, err = proc.FindFunctionLocation(d.process, requestedBp.FunctionName, false, requestedBp.Line)
 		} else {
-			addr, err = d.process.FindFunctionLocation(requestedBp.FunctionName, true, 0)
+			addr, err = proc.FindFunctionLocation(d.process, requestedBp.FunctionName, true, 0)
 		}
 	default:
 		addr = requestedBp.Addr
@@ -221,12 +221,12 @@ func (d *Debugger) CreateBreakpoint(requestedBp *types.Breakpoint) (*types.Break
 		return nil, err
 	}
 
-	bp, err := d.process.SetBreakpoint(addr)
+	bp, err := proc.SetBreakpoint(d.process, addr)
 	if err != nil {
 		return nil, err
 	}
 	if err := copyBreakpointInfo(bp, requestedBp); err != nil {
-		if _, err1 := d.process.ClearBreakpoint(bp.Addr); err1 != nil {
+		if _, err1 := proc.ClearBreakpoint(d.process, bp.Addr); err1 != nil {
 			err = fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err, err1)
 		}
 		return nil, err
@@ -251,7 +251,7 @@ func (d *Debugger) AmendBreakpoint(amend *types.Breakpoint) error {
 }
 
 func (d *Debugger) CancelNext() error {
-	return d.process.ClearTempBreakpoints()
+	return proc.ClearTempBreakpoints(d.process)
 }
 
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *types.Breakpoint) (err error) {
@@ -275,7 +275,7 @@ func (d *Debugger) ClearBreakpoint(requestedBp *types.Breakpoint) (*types.Breakp
 	defer d.processMutex.Unlock()
 
 	var clearedBp *types.Breakpoint
-	bp, err := d.process.ClearBreakpoint(requestedBp.Addr)
+	bp, err := proc.ClearBreakpoint(d.process, requestedBp.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("Can't clear breakpoint @%x: %s", requestedBp.Addr, err)
 	}
@@ -379,7 +379,7 @@ func (d *Debugger) Command(command *types.DebuggerCommand) (*types.DebuggerState
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
 		log.Print("halting")
-		err = d.process.RequestManualStop()
+		err = proc.Stop(d.process)
 	}
 
 	d.processMutex.Lock()
@@ -388,7 +388,7 @@ func (d *Debugger) Command(command *types.DebuggerCommand) (*types.DebuggerState
 	switch command.Name {
 	case types.Continue:
 		log.Print("continuing")
-		err = d.process.Continue()
+		err = proc.Continue(d.process)
 		if err != nil {
 			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
 				state := &types.DebuggerState{}
@@ -408,16 +408,20 @@ func (d *Debugger) Command(command *types.DebuggerCommand) (*types.DebuggerState
 
 	case types.Next:
 		log.Print("nexting")
-		err = d.process.Next()
+		err = proc.Next(d.process)
 	case types.Step:
 		log.Print("stepping")
-		err = d.process.Step()
+		err = proc.Step(d.process)
 	case types.StepInstruction:
 		log.Print("single stepping")
-		err = d.process.StepInstruction()
+		err = proc.StepInstruction(d.process)
 	case types.SwitchThread:
 		log.Printf("switching to thread %d", command.ThreadID)
-		err = d.process.SwitchThread(command.ThreadID)
+		th, ok := d.process.Threads[command.ThreadID]
+		if !ok {
+			return nil, fmt.Errorf("invalid thread ID %d", command.ThreadID)
+		}
+		err = d.process.SetActiveThread(th)
 	case types.SwitchGoroutine:
 		log.Printf("switching to goroutine %d", command.GoroutineID)
 		err = d.process.SwitchGoroutine(command.GoroutineID)
@@ -620,7 +624,7 @@ func (d *Debugger) LocalVariables(scope types.EvalScope, cfg proc.LoadConfig) ([
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.process, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
@@ -636,7 +640,7 @@ func (d *Debugger) FunctionArguments(scope types.EvalScope, cfg proc.LoadConfig)
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.process, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
@@ -653,7 +657,7 @@ func (d *Debugger) EvalVariableInScope(scope types.EvalScope, symbol string, cfg
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.process, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
@@ -670,7 +674,7 @@ func (d *Debugger) SetVariableInScope(scope types.EvalScope, symbol, value strin
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.process, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return err
 	}
@@ -754,7 +758,7 @@ func (d *Debugger) FindLocation(scope types.EvalScope, locStr string) ([]types.L
 		return nil, err
 	}
 
-	s, _ := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, _ := proc.ConvertEvalScope(d.process, scope.GoroutineID, scope.Frame)
 
 	locs, err := loc.Find(d, s, locStr)
 	for i := range locs {
@@ -784,7 +788,7 @@ func (d *Debugger) Disassemble(scope types.EvalScope, startPC, endPC uint64, fla
 	currentGoroutine := true
 	thread := d.process.CurrentThread
 
-	if s, err := d.process.ConvertEvalScope(scope.GoroutineID, scope.Frame); err == nil {
+	if s, err := proc.ConvertEvalScope(d.process, scope.GoroutineID, scope.Frame); err == nil {
 		thread = s.Thread
 		if scope.GoroutineID != -1 {
 			g, _ := s.Thread.GetG()
@@ -794,7 +798,7 @@ func (d *Debugger) Disassemble(scope types.EvalScope, startPC, endPC uint64, fla
 		}
 	}
 
-	insts, err := thread.Disassemble(startPC, endPC, currentGoroutine)
+	insts, err := proc.Disassemble(thread, startPC, endPC, currentGoroutine)
 	if err != nil {
 		return nil, err
 	}

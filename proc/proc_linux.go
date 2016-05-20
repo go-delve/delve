@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -59,7 +58,7 @@ func Launch(cmd []string) (*Process, error) {
 		return nil, err
 	}
 	p.Pid = proc.Process.Pid
-	_, _, err = p.wait(proc.Process.Pid, 0)
+	_, _, err = wait4(p.Pid, p.Pid, 0, p.os.comm)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
@@ -71,23 +70,31 @@ func Attach(pid int) (*Process, error) {
 	return initializeDebugProcess(New(pid), "", true)
 }
 
-// Kill kills the target process.
-func (p *Process) Kill() (err error) {
-	if p.exited {
-		return nil
-	}
-	if !p.Threads[p.Pid].Stopped() {
-		return errors.New("process must be stopped in order to kill it")
-	}
-	if err = sys.Kill(-p.Pid, sys.SIGKILL); err != nil {
-		return errors.New("could not deliver signal " + err.Error())
-	}
-	_, err = p.Mourn()
-	return err
+func stop(p *Process) (err error) {
+	return sys.Kill(p.Pid, sys.SIGTRAP)
 }
 
-func requestManualStop(p *Process) (err error) {
-	return sys.Kill(p.Pid, sys.SIGTRAP)
+func mourn(p *Process) (int, error) {
+	var status int
+	for {
+		_, ws, err := wait4(p.Pid, p.Pid, 0, p.os.comm)
+		if err != nil {
+			if err != syscall.ECHILD {
+				return 0, err
+			}
+			break
+		}
+		if ws != nil && ws.Exited() {
+			status = ws.ExitStatus()
+			break
+		}
+	}
+	p.exited = true
+	return status, nil
+}
+
+func kill(p *Process) error {
+	return sys.Kill(-p.Pid, sys.SIGKILL)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
@@ -107,7 +114,7 @@ func (p *Process) addThread(tid int, attach bool) (*Thread, error) {
 			// if we truly don't have permissions.
 			return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 		}
-		pid, status, err := p.wait(tid, 0)
+		pid, status, err := wait4(p.Pid, tid, 0, p.os.comm)
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +125,7 @@ func (p *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 	execOnPtraceThread(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
-		if _, _, err = p.wait(tid, 0); err != nil {
+		if _, _, err = wait4(p.Pid, tid, 0, p.os.comm); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
 		execOnPtraceThread(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
@@ -130,18 +137,20 @@ func (p *Process) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	p.Threads[tid] = &Thread{
+	newthread := &Thread{
 		ID: tid,
 		p:  p,
 		os: new(OSSpecificDetails),
 	}
+
+	p.Threads[tid] = newthread
 	if p.CurrentThread == nil {
-		p.SwitchThread(tid)
+		p.SetActiveThread(newthread)
 	}
-	return p.Threads[tid], nil
+	return newthread, nil
 }
 
-func updateThreadList(p *Process) error {
+func (p *Process) updateThreadList() error {
 	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", p.Pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)
@@ -163,16 +172,18 @@ func (p *Process) findExecutable(path string) (string, error) {
 	return path, nil
 }
 
-func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
+func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
+	_, f, l, _ := runtime.Caller(1)
+	log.WithFields(logrus.Fields{"pid": pid, "caller": fmt.Sprintf("%s:%d", filepath.Base(f), l)}).Debug("wait called")
 	for {
-		wpid, status, err := p.wait(pid, 0)
+		wpid, status, err := wait4(p.Pid, pid, 0, p.os.comm)
 		if err != nil {
-			return nil, nil, fmt.Errorf("wait err %s %d", err, pid)
+			return nil, nil, err
 		}
 		th := p.Threads[wpid]
 		if status.Exited() || status.Signal() == syscall.SIGKILL {
 			if wpid == p.Pid {
-				_, err := p.Mourn()
+				_, err := Mourn(p)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -251,11 +262,11 @@ func status(pid int, comm string) rune {
 	return state
 }
 
-func (p *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func wait4(ppid, pid, options int, comm string) (int, *sys.WaitStatus, error) {
 	_, f, l, _ := runtime.Caller(1)
-	log.WithFields(logrus.Fields{"pid": p.Pid, "file": f, "line": l}).Debug("waiting on process")
+	log.WithFields(logrus.Fields{"pid": pid, "caller": fmt.Sprintf("%s:%d", filepath.Base(f), l)}).Debug("wait4 called")
 	var s sys.WaitStatus
-	if (pid != p.Pid) || (options != 0) {
+	if (pid != ppid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
 		return wpid, &s, err
 	}
@@ -278,33 +289,11 @@ func (p *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 		if wpid != 0 {
 			return wpid, &s, err
 		}
-		if status(pid, p.os.comm) == StatusZombie {
+		if status(pid, comm) == StatusZombie {
 			// TODO(derekparker) properly handle when group leader becomes a zombie.
 			log.WithField("pid", pid).Debug("process is a zombie")
 			return pid, &s, nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-}
-
-func (p *Process) resume() error {
-	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range p.Threads {
-		if thread.CurrentBreakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
-				return err
-			}
-		}
-	}
-	// everything is resumed
-	for _, thread := range p.Threads {
-		if err := thread.resume(); err != nil && err != sys.ESRCH {
-			return err
-		}
-	}
-	return nil
-}
-
-func killProcess(pid int) error {
-	return sys.Kill(pid, sys.SIGINT)
 }

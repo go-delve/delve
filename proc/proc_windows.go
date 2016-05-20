@@ -147,7 +147,7 @@ func requestManualStop(p *Process) error {
 	return _DebugBreakProcess(p.os.hProcess)
 }
 
-func updateThreadList(p *Process) error {
+func (p *Process) updateThreadList() error {
 	// We ignore this request since threads are being
 	// tracked as they are created/killed in waitForDebugEvent.
 	return nil
@@ -158,9 +158,9 @@ func (p *Process) addThread(hThread syscall.Handle, threadID int, attach bool) (
 		return thread, nil
 	}
 	thread := &Thread{
-		ID:  threadID,
-		p: p,
-		os:  new(OSSpecificDetails),
+		ID: threadID,
+		p:  p,
+		os: new(OSSpecificDetails),
 	}
 	thread.os.hThread = hThread
 	p.Threads[threadID] = thread

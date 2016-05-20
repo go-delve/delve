@@ -42,7 +42,7 @@ type Variable struct {
 	RealType  dwarf.Type
 	Kind      reflect.Kind
 	mem       memoryReadWriter
-	p       *Process
+	p         *Process
 
 	Value constant.Value
 
@@ -160,7 +160,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, p *Process, me
 		Addr:      addr,
 		DwarfType: dwarfType,
 		mem:       mem,
-		p:       p,
+		p:         p,
 	}
 
 	v.RealType = resolveTypedef(v.DwarfType)
@@ -398,7 +398,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		DeferPC:    uint64(deferPC),
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
-		p:        gvar.p,
+		p:          gvar.p,
 	}
 	return g, nil
 }
@@ -575,7 +575,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 
 // EvalPackageVariable will evaluate the package level variable
 // specified by 'name'.
-func (p *Process) EvalPackageVariable(name string, cfg LoadConfig) (*Variable, error) {
+func EvalPackageVariable(p *Process, name string, cfg LoadConfig) (*Variable, error) {
 	scope := &EvalScope{Thread: p.CurrentThread, PC: 0, CFA: 0}
 
 	v, err := scope.packageVarAddr(name)

@@ -156,7 +156,7 @@ func requestManualStop(p *Process) (err error) {
 	return nil
 }
 
-func updateThreadList(p *Process) error {
+func (p *Process) updateThreadList() error {
 	var (
 		err   error
 		kret  C.kern_return_t
@@ -199,9 +199,9 @@ func (p *Process) addThread(port int, attach bool) (*Thread, error) {
 		return thread, nil
 	}
 	thread := &Thread{
-		ID:  port,
-		p: p,
-		os:  new(OSSpecificDetails),
+		ID: port,
+		p:  p,
+		os: new(OSSpecificDetails),
 	}
 	p.Threads[port] = thread
 	thread.os.threadAct = C.thread_act_t(port)
@@ -211,14 +211,14 @@ func (p *Process) addThread(port int, attach bool) (*Thread, error) {
 	return thread, nil
 }
 
-func (p *Process) findExecutable(path string) (string, error) {
+func findExecutable(path string) (string, error) {
 	if path == "" {
 		path = C.GoString(C.find_executable(C.int(p.Pid)))
 	}
 	return path, nil
 }
 
-func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
+func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 	for {
 		var hdr C.mach_msg_header_t
 		var sig C.int
@@ -239,7 +239,7 @@ func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 
 		case C.MACH_RCV_INTERRUPTED:
 			if !p.halt {
-				// Call trapWait again, it seems
+				// Call wait again, it seems
 				// MACH_RCV_INTERRUPTED is emitted before
 				// process natural death _sometimes_.
 				continue
@@ -251,41 +251,31 @@ func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
-		updateThreadList(p)
-		_, err := p.drainPendingMesages()
-		if err != nil {
-			return nil, nil, err
+		p.updateThreadList()
+		for {
+			var hdr C.mach_msg_header_t
+			var sig C.int
+			port := C.mach_port_wait(p.os.portSet, &hdr, &sig, C.int(1))
+			if port == 0 {
+				break
+			}
+			if port == C.MACH_RCV_TIMED_OUT {
+				break
+			}
+			if port == p.os.notificationPort {
+				exitcode, err := p.Mourn()
+				if err != nil {
+					return ports, err
+				}
+				return nil, nil, ProcessExitedError{Pid: p.Pid, Status: exitcode}
+			}
+			if th, ok := p.Threads[int(port)]; ok {
+				th.os.msgStop = true
+				th.os.hdr = hdr
+				th.os.sig = sig
+			}
 		}
 		return &WaitStatus{signal: syscall.Signal(int(sig)), signaled: true}, th, nil
-	}
-}
-
-func (p *Process) drainPendingMesages() ([]int, error) {
-	ports := make([]int, 0, len(p.Threads))
-	for {
-		var hdr C.mach_msg_header_t
-		var sig C.int
-		port := C.mach_port_wait(p.os.portSet, &hdr, &sig, C.int(1))
-		if port == 0 {
-			return ports, nil
-		}
-		if port == C.MACH_RCV_TIMED_OUT {
-			return ports, nil
-		}
-		if port == p.os.notificationPort {
-			exitcode, err := p.Mourn()
-			if err != nil {
-				return ports, err
-			}
-			return ports, ProcessExitedError{Pid: p.Pid, Status: exitcode}
-		}
-		th, ok := p.Threads[int(port)]
-		if ok {
-			th.os.msgStop = true
-			th.os.hdr = hdr
-			th.os.sig = sig
-			ports = append(ports, int(port))
-		}
 	}
 }
 

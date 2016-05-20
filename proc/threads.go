@@ -14,6 +14,8 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 )
 
+var ThreadExitedErr = errors.New("thread has exited")
+
 // Thread represents a single thread in the traced process
 // ID represents the thread id or port, Process holds a reference to the
 // Process struct that contains info on the process as
@@ -190,7 +192,7 @@ func (t *Thread) next(curloc *Location, fde *frame.FrameDescriptionEntry) error 
 				// a fake breakpoint which will be cleaned up later.
 				t.p.Breakpoints[g.DeferPC] = new(Breakpoint)
 				defer func() { delete(t.p.Breakpoints, g.DeferPC) }()
-				if _, err = t.p.SetTempBreakpoint(dpc); err != nil {
+				if _, err = SetTempBreakpoint(t.p, dpc); err != nil {
 					return err
 				}
 				break
@@ -243,7 +245,7 @@ func (t *Thread) setNextTempBreakpoints(curpc uint64, pcs []uint64) error {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
 		}
-		if _, err := t.p.SetTempBreakpoint(pcs[i]); err != nil {
+		if _, err := SetTempBreakpoint(t.p, pcs[i]); err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
 				return err
 			}

@@ -46,6 +46,19 @@ type Breakpoint struct {
 	Cond ast.Expr // When Cond is not nil the breakpoint will be triggered only if evaluating Cond returns true
 }
 
+// Breakpoints is a map of memory address -> breakpoint.
+type Breakpoints map[uint64]*Breakpoint
+
+// FindByID finds the breakpoint for the given ID.
+func (bps Breakpoints) FindByID(id int) (*Breakpoint, bool) {
+	for _, bp := range bps {
+		if bp.ID == id {
+			return bp, true
+		}
+	}
+	return nil, false
+}
+
 func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.ID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
 }
@@ -83,7 +96,7 @@ func (iae InvalidAddressError) Error() string {
 
 func createAndWriteBreakpoint(mem memoryReadWriter, loc *Location, temp bool, instr []byte) (*Breakpoint, error) {
 	log.WithFields(logrus.Fields{
-		"addr": uintptr(loc.PC),
+		"addr": fmt.Sprintf("%#v", loc.PC),
 		"file": filepath.Base(loc.File),
 		"line": loc.Line,
 		"temp": temp,

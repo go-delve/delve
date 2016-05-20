@@ -1033,7 +1033,7 @@ func TestIssue419(t *testing.T) {
 			d := time.Duration(rand.Intn(4) + 1)
 			time.Sleep(d * time.Second)
 			_, err := c.Halt()
-			assertNoError(err, t, "RequestManualStop()")
+			assertNoError(err, t, "Halt()")
 		}()
 		statech := c.Continue()
 		state := <-statech
@@ -1113,7 +1113,7 @@ func TestClientServer_Issue528(t *testing.T) {
 		return
 	}
 
-	withTestClient2("issue528", t, func(c service.Client) {
+	withTestClient2("issue528", t, func(c api.Client) {
 		findLocationHelper(t, c, "State.Close", false, 1, 0)
 	})
 }

@@ -17,9 +17,9 @@ func (t *Thread) halt() error {
 	if err != nil {
 		return fmt.Errorf("halt err %s on thread %d for process %d", err, t.ID, t.p.Pid)
 	}
-	_, _, err = t.p.wait(t.ID, 0)
-	if err != nil {
-		return fmt.Errorf("wait err %s on thread %d", err, t.ID)
+	_, _, err = wait(t.p, t.ID)
+	if err != nil && err != sys.ECHILD {
+		return err
 	}
 	return nil
 }
@@ -35,21 +35,28 @@ func (t *Thread) resume() error {
 
 func (t *Thread) resumeWithSig(sig int) error {
 	t.running = true
-	return PtraceCont(t.ID, sig)
+	err := PtraceCont(t.ID, sig)
+	if err == sys.ESRCH {
+		return ThreadExitedErr
+	}
+	return err
 }
 
 func (t *Thread) singleStep() error {
 	err := PtraceSingleStep(t.ID)
 	if err != nil {
+		if err == sys.ESRCH {
+			return ThreadExitedErr
+		}
 		return err
 	}
 	// TODO(derekparker) consolidate all wait calls into threadResume
-	_, status, err := t.p.wait(t.ID, 0)
+	status, _, err := wait(t.p, t.ID)
 	if err != nil {
 		return err
 	}
 	if status.Exited() {
-		_, err := t.p.Mourn()
+		_, err := Mourn(t.p)
 		if err != nil {
 			return err
 		}

@@ -1026,7 +1026,7 @@ func Test1Issue419(t *testing.T) {
 			d := time.Duration(rand.Intn(4) + 1)
 			time.Sleep(d * time.Second)
 			_, err := c.Halt()
-			assertNoError(err, t, "RequestManualStop()")
+			assertNoError(err, t, "Halt()")
 		}()
 		statech := c.Continue()
 		state := <-statech

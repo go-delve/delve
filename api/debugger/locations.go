@@ -240,7 +240,7 @@ func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr st
 	}
 	r := make([]types.Location, 0, len(matches))
 	for i := range matches {
-		addr, err := d.process.FindFunctionLocation(matches[i], true, 0)
+		addr, err := proc.FindFunctionLocation(d.process, matches[i], true, 0)
 		if err == nil {
 			r = append(r, types.Location{PC: addr})
 		}
@@ -269,7 +269,7 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 			return []types.Location{{PC: addr}}, nil
 		case reflect.Func:
 			_, _, fn := d.process.Dwarf.PCToLine(uint64(v.Base))
-			pc, err := d.process.FirstPCAfterPrologue(fn, false)
+			pc, err := proc.FirstPCAfterPrologue(d.process, fn, false)
 			if err != nil {
 				return nil, err
 			}
@@ -352,12 +352,12 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 			if loc.LineOffset < 0 {
 				return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
 			}
-			addr, err = d.process.FindFileLocation(candidates[0], loc.LineOffset)
+			addr, err = proc.FindFileLocation(d.process, candidates[0], loc.LineOffset)
 		} else {
 			if loc.LineOffset < 0 {
-				addr, err = d.process.FindFunctionLocation(candidates[0], true, 0)
+				addr, err = proc.FindFunctionLocation(d.process, candidates[0], true, 0)
 			} else {
-				addr, err = d.process.FindFunctionLocation(candidates[0], false, loc.LineOffset)
+				addr, err = proc.FindFunctionLocation(d.process, candidates[0], false, loc.LineOffset)
 			}
 		}
 		if err != nil {
@@ -380,7 +380,7 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
-	addr, err := d.process.FindFileLocation(file, line+loc.Offset)
+	addr, err := proc.FindFileLocation(d.process, file, line+loc.Offset)
 	return []types.Location{{PC: addr}}, err
 }
 
@@ -392,6 +392,6 @@ func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
-	addr, err := d.process.FindFileLocation(file, loc.Line)
+	addr, err := proc.FindFileLocation(d.process, file, loc.Line)
 	return []types.Location{{PC: addr}}, err
 }

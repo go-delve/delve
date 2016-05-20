@@ -19,10 +19,7 @@ const (
 // Disassemble disassembles target memory between startPC and endPC
 // If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble will evaluate the argument of the CALL instruction using the thread's registers
 // Be aware that the Bytes field of each returned instruction is a slice of a larger array of size endPC - startPC
-func (t *Thread) Disassemble(startPC, endPC uint64, currentGoroutine bool) ([]AsmInstruction, error) {
-	if t.p.exited {
-		return nil, &ProcessExitedError{}
-	}
+func Disassemble(t *Thread, startPC, endPC uint64, currentGoroutine bool) ([]AsmInstruction, error) {
 	mem, err := t.readMemory(uintptr(startPC), int(endPC-startPC))
 	if err != nil {
 		return nil, err

@@ -40,7 +40,7 @@ type Process struct {
 	Pid int
 	// Breakpoints is a map holding information on the active breakpoints
 	// for this process.
-	Breakpoints map[uint64]*Breakpoint
+	Breakpoints Breakpoints
 	// Threads is a list of threads mapped as such: pid -> *Thread
 	Threads map[int]*Thread
 	// CurrentThread is the active thread. This is the thread that, by default,
@@ -99,7 +99,7 @@ func New(pid int) *Process {
 	return &Process{
 		Pid:         pid,
 		Threads:     make(map[int]*Thread),
-		Breakpoints: make(map[uint64]*Breakpoint),
+		Breakpoints: make(Breakpoints),
 		os:          new(OSProcessDetails),
 	}
 }
@@ -115,34 +115,6 @@ func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
 }
 
-// Detach from the process being debugged, optionally killing it.
-func (p *Process) Detach(kill bool) (err error) {
-	if p.Running() {
-		if err = p.Halt(); err != nil {
-			return
-		}
-	}
-	if !kill {
-		// Clean up any breakpoints we've set.
-		for _, bp := range p.Breakpoints {
-			if bp != nil {
-				_, err := p.ClearBreakpoint(bp.Addr)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
-	err = PtraceDetach(p.Pid, 0)
-	if err != nil {
-		return
-	}
-	if kill {
-		err = killProcess(p.Pid)
-	}
-	return
-}
-
 // Exited returns whether the process has exited.
 func (p *Process) Exited() bool {
 	return p.exited
@@ -156,19 +128,6 @@ func (p *Process) Running() bool {
 		}
 	}
 	return false
-}
-
-// Mourn will reap the process, ensuring it does not become a zombie.
-func (p *Process) Mourn() (int, error) {
-	p.exited = true
-	_, ws, err := p.wait(p.Pid, 0)
-	if err != nil {
-		if err != syscall.ECHILD {
-			return 0, err
-		}
-		return 0, nil
-	}
-	return ws.ExitStatus(), nil
 }
 
 // LoadInformation finds the executable and then uses it
@@ -190,15 +149,51 @@ func (p *Process) LoadInformation(path string) error {
 	return nil
 }
 
+// CurrentLocation returns the location of the current thread.
+func (p *Process) CurrentLocation() (*Location, error) {
+	return p.CurrentThread.Location()
+}
+
+// Detach from the process being debugged, optionally killing it.
+func Detach(p *Process, kill bool) error {
+	if p.Running() {
+		if err := Halt(p); err != nil {
+			return err
+		}
+	}
+	if !kill {
+		// Clean up any breakpoints we've set.
+		for _, bp := range p.Breakpoints {
+			if bp != nil {
+				if _, err := ClearBreakpoint(p, bp.Addr); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if err := PtraceDetach(p.Pid, 0); err != nil {
+		return err
+	}
+	if kill {
+		return Kill(p)
+	}
+	return nil
+}
+
+// Mourn will reap the process, ensuring it does not become a zombie.
+func Mourn(p *Process) (int, error) {
+	return mourn(p)
+}
+
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normailzed to lower case and '/' on Windows.
-func (p *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
+func FindFileLocation(p *Process, fileName string, lineno int) (uint64, error) {
 	pc, fn, err := p.Dwarf.LineToPC(fileName, lineno)
 	if err != nil {
 		return 0, err
 	}
 	if fn.Entry == pc {
-		pc, _ = p.FirstPCAfterPrologue(fn, true)
+		pc, _ = FirstPCAfterPrologue(p, fn, true)
 	}
 	return pc, nil
 }
@@ -209,14 +204,14 @@ func (p *Process) FindFileLocation(fileName string, lineno int) (uint64, error) 
 // Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
 // Note that setting breakpoints at that address will cause surprising behavior:
 // https://github.com/derekparker/delve/issues/170
-func (p *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
+func FindFunctionLocation(p *Process, funcName string, firstLine bool, lineOffset int) (uint64, error) {
 	origfn := p.Dwarf.LookupFunc(funcName)
 	if origfn == nil {
 		return 0, fmt.Errorf("Could not find function %s\n", funcName)
 	}
 
 	if firstLine {
-		return p.FirstPCAfterPrologue(origfn, false)
+		return FirstPCAfterPrologue(p, origfn, false)
 	} else if lineOffset > 0 {
 		filename, lineno, _ := p.Dwarf.PCToLine(origfn.Entry)
 		breakAddr, _, err := p.Dwarf.LineToPC(filename, lineno+lineOffset)
@@ -226,30 +221,40 @@ func (p *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffs
 	return origfn.Entry, nil
 }
 
-// CurrentLocation returns the location of the current thread.
-func (p *Process) CurrentLocation() (*Location, error) {
-	return p.CurrentThread.Location()
-}
-
-// RequestManualStop sets the `halt` flag and
+// Stop sets the `halt` flag and
 // sends SIGSTOP to all threads.
-func (p *Process) RequestManualStop() error {
+func Stop(p *Process) error {
 	if p.exited {
 		return &ProcessExitedError{}
 	}
 	p.halt = true
-	return requestManualStop(p)
+	return stop(p)
+}
+
+// Kill kills the target process.
+func Kill(p *Process) (err error) {
+	if p.exited {
+		return nil
+	}
+	if !p.Threads[p.Pid].Stopped() {
+		return errors.New("process must be stopped in order to kill it")
+	}
+	if err = kill(p); err != nil {
+		return errors.New("could not deliver signal " + err.Error())
+	}
+	_, err = Mourn(p)
+	return err
 }
 
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table. Setting a break point must be thread specific due to
 // ptrace actions needing the thread to be in a signal-delivery-stop.
-func (p *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
+func SetBreakpoint(p *Process, addr uint64) (*Breakpoint, error) {
 	return setBreakpoint(p, p.CurrentThread, addr, false, p.arch.BreakpointInstruction())
 }
 
 // SetTempBreakpoint sets a temp breakpoint. Used during 'next' operations.
-func (p *Process) SetTempBreakpoint(addr uint64) (*Breakpoint, error) {
+func SetTempBreakpoint(p *Process, addr uint64) (*Breakpoint, error) {
 	return setBreakpoint(p, p.CurrentThread, addr, true, p.arch.BreakpointInstruction())
 }
 
@@ -257,7 +262,7 @@ func setBreakpoint(p *Process, mem memoryReadWriter, addr uint64, temp bool, ins
 	if p.exited {
 		return nil, &ProcessExitedError{}
 	}
-	if bp, ok := p.FindBreakpoint(addr); ok {
+	if bp, ok := p.Breakpoints[addr]; ok {
 		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 	}
 	f, l, fn := p.Dwarf.PCToLine(uint64(addr))
@@ -274,12 +279,12 @@ func setBreakpoint(p *Process, mem memoryReadWriter, addr uint64, temp bool, ins
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
-func (p *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
+func ClearBreakpoint(p *Process, addr uint64) (*Breakpoint, error) {
 	log.WithField("addr", uintptr(addr)).Info("clear breakpoint")
 	if p.exited {
 		return nil, &ProcessExitedError{}
 	}
-	bp, ok := p.FindBreakpoint(addr)
+	bp, ok := p.Breakpoints[addr]
 	if !ok {
 		return nil, NoBreakpointError{addr: addr}
 	}
@@ -311,7 +316,7 @@ func (p *Process) Status() *WaitStatus {
 }
 
 // Next continues execution until the next source line.
-func (p *Process) Next() (err error) {
+func Next(p *Process) (err error) {
 	log.Info("nexting")
 	if p.exited {
 		return &ProcessExitedError{}
@@ -345,7 +350,7 @@ func (p *Process) Next() (err error) {
 		case GoroutineExitingError:
 			goroutineExiting = t.goid == g.ID
 		default:
-			p.ClearTempBreakpoints()
+			ClearTempBreakpoints(p)
 			return
 		}
 	}
@@ -368,13 +373,13 @@ func (p *Process) Next() (err error) {
 		}
 	}
 
-	return p.Continue()
+	return Continue(p)
 }
 
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
-func (p *Process) Continue() error {
+func Continue(p *Process) error {
 	return resume(p, ModeResume)
 }
 
@@ -401,23 +406,43 @@ func resume(p *Process, mode ResumeMode) error {
 		return p.SelectedGoroutine.thread.StepInstruction()
 	case ModeStep:
 		log.Info("begin step")
-		th := p.CurrentThread
-		if fn, ok := atFunctionCall(th); ok {
+		if fn, ok := atFunctionCall(p.CurrentThread); ok {
 			log.Printf("stepping into function: %s", fn.Name)
-			return p.StepInto(fn)
+			return StepInto(p, fn)
 		}
-		return p.Next()
+		return Next(p)
 	case ModeResume:
 		log.Info("begin resume")
-		if err := p.resume(); err != nil {
-			log.Printf("resume error: %v\n", err)
-			return err
+		// all threads stopped over a breakpoint are made to step over it
+		for _, thread := range p.Threads {
+			if thread.CurrentBreakpoint != nil {
+				if err := thread.StepInstruction(); err != nil {
+					if err == ThreadExitedErr {
+						delete(p.Threads, thread.ID)
+						continue
+					}
+					logrus.WithError(err).Error("error while stepping thread to resume process")
+					return err
+				}
+			}
 		}
+		// everything is resumed
+		for _, thread := range p.Threads {
+			if err := thread.Continue(); err != nil {
+				if err == ThreadExitedErr {
+					delete(p.Threads, thread.ID)
+					continue
+				}
+				logrus.WithError(err).Error("error while resuming process")
+				return err
+			}
+		}
+
 	default:
 		// Programmer error, safe to panic here.
 		panic("invalid mode passed to resume")
 	}
-	status, trapthread, err := p.Wait()
+	status, trapthread, err := Wait(p)
 	if err != nil {
 		log.WithError(err).Error("Wait error")
 		return err
@@ -426,26 +451,30 @@ func resume(p *Process, mode ResumeMode) error {
 		return ProcessExitedError{Pid: p.Pid, Status: status.ExitStatus()}
 	}
 	// Make sure process is fully stopped.
-	if err := p.Halt(); err != nil {
+	if err := Halt(p); err != nil {
 		log.WithError(err).Error("Halt error")
 		return err
 	}
 	switch {
 	case status.Trap():
-		log.Debug("handling SIGTRAP")
+		log.Info("handling SIGTRAP")
 		err := handleSigTrap(p, trapthread)
 		if err == breakpointConditionNotMetError {
 			// Do not stop for a breakpoint whose condition has not been met.
 			return resume(p, mode)
 		}
-		return err
+		if err != nil {
+			log.WithError(err).Error("handleSigTrap error")
+			return err
+		}
+		return nil
 	case status.Signaled():
-		log.WithField("signal", status.Signal()).Debug("signaled")
+		log.WithField("signal", status.Signal()).Info("signaled")
 		// TODO(derekparker) alert users of signals.
 		if err := trapthread.ContinueWithSignal(int(status.Signal())); err != nil {
 			// TODO(derekparker) should go through regular resume flow.
 			if err == syscall.ESRCH {
-				exitcode, err := p.Mourn()
+				exitcode, err := Mourn(p)
 				if err != nil {
 					return err
 				}
@@ -465,7 +494,7 @@ func atFunctionCall(th *Thread) (*gosym.Func, bool) {
 	if err != nil {
 		return nil, false
 	}
-	text, err := th.Disassemble(pc, pc+maxInstructionLength, true)
+	text, err := Disassemble(th, pc, pc+maxInstructionLength, true)
 	if err != nil {
 		return nil, false
 	}
@@ -483,12 +512,16 @@ func atFunctionCall(th *Thread) (*gosym.Func, bool) {
 
 func handleSigTrap(p *Process, trapthread *Thread) error {
 	log.Debug("checking breakpoint conditions")
-	if err := p.setCurrentBreakpoints(); err != nil {
+	if err := setCurrentBreakpoints(p); err != nil {
 		log.WithError(err).Error("setCurrentBreakpoints error")
 		return err
 	}
-	if err := p.pickCurrentThread(trapthread); err != nil {
-		log.WithError(err).Error("pickCurrentThread error")
+	th, err := activeThread(p.Threads, trapthread)
+	if err != nil {
+		log.WithError(err).Error("setCurrentThread error")
+		return err
+	}
+	if err := p.SetActiveThread(th); err != nil {
 		return err
 	}
 	switch {
@@ -506,13 +539,13 @@ func handleSigTrap(p *Process, trapthread *Thread) error {
 				}
 			}
 		}
-		return p.conditionErrors()
+		return conditionErrors(p)
 	case p.CurrentThread.onTriggeredTempBreakpoint():
 		log.Debug("on triggered temp breakpoint")
-		if err := p.ClearTempBreakpoints(); err != nil {
+		if err := ClearTempBreakpoints(p); err != nil {
 			return err
 		}
-		return p.conditionErrors()
+		return conditionErrors(p)
 	case p.CurrentThread.onTriggeredBreakpoint():
 		log.Debug("on triggered breakpoint")
 		onNextGoroutine, err := p.CurrentThread.onNextGoroutine()
@@ -520,20 +553,20 @@ func handleSigTrap(p *Process, trapthread *Thread) error {
 			return err
 		}
 		if onNextGoroutine {
-			if err := p.ClearTempBreakpoints(); err != nil {
+			if err := ClearTempBreakpoints(p); err != nil {
 				return err
 			}
 		}
-		return p.conditionErrors()
+		return conditionErrors(p)
 	}
 	return breakpointConditionNotMetError
 }
 
-func (p *Process) Wait() (*WaitStatus, *Thread, error) {
-	return p.trapWait(-p.Pid)
+func Wait(p *Process) (*WaitStatus, *Thread, error) {
+	return wait(p, -p.Pid)
 }
 
-func (p *Process) conditionErrors() error {
+func conditionErrors(p *Process) error {
 	var condErr error
 	for _, th := range p.Threads {
 		if th.CurrentBreakpoint != nil && th.BreakpointConditionError != nil {
@@ -547,73 +580,71 @@ func (p *Process) conditionErrors() error {
 	return condErr
 }
 
-// pick a new p.CurrentThread, with the following priority:
+// set a new p.CurrentThread, with the following priority:
 // 	- a thread with onTriggeredTempBreakpoint() == true
 // 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
 // 	- trapthread
-func (p *Process) pickCurrentThread(trapthread *Thread) error {
-	if trapthread == nil {
-		panic("pickCurrentThread got nil thread")
-	}
-	for _, th := range p.Threads {
+func activeThread(threads map[int]*Thread, trapthread *Thread) (*Thread, error) {
+	for _, th := range threads {
 		if th.onTriggeredTempBreakpoint() {
 			log.WithField("thread", th.ID).Debug("triggered temp breakpoint")
-			return p.SwitchThread(th.ID)
+			return th, nil
 		}
 	}
 	if trapthread.onTriggeredBreakpoint() {
 		log.WithField("thread", trapthread.ID).Debug("triggered breakpoint")
-		return p.SwitchThread(trapthread.ID)
+		return trapthread, nil
 	}
-	for _, th := range p.Threads {
+	for _, th := range threads {
 		if th.onTriggeredBreakpoint() {
 			log.WithField("thread", th.ID).Debug("triggered breakpoint")
-			return p.SwitchThread(th.ID)
+			return th, nil
 		}
 	}
-	log.WithField("thread", trapthread.ID).Debug("switching to default thread")
-	return p.SwitchThread(trapthread.ID)
+	log.WithField("thread", trapthread.ID).Debug("trapthread is active")
+	return trapthread, nil
 }
 
 // Step will continue until another source line is reached.
 // Will step into functions.
-func (p *Process) Step() (err error) {
+func Step(p *Process) (err error) {
 	return resume(p, ModeStep)
 }
 
 // StepInto sets a temp breakpoint after the prologue of fn and calls Continue
-func (p *Process) StepInto(fn *gosym.Func) error {
+func StepInto(p *Process, fn *gosym.Func) error {
 	for i := range p.Breakpoints {
 		if p.Breakpoints[i].Temp {
 			return fmt.Errorf("next while nexting")
 		}
 	}
-	pc, _ := p.FirstPCAfterPrologue(fn, false)
-	if _, err := p.SetTempBreakpoint(pc); err != nil {
+	pc, _ := FirstPCAfterPrologue(p, fn, false)
+	if _, err := SetTempBreakpoint(p, pc); err != nil {
 		return err
 	}
-	return p.Continue()
+	return Continue(p)
 }
 
 // StepInstruction will continue the current thread for exactly
 // one instruction. This method affects only the thread
 // asssociated with the selected goroutine. All other
 // threads will remain stopped.
-func (p *Process) StepInstruction() (err error) {
+func StepInstruction(p *Process) (err error) {
 	return resume(p, ModeStepInstruction)
 }
 
-// SwitchThread changes from current thread to the thread specified by `tid`.
-func (p *Process) SwitchThread(tid int) error {
+// SetActiveThread changes from current thread to the thread specified.
+func (p *Process) SetActiveThread(t *Thread) error {
 	if p.exited {
 		return &ProcessExitedError{}
 	}
-	if th, ok := p.Threads[tid]; ok {
-		p.CurrentThread = th
-		p.SelectedGoroutine, _ = p.CurrentThread.GetG()
-		return nil
+	if t == nil {
+		// Programmer error, should never happen.
+		panic("nil thread")
 	}
-	return fmt.Errorf("thread %d does not exist", tid)
+	p.CurrentThread = t
+	p.SelectedGoroutine, _ = t.GetG()
+	return nil
 }
 
 // SwitchGoroutine changes from current thread to the thread
@@ -631,7 +662,7 @@ func (p *Process) SwitchGoroutine(gid int) error {
 		return nil
 	}
 	if g.thread != nil {
-		return p.SwitchThread(g.thread.ID)
+		return p.SetActiveThread(g.thread)
 	}
 	p.SelectedGoroutine = g
 	return nil
@@ -712,7 +743,7 @@ func (p *Process) GoroutinesInfo() ([]*G, error) {
 }
 
 // Halt stops all threads.
-func (p *Process) Halt() (err error) {
+func Halt(p *Process) (err error) {
 	if p.exited {
 		return &ProcessExitedError{}
 	}
@@ -746,96 +777,8 @@ func (p *Process) DwarfReader() *reader.Reader {
 	return p.Dwarf.Reader()
 }
 
-// FindBreakpointByID finds the breakpoint for the given ID.
-func (p *Process) FindBreakpointByID(id int) (*Breakpoint, bool) {
-	for _, bp := range p.Breakpoints {
-		if bp.ID == id {
-			return bp, true
-		}
-	}
-	return nil, false
-}
-
-// FindBreakpoint finds the breakpoint for the given pc.
-func (p *Process) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
-	// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
-	if bp, ok := p.Breakpoints[pc-uint64(p.arch.BreakpointSize())]; ok {
-		return bp, true
-	}
-	// Directly use addr to lookup breakpoint.
-	if bp, ok := p.Breakpoints[pc]; ok {
-		return bp, true
-	}
-	return nil, false
-}
-
-// Returns a new Process struct.
-func initializeDebugProcess(p *Process, path string, attach bool) (*Process, error) {
-	if attach {
-		var err error
-		err = PtraceAttach(p.Pid)
-		if err != nil {
-			return nil, err
-		}
-		_, _, err = p.wait(p.Pid, 0)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	err := p.LoadInformation(path)
-	if err != nil {
-		return nil, err
-	}
-
-	switch runtime.GOARCH {
-	case "amd64":
-		p.arch = AMD64Arch()
-	}
-
-	if err := updateThreadList(p); err != nil {
-		return nil, err
-	}
-
-	ver, isextld, err := p.getGoInformation()
-	if err != nil {
-		return nil, err
-	}
-
-	p.arch.SetGStructOffset(ver, isextld)
-	// SelectedGoroutine can not be set correctly by the call to updateThreadList
-	// because without calling SetGStructOffset we can not read the G struct of CurrentThread
-	// but without calling updateThreadList we can not examine memory to determine
-	// the offset of g struct inside TLS
-	p.SelectedGoroutine, _ = p.CurrentThread.GetG()
-
-	panicpc, err := p.FindFunctionLocation("runtime.startpanic", true, 0)
-	if err == nil {
-		bp, err := p.SetBreakpoint(panicpc)
-		if err == nil {
-			bp.Name = "unrecovered-panic"
-			bp.ID = -1
-			breakpointIDCounter--
-		}
-	}
-
-	return p, nil
-}
-
-func (p *Process) ClearTempBreakpoints() error {
-	for _, bp := range p.Breakpoints {
-		if !bp.Temp {
-			continue
-		}
-		if _, err := p.ClearBreakpoint(bp.Addr); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (p *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
-	vv, err := p.EvalPackageVariable("runtime.buildVersion", LoadConfig{true, 0, 64, 0, 0})
+func getGoInformation(p *Process) (ver GoVersion, isextld bool, err error) {
+	vv, err := EvalPackageVariable(p, "runtime.buildVersion", LoadConfig{true, 0, 64, 0, 0})
 	if err != nil {
 		err = fmt.Errorf("Could not determine version number: %v\n", err)
 		return
@@ -865,6 +808,71 @@ func (p *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
 	return
 }
 
+// Returns a new Process struct.
+func initializeDebugProcess(p *Process, path string, attach bool) (*Process, error) {
+	if attach {
+		var err error
+		err = PtraceAttach(p.Pid)
+		if err != nil {
+			return nil, err
+		}
+		_, _, err = Wait(p)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err := p.LoadInformation(path)
+	if err != nil {
+		return nil, err
+	}
+
+	switch runtime.GOARCH {
+	case "amd64":
+		p.arch = AMD64Arch()
+	}
+
+	if err := p.updateThreadList(); err != nil {
+		return nil, err
+	}
+
+	ver, isextld, err := getGoInformation(p)
+	if err != nil {
+		return nil, err
+	}
+
+	p.arch.SetGStructOffset(ver, isextld)
+	// SelectedGoroutine can not be set correctly by the call to updateThreadList
+	// because without calling SetGStructOffset we can not read the G struct of CurrentThread
+	// but without calling updateThreadList we can not examine memory to determine
+	// the offset of g struct inside TLS
+	p.SelectedGoroutine, _ = p.CurrentThread.GetG()
+
+	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
+	if err == nil {
+		bp, err := SetBreakpoint(p, panicpc)
+		if err == nil {
+			bp.Name = "unrecovered-panic"
+			bp.ID = -1
+			breakpointIDCounter--
+		}
+	}
+
+	return p, nil
+}
+
+func ClearTempBreakpoints(p *Process) error {
+	for _, bp := range p.Breakpoints {
+		if !bp.Temp {
+			continue
+		}
+		if _, err := ClearBreakpoint(p, bp.Addr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // FindGoroutine returns a G struct representing the goroutine
 // specified by `gid`.
 func (p *Process) FindGoroutine(gid int) (*G, error) {
@@ -886,7 +894,7 @@ func (p *Process) FindGoroutine(gid int) (*G, error) {
 
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
-func (p *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
+func ConvertEvalScope(p *Process, gid, frame int) (*EvalScope, error) {
 	if p.exited {
 		return nil, &ProcessExitedError{}
 	}
@@ -920,7 +928,7 @@ func (p *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 	return &out, nil
 }
 
-func (p *Process) setCurrentBreakpoints() error {
+func setCurrentBreakpoints(p *Process) error {
 	for _, th := range p.Threads {
 		if th.CurrentBreakpoint == nil {
 			err := th.SetCurrentBreakpoint()
@@ -948,7 +956,7 @@ func setChanRecvBreakpoints(p *Process) (int, error) {
 				}
 				return 0, err
 			}
-			if _, err = p.SetTempBreakpoint(ret); err != nil {
+			if _, err = SetTempBreakpoint(p, ret); err != nil {
 				if _, ok := err.(BreakpointExistsError); ok {
 					// Ignore duplicate breakpoints in case if multiple
 					// goroutines wait on the same channel
