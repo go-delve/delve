@@ -94,11 +94,11 @@ func Launch(cmd []string) (*Process, error) {
 	sys.CloseHandle(sys.Handle(pi.Process))
 	sys.CloseHandle(sys.Handle(pi.Thread))
 
-	dbp := New(int(pi.ProcessId))
+	p := New(int(pi.ProcessId))
 
 	switch runtime.GOARCH {
 	case "amd64":
-		dbp.arch = AMD64Arch()
+		p.arch = AMD64Arch()
 	}
 
 	// Note - it should not actually be possible for the
@@ -107,19 +107,19 @@ func Launch(cmd []string) (*Process, error) {
 	// after launching under DEBUGONLYTHISPROCESS.
 	var tid, exitCode int
 	execOnPtraceThread(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent()
+		tid, exitCode, err = p.waitForDebugEvent()
 	})
 	if err != nil {
 		return nil, err
 	}
 	if tid == 0 {
-		if _, err := dbp.Mourn(); err != nil {
+		if _, err := p.Mourn(); err != nil {
 			return nil, err
 		}
-		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
+		return nil, ProcessExitedError{Pid: p.Pid, Status: exitCode}
 	}
 
-	return initializeDebugProcess(dbp, argv0Go, false)
+	return initializeDebugProcess(p, argv0Go, false)
 }
 
 // Attach to an existing process with the given PID.
@@ -128,49 +128,49 @@ func Attach(pid int) (*Process, error) {
 }
 
 // Kill kills the process.
-func (dbp *Process) Kill() error {
-	if dbp.exited {
+func (p *Process) Kill() error {
+	if p.exited {
 		return nil
 	}
-	if !dbp.Threads[dbp.Pid].Stopped() {
+	if !p.Threads[p.Pid].Stopped() {
 		return errors.New("process must be stopped in order to kill it")
 	}
 	// TODO: Should not have to ignore failures here,
 	// but some tests appear to Kill twice causing
 	// this to fail on second attempt.
-	_ = syscall.TerminateProcess(dbp.os.hProcess, 1)
-	dbp.exited = true
+	_ = syscall.TerminateProcess(p.os.hProcess, 1)
+	p.exited = true
 	return nil
 }
 
-func requestManualStop(dbp *Process) error {
-	return _DebugBreakProcess(dbp.os.hProcess)
+func requestManualStop(p *Process) error {
+	return _DebugBreakProcess(p.os.hProcess)
 }
 
-func updateThreadList(dbp *Process) error {
+func updateThreadList(p *Process) error {
 	// We ignore this request since threads are being
 	// tracked as they are created/killed in waitForDebugEvent.
 	return nil
 }
 
-func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach bool) (*Thread, error) {
-	if thread, ok := dbp.Threads[threadID]; ok {
+func (p *Process) addThread(hThread syscall.Handle, threadID int, attach bool) (*Thread, error) {
+	if thread, ok := p.Threads[threadID]; ok {
 		return thread, nil
 	}
 	thread := &Thread{
 		ID:  threadID,
-		dbp: dbp,
+		p: p,
 		os:  new(OSSpecificDetails),
 	}
 	thread.os.hThread = hThread
-	dbp.Threads[threadID] = thread
-	if dbp.CurrentThread == nil {
-		dbp.SwitchThread(thread.ID)
+	p.Threads[threadID] = thread
+	if p.CurrentThread == nil {
+		p.SwitchThread(thread.ID)
 	}
 	return thread, nil
 }
 
-func (dbp *Process) findExecutable(path string) (string, error) {
+func (p *Process) findExecutable(path string) (string, error) {
 	if path == "" {
 		// TODO: Find executable path from PID/handle on Windows:
 		// https://msdn.microsoft.com/en-us/library/aa366789(VS.85).aspx
@@ -179,7 +179,7 @@ func (dbp *Process) findExecutable(path string) (string, error) {
 	return path, nil
 }
 
-func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
+func (p *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 	var debugEvent _DEBUG_EVENT
 	shouldExit := false
 	for {
@@ -201,21 +201,21 @@ func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 					return 0, 0, err
 				}
 			}
-			dbp.os.hProcess = debugInfo.Process
-			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
+			p.os.hProcess = debugInfo.Process
+			_, err = p.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
 			if err != nil {
 				return 0, 0, err
 			}
 			break
 		case _CREATE_THREAD_DEBUG_EVENT:
 			debugInfo := (*_CREATE_THREAD_DEBUG_INFO)(unionPtr)
-			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
+			_, err = p.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
 			if err != nil {
 				return 0, 0, err
 			}
 			break
 		case _EXIT_THREAD_DEBUG_EVENT:
-			delete(dbp.Threads, int(debugEvent.ThreadId))
+			delete(p.Threads, int(debugEvent.ThreadId))
 			break
 		case _OUTPUT_DEBUG_STRING_EVENT:
 			//TODO: Handle debug output strings
@@ -236,7 +236,7 @@ func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 			break
 		case _EXCEPTION_DEBUG_EVENT:
 			tid := int(debugEvent.ThreadId)
-			dbp.os.breakThread = tid
+			p.os.breakThread = tid
 			return tid, 0, nil
 		case _EXIT_PROCESS_DEBUG_EVENT:
 			debugInfo := (*_EXIT_PROCESS_DEBUG_INFO)(unionPtr)
@@ -258,11 +258,11 @@ func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 	}
 }
 
-func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
+func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	var err error
 	var tid, exitCode int
 	execOnPtraceThread(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent()
+		tid, exitCode, err = p.waitForDebugEvent()
 	})
 	if err != nil {
 		return nil, nil, err
@@ -270,26 +270,26 @@ func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	if tid == 0 {
 		return &WaitStatus{exited: true, exitstatus: exitCode}, nil, nil
 	}
-	th := dbp.Threads[tid]
+	th := p.Threads[tid]
 	return &WaitStatus{signal: syscall.SIGTRAP}, th, nil
 }
 
-func (dbp *Process) loadProcessInformation() {
+func (p *Process) loadProcessInformation() {
 	return
 }
 
-func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func (p *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	return 0, nil, fmt.Errorf("not implemented: wait")
 }
 
-func (dbp *Process) exitGuard(err error) error {
+func (p *Process) exitGuard(err error) error {
 	return err
 }
 
-func (dbp *Process) resume() error {
+func (p *Process) resume() error {
 	// Only resume the thread that broke into the debugger
-	thread := dbp.Threads[dbp.os.breakThread]
-	// This relies on the same assumptions as dbp.setCurrentBreakpoints
+	thread := p.Threads[p.os.breakThread]
+	// This relies on the same assumptions as p.setCurrentBreakpoints
 	if thread.CurrentBreakpoint != nil {
 		if err := thread.StepInstruction(); err != nil {
 			return err
@@ -297,7 +297,7 @@ func (dbp *Process) resume() error {
 	}
 	// In case we are now on a different thread, make sure we resume
 	// the thread that is broken.
-	thread = dbp.Threads[dbp.os.breakThread]
+	thread = p.Threads[p.os.breakThread]
 	if err := thread.resume(); err != nil {
 		return err
 	}

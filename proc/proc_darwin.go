@@ -55,33 +55,33 @@ func Launch(cmd []string) (*Process, error) {
 	// argv array must be null terminated.
 	argvSlice = append(argvSlice, nil)
 
-	dbp := New(0)
+	p := New(0)
 	var pid int
 	execOnPtraceThread(func() {
 		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
-			&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
-			&dbp.os.notificationPort)
+			&p.os.task, &p.os.portSet, &p.os.exceptionPort,
+			&p.os.notificationPort)
 		pid = int(ret)
 	})
 	if pid <= 0 {
 		return nil, fmt.Errorf("could not fork/exec")
 	}
-	dbp.Pid = pid
+	p.Pid = pid
 	for i := range argvSlice {
 		C.free(unsafe.Pointer(argvSlice[i]))
 	}
 
 	var hdr C.mach_msg_header_t
 	var sig C.int
-	port := C.mach_port_wait(dbp.os.portSet, &hdr, &sig, C.int(0))
+	port := C.mach_port_wait(p.os.portSet, &hdr, &sig, C.int(0))
 	if port == 0 {
 		return nil, errors.New("error while waiting for process to exec")
 	}
-	dbp, err = initializeDebugProcess(dbp, argv0Go, false)
+	p, err = initializeDebugProcess(p, argv0Go, false)
 	if err != nil {
-		return dbp, err
+		return p, err
 	}
-	th, ok := dbp.Threads[int(port)]
+	th, ok := p.Threads[int(port)]
 	if !ok {
 		return nil, errors.New("could not find thread")
 	}
@@ -89,65 +89,65 @@ func Launch(cmd []string) (*Process, error) {
 	th.os.hdr = hdr
 	th.os.sig = sig
 
-	return dbp, nil
+	return p, nil
 }
 
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*Process, error) {
-	dbp := New(pid)
+	p := New(pid)
 
 	kret := C.acquire_mach_task(C.int(pid),
-		&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
-		&dbp.os.notificationPort)
+		&p.os.task, &p.os.portSet, &p.os.exceptionPort,
+		&p.os.notificationPort)
 
 	if kret != C.KERN_SUCCESS {
 		return nil, fmt.Errorf("could not attach to %d", pid)
 	}
 
-	return initializeDebugProcess(dbp, "", true)
+	return initializeDebugProcess(p, "", true)
 }
 
 // Kill kills the process.
-func (dbp *Process) Kill() error {
-	if dbp.exited {
+func (p *Process) Kill() error {
+	if p.exited {
 		return nil
 	}
 
-	for _, th := range dbp.Threads {
+	for _, th := range p.Threads {
 		th.halt()
 	}
-	for _, th := range dbp.Threads {
+	for _, th := range p.Threads {
 		th.sendMachReply()
 	}
-	kret := C.task_set_exception_ports(dbp.os.task, C.EXC_MASK_ALL, C.MACH_PORT_NULL, C.EXCEPTION_DEFAULT, C.THREAD_STATE_NONE)
+	kret := C.task_set_exception_ports(p.os.task, C.EXC_MASK_ALL, C.MACH_PORT_NULL, C.EXCEPTION_DEFAULT, C.THREAD_STATE_NONE)
 	if kret != C.KERN_SUCCESS {
 		return errors.New("could not restore exception ports")
 	}
-	if err := syscall.Kill(-dbp.Pid, syscall.SIGKILL); err != nil {
+	if err := syscall.Kill(-p.Pid, syscall.SIGKILL); err != nil {
 		return err
 	}
-	for _, th := range dbp.Threads {
+	for _, th := range p.Threads {
 		C.resume_thread(th.os.threadAct)
 	}
-	_, err := dbp.Mourn()
+	_, err := p.Mourn()
 	if err != nil {
 		return err
 	}
 	selfTask := C.ipc_space_t(C.mach_task())
-	for _, th := range dbp.Threads {
+	for _, th := range p.Threads {
 		C.mach_port_deallocate(selfTask, C.mach_port_name_t(th.os.threadAct))
 	}
-	C.mach_port_destroy(selfTask, C.mach_port_name_t(dbp.os.notificationPort))
-	C.mach_port_deallocate(selfTask, C.mach_port_name_t(dbp.os.exceptionPort))
-	C.mach_port_deallocate(selfTask, C.mach_port_name_t(dbp.os.task))
+	C.mach_port_destroy(selfTask, C.mach_port_name_t(p.os.notificationPort))
+	C.mach_port_deallocate(selfTask, C.mach_port_name_t(p.os.exceptionPort))
+	C.mach_port_deallocate(selfTask, C.mach_port_name_t(p.os.task))
 	return nil
 }
 
-func requestManualStop(dbp *Process) (err error) {
+func requestManualStop(p *Process) (err error) {
 	var (
-		task          = C.mach_port_t(dbp.os.task)
-		thread        = C.mach_port_t(dbp.CurrentThread.os.threadAct)
-		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
+		task          = C.mach_port_t(p.os.task)
+		thread        = C.mach_port_t(p.CurrentThread.os.threadAct)
+		exceptionPort = C.mach_port_t(p.os.exceptionPort)
 	)
 	kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)
 	if kret != C.KERN_SUCCESS {
@@ -156,7 +156,7 @@ func requestManualStop(dbp *Process) (err error) {
 	return nil
 }
 
-func updateThreadList(dbp *Process) error {
+func updateThreadList(p *Process) error {
 	var (
 		err   error
 		kret  C.kern_return_t
@@ -165,7 +165,7 @@ func updateThreadList(dbp *Process) error {
 	)
 
 	for {
-		count = C.thread_count(dbp.os.task)
+		count = C.thread_count(p.os.task)
 		if count == -1 {
 			return fmt.Errorf("could not get thread count")
 		}
@@ -173,7 +173,7 @@ func updateThreadList(dbp *Process) error {
 
 		// TODO(dp) might be better to malloc mem in C and then free it here
 		// instead of getting count above and passing in a slice
-		kret = C.get_threads(dbp.os.task, unsafe.Pointer(&list[0]), count)
+		kret = C.get_threads(p.os.task, unsafe.Pointer(&list[0]), count)
 		if kret != -2 {
 			break
 		}
@@ -183,8 +183,8 @@ func updateThreadList(dbp *Process) error {
 	}
 
 	for _, port := range list {
-		if _, ok := dbp.Threads[int(port)]; !ok {
-			_, err = dbp.addThread(int(port), false)
+		if _, ok := p.Threads[int(port)]; !ok {
+			_, err = p.addThread(int(port), false)
 			if err != nil {
 				return err
 			}
@@ -194,51 +194,51 @@ func updateThreadList(dbp *Process) error {
 	return nil
 }
 
-func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
-	if thread, ok := dbp.Threads[port]; ok {
+func (p *Process) addThread(port int, attach bool) (*Thread, error) {
+	if thread, ok := p.Threads[port]; ok {
 		return thread, nil
 	}
 	thread := &Thread{
 		ID:  port,
-		dbp: dbp,
+		p: p,
 		os:  new(OSSpecificDetails),
 	}
-	dbp.Threads[port] = thread
+	p.Threads[port] = thread
 	thread.os.threadAct = C.thread_act_t(port)
-	if dbp.CurrentThread == nil {
-		dbp.SwitchThread(thread.ID)
+	if p.CurrentThread == nil {
+		p.SwitchThread(thread.ID)
 	}
 	return thread, nil
 }
 
-func (dbp *Process) findExecutable(path string) (string, error) {
+func (p *Process) findExecutable(path string) (string, error) {
 	if path == "" {
-		path = C.GoString(C.find_executable(C.int(dbp.Pid)))
+		path = C.GoString(C.find_executable(C.int(p.Pid)))
 	}
 	return path, nil
 }
 
-func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
+func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	for {
 		var hdr C.mach_msg_header_t
 		var sig C.int
-		port := C.mach_port_wait(dbp.os.portSet, &hdr, &sig, C.int(0))
-		th, ok := dbp.Threads[int(port)]
+		port := C.mach_port_wait(p.os.portSet, &hdr, &sig, C.int(0))
+		th, ok := p.Threads[int(port)]
 		if ok {
 			th.os.msgStop = true
 			th.os.hdr = hdr
 			th.os.sig = sig
 		}
 		switch port {
-		case dbp.os.notificationPort:
-			exitcode, err := dbp.Mourn()
+		case p.os.notificationPort:
+			exitcode, err := p.Mourn()
 			if err != nil {
 				return nil, nil, err
 			}
 			return &WaitStatus{exited: true, exitstatus: exitcode}, nil, nil
 
 		case C.MACH_RCV_INTERRUPTED:
-			if !dbp.halt {
+			if !p.halt {
 				// Call trapWait again, it seems
 				// MACH_RCV_INTERRUPTED is emitted before
 				// process natural death _sometimes_.
@@ -251,8 +251,8 @@ func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
-		updateThreadList(dbp)
-		_, err := dbp.drainPendingMesages()
+		updateThreadList(p)
+		_, err := p.drainPendingMesages()
 		if err != nil {
 			return nil, nil, err
 		}
@@ -260,26 +260,26 @@ func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	}
 }
 
-func (dbp *Process) drainPendingMesages() ([]int, error) {
-	ports := make([]int, 0, len(dbp.Threads))
+func (p *Process) drainPendingMesages() ([]int, error) {
+	ports := make([]int, 0, len(p.Threads))
 	for {
 		var hdr C.mach_msg_header_t
 		var sig C.int
-		port := C.mach_port_wait(dbp.os.portSet, &hdr, &sig, C.int(1))
+		port := C.mach_port_wait(p.os.portSet, &hdr, &sig, C.int(1))
 		if port == 0 {
 			return ports, nil
 		}
 		if port == C.MACH_RCV_TIMED_OUT {
 			return ports, nil
 		}
-		if port == dbp.os.notificationPort {
-			exitcode, err := dbp.Mourn()
+		if port == p.os.notificationPort {
+			exitcode, err := p.Mourn()
 			if err != nil {
 				return ports, err
 			}
-			return ports, ProcessExitedError{Pid: dbp.Pid, Status: exitcode}
+			return ports, ProcessExitedError{Pid: p.Pid, Status: exitcode}
 		}
-		th, ok := dbp.Threads[int(port)]
+		th, ok := p.Threads[int(port)]
 		if ok {
 			th.os.msgStop = true
 			th.os.hdr = hdr
@@ -289,11 +289,11 @@ func (dbp *Process) drainPendingMesages() ([]int, error) {
 	}
 }
 
-func (dbp *Process) loadProcessInformation() {
+func (p *Process) loadProcessInformation() {
 	return
 }
 
-func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func (p *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var status sys.WaitStatus
 	wpid, err := sys.Wait4(pid, &status, options, nil)
 	return wpid, &status, err
@@ -303,21 +303,21 @@ func killProcess(pid int) error {
 	return sys.Kill(pid, sys.SIGINT)
 }
 
-func (dbp *Process) exitGuard(err error) error {
+func (p *Process) exitGuard(err error) error {
 	if err != ErrContinueThread {
 		return err
 	}
-	_, status, werr := dbp.wait(dbp.Pid, sys.WNOHANG)
+	_, status, werr := p.wait(p.Pid, sys.WNOHANG)
 	if werr == nil && status.Exited() {
-		dbp.Mourn()
-		return ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+		p.Mourn()
+		return ProcessExitedError{Pid: p.Pid, Status: status.ExitStatus()}
 	}
 	return err
 }
 
-func (dbp *Process) resume() error {
+func (p *Process) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.Threads {
+	for _, thread := range p.Threads {
 		if thread.CurrentBreakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
@@ -325,9 +325,9 @@ func (dbp *Process) resume() error {
 		}
 	}
 	// everything is resumed
-	for _, thread := range dbp.Threads {
+	for _, thread := range p.Threads {
 		if err := thread.resume(); err != nil {
-			return dbp.exitGuard(err)
+			return p.exitGuard(err)
 		}
 	}
 	return nil

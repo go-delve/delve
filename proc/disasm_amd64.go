@@ -105,7 +105,7 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		return nil
 	}
 
-	file, line, fn := thread.dbp.Dwarf.PCToLine(pc)
+	file, line, fn := thread.p.Dwarf.PCToLine(pc)
 	if fn == nil {
 		return nil
 	}
@@ -122,8 +122,8 @@ var prologues = []instrseq{windowsPrologue, windowsPrologue2, unixPrologue, unix
 
 // FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
 // If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry
-func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	text, err := dbp.CurrentThread.Disassemble(fn.Entry, fn.End, false)
+func (p *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
+	text, err := p.CurrentThread.Disassemble(fn.Entry, fn.End, false)
 	if err != nil {
 		return fn.Entry, err
 	}

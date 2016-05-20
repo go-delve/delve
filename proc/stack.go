@@ -51,7 +51,7 @@ func (t *Thread) stackIterator() (*stackIterator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newStackIterator(t.dbp, regs.PC(), regs.SP()), nil
+	return newStackIterator(t.p, regs.PC(), regs.SP()), nil
 }
 
 // Stacktrace returns the stack trace for thread.
@@ -68,7 +68,7 @@ func (g *G) stackIterator() (*stackIterator, error) {
 	if g.thread != nil {
 		return g.thread.stackIterator()
 	}
-	return newStackIterator(g.dbp, g.PC, g.SP), nil
+	return newStackIterator(g.p, g.PC, g.SP), nil
 }
 
 // Stacktrace returns the stack trace for a goroutine.
@@ -83,8 +83,8 @@ func (g *G) Stacktrace(depth int) ([]Stackframe, error) {
 
 // GoroutineLocation returns the location of the given
 // goroutine.
-func (dbp *Process) GoroutineLocation(g *G) *Location {
-	f, l, fn := dbp.Dwarf.PCToLine(g.PC)
+func (p *Process) GoroutineLocation(g *G) *Location {
+	f, l, fn := p.Dwarf.PCToLine(g.PC)
 	return &Location{PC: g.PC, File: f, Line: l, Fn: fn}
 }
 
@@ -103,12 +103,12 @@ type stackIterator struct {
 	top    bool
 	atend  bool
 	frame  Stackframe
-	dbp    *Process
+	p    *Process
 	err    error
 }
 
-func newStackIterator(dbp *Process, pc, sp uint64) *stackIterator {
-	return &stackIterator{pc: pc, sp: sp, top: true, dbp: dbp, err: nil, atend: false}
+func newStackIterator(p *Process, pc, sp uint64) *stackIterator {
+	return &stackIterator{pc: pc, sp: sp, top: true, p: p, err: nil, atend: false}
 }
 
 // Next points the iterator to the next stack frame.
@@ -116,7 +116,7 @@ func (it *stackIterator) Next() bool {
 	if it.err != nil || it.atend {
 		return false
 	}
-	it.frame, it.err = it.dbp.frameInfo(it.pc, it.sp, it.top)
+	it.frame, it.err = it.p.frameInfo(it.pc, it.sp, it.top)
 	if it.err != nil {
 		if _, nofde := it.err.(*frame.NoFDEForPCError); nofde && !it.top {
 			it.frame = Stackframe{Current: Location{PC: it.pc, File: "?", Line: -1}, Call: Location{PC: it.pc, File: "?", Line: -1}, CFA: 0, Ret: 0}
@@ -163,9 +163,9 @@ func (it *stackIterator) Err() error {
 	return it.err
 }
 
-func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
-	f, l, fn := dbp.Dwarf.PCToLine(pc)
-	fde, err := dbp.Dwarf.Frame.FDEForPC(pc)
+func (p *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
+	f, l, fn := p.Dwarf.PCToLine(pc)
+	fde, err := p.Dwarf.Frame.FDEForPC(pc)
 	if err != nil {
 		return Stackframe{}, err
 	}
@@ -176,14 +176,14 @@ func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 	if retaddr == 0 {
 		return Stackframe{}, NullAddrError{}
 	}
-	data, err := dbp.CurrentThread.readMemory(retaddr, dbp.arch.PtrSize())
+	data, err := p.CurrentThread.readMemory(retaddr, p.arch.PtrSize())
 	if err != nil {
 		return Stackframe{}, err
 	}
 	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, Ret: binary.LittleEndian.Uint64(data)}
 	if !top {
-		r.Call.File, r.Call.Line, r.Call.Fn = dbp.Dwarf.PCToLine(pc - 1)
-		r.Call.PC, _, _ = dbp.Dwarf.LineToPC(r.Call.File, r.Call.Line)
+		r.Call.File, r.Call.Line, r.Call.Fn = p.Dwarf.PCToLine(pc - 1)
+		r.Call.PC, _, _ = p.Dwarf.LineToPC(r.Call.File, r.Call.Line)
 	} else {
 		r.Call = r.Current
 	}

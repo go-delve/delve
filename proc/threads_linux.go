@@ -13,11 +13,11 @@ type OSSpecificDetails struct {
 }
 
 func (t *Thread) halt() error {
-	err := sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGSTOP)
+	err := sys.Tgkill(t.p.Pid, t.ID, sys.SIGSTOP)
 	if err != nil {
-		return fmt.Errorf("halt err %s on thread %d for process %d", err, t.ID, t.dbp.Pid)
+		return fmt.Errorf("halt err %s on thread %d for process %d", err, t.ID, t.p.Pid)
 	}
-	_, _, err = t.dbp.wait(t.ID, 0)
+	_, _, err = t.p.wait(t.ID, 0)
 	if err != nil {
 		return fmt.Errorf("wait err %s on thread %d", err, t.ID)
 	}
@@ -25,7 +25,7 @@ func (t *Thread) halt() error {
 }
 
 func (t *Thread) stopped() bool {
-	state := status(t.ID, t.dbp.os.comm)
+	state := status(t.ID, t.p.os.comm)
 	return state == StatusTraceStop || state == StatusTraceStopT
 }
 
@@ -44,12 +44,12 @@ func (t *Thread) singleStep() error {
 		return err
 	}
 	// TODO(derekparker) consolidate all wait calls into threadResume
-	_, status, err := t.dbp.wait(t.ID, 0)
+	_, status, err := t.p.wait(t.ID, 0)
 	if err != nil {
 		return err
 	}
 	if status.Exited() {
-		_, err := t.dbp.Mourn()
+		_, err := t.p.Mourn()
 		if err != nil {
 			return err
 		}
@@ -57,14 +57,14 @@ func (t *Thread) singleStep() error {
 		if status != nil {
 			rs = status.ExitStatus()
 		}
-		return ProcessExitedError{Pid: t.dbp.Pid, Status: rs}
+		return ProcessExitedError{Pid: t.p.Pid, Status: rs}
 	}
 	return nil
 }
 
 func (t *Thread) blocked() bool {
 	pc, _ := t.PC()
-	fn := t.dbp.Dwarf.PCToFunc(pc)
+	fn := t.p.Dwarf.PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
 		return true
 	}
@@ -89,7 +89,7 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error)
 	if len(data) == 0 {
 		return
 	}
-	execOnPtraceThread(func() { written, err = sys.PtracePokeData(t.dbp.Pid, addr, data) })
+	execOnPtraceThread(func() { written, err = sys.PtracePokeData(t.p.Pid, addr, data) })
 	return
 }
 
@@ -98,6 +98,6 @@ func (t *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
 		return
 	}
 	data = make([]byte, size)
-	execOnPtraceThread(func() { _, err = sys.PtracePeekData(t.dbp.Pid, addr, data) })
+	execOnPtraceThread(func() { _, err = sys.PtracePeekData(t.p.Pid, addr, data) })
 	return
 }

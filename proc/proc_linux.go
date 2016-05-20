@@ -46,7 +46,7 @@ func Launch(cmd []string) (*Process, error) {
 		proc *exec.Cmd
 		err  error
 	)
-	dbp := New(0)
+	p := New(0)
 	execOnPtraceThread(func() {
 		proc = exec.Command(cmd[0])
 		proc.Args = cmd
@@ -58,12 +58,12 @@ func Launch(cmd []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbp.Pid = proc.Process.Pid
-	_, _, err = dbp.wait(proc.Process.Pid, 0)
+	p.Pid = proc.Process.Pid
+	_, _, err = p.wait(proc.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	return initializeDebugProcess(dbp, proc.Path, false)
+	return initializeDebugProcess(p, proc.Path, false)
 }
 
 // Attach to an existing process with the given PID.
@@ -72,28 +72,28 @@ func Attach(pid int) (*Process, error) {
 }
 
 // Kill kills the target process.
-func (dbp *Process) Kill() (err error) {
-	if dbp.exited {
+func (p *Process) Kill() (err error) {
+	if p.exited {
 		return nil
 	}
-	if !dbp.Threads[dbp.Pid].Stopped() {
+	if !p.Threads[p.Pid].Stopped() {
 		return errors.New("process must be stopped in order to kill it")
 	}
-	if err = sys.Kill(-dbp.Pid, sys.SIGKILL); err != nil {
+	if err = sys.Kill(-p.Pid, sys.SIGKILL); err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
-	_, err = dbp.Mourn()
+	_, err = p.Mourn()
 	return err
 }
 
-func requestManualStop(dbp *Process) (err error) {
-	return sys.Kill(dbp.Pid, sys.SIGTRAP)
+func requestManualStop(p *Process) (err error) {
+	return sys.Kill(p.Pid, sys.SIGTRAP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
-func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
-	if thread, ok := dbp.Threads[tid]; ok {
+func (p *Process) addThread(tid int, attach bool) (*Thread, error) {
+	if thread, ok := p.Threads[tid]; ok {
 		return thread, nil
 	}
 
@@ -107,7 +107,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 			// if we truly don't have permissions.
 			return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 		}
-		pid, status, err := dbp.wait(tid, 0)
+		pid, status, err := p.wait(tid, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +118,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 	execOnPtraceThread(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
-		if _, _, err = dbp.wait(tid, 0); err != nil {
+		if _, _, err = p.wait(tid, 0); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
 		execOnPtraceThread(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
@@ -130,55 +130,55 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	dbp.Threads[tid] = &Thread{
-		ID:  tid,
-		dbp: dbp,
-		os:  new(OSSpecificDetails),
+	p.Threads[tid] = &Thread{
+		ID: tid,
+		p:  p,
+		os: new(OSSpecificDetails),
 	}
-	if dbp.CurrentThread == nil {
-		dbp.SwitchThread(tid)
+	if p.CurrentThread == nil {
+		p.SwitchThread(tid)
 	}
-	return dbp.Threads[tid], nil
+	return p.Threads[tid], nil
 }
 
-func updateThreadList(dbp *Process) error {
-	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.Pid))
+func updateThreadList(p *Process) error {
+	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", p.Pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)
 		tid, err := strconv.Atoi(tidstr)
 		if err != nil {
 			return err
 		}
-		if _, err := dbp.addThread(tid, tid != dbp.Pid); err != nil {
+		if _, err := p.addThread(tid, tid != p.Pid); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (dbp *Process) findExecutable(path string) (string, error) {
+func (p *Process) findExecutable(path string) (string, error) {
 	if path == "" {
-		path = fmt.Sprintf("/proc/%d/exe", dbp.Pid)
+		path = fmt.Sprintf("/proc/%d/exe", p.Pid)
 	}
 	return path, nil
 }
 
-func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
+func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	for {
-		wpid, status, err := dbp.wait(pid, 0)
+		wpid, status, err := p.wait(pid, 0)
 		if err != nil {
 			return nil, nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
-		th := dbp.Threads[wpid]
+		th := p.Threads[wpid]
 		if status.Exited() || status.Signal() == syscall.SIGKILL {
-			if wpid == dbp.Pid {
-				_, err := dbp.Mourn()
+			if wpid == p.Pid {
+				_, err := p.Mourn()
 				if err != nil {
 					return nil, nil, err
 				}
 				return &WaitStatus{exited: true, exitstatus: status.ExitStatus()}, nil, nil
 			}
-			delete(dbp.Threads, wpid)
+			delete(p.Threads, wpid)
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
@@ -189,7 +189,7 @@ func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 			if err != nil {
 				return nil, nil, fmt.Errorf("could not get event message: %s", err)
 			}
-			th, err = dbp.addThread(int(cloned), false)
+			th, err = p.addThread(int(cloned), false)
 			if err != nil {
 				if err == sys.ESRCH {
 					// thread died while we were adding it
@@ -200,12 +200,12 @@ func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 			if err = th.Continue(); err != nil {
 				if err == sys.ESRCH {
 					// thread died while we were adding it
-					delete(dbp.Threads, th.ID)
+					delete(p.Threads, th.ID)
 					continue
 				}
 				return nil, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
-			if err = dbp.Threads[int(wpid)].Continue(); err != nil {
+			if err = p.Threads[int(wpid)].Continue(); err != nil {
 				if err != sys.ESRCH {
 					return nil, nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
 				}
@@ -220,15 +220,15 @@ func (dbp *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
 	}
 }
 
-func (dbp *Process) loadProcessInformation() {
-	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.Pid))
+func (p *Process) loadProcessInformation() {
+	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", p.Pid))
 	if err != nil {
 		fmt.Printf("Could not read process comm name: %v\n", err)
 		os.Exit(1)
 	}
 	// removes newline character
 	comm = comm[:len(comm)-1]
-	dbp.os.comm = strings.Replace(string(comm), "%", "%%", -1)
+	p.os.comm = strings.Replace(string(comm), "%", "%%", -1)
 }
 
 func status(pid int, comm string) rune {
@@ -251,11 +251,11 @@ func status(pid int, comm string) rune {
 	return state
 }
 
-func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func (p *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	_, f, l, _ := runtime.Caller(1)
-	log.WithFields(logrus.Fields{"pid": dbp.Pid, "file": f, "line": l}).Debug("waiting on process")
+	log.WithFields(logrus.Fields{"pid": p.Pid, "file": f, "line": l}).Debug("waiting on process")
 	var s sys.WaitStatus
-	if (pid != dbp.Pid) || (options != 0) {
+	if (pid != p.Pid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
 		return wpid, &s, err
 	}
@@ -278,7 +278,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 		if wpid != 0 {
 			return wpid, &s, err
 		}
-		if status(pid, dbp.os.comm) == StatusZombie {
+		if status(pid, p.os.comm) == StatusZombie {
 			// TODO(derekparker) properly handle when group leader becomes a zombie.
 			log.WithField("pid", pid).Debug("process is a zombie")
 			return pid, &s, nil
@@ -287,9 +287,9 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	}
 }
 
-func (dbp *Process) resume() error {
+func (p *Process) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.Threads {
+	for _, thread := range p.Threads {
 		if thread.CurrentBreakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
@@ -297,7 +297,7 @@ func (dbp *Process) resume() error {
 		}
 	}
 	// everything is resumed
-	for _, thread := range dbp.Threads {
+	for _, thread := range p.Threads {
 		if err := thread.resume(); err != nil && err != sys.ESRCH {
 			return err
 		}

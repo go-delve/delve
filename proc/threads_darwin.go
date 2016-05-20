@@ -38,8 +38,8 @@ func (t *Thread) singleStep() error {
 	if C.set_single_step_flag(t.os.threadAct) != C.KERN_SUCCESS {
 		return fmt.Errorf("could not single step")
 	}
-	C.task_suspend(t.dbp.os.task)
-	for _, th := range t.dbp.Threads {
+	C.task_suspend(t.p.os.task)
+	for _, th := range t.p.Threads {
 		if err := th.halt(); err != nil {
 			return err
 		}
@@ -47,8 +47,8 @@ func (t *Thread) singleStep() error {
 	if err := t.resume(); err != nil {
 		return err
 	}
-	C.task_resume(t.dbp.os.task)
-	_, _, err := t.dbp.Wait()
+	C.task_resume(t.p.os.task)
+	_, _, err := t.p.Wait()
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func (t *Thread) resume() error {
 func (t *Thread) resumeWithSig(sig int) error {
 	// TODO(derekparker) Maybe keep state around regarding whether we are in
 	// a signal stop?
-	if err := PtraceThupdate(t.dbp.Pid, t.os.threadAct, sig); err != nil {
+	if err := PtraceThupdate(t.p.Pid, t.os.threadAct, sig); err != nil {
 		log.Printf("error during PtraceThupdate: %v\n", err)
 	}
 	return t.resume()
@@ -92,7 +92,7 @@ func (t *Thread) sendMachReply() error {
 		if s == syscall.SIGTRAP {
 			sig = 0
 		}
-		err := PtraceThupdate(t.dbp.Pid, t.os.threadAct, sig)
+		err := PtraceThupdate(t.p.Pid, t.os.threadAct, sig)
 		if err != nil {
 			log.Println("could not thupdate:", err)
 		}
@@ -112,7 +112,7 @@ func (t *Thread) blocked() bool {
 	if err != nil {
 		return false
 	}
-	fn := t.dbp.Dwarf.PCToFunc(pc)
+	fn := t.p.Dwarf.PCToFunc(pc)
 	if fn == nil {
 		return false
 	}
@@ -137,7 +137,7 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
 		vmAddr = C.mach_vm_address_t(addr)
 		length = C.mach_msg_type_number_t(len(data))
 	)
-	if ret := C.write_memory(t.dbp.os.task, vmAddr, vmData, length); ret < 0 {
+	if ret := C.write_memory(t.p.os.task, vmAddr, vmData, length); ret < 0 {
 		return 0, fmt.Errorf("could not write memory")
 	}
 	return len(data), nil
@@ -154,7 +154,7 @@ func (t *Thread) readMemory(addr uintptr, size int) ([]byte, error) {
 		length = C.mach_msg_type_number_t(size)
 	)
 
-	ret := C.read_memory(t.dbp.os.task, vmAddr, vmData, length)
+	ret := C.read_memory(t.p.os.task, vmAddr, vmData, length)
 	if ret < 0 {
 		return nil, fmt.Errorf("could not read memory")
 	}
