@@ -63,7 +63,7 @@ func (inst *AsmInstruction) IsCall() bool {
 	return inst.Inst.Op == x86asm.CALL || inst.Inst.Op == x86asm.LCALL
 }
 
-func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs Registers) *Location {
+func (t *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs Registers) *Location {
 	if inst.Op != x86asm.CALL && inst.Op != x86asm.LCALL {
 		return nil
 	}
@@ -96,7 +96,7 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		}
 		addr := uintptr(int64(base) + int64(index*uint64(arg.Scale)) + arg.Disp)
 		//TODO: should this always be 64 bits instead of inst.MemBytes?
-		pcbytes, err := thread.readMemory(addr, inst.MemBytes)
+		pcbytes, err := t.readMemory(addr, inst.MemBytes)
 		if err != nil {
 			return nil
 		}
@@ -105,7 +105,7 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		return nil
 	}
 
-	file, line, fn := thread.p.Dwarf.PCToLine(pc)
+	file, line, fn := t.p.Dwarf.PCToLine(pc)
 	if fn == nil {
 		return nil
 	}

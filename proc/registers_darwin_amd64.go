@@ -5,6 +5,7 @@ import "C"
 import (
 	"bytes"
 	"fmt"
+
 	"rsc.io/x86/x86asm"
 )
 
@@ -309,16 +310,16 @@ func registers(thread *Thread) (Registers, error) {
 	return regs, nil
 }
 
-func (thread *Thread) saveRegisters() (Registers, error) {
-	kret := C.get_registers(C.mach_port_name_t(thread.os.threadAct), &thread.os.registers)
+func (t *Thread) saveRegisters() (Registers, error) {
+	kret := C.get_registers(C.mach_port_name_t(t.os.threadAct), &thread.os.registers)
 	if kret != C.KERN_SUCCESS {
 		return nil, fmt.Errorf("could not save register contents")
 	}
-	return &Regs{rip: uint64(thread.os.registers.__rip), rsp: uint64(thread.os.registers.__rsp)}, nil
+	return &Regs{rip: uint64(t.os.registers.__rip), rsp: uint64(t.os.registers.__rsp)}, nil
 }
 
-func (thread *Thread) restoreRegisters() error {
-	kret := C.set_registers(C.mach_port_name_t(thread.os.threadAct), &thread.os.registers)
+func (t *Thread) restoreRegisters() error {
+	kret := C.set_registers(C.mach_port_name_t(t.os.threadAct), &tt.os.registers)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not save register contents")
 	}
