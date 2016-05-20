@@ -89,7 +89,6 @@ func mourn(p *Process) (int, error) {
 			break
 		}
 	}
-	p.exited = true
 	return status, nil
 }
 

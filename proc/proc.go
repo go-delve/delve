@@ -182,7 +182,12 @@ func Detach(p *Process, kill bool) error {
 
 // Mourn will reap the process, ensuring it does not become a zombie.
 func Mourn(p *Process) (int, error) {
-	return mourn(p)
+	s, err := mourn(p)
+	if err != nil {
+		return 0, err
+	}
+	p.exited = true
+	return s, nil
 }
 
 // FindFileLocation returns the PC for a given file:line.

@@ -48,7 +48,7 @@ func (t *Thread) singleStep() error {
 		return err
 	}
 	C.task_resume(t.p.os.task)
-	_, _, err := t.p.Wait()
+	_, _, err := Wait(t.p)
 	if err != nil {
 		return err
 	}

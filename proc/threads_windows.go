@@ -51,7 +51,7 @@ func (t *Thread) singleStep() error {
 	if err != nil {
 		return err
 	}
-	_, _, err = t.p.Wait()
+	_, _, err = Wait(t.p)
 	if err != nil {
 		return err
 	}

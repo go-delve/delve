@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -94,11 +93,11 @@ func Launch(cmd []string) (*Process, error) {
 	sys.CloseHandle(sys.Handle(pi.Process))
 	sys.CloseHandle(sys.Handle(pi.Thread))
 
-	p := New(int(pi.ProcessId))
+	dbp := New(int(pi.ProcessId))
 
 	switch runtime.GOARCH {
 	case "amd64":
-		p.arch = AMD64Arch()
+		dbp.arch = AMD64Arch()
 	}
 
 	// Note - it should not actually be possible for the
@@ -107,19 +106,19 @@ func Launch(cmd []string) (*Process, error) {
 	// after launching under DEBUGONLYTHISPROCESS.
 	var tid, exitCode int
 	execOnPtraceThread(func() {
-		tid, exitCode, err = p.waitForDebugEvent()
+		tid, exitCode, err = dbp.waitForDebugEvent()
 	})
 	if err != nil {
 		return nil, err
 	}
 	if tid == 0 {
-		if _, err := p.Mourn(); err != nil {
+		if _, err := Mourn(dbp); err != nil {
 			return nil, err
 		}
-		return nil, ProcessExitedError{Pid: p.Pid, Status: exitCode}
+		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
 	}
 
-	return initializeDebugProcess(p, argv0Go, false)
+	return initializeDebugProcess(dbp, argv0Go, false)
 }
 
 // Attach to an existing process with the given PID.
@@ -128,23 +127,20 @@ func Attach(pid int) (*Process, error) {
 }
 
 // Kill kills the process.
-func (p *Process) Kill() error {
-	if p.exited {
-		return nil
-	}
-	if !p.Threads[p.Pid].Stopped() {
-		return errors.New("process must be stopped in order to kill it")
-	}
+func kill(p *Process) error {
 	// TODO: Should not have to ignore failures here,
 	// but some tests appear to Kill twice causing
 	// this to fail on second attempt.
 	_ = syscall.TerminateProcess(p.os.hProcess, 1)
-	p.exited = true
 	return nil
 }
 
-func requestManualStop(p *Process) error {
+func stop(p *Process) error {
 	return _DebugBreakProcess(p.os.hProcess)
+}
+
+func mourn(p *Process) (int, error) {
+	return 0, nil
 }
 
 func (p *Process) updateThreadList() error {
@@ -165,7 +161,7 @@ func (p *Process) addThread(hThread syscall.Handle, threadID int, attach bool) (
 	thread.os.hThread = hThread
 	p.Threads[threadID] = thread
 	if p.CurrentThread == nil {
-		p.SwitchThread(thread.ID)
+		p.SetActiveThread(thread)
 	}
 	return thread, nil
 }
@@ -258,7 +254,7 @@ func (p *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
 	}
 }
 
-func (p *Process) trapWait(pid int) (*WaitStatus, *Thread, error) {
+func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 	var err error
 	var tid, exitCode int
 	execOnPtraceThread(func() {
