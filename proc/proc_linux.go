@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Sirupsen/logrus"
 
 	sys "golang.org/x/sys/unix"
 )
@@ -252,7 +253,7 @@ func status(pid int, comm string) rune {
 
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	_, f, l, _ := runtime.Caller(1)
-	log.Printf("wait called from %s:%d\n", f, l)
+	log.WithFields(logrus.Fields{"pid": dbp.Pid, "file": f, "line": l}).Debug("waiting on process")
 	var s sys.WaitStatus
 	if (pid != dbp.Pid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
@@ -279,7 +280,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 		}
 		if status(pid, dbp.os.comm) == StatusZombie {
 			// TODO(derekparker) properly handle when group leader becomes a zombie.
-			log.Printf("process %d is a zombie\n", pid)
+			log.WithField("pid", pid).Debug("process is a zombie")
 			return pid, &s, nil
 		}
 		time.Sleep(200 * time.Millisecond)

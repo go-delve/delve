@@ -8,7 +8,6 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
-	"log"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,9 +15,12 @@ import (
 
 	"golang.org/x/debug/dwarf"
 
+	"github.com/Sirupsen/logrus"
 	pdwarf "github.com/derekparker/delve/pkg/dwarf"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
+
+var log = logrus.WithField("package", "proc")
 
 // ResumeMode indicates how we should resume the
 // debugged process.
@@ -266,7 +268,7 @@ func setBreakpoint(dbp *Process, mem memoryReadWriter, addr uint64, temp bool, i
 
 // ClearBreakpoint clears the breakpoint at addr.
 func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
-	log.Printf("clear breakpoint at: %#v\n", addr)
+	log.WithField("addr", uintptr(addr)).Info("clear breakpoint")
 	if dbp.exited {
 		return nil, &ProcessExitedError{}
 	}
@@ -306,7 +308,7 @@ func (dbp *Process) Status() *WaitStatus {
 
 // Next continues execution until the next source line.
 func (dbp *Process) Next() (err error) {
-	log.Println("nexting")
+	log.Info("nexting")
 	if dbp.exited {
 		return &ProcessExitedError{}
 	}
@@ -373,16 +375,19 @@ func (dbp *Process) Continue() error {
 }
 
 func resume(p *Process, mode ResumeMode) error {
-	log.Printf("resume called on process %d with mode %d\n", p.Pid, mode)
 	if p.exited {
 		return ProcessExitedError{}
 	}
+
+	log.WithFields(logrus.Fields{"pid": p.Pid, "mode": mode}).Debug("resuming process")
+
 	// Clear state.
 	p.allGCache = nil
+
 	// Resume process.
 	switch mode {
 	case ModeStepInstruction:
-		log.Println("begin step instruction")
+		log.Info("begin step instruction")
 		if p.SelectedGoroutine == nil {
 			return errors.New("cannot single step: no selected goroutine")
 		}
@@ -391,7 +396,7 @@ func resume(p *Process, mode ResumeMode) error {
 		}
 		return p.SelectedGoroutine.thread.StepInstruction()
 	case ModeStep:
-		log.Println("begin step")
+		log.Info("begin step")
 		th := p.CurrentThread
 		if fn, ok := atFunctionCall(th); ok {
 			log.Printf("stepping into function: %s", fn.Name)
@@ -399,7 +404,7 @@ func resume(p *Process, mode ResumeMode) error {
 		}
 		return p.Next()
 	case ModeResume:
-		log.Println("begin resume")
+		log.Info("begin resume")
 		if err := p.resume(); err != nil {
 			log.Printf("resume error: %v\n", err)
 			return err
@@ -410,7 +415,7 @@ func resume(p *Process, mode ResumeMode) error {
 	}
 	status, trapthread, err := p.Wait()
 	if err != nil {
-		log.Printf("Wait error: %v\n", err)
+		log.WithError(err).Error("Wait error")
 		return err
 	}
 	if status.Exited() {
@@ -418,12 +423,12 @@ func resume(p *Process, mode ResumeMode) error {
 	}
 	// Make sure process is fully stopped.
 	if err := p.Halt(); err != nil {
-		log.Printf("Halt error: %v\n", err)
+		log.WithError(err).Error("Halt error")
 		return err
 	}
 	switch {
 	case status.Trap():
-		log.Println("handling SIGTRAP")
+		log.Debug("handling SIGTRAP")
 		err := handleSigTrap(p, trapthread)
 		if err == breakpointConditionNotMetError {
 			// Do not stop for a breakpoint whose condition has not been met.
@@ -431,7 +436,7 @@ func resume(p *Process, mode ResumeMode) error {
 		}
 		return err
 	case status.Signaled():
-		log.Printf("got signal: %v\n", status.Signal())
+		log.WithField("signal", status.Signal()).Debug("signaled")
 		// TODO(derekparker) alert users of signals.
 		if err := trapthread.ContinueWithSignal(int(status.Signal())); err != nil {
 			// TODO(derekparker) should go through regular resume flow.
@@ -452,7 +457,6 @@ func resume(p *Process, mode ResumeMode) error {
 }
 
 func atFunctionCall(th *Thread) (*gosym.Func, bool) {
-	log.Println("begin step")
 	pc, err := th.PC()
 	if err != nil {
 		return nil, false
@@ -474,24 +478,24 @@ func atFunctionCall(th *Thread) (*gosym.Func, bool) {
 }
 
 func handleSigTrap(p *Process, trapthread *Thread) error {
-	log.Println("checking breakpoint conditions")
+	log.Debug("checking breakpoint conditions")
 	if err := p.setCurrentBreakpoints(); err != nil {
-		log.Printf("setCurrentBreakpoints error: %v\n", err)
+		log.WithError(err).Error("setCurrentBreakpoints error")
 		return err
 	}
 	if err := p.pickCurrentThread(trapthread); err != nil {
-		log.Printf("pickCurrentThread error: %v\n", err)
+		log.WithError(err).Error("pickCurrentThread error")
 		return err
 	}
 	switch {
 	case p.CurrentThread.CurrentBreakpoint == nil:
-		log.Printf("no current breakpoint, halt=%v", p.halt)
+		log.WithField("halt", p.halt).Info("no current breakpoint")
 		if p.halt {
 			p.halt = false
 		}
 		// runtime.Breakpoint or manual stop
 		if p.CurrentThread.onRuntimeBreakpoint() {
-			log.Println("on runtime breakpoint")
+			log.Debug("on runtime breakpoint")
 			for i := 0; i < 2; i++ {
 				if err := p.CurrentThread.StepInstruction(); err != nil {
 					return err
@@ -500,13 +504,13 @@ func handleSigTrap(p *Process, trapthread *Thread) error {
 		}
 		return p.conditionErrors()
 	case p.CurrentThread.onTriggeredTempBreakpoint():
-		log.Println("on triggered temp breakpoint")
+		log.Debug("on triggered temp breakpoint")
 		if err := p.ClearTempBreakpoints(); err != nil {
 			return err
 		}
 		return p.conditionErrors()
 	case p.CurrentThread.onTriggeredBreakpoint():
-		log.Println("on triggered breakpoint")
+		log.Debug("on triggered breakpoint")
 		onNextGoroutine, err := p.CurrentThread.onNextGoroutine()
 		if err != nil {
 			return err
@@ -549,21 +553,21 @@ func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
 	}
 	for _, th := range dbp.Threads {
 		if th.onTriggeredTempBreakpoint() {
-			log.Printf("thread %d triggered temp breakpoint\n", th.ID)
+			log.WithField("thread", th.ID).Debug("triggered temp breakpoint")
 			return dbp.SwitchThread(th.ID)
 		}
 	}
 	if trapthread.onTriggeredBreakpoint() {
-		log.Printf("thread %d triggered breakpoint\n", trapthread.ID)
+		log.WithField("thread", trapthread.ID).Debug("triggered breakpoint")
 		return dbp.SwitchThread(trapthread.ID)
 	}
 	for _, th := range dbp.Threads {
 		if th.onTriggeredBreakpoint() {
-			log.Printf("thread %d triggered breakpoint\n", th.ID)
+			log.WithField("thread", th.ID).Debug("triggered breakpoint")
 			return dbp.SwitchThread(th.ID)
 		}
 	}
-	log.Printf("switching to default thread %d\n", trapthread.ID)
+	log.WithField("thread", trapthread.ID).Debug("switching to default thread")
 	return dbp.SwitchThread(trapthread.ID)
 }
 

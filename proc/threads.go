@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -90,7 +89,7 @@ func threadResume(thread *Thread, mode ResumeMode, sig int) (err error) {
 			loc := &Location{Fn: fn, File: bp.File, Line: bp.Line, PC: bp.Addr}
 			_, nerr := createAndWriteBreakpoint(thread, loc, bp.Temp, thread.dbp.arch.BreakpointInstruction())
 			if nerr != nil {
-				log.Printf("could not restore breakpoint on thread: %v\n", nerr)
+				log.WithError(nerr).Error("could not restore breakpoint on thread")
 			}
 		}()
 	}

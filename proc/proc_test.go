@@ -6,7 +6,6 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	protest "github.com/derekparker/delve/proc/test"
 )
 
@@ -25,6 +25,7 @@ var normalLoadConfig = LoadConfig{true, 1, 64, 64, -1}
 func init() {
 	runtime.GOMAXPROCS(4)
 	os.Setenv("GOMAXPROCS", "4")
+	logrus.SetLevel(logrus.DebugLevel)
 }
 
 func TestMain(m *testing.M) {
@@ -39,12 +40,12 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 	}
 
 	defer func() {
-		log.Println("after test kill/halt")
+		log.Debug("after test kill/halt")
 		if !p.Exited() {
 			if err := p.Halt(); err != nil {
 				t.Fatal(err)
 			}
-			log.Println("killing...")
+			log.Debug("killing...")
 			if err := p.Kill(); err != nil {
 				switch err.(type) {
 				case ProcessExitedError:
@@ -414,7 +415,7 @@ func TestNextConcurrent(t *testing.T) {
 			assertNoError(err, t, "EvalVariable")
 			vval, _ := constant.Int64Val(v.Value)
 			if vval != initVval {
-				log.Println("not same goroutine")
+				log.Debug("not same goroutine")
 				t.Fatalf("Did not end up on same goroutine, wanted: %d, got: %d", initVval, vval)
 			}
 			f, ln = currentLineNumber(p, t)
