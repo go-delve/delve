@@ -12,6 +12,8 @@ import (
 var (
 	breakpointIDCounter     int
 	tempBreakpointIDCounter int
+
+	breakpointConditionNotMetError = errors.New("breakpoint condition not met")
 )
 
 // Breakpoint represents a breakpoint. Stores information on the break

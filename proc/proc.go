@@ -425,13 +425,11 @@ func resume(p *Process, mode ResumeMode) error {
 	case status.Trap():
 		log.Println("handling SIGTRAP")
 		err := handleSigTrap(p, trapthread)
-		switch err.(type) {
-		case BreakpointConditionNotMetError:
+		if err == breakpointConditionNotMetError {
 			// Do not stop for a breakpoint whose condition has not been met.
 			return resume(p, mode)
-		default:
-			return err
 		}
+		return err
 	case status.Signaled():
 		log.Printf("got signal: %v\n", status.Signal())
 		// TODO(derekparker) alert users of signals.
@@ -520,13 +518,7 @@ func handleSigTrap(p *Process, trapthread *Thread) error {
 		}
 		return p.conditionErrors()
 	}
-	return BreakpointConditionNotMetError{}
-}
-
-type BreakpointConditionNotMetError struct{}
-
-func (b BreakpointConditionNotMetError) Error() string {
-	return "breakpoint condition not met"
+	return breakpointConditionNotMetError
 }
 
 func (dbp *Process) Wait() (*WaitStatus, *Thread, error) {
