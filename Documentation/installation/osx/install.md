@@ -2,7 +2,17 @@
 
 Please use the following steps to build and install Delve on OSX.
 
-## 0) Prerequisites
+## Via Homebrew
+
+If you have [HomeBrew](http://brew.sh/) installed, simply run:
+
+```
+$ brew install go-delve/delve/delve
+```
+
+## Manual install
+
+### 0) Prerequisites
 
 Ensure you have a proper compilation toolchain.
 
@@ -10,7 +20,7 @@ This should be as simple as:
 
 `xcode-select --install`
 
-## 1) Create a self-signed certificate
+### 1) Create a self-signed certificate
 
 You must create a self signed certificate and sign the binary with it:
 
@@ -23,7 +33,7 @@ You must create a self signed certificate and sign the binary with it:
 * [At least on Yosemite:] In keychains select category Keys -> dlv-cert -> right click -> GetInfo -> Access Control -> select "Allow all applications to access this item" -> Save Changes.
 * You must quit “Keychain Access” application in order to use the certificate and restart “taskgated” service by killing the current running “taskgated” process. Alternatively you can restart your computer.
 
-## 2) Install the binary
+### 2) Install the binary
 
 * Make directory `mkdir $GOPATH/src/github.com/derekparker && cd $GOPATH/src/github.com/derekparker` as typical in [Writing go programs](https://golang.org/doc/code.html)
 * Clone this project: `git clone https://github.com/derekparker/delve.git && cd delve`
@@ -35,9 +45,9 @@ All `make` commands assume a CERT environment variables that contains the name o
 * Run the following: `CERT=dlv-cert make install`, which will install the binary and codesign it.
 * for more info see this installation video http://www.youtube.com/watch?v=4ndjybtBg74
 
-## Notes
+### Notes
 
-### Eliminating codesign authorization prompt during builds
+#### Eliminating codesign authorization prompt during builds
 
 If you're prompted for authorization when running `make` using your self-signed certificate, try the following:
 
