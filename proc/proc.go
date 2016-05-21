@@ -136,7 +136,7 @@ func (p *Process) Running() bool {
 // * Dwarf .debug_line section
 // * Go symbol table.
 func (p *Process) LoadInformation(path string) error {
-	path, err := p.findExecutable(path)
+	path, err := findExecutable(p.Pid, path)
 	if err != nil {
 		return err
 	}
@@ -240,9 +240,6 @@ func Stop(p *Process) error {
 func Kill(p *Process) (err error) {
 	if p.exited {
 		return nil
-	}
-	if !p.Threads[p.Pid].Stopped() {
-		return errors.New("process must be stopped in order to kill it")
 	}
 	if err = kill(p); err != nil {
 		return errors.New("could not deliver signal " + err.Error())

@@ -6,8 +6,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"log"
-	"syscall"
+	"strings"
 	"unsafe"
 )
 
@@ -29,6 +28,9 @@ func (t *Thread) halt() error {
 	kret := C.thread_suspend(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
 		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
+		if strings.Contains(errStr, "invalid destination") || strings.Contains(errStr, "terminated") {
+			return ThreadExitedErr
+		}
 		return fmt.Errorf("could not suspend thread %d %s", t.ID, errStr)
 	}
 	return nil
@@ -66,6 +68,10 @@ func (t *Thread) resume() error {
 	}
 	kret = C.resume_thread(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
+		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
+		if strings.Contains(errStr, "invalid destination") || strings.Contains(errStr, "terminated") {
+			return ThreadExitedErr
+		}
 		return ErrContinueThread
 	}
 	return nil
@@ -75,7 +81,7 @@ func (t *Thread) resumeWithSig(sig int) error {
 	// TODO(derekparker) Maybe keep state around regarding whether we are in
 	// a signal stop?
 	if err := PtraceThupdate(t.p.Pid, t.os.threadAct, sig); err != nil {
-		log.Printf("error during PtraceThupdate: %v\n", err)
+		log.WithError(err).Error("error during PtraceThupdate")
 	}
 	return t.resume()
 }
@@ -85,20 +91,12 @@ func (t *Thread) sendMachReply() error {
 	var kret C.kern_return_t
 	if t.os.msgStop {
 		t.os.msgStop = false
-		sig := int(t.os.sig)
-		s := syscall.Signal(sig)
-		// TODO(derekparker) ugly hack... we need to
-		// handle signals in a more general way
-		if s == syscall.SIGTRAP {
-			sig = 0
-		}
-		err := PtraceThupdate(t.p.Pid, t.os.threadAct, sig)
-		if err != nil {
-			log.Println("could not thupdate:", err)
-		}
-
 		kret = C.mach_send_reply(t.os.hdr)
 		if kret != C.KERN_SUCCESS {
+			errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
+			if strings.Contains(errStr, "invalid destination") || strings.Contains(errStr, "terminated") {
+				return ThreadExitedErr
+			}
 			return errors.New("could not send mach reply")
 		}
 		t.os.hdr = emptyhdr

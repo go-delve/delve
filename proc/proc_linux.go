@@ -70,32 +70,6 @@ func Attach(pid int) (*Process, error) {
 	return initializeDebugProcess(New(pid), "", true)
 }
 
-func stop(p *Process) (err error) {
-	return sys.Kill(p.Pid, sys.SIGTRAP)
-}
-
-func mourn(p *Process) (int, error) {
-	var status int
-	for {
-		_, ws, err := wait4(p.Pid, p.Pid, 0, p.os.comm)
-		if err != nil {
-			if err != syscall.ECHILD {
-				return 0, err
-			}
-			break
-		}
-		if ws != nil && ws.Exited() {
-			status = ws.ExitStatus()
-			break
-		}
-	}
-	return status, nil
-}
-
-func kill(p *Process) error {
-	return sys.Kill(-p.Pid, sys.SIGKILL)
-}
-
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
 func (p *Process) addThread(tid int, attach bool) (*Thread, error) {
@@ -169,6 +143,24 @@ func (p *Process) findExecutable(path string) (string, error) {
 		path = fmt.Sprintf("/proc/%d/exe", p.Pid)
 	}
 	return path, nil
+}
+
+func mourn(p *Process) (int, error) {
+	var status int
+	for {
+		_, ws, err := wait4(p.Pid, p.Pid, 0, p.os.comm)
+		if err != nil {
+			if err != syscall.ECHILD {
+				return 0, err
+			}
+			break
+		}
+		if ws != nil && ws.Exited() {
+			status = ws.ExitStatus()
+			break
+		}
+	}
+	return status, nil
 }
 
 func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {

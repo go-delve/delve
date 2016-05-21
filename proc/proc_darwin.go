@@ -11,8 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"unsafe"
+
+	"github.com/Sirupsen/logrus"
 
 	sys "golang.org/x/sys/unix"
 )
@@ -108,7 +111,7 @@ func Attach(pid int) (*Process, error) {
 }
 
 // Kill kills the process.
-func (p *Process) Kill() error {
+func kill(p *Process) error {
 	if p.exited {
 		return nil
 	}
@@ -129,7 +132,7 @@ func (p *Process) Kill() error {
 	for _, th := range p.Threads {
 		C.resume_thread(th.os.threadAct)
 	}
-	_, err := p.Mourn()
+	_, err := Mourn(p)
 	if err != nil {
 		return err
 	}
@@ -206,16 +209,37 @@ func (p *Process) addThread(port int, attach bool) (*Thread, error) {
 	p.Threads[port] = thread
 	thread.os.threadAct = C.thread_act_t(port)
 	if p.CurrentThread == nil {
-		p.SwitchThread(thread.ID)
+		p.SetActiveThread(thread)
 	}
 	return thread, nil
 }
 
-func findExecutable(path string) (string, error) {
+func findExecutable(pid int, path string) (string, error) {
 	if path == "" {
-		path = C.GoString(C.find_executable(C.int(p.Pid)))
+		path = C.GoString(C.find_executable(C.int(pid)))
 	}
 	return path, nil
+}
+
+func mourn(p *Process) (int, error) {
+	var status int
+	for {
+		_, ws, err := wait4(p.Pid, 0)
+		if err != nil {
+			if err != syscall.ECHILD {
+				return 0, err
+			}
+			break
+		}
+		if ws != nil && ws.Exited() {
+			status = ws.ExitStatus()
+			break
+		}
+		if ws.Signal() == sys.SIGKILL {
+			break
+		}
+	}
+	return status, nil
 }
 
 func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
@@ -231,7 +255,7 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 		}
 		switch port {
 		case p.os.notificationPort:
-			exitcode, err := p.Mourn()
+			exitcode, err := Mourn(p)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -244,6 +268,7 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 				// process natural death _sometimes_.
 				continue
 			}
+			return &WaitStatus{signal: syscall.Signal(int(sig)), signaled: true}, nil, nil
 
 		case 0:
 			return nil, nil, fmt.Errorf("error while waiting for task")
@@ -254,8 +279,8 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 		p.updateThreadList()
 		for {
 			var hdr C.mach_msg_header_t
-			var sig C.int
-			port := C.mach_port_wait(p.os.portSet, &hdr, &sig, C.int(1))
+			var nsig C.int
+			port := C.mach_port_wait(p.os.portSet, &hdr, &nsig, C.int(1))
 			if port == 0 {
 				break
 			}
@@ -263,19 +288,20 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 				break
 			}
 			if port == p.os.notificationPort {
-				exitcode, err := p.Mourn()
+				exitcode, err := Mourn(p)
 				if err != nil {
-					return ports, err
+					return nil, nil, err
 				}
-				return nil, nil, ProcessExitedError{Pid: p.Pid, Status: exitcode}
+				return &WaitStatus{exited: true, exitstatus: exitcode}, nil, nil
 			}
 			if th, ok := p.Threads[int(port)]; ok {
 				th.os.msgStop = true
 				th.os.hdr = hdr
-				th.os.sig = sig
+				th.os.sig = nsig
 			}
 		}
-		return &WaitStatus{signal: syscall.Signal(int(sig)), signaled: true}, th, nil
+		log.WithField("signal", int(sig)).Debug("wait finished")
+		return &WaitStatus{signal: syscall.Signal(int(sig)), signaled: int(sig) != 0}, th, nil
 	}
 }
 
@@ -283,42 +309,10 @@ func (p *Process) loadProcessInformation() {
 	return
 }
 
-func (p *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func wait4(pid, options int) (int, *sys.WaitStatus, error) {
+	_, f, l, _ := runtime.Caller(1)
+	log.WithFields(logrus.Fields{"pid": pid, "caller": fmt.Sprintf("%s:%d", filepath.Base(f), l)}).Debug("wait called")
 	var status sys.WaitStatus
 	wpid, err := sys.Wait4(pid, &status, options, nil)
 	return wpid, &status, err
-}
-
-func killProcess(pid int) error {
-	return sys.Kill(pid, sys.SIGINT)
-}
-
-func (p *Process) exitGuard(err error) error {
-	if err != ErrContinueThread {
-		return err
-	}
-	_, status, werr := p.wait(p.Pid, sys.WNOHANG)
-	if werr == nil && status.Exited() {
-		p.Mourn()
-		return ProcessExitedError{Pid: p.Pid, Status: status.ExitStatus()}
-	}
-	return err
-}
-
-func (p *Process) resume() error {
-	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range p.Threads {
-		if thread.CurrentBreakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
-				return err
-			}
-		}
-	}
-	// everything is resumed
-	for _, thread := range p.Threads {
-		if err := thread.resume(); err != nil {
-			return p.exitGuard(err)
-		}
-	}
-	return nil
 }

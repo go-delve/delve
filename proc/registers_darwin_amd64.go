@@ -311,7 +311,7 @@ func registers(thread *Thread) (Registers, error) {
 }
 
 func (t *Thread) saveRegisters() (Registers, error) {
-	kret := C.get_registers(C.mach_port_name_t(t.os.threadAct), &thread.os.registers)
+	kret := C.get_registers(C.mach_port_name_t(t.os.threadAct), &t.os.registers)
 	if kret != C.KERN_SUCCESS {
 		return nil, fmt.Errorf("could not save register contents")
 	}
@@ -319,7 +319,7 @@ func (t *Thread) saveRegisters() (Registers, error) {
 }
 
 func (t *Thread) restoreRegisters() error {
-	kret := C.set_registers(C.mach_port_name_t(t.os.threadAct), &tt.os.registers)
+	kret := C.set_registers(C.mach_port_name_t(t.os.threadAct), &t.os.registers)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not save register contents")
 	}

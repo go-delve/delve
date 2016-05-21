@@ -150,13 +150,12 @@ mach_port_wait(mach_port_t port_set, mach_msg_header_t *thdr, int *sig, int nonb
 
 	switch (msg.hdr.msgh_id) {
 		case 2401: // Exception
+			printf("EXC %d\n", data[2]);
 			if (data[2] == EXC_SOFT_SIGNAL) {
 				*sig = data[3];
-				// TODO(derekparker) temporary hack... should notify users of signals
-				if (data[3] != SIGTRAP) {
-					mach_send_reply(msg.hdr);
-					return mach_port_wait(port_set, thdr, sig, nonblocking);
-				}
+			}
+			if (data[2] == EXC_BREAKPOINT || data[2] == EXC_BAD_INSTRUCTION) {
+				*sig = SIGTRAP;
 			}
 			return thread;
 
