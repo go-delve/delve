@@ -1,4 +1,5 @@
-//+build !windows
+// +build linux darwin
+
 package proc
 
 import sys "golang.org/x/sys/unix"

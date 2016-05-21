@@ -138,9 +138,9 @@ func (p *Process) updateThreadList() error {
 	return nil
 }
 
-func (p *Process) findExecutable(path string) (string, error) {
+func findExecutable(pid int, path string) (string, error) {
 	if path == "" {
-		path = fmt.Sprintf("/proc/%d/exe", p.Pid)
+		path = fmt.Sprintf("/proc/%d/exe", pid)
 	}
 	return path, nil
 }
@@ -161,6 +161,10 @@ func mourn(p *Process) (int, error) {
 		}
 	}
 	return status, nil
+}
+
+func kill(p *Process) error {
+	return syscall.Kill(-p.Pid, syscall.SIGKILL)
 }
 
 func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
