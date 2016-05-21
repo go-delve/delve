@@ -136,13 +136,6 @@ func kill(p *Process) error {
 	if err != nil {
 		return err
 	}
-	selfTask := C.ipc_space_t(C.mach_task())
-	for _, th := range p.Threads {
-		C.mach_port_deallocate(selfTask, C.mach_port_name_t(th.os.threadAct))
-	}
-	C.mach_port_destroy(selfTask, C.mach_port_name_t(p.os.notificationPort))
-	C.mach_port_deallocate(selfTask, C.mach_port_name_t(p.os.exceptionPort))
-	C.mach_port_deallocate(selfTask, C.mach_port_name_t(p.os.task))
 	return nil
 }
 
@@ -239,6 +232,13 @@ func mourn(p *Process) (int, error) {
 			break
 		}
 	}
+	selfTask := C.ipc_space_t(C.mach_task())
+	for _, th := range p.Threads {
+		C.mach_port_deallocate(selfTask, C.mach_port_name_t(th.os.threadAct))
+	}
+	C.mach_port_destroy(selfTask, C.mach_port_name_t(p.os.notificationPort))
+	C.mach_port_deallocate(selfTask, C.mach_port_name_t(p.os.exceptionPort))
+	C.mach_port_deallocate(selfTask, C.mach_port_name_t(p.os.task))
 	return status, nil
 }
 
