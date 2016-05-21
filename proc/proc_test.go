@@ -1631,7 +1631,7 @@ func TestIssue414(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(Continue(p), t, "Continue()")
 		for {
-			err := Step(p)
+			err := StepInstruction(p)
 			if err != nil {
 				if _, exited := err.(ProcessExitedError); exited {
 					break

@@ -150,7 +150,6 @@ mach_port_wait(mach_port_t port_set, mach_msg_header_t *thdr, int *sig, int nonb
 
 	switch (msg.hdr.msgh_id) {
 		case 2401: // Exception
-			printf("EXC %d\n", data[2]);
 			if (data[2] == EXC_SOFT_SIGNAL) {
 				*sig = data[3];
 			}

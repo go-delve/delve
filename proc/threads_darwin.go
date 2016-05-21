@@ -28,7 +28,7 @@ func (t *Thread) halt() error {
 	kret := C.thread_suspend(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
 		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
-		if strings.Contains(errStr, "invalid destination") || strings.Contains(errStr, "terminated") {
+		if threadExited(kret) {
 			return ThreadExitedErr
 		}
 		return fmt.Errorf("could not suspend thread %d %s", t.ID, errStr)
@@ -37,7 +37,10 @@ func (t *Thread) halt() error {
 }
 
 func (t *Thread) singleStep() error {
-	if C.set_single_step_flag(t.os.threadAct) != C.KERN_SUCCESS {
+	if kret := C.set_single_step_flag(t.os.threadAct); kret != C.KERN_SUCCESS {
+		if threadExited(kret) {
+			return ThreadExitedErr
+		}
 		return fmt.Errorf("could not single step")
 	}
 	C.task_suspend(t.p.os.task)
@@ -50,11 +53,21 @@ func (t *Thread) singleStep() error {
 		return err
 	}
 	C.task_resume(t.p.os.task)
-	_, _, err := Wait(t.p)
+	ws, _, err := Wait(t.p)
 	if err != nil {
 		return err
 	}
-	if C.clear_trap_flag(t.os.threadAct) != C.KERN_SUCCESS {
+	if ws.Exited() {
+		status, err := Mourn(t.p)
+		if err != nil {
+			return err
+		}
+		return ProcessExitedError{Pid: t.p.Pid, Status: status}
+	}
+	if kret := C.clear_trap_flag(t.os.threadAct); kret != C.KERN_SUCCESS {
+		if threadExited(kret) {
+			return ThreadExitedErr
+		}
 		return fmt.Errorf("could not clear CPU trap flag")
 	}
 	return nil
@@ -64,17 +77,27 @@ func (t *Thread) resume() error {
 	t.running = true
 	var kret C.kern_return_t
 	if err := t.sendMachReply(); err != nil {
+		if threadExited(kret) {
+			return ThreadExitedErr
+		}
 		return ErrContinueThread
 	}
 	kret = C.resume_thread(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
-		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
-		if strings.Contains(errStr, "invalid destination") || strings.Contains(errStr, "terminated") {
+		if threadExited(kret) {
 			return ThreadExitedErr
 		}
 		return ErrContinueThread
 	}
 	return nil
+}
+
+func threadExited(kret C.kern_return_t) bool {
+	errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
+	if strings.Contains(errStr, "invalid destination") || strings.Contains(errStr, "terminated") {
+		return true
+	}
+	return false
 }
 
 func (t *Thread) resumeWithSig(sig int) error {
@@ -93,8 +116,7 @@ func (t *Thread) sendMachReply() error {
 		t.os.msgStop = false
 		kret = C.mach_send_reply(t.os.hdr)
 		if kret != C.KERN_SUCCESS {
-			errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
-			if strings.Contains(errStr, "invalid destination") || strings.Contains(errStr, "terminated") {
+			if threadExited(kret) {
 				return ThreadExitedErr
 			}
 			return errors.New("could not send mach reply")
