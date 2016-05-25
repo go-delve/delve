@@ -43,16 +43,14 @@ func (t *Thread) singleStep() error {
 		}
 		return fmt.Errorf("could not single step")
 	}
-	C.task_suspend(t.p.os.task)
 	for _, th := range t.p.Threads {
 		if err := th.halt(); err != nil {
 			return err
 		}
 	}
-	if err := t.resume(); err != nil {
+	if err := t.ContinueWithSignal(0); err != nil {
 		return err
 	}
-	C.task_resume(t.p.os.task)
 	ws, _, err := Wait(t.p)
 	if err != nil {
 		return err

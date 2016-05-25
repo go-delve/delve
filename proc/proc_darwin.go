@@ -115,7 +115,6 @@ func kill(p *Process) error {
 	if p.exited {
 		return nil
 	}
-
 	for _, th := range p.Threads {
 		th.halt()
 	}
@@ -126,17 +125,11 @@ func kill(p *Process) error {
 	if kret != C.KERN_SUCCESS {
 		return errors.New("could not restore exception ports")
 	}
-	if err := syscall.Kill(-p.Pid, syscall.SIGKILL); err != nil {
+	if err := syscall.Kill(p.Pid, syscall.SIGKILL); err != nil {
 		return err
-	}
-	for _, th := range p.Threads {
-		C.resume_thread(th.os.threadAct)
 	}
 	_, err := Mourn(p)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func requestManualStop(p *Process) (err error) {
@@ -217,18 +210,17 @@ func findExecutable(pid int, path string) (string, error) {
 func mourn(p *Process) (int, error) {
 	var status int
 	for {
+		log.Debug("begin mourn wait")
 		_, ws, err := wait4(p.Pid, 0)
+		log.Debug("fin mourn wait")
 		if err != nil {
 			if err != syscall.ECHILD {
 				return 0, err
 			}
 			break
 		}
-		if ws != nil && ws.Exited() {
+		if ws != nil && (ws.Exited() || ws.Signal() == sys.SIGKILL) {
 			status = ws.ExitStatus()
-			break
-		}
-		if ws.Signal() == sys.SIGKILL {
 			break
 		}
 	}
@@ -277,29 +269,29 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
 		p.updateThreadList()
-		for {
-			var hdr C.mach_msg_header_t
-			var nsig C.int
-			port := C.mach_port_wait(p.os.portSet, &hdr, &nsig, C.int(1))
-			if port == 0 {
-				break
-			}
-			if port == C.MACH_RCV_TIMED_OUT {
-				break
-			}
-			if port == p.os.notificationPort {
-				exitcode, err := Mourn(p)
-				if err != nil {
-					return nil, nil, err
-				}
-				return &WaitStatus{exited: true, exitstatus: exitcode}, nil, nil
-			}
-			if th, ok := p.Threads[int(port)]; ok {
-				th.os.msgStop = true
-				th.os.hdr = hdr
-				th.os.sig = nsig
-			}
-		}
+		// for {
+		// 	var hdr C.mach_msg_header_t
+		// 	var nsig C.int
+		// 	port := C.mach_port_wait(p.os.portSet, &hdr, &nsig, C.int(1))
+		// 	if port == 0 {
+		// 		break
+		// 	}
+		// 	if port == C.MACH_RCV_TIMED_OUT {
+		// 		break
+		// 	}
+		// 	if port == p.os.notificationPort {
+		// 		exitcode, err := Mourn(p)
+		// 		if err != nil {
+		// 			return nil, nil, err
+		// 		}
+		// 		return &WaitStatus{exited: true, exitstatus: exitcode}, nil, nil
+		// 	}
+		// 	if th, ok := p.Threads[int(port)]; ok {
+		// 		th.os.msgStop = true
+		// 		th.os.hdr = hdr
+		// 		th.os.sig = nsig
+		// 	}
+		// }
 		log.WithField("signal", int(sig)).Debug("wait finished")
 		return &WaitStatus{signal: syscall.Signal(int(sig)), signaled: int(sig) != 0}, th, nil
 	}

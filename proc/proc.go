@@ -23,15 +23,15 @@ import (
 var log = logrus.WithField("package", "proc")
 
 // ResumeMode indicates how we should resume the debugged process.
-type ResumeMode int
+type ResumeMode string
 
 const (
 	// ModeStepInstruction a single CPU instruction.
-	ModeStepInstruction = ResumeMode(0)
+	ModeStepInstruction = ResumeMode("Step Instruction")
 	// ModeStep to next source line, stepping into functions.
-	ModeStep = iota
+	ModeStep = ResumeMode("step")
 	// ModeResume until breakpoint/signal/manual stop.
-	ModeResume
+	ModeResume = ResumeMode("resume")
 )
 
 // Process represents a process we are debugging.
@@ -241,6 +241,7 @@ func Kill(p *Process) (err error) {
 	if p.exited {
 		return nil
 	}
+	log.WithField("pid", p.Pid).Info("killing process")
 	if err = kill(p); err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
@@ -486,6 +487,11 @@ func resume(p *Process, mode ResumeMode) error {
 		}
 		return resume(p, mode)
 	default:
+		log.WithFields(logrus.Fields{
+			"signal": status.Signal(),
+			"trap":   status.Trap(),
+			"exited": status.Exited(),
+		}).Error("unhandled stop event")
 		panic("unhandled stop event")
 	}
 	return nil

@@ -150,12 +150,21 @@ mach_port_wait(mach_port_t port_set, mach_msg_header_t *thdr, int *sig, int nonb
 
 	switch (msg.hdr.msgh_id) {
 		case 2401: // Exception
-			if (data[2] == EXC_SOFT_SIGNAL) {
-				*sig = data[3];
-			}
-			if (data[2] == EXC_BREAKPOINT || data[2] == EXC_BAD_INSTRUCTION) {
-				*sig = SIGTRAP;
-			}
+			switch (data[2]) {
+				case EXC_SOFT_SIGNAL:
+					*sig = data[3];
+					break;
+				case EXC_BREAKPOINT:
+				case EXC_BAD_INSTRUCTION:
+					// It seems the OS can send us an EXC_BAD_INSTRUCTION
+					// when we hit a software breakpoint that we've set.
+					// We translate it to a SIGTRAP for our use case.
+					// TODO(derekparker) bubble this up, so that we can
+					// actually determine if a breakpoint exists at the PC
+					// the program stopped on before converting to SIGTRAP.
+					*sig = SIGTRAP;
+					break;
+			};
 			return thread;
 
 		case 72: // Death

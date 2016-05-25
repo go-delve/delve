@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/debug/dwarf"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 )
 
@@ -76,6 +77,7 @@ func (t *Thread) StepInstruction() error {
 }
 
 func threadResume(thread *Thread, mode ResumeMode, sig int) (err error) {
+	log.WithFields(logrus.Fields{"thread": thread.ID, "mode": mode}).Info("begin thread resume")
 	// Check and see if this thread is stopped at a breakpoint. If so,
 	// clear it and set a deferred function to reinsert it once we are
 	// past it.

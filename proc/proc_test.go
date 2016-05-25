@@ -442,6 +442,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 		initVval, _ := constant.Int64Val(initV.Value)
 		assertNoError(err, t, "EvalVariable")
 		for _, tc := range testcases {
+			log.WithFields(logrus.Fields{"begin": tc.begin, "end": tc.end}).Debug("beginning next")
 			g, err := p.CurrentThread.GetG()
 			assertNoError(err, t, "GetG()")
 			if p.SelectedGoroutine.ID != g.ID {
