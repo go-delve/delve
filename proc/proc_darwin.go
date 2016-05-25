@@ -115,17 +115,17 @@ func kill(p *Process) error {
 	if p.exited {
 		return nil
 	}
-	for _, th := range p.Threads {
-		th.halt()
-	}
-	for _, th := range p.Threads {
-		th.sendMachReply()
-	}
+	// for _, th := range p.Threads {
+	// 	th.halt()
+	// }
+	// for _, th := range p.Threads {
+	// 	th.sendMachReply()
+	// }
 	kret := C.task_set_exception_ports(p.os.task, C.EXC_MASK_ALL, C.MACH_PORT_NULL, C.EXCEPTION_DEFAULT, C.THREAD_STATE_NONE)
 	if kret != C.KERN_SUCCESS {
 		return errors.New("could not restore exception ports")
 	}
-	if err := syscall.Kill(p.Pid, syscall.SIGKILL); err != nil {
+	if err := syscall.Kill(-p.Pid, syscall.SIGKILL); err != nil {
 		return err
 	}
 	_, err := Mourn(p)
