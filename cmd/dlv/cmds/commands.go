@@ -80,8 +80,8 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
-	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate")
-	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless")
+	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
+	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless.")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 
@@ -123,7 +123,7 @@ option to let the process continue or kill it.
 	// 'debug' subcommand.
 	debugCommand := &cobra.Command{
 		Use:   "debug [package]",
-		Short: "Compile and begin debugging main package in current directory, or the package specified",
+		Short: "Compile and begin debugging main package in current directory, or the package specified.",
 		Long: `Compiles your program with optimizations disabled, starts and attaches to it.
 
 By default, with no arguments, Delve will compile the 'main' package in the
