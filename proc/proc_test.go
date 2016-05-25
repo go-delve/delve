@@ -1689,7 +1689,7 @@ func TestCmdLineArgs(t *testing.T) {
 		}
 		exit, exited := err.(ProcessExitedError)
 		if !exited {
-			t.Fatalf("Process did not exit!", err)
+			t.Fatalf("Process did not exit: %v", err)
 		} else {
 			if exit.Status != 0 {
 				t.Fatalf("process exited with invalid status", exit.Status)
