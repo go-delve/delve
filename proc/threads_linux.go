@@ -43,30 +43,34 @@ func (t *Thread) resumeWithSig(sig int) error {
 }
 
 func (t *Thread) singleStep() error {
-	err := PtraceSingleStep(t.ID)
-	if err != nil {
-		if err == sys.ESRCH {
-			return ThreadExitedErr
+	for {
+		err := PtraceSingleStep(t.ID)
+		if err != nil {
+			if err == sys.ESRCH {
+				return ThreadExitedErr
+			}
+			return err
 		}
-		return err
-	}
-	// TODO(derekparker) consolidate all wait calls into threadResume
-	status, _, err := wait(t.p, t.ID)
-	if err != nil {
-		return err
-	}
-	if status.Exited() {
-		_, err := Mourn(t.p)
+		// TODO(derekparker) consolidate all wait calls into threadResume
+		status, trapthread, err := wait(t.p, t.ID)
 		if err != nil {
 			return err
 		}
-		rs := 0
-		if status != nil {
-			rs = status.ExitStatus()
+		if status.Exited() {
+			_, err := Mourn(t.p)
+			if err != nil {
+				return err
+			}
+			rs := 0
+			if status != nil {
+				rs = status.ExitStatus()
+			}
+			return ProcessExitedError{Pid: t.p.Pid, Status: rs}
 		}
-		return ProcessExitedError{Pid: t.p.Pid, Status: rs}
+		if trapthread.ID == t.ID && status.Trap() {
+			return nil
+		}
 	}
-	return nil
 }
 
 func (t *Thread) blocked() bool {
