@@ -193,6 +193,13 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 			var cloned uint
 			execOnPtraceThread(func() { cloned, err = sys.PtraceGetEventMsg(wpid) })
 			if err != nil {
+				if err == syscall.ESRCH {
+					status, err := Mourn(p)
+					if err != nil {
+						return nil, nil, err
+					}
+					return nil, nil, ProcessExitedError{Pid: p.Pid, Status: status}
+				}
 				return nil, nil, fmt.Errorf("could not get event message: %s", err)
 			}
 			th, err = p.addThread(int(cloned), false)
