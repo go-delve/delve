@@ -211,7 +211,7 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 				return nil, nil, err
 			}
 			if err = th.Continue(); err != nil {
-				if err == sys.ESRCH {
+				if err == ThreadExitedErr {
 					// thread died while we were adding it
 					delete(p.Threads, th.ID)
 					continue
@@ -219,9 +219,12 @@ func wait(p *Process, pid int) (*WaitStatus, *Thread, error) {
 				return nil, nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
 			if err = p.Threads[int(wpid)].Continue(); err != nil {
-				if err != sys.ESRCH {
-					return nil, nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
+				if err == ThreadExitedErr {
+					// thread died while we were adding it
+					delete(p.Threads, th.ID)
+					continue
 				}
+				return nil, nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
 			}
 			continue
 		}
