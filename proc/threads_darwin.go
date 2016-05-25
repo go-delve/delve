@@ -37,20 +37,22 @@ func (t *Thread) halt() error {
 }
 
 func (t *Thread) singleStep() error {
+	C.task_suspend(t.p.os.task)
+	for _, th := range t.p.Threads {
+		if err := th.halt(); err != nil {
+			return err
+		}
+	}
 	if kret := C.set_single_step_flag(t.os.threadAct); kret != C.KERN_SUCCESS {
 		if threadExited(kret) {
 			return ThreadExitedErr
 		}
 		return fmt.Errorf("could not single step")
 	}
-	for _, th := range t.p.Threads {
-		if err := th.halt(); err != nil {
-			return err
-		}
-	}
-	if err := t.ContinueWithSignal(0); err != nil {
+	if err := t.resume(); err != nil {
 		return err
 	}
+	C.task_resume(t.p.os.task)
 	ws, _, err := Wait(t.p)
 	if err != nil {
 		return err
