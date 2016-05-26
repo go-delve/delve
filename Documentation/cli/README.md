@@ -27,10 +27,10 @@ Command | Description
 [source](#source) | Executes a file containing a list of delve commands
 [sources](#sources) | Print list of source files.
 [stack](#stack) | Print stack trace.
-[step-instruction](#step-instruction) | Single step a single cpu instruction.
 [step](#step) | Single step through program.
-[threads](#threads) | Print out info for every traced thread.
+[step-instruction](#step-instruction) | Single step a single cpu instruction.
 [thread](#thread) | Switch to the specified thread.
+[threads](#threads) | Print out info for every traced thread.
 [trace](#trace) | Set tracepoint.
 [types](#types) | Print list of types
 [vars](#vars) | Print package variables.
