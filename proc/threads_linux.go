@@ -35,20 +35,13 @@ func (t *Thread) resume() error {
 
 func (t *Thread) resumeWithSig(sig int) error {
 	t.running = true
-	err := PtraceCont(t.ID, sig)
-	if err == sys.ESRCH {
-		return ThreadExitedErr
-	}
-	return err
+	return PtraceCont(t.ID, sig)
 }
 
 func (t *Thread) singleStep() error {
 	for {
 		err := PtraceSingleStep(t.ID)
 		if err != nil {
-			if err == sys.ESRCH {
-				return ThreadExitedErr
-			}
 			return err
 		}
 		// TODO(derekparker) consolidate all wait calls into threadResume

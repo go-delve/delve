@@ -937,7 +937,7 @@ func setCurrentBreakpoints(p *Process) error {
 	for _, th := range p.Threads {
 		if th.CurrentBreakpoint == nil {
 			err := th.SetCurrentBreakpoint()
-			if err != nil {
+			if err != nil && err != ThreadExitedErr {
 				return err
 			}
 		}
