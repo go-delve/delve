@@ -3,13 +3,14 @@ package terminal
 import (
 	"bufio"
 	"fmt"
-	"github.com/derekparker/delve/service/api"
 	"io"
 	"path/filepath"
 	"text/tabwriter"
+
+	"github.com/derekparker/delve/api/types"
 )
 
-func DisasmPrint(dv api.AsmInstructions, out io.Writer) {
+func DisasmPrint(dv types.AsmInstructions, out io.Writer) {
 	bw := bufio.NewWriter(out)
 	defer bw.Flush()
 	if len(dv) > 0 && dv[0].Loc.Function != nil {

@@ -19,8 +19,7 @@ func demo(id int, wait *sync.WaitGroup) {
 
 func main() {
 	wait := new(sync.WaitGroup)
-	wait.Add(1)
-	wait.Add(1)
+	wait.Add(2)
 	go demo(1, wait)
 	go demo(2, wait)
 

@@ -5,7 +5,17 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"path/filepath"
 	"reflect"
+
+	"github.com/Sirupsen/logrus"
+)
+
+var (
+	breakpointIDCounter     int
+	tempBreakpointIDCounter int
+
+	breakpointConditionNotMetError = errors.New("breakpoint condition not met")
 )
 
 // Breakpoint represents a breakpoint. Stores information on the break
@@ -24,16 +34,29 @@ type Breakpoint struct {
 	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
 
 	// Breakpoint information
-	Tracepoint    bool           // Tracepoint flag
-	Goroutine     bool           // Retrieve goroutine information
-	Stacktrace    int            // Number of stack frames to retrieve
-	Variables     []string       // Variables to evaluate
+	Tracepoint    bool     // Tracepoint flag
+	Goroutine     bool     // Retrieve goroutine information
+	Stacktrace    int      // Number of stack frames to retrieve
+	Variables     []string // Variables to evaluate
 	LoadArgs      *LoadConfig
 	LoadLocals    *LoadConfig
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached
 
 	Cond ast.Expr // When Cond is not nil the breakpoint will be triggered only if evaluating Cond returns true
+}
+
+// Breakpoints is a map of memory address -> breakpoint.
+type Breakpoints map[uint64]*Breakpoint
+
+// FindByID finds the breakpoint for the given ID.
+func (bps Breakpoints) FindByID(id int) (*Breakpoint, bool) {
+	for _, bp := range bps {
+		if bp.ID == id {
+			return bp, true
+		}
+	}
+	return nil, false
 }
 
 func (bp *Breakpoint) String() string {
@@ -71,50 +94,45 @@ func (iae InvalidAddressError) Error() string {
 	return fmt.Sprintf("Invalid address %#v\n", iae.address)
 }
 
-func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
-	if bp, ok := dbp.FindBreakpoint(addr); ok {
-		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
-	}
-
-	f, l, fn := dbp.goSymTable.PCToLine(uint64(addr))
-	if fn == nil {
-		return nil, InvalidAddressError{address: addr}
-	}
+func createAndWriteBreakpoint(mem memoryReadWriter, loc *Location, temp bool, instr []byte) (*Breakpoint, error) {
+	log.WithFields(logrus.Fields{
+		"addr": fmt.Sprintf("%#v", loc.PC),
+		"file": filepath.Base(loc.File),
+		"line": loc.Line,
+		"temp": temp,
+	}).Info("setting breakpoint")
 
 	newBreakpoint := &Breakpoint{
-		FunctionName: fn.Name,
-		File:         f,
-		Line:         l,
-		Addr:         addr,
+		FunctionName: loc.Fn.Name,
+		File:         loc.File,
+		Line:         loc.Line,
+		Addr:         loc.PC,
 		Temp:         temp,
 		Cond:         nil,
 		HitCount:     map[int]uint64{},
 	}
 
 	if temp {
-		dbp.tempBreakpointIDCounter++
-		newBreakpoint.ID = dbp.tempBreakpointIDCounter
+		tempBreakpointIDCounter++
+		newBreakpoint.ID = tempBreakpointIDCounter
 	} else {
-		dbp.breakpointIDCounter++
-		newBreakpoint.ID = dbp.breakpointIDCounter
+		breakpointIDCounter++
+		newBreakpoint.ID = breakpointIDCounter
 	}
 
-	thread := dbp.Threads[tid]
-	originalData, err := thread.readMemory(uintptr(addr), dbp.arch.BreakpointSize())
+	originalData, err := mem.readMemory(uintptr(loc.PC), len(instr))
 	if err != nil {
 		return nil, err
 	}
-	if err := dbp.writeSoftwareBreakpoint(thread, addr); err != nil {
+	if err := writeSoftwareBreakpoint(mem, loc.PC, instr); err != nil {
 		return nil, err
 	}
 	newBreakpoint.OriginalData = originalData
-	dbp.Breakpoints[addr] = newBreakpoint
-
 	return newBreakpoint, nil
 }
 
-func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
-	_, err := thread.writeMemory(uintptr(addr), dbp.arch.BreakpointInstruction())
+func writeSoftwareBreakpoint(mem memoryReadWriter, addr uint64, instr []byte) error {
+	_, err := mem.writeMemory(uintptr(addr), instr)
 	return err
 }
 

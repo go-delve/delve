@@ -42,7 +42,7 @@ acquire_mach_task(int tid,
 	kret = mach_port_insert_right(self, *exception_port, *exception_port, MACH_MSG_TYPE_MAKE_SEND);
 	if (kret != KERN_SUCCESS) return kret;
 
-	kret = task_set_exception_ports(*task, EXC_MASK_BREAKPOINT|EXC_MASK_SOFTWARE, *exception_port,
+	kret = task_set_exception_ports(*task, EXC_MASK_ALL, *exception_port,
 			EXCEPTION_DEFAULT, THREAD_STATE_NONE);
 	if (kret != KERN_SUCCESS) return kret;
 
@@ -115,7 +115,7 @@ thread_count(task_t task) {
 }
 
 mach_port_t
-mach_port_wait(mach_port_t port_set, int nonblocking) {
+mach_port_wait(mach_port_t port_set, mach_msg_header_t *thdr, int *sig, int nonblocking) {
 	kern_return_t kret;
 	thread_act_t thread;
 	NDR_record_t *ndr;
@@ -132,9 +132,15 @@ mach_port_wait(mach_port_t port_set, int nonblocking) {
 
 	// Wait for mach msg.
 	kret = mach_msg(&msg.hdr, opts,
-			0, sizeof(msg.data), port_set, 10, MACH_PORT_NULL);
+			0, sizeof(msg.data), port_set,
+			10, MACH_PORT_NULL);
+	if (kret == MACH_RCV_TIMED_OUT) {
+		return MACH_RCV_TIMED_OUT;
+	}
 	if (kret == MACH_RCV_INTERRUPTED) return kret;
 	if (kret != MACH_MSG_SUCCESS) return 0;
+
+	*thdr = msg.hdr;
 
 	mach_msg_body_t *bod = (mach_msg_body_t*)(&msg.hdr + 1);
 	mach_msg_port_descriptor_t *desc = (mach_msg_port_descriptor_t *)(bod + 1);
@@ -144,16 +150,21 @@ mach_port_wait(mach_port_t port_set, int nonblocking) {
 
 	switch (msg.hdr.msgh_id) {
 		case 2401: // Exception
-			if (thread_suspend(thread) != KERN_SUCCESS) return 0;
-			// Send our reply back so the kernel knows this exception has been handled.
-			kret = mach_send_reply(msg.hdr);
-			if (kret != MACH_MSG_SUCCESS) return 0;
-			if (data[2] == EXC_SOFT_SIGNAL) {
-				if (data[3] != SIGTRAP) {
-					if (thread_resume(thread) != KERN_SUCCESS) return 0;
-					return mach_port_wait(port_set, nonblocking);
-				}
-			}
+			switch (data[2]) {
+				case EXC_SOFT_SIGNAL:
+					*sig = data[3];
+					break;
+				case EXC_BREAKPOINT:
+				case EXC_BAD_INSTRUCTION:
+					// It seems the OS can send us an EXC_BAD_INSTRUCTION
+					// when we hit a software breakpoint that we've set.
+					// We translate it to a SIGTRAP for our use case.
+					// TODO(derekparker) bubble this up, so that we can
+					// actually determine if a breakpoint exists at the PC
+					// the program stopped on before converting to SIGTRAP.
+					*sig = SIGTRAP;
+					break;
+			};
 			return thread;
 
 		case 72: // Death
@@ -182,4 +193,9 @@ mach_send_reply(mach_msg_header_t hdr) {
 kern_return_t
 raise_exception(mach_port_t task, mach_port_t thread, mach_port_t exception_port, exception_type_t exception) {
 	return exception_raise(exception_port, thread, task, exception, 0, 0);
+}
+
+mach_port_t
+mach_task() {
+	return mach_task_self();
 }

@@ -1,11 +1,10 @@
 package proc
 
-import "fmt"
 import "errors"
 
 // Registers is an interface for a generic register type. The
 // interface encapsulates the generic values / actions
-// we need independant of arch. The concrete register types
+// we need independent of arch. The concrete register types
 // will be different depending on OS/Arch.
 type Registers interface {
 	PC() uint64
@@ -21,11 +20,7 @@ var UnknownRegisterError = errors.New("unknown register")
 
 // Registers obtains register values from the debugged process.
 func (t *Thread) Registers() (Registers, error) {
-	regs, err := registers(t)
-	if err != nil {
-		return nil, fmt.Errorf("could not get registers: %s", err)
-	}
-	return regs, nil
+	return registers(t)
 }
 
 // PC returns the current PC for this thread.

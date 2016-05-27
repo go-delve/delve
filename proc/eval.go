@@ -11,7 +11,8 @@ import (
 	"go/token"
 	"reflect"
 
-	"github.com/derekparker/delve/dwarf/reader"
+	"github.com/derekparker/delve/pkg/dwarf/reader"
+
 	"golang.org/x/debug/dwarf"
 )
 
@@ -138,7 +139,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		fnnode = p.X
 	}
 
-	styp, err := scope.Thread.dbp.findTypeExpr(fnnode)
+	styp, err := scope.Thread.p.findTypeExpr(fnnode)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +147,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 	converr := fmt.Errorf("can not convert %q to %s", exprToString(node.Args[0]), typ.String())
 
-	v := newVariable("", 0, styp, scope.Thread.dbp, scope.Thread)
+	v := newVariable("", 0, styp, scope.Thread.p, scope.Thread)
 	v.loaded = true
 
 	switch ttyp := typ.(type) {
@@ -451,7 +452,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return v, nil
 	}
 	// if it's not a local variable then it could be a package variable w/o explicit package name
-	_, _, fn := scope.Thread.dbp.PCToLine(scope.PC)
+	_, _, fn := scope.Thread.p.Dwarf.PCToLine(scope.PC)
 	if fn != nil {
 		if v, err = scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
 			v.Name = node.Name
@@ -489,7 +490,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 	if xv.Children[0].Addr == 0 {
 		return nil, fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), exprToString(node.Type))
 	}
-	typ, err := scope.Thread.dbp.findTypeExpr(node.Type)
+	typ, err := scope.Thread.p.findTypeExpr(node.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -634,7 +635,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 	xev.OnlyAddr = true
 
 	typename := "*" + xev.DwarfType.String()
-	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
+	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.Thread.p.arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
 	rv.Children = []Variable{*xev}
 	rv.loaded = true
 

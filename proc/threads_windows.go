@@ -1,13 +1,6 @@
 package proc
 
-import (
-	"syscall"
-
-	sys "golang.org/x/sys/windows"
-)
-
-// WaitStatus is a synonym for the platform-specific WaitStatus
-type WaitStatus sys.WaitStatus
+import "syscall"
 
 // OSSpecificDetails holds information specific to the Windows
 // operating system / kernel.
@@ -20,8 +13,8 @@ func (t *Thread) halt() (err error) {
 	// on return from WaitForDebugEvent.
 	return nil
 
-	// TODO - This may not be correct in all usages of dbp.Halt.  There
-	// are some callers who use dbp.Halt() to stop the process when it is not
+	// TODO - This may not be correct in all usages of p.Halt.  There
+	// are some callers who use p.Halt() to stop the process when it is not
 	// already broken on a debug event.
 }
 
@@ -43,7 +36,7 @@ func (t *Thread) singleStep() error {
 	}
 
 	// Suspend all threads except this one
-	for _, thread := range t.dbp.Threads {
+	for _, thread := range t.p.Threads {
 		if thread.ID == t.ID {
 			continue
 		}
@@ -52,19 +45,19 @@ func (t *Thread) singleStep() error {
 
 	// Continue and wait for the step to complete
 	err = nil
-	t.dbp.execPtraceFunc(func() {
-		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
+	execOnPtraceThread(func() {
+		err = _ContinueDebugEvent(uint32(t.p.Pid), uint32(t.ID), _DBG_CONTINUE)
 	})
 	if err != nil {
 		return err
 	}
-	_, err = t.dbp.trapWait(0)
+	_, _, err = Wait(t.p)
 	if err != nil {
 		return err
 	}
 
 	// Resume all threads except this one
-	for _, thread := range t.dbp.Threads {
+	for _, thread := range t.p.Threads {
 		if thread.ID == t.ID {
 			continue
 		}
@@ -85,12 +78,17 @@ func (t *Thread) singleStep() error {
 func (t *Thread) resume() error {
 	t.running = true
 	var err error
-	t.dbp.execPtraceFunc(func() {
+	execOnPtraceThread(func() {
 		//TODO: Note that we are ignoring the thread we were asked to continue and are continuing the
 		//thread that we last broke on.
-		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
+		err = _ContinueDebugEvent(uint32(t.p.Pid), uint32(t.ID), _DBG_CONTINUE)
 	})
 	return err
+}
+
+func (t *Thread) resumeWithSig(sig int) error {
+	// TODO(derekparker) Do we need to handle passing along exceptions?
+	return t.resume()
 }
 
 func (t *Thread) blocked() bool {
@@ -100,7 +98,7 @@ func (t *Thread) blocked() bool {
 	if err != nil {
 		return false
 	}
-	fn := t.dbp.goSymTable.PCToFunc(pc)
+	fn := t.p.Dwarf.PCToFunc(pc)
 	if fn == nil {
 		return false
 	}
@@ -114,13 +112,13 @@ func (t *Thread) blocked() bool {
 
 func (t *Thread) stopped() bool {
 	// TODO: We are assuming that threads are always stopped
-	// during command exection.
+	// during command execution.
 	return true
 }
 
 func (t *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
 	var count uintptr
-	err := _WriteProcessMemory(t.dbp.os.hProcess, addr, &data[0], uintptr(len(data)), &count)
+	err := _WriteProcessMemory(t.p.os.hProcess, addr, &data[0], uintptr(len(data)), &count)
 	if err != nil {
 		return 0, err
 	}
@@ -133,7 +131,7 @@ func (t *Thread) readMemory(addr uintptr, size int) ([]byte, error) {
 	}
 	var count uintptr
 	buf := make([]byte, size)
-	err := _ReadProcessMemory(t.dbp.os.hProcess, addr, &buf[0], uintptr(size), &count)
+	err := _ReadProcessMemory(t.p.os.hProcess, addr, &buf[0], uintptr(size), &count)
 	if err != nil {
 		return nil, err
 	}

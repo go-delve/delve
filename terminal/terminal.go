@@ -11,8 +11,8 @@ import (
 
 	"github.com/peterh/liner"
 
+	"github.com/derekparker/delve/api"
 	"github.com/derekparker/delve/config"
-	"github.com/derekparker/delve/service"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 
 // Term represents the terminal running dlv.
 type Term struct {
-	client   service.Client
+	client   api.Client
 	prompt   string
 	line     *liner.State
 	cmds     *Commands
@@ -33,7 +33,7 @@ type Term struct {
 }
 
 // New returns a new Term.
-func New(client service.Client, conf *config.Config) *Term {
+func New(client api.Client, conf *config.Config) *Term {
 	cmds := DebugCommands(client)
 	if conf != nil && conf.Aliases != nil {
 		cmds.Merge(conf.Aliases)

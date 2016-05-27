@@ -76,7 +76,7 @@ set_pc(thread_act_t task, uint64_t pc) {
 }
 
 kern_return_t
-single_step(thread_act_t thread) {
+set_single_step_flag(thread_act_t thread) {
 	kern_return_t kret;
 	x86_thread_state64_t regs;
 	mach_msg_type_number_t count = x86_THREAD_STATE64_COUNT;
@@ -87,10 +87,7 @@ single_step(thread_act_t thread) {
 	// Set trap bit in rflags
 	regs.__rflags |= 0x100UL;
 
-	kret = thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
-	if (kret != KERN_SUCCESS) return kret;
-
-	return resume_thread(thread);
+	return thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
 }
 
 kern_return_t

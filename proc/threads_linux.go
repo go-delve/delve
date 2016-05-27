@@ -6,30 +6,26 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
-type WaitStatus sys.WaitStatus
-
 // OSSpecificDetails hold Linux specific
 // process details.
 type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
-func (t *Thread) halt() (err error) {
-	err = sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGSTOP)
+func (t *Thread) halt() error {
+	err := sys.Tgkill(t.p.Pid, t.ID, sys.SIGSTOP)
 	if err != nil {
-		err = fmt.Errorf("halt err %s on thread %d", err, t.ID)
-		return
+		return fmt.Errorf("halt err %s on thread %d for process %d", err, t.ID, t.p.Pid)
 	}
-	_, _, err = t.dbp.wait(t.ID, 0)
-	if err != nil {
-		err = fmt.Errorf("wait err %s on thread %d", err, t.ID)
-		return
+	_, _, err = wait(t.p, t.ID)
+	if err != nil && err != sys.ECHILD {
+		return err
 	}
-	return
+	return nil
 }
 
 func (t *Thread) stopped() bool {
-	state := status(t.ID, t.dbp.os.comm)
+	state := status(t.ID, t.p.os.comm)
 	return state == StatusTraceStop || state == StatusTraceStopT
 }
 
@@ -37,31 +33,34 @@ func (t *Thread) resume() error {
 	return t.resumeWithSig(0)
 }
 
-func (t *Thread) resumeWithSig(sig int) (err error) {
+func (t *Thread) resumeWithSig(sig int) error {
 	t.running = true
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
-	return
+	return PtraceCont(t.ID, sig)
 }
 
-func (t *Thread) singleStep() (err error) {
+func (t *Thread) singleStep() error {
 	for {
-		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.ID) })
+		err := PtraceSingleStep(t.ID)
 		if err != nil {
 			return err
 		}
-		wpid, status, err := t.dbp.wait(t.ID, 0)
+		// TODO(derekparker) consolidate all wait calls into threadResume
+		status, trapthread, err := wait(t.p, t.ID)
 		if err != nil {
 			return err
 		}
-		if (status == nil || status.Exited()) && wpid == t.dbp.Pid {
-			t.dbp.postExit()
+		if status.Exited() {
+			_, err := Mourn(t.p)
+			if err != nil {
+				return err
+			}
 			rs := 0
 			if status != nil {
 				rs = status.ExitStatus()
 			}
-			return ProcessExitedError{Pid: t.dbp.Pid, Status: rs}
+			return ProcessExitedError{Pid: t.p.Pid, Status: rs}
 		}
-		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
+		if trapthread.ID == t.ID && status.Trap() {
 			return nil
 		}
 	}
@@ -69,7 +68,7 @@ func (t *Thread) singleStep() (err error) {
 
 func (t *Thread) blocked() bool {
 	pc, _ := t.PC()
-	fn := t.dbp.goSymTable.PCToFunc(pc)
+	fn := t.p.Dwarf.PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
 		return true
 	}
@@ -78,7 +77,7 @@ func (t *Thread) blocked() bool {
 
 func (t *Thread) saveRegisters() (Registers, error) {
 	var err error
-	t.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(t.ID, &t.os.registers) })
+	execOnPtraceThread(func() { err = sys.PtraceGetRegs(t.ID, &t.os.registers) })
 	if err != nil {
 		return nil, fmt.Errorf("could not save register contents")
 	}
@@ -86,7 +85,7 @@ func (t *Thread) saveRegisters() (Registers, error) {
 }
 
 func (t *Thread) restoreRegisters() (err error) {
-	t.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(t.ID, &t.os.registers) })
+	execOnPtraceThread(func() { err = sys.PtraceSetRegs(t.ID, &t.os.registers) })
 	return
 }
 
@@ -94,7 +93,7 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error)
 	if len(data) == 0 {
 		return
 	}
-	t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
+	execOnPtraceThread(func() { written, err = sys.PtracePokeData(t.p.Pid, addr, data) })
 	return
 }
 
@@ -103,6 +102,6 @@ func (t *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
 		return
 	}
 	data = make([]byte, size)
-	t.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
+	execOnPtraceThread(func() { _, err = sys.PtracePeekData(t.p.Pid, addr, data) })
 	return
 }

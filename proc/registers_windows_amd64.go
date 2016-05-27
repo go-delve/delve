@@ -3,8 +3,9 @@ package proc
 import (
 	"bytes"
 	"fmt"
-	"rsc.io/x86/x86asm"
 	"unsafe"
+
+	"rsc.io/x86/x86asm"
 )
 
 // Regs represents CPU registers on an AMD64 processor.
@@ -306,10 +307,10 @@ func registers(thread *Thread) (Registers, error) {
 	return regs, nil
 }
 
-func (thread *Thread) saveRegisters() (Registers, error) {
+func (t *Thread) saveRegisters() (Registers, error) {
 	return nil, fmt.Errorf("not implemented: saveRegisters")
 }
 
-func (thread *Thread) restoreRegisters() error {
+func (t *Thread) restoreRegisters() error {
 	return fmt.Errorf("not implemented: restoreRegisters")
 }
