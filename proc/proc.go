@@ -409,11 +409,30 @@ func resume(p *Process, mode ResumeMode) error {
 		return p.SelectedGoroutine.thread.StepInstruction()
 	case ModeStep:
 		log.Info("begin step")
-		if fn, ok := atFunctionCall(p.CurrentThread); ok {
-			log.Printf("stepping into function: %s", fn.Name)
-			return StepInto(p, fn)
+		loc, err := p.CurrentThread.Location()
+		if err != nil {
+			return err
 		}
-		return Next(p)
+		for {
+			pc, err := p.CurrentThread.PC()
+			if err != nil {
+				return err
+			}
+			text, err := Disassemble(p.CurrentThread, pc, pc+maxInstructionLength, true)
+			if err == nil && len(text) > 0 && text[0].IsCall() && text[0].DestLoc != nil && text[0].DestLoc.Fn != nil {
+				log.Printf("stepping into function: %s", text[0].DestLoc.Fn.Name)
+				return StepInto(p, text[0].DestLoc.Fn)
+			}
+			err = p.CurrentThread.StepInstruction()
+			if err != nil {
+				return err
+			}
+			nloc, err := p.CurrentThread.Location()
+			if err != nil || nloc.File != loc.File || nloc.Line != loc.Line {
+				return err
+			}
+		}
+		return nil
 	case ModeResume:
 		log.Info("begin resume")
 		// all threads stopped over a breakpoint are made to step over it
@@ -495,27 +514,6 @@ func resume(p *Process, mode ResumeMode) error {
 		panic("unhandled stop event")
 	}
 	return nil
-}
-
-func atFunctionCall(th *Thread) (*gosym.Func, bool) {
-	pc, err := th.PC()
-	if err != nil {
-		return nil, false
-	}
-	text, err := Disassemble(th, pc, pc+maxInstructionLength, true)
-	if err != nil {
-		return nil, false
-	}
-	loc := text[0].Loc
-	for _, txt := range text {
-		if txt.Loc.Line != loc.Line {
-			break
-		}
-		if txt.IsCall() && txt.DestLoc != nil && txt.DestLoc.Fn != nil {
-			return txt.DestLoc.Fn, true
-		}
-	}
-	return nil, false
 }
 
 func handleSigTrap(p *Process, trapthread *Thread) error {
