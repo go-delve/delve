@@ -495,14 +495,13 @@ func resume(p *Process, mode ResumeMode) error {
 		// TODO(derekparker) alert users of signals.
 		if err := trapthread.ContinueWithSignal(int(status.Signal())); err != nil {
 			// TODO(derekparker) should go through regular resume flow.
-			if err == syscall.ESRCH {
+			if err == ThreadExitedErr {
 				exitcode, err := Mourn(p)
 				if err != nil {
 					return err
 				}
 				return ProcessExitedError{Pid: p.Pid, Status: exitcode}
 			}
-			return err
 		}
 		return resume(p, mode)
 	default:
