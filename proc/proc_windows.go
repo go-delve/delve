@@ -13,10 +13,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"golang.org/x/debug/dwarf"
-
 	sys "golang.org/x/sys/windows"
 
+	"github.com/derekparker/delve/dwarf/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 )

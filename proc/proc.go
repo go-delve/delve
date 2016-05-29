@@ -14,8 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/debug/dwarf"
-
+	"github.com/derekparker/delve/dwarf/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 	"github.com/derekparker/delve/dwarf/reader"
@@ -59,6 +58,9 @@ type Process struct {
 	ptraceChan              chan func()
 	ptraceDoneChan          chan interface{}
 	types                   map[string]dwarf.Offset
+
+	loadModuleDataOnce sync.Once
+	moduleData         []moduleData
 }
 
 // New returns an initialized Process struct. Before returning,

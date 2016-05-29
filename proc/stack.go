@@ -118,7 +118,7 @@ func (it *stackIterator) Next() bool {
 	it.frame, it.err = it.dbp.frameInfo(it.pc, it.sp, it.top)
 	if it.err != nil {
 		if _, nofde := it.err.(*frame.NoFDEForPCError); nofde && !it.top {
-			it.frame = Stackframe{ Current: Location{ PC: it.pc, File: "?", Line: -1  }, Call: Location{ PC: it.pc, File: "?", Line: -1 }, CFA: 0, Ret: 0 }
+			it.frame = Stackframe{Current: Location{PC: it.pc, File: "?", Line: -1}, Call: Location{PC: it.pc, File: "?", Line: -1}, CFA: 0, Ret: 0}
 			it.atend = true
 			it.err = nil
 			return true

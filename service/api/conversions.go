@@ -6,10 +6,10 @@ import (
 	"go/constant"
 	"go/printer"
 	"go/token"
-	"golang.org/x/debug/dwarf"
 	"reflect"
 	"strconv"
 
+	"github.com/derekparker/delve/dwarf/debug/dwarf"
 	"github.com/derekparker/delve/proc"
 )
 
