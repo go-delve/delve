@@ -1,14 +1,15 @@
 package rpc1
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-	"errors"
+
+	"sync"
 
 	"github.com/derekparker/delve/service/api"
-	"sync"
 )
 
 // Client is a RPC service.Client.
@@ -74,7 +75,7 @@ func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 				state.Err = err
 			}
 			if state.Exited {
-				// Error types apparantly cannot be marshalled by Go correctly. Must reset error here.
+				// Error types apparently cannot be marshalled by Go correctly. Must reset error here.
 				state.Err = fmt.Errorf("Process %d has exited with status %d", c.ProcessPid(), state.ExitStatus)
 			}
 			ch <- state
