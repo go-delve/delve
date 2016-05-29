@@ -22,6 +22,16 @@ install:
   - godep restore
 cache: C:\mingw64
 build_script:
-- mingw32-make install
+- mingw32-make build
 test_script:
 - mingw32-make test
+deploy:
+  provider: GitHub
+  auth_token:
+    secure: THvz8kM9t9RzWaeNUUBZD7MtdZjp8O3iFDmGaLJkoyYiMh/ZicaHjH6S1gA89gwn
+  artifact: bin\dlv.exe
+  draft: false
+  prerelease: false
+  on:
+    branch: master                 # release from master branch only
+    appveyor_repo_tag: true        # deploy on tag push only

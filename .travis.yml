@@ -13,3 +13,13 @@ go:
 matrix:
   allow_failures:
     - go: tip
+
+deploy:
+  provider: releases
+  api_key:
+    secure: "I1ypyfKVdMVetwhroVcpS8zsI8rwxWSH4c+jDI9qkh2U9a9ernO8BaJPOpeJOqOW/uiqOmM0UlN+XjaEsKayeL3vQniVK26cu0N6o1pg2VKBw74UYAkna1o3yaqQVwPAwCd828U2r5S2XcwNcUPK3T1OR6yjxbpMnUGoqX0a7HQ="
+  file: "bin/dlv"
+  skip_cleanup: true
+  before_deploy: "make build"
+  on:
+    tags: true
