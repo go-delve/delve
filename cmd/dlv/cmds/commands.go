@@ -80,83 +80,21 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
-	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate")
-	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless")
+	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
+	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless.")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
-
-	// 'version' subcommand.
-	versionCommand := &cobra.Command{
-		Use:   "version",
-		Short: "Prints version.",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("Delve Debugger\n%s\n", version.DelveVersion)
-		},
-	}
-	RootCommand.AddCommand(versionCommand)
-
-	// Deprecated 'run' subcommand.
-	runCommand := &cobra.Command{
-		Use:   "run",
-		Short: "Deprecated command. Use 'debug' instead.",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("This command is deprecated, please use 'debug' instead.")
-			os.Exit(0)
-		},
-	}
-	RootCommand.AddCommand(runCommand)
-
-	// 'debug' subcommand.
-	debugCommand := &cobra.Command{
-		Use:   "debug [package]",
-		Short: "Compile and begin debugging program.",
-		Long: `Compiles your program with optimizations disabled,
-starts and attaches to it, and enables you to immediately begin debugging your program.`,
-		Run: debugCmd,
-	}
-	RootCommand.AddCommand(debugCommand)
-
-	// 'exec' subcommand.
-	execCommand := &cobra.Command{
-		Use:   "exec [./path/to/binary]",
-		Short: "Runs precompiled binary, attaches and begins debug session.",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return errors.New("you must provide a path to a binary")
-			}
-			return nil
-		},
-		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(execute(0, args, conf))
-		},
-	}
-	RootCommand.AddCommand(execCommand)
-
-	// 'trace' subcommand.
-	traceCommand := &cobra.Command{
-		Use:   "trace [package] regexp",
-		Short: "Compile and begin tracing program.",
-		Long:  "Trace program execution. Will set a tracepoint on every function matching the provided regular expression and output information when tracepoint is hit.",
-		Run:   traceCmd,
-	}
-	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
-	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
-	RootCommand.AddCommand(traceCommand)
-
-	// 'test' subcommand.
-	testCommand := &cobra.Command{
-		Use:   "test [package]",
-		Short: "Compile test binary and begin debugging program.",
-		Long:  `Compiles a test binary with optimizations disabled, starts and attaches to it, and enable you to immediately begin debugging your program.`,
-		Run:   testCmd,
-	}
-	RootCommand.AddCommand(testCommand)
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
 		Use:   "attach pid",
 		Short: "Attach to running process and begin debugging.",
-		Long:  "Attach to running process and begin debugging.",
+		Long: `Attach to an already running process and begin debugging it.
+
+This command will cause Delve to take control of an already running process, and
+begin a new debug session.  When exiting the debug session you will have the
+option to let the process continue or kill it.
+`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return errors.New("you must provide a PID")
@@ -171,7 +109,7 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 	connectCommand := &cobra.Command{
 		Use:   "connect addr",
 		Short: "Connect to a headless debug server.",
-		Long:  "Connect to a headless debug server.",
+		Long:  "Connect to a running headless debug server.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return errors.New("you must provide an address as the first argument")
@@ -181,6 +119,93 @@ starts and attaches to it, and enables you to immediately begin debugging your p
 		Run: connectCmd,
 	}
 	RootCommand.AddCommand(connectCommand)
+
+	// 'debug' subcommand.
+	debugCommand := &cobra.Command{
+		Use:   "debug [package]",
+		Short: "Compile and begin debugging main package in current directory, or the package specified.",
+		Long: `Compiles your program with optimizations disabled, starts and attaches to it.
+
+By default, with no arguments, Delve will compile the 'main' package in the
+current directory, and begin to debug it. Alternatively you can specify a
+package name and Delve will compile that package instead, and begin a new debug
+session.`,
+		Run: debugCmd,
+	}
+	RootCommand.AddCommand(debugCommand)
+
+	// 'exec' subcommand.
+	execCommand := &cobra.Command{
+		Use:   "exec [./path/to/binary]",
+		Short: "Execute a precompiled binary, and begin a debug session.",
+		Long: `Execute a precompiled binary and begin a debug session.
+
+This command will cause Delve to exec the binary and immediately attach to it to
+begin a new debug session. Please note that if the binary was not compiled with
+optimizations disabled, it may be difficult to properly debug it. Please
+consider compiling debugging binaries with -gcflags="-N -l".`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New("you must provide a path to a binary")
+			}
+			return nil
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			os.Exit(execute(0, args, conf))
+		},
+	}
+	RootCommand.AddCommand(execCommand)
+
+	// Deprecated 'run' subcommand.
+	runCommand := &cobra.Command{
+		Use:   "run",
+		Short: "Deprecated command. Use 'debug' instead.",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("This command is deprecated, please use 'debug' instead.")
+			os.Exit(0)
+		},
+	}
+	RootCommand.AddCommand(runCommand)
+
+	// 'test' subcommand.
+	testCommand := &cobra.Command{
+		Use:   "test [package]",
+		Short: "Compile test binary and begin debugging program.",
+		Long: `Compiles a test binary with optimizations disabled and begins a new debug session.
+
+The test command allows you to begin a new debug session in the context of your
+unit tests. By default Delve will debug the tests in the current directory.
+Alternatively you can specify a package name, and Delve will debug the tests in
+that package instead.`,
+		Run: testCmd,
+	}
+	RootCommand.AddCommand(testCommand)
+
+	// 'trace' subcommand.
+	traceCommand := &cobra.Command{
+		Use:   "trace [package] regexp",
+		Short: "Compile and begin tracing program.",
+		Long: `Trace program execution.
+
+The trace sub command will set a tracepoint on every function matching the
+provided regular expression and output information when tracepoint is hit.  This
+is useful if you do not want to begin an entire debug session, but merely want
+to know what functions your process is executing.`,
+		Run: traceCmd,
+	}
+	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
+	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
+	RootCommand.AddCommand(traceCommand)
+
+	// 'version' subcommand.
+	versionCommand := &cobra.Command{
+		Use:   "version",
+		Short: "Prints version.",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("Delve Debugger\n%s\n", version.DelveVersion)
+		},
+	}
+	RootCommand.AddCommand(versionCommand)
 
 	return RootCommand
 }

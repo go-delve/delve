@@ -70,18 +70,6 @@
 			"Rev": "b084184666e02084b8ccb9b704bf0d79c466eb1d"
 		},
 		{
-			"ImportPath": "golang.org/x/debug/dwarf",
-			"Rev": "450bc3a73495e77763c92c336e3bc040b3f34c14"
-		},
-		{
-			"ImportPath": "golang.org/x/debug/elf",
-			"Rev": "450bc3a73495e77763c92c336e3bc040b3f34c14"
-		},
-		{
-			"ImportPath": "golang.org/x/debug/macho",
-			"Rev": "450bc3a73495e77763c92c336e3bc040b3f34c14"
-		},
-		{
 			"ImportPath": "golang.org/x/sys/unix",
 			"Rev": "eb2c74142fd19a79b3f237334c7384d5167b1b46"
 		},

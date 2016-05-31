@@ -114,7 +114,7 @@ func (t *Thread) blocked() bool {
 
 func (t *Thread) stopped() bool {
 	// TODO: We are assuming that threads are always stopped
-	// during command exection.
+	// during command execution.
 	return true
 }
 

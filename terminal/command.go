@@ -67,6 +67,12 @@ var (
 	ShortLoadConfig = api.LoadConfig{false, 0, 64, 0, 3}
 )
 
+type ByFirstAlias []command
+
+func (a ByFirstAlias) Len() int           { return len(a) }
+func (a ByFirstAlias) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByFirstAlias) Less(i, j int) bool { return a[i].aliases[0] < a[j].aliases[0] }
+
 // DebugCommands returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
 	c := &Commands{client: client}
@@ -207,6 +213,7 @@ Supported commands: print, stack and goroutine)`},
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
 	}
 
+	sort.Sort(ByFirstAlias(c.cmds))
 	return c
 }
 

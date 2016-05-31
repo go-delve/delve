@@ -8,3 +8,4 @@ Documentation for the project will reside in this directory.
 - [API](api)
 - [Internal](internal)
 - [Editor Integration](EditorIntegration.md)
+- [Known Bugs](KnownBugs.md)

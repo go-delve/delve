@@ -11,8 +11,8 @@ import (
 	"go/token"
 	"reflect"
 
+	"github.com/derekparker/delve/dwarf/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/reader"
-	"golang.org/x/debug/dwarf"
 )
 
 // EvalExpression returns the value of the given expression.

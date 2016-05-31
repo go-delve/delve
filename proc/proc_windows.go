@@ -13,10 +13,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"golang.org/x/debug/dwarf"
-
 	sys "golang.org/x/sys/windows"
 
+	"github.com/derekparker/delve/dwarf/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 )
@@ -465,7 +464,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	// TODO: In theory, we should also be setting the breakpoints on other
 	// threads that happen to have hit this BP. But doing so leads to periodic
 	// failures in the TestBreakpointsCounts test with hit counts being too high,
-	// which can be traced back to occurences of multiple threads hitting a BP
+	// which can be traced back to occurrences of multiple threads hitting a BP
 	// at the same time.
 
 	// My guess is that Windows will correctly trigger multiple DEBUG_EVENT's

@@ -14,7 +14,7 @@ type memCache struct {
 }
 
 func (m *memCache) contains(addr uintptr, size int) bool {
-	return addr >= m.cacheAddr && (addr+uintptr(size)) <= (m.cacheAddr+uintptr(len(m.cache)))
+	return addr >= m.cacheAddr && addr <= (m.cacheAddr+uintptr(len(m.cache) - size))
 }
 
 func (m *memCache) readMemory(addr uintptr, size int) (data []byte, err error) {

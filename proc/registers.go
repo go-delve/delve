@@ -5,7 +5,7 @@ import "errors"
 
 // Registers is an interface for a generic register type. The
 // interface encapsulates the generic values / actions
-// we need independant of arch. The concrete register types
+// we need independent of arch. The concrete register types
 // will be different depending on OS/Arch.
 type Registers interface {
 	PC() uint64

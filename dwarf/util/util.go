@@ -35,7 +35,7 @@ func DecodeULEB128(buf *bytes.Buffer) (uint64, uint32) {
 	return result, length
 }
 
-// DecodeSLEB128 decodes an signed Little Endian Base 128
+// DecodeSLEB128 decodes a signed Little Endian Base 128
 // represented number.
 func DecodeSLEB128(buf *bytes.Buffer) (int64, uint32) {
 	var (

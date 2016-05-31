@@ -138,7 +138,12 @@ type PtrType struct {
 	Type Type
 }
 
-func (t *PtrType) String() string { return "*" + t.Type.String() }
+func (t *PtrType) String() string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return "*" + t.Type.String()
+}
 
 // A StructType represents a struct, union, or C++ class type.
 type StructType struct {
@@ -160,6 +165,9 @@ type StructField struct {
 }
 
 func (t *StructType) String() string {
+	if t.Name != "" {
+		return t.Name
+	}
 	if t.StructName != "" {
 		return t.Kind + " " + t.StructName
 	}
@@ -591,6 +599,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		case TagUnionType:
 			t.Kind = "union"
 		}
+		t.Name, _ = e.Val(AttrName).(string)
 		t.StructName, _ = e.Val(AttrName).(string)
 		t.Incomplete = e.Val(AttrDeclaration) != nil
 		t.Field = make([]*StructField, 0, 8)
@@ -705,6 +714,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		//	AttrType: subtype [not required!  void* has no AttrType]
 		//	AttrAddrClass: address class [ignored]
 		t := new(PtrType)
+		t.Name, _ = e.Val(AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t

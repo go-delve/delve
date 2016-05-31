@@ -15,10 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/debug/elf"
-
 	sys "golang.org/x/sys/unix"
 
+	"github.com/derekparker/delve/dwarf/debug/elf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 )
