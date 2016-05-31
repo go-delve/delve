@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"bytes"
 	"debug/gosym"
 	"errors"
 	"fmt"
@@ -340,29 +341,27 @@ func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.Pid))
 	if err == nil {
 		// removes newline character
-		comm = comm[:len(comm)-1]
+		comm = bytes.TrimSuffix(comm, []byte("\n"))
 	}
-	for comm == nil || len(comm) <= 0 {
+
+	if comm == nil || len(comm) <= 0 {
 		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.Pid))
 		if err != nil {
-			break
+			fmt.Printf("Could not read proc stat: %v\n", err)
+			os.Exit(1)
 		}
 		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.Pid)
 		rexp, err := regexp.Compile(expr)
 		if err != nil {
-			break
+			fmt.Printf("Regexp compile error: %v\n", err)
+			os.Exit(1)
 		}
 		match := rexp.FindSubmatch(stat)
 		if match == nil {
-			err = errors.New(fmt.Sprintf("no match found using regexp '%s' in /proc/%d/stat", expr, dbp.Pid))
-			break
+			fmt.Printf(fmt.Sprintf("No match found using regexp '%s' in /proc/%d/stat", expr, dbp.Pid))
+			os.Exit(1)
 		}
 		comm = match[1]
-		break
-	}
-	if comm == nil || len(comm) <= 0 {
-		fmt.Printf("Could not read process comm name: %v\n", err)
-		os.Exit(1)
 	}
 	dbp.os.comm = strings.Replace(string(comm), "%", "%%", -1)
 }
