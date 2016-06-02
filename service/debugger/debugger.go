@@ -4,6 +4,7 @@ import (
 	"debug/gosym"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"log"
 	"path/filepath"
@@ -264,7 +265,11 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	bp.Cond = nil
 	if requested.Cond != "" {
-		bp.Cond, err = parser.ParseExpr(requested.Cond)
+		var expr ast.Expr
+		expr, err = parser.ParseExpr(requested.Cond)
+		if expr != nil {
+			bp.Cond = &proc.BreakpointCondition{Expr: expr}
+		}
 	}
 	return err
 }

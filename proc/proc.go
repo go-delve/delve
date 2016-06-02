@@ -5,13 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"go/ast"
 	"go/constant"
-	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -226,7 +223,7 @@ func (dbp *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
 }
 
 // SetTempBreakpoint sets a temp breakpoint. Used during 'next' operations.
-func (dbp *Process) SetTempBreakpoint(addr uint64, cond ast.Expr) (*Breakpoint, error) {
+func (dbp *Process) SetTempBreakpoint(addr uint64, cond *BreakpointCondition) (*Breakpoint, error) {
 	bp, err := dbp.setBreakpoint(dbp.CurrentThread.ID, addr, true)
 	if err != nil {
 		return nil, err
@@ -446,21 +443,11 @@ func (dbp *Process) stepToPC(pc uint64) error {
 }
 
 // Returns an expression that evaluates to true when the current goroutine is g
-func sameGoroutineCondition(g *G) ast.Expr {
+func sameGoroutineCondition(g *G) *BreakpointCondition {
 	if g == nil {
 		return nil
 	}
-	return &ast.BinaryExpr{
-		Op: token.EQL,
-		X: &ast.SelectorExpr{
-			X: &ast.SelectorExpr{
-				X:   &ast.Ident{Name: "runtime"},
-				Sel: &ast.Ident{Name: "curg"},
-			},
-			Sel: &ast.Ident{Name: "goid"},
-		},
-		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(g.ID)},
-	}
+	return &BreakpointCondition{goroutineID: g.ID}
 }
 
 // StepInstruction will continue the current thread for exactly
@@ -486,29 +473,38 @@ func (dbp *Process) StepOut() error {
 		return err
 	}
 
-	pcs := []uint64{}
-
+	var deferpc uint64 = 0
 	if filepath.Ext(topframe.Current.File) == ".go" {
 		if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.DeferPC != 0 {
 			_, _, deferfn := dbp.goSymTable.PCToLine(dbp.SelectedGoroutine.DeferPC)
-			deferpc, err := dbp.FirstPCAfterPrologue(deferfn, false)
+			deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
 			if err != nil {
 				return err
 			}
-			pcs = append(pcs, deferpc)
+		}
+	}
+
+	if topframe.Ret == 0 && deferpc == 0 {
+		return errors.New("nothing to stepout to")
+	}
+
+	retCond := sameGoroutineCondition(dbp.SelectedGoroutine)
+	if deferpc != 0 {
+		var deferCond *BreakpointCondition = nil
+		if retCond != nil {
+			deferCond = &BreakpointCondition{goroutineID: retCond.goroutineID, isPanic: true}
+		}
+
+		if _, err := dbp.SetTempBreakpoint(deferpc, deferCond); err != nil {
+			return err
 		}
 	}
 
 	if topframe.Ret != 0 {
-		pcs = append(pcs, topframe.Ret)
-	}
-
-	if len(pcs) == 0 {
-		return errors.New("nothing to stepout to")
-	}
-
-	if err := dbp.setTempBreakpoints(topframe.Current.PC, pcs, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
-		return err
+		if _, err := dbp.SetTempBreakpoint(topframe.Ret, retCond); err != nil {
+			dbp.ClearTempBreakpoints()
+			return err
+		}
 	}
 
 	return dbp.Continue()

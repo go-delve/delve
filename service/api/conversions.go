@@ -38,7 +38,9 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	}
 
 	var buf bytes.Buffer
-	printer.Fprint(&buf, token.NewFileSet(), bp.Cond)
+	if bp.Cond != nil {
+		printer.Fprint(&buf, token.NewFileSet(), bp.Cond.Expr)
+	}
 	b.Cond = buf.String()
 
 	return b
