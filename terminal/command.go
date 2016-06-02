@@ -99,9 +99,10 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
-		{aliases: []string{"step", "s"}, cmdFn: step, helpMsg: "Single step through program."},
-		{aliases: []string{"step-instruction", "si"}, cmdFn: stepInstruction, helpMsg: "Single step a single cpu instruction."},
-		{aliases: []string{"next", "n"}, cmdFn: next, helpMsg: "Step over to next source line."},
+		{aliases: []string{"step", "s"}, allowedPrefixes: scopePrefix, cmdFn: step, helpMsg: "Single step through program."},
+		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: scopePrefix, cmdFn: stepInstruction, helpMsg: "Single step a single cpu instruction."},
+		{aliases: []string{"next", "n"}, allowedPrefixes: scopePrefix, cmdFn: next, helpMsg: "Step over to next source line."},
+		{aliases: []string{"stepout"}, allowedPrefixes: scopePrefix, cmdFn: stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: `Switch to the specified thread.
 
@@ -601,7 +602,26 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 	}
 }
 
+func scopePrefixSwitch(t *Term, ctx callContext) error {
+	if ctx.Prefix != scopePrefix {
+		return nil
+	}
+	if ctx.Scope.Frame != 0 {
+		return errors.New("frame prefix not accepted")
+	}
+	if ctx.Scope.GoroutineID > 0 {
+		_, err := t.client.SwitchGoroutine(ctx.Scope.GoroutineID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func step(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
 	state, err := t.client.Step()
 	if err != nil {
 		return err
@@ -611,6 +631,9 @@ func step(t *Term, ctx callContext, args string) error {
 }
 
 func stepInstruction(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
 	state, err := t.client.StepInstruction()
 	if err != nil {
 		return err
@@ -621,12 +644,27 @@ func stepInstruction(t *Term, ctx callContext, args string) error {
 }
 
 func next(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
 	state, err := t.client.Next()
 	if err != nil {
 		return err
 	}
 	printcontext(t, state)
 	return continueUntilCompleteNext(t, state, "next")
+}
+
+func stepout(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
+	state, err := t.client.StepOut()
+	if err != nil {
+		return err
+	}
+	printcontext(t, state)
+	return continueUntilCompleteNext(t, state, "stepout")
 }
 
 func clear(t *Term, ctx callContext, args string) error {

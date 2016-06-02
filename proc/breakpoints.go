@@ -33,7 +33,17 @@ type Breakpoint struct {
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached
 
-	Cond ast.Expr // When Cond is not nil the breakpoint will be triggered only if evaluating Cond returns true
+	Cond *BreakpointCondition // When Cond is not nil the breakpoint will be triggered only if the condition is met
+}
+
+// BreakpointCondition represents a breakpoint condition.
+// For normal breakpoints the condition is met when Expr evaluates to true.
+// For temp breakpoints the condition is met when the current goroutine is goroutineID
+// if isPanic is set we will also check that the caller frame is a panic
+type BreakpointCondition struct {
+	Expr        ast.Expr
+	goroutineID int
+	isPanic     bool
 }
 
 func (bp *Breakpoint) String() string {
@@ -126,17 +136,37 @@ func (bp *Breakpoint) checkCondition(thread *Thread) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	v, err := scope.evalAST(bp.Cond)
-	if err != nil {
-		return true, fmt.Errorf("error evaluating expression: %v", err)
+	if !bp.Temp {
+		v, err := scope.evalAST(bp.Cond.Expr)
+		if err != nil {
+			return true, fmt.Errorf("error evaluating expression: %v", err)
+		}
+		if v.Unreadable != nil {
+			return true, fmt.Errorf("condition expression unreadable: %v", v.Unreadable)
+		}
+		if v.Kind != reflect.Bool {
+			return true, errors.New("condition expression not boolean")
+		}
+		return constant.BoolVal(v.Value), nil
+	} else {
+		g, err := thread.GetG()
+		if err != nil {
+			return true, err
+		}
+		if g.ID != bp.Cond.goroutineID {
+			return false, nil
+		}
+		if bp.Cond.isPanic {
+			frames, err := thread.Stacktrace(2)
+			if err != nil {
+				return true, err
+			}
+			if frames[2].Current.Fn == nil || frames[2].Current.Fn.Name != "runtime.gopanic" {
+				return false, nil
+			}
+		}
+		return true, nil
 	}
-	if v.Unreadable != nil {
-		return true, fmt.Errorf("condition expression unreadable: %v", v.Unreadable)
-	}
-	if v.Kind != reflect.Bool {
-		return true, errors.New("condition expression not boolean")
-	}
-	return constant.BoolVal(v.Value), nil
 }
 
 // NoBreakpointError is returned when trying to

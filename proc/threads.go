@@ -123,78 +123,63 @@ func (tbe ThreadBlockedError) Error() string {
 	return ""
 }
 
-// Set breakpoints for potential next lines.
-func (thread *Thread) setNextBreakpoints() (err error) {
-	if thread.blocked() {
-		return ThreadBlockedError{}
+// returns topmost frame of selected goroutine
+func (dbp *Process) topframe() (Stackframe, error) {
+	var frames []Stackframe
+	var err error
+
+	if dbp.SelectedGoroutine == nil {
+		if dbp.CurrentThread.blocked() {
+			return Stackframe{}, ThreadBlockedError{}
+		}
+		frames, err = dbp.CurrentThread.Stacktrace(0)
+	} else {
+		frames, err = dbp.SelectedGoroutine.Stacktrace(0)
 	}
-	curpc, err := thread.PC()
+	if err != nil {
+		return Stackframe{}, err
+	}
+	if len(frames) < 1 {
+		return Stackframe{}, errors.New("empty stack trace")
+	}
+	return frames[0], nil
+}
+
+// Set breakpoints for potential next lines.
+func (dbp *Process) setNextBreakpoints() (err error) {
+	topframe, err := dbp.topframe()
 	if err != nil {
 		return err
 	}
 
 	// Grab info on our current stack frame. Used to determine
 	// whether we may be stepping outside of the current function.
-	fde, err := thread.dbp.frameEntries.FDEForPC(curpc)
+	fde, err := dbp.frameEntries.FDEForPC(topframe.Current.PC)
 	if err != nil {
 		return err
 	}
 
-	// Get current file/line.
-	loc, err := thread.Location()
-	if err != nil {
-		return err
+	if filepath.Ext(topframe.Current.File) != ".go" {
+		return dbp.cnext(topframe, fde)
 	}
-	if filepath.Ext(loc.File) == ".go" {
-		err = thread.next(curpc, fde, loc.File, loc.Line)
-	} else {
-		err = thread.cnext(curpc, fde, loc.File)
-	}
-	return err
-}
 
-// GoroutineExitingError is returned when the
-// goroutine specified by `goid` is in the process
-// of exiting.
-type GoroutineExitingError struct {
-	goid int
-}
-
-func (ge GoroutineExitingError) Error() string {
-	return fmt.Sprintf("goroutine %d is exiting", ge.goid)
+	return dbp.next(dbp.SelectedGoroutine, topframe, fde)
 }
 
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
-func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file string, line int) error {
-	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End()-1, file)
+// The first return value is set to true if the goroutine is in the process of exiting
+func (dbp *Process) next(g *G, topframe Stackframe, fde *frame.FrameDescriptionEntry) error {
+	pcs := dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End()-1, topframe.Current.File)
 
-	g, err := thread.GetG()
-	if err != nil {
-		return err
-	}
-	if g.DeferPC != 0 {
-		f, lineno, _ := thread.dbp.goSymTable.PCToLine(g.DeferPC)
-		for {
-			lineno++
-			dpc, _, err := thread.dbp.goSymTable.LineToPC(f, lineno)
-			if err == nil {
-				// We want to avoid setting an actual breakpoint on the
-				// entry point of the deferred function so instead create
-				// a fake breakpoint which will be cleaned up later.
-				thread.dbp.Breakpoints[g.DeferPC] = new(Breakpoint)
-				defer func() { delete(thread.dbp.Breakpoints, g.DeferPC) }()
-				if _, err = thread.dbp.SetTempBreakpoint(dpc); err != nil {
-					return err
-				}
-				break
-			}
+	var deferpc uint64 = 0
+	if g != nil && g.DeferPC != 0 {
+		_, _, deferfn := dbp.goSymTable.PCToLine(g.DeferPC)
+		var err error
+		deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
+		if err != nil {
+			return err
 		}
-	}
-
-	ret, err := thread.ReturnAddress()
-	if err != nil {
-		return err
 	}
 
 	var covered bool
@@ -206,39 +191,45 @@ func (thread *Thread) next(curpc uint64, fde *frame.FrameDescriptionEntry, file 
 	}
 
 	if !covered {
-		fn := thread.dbp.goSymTable.PCToFunc(ret)
-		if fn != nil && fn.Name == "runtime.goexit" {
-			g, err := thread.GetG()
-			if err != nil {
-				return err
-			}
-			return GoroutineExitingError{goid: g.ID}
+		fn := dbp.goSymTable.PCToFunc(topframe.Ret)
+		if g != nil && fn != nil && fn.Name == "runtime.goexit" {
+			return nil
 		}
 	}
-	pcs = append(pcs, ret)
-	return thread.setNextTempBreakpoints(curpc, pcs)
+	cond := sameGoroutineCondition(dbp.SelectedGoroutine)
+	if deferpc != 0 {
+		var deferCond *BreakpointCondition = nil
+		if cond != nil {
+			deferCond = &BreakpointCondition{goroutineID: cond.goroutineID, isPanic: true}
+		}
+
+		if _, err := dbp.SetTempBreakpoint(deferpc, deferCond); err != nil {
+			return err
+		}
+	}
+	pcs = append(pcs, topframe.Ret)
+	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, cond)
 }
 
 // Set a breakpoint at every reachable location, as well as the return address. Without
 // the benefit of an AST we can't be sure we're not at a branching statement and thus
 // cannot accurately predict where we may end up.
-func (thread *Thread) cnext(curpc uint64, fde *frame.FrameDescriptionEntry, file string) error {
-	pcs := thread.dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End(), file)
-	ret, err := thread.ReturnAddress()
-	if err != nil {
-		return err
-	}
-	pcs = append(pcs, ret)
-	return thread.setNextTempBreakpoints(curpc, pcs)
+func (dbp *Process) cnext(topframe Stackframe, fde *frame.FrameDescriptionEntry) error {
+	pcs := dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End(), topframe.Current.File)
+	pcs = append(pcs, topframe.Ret)
+	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, sameGoroutineCondition(dbp.SelectedGoroutine))
 }
 
-func (thread *Thread) setNextTempBreakpoints(curpc uint64, pcs []uint64) error {
+// setTempBreakpoints sets a breakpoint to all addresses specified in pcs
+// skipping over curpc and curpc-1
+func (dbp *Process) setTempBreakpoints(curpc uint64, pcs []uint64, cond *BreakpointCondition) error {
 	for i := range pcs {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
 		}
-		if _, err := thread.dbp.SetTempBreakpoint(pcs[i]); err != nil {
+		if _, err := dbp.SetTempBreakpoint(pcs[i], cond); err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
+				dbp.ClearTempBreakpoints()
 				return err
 			}
 		}
@@ -407,8 +398,13 @@ func (thread *Thread) onNextGoroutine() (bool, error) {
 			bp = thread.dbp.Breakpoints[i]
 		}
 	}
-	if bp == nil {
+	if bp == nil || bp.Cond == nil {
 		return false, nil
 	}
-	return bp.checkCondition(thread)
+	g, err := thread.GetG()
+	if err != nil {
+		return true, err
+	}
+	// explicitly ignores bp.Cond.isPanic
+	return g.ID == bp.Cond.goroutineID, nil
 }

@@ -140,6 +140,18 @@ func setFunctionBreakpoint(p *Process, fname string) (*Breakpoint, error) {
 	return p.SetBreakpoint(addr)
 }
 
+func setFileBreakpoint(p *Process, t *testing.T, fixture protest.Fixture, lineno int) *Breakpoint {
+	addr, err := p.FindFileLocation(fixture.Source, lineno)
+	if err != nil {
+		t.Fatalf("FindFileLocation: %v", err)
+	}
+	bp, err := p.SetBreakpoint(addr)
+	if err != nil {
+		t.Fatalf("SetBreakpoint: %v", err)
+	}
+	return bp
+}
+
 func TestHalt(t *testing.T) {
 	stopChan := make(chan interface{})
 	withTestProcess("loopprog", t, func(p *Process, fixture protest.Fixture) {
@@ -485,8 +497,6 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 		{5, 8},
 		{8, 9},
 		{9, 10},
-		{10, 7},
-		{7, 8},
 	}
 	testnext("testnextdefer", testcases, "main.main", t)
 }
@@ -1423,10 +1433,12 @@ func TestCondBreakpoint(t *testing.T) {
 		assertNoError(err, t, "LineToPC")
 		bp, err := p.SetBreakpoint(addr)
 		assertNoError(err, t, "SetBreakpoint()")
-		bp.Cond = &ast.BinaryExpr{
-			Op: token.EQL,
-			X:  &ast.Ident{Name: "n"},
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+		bp.Cond = &BreakpointCondition{
+			Expr: &ast.BinaryExpr{
+				Op: token.EQL,
+				X:  &ast.Ident{Name: "n"},
+				Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+			},
 		}
 
 		assertNoError(p.Continue(), t, "Continue()")
@@ -1447,10 +1459,12 @@ func TestCondBreakpointError(t *testing.T) {
 		assertNoError(err, t, "LineToPC")
 		bp, err := p.SetBreakpoint(addr)
 		assertNoError(err, t, "SetBreakpoint()")
-		bp.Cond = &ast.BinaryExpr{
-			Op: token.EQL,
-			X:  &ast.Ident{Name: "nonexistentvariable"},
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+		bp.Cond = &BreakpointCondition{
+			Expr: &ast.BinaryExpr{
+				Op: token.EQL,
+				X:  &ast.Ident{Name: "nonexistentvariable"},
+				Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+			},
 		}
 
 		err = p.Continue()
@@ -1462,10 +1476,12 @@ func TestCondBreakpointError(t *testing.T) {
 			t.Fatalf("Unexpected error on first Continue(): %v", err)
 		}
 
-		bp.Cond = &ast.BinaryExpr{
-			Op: token.EQL,
-			X:  &ast.Ident{Name: "n"},
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+		bp.Cond = &BreakpointCondition{
+			Expr: &ast.BinaryExpr{
+				Op: token.EQL,
+				X:  &ast.Ident{Name: "n"},
+				Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
+			},
 		}
 
 		err = p.Continue()
@@ -1749,4 +1765,158 @@ func TestIssue554(t *testing.T) {
 	if mem.contains(0xffffffffffffffff, 40) {
 		t.Fatalf("should be false")
 	}
+}
+
+func TestNextParked(t *testing.T) {
+	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
+		bp, err := setFunctionBreakpoint(p, "main.sayhi")
+		assertNoError(err, t, "SetBreakpoint()")
+
+		// continue until a parked goroutine exists
+		var parkedg *G
+	LookForParkedG:
+		for {
+			err := p.Continue()
+			if _, exited := err.(ProcessExitedError); exited {
+				t.Log("could not find parked goroutine")
+				return
+			}
+			assertNoError(err, t, "Continue()")
+
+			gs, err := p.GoroutinesInfo()
+			assertNoError(err, t, "GoroutinesInfo()")
+
+			for _, g := range gs {
+				if g.thread == nil {
+					parkedg = g
+					break LookForParkedG
+				}
+			}
+		}
+
+		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
+		p.ClearBreakpoint(bp.Addr)
+		assertNoError(p.Next(), t, "Next()")
+
+		if p.SelectedGoroutine.ID != parkedg.ID {
+			t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", parkedg.ID, p.SelectedGoroutine.ID)
+		}
+	})
+}
+
+func TestStepParked(t *testing.T) {
+	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
+		bp, err := setFunctionBreakpoint(p, "main.sayhi")
+		assertNoError(err, t, "SetBreakpoint()")
+
+		// continue until a parked goroutine exists
+		var parkedg *G
+	LookForParkedG:
+		for {
+			err := p.Continue()
+			if _, exited := err.(ProcessExitedError); exited {
+				t.Log("could not find parked goroutine")
+				return
+			}
+			assertNoError(err, t, "Continue()")
+
+			gs, err := p.GoroutinesInfo()
+			assertNoError(err, t, "GoroutinesInfo()")
+
+			for _, g := range gs {
+				if g.thread == nil {
+					parkedg = g
+					break LookForParkedG
+				}
+			}
+		}
+
+		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
+		p.ClearBreakpoint(bp.Addr)
+		assertNoError(p.Step(), t, "Step()")
+
+		if p.SelectedGoroutine.ID != parkedg.ID {
+			t.Fatalf("Step did not continue on the selected goroutine, expected %d got %d", parkedg.ID, p.SelectedGoroutine.ID)
+		}
+	})
+}
+
+func TestStepOut(t *testing.T) {
+	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
+		bp, err := setFunctionBreakpoint(p, "main.helloworld")
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		f, lno := currentLineNumber(p, t)
+		if lno != 13 {
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 13)
+		}
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, lno = currentLineNumber(p, t)
+		if lno != 35 {
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 34)
+		}
+	})
+}
+
+func TestNextDeferReturnAndDirectCall(t *testing.T) {
+	// Next should not step into a deferred function if it is called
+	// directly, only if it is called through a panic.
+	// Here we test the case where the function is called by a deferreturn
+	testnext("defercall", []nextTest{
+		{9, 10},
+		{10, 11},
+		{11, 12},
+		{12, 13},
+		{13, 28}}, "main.callAndDeferReturn", t)
+}
+
+func TestNextPanicAndDirectCall(t *testing.T) {
+	// Next should not step into a deferred function if it is called
+	// directly, only if it is called through a panic.
+	// Here we test the case where the function is called by a panic
+	testnext("defercall", []nextTest{
+		{15, 16},
+		{16, 17},
+		{17, 18},
+		{18, 5}}, "main.callAndPanic2", t)
+}
+
+func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
+	// StepOut should not step into a deferred function if it is called
+	// directly, only if it is called through a panic.
+	// Here we test the case where the function is called by a deferreturn
+	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture, 11)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, ln := currentLineNumber(p, t)
+		if ln != 28 {
+			t.Fatalf("wrong line number, expected %d got %s:%d", 28, f, ln)
+		}
+	})
+}
+
+func TestStepOutPanicAndDirectCall(t *testing.T) {
+	// StepOut should not step into a deferred function if it is called
+	// directly, only if it is called through a panic.
+	// Here we test the case where the function is called by a panic
+	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture, 17)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		f, ln := currentLineNumber(p, t)
+		if ln != 5 {
+			t.Fatalf("wrong line number, expected %d got %s:%d", 5, f, ln)
+		}
+	})
 }
