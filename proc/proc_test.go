@@ -1881,3 +1881,18 @@ func TestUnsupportedArch(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestIssue561(t *testing.T) {
+	// Step fails to make progress when PC is at a CALL instruction
+	// where a breakpoint is also set
+	withTestProcess("issue561", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.main")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Step(), t, "Step()")
+		_, ln := currentLineNumber(p, t)
+		if ln != 5 {
+			t.Fatalf("wrong line number after Step, expected 5 got %d", ln)
+		}
+	})
+}

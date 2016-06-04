@@ -358,6 +358,12 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 	return nil
 }
 
+func (thread *Thread) resetBreakpoint() {
+	thread.CurrentBreakpoint = nil
+	thread.BreakpointConditionMet = false
+	thread.BreakpointConditionError = nil
+}
+
 func (thread *Thread) onTriggeredBreakpoint() bool {
 	return (thread.CurrentBreakpoint != nil) && thread.BreakpointConditionMet
 }
