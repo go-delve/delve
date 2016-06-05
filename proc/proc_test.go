@@ -914,6 +914,7 @@ func TestParseVersionString(t *testing.T) {
 	versionAfterOrEqual(t, "go1.4.2", GoVersion{1, 4, 2, 0, 0})
 	versionAfterOrEqual(t, "go1.5beta2", GoVersion{1, 5, -1, 2, 0})
 	versionAfterOrEqual(t, "go1.5rc2", GoVersion{1, 5, -1, 0, 2})
+	versionAfterOrEqual(t, "go1.6.1 (appengine-1.9.37)", GoVersion{1, 6, 1, 0, 0})
 	ver, ok := ParseVersionString("devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64")
 	if !ok {
 		t.Fatalf("Could not parse devel version string")
