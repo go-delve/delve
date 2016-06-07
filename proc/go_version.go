@@ -25,6 +25,7 @@ func ParseVersionString(ver string) (GoVersion, bool) {
 	}
 
 	if strings.HasPrefix(ver, "go") {
+		ver := strings.Split(ver, " ")[0]
 		v := strings.SplitN(ver[2:], ".", 3)
 		switch len(v) {
 		case 2:
