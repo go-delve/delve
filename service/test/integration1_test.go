@@ -945,6 +945,23 @@ func Test1NegativeStackDepthBug(t *testing.T) {
 	})
 }
 
+func Test1Issue573(t *testing.T) {
+	// In bug, Step() #2 runs to exit, so Step() #3 will fail.
+	withTestClient1("issue573", t, func(c *rpc1.RPCClient) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.foo", Line: -1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		ch := c.Continue()
+		state := <-ch
+		assertNoError(state.Err, t, "Continue()")
+		_, err = c.Step()
+		assertNoError(err, t, "Step()")
+		_, err = c.Step()
+		assertNoError(err, t, "Step()")
+		_, err = c.Step() // Third step ought to be possible; program ought not have exited.
+		assertNoError(err, t, "Step()")
+	})
+}
+
 func Test1ClientServer_CondBreakpoint(t *testing.T) {
 	withTestClient1("parallel_next", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})
