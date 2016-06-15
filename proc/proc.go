@@ -406,7 +406,13 @@ func (dbp *Process) Step() (err error) {
 			}
 			text, err := dbp.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
 			if err == nil && len(text) > 0 && text[0].IsCall() && text[0].DestLoc != nil && text[0].DestLoc.Fn != nil {
-				return dbp.StepInto(text[0].DestLoc.Fn)
+				fn := text[0].DestLoc.Fn
+				// Ensure PC and Entry match, otherwise StepInto is likely to set
+				// its breakpoint before DestLoc.PC and hence run too far ahead.
+				// Calls to runtime.duffzero and duffcopy have this problem.
+				if fn.Entry == text[0].DestLoc.PC {
+					return dbp.StepInto(fn)
+				}
 			}
 
 			err = dbp.CurrentThread.StepInstruction()
