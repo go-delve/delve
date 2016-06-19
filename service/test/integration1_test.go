@@ -17,6 +17,7 @@ import (
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc1"
+	"github.com/derekparker/delve/service/rpccommon"
 )
 
 func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
@@ -25,7 +26,7 @@ func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
 	defer listener.Close()
-	server := rpc1.NewServer(&service.Config{
+	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{protest.BuildFixture(name).Path},
 	}, false)
@@ -46,7 +47,7 @@ func Test1RunWithInvalidPath(t *testing.T) {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
 	defer listener.Close()
-	server := rpc1.NewServer(&service.Config{
+	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{"invalid_path"},
 	}, false)
@@ -134,7 +135,7 @@ func Test1Restart_duringStop(t *testing.T) {
 func Test1Restart_attachPid(t *testing.T) {
 	// Assert it does not work and returns error.
 	// We cannot restart a process we did not spawn.
-	server := rpc1.NewServer(&service.Config{
+	server := rpccommon.NewServer(&service.Config{
 		Listener:  nil,
 		AttachPid: 999,
 	}, false)

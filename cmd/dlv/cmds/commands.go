@@ -15,8 +15,8 @@ import (
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/rpc1"
 	"github.com/derekparker/delve/service/rpc2"
+	"github.com/derekparker/delve/service/rpccommon"
 	"github.com/derekparker/delve/terminal"
 	"github.com/derekparker/delve/version"
 	"github.com/spf13/cobra"
@@ -27,8 +27,8 @@ var (
 	Log bool
 	// Headless is whether to run without terminal.
 	Headless bool
-	// ApiVersion is the requested API version while running headless
-	ApiVersion int
+	// APIVersion is the requested API version while running headless
+	APIVersion int
 	// AcceptMulti allows multiple clients to connect to the same server
 	AcceptMulti bool
 	// Addr is the debugging server listen address.
@@ -81,7 +81,7 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
-	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless.")
+	RootCommand.PersistentFlags().IntVar(&APIVersion, "api-version", 1, "Selects API version when headless.")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 
@@ -268,10 +268,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		defer listener.Close()
 
 		// Create and start a debug server
-		server := rpc2.NewServer(&service.Config{
+		server := rpccommon.NewServer(&service.Config{
 			Listener:    listener,
 			ProcessArgs: processArgs,
 			AttachPid:   traceAttachPid,
+			APIVersion:  2,
 		}, Log)
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -386,28 +387,18 @@ func execute(attachPid int, processArgs []string, conf *config.Config, kind exec
 		Stop(bool) error
 	}
 
-	if !Headless {
-		ApiVersion = 2
-	}
-
 	// Create and start a debugger server
-	switch ApiVersion {
-	case 1:
-		server = rpc1.NewServer(&service.Config{
+	switch APIVersion {
+	case 1, 2:
+		server = rpccommon.NewServer(&service.Config{
 			Listener:    listener,
 			ProcessArgs: processArgs,
 			AttachPid:   attachPid,
 			AcceptMulti: AcceptMulti,
-		}, Log)
-	case 2:
-		server = rpc2.NewServer(&service.Config{
-			Listener:    listener,
-			ProcessArgs: processArgs,
-			AttachPid:   attachPid,
-			AcceptMulti: AcceptMulti,
+			APIVersion:  APIVersion,
 		}, Log)
 	default:
-		fmt.Println("Unknown API version %d", ApiVersion)
+		fmt.Println("Unknown API version %d", APIVersion)
 		return 1
 	}
 

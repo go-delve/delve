@@ -273,3 +273,18 @@ type AsmInstruction struct {
 }
 
 type AsmInstructions []AsmInstruction
+
+type GetVersionIn struct {
+}
+
+type GetVersionOut struct {
+	DelveVersion string
+	APIVersion   int
+}
+
+type SetAPIVersionIn struct {
+	APIVersion int
+}
+
+type SetAPIVersionOut struct {
+}

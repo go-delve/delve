@@ -1,4 +1,5 @@
 package main
+
 // This program checks the types of the arguments of calls to
 // the API in service/rpc2/client.go (done using rpc2.(*Client).call)
 // against the declared types of API methods in srvice/rpc2/server.go
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 func findRPCDir() string {
@@ -180,10 +182,12 @@ func main() {
 			continue
 		}
 
-		if a, e := info.TypeOf(arg2), params.At(1).Type(); !types.AssignableTo(a, e) {
-			log.Printf("%s: wrong type of second argument %s, expected %s", fset.Position(callx.Pos()), types.TypeString(a, qf), types.TypeString(e, qf))
-			errcount++
-			continue
+		if !strings.HasSuffix(params.At(1).Type().String(), "/service.RPCCallback") {
+			if a, e := info.TypeOf(arg2), params.At(1).Type(); !types.AssignableTo(a, e) {
+				log.Printf("%s: wrong type of second argument %s, expected %s", fset.Position(callx.Pos()), types.TypeString(a, qf), types.TypeString(e, qf))
+				errcount++
+				continue
+			}
 		}
 
 		if clit, ok := arg1.(*ast.CompositeLit); ok {

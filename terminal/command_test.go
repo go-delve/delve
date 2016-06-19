@@ -13,6 +13,7 @@ import (
 	"github.com/derekparker/delve/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/service/rpccommon"
 	"github.com/derekparker/delve/service/rpc2"
 )
 
@@ -77,7 +78,7 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
 	defer listener.Close()
-	server := rpc2.NewServer(&service.Config{
+	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{test.BuildFixture(name).Path},
 	}, false)

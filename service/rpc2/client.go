@@ -26,10 +26,9 @@ func NewClient(addr string) *RPCClient {
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
-	return &RPCClient{
-		addr:   addr,
-		client: client,
-	}
+	c := &RPCClient{addr: addr, client: client}
+	c.call("SetApiVersion", api.SetAPIVersionIn{2}, &api.SetAPIVersionOut{})
+	return c
 }
 
 func (c *RPCClient) ProcessPid() int {

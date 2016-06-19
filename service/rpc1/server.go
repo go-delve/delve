@@ -3,11 +3,6 @@ package rpc1
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"net"
-	grpc "net/rpc"
-	"net/rpc/jsonrpc"
 
 	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service"
@@ -15,89 +10,17 @@ import (
 	"github.com/derekparker/delve/service/debugger"
 )
 
-var defaultLoadConfig = proc.LoadConfig{ true, 1, 64, 64, -1 }
-
-type ServerImpl struct {
-	s *RPCServer
-}
+var defaultLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1}
 
 type RPCServer struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
-	// listener is used to serve HTTP.
-	listener net.Listener
-	// stopChan is used to stop the listener goroutine
-	stopChan chan struct{}
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
 }
 
-// NewServer creates a new RPCServer.
-func NewServer(config *service.Config, logEnabled bool) *ServerImpl {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	if !logEnabled {
-		log.SetOutput(ioutil.Discard)
-	}
-	log.Printf("Using API v1")
-
-	return &ServerImpl{
-		&RPCServer{
-			config:   config,
-			listener: config.Listener,
-			stopChan: make(chan struct{}),
-		},
-	}
-}
-
-// Stop detaches from the debugger and waits for it to stop.
-func (s *ServerImpl) Stop(kill bool) error {
-	if s.s.config.AcceptMulti {
-		close(s.s.stopChan)
-		s.s.listener.Close()
-	}
-	err := s.s.debugger.Detach(kill)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// Run starts a debugger and exposes it with an HTTP server. The debugger
-// itself can be stopped with the `detach` API. Run blocks until the HTTP
-// server stops.
-func (s *ServerImpl) Run() error {
-	var err error
-	// Create and start the debugger
-	if s.s.debugger, err = debugger.New(&debugger.Config{
-		ProcessArgs: s.s.config.ProcessArgs,
-		AttachPid:   s.s.config.AttachPid,
-	}); err != nil {
-		return err
-	}
-
-	rpcs := grpc.NewServer()
-	rpcs.Register(s.s)
-
-	go func() {
-		defer s.s.listener.Close()
-		for {
-			c, err := s.s.listener.Accept()
-			if err != nil {
-				select {
-				case <-s.s.stopChan:
-					// We were supposed to exit, do nothing and return
-					return
-				default:
-					panic(err)
-				}
-			}
-			go rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
-			if !s.s.config.AcceptMulti {
-				break
-			}
-		}
-	}()
-	return nil
+func NewServer(config *service.Config, debugger *debugger.Debugger) *RPCServer {
+	return &RPCServer{config, debugger}
 }
 
 func (s *RPCServer) ProcessPid(arg1 interface{}, pid *int) error {
@@ -107,10 +30,6 @@ func (s *RPCServer) ProcessPid(arg1 interface{}, pid *int) error {
 
 func (s *RPCServer) Detach(kill bool, ret *int) error {
 	return s.debugger.Detach(kill)
-}
-
-func (s *ServerImpl) Restart() error {
-	return s.s.Restart(nil, nil)
 }
 
 func (s *RPCServer) Restart(arg1 interface{}, arg2 *int) error {
@@ -129,13 +48,9 @@ func (s *RPCServer) State(arg interface{}, state *api.DebuggerState) error {
 	return nil
 }
 
-func (s *RPCServer) Command(command *api.DebuggerCommand, state *api.DebuggerState) error {
+func (s *RPCServer) Command(command *api.DebuggerCommand, cb service.RPCCallback) {
 	st, err := s.debugger.Command(command)
-	if err != nil {
-		return err
-	}
-	*state = *st
-	return nil
+	cb.Return(st, err)
 }
 
 func (s *RPCServer) GetBreakpoint(id int, breakpoint *api.Breakpoint) error {

@@ -3,101 +3,21 @@ package rpc2
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"net"
-	grpc "net/rpc"
-	"net/rpc/jsonrpc"
 
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
 )
 
-type ServerImpl struct {
-	s *RPCServer
-}
-
 type RPCServer struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
-	// listener is used to serve HTTP.
-	listener net.Listener
-	// stopChan is used to stop the listener goroutine
-	stopChan chan struct{}
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
 }
 
-// NewServer creates a new RPCServer.
-func NewServer(config *service.Config, logEnabled bool) *ServerImpl {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	if !logEnabled {
-		log.SetOutput(ioutil.Discard)
-	}
-
-	return &ServerImpl{
-		&RPCServer{
-			config:   config,
-			listener: config.Listener,
-			stopChan: make(chan struct{}),
-		},
-	}
-}
-
-// Stop detaches from the debugger and waits for it to stop.
-func (s *ServerImpl) Stop(kill bool) error {
-	if s.s.config.AcceptMulti {
-		close(s.s.stopChan)
-		s.s.listener.Close()
-	}
-	err := s.s.debugger.Detach(kill)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// Run starts a debugger and exposes it with an HTTP server. The debugger
-// itself can be stopped with the `detach` API. Run blocks until the HTTP
-// server stops.
-func (s *ServerImpl) Run() error {
-	var err error
-	// Create and start the debugger
-	if s.s.debugger, err = debugger.New(&debugger.Config{
-		ProcessArgs: s.s.config.ProcessArgs,
-		AttachPid:   s.s.config.AttachPid,
-	}); err != nil {
-		return err
-	}
-
-	rpcs := grpc.NewServer()
-	rpcs.Register(s.s)
-
-	go func() {
-		defer s.s.listener.Close()
-		for {
-			c, err := s.s.listener.Accept()
-			if err != nil {
-				select {
-				case <-s.s.stopChan:
-					// We were supposed to exit, do nothing and return
-					return
-				default:
-					panic(err)
-				}
-			}
-			go rpcs.ServeCodec(jsonrpc.NewServerCodec(c))
-			if !s.s.config.AcceptMulti {
-				break
-			}
-		}
-	}()
-	return nil
-}
-
-func (s *ServerImpl) Restart() error {
-	return s.s.Restart(RestartIn{}, nil)
+func NewServer(config *service.Config, debugger *debugger.Debugger) *RPCServer {
+	return &RPCServer{config, debugger}
 }
 
 type ProcessPidIn struct {
@@ -161,13 +81,16 @@ type CommandOut struct {
 }
 
 // Command interrupts, continues and steps through the program.
-func (s *RPCServer) Command(command api.DebuggerCommand, out *CommandOut) error {
+func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback) {
 	st, err := s.debugger.Command(&command)
 	if err != nil {
-		return err
+		cb.Return(nil, err)
+		return
 	}
+	var out CommandOut
 	out.State = *st
-	return nil
+	cb.Return(out, nil)
+	return
 }
 
 type GetBreakpointIn struct {
@@ -201,7 +124,7 @@ type StacktraceIn struct {
 	Id    int
 	Depth int
 	Full  bool
-	Cfg *api.LoadConfig
+	Cfg   *api.LoadConfig
 }
 
 type StacktraceOut struct {
@@ -215,7 +138,7 @@ type StacktraceOut struct {
 func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	cfg := arg.Cfg
 	if cfg == nil && arg.Full {
-		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
 	}
 	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, api.LoadConfigToProc(cfg))
 	if err != nil {
@@ -361,7 +284,7 @@ func (s *RPCServer) GetThread(arg GetThreadIn, out *GetThreadOut) error {
 
 type ListPackageVarsIn struct {
 	Filter string
-	Cfg api.LoadConfig
+	Cfg    api.LoadConfig
 }
 
 type ListPackageVarsOut struct {
@@ -412,7 +335,7 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 
 type ListLocalVarsIn struct {
 	Scope api.EvalScope
-	Cfg api.LoadConfig
+	Cfg   api.LoadConfig
 }
 
 type ListLocalVarsOut struct {
@@ -431,7 +354,7 @@ func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) er
 
 type ListFunctionArgsIn struct {
 	Scope api.EvalScope
-	Cfg api.LoadConfig
+	Cfg   api.LoadConfig
 }
 
 type ListFunctionArgsOut struct {
@@ -451,7 +374,7 @@ func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionAr
 type EvalIn struct {
 	Scope api.EvalScope
 	Expr  string
-	Cfg *api.LoadConfig
+	Cfg   *api.LoadConfig
 }
 
 type EvalOut struct {
@@ -465,7 +388,7 @@ type EvalOut struct {
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {
-		cfg = &api.LoadConfig{ true, 1, 64, 64, -1 }
+		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
 	}
 	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *api.LoadConfigToProc(cfg))
 	if err != nil {
