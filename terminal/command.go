@@ -547,7 +547,11 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 		locname = "Go"
 		loc = g.GoStatementLoc
 	}
-	return fmt.Sprintf("%d - %s: %s", g.ID, locname, formatLocation(loc))
+	thread := ""
+	if g.ThreadID != 0 {
+		thread = fmt.Sprintf(" (thread %d)", g.ThreadID)
+	}
+	return fmt.Sprintf("%d - %s: %s%s", g.ID, locname, formatLocation(loc), thread)
 }
 
 func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
