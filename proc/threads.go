@@ -11,7 +11,6 @@ import (
 	"runtime"
 
 	"github.com/derekparker/delve/dwarf/debug/dwarf"
-	"github.com/derekparker/delve/dwarf/frame"
 )
 
 // Thread represents a single thread in the traced process
@@ -153,25 +152,17 @@ func (dbp *Process) setNextBreakpoints() (err error) {
 		return err
 	}
 
-	// Grab info on our current stack frame. Used to determine
-	// whether we may be stepping outside of the current function.
-	fde, err := dbp.frameEntries.FDEForPC(topframe.Current.PC)
-	if err != nil {
-		return err
-	}
-
 	if filepath.Ext(topframe.Current.File) != ".go" {
-		return dbp.cnext(topframe, fde)
+		return dbp.cnext(topframe)
 	}
 
-	return dbp.next(dbp.SelectedGoroutine, topframe, fde)
+	return dbp.next(dbp.SelectedGoroutine, topframe)
 }
 
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
-// The first return value is set to true if the goroutine is in the process of exiting
-func (dbp *Process) next(g *G, topframe Stackframe, fde *frame.FrameDescriptionEntry) error {
-	pcs := dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End()-1, topframe.Current.File)
+func (dbp *Process) next(g *G, topframe Stackframe) error {
+	pcs := dbp.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
 
 	var deferpc uint64 = 0
 	if g != nil && g.DeferPC != 0 {
@@ -185,7 +176,7 @@ func (dbp *Process) next(g *G, topframe Stackframe, fde *frame.FrameDescriptionE
 
 	var covered bool
 	for i := range pcs {
-		if fde.Cover(pcs[i]) {
+		if topframe.FDE.Cover(pcs[i]) {
 			covered = true
 			break
 		}
@@ -207,8 +198,8 @@ func (dbp *Process) next(g *G, topframe Stackframe, fde *frame.FrameDescriptionE
 // Set a breakpoint at every reachable location, as well as the return address. Without
 // the benefit of an AST we can't be sure we're not at a branching statement and thus
 // cannot accurately predict where we may end up.
-func (dbp *Process) cnext(topframe Stackframe, fde *frame.FrameDescriptionEntry) error {
-	pcs := dbp.lineInfo.AllPCsBetween(fde.Begin(), fde.End(), topframe.Current.File)
+func (dbp *Process) cnext(topframe Stackframe) error {
+	pcs := dbp.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End(), topframe.Current.File)
 	pcs = append(pcs, topframe.Ret)
 	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, sameGoroutineCondition(dbp.SelectedGoroutine))
 }
