@@ -339,7 +339,7 @@ func TestNextGeneral(t *testing.T) {
 
 	ver, _ := ParseVersionString(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(GoVersion{1, 7, 0, 0, 0}) {
+	if ver.Major < 0 || ver.AfterOrEqual(GoVersion{1, 7, -1, 0, 0}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
@@ -1654,7 +1654,7 @@ func TestPackageVariables(t *testing.T) {
 
 func TestIssue149(t *testing.T) {
 	ver, _ := ParseVersionString(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(GoVersion{1, 7, 0, 0, 0}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(GoVersion{1, 7, -1, 0, 0}) {
 		return
 	}
 	// setting breakpoint on break statement

@@ -229,7 +229,7 @@ func Test1NextGeneral(t *testing.T) {
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, 0, 0, 0}) {
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
