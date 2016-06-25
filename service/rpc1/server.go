@@ -71,6 +71,7 @@ func (s *ServerImpl) Run() error {
 	if s.s.debugger, err = debugger.New(&debugger.Config{
 		ProcessArgs: s.s.config.ProcessArgs,
 		AttachPid:   s.s.config.AttachPid,
+		Wd:          s.s.config.Wd,
 	}); err != nil {
 		return err
 	}

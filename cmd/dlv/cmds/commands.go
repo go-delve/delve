@@ -37,6 +37,8 @@ var (
 	InitFile string
 	// BuildFlags is the flags passed during compiler invocation.
 	BuildFlags string
+	// Wd is the working directory for running the program.
+	Wd string
 
 	// RootCommand is the root of the command tree.
 	RootCommand *cobra.Command
@@ -84,6 +86,7 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().IntVar(&ApiVersion, "api-version", 1, "Selects API version when headless.")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
+	RootCommand.PersistentFlags().StringVar(&Wd, "wd", ".", "Working directory for running the program.")
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
@@ -230,7 +233,10 @@ func debugCmd(cmd *cobra.Command, args []string) {
 		}
 		defer os.Remove(fp)
 
-		processArgs := append([]string{"./" + debugname}, targetArgs...)
+		// get absolute path to debug binary
+		// FIXME when error returned
+		abs, _ := filepath.Abs(debugname)
+		processArgs := append([]string{abs}, targetArgs...)
 		return execute(0, processArgs, conf)
 	}()
 	os.Exit(status)
@@ -390,6 +396,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 			ProcessArgs: processArgs,
 			AttachPid:   attachPid,
 			AcceptMulti: AcceptMulti,
+			Wd:          Wd,
 		}, Log)
 	case 2:
 		server = rpc2.NewServer(&service.Config{
@@ -397,6 +404,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config) int {
 			ProcessArgs: processArgs,
 			AttachPid:   attachPid,
 			AcceptMulti: AcceptMulti,
+			Wd:          Wd,
 		}, Log)
 	default:
 		fmt.Println("Unknown API version %d", ApiVersion)
