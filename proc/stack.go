@@ -24,11 +24,11 @@ type Stackframe struct {
 	// Address of the call instruction for the function above on the call stack.
 	Call Location
 	// Start address of the stack frame.
-	CFA  int64
+	CFA int64
 	// Description of the stack frame.
-	FDE  *frame.FrameDescriptionEntry
+	FDE *frame.FrameDescriptionEntry
 	// Return address for this stack frame (as read from the stack frame itself).
-	Ret  uint64
+	Ret uint64
 }
 
 // Scope returns a new EvalScope using this frame.

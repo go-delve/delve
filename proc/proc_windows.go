@@ -337,9 +337,9 @@ func (dbp *Process) findExecutable(path string) (*pe.File, error) {
 
 func openExecutablePath(path string) (*pe.File, error) {
 	f, err := os.OpenFile(path, 0, os.ModePerm)
- 	if err != nil {
- 		return nil, err
- 	}
+	if err != nil {
+		return nil, err
+	}
 	return pe.NewFile(f)
 }
 

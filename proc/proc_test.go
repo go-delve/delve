@@ -1847,15 +1847,15 @@ func TestIssue509(t *testing.T) {
 
 func TestUnsupportedArch(t *testing.T) {
 	ver, _ := ParseVersionString(runtime.Version())
-	if ver.Major < 0 || !ver.AfterOrEqual(GoVersion{1, 6, -1, 0, 0}) {
+	if ver.Major < 0 || !ver.AfterOrEqual(GoVersion{1, 6, -1, 0, 0}) || ver.AfterOrEqual(GoVersion{1, 7, -1, 0, 0}) {
 		// cross compile (with -N?) works only on select versions of go
 		return
 	}
-	
+
 	fixturesDir := protest.FindFixturesDir()
 	infile := filepath.Join(fixturesDir, "math.go")
 	outfile := filepath.Join(fixturesDir, "_math_debug_386")
-	
+
 	cmd := exec.Command("go", "build", "-gcflags=-N -l", "-o", outfile, infile)
 	for _, v := range os.Environ() {
 		if !strings.HasPrefix(v, "GOARCH=") {
@@ -1868,7 +1868,7 @@ func TestUnsupportedArch(t *testing.T) {
 		t.Fatalf("go build failed: %v: %v", err, string(out))
 	}
 	defer os.Remove(outfile)
-	
+
 	p, err := Launch([]string{outfile})
 	switch err {
 	case UnsupportedArchErr:

@@ -128,7 +128,7 @@ func topframe(g *G, thread *Thread) (Stackframe, error) {
 	var frames []Stackframe
 	var err error
 
-	if g  == nil {
+	if g == nil {
 		if thread.blocked() {
 			return Stackframe{}, ThreadBlockedError{}
 		}
