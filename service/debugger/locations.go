@@ -157,7 +157,17 @@ func readRegex(in string) (rx string, rest string) {
 }
 
 func parseFuncLocationSpec(in string) *FuncLocationSpec {
-	v := strings.Split(in, ".")
+	var v []string
+	pathend := strings.LastIndex(in, "/")
+	if pathend < 0 {
+		v = strings.Split(in, ".")
+	} else {
+		v = strings.Split(in[pathend:], ".")
+		if len(v) > 0 {
+			v[0] = in[:pathend] + v[0]
+		}
+	}
+
 	var spec FuncLocationSpec
 	switch len(v) {
 	case 1:
