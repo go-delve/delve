@@ -23,11 +23,16 @@ type Data struct {
 	str      []byte
 
 	// parsed data
-	abbrevCache map[uint32]abbrevTable
-	order       binary.ByteOrder
-	typeCache   map[Offset]Type
-	typeSigs    map[uint64]*typeUnit
-	unit        []unit
+	abbrevCache     map[uint32]abbrevTable
+	order           binary.ByteOrder
+	typeCache       map[Offset]Type
+	typeSigs        map[uint64]*typeUnit
+	unit            []unit
+	sourceFiles     []string // source files listed in .debug_line.
+	nameCache                // map from name to top-level entries in .debug_info.
+	pcToFuncEntries          // cache of .debug_info data for function bounds.
+	pcToLineEntries          // cache of .debug_line data, used for efficient PC-to-line mapping.
+	lineToPCEntries          // cache of .debug_line data, used for efficient line-to-[]PC mapping.
 }
 
 // New returns a new Data object initialized from the given parameters.
@@ -75,6 +80,8 @@ func New(abbrev, aranges, frame, info, line, pubnames, ranges, str []byte) (*Dat
 		return nil, err
 	}
 	d.unit = u
+	d.buildInfoCaches()
+	d.buildLineCaches()
 	return d, nil
 }
 

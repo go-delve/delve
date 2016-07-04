@@ -9,6 +9,7 @@
 package dwarf
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 )
@@ -138,12 +139,7 @@ type PtrType struct {
 	Type Type
 }
 
-func (t *PtrType) String() string {
-	if t.Name != "" {
-		return t.Name
-	}
-	return "*" + t.Type.String()
-}
+func (t *PtrType) String() string { return "*" + t.Type.String() }
 
 // A StructType represents a struct, union, or C++ class type.
 type StructType struct {
@@ -165,9 +161,6 @@ type StructField struct {
 }
 
 func (t *StructType) String() string {
-	if t.Name != "" {
-		return t.Name
-	}
 	if t.StructName != "" {
 		return t.Kind + " " + t.StructName
 	}
@@ -451,6 +444,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		//	TagSubrangeType or TagEnumerationType giving one dimension.
 		//	dimensions are in left to right order.
 		t := new(ArrayType)
+		t.Name, _ = e.Val(AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
@@ -615,12 +609,30 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 				case []byte:
 					// TODO: Should have original compilation
 					// unit here, not unknownFormat.
+					if len(loc) == 0 {
+						// Empty exprloc. f.ByteOffset=0.
+						break
+					}
 					b := makeBuf(d, unknownFormat{}, "location", 0, loc)
-					if x := b.uint8(); x != opPlusUconst {
-						err = DecodeError{name, kid.Offset, "unexpected opcode 0x" + strconv.FormatUint(uint64(x), 16)}
+					op := b.uint8()
+					switch op {
+					case opPlusUconst:
+						// Handle opcode sequence [DW_OP_plus_uconst <uleb128>]
+						f.ByteOffset = int64(b.uint())
+						b.assertEmpty()
+					case opConsts:
+						// Handle opcode sequence [DW_OP_consts <sleb128> DW_OP_plus]
+						f.ByteOffset = b.int()
+						op = b.uint8()
+						if op != opPlus {
+							err = DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op)}
+							goto Error
+						}
+						b.assertEmpty()
+					default:
+						err = DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op)}
 						goto Error
 					}
-					f.ByteOffset = int64(b.uint())
 					if b.err != nil {
 						err = b.err
 						goto Error
@@ -662,6 +674,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		// Attributes:
 		//	AttrType: subtype
 		t := new(QualType)
+		t.Name, _ = e.Val(AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
@@ -690,6 +703,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
 		t.EnumName, _ = e.Val(AttrName).(string)
 		t.Val = make([]*EnumValue, 0, 8)
 		for kid := next(); kid != nil; kid = next() {
@@ -735,6 +749,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		//		AttrType: type of parameter
 		//	TagUnspecifiedParameter: final ...
 		t := new(FuncType)
+		t.Name, _ = e.Val(AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t

@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/derekparker/delve/dwarf/debug/dwarf"
+	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/proc"
 )
 
@@ -87,6 +87,9 @@ func ConvertThread(th *proc.Thread) *Thread {
 func prettyTypeName(typ dwarf.Type) string {
 	if typ == nil {
 		return ""
+	}
+	if typ.Common().Name != "" {
+		return typ.Common().Name
 	}
 	r := typ.String()
 	if r == "*void" {

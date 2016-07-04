@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/derekparker/delve/dwarf/debug/dwarf"
+	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/op"
 	"github.com/derekparker/delve/dwarf/reader"
 )
@@ -282,7 +282,7 @@ func (v *Variable) TypeString() string {
 		return "nil"
 	}
 	if v.DwarfType != nil {
-		return v.DwarfType.String()
+		return v.DwarfType.Common().Name
 	}
 	return v.Kind.String()
 }
@@ -626,10 +626,10 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		// not a regular struct member
 		for _, field := range t.Field {
 			isEmbeddedStructMember :=
-				(field.Type.String() == field.Name) ||
+				(field.Type.Common().Name == field.Name) ||
 					(len(field.Name) > 1 &&
 						field.Name[0] == '*' &&
-						field.Type.String()[1:] == field.Name[1:])
+						field.Type.Common().Name[1:] == field.Name[1:])
 			if !isEmbeddedStructMember {
 				continue
 			}

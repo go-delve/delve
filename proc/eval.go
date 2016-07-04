@@ -11,7 +11,7 @@ import (
 	"go/token"
 	"reflect"
 
-	"github.com/derekparker/delve/dwarf/debug/dwarf"
+	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/reader"
 )
 
@@ -494,7 +494,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 		return nil, err
 	}
 	if xv.Children[0].DwarfType.String() != typ.String() {
-		return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.String(), xv.Children[0].TypeString(), typ)
+		return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.Common().Name, xv.Children[0].TypeString(), typ.Common().Name)
 	}
 	return &xv.Children[0], nil
 }
@@ -633,7 +633,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 
 	xev.OnlyAddr = true
 
-	typename := "*" + xev.DwarfType.String()
+	typename := "*" + xev.DwarfType.Common().Name
 	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.Thread.dbp.arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
 	rv.Children = []Variable{*xev}
 	rv.loaded = true
@@ -1102,7 +1102,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 					ByteSize: 24,
 					Name:     "",
 				},
-				StructName: fmt.Sprintf("[]%s", v.fieldType),
+				StructName: fmt.Sprintf("[]%s", v.fieldType.Common().Name),
 				Kind:       "struct",
 				Field:      nil,
 			},

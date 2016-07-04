@@ -14,7 +14,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/derekparker/delve/dwarf/debug/dwarf"
+	"golang.org/x/debug/dwarf"
 )
 
 // A File represents an open Mach-O file.

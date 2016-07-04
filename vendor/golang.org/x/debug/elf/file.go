@@ -13,7 +13,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/derekparker/delve/dwarf/debug/dwarf"
+	"golang.org/x/debug/dwarf"
 )
 
 // TODO: error reporting detail
