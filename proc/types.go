@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/derekparker/delve/dwarf/debug/dwarf"
+	"golang.org/x/debug/dwarf"
 )
 
 // Do not call this function directly it isn't able to deal correctly with package paths
@@ -22,7 +22,7 @@ func (dbp *Process) findType(name string) (dwarf.Type, error) {
 }
 
 func (dbp *Process) pointerTo(typ dwarf.Type) dwarf.Type {
-	return &dwarf.PtrType{dwarf.CommonType{int64(dbp.arch.PtrSize()), "", reflect.Ptr, 0}, typ}
+	return &dwarf.PtrType{dwarf.CommonType{int64(dbp.arch.PtrSize()), "*" + typ.Common().Name, reflect.Ptr, 0}, typ}
 }
 
 func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {

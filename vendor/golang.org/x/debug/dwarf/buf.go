@@ -8,6 +8,7 @@ package dwarf
 
 import (
 	"encoding/binary"
+	"fmt"
 	"strconv"
 )
 
@@ -171,6 +172,17 @@ func (b *buf) addr() uint64 {
 	}
 	b.error("unknown address size")
 	return 0
+}
+
+// assertEmpty checks that everything has been read from b.
+func (b *buf) assertEmpty() {
+	if len(b.data) == 0 {
+		return
+	}
+	if len(b.data) > 5 {
+		b.error(fmt.Sprintf("unexpected extra data: %x...", b.data[0:5]))
+	}
+	b.error(fmt.Sprintf("unexpected extra data: %x", b.data))
 }
 
 func (b *buf) error(s string) {

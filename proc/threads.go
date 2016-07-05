@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"runtime"
 
-	"github.com/derekparker/delve/dwarf/debug/dwarf"
+	"golang.org/x/debug/dwarf"
 )
 
 // Thread represents a single thread in the traced process

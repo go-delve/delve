@@ -11,91 +11,40 @@ package dwarf
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
 // PCToLine returns the file and line number corresponding to the PC value.
 // It returns an error if a correspondence cannot be found.
 func (d *Data) PCToLine(pc uint64) (file string, line uint64, err error) {
-	if len(d.line) == 0 {
+	c := d.pcToLineEntries
+	if len(c) == 0 {
 		return "", 0, fmt.Errorf("PCToLine: no line table")
 	}
-	var m lineMachine
-	// Assume the first info unit is the same as us. Extremely likely. TODO?
-	if len(d.unit) == 0 {
-		return "", 0, fmt.Errorf("no info section")
-	}
-	buf := makeBuf(d, &d.unit[0], "line", 0, d.line)
-	if err = m.parseHeader(&buf); err != nil {
-		return "", 0, err
-	}
-	state := pcSearchState{pc: pc, newSequence: true}
-	if err = m.evalCompilationUnit(&buf, state.findPC); err != nil {
-		return "", 0, err
-	}
-	if !state.found {
+	i := sort.Search(len(c), func(i int) bool { return c[i].pc > pc }) - 1
+	// c[i] is now the entry in pcToLineEntries with the largest pc that is not
+	// larger than the query pc.
+	// The search has failed if:
+	// - All pcs in c were larger than the query pc (i == -1).
+	// - c[i] marked the end of a sequence of instructions (c[i].file == 0).
+	// - c[i] is the last element of c, and isn't the end of a sequence of
+	//   instructions, and the search pc is much larger than c[i].pc.  In this
+	//   case, we don't know the range of the last instruction, but the search
+	//   pc is probably past it.
+	if i == -1 || c[i].file == 0 || (i+1 == len(c) && pc-c[i].pc > 1024) {
 		return "", 0, fmt.Errorf("no source line defined for PC %#x", pc)
 	}
-	if state.lastFile >= uint64(len(m.header.file)) {
+	if c[i].file >= uint64(len(d.sourceFiles)) {
 		return "", 0, fmt.Errorf("invalid file number in DWARF data")
 	}
-	return m.header.file[state.lastFile].name, state.lastLine, nil
+	return d.sourceFiles[c[i].file], c[i].line, nil
 }
 
-// pcSearchState holds the state for the search PCToLine does.
-type pcSearchState struct {
-	pc uint64 // pc we are searching for.
-	// lastPC, lastFile, and lastLine are the PC, file number and line that were
-	// output most recently by the line machine.
-	lastPC   uint64
-	lastFile uint64
-	lastLine uint64
-	// found indicates that the above values correspond to the PC we're looking for.
-	found bool
-	// newSequence indicates that we are starting a new sequence of instructions,
-	// and so last{PC,File,Line} are not valid.
-	newSequence bool
-}
-
-// findPC will execute for every line in the state machine, until we find state.pc.
-// It returns a bool indicating whether to continue searching.
-func (state *pcSearchState) findPC(m *lineMachine) bool {
-	if !state.newSequence && state.lastPC < state.pc && state.pc < m.address {
-		// The PC we are looking for is between the previous PC and the current PC,
-		// so lastFile and lastLine are its source location.
-		state.found = true
-		return false
-	}
-	if m.endSequence {
-		state.newSequence = true
-		return true
-	}
-	state.newSequence = false
-	state.lastPC, state.lastFile, state.lastLine = m.address, m.file, m.line
-	if m.address == state.pc {
-		// lastFile and lastLine are the source location of pc.
-		state.found = true
-		return false
-	}
-	return true
-}
-
-// LineToPCs returns the PCs corresponding to the file and line number.
+// LineToBreakpointPCs returns the PCs that should be used as breakpoints
+// corresponding to the given file and line number.
 // It returns an empty slice if no PCs were found.
-func (d *Data) LineToPCs(file string, line uint64) ([]uint64, error) {
-	if len(d.line) == 0 {
-		return nil, fmt.Errorf("LineToPCs: no line table")
-	}
-	if len(d.unit) == 0 {
-		return nil, fmt.Errorf("LineToPCs: no info section")
-	}
-
-	buf := makeBuf(d, &d.unit[0], "line", 0, d.line)
-	var m lineMachine
-	if err := m.parseHeader(&buf); err != nil {
-		return nil, err
-	}
-
+func (d *Data) LineToBreakpointPCs(file string, line uint64) ([]uint64, error) {
 	compDir := d.compilationDirectory()
 
 	// Find the closest match in the executable for the specified file.
@@ -103,46 +52,43 @@ func (d *Data) LineToPCs(file string, line uint64) ([]uint64, error) {
 	// at the end of the name. If there is a tie, we prefer files that are
 	// under the compilation directory.  If there is still a tie, we choose
 	// the file with the shortest name.
+	// TODO: handle duplicate file names in the DWARF?
 	var bestFile struct {
 		fileNum    uint64 // Index of the file in the DWARF data.
 		components int    // Number of matching path components.
 		length     int    // Length of the filename.
 		underComp  bool   // File is under the compilation directory.
 	}
-	for num, f := range m.header.file {
-		c := matchingPathComponentSuffixSize(f.name, file)
-		underComp := strings.HasPrefix(f.name, compDir)
+	for filenum, filename := range d.sourceFiles {
+		c := matchingPathComponentSuffixSize(filename, file)
+		underComp := strings.HasPrefix(filename, compDir)
 		better := false
 		if c != bestFile.components {
 			better = c > bestFile.components
 		} else if underComp != bestFile.underComp {
 			better = underComp
 		} else {
-			better = len(f.name) < bestFile.length
+			better = len(filename) < bestFile.length
 		}
 		if better {
-			bestFile.fileNum = uint64(num)
+			bestFile.fileNum = uint64(filenum)
 			bestFile.components = c
-			bestFile.length = len(f.name)
+			bestFile.length = len(filename)
 			bestFile.underComp = underComp
 		}
 	}
 	if bestFile.components == 0 {
-		return nil, fmt.Errorf("couldn't find file %s", file)
+		return nil, fmt.Errorf("couldn't find file %q", file)
 	}
 
-	// pcs will contain the PCs for every line machine output with the correct line
-	// and file number.
-	var pcs []uint64
-	// accumulatePCs will execute for every line machine output.
-	accumulatePCs := func(m *lineMachine) (cont bool) {
-		if m.line == line && m.file == bestFile.fileNum {
-			pcs = append(pcs, m.address)
-		}
-		return true
-	}
-	if err := m.evalCompilationUnit(&buf, accumulatePCs); err != nil {
-		return nil, err
+	c := d.lineToPCEntries[bestFile.fileNum]
+	// c contains all (pc, line) pairs for the appropriate file.
+	start := sort.Search(len(c), func(i int) bool { return c[i].line >= line })
+	end := sort.Search(len(c), func(i int) bool { return c[i].line > line })
+	// c[i].line == line for all i in the range [start, end).
+	pcs := make([]uint64, 0, end-start)
+	for i := start; i < end; i++ {
+		pcs = append(pcs, c[i].pc)
 	}
 	return pcs, nil
 }

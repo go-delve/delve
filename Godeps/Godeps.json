@@ -1,6 +1,7 @@
 {
 	"ImportPath": "github.com/derekparker/delve",
 	"GoVersion": "go1.5",
+	"GodepVersion": "v74",
 	"Packages": [
 		"github.com/derekparker/delve/cmd/dlv",
 		"github.com/derekparker/delve/cmd/dlv/cmds",
@@ -16,7 +17,7 @@
 		"github.com/derekparker/delve/service",
 		"github.com/derekparker/delve/service/api",
 		"github.com/derekparker/delve/service/debugger",
-		"github.com/derekparker/delve/service/rpc",
+		"github.com/derekparker/delve/service/rpccommon",
 		"github.com/derekparker/delve/service/test",
 		"github.com/derekparker/delve/terminal",
 		"github.com/derekparker/delve/version"
@@ -68,6 +69,18 @@
 		{
 			"ImportPath": "github.com/spf13/pflag",
 			"Rev": "b084184666e02084b8ccb9b704bf0d79c466eb1d"
+		},
+		{
+			"ImportPath": "golang.org/x/debug/dwarf",
+			"Rev": "fb508927b491eca48a708e9d000fdb7afa53c32b"
+		},
+		{
+			"ImportPath": "golang.org/x/debug/elf",
+			"Rev": "fb508927b491eca48a708e9d000fdb7afa53c32b"
+		},
+		{
+			"ImportPath": "golang.org/x/debug/macho",
+			"Rev": "fb508927b491eca48a708e9d000fdb7afa53c32b"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
