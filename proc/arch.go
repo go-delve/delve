@@ -35,7 +35,7 @@ func AMD64Arch() *AMD64 {
 }
 
 // SetGStructOffset sets the offset of the G struct on the AMD64
-// arch struct. The offset is depandant on the Go compiler Version
+// arch struct. The offset is dependent on the Go compiler Version
 // and whether or not the target program was externally linked.
 func (a *AMD64) SetGStructOffset(ver GoVersion, isextld bool) {
 	switch runtime.GOOS {
