@@ -16,9 +16,9 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
-	"golang.org/x/debug/elf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
+	"golang.org/x/debug/elf"
 )
 
 // Process statuses

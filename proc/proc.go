@@ -14,10 +14,10 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 	"github.com/derekparker/delve/dwarf/reader"
+	"golang.org/x/debug/dwarf"
 )
 
 // Process represents all of the information the debugger
