@@ -33,7 +33,18 @@ type Breakpoint struct {
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached
 
-	Cond ast.Expr // When Cond is not nil the breakpoint will be triggered only if evaluating Cond returns true
+	// When DeferCond is set the breakpoint will only trigger
+	// if the caller is runtime.gopanic or if the return address
+	// is in the DeferReturns array.
+	// Next sets DeferCond for the breakpoint it sets on the
+	// deferred function, DeferReturns is populated with the
+	// addresses of calls to runtime.deferreturn in the current
+	// function. This insures that the breakpoint on the deferred
+	// function only triggers on panic or on the defer call to
+	// the function, not when the function is called directly
+	DeferCond    bool
+	DeferReturns []uint64
+	Cond         ast.Expr // When Cond is not nil the breakpoint will be triggered only if evaluating Cond returns true
 }
 
 func (bp *Breakpoint) String() string {
@@ -121,6 +132,24 @@ func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
 func (bp *Breakpoint) checkCondition(thread *Thread) (bool, error) {
 	if bp.Cond == nil {
 		return true, nil
+	}
+	if bp.DeferCond {
+		frames, err := thread.Stacktrace(2)
+		if err == nil {
+			ispanic := len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic"
+			isdeferreturn := false
+			if len(frames) >= 1 {
+				for _, pc := range bp.DeferReturns {
+					if frames[0].Ret == pc {
+						isdeferreturn = true
+						break
+					}
+				}
+			}
+			if !ispanic && !isdeferreturn {
+				return false, nil
+			}
+		}
 	}
 	scope, err := thread.Scope()
 	if err != nil {
