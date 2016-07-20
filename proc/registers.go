@@ -1,6 +1,5 @@
 package proc
 
-import "fmt"
 import "errors"
 
 // Registers is an interface for a generic register type. The
@@ -21,11 +20,7 @@ var UnknownRegisterError = errors.New("unknown register")
 
 // Registers obtains register values from the debugged process.
 func (t *Thread) Registers() (Registers, error) {
-	regs, err := registers(t)
-	if err != nil {
-		return nil, fmt.Errorf("could not get registers: %s", err)
-	}
-	return regs, nil
+	return registers(t)
 }
 
 // PC returns the current PC for this thread.
