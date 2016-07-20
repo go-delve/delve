@@ -292,6 +292,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			var cloned uint
 			dbp.execPtraceFunc(func() { cloned, err = sys.PtraceGetEventMsg(wpid) })
 			if err != nil {
+				if err == sys.ESRCH {
+					// thread died while we were adding it
+					continue
+				}
 				return nil, fmt.Errorf("could not get event message: %s", err)
 			}
 			th, err = dbp.addThread(int(cloned), false)
