@@ -15,9 +15,9 @@ import (
 
 	sys "golang.org/x/sys/windows"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
+	"golang.org/x/debug/dwarf"
 )
 
 const (
@@ -117,7 +117,7 @@ func Launch(cmd []string) (*Process, error) {
 	// after launching under DEBUGONLYTHISPROCESS.
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent()
+		tid, exitCode, err = dbp.waitForDebugEvent(true)
 	})
 	if err != nil {
 		return nil, err
@@ -125,6 +125,20 @@ func Launch(cmd []string) (*Process, error) {
 	if tid == 0 {
 		dbp.postExit()
 		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
+	}
+
+	for _, thread := range dbp.Threads {
+		_, err := _SuspendThread(thread.os.hThread)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	dbp.execPtraceFunc(func() {
+		err = _ContinueDebugEvent(uint32(dbp.Pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return initializeDebugProcess(dbp, argv0Go, false)
@@ -370,12 +384,16 @@ func dwarfFromPE(f *pe.File) (*dwarf.Data, error) {
 	return dwarf.New(abbrev, nil, nil, info, line, nil, nil, str)
 }
 
-func (dbp *Process) waitForDebugEvent() (threadID, exitCode int, err error) {
+func (dbp *Process) waitForDebugEvent(blocking bool) (threadID, exitCode int, err error) {
 	var debugEvent _DEBUG_EVENT
 	shouldExit := false
 	for {
+		var milliseconds uint32 = 0
+		if blocking {
+			milliseconds = syscall.INFINITE
+		}
 		// Wait for a debug event...
-		err := _WaitForDebugEvent(&debugEvent, syscall.INFINITE)
+		err := _WaitForDebugEvent(&debugEvent, milliseconds)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -453,7 +471,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	var err error
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent()
+		tid, exitCode, err = dbp.waitForDebugEvent(true)
 	})
 	if err != nil {
 		return nil, err
@@ -475,17 +493,41 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 }
 
 func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	// TODO: In theory, we should also be setting the breakpoints on other
-	// threads that happen to have hit this BP. But doing so leads to periodic
-	// failures in the TestBreakpointsCounts test with hit counts being too high,
-	// which can be traced back to occurrences of multiple threads hitting a BP
-	// at the same time.
+	err := trapthread.SetCurrentBreakpoint()
+	if err != nil {
+		return err
+	}
 
-	// My guess is that Windows will correctly trigger multiple DEBUG_EVENT's
-	// in this case, one for each thread, so we should only handle the BP hit
-	// on the thread that the debugger was evented on.
+	for _, thread := range dbp.Threads {
+		thread.running = false
+		_, err := _SuspendThread(thread.os.hThread)
+		if err != nil {
+			return err
+		}
+	}
 
-	return trapthread.SetCurrentBreakpoint()
+	for {
+		var err error
+		var tid int
+		dbp.execPtraceFunc(func() {
+			err = _ContinueDebugEvent(uint32(dbp.Pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
+			if err == nil {
+				tid, _, _ = dbp.waitForDebugEvent(false)
+			}
+		})
+		if err != nil {
+			return err
+		}
+		if tid == 0 {
+			break
+		}
+		err = dbp.Threads[tid].SetCurrentBreakpoint()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (dbp *Process) exitGuard(err error) error {
@@ -493,21 +535,23 @@ func (dbp *Process) exitGuard(err error) error {
 }
 
 func (dbp *Process) resume() error {
-	// Only resume the thread that broke into the debugger
-	thread := dbp.Threads[dbp.os.breakThread]
-	// This relies on the same assumptions as dbp.setCurrentBreakpoints
-	if thread.CurrentBreakpoint != nil {
-		if err := thread.StepInstruction(); err != nil {
+	for _, thread := range dbp.Threads {
+		if thread.CurrentBreakpoint != nil {
+			if err := thread.StepInstruction(); err != nil {
+				return err
+			}
+			thread.CurrentBreakpoint = nil
+		}
+	}
+
+	for _, thread := range dbp.Threads {
+		thread.running = true
+		_, err := _ResumeThread(thread.os.hThread)
+		if err != nil {
 			return err
 		}
-		thread.CurrentBreakpoint = nil
 	}
-	// In case we are now on a different thread, make sure we resume
-	// the thread that is broken.
-	thread = dbp.Threads[dbp.os.breakThread]
-	if err := thread.resume(); err != nil {
-		return err
-	}
+
 	return nil
 }
 
