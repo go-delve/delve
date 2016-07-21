@@ -42,33 +42,43 @@ func (t *Thread) singleStep() error {
 		return err
 	}
 
-	// Suspend all threads except this one
-	for _, thread := range t.dbp.Threads {
-		if thread.ID == t.ID {
-			continue
-		}
-		_, _ = _SuspendThread(thread.os.hThread)
+	_, err = _ResumeThread(t.os.hThread)
+	if err != nil {
+		return err
 	}
 
-	// Continue and wait for the step to complete
-	err = nil
+	for {
+		var tid, exitCode int
+		t.dbp.execPtraceFunc(func() {
+			tid, exitCode, err = t.dbp.waitForDebugEvent(waitBlocking | waitSuspendNewThreads)
+		})
+		if err != nil {
+			return err
+		}
+		if tid == 0 {
+			t.dbp.postExit()
+			return ProcessExitedError{Pid: t.dbp.Pid, Status: exitCode}
+		}
+
+		if t.dbp.os.breakThread == t.ID {
+			break
+		}
+
+		t.dbp.execPtraceFunc(func() {
+			err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.dbp.os.breakThread), _DBG_CONTINUE)
+		})
+	}
+
+	_, err = _SuspendThread(t.os.hThread)
+	if err != nil {
+		return err
+	}
+
 	t.dbp.execPtraceFunc(func() {
 		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
 	})
 	if err != nil {
 		return err
-	}
-	_, err = t.dbp.trapWait(0)
-	if err != nil {
-		return err
-	}
-
-	// Resume all threads except this one
-	for _, thread := range t.dbp.Threads {
-		if thread.ID == t.ID {
-			continue
-		}
-		_, _ = _ResumeThread(thread.os.hThread)
 	}
 
 	// Unset the processor TRAP flag
