@@ -48,9 +48,16 @@ func (t *Thread) singleStep() error {
 	}
 
 	for {
-		_, err = t.dbp.trapWait(0)
+		var tid, exitCode int
+		t.dbp.execPtraceFunc(func() {
+			tid, exitCode, err = t.dbp.waitForDebugEvent(true, true)
+		})
 		if err != nil {
 			return err
+		}
+		if tid == 0 {
+			t.dbp.postExit()
+			return ProcessExitedError{Pid: t.dbp.Pid, Status: exitCode}
 		}
 
 		if t.dbp.os.breakThread == t.ID {
