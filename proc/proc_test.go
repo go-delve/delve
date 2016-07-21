@@ -1881,3 +1881,17 @@ func TestUnsupportedArch(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func Test1Issue573(t *testing.T) {
+	// calls to runtime.duffzero and runtime.duffcopy jump directly into the middle
+	// of the function and the temp breakpoint set by StepInto may be missed.
+	withTestProcess("issue573", t, func(p *Process, fixture protest.Fixture) {
+		f := p.goSymTable.LookupFunc("main.foo")
+		_, err := p.SetBreakpoint(f.Entry)
+		assertNoError(err, t, "SetBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Step(), t, "Step() #1")
+		assertNoError(p.Step(), t, "Step() #2") // Bug exits here.
+		assertNoError(p.Step(), t, "Step() #3") // Third step ought to be possible; program ought not have exited.
+	})
+}
