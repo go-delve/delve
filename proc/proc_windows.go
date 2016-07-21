@@ -117,7 +117,7 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 	var err error
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent(true)
+		tid, exitCode, err = dbp.waitForDebugEvent(true, false)
 	})
 	if err != nil {
 		return nil, err
@@ -217,7 +217,7 @@ func (dbp *Process) updateThreadList() error {
 	return nil
 }
 
-func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach bool) (*Thread, error) {
+func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, suspendNewThreads bool) (*Thread, error) {
 	if thread, ok := dbp.Threads[threadID]; ok {
 		return thread, nil
 	}
@@ -230,6 +230,12 @@ func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach bool)
 	dbp.Threads[threadID] = thread
 	if dbp.CurrentThread == nil {
 		dbp.SwitchThread(thread.ID)
+	}
+	if suspendNewThreads {
+		_, err := _SuspendThread(thread.os.hThread)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return thread, nil
 }
@@ -421,7 +427,7 @@ func dwarfFromPE(f *pe.File) (*dwarf.Data, error) {
 	return dwarf.New(abbrev, nil, nil, info, line, nil, nil, str)
 }
 
-func (dbp *Process) waitForDebugEvent(blocking bool) (threadID, exitCode int, err error) {
+func (dbp *Process) waitForDebugEvent(blocking, suspendNewThreads bool) (threadID, exitCode int, err error) {
 	var debugEvent _DEBUG_EVENT
 	shouldExit := false
 	for {
@@ -448,14 +454,14 @@ func (dbp *Process) waitForDebugEvent(blocking bool) (threadID, exitCode int, er
 				}
 			}
 			dbp.os.hProcess = debugInfo.Process
-			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
+			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false, suspendNewThreads)
 			if err != nil {
 				return 0, 0, err
 			}
 			break
 		case _CREATE_THREAD_DEBUG_EVENT:
 			debugInfo := (*_CREATE_THREAD_DEBUG_INFO)(unionPtr)
-			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false)
+			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false, suspendNewThreads)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -508,7 +514,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	var err error
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent(true)
+		tid, exitCode, err = dbp.waitForDebugEvent(true, false)
 	})
 	if err != nil {
 		return nil, err
@@ -549,7 +555,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 		dbp.execPtraceFunc(func() {
 			err = _ContinueDebugEvent(uint32(dbp.Pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
 			if err == nil {
-				tid, _, _ = dbp.waitForDebugEvent(false)
+				tid, _, _ = dbp.waitForDebugEvent(false, true)
 			}
 		})
 		if err != nil {
