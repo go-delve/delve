@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 
 	"golang.org/x/debug/dwarf"
 )
@@ -145,99 +146,167 @@ func topframe(g *G, thread *Thread) (Stackframe, error) {
 	return frames[0], nil
 }
 
-// Set breakpoints for potential next lines.
-func (dbp *Process) setNextBreakpoints() (err error) {
+// Set breakpoints at every line, and the return address. Also look for
+// a deferred function and set a breakpoint there too.
+// If stepInto is true it will also set breakpoints inside all
+// functions called on the current source line, for non-absolute CALLs
+// a breakpoint of kind StepBreakpoint is set on the CALL instruction,
+// Continue will take care of setting a breakpoint to the destination
+// once the CALL is reached.
+func (dbp *Process) next(stepInto bool) error {
 	topframe, err := topframe(dbp.SelectedGoroutine, dbp.CurrentThread)
 	if err != nil {
 		return err
 	}
 
-	if filepath.Ext(topframe.Current.File) != ".go" {
-		return dbp.cnext(topframe)
+	csource := filepath.Ext(topframe.Current.File) != ".go"
+
+	thread := dbp.CurrentThread
+	currentGoroutine := false
+	if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.thread != nil {
+		thread = dbp.SelectedGoroutine.thread
+		currentGoroutine = true
 	}
 
-	return dbp.next(dbp.SelectedGoroutine, topframe)
-}
+	text, err := thread.Disassemble(topframe.FDE.Begin(), topframe.FDE.End(), currentGoroutine)
+	if err != nil && stepInto {
+		return err
+	}
 
-// Set breakpoints at every line, and the return address. Also look for
-// a deferred function and set a breakpoint there too.
-func (dbp *Process) next(g *G, topframe Stackframe) error {
 	cond := sameGoroutineCondition(dbp.SelectedGoroutine)
 
-	// Disassembles function to find all runtime.deferreturn locations
-	// See documentation of Breakpoint.DeferCond for why this is necessary
-	deferreturns := []uint64{}
-	text, err := dbp.CurrentThread.Disassemble(topframe.FDE.Begin(), topframe.FDE.End(), false)
-	if err == nil {
+	if stepInto {
+		for _, instr := range text {
+			if instr.Loc.File != topframe.Current.File || instr.Loc.Line != topframe.Current.Line || !instr.IsCall() {
+				continue
+			}
+
+			if instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+				if err := dbp.setStepIntoBreakpoint([]AsmInstruction{instr}, cond); err != nil {
+					dbp.ClearTempBreakpoints()
+					return err
+				}
+			} else {
+				// Non-absolute call instruction, set a StepBreakpoint here
+				if _, err := dbp.SetTempBreakpoint(instr.Loc.PC, StepBreakpoint, cond); err != nil {
+					if _, ok := err.(BreakpointExistsError); !ok {
+						dbp.ClearTempBreakpoints()
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	if !csource {
+		deferreturns := []uint64{}
+
+		// Find all runtime.deferreturn locations in the function
+		// See documentation of Breakpoint.DeferCond for why this is necessary
 		for _, instr := range text {
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && instr.DestLoc.Fn.Name == "runtime.deferreturn" {
 				deferreturns = append(deferreturns, instr.Loc.PC)
 			}
 		}
-	}
 
-	// Set breakpoint on the most recently deferred function (if any)
-	var deferpc uint64 = 0
-	if g != nil && g.DeferPC != 0 {
-		_, _, deferfn := dbp.goSymTable.PCToLine(g.DeferPC)
-		var err error
-		deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
-		if err != nil {
-			return err
-		}
-	}
-	if deferpc != 0 {
-		bp, err := dbp.SetTempBreakpoint(deferpc, cond)
-		if err != nil {
-			if _, ok := err.(BreakpointExistsError); !ok {
-				dbp.ClearTempBreakpoints()
+		// Set breakpoint on the most recently deferred function (if any)
+		var deferpc uint64 = 0
+		if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.DeferPC != 0 {
+			_, _, deferfn := dbp.goSymTable.PCToLine(dbp.SelectedGoroutine.DeferPC)
+			var err error
+			deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
+			if err != nil {
 				return err
 			}
 		}
-		bp.DeferCond = true
-		bp.DeferReturns = deferreturns
+		if deferpc != 0 && deferpc != topframe.Current.PC {
+			bp, err := dbp.SetTempBreakpoint(deferpc, NextBreakpoint, cond)
+			if err != nil {
+				if _, ok := err.(BreakpointExistsError); !ok {
+					dbp.ClearTempBreakpoints()
+					return err
+				}
+			}
+			if bp != nil {
+				bp.DeferCond = true
+				bp.DeferReturns = deferreturns
+			}
+		}
 	}
 
 	// Add breakpoints on all the lines in the current function
 	pcs := dbp.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
 
-	var covered bool
-	for i := range pcs {
-		if topframe.FDE.Cover(pcs[i]) {
-			covered = true
-			break
+	if !csource {
+		var covered bool
+		for i := range pcs {
+			if topframe.FDE.Cover(pcs[i]) {
+				covered = true
+				break
+			}
 		}
-	}
 
-	if !covered {
-		fn := dbp.goSymTable.PCToFunc(topframe.Ret)
-		if g != nil && fn != nil && fn.Name == "runtime.goexit" {
-			return nil
+		if !covered {
+			fn := dbp.goSymTable.PCToFunc(topframe.Ret)
+			if dbp.SelectedGoroutine != nil && fn != nil && fn.Name == "runtime.goexit" {
+				return nil
+			}
 		}
 	}
 
 	// Add a breakpoint on the return address for the current frame
 	pcs = append(pcs, topframe.Ret)
-	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, cond)
+	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, NextBreakpoint, cond)
 }
 
-// Set a breakpoint at every reachable location, as well as the return address. Without
-// the benefit of an AST we can't be sure we're not at a branching statement and thus
-// cannot accurately predict where we may end up.
-func (dbp *Process) cnext(topframe Stackframe) error {
-	pcs := dbp.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End(), topframe.Current.File)
-	pcs = append(pcs, topframe.Ret)
-	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, sameGoroutineCondition(dbp.SelectedGoroutine))
+func (dbp *Process) setStepIntoBreakpoint(text []AsmInstruction, cond ast.Expr) error {
+	if len(text) <= 0 {
+		return nil
+	}
+
+	instr := text[0]
+
+	if instr.DestLoc == nil || instr.DestLoc.Fn == nil {
+		return nil
+	}
+
+	fn := instr.DestLoc.Fn
+
+	// Ensure PC and Entry match, otherwise StepInto is likely to set
+	// its breakpoint before DestLoc.PC and hence run too far ahead.
+	// Calls to runtime.duffzero and duffcopy have this problem.
+	if fn.Entry != instr.DestLoc.PC {
+		return nil
+	}
+
+	// Skip unexported runtime functions
+	if strings.HasPrefix(fn.Name, "runtime.") && !isExportedRuntime(fn.Name) {
+		return nil
+	}
+
+	//TODO(aarzilli): if we want to let users hide functions
+	// or entire packages from being stepped into with 'step'
+	// those extra checks should be done here.
+
+	// Set a breakpoint after the function's prologue
+	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
+	if _, err := dbp.SetTempBreakpoint(pc, NextBreakpoint, cond); err != nil {
+		if _, ok := err.(BreakpointExistsError); !ok {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // setTempBreakpoints sets a breakpoint to all addresses specified in pcs
 // skipping over curpc and curpc-1
-func (dbp *Process) setTempBreakpoints(curpc uint64, pcs []uint64, cond ast.Expr) error {
+func (dbp *Process) setTempBreakpoints(curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
 	for i := range pcs {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
 		}
-		if _, err := dbp.SetTempBreakpoint(pcs[i], cond); err != nil {
+		if _, err := dbp.SetTempBreakpoint(pcs[i], kind, cond); err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
 				dbp.ClearTempBreakpoints()
 				return err
@@ -384,12 +453,18 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 	return nil
 }
 
+func (thread *Thread) resetBreakpoint() {
+	thread.CurrentBreakpoint = nil
+	thread.BreakpointConditionMet = false
+	thread.BreakpointConditionError = nil
+}
+
 func (thread *Thread) onTriggeredBreakpoint() bool {
 	return (thread.CurrentBreakpoint != nil) && thread.BreakpointConditionMet
 }
 
 func (thread *Thread) onTriggeredTempBreakpoint() bool {
-	return thread.onTriggeredBreakpoint() && thread.CurrentBreakpoint.Temp
+	return thread.onTriggeredBreakpoint() && thread.CurrentBreakpoint.Kind != NormalBreakpoint
 }
 
 func (thread *Thread) onRuntimeBreakpoint() bool {
@@ -404,8 +479,9 @@ func (thread *Thread) onRuntimeBreakpoint() bool {
 func (thread *Thread) onNextGoroutine() (bool, error) {
 	var bp *Breakpoint
 	for i := range thread.dbp.Breakpoints {
-		if thread.dbp.Breakpoints[i].Temp {
+		if thread.dbp.Breakpoints[i].Kind != NormalBreakpoint {
 			bp = thread.dbp.Breakpoints[i]
+			break
 		}
 	}
 	if bp == nil {

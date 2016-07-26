@@ -17,11 +17,11 @@ type Breakpoint struct {
 	File         string
 	Line         int
 
-	Addr         uint64 // Address breakpoint is set for.
-	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
-	Name         string // User defined name of the breakpoint
-	ID           int    // Monotonically increasing ID.
-	Temp         bool   // Whether this is a temp breakpoint (for next'ing).
+	Addr         uint64         // Address breakpoint is set for.
+	OriginalData []byte         // If software breakpoint, the data we replace with breakpoint instruction.
+	Name         string         // User defined name of the breakpoint
+	ID           int            // Monotonically increasing ID.
+	Kind         BreakpointKind // Whether this is a temp breakpoint (for next'ing or stepping).
 
 	// Breakpoint information
 	Tracepoint    bool     // Tracepoint flag
@@ -46,6 +46,19 @@ type Breakpoint struct {
 	DeferReturns []uint64
 	Cond         ast.Expr // When Cond is not nil the breakpoint will be triggered only if evaluating Cond returns true
 }
+
+type BreakpointKind int
+
+const (
+	// User set breakpoint
+	NormalBreakpoint BreakpointKind = iota
+	// Breakpoint set by Next, Continue will stop on it and delete it
+	NextBreakpoint
+	// Breakpoint set by Step on a CALL instruction, Continue will set a
+	// new breakpoint (of NextBreakpoint kind) on the destination of CALL,
+	// delete this breakpoint and then continue again
+	StepBreakpoint
+)
 
 func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.ID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
@@ -82,7 +95,7 @@ func (iae InvalidAddressError) Error() string {
 	return fmt.Sprintf("Invalid address %#v\n", iae.address)
 }
 
-func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint, error) {
+func (dbp *Process) setBreakpoint(tid int, addr uint64, kind BreakpointKind) (*Breakpoint, error) {
 	if bp, ok := dbp.FindBreakpoint(addr); ok {
 		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 	}
@@ -97,12 +110,12 @@ func (dbp *Process) setBreakpoint(tid int, addr uint64, temp bool) (*Breakpoint,
 		File:         f,
 		Line:         l,
 		Addr:         addr,
-		Temp:         temp,
+		Kind:         kind,
 		Cond:         nil,
 		HitCount:     map[int]uint64{},
 	}
 
-	if temp {
+	if kind != NormalBreakpoint {
 		dbp.tempBreakpointIDCounter++
 		newBreakpoint.ID = dbp.tempBreakpointIDCounter
 	} else {
