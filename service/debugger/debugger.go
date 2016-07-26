@@ -167,7 +167,7 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 	}
 
 	for _, bp := range d.process.Breakpoints {
-		if bp.Temp {
+		if bp.Internal() {
 			state.NextInProgress = true
 			break
 		}
@@ -297,7 +297,7 @@ func (d *Debugger) Breakpoints() []*api.Breakpoint {
 func (d *Debugger) breakpoints() []*api.Breakpoint {
 	bps := []*api.Breakpoint{}
 	for _, bp := range d.process.Breakpoints {
-		if bp.Temp {
+		if bp.Internal() {
 			continue
 		}
 		bps = append(bps, api.ConvertBreakpoint(bp))

@@ -228,12 +228,12 @@ func (dbp *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
 	if dbp.exited {
 		return nil, &ProcessExitedError{}
 	}
-	return dbp.setBreakpoint(dbp.CurrentThread.ID, addr, false)
+	return dbp.setBreakpoint(dbp.CurrentThread.ID, addr, UserBreakpoint)
 }
 
 // SetTempBreakpoint sets a temp breakpoint. Used during 'next' operations.
-func (dbp *Process) SetTempBreakpoint(addr uint64, cond ast.Expr) (*Breakpoint, error) {
-	bp, err := dbp.setBreakpoint(dbp.CurrentThread.ID, addr, true)
+func (dbp *Process) SetTempBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+	bp, err := dbp.setBreakpoint(dbp.CurrentThread.ID, addr, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -271,12 +271,12 @@ func (dbp *Process) Next() (err error) {
 		return &ProcessExitedError{}
 	}
 	for i := range dbp.Breakpoints {
-		if dbp.Breakpoints[i].Temp {
+		if dbp.Breakpoints[i].Internal() {
 			return fmt.Errorf("next while nexting")
 		}
 	}
 
-	if err = dbp.setNextBreakpoints(); err != nil {
+	if err = dbp.next(false); err != nil {
 		switch err.(type) {
 		case ThreadBlockedError, NoReturnAddr: // Noop
 		default:
@@ -300,13 +300,12 @@ func (dbp *Process) Continue() error {
 			return err
 		}
 
-		var trapthread *Thread
-		var err error
+		dbp.allGCache = nil
+		for _, th := range dbp.Threads {
+			th.clearBreakpointState()
+		}
 
-		dbp.run(func() error {
-			trapthread, err = dbp.trapWait(-1)
-			return nil
-		})
+		trapthread, err := dbp.trapWait(-1)
 		if err != nil {
 			return err
 		}
@@ -332,11 +331,31 @@ func (dbp *Process) Continue() error {
 			}
 			return dbp.conditionErrors()
 		case dbp.CurrentThread.onTriggeredTempBreakpoint():
-			err := dbp.ClearTempBreakpoints()
-			if err != nil {
-				return err
+			if dbp.CurrentThread.CurrentBreakpoint.Kind == StepBreakpoint {
+				// See description of proc.(*Process).next for the meaning of StepBreakpoints
+				if err := dbp.conditionErrors(); err != nil {
+					return err
+				}
+				pc, err := dbp.CurrentThread.PC()
+				if err != nil {
+					return err
+				}
+				text, err := dbp.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
+				if err != nil {
+					return err
+				}
+				// here we either set a breakpoint into the destination of the CALL
+				// instruction or we determined that the called function is hidden,
+				// either way we need to resume execution
+				if err = dbp.setStepIntoBreakpoint(text, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
+					return err
+				}
+			} else {
+				if err := dbp.ClearTempBreakpoints(); err != nil {
+					return err
+				}
+				return dbp.conditionErrors()
 			}
-			return dbp.conditionErrors()
 		case dbp.CurrentThread.onTriggeredBreakpoint():
 			onNextGoroutine, err := dbp.CurrentThread.onNextGoroutine()
 			if err != nil {
@@ -393,67 +412,24 @@ func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
 // Step will continue until another source line is reached.
 // Will step into functions.
 func (dbp *Process) Step() (err error) {
-	if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.thread == nil {
-		// Step called on parked goroutine
-		return dbp.stepToPC(dbp.SelectedGoroutine.PC)
+	if dbp.exited {
+		return &ProcessExitedError{}
 	}
-	fn := func() error {
-		var nloc *Location
-		th := dbp.CurrentThread
-		loc, err := th.Location()
-		if err != nil {
-			return err
-		}
-		for {
-			pc, err := dbp.CurrentThread.PC()
-			if err != nil {
-				return err
-			}
-			text, err := dbp.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
-			if err == nil && len(text) > 0 && text[0].IsCall() && text[0].DestLoc != nil && text[0].DestLoc.Fn != nil {
-				fn := text[0].DestLoc.Fn
-				// Ensure PC and Entry match, otherwise StepInto is likely to set
-				// its breakpoint before DestLoc.PC and hence run too far ahead.
-				// Calls to runtime.duffzero and duffcopy have this problem.
-				if fn.Entry == text[0].DestLoc.PC {
-					return dbp.StepInto(fn)
-				}
-			}
-
-			err = dbp.CurrentThread.StepInstruction()
-			if err != nil {
-				return err
-			}
-			nloc, err = th.Location()
-			if err != nil {
-				return err
-			}
-			if nloc.File != loc.File {
-				return nil
-			}
-			if nloc.File == loc.File && nloc.Line != loc.Line {
-				return nil
-			}
-		}
-	}
-	return dbp.run(fn)
-}
-
-// StepInto sets a temp breakpoint after the prologue of fn and calls Continue
-func (dbp *Process) StepInto(fn *gosym.Func) error {
 	for i := range dbp.Breakpoints {
-		if dbp.Breakpoints[i].Temp {
+		if dbp.Breakpoints[i].Internal() {
 			return fmt.Errorf("next while nexting")
 		}
 	}
-	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
-	return dbp.stepToPC(pc)
-}
 
-func (dbp *Process) stepToPC(pc uint64) error {
-	if _, err := dbp.SetTempBreakpoint(pc, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
-		return err
+	if err = dbp.next(true); err != nil {
+		switch err.(type) {
+		case ThreadBlockedError, NoReturnAddr: // Noop
+		default:
+			dbp.ClearTempBreakpoints()
+			return
+		}
 	}
+
 	return dbp.Continue()
 }
 
@@ -485,9 +461,21 @@ func (dbp *Process) StepInstruction() (err error) {
 	}
 	if dbp.SelectedGoroutine.thread == nil {
 		// Step called on parked goroutine
-		return dbp.stepToPC(dbp.SelectedGoroutine.PC)
+		if _, err := dbp.SetTempBreakpoint(dbp.SelectedGoroutine.PC, NextBreakpoint, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
+			return err
+		}
+		return dbp.Continue()
 	}
-	return dbp.run(dbp.SelectedGoroutine.thread.StepInstruction)
+	dbp.allGCache = nil
+	if dbp.exited {
+		return &ProcessExitedError{}
+	}
+	dbp.SelectedGoroutine.thread.clearBreakpointState()
+	err = dbp.SelectedGoroutine.thread.StepInstruction()
+	if err != nil {
+		return err
+	}
+	return dbp.SelectedGoroutine.thread.SetCurrentBreakpoint()
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.
@@ -740,7 +728,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 
 func (dbp *Process) ClearTempBreakpoints() error {
 	for _, bp := range dbp.Breakpoints {
-		if !bp.Temp {
+		if !bp.Internal() {
 			continue
 		}
 		if _, err := dbp.ClearBreakpoint(bp.Addr); err != nil {
@@ -748,25 +736,9 @@ func (dbp *Process) ClearTempBreakpoints() error {
 		}
 	}
 	for i := range dbp.Threads {
-		if dbp.Threads[i].CurrentBreakpoint != nil && dbp.Threads[i].CurrentBreakpoint.Temp {
+		if dbp.Threads[i].CurrentBreakpoint != nil && dbp.Threads[i].CurrentBreakpoint.Internal() {
 			dbp.Threads[i].CurrentBreakpoint = nil
 		}
-	}
-	return nil
-}
-
-func (dbp *Process) run(fn func() error) error {
-	dbp.allGCache = nil
-	if dbp.exited {
-		return fmt.Errorf("process has already exited")
-	}
-	for _, th := range dbp.Threads {
-		th.CurrentBreakpoint = nil
-		th.BreakpointConditionMet = false
-		th.BreakpointConditionError = nil
-	}
-	if err := fn(); err != nil {
-		return err
 	}
 	return nil
 }
