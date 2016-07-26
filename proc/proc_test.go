@@ -307,9 +307,25 @@ func countBreakpoints(p *Process) int {
 	return bpcount
 }
 
-func testnext(program string, testcases []nextTest, initialLocation string, t *testing.T) {
+type contFunc int
+
+const (
+	contNext contFunc = iota
+	contStep
+)
+
+func testseq(program string, contFunc contFunc, testcases []nextTest, initialLocation string, t *testing.T) {
 	withTestProcess(program, t, func(p *Process, fixture protest.Fixture) {
-		bp, err := setFunctionBreakpoint(p, initialLocation)
+		var bp *Breakpoint
+		var err error
+		if initialLocation != "" {
+			bp, err = setFunctionBreakpoint(p, initialLocation)
+		} else {
+			var pc uint64
+			pc, err = p.FindFileLocation(fixture.Source, testcases[0].begin)
+			assertNoError(err, t, "FindFileLocation()")
+			bp, err = p.SetBreakpoint(pc)
+		}
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(p.Continue(), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
@@ -317,15 +333,22 @@ func testnext(program string, testcases []nextTest, initialLocation string, t *t
 
 		f, ln := currentLineNumber(p, t)
 		for _, tc := range testcases {
+			pc, _ := p.CurrentThread.PC()
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
 
-			assertNoError(p.Next(), t, "Next() returned an error")
+			switch contFunc {
+			case contNext:
+				assertNoError(p.Next(), t, "Next() returned an error")
+			case contStep:
+				assertNoError(p.Step(), t, "Step() returned an error")
+			}
 
 			f, ln = currentLineNumber(p, t)
+			pc, _ = p.CurrentThread.PC()
 			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x)", tc.end, filepath.Base(f), ln, pc)
 			}
 		}
 
@@ -379,7 +402,7 @@ func TestNextGeneral(t *testing.T) {
 		}
 	}
 
-	testnext("testnextprog", testcases, "main.testnext", t)
+	testseq("testnextprog", contNext, testcases, "main.testnext", t)
 }
 
 func TestNextConcurrent(t *testing.T) {
@@ -478,7 +501,7 @@ func TestNextFunctionReturn(t *testing.T) {
 		{14, 15},
 		{15, 35},
 	}
-	testnext("testnextprog", testcases, "main.helloworld", t)
+	testseq("testnextprog", contNext, testcases, "main.helloworld", t)
 }
 
 func TestNextFunctionReturnDefer(t *testing.T) {
@@ -490,7 +513,7 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 		{6, 7},
 		{7, 8},
 	}
-	testnext("testnextdefer", testcases, "main.main", t)
+	testseq("testnextdefer", contNext, testcases, "main.main", t)
 }
 
 func TestNextNetHTTP(t *testing.T) {
@@ -1276,7 +1299,6 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				}
 				assertNoError(err, t, "Continue()")
 			}
-			fmt.Printf("Continue returned %d\n", bp.TotalHitCount)
 			for _, th := range p.Threads {
 				if th.CurrentBreakpoint == nil {
 					continue
@@ -1290,7 +1312,6 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				assertNoError(err, t, "evalVariable")
 				id, _ := constant.Int64Val(v.Value)
 				m[id] = i
-				fmt.Printf("\tgoroutine (%d) %d: %d\n", th.ID, id, i)
 			}
 
 			total := int64(0)
@@ -1912,7 +1933,7 @@ func TestNextDeferReturnAndDirectCall(t *testing.T) {
 	// Next should not step into a deferred function if it is called
 	// directly, only if it is called through a panic or a deferreturn.
 	// Here we test the case where the function is called by a deferreturn
-	testnext("defercall", []nextTest{
+	testseq("defercall", contNext, []nextTest{
 		{9, 10},
 		{10, 11},
 		{11, 12},
@@ -1928,9 +1949,250 @@ func TestNextPanicAndDirectCall(t *testing.T) {
 	// Next should not step into a deferred function if it is called
 	// directly, only if it is called through a panic or a deferreturn.
 	// Here we test the case where the function is called by a panic
-	testnext("defercall", []nextTest{
+	testseq("defercall", contNext, []nextTest{
 		{15, 16},
 		{16, 17},
 		{17, 18},
 		{18, 5}}, "main.callAndPanic2", t)
+}
+
+func TestStepCall(t *testing.T) {
+	testseq("testnextprog", contStep, []nextTest{
+		{34, 13},
+		{13, 14}}, "", t)
+}
+
+func TestStepCallPtr(t *testing.T) {
+	// Tests that Step works correctly when calling functions with a
+	// function pointer.
+	testseq("teststepprog", contStep, []nextTest{
+		{9, 10},
+		{10, 5},
+		{5, 6},
+		{6, 7},
+		{7, 11}}, "", t)
+}
+
+func TestStepReturnAndPanic(t *testing.T) {
+	// Tests that Step works correctly when returning from functions
+	// and when a deferred function is called when panic'ing.
+	testseq("defercall", contStep, []nextTest{
+		{17, 5},
+		{5, 6},
+		{6, 7},
+		{7, 18},
+		{18, 5},
+		{5, 6},
+		{6, 7}}, "", t)
+}
+
+func TestStepDeferReturn(t *testing.T) {
+	// Tests that Step works correctly when a deferred function is
+	// called during a return.
+	testseq("defercall", contStep, []nextTest{
+		{11, 5},
+		{5, 6},
+		{6, 7},
+		{7, 12},
+		{12, 13},
+		{13, 5},
+		{5, 6},
+		{6, 7},
+		{7, 13},
+		{13, 28}}, "", t)
+}
+
+func TestStepIgnorePrivateRuntime(t *testing.T) {
+	// Tests that Step will ignore calls to private runtime functions
+	// (such as runtime.convT2E in this case)
+	ver, _ := ParseVersionString(runtime.Version())
+
+	if ver.Major < 0 || ver.AfterOrEqual(GoVersion{1, 7, -1, 0, 0}) {
+		testseq("teststepprog", contStep, []nextTest{
+			{21, 13},
+			{13, 14},
+			{14, 15},
+			{15, 14},
+			{14, 17},
+			{17, 22}}, "", t)
+	} else {
+		testseq("teststepprog", contStep, []nextTest{
+			{21, 13},
+			{13, 14},
+			{14, 15},
+			{15, 17},
+			{17, 22}}, "", t)
+	}
+}
+
+func TestIssue561(t *testing.T) {
+	// Step fails to make progress when PC is at a CALL instruction
+	// where a breakpoint is also set.
+	withTestProcess("issue561", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.main")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Step(), t, "Step()")
+		_, ln := currentLineNumber(p, t)
+		if ln != 5 {
+			t.Fatalf("wrong line number after Step, expected 5 got %d", ln)
+		}
+	})
+}
+
+func TestStepConcurrentDirect(t *testing.T) {
+	withTestProcess("teststepconcurrent", t, func(p *Process, fixture protest.Fixture) {
+		pc, err := p.FindFileLocation(fixture.Source, 37)
+		assertNoError(err, t, "FindFileLocation()")
+		bp, err := p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint()")
+
+		assertNoError(p.Continue(), t, "Continue()")
+		_, err = p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint()")
+
+		gid := p.SelectedGoroutine.ID
+
+		seq := []int{37, 38, 13, 15, 16, 38}
+
+		i := 0
+		count := 0
+		for {
+			f, ln := currentLineNumber(p, t)
+			if ln != seq[i] {
+				if i == 1 && ln == 40 {
+					// loop exited
+					break
+				}
+				t.Fatalf("Program did not continue at expected location (%d) %s:%d", seq[i], f, ln)
+			}
+			if p.SelectedGoroutine.ID != gid {
+				t.Fatalf("Step switched to different goroutine %d %d\n", gid, p.SelectedGoroutine.ID)
+			}
+			i = (i + 1) % len(seq)
+			if i == 0 {
+				count++
+			}
+			assertNoError(p.Step(), t, "Step()")
+		}
+
+		if count != 100 {
+			t.Fatalf("Program did not loop expected number of times: %d", count)
+		}
+	})
+}
+
+func nextInProgress(p *Process) bool {
+	for _, th := range p.Threads {
+		if th.CurrentBreakpoint != nil && th.CurrentBreakpoint.Internal() {
+			return true
+		}
+	}
+	return false
+}
+
+func TestStepConcurrentPtr(t *testing.T) {
+	withTestProcess("teststepconcurrent", t, func(p *Process, fixture protest.Fixture) {
+		pc, err := p.FindFileLocation(fixture.Source, 24)
+		assertNoError(err, t, "FindFileLocation()")
+		_, err = p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint()")
+
+		kvals := map[int]int64{}
+		count := 0
+		for {
+			err := p.Continue()
+			_, exited := err.(ProcessExitedError)
+			if exited {
+				break
+			}
+			assertNoError(err, t, "Continue()")
+
+			f, ln := currentLineNumber(p, t)
+			if ln != 24 {
+				t.Fatalf("Program did not continue at expected location (24): %s:%d", f, ln)
+			}
+
+			gid := p.SelectedGoroutine.ID
+
+			kvar, err := evalVariable(p, "k")
+			assertNoError(err, t, "EvalVariable()")
+			k, _ := constant.Int64Val(kvar.Value)
+
+			if oldk, ok := kvals[gid]; ok {
+				if oldk >= k {
+					t.Fatalf("Goroutine %d did not make progress?")
+				}
+			}
+			kvals[gid] = k
+
+			assertNoError(p.Step(), t, "Step()")
+			for nextInProgress(p) {
+				if p.SelectedGoroutine.ID == gid {
+					t.Fatalf("step did not step into function call (but temp breakpoints still active?) (%d %d)", gid, p.SelectedGoroutine.ID)
+				}
+				assertNoError(p.Continue(), t, "Continue()")
+			}
+
+			f, ln = currentLineNumber(p, t)
+			if ln != 13 {
+				t.Fatalf("Step did not step into function call (13): %s:%d (gid: %d)", f, ln, p.SelectedGoroutine.ID)
+			}
+
+			if p.SelectedGoroutine.ID != gid {
+				t.Fatalf("Step switched goroutines (%d %d)", gid, p.SelectedGoroutine.ID)
+			}
+
+			count++
+			if count > 50 {
+				// this test could potentially go on for 10000 cycles, since that's
+				// too slow we cut the execution after 50 cycles
+				break
+			}
+		}
+
+		if count == 0 {
+			t.Fatalf("Breakpoint never hit")
+		}
+	})
+}
+
+func TestStepOnCallPtrInstr(t *testing.T) {
+	withTestProcess("teststepprog", t, func(p *Process, fixture protest.Fixture) {
+		pc, err := p.FindFileLocation(fixture.Source, 10)
+		assertNoError(err, t, "FindFileLocation()")
+		_, err = p.SetBreakpoint(pc)
+		assertNoError(err, t, "SetBreakpoint()")
+
+		assertNoError(p.Continue(), t, "Continue()")
+
+		found := false
+
+		for {
+			_, ln := currentLineNumber(p, t)
+			if ln != 10 {
+				break
+			}
+			pc, err := p.CurrentThread.PC()
+			assertNoError(err, t, "PC()")
+			text, err := p.CurrentThread.Disassemble(pc, pc+maxInstructionLength, true)
+			assertNoError(err, t, "Disassemble()")
+			if text[0].IsCall() {
+				found = true
+				break
+			}
+			assertNoError(p.StepInstruction(), t, "StepInstruction()")
+		}
+
+		if !found {
+			t.Fatal("Could not find CALL instruction")
+		}
+
+		assertNoError(p.Step(), t, "Step()")
+
+		f, ln := currentLineNumber(p, t)
+		if ln != 5 {
+			t.Fatalf("Step continued to wrong line, expected 5 was %s:%d", f, ln)
+		}
+	})
 }
