@@ -69,6 +69,9 @@ const (
 	_UNLOAD_DLL_DEBUG_EVENT     = 7
 	_OUTPUT_DEBUG_STRING_EVENT  = 8
 	_RIP_EVENT                  = 9
+
+	// DEBUG_ONLY_THIS_PROCESS tracks https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
+	_DEBUG_ONLY_THIS_PROCESS = 0x00000002
 )
 
 func _NT_SUCCESS(x _NTSTATUS) bool {
@@ -85,3 +88,5 @@ func _NT_SUCCESS(x _NTSTATUS) bool {
 //sys	_ReadProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, bytesread *uintptr) (err error) = kernel32.ReadProcessMemory
 //sys	_DebugBreakProcess(process syscall.Handle) (err error) = kernel32.DebugBreakProcess
 //sys	_WaitForDebugEvent(debugevent *_DEBUG_EVENT, milliseconds uint32) (err error) = kernel32.WaitForDebugEvent
+//sys	_DebugActiveProcess(processid uint32) (err error) = kernel32.DebugActiveProcess
+//sys	_QueryFullProcessImageName(process syscall.Handle, flags uint32, exename *uint16, size *uint32) (err error) = kernel32.QueryFullProcessImageNameW

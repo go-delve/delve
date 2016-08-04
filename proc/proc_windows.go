@@ -8,21 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
 
 	sys "golang.org/x/sys/windows"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
-)
-
-const (
-	// DEBUGONLYTHISPROCESS tracks https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
-	DEBUGONLYTHISPROCESS = 0x00000002
+	"golang.org/x/debug/dwarf"
 )
 
 // OSProcessDetails holds Windows specific information.
@@ -97,24 +91,25 @@ func Launch(cmd []string) (*Process, error) {
 	si.StdOutput = sys.Handle(fd[1])
 	si.StdErr = sys.Handle(fd[2])
 	pi := new(sys.ProcessInformation)
-	err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, DEBUGONLYTHISPROCESS, nil, nil, si, pi)
+	err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, _DEBUG_ONLY_THIS_PROCESS, nil, nil, si, pi)
 	if err != nil {
 		return nil, err
 	}
 	sys.CloseHandle(sys.Handle(pi.Process))
 	sys.CloseHandle(sys.Handle(pi.Thread))
 
-	dbp := New(int(pi.ProcessId))
+	return newDebugProcess(int(pi.ProcessId), argv0Go)
+}
 
-	switch runtime.GOARCH {
-	case "amd64":
-		dbp.arch = AMD64Arch()
-	}
-
-	// Note - it should not actually be possible for the
+// newDebugProcess prepares process pid for debugging.
+func newDebugProcess(pid int, exepath string) (*Process, error) {
+	dbp := New(pid)
+	// It should not actually be possible for the
 	// call to waitForDebugEvent to fail, since Windows
-	// will always fire a CreateProcess event immediately
-	// after launching under DEBUGONLYTHISPROCESS.
+	// will always fire a CREATE_PROCESS_DEBUG_EVENT event
+	// immediately after launching under DEBUG_ONLY_THIS_PROCESS.
+	// Attaching with DebugActiveProcess has similar effect.
+	var err error
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
 		tid, exitCode, err = dbp.waitForDebugEvent()
@@ -126,13 +121,55 @@ func Launch(cmd []string) (*Process, error) {
 		dbp.postExit()
 		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
 	}
+	return initializeDebugProcess(dbp, exepath, false)
+}
 
-	return initializeDebugProcess(dbp, argv0Go, false)
+// findExePath searches for process pid, and returns its executable path.
+func findExePath(pid int) (string, error) {
+	// Original code suggested different approach (see below).
+	// Maybe it could be useful in the future.
+	//
+	// Find executable path from PID/handle on Windows:
+	// https://msdn.microsoft.com/en-us/library/aa366789(VS.85).aspx
+
+	p, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return "", err
+	}
+	defer syscall.CloseHandle(p)
+
+	n := uint32(128)
+	for {
+		buf := make([]uint16, int(n))
+		err = _QueryFullProcessImageName(p, 0, &buf[0], &n)
+		switch err {
+		case syscall.ERROR_INSUFFICIENT_BUFFER:
+			// try bigger buffer
+			n *= 2
+			// but stop if it gets too big
+			if n > 10000 {
+				return "", err
+			}
+		case nil:
+			return syscall.UTF16ToString(buf[:n]), nil
+		default:
+			return "", err
+		}
+	}
 }
 
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*Process, error) {
-	return nil, fmt.Errorf("not implemented: Attach")
+	// TODO: Probably should have SeDebugPrivilege before starting here.
+	err := _DebugActiveProcess(uint32(pid))
+	if err != nil {
+		return nil, err
+	}
+	exepath, err := findExePath(pid)
+	if err != nil {
+		return nil, err
+	}
+	return newDebugProcess(pid, exepath)
 }
 
 // Kill kills the process.
@@ -316,11 +353,6 @@ func (dbp *Process) parseDebugLineInfo(exe *pe.File, wg *sync.WaitGroup) {
 var UnsupportedArchErr = errors.New("unsupported architecture of windows/386 - only windows/amd64 is supported")
 
 func (dbp *Process) findExecutable(path string) (*pe.File, error) {
-	if path == "" {
-		// TODO: Find executable path from PID/handle on Windows:
-		// https://msdn.microsoft.com/en-us/library/aa366789(VS.85).aspx
-		return nil, fmt.Errorf("not yet implemented")
-	}
 	peFile, err := openExecutablePath(path)
 	if err != nil {
 		return nil, err
