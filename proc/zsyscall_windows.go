@@ -2,8 +2,10 @@
 
 package proc
 
-import "unsafe"
-import "syscall"
+import (
+	"syscall"
+	"unsafe"
+)
 
 var _ unsafe.Pointer
 
@@ -11,16 +13,18 @@ var (
 	modntdll    = syscall.NewLazyDLL("ntdll.dll")
 	modkernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	procNtQueryInformationThread = modntdll.NewProc("NtQueryInformationThread")
-	procGetThreadContext         = modkernel32.NewProc("GetThreadContext")
-	procSetThreadContext         = modkernel32.NewProc("SetThreadContext")
-	procSuspendThread            = modkernel32.NewProc("SuspendThread")
-	procResumeThread             = modkernel32.NewProc("ResumeThread")
-	procContinueDebugEvent       = modkernel32.NewProc("ContinueDebugEvent")
-	procWriteProcessMemory       = modkernel32.NewProc("WriteProcessMemory")
-	procReadProcessMemory        = modkernel32.NewProc("ReadProcessMemory")
-	procDebugBreakProcess        = modkernel32.NewProc("DebugBreakProcess")
-	procWaitForDebugEvent        = modkernel32.NewProc("WaitForDebugEvent")
+	procNtQueryInformationThread   = modntdll.NewProc("NtQueryInformationThread")
+	procGetThreadContext           = modkernel32.NewProc("GetThreadContext")
+	procSetThreadContext           = modkernel32.NewProc("SetThreadContext")
+	procSuspendThread              = modkernel32.NewProc("SuspendThread")
+	procResumeThread               = modkernel32.NewProc("ResumeThread")
+	procContinueDebugEvent         = modkernel32.NewProc("ContinueDebugEvent")
+	procWriteProcessMemory         = modkernel32.NewProc("WriteProcessMemory")
+	procReadProcessMemory          = modkernel32.NewProc("ReadProcessMemory")
+	procDebugBreakProcess          = modkernel32.NewProc("DebugBreakProcess")
+	procWaitForDebugEvent          = modkernel32.NewProc("WaitForDebugEvent")
+	procDebugActiveProcess         = modkernel32.NewProc("DebugActiveProcess")
+	procQueryFullProcessImageNameW = modkernel32.NewProc("QueryFullProcessImageNameW")
 )
 
 func _NtQueryInformationThread(threadHandle syscall.Handle, infoclass int32, info uintptr, infolen uint32, retlen *uint32) (status _NTSTATUS) {
@@ -129,6 +133,30 @@ func _DebugBreakProcess(process syscall.Handle) (err error) {
 
 func _WaitForDebugEvent(debugevent *_DEBUG_EVENT, milliseconds uint32) (err error) {
 	r1, _, e1 := syscall.Syscall(procWaitForDebugEvent.Addr(), 2, uintptr(unsafe.Pointer(debugevent)), uintptr(milliseconds), 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			err = error(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func _DebugActiveProcess(processid uint32) (err error) {
+	r1, _, e1 := syscall.Syscall(procDebugActiveProcess.Addr(), 1, uintptr(processid), 0, 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			err = error(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func _QueryFullProcessImageName(process syscall.Handle, flags uint32, exename *uint16, size *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procQueryFullProcessImageNameW.Addr(), 4, uintptr(process), uintptr(flags), uintptr(unsafe.Pointer(exename)), uintptr(unsafe.Pointer(size)), 0, 0)
 	if r1 == 0 {
 		if e1 != 0 {
 			err = error(e1)
