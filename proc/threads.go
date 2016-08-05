@@ -162,8 +162,21 @@ func (dbp *Process) setNextBreakpoints() (err error) {
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
 func (dbp *Process) next(g *G, topframe Stackframe) error {
-	pcs := dbp.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
+	cond := sameGoroutineCondition(dbp.SelectedGoroutine)
 
+	// Disassembles function to find all runtime.deferreturn locations
+	// See documentation of Breakpoint.DeferCond for why this is necessary
+	deferreturns := []uint64{}
+	text, err := dbp.CurrentThread.Disassemble(topframe.FDE.Begin(), topframe.FDE.End(), false)
+	if err == nil {
+		for _, instr := range text {
+			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && instr.DestLoc.Fn.Name == "runtime.deferreturn" {
+				deferreturns = append(deferreturns, instr.Loc.PC)
+			}
+		}
+	}
+
+	// Set breakpoint on the most recently deferred function (if any)
 	var deferpc uint64 = 0
 	if g != nil && g.DeferPC != 0 {
 		_, _, deferfn := dbp.goSymTable.PCToLine(g.DeferPC)
@@ -173,6 +186,20 @@ func (dbp *Process) next(g *G, topframe Stackframe) error {
 			return err
 		}
 	}
+	if deferpc != 0 {
+		bp, err := dbp.SetTempBreakpoint(deferpc, cond)
+		if err != nil {
+			if _, ok := err.(BreakpointExistsError); !ok {
+				dbp.ClearTempBreakpoints()
+				return err
+			}
+		}
+		bp.DeferCond = true
+		bp.DeferReturns = deferreturns
+	}
+
+	// Add breakpoints on all the lines in the current function
+	pcs := dbp.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
 
 	var covered bool
 	for i := range pcs {
@@ -188,11 +215,10 @@ func (dbp *Process) next(g *G, topframe Stackframe) error {
 			return nil
 		}
 	}
-	if deferpc != 0 {
-		pcs = append(pcs, deferpc)
-	}
+
+	// Add a breakpoint on the return address for the current frame
 	pcs = append(pcs, topframe.Ret)
-	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, sameGoroutineCondition(dbp.SelectedGoroutine))
+	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, cond)
 }
 
 // Set a breakpoint at every reachable location, as well as the return address. Without
@@ -385,5 +411,11 @@ func (thread *Thread) onNextGoroutine() (bool, error) {
 	if bp == nil {
 		return false, nil
 	}
+	// we just want to check the condition on the goroutine id here
+	dc := bp.DeferCond
+	bp.DeferCond = false
+	defer func() {
+		bp.DeferCond = dc
+	}()
 	return bp.checkCondition(thread)
 }

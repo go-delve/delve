@@ -15,9 +15,9 @@ import (
 
 	sys "golang.org/x/sys/windows"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
+	"golang.org/x/debug/dwarf"
 )
 
 const (
