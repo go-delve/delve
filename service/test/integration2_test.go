@@ -67,7 +67,7 @@ func TestRunWithInvalidPath(t *testing.T) {
 func TestRestart_afterExit(t *testing.T) {
 	withTestClient2("continuetestprog", t, func(c service.Client) {
 		origPid := c.ProcessPid()
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if !state.Exited {
 			t.Fatal("expected initial process to have exited")
 		}
@@ -77,7 +77,7 @@ func TestRestart_afterExit(t *testing.T) {
 		if c.ProcessPid() == origPid {
 			t.Fatal("did not spawn new process, has same PID")
 		}
-		state = <-c.Continue()
+		state = <-c.Continue(0)
 		if !state.Exited {
 			t.Fatalf("expected restarted process to have exited %v", state)
 		}
@@ -88,7 +88,7 @@ func TestRestart_breakpointPreservation(t *testing.T) {
 	withTestClient2("continuetestprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
 		assertNoError(err, t, "CreateBreakpoint()")
-		stateCh := c.Continue()
+		stateCh := c.Continue(0)
 
 		state := <-stateCh
 		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
@@ -101,7 +101,7 @@ func TestRestart_breakpointPreservation(t *testing.T) {
 
 		t.Log("Restart")
 		c.Restart()
-		stateCh = c.Continue()
+		stateCh = c.Continue(0)
 		state = <-stateCh
 		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
 			t.Fatalf("Wrong breakpoint (after restart): %#v\n", state.CurrentThread.Breakpoint)
@@ -120,7 +120,7 @@ func TestRestart_duringStop(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if state.CurrentThread.Breakpoint == nil {
 			t.Fatal("did not hit breakpoint")
 		}
@@ -162,7 +162,7 @@ func TestClientServer_exit(t *testing.T) {
 		if e, a := false, state.Exited; e != a {
 			t.Fatalf("Expected exited %v, got %v", e, a)
 		}
-		state = <-c.Continue()
+		state = <-c.Continue(0)
 		if state.Err == nil {
 			t.Fatalf("Error expected after continue")
 		}
@@ -183,7 +183,7 @@ func TestClientServer_step(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		stateBefore := <-c.Continue()
+		stateBefore := <-c.Continue(0)
 		if stateBefore.Err != nil {
 			t.Fatalf("Unexpected error: %v", stateBefore.Err)
 		}
@@ -206,7 +206,7 @@ func testnext2(testcases []nextTest, initialLocation string, t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v", state.Err)
 		}
@@ -297,7 +297,7 @@ func TestClientServer_breakpointInMainThread(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
 		}
@@ -318,7 +318,7 @@ func TestClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
@@ -377,7 +377,7 @@ func TestClientServer_switchThread(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
@@ -415,7 +415,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
@@ -436,7 +436,7 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
@@ -465,7 +465,7 @@ func TestClientServer_traceContinue(t *testing.T) {
 			t.Fatalf("Unexpected error: %v\n", err)
 		}
 		count := 0
-		contChan := c.Continue()
+		contChan := c.Continue(0)
 		for state := range contChan {
 			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 				count++
@@ -526,7 +526,7 @@ func TestClientServer_traceContinue2(t *testing.T) {
 		}
 		countMain := 0
 		countSayhi := 0
-		contChan := c.Continue()
+		contChan := c.Continue(0)
 		for state := range contChan {
 			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 				switch state.CurrentThread.Breakpoint.ID {
@@ -596,7 +596,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 			t.Fatalf("CreateBreakpoint(): %v\n", err)
 		}
 
-		<-c.Continue()
+		<-c.Continue(0)
 
 		locationsprog35Addr := findLocationHelper(t, c, "locationsprog.go:35", false, 1, 0)[0]
 		findLocationHelper(t, c, fmt.Sprintf("%s:35", testProgPath(t, "locationsprog")), false, 1, locationsprog35Addr)
@@ -656,7 +656,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 
 func TestClientServer_FindLocationsAddr(t *testing.T) {
 	withTestClient2("locationsprog2", t, func(c service.Client) {
-		<-c.Continue()
+		<-c.Continue(0)
 
 		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
 		anonfunc := findLocationHelper(t, c, "main.main.func1", false, 1, 0)[0]
@@ -668,7 +668,7 @@ func TestClientServer_FindLocationsAddr(t *testing.T) {
 
 func TestClientServer_EvalVariable(t *testing.T) {
 	withTestClient2("testvariables", t, func(c service.Client) {
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 
 		if state.Err != nil {
 			t.Fatalf("Continue(): %v\n", state.Err)
@@ -687,7 +687,7 @@ func TestClientServer_EvalVariable(t *testing.T) {
 
 func TestClientServer_SetVariable(t *testing.T) {
 	withTestClient2("testvariables", t, func(c service.Client) {
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 
 		if state.Err != nil {
 			t.Fatalf("Continue(): %v\n", state.Err)
@@ -711,7 +711,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 	withTestClient2("goroutinestackprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
-		state := <-c.Continue()
+		state := <-c.Continue(0)
 		if state.Err != nil {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
@@ -749,9 +749,9 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			}
 		}
 
-		state = <-c.Continue()
+		state = <-c.Continue(0)
 		if state.Err != nil {
-			t.Fatalf("Continue(): %v\n", state.Err)
+			t.Fatalf("Continue(0): %v\n", state.Err)
 		}
 
 		frames, err := c.Stacktrace(-1, 10, &normalLoadConfig)
@@ -784,20 +784,20 @@ func TestIssue355(t *testing.T) {
 	withTestClient2("continuetestprog", t, func(c service.Client) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
-		ch := c.Continue()
+		ch := c.Continue(0)
 		state := <-ch
 		tid := state.CurrentThread.ID
 		gid := state.SelectedGoroutine.ID
-		assertNoError(state.Err, t, "First Continue()")
-		ch = c.Continue()
+		assertNoError(state.Err, t, "First Continue(0)")
+		ch = c.Continue(0)
 		state = <-ch
 		if !state.Exited {
 			t.Fatalf("Target did not terminate after second continue")
 		}
 
-		ch = c.Continue()
+		ch = c.Continue(0)
 		state = <-ch
-		assertError(state.Err, t, "Continue()")
+		assertError(state.Err, t, "Continue(0)")
 
 		_, err = c.Next()
 		assertError(err, t, "Next()")
@@ -843,9 +843,9 @@ func TestDisasm(t *testing.T) {
 	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
 	// effective destination of the CALL instruction
 	withTestClient2("locationsprog2", t, func(c service.Client) {
-		ch := c.Continue()
+		ch := c.Continue(0)
 		state := <-ch
-		assertNoError(state.Err, t, "Continue()")
+		assertNoError(state.Err, t, "Continue(0)")
 
 		locs, err := c.FindLocation(api.EvalScope{-1, 0}, "main.main")
 		assertNoError(err, t, "FindLocation()")
@@ -947,9 +947,9 @@ func TestNegativeStackDepthBug(t *testing.T) {
 	withTestClient2("continuetestprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
-		ch := c.Continue()
+		ch := c.Continue(0)
 		state := <-ch
-		assertNoError(state.Err, t, "Continue()")
+		assertNoError(state.Err, t, "Continue(0)")
 		_, err = c.Stacktrace(-1, -2, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 	})
@@ -973,8 +973,8 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 		if len(bp.Variables) != 1 {
 			t.Fatalf("Wrong number of expressions to evaluate on breakpoint %#v", bp)
 		}
-		state := <-c.Continue()
-		assertNoError(state.Err, t, "Continue()")
+		state := <-c.Continue(0)
+		assertNoError(state.Err, t, "Continue(0)")
 
 		nvar, err := c.EvalVariable(api.EvalScope{-1, 0}, "n", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
@@ -987,7 +987,7 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 
 func TestSkipPrologue(t *testing.T) {
 	withTestClient2("locationsprog2", t, func(c service.Client) {
-		<-c.Continue()
+		<-c.Continue(0)
 
 		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
 		findLocationHelper(t, c, "*fn1", false, 1, afunction)
@@ -1038,16 +1038,16 @@ func TestIssue419(t *testing.T) {
 			_, err := c.Halt()
 			assertNoError(err, t, "RequestManualStop()")
 		}()
-		statech := c.Continue()
+		statech := c.Continue(0)
 		state := <-statech
-		assertNoError(state.Err, t, "Continue()")
+		assertNoError(state.Err, t, "Continue(0)")
 	})
 }
 
 func TestTypesCommand(t *testing.T) {
 	withTestClient2("testvariables2", t, func(c service.Client) {
-		state := <-c.Continue()
-		assertNoError(state.Err, t, "Continue()")
+		state := <-c.Continue(0)
+		assertNoError(state.Err, t, "Continue(0)")
 		types, err := c.ListTypes("")
 		assertNoError(err, t, "ListTypes()")
 
@@ -1076,9 +1076,9 @@ func TestIssue406(t *testing.T) {
 		assertNoError(err, t, "FindLocation()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{Addr: locs[0].PC})
 		assertNoError(err, t, "CreateBreakpoint()")
-		ch := c.Continue()
+		ch := c.Continue(0)
 		state := <-ch
-		assertNoError(state.Err, t, "Continue()")
+		assertNoError(state.Err, t, "Continue(0)")
 		v, err := c.EvalVariable(api.EvalScope{-1, 0}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		vs := v.MultilineString("")
@@ -1088,8 +1088,8 @@ func TestIssue406(t *testing.T) {
 
 func TestEvalExprName(t *testing.T) {
 	withTestClient2("testvariables2", t, func(c service.Client) {
-		state := <-c.Continue()
-		assertNoError(state.Err, t, "Continue()")
+		state := <-c.Continue(0)
+		assertNoError(state.Err, t, "Continue(0)")
 
 		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "i1+1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")

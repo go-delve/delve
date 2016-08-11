@@ -33,8 +33,8 @@ func (t *Thread) stopped() bool {
 	return state == StatusTraceStop || state == StatusTraceStopT
 }
 
-func (t *Thread) resume() error {
-	return t.resumeWithSig(0)
+func (t *Thread) resume(sig int) error {
+	return t.resumeWithSig(sig)
 }
 
 func (t *Thread) resumeWithSig(sig int) (err error) {

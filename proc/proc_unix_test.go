@@ -23,9 +23,9 @@ func TestIssue419(t *testing.T) {
 				}
 			}
 		}()
-		err := p.Continue()
+		err := p.Continue(0)
 		if _, exited := err.(ProcessExitedError); !exited {
-			t.Fatalf("Unexpected error after Continue(): %v\n", err)
+			t.Fatalf("Unexpected error after Continue(0): %v\n", err)
 		}
 	})
 }

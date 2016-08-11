@@ -58,7 +58,7 @@ func (thread *Thread) Continue() error {
 			return err
 		}
 	}
-	return thread.resume()
+	return thread.resume(0)
 }
 
 // StepInstruction steps a single instruction.

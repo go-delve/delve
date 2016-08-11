@@ -211,6 +211,11 @@ Supported commands: print, stack and goroutine)`},
 	condition <breakpoint name or id> <boolean expression>.
 	
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
+		{aliases: []string{"signal", "sig"}, cmdFn: signalCmd, helpMsg: `Run then signal the program.
+
+	signal [NUMBER]
+
+Without an argument, this doesn't run the program; instead, it lists all available signals.`},
 	}
 
 	sort.Sort(ByFirstAlias(c.cmds))
@@ -571,7 +576,11 @@ func restart(t *Term, ctx callContext, args string) error {
 }
 
 func cont(t *Term, ctx callContext, args string) error {
-	stateChan := t.client.Continue()
+	return sigcont(t, ctx, 0)
+}
+
+func sigcont(t *Term, ctx callContext, sig int) error {
+	stateChan := t.client.Continue(sig)
 	var state *api.DebuggerState
 	for state = range stateChan {
 		if state.Err != nil {
@@ -589,7 +598,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 		return nil
 	}
 	for {
-		stateChan := t.client.Continue()
+		stateChan := t.client.Continue(0)
 		var state *api.DebuggerState
 		for state = range stateChan {
 			if state.Err != nil {

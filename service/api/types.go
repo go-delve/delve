@@ -216,6 +216,8 @@ type DebuggerCommand struct {
 	// GoroutineID is used to specify which thread to use with the SwitchGoroutine
 	// command.
 	GoroutineID int `json:"goroutineID,omitempty"`
+	// If non-zero, the process is continued w/ Signal
+	Signal int `json:"signal,omitempty"`
 }
 
 // Informations about the current breakpoint

@@ -137,8 +137,8 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
-		assertNoError(err, t, "Continue() returned an error")
+		err := p.Continue(0)
+		assertNoError(err, t, "Continue(0) returned an error")
 
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
@@ -215,8 +215,8 @@ func TestVariableEvaluationShort(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
-		assertNoError(err, t, "Continue() returned an error")
+		err := p.Continue(0)
+		assertNoError(err, t, "Continue(0) returned an error")
 
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pshortLoadConfig)
@@ -270,7 +270,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := p.Continue(0)
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -343,8 +343,8 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
-		assertNoError(err, t, "Continue() returned an error")
+		err := p.Continue(0)
+		assertNoError(err, t, "Continue(0) returned an error")
 
 		for _, tc := range testcases {
 			scope, err := p.CurrentThread.Scope()
@@ -376,7 +376,7 @@ func TestEmbeddedStruct(t *testing.T) {
 			{"b.s", true, "\"hello\"", "\"hello\"", "string", nil},
 			{"b2", true, "main.B {main.A: main.A {val: 42}, *main.C: *main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "main.B {main.A: (*main.A)(0x…", "main.B", nil},
 		}
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Continue(0), t, "Continue(0)")
 
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
@@ -397,8 +397,8 @@ func TestEmbeddedStruct(t *testing.T) {
 
 func TestComplexSetting(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
-		assertNoError(err, t, "Continue() returned an error")
+		err := p.Continue(0)
+		assertNoError(err, t, "Continue(0) returned an error")
 
 		h := func(setExpr, value string) {
 			assertNoError(setVariable(p, "c128", setExpr), t, "SetVariable()")
@@ -625,7 +625,7 @@ func TestEvalExpression(t *testing.T) {
 	}
 
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(p.Continue(0), t, "Continue(0) returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
 			if tc.err == nil {
@@ -649,7 +649,7 @@ func TestEvalExpression(t *testing.T) {
 
 func TestEvalAddrAndCast(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(p.Continue(0), t, "Continue(0) returned an error")
 		c1addr, err := evalVariable(p, "&c1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalExpression(&c1)")
 		c1addrstr := api.ConvertVar(c1addr).SinglelineString()
@@ -675,7 +675,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 
 func TestMapEvaluation(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(p.Continue(0), t, "Continue(0) returned an error")
 		m1v, err := evalVariable(p, "m1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		m1 := api.ConvertVar(m1v)
@@ -709,7 +709,7 @@ func TestMapEvaluation(t *testing.T) {
 
 func TestUnsafePointer(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(p.Continue(0), t, "Continue(0) returned an error")
 		up1v, err := evalVariable(p, "up1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(up1)")
 		up1 := api.ConvertVar(up1v)
@@ -738,7 +738,7 @@ func TestIssue426(t *testing.T) {
 	// Serialization of type expressions (go/ast.Expr) containing anonymous structs or interfaces
 	// differs from the serialization used by the linker to produce DWARF type information
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(p.Continue(0), t, "Continue(0) returned an error")
 		for _, testcase := range testcases {
 			v, err := evalVariable(p, testcase.name, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))

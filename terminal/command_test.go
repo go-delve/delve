@@ -13,8 +13,8 @@ import (
 	"github.com/derekparker/delve/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/rpccommon"
 	"github.com/derekparker/delve/service/rpc2"
+	"github.com/derekparker/delve/service/rpccommon"
 )
 
 type FakeTerminal struct {
@@ -48,7 +48,8 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 
 func (ft *FakeTerminal) MustExec(cmdstr string) string {
 	outstr, err := ft.Exec(cmdstr)
-	if err != nil {
+	if err != nil &&
+		!strings.HasSuffix(err.Error(), "has exited with status 0") {
 		ft.t.Fatalf("Error executing <%s>: %v", cmdstr, err)
 	}
 	return outstr

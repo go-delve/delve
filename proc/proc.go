@@ -14,10 +14,10 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
 	"github.com/derekparker/delve/dwarf/reader"
+	"golang.org/x/debug/dwarf"
 )
 
 // Process represents all of the information the debugger
@@ -285,18 +285,18 @@ func (dbp *Process) Next() (err error) {
 		}
 	}
 
-	return dbp.Continue()
+	return dbp.Continue(0)
 }
 
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
-func (dbp *Process) Continue() error {
+func (dbp *Process) Continue(sig int) error {
 	if dbp.exited {
 		return &ProcessExitedError{}
 	}
 	for {
-		if err := dbp.resume(); err != nil {
+		if err := dbp.resume(sig); err != nil {
 			return err
 		}
 
@@ -454,7 +454,7 @@ func (dbp *Process) stepToPC(pc uint64) error {
 	if _, err := dbp.SetTempBreakpoint(pc, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
 		return err
 	}
-	return dbp.Continue()
+	return dbp.Continue(0)
 }
 
 // Returns an expression that evaluates to true when the current goroutine is g
