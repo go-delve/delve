@@ -600,15 +600,18 @@ func signalCmd(t *Term, ctx callContext, args string) error {
 		}
 		return nil
 	}
-	sig, err := strconv.Atoi(args)
+	i, err := strconv.Atoi(args)
 	if err != nil {
 		return err
 	}
-	pid := t.client.ProcessPid()
-	go func(pid, sig int) {
+	proc, err := os.FindProcess(t.client.ProcessPid())
+	if err != nil {
+		return err
+	}
+	go func(proc *os.Process, sig syscall.Signal) {
 		time.Sleep(100 * time.Millisecond)
-		syscall.Kill(pid, syscall.Signal(sig))
-	}(pid, sig)
+		proc.Signal(sig)
+	}(proc, syscall.Signal(i))
 	return cont(t, ctx, "")
 }
 
