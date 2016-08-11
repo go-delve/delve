@@ -15,7 +15,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
+	"time"
 
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
@@ -211,6 +213,11 @@ Supported commands: print, stack and goroutine)`},
 	condition <breakpoint name or id> <boolean expression>.
 	
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
+		{aliases: []string{"signal", "sig"}, cmdFn: signalCmd, helpMsg: `Run then signal program.
+
+	signal [NUMBER]
+
+	without an argument, this lists all available signals`},
 	}
 
 	sort.Sort(ByFirstAlias(c.cmds))
@@ -581,6 +588,28 @@ func cont(t *Term, ctx callContext, args string) error {
 	}
 	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 	return nil
+}
+
+func signalCmd(t *Term, ctx callContext, args string) error {
+	if len(args) == 0 {
+		for i := 0; i < 64; i++ {
+			s := syscall.Signal(i).String()
+			if !strings.HasPrefix(s, "signal ") {
+				fmt.Printf("%4d: %s\n", i, s)
+			}
+		}
+		return nil
+	}
+	sig, err := strconv.Atoi(args)
+	if err != nil {
+		return err
+	}
+	pid := t.client.ProcessPid()
+	go func(pid, sig int) {
+		time.Sleep(100 * time.Millisecond)
+		syscall.Kill(pid, syscall.Signal(sig))
+	}(pid, sig)
+	return cont(t, ctx, "")
 }
 
 func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) error {
