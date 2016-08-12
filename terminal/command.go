@@ -17,8 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"text/tabwriter"
-	"time"
 
+	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
@@ -600,19 +600,45 @@ func signalCmd(t *Term, ctx callContext, args string) error {
 		}
 		return nil
 	}
-	i, err := strconv.Atoi(args)
+	sig, err := strconv.Atoi(args)
 	if err != nil {
 		return err
 	}
-	proc, err := os.FindProcess(t.client.ProcessPid())
+	state, err := t.client.GetState()
 	if err != nil {
 		return err
 	}
-	go func(proc *os.Process, sig syscall.Signal) {
-		time.Sleep(100 * time.Millisecond)
-		proc.Signal(sig)
-	}(proc, syscall.Signal(i))
-	return cont(t, ctx, "")
+	threads, err := t.client.ListThreads()
+	if err != nil {
+		return err
+	}
+	var mark string
+	if state.CurrentThread != nil {
+		// make current thread first
+		for i, th := range threads {
+			if th.ID == state.CurrentThread.ID {
+				if i > 0 {
+					threads[i] = threads[0]
+					threads[0] = th
+				}
+				mark = "*"
+				break
+			}
+		}
+	}
+	for _, th := range threads {
+		if err = proc.PtraceCont(th.ID, sig); err == nil {
+			return nil
+		}
+		fmt.Printf("Thread %s%s: %v\n", formatThread(th), mark, err)
+		mark = ""
+	}
+	pid := t.client.ProcessPid()
+	if err = proc.PtraceCont(pid, sig); err != nil {
+		fmt.Printf("Process %d: %v\n", pid, err)
+	}
+	return err
+
 }
 
 func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) error {
