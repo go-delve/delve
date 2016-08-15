@@ -403,7 +403,7 @@ func (dbp *Process) exitGuard(err error) error {
 	return err
 }
 
-func (dbp *Process) resume() error {
+func (dbp *Process) resume(sig int) error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.Threads {
 		if thread.CurrentBreakpoint != nil {

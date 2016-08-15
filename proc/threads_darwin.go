@@ -55,7 +55,8 @@ func (t *Thread) singleStep() error {
 	return nil
 }
 
-func (t *Thread) resume() error {
+func (t *Thread) resume(sig int) error {
+	_ = sig // darwin TBD
 	t.running = true
 	// TODO(dp) set flag for ptrace stops
 	var err error

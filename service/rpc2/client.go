@@ -53,12 +53,15 @@ func (c *RPCClient) GetState() (*api.DebuggerState, error) {
 	return out.State, err
 }
 
-func (c *RPCClient) Continue() <-chan *api.DebuggerState {
+func (c *RPCClient) Continue(sig int) <-chan *api.DebuggerState {
 	ch := make(chan *api.DebuggerState)
 	go func() {
 		for {
 			out := new(CommandOut)
-			err := c.call("Command", &api.DebuggerCommand{Name: api.Continue}, &out)
+			err := c.call("Command", &api.DebuggerCommand{
+				Name:   api.Continue,
+				Signal: sig,
+			}, &out)
 			state := out.State
 			if err != nil {
 				state.Err = err

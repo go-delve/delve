@@ -18,7 +18,6 @@ import (
 	"syscall"
 	"text/tabwriter"
 
-	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
@@ -213,11 +212,11 @@ Supported commands: print, stack and goroutine)`},
 	condition <breakpoint name or id> <boolean expression>.
 	
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
-		{aliases: []string{"signal", "sig"}, cmdFn: signalCmd, helpMsg: `Run then signal program.
+		{aliases: []string{"signal", "sig"}, cmdFn: signalCmd, helpMsg: `Run then signal the program.
 
 	signal [NUMBER]
 
-	without an argument, this lists all available signals`},
+Without an argument, this doesn't run the program; instead, it lists all available signals.`},
 	}
 
 	sort.Sort(ByFirstAlias(c.cmds))
@@ -578,16 +577,7 @@ func restart(t *Term, ctx callContext, args string) error {
 }
 
 func cont(t *Term, ctx callContext, args string) error {
-	stateChan := t.client.Continue()
-	var state *api.DebuggerState
-	for state = range stateChan {
-		if state.Err != nil {
-			return state.Err
-		}
-		printcontext(t, state)
-	}
-	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
-	return nil
+	return sigcont(t, ctx, 0)
 }
 
 func signalCmd(t *Term, ctx callContext, args string) error {
@@ -604,41 +594,20 @@ func signalCmd(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	state, err := t.client.GetState()
-	if err != nil {
-		return err
-	}
-	threads, err := t.client.ListThreads()
-	if err != nil {
-		return err
-	}
-	var mark string
-	if state.CurrentThread != nil {
-		// make current thread first
-		for i, th := range threads {
-			if th.ID == state.CurrentThread.ID {
-				if i > 0 {
-					threads[i] = threads[0]
-					threads[0] = th
-				}
-				mark = "*"
-				break
-			}
-		}
-	}
-	for _, th := range threads {
-		if err = proc.PtraceCont(th.ID, sig); err == nil {
-			return nil
-		}
-		fmt.Printf("Thread %s%s: %v\n", formatThread(th), mark, err)
-		mark = ""
-	}
-	pid := t.client.ProcessPid()
-	if err = proc.PtraceCont(pid, sig); err != nil {
-		fmt.Printf("Process %d: %v\n", pid, err)
-	}
-	return err
+	return sigcont(t, ctx, sig)
+}
 
+func sigcont(t *Term, ctx callContext, sig int) error {
+	stateChan := t.client.Continue(sig)
+	var state *api.DebuggerState
+	for state = range stateChan {
+		if state.Err != nil {
+			return state.Err
+		}
+		printcontext(t, state)
+	}
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	return nil
 }
 
 func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) error {
@@ -647,7 +616,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 		return nil
 	}
 	for {
-		stateChan := t.client.Continue()
+		stateChan := t.client.Continue(0)
 		var state *api.DebuggerState
 		for state = range stateChan {
 			if state.Err != nil {

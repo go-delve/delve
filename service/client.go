@@ -20,7 +20,7 @@ type Client interface {
 	GetState() (*api.DebuggerState, error)
 
 	// Continue resumes process execution.
-	Continue() <-chan *api.DebuggerState
+	Continue(int) <-chan *api.DebuggerState
 	// Next continues to the next source line, not entering function calls.
 	Next() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.

@@ -15,9 +15,9 @@ import (
 
 	sys "golang.org/x/sys/windows"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
+	"golang.org/x/debug/dwarf"
 )
 
 const (
@@ -492,7 +492,7 @@ func (dbp *Process) exitGuard(err error) error {
 	return err
 }
 
-func (dbp *Process) resume() error {
+func (dbp *Process) resume(sig int) error {
 	// Only resume the thread that broke into the debugger
 	thread := dbp.Threads[dbp.os.breakThread]
 	// This relies on the same assumptions as dbp.setCurrentBreakpoints
@@ -505,7 +505,7 @@ func (dbp *Process) resume() error {
 	// In case we are now on a different thread, make sure we resume
 	// the thread that is broken.
 	thread = dbp.Threads[dbp.os.breakThread]
-	if err := thread.resume(); err != nil {
+	if err := thread.resume(0); err != nil {
 		return err
 	}
 	return nil
