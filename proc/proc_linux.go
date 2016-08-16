@@ -470,7 +470,6 @@ func (dbp *Process) resume(sig int) error {
 		if err := thread.resume(sig); err != nil && err != sys.ESRCH {
 			return err
 		}
-		// sig = 0
 	}
 	return nil
 }
