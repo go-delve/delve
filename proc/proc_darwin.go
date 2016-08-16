@@ -85,7 +85,7 @@ func Launch(cmd []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = dbp.Continue()
+	err = dbp.Continue(0)
 	return dbp, err
 }
 
@@ -415,7 +415,7 @@ func (dbp *Process) resume(sig int) error {
 	}
 	// everything is resumed
 	for _, thread := range dbp.Threads {
-		if err := thread.resume(); err != nil {
+		if err := thread.resume(sig); err != nil {
 			return dbp.exitGuard(err)
 		}
 	}
