@@ -544,6 +544,9 @@ func (dbp *Process) resume() error {
 }
 
 func killProcess(pid int) error {
-	fmt.Println("killProcess")
-	return fmt.Errorf("not implemented: killProcess")
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return p.Kill()
 }

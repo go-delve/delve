@@ -24,6 +24,7 @@ var (
 	procDebugBreakProcess          = modkernel32.NewProc("DebugBreakProcess")
 	procWaitForDebugEvent          = modkernel32.NewProc("WaitForDebugEvent")
 	procDebugActiveProcess         = modkernel32.NewProc("DebugActiveProcess")
+	procDebugActiveProcessStop     = modkernel32.NewProc("DebugActiveProcessStop")
 	procQueryFullProcessImageNameW = modkernel32.NewProc("QueryFullProcessImageNameW")
 )
 
@@ -145,6 +146,18 @@ func _WaitForDebugEvent(debugevent *_DEBUG_EVENT, milliseconds uint32) (err erro
 
 func _DebugActiveProcess(processid uint32) (err error) {
 	r1, _, e1 := syscall.Syscall(procDebugActiveProcess.Addr(), 1, uintptr(processid), 0, 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			err = error(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func _DebugActiveProcessStop(processid uint32) (err error) {
+	r1, _, e1 := syscall.Syscall(procDebugActiveProcessStop.Addr(), 1, uintptr(processid), 0, 0)
 	if r1 == 0 {
 		if e1 != 0 {
 			err = error(e1)

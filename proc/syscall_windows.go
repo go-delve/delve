@@ -89,4 +89,5 @@ func _NT_SUCCESS(x _NTSTATUS) bool {
 //sys	_DebugBreakProcess(process syscall.Handle) (err error) = kernel32.DebugBreakProcess
 //sys	_WaitForDebugEvent(debugevent *_DEBUG_EVENT, milliseconds uint32) (err error) = kernel32.WaitForDebugEvent
 //sys	_DebugActiveProcess(processid uint32) (err error) = kernel32.DebugActiveProcess
+//sys	_DebugActiveProcessStop(processid uint32) (err error) = kernel32.DebugActiveProcessStop
 //sys	_QueryFullProcessImageName(process syscall.Handle, flags uint32, exename *uint16, size *uint32) (err error) = kernel32.QueryFullProcessImageNameW
