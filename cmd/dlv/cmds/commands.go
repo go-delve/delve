@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/derekparker/delve/config"
@@ -446,7 +447,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, kind exec
 func gobuild(debugname, pkg string) error {
 	args := []string{"-gcflags", "-N -l", "-o", debugname}
 	if BuildFlags != "" {
-		args = append(args, BuildFlags)
+		args = append(args, strings.Fields(BuildFlags)...)
 	}
 	args = append(args, pkg)
 	return gocommand("build", args...)
@@ -455,7 +456,7 @@ func gobuild(debugname, pkg string) error {
 func gotestbuild(pkg string) error {
 	args := []string{"-gcflags", "-N -l", "-c", "-o", testdebugname}
 	if BuildFlags != "" {
-		args = append(args, BuildFlags)
+		args = append(args, strings.Fields(BuildFlags)...)
 	}
 	args = append(args, pkg)
 	return gocommand("test", args...)
