@@ -37,3 +37,7 @@ type termios struct {
 	Ispeed uintptr
 	Ospeed uintptr
 }
+
+// Terminal.app needs a column for the cursor when the input line is at the
+// bottom of the window.
+const cursorColumn = true

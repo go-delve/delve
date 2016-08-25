@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/derekparker/delve",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.7",
 	"GodepVersion": "v74",
 	"Packages": [
 		"github.com/derekparker/delve/cmd/dlv",
@@ -47,7 +47,7 @@
 		},
 		{
 			"ImportPath": "github.com/peterh/liner",
-			"Rev": "b850cf8c6d0ee52309aad09ac610508c6c75e819"
+			"Rev": "8975875355a81d612fafb9f5a6037bdcc2d9b073"
 		},
 		{
 			"ImportPath": "github.com/russross/blackfriday",
