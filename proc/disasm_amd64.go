@@ -119,9 +119,11 @@ type instrseq []x86asm.Op
 
 var windowsPrologue = instrseq{x86asm.MOV, x86asm.MOV, x86asm.LEA, x86asm.CMP, x86asm.JBE}
 var windowsPrologue2 = instrseq{x86asm.MOV, x86asm.MOV, x86asm.CMP, x86asm.JBE}
+var windowsPrologue3 = instrseq{x86asm.MOV, x86asm.MOV, x86asm.MOV, x86asm.CMP, x86asm.JE}
 var unixPrologue = instrseq{x86asm.MOV, x86asm.LEA, x86asm.CMP, x86asm.JBE}
 var unixPrologue2 = instrseq{x86asm.MOV, x86asm.CMP, x86asm.JBE}
-var prologues = []instrseq{windowsPrologue, windowsPrologue2, unixPrologue, unixPrologue2}
+var unixPrologue3 = instrseq{x86asm.MOV, x86asm.MOV, x86asm.CMP, x86asm.JE}
+var prologues = []instrseq{windowsPrologue, windowsPrologue2, unixPrologue, unixPrologue2, unixPrologue3}
 
 // FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
 // If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry

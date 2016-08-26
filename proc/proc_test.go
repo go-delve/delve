@@ -1882,7 +1882,7 @@ func TestUnsupportedArch(t *testing.T) {
 	}
 }
 
-func Test1Issue573(t *testing.T) {
+func TestIssue573(t *testing.T) {
 	// calls to runtime.duffzero and runtime.duffcopy jump directly into the middle
 	// of the function and the temp breakpoint set by StepInto may be missed.
 	withTestProcess("issue573", t, func(p *Process, fixture protest.Fixture) {
@@ -1893,5 +1893,17 @@ func Test1Issue573(t *testing.T) {
 		assertNoError(p.Step(), t, "Step() #1")
 		assertNoError(p.Step(), t, "Step() #2") // Bug exits here.
 		assertNoError(p.Step(), t, "Step() #3") // Third step ought to be possible; program ought not have exited.
+	})
+}
+
+func TestTestvariables2Prologue(t *testing.T) {
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
+		addrEntry, err := p.FindFunctionLocation("main.main", false, 0)
+		assertNoError(err, t, "FindFunctionLocation - entrypoint")
+		addrPrologue, err := p.FindFunctionLocation("main.main", true, 0)
+		assertNoError(err, t, "FindFunctionLocation - postprologue")
+		if addrEntry == addrPrologue {
+			t.Fatalf("Prologue detection failed on testvariables2.go/main.main")
+		}
 	})
 }
