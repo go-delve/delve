@@ -90,6 +90,14 @@ const (
 )
 
 func (s *State) refresh(prompt []rune, buf []rune, pos int) error {
+	if s.multiLineMode {
+		return s.refreshMultiLine(prompt, buf, pos)
+	} else {
+		return s.refreshSingleLine(prompt, buf, pos)
+	}
+}
+
+func (s *State) refreshSingleLine(prompt []rune, buf []rune, pos int) error {
 	s.cursorPos(0)
 	_, err := fmt.Print(string(prompt))
 	if err != nil {
@@ -143,6 +151,82 @@ func (s *State) refresh(prompt []rune, buf []rune, pos int) error {
 		s.cursorPos(pLen + pos)
 	}
 	return err
+}
+
+func (s *State) refreshMultiLine(prompt []rune, buf []rune, pos int) error {
+	promptColumns := countMultiLineGlyphs(prompt, s.columns, 0)
+	totalColumns := countMultiLineGlyphs(buf, s.columns, promptColumns)
+	totalRows := (totalColumns + s.columns - 1) / s.columns
+	maxRows := s.maxRows
+	if totalRows > s.maxRows {
+		s.maxRows = totalRows
+	}
+	cursorRows := s.cursorRows
+	if cursorRows == 0 {
+		cursorRows = 1
+	}
+
+	/* First step: clear all the lines used before. To do so start by
+	* going to the last row. */
+	if maxRows-cursorRows > 0 {
+		s.moveDown(maxRows - cursorRows)
+	}
+
+	/* Now for every row clear it, go up. */
+	for i := 0; i < maxRows-1; i++ {
+		s.cursorPos(0)
+		s.eraseLine()
+		s.moveUp(1)
+	}
+
+	/* Clean the top line. */
+	s.cursorPos(0)
+	s.eraseLine()
+
+	/* Write the prompt and the current buffer content */
+	if _, err := fmt.Print(string(prompt)); err != nil {
+		return err
+	}
+	if _, err := fmt.Print(string(buf)); err != nil {
+		return err
+	}
+
+	/* If we are at the very end of the screen with our prompt, we need to
+	 * emit a newline and move the prompt to the first column. */
+	cursorColumns := countMultiLineGlyphs(buf[:pos], s.columns, promptColumns)
+	if cursorColumns == totalColumns && totalColumns%s.columns == 0 {
+		s.emitNewLine()
+		s.cursorPos(0)
+		totalRows++
+		if totalRows > s.maxRows {
+			s.maxRows = totalRows
+		}
+	}
+
+	/* Move cursor to right position. */
+	cursorRows = (cursorColumns + s.columns) / s.columns
+	if s.cursorRows > 0 && totalRows-cursorRows > 0 {
+		s.moveUp(totalRows - cursorRows)
+	}
+	/* Set column. */
+	s.cursorPos(cursorColumns % s.columns)
+
+	s.cursorRows = cursorRows
+	return nil
+}
+
+func (s *State) resetMultiLine(prompt []rune, buf []rune, pos int) {
+	columns := countMultiLineGlyphs(prompt, s.columns, 0)
+	columns = countMultiLineGlyphs(buf[:pos], s.columns, columns)
+	columns += 2 // ^C
+	cursorRows := (columns + s.columns) / s.columns
+	if s.maxRows-cursorRows > 0 {
+		for i := 0; i < s.maxRows-cursorRows; i++ {
+			fmt.Println() // always moves the cursor down or scrolls the window up as needed
+		}
+	}
+	s.maxRows = 1
+	s.cursorRows = 0
 }
 
 func longestCommonPrefix(strs []string) string {
@@ -215,6 +299,7 @@ func (s *State) printedTabs(items []string) func(tabDirection) (string, error) {
 		if numTabs == 2 {
 			if len(items) > 100 {
 				fmt.Printf("\nDisplay all %d possibilities? (y or n) ", len(items))
+			prompt:
 				for {
 					next, err := s.readNext()
 					if err != nil {
@@ -222,10 +307,13 @@ func (s *State) printedTabs(items []string) func(tabDirection) (string, error) {
 					}
 
 					if key, ok := next.(rune); ok {
-						if unicode.ToLower(key) == 'n' {
+						switch key {
+						case 'n', 'N':
 							return prefix, nil
-						} else if unicode.ToLower(key) == 'y' {
-							break
+						case 'y', 'Y':
+							break prompt
+						case ctrlC, ctrlD, cr, lf:
+							s.restartPrompt()
 						}
 					}
 				}
@@ -476,6 +564,15 @@ func (s *State) yank(p []rune, text []rune, pos int) ([]rune, int, interface{}, 
 // newline character. An io.EOF error is returned if the user signals end-of-file
 // by pressing Ctrl-D. Prompt allows line editing if the terminal supports it.
 func (s *State) Prompt(prompt string) (string, error) {
+	return s.PromptWithSuggestion(prompt, "", 0)
+}
+
+// PromptWithSuggestion displays prompt and an editable text with cursor at
+// given position. The cursor will be set to the end of the line if given position
+// is negative or greater than length of text. Returns a line of user input, not
+// including a trailing newline character. An io.EOF error is returned if the user
+// signals end-of-file by pressing Ctrl-D.
+func (s *State) PromptWithSuggestion(prompt string, text string, pos int) (string, error) {
 	if s.inputRedirected || !s.terminalSupported {
 		return s.promptUnsupported(prompt)
 	}
@@ -486,24 +583,36 @@ func (s *State) Prompt(prompt string) (string, error) {
 	s.historyMutex.RLock()
 	defer s.historyMutex.RUnlock()
 
-	s.startPrompt()
-	defer s.stopPrompt()
-	s.getColumns()
-
 	fmt.Print(prompt)
 	p := []rune(prompt)
-	var line []rune
-	pos := 0
+	var line = []rune(text)
 	historyEnd := ""
 	prefixHistory := s.getHistoryByPrefix(string(line))
 	historyPos := len(prefixHistory)
 	historyAction := false // used to mark history related actions
 	killAction := 0        // used to mark kill related actions
+
+	defer s.stopPrompt()
+
+	if pos < 0 || len(text) < pos {
+		pos = len(text)
+	}
+	if len(line) > 0 {
+		s.refresh(p, line, pos)
+	}
+
+restart:
+	s.startPrompt()
+	s.getColumns()
+
 mainLoop:
 	for {
 		next, err := s.readNext()
 	haveNext:
 		if err != nil {
+			if s.shouldRestart != nil && s.shouldRestart(err) {
+				goto restart
+			}
 			return "", err
 		}
 
@@ -512,6 +621,9 @@ mainLoop:
 		case rune:
 			switch v {
 			case cr, lf:
+				if s.multiLineMode {
+					s.resetMultiLine(p, line, pos)
+				}
 				fmt.Println()
 				break mainLoop
 			case ctrlA: // Start of line
@@ -613,6 +725,9 @@ mainLoop:
 				s.refresh(p, line, pos)
 			case ctrlC: // reset
 				fmt.Println("^C")
+				if s.multiLineMode {
+					s.resetMultiLine(p, line, pos)
+				}
 				if s.ctrlCAborts {
 					return "", ErrPromptAborted
 				}
@@ -697,7 +812,7 @@ mainLoop:
 			case 0, 28, 29, 30, 31:
 				fmt.Print(beep)
 			default:
-				if pos == len(line) && len(p)+len(line) < s.columns-1 {
+				if pos == len(line) && !s.multiLineMode && countGlyphs(p)+countGlyphs(line) < s.columns-1 {
 					line = append(line, v)
 					fmt.Printf("%c", v)
 					pos++
@@ -799,6 +914,19 @@ mainLoop:
 				pos = 0
 			case end: // End of line
 				pos = len(line)
+			case winch: // Window change
+				if s.multiLineMode {
+					if s.maxRows-s.cursorRows > 0 {
+						s.moveDown(s.maxRows - s.cursorRows)
+					}
+					for i := 0; i < s.maxRows-1; i++ {
+						s.cursorPos(0)
+						s.eraseLine()
+						s.moveUp(1)
+					}
+					s.maxRows = 1
+					s.cursorRows = 1
+				}
 			}
 			s.refresh(p, line, pos)
 		}
@@ -826,8 +954,10 @@ func (s *State) PasswordPrompt(prompt string) (string, error) {
 		return "", ErrNotTerminalOutput
 	}
 
-	s.startPrompt()
 	defer s.stopPrompt()
+
+restart:
+	s.startPrompt()
 	s.getColumns()
 
 	fmt.Print(prompt)
@@ -839,6 +969,9 @@ mainLoop:
 	for {
 		next, err := s.readNext()
 		if err != nil {
+			if s.shouldRestart != nil && s.shouldRestart(err) {
+				goto restart
+			}
 			return "", err
 		}
 
@@ -846,6 +979,9 @@ mainLoop:
 		case rune:
 			switch v {
 			case cr, lf:
+				if s.multiLineMode {
+					s.resetMultiLine(p, line, pos)
+				}
 				fmt.Println()
 				break mainLoop
 			case ctrlD: // del
@@ -870,6 +1006,9 @@ mainLoop:
 				}
 			case ctrlC:
 				fmt.Println("^C")
+				if s.multiLineMode {
+					s.resetMultiLine(p, line, pos)
+				}
 				if s.ctrlCAborts {
 					return "", ErrPromptAborted
 				}

@@ -24,3 +24,5 @@ const (
 type termios struct {
 	syscall.Termios
 }
+
+const cursorColumn = false

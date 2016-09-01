@@ -37,3 +37,5 @@ type termios struct {
 	Ispeed int32
 	Ospeed int32
 }
+
+const cursorColumn = false
