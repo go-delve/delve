@@ -2,6 +2,7 @@ package servicetest
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -733,6 +734,14 @@ func TestIssue426(t *testing.T) {
 		{"anonfunc", `func(struct { i int }, interface {}, struct { val go/constant.Value })`},
 		{"anonstruct2", `struct { i int; j int }`},
 		{"anoniface1", `interface { OtherFunction(int, int); SomeFunction(struct { val go/constant.Value }) }`},
+	}
+
+	ver, _ := proc.ParseVersionString(runtime.Version())
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 8, -1, 0, 0}) {
+		testcases[2].typ = `struct { main.val go/constant.Value }`
+		testcases[3].typ = `func(struct { main.i int }, interface {}, struct { main.val go/constant.Value })`
+		testcases[4].typ = `struct { main.i int; main.j int }`
+		testcases[5].typ = `interface { OtherFunction(int, int); SomeFunction(struct { main.val go/constant.Value }) }`
 	}
 
 	// Serialization of type expressions (go/ast.Expr) containing anonymous structs or interfaces
