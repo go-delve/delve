@@ -474,7 +474,7 @@ func TestEvalExpression(t *testing.T) {
 		{"errnil", true, "error nil", "error nil", "error", nil},
 		{"iface1", true, "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}(*main.astruct) 0x…", "interface {}", nil},
 		{"iface2", true, "interface {}(*string) *\"test\"", "interface {}(*string) 0x…", "interface {}", nil},
-		{"iface3", true, "interface {}(*map[string]go/constant.Value) *[]", "interface {}(*map[string]go/constant.Value) 0x…", "interface {}", nil},
+		{"iface3", true, "interface {}(map[string]go/constant.Value) []", "interface {}(map[string]go/constant.Value) []", "interface {}", nil},
 		{"iface4", true, "interface {}(*[]go/constant.Value) *[*4]", "interface {}(*[]go/constant.Value) 0x…", "interface {}", nil},
 		{"ifacenil", true, "interface {} nil", "interface {} nil", "interface {}", nil},
 		{"err1 == err2", false, "false", "false", "", nil},
@@ -628,6 +628,16 @@ func TestEvalExpression(t *testing.T) {
 		{"efacearr", false, `[]interface {} len: 3, cap: 3, [*main.astruct {A: 0, B: 0},*"test",nil]`, "[]interface {} len: 3, cap: 3, [...]", "[]interface {}", nil},
 	}
 
+	ver, _ := proc.ParseVersionString(runtime.Version())
+	if ver.Major >= 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+		for i := range testcases {
+			if testcases[i].name == "iface3" {
+				testcases[i].value = "interface {}(*map[string]go/constant.Value) *[]"
+				testcases[i].alternate = "interface {}(*map[string]go/constant.Value) 0x…"
+			}
+		}
+	}
+
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		for _, tc := range testcases {
@@ -758,6 +768,63 @@ func TestIssue426(t *testing.T) {
 			expr := fmt.Sprintf("(*%q)(%d)", testcase.typ, v.Addr)
 			_, err = evalVariable(p, expr, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", expr))
+		}
+	})
+}
+
+func TestPackageRenames(t *testing.T) {
+	// Tests that the concrete type of an interface variable is resolved
+	// correctly in a few edge cases, in particular:
+	// - in the presence of renamed imports
+	// - when two packages with the same name are imported
+	// - when a package has a canonical name that's different from its
+	// path (for example the last element of the path contains a '.' or a
+	// '-' or because the package name is different)
+	// all of those edge cases are tested within composite types
+	testcases := []varTest{
+		// Renamed imports
+		{"badexpr", true, `interface {}(*go/ast.BadExpr) *{From: 1, To: 2}`, "", "interface {}", nil},
+		{"req", true, `interface {}(*net/http.Request) *{Method: "amethod", …`, "", "interface {}", nil},
+		{"amap", true, "interface {}(map[go/ast.BadExpr]net/http.Request) [{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
+
+		// Package name that doesn't match import path
+		{"iface3", true, `interface {}(*github.com/derekparker/delve/_fixtures/vendor/dir0/renamedpackage.SomeType) *{A: true}`, "", "interface {}", nil},
+
+		// Interfaces to anonymous types
+		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
+		{"dir0someType", true, "interface {}(*github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) *{X: 3}", "", "interface {}", nil},
+		{"dir1someType", true, "interface {}(*github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType) *{X: 1, Y: 2}", "", "interface {}", nil},
+		{"amap3", true, "interface {}(map[github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType]github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType) [{X: 4}: {X: 5, Y: 6}, ]", "", "interface {}", nil},
+		{"anarray", true, `interface {}(*[2]github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) *[{X: 1},{X: 2}]`, "", "interface {}", nil},
+		{"achan", true, `interface {}(chan github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) chan github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType 0/0`, "", "interface {}", nil},
+		{"aslice", true, `interface {}(*[]github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) *[{X: 3},{X: 4}]`, "", "interface {}", nil},
+		{"afunc", true, `interface {}(func(github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType, github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType)) main.main.func1`, "", "interface {}", nil},
+		{"astruct", true, `interface {}(*struct { A github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; B github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType }) *{A: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, B: github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 3}}`, "", "interface {}", nil},
+		{"astruct2", true, `interface {}(*struct { github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; X int }) *{github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
+		{"iface2iface", true, `interface {}(*interface { AMethod(int) int; AnotherMethod(int) int }) **github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 4}`, "", "interface {}", nil},
+	}
+
+	ver, _ := proc.ParseVersionString(runtime.Version())
+	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+		// Not supported on 1.6 or earlier
+		return
+	}
+
+	withTestProcess("pkgrenames", t, func(p *proc.Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+		for _, tc := range testcases {
+			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			if tc.err == nil {
+				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+				assertVariable(t, variable, tc)
+			} else {
+				if err == nil {
+					t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+				}
+				if tc.err.Error() != err.Error() {
+					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+				}
+			}
 		}
 	})
 }
