@@ -801,7 +801,10 @@ func TestStacktraceGoroutine(t *testing.T) {
 
 		for i, g := range gs {
 			locations, err := g.Stacktrace(40)
-			assertNoError(err, t, "GoroutineStacktrace()")
+			if err != nil {
+				// On windows we do not have frame information for goroutines doing system calls.
+				continue
+			}
 
 			if stackMatch(mainStack, locations, false) {
 				mainCount++
