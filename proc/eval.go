@@ -493,7 +493,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 	if err != nil {
 		return nil, err
 	}
-	if xv.Children[0].DwarfType.String() != typ.String() {
+	if xv.Children[0].DwarfType.Common().Name != typ.Common().Name {
 		return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.Common().Name, xv.Children[0].TypeString(), typ.Common().Name)
 	}
 	return &xv.Children[0], nil

@@ -61,6 +61,7 @@ type Process struct {
 
 	loadModuleDataOnce sync.Once
 	moduleData         []moduleData
+	nameOfRuntimeType  map[uintptr]nameOfRuntimeTypeEntry
 }
 
 var NotExecutableErr = errors.New("not an executable file")
@@ -71,13 +72,14 @@ var NotExecutableErr = errors.New("not an executable file")
 // `handlePtraceFuncs`.
 func New(pid int) *Process {
 	dbp := &Process{
-		Pid:            pid,
-		Threads:        make(map[int]*Thread),
-		Breakpoints:    make(map[uint64]*Breakpoint),
-		firstStart:     true,
-		os:             new(OSProcessDetails),
-		ptraceChan:     make(chan func()),
-		ptraceDoneChan: make(chan interface{}),
+		Pid:               pid,
+		Threads:           make(map[int]*Thread),
+		Breakpoints:       make(map[uint64]*Breakpoint),
+		firstStart:        true,
+		os:                new(OSProcessDetails),
+		ptraceChan:        make(chan func()),
+		ptraceDoneChan:    make(chan interface{}),
+		nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry),
 	}
 	// TODO: find better way to determine proc arch (perhaps use executable file info)
 	switch runtime.GOARCH {

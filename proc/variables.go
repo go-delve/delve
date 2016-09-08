@@ -1393,8 +1393,8 @@ func mapEvacuated(b *Variable) bool {
 }
 
 func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig) {
-	var _type, str, typestring, data *Variable
-	var typename string
+	var _type, typestring, data *Variable
+	var typ dwarf.Type
 	var err error
 	isnil := false
 
@@ -1446,11 +1446,6 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 					typestring = typestring.maybeDereference()
 				} else {
 					go17 = true
-					str, err = _type.structMember("str")
-					if err != nil {
-						v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
-						return
-					}
 				}
 			}
 		case "_type": // for runtime.eface
@@ -1463,11 +1458,6 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 					typestring = typestring.maybeDereference()
 				} else {
 					go17 = true
-					str, err = _type.structMember("str")
-					if err != nil {
-						v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
-						return
-					}
 				}
 			}
 		case "data":
@@ -1490,36 +1480,25 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		return
 	}
 
+	var kind int64
+
 	if go17 {
 		// No 'string' field use 'str' and 'runtime.firstmoduledata' to
 		// find out what the concrete type is
+		_type = _type.maybeDereference()
 
-		typeAddr := _type.maybeDereference().Addr
-		strOff, err := str.asInt()
+		var typename string
+		typename, kind, err = nameOfRuntimeType(_type)
 		if err != nil {
 			v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 			return
 		}
 
-		res, err := v.dbp.resolveNameOff(typeAddr, uintptr(strOff))
+		typ, err = v.dbp.findType(typename)
 		if err != nil {
-			v.Unreadable = fmt.Errorf("could not resolve concrete type (data: %#x): %v", data.Addr, err)
+			v.Unreadable = fmt.Errorf("interface type %q not found for %#x: %v", typename, data.Addr, err)
 			return
 		}
-
-		// For a description of how memory is organized for type names read
-		// the comment to 'type name struct' in $GOROOT/src/reflect/type.go
-
-		typdata, err := v.dbp.CurrentThread.readMemory(res, 3+v.dbp.arch.PtrSize())
-		if err != nil {
-			v.Unreadable = fmt.Errorf("could not read concrete type (data: %#v): %v", data.Addr, err)
-		}
-
-		nl := int(typdata[1]<<8 | typdata[2])
-
-		rawstr, err := v.dbp.CurrentThread.readMemory(res+3, nl)
-
-		typename = string(rawstr)
 	} else {
 		if typestring == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
 			v.Unreadable = fmt.Errorf("invalid interface type")
@@ -1531,25 +1510,26 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 			return
 		}
 
-		typename = constant.StringVal(typestring.Value)
+		typename := constant.StringVal(typestring.Value)
+
+		t, err := parser.ParseExpr(typename)
+		if err != nil {
+			v.Unreadable = fmt.Errorf("invalid interface type, unparsable data type: %v", err)
+			return
+		}
+
+		typ, err = v.dbp.findTypeExpr(t)
+		if err != nil {
+			v.Unreadable = fmt.Errorf("interface type %q not found for %#x: %v", typename, data.Addr, err)
+			return
+		}
 	}
 
-	t, err := parser.ParseExpr(typename)
-	if err != nil {
-		v.Unreadable = fmt.Errorf("invalid interface type, unparsable data type: %v", err)
-		return
-	}
-
-	typ, err := v.dbp.findTypeExpr(t)
-	if err != nil {
-		v.Unreadable = fmt.Errorf("interface type \"%s\" not found for 0x%x: %v", typename, data.Addr, err)
-		return
-	}
-
-	realtyp := resolveTypedef(typ)
-	if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
-		// interface to non-pointer types are pointers even if the type says otherwise
-		typ = v.dbp.pointerTo(typ)
+	if kind&kindDirectIface == 0 {
+		realtyp := resolveTypedef(typ)
+		if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
+			typ = v.dbp.pointerTo(typ)
+		}
 	}
 
 	data = data.newVariable("data", data.Addr, typ)
