@@ -440,6 +440,7 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 	var debugEvent _DEBUG_EVENT
 	shouldExit := false
 	for {
+		continueStatus := uint32(_DBG_CONTINUE)
 		var milliseconds uint32 = 0
 		if flags&waitBlocking != 0 {
 			milliseconds = syscall.INFINITE
@@ -496,9 +497,14 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 		case _RIP_EVENT:
 			break
 		case _EXCEPTION_DEBUG_EVENT:
-			tid := int(debugEvent.ThreadId)
-			dbp.os.breakThread = tid
-			return tid, 0, nil
+			exception := (*_EXCEPTION_DEBUG_INFO)(unionPtr)
+			if code := exception.ExceptionRecord.ExceptionCode; code == _EXCEPTION_BREAKPOINT || code == _EXCEPTION_SINGLE_STEP {
+				tid := int(debugEvent.ThreadId)
+				dbp.os.breakThread = tid
+				return tid, 0, nil
+			} else {
+				continueStatus = _DBG_EXCEPTION_NOT_HANDLED
+			}
 		case _EXIT_PROCESS_DEBUG_EVENT:
 			debugInfo := (*_EXIT_PROCESS_DEBUG_INFO)(unionPtr)
 			exitCode = int(debugInfo.ExitCode)
@@ -508,7 +514,7 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 		}
 
 		// .. and then continue unless we received an event that indicated we should break into debugger.
-		err = _ContinueDebugEvent(debugEvent.ProcessId, debugEvent.ThreadId, _DBG_CONTINUE)
+		err = _ContinueDebugEvent(debugEvent.ProcessId, debugEvent.ThreadId, continueStatus)
 		if err != nil {
 			return 0, 0, err
 		}

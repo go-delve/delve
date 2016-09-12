@@ -2200,3 +2200,17 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue594(t *testing.T) {
+	// Exceptions that aren't caused by breakpoints should be propagated
+	// back to the target.
+	// In particular the target should be able to cause a nil pointer
+	// dereference panic and recover from it.
+	withTestProcess("issue594", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		f, ln := currentLineNumber(p, t)
+		if ln != 21 {
+			t.Fatalf("Program stopped at %s:%d, expected :21", f, ln)
+		}
+	})
+}
