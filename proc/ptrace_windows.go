@@ -9,5 +9,5 @@ func PtraceAttach(pid int) error {
 }
 
 func PtraceDetach(tid, sig int) error {
-	return fmt.Errorf("not implemented: PtraceDetach")
+	return _DebugActiveProcessStop(uint32(tid))
 }
