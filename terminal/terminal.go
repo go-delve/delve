@@ -21,6 +21,11 @@ const (
 	terminalResetEscapeCode string = "\033[0m"
 )
 
+type subRule struct {
+	from string
+	to   string
+}
+
 // Term represents the terminal running dlv.
 type Term struct {
 	client   service.Client
@@ -29,14 +34,25 @@ type Term struct {
 	cmds     *Commands
 	dumb     bool
 	stdout   io.Writer
+	subRules []subRule
 	InitFile string
 }
 
 // New returns a new Term.
 func New(client service.Client, conf *config.Config) *Term {
+	var subRules []subRule
 	cmds := DebugCommands(client)
-	if conf != nil && conf.Aliases != nil {
-		cmds.Merge(conf.Aliases)
+	if conf != nil {
+		if conf.Aliases != nil {
+			cmds.Merge(conf.Aliases)
+		}
+		for _, v := range conf.SubstitutePath {
+			rule := subRule {
+				from: v["from"],
+				to: v["to"],
+			}
+			subRules = append(subRules, rule)
+		}
 	}
 
 	var w io.Writer
@@ -49,12 +65,13 @@ func New(client service.Client, conf *config.Config) *Term {
 	}
 
 	return &Term{
-		prompt: "(dlv) ",
-		line:   liner.NewLiner(),
-		client: client,
-		cmds:   cmds,
-		dumb:   dumb,
-		stdout: w,
+		client:  client,
+		prompt:  "(dlv) ",
+		line:    liner.NewLiner(),
+		cmds:    cmds,
+		dumb:    dumb,
+		stdout:  w,
+		subRules: subRules,
 	}
 }
 
@@ -148,6 +165,34 @@ func (t *Term) Println(prefix, str string) {
 		prefix = fmt.Sprintf("%s%s%s", terminalBlueEscapeCode, prefix, terminalResetEscapeCode)
 	}
 	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
+}
+
+// SubstitutePath substitues directory to soruce file.
+//
+// Ensures that only directory is substitued, for example:
+// substitute from `/dir/subdir`, substitute to `/new`
+// for file path `/dir/subdir/file` will return file path `/new/file`.
+// for file path `/dir/subdir-2/file` substitution will not be applied.
+//
+// If more than one substitution rule is defiend, the rules are applied
+// in the order they are defined, first rule that matches is used for
+// substitution.
+func (t *Term) SubstitutePath(path string) string {
+	separator := string(os.PathSeparator)
+	for _, r := range t.subRules {
+		from := r.from
+		to := r.to
+		if !strings.HasSuffix(from, separator) {
+			from = from + separator
+		}
+		if !strings.HasSuffix(to, separator) {
+			to = to + separator
+		}
+		if strings.HasPrefix(path, from) {
+			return strings.Replace(path, from, to, 1)
+		}
+	}
+	return path
 }
 
 func (t *Term) promptForInput() (string, error) {

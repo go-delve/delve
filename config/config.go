@@ -18,6 +18,7 @@ const (
 // Config defines all configuration options available to be set through the config file.
 type Config struct {
 	Aliases map[string][]string
+	SubstitutePath []map[string]string `yaml:"substitute-path"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -89,6 +90,12 @@ func writeDefaultConfig(f *os.File) error {
 # Provided aliases will be added to the default aliases for a given command.
 aliases:
   # command: ["alias1", "alias2"]
+
+# Define sources path substitution rules. Can be used to rewrite a source path stored
+# in program's debug information, if the sources were moved to a different place
+# between compilation and debugging.
+substitute-path:
+  # - {from: path, to: path}
 `)
 	return err
 }
