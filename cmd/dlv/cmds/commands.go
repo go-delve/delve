@@ -1,6 +1,7 @@
 package cmds
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -10,8 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
+	"unicode"
 
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
@@ -68,7 +69,7 @@ func New() *cobra.Command {
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
 		// Work-around for https://github.com/golang/go/issues/13154
-		buildFlagsDefault = "-ldflags=-linkmode internal"
+		buildFlagsDefault = "-ldflags='-linkmode internal'"
 	}
 
 	// Main dlv root command.
@@ -447,7 +448,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, kind exec
 func gobuild(debugname, pkg string) error {
 	args := []string{"-gcflags", "-N -l", "-o", debugname}
 	if BuildFlags != "" {
-		args = append(args, strings.Fields(BuildFlags)...)
+		args = append(args, splitQuotedFields(BuildFlags)...)
 	}
 	args = append(args, pkg)
 	return gocommand("build", args...)
@@ -456,7 +457,7 @@ func gobuild(debugname, pkg string) error {
 func gotestbuild(pkg string) error {
 	args := []string{"-gcflags", "-N -l", "-c", "-o", testdebugname}
 	if BuildFlags != "" {
-		args = append(args, strings.Fields(BuildFlags)...)
+		args = append(args, splitQuotedFields(BuildFlags)...)
 	}
 	args = append(args, pkg)
 	return gocommand("test", args...)
@@ -468,4 +469,61 @@ func gocommand(command string, args ...string) error {
 	goBuild := exec.Command("go", allargs...)
 	goBuild.Stderr = os.Stderr
 	return goBuild.Run()
+}
+
+// Like strings.Fields but ignores spaces inside areas surrounded
+// by single quotes.
+// To specify a single quote use backslash to escape it: '\''
+func splitQuotedFields(in string) []string {
+	type stateEnum int
+	const (
+		inSpace stateEnum = iota
+		inField
+		inQuote
+		inQuoteEscaped
+	)
+	state := inSpace
+	r := []string{}
+	var buf bytes.Buffer
+
+	for _, ch := range in {
+		switch state {
+		case inSpace:
+			if ch == '\'' {
+				state = inQuote
+			} else if !unicode.IsSpace(ch) {
+				buf.WriteRune(ch)
+				state = inField
+			}
+
+		case inField:
+			if ch == '\'' {
+				state = inQuote
+			} else if unicode.IsSpace(ch) {
+				r = append(r, buf.String())
+				buf.Reset()
+			} else {
+				buf.WriteRune(ch)
+			}
+
+		case inQuote:
+			if ch == '\'' {
+				state = inField
+			} else if ch == '\\' {
+				state = inQuoteEscaped
+			} else {
+				buf.WriteRune(ch)
+			}
+
+		case inQuoteEscaped:
+			buf.WriteRune(ch)
+			state = inQuote
+		}
+	}
+
+	if buf.Len() != 0 {
+		r = append(r, buf.String())
+	}
+
+	return r
 }

@@ -13,8 +13,8 @@ import (
 	"github.com/derekparker/delve/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
-	"github.com/derekparker/delve/service/rpccommon"
 	"github.com/derekparker/delve/service/rpc2"
+	"github.com/derekparker/delve/service/rpccommon"
 )
 
 type FakeTerminal struct {
