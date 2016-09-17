@@ -1239,7 +1239,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 }
 
 func printfile(t *Term, filename string, line int, showArrow bool) error {
-	file, err := os.Open(filename)
+	file, err := os.Open(t.SubstitutePath(filename))
 	if err != nil {
 		return err
 	}
