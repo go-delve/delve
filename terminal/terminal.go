@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"runtime"
 
 	"syscall"
 
@@ -23,20 +24,25 @@ const (
 
 // Term represents the terminal running dlv.
 type Term struct {
-	client   service.Client
-	prompt   string
-	line     *liner.State
-	cmds     *Commands
-	dumb     bool
-	stdout   io.Writer
-	InitFile string
+	client       service.Client
+	prompt       string
+	line         *liner.State
+	cmds         *Commands
+	dumb         bool
+	stdout       io.Writer
+	subPathRules config.SubstitutePathRules
+	InitFile     string
 }
 
 // New returns a new Term.
 func New(client service.Client, conf *config.Config) *Term {
+	var substitutePathRules config.SubstitutePathRules
 	cmds := DebugCommands(client)
-	if conf != nil && conf.Aliases != nil {
-		cmds.Merge(conf.Aliases)
+	if conf != nil {
+		substitutePathRules = conf.SubstitutePath
+		if conf.Aliases != nil {
+			cmds.Merge(conf.Aliases)
+		}
 	}
 
 	var w io.Writer
@@ -49,12 +55,13 @@ func New(client service.Client, conf *config.Config) *Term {
 	}
 
 	return &Term{
-		prompt: "(dlv) ",
-		line:   liner.NewLiner(),
-		client: client,
-		cmds:   cmds,
-		dumb:   dumb,
-		stdout: w,
+		client:       client,
+		prompt:       "(dlv) ",
+		line:         liner.NewLiner(),
+		cmds:         cmds,
+		dumb:         dumb,
+		stdout:       w,
+		subPathRules: substitutePathRules,
 	}
 }
 
@@ -148,6 +155,43 @@ func (t *Term) Println(prefix, str string) {
 		prefix = fmt.Sprintf("%s%s%s", terminalBlueEscapeCode, prefix, terminalResetEscapeCode)
 	}
 	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
+}
+
+// Substitues directory to source file.
+//
+// Ensures that only directory is substitued, for example:
+// substitute from `/dir/subdir`, substitute to `/new`
+// for file path `/dir/subdir/file` will return file path `/new/file`.
+// for file path `/dir/subdir-2/file` substitution will not be applied.
+//
+// If more than one substitution rule is defined, the rules are applied
+// in the order they are defined, first rule that matches is used for
+// substitution.
+func (t *Term) substitutePath(path string) string {
+	path = crossPlatformPath(path)
+	separator := string(os.PathSeparator)
+	for _, r := range t.subPathRules {
+		from := crossPlatformPath(r.From)
+		to := r.To
+
+		if !strings.HasSuffix(from, separator) {
+			from = from + separator
+		}
+		if !strings.HasSuffix(to, separator) {
+			to = to + separator
+		}
+		if strings.HasPrefix(path, from) {
+			return strings.Replace(path, from, to, 1)
+		}
+	}
+	return path
+}
+
+func crossPlatformPath(path string) string {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
 }
 
 func (t *Term) promptForInput() (string, error) {

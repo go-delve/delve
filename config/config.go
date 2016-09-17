@@ -15,9 +15,23 @@ const (
 	configFile string = "config.yml"
 )
 
+// Describes a rule for substitution of path to source code file.
+type SubstitutePathRule struct {
+	// Directory path will be substituted if it matches `From`.
+	From string
+	// Path to which substitution is performed.
+	To   string
+}
+
+// Slice of source code path substitution rules.
+type SubstitutePathRules []SubstitutePathRule
+
 // Config defines all configuration options available to be set through the config file.
 type Config struct {
-	Aliases map[string][]string
+	// Commands aliases.
+	Aliases        map[string][]string
+	// Source code path substitution rules.
+	SubstitutePath SubstitutePathRules `yaml:"substitute-path"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -89,6 +103,12 @@ func writeDefaultConfig(f *os.File) error {
 # Provided aliases will be added to the default aliases for a given command.
 aliases:
   # command: ["alias1", "alias2"]
+
+# Define sources path substitution rules. Can be used to rewrite a source path stored
+# in program's debug information, if the sources were moved to a different place
+# between compilation and debugging.
+substitute-path:
+  # - {from: path, to: path}
 `)
 	return err
 }
