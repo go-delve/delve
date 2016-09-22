@@ -1513,6 +1513,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		typdata, err := v.dbp.CurrentThread.readMemory(res, 3+v.dbp.arch.PtrSize())
 		if err != nil {
 			v.Unreadable = fmt.Errorf("could not read concrete type (data: %#v): %v", data.Addr, err)
+			return
 		}
 
 		nl := int(typdata[1]<<8 | typdata[2])
