@@ -82,7 +82,8 @@ func (t *Thread) singleStep() error {
 	return _SetThreadContext(t.os.hThread, context)
 }
 
-func (t *Thread) resume() error {
+func (t *Thread) resume(sig int) error {
+	_ = sig // unused on windows
 	t.running = true
 	var err error
 	t.dbp.execPtraceFunc(func() {

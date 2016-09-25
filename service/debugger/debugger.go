@@ -391,7 +391,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	switch command.Name {
 	case api.Continue:
 		log.Print("continuing")
-		err = d.process.Continue()
+		err = d.process.Continue(command.Signal)
 		if err != nil {
 			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
 				state := &api.DebuggerState{}
