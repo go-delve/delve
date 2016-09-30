@@ -120,7 +120,7 @@ func (d *Debugger) Restart() error {
 		if oldBp.ID < 0 {
 			continue
 		}
-		newBp, err := p.SetBreakpoint(oldBp.Addr)
+		newBp, err := p.SetBreakpoint(oldBp.Addr, proc.UserBreakpoint, nil)
 		if err != nil {
 			return err
 		}
@@ -224,7 +224,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		return nil, err
 	}
 
-	bp, err := d.process.SetBreakpoint(addr)
+	bp, err := d.process.SetBreakpoint(addr, proc.UserBreakpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 }
 
 func (d *Debugger) CancelNext() error {
-	return d.process.ClearTempBreakpoints()
+	return d.process.ClearInternalBreakpoints()
 }
 
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {

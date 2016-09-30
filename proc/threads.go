@@ -182,14 +182,14 @@ func (dbp *Process) next(stepInto bool) error {
 
 			if instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				if err := dbp.setStepIntoBreakpoint([]AsmInstruction{instr}, cond); err != nil {
-					dbp.ClearTempBreakpoints()
+					dbp.ClearInternalBreakpoints()
 					return err
 				}
 			} else {
 				// Non-absolute call instruction, set a StepBreakpoint here
-				if _, err := dbp.SetTempBreakpoint(instr.Loc.PC, StepBreakpoint, cond); err != nil {
+				if _, err := dbp.SetBreakpoint(instr.Loc.PC, StepBreakpoint, cond); err != nil {
 					if _, ok := err.(BreakpointExistsError); !ok {
-						dbp.ClearTempBreakpoints()
+						dbp.ClearInternalBreakpoints()
 						return err
 					}
 				}
@@ -219,10 +219,10 @@ func (dbp *Process) next(stepInto bool) error {
 			}
 		}
 		if deferpc != 0 && deferpc != topframe.Current.PC {
-			bp, err := dbp.SetTempBreakpoint(deferpc, NextDeferBreakpoint, cond)
+			bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, cond)
 			if err != nil {
 				if _, ok := err.(BreakpointExistsError); !ok {
-					dbp.ClearTempBreakpoints()
+					dbp.ClearInternalBreakpoints()
 					return err
 				}
 			}
@@ -254,7 +254,7 @@ func (dbp *Process) next(stepInto bool) error {
 
 	// Add a breakpoint on the return address for the current frame
 	pcs = append(pcs, topframe.Ret)
-	return dbp.setTempBreakpoints(topframe.Current.PC, pcs, NextBreakpoint, cond)
+	return dbp.setInternalBreakpoints(topframe.Current.PC, pcs, NextBreakpoint, cond)
 }
 
 func (dbp *Process) setStepIntoBreakpoint(text []AsmInstruction, cond ast.Expr) error {
@@ -288,7 +288,7 @@ func (dbp *Process) setStepIntoBreakpoint(text []AsmInstruction, cond ast.Expr) 
 
 	// Set a breakpoint after the function's prologue
 	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
-	if _, err := dbp.SetTempBreakpoint(pc, NextBreakpoint, cond); err != nil {
+	if _, err := dbp.SetBreakpoint(pc, NextBreakpoint, cond); err != nil {
 		if _, ok := err.(BreakpointExistsError); !ok {
 			return err
 		}
@@ -297,16 +297,16 @@ func (dbp *Process) setStepIntoBreakpoint(text []AsmInstruction, cond ast.Expr) 
 	return nil
 }
 
-// setTempBreakpoints sets a breakpoint to all addresses specified in pcs
+// setInternalBreakpoints sets a breakpoint to all addresses specified in pcs
 // skipping over curpc and curpc-1
-func (dbp *Process) setTempBreakpoints(curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
+func (dbp *Process) setInternalBreakpoints(curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
 	for i := range pcs {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
 		}
-		if _, err := dbp.SetTempBreakpoint(pcs[i], kind, cond); err != nil {
+		if _, err := dbp.SetBreakpoint(pcs[i], kind, cond); err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
-				dbp.ClearTempBreakpoints()
+				dbp.ClearInternalBreakpoints()
 				return err
 			}
 		}
@@ -461,7 +461,7 @@ func (thread *Thread) onTriggeredBreakpoint() bool {
 	return (thread.CurrentBreakpoint != nil) && thread.BreakpointConditionMet
 }
 
-func (thread *Thread) onTriggeredTempBreakpoint() bool {
+func (thread *Thread) onTriggeredInternalBreakpoint() bool {
 	return thread.onTriggeredBreakpoint() && thread.CurrentBreakpoint.Internal()
 }
 

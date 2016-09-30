@@ -43,21 +43,21 @@ type Process struct {
 	// Maps package names to package paths, needed to lookup types inside DWARF info
 	packageMap map[string]string
 
-	allGCache               []*G
-	dwarf                   *dwarf.Data
-	goSymTable              *gosym.Table
-	frameEntries            frame.FrameDescriptionEntries
-	lineInfo                line.DebugLines
-	os                      *OSProcessDetails
-	arch                    Arch
-	breakpointIDCounter     int
-	tempBreakpointIDCounter int
-	firstStart              bool
-	halt                    bool
-	exited                  bool
-	ptraceChan              chan func()
-	ptraceDoneChan          chan interface{}
-	types                   map[string]dwarf.Offset
+	allGCache                   []*G
+	dwarf                       *dwarf.Data
+	goSymTable                  *gosym.Table
+	frameEntries                frame.FrameDescriptionEntries
+	lineInfo                    line.DebugLines
+	os                          *OSProcessDetails
+	arch                        Arch
+	breakpointIDCounter         int
+	internalBreakpointIDCounter int
+	firstStart                  bool
+	halt                        bool
+	exited                      bool
+	ptraceChan                  chan func()
+	ptraceDoneChan              chan interface{}
+	types                       map[string]dwarf.Offset
 
 	loadModuleDataOnce sync.Once
 	moduleData         []moduleData
@@ -224,21 +224,48 @@ func (dbp *Process) RequestManualStop() error {
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table. Setting a break point must be thread specific due to
 // ptrace actions needing the thread to be in a signal-delivery-stop.
-func (dbp *Process) SetBreakpoint(addr uint64) (*Breakpoint, error) {
-	if dbp.exited {
-		return nil, &ProcessExitedError{}
-	}
-	return dbp.setBreakpoint(dbp.CurrentThread.ID, addr, UserBreakpoint)
-}
+func (dbp *Process) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+	tid := dbp.CurrentThread.ID
 
-// SetTempBreakpoint sets a temp breakpoint. Used during 'next' operations.
-func (dbp *Process) SetTempBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
-	bp, err := dbp.setBreakpoint(dbp.CurrentThread.ID, addr, kind)
+	if bp, ok := dbp.FindBreakpoint(addr); ok {
+		return nil, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+	}
+
+	f, l, fn := dbp.goSymTable.PCToLine(uint64(addr))
+	if fn == nil {
+		return nil, InvalidAddressError{address: addr}
+	}
+
+	newBreakpoint := &Breakpoint{
+		FunctionName: fn.Name,
+		File:         f,
+		Line:         l,
+		Addr:         addr,
+		Kind:         kind,
+		Cond:         cond,
+		HitCount:     map[int]uint64{},
+	}
+
+	if kind != UserBreakpoint {
+		dbp.internalBreakpointIDCounter++
+		newBreakpoint.ID = dbp.internalBreakpointIDCounter
+	} else {
+		dbp.breakpointIDCounter++
+		newBreakpoint.ID = dbp.breakpointIDCounter
+	}
+
+	thread := dbp.Threads[tid]
+	originalData, err := thread.readMemory(uintptr(addr), dbp.arch.BreakpointSize())
 	if err != nil {
 		return nil, err
 	}
-	bp.Cond = cond
-	return bp, nil
+	if err := dbp.writeSoftwareBreakpoint(thread, addr); err != nil {
+		return nil, err
+	}
+	newBreakpoint.OriginalData = originalData
+	dbp.Breakpoints[addr] = newBreakpoint
+
+	return newBreakpoint, nil
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
@@ -280,7 +307,7 @@ func (dbp *Process) Next() (err error) {
 		switch err.(type) {
 		case ThreadBlockedError, NoReturnAddr: // Noop
 		default:
-			dbp.ClearTempBreakpoints()
+			dbp.ClearInternalBreakpoints()
 			return
 		}
 	}
@@ -330,7 +357,7 @@ func (dbp *Process) Continue() error {
 				}
 			}
 			return dbp.conditionErrors()
-		case dbp.CurrentThread.onTriggeredTempBreakpoint():
+		case dbp.CurrentThread.onTriggeredInternalBreakpoint():
 			if dbp.CurrentThread.CurrentBreakpoint.Kind == StepBreakpoint {
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints
 				if err := dbp.conditionErrors(); err != nil {
@@ -351,7 +378,7 @@ func (dbp *Process) Continue() error {
 					return err
 				}
 			} else {
-				if err := dbp.ClearTempBreakpoints(); err != nil {
+				if err := dbp.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
 				return dbp.conditionErrors()
@@ -362,7 +389,7 @@ func (dbp *Process) Continue() error {
 				return err
 			}
 			if onNextGoroutine {
-				err := dbp.ClearTempBreakpoints()
+				err := dbp.ClearInternalBreakpoints()
 				if err != nil {
 					return err
 				}
@@ -389,12 +416,12 @@ func (dbp *Process) conditionErrors() error {
 }
 
 // pick a new dbp.CurrentThread, with the following priority:
-// 	- a thread with onTriggeredTempBreakpoint() == true
+// 	- a thread with onTriggeredInternalBreakpoint() == true
 // 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
 // 	- trapthread
 func (dbp *Process) pickCurrentThread(trapthread *Thread) error {
 	for _, th := range dbp.Threads {
-		if th.onTriggeredTempBreakpoint() {
+		if th.onTriggeredInternalBreakpoint() {
 			return dbp.SwitchThread(th.ID)
 		}
 	}
@@ -425,7 +452,7 @@ func (dbp *Process) Step() (err error) {
 		switch err.(type) {
 		case ThreadBlockedError, NoReturnAddr: // Noop
 		default:
-			dbp.ClearTempBreakpoints()
+			dbp.ClearInternalBreakpoints()
 			return
 		}
 	}
@@ -461,7 +488,7 @@ func (dbp *Process) StepInstruction() (err error) {
 	}
 	if dbp.SelectedGoroutine.thread == nil {
 		// Step called on parked goroutine
-		if _, err := dbp.SetTempBreakpoint(dbp.SelectedGoroutine.PC, NextBreakpoint, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
+		if _, err := dbp.SetBreakpoint(dbp.SelectedGoroutine.PC, NextBreakpoint, sameGoroutineCondition(dbp.SelectedGoroutine)); err != nil {
 			return err
 		}
 		return dbp.Continue()
@@ -715,7 +742,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 
 	panicpc, err := dbp.FindFunctionLocation("runtime.startpanic", true, 0)
 	if err == nil {
-		bp, err := dbp.SetBreakpoint(panicpc)
+		bp, err := dbp.SetBreakpoint(panicpc, UserBreakpoint, nil)
 		if err == nil {
 			bp.Name = "unrecovered-panic"
 			bp.ID = -1
@@ -726,7 +753,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	return dbp, nil
 }
 
-func (dbp *Process) ClearTempBreakpoints() error {
+func (dbp *Process) ClearInternalBreakpoints() error {
 	for _, bp := range dbp.Breakpoints {
 		if !bp.Internal() {
 			continue

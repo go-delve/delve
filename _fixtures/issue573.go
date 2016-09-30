@@ -9,7 +9,7 @@ package main
 // Expect to be stopped in fmt.Printf or runtime.duffzero
 // In bug, s #2 runs to the process exit because the call
 // to duffzero enters duffzero well after the nominal entry
-// and skips the temporary breakpoint placed by StepZero().
+// and skips the internal breakpoint placed by Step().
 import "fmt"
 
 var v int = 99
