@@ -2087,8 +2087,8 @@ func TestStepConcurrentDirect(t *testing.T) {
 }
 
 func nextInProgress(p *Process) bool {
-	for _, th := range p.Threads {
-		if th.CurrentBreakpoint != nil && th.CurrentBreakpoint.Internal() {
+	for _, bp := range p.Breakpoints {
+		if bp.Internal() {
 			return true
 		}
 	}
@@ -2138,13 +2138,13 @@ func TestStepConcurrentPtr(t *testing.T) {
 				assertNoError(p.Continue(), t, "Continue()")
 			}
 
-			f, ln = currentLineNumber(p, t)
-			if ln != 13 {
-				t.Fatalf("Step did not step into function call (13): %s:%d (gid: %d)", f, ln, p.SelectedGoroutine.ID)
+			if p.SelectedGoroutine.ID != gid {
+				t.Fatalf("Step switched goroutines (wanted: %d got: %d)", gid, p.SelectedGoroutine.ID)
 			}
 
-			if p.SelectedGoroutine.ID != gid {
-				t.Fatalf("Step switched goroutines (%d %d)", gid, p.SelectedGoroutine.ID)
+			f, ln = currentLineNumber(p, t)
+			if ln != 13 {
+				t.Fatalf("Step did not step into function call (13): %s:%d", f, ln)
 			}
 
 			count++
