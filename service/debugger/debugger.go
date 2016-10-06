@@ -38,8 +38,8 @@ type Debugger struct {
 type Config struct {
 	// ProcessArgs are the arguments to launch a new process.
 	ProcessArgs []string
-	// Wd is working directory of the new process. This field is used only when
-	// ProcessArgs is specified.
+	// Wd is working directory of the new process. This field is used
+	// only when launching a new process.
 	Wd string
 
 	// AttachPid is the PID of an existing process to which the debugger should

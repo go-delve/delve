@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 
 func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)
-	p, err := Launch([]string{fixture.Path}, "")
+	p, err := Launch([]string{fixture.Path}, ".")
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
@@ -46,9 +46,9 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 	fn(p, fixture)
 }
 
-func withTestProcessArgs(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture), args []string) {
+func withTestProcessArgs(name string, t testing.TB, wd string, fn func(p *Process, fixture protest.Fixture), args []string) {
 	fixture := protest.BuildFixture(name)
-	p, err := Launch(append([]string{fixture.Path}, args...), "")
+	p, err := Launch(append([]string{fixture.Path}, args...), wd)
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
@@ -1739,17 +1739,17 @@ func TestCmdLineArgs(t *testing.T) {
 	}
 
 	// make sure multiple arguments (including one with spaces) are passed to the binary correctly
-	withTestProcessArgs("testargs", t, expectSuccess, []string{"test"})
-	withTestProcessArgs("testargs", t, expectSuccess, []string{"test", "pass flag"})
+	withTestProcessArgs("testargs", t, ".", expectSuccess, []string{"test"})
+	withTestProcessArgs("testargs", t, ".", expectSuccess, []string{"test", "pass flag"})
 	// check that arguments with spaces are *only* passed correctly when correctly called
-	withTestProcessArgs("testargs", t, expectPanic, []string{"test pass", "flag"})
-	withTestProcessArgs("testargs", t, expectPanic, []string{"test", "pass", "flag"})
-	withTestProcessArgs("testargs", t, expectPanic, []string{"test pass flag"})
+	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test pass", "flag"})
+	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test", "pass", "flag"})
+	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test pass flag"})
 	// and that invalid cases (wrong arguments or no arguments) panic
 	withTestProcess("testargs", t, expectPanic)
-	withTestProcessArgs("testargs", t, expectPanic, []string{"invalid"})
-	withTestProcessArgs("testargs", t, expectPanic, []string{"test", "invalid"})
-	withTestProcessArgs("testargs", t, expectPanic, []string{"invalid", "pass flag"})
+	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"invalid"})
+	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test", "invalid"})
+	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"invalid", "pass flag"})
 }
 
 func TestIssue462(t *testing.T) {
@@ -1872,7 +1872,7 @@ func TestIssue509(t *testing.T) {
 	cmd.Dir = nomaindir
 	assertNoError(cmd.Run(), t, "go build")
 	exepath := filepath.Join(nomaindir, "debug")
-	_, err := Launch([]string{exepath})
+	_, err := Launch([]string{exepath}, ".")
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
@@ -1906,7 +1906,7 @@ func TestUnsupportedArch(t *testing.T) {
 	}
 	defer os.Remove(outfile)
 
-	p, err := Launch([]string{outfile})
+	p, err := Launch([]string{outfile}, ".")
 	switch err {
 	case UnsupportedArchErr:
 		// all good
@@ -2305,4 +2305,24 @@ func TestStepOutPanicAndDirectCall(t *testing.T) {
 			t.Fatalf("wrong line number, expected %d got %s:%d", 5, f, ln)
 		}
 	})
+}
+
+func TestWorkDir(t *testing.T) {
+	wd := os.TempDir()
+	// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
+	if runtime.GOOS == "darwin" {
+		wd = "/private/tmp"
+	}
+	withTestProcessArgs("workdir", t, wd, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 14)
+		assertNoError(err, t, "LineToPC")
+		p.SetBreakpoint(addr, UserBreakpoint, nil)
+		p.Continue()
+		v, err := evalVariable(p, "pwd")
+		assertNoError(err, t, "EvalVariable")
+		str := constant.StringVal(v.Value)
+		if wd != str {
+			t.Fatalf("Expected %s got %s\n", wd, str)
+		}
+	}, []string{})
 }
