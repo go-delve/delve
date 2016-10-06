@@ -32,8 +32,12 @@ func TestMain(m *testing.M) {
 }
 
 func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture)) {
+	withTestProcessLaunchArgs(name, t, ".", fn)
+}
+
+func withTestProcessLaunchArgs(name string, t testing.TB, wd string, fn func(p *Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)
-	p, err := Launch([]string{fixture.Path}, "")
+	p, err := Launch([]string{fixture.Path}, wd)
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
@@ -48,7 +52,7 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 
 func withTestProcessArgs(name string, t testing.TB, fn func(p *Process, fixture protest.Fixture), args []string) {
 	fixture := protest.BuildFixture(name)
-	p, err := Launch(append([]string{fixture.Path}, args...), "")
+	p, err := Launch(append([]string{fixture.Path}, args...), ".")
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
@@ -1857,7 +1861,7 @@ func TestIssue509(t *testing.T) {
 	cmd.Dir = nomaindir
 	assertNoError(cmd.Run(), t, "go build")
 	exepath := filepath.Join(nomaindir, "debug")
-	_, err := Launch([]string{exepath})
+	_, err := Launch([]string{exepath}, ".")
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
@@ -1891,7 +1895,7 @@ func TestUnsupportedArch(t *testing.T) {
 	}
 	defer os.Remove(outfile)
 
-	p, err := Launch([]string{outfile})
+	p, err := Launch([]string{outfile}, ".")
 	switch err {
 	case UnsupportedArchErr:
 		// all good
@@ -2194,6 +2198,28 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 		f, ln := currentLineNumber(p, t)
 		if ln != 5 {
 			t.Fatalf("Step continued to wrong line, expected 5 was %s:%d", f, ln)
+		}
+	})
+}
+
+func TestWorkDir(t *testing.T) {
+	wd := "/tmp"
+	if runtime.GOOS == "windows" {
+		wd = `C:\Windows\TEMP`
+	}
+	if runtime.GOOS == "darwin" {
+		wd = "/private/tmp"
+	}
+	withTestProcessLaunchArgs("workdir", t, wd, func(p *Process, fixture protest.Fixture) {
+		addr, _, err := p.goSymTable.LineToPC(fixture.Source, 14)
+		assertNoError(err, t, "LineToPC")
+		p.SetBreakpoint(addr, UserBreakpoint, nil)
+		p.Continue()
+		v, err := evalVariable(p, "pwd")
+		assertNoError(err, t, "EvalVariable")
+		str := constant.StringVal(v.Value)
+		if wd != str {
+			t.Fatalf("Expected %s got %s\n", wd, str)
 		}
 	})
 }
