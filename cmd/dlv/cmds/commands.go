@@ -234,10 +234,11 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		defer os.Remove(fp)
-
-		// get absolute path to debug binary
-		// FIXME when error returned
-		abs, _ := filepath.Abs(debugname)
+		abs, err := filepath.Abs(debugname)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
 		processArgs := append([]string{abs}, targetArgs...)
 		return execute(0, processArgs, conf, executingGeneratedFile)
 	}()

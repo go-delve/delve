@@ -1,4 +1,5 @@
 #include "exec_darwin.h"
+#include "stdio.h"
 
 extern char** environ;
 
@@ -54,7 +55,7 @@ fork_exec(char *argv0, char **argv, int size,
 	}
 
 	// Fork succeeded, we are in the child.
-	int pret;
+	int pret, cret;
 	char sig;
 
 	close(fd[1]);
@@ -63,7 +64,8 @@ fork_exec(char *argv0, char **argv, int size,
 
 	// Create a new process group.
 	if (setpgid(0, 0) < 0) {
-		return -1;
+		perror("setpgid");
+		exit(1);
 	}
 
 	// Set errno to zero before a call to ptrace.
@@ -71,14 +73,29 @@ fork_exec(char *argv0, char **argv, int size,
 	// for successful calls.
 	errno = 0;
 	pret = ptrace(PT_TRACE_ME, 0, 0, 0);
-	if (pret != 0 && errno != 0) return -errno;
+	if (pret != 0 && errno != 0) {
+		perror("ptrace");
+		exit(1);
+	}
 
-	// change working directory
-	chdir(wd);
+	// Change working directory if wd is not empty.
+	if (wd && wd[0]) {
+		errno = 0;
+		cret = chdir(wd);
+		if (cret != 0 && errno != 0) {
+			char *error_msg;
+			asprintf(&error_msg, "%s '%s'", "chdir", wd);
+			perror(error_msg);
+			exit(1);
+		}
+	}
 
 	errno = 0;
 	pret = ptrace(PT_SIGEXC, 0, 0, 0);
-	if (pret != 0 && errno != 0) return -errno;
+	if (pret != 0 && errno != 0) {
+		perror("ptrace");
+		exit(1);
+	}
 
 	// Create the child process.
 	execve(argv0, argv, environ);
