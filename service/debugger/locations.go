@@ -346,9 +346,13 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 				continue
 			}
 			if loc.FuncBase.Match(f.Sym) {
-				candidates = append(candidates, f.Name)
-				if len(candidates) >= maxFindLocationCandidates {
+				if loc.Base == f.Name {
+					// if an exact match for the function name is found use it
+					candidates = []string{f.Name}
 					break
+				}
+				if len(candidates) < maxFindLocationCandidates {
+					candidates = append(candidates, f.Name)
 				}
 			}
 		}
