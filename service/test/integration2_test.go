@@ -666,6 +666,18 @@ func TestClientServer_FindLocationsAddr(t *testing.T) {
 	})
 }
 
+func TestClientServer_FindLocationsExactMatch(t *testing.T) {
+	// if an expression matches multiple functions but one of them is an exact
+	// match it should be used anyway.
+	// In this example "math/rand.Intn" would normally match "math/rand.Intn"
+	// and "math/rand.(*Rand).Intn" but since the first match is exact it
+	// should be prioritized.
+	withTestClient2("locationsprog3", t, func(c service.Client) {
+		<-c.Continue()
+		findLocationHelper(t, c, "math/rand.Intn", false, 1, 0)
+	})
+}
+
 func TestClientServer_EvalVariable(t *testing.T) {
 	withTestClient2("testvariables", t, func(c service.Client) {
 		state := <-c.Continue()
