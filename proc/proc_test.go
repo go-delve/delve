@@ -801,7 +801,10 @@ func TestStacktraceGoroutine(t *testing.T) {
 
 		for i, g := range gs {
 			locations, err := g.Stacktrace(40)
-			assertNoError(err, t, "GoroutineStacktrace()")
+			if err != nil {
+				// On windows we do not have frame information for goroutines doing system calls.
+				continue
+			}
 
 			if stackMatch(mainStack, locations, false) {
 				mainCount++
@@ -2084,8 +2087,8 @@ func TestStepConcurrentDirect(t *testing.T) {
 }
 
 func nextInProgress(p *Process) bool {
-	for _, th := range p.Threads {
-		if th.CurrentBreakpoint != nil && th.CurrentBreakpoint.Internal() {
+	for _, bp := range p.Breakpoints {
+		if bp.Internal() {
 			return true
 		}
 	}
@@ -2135,13 +2138,13 @@ func TestStepConcurrentPtr(t *testing.T) {
 				assertNoError(p.Continue(), t, "Continue()")
 			}
 
-			f, ln = currentLineNumber(p, t)
-			if ln != 13 {
-				t.Fatalf("Step did not step into function call (13): %s:%d (gid: %d)", f, ln, p.SelectedGoroutine.ID)
+			if p.SelectedGoroutine.ID != gid {
+				t.Fatalf("Step switched goroutines (wanted: %d got: %d)", gid, p.SelectedGoroutine.ID)
 			}
 
-			if p.SelectedGoroutine.ID != gid {
-				t.Fatalf("Step switched goroutines (%d %d)", gid, p.SelectedGoroutine.ID)
+			f, ln = currentLineNumber(p, t)
+			if ln != 13 {
+				t.Fatalf("Step did not step into function call (13): %s:%d", f, ln)
 			}
 
 			count++
@@ -2194,6 +2197,20 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 		f, ln := currentLineNumber(p, t)
 		if ln != 5 {
 			t.Fatalf("Step continued to wrong line, expected 5 was %s:%d", f, ln)
+		}
+	})
+}
+
+func TestIssue594(t *testing.T) {
+	// Exceptions that aren't caused by breakpoints should be propagated
+	// back to the target.
+	// In particular the target should be able to cause a nil pointer
+	// dereference panic and recover from it.
+	withTestProcess("issue594", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		f, ln := currentLineNumber(p, t)
+		if ln != 21 {
+			t.Fatalf("Program stopped at %s:%d, expected :21", f, ln)
 		}
 	})
 }

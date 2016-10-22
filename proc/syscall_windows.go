@@ -54,6 +54,20 @@ type _LOAD_DLL_DEBUG_INFO struct {
 	Unicode             uint16
 }
 
+type _EXCEPTION_DEBUG_INFO struct {
+	ExceptionRecord _EXCEPTION_RECORD
+	FirstChance     uint32
+}
+
+type _EXCEPTION_RECORD struct {
+	ExceptionCode        uint32
+	ExceptionFlags       uint32
+	ExceptionRecord      *_EXCEPTION_RECORD
+	ExceptionAddress     uintptr
+	NumberParameters     uint32
+	ExceptionInformation [_EXCEPTION_MAXIMUM_PARAMETERS]uintptr
+}
+
 const (
 	_ThreadBasicInformation = 0
 
@@ -72,6 +86,11 @@ const (
 
 	// DEBUG_ONLY_THIS_PROCESS tracks https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
 	_DEBUG_ONLY_THIS_PROCESS = 0x00000002
+
+	_EXCEPTION_BREAKPOINT  = 0x80000003
+	_EXCEPTION_SINGLE_STEP = 0x80000004
+
+	_EXCEPTION_MAXIMUM_PARAMETERS = 15
 )
 
 func _NT_SUCCESS(x _NTSTATUS) bool {
