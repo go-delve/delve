@@ -35,7 +35,11 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 	}
 
 	if !top && v.Addr == 0 {
-		fmt.Fprintf(buf, "%s nil", v.Type)
+		if includeType && v.Type != "void" {
+			fmt.Fprintf(buf, "%s nil", v.Type)
+		} else {
+			fmt.Fprintf(buf, "nil")
+		}
 		return
 	}
 
@@ -88,10 +92,10 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 			} else if data.Children[0].OnlyAddr {
 				fmt.Fprintf(buf, "0x%x", v.Children[0].Addr)
 			} else {
-				v.Children[0].writeTo(buf, false, newlines, false, indent)
+				v.Children[0].writeTo(buf, false, newlines, !includeType, indent)
 			}
 		} else {
-			v.Children[0].writeTo(buf, false, newlines, false, indent)
+			v.Children[0].writeTo(buf, false, newlines, !includeType, indent)
 		}
 	case reflect.Map:
 		v.writeMapTo(buf, newlines, includeType, indent)
