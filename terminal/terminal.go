@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 
 	"syscall"
@@ -24,6 +25,7 @@ const (
 // Term represents the terminal running dlv.
 type Term struct {
 	client   service.Client
+	conf     *config.Config
 	prompt   string
 	line     *liner.State
 	cmds     *Commands
@@ -49,9 +51,10 @@ func New(client service.Client, conf *config.Config) *Term {
 	}
 
 	return &Term{
+		client: client,
+		conf:   conf,
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
-		client: client,
 		cmds:   cmds,
 		dumb:   dumb,
 		stdout: w,
@@ -148,6 +151,46 @@ func (t *Term) Println(prefix, str string) {
 		prefix = fmt.Sprintf("%s%s%s", terminalBlueEscapeCode, prefix, terminalResetEscapeCode)
 	}
 	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
+}
+
+// Substitues directory to source file.
+//
+// Ensures that only directory is substitued, for example:
+// substitute from `/dir/subdir`, substitute to `/new`
+// for file path `/dir/subdir/file` will return file path `/new/file`.
+// for file path `/dir/subdir-2/file` substitution will not be applied.
+//
+// If more than one substitution rule is defined, the rules are applied
+// in the order they are defined, first rule that matches is used for
+// substitution.
+func (t *Term) substitutePath(path string) string {
+	path = crossPlatformPath(path)
+	if t.conf == nil {
+		return path
+	}
+	separator := string(os.PathSeparator)
+	for _, r := range t.conf.SubstitutePath {
+		from := crossPlatformPath(r.From)
+		to := r.To
+
+		if !strings.HasSuffix(from, separator) {
+			from = from + separator
+		}
+		if !strings.HasSuffix(to, separator) {
+			to = to + separator
+		}
+		if strings.HasPrefix(path, from) {
+			return strings.Replace(path, from, to, 1)
+		}
+	}
+	return path
+}
+
+func crossPlatformPath(path string) string {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
 }
 
 func (t *Term) promptForInput() (string, error) {
