@@ -98,3 +98,26 @@ func TestExecuteFile(t *testing.T) {
 		t.Fatalf("Wrong counts break: %d trace: %d\n", breakCount, traceCount)
 	}
 }
+
+func TestDigits(t *testing.T) {
+	var tests = []struct {
+		input, want int
+	}{
+		{1000, 4},
+		{1001, 4},
+		{999, 3},
+		{99, 2},
+		{9, 1},
+		{1, 1},
+		{0, 1},
+		{-1, 1},
+	}
+
+	for _, test := range tests {
+		got := digits(test.input)
+		if got != test.want {
+			t.Errorf("expected digits(%d) = %d, got %d instead\n",
+				test.input, test.want, got)
+		}
+	}
+}
