@@ -2,49 +2,100 @@
 
 _This directory holds documentation around the internals of the debugger and how it works._
 
-This is general overview of the `delve` internal components.
+This is a general overview of the `delve` internal components.
 
 `delve` consists of the debugger engine which can read and understand Go process memory (located
 in package `proc`), [dwarf](http://dwarfstd.org/doc/dwarf-2.0.0.pdf) 
 [parser](https://golang.org/pkg/debug/dwarf/) and wrapper (go specifics), `terminal` helper,
-`service` set RPC servers with user (RPC) friendly `service/debugger` wrapper.
+`service` set of the RPC servers with user friendly `service/debugger` API.
 
 # `proc` package
 
 The `proc` package is the heart of the `delve` program. It implements low-level debugging interface,
-remote process and memory manipulation, disasm and etc.
+remote process and memory manipulation, disasm and etc. `proc` is based on the `ptrace(2)` syscall
+to control remote processes and `dwarf` to read debug information from the debugging process.
 
 `proc` consists of:
 
 - `Arch` representing CPU architecture
-- Breakpoints
-- `Disassemble` which disassembles target memory between two points into sequence of `AsmInstructions`,
-  with the help of "rsc.io/x86/x86asm"
+- Breakpoints management
+- `Disassemble` disassembles target memory between two points into sequence of `AsmInstructions`,
+  with the help of `rsc.io/x86/x86asm`
 - `Eval` evaluator of the Go-like expressions (go/ast, go/constant, go/parser, go/printer, go/token)
 - `GoVersion` target compiler parser
-- `memoryReadWriter` and implementations
-- `loadModuleData` which can parse go modules
-- `Process` main struct describe debugging process with mid level debug API (handle remote process, de/attach, 
-  start/stop/step, locate, list whatever, manage breakpoints or return info).
+- `memoryReadWriter` process memory IO
+- `loadModuleData` go module parser
+- `Process` describes debugging process with mid-level debug API (handling of the remote processes, 
+  de/attach, start/stop/stepping, locations, whatever lister, breakpoints managing or return info).
 - `ptrace` [syscall](http://tldp.org/LDP/LG/issue81/sandeep.html) go binding used to do low level 
-  control of remote processes, read write memory, start stop or continue execution and etc.
+  control of the remote processes, memory IO, start/stop/stepping execution and etc.
 - `Registers` interface
-- `Stack` iterator with `Stackframes`
-- `Thread`s managing
+- `Stack` iterator over stack frames
+- `Thread` management
 - `Types` parser
 - `Variables` parser
 
-A lot of debug information is available out of `dwarf` and sometimes `disassembly`. Cross platform 
-debug support is implemented for linux, darwin (macosx) and windows. Windows lacks support of process
-attach for now.
+Cross platform debug support is implemented for Linux, Darwin (MacOSX) and Windows. 
+Windows lacks support of process attach for now.
+
+## Start
 
 The entry point to the `proc` API is the `Process` struct defined in `proc.go` and looks like:
 
         p, err := proc.Attach(d.config.AttachPid)
         ... or ...
         p, err := proc.Launch(d.config.ProcessArgs)
+        
+## `Attach`
 
-# `ptrace` syscall
+Attach attaches to the existing process. It acquires the mach task first (`acquire_mach_task`) 
+and passes control to the `initializeDebugProcess`.
+
+## `Launch`
+
+Launch creates and begins debugging a new process. It uses a custom fork/exec process `fork_exec` 
+in order to take an advantage of PT_SIGEXC on Darwin which will turn Unix signals into Mach exceptions. 
+Then control passed to the `initializeDebugProcess`.
+
+## `initializeDebugProcess` completes `Process` struct initialization
+
+This is where actual PTRACE_ATTACH call may be invoked first, if it is attach kind of initialization 
+is ongoing (darwin).
+
+Then OS level process info object acquired. Next, the call to the `LoadInformation` parses remote
+process executable metadata into `Process` struct, scanning for:
+
+* loadProcessInformation - general process information (/proc/\*/comm, /proc/\*/stat)
+* parseDebugFrame - parses ELF `.debug_frame` and `.debug_info` sections
+* obtainGoSymbols - parses ELF `.gosymtab`, `.gopclntab` and `.text` sections
+* parseDebugLineInfo - parses ELF `.debug_line` section
+* loadTypeMap - parses DWARF types map
+
+To finish threads list updated, go compiler version scanned, `G` struct offset set, current `g` loaded,
+location of `runtime.startpanic` found and to the most end the breakpoints inited.
+
+## Memory IO
+
+To be written...
+
+## G parser
+
+To be written...
+
+## Breakpoints implementation
+
+To be written...
+
+## `Process.new`
+
+Initialization of the Process struct consists of setting up `ptrace` environment, debugging process
+pid, os/arch details and some struct for receiving future info from the victim.
+
+`ptrace` initialization (`handlePtraceFuncs`) uses `runtime.LockOSThread()` call to lock current
+goroutine to the OS thread due properly setup `ptrace` env. This is due to the fact that ptrace(2) expects
+all commands after PTRACE_ATTACH to come from the same thread.
+
+## `ptrace` syscall
 
 _The ptrace system call is crucial to the working of debugger programs like gdb._
 
@@ -60,12 +111,19 @@ the context of the traced process. The tracing process can even kill the traced 
 the exit code of the traced process. After tracing, the tracer process may kill the traced one 
 or leave to continue with its execution.
 
-Note: Ptrace() is highly dependent on the architecture of the underlying hardware. 
-Applications using ptrace are not easily portable across different architectures and implementations.
+_Note: Ptrace() is highly dependent on the architecture of the underlying hardware. 
+Applications using ptrace are not easily portable across different architectures and implementations._
+
+Link:
 
 * [ptrace(2) - Linux man page](https://linux.die.net/man/2/ptrace)
 * [Process Tracing Using Ptrace](http://tldp.org/LDP/LG/issue81/sandeep.html)
 * [ptrace - WikiPedia](https://en.wikipedia.org/wiki/Ptrace)
+
+## `ptrace` binding
+
+`ptrace` implementation uses 1 separate goroutine per debugging process (instance of the `ptrace`). To
+guarantee safe `ptrace` environment `runtime.LockOSThread` is used. Commands received via Go channel.
 
 # `dwarf` 
 
@@ -79,8 +137,24 @@ The DWARF code is rich enough to let you do the following:
 - print stack traces and inspect stack frames, and
 - find the addresses and print the contents of most variables.
 
+Link:
+
 * [DWARF Debugging Information Format](http://dwarfstd.org/doc/dwarf-2.0.0.pdf)
 * [debug/dwarf](https://golang.org/pkg/debug/dwarf/)
 * [Debugging Go code (a status report)](https://blog.golang.org/debugging-go-code-status-report)
 * [Debugging Go programs with the GNU Debugger](https://blog.golang.org/debugging-go-programs-with-gnu-debugger)
 * [Debugging with GDB](https://golang.org/doc/gdb)
+
+# Server architecture
+
+To be written...
+
+## RPC1
+
+## RPC2
+
+## Debugger interface
+
+# Terminal
+
+To be written...
