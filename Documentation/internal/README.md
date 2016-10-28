@@ -37,7 +37,6 @@ remote process and memory manipulation, disasm and etc. `proc` uses `ptrace` on 
 - `Variables` parser
 
 Cross platform debug support is implemented for Linux, Darwin (MacOSX) and Windows. 
-Windows lacks support of process attach for now.
 
 ## Start
 
@@ -84,6 +83,14 @@ process executable metadata into `Process` struct, scanning for:
 To finish threads list updated, go compiler version scanned, `G` struct offset set, current `g` loaded,
 location of `runtime.startpanic` found and to the most end the breakpoints inited.
 
+## `Process.new`
+
+Initialization of the Process struct consists of setting up debugger host environment, debugging process
+pid, os/arch details and some struct for receiving future info from the victim.
+
+Debugger host initialization (`handlePtraceFuncs`) uses `runtime.LockOSThread` call to lock current
+goroutine to the OS thread.
+
 ## Memory IO
 
 To be written...
@@ -95,15 +102,6 @@ To be written...
 ## Breakpoints implementation
 
 To be written...
-
-## `Process.new`
-
-Initialization of the Process struct consists of setting up `ptrace` environment, debugging process
-pid, os/arch details and some struct for receiving future info from the victim.
-
-`ptrace` initialization (`handlePtraceFuncs`) uses `runtime.LockOSThread` call to lock current
-goroutine to the OS thread due properly setup `ptrace` env. This is due to the fact that ptrace(2) expects
-all commands after PTRACE_ATTACH to come from the same thread.
 
 ## `ptrace` syscall
 
