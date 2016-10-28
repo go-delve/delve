@@ -49,19 +49,28 @@ The entry point to the `proc` API is the `Process` struct defined in `proc.go` a
         
 ## `Attach`
 
-Attach attaches to the existing process. It acquires the mach task first (`acquire_mach_task`) 
-and passes control to the `initializeDebugProcess`.
+This call attaches debugger to the existing process. 
+
+* On Linux it just fallthrough to the `initializeDebugProcess`
+* On Darwin it first acquires the mach task first (`acquire_mach_task`), and then goes to `initializeDebugProcess`
+* On Windows it uses `DebugActiveProcess` to attach to the existing process first, then it waits for the
+  first debug event (CREATE_PROCESS_DEBUG_EVENT) and fallthrough to the `initializeDebugProcess`.
 
 ## `Launch`
 
-Launch creates and begins debugging a new process. It uses a custom fork/exec process `fork_exec` 
-in order to take an advantage of PT_SIGEXC on Darwin which will turn Unix signals into Mach exceptions. 
+Launch creates and begins debugging a new process. 
+
+* On Linux it uses `proc.Start`.
+* On Darwin it uses a custom fork/exec process `fork_exec` in order to take an advantage of PT_SIGEXC 
+  which will turn Unix signals into Mach exceptions. 
+* On Windows it uses `CreateProcess+DuplicateHandle`
+  
 Then control passed to the `initializeDebugProcess`.
 
 ## `initializeDebugProcess` completes `Process` struct initialization
 
 This is where actual PTRACE_ATTACH call may be invoked first, if it is attach kind of initialization 
-is ongoing (darwin).
+is ongoing (linux+darwin).
 
 Then OS level process info object acquired. Next, the call to the `LoadInformation` parses remote
 process executable metadata into `Process` struct, scanning for:
