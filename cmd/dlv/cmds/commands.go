@@ -39,8 +39,8 @@ var (
 	InitFile string
 	// BuildFlags is the flags passed during compiler invocation.
 	BuildFlags string
-	// Wd is the working directory for running the program.
-	Wd string
+	// WorkingDir is the working directory for running the program.
+	WorkingDir string
 
 	// RootCommand is the root of the command tree.
 	RootCommand *cobra.Command
@@ -88,7 +88,7 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().IntVar(&APIVersion, "api-version", 1, "Selects API version when headless.")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
-	RootCommand.PersistentFlags().StringVar(&Wd, "wd", ".", "Working directory for running the program.")
+	RootCommand.PersistentFlags().StringVar(&WorkingDir, "wd", ".", "Working directory for running the program.")
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
@@ -282,7 +282,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			ProcessArgs: processArgs,
 			AttachPid:   traceAttachPid,
 			APIVersion:  2,
-			Wd:          Wd,
+			WorkingDir:  WorkingDir,
 		}, Log)
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -406,7 +406,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, kind exec
 			AttachPid:   attachPid,
 			AcceptMulti: AcceptMulti,
 			APIVersion:  APIVersion,
-			Wd:          Wd,
+			WorkingDir:  WorkingDir,
 		}, Log)
 	default:
 		fmt.Println("Unknown API version %d", APIVersion)

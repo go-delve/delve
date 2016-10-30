@@ -38,9 +38,9 @@ type Debugger struct {
 type Config struct {
 	// ProcessArgs are the arguments to launch a new process.
 	ProcessArgs []string
-	// Wd is working directory of the new process. This field is used
+	// WorkingDir is working directory of the new process. This field is used
 	// only when launching a new process.
-	Wd string
+	WorkingDir string
 
 	// AttachPid is the PID of an existing process to which the debugger should
 	// attach.
@@ -63,7 +63,7 @@ func New(config *Config) (*Debugger, error) {
 		d.process = p
 	} else {
 		log.Printf("launching process with args: %v", d.config.ProcessArgs)
-		p, err := proc.Launch(d.config.ProcessArgs, d.config.Wd)
+		p, err := proc.Launch(d.config.ProcessArgs, d.config.WorkingDir)
 		if err != nil {
 			if err != proc.NotExecutableErr && err != proc.UnsupportedArchErr {
 				err = fmt.Errorf("could not launch process: %s", err)
@@ -116,7 +116,7 @@ func (d *Debugger) Restart() error {
 			return err
 		}
 	}
-	p, err := proc.Launch(d.config.ProcessArgs, d.config.Wd)
+	p, err := proc.Launch(d.config.ProcessArgs, d.config.WorkingDir)
 	if err != nil {
 		return fmt.Errorf("could not launch process: %s", err)
 	}

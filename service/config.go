@@ -13,9 +13,9 @@ type Config struct {
 	Listener net.Listener
 	// ProcessArgs are the arguments to launch a new process.
 	ProcessArgs []string
-	// Wd is working directory of the new process. This field is used
+	// WorkingDir is working directory of the new process. This field is used
 	// only when launching a new process.
-	Wd string
+	WorkingDir string
 
 	// AttachPid is the PID of an existing process to which the debugger should
 	// attach.
