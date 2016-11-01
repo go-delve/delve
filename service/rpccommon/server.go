@@ -111,6 +111,7 @@ func (s *ServerImpl) Run() error {
 	if s.debugger, err = debugger.New(&debugger.Config{
 		ProcessArgs: s.config.ProcessArgs,
 		AttachPid:   s.config.AttachPid,
+		WorkingDir:  s.config.WorkingDir,
 	}); err != nil {
 		return err
 	}

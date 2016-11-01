@@ -26,7 +26,7 @@ type OSProcessDetails struct {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string) (*Process, error) {
+func Launch(cmd []string, wd string) (*Process, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -82,6 +82,13 @@ func Launch(cmd []string) (*Process, error) {
 			return nil, err
 		}
 	}
+	
+	var workingDir *uint16
+	if wd != "" {
+		if workingDir, err = syscall.UTF16PtrFromString(wd); err != nil {
+			return nil, err
+		}
+	}
 
 	// Initialize the startup info and create process
 	si := new(sys.StartupInfo)
@@ -94,7 +101,11 @@ func Launch(cmd []string) (*Process, error) {
 
 	dbp := New(0)
 	dbp.execPtraceFunc(func() {
-		err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, _DEBUG_ONLY_THIS_PROCESS, nil, nil, si, pi)
+		if wd == "" {
+			err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, _DEBUG_ONLY_THIS_PROCESS, nil, nil, si, pi)
+		} else {
+			err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, _DEBUG_ONLY_THIS_PROCESS, nil, workingDir, si, pi)
+		}
 	})
 	if err != nil {
 		return nil, err
