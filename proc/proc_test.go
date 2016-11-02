@@ -2326,3 +2326,28 @@ func TestWorkDir(t *testing.T) {
 		}
 	}, []string{})
 }
+
+func TestNegativeIntEvaluation(t *testing.T) {
+	testcases := []struct {
+		name  string
+		typ   string
+		value interface{}
+	}{
+		{"ni8", "int8", int64(-5)},
+		{"ni16", "int16", int64(-5)},
+		{"ni32", "int32", int64(-5)},
+	}
+	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		for _, tc := range testcases {
+			v, err := evalVariable(p, tc.name)
+			assertNoError(err, t, "EvalVariable()")
+			if typ := v.RealType.String(); typ != tc.typ {
+				t.Fatalf("Wrong type for variable %q: %q (expected: %q)", tc.name, typ, tc.typ)
+			}
+			if val, _ := constant.Int64Val(v.Value); val != tc.value {
+				t.Fatalf("Wrong value for variable %q: %v (expected: %v)", tc.name, val, tc.value)
+			}
+		}
+	})
+}

@@ -1015,11 +1015,11 @@ func readIntRaw(mem memoryReadWriter, addr uintptr, size int64) (int64, error) {
 
 	switch size {
 	case 1:
-		n = int64(val[0])
+		n = int64(int8(val[0]))
 	case 2:
-		n = int64(binary.LittleEndian.Uint16(val))
+		n = int64(int16(binary.LittleEndian.Uint16(val)))
 	case 4:
-		n = int64(binary.LittleEndian.Uint32(val))
+		n = int64(int32(binary.LittleEndian.Uint32(val)))
 	case 8:
 		n = int64(binary.LittleEndian.Uint64(val))
 	}
