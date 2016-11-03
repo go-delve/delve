@@ -7,3 +7,4 @@ cmd/dlv/dlv
 .vagrant
 **/*.swp
 localtests
+bin
