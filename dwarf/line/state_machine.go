@@ -27,7 +27,7 @@ type StateMachine struct {
 	endSeq          bool
 	lastWasStandard bool
 	lastDelta       int
-	// if valid is true the current value of the state machine is the address of
+	// valid is true if the current value of the state machine is the address of
 	// an instruction (using the terminology used by DWARF spec the current
 	// value of the state machine should be appended to the matrix representing
 	// the compilation unit)

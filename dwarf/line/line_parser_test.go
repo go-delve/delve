@@ -38,6 +38,13 @@ func grabDebugLineSection(p string, t *testing.T) []byte {
 	return data
 }
 
+const (
+	lineBaseGo14  int8  = -1
+	lineBaseGo18  int8  = -4
+	lineRangeGo14 uint8 = 4
+	lineRangeGo18 uint8 = 10
+)
+
 func TestDebugLinePrologueParser(t *testing.T) {
 	// Test against known good values, from readelf --debug-dump=rawline _fixtures/testnextprog
 	p, err := filepath.Abs("../../_fixtures/testnextprog")
@@ -67,11 +74,15 @@ func TestDebugLinePrologueParser(t *testing.T) {
 		t.Fatal("Initial value of 'is_stmt' not parsed correctly", prologue.InitialIsStmt)
 	}
 
-	if prologue.LineBase != int8(-1) {
+	if prologue.LineBase != lineBaseGo14 && prologue.LineBase != lineBaseGo18 {
+		// go < 1.8 uses -1
+		// go >= 1.8 uses -4
 		t.Fatal("Line base not parsed correctly", prologue.LineBase)
 	}
 
-	if prologue.LineRange != uint8(4) {
+	if prologue.LineRange != lineRangeGo14 && prologue.LineRange != lineRangeGo18 {
+		// go < 1.8 uses 4
+		// go >= 1.8 uses 10
 		t.Fatal("Line Range not parsed correctly", prologue.LineRange)
 	}
 
@@ -90,8 +101,15 @@ func TestDebugLinePrologueParser(t *testing.T) {
 		t.Fatal("Include dirs not parsed correctly")
 	}
 
-	if !strings.Contains(dbl.FileNames[0].Name, "/delve/_fixtures/testnextprog.go") {
-		t.Fatal("First file entry not parsed correctly")
+	ok := false
+	for _, n := range dbl.FileNames {
+		if strings.Contains(n.Name, "/delve/_fixtures/testnextprog.go") {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		t.Fatal("File names table not parsed correctly")
 	}
 }
 
