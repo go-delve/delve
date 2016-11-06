@@ -2379,3 +2379,15 @@ func TestIssue683(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue664(t *testing.T) {
+	withTestProcess("issue664", t, func(p *Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 4)
+		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Next(), t, "Next()")
+		f, ln := currentLineNumber(p, t)
+		if ln != 5 {
+			t.Fatalf("Did not continue to line 5: %s:%d", f, ln)
+		}
+	})
+}
