@@ -1011,7 +1011,7 @@ func Test1SkipPrologue2(t *testing.T) {
 		callme3 := findLocationHelper(t, c, "main.callme3", false, 1, 0)[0]
 		callme3Z := findLocationHelper(t, c, "main.callme3:0", false, 1, 0)[0]
 		// callme3 does not have local variables therefore the first line of the function is immediately after the prologue
-		findLocationHelper(t, c, "callme.go:18", false, 1, callme3Z)
+		findLocationHelper(t, c, "callme.go:19", false, 1, callme3Z)
 		if callme3 == callme3Z {
 			t.Fatal("Skip prologue failed")
 		}

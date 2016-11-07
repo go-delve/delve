@@ -13,6 +13,7 @@ func callme2() {
 	for i := 0; i < nBytes; i++ {
 		zeroarr[i] = '0'
 	}
+	fmt.Println("callme2")
 }
 
 func callme3() {
