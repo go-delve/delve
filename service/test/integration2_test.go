@@ -178,7 +178,7 @@ func TestClientServer_exit(t *testing.T) {
 
 func TestClientServer_step(t *testing.T) {
 	withTestClient2("testprog", t, func(c service.Client) {
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: 1})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: -1})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
