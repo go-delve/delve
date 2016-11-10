@@ -97,6 +97,8 @@ fork_exec(char *argv0, char **argv, int size,
 		exit(1);
 	}
 
+	sleep(1);
+
 	// Create the child process.
 	execve(argv0, argv, environ);
 

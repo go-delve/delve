@@ -36,10 +36,19 @@ int
 thread_count(task_t task);
 
 mach_port_t
-mach_port_wait(mach_port_t, int);
+mach_port_wait(mach_port_t, task_t*, int);
 
 kern_return_t
 mach_send_reply(mach_msg_header_t);
 
 kern_return_t
 raise_exception(mach_port_t, mach_port_t, mach_port_t, exception_type_t);
+
+kern_return_t
+reset_exception_ports(task_t task, mach_port_t *exception_port, mach_port_t *notification_port);
+
+task_t
+get_task_for_pid(int pid);
+
+int
+task_is_valid(task_t task);

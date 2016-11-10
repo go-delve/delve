@@ -68,6 +68,23 @@ acquire_mach_task(int tid,
 	return mach_port_move_member(self, *notification_port, *port_set);
 }
 
+kern_return_t
+reset_exception_ports(task_t task, mach_port_t *exception_port, mach_port_t *notification_port) {
+	kern_return_t kret;
+	mach_port_t prev_not;
+	mach_port_t self = mach_task_self();
+	
+	kret = task_set_exception_ports(task, EXC_MASK_BREAKPOINT|EXC_MASK_SOFTWARE, *exception_port,
+			EXCEPTION_DEFAULT, THREAD_STATE_NONE);
+	if (kret != KERN_SUCCESS) return kret;
+	
+	kret = mach_port_request_notification(self, task, MACH_NOTIFY_DEAD_NAME, 0, *notification_port,
+			MACH_MSG_TYPE_MAKE_SEND_ONCE, &prev_not);
+	if (kret != KERN_SUCCESS) return kret;
+	
+	return KERN_SUCCESS;
+}
+
 char *
 find_executable(int pid) {
 	static char pathbuf[PATH_MAX];
@@ -115,7 +132,7 @@ thread_count(task_t task) {
 }
 
 mach_port_t
-mach_port_wait(mach_port_t port_set, int nonblocking) {
+mach_port_wait(mach_port_t port_set, task_t *task, int nonblocking) {
 	kern_return_t kret;
 	thread_act_t thread;
 	NDR_record_t *ndr;
@@ -136,14 +153,20 @@ mach_port_wait(mach_port_t port_set, int nonblocking) {
 	if (kret == MACH_RCV_INTERRUPTED) return kret;
 	if (kret != MACH_MSG_SUCCESS) return 0;
 
-	mach_msg_body_t *bod = (mach_msg_body_t*)(&msg.hdr + 1);
-	mach_msg_port_descriptor_t *desc = (mach_msg_port_descriptor_t *)(bod + 1);
-	thread = desc[0].name;
-	ndr = (NDR_record_t *)(desc + 2);
-	data = (integer_t *)(ndr + 1);
 
 	switch (msg.hdr.msgh_id) {
-		case 2401: // Exception
+		case 2401: { // Exception
+			// 2401 is the exception_raise event, defined in:
+			// http://opensource.apple.com/source/xnu/xnu-2422.1.72/osfmk/mach/exc.defs?txt
+			// compile this file with mig to get the C version of the description
+			
+			mach_msg_body_t *bod = (mach_msg_body_t*)(&msg.hdr + 1);
+			mach_msg_port_descriptor_t *desc = (mach_msg_port_descriptor_t *)(bod + 1);
+			thread = desc[0].name;
+			*task = desc[1].name;
+			ndr = (NDR_record_t *)(desc + 2);
+			data = (integer_t *)(ndr + 1);
+
 			if (thread_suspend(thread) != KERN_SUCCESS) return 0;
 			// Send our reply back so the kernel knows this exception has been handled.
 			kret = mach_send_reply(msg.hdr);
@@ -151,13 +174,20 @@ mach_port_wait(mach_port_t port_set, int nonblocking) {
 			if (data[2] == EXC_SOFT_SIGNAL) {
 				if (data[3] != SIGTRAP) {
 					if (thread_resume(thread) != KERN_SUCCESS) return 0;
-					return mach_port_wait(port_set, nonblocking);
+					return mach_port_wait(port_set, task, nonblocking);
 				}
 			}
 			return thread;
+		}
 
-		case 72: // Death
+		case 72: { // Death
+			// 72 is mach_notify_dead_name, defined in:
+			// https://opensource.apple.com/source/xnu/xnu-1228.7.58/osfmk/mach/notify.defs?txt
+			// compile this file with mig to get the C version of the description
+			ndr = (NDR_record_t *)(&msg.hdr + 1);
+			*task = *((mach_port_name_t *)(ndr + 1));
 			return msg.hdr.msgh_local_port;
+		}
 	}
 	return 0;
 }
@@ -182,4 +212,20 @@ mach_send_reply(mach_msg_header_t hdr) {
 kern_return_t
 raise_exception(mach_port_t task, mach_port_t thread, mach_port_t exception_port, exception_type_t exception) {
 	return exception_raise(exception_port, thread, task, exception, 0, 0);
+}
+
+task_t
+get_task_for_pid(int pid) {
+	task_t task = 0;
+	mach_port_t self = mach_task_self();
+
+	task_for_pid(self, pid, &task);
+	return task;
+}
+
+int
+task_is_valid(task_t task) {
+	struct task_basic_info info;
+	mach_msg_type_number_t count = TASK_BASIC_INFO_COUNT;
+	return task_info(task, TASK_BASIC_INFO, (task_info_t)&info, &count) == KERN_SUCCESS;
 }

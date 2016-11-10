@@ -54,10 +54,13 @@ func BuildFixture(name string) Fixture {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
-	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile, path)
+	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile, name+".go")
+	
+	cmd := exec.Command("go", buildFlags...)
+	cmd.Dir = fixturesDir
 
 	// Build the test binary
-	if err := exec.Command("go", buildFlags...).Run(); err != nil {
+	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error compiling %s: %s\n", path, err)
 		os.Exit(1)
 	}

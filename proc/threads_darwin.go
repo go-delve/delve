@@ -17,6 +17,7 @@ type WaitStatus sys.WaitStatus
 type OSSpecificDetails struct {
 	threadAct C.thread_act_t
 	registers C.x86_thread_state64_t
+	exists    bool
 }
 
 // ErrContinueThread is the error returned when a thread could not
@@ -27,8 +28,17 @@ func (t *Thread) halt() (err error) {
 	kret := C.thread_suspend(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
 		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))
-		err = fmt.Errorf("could not suspend thread %d %s", t.ID, errStr)
-		return
+		// check that the thread still exists before complaining
+		err2 := t.dbp.updateThreadList()
+		if err2 != nil {
+			err = fmt.Errorf("could not suspend thread %d %s (additionally could not update thread list: %v)", t.ID, errStr, err2)
+			return
+		}
+
+		if _, ok := t.dbp.Threads[t.ID]; ok {
+			err = fmt.Errorf("could not suspend thread %d %s", t.ID, errStr)
+			return
+		}
 	}
 	return
 }

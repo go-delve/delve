@@ -834,7 +834,6 @@ func (v *Variable) setValue(y *Variable) error {
 		imag, _ := constant.Float64Val(constant.Imag(y.Value))
 		err = v.writeComplex(real, imag, v.RealType.Size())
 	default:
-		fmt.Printf("default\n")
 		if t, isptr := v.RealType.(*dwarf.PtrType); isptr {
 			err = v.writeUint(uint64(y.Children[0].Addr), int64(t.ByteSize))
 		} else {

@@ -82,7 +82,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 			return nil, err
 		}
 	}
-	
+
 	var workingDir *uint16
 	if wd != "" {
 		if workingDir, err = syscall.UTF16PtrFromString(wd); err != nil {
