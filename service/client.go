@@ -79,7 +79,7 @@ type Client interface {
 	// ListFunctionArgs lists all arguments to the current function.
 	ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
 	// ListRegisters lists registers and their values.
-	ListRegisters() (string, error)
+	ListRegisters(threadID int, includeFp bool) (api.Registers, error)
 
 	// ListGoroutines lists all goroutines.
 	ListGoroutines() ([]*api.Goroutine, error)

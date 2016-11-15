@@ -14,6 +14,9 @@ kern_return_t
 get_registers(mach_port_name_t, x86_thread_state64_t*);
 
 kern_return_t
+get_fpu_registers(mach_port_name_t, x86_float_state64_t *);
+
+kern_return_t
 set_pc(thread_act_t, uint64_t);
 
 kern_return_t

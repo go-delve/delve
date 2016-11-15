@@ -176,7 +176,11 @@ If regex is specified only local variables with a name matching it will be retur
 	vars [-v] [<regex>]
 
 If regex is specified only package variables with a name matching it will be returned. If -v is specified more information about each package variable will be shown.`},
-		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: "Print contents of CPU registers."},
+		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: `Print contents of CPU registers.
+
+	regs [-a]
+	
+Argument -a shows more registers.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"list", "ls"}, allowedPrefixes: scopePrefix, cmdFn: listCommand, helpMsg: `Show source code.
 
@@ -963,7 +967,11 @@ func vars(t *Term, ctx callContext, args string) error {
 }
 
 func regs(t *Term, ctx callContext, args string) error {
-	regs, err := t.client.ListRegisters()
+	includeFp := false
+	if args == "-a" {
+		includeFp = true
+	}
+	regs, err := t.client.ListRegisters(0, includeFp)
 	if err != nil {
 		return err
 	}

@@ -50,7 +50,7 @@ func (t *Thread) ReturnAddress() (uint64, error) {
 }
 
 func (t *Thread) stackIterator() (*stackIterator, error) {
-	regs, err := t.Registers()
+	regs, err := t.Registers(false)
 	if err != nil {
 		return nil, err
 	}

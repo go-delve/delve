@@ -602,19 +602,19 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 }
 
 // Registers returns string representation of the CPU registers.
-func (d *Debugger) Registers(threadID int) (string, error) {
+func (d *Debugger) Registers(threadID int, floatingPoint bool) (api.Registers, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
 	thread, found := d.process.Threads[threadID]
 	if !found {
-		return "", fmt.Errorf("couldn't find thread %d", threadID)
+		return nil, fmt.Errorf("couldn't find thread %d", threadID)
 	}
-	regs, err := thread.Registers()
+	regs, err := thread.Registers(floatingPoint)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return regs.String(), err
+	return api.ConvertRegisters(regs.Slice()), err
 }
 
 func convertVars(pv []*proc.Variable) []api.Variable {

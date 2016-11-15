@@ -312,24 +312,32 @@ func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsO
 }
 
 type ListRegistersIn struct {
+	ThreadID  int
+	IncludeFp bool
 }
 
 type ListRegistersOut struct {
 	Registers string
+	Regs      api.Registers
 }
 
 // ListRegisters lists registers and their values.
 func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) error {
-	state, err := s.debugger.State()
-	if err != nil {
-		return err
+	if arg.ThreadID == 0 {
+		state, err := s.debugger.State()
+		if err != nil {
+			return err
+		}
+		arg.ThreadID = state.CurrentThread.ID
 	}
 
-	regs, err := s.debugger.Registers(state.CurrentThread.ID)
+	regs, err := s.debugger.Registers(arg.ThreadID, arg.IncludeFp)
 	if err != nil {
 		return err
 	}
-	out.Registers = regs
+	out.Regs = regs
+	out.Registers = out.Regs.String()
+
 	return nil
 }
 

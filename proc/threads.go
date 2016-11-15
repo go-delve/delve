@@ -316,7 +316,7 @@ func (dbp *Process) setInternalBreakpoints(curpc uint64, pcs []uint64, kind Brea
 
 // SetPC sets the PC for this thread.
 func (thread *Thread) SetPC(pc uint64) error {
-	regs, err := thread.Registers()
+	regs, err := thread.Registers(false)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func (thread *Thread) SetPC(pc uint64) error {
 }
 
 func (thread *Thread) getGVariable() (*Variable, error) {
-	regs, err := thread.Registers()
+	regs, err := thread.Registers(false)
 	if err != nil {
 		return nil, err
 	}

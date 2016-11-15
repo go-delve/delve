@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"strconv"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/proc"
+	"golang.org/x/debug/dwarf"
 )
 
 // ConvertBreakpoint converts from a proc.Breakpoint to
@@ -199,7 +199,7 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 		CurrentLoc:     ConvertLocation(g.CurrentLoc),
 		UserCurrentLoc: ConvertLocation(g.UserCurrent()),
 		GoStatementLoc: ConvertLocation(g.Go()),
-		ThreadID: tid,
+		ThreadID:       tid,
 	}
 }
 
@@ -253,4 +253,12 @@ func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 		cfg.MaxArrayValues,
 		cfg.MaxStructFields,
 	}
+}
+
+func ConvertRegisters(in []proc.Register) (out []Register) {
+	out = make([]Register, len(in))
+	for i := range in {
+		out[i] = Register{in[i].Name, in[i].Value}
+	}
+	return
 }

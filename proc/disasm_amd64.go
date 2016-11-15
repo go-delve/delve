@@ -88,7 +88,7 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		if arg.Segment != 0 {
 			return nil
 		}
-		regs, err := thread.Registers()
+		regs, err := thread.Registers(false)
 		if err != nil {
 			return nil
 		}

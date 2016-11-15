@@ -689,7 +689,7 @@ func (dbp *Process) Halt() (err error) {
 // Registers obtains register values from the
 // "current" thread of the traced process.
 func (dbp *Process) Registers() (Registers, error) {
-	return dbp.CurrentThread.Registers()
+	return dbp.CurrentThread.Registers(false)
 }
 
 // PC returns the PC of the current thread.

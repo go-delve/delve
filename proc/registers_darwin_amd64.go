@@ -3,9 +3,10 @@ package proc
 // #include "threads_darwin.h"
 import "C"
 import (
-	"bytes"
+	"encoding/binary"
 	"fmt"
 	"rsc.io/x86/x86asm"
+	"unsafe"
 )
 
 // Regs represents CPU registers on an AMD64 processor.
@@ -32,10 +33,10 @@ type Regs struct {
 	fs     uint64
 	gs     uint64
 	gsBase uint64
+	fpregs []Register
 }
 
-func (r *Regs) String() string {
-	var buf bytes.Buffer
+func (r *Regs) Slice() []Register {
 	var regs = []struct {
 		k string
 		v uint64
@@ -63,10 +64,16 @@ func (r *Regs) String() string {
 		{"Gs", r.gs},
 		{"Gs_base", r.gsBase},
 	}
+	out := make([]Register, 0, len(regs)+len(r.fpregs))
 	for _, reg := range regs {
-		fmt.Fprintf(&buf, "%8s = %0#16x\n", reg.k, reg.v)
+		if reg.k == "Rflags" {
+			out = appendFlagReg(out, reg.k, reg.v, eflagsDescription, 64)
+		} else {
+			out = appendQwordReg(out, reg.k, reg.v)
+		}
 	}
-	return buf.String()
+	out = append(out, r.fpregs...)
+	return out
 }
 
 // PC returns the current program counter
@@ -259,7 +266,7 @@ func (r *Regs) Get(n int) (uint64, error) {
 	return 0, UnknownRegisterError
 }
 
-func registers(thread *Thread) (Registers, error) {
+func registers(thread *Thread, floatingPoint bool) (Registers, error) {
 	var state C.x86_thread_state64_t
 	var identity C.thread_identifier_info_data_t
 	kret := C.get_registers(C.mach_port_name_t(thread.os.threadAct), &state)
@@ -305,6 +312,36 @@ func registers(thread *Thread) (Registers, error) {
 		fs:     uint64(state.__fs),
 		gs:     uint64(state.__gs),
 		gsBase: uint64(identity.thread_handle),
+	}
+
+	if floatingPoint {
+		// https://opensource.apple.com/source/xnu/xnu-792.13.8/osfmk/mach/i386/thread_status.h?txt
+		var fpstate C.x86_float_state64_t
+		kret = C.get_fpu_registers(C.mach_port_name_t(thread.os.threadAct), &fpstate)
+		if kret != C.KERN_SUCCESS {
+			return nil, fmt.Errorf("could not get floating point registers")
+		}
+
+		regs.fpregs = appendWordReg(regs.fpregs, "CW", *((*uint16)(unsafe.Pointer(&fpstate.__fpu_fcw))))
+		regs.fpregs = appendWordReg(regs.fpregs, "SW", *((*uint16)(unsafe.Pointer(&fpstate.__fpu_fsw))))
+		regs.fpregs = appendWordReg(regs.fpregs, "TW", uint16(fpstate.__fpu_ftw))
+		regs.fpregs = appendWordReg(regs.fpregs, "FOP", uint16(fpstate.__fpu_fop))
+		regs.fpregs = appendQwordReg(regs.fpregs, "FIP", uint64(fpstate.__fpu_cs)<<32|uint64(fpstate.__fpu_ip))
+		regs.fpregs = appendQwordReg(regs.fpregs, "FDP", uint64(fpstate.__fpu_ds)<<32|uint64(fpstate.__fpu_dp))
+
+		for i, st := range []*C.char{&fpstate.__fpu_stmm0.__mmst_reg[0], &fpstate.__fpu_stmm1.__mmst_reg[0], &fpstate.__fpu_stmm2.__mmst_reg[0], &fpstate.__fpu_stmm3.__mmst_reg[0], &fpstate.__fpu_stmm4.__mmst_reg[0], &fpstate.__fpu_stmm5.__mmst_reg[0], &fpstate.__fpu_stmm6.__mmst_reg[0], &fpstate.__fpu_stmm7.__mmst_reg[0]} {
+			stb := C.GoBytes(unsafe.Pointer(st), 10)
+			mantissa := binary.LittleEndian.Uint64(stb[:8])
+			exponent := binary.LittleEndian.Uint16(stb[8:])
+			regs.fpregs = appendX87Reg(regs.fpregs, i, exponent, mantissa)
+		}
+
+		regs.fpregs = appendFlagReg(regs.fpregs, "MXCSR", uint64(fpstate.__fpu_mxcsr), mxcsrDescription, 32)
+		regs.fpregs = appendDwordReg(regs.fpregs, "MXCSR_MASK", uint32(fpstate.__fpu_mxcsrmask))
+
+		for i, xmm := range []*C.char{&fpstate.__fpu_xmm0.__xmm_reg[0], &fpstate.__fpu_xmm1.__xmm_reg[0], &fpstate.__fpu_xmm2.__xmm_reg[0], &fpstate.__fpu_xmm3.__xmm_reg[0], &fpstate.__fpu_xmm4.__xmm_reg[0], &fpstate.__fpu_xmm5.__xmm_reg[0], &fpstate.__fpu_xmm6.__xmm_reg[0], &fpstate.__fpu_xmm7.__xmm_reg[0], &fpstate.__fpu_xmm8.__xmm_reg[0], &fpstate.__fpu_xmm9.__xmm_reg[0], &fpstate.__fpu_xmm10.__xmm_reg[0], &fpstate.__fpu_xmm11.__xmm_reg[0], &fpstate.__fpu_xmm12.__xmm_reg[0], &fpstate.__fpu_xmm13.__xmm_reg[0], &fpstate.__fpu_xmm14.__xmm_reg[0], &fpstate.__fpu_xmm15.__xmm_reg[0]} {
+			regs.fpregs = appendSSEReg(regs.fpregs, fmt.Sprintf("XMM%d", i), C.GoBytes(unsafe.Pointer(xmm), 16))
+		}
 	}
 	return regs, nil
 }

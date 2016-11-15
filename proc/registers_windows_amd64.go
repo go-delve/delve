@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"bytes"
 	"fmt"
 	"rsc.io/x86/x86asm"
 	"unsafe"
@@ -9,32 +8,32 @@ import (
 
 // Regs represents CPU registers on an AMD64 processor.
 type Regs struct {
-	rax    uint64
-	rbx    uint64
-	rcx    uint64
-	rdx    uint64
-	rdi    uint64
-	rsi    uint64
-	rbp    uint64
-	rsp    uint64
-	r8     uint64
-	r9     uint64
-	r10    uint64
-	r11    uint64
-	r12    uint64
-	r13    uint64
-	r14    uint64
-	r15    uint64
-	rip    uint64
-	eflags uint64
-	cs     uint64
-	fs     uint64
-	gs     uint64
-	tls    uint64
+	rax     uint64
+	rbx     uint64
+	rcx     uint64
+	rdx     uint64
+	rdi     uint64
+	rsi     uint64
+	rbp     uint64
+	rsp     uint64
+	r8      uint64
+	r9      uint64
+	r10     uint64
+	r11     uint64
+	r12     uint64
+	r13     uint64
+	r14     uint64
+	r15     uint64
+	rip     uint64
+	eflags  uint64
+	cs      uint64
+	fs      uint64
+	gs      uint64
+	tls     uint64
+	fltSave *_XMM_SAVE_AREA32
 }
 
-func (r *Regs) String() string {
-	var buf bytes.Buffer
+func (r *Regs) Slice() []Register {
 	var regs = []struct {
 		k string
 		v uint64
@@ -62,10 +61,38 @@ func (r *Regs) String() string {
 		{"Gs", r.gs},
 		{"TLS", r.tls},
 	}
-	for _, reg := range regs {
-		fmt.Fprintf(&buf, "%8s = %0#16x\n", reg.k, reg.v)
+	outlen := len(regs)
+	if r.fltSave != nil {
+		outlen += 6 + 8 + 2 + 16
 	}
-	return buf.String()
+	out := make([]Register, 0, outlen)
+	for _, reg := range regs {
+		if reg.k == "Eflags" {
+			out = append(out, Register{reg.k, eflagsDescription.Describe(reg.v, 64)})
+		} else {
+			out = appendQwordReg(out, reg.k, reg.v)
+		}
+	}
+	if r.fltSave != nil {
+		out = appendWordReg(out, "CW", r.fltSave.ControlWord)
+		out = appendWordReg(out, "SW", r.fltSave.StatusWord)
+		out = appendWordReg(out, "TW", uint16(r.fltSave.TagWord))
+		out = appendWordReg(out, "FOP", r.fltSave.ErrorOpcode)
+		out = appendQwordReg(out, "FIP", uint64(r.fltSave.ErrorSelector)<<32|uint64(r.fltSave.ErrorOffset))
+		out = appendQwordReg(out, "FDP", uint64(r.fltSave.DataSelector)<<32|uint64(r.fltSave.DataOffset))
+
+		for i := range r.fltSave.FloatRegisters {
+			out = appendX87Reg(out, i, uint16(r.fltSave.FloatRegisters[i].High), r.fltSave.FloatRegisters[i].Low)
+		}
+
+		out = appendFlagReg(out, "MXCSR", uint64(r.fltSave.MxCsr), mxcsrDescription, 32)
+		out = appendDwordReg(out, "MXCSR_MASK", r.fltSave.MxCsr_Mask)
+
+		for i := 0; i < len(r.fltSave.XmmRegisters); i += 16 {
+			out = appendSSEReg(out, fmt.Sprintf("XMM%d", i/16), r.fltSave.XmmRegisters[i:i+16])
+		}
+	}
+	return out
 }
 
 // PC returns the current program counter
@@ -264,7 +291,7 @@ func (r *Regs) Get(n int) (uint64, error) {
 	return 0, UnknownRegisterError
 }
 
-func registers(thread *Thread) (Registers, error) {
+func registers(thread *Thread, floatingPoint bool) (Registers, error) {
 	context := newCONTEXT()
 
 	context.ContextFlags = _CONTEXT_ALL
@@ -303,6 +330,11 @@ func registers(thread *Thread) (Registers, error) {
 		gs:     uint64(context.SegGs),
 		tls:    uint64(threadInfo.TebBaseAddress),
 	}
+
+	if floatingPoint {
+		regs.fltSave = &context.FltSave
+	}
+
 	return regs, nil
 }
 

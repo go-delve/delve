@@ -105,7 +105,7 @@ func (c *RPCClient) Step() (*api.DebuggerState, error) {
 
 func (c *RPCClient) StepOut() (*api.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", &api.DebuggerCommand{ Name: api.StepOut}, &out)
+	err := c.call("Command", &api.DebuggerCommand{Name: api.StepOut}, &out)
 	return &out.State, err
 }
 
@@ -241,10 +241,10 @@ func (c *RPCClient) ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) 
 	return out.Variables, err
 }
 
-func (c *RPCClient) ListRegisters() (string, error) {
+func (c *RPCClient) ListRegisters(threadID int, includeFp bool) (api.Registers, error) {
 	out := new(ListRegistersOut)
-	err := c.call("ListRegisters", ListRegistersIn{}, out)
-	return out.Registers, err
+	err := c.call("ListRegisters", ListRegistersIn{ThreadID: threadID, IncludeFp: includeFp}, out)
+	return out.Regs, err
 }
 
 func (c *RPCClient) ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error) {

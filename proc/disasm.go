@@ -34,7 +34,7 @@ func (thread *Thread) Disassemble(startPC, endPC uint64, currentGoroutine bool) 
 	var curpc uint64
 	var regs Registers
 	if currentGoroutine {
-		regs, _ = thread.Registers()
+		regs, _ = thread.Registers(false)
 		if regs != nil {
 			curpc = regs.PC()
 		}

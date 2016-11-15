@@ -22,6 +22,25 @@ type _M128A struct {
 	High int64
 }
 
+type _XMM_SAVE_AREA32 struct {
+	ControlWord    uint16
+	StatusWord     uint16
+	TagWord        byte
+	Reserved1      byte
+	ErrorOpcode    uint16
+	ErrorOffset    uint32
+	ErrorSelector  uint16
+	Reserved2      uint16
+	DataOffset     uint32
+	DataSelector   uint16
+	Reserved3      uint16
+	MxCsr          uint32
+	MxCsr_Mask     uint32
+	FloatRegisters [8]_M128A
+	XmmRegisters   [256]byte
+	Reserved4      [96]byte
+}
+
 type _CONTEXT struct {
 	P1Home uint64
 	P2Home uint64
@@ -67,7 +86,7 @@ type _CONTEXT struct {
 
 	Rip uint64
 
-	FltSave [512]byte
+	FltSave _XMM_SAVE_AREA32
 
 	VectorRegister [26]_M128A
 	VectorControl  uint64

@@ -29,6 +29,7 @@ Command | Description
 [stack](#stack) | Print stack trace.
 [step](#step) | Single step through program.
 [step-instruction](#step-instruction) | Single step a single cpu instruction.
+[stepout](#stepout) | Step out of the current function.
 [thread](#thread) | Switch to the specified thread.
 [threads](#threads) | Print out info for every traced thread.
 [trace](#trace) | Set tracepoint.
@@ -195,6 +196,10 @@ Aliases: p
 ## regs
 Print contents of CPU registers.
 
+	regs [-a]
+	
+Argument -a shows more registers.
+
 
 ## restart
 Restart process.
@@ -242,6 +247,10 @@ Single step a single cpu instruction.
 
 Aliases: si
 
+## stepout
+Step out of the current function.
+
+
 ## thread
 Switch to the specified thread.
 
@@ -278,3 +287,5 @@ Print package variables.
 	vars [-v] [<regex>]
 
 If regex is specified only package variables with a name matching it will be returned. If -v is specified more information about each package variable will be shown.
+
+

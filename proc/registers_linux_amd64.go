@@ -1,17 +1,20 @@
 package proc
 
-import "fmt"
-import "bytes"
-import sys "golang.org/x/sys/unix"
-import "rsc.io/x86/x86asm"
+import (
+	"fmt"
+
+	"rsc.io/x86/x86asm"
+
+	sys "golang.org/x/sys/unix"
+)
 
 // Regs is a wrapper for sys.PtraceRegs.
 type Regs struct {
-	regs *sys.PtraceRegs
+	regs   *sys.PtraceRegs
+	fpregs []Register
 }
 
-func (r *Regs) String() string {
-	var buf bytes.Buffer
+func (r *Regs) Slice() []Register {
 	var regs = []struct {
 		k string
 		v uint64
@@ -44,10 +47,16 @@ func (r *Regs) String() string {
 		{"Fs", r.regs.Fs},
 		{"Gs", r.regs.Gs},
 	}
+	out := make([]Register, 0, len(regs)+len(r.fpregs))
 	for _, reg := range regs {
-		fmt.Fprintf(&buf, "%8s = %0#16x\n", reg.k, reg.v)
+		if reg.k == "Eflags" {
+			out = appendFlagReg(out, reg.k, reg.v, eflagsDescription, 64)
+		} else {
+			out = appendQwordReg(out, reg.k, reg.v)
+		}
 	}
-	return buf.String()
+	out = append(out, r.fpregs...)
+	return out
 }
 
 // PC returns the value of RIP register.
@@ -235,7 +244,7 @@ func (r *Regs) Get(n int) (uint64, error) {
 	return 0, UnknownRegisterError
 }
 
-func registers(thread *Thread) (Registers, error) {
+func registers(thread *Thread, floatingPoint bool) (Registers, error) {
 	var (
 		regs sys.PtraceRegs
 		err  error
@@ -244,5 +253,73 @@ func registers(thread *Thread) (Registers, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Regs{&regs}, nil
+	r := &Regs{&regs, nil}
+	if floatingPoint {
+		r.fpregs, err = thread.fpRegisters()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return r, nil
+}
+
+// tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
+type PtraceFpRegs struct {
+	Cwd      uint16
+	Swd      uint16
+	Ftw      uint16
+	Fop      uint16
+	Rip      uint64
+	Rdp      uint64
+	Mxcsr    uint32
+	MxcrMask uint32
+	StSpace  [32]uint32
+	XmmSpace [256]byte
+	padding  [24]uint32
+}
+
+type PtraceXsave struct {
+	PtraceFpRegs
+	AvxState bool // contains AVX state
+	YmmSpace [256]byte
+}
+
+const (
+	_X86_XSTATE_MAX_SIZE = 2688
+	_NT_X86_XSTATE       = 0x202
+
+	_XSAVE_HEADER_START          = 512
+	_XSAVE_HEADER_LEN            = 64
+	_XSAVE_EXTENDED_REGION_START = 576
+	_XSAVE_SSE_REGION_LEN        = 416
+)
+
+func (thread *Thread) fpRegisters() (regs []Register, err error) {
+	var fpregs PtraceXsave
+	thread.dbp.execPtraceFunc(func() { fpregs, err = PtraceGetRegset(thread.ID) })
+
+	// x87 registers
+	regs = appendWordReg(regs, "CW", fpregs.Cwd)
+	regs = appendWordReg(regs, "SW", fpregs.Swd)
+	regs = appendWordReg(regs, "TW", fpregs.Ftw)
+	regs = appendWordReg(regs, "FOP", fpregs.Fop)
+	regs = appendQwordReg(regs, "FIP", fpregs.Rip)
+	regs = appendQwordReg(regs, "FDP", fpregs.Rdp)
+
+	for i := 0; i < len(fpregs.StSpace); i += 4 {
+		regs = appendX87Reg(regs, i/4, uint16(fpregs.StSpace[i+2]), uint64(fpregs.StSpace[i+1])<<32|uint64(fpregs.StSpace[i]))
+	}
+
+	// SSE registers
+	regs = appendFlagReg(regs, "MXCSR", uint64(fpregs.Mxcsr), mxcsrDescription, 32)
+	regs = appendDwordReg(regs, "MXCSR_MASK", fpregs.MxcrMask)
+
+	for i := 0; i < len(fpregs.XmmSpace); i += 16 {
+		regs = appendSSEReg(regs, fmt.Sprintf("XMM%d", i/16), fpregs.XmmSpace[i:i+16])
+		if fpregs.AvxState {
+			regs = appendSSEReg(regs, fmt.Sprintf("YMM%d", i/16), fpregs.YmmSpace[i:i+16])
+		}
+	}
+
+	return
 }

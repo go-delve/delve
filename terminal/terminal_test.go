@@ -1,15 +1,15 @@
 package terminal
 
 import (
-	"testing"
 	"runtime"
+	"testing"
 
 	"github.com/derekparker/delve/config"
 )
 
 type tRule struct {
 	from string
-	to string
+	to   string
 }
 
 type tCase struct {
@@ -66,9 +66,9 @@ func platformCases() []tCase {
 }
 
 func TestSubstitutePath(t *testing.T) {
-	for _, c := range(platformCases()) {
+	for _, c := range platformCases() {
 		var subRules config.SubstitutePathRules
-		for _, r := range(c.rules) {
+		for _, r := range c.rules {
 			subRules = append(subRules, config.SubstitutePathRule{From: r.from, To: r.to})
 		}
 		res := New(nil, &config.Config{SubstitutePath: subRules}).substitutePath(c.path)

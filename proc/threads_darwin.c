@@ -51,6 +51,13 @@ get_registers(mach_port_name_t task, x86_thread_state64_t *state) {
 }
 
 kern_return_t
+get_fpu_registers(mach_port_name_t task, x86_float_state64_t *state) {
+	kern_return_t kret;
+	mach_msg_type_number_t stateCount = x86_FLOAT_STATE64_COUNT;
+	return thread_get_state(task, x86_FLOAT_STATE64, (thread_state_t)state, &stateCount);
+}
+
+kern_return_t
 get_identity(mach_port_name_t task, thread_identifier_info_data_t *idinfo) {
 	mach_msg_type_number_t idinfoCount = THREAD_IDENTIFIER_INFO_COUNT;
 	return thread_info(task, THREAD_IDENTIFIER_INFO, (thread_info_t)idinfo, &idinfoCount);

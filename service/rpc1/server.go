@@ -199,11 +199,11 @@ func (s *RPCServer) ListRegisters(arg interface{}, registers *string) error {
 		return err
 	}
 
-	regs, err := s.debugger.Registers(state.CurrentThread.ID)
+	regs, err := s.debugger.Registers(state.CurrentThread.ID, false)
 	if err != nil {
 		return err
 	}
-	*registers = regs
+	*registers = regs.String()
 	return nil
 }
 

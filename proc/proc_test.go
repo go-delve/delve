@@ -163,7 +163,7 @@ func TestHalt(t *testing.T) {
 			if th.running != false {
 				t.Fatal("expected running = false for thread", th.ID)
 			}
-			_, err := th.Registers()
+			_, err := th.Registers(false)
 			assertNoError(err, t, "Registers")
 		}
 		go func() {
@@ -189,7 +189,7 @@ func TestHalt(t *testing.T) {
 			if th.running != false {
 				t.Fatal("expected running = false for thread", th.ID)
 			}
-			_, err := th.Registers()
+			_, err := th.Registers(false)
 			assertNoError(err, t, "Registers")
 		}
 	})
@@ -676,6 +676,9 @@ func TestCGONext(t *testing.T) {
 	if runtime.GOOS == "darwin" && strings.Contains(runtime.Version(), "1.4") {
 		return
 	}
+	if os.Getenv("CGO_ENABLED") == "" {
+		return
+	}
 
 	withTestProcess("cgotest", t, func(p *Process, fixture protest.Fixture) {
 		pc, err := p.FindFunctionLocation("main.main", true, 0)
@@ -893,6 +896,9 @@ func TestGetG(t *testing.T) {
 
 	// On OSX with Go < 1.5 CGO is not supported due to: https://github.com/golang/go/issues/8973
 	if runtime.GOOS == "darwin" && strings.Contains(runtime.Version(), "1.4") {
+		return
+	}
+	if os.Getenv("CGO_ENABLED") == "" {
 		return
 	}
 

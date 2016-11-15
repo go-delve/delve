@@ -82,7 +82,7 @@ func (t *Thread) saveRegisters() (Registers, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not save register contents")
 	}
-	return &Regs{&t.os.registers}, nil
+	return &Regs{&t.os.registers, nil}, nil
 }
 
 func (t *Thread) restoreRegisters() (err error) {

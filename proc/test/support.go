@@ -46,7 +46,13 @@ func BuildFixture(name string) Fixture {
 	// Make a (good enough) random temporary file name
 	r := make([]byte, 4)
 	rand.Read(r)
+	dir := fixturesDir
 	path := filepath.Join(fixturesDir, name+".go")
+	if name[len(name)-1] == '/' {
+		dir = filepath.Join(dir, name)
+		path = ""
+		name = name[:len(name)-1]
+	}
 	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.%s", name, hex.EncodeToString(r)))
 
 	buildFlags := []string{"build"}
@@ -54,10 +60,13 @@ func BuildFixture(name string) Fixture {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
-	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile, name+".go")
-	
+	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile)
+	if path != "" {
+		buildFlags = append(buildFlags, name+".go")
+	}
+
 	cmd := exec.Command("go", buildFlags...)
-	cmd.Dir = fixturesDir
+	cmd.Dir = dir
 
 	// Build the test binary
 	if err := cmd.Run(); err != nil {
