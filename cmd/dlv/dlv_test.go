@@ -22,25 +22,34 @@ func assertNoError(err error, t testing.TB, s string) {
 
 func TestBuild(t *testing.T) {
 	const listenAddr = "localhost:40573"
-	cmd := exec.Command("go", "build", "github.com/derekparker/delve/cmd/dlv")
-	assertNoError(cmd.Run(), t, "go build")
+	makefilepath := filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "derekparker", "delve", "Makefile")
+	t.Logf("makefile: %q", makefilepath)
+	var err error
+	for _, make := range []string{"make", "mingw32-make"} {
+		err = exec.Command(make, "-f", makefilepath, "build").Run()
+		if err == nil {
+			break
+		}
+	}
+	assertNoError(err, t, "make")
 	wd, _ := os.Getwd()
 	dlvbin := filepath.Join(wd, "dlv")
-
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd = exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2")
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2")
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
 	cmd.Start()
 	defer func() {
 		cmd.Process.Signal(os.Interrupt)
-		cmd.Wait()
+		if runtime.GOOS != "windows" {
+			cmd.Wait()
+		}
 	}()
 
 	scan := bufio.NewScanner(stdout)

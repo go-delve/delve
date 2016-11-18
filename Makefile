@@ -37,10 +37,8 @@ endif
 build: check-cert
 	go build $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
 ifdef DARWIN
-ifneq "$(GOBIN)" ""
-	codesign -s "$(CERT)"  $(GOBIN)/dlv
-else
-	codesign -s "$(CERT)"  $(GOPATH)/bin/dlv
+ifdef CERT
+	codesign -s "$(CERT)"  ./dlv
 endif
 endif
 
