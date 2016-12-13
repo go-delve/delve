@@ -16,6 +16,8 @@ session.
 dlv debug [package]
 ```
 
+You might have to hit `c` to start the process.
+
 ### Options inherited from parent commands
 
 ```
