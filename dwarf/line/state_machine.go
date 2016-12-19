@@ -3,6 +3,7 @@ package line
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/derekparker/delve/dwarf/util"
@@ -106,8 +107,13 @@ func (dbl *DebugLines) AllPCsForFileLine(f string, l int) (pcs []uint64) {
 	return
 }
 
-func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) []uint64 {
+var NoSourceError = errors.New("no source available")
+
+func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) ([]uint64, error) {
 	lineInfo := dbl.GetLineInfo(filename)
+	if lineInfo == nil {
+		return nil, NoSourceError
+	}
 	var (
 		pcs      []uint64
 		lastaddr uint64
@@ -125,7 +131,7 @@ func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) []uint6
 			pcs = append(pcs, sm.address)
 		}
 	}
-	return pcs
+	return pcs, nil
 }
 
 func findAndExecOpcode(sm *StateMachine, buf *bytes.Buffer, b byte) {
