@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/derekparker/delve/service/api"
 )
 
@@ -9,6 +11,9 @@ import (
 type Client interface {
 	// Returns the pid of the process we are debugging.
 	ProcessPid() int
+
+	// LastModified returns the time that the process' executable was modified.
+	LastModified() time.Time
 
 	// Detach detaches the debugger, optionally killing the process.
 	Detach(killProcess bool) error

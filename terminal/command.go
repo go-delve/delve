@@ -1270,6 +1270,12 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 	}
 	defer file.Close()
 
+	fi, _ := file.Stat()
+	lastModExe := t.client.LastModified()
+	if fi.ModTime().After(lastModExe) {
+		fmt.Println("Warning: listing may not match stale executable")
+	}
+
 	buf := bufio.NewScanner(file)
 	l := line
 	for i := 1; i < l-5; i++ {

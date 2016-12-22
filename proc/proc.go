@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/derekparker/delve/dwarf/frame"
 	"github.com/derekparker/delve/dwarf/line"
@@ -24,8 +25,9 @@ import (
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	Pid     int         // Process Pid
-	Process *os.Process // Pointer to process struct for the actual process we are debugging
+	Pid          int         // Process Pid
+	Process      *os.Process // Pointer to process struct for the actual process we are debugging
+	LastModified time.Time   // Time the executable of this process was last modified
 
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
@@ -157,9 +159,13 @@ func (dbp *Process) Running() bool {
 func (dbp *Process) LoadInformation(path string) error {
 	var wg sync.WaitGroup
 
-	exe, err := dbp.findExecutable(path)
+	exe, path, err := dbp.findExecutable(path)
 	if err != nil {
 		return err
+	}
+	fi, err := os.Stat(path)
+	if err == nil {
+		dbp.LastModified = fi.ModTime()
 	}
 
 	wg.Add(5)

@@ -3,6 +3,7 @@ package rpc2
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
@@ -30,6 +31,18 @@ type ProcessPidOut struct {
 // ProcessPid returns the pid of the process we are debugging.
 func (s *RPCServer) ProcessPid(arg ProcessPidIn, out *ProcessPidOut) error {
 	out.Pid = s.debugger.ProcessPid()
+	return nil
+}
+
+type LastModifiedIn struct {
+}
+
+type LastModifiedOut struct {
+	Time time.Time
+}
+
+func (s *RPCServer) LastModified(arg LastModifiedIn, out *LastModifiedOut) error {
+	out.Time = s.debugger.LastModified()
 	return nil
 }
 

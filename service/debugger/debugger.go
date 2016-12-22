@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/derekparker/delve/proc"
 	"github.com/derekparker/delve/service/api"
@@ -79,6 +80,12 @@ func New(config *Config) (*Debugger, error) {
 // the debugger is debugging.
 func (d *Debugger) ProcessPid() int {
 	return d.process.Pid
+}
+
+// LastModified returns the time that the process' executable was last
+// modified.
+func (d *Debugger) LastModified() time.Time {
+	return d.process.LastModified
 }
 
 // Detach detaches from the target process.
