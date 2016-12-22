@@ -14,7 +14,7 @@ type Client interface {
 	Detach(killProcess bool) error
 
 	// Restarts program.
-	Restart() error
+	Restart() ([]api.DiscardedBreakpoint, error)
 
 	// GetState returns the current debugger state.
 	GetState() (*api.DebuggerState, error)

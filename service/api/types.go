@@ -313,3 +313,8 @@ func (regs Registers) String() string {
 	}
 	return buf.String()
 }
+
+type DiscardedBreakpoint struct {
+	Breakpoint *Breakpoint
+	Reason error
+}

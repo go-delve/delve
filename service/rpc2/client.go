@@ -42,9 +42,10 @@ func (c *RPCClient) Detach(kill bool) error {
 	return c.call("Detach", DetachIn{kill}, out)
 }
 
-func (c *RPCClient) Restart() error {
+func (c *RPCClient) Restart() ([]api.DiscardedBreakpoint, error) {
 	out := new(RestartOut)
-	return c.call("Restart", RestartIn{}, out)
+	err := c.call("Restart", RestartIn{}, out)
+	return out.DiscardedBreakpoints, err
 }
 
 func (c *RPCClient) GetState() (*api.DebuggerState, error) {

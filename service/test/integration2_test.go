@@ -71,7 +71,7 @@ func TestRestart_afterExit(t *testing.T) {
 		if !state.Exited {
 			t.Fatal("expected initial process to have exited")
 		}
-		if err := c.Restart(); err != nil {
+		if _, err := c.Restart(); err != nil {
 			t.Fatal(err)
 		}
 		if c.ProcessPid() == origPid {
@@ -124,7 +124,7 @@ func TestRestart_duringStop(t *testing.T) {
 		if state.CurrentThread.Breakpoint == nil {
 			t.Fatal("did not hit breakpoint")
 		}
-		if err := c.Restart(); err != nil {
+		if _, err := c.Restart(); err != nil {
 			t.Fatal(err)
 		}
 		if c.ProcessPid() == origPid {

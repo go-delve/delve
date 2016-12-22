@@ -49,6 +49,7 @@ type RestartIn struct {
 }
 
 type RestartOut struct {
+	DiscardedBreakpoints []api.DiscardedBreakpoint
 }
 
 // Restart restarts program.
@@ -56,7 +57,9 @@ func (s *RPCServer) Restart(arg RestartIn, out *RestartOut) error {
 	if s.config.AttachPid != 0 {
 		return errors.New("cannot restart process Delve did not create")
 	}
-	return s.debugger.Restart()
+	var err error
+	out.DiscardedBreakpoints, err = s.debugger.Restart()
+	return err
 }
 
 type StateIn struct {

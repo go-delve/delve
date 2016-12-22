@@ -100,7 +100,7 @@ func (d *Debugger) detach(kill bool) error {
 
 // Restart will restart the target process, first killing
 // and then exec'ing it again.
-func (d *Debugger) Restart() error {
+func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -110,30 +110,38 @@ func (d *Debugger) Restart() error {
 		}
 		// Ensure the process is in a PTRACE_STOP.
 		if err := stopProcess(d.ProcessPid()); err != nil {
-			return err
+			return nil, err
 		}
 		if err := d.detach(true); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	p, err := proc.Launch(d.config.ProcessArgs, d.config.WorkingDir)
 	if err != nil {
-		return fmt.Errorf("could not launch process: %s", err)
+		return nil, fmt.Errorf("could not launch process: %s", err)
 	}
+	discarded := []api.DiscardedBreakpoint{}
 	for _, oldBp := range d.breakpoints() {
 		if oldBp.ID < 0 {
 			continue
 		}
+		if len(oldBp.File) > 0 {
+			oldBp.Addr, err = d.process.FindFileLocation(oldBp.File, oldBp.Line)
+			if err != nil {
+				discarded = append(discarded, api.DiscardedBreakpoint{oldBp, err})
+				continue
+			}
+		}
 		newBp, err := p.SetBreakpoint(oldBp.Addr, proc.UserBreakpoint, nil)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := copyBreakpointInfo(newBp, oldBp); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	d.process = p
-	return nil
+	return discarded, nil
 }
 
 // State returns the current state of the debugger.
