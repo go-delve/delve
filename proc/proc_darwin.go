@@ -336,22 +336,22 @@ func (dbp *Process) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
 
 var UnsupportedArchErr = errors.New("unsupported architecture - only darwin/amd64 is supported")
 
-func (dbp *Process) findExecutable(path string) (*macho.File, error) {
+func (dbp *Process) findExecutable(path string) (*macho.File, string, error) {
 	if path == "" {
 		path = C.GoString(C.find_executable(C.int(dbp.Pid)))
 	}
 	exe, err := macho.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, path, err
 	}
 	if exe.Cpu != macho.CpuAmd64 {
-		return nil, UnsupportedArchErr
+		return nil, path, UnsupportedArchErr
 	}
 	dbp.dwarf, err = exe.DWARF()
 	if err != nil {
-		return nil, err
+		return nil, path, err
 	}
-	return exe, nil
+	return exe, path, nil
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {

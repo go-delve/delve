@@ -568,10 +568,14 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 }
 
 func restart(t *Term, ctx callContext, args string) error {
-	if err := t.client.Restart(); err != nil {
+	discarded, err := t.client.Restart()
+	if err != nil {
 		return err
 	}
 	fmt.Println("Process restarted with PID", t.client.ProcessPid())
+	for i := range discarded {
+		fmt.Println("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
+	}
 	return nil
 }
 
@@ -1265,6 +1269,12 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 		return err
 	}
 	defer file.Close()
+
+	fi, _ := file.Stat()
+	lastModExe := t.client.LastModified()
+	if fi.ModTime().After(lastModExe) {
+		fmt.Println("Warning: listing may not match stale executable")
+	}
 
 	buf := bufio.NewScanner(file)
 	l := line
