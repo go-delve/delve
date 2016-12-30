@@ -8,6 +8,7 @@ import (
 	"go/constant"
 	"go/token"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -118,22 +119,61 @@ func (dbp *Process) loadPackageMap() error {
 	return nil
 }
 
-func (dbp *Process) loadTypeMap(wg *sync.WaitGroup) {
+type sortFunctionsDebugInfoByLowpc []functionDebugInfo
+
+func (v sortFunctionsDebugInfoByLowpc) Len() int           { return len(v) }
+func (v sortFunctionsDebugInfoByLowpc) Less(i, j int) bool { return v[i].lowpc < v[j].lowpc }
+func (v sortFunctionsDebugInfoByLowpc) Swap(i, j int) {
+	temp := v[i]
+	v[i] = v[j]
+	v[j] = temp
+}
+
+func (dbp *Process) loadDebugInfoMaps(wg *sync.WaitGroup) {
 	defer wg.Done()
 	dbp.types = make(map[string]dwarf.Offset)
+	dbp.functions = []functionDebugInfo{}
 	reader := dbp.DwarfReader()
-	for entry, err := reader.NextType(); entry != nil; entry, err = reader.NextType() {
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			break
 		}
-		name, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok {
-			continue
-		}
-		if _, exists := dbp.types[name]; !exists {
-			dbp.types[name] = entry.Offset
+		switch entry.Tag {
+		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
+			name, ok := entry.Val(dwarf.AttrName).(string)
+			if !ok {
+				continue
+			}
+			if _, exists := dbp.types[name]; !exists {
+				dbp.types[name] = entry.Offset
+			}
+		case dwarf.TagSubprogram:
+			lowpc, ok := entry.Val(dwarf.AttrLowpc).(uint64)
+			if !ok {
+				continue
+			}
+			highpc, ok := entry.Val(dwarf.AttrHighpc).(uint64)
+			if !ok {
+				continue
+			}
+			dbp.functions = append(dbp.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
 		}
 	}
+	sort.Sort(sortFunctionsDebugInfoByLowpc(dbp.functions))
+}
+
+func (dbp *Process) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
+	i := sort.Search(len(dbp.functions), func(i int) bool {
+		fn := dbp.functions[i]
+		return pc <= fn.lowpc || (fn.lowpc <= pc && pc < fn.highpc)
+	})
+	if i != len(dbp.functions) {
+		fn := dbp.functions[i]
+		if fn.lowpc <= pc && pc < fn.highpc {
+			return fn.offset, nil
+		}
+	}
+	return 0, errors.New("unable to find function context")
 }
 
 func (dbp *Process) expandPackagesInType(expr ast.Expr) {

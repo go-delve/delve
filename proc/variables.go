@@ -508,15 +508,19 @@ func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry, cfg LoadCon
 
 func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
 	reader := scope.DwarfReader()
-
-	_, err := reader.SeekToFunction(scope.PC)
+	off, err := scope.Thread.dbp.findFunctionDebugInfo(scope.PC)
 	if err != nil {
 		return nil, err
 	}
+	reader.Seek(off)
+	reader.Next()
 
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
 			return nil, err
+		}
+		if entry.Tag == 0 {
+			break
 		}
 
 		n, ok := entry.Val(dwarf.AttrName).(string)
@@ -1545,16 +1549,20 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 // Fetches all variables of a specific type in the current function scope
 func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variable, error) {
 	reader := scope.DwarfReader()
-
-	_, err := reader.SeekToFunction(scope.PC)
+	off, err := scope.Thread.dbp.findFunctionDebugInfo(scope.PC)
 	if err != nil {
 		return nil, err
 	}
+	reader.Seek(off)
+	reader.Next()
 
 	var vars []*Variable
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
 			return nil, err
+		}
+		if entry.Tag == 0 {
+			break
 		}
 
 		if entry.Tag == tag {

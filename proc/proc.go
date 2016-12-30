@@ -61,10 +61,16 @@ type Process struct {
 	ptraceChan                  chan func()
 	ptraceDoneChan              chan interface{}
 	types                       map[string]dwarf.Offset
+	functions                   []functionDebugInfo
 
 	loadModuleDataOnce sync.Once
 	moduleData         []moduleData
 	nameOfRuntimeType  map[uintptr]nameOfRuntimeTypeEntry
+}
+
+type functionDebugInfo struct {
+	lowpc, highpc uint64
+	offset        dwarf.Offset
 }
 
 var NotExecutableErr = errors.New("not an executable file")
@@ -173,7 +179,7 @@ func (dbp *Process) LoadInformation(path string) error {
 	go dbp.parseDebugFrame(exe, &wg)
 	go dbp.obtainGoSymbols(exe, &wg)
 	go dbp.parseDebugLineInfo(exe, &wg)
-	go dbp.loadTypeMap(&wg)
+	go dbp.loadDebugInfoMaps(&wg)
 	wg.Wait()
 
 	return nil
