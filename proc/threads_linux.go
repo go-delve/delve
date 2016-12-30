@@ -49,7 +49,7 @@ func (t *Thread) singleStep() (err error) {
 		if err != nil {
 			return err
 		}
-		wpid, status, err := t.dbp.wait(t.ID, 0)
+		wpid, status, err := t.dbp.waitFast(t.ID)
 		if err != nil {
 			return err
 		}

@@ -402,6 +402,13 @@ func status(pid int, comm string) rune {
 	return state
 }
 
+// waitFast is like wait but does not handle process-exit correctly
+func (dbp *Process) waitFast(pid int) (int, *sys.WaitStatus, error) {
+	var s sys.WaitStatus
+	wpid, err := sys.Wait4(pid, &s, sys.WALL, nil)
+	return wpid, &s, err
+}
+
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
 	if (pid != dbp.Pid) || (options != 0) {
