@@ -115,13 +115,11 @@ type G struct {
 	// Information on goroutine location
 	CurrentLoc Location
 
-	// PC of entry to top-most deferred function.
-	DeferPC uint64
-
 	// Thread that this goroutine is currently allocated to
 	thread *Thread
 
-	dbp *Process
+	variable *Variable
+	dbp      *Process
 }
 
 // EvalScope is the scope for variable evaluation. Contains the thread,
@@ -369,24 +367,23 @@ func (gvar *Variable) parseG() (*G, error) {
 		}
 		return nil, NoGError{tid: id}
 	}
-	gvar.loadValue(loadFullValue)
+	for {
+		if _, isptr := gvar.RealType.(*dwarf.PtrType); !isptr {
+			break
+		}
+		gvar = gvar.maybeDereference()
+	}
+	gvar.loadValue(LoadConfig{false, 1, 64, 0, -1})
 	if gvar.Unreadable != nil {
 		return nil, gvar.Unreadable
 	}
-	schedVar := gvar.toFieldNamed("sched")
-	pc, _ := constant.Int64Val(schedVar.toFieldNamed("pc").Value)
-	sp, _ := constant.Int64Val(schedVar.toFieldNamed("sp").Value)
-	id, _ := constant.Int64Val(gvar.toFieldNamed("goid").Value)
-	gopc, _ := constant.Int64Val(gvar.toFieldNamed("gopc").Value)
-	waitReason := constant.StringVal(gvar.toFieldNamed("waitreason").Value)
-	d := gvar.toFieldNamed("_defer")
-	deferPC := int64(0)
-	fnvar := d.toFieldNamed("fn")
-	if fnvar != nil {
-		fnvalvar := fnvar.toFieldNamed("fn")
-		deferPC, _ = constant.Int64Val(fnvalvar.Value)
-	}
-	status, _ := constant.Int64Val(gvar.toFieldNamed("atomicstatus").Value)
+	schedVar := gvar.fieldVariable("sched")
+	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
+	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
+	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
+	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
+	waitReason := constant.StringVal(gvar.fieldVariable("waitreason").Value)
+	status, _ := constant.Int64Val(gvar.fieldVariable("atomicstatus").Value)
 	f, l, fn := gvar.dbp.goSymTable.PCToLine(uint64(pc))
 	g := &G{
 		ID:         int(id),
@@ -394,15 +391,15 @@ func (gvar *Variable) parseG() (*G, error) {
 		PC:         uint64(pc),
 		SP:         uint64(sp),
 		WaitReason: waitReason,
-		DeferPC:    uint64(deferPC),
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
+		variable:   gvar,
 		dbp:        gvar.dbp,
 	}
 	return g, nil
 }
 
-func (v *Variable) toFieldNamed(name string) *Variable {
+func (v *Variable) loadFieldNamed(name string) *Variable {
 	v, err := v.structMember(name)
 	if err != nil {
 		return nil
@@ -412,6 +409,40 @@ func (v *Variable) toFieldNamed(name string) *Variable {
 		return nil
 	}
 	return v
+}
+
+func (v *Variable) fieldVariable(name string) *Variable {
+	for i := range v.Children {
+		if child := &v.Children[i]; child.Name == name {
+			return child
+		}
+	}
+	return nil
+}
+
+// PC of entry to top-most deferred function.
+func (g *G) DeferPC() uint64 {
+	if g.variable.Unreadable != nil {
+		return 0
+	}
+	d := g.variable.fieldVariable("_defer").maybeDereference()
+	if d.Addr == 0 {
+		return 0
+	}
+	d.loadValue(LoadConfig{false, 1, 64, 0, -1})
+	if d.Unreadable != nil {
+		return 0
+	}
+	fnvar := d.fieldVariable("fn").maybeDereference()
+	if fnvar.Addr == 0 {
+		return 0
+	}
+	fnvar.loadValue(LoadConfig{false, 1, 64, 0, -1})
+	if fnvar.Unreadable != nil {
+		return 0
+	}
+	deferPC, _ := constant.Int64Val(fnvar.fieldVariable("fn").Value)
+	return uint64(deferPC)
 }
 
 // From $GOROOT/src/runtime/traceback.go:597

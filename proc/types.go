@@ -227,10 +227,10 @@ func nameOfRuntimeType(_type *Variable) (typename string, kind int64, err error)
 
 	var tflag int64
 
-	if tflagField := _type.toFieldNamed("tflag"); tflagField != nil && tflagField.Value != nil {
+	if tflagField := _type.loadFieldNamed("tflag"); tflagField != nil && tflagField.Value != nil {
 		tflag, _ = constant.Int64Val(tflagField.Value)
 	}
-	if kindField := _type.toFieldNamed("kind"); kindField != nil && kindField.Value != nil {
+	if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
 		kind, _ = constant.Int64Val(kindField.Value)
 	}
 
@@ -267,7 +267,7 @@ func nameOfRuntimeType(_type *Variable) (typename string, kind int64, err error)
 // to a runtime.slicetype).
 func nameOfNamedRuntimeType(_type *Variable, kind, tflag int64) (typename string, err error) {
 	var strOff int64
-	if strField := _type.toFieldNamed("str"); strField != nil && strField.Value != nil {
+	if strField := _type.loadFieldNamed("str"); strField != nil && strField.Value != nil {
 		strOff, _ = constant.Int64Val(strField.Value)
 	} else {
 		return "", errors.New("could not find str field")
@@ -301,7 +301,7 @@ func nameOfNamedRuntimeType(_type *Variable, kind, tflag int64) (typename string
 	}
 
 	if ut := uncommon(_type, tflag); ut != nil {
-		if pkgPathField := ut.toFieldNamed("pkgpath"); pkgPathField != nil && pkgPathField.Value != nil {
+		if pkgPathField := ut.loadFieldNamed("pkgpath"); pkgPathField != nil && pkgPathField.Value != nil {
 			pkgPathOff, _ := constant.Int64Val(pkgPathField.Value)
 			pkgPath, _, _, err := _type.dbp.resolveNameOff(_type.Addr, uintptr(pkgPathOff))
 			if err != nil {
@@ -324,7 +324,7 @@ func nameOfUnnamedRuntimeType(_type *Variable, kind, tflag int64) (string, error
 	switch reflect.Kind(kind & kindMask) {
 	case reflect.Array:
 		var len int64
-		if lenField := _type.toFieldNamed("len"); lenField != nil && lenField.Value != nil {
+		if lenField := _type.loadFieldNamed("len"); lenField != nil && lenField.Value != nil {
 			len, _ = constant.Int64Val(lenField.Value)
 		}
 		elemname, err := fieldToType(_type, "elem")
@@ -388,10 +388,10 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 	}
 
 	var inCount, outCount int64
-	if inCountField := _type.toFieldNamed("inCount"); inCountField != nil && inCountField.Value != nil {
+	if inCountField := _type.loadFieldNamed("inCount"); inCountField != nil && inCountField.Value != nil {
 		inCount, _ = constant.Int64Val(inCountField.Value)
 	}
-	if outCountField := _type.toFieldNamed("outCount"); outCountField != nil && outCountField.Value != nil {
+	if outCountField := _type.loadFieldNamed("outCount"); outCountField != nil && outCountField.Value != nil {
 		outCount, _ = constant.Int64Val(outCountField.Value)
 		// only the lowest 15 bits of outCount are used, rest are flags
 		outCount = outCount & (1<<15 - 1)
@@ -489,7 +489,7 @@ func nameOfInterfaceRuntimeType(_type *Variable, kind, tflag int64) (string, err
 					return "", err
 				}
 				var tflag int64
-				if tflagField := typ.toFieldNamed("tflag"); tflagField != nil && tflagField.Value != nil {
+				if tflagField := typ.loadFieldNamed("tflag"); tflagField != nil && tflagField.Value != nil {
 					tflag, _ = constant.Int64Val(tflagField.Value)
 				}
 				methodtype, err = nameOfFuncRuntimeType(typ, tflag, false)

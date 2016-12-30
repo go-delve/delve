@@ -215,12 +215,15 @@ func (dbp *Process) next(stepInto bool) error {
 
 		// Set breakpoint on the most recently deferred function (if any)
 		var deferpc uint64 = 0
-		if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.DeferPC != 0 {
-			_, _, deferfn := dbp.goSymTable.PCToLine(dbp.SelectedGoroutine.DeferPC)
-			var err error
-			deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
-			if err != nil {
-				return err
+		if dbp.SelectedGoroutine != nil {
+			deferPCEntry := dbp.SelectedGoroutine.DeferPC()
+			if deferPCEntry != 0 {
+				_, _, deferfn := dbp.goSymTable.PCToLine(deferPCEntry)
+				var err error
+				deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		if deferpc != 0 && deferpc != topframe.Current.PC {

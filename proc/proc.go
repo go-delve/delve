@@ -534,13 +534,16 @@ func (dbp *Process) StepOut() error {
 
 	var deferpc uint64 = 0
 	if filepath.Ext(topframe.Current.File) == ".go" {
-		if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.DeferPC != 0 {
-			_, _, deferfn := dbp.goSymTable.PCToLine(dbp.SelectedGoroutine.DeferPC)
-			deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
-			if err != nil {
-				return err
+		if dbp.SelectedGoroutine != nil {
+			deferPCEntry := dbp.SelectedGoroutine.DeferPC()
+			if deferPCEntry != 0 {
+				_, _, deferfn := dbp.goSymTable.PCToLine(deferPCEntry)
+				deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
+				if err != nil {
+					return err
+				}
+				pcs = append(pcs, deferpc)
 			}
-			pcs = append(pcs, deferpc)
 		}
 	}
 
