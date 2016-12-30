@@ -502,7 +502,6 @@ func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry, cfg LoadCon
 	if err != nil {
 		return nil, err
 	}
-	v.loadValue(cfg)
 	return v, nil
 }
 
@@ -570,6 +569,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		if err != nil {
 			continue
 		}
+		val.loadValue(cfg)
 		vars = append(vars, val)
 	}
 
@@ -1574,6 +1574,43 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variab
 
 			vars = append(vars, val)
 		}
+	}
+	if len(vars) <= 0 {
+		return vars, nil
+	}
+
+	// prefetch the whole chunk of memory relative to these variables
+
+	minaddr := vars[0].Addr
+	var maxaddr uintptr
+	var size int64
+
+	for _, v := range vars {
+		if v.Addr < minaddr {
+			minaddr = v.Addr
+		}
+
+		size += v.DwarfType.Size()
+
+		if end := v.Addr + uintptr(v.DwarfType.Size()); end > maxaddr {
+			maxaddr = end
+		}
+	}
+
+	// check that we aren't trying to cache too much memory: we shouldn't
+	// exceed the real size of the variables by more than the number of
+	// variables times the size of an architecture pointer (to allow for memory
+	// alignment).
+	if int64(maxaddr-minaddr)-size <= int64(len(vars))*int64(scope.PtrSize()) {
+		mem := cacheMemory(vars[0].mem, minaddr, int(maxaddr-minaddr))
+
+		for _, v := range vars {
+			v.mem = mem
+		}
+	}
+
+	for _, v := range vars {
+		v.loadValue(cfg)
 	}
 
 	return vars, nil
