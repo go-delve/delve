@@ -133,7 +133,7 @@ func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 			continue
 		}
 		if len(oldBp.File) > 0 {
-			oldBp.Addr, err = d.process.FindFileLocation(oldBp.File, oldBp.Line)
+			oldBp.Addr, err = p.FindFileLocation(oldBp.File, oldBp.Line)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{oldBp, err})
 				continue
