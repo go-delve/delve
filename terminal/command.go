@@ -574,7 +574,7 @@ func restart(t *Term, ctx callContext, args string) error {
 	}
 	fmt.Println("Process restarted with PID", t.client.ProcessPid())
 	for i := range discarded {
-		fmt.Println("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
+		fmt.Printf("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
 	}
 	return nil
 }
