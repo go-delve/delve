@@ -117,13 +117,30 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 
 type instrseq []x86asm.Op
 
-var windowsPrologue = instrseq{x86asm.MOV, x86asm.MOV, x86asm.LEA, x86asm.CMP, x86asm.JBE}
-var windowsPrologue2 = instrseq{x86asm.MOV, x86asm.MOV, x86asm.CMP, x86asm.JBE}
-var windowsPrologue3 = instrseq{x86asm.MOV, x86asm.MOV, x86asm.MOV, x86asm.CMP, x86asm.JE}
-var unixPrologue = instrseq{x86asm.MOV, x86asm.LEA, x86asm.CMP, x86asm.JBE}
-var unixPrologue2 = instrseq{x86asm.MOV, x86asm.CMP, x86asm.JBE}
-var unixPrologue3 = instrseq{x86asm.MOV, x86asm.MOV, x86asm.CMP, x86asm.JE}
-var prologues = []instrseq{windowsPrologue, windowsPrologue2, windowsPrologue3, unixPrologue, unixPrologue2, unixPrologue3}
+// Possible stacksplit prologues are inserted by stacksplit in
+// $GOROOT/src/cmd/internal/obj/x86/obj6.go.
+// The stacksplit prologue will always begin with loading curg in CX, this
+// instruction is added by load_g_cx in the same file and is either 1 or 2
+// MOVs.
+var prologues []instrseq
+
+func init() {
+	var tinyStacksplit = instrseq{x86asm.CMP, x86asm.JBE}
+	var smallStacksplit = instrseq{x86asm.LEA, x86asm.CMP, x86asm.JBE}
+	var bigStacksplit = instrseq{x86asm.MOV, x86asm.CMP, x86asm.JE, x86asm.LEA, x86asm.SUB, x86asm.CMP, x86asm.JBE}
+	var unixGetG = instrseq{x86asm.MOV}
+	var windowsGetG = instrseq{x86asm.MOV, x86asm.MOV}
+
+	prologues = make([]instrseq, 0, 2*3)
+	for _, getG := range []instrseq{unixGetG, windowsGetG} {
+		for _, stacksplit := range []instrseq{tinyStacksplit, smallStacksplit, bigStacksplit} {
+			prologue := make(instrseq, 0, len(getG)+len(stacksplit))
+			prologue = append(prologue, getG...)
+			prologue = append(prologue, stacksplit...)
+			prologues = append(prologues, prologue)
+		}
+	}
+}
 
 // FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
 // If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry
@@ -156,8 +173,9 @@ func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64,
 }
 
 func checkPrologue(s []AsmInstruction, prologuePattern instrseq) bool {
+	line := s[0].Loc.Line
 	for i, op := range prologuePattern {
-		if s[i].Inst.Op != op {
+		if s[i].Inst.Op != op || s[i].Loc.Line != line {
 			return false
 		}
 	}
