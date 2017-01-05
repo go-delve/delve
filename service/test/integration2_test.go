@@ -1193,3 +1193,26 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		}
 	})
 }
+
+func TestClientServer_RestartBreakpointPosition(t *testing.T) {
+	withTestClient2("locationsprog2", t, func(c service.Client) {
+		bpBefore, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.afunction", Line: -1, Tracepoint: true, Name: "this"})
+		addrBefore := bpBefore.Addr
+		t.Logf("%x\n", bpBefore.Addr)
+		assertNoError(err, t, "CreateBreakpoint")
+		_, err = c.Halt()
+		assertNoError(err, t, "Halt")
+		_, err = c.Restart()
+		assertNoError(err, t, "Restart")
+		bps, err := c.ListBreakpoints()
+		assertNoError(err, t, "ListBreakpoints")
+		for _, bp := range bps {
+			if bp.Name == bpBefore.Name {
+				if bp.Addr != addrBefore {
+					t.Fatalf("Address changed after restart: %x %x", bp.Addr, addrBefore)
+				}
+				t.Logf("%x %x\n", bp.Addr, addrBefore)
+			}
+		}
+	})
+}
