@@ -316,5 +316,5 @@ func (regs Registers) String() string {
 
 type DiscardedBreakpoint struct {
 	Breakpoint *Breakpoint
-	Reason error
+	Reason     string
 }
