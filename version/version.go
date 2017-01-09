@@ -13,7 +13,7 @@ type Version struct {
 
 var (
 	// DelveVersion is the current version of Delve.
-	DelveVersion = Version{Major: "0", Minor: "11", Patch: "0", Metadata: "alpha"}
+	DelveVersion = Version{Major: "0", Minor: "12", Patch: "0", Metadata: ""}
 )
 
 func (v Version) String() string {
