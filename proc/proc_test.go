@@ -2357,3 +2357,25 @@ func TestNegativeIntEvaluation(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue683(t *testing.T) {
+	// Step panics when source file can not be found
+	withTestProcess("issue683", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.main")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(p.Continue(), t, "First Continue()")
+		goterror := false
+		for i := 0; i < 20; i++ {
+			// eventually an error about the source file not being found will be
+			// returned, the important thing is that we shouldn't panic
+			err := p.Step()
+			if err != nil {
+				goterror = true
+				break
+			}
+		}
+		if !goterror {
+			t.Fatal("expeceted an error we didn't get")
+		}
+	})
+}
