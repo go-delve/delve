@@ -5,6 +5,42 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [0.12.0-alpha] 2017-01-09
+
+### Added
+
+- Added support for OSX 10.12.1 kernel update (@aarzilli)
+- Added flag to set working directory (#650) (@rustyrobot)
+- Added stepout command (@aarzilli)
+- Implemented "attach" on Windows (@alexbrainman)
+- Implemented next / step / step-instruction on parked goroutines (@aarzilli)
+- Added support for App Engine (@dbenque)
+- Go 1.7 support
+- Added HomeBrew formula for installing on OSX.
+- Delve now will break on unrecovered panics. (@aarzilli)
+- Headless server can serve multiple clients.
+- Conditional breakpoints have been implemented. (@aarzilli)
+- Disassemble command has been implemented. (@aarzilli)
+- Much improved documentation (still a ways to go).
+
+### Changed
+
+- Pretty printing: type of elements of interface slices are printed.
+- Improvements in internal operation of "step" command.
+- Allow quouting in build flags argument.
+- "h" as alias for "help" command. (@stmuk)
+
+### Fixed
+
+- Improved prologue detection for large stack frames (#690) (@aarzilli)
+- Fixed bugs involving stale executables during restart (#689) (@aarzilli)
+- Various improvements to variable evaluation code (@aarzilli)
+- Fix bug reading process comm name (@ggndnn)
+- Add better detection for launching non executable files. (@aarzilli)
+- Fix halt bug during tracing. (@aarzilli)
+- Do not use escape codes on Windows when unsupported (@alexbrainman)
+- Fixed path lookup logic on Windows. (@lukehoban)
+
 ## [0.11.0-alpha] 2016-01-26
 
 ### Added
