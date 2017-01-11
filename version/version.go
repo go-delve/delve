@@ -17,5 +17,9 @@ var (
 )
 
 func (v Version) String() string {
-	return fmt.Sprintf("Version: %s.%s.%s-%s\nBuild: %s", v.Major, v.Minor, v.Patch, v.Metadata, v.Build)
+	ver := fmt.Sprintf("Version: %s.%s.%s", v.Major, v.Minor, v.Patch)
+	if v.Metadata != "" {
+		ver += "-" + v.Metadata
+	}
+	return fmt.Sprintf("%s\nBuild: %s", ver, v.Build)
 }
