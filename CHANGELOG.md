@@ -5,7 +5,13 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
-## [0.12.0-alpha] 2017-01-09
+## [0.12.1] 2017-01-11
+
+### Fixed
+
+- Fixed version output format.
+
+## [0.12.0] 2017-01-11
 
 ### Added
 
