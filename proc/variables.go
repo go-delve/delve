@@ -1237,8 +1237,17 @@ func (v *Variable) mapIterator() *mapIterator {
 		}
 	}
 
+	if it.buckets.Kind != reflect.Struct || it.oldbuckets.Kind != reflect.Struct {
+		v.Unreadable = mapBucketsNotStructErr
+		return nil
+	}
+
 	return it
 }
+
+var mapBucketContentsNotArrayErr = errors.New("malformed map type: keys, values or tophash of a bucket is not an array")
+var mapBucketContentsInconsistentLenErr = errors.New("malformed map type: inconsistent array length in bucket")
+var mapBucketsNotStructErr = errors.New("malformed map type: buckets, oldbuckets or overflow field not a struct")
 
 func (it *mapIterator) nextBucket() bool {
 	if it.overflow != nil && it.overflow.Addr > 0 {
@@ -1328,12 +1337,17 @@ func (it *mapIterator) nextBucket() bool {
 	}
 
 	if it.tophashes.Kind != reflect.Array || it.keys.Kind != reflect.Array || it.values.Kind != reflect.Array {
-		it.v.Unreadable = fmt.Errorf("malformed map type: keys, values or tophash of a bucket is not an array")
+		it.v.Unreadable = mapBucketContentsNotArrayErr
 		return false
 	}
 
 	if it.tophashes.Len != it.keys.Len || it.tophashes.Len != it.values.Len {
-		it.v.Unreadable = fmt.Errorf("malformed map type: inconsistent array length in bucket")
+		it.v.Unreadable = mapBucketContentsInconsistentLenErr
+		return false
+	}
+
+	if it.overflow.Kind != reflect.Struct {
+		it.v.Unreadable = mapBucketsNotStructErr
 		return false
 	}
 
