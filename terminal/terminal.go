@@ -14,6 +14,7 @@ import (
 
 	"github.com/derekparker/delve/config"
 	"github.com/derekparker/delve/service"
+	"github.com/derekparker/delve/service/api"
 )
 
 const (
@@ -115,6 +116,15 @@ func (t *Term) Run() (int, error) {
 		err := t.cmds.executeFile(t, t.InitFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error executing init file: %s\n", err)
+		}
+	}
+
+	if !t.client.AttachedToExistingProcess() {
+		_, err := t.client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
+		if err != nil {
+			fmt.Printf("could not create breakpoint on main.main: %v\n", err)
+		} else {
+			cont(t, callContext{}, "")
 		}
 	}
 
