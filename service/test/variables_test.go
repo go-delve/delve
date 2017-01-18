@@ -448,6 +448,11 @@ func TestEvalExpression(t *testing.T) {
 		{"str1[0:12]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 		{"str1[5:3]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 
+		// NaN and Inf floats
+		{"pinf", false, "+Inf", "+Inf", "float64", nil},
+		{"ninf", false, "-Inf", "-Inf", "float64", nil},
+		{"nan", false, "NaN", "NaN", "float64", nil},
+
 		// pointers
 		{"*p2", false, "5", "5", "int", nil},
 		{"p2", true, "*5", "(*int)(0x…", "*int", nil},

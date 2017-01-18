@@ -8,6 +8,7 @@ import (
 	"go/constant"
 	"go/parser"
 	"go/token"
+	"math"
 	"reflect"
 	"strings"
 	"unsafe"
@@ -29,6 +30,15 @@ const (
 	hashMinTopHash   = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated
 )
 
+type FloatSpecial uint8
+
+const (
+	FloatIsNormal FloatSpecial = iota
+	FloatIsNaN
+	FloatIsPosInf
+	FloatIsNegInf
+)
+
 // Variable represents a variable. It contains the address, name,
 // type and other information parsed from both the Dwarf information
 // and the memory of the debugged process.
@@ -43,7 +53,8 @@ type Variable struct {
 	mem       memoryReadWriter
 	dbp       *Process
 
-	Value constant.Value
+	Value        constant.Value
+	FloatSpecial FloatSpecial
 
 	Len int64
 	Cap int64
@@ -808,6 +819,14 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		var val float64
 		val, v.Unreadable = v.readFloatRaw(v.RealType.(*dwarf.FloatType).ByteSize)
 		v.Value = constant.MakeFloat64(val)
+		switch {
+		case math.IsInf(val, +1):
+			v.FloatSpecial = FloatIsPosInf
+		case math.IsInf(val, -1):
+			v.FloatSpecial = FloatIsNegInf
+		case math.IsNaN(val):
+			v.FloatSpecial = FloatIsNaN
+		}
 	case reflect.Func:
 		v.readFunctionPtr()
 	default:

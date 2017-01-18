@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/constant"
@@ -14,6 +15,8 @@ import (
 	"github.com/derekparker/delve/dwarf/reader"
 	"golang.org/x/debug/dwarf"
 )
+
+var OperationOnSpecialFloatError = errors.New("operations on non-finite floats not implemented")
 
 // EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
@@ -688,6 +691,9 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
 	}
+	if xv.FloatSpecial != 0 {
+		return nil, OperationOnSpecialFloatError
+	}
 	if xv.Value == nil {
 		return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
 	}
@@ -792,6 +798,10 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 
 	if yv.Unreadable != nil {
 		return nil, yv.Unreadable
+	}
+
+	if xv.FloatSpecial != 0 || yv.FloatSpecial != 0 {
+		return nil, OperationOnSpecialFloatError
 	}
 
 	typ, err := negotiateType(node.Op, xv, yv)
