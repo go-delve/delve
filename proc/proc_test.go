@@ -2402,3 +2402,18 @@ func BenchmarkTrace(b *testing.B) {
 		b.StopTimer()
 	})
 }
+
+func TestNextInDeferReturn(t *testing.T) {
+	// runtime.deferreturn updates the G struct in a way that for one
+	// instruction leaves the curg._defer field non-nil but with curg._defer.fn
+	// field being nil.
+	// We need to deal with this without panicing.
+	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "runtime.deferreturn")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(p.Continue(), t, "First Continue()")
+		for i := 0; i < 20; i++ {
+			assertNoError(p.Next(), t, fmt.Sprintf("Next() %d", i))
+		}
+	})
+}
