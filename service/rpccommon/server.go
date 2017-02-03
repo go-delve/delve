@@ -403,7 +403,7 @@ func (err *internalError) Error() string {
 	var out bytes.Buffer
 	fmt.Fprintf(&out, "Internal debugger error: %v\n", err.Err)
 	for _, frame := range err.Stack {
-		fmt.Fprintf(&out, "%s (%#x)\n\t%s%d\n", frame.Func, frame.Pc, frame.File, frame.Line)
+		fmt.Fprintf(&out, "%s (%#x)\n\t%s:%d\n", frame.Func, frame.Pc, frame.File, frame.Line)
 	}
 	return out.String()
 }
