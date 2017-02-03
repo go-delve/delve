@@ -122,6 +122,8 @@ type G struct {
 	GoPC       uint64 // PC of 'go' statement that created this goroutine.
 	WaitReason string // Reason for goroutine being parked.
 	Status     uint64
+	stkbarVar  *Variable // stkbar field of g struct
+	stkbarPos  int       // stkbarPos field of g struct
 
 	// Information on goroutine location
 	CurrentLoc Location
@@ -394,6 +396,8 @@ func (gvar *Variable) parseG() (*G, error) {
 	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
 	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
 	waitReason := constant.StringVal(gvar.fieldVariable("waitreason").Value)
+	stkbarVar, _ := gvar.structMember("stkbar")
+	stkbarPos, _ := constant.Int64Val(gvar.fieldVariable("stkbarPos").Value)
 	status, _ := constant.Int64Val(gvar.fieldVariable("atomicstatus").Value)
 	f, l, fn := gvar.dbp.goSymTable.PCToLine(uint64(pc))
 	g := &G{
@@ -405,6 +409,8 @@ func (gvar *Variable) parseG() (*G, error) {
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
 		variable:   gvar,
+		stkbarVar:  stkbarVar,
+		stkbarPos:  int(stkbarPos),
 		dbp:        gvar.dbp,
 	}
 	return g, nil
@@ -488,6 +494,28 @@ func (g *G) UserCurrent() Location {
 func (g *G) Go() Location {
 	f, l, fn := g.dbp.goSymTable.PCToLine(g.GoPC)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
+}
+
+// Returns the list of saved return addresses used by stack barriers
+func (g *G) stkbar() ([]savedLR, error) {
+	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3})
+	if g.stkbarVar.Unreadable != nil {
+		return nil, fmt.Errorf("unreadable stkbar: %v\n", g.stkbarVar.Unreadable)
+	}
+	r := make([]savedLR, len(g.stkbarVar.Children))
+	for i, child := range g.stkbarVar.Children {
+		for _, field := range child.Children {
+			switch field.Name {
+			case "savedLRPtr":
+				ptr, _ := constant.Int64Val(field.Value)
+				r[i].ptr = uint64(ptr)
+			case "savedLRVal":
+				val, _ := constant.Int64Val(field.Value)
+				r[i].val = uint64(val)
+			}
+		}
+	}
+	return r, nil
 }
 
 // EvalVariable returns the value of the given expression (backwards compatibility).
