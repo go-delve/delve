@@ -2385,3 +2385,20 @@ func TestIssue664(t *testing.T) {
 		}
 	})
 }
+
+// Benchmarks (*Processs).Continue + (*Scope).FunctionArguments
+func BenchmarkTrace(b *testing.B) {
+	withTestProcess("traceperf", b, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.PerfCheck")
+		assertNoError(err, b, "setFunctionBreakpoint()")
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			assertNoError(p.Continue(), b, "Continue()")
+			s, err := p.CurrentThread.Scope()
+			assertNoError(err, b, "Scope()")
+			_, err = s.FunctionArguments(LoadConfig{false, 0, 64, 0, 3})
+			assertNoError(err, b, "FunctionArguments()")
+		}
+		b.StopTimer()
+	})
+}

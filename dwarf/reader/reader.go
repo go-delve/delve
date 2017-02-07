@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"golang.org/x/debug/dwarf"
 	"github.com/derekparker/delve/dwarf/op"
+	"golang.org/x/debug/dwarf"
 )
 
 type Reader struct {

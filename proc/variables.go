@@ -126,13 +126,11 @@ type G struct {
 	// Information on goroutine location
 	CurrentLoc Location
 
-	// PC of entry to top-most deferred function.
-	DeferPC uint64
-
 	// Thread that this goroutine is currently allocated to
 	thread *Thread
 
-	dbp *Process
+	variable *Variable
+	dbp      *Process
 }
 
 // EvalScope is the scope for variable evaluation. Contains the thread,
@@ -380,24 +378,23 @@ func (gvar *Variable) parseG() (*G, error) {
 		}
 		return nil, NoGError{tid: id}
 	}
-	gvar.loadValue(loadFullValue)
+	for {
+		if _, isptr := gvar.RealType.(*dwarf.PtrType); !isptr {
+			break
+		}
+		gvar = gvar.maybeDereference()
+	}
+	gvar.loadValue(LoadConfig{false, 1, 64, 0, -1})
 	if gvar.Unreadable != nil {
 		return nil, gvar.Unreadable
 	}
-	schedVar := gvar.toFieldNamed("sched")
-	pc, _ := constant.Int64Val(schedVar.toFieldNamed("pc").Value)
-	sp, _ := constant.Int64Val(schedVar.toFieldNamed("sp").Value)
-	id, _ := constant.Int64Val(gvar.toFieldNamed("goid").Value)
-	gopc, _ := constant.Int64Val(gvar.toFieldNamed("gopc").Value)
-	waitReason := constant.StringVal(gvar.toFieldNamed("waitreason").Value)
-	d := gvar.toFieldNamed("_defer")
-	deferPC := int64(0)
-	fnvar := d.toFieldNamed("fn")
-	if fnvar != nil {
-		fnvalvar := fnvar.toFieldNamed("fn")
-		deferPC, _ = constant.Int64Val(fnvalvar.Value)
-	}
-	status, _ := constant.Int64Val(gvar.toFieldNamed("atomicstatus").Value)
+	schedVar := gvar.fieldVariable("sched")
+	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
+	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
+	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
+	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
+	waitReason := constant.StringVal(gvar.fieldVariable("waitreason").Value)
+	status, _ := constant.Int64Val(gvar.fieldVariable("atomicstatus").Value)
 	f, l, fn := gvar.dbp.goSymTable.PCToLine(uint64(pc))
 	g := &G{
 		ID:         int(id),
@@ -405,15 +402,15 @@ func (gvar *Variable) parseG() (*G, error) {
 		PC:         uint64(pc),
 		SP:         uint64(sp),
 		WaitReason: waitReason,
-		DeferPC:    uint64(deferPC),
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
+		variable:   gvar,
 		dbp:        gvar.dbp,
 	}
 	return g, nil
 }
 
-func (v *Variable) toFieldNamed(name string) *Variable {
+func (v *Variable) loadFieldNamed(name string) *Variable {
 	v, err := v.structMember(name)
 	if err != nil {
 		return nil
@@ -423,6 +420,40 @@ func (v *Variable) toFieldNamed(name string) *Variable {
 		return nil
 	}
 	return v
+}
+
+func (v *Variable) fieldVariable(name string) *Variable {
+	for i := range v.Children {
+		if child := &v.Children[i]; child.Name == name {
+			return child
+		}
+	}
+	return nil
+}
+
+// PC of entry to top-most deferred function.
+func (g *G) DeferPC() uint64 {
+	if g.variable.Unreadable != nil {
+		return 0
+	}
+	d := g.variable.fieldVariable("_defer").maybeDereference()
+	if d.Addr == 0 {
+		return 0
+	}
+	d.loadValue(LoadConfig{false, 1, 64, 0, -1})
+	if d.Unreadable != nil {
+		return 0
+	}
+	fnvar := d.fieldVariable("fn").maybeDereference()
+	if fnvar.Addr == 0 {
+		return 0
+	}
+	fnvar.loadValue(LoadConfig{false, 1, 64, 0, -1})
+	if fnvar.Unreadable != nil {
+		return 0
+	}
+	deferPC, _ := constant.Int64Val(fnvar.fieldVariable("fn").Value)
+	return uint64(deferPC)
 }
 
 // From $GOROOT/src/runtime/traceback.go:597
@@ -513,21 +544,24 @@ func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry, cfg LoadCon
 	if err != nil {
 		return nil, err
 	}
-	v.loadValue(cfg)
 	return v, nil
 }
 
 func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
 	reader := scope.DwarfReader()
-
-	_, err := reader.SeekToFunction(scope.PC)
+	off, err := scope.Thread.dbp.findFunctionDebugInfo(scope.PC)
 	if err != nil {
 		return nil, err
 	}
+	reader.Seek(off)
+	reader.Next()
 
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
 			return nil, err
+		}
+		if entry.Tag == 0 {
+			break
 		}
 
 		n, ok := entry.Val(dwarf.AttrName).(string)
@@ -577,6 +611,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		if err != nil {
 			continue
 		}
+		val.loadValue(cfg)
 		vars = append(vars, val)
 	}
 
@@ -1564,16 +1599,20 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 // Fetches all variables of a specific type in the current function scope
 func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variable, error) {
 	reader := scope.DwarfReader()
-
-	_, err := reader.SeekToFunction(scope.PC)
+	off, err := scope.Thread.dbp.findFunctionDebugInfo(scope.PC)
 	if err != nil {
 		return nil, err
 	}
+	reader.Seek(off)
+	reader.Next()
 
 	var vars []*Variable
 	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
 		if err != nil {
 			return nil, err
+		}
+		if entry.Tag == 0 {
+			break
 		}
 
 		if entry.Tag == tag {
@@ -1585,6 +1624,43 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variab
 
 			vars = append(vars, val)
 		}
+	}
+	if len(vars) <= 0 {
+		return vars, nil
+	}
+
+	// prefetch the whole chunk of memory relative to these variables
+
+	minaddr := vars[0].Addr
+	var maxaddr uintptr
+	var size int64
+
+	for _, v := range vars {
+		if v.Addr < minaddr {
+			minaddr = v.Addr
+		}
+
+		size += v.DwarfType.Size()
+
+		if end := v.Addr + uintptr(v.DwarfType.Size()); end > maxaddr {
+			maxaddr = end
+		}
+	}
+
+	// check that we aren't trying to cache too much memory: we shouldn't
+	// exceed the real size of the variables by more than the number of
+	// variables times the size of an architecture pointer (to allow for memory
+	// alignment).
+	if int64(maxaddr-minaddr)-size <= int64(len(vars))*int64(scope.PtrSize()) {
+		mem := cacheMemory(vars[0].mem, minaddr, int(maxaddr-minaddr))
+
+		for _, v := range vars {
+			v.mem = mem
+		}
+	}
+
+	for _, v := range vars {
+		v.loadValue(cfg)
 	}
 
 	return vars, nil
