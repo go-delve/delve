@@ -1216,3 +1216,26 @@ func TestClientServer_RestartBreakpointPosition(t *testing.T) {
 		}
 	})
 }
+
+func TestClientServer_SelectedGoroutineLoc(t *testing.T) {
+	// CurrentLocation of SelectedGoroutine should reflect what's happening on
+	// the thread running the goroutine, not the position the goroutine was in
+	// the last time it was parked.
+	withTestClient2("testprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -11})
+		assertNoError(err, t, "CreateBreakpoint")
+
+		s := <-c.Continue()
+		assertNoError(s.Err, t, "Continue")
+
+		gloc := s.SelectedGoroutine.CurrentLoc
+
+		if gloc.PC != s.CurrentThread.PC {
+			t.Errorf("mismatched PC %#x %#x", gloc.PC, s.CurrentThread.PC)
+		}
+
+		if gloc.File != s.CurrentThread.File || gloc.Line != s.CurrentThread.Line {
+			t.Errorf("mismatched file:lineno: %s:%d %s:%d", gloc.File, gloc.Line, s.CurrentThread.File, s.CurrentThread.Line)
+		}
+	})
+}

@@ -396,6 +396,9 @@ func (thread *Thread) GetG() (g *G, err error) {
 	g, err = gaddr.parseG()
 	if err == nil {
 		g.thread = thread
+		if loc, err := thread.Location(); err == nil {
+			g.CurrentLoc = *loc
+		}
 	}
 	return
 }
