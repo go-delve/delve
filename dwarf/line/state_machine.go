@@ -27,6 +27,11 @@ type StateMachine struct {
 	endSeq          bool
 	lastWasStandard bool
 	lastDelta       int
+	// valid is true if the current value of the state machine is the address of
+	// an instruction (using the terminology used by DWARF spec the current
+	// value of the state machine should be appended to the matrix representing
+	// the compilation unit)
+	valid bool
 }
 
 type opcodefn func(*StateMachine, *bytes.Buffer)
@@ -91,7 +96,9 @@ func (dbl *DebugLines) AllPCsForFileLine(f string, l int) (pcs []uint64) {
 		}
 		if sm.line == l && sm.file == f && sm.address != lastAddr {
 			foundFile = true
-			pcs = append(pcs, sm.address)
+			if sm.valid {
+				pcs = append(pcs, sm.address)
+			}
 			line := sm.line
 			// Keep going until we're on a different line. We only care about
 			// when a line comes back around (i.e. for loop) so get to next line,
@@ -123,6 +130,9 @@ func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) ([]uint
 
 	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
 		findAndExecOpcode(sm, buf, b)
+		if !sm.valid {
+			continue
+		}
 		if sm.address > end {
 			break
 		}
@@ -157,9 +167,10 @@ func execSpecialOpcode(sm *StateMachine, instr byte) {
 
 	sm.lastDelta = int(sm.dbl.Prologue.LineBase + int8(decoded%sm.dbl.Prologue.LineRange))
 	sm.line += sm.lastDelta
-	sm.address += uint64(decoded / sm.dbl.Prologue.LineRange)
+	sm.address += uint64(decoded/sm.dbl.Prologue.LineRange) * uint64(sm.dbl.Prologue.MinInstrLength)
 	sm.basicBlock = false
 	sm.lastWasStandard = false
+	sm.valid = true
 }
 
 func execExtendedOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
@@ -170,6 +181,7 @@ func execExtendedOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
 		panic(fmt.Sprintf("Encountered unknown extended opcode %#v\n", b))
 	}
 	sm.lastWasStandard = false
+	sm.valid = false
 
 	fn(sm, buf)
 }
@@ -180,12 +192,14 @@ func execStandardOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
 		panic(fmt.Sprintf("Encountered unknown standard opcode %#v\n", instr))
 	}
 	sm.lastWasStandard = true
+	sm.valid = false
 
 	fn(sm, buf)
 }
 
 func copyfn(sm *StateMachine, buf *bytes.Buffer) {
 	sm.basicBlock = false
+	sm.valid = true
 }
 
 func advancepc(sm *StateMachine, buf *bytes.Buffer) {
@@ -218,7 +232,7 @@ func setbasicblock(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func constaddpc(sm *StateMachine, buf *bytes.Buffer) {
-	sm.address += (255 / uint64(sm.dbl.Prologue.LineRange))
+	sm.address += uint64((255-sm.dbl.Prologue.OpcodeBase)/sm.dbl.Prologue.LineRange) * uint64(sm.dbl.Prologue.MinInstrLength)
 }
 
 func fixedadvancepc(sm *StateMachine, buf *bytes.Buffer) {
@@ -230,6 +244,7 @@ func fixedadvancepc(sm *StateMachine, buf *bytes.Buffer) {
 
 func endsequence(sm *StateMachine, buf *bytes.Buffer) {
 	sm.endSeq = true
+	sm.valid = true
 }
 
 func setaddress(sm *StateMachine, buf *bytes.Buffer) {

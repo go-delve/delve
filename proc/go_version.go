@@ -16,6 +16,10 @@ type GoVersion struct {
 	RC    int
 }
 
+var (
+	GoVer18Beta = GoVersion{1, 8, -1, 0, 0}
+)
+
 func ParseVersionString(ver string) (GoVersion, bool) {
 	var r GoVersion
 	var err1, err2, err3 error

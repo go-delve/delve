@@ -2051,8 +2051,7 @@ func TestIssue561(t *testing.T) {
 	// Step fails to make progress when PC is at a CALL instruction
 	// where a breakpoint is also set.
 	withTestProcess("issue561", t, func(p *Process, fixture protest.Fixture) {
-		_, err := setFunctionBreakpoint(p, "main.main")
-		assertNoError(err, t, "setFunctionBreakpoint()")
+		setFileBreakpoint(p, t, fixture, 10)
 		assertNoError(p.Continue(), t, "Continue()")
 		assertNoError(p.Step(), t, "Step()")
 		_, ln := currentLineNumber(p, t)
@@ -2364,18 +2363,25 @@ func TestIssue683(t *testing.T) {
 		_, err := setFunctionBreakpoint(p, "main.main")
 		assertNoError(err, t, "setFunctionBreakpoint()")
 		assertNoError(p.Continue(), t, "First Continue()")
-		goterror := false
 		for i := 0; i < 20; i++ {
 			// eventually an error about the source file not being found will be
 			// returned, the important thing is that we shouldn't panic
 			err := p.Step()
 			if err != nil {
-				goterror = true
 				break
 			}
 		}
-		if !goterror {
-			t.Fatal("expeceted an error we didn't get")
+	})
+}
+
+func TestIssue664(t *testing.T) {
+	withTestProcess("issue664", t, func(p *Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 4)
+		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Next(), t, "Next()")
+		f, ln := currentLineNumber(p, t)
+		if ln != 5 {
+			t.Fatalf("Did not continue to line 5: %s:%d", f, ln)
 		}
 	})
 }

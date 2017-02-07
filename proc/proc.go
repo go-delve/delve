@@ -359,9 +359,17 @@ func (dbp *Process) Continue() error {
 		case dbp.CurrentThread.CurrentBreakpoint == nil:
 			// runtime.Breakpoint or manual stop
 			if dbp.CurrentThread.onRuntimeBreakpoint() {
-				for i := 0; i < 2; i++ {
+				// Single-step current thread until we exit runtime.breakpoint and
+				// runtime.Breakpoint.
+				// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
+				// to the compiler requires 4 steps.
+				for {
 					if err = dbp.CurrentThread.StepInstruction(); err != nil {
 						return err
+					}
+					loc, err := dbp.CurrentThread.Location()
+					if err != nil || loc.Fn == nil || (loc.Fn.Name != "runtime.breakpoint" && loc.Fn.Name != "runtime.Breakpoint") {
+						break
 					}
 				}
 			}
