@@ -87,7 +87,9 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 		}
 		data := v.Children[0]
 		if data.Kind == reflect.Ptr {
-			if data.Children[0].Addr == 0 {
+			if len(data.Children) == 0 {
+				fmt.Fprintf(buf, "...")
+			} else if data.Children[0].Addr == 0 {
 				fmt.Fprintf(buf, "nil")
 			} else if data.Children[0].OnlyAddr {
 				fmt.Fprintf(buf, "0x%x", v.Children[0].Addr)

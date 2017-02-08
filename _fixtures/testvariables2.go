@@ -212,6 +212,14 @@ func main() {
 	ninf := math.Inf(-1)
 	nan := math.NaN()
 
+	var iface6 interface{}
+	var ptrinf *interface{}
+	iface6 = &ptrinf
+	ptrinf = &iface6
+
+	sliceinf := make([]interface{}, 1)
+	sliceinf[0] = sliceinf
+
 	var amb1 = 1
 	runtime.Breakpoint()
 	for amb1 := 0; amb1 < 10; amb1++ {

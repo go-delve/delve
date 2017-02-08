@@ -1440,14 +1440,17 @@ func TestIssue305(t *testing.T) {
 	})
 }
 
-func TestIssue341(t *testing.T) {
-	// pointer loop through map entries
+func TestPointerLoops(t *testing.T) {
+	// Pointer loops through map entries, pointers and slices
+	// Regression test for issue #341
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
-		t.Logf("requesting mapinf")
-		mapinf, err := evalVariable(p, "mapinf")
-		assertNoError(err, t, "EvalVariable()")
-		t.Logf("mapinf: %v\n", mapinf)
+		for _, expr := range []string{"mapinf", "ptrinf", "sliceinf"} {
+			t.Logf("requesting %s", expr)
+			v, err := evalVariable(p, expr)
+			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", expr))
+			t.Logf("%s: %v\n", expr, v)
+		}
 	})
 }
 
