@@ -2402,3 +2402,111 @@ func BenchmarkTrace(b *testing.B) {
 		b.StopTimer()
 	})
 }
+
+func TestNextInDeferReturn(t *testing.T) {
+	// runtime.deferreturn updates the G struct in a way that for one
+	// instruction leaves the curg._defer field non-nil but with curg._defer.fn
+	// field being nil.
+	// We need to deal with this without panicing.
+	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "runtime.deferreturn")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(p.Continue(), t, "First Continue()")
+		for i := 0; i < 20; i++ {
+			assertNoError(p.Next(), t, fmt.Sprintf("Next() %d", i))
+		}
+	})
+}
+
+func getg(goid int, gs []*G) *G {
+	for _, g := range gs {
+		if g.ID == goid {
+			return g
+		}
+	}
+	return nil
+}
+
+func TestStacktraceWithBarriers(t *testing.T) {
+	// Go's Garbage Collector will insert stack barriers into stacks.
+	// This stack barrier is inserted by overwriting the return address for the
+	// stack frame with the address of runtime.stackBarrier.
+	// The original return address is saved into the stkbar slice inside the G
+	// struct.
+	withTestProcess("binarytrees", t, func(p *Process, fixture protest.Fixture) {
+		// We want to get a user goroutine with a stack barrier, to get that we execute the program until runtime.gcInstallStackBarrier is executed AND the goroutine it was executed onto contains a call to main.bottomUpTree
+		_, err := setFunctionBreakpoint(p, "runtime.gcInstallStackBarrier")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		stackBarrierGoids := []int{}
+		for len(stackBarrierGoids) == 0 {
+			assertNoError(p.Continue(), t, "Continue()")
+			gs, err := p.GoroutinesInfo()
+			assertNoError(err, t, "GoroutinesInfo()")
+			for _, th := range p.Threads {
+				if th.CurrentBreakpoint == nil {
+					continue
+				}
+
+				goidVar, err := evalVariable(p, "gp.goid")
+				assertNoError(err, t, "evalVariable")
+				goid, _ := constant.Int64Val(goidVar.Value)
+
+				if g := getg(int(goid), gs); g != nil {
+					stack, err := g.Stacktrace(50)
+					assertNoError(err, t, fmt.Sprintf("Stacktrace(goroutine = %d)", goid))
+					for _, frame := range stack {
+						if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.bottomUpTree" {
+							stackBarrierGoids = append(stackBarrierGoids, int(goid))
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if len(stackBarrierGoids) == 0 {
+			t.Fatalf("Could not find a goroutine with stack barriers")
+		}
+
+		t.Logf("stack barrier goids: %v\n", stackBarrierGoids)
+
+		assertNoError(p.StepOut(), t, "StepOut()")
+
+		gs, err := p.GoroutinesInfo()
+		assertNoError(err, t, "GoroutinesInfo()")
+
+		for _, goid := range stackBarrierGoids {
+			g := getg(goid, gs)
+
+			stack, err := g.Stacktrace(200)
+			assertNoError(err, t, "Stacktrace()")
+
+			// Check that either main.main or main.main.func1 appear in the
+			// stacktrace of this goroutine, if we failed at resolving stack barriers
+			// correctly the stacktrace will be truncated and neither main.main or
+			// main.main.func1 will appear
+			found := false
+			for _, frame := range stack {
+				if frame.Current.Fn == nil {
+					continue
+				}
+				if name := frame.Current.Fn.Name; name == "main.main" || name == "main.main.func1" {
+					found = true
+				}
+			}
+
+			t.Logf("Stacktrace for %d:\n", goid)
+			for _, frame := range stack {
+				name := "<>"
+				if frame.Current.Fn != nil {
+					name = frame.Current.Fn.Name
+				}
+				t.Logf("\t%s [CFA: %x Ret: %x] at %s:%d", name, frame.CFA, frame.Ret, frame.Current.File, frame.Current.Line)
+			}
+
+			if !found {
+				t.Log("Truncated stacktrace for %d\n", goid)
+			}
+		}
+	})
+}

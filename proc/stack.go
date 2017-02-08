@@ -7,6 +7,11 @@ import (
 	"github.com/derekparker/delve/dwarf/frame"
 )
 
+// This code is partly adaped from runtime.gentraceback in
+// $GOROOT/src/runtime/traceback.go
+
+const runtimeStackBarrier = "runtime.stackBarrier"
+
 // NoReturnAddr is returned when return address
 // could not be found during stack trace.
 type NoReturnAddr struct {
@@ -29,6 +34,8 @@ type Stackframe struct {
 	FDE *frame.FrameDescriptionEntry
 	// Return address for this stack frame (as read from the stack frame itself).
 	Ret uint64
+	// Address to the memory location containing the return address
+	addrret uint64
 }
 
 // Scope returns a new EvalScope using this frame.
@@ -49,18 +56,18 @@ func (t *Thread) ReturnAddress() (uint64, error) {
 	return locations[1].Current.PC, nil
 }
 
-func (t *Thread) stackIterator() (*stackIterator, error) {
+func (t *Thread) stackIterator(stkbar []savedLR, stkbarPos int) (*stackIterator, error) {
 	regs, err := t.Registers(false)
 	if err != nil {
 		return nil, err
 	}
-	return newStackIterator(t.dbp, regs.PC(), regs.SP()), nil
+	return newStackIterator(t.dbp, regs.PC(), regs.SP(), stkbar, stkbarPos), nil
 }
 
 // Stacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
 func (t *Thread) Stacktrace(depth int) ([]Stackframe, error) {
-	it, err := t.stackIterator()
+	it, err := t.stackIterator(nil, -1)
 	if err != nil {
 		return nil, err
 	}
@@ -68,10 +75,14 @@ func (t *Thread) Stacktrace(depth int) ([]Stackframe, error) {
 }
 
 func (g *G) stackIterator() (*stackIterator, error) {
-	if g.thread != nil {
-		return g.thread.stackIterator()
+	stkbar, err := g.stkbar()
+	if err != nil {
+		return nil, err
 	}
-	return newStackIterator(g.dbp, g.PC, g.SP), nil
+	if g.thread != nil {
+		return g.thread.stackIterator(stkbar, g.stkbarPos)
+	}
+	return newStackIterator(g.dbp, g.PC, g.SP, stkbar, g.stkbarPos), nil
 }
 
 // Stacktrace returns the stack trace for a goroutine.
@@ -108,10 +119,35 @@ type stackIterator struct {
 	frame  Stackframe
 	dbp    *Process
 	err    error
+
+	stackBarrierPC uint64
+	stkbar         []savedLR
 }
 
-func newStackIterator(dbp *Process, pc, sp uint64) *stackIterator {
-	return &stackIterator{pc: pc, sp: sp, top: true, dbp: dbp, err: nil, atend: false}
+type savedLR struct {
+	ptr uint64
+	val uint64
+}
+
+func newStackIterator(dbp *Process, pc, sp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
+	stackBarrierPC := dbp.goSymTable.LookupFunc(runtimeStackBarrier).Entry
+	if stkbar != nil {
+		fn := dbp.goSymTable.PCToFunc(pc)
+		if fn != nil && fn.Name == runtimeStackBarrier {
+			// We caught the goroutine as it's executing the stack barrier, we must
+			// determine whether or not g.stackPos has already been incremented or not.
+			if len(stkbar) > 0 && stkbar[stkbarPos].ptr < sp {
+				// runtime.stackBarrier has not incremented stkbarPos.
+			} else if stkbarPos > 0 && stkbar[stkbarPos-1].ptr < sp {
+				// runtime.stackBarrier has incremented stkbarPos.
+				stkbarPos--
+			} else {
+				return &stackIterator{err: fmt.Errorf("failed to unwind through stackBarrier at SP %x", sp)}
+			}
+		}
+		stkbar = stkbar[stkbarPos:]
+	}
+	return &stackIterator{pc: pc, sp: sp, top: true, dbp: dbp, err: nil, atend: false, stackBarrierPC: stackBarrierPC, stkbar: stkbar}
 }
 
 // Next points the iterator to the next stack frame.
@@ -141,6 +177,13 @@ func (it *stackIterator) Next() bool {
 		it.atend = true
 		return true
 	}
+
+	if it.stkbar != nil && it.frame.Ret == it.stackBarrierPC && it.frame.addrret == it.stkbar[0].ptr {
+		// Skip stack barrier frames
+		it.frame.Ret = it.stkbar[0].val
+		it.stkbar = it.stkbar[1:]
+	}
+
 	// Look for "top of stack" functions.
 	if it.frame.Current.Fn.Name == "runtime.goexit" || it.frame.Current.Fn.Name == "runtime.rt0_go" || it.frame.Current.Fn.Name == "runtime.mcall" {
 		it.atend = true
@@ -183,7 +226,7 @@ func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 	if err != nil {
 		return Stackframe{}, err
 	}
-	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: binary.LittleEndian.Uint64(data)}
+	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: binary.LittleEndian.Uint64(data), addrret: uint64(retaddr)}
 	if !top {
 		r.Call.File, r.Call.Line, r.Call.Fn = dbp.PCToLine(pc - 1)
 		r.Call.PC, _, _ = dbp.goSymTable.LineToPC(r.Call.File, r.Call.Line)
