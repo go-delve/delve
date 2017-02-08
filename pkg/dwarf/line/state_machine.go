@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/derekparker/delve/dwarf/util"
+	"github.com/derekparker/delve/pkg/dwarf/util"
 )
 
 type Location struct {

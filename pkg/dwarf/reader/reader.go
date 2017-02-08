@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/derekparker/delve/dwarf/op"
+	"github.com/derekparker/delve/pkg/dwarf/op"
 	"golang.org/x/debug/dwarf"
 )
 

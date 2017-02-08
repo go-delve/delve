@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	protest "github.com/derekparker/delve/proc/test"
+	protest "github.com/derekparker/delve/pkg/proc/test"
 
-	"github.com/derekparker/delve/proc"
+	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc2"

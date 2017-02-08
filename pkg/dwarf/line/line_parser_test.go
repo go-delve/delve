@@ -47,7 +47,7 @@ const (
 
 func TestDebugLinePrologueParser(t *testing.T) {
 	// Test against known good values, from readelf --debug-dump=rawline _fixtures/testnextprog
-	p, err := filepath.Abs("../../_fixtures/testnextprog")
+	p, err := filepath.Abs("../../../_fixtures/testnextprog")
 	if err != nil {
 		t.Fatal(err)
 	}

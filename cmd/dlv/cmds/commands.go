@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"unicode"
 
-	"github.com/derekparker/delve/config"
+	"github.com/derekparker/delve/pkg/config"
+	"github.com/derekparker/delve/pkg/terminal"
+	"github.com/derekparker/delve/pkg/version"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc2"
 	"github.com/derekparker/delve/service/rpccommon"
-	"github.com/derekparker/delve/terminal"
-	"github.com/derekparker/delve/version"
 	"github.com/spf13/cobra"
 )
 

@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/derekparker/delve/dwarf/util"
+	"github.com/derekparker/delve/pkg/dwarf/util"
 )
 
 type CurrentFrameAddress struct {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	protest "github.com/derekparker/delve/proc/test"
+	protest "github.com/derekparker/delve/pkg/proc/test"
 )
 
 func TestIssue419(t *testing.T) {

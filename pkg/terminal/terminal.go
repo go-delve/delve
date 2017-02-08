@@ -12,7 +12,7 @@ import (
 
 	"github.com/peterh/liner"
 
-	"github.com/derekparker/delve/config"
+	"github.com/derekparker/delve/pkg/config"
 	"github.com/derekparker/delve/service"
 )
 

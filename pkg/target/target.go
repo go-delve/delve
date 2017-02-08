@@ -5,7 +5,7 @@ import (
 	"go/ast"
 	"time"
 
-	"github.com/derekparker/delve/proc"
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // Target represents the target of the debugger. This

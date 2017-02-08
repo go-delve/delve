@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/derekparker/delve/cmd/dlv/cmds"
-	"github.com/derekparker/delve/version"
+	"github.com/derekparker/delve/pkg/version"
 )
 
 // Build is the git sha of this binaries build.

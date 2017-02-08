@@ -57,12 +57,12 @@ func TestFunctionLocationParsing(t *testing.T) {
 	assertNormalLocationSpec(t, "Continue:10", NormalLocationSpec{"Continue", &FuncLocationSpec{BaseName: "Continue"}, 10})
 
 	// Function locations, package paths, no line offsets
-	assertNormalLocationSpec(t, "github.com/derekparker/delve/proc.(*Process).Continue", NormalLocationSpec{"github.com/derekparker/delve/proc.(*Process).Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/proc", ReceiverName: "Process", BaseName: "Continue"}, -1})
-	assertNormalLocationSpec(t, "github.com/derekparker/delve/proc.Process.Continue", NormalLocationSpec{"github.com/derekparker/delve/proc.Process.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/proc", ReceiverName: "Process", BaseName: "Continue"}, -1})
-	assertNormalLocationSpec(t, "github.com/derekparker/delve/proc.Continue", NormalLocationSpec{"github.com/derekparker/delve/proc.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/proc", BaseName: "Continue"}, -1})
+	assertNormalLocationSpec(t, "github.com/derekparker/delve/pkg/proc.(*Process).Continue", NormalLocationSpec{"github.com/derekparker/delve/pkg/proc.(*Process).Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/pkg/proc", ReceiverName: "Process", BaseName: "Continue"}, -1})
+	assertNormalLocationSpec(t, "github.com/derekparker/delve/pkg/proc.Process.Continue", NormalLocationSpec{"github.com/derekparker/delve/pkg/proc.Process.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/pkg/proc", ReceiverName: "Process", BaseName: "Continue"}, -1})
+	assertNormalLocationSpec(t, "github.com/derekparker/delve/pkg/proc.Continue", NormalLocationSpec{"github.com/derekparker/delve/pkg/proc.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/pkg/proc", BaseName: "Continue"}, -1})
 
 	// Function locations, package paths, line offsets
-	assertNormalLocationSpec(t, "github.com/derekparker/delve/proc.(*Process).Continue:10", NormalLocationSpec{"github.com/derekparker/delve/proc.(*Process).Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/proc", ReceiverName: "Process", BaseName: "Continue"}, 10})
-	assertNormalLocationSpec(t, "github.com/derekparker/delve/proc.Process.Continue:10", NormalLocationSpec{"github.com/derekparker/delve/proc.Process.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/proc", ReceiverName: "Process", BaseName: "Continue"}, 10})
-	assertNormalLocationSpec(t, "github.com/derekparker/delve/proc.Continue:10", NormalLocationSpec{"github.com/derekparker/delve/proc.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/proc", BaseName: "Continue"}, 10})
+	assertNormalLocationSpec(t, "github.com/derekparker/delve/pkg/proc.(*Process).Continue:10", NormalLocationSpec{"github.com/derekparker/delve/pkg/proc.(*Process).Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/pkg/proc", ReceiverName: "Process", BaseName: "Continue"}, 10})
+	assertNormalLocationSpec(t, "github.com/derekparker/delve/pkg/proc.Process.Continue:10", NormalLocationSpec{"github.com/derekparker/delve/pkg/proc.Process.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/pkg/proc", ReceiverName: "Process", BaseName: "Continue"}, 10})
+	assertNormalLocationSpec(t, "github.com/derekparker/delve/pkg/proc.Continue:10", NormalLocationSpec{"github.com/derekparker/delve/pkg/proc.Continue", &FuncLocationSpec{PackageName: "github.com/derekparker/delve/pkg/proc", BaseName: "Continue"}, 10})
 }

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/derekparker/delve/proc"
+	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/service/api"
 )
 

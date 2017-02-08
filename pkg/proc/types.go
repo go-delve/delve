@@ -14,7 +14,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/derekparker/delve/dwarf/reader"
+	"github.com/derekparker/delve/pkg/dwarf/reader"
 
 	"golang.org/x/debug/dwarf"
 )

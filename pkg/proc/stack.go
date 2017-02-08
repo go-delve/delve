@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/derekparker/delve/dwarf/frame"
+	"github.com/derekparker/delve/pkg/dwarf/frame"
 )
 
 // This code is partly adaped from runtime.gentraceback in

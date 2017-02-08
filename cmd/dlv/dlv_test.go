@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"testing"
 
-	protest "github.com/derekparker/delve/proc/test"
+	protest "github.com/derekparker/delve/pkg/proc/test"
 	"github.com/derekparker/delve/service/rpc2"
 )
 

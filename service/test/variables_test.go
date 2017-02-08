@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/derekparker/delve/proc"
+	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/service/api"
 
-	protest "github.com/derekparker/delve/proc/test"
+	protest "github.com/derekparker/delve/pkg/proc/test"
 )
 
 var pnormalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1}

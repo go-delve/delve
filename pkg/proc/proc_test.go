@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	protest "github.com/derekparker/delve/proc/test"
+	protest "github.com/derekparker/delve/pkg/proc/test"
 )
 
 var normalLoadConfig = LoadConfig{true, 1, 64, 64, -1}
@@ -2442,7 +2442,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 			assertNoError(p.Continue(), t, "Continue()")
 			gs, err := p.GoroutinesInfo()
 			assertNoError(err, t, "GoroutinesInfo()")
-			for _, th := range p.Threads {
+			for _, th := range p.threads {
 				if th.CurrentBreakpoint == nil {
 					continue
 				}

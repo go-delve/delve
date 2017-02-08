@@ -17,8 +17,8 @@ import (
 
 	"golang.org/x/debug/macho"
 
-	"github.com/derekparker/delve/dwarf/frame"
-	"github.com/derekparker/delve/dwarf/line"
+	"github.com/derekparker/delve/pkg/dwarf/frame"
+	"github.com/derekparker/delve/pkg/dwarf/line"
 	sys "golang.org/x/sys/unix"
 )
 
