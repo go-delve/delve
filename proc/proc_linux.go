@@ -70,7 +70,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbp.Pid = proc.Process.Pid
+	dbp.pid = proc.Process.Pid
 	_, _, err = dbp.wait(proc.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
@@ -88,13 +88,13 @@ func (dbp *Process) Kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
-	if !dbp.Threads[dbp.Pid].Stopped() {
+	if !dbp.threads[dbp.pid].Stopped() {
 		return errors.New("process must be stopped in order to kill it")
 	}
-	if err = sys.Kill(-dbp.Pid, sys.SIGKILL); err != nil {
+	if err = sys.Kill(-dbp.pid, sys.SIGKILL); err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
-	if _, _, err = dbp.wait(dbp.Pid, 0); err != nil {
+	if _, _, err = dbp.wait(dbp.pid, 0); err != nil {
 		return
 	}
 	dbp.postExit()
@@ -102,13 +102,13 @@ func (dbp *Process) Kill() (err error) {
 }
 
 func (dbp *Process) requestManualStop() (err error) {
-	return sys.Kill(dbp.Pid, sys.SIGTRAP)
+	return sys.Kill(dbp.pid, sys.SIGTRAP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
 func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
-	if thread, ok := dbp.Threads[tid]; ok {
+	if thread, ok := dbp.threads[tid]; ok {
 		return thread, nil
 	}
 
@@ -145,26 +145,26 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	dbp.Threads[tid] = &Thread{
+	dbp.threads[tid] = &Thread{
 		ID:  tid,
 		dbp: dbp,
 		os:  new(OSSpecificDetails),
 	}
-	if dbp.CurrentThread == nil {
+	if dbp.currentThread == nil {
 		dbp.SwitchThread(tid)
 	}
-	return dbp.Threads[tid], nil
+	return dbp.threads[tid], nil
 }
 
 func (dbp *Process) updateThreadList() error {
-	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.Pid))
+	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)
 		tid, err := strconv.Atoi(tidstr)
 		if err != nil {
 			return err
 		}
-		if _, err := dbp.addThread(tid, tid != dbp.Pid); err != nil {
+		if _, err := dbp.addThread(tid, tid != dbp.pid); err != nil {
 			return err
 		}
 	}
@@ -175,7 +175,7 @@ var UnsupportedArchErr = errors.New("unsupported architecture - only linux/amd64
 
 func (dbp *Process) findExecutable(path string) (*elf.File, string, error) {
 	if path == "" {
-		path = fmt.Sprintf("/proc/%d/exe", dbp.Pid)
+		path = fmt.Sprintf("/proc/%d/exe", dbp.pid)
 	}
 	f, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
@@ -279,16 +279,16 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		if wpid == 0 {
 			continue
 		}
-		th, ok := dbp.Threads[wpid]
+		th, ok := dbp.threads[wpid]
 		if ok {
 			th.Status = (*WaitStatus)(status)
 		}
 		if status.Exited() {
-			if wpid == dbp.Pid {
+			if wpid == dbp.pid {
 				dbp.postExit()
 				return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
 			}
-			delete(dbp.Threads, wpid)
+			delete(dbp.threads, wpid)
 			continue
 		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
@@ -314,12 +314,12 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			if err = th.Continue(); err != nil {
 				if err == sys.ESRCH {
 					// thread died while we were adding it
-					delete(dbp.Threads, th.ID)
+					delete(dbp.threads, th.ID)
 					continue
 				}
 				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
-			if err = dbp.Threads[int(wpid)].Continue(); err != nil {
+			if err = dbp.threads[int(wpid)].Continue(); err != nil {
 				if err != sys.ESRCH {
 					return nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
 				}
@@ -343,7 +343,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			// TODO(dp) alert user about unexpected signals here.
 			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
 				if err == sys.ESRCH {
-					return nil, ProcessExitedError{Pid: dbp.Pid}
+					return nil, ProcessExitedError{Pid: dbp.pid}
 				}
 				return nil, err
 			}
@@ -354,19 +354,19 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.Pid))
+	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
 	if err == nil {
 		// removes newline character
 		comm = bytes.TrimSuffix(comm, []byte("\n"))
 	}
 
 	if comm == nil || len(comm) <= 0 {
-		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.Pid))
+		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
 		if err != nil {
 			fmt.Printf("Could not read proc stat: %v\n", err)
 			os.Exit(1)
 		}
-		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.Pid)
+		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.pid)
 		rexp, err := regexp.Compile(expr)
 		if err != nil {
 			fmt.Printf("Regexp compile error: %v\n", err)
@@ -374,7 +374,7 @@ func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 		}
 		match := rexp.FindSubmatch(stat)
 		if match == nil {
-			fmt.Printf("No match found using regexp '%s' in /proc/%d/stat\n", expr, dbp.Pid)
+			fmt.Printf("No match found using regexp '%s' in /proc/%d/stat\n", expr, dbp.pid)
 			os.Exit(1)
 		}
 		comm = match[1]
@@ -411,7 +411,7 @@ func (dbp *Process) waitFast(pid int) (int, *sys.WaitStatus, error) {
 
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
-	if (pid != dbp.Pid) || (options != 0) {
+	if (pid != dbp.pid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
 		return wpid, &s, err
 	}
@@ -442,7 +442,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 }
 
 func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	for _, th := range dbp.Threads {
+	for _, th := range dbp.threads {
 		if th.CurrentBreakpoint == nil {
 			err := th.SetCurrentBreakpoint()
 			if err != nil {
@@ -457,7 +457,7 @@ func (dbp *Process) exitGuard(err error) error {
 	if err != sys.ESRCH {
 		return err
 	}
-	if status(dbp.Pid, dbp.os.comm) == StatusZombie {
+	if status(dbp.pid, dbp.os.comm) == StatusZombie {
 		_, err := dbp.trapWait(-1)
 		return err
 	}
@@ -467,7 +467,7 @@ func (dbp *Process) exitGuard(err error) error {
 
 func (dbp *Process) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
@@ -476,7 +476,7 @@ func (dbp *Process) resume() error {
 		}
 	}
 	// everything is resumed
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		if err := thread.resume(); err != nil && err != sys.ESRCH {
 			return err
 		}

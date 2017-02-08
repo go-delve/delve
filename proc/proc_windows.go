@@ -113,7 +113,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	sys.CloseHandle(sys.Handle(pi.Process))
 	sys.CloseHandle(sys.Handle(pi.Thread))
 
-	dbp.Pid = int(pi.ProcessId)
+	dbp.pid = int(pi.ProcessId)
 
 	return newDebugProcess(dbp, argv0Go)
 }
@@ -135,11 +135,11 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 	}
 	if tid == 0 {
 		dbp.postExit()
-		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
+		return nil, ProcessExitedError{Pid: dbp.pid, Status: exitCode}
 	}
 	// Suspend all threads so that the call to _ContinueDebugEvent will
 	// not resume the target.
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
 			return nil, err
@@ -147,7 +147,7 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 	}
 
 	dbp.execPtraceFunc(func() {
-		err = _ContinueDebugEvent(uint32(dbp.Pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
+		err = _ContinueDebugEvent(uint32(dbp.pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
 	})
 	if err != nil {
 		return nil, err
@@ -209,7 +209,7 @@ func (dbp *Process) Kill() error {
 	if dbp.exited {
 		return nil
 	}
-	if !dbp.Threads[dbp.Pid].Stopped() {
+	if !dbp.threads[dbp.pid].Stopped() {
 		return errors.New("process must be stopped in order to kill it")
 	}
 	// TODO: Should not have to ignore failures here,
@@ -231,7 +231,7 @@ func (dbp *Process) updateThreadList() error {
 }
 
 func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, suspendNewThreads bool) (*Thread, error) {
-	if thread, ok := dbp.Threads[threadID]; ok {
+	if thread, ok := dbp.threads[threadID]; ok {
 		return thread, nil
 	}
 	thread := &Thread{
@@ -240,7 +240,7 @@ func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, susp
 		os:  new(OSSpecificDetails),
 	}
 	thread.os.hThread = hThread
-	dbp.Threads[threadID] = thread
+	dbp.threads[threadID] = thread
 	if dbp.CurrentThread == nil {
 		dbp.SwitchThread(thread.ID)
 	}
@@ -488,7 +488,7 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 			}
 			break
 		case _EXIT_THREAD_DEBUG_EVENT:
-			delete(dbp.Threads, int(debugEvent.ThreadId))
+			delete(dbp.threads, int(debugEvent.ThreadId))
 			break
 		case _OUTPUT_DEBUG_STRING_EVENT:
 			//TODO: Handle debug output strings
@@ -547,9 +547,9 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 	if tid == 0 {
 		dbp.postExit()
-		return nil, ProcessExitedError{Pid: dbp.Pid, Status: exitCode}
+		return nil, ProcessExitedError{Pid: dbp.pid, Status: exitCode}
 	}
-	th := dbp.Threads[tid]
+	th := dbp.threads[tid]
 	return th, nil
 }
 
@@ -577,7 +577,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 		return err
 	}
 
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		thread.running = false
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
@@ -589,7 +589,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 		var err error
 		var tid int
 		dbp.execPtraceFunc(func() {
-			err = _ContinueDebugEvent(uint32(dbp.Pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
+			err = _ContinueDebugEvent(uint32(dbp.pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
 			if err == nil {
 				tid, _, _ = dbp.waitForDebugEvent(waitSuspendNewThreads)
 			}
@@ -600,7 +600,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 		if tid == 0 {
 			break
 		}
-		err = dbp.Threads[tid].SetCurrentBreakpoint()
+		err = dbp.threads[tid].SetCurrentBreakpoint()
 		if err != nil {
 			return err
 		}
@@ -614,7 +614,7 @@ func (dbp *Process) exitGuard(err error) error {
 }
 
 func (dbp *Process) resume() error {
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
@@ -623,7 +623,7 @@ func (dbp *Process) resume() error {
 		}
 	}
 
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		thread.running = true
 		_, err := _ResumeThread(thread.os.hThread)
 		if err != nil {

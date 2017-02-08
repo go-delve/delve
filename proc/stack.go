@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
 	"github.com/derekparker/delve/dwarf/frame"
 )
 
@@ -222,7 +223,7 @@ func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 	if retaddr == 0 {
 		return Stackframe{}, NullAddrError{}
 	}
-	data, err := dbp.CurrentThread.readMemory(retaddr, dbp.arch.PtrSize())
+	data, err := dbp.currentThread.readMemory(retaddr, dbp.arch.PtrSize())
 	if err != nil {
 		return Stackframe{}, err
 	}

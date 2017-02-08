@@ -77,7 +77,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	if pid <= 0 {
 		return nil, fmt.Errorf("could not fork/exec")
 	}
-	dbp.Pid = pid
+	dbp.pid = pid
 	for i := range argvSlice {
 		C.free(unsafe.Pointer(argvSlice[i]))
 	}
@@ -86,7 +86,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	// trapWait to wait until the child process calls execve.
 
 	for {
-		err = dbp.updateThreadListForTask(C.get_task_for_pid(C.int(dbp.Pid)))
+		err = dbp.updateThreadListForTask(C.get_task_for_pid(C.int(dbp.pid)))
 		if err == nil {
 			break
 		}
@@ -100,7 +100,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	}
 
 	dbp.allGCache = nil
-	for _, th := range dbp.Threads {
+	for _, th := range dbp.threads {
 		th.clearBreakpointState()
 	}
 
@@ -152,11 +152,11 @@ func (dbp *Process) Kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
-	err = sys.Kill(-dbp.Pid, sys.SIGKILL)
+	err = sys.Kill(-dbp.pid, sys.SIGKILL)
 	if err != nil {
 		return errors.New("could not deliver signal: " + err.Error())
 	}
-	for port := range dbp.Threads {
+	for port := range dbp.threads {
 		if C.thread_resume(C.thread_act_t(port)) != C.KERN_SUCCESS {
 			return errors.New("could not resume task")
 		}
@@ -218,12 +218,12 @@ func (dbp *Process) updateThreadListForTask(task C.task_t) error {
 		return couldNotGetThreadList
 	}
 
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		thread.os.exists = false
 	}
 
 	for _, port := range list {
-		thread, ok := dbp.Threads[int(port)]
+		thread, ok := dbp.threads[int(port)]
 		if !ok {
 			thread, err = dbp.addThread(int(port), false)
 			if err != nil {
@@ -233,9 +233,9 @@ func (dbp *Process) updateThreadListForTask(task C.task_t) error {
 		thread.os.exists = true
 	}
 
-	for threadID, thread := range dbp.Threads {
+	for threadID, thread := range dbp.threads {
 		if !thread.os.exists {
-			delete(dbp.Threads, threadID)
+			delete(dbp.threads, threadID)
 		}
 	}
 
@@ -243,7 +243,7 @@ func (dbp *Process) updateThreadListForTask(task C.task_t) error {
 }
 
 func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
-	if thread, ok := dbp.Threads[port]; ok {
+	if thread, ok := dbp.threads[port]; ok {
 		return thread, nil
 	}
 	thread := &Thread{
@@ -251,7 +251,7 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 		dbp: dbp,
 		os:  new(OSSpecificDetails),
 	}
-	dbp.Threads[port] = thread
+	dbp.threads[port] = thread
 	thread.os.threadAct = C.thread_act_t(port)
 	if dbp.CurrentThread == nil {
 		dbp.SwitchThread(thread.ID)
@@ -338,7 +338,7 @@ var UnsupportedArchErr = errors.New("unsupported architecture - only darwin/amd6
 
 func (dbp *Process) findExecutable(path string) (*macho.File, string, error) {
 	if path == "" {
-		path = C.GoString(C.find_executable(C.int(dbp.Pid)))
+		path = C.GoString(C.find_executable(C.int(dbp.pid)))
 	}
 	exe, err := macho.Open(path)
 	if err != nil {
@@ -369,16 +369,16 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				continue
 			}
 			if !dbp.os.initialized {
-				if pidtask := C.get_task_for_pid(C.int(dbp.Pid)); pidtask != 0 && dbp.os.task != pidtask {
+				if pidtask := C.get_task_for_pid(C.int(dbp.pid)); pidtask != 0 && dbp.os.task != pidtask {
 					continue
 				}
 			}
-			_, status, err := dbp.wait(dbp.Pid, 0)
+			_, status, err := dbp.wait(dbp.pid, 0)
 			if err != nil {
 				return nil, err
 			}
 			dbp.postExit()
-			return nil, ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+			return nil, ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
 
 		case C.MACH_RCV_INTERRUPTED:
 			if !dbp.halt {
@@ -407,7 +407,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		// Since we cannot be notified of new threads on OS X
 		// this is as good a time as any to check for them.
 		dbp.updateThreadList()
-		th, ok := dbp.Threads[int(port)]
+		th, ok := dbp.threads[int(port)]
 		if !ok {
 			if dbp.halt {
 				dbp.halt = false
@@ -427,7 +427,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 }
 
 func (dbp *Process) waitForStop() ([]int, error) {
-	ports := make([]int, 0, len(dbp.Threads))
+	ports := make([]int, 0, len(dbp.threads))
 	count := 0
 	for {
 		var task C.task_t
@@ -455,7 +455,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	}
 	trapthread.SetCurrentBreakpoint()
 	for _, port := range ports {
-		if th, ok := dbp.Threads[port]; ok {
+		if th, ok := dbp.threads[port]; ok {
 			err := th.SetCurrentBreakpoint()
 			if err != nil {
 				return err
@@ -483,17 +483,17 @@ func (dbp *Process) exitGuard(err error) error {
 	if err != ErrContinueThread {
 		return err
 	}
-	_, status, werr := dbp.wait(dbp.Pid, sys.WNOHANG)
+	_, status, werr := dbp.wait(dbp.pid, sys.WNOHANG)
 	if werr == nil && status.Exited() {
 		dbp.postExit()
-		return ProcessExitedError{Pid: dbp.Pid, Status: status.ExitStatus()}
+		return ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
 	}
 	return err
 }
 
 func (dbp *Process) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
@@ -502,7 +502,7 @@ func (dbp *Process) resume() error {
 		}
 	}
 	// everything is resumed
-	for _, thread := range dbp.Threads {
+	for _, thread := range dbp.threads {
 		if err := thread.resume(); err != nil {
 			return dbp.exitGuard(err)
 		}

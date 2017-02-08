@@ -243,14 +243,14 @@ func (spec *FuncLocationSpec) Match(sym *gosym.Sym) bool {
 }
 
 func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
-	funcs := d.process.Funcs()
+	funcs := d.target.Funcs()
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
 	if err != nil {
 		return nil, err
 	}
 	r := make([]api.Location, 0, len(matches))
 	for i := range matches {
-		addr, err := d.process.FindFunctionLocation(matches[i], true, 0)
+		addr, err := d.target.FindFunctionLocation(matches[i], true, 0)
 		if err == nil {
 			r = append(r, api.Location{PC: addr})
 		}
@@ -278,8 +278,8 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 			addr, _ := constant.Uint64Val(v.Value)
 			return []api.Location{{PC: addr}}, nil
 		case reflect.Func:
-			_, _, fn := d.process.PCToLine(uint64(v.Base))
-			pc, err := d.process.FirstPCAfterPrologue(fn, false)
+			_, _, fn := d.target.PCToLine(uint64(v.Base))
+			pc, err := d.target.FirstPCAfterPrologue(fn, false)
 			if err != nil {
 				return nil, err
 			}
@@ -327,8 +327,8 @@ func (ale AmbiguousLocationError) Error() string {
 }
 
 func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
-	funcs := d.process.Funcs()
-	files := d.process.Sources()
+	funcs := d.target.Funcs()
+	files := d.target.Sources()
 
 	candidates := []string{}
 	for file := range files {
@@ -366,12 +366,12 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 			if loc.LineOffset < 0 {
 				return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
 			}
-			addr, err = d.process.FindFileLocation(candidates[0], loc.LineOffset)
+			addr, err = d.target.FindFileLocation(candidates[0], loc.LineOffset)
 		} else {
 			if loc.LineOffset < 0 {
-				addr, err = d.process.FindFunctionLocation(candidates[0], true, 0)
+				addr, err = d.target.FindFunctionLocation(candidates[0], true, 0)
 			} else {
-				addr, err = d.process.FindFunctionLocation(candidates[0], false, loc.LineOffset)
+				addr, err = d.target.FindFunctionLocation(candidates[0], false, loc.LineOffset)
 			}
 		}
 		if err != nil {
@@ -390,11 +390,11 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
-	file, line, fn := d.process.PCToLine(scope.PC)
+	file, line, fn := d.target.PCToLine(scope.PC)
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
-	addr, err := d.process.FindFileLocation(file, line+loc.Offset)
+	addr, err := d.target.FindFileLocation(file, line+loc.Offset)
 	return []api.Location{{PC: addr}}, err
 }
 
@@ -402,10 +402,10 @@ func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
-	file, _, fn := d.process.PCToLine(scope.PC)
+	file, _, fn := d.target.PCToLine(scope.PC)
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
-	addr, err := d.process.FindFileLocation(file, loc.Line)
+	addr, err := d.target.FindFileLocation(file, loc.Line)
 	return []api.Location{{PC: addr}}, err
 }

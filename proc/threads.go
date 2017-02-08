@@ -154,7 +154,7 @@ func topframe(g *G, thread *Thread) (Stackframe, error) {
 // Continue will take care of setting a breakpoint to the destination
 // once the CALL is reached.
 func (dbp *Process) next(stepInto bool) error {
-	topframe, err := topframe(dbp.SelectedGoroutine, dbp.CurrentThread)
+	topframe, err := topframe(dbp.selectedGoroutine, dbp.currentThread)
 	if err != nil {
 		return err
 	}
@@ -167,10 +167,10 @@ func (dbp *Process) next(stepInto bool) error {
 	}()
 
 	csource := filepath.Ext(topframe.Current.File) != ".go"
-	thread := dbp.CurrentThread
+	thread := dbp.currentThread
 	currentGoroutine := false
-	if dbp.SelectedGoroutine != nil && dbp.SelectedGoroutine.thread != nil {
-		thread = dbp.SelectedGoroutine.thread
+	if dbp.selectedGoroutine != nil && dbp.selectedGoroutine.thread != nil {
+		thread = dbp.selectedGoroutine.thread
 		currentGoroutine = true
 	}
 
@@ -179,7 +179,7 @@ func (dbp *Process) next(stepInto bool) error {
 		return err
 	}
 
-	cond := sameGoroutineCondition(dbp.SelectedGoroutine)
+	cond := sameGoroutineCondition(dbp.selectedGoroutine)
 
 	if stepInto {
 		for _, instr := range text {
@@ -215,8 +215,8 @@ func (dbp *Process) next(stepInto bool) error {
 
 		// Set breakpoint on the most recently deferred function (if any)
 		var deferpc uint64 = 0
-		if dbp.SelectedGoroutine != nil {
-			deferPCEntry := dbp.SelectedGoroutine.DeferPC()
+		if dbp.selectedGoroutine != nil {
+			deferPCEntry := dbp.selectedGoroutine.DeferPC()
 			if deferPCEntry != 0 {
 				_, _, deferfn := dbp.goSymTable.PCToLine(deferPCEntry)
 				var err error
@@ -256,7 +256,7 @@ func (dbp *Process) next(stepInto bool) error {
 
 		if !covered {
 			fn := dbp.goSymTable.PCToFunc(topframe.Ret)
-			if dbp.SelectedGoroutine != nil && fn != nil && fn.Name == "runtime.goexit" {
+			if dbp.selectedGoroutine != nil && fn != nil && fn.Name == "runtime.goexit" {
 				return nil
 			}
 		}
@@ -342,7 +342,7 @@ func (thread *Thread) getGVariable() (*Variable, error) {
 
 	if thread.dbp.arch.GStructOffset() == 0 {
 		// GetG was called through SwitchThread / updateThreadList during initialization
-		// thread.dbp.arch isn't setup yet (it needs a CurrentThread to read global variables from)
+		// thread.dbp.arch isn't setup yet (it needs a current thread to read global variables from)
 		return nil, fmt.Errorf("g struct offset not initialized")
 	}
 
@@ -490,9 +490,9 @@ func (thread *Thread) onRuntimeBreakpoint() bool {
 // onNextGorutine returns true if this thread is on the goroutine requested by the current 'next' command
 func (thread *Thread) onNextGoroutine() (bool, error) {
 	var bp *Breakpoint
-	for i := range thread.dbp.Breakpoints {
-		if thread.dbp.Breakpoints[i].Internal() {
-			bp = thread.dbp.Breakpoints[i]
+	for i := range thread.dbp.breakpoints {
+		if thread.dbp.breakpoints[i].Internal() {
+			bp = thread.dbp.breakpoints[i]
 			break
 		}
 	}

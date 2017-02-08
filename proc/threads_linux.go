@@ -15,7 +15,7 @@ type OSSpecificDetails struct {
 }
 
 func (t *Thread) halt() (err error) {
-	err = sys.Tgkill(t.dbp.Pid, t.ID, sys.SIGSTOP)
+	err = sys.Tgkill(t.dbp.pid, t.ID, sys.SIGSTOP)
 	if err != nil {
 		err = fmt.Errorf("halt err %s on thread %d", err, t.ID)
 		return
@@ -53,13 +53,13 @@ func (t *Thread) singleStep() (err error) {
 		if err != nil {
 			return err
 		}
-		if (status == nil || status.Exited()) && wpid == t.dbp.Pid {
+		if (status == nil || status.Exited()) && wpid == t.dbp.pid {
 			t.dbp.postExit()
 			rs := 0
 			if status != nil {
 				rs = status.ExitStatus()
 			}
-			return ProcessExitedError{Pid: t.dbp.Pid, Status: rs}
+			return ProcessExitedError{Pid: t.dbp.pid, Status: rs}
 		}
 		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
 			return nil

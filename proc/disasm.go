@@ -41,7 +41,7 @@ func (thread *Thread) Disassemble(startPC, endPC uint64, currentGoroutine bool) 
 	}
 
 	for len(mem) > 0 {
-		bp, atbp := thread.dbp.Breakpoints[pc]
+		bp, atbp := thread.dbp.breakpoints[pc]
 		if atbp {
 			for i := range bp.OriginalData {
 				mem[i] = bp.OriginalData[i]

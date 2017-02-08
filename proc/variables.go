@@ -649,7 +649,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 // EvalPackageVariable will evaluate the package level variable
 // specified by 'name'.
 func (dbp *Process) EvalPackageVariable(name string, cfg LoadConfig) (*Variable, error) {
-	scope := &EvalScope{Thread: dbp.CurrentThread, PC: 0, CFA: 0}
+	scope := &EvalScope{Thread: dbp.currentThread, PC: 0, CFA: 0}
 
 	v, err := scope.packageVarAddr(name)
 	if err != nil {

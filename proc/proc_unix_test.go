@@ -17,7 +17,7 @@ func TestIssue419(t *testing.T) {
 			for {
 				if p.Running() {
 					time.Sleep(2 * time.Second)
-					err := syscall.Kill(p.Pid, syscall.SIGINT)
+					err := syscall.Kill(p.pid, syscall.SIGINT)
 					assertNoError(err, t, "syscall.Kill")
 					return
 				}

@@ -3,6 +3,7 @@ package proc
 import (
 	"debug/gosym"
 	"encoding/binary"
+
 	"rsc.io/x86/x86asm"
 )
 
@@ -145,7 +146,7 @@ func init() {
 // FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
 // If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry
 func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	text, err := dbp.CurrentThread.Disassemble(fn.Entry, fn.End, false)
+	text, err := dbp.CurrentThread().Disassemble(fn.Entry, fn.End, false)
 	if err != nil {
 		return fn.Entry, err
 	}

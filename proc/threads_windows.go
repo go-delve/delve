@@ -57,7 +57,7 @@ func (t *Thread) singleStep() error {
 		}
 		if tid == 0 {
 			t.dbp.postExit()
-			return ProcessExitedError{Pid: t.dbp.Pid, Status: exitCode}
+			return ProcessExitedError{Pid: t.dbp.pid, Status: exitCode}
 		}
 
 		if t.dbp.os.breakThread == t.ID {
@@ -65,7 +65,7 @@ func (t *Thread) singleStep() error {
 		}
 
 		t.dbp.execPtraceFunc(func() {
-			err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.dbp.os.breakThread), _DBG_CONTINUE)
+			err = _ContinueDebugEvent(uint32(t.dbp.pid), uint32(t.dbp.os.breakThread), _DBG_CONTINUE)
 		})
 	}
 
@@ -75,7 +75,7 @@ func (t *Thread) singleStep() error {
 	}
 
 	t.dbp.execPtraceFunc(func() {
-		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
+		err = _ContinueDebugEvent(uint32(t.dbp.pid), uint32(t.ID), _DBG_CONTINUE)
 	})
 	if err != nil {
 		return err
@@ -98,7 +98,7 @@ func (t *Thread) resume() error {
 	t.dbp.execPtraceFunc(func() {
 		//TODO: Note that we are ignoring the thread we were asked to continue and are continuing the
 		//thread that we last broke on.
-		err = _ContinueDebugEvent(uint32(t.dbp.Pid), uint32(t.ID), _DBG_CONTINUE)
+		err = _ContinueDebugEvent(uint32(t.dbp.pid), uint32(t.ID), _DBG_CONTINUE)
 	})
 	return err
 }
