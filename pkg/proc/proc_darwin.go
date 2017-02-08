@@ -175,7 +175,7 @@ func (dbp *Process) Kill() (err error) {
 func (dbp *Process) requestManualStop() (err error) {
 	var (
 		task          = C.mach_port_t(dbp.os.task)
-		thread        = C.mach_port_t(dbp.CurrentThread.os.threadAct)
+		thread        = C.mach_port_t(dbp.currentThread.os.threadAct)
 		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
 	)
 	kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)

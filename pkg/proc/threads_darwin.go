@@ -5,8 +5,9 @@ package proc
 import "C"
 import (
 	"fmt"
-	sys "golang.org/x/sys/unix"
 	"unsafe"
+
+	sys "golang.org/x/sys/unix"
 )
 
 // WaitStatus is a synonym for the platform-specific WaitStatus
@@ -35,7 +36,7 @@ func (t *Thread) halt() (err error) {
 			return
 		}
 
-		if _, ok := t.dbp.Threads[t.ID]; ok {
+		if _, ok := t.dbp.threads[t.ID]; ok {
 			err = fmt.Errorf("could not suspend thread %d %s", t.ID, errStr)
 			return
 		}
@@ -49,7 +50,7 @@ func (t *Thread) singleStep() error {
 		return fmt.Errorf("could not single step")
 	}
 	for {
-		twthread, err := t.dbp.trapWait(t.dbp.Pid)
+		twthread, err := t.dbp.trapWait(t.dbp.pid)
 		if err != nil {
 			return err
 		}
@@ -69,7 +70,7 @@ func (t *Thread) resume() error {
 	t.running = true
 	// TODO(dp) set flag for ptrace stops
 	var err error
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.Pid, 0) })
+	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.pid, 0) })
 	if err == nil {
 		return nil
 	}
