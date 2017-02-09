@@ -241,7 +241,7 @@ func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, susp
 	}
 	thread.os.hThread = hThread
 	dbp.threads[threadID] = thread
-	if dbp.CurrentThread == nil {
+	if dbp.currentThread == nil {
 		dbp.SwitchThread(thread.ID)
 	}
 	if suspendNewThreads {
