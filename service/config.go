@@ -26,6 +26,9 @@ type Config struct {
 	// APIVersion selects which version of the API to serve (default: 1).
 	APIVersion int
 
-	// CoreFile specifies the path to the core dump to open
+	// CoreFile specifies the path to the core dump to open.
 	CoreFile string
+
+	// Selects server backend.
+	Backend string
 }

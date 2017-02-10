@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -16,6 +17,20 @@ import (
 	"github.com/derekparker/delve/service/rpc2"
 	"github.com/derekparker/delve/service/rpccommon"
 )
+
+var testBackend string
+
+func TestMain(m *testing.M) {
+	flag.StringVar(&testBackend, "backend", "", "selects backend")
+	flag.Parse()
+	if testBackend == "" {
+		testBackend = os.Getenv("PROCTEST")
+		if testBackend == "" {
+			testBackend = "native"
+		}
+	}
+	os.Exit(m.Run())
+}
 
 type FakeTerminal struct {
 	*Term
@@ -81,6 +96,7 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{test.BuildFixture(name).Path},
+		Backend:     testBackend,
 	}, false)
 	if err := server.Run(); err != nil {
 		t.Fatal(err)

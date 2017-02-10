@@ -5,6 +5,13 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [NEWEST VERSION] RELEASE DATE
+
+### Added
+
+- Added support for core files (@heschik)
+- Added support for lldb-server and debugserver as backend, using debugserver by default on macOS (@aarzilli)
+
 ## [0.12.2] 2017-04-13
 
 ### Fixed

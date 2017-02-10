@@ -115,6 +115,7 @@ func (s *ServerImpl) Run() error {
 		AttachPid:   s.config.AttachPid,
 		WorkingDir:  s.config.WorkingDir,
 		CoreFile:    s.config.CoreFile,
+		Backend:     s.config.Backend,
 	}); err != nil {
 		return err
 	}

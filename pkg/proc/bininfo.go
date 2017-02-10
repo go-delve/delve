@@ -107,6 +107,11 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *gosym.Func) {
 	return bi.goSymTable.PCToLine(pc)
 }
 
+// LineToPC converts a file:line into a memory address.
+func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *gosym.Func, err error) {
+	return bi.goSymTable.LineToPC(filename, lineno)
+}
+
 func (bi *BinaryInfo) Close() error {
 	return bi.closer.Close()
 }

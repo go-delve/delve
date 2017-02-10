@@ -20,6 +20,8 @@ type Registers interface {
 	BP() uint64
 	CX() uint64
 	TLS() uint64
+	// GAddr returns the address of the G variable if it is known, 0 and false otherwise
+	GAddr() (uint64, bool)
 	Get(int) (uint64, error)
 	SetPC(IThread, uint64) error
 	Slice() []Register

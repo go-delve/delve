@@ -209,6 +209,12 @@ func next(dbp Continuable, stepInto bool) error {
 		return err
 	}
 
+	for i := range text {
+		if text[i].Inst == nil {
+			fmt.Printf("error at instruction %d\n", i)
+		}
+	}
+
 	cond := sameGoroutineCondition(selg)
 
 	if stepInto {
@@ -377,13 +383,16 @@ func getGVariable(thread IThread) (*Variable, error) {
 		return nil, fmt.Errorf("g struct offset not initialized")
 	}
 
-	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+arch.GStructOffset()), arch.PtrSize())
-	if err != nil {
-		return nil, err
+	gaddr, hasgaddr := regs.GAddr()
+	if !hasgaddr {
+		gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+arch.GStructOffset()), arch.PtrSize())
+		if err != nil {
+			return nil, err
+		}
+		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
-	gaddr := uintptr(binary.LittleEndian.Uint64(gaddrbs))
 
-	return newGVariable(thread, gaddr, arch.DerefTLS())
+	return newGVariable(thread, uintptr(gaddr), arch.DerefTLS())
 }
 
 func newGVariable(thread IThread, gaddr uintptr, deref bool) (*Variable, error) {

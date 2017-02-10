@@ -9,6 +9,7 @@ import (
 
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/service/api"
+	"github.com/derekparker/delve/pkg/target"
 
 	protest "github.com/derekparker/delve/pkg/proc/test"
 )
@@ -53,7 +54,7 @@ func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
 	}
 }
 
-func evalVariable(p *proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
+func evalVariable(p target.Interface, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
 	scope, err := proc.GoroutineScope(p.CurrentThread())
 	if err != nil {
 		return nil, err
@@ -67,7 +68,7 @@ func (tc *varTest) alternateVarTest() varTest {
 	return r
 }
 
-func setVariable(p *proc.Process, symbol, value string) error {
+func setVariable(p target.Interface, symbol, value string) error {
 	scope, err := proc.GoroutineScope(p.CurrentThread())
 	if err != nil {
 		return err
@@ -77,16 +78,25 @@ func setVariable(p *proc.Process, symbol, value string) error {
 
 const varTestBreakpointLineNumber = 59
 
-func withTestProcess(name string, t *testing.T, fn func(p *proc.Process, fixture protest.Fixture)) {
+func withTestProcess(name string, t *testing.T, fn func(p target.Interface, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)
-	p, err := proc.Launch([]string{fixture.Path}, ".")
+	var p target.Interface
+	var err error
+	switch testBackend {
+	case "native":
+		p, err = proc.Launch([]string{fixture.Path}, ".")
+	case "lldb":
+		p, err = proc.LLDBLaunch([]string{fixture.Path}, ".")
+	default:
+		t.Fatalf("unknown backend %q", testBackend)
+	}
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
 
 	defer func() {
 		p.Halt()
-		p.Kill()
+		p.Detach(true)
 	}()
 
 	fn(p, fixture)
@@ -137,7 +147,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"NonExistent", true, "", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
-	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p target.Interface, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
@@ -215,7 +225,7 @@ func TestVariableEvaluationShort(t *testing.T) {
 		{"NonExistent", true, "", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
-	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p target.Interface, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
@@ -270,7 +280,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 		Nest: *(*main.Nest)(…`, "", "main.Nest", nil},
 	}
 
-	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p target.Interface, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
@@ -343,7 +353,7 @@ func TestLocalVariables(t *testing.T) {
 				{"baz", true, "\"bazburzum\"", "", "string", nil}}},
 	}
 
-	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p target.Interface, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
@@ -367,7 +377,7 @@ func TestLocalVariables(t *testing.T) {
 }
 
 func TestEmbeddedStruct(t *testing.T) {
-	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p target.Interface, fixture protest.Fixture) {
 		testcases := []varTest{
 			{"b.val", true, "-314", "-314", "int", nil},
 			{"b.A.val", true, "-314", "-314", "int", nil},
@@ -397,7 +407,7 @@ func TestEmbeddedStruct(t *testing.T) {
 }
 
 func TestComplexSetting(t *testing.T) {
-	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables", t, func(p target.Interface, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
@@ -643,7 +653,7 @@ func TestEvalExpression(t *testing.T) {
 		}
 	}
 
-	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p target.Interface, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
@@ -667,7 +677,7 @@ func TestEvalExpression(t *testing.T) {
 }
 
 func TestEvalAddrAndCast(t *testing.T) {
-	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p target.Interface, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		c1addr, err := evalVariable(p, "&c1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalExpression(&c1)")
@@ -693,7 +703,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 }
 
 func TestMapEvaluation(t *testing.T) {
-	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p target.Interface, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		m1v, err := evalVariable(p, "m1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
@@ -727,7 +737,7 @@ func TestMapEvaluation(t *testing.T) {
 }
 
 func TestUnsafePointer(t *testing.T) {
-	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p target.Interface, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		up1v, err := evalVariable(p, "up1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(up1)")
@@ -764,7 +774,7 @@ func TestIssue426(t *testing.T) {
 
 	// Serialization of type expressions (go/ast.Expr) containing anonymous structs or interfaces
 	// differs from the serialization used by the linker to produce DWARF type information
-	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p target.Interface, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, testcase := range testcases {
 			v, err := evalVariable(p, testcase.name, pnormalLoadConfig)
@@ -815,7 +825,7 @@ func TestPackageRenames(t *testing.T) {
 		return
 	}
 
-	withTestProcess("pkgrenames", t, func(p *proc.Process, fixture protest.Fixture) {
+	withTestProcess("pkgrenames", t, func(p target.Interface, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)

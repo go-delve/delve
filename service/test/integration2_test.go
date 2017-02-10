@@ -1,6 +1,7 @@
 package servicetest
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net"
@@ -22,8 +23,17 @@ import (
 )
 
 var normalLoadConfig = api.LoadConfig{true, 1, 64, 64, -1}
+var testBackend string
 
 func TestMain(m *testing.M) {
+	flag.StringVar(&testBackend, "backend", "", "selects backend")
+	flag.Parse()
+	if testBackend == "" {
+		testBackend = os.Getenv("PROCTEST")
+		if testBackend == "" {
+			testBackend = "native"
+		}
+	}
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
@@ -36,6 +46,7 @@ func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{protest.BuildFixture(name).Path},
+		Backend:     testBackend,
 	}, false)
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
@@ -58,6 +69,7 @@ func TestRunWithInvalidPath(t *testing.T) {
 		Listener:    listener,
 		ProcessArgs: []string{"invalid_path"},
 		APIVersion:  2,
+		Backend:     testBackend,
 	}, false)
 	if err := server.Run(); err == nil {
 		t.Fatal("Expected Run to return error for invalid program path")
@@ -147,6 +159,7 @@ func TestRestart_attachPid(t *testing.T) {
 		Listener:   nil,
 		AttachPid:  999,
 		APIVersion: 2,
+		Backend:    testBackend,
 	}, false)
 	if err := server.Restart(); err == nil {
 		t.Fatal("expected error on restart after attaching to pid but got none")

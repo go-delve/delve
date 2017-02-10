@@ -42,6 +42,9 @@ var (
 	// WorkingDir is the working directory for running the program.
 	WorkingDir string
 
+	// Backend selection
+	Backend string
+
 	// RootCommand is the root of the command tree.
 	RootCommand *cobra.Command
 
@@ -92,10 +95,14 @@ func New() *cobra.Command {
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 	RootCommand.PersistentFlags().StringVar(&WorkingDir, "wd", ".", "Working directory for running the program.")
+	RootCommand.PersistentFlags().StringVar(&Backend, "backend", "default", `Backend selection:
+	default		Uses lldb on macOS, native everywhere else.
+	native		Native backend.
+	lldb		Uses lldb-server or debugserver.`)
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
-		Use:   "attach pid",
+		Use:   "attach pid [executable]",
 		Short: "Attach to running process and begin debugging.",
 		Long: `Attach to an already running process and begin debugging it.
 
@@ -304,6 +311,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			AttachPid:   traceAttachPid,
 			APIVersion:  2,
 			WorkingDir:  WorkingDir,
+			Backend:     Backend,
 		}, Log)
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -361,7 +369,7 @@ func attachCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
 		os.Exit(1)
 	}
-	os.Exit(execute(pid, nil, conf, "", executingOther))
+	os.Exit(execute(pid, args[1:], conf, "", executingOther))
 }
 
 func coreCmd(cmd *cobra.Command, args []string) {
@@ -432,6 +440,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			AcceptMulti: AcceptMulti,
 			APIVersion:  APIVersion,
 			WorkingDir:  WorkingDir,
+			Backend:     Backend,
 			CoreFile:    coreFile,
 		}, Log)
 	default:
