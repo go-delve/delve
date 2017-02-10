@@ -2,12 +2,19 @@ package proc
 
 import (
 	"bytes"
+	"io/ioutil"
+	"os/exec"
 	"reflect"
 	"testing"
+
+	"fmt"
+
+	"path"
+
+	"github.com/derekparker/delve/pkg/proc/test"
 )
 
 func TestSplicedReader(t *testing.T) {
-	mem := &SplicedMemory{}
 	data := []byte{}
 	data2 := []byte{}
 	for i := 0; i < 100; i++ {
@@ -101,6 +108,7 @@ func TestSplicedReader(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			mem := &SplicedMemory{}
 			for _, region := range test.regions {
 				r := bytes.NewReader(region.data)
 				mem.Add(&OffsetReaderAt{r, 0}, region.off, region.length)
@@ -112,5 +120,26 @@ func TestSplicedReader(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestReadCore(t *testing.T) {
+	// This is all very fragile and won't work on hosts with non-default core patterns.
+	// Might be better to check in the core?
+	tempDir, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fix := test.BuildFixture("panic")
+	bashCmd := fmt.Sprintf("cd %v && ulimit -c unlimited && GOTRACEBACK=crash %v", tempDir, fix.Path)
+	exec.Command("bash", "-c", bashCmd).Run()
+	corePath := path.Join(tempDir, "core")
+
+	core, err := readCore(corePath, fix.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(core.Threads) == 0 {
+		t.Error("expected at least one thread")
+	}
+	// Would be good to test more stuff but not sure what without reading debug information, etc.
 }
