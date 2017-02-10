@@ -812,7 +812,12 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		v.Children = []Variable{*v.maybeDereference()}
 		if cfg.FollowPointers {
 			// Don't increase the recursion level when dereferencing pointers
-			v.Children[0].loadValueInternal(recurseLevel, cfg)
+			// unless this is a pointer to interface (which could cause an infinite loop)
+			nextLvl := recurseLevel
+			if v.Children[0].Kind == reflect.Interface {
+				nextLvl++
+			}
+			v.Children[0].loadValueInternal(nextLvl, cfg)
 		} else {
 			v.Children[0].OnlyAddr = true
 		}
@@ -1630,7 +1635,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	data = data.newVariable("data", data.Addr, typ)
 
 	v.Children = []Variable{*data}
-	if loadData {
+	if loadData && recurseLevel <= cfg.MaxVariableRecurse {
 		v.Children[0].loadValueInternal(recurseLevel, cfg)
 	} else {
 		v.Children[0].OnlyAddr = true
