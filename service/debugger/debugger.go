@@ -49,8 +49,10 @@ type Config struct {
 	// attach.
 	AttachPid int
 
-	// CoreFile specifies the path to the core dump to open
+	// CoreFile specifies the path to the core dump to open.
 	CoreFile string
+	// Backend specifies the debugger backend.
+	Backend string
 }
 
 // New creates a new Debugger.
@@ -63,7 +65,11 @@ func New(config *Config) (*Debugger, error) {
 	switch {
 	case d.config.AttachPid > 0:
 		log.Printf("attaching to pid %d", d.config.AttachPid)
-		p, err := proc.Attach(d.config.AttachPid)
+		path := ""
+		if len(d.config.ProcessArgs) > 0 {
+			path = d.config.ProcessArgs[0]
+		}
+		p, err := d.Attach(d.config.AttachPid, path)
 		if err != nil {
 			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
@@ -79,7 +85,7 @@ func New(config *Config) (*Debugger, error) {
 
 	default:
 		log.Printf("launching process with args: %v", d.config.ProcessArgs)
-		p, err := proc.Launch(d.config.ProcessArgs, d.config.WorkingDir)
+		p, err := d.Launch(d.config.ProcessArgs, d.config.WorkingDir)
 		if err != nil {
 			if err != proc.NotExecutableErr && err != proc.UnsupportedLinuxArchErr && err != proc.UnsupportedWindowsArchErr && err != proc.UnsupportedDarwinArchErr {
 				err = fmt.Errorf("could not launch process: %s", err)
@@ -89,6 +95,49 @@ func New(config *Config) (*Debugger, error) {
 		d.target = p
 	}
 	return d, nil
+}
+
+func (d *Debugger) Launch(processArgs []string, wd string) (target.Interface, error) {
+	switch d.config.Backend {
+	case "native":
+		return proc.Launch(processArgs, wd)
+	case "lldb":
+		return proc.LLDBLaunch(processArgs, wd)
+	case "default":
+		if runtime.GOOS == "darwin" {
+			return proc.LLDBLaunch(processArgs, wd)
+		}
+		return proc.Launch(processArgs, wd)
+	default:
+		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
+	}
+}
+
+// ErrNoAttachPath is the error returned when the client tries to attach to
+// a process on macOS using the lldb backend without specifying the path to
+// the target's executable.
+var ErrNoAttachPath = errors.New("must specify executable path on macOS")
+
+func (d *Debugger) Attach(pid int, path string) (target.Interface, error) {
+	switch d.config.Backend {
+	case "native":
+		return proc.Attach(pid)
+	case "lldb":
+		if runtime.GOOS == "darwin" && path == "" {
+			return nil, ErrNoAttachPath
+		}
+		return proc.LLDBAttach(pid, path)
+	case "default":
+		if runtime.GOOS == "darwin" {
+			if path == "" {
+				return nil, ErrNoAttachPath
+			}
+			return proc.LLDBAttach(pid, path)
+		}
+		return proc.Attach(pid)
+	default:
+		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
+	}
 }
 
 // ProcessPid returns the PID of the process
@@ -142,7 +191,7 @@ func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 			return nil, err
 		}
 	}
-	p, err := proc.Launch(d.config.ProcessArgs, d.config.WorkingDir)
+	p, err := d.Launch(d.config.ProcessArgs, d.config.WorkingDir)
 	if err != nil {
 		return nil, fmt.Errorf("could not launch process: %s", err)
 	}
@@ -166,8 +215,9 @@ func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 			return nil, err
 		}
 	}
+	err = d.target.Detach(true)
 	d.target = p
-	return discarded, nil
+	return discarded, err
 }
 
 // State returns the current state of the debugger.

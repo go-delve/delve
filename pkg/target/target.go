@@ -91,3 +91,4 @@ type VariableEval interface {
 
 var _ Interface = &proc.Process{}
 var _ Interface = &proc.CoreProcess{}
+var _ Interface = &proc.GdbserverProcess{}

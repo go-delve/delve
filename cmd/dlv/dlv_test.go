@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,20 @@ import (
 	protest "github.com/derekparker/delve/pkg/proc/test"
 	"github.com/derekparker/delve/service/rpc2"
 )
+
+var testBackend string
+
+func TestMain(m *testing.M) {
+	flag.StringVar(&testBackend, "backend", "", "selects backend")
+	flag.Parse()
+	if testBackend == "" {
+		testBackend = os.Getenv("PROCTEST")
+		if testBackend == "" {
+			testBackend = "native"
+		}
+	}
+	os.Exit(m.Run())
+}
 
 func assertNoError(err error, t testing.TB, s string) {
 	if err != nil {
@@ -52,7 +67,7 @@ func TestBuild(t *testing.T) {
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2")
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend)
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")

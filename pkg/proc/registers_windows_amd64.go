@@ -124,6 +124,10 @@ func (r *Regs) TLS() uint64 {
 	return r.tls
 }
 
+func (r *Regs) GAddr() (uint64, bool) {
+	return 0, false
+}
+
 // SetPC sets the RIP register to the value specified by `pc`.
 func (r *Regs) SetPC(t IThread, pc uint64) error {
 	thread := t.(*Thread)
