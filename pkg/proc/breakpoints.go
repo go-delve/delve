@@ -72,9 +72,8 @@ func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.ID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
 }
 
-// Clear this breakpoint appropriately depending on whether it is a
-// hardware or software breakpoint.
-func (bp *Breakpoint) Clear(thread *Thread) (*Breakpoint, error) {
+// ClearBreakpoint clears the specified breakpoint.
+func (thread *Thread) ClearBreakpoint(bp *Breakpoint) (*Breakpoint, error) {
 	if _, err := thread.writeMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
 		return nil, fmt.Errorf("could not clear breakpoint %s", err)
 	}

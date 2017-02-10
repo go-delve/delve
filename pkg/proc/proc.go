@@ -295,7 +295,7 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 		return nil, NoBreakpointError{addr: addr}
 	}
 
-	if _, err := bp.Clear(dbp.currentThread); err != nil {
+	if _, err := dbp.currentThread.ClearBreakpoint(bp); err != nil {
 		return nil, err
 	}
 
