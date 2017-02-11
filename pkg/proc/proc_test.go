@@ -1011,7 +1011,7 @@ func TestIssue239(t *testing.T) {
 }
 
 func evalVariable(p *Process, symbol string) (*Variable, error) {
-	scope, err := p.currentThread.Scope()
+	scope, err := p.currentThread.GoroutineScope()
 	if err != nil {
 		return nil, err
 	}
@@ -1019,7 +1019,7 @@ func evalVariable(p *Process, symbol string) (*Variable, error) {
 }
 
 func setVariable(p *Process, symbol, value string) error {
-	scope, err := p.currentThread.Scope()
+	scope, err := p.currentThread.GoroutineScope()
 	if err != nil {
 		return err
 	}
@@ -1194,7 +1194,7 @@ func TestPointerSetting(t *testing.T) {
 		pval(1)
 
 		// change p1 to point to i2
-		scope, err := p.currentThread.Scope()
+		scope, err := p.currentThread.GoroutineScope()
 		assertNoError(err, t, "Scope()")
 		i2addr, err := scope.EvalExpression("i2", normalLoadConfig)
 		assertNoError(err, t, "EvalExpression()")
@@ -1333,7 +1333,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				if th.CurrentBreakpoint == nil {
 					continue
 				}
-				scope, err := th.Scope()
+				scope, err := th.GoroutineScope()
 				assertNoError(err, t, "Scope()")
 				v, err := scope.EvalVariable("i", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
@@ -1466,7 +1466,7 @@ func TestPointerLoops(t *testing.T) {
 func BenchmarkLocalVariables(b *testing.B) {
 	withTestProcess("testvariables", b, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), b, "Continue() returned an error")
-		scope, err := p.currentThread.Scope()
+		scope, err := p.currentThread.GoroutineScope()
 		assertNoError(err, b, "Scope()")
 		for i := 0; i < b.N; i++ {
 			_, err := scope.LocalVariables(normalLoadConfig)
@@ -1692,7 +1692,7 @@ func TestPackageVariables(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		err := p.Continue()
 		assertNoError(err, t, "Continue()")
-		scope, err := p.currentThread.Scope()
+		scope, err := p.currentThread.GoroutineScope()
 		assertNoError(err, t, "Scope()")
 		vars, err := scope.PackageVariables(normalLoadConfig)
 		assertNoError(err, t, "PackageVariables()")
@@ -2452,7 +2452,7 @@ func BenchmarkTrace(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			assertNoError(p.Continue(), b, "Continue()")
-			s, err := p.currentThread.Scope()
+			s, err := p.currentThread.GoroutineScope()
 			assertNoError(err, b, "Scope()")
 			_, err = s.FunctionArguments(LoadConfig{false, 0, 64, 0, 3})
 			assertNoError(err, b, "FunctionArguments()")

@@ -490,7 +490,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			}
 		}
 
-		s, err := d.target.Threads()[state.Threads[i].ID].Scope()
+		s, err := d.target.Threads()[state.Threads[i].ID].GoroutineScope()
 		if err != nil {
 			return err
 		}
@@ -602,7 +602,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 	if !found {
 		return nil, fmt.Errorf("couldn't find thread %d", threadID)
 	}
-	scope, err := thread.Scope()
+	scope, err := thread.ThreadScope()
 	if err != nil {
 		return nil, err
 	}
@@ -752,7 +752,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 		frame := api.Stackframe{Location: api.ConvertLocation(rawlocs[i].Call)}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
-			scope := rawlocs[i].Scope(d.target.CurrentThread())
+			scope := d.target.FrameToScope(rawlocs[i])
 			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {
 				return nil, err

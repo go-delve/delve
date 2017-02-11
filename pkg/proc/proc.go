@@ -784,7 +784,8 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		return nil, err
 	}
 
-	ver, isextld, err := dbp.getGoInformation()
+	scope := &EvalScope{0, 0, dbp.currentThread, nil, dbp.BinInfo()}
+	ver, isextld, err := scope.getGoInformation()
 	if err != nil {
 		return nil, err
 	}
@@ -843,12 +844,12 @@ func (dbp *Process) execPtraceFunc(fn func()) {
 	<-dbp.ptraceDoneChan
 }
 
-func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) {
-	vv, err := dbp.EvalPackageVariable("runtime.buildVersion", LoadConfig{true, 0, 64, 0, 0})
+func (scope *EvalScope) getGoInformation() (ver GoVersion, isextld bool, err error) {
+	vv, err := scope.packageVarAddr("runtime.buildVersion")
 	if err != nil {
-		err = fmt.Errorf("Could not determine version number: %v\n", err)
-		return
+		return ver, false, fmt.Errorf("Could not determine version number: %v", err)
 	}
+	vv.loadValue(LoadConfig{true, 0, 64, 0, 0})
 	if vv.Unreadable != nil {
 		err = fmt.Errorf("Unreadable version number: %v\n", vv.Unreadable)
 		return
@@ -860,7 +861,7 @@ func (dbp *Process) getGoInformation() (ver GoVersion, isextld bool, err error) 
 		return
 	}
 
-	rdr := dbp.bi.DwarfReader()
+	rdr := scope.bi.DwarfReader()
 	rdr.Seek(0)
 	for entry, err := rdr.NextCompileUnit(); entry != nil; entry, err = rdr.NextCompileUnit() {
 		if err != nil {
@@ -904,15 +905,14 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 		return nil, err
 	}
 	if g == nil {
-		return dbp.currentThread.Scope()
+		return dbp.currentThread.ThreadScope()
 	}
 
-	var out EvalScope
-
+	var thread *Thread
 	if g.thread == nil {
-		out.Thread = dbp.currentThread
+		thread = dbp.currentThread
 	} else {
-		out.Thread = g.thread
+		thread = g.thread
 	}
 
 	locs, err := g.Stacktrace(frame)
@@ -924,9 +924,9 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
 	}
 
-	out.PC, out.CFA = locs[frame].Current.PC, locs[frame].CFA
+	PC, CFA := locs[frame].Current.PC, locs[frame].CFA
 
-	return &out, nil
+	return &EvalScope{PC, CFA, thread, g.variable, dbp.BinInfo()}, nil
 }
 
 func (dbp *Process) postExit() {

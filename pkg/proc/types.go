@@ -221,7 +221,7 @@ type nameOfRuntimeTypeEntry struct {
 // _type is a non-loaded Variable pointing to runtime._type struct in the target.
 // The returned string is in the format that's used in DWARF data
 func nameOfRuntimeType(_type *Variable) (typename string, kind int64, err error) {
-	if e, ok := _type.dbp.bi.nameOfRuntimeType[_type.Addr]; ok {
+	if e, ok := _type.bi.nameOfRuntimeType[_type.Addr]; ok {
 		return e.typename, e.kind, nil
 	}
 
@@ -244,7 +244,7 @@ func nameOfRuntimeType(_type *Variable) (typename string, kind int64, err error)
 		return typename, kind, err
 	}
 
-	_type.dbp.bi.nameOfRuntimeType[_type.Addr] = nameOfRuntimeTypeEntry{typename, kind}
+	_type.bi.nameOfRuntimeType[_type.Addr] = nameOfRuntimeTypeEntry{typename, kind}
 
 	return typename, kind, nil
 }
@@ -277,7 +277,7 @@ func nameOfNamedRuntimeType(_type *Variable, kind, tflag int64) (typename string
 	// For a description of how memory is organized for type names read
 	// the comment to 'type name struct' in $GOROOT/src/reflect/type.go
 
-	typename, _, _, err = _type.dbp.bi.resolveNameOff(_type.Addr, uintptr(strOff), _type.dbp.currentThread)
+	typename, _, _, err = resolveNameOff(_type.bi, _type.Addr, uintptr(strOff), _type.mem)
 	if err != nil {
 		return "", err
 	}
@@ -303,7 +303,7 @@ func nameOfNamedRuntimeType(_type *Variable, kind, tflag int64) (typename string
 	if ut := uncommon(_type, tflag); ut != nil {
 		if pkgPathField := ut.loadFieldNamed("pkgpath"); pkgPathField != nil && pkgPathField.Value != nil {
 			pkgPathOff, _ := constant.Int64Val(pkgPathField.Value)
-			pkgPath, _, _, err := _type.dbp.bi.resolveNameOff(_type.Addr, uintptr(pkgPathOff), _type.dbp.currentThread)
+			pkgPath, _, _, err := resolveNameOff(_type.bi, _type.Addr, uintptr(pkgPathOff), _type.mem)
 			if err != nil {
 				return "", err
 			}
@@ -376,11 +376,11 @@ func nameOfUnnamedRuntimeType(_type *Variable, kind, tflag int64) (string, error
 // (optional) and then by an array of pointers to runtime._type,
 // one for each input and output argument.
 func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string, error) {
-	rtyp, err := _type.dbp.bi.findType("runtime._type")
+	rtyp, err := _type.bi.findType("runtime._type")
 	if err != nil {
 		return "", err
 	}
-	prtyp := pointerTo(rtyp, _type.dbp.bi.arch)
+	prtyp := pointerTo(rtyp, _type.bi.arch)
 
 	uadd := _type.RealType.Common().ByteSize
 	if ut := uncommon(_type, tflag); ut != nil {
@@ -407,7 +407,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 
 	for i := int64(0); i < inCount; i++ {
 		argtype := cursortyp.maybeDereference()
-		cursortyp.Addr += uintptr(_type.dbp.bi.arch.PtrSize())
+		cursortyp.Addr += uintptr(_type.bi.arch.PtrSize())
 		argtypename, _, err := nameOfRuntimeType(argtype)
 		if err != nil {
 			return "", err
@@ -434,7 +434,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 		buf.WriteString(" (")
 		for i := int64(0); i < outCount; i++ {
 			argtype := cursortyp.maybeDereference()
-			cursortyp.Addr += uintptr(_type.dbp.bi.arch.PtrSize())
+			cursortyp.Addr += uintptr(_type.bi.arch.PtrSize())
 			argtypename, _, err := nameOfRuntimeType(argtype)
 			if err != nil {
 				return "", err
@@ -473,14 +473,14 @@ func nameOfInterfaceRuntimeType(_type *Variable, kind, tflag int64) (string, err
 			case "name":
 				nameoff, _ := constant.Int64Val(im.Children[i].Value)
 				var err error
-				methodname, _, _, err = _type.dbp.bi.resolveNameOff(_type.Addr, uintptr(nameoff), _type.dbp.currentThread)
+				methodname, _, _, err = resolveNameOff(_type.bi, _type.Addr, uintptr(nameoff), _type.mem)
 				if err != nil {
 					return "", err
 				}
 
 			case "typ":
 				typeoff, _ := constant.Int64Val(im.Children[i].Value)
-				typ, err := _type.dbp.bi.resolveTypeOff(_type.Addr, uintptr(typeoff), _type.dbp.currentThread)
+				typ, err := resolveTypeOff(_type.bi, _type.Addr, uintptr(typeoff), _type.mem)
 				if err != nil {
 					return "", err
 				}
@@ -536,7 +536,7 @@ func nameOfStructRuntimeType(_type *Variable, kind, tflag int64) (string, error)
 			case "name":
 				nameoff, _ := constant.Int64Val(field.Children[i].Value)
 				var err error
-				fieldname, _, _, err = _type.dbp.bi.loadName(uintptr(nameoff), _type.mem)
+				fieldname, _, _, err = loadName(_type.bi, uintptr(nameoff), _type.mem)
 				if err != nil {
 					return "", err
 				}
@@ -578,13 +578,13 @@ func fieldToType(_type *Variable, fieldName string) (string, error) {
 }
 
 func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
-	rtyp, err := _type.dbp.bi.findType("runtime._type")
+	rtyp, err := _type.bi.findType("runtime._type")
 	if err != nil {
 		return nil, err
 	}
-	prtyp := pointerTo(rtyp, _type.dbp.bi.arch)
+	prtyp := pointerTo(rtyp, _type.bi.arch)
 
-	uintptrtyp, err := _type.dbp.bi.findType("uintptr")
+	uintptrtyp, err := _type.bi.findType("uintptr")
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +602,7 @@ func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
 
 	newSliceType := func(elemtype dwarf.Type) *dwarf.SliceType {
 		r := newStructType("[]"+elemtype.Common().Name, uintptr(3*uintptrtyp.Size()))
-		appendField(r, "array", pointerTo(elemtype, _type.dbp.bi.arch), 0)
+		appendField(r, "array", pointerTo(elemtype, _type.bi.arch), 0)
 		appendField(r, "len", uintptrtyp, uintptr(uintptrtyp.Size()))
 		appendField(r, "cap", uintptrtyp, uintptr(2*uintptrtyp.Size()))
 		return &dwarf.SliceType{StructType: *r, ElemType: elemtype}
@@ -746,7 +746,7 @@ func uncommon(_type *Variable, tflag int64) *Variable {
 		return nil
 	}
 
-	typ, err := _type.dbp.bi.findType("runtime.uncommontype")
+	typ, err := _type.bi.findType("runtime.uncommontype")
 	if err != nil {
 		return nil
 	}

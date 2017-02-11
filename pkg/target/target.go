@@ -94,6 +94,7 @@ type BreakpointManipulation interface {
 
 // VariableEval is an interface for dealing with eval scopes.
 type VariableEval interface {
+	FrameToScope(proc.Stackframe) *proc.EvalScope
 	ConvertEvalScope(gid, frame int) (*proc.EvalScope, error)
 }
 

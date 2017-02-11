@@ -38,9 +38,9 @@ type Stackframe struct {
 	addrret uint64
 }
 
-// Scope returns a new EvalScope using this frame.
-func (frame *Stackframe) Scope(thread *Thread) *EvalScope {
-	return &EvalScope{Thread: thread, PC: frame.Current.PC, CFA: frame.CFA}
+// FrameToScope returns a new EvalScope for this frame
+func (p *Process) FrameToScope(frame Stackframe) *EvalScope {
+	return &EvalScope{frame.Current.PC, frame.CFA, p.currentThread, nil, p.BinInfo()}
 }
 
 // ReturnAddress returns the return address of the function
@@ -82,7 +82,7 @@ func (g *G) stackIterator() (*stackIterator, error) {
 	if g.thread != nil {
 		return g.thread.stackIterator(stkbar, g.stkbarPos)
 	}
-	return newStackIterator(&g.dbp.bi, g.dbp.currentThread, g.PC, g.SP, 0, stkbar, g.stkbarPos), nil
+	return newStackIterator(g.variable.bi, g.variable.mem, g.PC, g.SP, 0, stkbar, g.stkbarPos), nil
 }
 
 // Stacktrace returns the stack trace for a goroutine.

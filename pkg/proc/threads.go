@@ -432,8 +432,8 @@ func (thread *Thread) Halt() (err error) {
 	return
 }
 
-// Scope returns the current EvalScope for this thread.
-func (thread *Thread) Scope() (*EvalScope, error) {
+// ThreadScope returns an EvalScope for this thread.
+func (thread *Thread) ThreadScope() (*EvalScope, error) {
 	locations, err := thread.Stacktrace(0)
 	if err != nil {
 		return nil, err
@@ -441,7 +441,23 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return locations[0].Scope(thread), nil
+	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, nil, thread.dbp.BinInfo()}, nil
+}
+
+// GoroutineScope returns an EvalScope for the goroutine running on this thread.
+func (thread *Thread) GoroutineScope() (*EvalScope, error) {
+	locations, err := thread.Stacktrace(0)
+	if err != nil {
+		return nil, err
+	}
+	if len(locations) < 1 {
+		return nil, errors.New("could not decode first frame")
+	}
+	gvar, err := thread.getGVariable()
+	if err != nil {
+		return nil, err
+	}
+	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, gvar, thread.dbp.BinInfo()}, nil
 }
 
 // SetCurrentBreakpoint sets the current breakpoint that this
