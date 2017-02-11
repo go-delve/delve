@@ -2705,3 +2705,18 @@ func TestAttachDetach(t *testing.T) {
 
 	cmd.Process.Kill()
 }
+
+func TestVarSum(t *testing.T) {
+	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		sumvar, err := evalVariable(p, "s1[0] + s1[1]")
+		assertNoError(err, t, "EvalVariable")
+		sumvarstr := constant.StringVal(sumvar.Value)
+		if sumvarstr != "onetwo" {
+			t.Fatalf("s1[0] + s1[1] == %q (expected \"onetwo\")", sumvarstr)
+		}
+		if sumvar.Len != int64(len(sumvarstr)) {
+			t.Fatalf("sumvar.Len == %d (expected %d)", sumvar.Len, len(sumvarstr))
+		}
+	})
+}

@@ -850,6 +850,9 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 
 		r := xv.newVariable("", 0, typ)
 		r.Value = rc
+		if r.Kind == reflect.String {
+			r.Len = xv.Len+yv.Len
+		}
 		return r, nil
 	}
 }
