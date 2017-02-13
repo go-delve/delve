@@ -115,10 +115,15 @@ func TestDebugLinePrologueParser(t *testing.T) {
 
 func BenchmarkLineParser(b *testing.B) {
 	defer profile.Start(profile.MemProfile).Stop()
-	p, err := filepath.Abs("../../_fixtures/testnextprog")
+	p, err := filepath.Abs("../../../_fixtures/testnextprog")
 	if err != nil {
 		b.Fatal(err)
 	}
+	err = exec.Command("go", "build", "-gcflags=-N -l", "-o", p, p+".go").Run()
+	if err != nil {
+		b.Fatal("Could not compile test file", p, err)
+	}
+	defer os.Remove(p)
 
 	data := grabDebugLineSection(p, nil)
 
