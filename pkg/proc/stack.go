@@ -230,7 +230,7 @@ func (dbp *Process) frameInfo(pc, sp uint64, top bool) (Stackframe, error) {
 	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: binary.LittleEndian.Uint64(data), addrret: uint64(retaddr)}
 	if !top {
 		r.Call.File, r.Call.Line, r.Call.Fn = dbp.PCToLine(pc - 1)
-		r.Call.PC, _, _ = dbp.goSymTable.LineToPC(r.Call.File, r.Call.Line)
+		r.Call.PC = r.Current.PC
 	} else {
 		r.Call = r.Current
 	}
