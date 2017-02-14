@@ -509,11 +509,40 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 			break
 		case _EXCEPTION_DEBUG_EVENT:
 			exception := (*_EXCEPTION_DEBUG_INFO)(unionPtr)
-			if code := exception.ExceptionRecord.ExceptionCode; code == _EXCEPTION_BREAKPOINT || code == _EXCEPTION_SINGLE_STEP {
-				tid := int(debugEvent.ThreadId)
+			tid := int(debugEvent.ThreadId)
+
+			switch code := exception.ExceptionRecord.ExceptionCode; code {
+			case _EXCEPTION_BREAKPOINT:
+
+				// check if the exception address really is a breakpoint instruction, if
+				// it isn't we already removed that breakpoint and we can't deal with
+				// this exception anymore.
+				atbp := true
+				if thread, found := dbp.threads[tid]; found {
+					if data, err := thread.readMemory(exception.ExceptionRecord.ExceptionAddress, dbp.arch.BreakpointSize()); err == nil {
+						instr := dbp.arch.BreakpointInstruction()
+						for i := range instr {
+							if data[i] != instr[i] {
+								atbp = false
+								break
+							}
+						}
+					}
+					if !atbp {
+						thread.SetPC(uint64(exception.ExceptionRecord.ExceptionAddress))
+					}
+				}
+
+				if atbp {
+					dbp.os.breakThread = tid
+					return tid, 0, nil
+				} else {
+					continueStatus = _DBG_CONTINUE
+				}
+			case _EXCEPTION_SINGLE_STEP:
 				dbp.os.breakThread = tid
 				return tid, 0, nil
-			} else {
+			default:
 				continueStatus = _DBG_EXCEPTION_NOT_HANDLED
 			}
 		case _EXIT_PROCESS_DEBUG_EVENT:

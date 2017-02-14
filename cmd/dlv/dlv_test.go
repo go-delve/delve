@@ -46,9 +46,12 @@ func TestBuild(t *testing.T) {
 	assertNoError(err, t, "stdout pipe")
 	cmd.Start()
 	defer func() {
-		cmd.Process.Signal(os.Interrupt)
 		if runtime.GOOS != "windows" {
+			cmd.Process.Signal(os.Interrupt)
 			cmd.Wait()
+		} else {
+			// sending os.Interrupt on windows is not supported
+			cmd.Process.Kill()
 		}
 	}()
 

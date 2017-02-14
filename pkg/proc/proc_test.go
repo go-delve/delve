@@ -818,6 +818,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 			locations, err := g.Stacktrace(40)
 			if err != nil {
 				// On windows we do not have frame information for goroutines doing system calls.
+				t.Logf("Could not retrieve goroutine stack for goid=%d: %v", g.ID, err)
 				continue
 			}
 
@@ -2096,6 +2097,14 @@ func TestStepConcurrentDirect(t *testing.T) {
 		_, err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
+		for _, b := range p.Breakpoints() {
+			if b.Name == "unrecovered-panic" {
+				_, err := p.ClearBreakpoint(b.Addr)
+				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
+				break
+			}
+		}
+
 		gid := p.selectedGoroutine.ID
 
 		seq := []int{37, 38, 13, 15, 16, 38}
@@ -2103,16 +2112,31 @@ func TestStepConcurrentDirect(t *testing.T) {
 		i := 0
 		count := 0
 		for {
+			anyerr := false
+			if p.selectedGoroutine.ID != gid {
+				t.Errorf("Step switched to different goroutine %d %d\n", gid, p.selectedGoroutine.ID)
+				anyerr = true
+			}
 			f, ln := currentLineNumber(p, t)
 			if ln != seq[i] {
 				if i == 1 && ln == 40 {
 					// loop exited
 					break
 				}
-				t.Fatalf("Program did not continue at expected location (%d) %s:%d", seq[i], f, ln)
+				frames, err := p.currentThread.Stacktrace(20)
+				if err != nil {
+					t.Errorf("Could not get stacktrace of goroutine %d\n", p.selectedGoroutine.ID)
+				} else {
+					t.Logf("Goroutine %d (thread: %d):", p.selectedGoroutine.ID, p.currentThread.ID)
+					for _, frame := range frames {
+						t.Logf("\t%s:%d (%#x)", frame.Call.File, frame.Call.Line, frame.Current.PC)
+					}
+				}
+				t.Errorf("Program did not continue at expected location (%d) %s:%d [i %d count %d]", seq[i], f, ln, i, count)
+				anyerr = true
 			}
-			if p.selectedGoroutine.ID != gid {
-				t.Fatalf("Step switched to different goroutine %d %d\n", gid, p.selectedGoroutine.ID)
+			if anyerr {
+				t.FailNow()
 			}
 			i = (i + 1) % len(seq)
 			if i == 0 {
@@ -2143,6 +2167,14 @@ func TestStepConcurrentPtr(t *testing.T) {
 		_, err = p.SetBreakpoint(pc, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 
+		for _, b := range p.Breakpoints() {
+			if b.Name == "unrecovered-panic" {
+				_, err := p.ClearBreakpoint(b.Addr)
+				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
+				break
+			}
+		}
+
 		kvals := map[int]int64{}
 		count := 0
 		for {
@@ -2155,7 +2187,10 @@ func TestStepConcurrentPtr(t *testing.T) {
 
 			f, ln := currentLineNumber(p, t)
 			if ln != 24 {
-				t.Fatalf("Program did not continue at expected location (24): %s:%d", f, ln)
+				for _, th := range p.threads {
+					t.Logf("thread %d stopped on breakpoint %v", th.ID, th.CurrentBreakpoint)
+				}
+				t.Fatalf("Program did not continue at expected location (24): %s:%d %#x [%v] (gid %d count %d)", f, ln, currentPC(p, t), p.currentThread.CurrentBreakpoint, p.selectedGoroutine.ID, count)
 			}
 
 			gid := p.selectedGoroutine.ID
