@@ -1,5 +1,5 @@
 language: go
-sudo: false
+sudo: required
 
 os:
   - linux
@@ -9,6 +9,9 @@ go:
   - tip
   - 1.7
   - 1.6
+
+install:
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then sudo bash -c 'echo core > /proc/sys/kernel/core_pattern'; fi
 
 matrix:
   allow_failures:

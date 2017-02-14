@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"errors"
 	"fmt"
 
 	sys "golang.org/x/sys/unix"
@@ -15,6 +16,10 @@ type OSSpecificDetails struct {
 }
 
 func (t *Thread) halt() (err error) {
+	if t.dbp.debugType == debugTypeCore {
+		return errors.New("cannot halt a thread in a core file")
+	}
+
 	err = sys.Tgkill(t.dbp.pid, t.ID, sys.SIGSTOP)
 	if err != nil {
 		err = fmt.Errorf("halt err %s on thread %d", err, t.ID)
@@ -29,6 +34,9 @@ func (t *Thread) halt() (err error) {
 }
 
 func (t *Thread) stopped() bool {
+	if t.dbp.debugType == debugTypeCore {
+		return true
+	}
 	state := status(t.ID, t.dbp.os.comm)
 	return state == StatusTraceStop || state == StatusTraceStopT
 }
@@ -38,12 +46,20 @@ func (t *Thread) resume() error {
 }
 
 func (t *Thread) resumeWithSig(sig int) (err error) {
+	if t.dbp.debugType == debugTypeCore {
+		return errors.New("cannot change resume a thread in a core file")
+	}
+
 	t.running = true
 	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
 	return
 }
 
 func (t *Thread) singleStep() (err error) {
+	if t.dbp.debugType == debugTypeCore {
+		return errors.New("cannot step in a core file")
+	}
+
 	for {
 		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.ID) })
 		if err != nil {
@@ -77,6 +93,10 @@ func (t *Thread) blocked() bool {
 }
 
 func (t *Thread) saveRegisters() (Registers, error) {
+	if t.dbp.debugType == debugTypeCore {
+		return &Regs{&t.dbp.os.core.Threads[t.ID].Reg, nil}, nil
+	}
+
 	var err error
 	t.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(t.ID, &t.os.registers) })
 	if err != nil {
@@ -86,6 +106,10 @@ func (t *Thread) saveRegisters() (Registers, error) {
 }
 
 func (t *Thread) restoreRegisters() (err error) {
+	if t.dbp.debugType == debugTypeCore {
+		return errors.New("cannot write registers of a core file")
+	}
+
 	t.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(t.ID, &t.os.registers) })
 	return
 }
@@ -94,6 +118,11 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error)
 	if len(data) == 0 {
 		return
 	}
+
+	if t.dbp.debugType == debugTypeCore {
+		return 0, errors.New("cannot write memory to a core file")
+	}
+
 	t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
 	return
 }
@@ -102,7 +131,13 @@ func (t *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
 	if size == 0 {
 		return
 	}
+
 	data = make([]byte, size)
+
+	if t.dbp.debugType == debugTypeCore {
+		_, err = t.dbp.os.core.ReadMemory(data, addr)
+		return
+	}
 	t.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
 	return
 }

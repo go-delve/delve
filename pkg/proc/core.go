@@ -15,16 +15,16 @@ type MemoryReader interface {
 }
 
 // A SplicedMemory represents a memory space formed from multiple regions,
-// each of which may override previously regions. For example, in the following
+// each of which may override previous regions. For example, in the following
 // core, the program text was loaded at 0x400000:
-// Start               End                 Page Offset
-// 0x0000000000400000  0x000000000044f000  0x0000000000000000
+//   Start               End                 Page Offset
+//   0x0000000000400000  0x000000000044f000  0x0000000000000000
 // but then it's partially overwritten with an RW mapping whose data is stored
 // in the core file:
-// Type           Offset             VirtAddr           PhysAddr
-//                FileSiz            MemSiz              Flags  Align
-// LOAD           0x0000000000004000 0x000000000049a000 0x0000000000000000
-//                0x0000000000002000 0x0000000000002000  RW     1000
+//   Type           Offset             VirtAddr           PhysAddr
+//                  FileSiz            MemSiz              Flags  Align
+//   LOAD           0x0000000000004000 0x000000000049a000 0x0000000000000000
+//                  0x0000000000002000 0x0000000000002000  RW     1000
 // This can be represented in a SplicedMemory by adding the original region,
 // then putting the RW mapping on top of it.
 type SplicedMemory struct {
@@ -88,7 +88,7 @@ func (r *SplicedMemory) Add(reader MemoryReader, off, length uintptr) {
 			add(readerEntry{end + 1, entryEnd - end, entry.reader})
 			inserted = true
 		default:
-			panic(fmt.Sprintf("Unhandled case: existing entry is %v len %v, new is %v len %v", entry.offset, entry.length, off, length))
+			panic(fmt.Sprintf("Unhandled case: existing entry is %#x len %v, new is %#x len %v", entry.offset, entry.length, off, length))
 		}
 	}
 	if !inserted {
@@ -105,7 +105,7 @@ func (r *SplicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) 
 			if !started {
 				continue
 			}
-			return n, fmt.Errorf("hit unmapped area at %v after %v bytes", addr, n)
+			return n, fmt.Errorf("hit unmapped area at %#x after %v bytes", addr, n)
 		}
 
 		// Don't go past the region.
@@ -126,7 +126,7 @@ func (r *SplicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) 
 		}
 	}
 	if n == 0 {
-		return 0, fmt.Errorf("offset %v did not match any regions", addr)
+		return 0, fmt.Errorf("offset %#x did not match any regions", addr)
 	}
 	return n, nil
 }

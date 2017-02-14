@@ -156,11 +156,24 @@ consider compiling debugging binaries with -gcflags="-N -l".`,
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(execute(0, args, conf, executingExistingFile))
+			os.Exit(execute(0, args, "", conf, executingExistingFile))
 		},
 	}
 	RootCommand.AddCommand(execCommand)
 
+	coreCommand := &cobra.Command{
+		Use: "core [./path/to/binary] [./path/to/core]",
+		Short: "Read a core",
+		Long: "Read a core",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				return errors.New("you must provide a path to a binary and core")
+			}
+			return nil
+		},
+		Run: coreCmd,
+	}
+	RootCommand.AddCommand(coreCommand)
 	// Deprecated 'run' subcommand.
 	runCommand := &cobra.Command{
 		Use:   "run",
@@ -240,7 +253,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		processArgs := append([]string{abs}, targetArgs...)
-		return execute(0, processArgs, conf, executingGeneratedFile)
+		return execute(0, processArgs, "", conf, executingGeneratedFile)
 	}()
 	os.Exit(status)
 }
@@ -329,7 +342,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		defer os.Remove("./" + testdebugname)
 		processArgs := append([]string{"./" + testdebugname}, targetArgs...)
 
-		return execute(0, processArgs, conf, executingOther)
+		return execute(0, processArgs, "", conf, executingOther)
 	}()
 	os.Exit(status)
 }
@@ -340,7 +353,11 @@ func attachCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
 		os.Exit(1)
 	}
-	os.Exit(execute(pid, nil, conf, executingOther))
+	os.Exit(execute(pid, nil, "", conf, executingOther))
+}
+
+func coreCmd(cmd *cobra.Command, args []string) {
+	os.Exit(execute(0, []string{args[0]}, args[1], conf, executingOther))
 }
 
 func connectCmd(cmd *cobra.Command, args []string) {
@@ -379,7 +396,7 @@ const (
 	executingOther
 )
 
-func execute(attachPid int, processArgs []string, conf *config.Config, kind executeKind) int {
+func execute(attachPid int, processArgs []string, core string, conf *config.Config, kind executeKind) int {
 	// Make a TCP listener
 	listener, err := net.Listen("tcp", Addr)
 	if err != nil {
@@ -402,6 +419,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, kind exec
 	case 1, 2:
 		server = rpccommon.NewServer(&service.Config{
 			Listener:    listener,
+			Core: core,
 			ProcessArgs: processArgs,
 			AttachPid:   attachPid,
 			AcceptMulti: AcceptMulti,

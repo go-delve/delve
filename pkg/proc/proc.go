@@ -25,6 +25,7 @@ import (
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
+	debugType    debugType
 	pid          int         // Process Pid
 	Process      *os.Process // Pointer to process struct for the actual process we are debugging
 	lastModified time.Time   // Time the executable of this process was last modified
@@ -802,9 +803,18 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
 	return nil, false
 }
 
+type debugType int
+
+const (
+	debugTypeLaunch debugType = iota
+	debugTypeAttach
+	debugTypeCore
+)
+
 // Returns a new Process struct.
-func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, error) {
-	if attach {
+func initializeDebugProcess(dbp *Process, path string, debugType debugType) (*Process, error) {
+	dbp.debugType = debugType
+	if debugType == debugTypeAttach {
 		var err error
 		dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })
 		if err != nil {
@@ -816,14 +826,16 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		}
 	}
 
-	proc, err := os.FindProcess(dbp.pid)
-	if err != nil {
-		return nil, err
+	if debugType != debugTypeCore {
+		proc, err := os.FindProcess(dbp.pid)
+		if err != nil {
+			return nil, err
+		}
+
+		dbp.Process = proc
 	}
 
-	dbp.Process = proc
-	err = dbp.LoadInformation(path)
-	if err != nil {
+	if err := dbp.LoadInformation(path); err != nil {
 		return nil, err
 	}
 

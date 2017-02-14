@@ -65,11 +65,11 @@ type Core struct {
 
 // Note is a note from the PT_NOTE prog.
 // Relevant types:
-// - NT_FILE: File mapping information, e.g. program text mappings. Desc is a LinuxNTFile.
-// - NT_PRPSINFO: Information about a process, including PID and signal. Desc is a LinuxPrPsInfo.
-// - NT_PRSTATUS: Information about a thread, including base registers, state, etc. Desc is a LinuxPrStatus.
-// - NT_FPREGSET (Not implemented): x87 floating point registers.
-// - NT_X86_XSTATE (Not implemented): Other registers, including AVX and such.
+//   - NT_FILE: File mapping information, e.g. program text mappings. Desc is a LinuxNTFile.
+//   - NT_PRPSINFO: Information about a process, including PID and signal. Desc is a LinuxPrPsInfo.
+//   - NT_PRSTATUS: Information about a thread, including base registers, state, etc. Desc is a LinuxPrStatus.
+//   - NT_FPREGSET (Not implemented): x87 floating point registers.
+//   - NT_X86_XSTATE (Not implemented): Other registers, including AVX and such.
 type Note struct {
 	Type elf.NType
 	Name string
@@ -165,14 +165,14 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 
 // skipPadding moves r to the next multiple of pad.
 func skipPadding(r io.ReadSeeker, pad int64) error {
-	pos, err := r.Seek(0, io.SeekCurrent)
+	pos, err := r.Seek(0, os.SEEK_CUR)
 	if err != nil {
 		return err
 	}
 	if pos%pad == 0 {
 		return nil
 	}
-	if _, err := r.Seek(pad-(pos%pad), io.SeekCurrent); err != nil {
+	if _, err := r.Seek(pad-(pos%pad), os.SEEK_CUR); err != nil {
 		return err
 	}
 	return nil
@@ -182,6 +182,7 @@ func buildMemory(core *elf.File, exe io.ReaderAt, notes []*Note) MemoryReader {
 	memory := &SplicedMemory{}
 
 	// For now, assume all file mappings are to the exe.
+	// TODO: read the rest of the NT_FILE note and verify, maybe even find files somehow.
 	for _, note := range notes {
 		if note.Type == NT_FILE {
 			fileNote := note.Desc.(*LinuxNTFile)
