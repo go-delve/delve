@@ -149,11 +149,20 @@ func (dbp *Process) SelectedGoroutine() *G {
 	return dbp.selectedGoroutine
 }
 
-func (dbp *Process) Threads() map[int]*Thread {
-	return dbp.threads
+func (dbp *Process) ThreadList() []IThread {
+	r := make([]IThread, 0, len(dbp.threads))
+	for _, v := range dbp.threads {
+		r = append(r, v)
+	}
+	return r
 }
 
-func (dbp *Process) CurrentThread() *Thread {
+func (dbp *Process) FindThread(threadID int) (IThread, bool) {
+	th, ok := dbp.threads[threadID]
+	return th, ok
+}
+
+func (dbp *Process) CurrentThread() IThread {
 	return dbp.currentThread
 }
 
@@ -396,7 +405,7 @@ func (dbp *Process) Continue() error {
 				if err != nil {
 					return err
 				}
-				text, err := Disassemble(dbp.currentThread, regs, dbp.breakpoints, &dbp.bi, pc, pc+maxInstructionLength)
+				text, err := disassemble(dbp.currentThread, regs, dbp.breakpoints, dbp.BinInfo(), pc, pc+maxInstructionLength)
 				if err != nil {
 					return err
 				}
@@ -526,12 +535,12 @@ func (dbp *Process) StepInstruction() (err error) {
 	if dbp.exited {
 		return &ProcessExitedError{}
 	}
-	dbp.selectedGoroutine.thread.clearBreakpointState()
-	err = dbp.selectedGoroutine.thread.StepInstruction()
+	dbp.selectedGoroutine.thread.(*Thread).clearBreakpointState()
+	err = dbp.selectedGoroutine.thread.(*Thread).StepInstruction()
 	if err != nil {
 		return err
 	}
-	return dbp.selectedGoroutine.thread.SetCurrentBreakpoint()
+	return dbp.selectedGoroutine.thread.(*Thread).SetCurrentBreakpoint()
 }
 
 // StepOut will continue until the current goroutine exits the
@@ -597,7 +606,7 @@ func (dbp *Process) SwitchThread(tid int) error {
 	}
 	if th, ok := dbp.threads[tid]; ok {
 		dbp.currentThread = th
-		dbp.selectedGoroutine, _ = dbp.currentThread.GetG()
+		dbp.selectedGoroutine, _ = GetG(dbp.currentThread)
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
@@ -609,7 +618,7 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 	if dbp.exited {
 		return &ProcessExitedError{}
 	}
-	g, err := dbp.FindGoroutine(gid)
+	g, err := FindGoroutine(dbp, gid)
 	if err != nil {
 		return err
 	}
@@ -618,7 +627,7 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 		return nil
 	}
 	if g.thread != nil {
-		return dbp.SwitchThread(g.thread.ID)
+		return dbp.SwitchThread(g.thread.ThreadID())
 	}
 	dbp.selectedGoroutine = g
 	return nil
@@ -644,7 +653,7 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 		if dbp.threads[i].blocked() {
 			continue
 		}
-		g, _ := dbp.threads[i].GetG()
+		g, _ := GetG(dbp.threads[i])
 		if g != nil {
 			threadg[g.ID] = dbp.threads[i]
 		}
@@ -673,7 +682,7 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
-		gvar, err := dbp.currentThread.newGVariable(uintptr(allgptr+(i*uint64(dbp.bi.arch.PtrSize()))), true)
+		gvar, err := newGVariable(dbp.currentThread, uintptr(allgptr+(i*uint64(dbp.bi.arch.PtrSize()))), true)
 		if err != nil {
 			return nil, err
 		}
@@ -698,7 +707,7 @@ func (dbp *Process) GoroutinesInfo() ([]*G, error) {
 	return allg, nil
 }
 
-func (g *G) Thread() *Thread {
+func (g *G) Thread() IThread {
 	return g.thread
 }
 
@@ -795,7 +804,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	// because without calling SetGStructOffset we can not read the G struct of currentThread
 	// but without calling updateThreadList we can not examine memory to determine
 	// the offset of g struct inside TLS
-	dbp.selectedGoroutine, _ = dbp.currentThread.GetG()
+	dbp.selectedGoroutine, _ = GetG(dbp.currentThread)
 
 	panicpc, err := dbp.FindFunctionLocation("runtime.startpanic", true, 0)
 	if err == nil {
@@ -875,11 +884,16 @@ func (scope *EvalScope) getGoInformation() (ver GoVersion, isextld bool, err err
 	return
 }
 
+type GoroutinesInfo interface {
+	SelectedGoroutine() *G
+	GoroutinesInfo() ([]*G, error)
+}
+
 // FindGoroutine returns a G struct representing the goroutine
 // specified by `gid`.
-func (dbp *Process) FindGoroutine(gid int) (*G, error) {
+func FindGoroutine(dbp GoroutinesInfo, gid int) (*G, error) {
 	if gid == -1 {
-		return dbp.selectedGoroutine, nil
+		return dbp.SelectedGoroutine(), nil
 	}
 
 	gs, err := dbp.GoroutinesInfo()
@@ -894,23 +908,29 @@ func (dbp *Process) FindGoroutine(gid int) (*G, error) {
 	return nil, fmt.Errorf("Unknown goroutine %d", gid)
 }
 
+// EvalScopeConvertible is a subset of target.Interface with the methods
+// used by ConvertEvalScope/GoroutinesInfo/etc.
+type EvalScopeConvertible interface {
+	GoroutinesInfo
+	CurrentThread() IThread
+	BinInfo() *BinaryInfo
+}
+
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
-func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
-	if dbp.exited {
-		return nil, &ProcessExitedError{}
-	}
-	g, err := dbp.FindGoroutine(gid)
+func ConvertEvalScope(dbp EvalScopeConvertible, gid, frame int) (*EvalScope, error) {
+	ct := dbp.CurrentThread()
+	g, err := FindGoroutine(dbp, gid)
 	if err != nil {
 		return nil, err
 	}
 	if g == nil {
-		return dbp.currentThread.ThreadScope()
+		return ThreadScope(ct)
 	}
 
-	var thread *Thread
+	var thread memoryReadWriter
 	if g.thread == nil {
-		thread = dbp.currentThread
+		thread = ct
 	} else {
 		thread = g.thread
 	}
@@ -927,6 +947,11 @@ func (dbp *Process) ConvertEvalScope(gid, frame int) (*EvalScope, error) {
 	PC, CFA := locs[frame].Current.PC, locs[frame].CFA
 
 	return &EvalScope{PC, CFA, thread, g.variable, dbp.BinInfo()}, nil
+}
+
+// FrameToScope returns a new EvalScope for this frame
+func FrameToScope(p EvalScopeConvertible, frame Stackframe) *EvalScope {
+	return &EvalScope{frame.Current.PC, frame.CFA, p.CurrentThread(), nil, p.BinInfo()}
 }
 
 func (dbp *Process) postExit() {

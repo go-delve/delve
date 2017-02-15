@@ -112,7 +112,7 @@ func (bp *Breakpoint) checkCondition(thread *Thread) (bool, error) {
 		return true, nil
 	}
 	if bp.Kind == NextDeferBreakpoint {
-		frames, err := thread.Stacktrace(2)
+		frames, err := ThreadStacktrace(thread, 2)
 		if err == nil {
 			ispanic := len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic"
 			isdeferreturn := false
@@ -129,7 +129,7 @@ func (bp *Breakpoint) checkCondition(thread *Thread) (bool, error) {
 			}
 		}
 	}
-	scope, err := thread.GoroutineScope()
+	scope, err := GoroutineScope(thread)
 	if err != nil {
 		return true, err
 	}

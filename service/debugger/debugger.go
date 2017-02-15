@@ -179,10 +179,10 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 		Exited:            d.target.Exited(),
 	}
 
-	for i := range d.target.Threads() {
-		th := api.ConvertThread(d.target.Threads()[i])
+	for _, thread := range d.target.ThreadList() {
+		th := api.ConvertThread(thread)
 		state.Threads = append(state.Threads, th)
-		if i == d.target.CurrentThread().ID {
+		if thread.ThreadID() == d.target.CurrentThread().ThreadID() {
 			state.CurrentThread = th
 		}
 	}
@@ -372,7 +372,7 @@ func (d *Debugger) Threads() ([]*api.Thread, error) {
 		return nil, &proc.ProcessExitedError{}
 	}
 	threads := []*api.Thread{}
-	for _, th := range d.target.Threads() {
+	for _, th := range d.target.ThreadList() {
 		threads = append(threads, api.ConvertThread(th))
 	}
 	return threads, nil
@@ -387,8 +387,8 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 		return nil, &proc.ProcessExitedError{}
 	}
 
-	for _, th := range d.target.Threads() {
-		if th.ID == id {
+	for _, th := range d.target.ThreadList() {
+		if th.ThreadID() == id {
 			return api.ConvertThread(th), nil
 		}
 	}
@@ -472,7 +472,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		state.Threads[i].BreakpointInfo = bpi
 
 		if bp.Goroutine {
-			g, err := d.target.CurrentThread().GetG()
+			g, err := proc.GetG(d.target.CurrentThread())
 			if err != nil {
 				return err
 			}
@@ -480,7 +480,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		}
 
 		if bp.Stacktrace > 0 {
-			rawlocs, err := d.target.CurrentThread().Stacktrace(bp.Stacktrace)
+			rawlocs, err := proc.ThreadStacktrace(d.target.CurrentThread(), bp.Stacktrace)
 			if err != nil {
 				return err
 			}
@@ -490,7 +490,11 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			}
 		}
 
-		s, err := d.target.Threads()[state.Threads[i].ID].GoroutineScope()
+		thread, found := d.target.FindThread(state.Threads[i].ID)
+		if !found {
+			return fmt.Errorf("could not find thread %d", state.Threads[i].ID)
+		}
+		s, err := proc.GoroutineScope(thread)
 		if err != nil {
 			return err
 		}
@@ -598,11 +602,11 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 	}
 
 	vars := []api.Variable{}
-	thread, found := d.target.Threads()[threadID]
+	thread, found := d.target.FindThread(threadID)
 	if !found {
 		return nil, fmt.Errorf("couldn't find thread %d", threadID)
 	}
-	scope, err := thread.ThreadScope()
+	scope, err := proc.ThreadScope(thread)
 	if err != nil {
 		return nil, err
 	}
@@ -623,7 +627,7 @@ func (d *Debugger) Registers(threadID int, floatingPoint bool) (api.Registers, e
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	thread, found := d.target.Threads()[threadID]
+	thread, found := d.target.FindThread(threadID)
 	if !found {
 		return nil, fmt.Errorf("couldn't find thread %d", threadID)
 	}
@@ -647,7 +651,7 @@ func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]a
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.target.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +667,7 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) (
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.target.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
@@ -680,7 +684,7 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg p
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.target.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return nil, err
 	}
@@ -697,7 +701,7 @@ func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string)
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := d.target.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame)
 	if err != nil {
 		return err
 	}
@@ -729,13 +733,13 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]a
 
 	var rawlocs []proc.Stackframe
 
-	g, err := d.target.FindGoroutine(goroutineID)
+	g, err := proc.FindGoroutine(d.target, goroutineID)
 	if err != nil {
 		return nil, err
 	}
 
 	if g == nil {
-		rawlocs, err = d.target.CurrentThread().Stacktrace(depth)
+		rawlocs, err = proc.ThreadStacktrace(d.target.CurrentThread(), depth)
 	} else {
 		rawlocs, err = g.Stacktrace(depth)
 	}
@@ -752,7 +756,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 		frame := api.Stackframe{Location: api.ConvertLocation(rawlocs[i].Call)}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
-			scope := d.target.FrameToScope(rawlocs[i])
+			scope := proc.FrameToScope(d.target, rawlocs[i])
 			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {
 				return nil, err
@@ -781,7 +785,7 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 		return nil, err
 	}
 
-	s, _ := d.target.ConvertEvalScope(scope.GoroutineID, scope.Frame)
+	s, _ := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame)
 
 	locs, err := loc.Find(d, s, locStr)
 	for i := range locs {
@@ -808,12 +812,12 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 		endPC = fn.End
 	}
 
-	g, err := d.target.FindGoroutine(scope.GoroutineID)
+	g, err := proc.FindGoroutine(d.target, scope.GoroutineID)
 	if err != nil {
 		return nil, err
 	}
 
-	insts, err := d.target.Disassemble(g, startPC, endPC)
+	insts, err := proc.Disassemble(d.target, g, startPC, endPC)
 	if err != nil {
 		return nil, err
 	}

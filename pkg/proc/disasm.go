@@ -16,26 +16,35 @@ const (
 	IntelFlavour
 )
 
-func (dbp *Process) Disassemble(g *G, startPC, endPC uint64) ([]AsmInstruction, error) {
+// DisassembleInfo is the subset of target.Interface used by Disassemble.
+type DisassembleInfo interface {
+	CurrentThread() IThread
+	Breakpoints() map[uint64]*Breakpoint
+	BinInfo() *BinaryInfo
+}
+
+// Disassemble disassembles target memory between startPC and endPC, marking
+// the current instruction being executed in goroutine g.
+// If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble will evaluate the argument of the CALL instruction using the thread's registers
+// Be aware that the Bytes field of each returned instruction is a slice of a larger array of size endPC - startPC
+func Disassemble(dbp DisassembleInfo, g *G, startPC, endPC uint64) ([]AsmInstruction, error) {
 	if g == nil {
-		regs, _ := dbp.currentThread.Registers(false)
-		return Disassemble(dbp.currentThread, regs, dbp.breakpoints, &dbp.bi, startPC, endPC)
+		ct := dbp.CurrentThread()
+		regs, _ := ct.Registers(false)
+		return disassemble(ct, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC)
 	}
 
 	var regs Registers
-	thread := dbp.currentThread
+	var mem memoryReadWriter = dbp.CurrentThread()
 	if g.thread != nil {
-		thread = g.thread
+		mem = g.thread
 		regs, _ = g.thread.Registers(false)
 	}
 
-	return Disassemble(thread, regs, dbp.breakpoints, &dbp.bi, startPC, endPC)
+	return disassemble(mem, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC)
 }
 
-// Disassemble disassembles target memory between startPC and endPC
-// If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble will evaluate the argument of the CALL instruction using the thread's registers
-// Be aware that the Bytes field of each returned instruction is a slice of a larger array of size endPC - startPC
-func Disassemble(memrw memoryReadWriter, regs Registers, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
+func disassemble(memrw memoryReadWriter, regs Registers, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
 	mem, err := memrw.readMemory(uintptr(startPC), int(endPC-startPC))
 	if err != nil {
 		return nil, err

@@ -146,7 +146,7 @@ func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64,
 // FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
 // If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry
 func FirstPCAfterPrologue(mem memoryReadWriter, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, fn *gosym.Func, sameline bool) (uint64, error) {
-	text, err := Disassemble(mem, nil, breakpoints, bi, fn.Entry, fn.End)
+	text, err := disassemble(mem, nil, breakpoints, bi, fn.Entry, fn.End)
 	if err != nil {
 		return fn.Entry, err
 	}

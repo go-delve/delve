@@ -38,39 +38,14 @@ type Stackframe struct {
 	addrret uint64
 }
 
-// FrameToScope returns a new EvalScope for this frame
-func (p *Process) FrameToScope(frame Stackframe) *EvalScope {
-	return &EvalScope{frame.Current.PC, frame.CFA, p.currentThread, nil, p.BinInfo()}
-}
-
-// ReturnAddress returns the return address of the function
-// this thread is executing.
-func (t *Thread) ReturnAddress() (uint64, error) {
-	locations, err := t.Stacktrace(2)
-	if err != nil {
-		return 0, err
-	}
-	if len(locations) < 2 {
-		return 0, NoReturnAddr{locations[0].Current.Fn.BaseName()}
-	}
-	return locations[1].Current.PC, nil
-}
-
-func (t *Thread) stackIterator(stkbar []savedLR, stkbarPos int) (*stackIterator, error) {
-	regs, err := t.Registers(false)
-	if err != nil {
-		return nil, err
-	}
-	return newStackIterator(&t.dbp.bi, t, regs.PC(), regs.SP(), regs.BP(), stkbar, stkbarPos), nil
-}
-
 // Stacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func (t *Thread) Stacktrace(depth int) ([]Stackframe, error) {
-	it, err := t.stackIterator(nil, -1)
+func ThreadStacktrace(thread IThread, depth int) ([]Stackframe, error) {
+	regs, err := thread.Registers(false)
 	if err != nil {
 		return nil, err
 	}
+	it := newStackIterator(thread.BinInfo(), thread, regs.PC(), regs.SP(), regs.BP(), nil, -1)
 	return it.stacktrace(depth)
 }
 
@@ -80,7 +55,11 @@ func (g *G) stackIterator() (*stackIterator, error) {
 		return nil, err
 	}
 	if g.thread != nil {
-		return g.thread.stackIterator(stkbar, g.stkbarPos)
+		regs, err := g.thread.Registers(false)
+		if err != nil {
+			return nil, err
+		}
+		return newStackIterator(g.variable.bi, g.thread, regs.PC(), regs.SP(), regs.BP(), stkbar, g.stkbarPos), nil
 	}
 	return newStackIterator(g.variable.bi, g.variable.mem, g.PC, g.SP, 0, stkbar, g.stkbarPos), nil
 }
@@ -93,13 +72,6 @@ func (g *G) Stacktrace(depth int) ([]Stackframe, error) {
 		return nil, err
 	}
 	return it.stacktrace(depth)
-}
-
-// GoroutineLocation returns the location of the given
-// goroutine.
-func (dbp *Process) GoroutineLocation(g *G) *Location {
-	f, l, fn := dbp.bi.PCToLine(g.PC)
-	return &Location{PC: g.PC, File: f, Line: l, Fn: fn}
 }
 
 // NullAddrError is an error for a null address.
