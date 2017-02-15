@@ -141,5 +141,11 @@ func TestReadCore(t *testing.T) {
 	if len(core.Threads) == 0 {
 		t.Error("expected at least one thread")
 	}
+	// Punch through the abstraction to verify that we got some mappings.
+	spliced := core.MemoryReader.(*SplicedMemory)
+	// There should be at least an RO section, RW section, RX section, the heap, and a thread stack.
+	if len(spliced.readers) < 5 {
+		t.Errorf("expected at least 5 memory regions, got only %v", len(spliced.readers))
+	}
 	// Would be good to test more stuff but not sure what without reading debug information, etc.
 }

@@ -34,6 +34,9 @@ func readCore(corePath, exePath string) (*Core, error) {
 	}
 
 	notes, err := readNotes(core)
+	if err != nil {
+		return nil, err
+	}
 	memory := buildMemory(core, exe, notes)
 
 	threads := map[int]*LinuxPrStatus{}
@@ -87,12 +90,15 @@ func readNotes(core *elf.File) ([]*Note, error) {
 	notes := []*Note{}
 	for {
 		note, err := readNote(r)
-		if err != nil {
-			// Assume that any error is because we ran out of notes.
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return nil, err
 		}
 		notes = append(notes, note)
 	}
+
 	return notes, nil
 }
 
@@ -105,7 +111,7 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 
 	err := binary.Read(r, binary.LittleEndian, hdr)
 	if err != nil {
-		return nil, err
+		return nil, err // don't wrap so readNotes sees EOF.
 	}
 	note.Type = elf.NType(hdr.Type)
 
@@ -114,11 +120,9 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 		return nil, fmt.Errorf("reading name: %v", err)
 	}
 	note.Name = string(name)
-	// Name is padded to a multiple of 4 bytes. Seek if necessary.
-	if len(name)%4 != 0 {
-		r.Seek(4-int64(len(name)%4), io.SeekCurrent)
+	if err := skipPadding(r, 4); err != nil {
+		return nil, fmt.Errorf("aligning after name: %v", err)
 	}
-
 	desc := make([]byte, hdr.Descsz)
 	if _, err := r.Read(desc); err != nil {
 		return nil, fmt.Errorf("reading desc: %v", err)
@@ -141,7 +145,7 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 		// many entries, and then the file name of each entry,
 		// null-delimited. Not reading the names here.
 		data := &LinuxNTFile{}
-		if err := binary.Read(descReader, binary.LittleEndian, data.LinuxNTFileHdr); err != nil {
+		if err := binary.Read(descReader, binary.LittleEndian, &data.LinuxNTFileHdr); err != nil {
 			return nil, fmt.Errorf("reading NT_FILE header: %v", err)
 		}
 		for i := 0; i < int(data.Count); i++ {
@@ -153,8 +157,25 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 		}
 		note.Desc = data
 	}
-
+	if err := skipPadding(r, 4); err != nil {
+		return nil, fmt.Errorf("aligning after desc: %v", err)
+	}
 	return note, nil
+}
+
+// skipPadding moves r to the next multiple of pad.
+func skipPadding(r io.ReadSeeker, pad int64) error {
+	pos, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	if pos%pad == 0 {
+		return nil
+	}
+	if _, err := r.Seek(pad-(pos%pad), io.SeekCurrent); err != nil {
+		return err
+	}
+	return nil
 }
 
 func buildMemory(core *elf.File, exe io.ReaderAt, notes []*Note) MemoryReader {
