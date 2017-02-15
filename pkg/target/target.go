@@ -13,7 +13,6 @@ type Interface interface {
 	Info
 	ProcessManipulation
 	BreakpointManipulation
-	VariableEval
 }
 
 // Info is an interface that provides general information on the target.
@@ -25,10 +24,6 @@ type Info interface {
 
 	ThreadInfo
 	GoroutineInfo
-
-	// Disassemble disassembles target memory between startPC and endPC, marking
-	// the current instruction being executed in goroutine g.
-	Disassemble(g *proc.G, startPC, endPC uint64) ([]proc.AsmInstruction, error)
 
 	// FindFileLocation returns the address of the first instruction belonging
 	// to line lineNumber in file fileName.
@@ -58,15 +53,15 @@ type Info interface {
 // ThreadInfo is an interface for getting information on active threads
 // in the process.
 type ThreadInfo interface {
-	Threads() map[int]*proc.Thread
-	CurrentThread() *proc.Thread
+	FindThread(threadID int) (proc.IThread, bool)
+	ThreadList() []proc.IThread
+	CurrentThread() proc.IThread
 }
 
 // GoroutineInfo is an interface for getting information on running goroutines.
 type GoroutineInfo interface {
 	GoroutinesInfo() ([]*proc.G, error)
 	SelectedGoroutine() *proc.G
-	FindGoroutine(int) (*proc.G, error)
 }
 
 // ProcessManipulation is an interface for changing the execution state of a process.

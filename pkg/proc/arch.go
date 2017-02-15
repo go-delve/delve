@@ -8,6 +8,7 @@ type Arch interface {
 	BreakpointInstruction() []byte
 	BreakpointSize() int
 	GStructOffset() uint64
+	DerefTLS() bool
 }
 
 // AMD64 represents the AMD64 CPU architecture.
@@ -76,4 +77,10 @@ func (a *AMD64) BreakpointSize() int {
 // struct in thread local storage.
 func (a *AMD64) GStructOffset() uint64 {
 	return a.gStructOffset
+}
+
+// If DerefTLS returns true the value of regs.TLS()+GStructOffset() is a
+// pointer to the G struct
+func (a *AMD64) DerefTLS() bool {
+	return a.goos == "windows"
 }

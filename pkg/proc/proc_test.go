@@ -435,7 +435,7 @@ func TestNextConcurrent(t *testing.T) {
 		_, err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 		for _, tc := range testcases {
-			g, err := p.currentThread.GetG()
+			g, err := GetG(p.currentThread)
 			assertNoError(err, t, "GetG()")
 			if p.selectedGoroutine.ID != g.ID {
 				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.ID, p.selectedGoroutine.ID)
@@ -474,7 +474,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 		initVval, _ := constant.Int64Val(initV.Value)
 		assertNoError(err, t, "EvalVariable")
 		for _, tc := range testcases {
-			g, err := p.currentThread.GetG()
+			g, err := GetG(p.currentThread)
 			assertNoError(err, t, "GetG()")
 			if p.selectedGoroutine.ID != g.ID {
 				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.ID, p.selectedGoroutine.ID)
@@ -586,6 +586,17 @@ func TestRuntimeBreakpoint(t *testing.T) {
 	})
 }
 
+func returnAddress(thread IThread) (uint64, error) {
+	locations, err := ThreadStacktrace(thread, 2)
+	if err != nil {
+		return 0, err
+	}
+	if len(locations) < 2 {
+		return 0, NoReturnAddr{locations[0].Current.Fn.BaseName()}
+	}
+	return locations[1].Current.PC, nil
+}
+
 func TestFindReturnAddress(t *testing.T) {
 	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
 		start, _, err := p.BinInfo().goSymTable.LineToPC(fixture.Source, 24)
@@ -600,7 +611,7 @@ func TestFindReturnAddress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		addr, err := p.currentThread.ReturnAddress()
+		addr, err := returnAddress(p.currentThread)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -624,7 +635,7 @@ func TestFindReturnAddressTopOfStackFn(t *testing.T) {
 		if err := p.Continue(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.currentThread.ReturnAddress(); err == nil {
+		if _, err := returnAddress(p.currentThread); err == nil {
 			t.Fatal("expected error to be returned")
 		}
 	})
@@ -726,7 +737,7 @@ func TestStacktrace(t *testing.T) {
 
 		for i := range stacks {
 			assertNoError(p.Continue(), t, "Continue()")
-			locations, err := p.currentThread.Stacktrace(40)
+			locations, err := ThreadStacktrace(p.currentThread, 40)
 			assertNoError(err, t, "Stacktrace()")
 
 			if len(locations) != len(stacks[i])+2 {
@@ -754,7 +765,7 @@ func TestStacktrace2(t *testing.T) {
 	withTestProcess("retstack", t, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
 
-		locations, err := p.currentThread.Stacktrace(40)
+		locations, err := ThreadStacktrace(p.currentThread, 40)
 		assertNoError(err, t, "Stacktrace()")
 		if !stackMatch([]loc{{-1, "main.f"}, {16, "main.main"}}, locations, false) {
 			for i := range locations {
@@ -764,7 +775,7 @@ func TestStacktrace2(t *testing.T) {
 		}
 
 		assertNoError(p.Continue(), t, "Continue()")
-		locations, err = p.currentThread.Stacktrace(40)
+		locations, err = ThreadStacktrace(p.currentThread, 40)
 		assertNoError(err, t, "Stacktrace()")
 		if !stackMatch([]loc{{-1, "main.g"}, {17, "main.main"}}, locations, false) {
 			for i := range locations {
@@ -883,7 +894,7 @@ func testGSupportFunc(name string, t *testing.T, p *Process, fixture protest.Fix
 
 	assertNoError(p.Continue(), t, name+": Continue()")
 
-	g, err := p.currentThread.GetG()
+	g, err := GetG(p.currentThread)
 	assertNoError(err, t, name+": GetG()")
 
 	if g == nil {
@@ -1011,7 +1022,7 @@ func TestIssue239(t *testing.T) {
 }
 
 func evalVariable(p *Process, symbol string) (*Variable, error) {
-	scope, err := p.currentThread.GoroutineScope()
+	scope, err := GoroutineScope(p.currentThread)
 	if err != nil {
 		return nil, err
 	}
@@ -1019,7 +1030,7 @@ func evalVariable(p *Process, symbol string) (*Variable, error) {
 }
 
 func setVariable(p *Process, symbol, value string) error {
-	scope, err := p.currentThread.GoroutineScope()
+	scope, err := GoroutineScope(p.currentThread)
 	if err != nil {
 		return err
 	}
@@ -1140,7 +1151,7 @@ func TestFrameEvaluation(t *testing.T) {
 				continue
 			}
 
-			scope, err := p.ConvertEvalScope(g.ID, frame)
+			scope, err := ConvertEvalScope(p, g.ID, frame)
 			assertNoError(err, t, "ConvertEvalScope()")
 			t.Logf("scope = %v", scope)
 			v, err := scope.EvalVariable("i", normalLoadConfig)
@@ -1161,11 +1172,11 @@ func TestFrameEvaluation(t *testing.T) {
 
 		// Testing evaluation on frames
 		assertNoError(p.Continue(), t, "Continue() 2")
-		g, err := p.currentThread.GetG()
+		g, err := GetG(p.currentThread)
 		assertNoError(err, t, "GetG()")
 
 		for i := 0; i <= 3; i++ {
-			scope, err := p.ConvertEvalScope(g.ID, i+1)
+			scope, err := ConvertEvalScope(p, g.ID, i+1)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
 			v, err := scope.EvalVariable("n", normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
@@ -1194,7 +1205,7 @@ func TestPointerSetting(t *testing.T) {
 		pval(1)
 
 		// change p1 to point to i2
-		scope, err := p.currentThread.GoroutineScope()
+		scope, err := GoroutineScope(p.currentThread)
 		assertNoError(err, t, "Scope()")
 		i2addr, err := scope.EvalExpression("i2", normalLoadConfig)
 		assertNoError(err, t, "EvalExpression()")
@@ -1333,7 +1344,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				if th.CurrentBreakpoint == nil {
 					continue
 				}
-				scope, err := th.GoroutineScope()
+				scope, err := GoroutineScope(th)
 				assertNoError(err, t, "Scope()")
 				v, err := scope.EvalVariable("i", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
@@ -1466,7 +1477,7 @@ func TestPointerLoops(t *testing.T) {
 func BenchmarkLocalVariables(b *testing.B) {
 	withTestProcess("testvariables", b, func(p *Process, fixture protest.Fixture) {
 		assertNoError(p.Continue(), b, "Continue() returned an error")
-		scope, err := p.currentThread.GoroutineScope()
+		scope, err := GoroutineScope(p.currentThread)
 		assertNoError(err, b, "Scope()")
 		for i := 0; i < b.N; i++ {
 			_, err := scope.LocalVariables(normalLoadConfig)
@@ -1600,7 +1611,7 @@ func TestIssue332_Part1(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(p.Continue(), t, "Continue()")
 		assertNoError(p.Next(), t, "first Next()")
-		locations, err := p.currentThread.Stacktrace(2)
+		locations, err := ThreadStacktrace(p.currentThread, 2)
 		assertNoError(err, t, "Stacktrace()")
 		if locations[0].Call.Fn == nil {
 			t.Fatalf("Not on a function")
@@ -1629,7 +1640,7 @@ func TestIssue332_Part2(t *testing.T) {
 		// step until we enter changeMe
 		for {
 			assertNoError(p.Step(), t, "Step()")
-			locations, err := p.currentThread.Stacktrace(2)
+			locations, err := ThreadStacktrace(p.currentThread, 2)
 			assertNoError(err, t, "Stacktrace()")
 			if locations[0].Call.Fn == nil {
 				t.Fatalf("Not on a function")
@@ -1692,7 +1703,7 @@ func TestPackageVariables(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
 		err := p.Continue()
 		assertNoError(err, t, "Continue()")
-		scope, err := p.currentThread.GoroutineScope()
+		scope, err := GoroutineScope(p.currentThread)
 		assertNoError(err, t, "Scope()")
 		vars, err := scope.PackageVariables(normalLoadConfig)
 		assertNoError(err, t, "PackageVariables()")
@@ -1795,7 +1806,7 @@ func TestIssue462(t *testing.T) {
 		}()
 
 		assertNoError(p.Continue(), t, "Continue()")
-		_, err := p.currentThread.Stacktrace(40)
+		_, err := ThreadStacktrace(p.currentThread, 40)
 		assertNoError(err, t, "Stacktrace()")
 	})
 }
@@ -2141,7 +2152,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 					// loop exited
 					break
 				}
-				frames, err := p.currentThread.Stacktrace(20)
+				frames, err := ThreadStacktrace(p.currentThread, 20)
 				if err != nil {
 					t.Errorf("Could not get stacktrace of goroutine %d\n", p.selectedGoroutine.ID)
 				} else {
@@ -2316,7 +2327,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 			assertNoError(err, t, "PC()")
 			regs, err := p.currentThread.Registers(false)
 			assertNoError(err, t, "Registers()")
-			text, err := Disassemble(p.currentThread, regs, p.breakpoints, p.BinInfo(), pc, pc+maxInstructionLength)
+			text, err := disassemble(p.currentThread, regs, p.breakpoints, p.BinInfo(), pc, pc+maxInstructionLength)
 			assertNoError(err, t, "Disassemble()")
 			if text[0].IsCall() {
 				found = true
@@ -2452,7 +2463,7 @@ func BenchmarkTrace(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			assertNoError(p.Continue(), b, "Continue()")
-			s, err := p.currentThread.GoroutineScope()
+			s, err := GoroutineScope(p.currentThread)
 			assertNoError(err, b, "Scope()")
 			_, err = s.FunctionArguments(LoadConfig{false, 0, 64, 0, 3})
 			assertNoError(err, b, "FunctionArguments()")

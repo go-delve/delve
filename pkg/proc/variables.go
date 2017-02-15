@@ -129,7 +129,7 @@ type G struct {
 	CurrentLoc Location
 
 	// Thread that this goroutine is currently allocated to
-	thread *Thread
+	thread IThread
 
 	variable *Variable
 }
@@ -157,8 +157,8 @@ func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType dwarf.T
 	return newVariable(name, addr, dwarfType, scope.bi, scope.Mem)
 }
 
-func (t *Thread) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
-	return newVariable(name, addr, dwarfType, t.dbp.BinInfo(), t)
+func newVariableFromThread(t IThread, name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+	return newVariable(name, addr, dwarfType, t.BinInfo(), t)
 }
 
 func (v *Variable) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
