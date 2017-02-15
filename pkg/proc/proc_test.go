@@ -2314,7 +2314,9 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 			}
 			pc, err := p.currentThread.PC()
 			assertNoError(err, t, "PC()")
-			text, err := p.currentThread.Disassemble(pc, pc+maxInstructionLength, true)
+			regs, err := p.currentThread.Registers(false)
+			assertNoError(err, t, "Registers()")
+			text, err := Disassemble(p.currentThread, regs, p.breakpoints, p.BinInfo(), pc, pc+maxInstructionLength)
 			assertNoError(err, t, "Disassemble()")
 			if text[0].IsCall() {
 				found = true

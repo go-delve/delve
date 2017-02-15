@@ -179,17 +179,25 @@ func (dbp *Process) LoadInformation(path string) error {
 	return nil
 }
 
+func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
+	return FindFileLocation(dbp.currentThread, dbp.breakpoints, &dbp.bi, fileName, lineno)
+}
+
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normailzed to lower case and '/' on Windows.
-func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
-	pc, fn, err := dbp.bi.goSymTable.LineToPC(fileName, lineno)
+func FindFileLocation(mem memoryReadWriter, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, fileName string, lineno int) (uint64, error) {
+	pc, fn, err := bi.goSymTable.LineToPC(fileName, lineno)
 	if err != nil {
 		return 0, err
 	}
 	if fn.Entry == pc {
-		pc, _ = dbp.FirstPCAfterPrologue(fn, true)
+		pc, _ = FirstPCAfterPrologue(mem, breakpoints, bi, fn, true)
 	}
 	return pc, nil
+}
+
+func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
+	return FindFunctionLocation(dbp.currentThread, dbp.breakpoints, &dbp.bi, funcName, firstLine, lineOffset)
 }
 
 // FindFunctionLocation finds address of a function's line
@@ -198,17 +206,17 @@ func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error
 // Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
 // Note that setting breakpoints at that address will cause surprising behavior:
 // https://github.com/derekparker/delve/issues/170
-func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	origfn := dbp.bi.goSymTable.LookupFunc(funcName)
+func FindFunctionLocation(mem memoryReadWriter, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, funcName string, firstLine bool, lineOffset int) (uint64, error) {
+	origfn := bi.goSymTable.LookupFunc(funcName)
 	if origfn == nil {
 		return 0, fmt.Errorf("Could not find function %s\n", funcName)
 	}
 
 	if firstLine {
-		return dbp.FirstPCAfterPrologue(origfn, false)
+		return FirstPCAfterPrologue(mem, breakpoints, bi, origfn, false)
 	} else if lineOffset > 0 {
-		filename, lineno, _ := dbp.bi.goSymTable.PCToLine(origfn.Entry)
-		breakAddr, _, err := dbp.bi.goSymTable.LineToPC(filename, lineno+lineOffset)
+		filename, lineno, _ := bi.goSymTable.PCToLine(origfn.Entry)
+		breakAddr, _, err := bi.goSymTable.LineToPC(filename, lineno+lineOffset)
 		return breakAddr, err
 	}
 
@@ -384,7 +392,11 @@ func (dbp *Process) Continue() error {
 				if err != nil {
 					return err
 				}
-				text, err := dbp.currentThread.Disassemble(pc, pc+maxInstructionLength, true)
+				regs, err := dbp.currentThread.Registers(false)
+				if err != nil {
+					return err
+				}
+				text, err := Disassemble(dbp.currentThread, regs, dbp.breakpoints, &dbp.bi, pc, pc+maxInstructionLength)
 				if err != nil {
 					return err
 				}

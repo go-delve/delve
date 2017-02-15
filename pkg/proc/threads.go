@@ -168,13 +168,16 @@ func (dbp *Process) next(stepInto bool) error {
 
 	csource := filepath.Ext(topframe.Current.File) != ".go"
 	thread := dbp.currentThread
-	currentGoroutine := false
+	var regs Registers
 	if dbp.selectedGoroutine != nil && dbp.selectedGoroutine.thread != nil {
 		thread = dbp.selectedGoroutine.thread
-		currentGoroutine = true
+		regs, err = thread.Registers(false)
+		if err != nil {
+			return err
+		}
 	}
 
-	text, err := thread.Disassemble(topframe.FDE.Begin(), topframe.FDE.End(), currentGoroutine)
+	text, err := Disassemble(thread, regs, dbp.breakpoints, &dbp.bi, topframe.FDE.Begin(), topframe.FDE.End())
 	if err != nil && stepInto {
 		return err
 	}

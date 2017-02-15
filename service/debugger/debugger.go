@@ -808,20 +808,12 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 		endPC = fn.End
 	}
 
-	currentGoroutine := true
-	thread := d.target.CurrentThread()
-
-	if s, err := d.target.ConvertEvalScope(scope.GoroutineID, scope.Frame); err == nil {
-		thread = s.Thread
-		if scope.GoroutineID != -1 {
-			g, _ := s.Thread.GetG()
-			if g == nil || g.ID != scope.GoroutineID {
-				currentGoroutine = false
-			}
-		}
+	g, err := d.target.FindGoroutine(scope.GoroutineID)
+	if err != nil {
+		return nil, err
 	}
 
-	insts, err := thread.Disassemble(startPC, endPC, currentGoroutine)
+	insts, err := d.target.Disassemble(g, startPC, endPC)
 	if err != nil {
 		return nil, err
 	}
