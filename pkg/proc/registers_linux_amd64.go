@@ -69,6 +69,10 @@ func (r *Regs) SP() uint64 {
 	return r.regs.Rsp
 }
 
+func (r *Regs) BP() uint64 {
+	return r.regs.Rbp
+}
+
 // CX returns the value of RCX register.
 func (r *Regs) CX() uint64 {
 	return r.regs.Rcx

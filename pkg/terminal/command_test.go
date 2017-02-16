@@ -212,6 +212,7 @@ func TestScopePrefix(t *testing.T) {
 
 		goroutinesOut := strings.Split(term.MustExec("goroutines"), "\n")
 		agoroutines := []int{}
+		nonagoroutines := []int{}
 		curgid := -1
 
 		for _, line := range goroutinesOut {
@@ -235,14 +236,31 @@ func TestScopePrefix(t *testing.T) {
 			}
 
 			if idx := strings.Index(line, " main.agoroutine "); idx < 0 {
+				nonagoroutines = append(nonagoroutines, gid)
 				continue
 			}
 
 			agoroutines = append(agoroutines, gid)
 		}
 
-		if len(agoroutines) != 10 {
-			t.Fatalf("Output of goroutines did not have 10 goroutines stopped on main.agoroutine: %q", goroutinesOut)
+		if len(agoroutines) > 10 {
+			t.Fatalf("Output of goroutines did not have 10 goroutines stopped on main.agoroutine (%d found): %q", len(agoroutines), goroutinesOut)
+		}
+
+		if len(agoroutines) < 10 {
+			extraAgoroutines := 0
+			for _, gid := range nonagoroutines {
+				stackOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d stack", gid)), "\n")
+				for _, line := range stackOut {
+					if strings.HasSuffix(line, " main.agoroutine") {
+						extraAgoroutines++
+						break
+					}
+				}
+			}
+			if len(agoroutines)+extraAgoroutines < 10 {
+				t.Fatalf("Output of goroutines did not have 10 goroutines stopped on main.agoroutine (%d+%d found): %q", len(agoroutines), extraAgoroutines, goroutinesOut)
+			}
 		}
 
 		if curgid < 0 {

@@ -1119,7 +1119,10 @@ func TestFrameEvaluation(t *testing.T) {
 		for _, g := range gs {
 			frame := -1
 			frames, err := g.Stacktrace(10)
-			assertNoError(err, t, "GoroutineStacktrace()")
+			if err != nil {
+				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
+				continue
+			}
 			for i := range frames {
 				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
 					frame = i

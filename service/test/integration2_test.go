@@ -763,7 +763,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 					if arg.Name != "i" {
 						continue
 					}
-					t.Logf("frame %d, variable i is %v\n", arg)
+					t.Logf("frame %v, variable i is %v\n", frame, arg)
 					argn, err := strconv.Atoi(arg.Value)
 					if err == nil {
 						found[argn] = true

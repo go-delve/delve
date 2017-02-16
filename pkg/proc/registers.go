@@ -17,6 +17,7 @@ import (
 type Registers interface {
 	PC() uint64
 	SP() uint64
+	BP() uint64
 	CX() uint64
 	TLS() uint64
 	Get(int) (uint64, error)
