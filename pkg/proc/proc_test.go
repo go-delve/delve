@@ -1861,11 +1861,21 @@ func TestStepParked(t *testing.T) {
 			assertNoError(err, t, "GoroutinesInfo()")
 
 			for _, g := range gs {
-				if g.thread == nil {
+				if g.thread == nil && g.CurrentLoc.Fn != nil && g.CurrentLoc.Fn.Name == "main.sayhi" {
 					parkedg = g
 					break LookForParkedG
 				}
 			}
+		}
+
+		t.Logf("Parked g is: %v\n", parkedg)
+		frames, _ := parkedg.Stacktrace(20)
+		for _, frame := range frames {
+			name := ""
+			if frame.Call.Fn != nil {
+				name = frame.Call.Fn.Name
+			}
+			t.Logf("\t%s:%d in %s (%#x)", frame.Call.File, frame.Call.Line, name, frame.Current.PC)
 		}
 
 		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
