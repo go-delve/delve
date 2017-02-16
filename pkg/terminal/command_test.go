@@ -458,7 +458,7 @@ func TestIssue387(t *testing.T) {
 					t.Fatalf("did not continue to expected position %d", pos)
 				}
 				pos++
-				if pos > 11 {
+				if pos >= 11 {
 					break
 				}
 			}
