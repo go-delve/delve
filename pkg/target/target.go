@@ -26,6 +26,10 @@ type Info interface {
 	BinaryInfo
 	ThreadInfo
 	GoroutineInfo
+
+	FindFileLocation(fileName string, lineNumber int) (uint64, error)
+	FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error)
+	FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error)
 }
 
 // BinaryInfo is an interface for accessing information on the binary file
@@ -33,12 +37,9 @@ type Info interface {
 type BinaryInfo interface {
 	LastModified() time.Time
 	Sources() map[string]*gosym.Obj
-	FindFileLocation(fileName string, lineNumber int) (uint64, error)
-	FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error)
 	Funcs() []gosym.Func
 	Types() ([]string, error)
 	PCToLine(uint64) (string, int, *gosym.Func)
-	FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error)
 }
 
 // ThreadInfo is an interface for getting information on active threads
@@ -82,3 +83,6 @@ type BreakpointManipulation interface {
 type VariableEval interface {
 	ConvertEvalScope(gid, frame int) (*proc.EvalScope, error)
 }
+
+var _ BinaryInfo = &proc.BinaryInfo{}
+var _ Interface = &proc.Process{}

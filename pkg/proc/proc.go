@@ -19,15 +19,16 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 	"github.com/derekparker/delve/pkg/dwarf/line"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
+
 	"golang.org/x/debug/dwarf"
 )
 
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	pid          int         // Process Pid
-	Process      *os.Process // Pointer to process struct for the actual process we are debugging
-	lastModified time.Time   // Time the executable of this process was last modified
+	BinaryInfo
+	pid     int         // Process Pid
+	Process *os.Process // Pointer to process struct for the actual process we are debugging
 
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
@@ -43,16 +44,8 @@ type Process struct {
 	// Normally selectedGoroutine is currentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	selectedGoroutine *G
 
-	// Maps package names to package paths, needed to lookup types inside DWARF info
-	packageMap map[string]string
-
 	allGCache                   []*G
-	dwarf                       *dwarf.Data
-	goSymTable                  *gosym.Table
-	frameEntries                frame.FrameDescriptionEntries
-	lineInfo                    line.DebugLines
 	os                          *OSProcessDetails
-	arch                        Arch
 	breakpointIDCounter         int
 	internalBreakpointIDCounter int
 	firstStart                  bool
@@ -60,8 +53,21 @@ type Process struct {
 	exited                      bool
 	ptraceChan                  chan func()
 	ptraceDoneChan              chan interface{}
-	types                       map[string]dwarf.Offset
-	functions                   []functionDebugInfo
+}
+
+type BinaryInfo struct {
+	lastModified time.Time // Time the executable of this process was last modified
+
+	// Maps package names to package paths, needed to lookup types inside DWARF info
+	packageMap map[string]string
+
+	arch         Arch
+	dwarf        *dwarf.Data
+	frameEntries frame.FrameDescriptionEntries
+	lineInfo     line.DebugLines
+	goSymTable   *gosym.Table
+	types        map[string]dwarf.Offset
+	functions    []functionDebugInfo
 
 	loadModuleDataOnce sync.Once
 	moduleData         []moduleData
@@ -81,14 +87,16 @@ var NotExecutableErr = errors.New("not an executable file")
 // `handlePtraceFuncs`.
 func New(pid int) *Process {
 	dbp := &Process{
-		pid:               pid,
-		threads:           make(map[int]*Thread),
-		breakpoints:       make(map[uint64]*Breakpoint),
-		firstStart:        true,
-		os:                new(OSProcessDetails),
-		ptraceChan:        make(chan func()),
-		ptraceDoneChan:    make(chan interface{}),
-		nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry),
+		pid:            pid,
+		threads:        make(map[int]*Thread),
+		breakpoints:    make(map[uint64]*Breakpoint),
+		firstStart:     true,
+		os:             new(OSProcessDetails),
+		ptraceChan:     make(chan func()),
+		ptraceDoneChan: make(chan interface{}),
+		BinaryInfo: BinaryInfo{
+			nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry),
+		},
 	}
 	// TODO: find better way to determine proc arch (perhaps use executable file info)
 	switch runtime.GOARCH {
@@ -160,7 +168,7 @@ func (dbp *Process) Running() bool {
 	return false
 }
 
-func (dbp *Process) LastModified() time.Time {
+func (dbp *BinaryInfo) LastModified() time.Time {
 	return dbp.lastModified
 }
 
@@ -192,7 +200,7 @@ func (dbp *Process) Breakpoints() map[uint64]*Breakpoint {
 func (dbp *Process) LoadInformation(path string) error {
 	var wg sync.WaitGroup
 
-	exe, path, err := dbp.findExecutable(path)
+	exe, path, err := dbp.findExecutable(path, dbp.pid)
 	if err != nil {
 		return err
 	}
@@ -754,22 +762,22 @@ func (dbp *Process) CurrentBreakpoint() *Breakpoint {
 }
 
 // DwarfReader returns a reader for the dwarf data
-func (dbp *Process) DwarfReader() *reader.Reader {
+func (dbp *BinaryInfo) DwarfReader() *reader.Reader {
 	return reader.New(dbp.dwarf)
 }
 
 // Sources returns list of source files that comprise the debugged binary.
-func (dbp *Process) Sources() map[string]*gosym.Obj {
+func (dbp *BinaryInfo) Sources() map[string]*gosym.Obj {
 	return dbp.goSymTable.Files
 }
 
 // Funcs returns list of functions present in the debugged program.
-func (dbp *Process) Funcs() []gosym.Func {
+func (dbp *BinaryInfo) Funcs() []gosym.Func {
 	return dbp.goSymTable.Funcs
 }
 
 // Types returns list of types present in the debugged program.
-func (dbp *Process) Types() ([]string, error) {
+func (dbp *BinaryInfo) Types() ([]string, error) {
 	types := make([]string, 0, len(dbp.types))
 	for k := range dbp.types {
 		types = append(types, k)
@@ -778,7 +786,7 @@ func (dbp *Process) Types() ([]string, error) {
 }
 
 // PCToLine converts an instruction address to a file/line/function.
-func (dbp *Process) PCToLine(pc uint64) (string, int, *gosym.Func) {
+func (dbp *BinaryInfo) PCToLine(pc uint64) (string, int, *gosym.Func) {
 	return dbp.goSymTable.PCToLine(pc)
 }
 

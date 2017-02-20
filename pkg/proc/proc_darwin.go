@@ -259,7 +259,7 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 	return thread, nil
 }
 
-func (dbp *Process) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameSec := exe.Section("__debug_frame")
@@ -283,7 +283,7 @@ func (dbp *Process) parseDebugFrame(exe *macho.File, wg *sync.WaitGroup) {
 	}
 }
 
-func (dbp *Process) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var (
@@ -318,7 +318,7 @@ func (dbp *Process) obtainGoSymbols(exe *macho.File, wg *sync.WaitGroup) {
 	dbp.goSymTable = tab
 }
 
-func (dbp *Process) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if sec := exe.Section("__debug_line"); sec != nil {
@@ -336,9 +336,9 @@ func (dbp *Process) parseDebugLineInfo(exe *macho.File, wg *sync.WaitGroup) {
 
 var UnsupportedArchErr = errors.New("unsupported architecture - only darwin/amd64 is supported")
 
-func (dbp *Process) findExecutable(path string) (*macho.File, string, error) {
+func (dbp *BinaryInfo) findExecutable(path string, pid int) (*macho.File, string, error) {
 	if path == "" {
-		path = C.GoString(C.find_executable(C.int(dbp.pid)))
+		path = C.GoString(C.find_executable(C.int(pid)))
 	}
 	exe, err := macho.Open(path)
 	if err != nil {

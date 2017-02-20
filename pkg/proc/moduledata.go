@@ -11,9 +11,9 @@ type moduleData struct {
 	typemapVar    *Variable
 }
 
-func (dbp *Process) loadModuleData() (err error) {
+func (dbp *BinaryInfo) loadModuleData(thread *Thread) (err error) {
 	dbp.loadModuleDataOnce.Do(func() {
-		scope := &EvalScope{Thread: dbp.currentThread, PC: 0, CFA: 0}
+		scope, _ := thread.Scope()
 		var md *Variable
 		md, err = scope.packageVarAddr("runtime.firstmoduledata")
 		if err != nil {
@@ -56,9 +56,10 @@ func (dbp *Process) loadModuleData() (err error) {
 	return
 }
 
-func (dbp *Process) resolveTypeOff(typeAddr uintptr, off uintptr) (*Variable, error) {
+func (dbp *BinaryInfo) resolveTypeOff(typeAddr uintptr, off uintptr, thread *Thread) (*Variable, error) {
+	var mem memoryReadWriter = thread
 	// See runtime.(*_type).typeOff in $GOROOT/src/runtime/type.go
-	if err := dbp.loadModuleData(); err != nil {
+	if err := dbp.loadModuleData(thread); err != nil {
 		return nil, err
 	}
 
@@ -75,7 +76,7 @@ func (dbp *Process) resolveTypeOff(typeAddr uintptr, off uintptr) (*Variable, er
 	}
 
 	if md == nil {
-		v, err := dbp.reflectOffsMapAccess(off)
+		v, err := dbp.reflectOffsMapAccess(off, thread)
 		if err != nil {
 			return nil, err
 		}
@@ -84,28 +85,29 @@ func (dbp *Process) resolveTypeOff(typeAddr uintptr, off uintptr) (*Variable, er
 		return v.newVariable(v.Name, uintptr(addr), rtyp), nil
 	}
 
-	if t, _ := md.typemapVar.mapAccess(newConstant(constant.MakeUint64(uint64(off)), dbp.currentThread)); t != nil {
+	if t, _ := md.typemapVar.mapAccess(newConstant(constant.MakeUint64(uint64(off)), mem)); t != nil {
 		return t, nil
 	}
 
 	res := md.types + uintptr(off)
 
-	return dbp.currentThread.newVariable("", res, rtyp), nil
+	return newVariable("", res, rtyp, thread.dbp, thread), nil
 }
 
-func (dbp *Process) resolveNameOff(typeAddr uintptr, off uintptr) (name, tag string, pkgpathoff int32, err error) {
+func (dbp *BinaryInfo) resolveNameOff(typeAddr uintptr, off uintptr, thread *Thread) (name, tag string, pkgpathoff int32, err error) {
+	var mem memoryReadWriter = thread
 	// See runtime.resolveNameOff in $GOROOT/src/runtime/type.go
-	if err = dbp.loadModuleData(); err != nil {
+	if err = dbp.loadModuleData(thread); err != nil {
 		return "", "", 0, err
 	}
 
 	for _, md := range dbp.moduleData {
 		if typeAddr >= md.types && typeAddr < md.etypes {
-			return dbp.loadName(md.types + off)
+			return dbp.loadName(md.types+off, mem)
 		}
 	}
 
-	v, err := dbp.reflectOffsMapAccess(off)
+	v, err := dbp.reflectOffsMapAccess(off, thread)
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -115,11 +117,11 @@ func (dbp *Process) resolveNameOff(typeAddr uintptr, off uintptr) (name, tag str
 		return "", "", 0, resv.Unreadable
 	}
 
-	return dbp.loadName(resv.Addr)
+	return dbp.loadName(resv.Addr, mem)
 }
 
-func (dbp *Process) reflectOffsMapAccess(off uintptr) (*Variable, error) {
-	scope := &EvalScope{Thread: dbp.currentThread, PC: 0, CFA: 0}
+func (dbp *BinaryInfo) reflectOffsMapAccess(off uintptr, thread *Thread) (*Variable, error) {
+	scope, _ := thread.Scope()
 	reflectOffs, err := scope.packageVarAddr("runtime.reflectOffs")
 	if err != nil {
 		return nil, err
@@ -130,7 +132,7 @@ func (dbp *Process) reflectOffsMapAccess(off uintptr) (*Variable, error) {
 		return nil, err
 	}
 
-	return reflectOffsm.mapAccess(newConstant(constant.MakeUint64(uint64(off)), dbp.currentThread))
+	return reflectOffsm.mapAccess(newConstant(constant.MakeUint64(uint64(off)), thread))
 }
 
 const (
@@ -140,9 +142,9 @@ const (
 	nameflagHasPkg   = 1 << 2
 )
 
-func (dbp *Process) loadName(addr uintptr) (name, tag string, pkgpathoff int32, err error) {
+func (dbp *BinaryInfo) loadName(addr uintptr, mem memoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	off := addr
-	namedata, err := dbp.currentThread.readMemory(off, 3)
+	namedata, err := mem.readMemory(off, 3)
 	off += 3
 	if err != nil {
 		return "", "", 0, err
@@ -150,7 +152,7 @@ func (dbp *Process) loadName(addr uintptr) (name, tag string, pkgpathoff int32, 
 
 	namelen := uint16(namedata[1]<<8) | uint16(namedata[2])
 
-	rawstr, err := dbp.currentThread.readMemory(off, int(namelen))
+	rawstr, err := mem.readMemory(off, int(namelen))
 	off += uintptr(namelen)
 	if err != nil {
 		return "", "", 0, err
@@ -159,14 +161,14 @@ func (dbp *Process) loadName(addr uintptr) (name, tag string, pkgpathoff int32, 
 	name = string(rawstr)
 
 	if namedata[0]&nameflagHasTag != 0 {
-		taglendata, err := dbp.currentThread.readMemory(off, 2)
+		taglendata, err := mem.readMemory(off, 2)
 		off += 2
 		if err != nil {
 			return "", "", 0, err
 		}
 		taglen := uint16(taglendata[0]<<8) | uint16(taglendata[1])
 
-		rawstr, err := dbp.currentThread.readMemory(off, int(taglen))
+		rawstr, err := mem.readMemory(off, int(taglen))
 		off += uintptr(taglen)
 		if err != nil {
 			return "", "", 0, err
@@ -176,7 +178,7 @@ func (dbp *Process) loadName(addr uintptr) (name, tag string, pkgpathoff int32, 
 	}
 
 	if namedata[0]&nameflagHasPkg != 0 {
-		pkgdata, err := dbp.currentThread.readMemory(off, 4)
+		pkgdata, err := mem.readMemory(off, 4)
 		if err != nil {
 			return "", "", 0, err
 		}

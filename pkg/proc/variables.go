@@ -1637,7 +1637,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	if kind&kindDirectIface == 0 {
 		realtyp := resolveTypedef(typ)
 		if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
-			typ = v.dbp.pointerTo(typ)
+			typ = pointerTo(typ, v.dbp.arch)
 		}
 	}
 

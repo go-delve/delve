@@ -253,7 +253,7 @@ func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, susp
 	return thread, nil
 }
 
-func (dbp *Process) parseDebugFrame(exe *pe.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) parseDebugFrame(exe *pe.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameSec := exe.Section(".debug_frame")
@@ -350,7 +350,7 @@ func pcln(exe *pe.File) (textStart uint64, symtab, pclntab []byte, err error) {
 	return textStart, symtab, pclntab, nil
 }
 
-func (dbp *Process) obtainGoSymbols(exe *pe.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) obtainGoSymbols(exe *pe.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	_, symdat, pclndat, err := pcln(exe)
@@ -369,7 +369,7 @@ func (dbp *Process) obtainGoSymbols(exe *pe.File, wg *sync.WaitGroup) {
 	dbp.goSymTable = tab
 }
 
-func (dbp *Process) parseDebugLineInfo(exe *pe.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) parseDebugLineInfo(exe *pe.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if sec := exe.Section(".debug_line"); sec != nil {
@@ -390,7 +390,7 @@ func (dbp *Process) parseDebugLineInfo(exe *pe.File, wg *sync.WaitGroup) {
 
 var UnsupportedArchErr = errors.New("unsupported architecture of windows/386 - only windows/amd64 is supported")
 
-func (dbp *Process) findExecutable(path string) (*pe.File, string, error) {
+func (dbp *BinaryInfo) findExecutable(path string, pid int) (*pe.File, string, error) {
 	peFile, err := openExecutablePath(path)
 	if err != nil {
 		return nil, path, err

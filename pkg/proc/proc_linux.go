@@ -173,9 +173,9 @@ func (dbp *Process) updateThreadList() error {
 
 var UnsupportedArchErr = errors.New("unsupported architecture - only linux/amd64 is supported")
 
-func (dbp *Process) findExecutable(path string) (*elf.File, string, error) {
+func (dbp *BinaryInfo) findExecutable(path string, pid int) (*elf.File, string, error) {
 	if path == "" {
-		path = fmt.Sprintf("/proc/%d/exe", dbp.pid)
+		path = fmt.Sprintf("/proc/%d/exe", pid)
 	}
 	f, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
@@ -195,7 +195,7 @@ func (dbp *Process) findExecutable(path string) (*elf.File, string, error) {
 	return elfFile, path, nil
 }
 
-func (dbp *Process) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameSec := exe.Section(".debug_frame")
@@ -219,7 +219,7 @@ func (dbp *Process) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
 	}
 }
 
-func (dbp *Process) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var (
@@ -254,7 +254,7 @@ func (dbp *Process) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
 	dbp.goSymTable = tab
 }
 
-func (dbp *Process) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
+func (dbp *BinaryInfo) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if sec := exe.Section(".debug_line"); sec != nil {
