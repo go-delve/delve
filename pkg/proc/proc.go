@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"debug/gosym"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,11 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/derekparker/delve/pkg/dwarf/frame"
-	"github.com/derekparker/delve/pkg/dwarf/line"
-	"github.com/derekparker/delve/pkg/dwarf/reader"
 
 	"golang.org/x/debug/dwarf"
 )
@@ -55,25 +49,6 @@ type Process struct {
 	ptraceDoneChan              chan interface{}
 }
 
-type BinaryInfo struct {
-	lastModified time.Time // Time the executable of this process was last modified
-
-	// Maps package names to package paths, needed to lookup types inside DWARF info
-	packageMap map[string]string
-
-	arch         Arch
-	dwarf        *dwarf.Data
-	frameEntries frame.FrameDescriptionEntries
-	lineInfo     line.DebugLines
-	goSymTable   *gosym.Table
-	types        map[string]dwarf.Offset
-	functions    []functionDebugInfo
-
-	loadModuleDataOnce sync.Once
-	moduleData         []moduleData
-	nameOfRuntimeType  map[uintptr]nameOfRuntimeTypeEntry
-}
-
 type functionDebugInfo struct {
 	lowpc, highpc uint64
 	offset        dwarf.Offset
@@ -94,14 +69,7 @@ func New(pid int) *Process {
 		os:             new(OSProcessDetails),
 		ptraceChan:     make(chan func()),
 		ptraceDoneChan: make(chan interface{}),
-		BinaryInfo: BinaryInfo{
-			nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry),
-		},
-	}
-	// TODO: find better way to determine proc arch (perhaps use executable file info)
-	switch runtime.GOARCH {
-	case "amd64":
-		dbp.arch = AMD64Arch()
+		BinaryInfo:     NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
 	}
 	go dbp.handlePtraceFuncs()
 	return dbp
@@ -148,6 +116,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 			err = killProcess(dbp.pid)
 		}
 	})
+	dbp.Close()
 	return
 }
 
@@ -166,10 +135,6 @@ func (dbp *Process) Running() bool {
 		}
 	}
 	return false
-}
-
-func (dbp *BinaryInfo) LastModified() time.Time {
-	return dbp.lastModified
 }
 
 func (dbp *Process) Pid() int {
@@ -200,21 +165,11 @@ func (dbp *Process) Breakpoints() map[uint64]*Breakpoint {
 func (dbp *Process) LoadInformation(path string) error {
 	var wg sync.WaitGroup
 
-	exe, path, err := dbp.findExecutable(path, dbp.pid)
-	if err != nil {
-		return err
-	}
-	fi, err := os.Stat(path)
-	if err == nil {
-		dbp.lastModified = fi.ModTime()
-	}
+	path = findExecutable(path, dbp.pid)
 
-	wg.Add(5)
+	wg.Add(1)
 	go dbp.loadProcessInformation(&wg)
-	go dbp.parseDebugFrame(exe, &wg)
-	go dbp.obtainGoSymbols(exe, &wg)
-	go dbp.parseDebugLineInfo(exe, &wg)
-	go dbp.loadDebugInfoMaps(&wg)
+	dbp.LoadBinaryInfo(path, &wg)
 	wg.Wait()
 
 	return nil
@@ -759,35 +714,6 @@ func (dbp *Process) PC() (uint64, error) {
 // is stopped at.
 func (dbp *Process) CurrentBreakpoint() *Breakpoint {
 	return dbp.currentThread.CurrentBreakpoint
-}
-
-// DwarfReader returns a reader for the dwarf data
-func (dbp *BinaryInfo) DwarfReader() *reader.Reader {
-	return reader.New(dbp.dwarf)
-}
-
-// Sources returns list of source files that comprise the debugged binary.
-func (dbp *BinaryInfo) Sources() map[string]*gosym.Obj {
-	return dbp.goSymTable.Files
-}
-
-// Funcs returns list of functions present in the debugged program.
-func (dbp *BinaryInfo) Funcs() []gosym.Func {
-	return dbp.goSymTable.Funcs
-}
-
-// Types returns list of types present in the debugged program.
-func (dbp *BinaryInfo) Types() ([]string, error) {
-	types := make([]string, 0, len(dbp.types))
-	for k := range dbp.types {
-		types = append(types, k)
-	}
-	return types, nil
-}
-
-// PCToLine converts an instruction address to a file/line/function.
-func (dbp *BinaryInfo) PCToLine(pc uint64) (string, int, *gosym.Func) {
-	return dbp.goSymTable.PCToLine(pc)
 }
 
 // FindBreakpointByID finds the breakpoint for the given ID.

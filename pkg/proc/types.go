@@ -38,40 +38,40 @@ const (
 )
 
 // Do not call this function directly it isn't able to deal correctly with package paths
-func (dbp *BinaryInfo) findType(name string) (dwarf.Type, error) {
-	off, found := dbp.types[name]
+func (bi *BinaryInfo) findType(name string) (dwarf.Type, error) {
+	off, found := bi.types[name]
 	if !found {
 		return nil, reader.TypeNotFoundErr
 	}
-	return dbp.dwarf.Type(off)
+	return bi.dwarf.Type(off)
 }
 
 func pointerTo(typ dwarf.Type, arch Arch) dwarf.Type {
 	return &dwarf.PtrType{dwarf.CommonType{int64(arch.PtrSize()), "*" + typ.Common().Name, reflect.Ptr, 0}, typ}
 }
 
-func (dbp *BinaryInfo) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
-	dbp.loadPackageMap()
+func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
+	bi.loadPackageMap()
 	if lit, islit := expr.(*ast.BasicLit); islit && lit.Kind == token.STRING {
 		// Allow users to specify type names verbatim as quoted
 		// string. Useful as a catch-all workaround for cases where we don't
 		// parse/serialize types correctly or can not resolve package paths.
 		typn, _ := strconv.Unquote(lit.Value)
-		return dbp.findType(typn)
+		return bi.findType(typn)
 	}
-	dbp.expandPackagesInType(expr)
+	bi.expandPackagesInType(expr)
 	if snode, ok := expr.(*ast.StarExpr); ok {
 		// Pointer types only appear in the dwarf informations when
 		// a pointer to the type is used in the target program, here
 		// we create a pointer type on the fly so that the user can
 		// specify a pointer to any variable used in the target program
-		ptyp, err := dbp.findTypeExpr(snode.X)
+		ptyp, err := bi.findTypeExpr(snode.X)
 		if err != nil {
 			return nil, err
 		}
-		return pointerTo(ptyp, dbp.arch), nil
+		return pointerTo(ptyp, bi.arch), nil
 	}
-	return dbp.findType(exprToString(expr))
+	return bi.findType(exprToString(expr))
 }
 
 func complexType(typename string) bool {
@@ -84,12 +84,12 @@ func complexType(typename string) bool {
 	return false
 }
 
-func (dbp *BinaryInfo) loadPackageMap() error {
-	if dbp.packageMap != nil {
+func (bi *BinaryInfo) loadPackageMap() error {
+	if bi.packageMap != nil {
 		return nil
 	}
-	dbp.packageMap = map[string]string{}
-	reader := dbp.DwarfReader()
+	bi.packageMap = map[string]string{}
+	reader := bi.DwarfReader()
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return err
@@ -114,7 +114,7 @@ func (dbp *BinaryInfo) loadPackageMap() error {
 			continue
 		}
 		name := path[slash+1:]
-		dbp.packageMap[name] = path
+		bi.packageMap[name] = path
 	}
 	return nil
 }
@@ -129,11 +129,11 @@ func (v sortFunctionsDebugInfoByLowpc) Swap(i, j int) {
 	v[j] = temp
 }
 
-func (dbp *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
+func (bi *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
 	defer wg.Done()
-	dbp.types = make(map[string]dwarf.Offset)
-	dbp.functions = []functionDebugInfo{}
-	reader := dbp.DwarfReader()
+	bi.types = make(map[string]dwarf.Offset)
+	bi.functions = []functionDebugInfo{}
+	reader := bi.DwarfReader()
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			break
@@ -144,8 +144,8 @@ func (dbp *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
 			if !ok {
 				continue
 			}
-			if _, exists := dbp.types[name]; !exists {
-				dbp.types[name] = entry.Offset
+			if _, exists := bi.types[name]; !exists {
+				bi.types[name] = entry.Offset
 			}
 		case dwarf.TagSubprogram:
 			lowpc, ok := entry.Val(dwarf.AttrLowpc).(uint64)
@@ -156,19 +156,19 @@ func (dbp *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
 			if !ok {
 				continue
 			}
-			dbp.functions = append(dbp.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
+			bi.functions = append(bi.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
 		}
 	}
-	sort.Sort(sortFunctionsDebugInfoByLowpc(dbp.functions))
+	sort.Sort(sortFunctionsDebugInfoByLowpc(bi.functions))
 }
 
-func (dbp *BinaryInfo) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
-	i := sort.Search(len(dbp.functions), func(i int) bool {
-		fn := dbp.functions[i]
+func (bi *BinaryInfo) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
+	i := sort.Search(len(bi.functions), func(i int) bool {
+		fn := bi.functions[i]
 		return pc <= fn.lowpc || (fn.lowpc <= pc && pc < fn.highpc)
 	})
-	if i != len(dbp.functions) {
-		fn := dbp.functions[i]
+	if i != len(bi.functions) {
+		fn := bi.functions[i]
 		if fn.lowpc <= pc && pc < fn.highpc {
 			return fn.offset, nil
 		}
@@ -176,37 +176,37 @@ func (dbp *BinaryInfo) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
 	return 0, errors.New("unable to find function context")
 }
 
-func (dbp *BinaryInfo) expandPackagesInType(expr ast.Expr) {
+func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 	switch e := expr.(type) {
 	case *ast.ArrayType:
-		dbp.expandPackagesInType(e.Elt)
+		bi.expandPackagesInType(e.Elt)
 	case *ast.ChanType:
-		dbp.expandPackagesInType(e.Value)
+		bi.expandPackagesInType(e.Value)
 	case *ast.FuncType:
 		for i := range e.Params.List {
-			dbp.expandPackagesInType(e.Params.List[i].Type)
+			bi.expandPackagesInType(e.Params.List[i].Type)
 		}
 		if e.Results != nil {
 			for i := range e.Results.List {
-				dbp.expandPackagesInType(e.Results.List[i].Type)
+				bi.expandPackagesInType(e.Results.List[i].Type)
 			}
 		}
 	case *ast.MapType:
-		dbp.expandPackagesInType(e.Key)
-		dbp.expandPackagesInType(e.Value)
+		bi.expandPackagesInType(e.Key)
+		bi.expandPackagesInType(e.Value)
 	case *ast.ParenExpr:
-		dbp.expandPackagesInType(e.X)
+		bi.expandPackagesInType(e.X)
 	case *ast.SelectorExpr:
 		switch x := e.X.(type) {
 		case *ast.Ident:
-			if path, ok := dbp.packageMap[x.Name]; ok {
+			if path, ok := bi.packageMap[x.Name]; ok {
 				x.Name = path
 			}
 		default:
-			dbp.expandPackagesInType(e.X)
+			bi.expandPackagesInType(e.X)
 		}
 	case *ast.StarExpr:
-		dbp.expandPackagesInType(e.X)
+		bi.expandPackagesInType(e.X)
 	default:
 		// nothing to do
 	}

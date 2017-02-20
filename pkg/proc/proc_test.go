@@ -1936,7 +1936,7 @@ func TestUnsupportedArch(t *testing.T) {
 
 	p, err := Launch([]string{outfile}, ".")
 	switch err {
-	case UnsupportedArchErr:
+	case UnsupportedLinuxArchErr, UnsupportedWindowsArchErr, UnsupportedDarwinArchErr:
 		// all good
 	case nil:
 		p.Halt()
