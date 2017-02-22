@@ -412,7 +412,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	switch command.Name {
 	case api.Continue:
 		log.Print("continuing")
-		err = d.target.Continue()
+		err = proc.Continue(d.target)
 		if err != nil {
 			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
 				state := &api.DebuggerState{}
@@ -432,16 +432,16 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 
 	case api.Next:
 		log.Print("nexting")
-		err = d.target.Next()
+		err = proc.Next(d.target)
 	case api.Step:
 		log.Print("stepping")
-		err = d.target.Step()
+		err = proc.Step(d.target)
 	case api.StepInstruction:
 		log.Print("single stepping")
 		err = d.target.StepInstruction()
 	case api.StepOut:
 		log.Print("step out")
-		err = d.target.StepOut()
+		err = proc.StepOut(d.target)
 	case api.SwitchThread:
 		log.Printf("switching to thread %d", command.ThreadID)
 		err = d.target.SwitchThread(command.ThreadID)
@@ -714,7 +714,7 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 	defer d.processMutex.Unlock()
 
 	goroutines := []*api.Goroutine{}
-	gs, err := d.target.GoroutinesInfo()
+	gs, err := proc.GoroutinesInfo(d.target)
 	if err != nil {
 		return nil, err
 	}

@@ -81,13 +81,14 @@ func (t *Thread) resume() error {
 	return nil
 }
 
-func (t *Thread) blocked() bool {
+func threadBlocked(t IThread) bool {
 	// TODO(dp) cache the func pc to remove this lookup
-	pc, err := t.PC()
+	regs, err := t.Registers(false)
 	if err != nil {
 		return false
 	}
-	fn := t.dbp.bi.goSymTable.PCToFunc(pc)
+	pc := regs.PC()
+	fn := t.BinInfo().goSymTable.PCToFunc(pc)
 	if fn == nil {
 		return false
 	}
