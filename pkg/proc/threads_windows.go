@@ -103,14 +103,15 @@ func (t *Thread) resume() error {
 	return err
 }
 
-func (t *Thread) blocked() bool {
+func threadBlocked(t IThread) bool {
 	// TODO: Probably incorrect - what are the runtime functions that
 	// indicate blocking on Windows?
-	pc, err := t.PC()
+	regs, err := t.Registers(false)
 	if err != nil {
 		return false
 	}
-	fn := t.dbp.bi.goSymTable.PCToFunc(pc)
+	pc := regs.PC()
+	fn := t.BinInfo().goSymTable.PCToFunc(pc)
 	if fn == nil {
 		return false
 	}

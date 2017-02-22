@@ -46,6 +46,7 @@ type IThread interface {
 	Registers(floatingPoint bool) (Registers, error)
 	Arch() Arch
 	BinInfo() *BinaryInfo
+	StepInstruction() error
 }
 
 // Location represents the location of a thread.
@@ -149,12 +150,12 @@ func (tbe ThreadBlockedError) Error() string {
 }
 
 // returns topmost frame of g or thread if g is nil
-func topframe(g *G, thread *Thread) (Stackframe, error) {
+func topframe(g *G, thread IThread) (Stackframe, error) {
 	var frames []Stackframe
 	var err error
 
 	if g == nil {
-		if thread.blocked() {
+		if threadBlocked(thread) {
 			return Stackframe{}, ThreadBlockedError{}
 		}
 		frames, err = ThreadStacktrace(thread, 0)
@@ -177,8 +178,10 @@ func topframe(g *G, thread *Thread) (Stackframe, error) {
 // a breakpoint of kind StepBreakpoint is set on the CALL instruction,
 // Continue will take care of setting a breakpoint to the destination
 // once the CALL is reached.
-func (dbp *Process) next(stepInto bool) error {
-	topframe, err := topframe(dbp.selectedGoroutine, dbp.currentThread)
+func next(dbp Continuable, stepInto bool) error {
+	selg := dbp.SelectedGoroutine()
+	curthread := dbp.CurrentThread()
+	topframe, err := topframe(selg, curthread)
 	if err != nil {
 		return err
 	}
@@ -191,22 +194,22 @@ func (dbp *Process) next(stepInto bool) error {
 	}()
 
 	csource := filepath.Ext(topframe.Current.File) != ".go"
-	var thread memoryReadWriter = dbp.currentThread
+	var thread memoryReadWriter = curthread
 	var regs Registers
-	if dbp.selectedGoroutine != nil && dbp.selectedGoroutine.thread != nil {
-		thread = dbp.selectedGoroutine.thread
-		regs, err = dbp.selectedGoroutine.thread.Registers(false)
+	if selg != nil && selg.Thread() != nil {
+		thread = selg.Thread()
+		regs, err = selg.Thread().Registers(false)
 		if err != nil {
 			return err
 		}
 	}
 
-	text, err := disassemble(thread, regs, dbp.breakpoints, dbp.BinInfo(), topframe.FDE.Begin(), topframe.FDE.End())
+	text, err := disassemble(thread, regs, dbp.Breakpoints(), dbp.BinInfo(), topframe.FDE.Begin(), topframe.FDE.End())
 	if err != nil && stepInto {
 		return err
 	}
 
-	cond := sameGoroutineCondition(dbp.selectedGoroutine)
+	cond := sameGoroutineCondition(selg)
 
 	if stepInto {
 		for _, instr := range text {
@@ -215,7 +218,7 @@ func (dbp *Process) next(stepInto bool) error {
 			}
 
 			if instr.DestLoc != nil && instr.DestLoc.Fn != nil {
-				if err := dbp.setStepIntoBreakpoint([]AsmInstruction{instr}, cond); err != nil {
+				if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, cond); err != nil {
 					return err
 				}
 			} else {
@@ -242,10 +245,10 @@ func (dbp *Process) next(stepInto bool) error {
 
 		// Set breakpoint on the most recently deferred function (if any)
 		var deferpc uint64 = 0
-		if dbp.selectedGoroutine != nil {
-			deferPCEntry := dbp.selectedGoroutine.DeferPC()
+		if selg != nil {
+			deferPCEntry := selg.DeferPC()
 			if deferPCEntry != 0 {
-				_, _, deferfn := dbp.bi.goSymTable.PCToLine(deferPCEntry)
+				_, _, deferfn := dbp.BinInfo().PCToLine(deferPCEntry)
 				var err error
 				deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
 				if err != nil {
@@ -267,7 +270,7 @@ func (dbp *Process) next(stepInto bool) error {
 	}
 
 	// Add breakpoints on all the lines in the current function
-	pcs, err := dbp.bi.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
+	pcs, err := dbp.BinInfo().lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
 	if err != nil {
 		return err
 	}
@@ -282,8 +285,8 @@ func (dbp *Process) next(stepInto bool) error {
 		}
 
 		if !covered {
-			fn := dbp.bi.goSymTable.PCToFunc(topframe.Ret)
-			if dbp.selectedGoroutine != nil && fn != nil && fn.Name == "runtime.goexit" {
+			fn := dbp.BinInfo().goSymTable.PCToFunc(topframe.Ret)
+			if selg != nil && fn != nil && fn.Name == "runtime.goexit" {
 				return nil
 			}
 		}
@@ -292,10 +295,10 @@ func (dbp *Process) next(stepInto bool) error {
 	// Add a breakpoint on the return address for the current frame
 	pcs = append(pcs, topframe.Ret)
 	success = true
-	return dbp.setInternalBreakpoints(topframe.Current.PC, pcs, NextBreakpoint, cond)
+	return setInternalBreakpoints(dbp, topframe.Current.PC, pcs, NextBreakpoint, cond)
 }
 
-func (dbp *Process) setStepIntoBreakpoint(text []AsmInstruction, cond ast.Expr) error {
+func setStepIntoBreakpoint(dbp Continuable, text []AsmInstruction, cond ast.Expr) error {
 	if len(text) <= 0 {
 		return nil
 	}
@@ -337,7 +340,7 @@ func (dbp *Process) setStepIntoBreakpoint(text []AsmInstruction, cond ast.Expr) 
 
 // setInternalBreakpoints sets a breakpoint to all addresses specified in pcs
 // skipping over curpc and curpc-1
-func (dbp *Process) setInternalBreakpoints(curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
+func setInternalBreakpoints(dbp Continuable, curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
 	for i := range pcs {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
@@ -495,7 +498,7 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 			return err
 		}
 		thread.BreakpointConditionMet, thread.BreakpointConditionError = bp.checkCondition(thread)
-		if thread.onTriggeredBreakpoint() {
+		if thread.CurrentBreakpoint != nil && thread.BreakpointConditionMet {
 			if g, err := GetG(thread); err == nil {
 				thread.CurrentBreakpoint.HitCount[g.ID]++
 			}
@@ -511,15 +514,7 @@ func (thread *Thread) clearBreakpointState() {
 	thread.BreakpointConditionError = nil
 }
 
-func (thread *Thread) onTriggeredBreakpoint() bool {
-	return (thread.CurrentBreakpoint != nil) && thread.BreakpointConditionMet
-}
-
-func (thread *Thread) onTriggeredInternalBreakpoint() bool {
-	return thread.onTriggeredBreakpoint() && thread.CurrentBreakpoint.Internal()
-}
-
-func (thread *Thread) onRuntimeBreakpoint() bool {
+func onRuntimeBreakpoint(thread IThread) bool {
 	loc, err := thread.Location()
 	if err != nil {
 		return false
@@ -528,11 +523,11 @@ func (thread *Thread) onRuntimeBreakpoint() bool {
 }
 
 // onNextGorutine returns true if this thread is on the goroutine requested by the current 'next' command
-func (thread *Thread) onNextGoroutine() (bool, error) {
+func onNextGoroutine(thread IThread, breakpoints map[uint64]*Breakpoint) (bool, error) {
 	var bp *Breakpoint
-	for i := range thread.dbp.breakpoints {
-		if thread.dbp.breakpoints[i].Internal() {
-			bp = thread.dbp.breakpoints[i]
+	for i := range breakpoints {
+		if breakpoints[i].Internal() {
+			bp = breakpoints[i]
 			break
 		}
 	}

@@ -101,7 +101,7 @@ func currentLineNumber(p *Process, t *testing.T) (string, int) {
 
 func TestExit(t *testing.T) {
 	withTestProcess("continuetestprog", t, func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := Continue(p)
 		pe, ok := err.(ProcessExitedError)
 		if !ok {
 			t.Fatalf("Continue() returned unexpected error type %s", err)
@@ -119,8 +119,8 @@ func TestExitAfterContinue(t *testing.T) {
 	withTestProcess("continuetestprog", t, func(p *Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.sayhi")
 		assertNoError(err, t, "setFunctionBreakpoint()")
-		assertNoError(p.Continue(), t, "First Continue()")
-		err = p.Continue()
+		assertNoError(Continue(p), t, "First Continue()")
+		err = Continue(p)
 		pe, ok := err.(ProcessExitedError)
 		if !ok {
 			t.Fatalf("Continue() returned unexpected error type %s", pe)
@@ -159,7 +159,7 @@ func TestHalt(t *testing.T) {
 	withTestProcess("loopprog", t, func(p *Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.loop")
 		assertNoError(err, t, "SetBreakpoint")
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(Continue(p), t, "Continue")
 		for _, th := range p.threads {
 			if th.running != false {
 				t.Fatal("expected running = false for thread", th.ID)
@@ -178,7 +178,7 @@ func TestHalt(t *testing.T) {
 				}
 			}
 		}()
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(Continue(p), t, "Continue")
 		<-stopChan
 		// Loop through threads and make sure they are all
 		// actually stopped, err will not be nil if the process
@@ -203,7 +203,7 @@ func TestStep(t *testing.T) {
 
 		_, err := p.SetBreakpoint(helloworldaddr, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		regs := getRegisters(p, t)
 		rip := regs.PC()
@@ -225,7 +225,7 @@ func TestBreakpoint(t *testing.T) {
 
 		bp, err := p.SetBreakpoint(helloworldaddr, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		pc, err := p.PC()
 		if err != nil {
@@ -255,7 +255,7 @@ func TestBreakpointInSeperateGoRoutine(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = p.Continue()
+		err = Continue(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -340,7 +340,7 @@ func testseq(program string, contFunc contFunc, testcases []nextTest, initialLoc
 			bp, err = p.SetBreakpoint(pc, UserBreakpoint, nil)
 		}
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 		p.currentThread.SetPC(bp.Addr)
 
@@ -353,9 +353,9 @@ func testseq(program string, contFunc contFunc, testcases []nextTest, initialLoc
 
 			switch contFunc {
 			case contNext:
-				assertNoError(p.Next(), t, "Next() returned an error")
+				assertNoError(Next(p), t, "Next() returned an error")
 			case contStep:
-				assertNoError(p.Step(), t, "Step() returned an error")
+				assertNoError(Step(p), t, "Step() returned an error")
 			}
 
 			f, ln = currentLineNumber(p, t)
@@ -427,7 +427,7 @@ func TestNextConcurrent(t *testing.T) {
 	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.sayhi")
 		assertNoError(err, t, "SetBreakpoint")
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(Continue(p), t, "Continue")
 		f, ln := currentLineNumber(p, t)
 		initV, err := evalVariable(p, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
@@ -443,7 +443,7 @@ func TestNextConcurrent(t *testing.T) {
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
-			assertNoError(p.Next(), t, "Next() returned an error")
+			assertNoError(Next(p), t, "Next() returned an error")
 			f, ln = currentLineNumber(p, t)
 			if ln != tc.end {
 				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
@@ -468,7 +468,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 	withTestProcess("parallel_next", t, func(p *Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.sayhi")
 		assertNoError(err, t, "SetBreakpoint")
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(Continue(p), t, "Continue")
 		f, ln := currentLineNumber(p, t)
 		initV, err := evalVariable(p, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
@@ -482,7 +482,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 			if ln != tc.begin {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
-			assertNoError(p.Next(), t, "Next() returned an error")
+			assertNoError(Next(p), t, "Next() returned an error")
 			var vval int64
 			for {
 				v, err := evalVariable(p, "n")
@@ -497,7 +497,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 					if vval == initVval {
 						t.Fatal("Initial breakpoint triggered twice for the same goroutine")
 					}
-					assertNoError(p.Continue(), t, "Continue 2")
+					assertNoError(Continue(p), t, "Continue 2")
 				}
 			}
 			f, ln = currentLineNumber(p, t)
@@ -550,7 +550,7 @@ func TestNextNetHTTP(t *testing.T) {
 			}
 			http.Get("http://localhost:9191")
 		}()
-		if err := p.Continue(); err != nil {
+		if err := Continue(p); err != nil {
 			t.Fatal(err)
 		}
 		f, ln := currentLineNumber(p, t)
@@ -559,7 +559,7 @@ func TestNextNetHTTP(t *testing.T) {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
 
-			assertNoError(p.Next(), t, "Next() returned an error")
+			assertNoError(Next(p), t, "Next() returned an error")
 
 			f, ln = currentLineNumber(p, t)
 			if ln != tc.end {
@@ -571,7 +571,7 @@ func TestNextNetHTTP(t *testing.T) {
 
 func TestRuntimeBreakpoint(t *testing.T) {
 	withTestProcess("testruntimebreakpoint", t, func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := Continue(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -607,7 +607,7 @@ func TestFindReturnAddress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = p.Continue()
+		err = Continue(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -632,7 +632,7 @@ func TestFindReturnAddressTopOfStackFn(t *testing.T) {
 		if _, err := p.SetBreakpoint(fn.Entry, UserBreakpoint, nil); err != nil {
 			t.Fatal(err)
 		}
-		if err := p.Continue(); err != nil {
+		if err := Continue(p); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := returnAddress(p.currentThread); err == nil {
@@ -656,7 +656,7 @@ func TestSwitchThread(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = p.Continue()
+		err = Continue(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -701,11 +701,11 @@ func TestCGONext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = p.Continue()
+		err = Continue(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = p.Next()
+		err = Next(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -736,7 +736,7 @@ func TestStacktrace(t *testing.T) {
 		assertNoError(err, t, "BreakByLocation()")
 
 		for i := range stacks {
-			assertNoError(p.Continue(), t, "Continue()")
+			assertNoError(Continue(p), t, "Continue()")
 			locations, err := ThreadStacktrace(p.currentThread, 40)
 			assertNoError(err, t, "Stacktrace()")
 
@@ -757,13 +757,13 @@ func TestStacktrace(t *testing.T) {
 		}
 
 		p.ClearBreakpoint(bp.Addr)
-		p.Continue()
+		Continue(p)
 	})
 }
 
 func TestStacktrace2(t *testing.T) {
 	withTestProcess("retstack", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		locations, err := ThreadStacktrace(p.currentThread, 40)
 		assertNoError(err, t, "Stacktrace()")
@@ -774,7 +774,7 @@ func TestStacktrace2(t *testing.T) {
 			t.Fatalf("Stack error at main.f()\n%v\n", locations)
 		}
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		locations, err = ThreadStacktrace(p.currentThread, 40)
 		assertNoError(err, t, "Stacktrace()")
 		if !stackMatch([]loc{{-1, "main.g"}, {17, "main.main"}}, locations, false) {
@@ -817,7 +817,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		bp, err := setFunctionBreakpoint(p, "main.stacktraceme")
 		assertNoError(err, t, "BreakByLocation()")
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		gs, err := p.GoroutinesInfo()
 		assertNoError(err, t, "GoroutinesInfo")
@@ -867,7 +867,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		}
 
 		p.ClearBreakpoint(bp.Addr)
-		p.Continue()
+		Continue(p)
 	})
 }
 
@@ -892,7 +892,7 @@ func testGSupportFunc(name string, t *testing.T, p *Process, fixture protest.Fix
 	bp, err := setFunctionBreakpoint(p, "main.main")
 	assertNoError(err, t, name+": BreakByLocation()")
 
-	assertNoError(p.Continue(), t, name+": Continue()")
+	assertNoError(Continue(p), t, name+": Continue()")
 
 	g, err := GetG(p.currentThread)
 	assertNoError(err, t, name+": GetG()")
@@ -935,7 +935,7 @@ func TestContinueMulti(t *testing.T) {
 		mainCount := 0
 		sayhiCount := 0
 		for {
-			err := p.Continue()
+			err := Continue(p)
 			if p.Exited() {
 				break
 			}
@@ -993,7 +993,7 @@ func TestBreakpointOnFunctionEntry(t *testing.T) {
 		assertNoError(err, t, "FindFunctionLocation()")
 		_, err = p.SetBreakpoint(addr, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		_, ln := currentLineNumber(p, t)
 		if ln != 17 {
 			t.Fatalf("Wrong line number: %d (expected: 17)\n", ln)
@@ -1003,7 +1003,7 @@ func TestBreakpointOnFunctionEntry(t *testing.T) {
 
 func TestProcessReceivesSIGCHLD(t *testing.T) {
 	withTestProcess("sigchldprog", t, func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := Continue(p)
 		_, ok := err.(ProcessExitedError)
 		if !ok {
 			t.Fatalf("Continue() returned unexpected error type %s", err)
@@ -1017,7 +1017,7 @@ func TestIssue239(t *testing.T) {
 		assertNoError(err, t, "LineToPC()")
 		_, err = p.SetBreakpoint(pos, UserBreakpoint, nil)
 		assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%d)", pos))
-		assertNoError(p.Continue(), t, fmt.Sprintf("Continue()"))
+		assertNoError(Continue(p), t, fmt.Sprintf("Continue()"))
 	})
 }
 
@@ -1074,7 +1074,7 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(Continue(p), t, "Continue() returned an error")
 
 		for _, tc := range testcases {
 			v, err := evalVariable(p, tc.name)
@@ -1126,7 +1126,7 @@ func TestFrameEvaluation(t *testing.T) {
 	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.stacktraceme")
 		assertNoError(err, t, "setFunctionBreakpoint")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		// Testing evaluation on goroutines
 		gs, err := p.GoroutinesInfo()
@@ -1171,7 +1171,7 @@ func TestFrameEvaluation(t *testing.T) {
 		}
 
 		// Testing evaluation on frames
-		assertNoError(p.Continue(), t, "Continue() 2")
+		assertNoError(Continue(p), t, "Continue() 2")
 		g, err := GetG(p.currentThread)
 		assertNoError(err, t, "GetG()")
 
@@ -1191,7 +1191,7 @@ func TestFrameEvaluation(t *testing.T) {
 
 func TestPointerSetting(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(Continue(p), t, "Continue() returned an error")
 
 		pval := func(n int64) {
 			variable, err := evalVariable(p, "p1")
@@ -1220,7 +1220,7 @@ func TestPointerSetting(t *testing.T) {
 
 func TestVariableFunctionScoping(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		_, err = evalVariable(p, "a1")
@@ -1230,7 +1230,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 		assertNoError(err, t, "Unable to find variable a1")
 
 		// Move scopes, a1 exists here by a2 does not
-		err = p.Continue()
+		err = Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		_, err = evalVariable(p, "a1")
@@ -1245,7 +1245,7 @@ func TestVariableFunctionScoping(t *testing.T) {
 
 func TestRecursiveStructure(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		v, err := evalVariable(p, "aas")
 		assertNoError(err, t, "EvalVariable()")
 		t.Logf("v: %v\n", v)
@@ -1255,7 +1255,7 @@ func TestRecursiveStructure(t *testing.T) {
 func TestIssue316(t *testing.T) {
 	// A pointer loop that includes one interface should not send dlv into an infinite loop
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		_, err := evalVariable(p, "iface5")
 		assertNoError(err, t, "EvalVariable()")
 	})
@@ -1264,7 +1264,7 @@ func TestIssue316(t *testing.T) {
 func TestIssue325(t *testing.T) {
 	// nil pointer dereference when evaluating interfaces to function pointers
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		iface2fn1v, err := evalVariable(p, "iface2fn1")
 		assertNoError(err, t, "EvalVariable()")
 		t.Logf("iface2fn1: %v\n", iface2fn1v)
@@ -1283,7 +1283,7 @@ func TestBreakpointCounts(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint()")
 
 		for {
-			if err := p.Continue(); err != nil {
+			if err := Continue(p); err != nil {
 				if _, exited := err.(ProcessExitedError); exited {
 					break
 				}
@@ -1312,7 +1312,7 @@ func BenchmarkArray(b *testing.B) {
 	// each bencharr struct is 128 bytes, bencharr is 64 elements long
 	b.SetBytes(int64(64 * 128))
 	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), b, "Continue()")
+		assertNoError(Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			_, err := evalVariable(p, "bencharr")
 			assertNoError(err, b, "EvalVariable()")
@@ -1334,7 +1334,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint()")
 
 		for {
-			if err := p.Continue(); err != nil {
+			if err := Continue(p); err != nil {
 				if _, exited := err.(ProcessExitedError); exited {
 					break
 				}
@@ -1387,7 +1387,7 @@ func BenchmarkArrayPointer(b *testing.B) {
 	// each read will read 64 bencharr structs plus the 64 pointers of benchparr
 	b.SetBytes(int64(64*128 + 64*8))
 	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), b, "Continue()")
+		assertNoError(Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			_, err := evalVariable(p, "bencharr")
 			assertNoError(err, b, "EvalVariable()")
@@ -1401,7 +1401,7 @@ func BenchmarkMap(b *testing.B) {
 	// reading strings and the map structure imposes a overhead that we ignore here
 	b.SetBytes(int64(41 * (2*8 + 9)))
 	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), b, "Continue()")
+		assertNoError(Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			_, err := evalVariable(p, "m1")
 			assertNoError(err, b, "EvalVariable()")
@@ -1411,7 +1411,7 @@ func BenchmarkMap(b *testing.B) {
 
 func BenchmarkGoroutinesInfo(b *testing.B) {
 	withTestProcess("testvariables2", b, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), b, "Continue()")
+		assertNoError(Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			p.allGCache = nil
 			_, err := p.GoroutinesInfo()
@@ -1428,8 +1428,8 @@ func TestIssue262(t *testing.T) {
 		_, err = p.SetBreakpoint(addr, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 
-		assertNoError(p.Continue(), t, "Continue()")
-		err = p.Continue()
+		assertNoError(Continue(p), t, "Continue()")
+		err = Continue(p)
 		if err == nil {
 			t.Fatalf("No error on second continue")
 		}
@@ -1450,13 +1450,13 @@ func TestIssue305(t *testing.T) {
 		_, err = p.SetBreakpoint(addr, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
-		assertNoError(p.Next(), t, "Next() 1")
-		assertNoError(p.Next(), t, "Next() 2")
-		assertNoError(p.Next(), t, "Next() 3")
-		assertNoError(p.Next(), t, "Next() 4")
-		assertNoError(p.Next(), t, "Next() 5")
+		assertNoError(Next(p), t, "Next() 1")
+		assertNoError(Next(p), t, "Next() 2")
+		assertNoError(Next(p), t, "Next() 3")
+		assertNoError(Next(p), t, "Next() 4")
+		assertNoError(Next(p), t, "Next() 5")
 	})
 }
 
@@ -1464,7 +1464,7 @@ func TestPointerLoops(t *testing.T) {
 	// Pointer loops through map entries, pointers and slices
 	// Regression test for issue #341
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		for _, expr := range []string{"mapinf", "ptrinf", "sliceinf"} {
 			t.Logf("requesting %s", expr)
 			v, err := evalVariable(p, expr)
@@ -1476,7 +1476,7 @@ func TestPointerLoops(t *testing.T) {
 
 func BenchmarkLocalVariables(b *testing.B) {
 	withTestProcess("testvariables", b, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), b, "Continue() returned an error")
+		assertNoError(Continue(p), b, "Continue() returned an error")
 		scope, err := GoroutineScope(p.currentThread)
 		assertNoError(err, b, "Scope()")
 		for i := 0; i < b.N; i++ {
@@ -1498,7 +1498,7 @@ func TestCondBreakpoint(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
 		}
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		nvar, err := evalVariable(p, "n")
 		assertNoError(err, t, "EvalVariable()")
@@ -1522,7 +1522,7 @@ func TestCondBreakpointError(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
 		}
 
-		err = p.Continue()
+		err = Continue(p)
 		if err == nil {
 			t.Fatalf("No error on first Continue()")
 		}
@@ -1537,7 +1537,7 @@ func TestCondBreakpointError(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "7"},
 		}
 
-		err = p.Continue()
+		err = Continue(p)
 		if err != nil {
 			if _, exited := err.(ProcessExitedError); !exited {
 				t.Fatalf("Unexpected error on second Continue(): %v", err)
@@ -1557,7 +1557,7 @@ func TestCondBreakpointError(t *testing.T) {
 func TestIssue356(t *testing.T) {
 	// slice with a typedef does not get printed correctly
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(Continue(p), t, "Continue() returned an error")
 		mmvar, err := evalVariable(p, "mainMenu")
 		assertNoError(err, t, "EvalVariable()")
 		if mmvar.Kind != reflect.Slice {
@@ -1569,9 +1569,9 @@ func TestIssue356(t *testing.T) {
 func TestStepIntoFunction(t *testing.T) {
 	withTestProcess("teststep", t, func(p *Process, fixture protest.Fixture) {
 		// Continue until breakpoint
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(Continue(p), t, "Continue() returned an error")
 		// Step into function
-		assertNoError(p.Step(), t, "Step() returned an error")
+		assertNoError(Step(p), t, "Step() returned an error")
 		// We should now be inside the function.
 		loc, err := p.CurrentLocation()
 		if err != nil {
@@ -1596,7 +1596,7 @@ func TestIssue384(t *testing.T) {
 		assertNoError(err, t, "LineToPC()")
 		_, err = p.SetBreakpoint(start, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		_, err = evalVariable(p, "st")
 		assertNoError(err, t, "EvalVariable()")
 	})
@@ -1609,8 +1609,8 @@ func TestIssue332_Part1(t *testing.T) {
 		assertNoError(err, t, "LineToPC()")
 		_, err = p.SetBreakpoint(start, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
-		assertNoError(p.Next(), t, "first Next()")
+		assertNoError(Continue(p), t, "Continue()")
+		assertNoError(Next(p), t, "first Next()")
 		locations, err := ThreadStacktrace(p.currentThread, 2)
 		assertNoError(err, t, "Stacktrace()")
 		if locations[0].Call.Fn == nil {
@@ -1635,11 +1635,11 @@ func TestIssue332_Part2(t *testing.T) {
 		assertNoError(err, t, "LineToPC()")
 		_, err = p.SetBreakpoint(start, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		// step until we enter changeMe
 		for {
-			assertNoError(p.Step(), t, "Step()")
+			assertNoError(Step(p), t, "Step()")
 			locations, err := ThreadStacktrace(p.currentThread, 2)
 			assertNoError(err, t, "Stacktrace()")
 			if locations[0].Call.Fn == nil {
@@ -1662,10 +1662,10 @@ func TestIssue332_Part2(t *testing.T) {
 			t.Fatalf("Step did not skip the prologue: current pc: %x, first instruction after prologue: %x", pc, pcAfterPrologue)
 		}
 
-		assertNoError(p.Next(), t, "first Next()")
-		assertNoError(p.Next(), t, "second Next()")
-		assertNoError(p.Next(), t, "third Next()")
-		err = p.Continue()
+		assertNoError(Next(p), t, "first Next()")
+		assertNoError(Next(p), t, "second Next()")
+		assertNoError(Next(p), t, "third Next()")
+		err = Continue(p)
 		if _, exited := err.(ProcessExitedError); !exited {
 			assertNoError(err, t, "final Continue()")
 		}
@@ -1686,9 +1686,9 @@ func TestIssue414(t *testing.T) {
 		assertNoError(err, t, "LineToPC()")
 		_, err = p.SetBreakpoint(start, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		for {
-			err := p.Step()
+			err := Step(p)
 			if err != nil {
 				if _, exited := err.(ProcessExitedError); exited {
 					break
@@ -1701,7 +1701,7 @@ func TestIssue414(t *testing.T) {
 
 func TestPackageVariables(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := Continue(p)
 		assertNoError(err, t, "Continue()")
 		scope, err := GoroutineScope(p.currentThread)
 		assertNoError(err, t, "Scope()")
@@ -1734,7 +1734,7 @@ func TestIssue149(t *testing.T) {
 
 func TestPanicBreakpoint(t *testing.T) {
 	withTestProcess("panic", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		bp := p.CurrentBreakpoint()
 		if bp == nil || bp.Name != "unrecovered-panic" {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint())
@@ -1744,7 +1744,7 @@ func TestPanicBreakpoint(t *testing.T) {
 
 func TestCmdLineArgs(t *testing.T) {
 	expectSuccess := func(p *Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := Continue(p)
 		bp := p.CurrentBreakpoint()
 		if bp != nil && bp.Name == "unrecovered-panic" {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint())
@@ -1760,7 +1760,7 @@ func TestCmdLineArgs(t *testing.T) {
 	}
 
 	expectPanic := func(p *Process, fixture protest.Fixture) {
-		p.Continue()
+		Continue(p)
 		bp := p.CurrentBreakpoint()
 		if bp == nil || bp.Name != "unrecovered-panic" {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", p.CurrentBreakpoint())
@@ -1805,7 +1805,7 @@ func TestIssue462(t *testing.T) {
 			p.RequestManualStop()
 		}()
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		_, err := ThreadStacktrace(p.currentThread, 40)
 		assertNoError(err, t, "Stacktrace()")
 	})
@@ -1829,7 +1829,7 @@ func TestNextParked(t *testing.T) {
 		var parkedg *G
 	LookForParkedG:
 		for {
-			err := p.Continue()
+			err := Continue(p)
 			if _, exited := err.(ProcessExitedError); exited {
 				t.Log("could not find parked goroutine")
 				return
@@ -1849,7 +1849,7 @@ func TestNextParked(t *testing.T) {
 
 		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
 		p.ClearBreakpoint(bp.Addr)
-		assertNoError(p.Next(), t, "Next()")
+		assertNoError(Next(p), t, "Next()")
 
 		if p.selectedGoroutine.ID != parkedg.ID {
 			t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", parkedg.ID, p.selectedGoroutine.ID)
@@ -1866,7 +1866,7 @@ func TestStepParked(t *testing.T) {
 		var parkedg *G
 	LookForParkedG:
 		for {
-			err := p.Continue()
+			err := Continue(p)
 			if _, exited := err.(ProcessExitedError); exited {
 				t.Log("could not find parked goroutine")
 				return
@@ -1896,7 +1896,7 @@ func TestStepParked(t *testing.T) {
 
 		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
 		p.ClearBreakpoint(bp.Addr)
-		assertNoError(p.Step(), t, "Step()")
+		assertNoError(Step(p), t, "Step()")
 
 		if p.selectedGoroutine.ID != parkedg.ID {
 			t.Fatalf("Step did not continue on the selected goroutine, expected %d got %d", parkedg.ID, p.selectedGoroutine.ID)
@@ -1965,10 +1965,10 @@ func TestIssue573(t *testing.T) {
 		f := p.BinInfo().goSymTable.LookupFunc("main.foo")
 		_, err := p.SetBreakpoint(f.Entry, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
-		assertNoError(p.Step(), t, "Step() #1")
-		assertNoError(p.Step(), t, "Step() #2") // Bug exits here.
-		assertNoError(p.Step(), t, "Step() #3") // Third step ought to be possible; program ought not have exited.
+		assertNoError(Continue(p), t, "Continue()")
+		assertNoError(Step(p), t, "Step() #1")
+		assertNoError(Step(p), t, "Step() #2") // Bug exits here.
+		assertNoError(Step(p), t, "Step() #3") // Third step ought to be possible; program ought not have exited.
 	})
 }
 
@@ -2085,8 +2085,8 @@ func TestIssue561(t *testing.T) {
 	// where a breakpoint is also set.
 	withTestProcess("issue561", t, func(p *Process, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture, 10)
-		assertNoError(p.Continue(), t, "Continue()")
-		assertNoError(p.Step(), t, "Step()")
+		assertNoError(Continue(p), t, "Continue()")
+		assertNoError(Step(p), t, "Step()")
 		_, ln := currentLineNumber(p, t)
 		if ln != 5 {
 			t.Fatalf("wrong line number after Step, expected 5 got %d", ln)
@@ -2098,7 +2098,7 @@ func TestStepOut(t *testing.T) {
 	withTestProcess("testnextprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.helloworld")
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 
 		f, lno := currentLineNumber(p, t)
@@ -2106,7 +2106,7 @@ func TestStepOut(t *testing.T) {
 			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 13)
 		}
 
-		assertNoError(p.StepOut(), t, "StepOut()")
+		assertNoError(StepOut(p), t, "StepOut()")
 
 		f, lno = currentLineNumber(p, t)
 		if lno != 35 {
@@ -2122,7 +2122,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 		bp, err := p.SetBreakpoint(pc, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		_, err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
@@ -2171,7 +2171,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 			if i == 0 {
 				count++
 			}
-			assertNoError(p.Step(), t, "Step()")
+			assertNoError(Step(p), t, "Step()")
 		}
 
 		if count != 100 {
@@ -2207,7 +2207,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 		kvals := map[int]int64{}
 		count := 0
 		for {
-			err := p.Continue()
+			err := Continue(p)
 			_, exited := err.(ProcessExitedError)
 			if exited {
 				break
@@ -2235,12 +2235,12 @@ func TestStepConcurrentPtr(t *testing.T) {
 			}
 			kvals[gid] = k
 
-			assertNoError(p.Step(), t, "Step()")
+			assertNoError(Step(p), t, "Step()")
 			for nextInProgress(p) {
 				if p.selectedGoroutine.ID == gid {
 					t.Fatalf("step did not step into function call (but internal breakpoints still active?) (%d %d)", gid, p.selectedGoroutine.ID)
 				}
-				assertNoError(p.Continue(), t, "Continue()")
+				assertNoError(Continue(p), t, "Continue()")
 			}
 
 			if p.selectedGoroutine.ID != gid {
@@ -2272,7 +2272,7 @@ func TestStepOutDefer(t *testing.T) {
 		assertNoError(err, t, "FindFileLocation()")
 		bp, err := p.SetBreakpoint(pc, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 
 		f, lno := currentLineNumber(p, t)
@@ -2280,7 +2280,7 @@ func TestStepOutDefer(t *testing.T) {
 			t.Fatalf("worng line number %s:%d, expected %d", f, lno, 5)
 		}
 
-		assertNoError(p.StepOut(), t, "StepOut()")
+		assertNoError(StepOut(p), t, "StepOut()")
 
 		f, l, _ := p.BinInfo().goSymTable.PCToLine(currentPC(p, t))
 		if f == fixture.Source || l == 6 {
@@ -2295,10 +2295,10 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 	// Here we test the case where the function is called by a deferreturn
 	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture, 11)
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 
-		assertNoError(p.StepOut(), t, "StepOut()")
+		assertNoError(StepOut(p), t, "StepOut()")
 
 		f, ln := currentLineNumber(p, t)
 		if ln != 28 {
@@ -2314,7 +2314,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 		_, err = p.SetBreakpoint(pc, UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 
 		found := false
 
@@ -2340,7 +2340,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 			t.Fatal("Could not find CALL instruction")
 		}
 
-		assertNoError(p.Step(), t, "Step()")
+		assertNoError(Step(p), t, "Step()")
 
 		f, ln := currentLineNumber(p, t)
 		if ln != 5 {
@@ -2355,7 +2355,7 @@ func TestIssue594(t *testing.T) {
 	// In particular the target should be able to cause a nil pointer
 	// dereference panic and recover from it.
 	withTestProcess("issue594", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		f, ln := currentLineNumber(p, t)
 		if ln != 21 {
 			t.Fatalf("Program stopped at %s:%d, expected :21", f, ln)
@@ -2369,10 +2369,10 @@ func TestStepOutPanicAndDirectCall(t *testing.T) {
 	// Here we test the case where the function is called by a panic
 	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture, 17)
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 
-		assertNoError(p.StepOut(), t, "StepOut()")
+		assertNoError(StepOut(p), t, "StepOut()")
 
 		f, ln := currentLineNumber(p, t)
 		if ln != 5 {
@@ -2391,7 +2391,7 @@ func TestWorkDir(t *testing.T) {
 		addr, _, err := p.BinInfo().goSymTable.LineToPC(fixture.Source, 14)
 		assertNoError(err, t, "LineToPC")
 		p.SetBreakpoint(addr, UserBreakpoint, nil)
-		p.Continue()
+		Continue(p)
 		v, err := evalVariable(p, "pwd")
 		assertNoError(err, t, "EvalVariable")
 		str := constant.StringVal(v.Value)
@@ -2412,7 +2412,7 @@ func TestNegativeIntEvaluation(t *testing.T) {
 		{"ni32", "int32", int64(-5)},
 	}
 	withTestProcess("testvariables2", t, func(p *Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(Continue(p), t, "Continue()")
 		for _, tc := range testcases {
 			v, err := evalVariable(p, tc.name)
 			assertNoError(err, t, "EvalVariable()")
@@ -2431,11 +2431,11 @@ func TestIssue683(t *testing.T) {
 	withTestProcess("issue683", t, func(p *Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.main")
 		assertNoError(err, t, "setFunctionBreakpoint()")
-		assertNoError(p.Continue(), t, "First Continue()")
+		assertNoError(Continue(p), t, "First Continue()")
 		for i := 0; i < 20; i++ {
 			// eventually an error about the source file not being found will be
 			// returned, the important thing is that we shouldn't panic
-			err := p.Step()
+			err := Step(p)
 			if err != nil {
 				break
 			}
@@ -2446,8 +2446,8 @@ func TestIssue683(t *testing.T) {
 func TestIssue664(t *testing.T) {
 	withTestProcess("issue664", t, func(p *Process, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture, 4)
-		assertNoError(p.Continue(), t, "Continue()")
-		assertNoError(p.Next(), t, "Next()")
+		assertNoError(Continue(p), t, "Continue()")
+		assertNoError(Next(p), t, "Next()")
 		f, ln := currentLineNumber(p, t)
 		if ln != 5 {
 			t.Fatalf("Did not continue to line 5: %s:%d", f, ln)
@@ -2462,7 +2462,7 @@ func BenchmarkTrace(b *testing.B) {
 		assertNoError(err, b, "setFunctionBreakpoint()")
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			assertNoError(p.Continue(), b, "Continue()")
+			assertNoError(Continue(p), b, "Continue()")
 			s, err := GoroutineScope(p.currentThread)
 			assertNoError(err, b, "Scope()")
 			_, err = s.FunctionArguments(LoadConfig{false, 0, 64, 0, 3})
@@ -2480,9 +2480,9 @@ func TestNextInDeferReturn(t *testing.T) {
 	withTestProcess("defercall", t, func(p *Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "runtime.deferreturn")
 		assertNoError(err, t, "setFunctionBreakpoint()")
-		assertNoError(p.Continue(), t, "First Continue()")
+		assertNoError(Continue(p), t, "First Continue()")
 		for i := 0; i < 20; i++ {
-			assertNoError(p.Next(), t, fmt.Sprintf("Next() %d", i))
+			assertNoError(Next(p), t, fmt.Sprintf("Next() %d", i))
 		}
 	})
 }
@@ -2519,7 +2519,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 		assertNoError(err, t, "setFunctionBreakpoint()")
 		stackBarrierGoids := []int{}
 		for len(stackBarrierGoids) == 0 {
-			err := p.Continue()
+			err := Continue(p)
 			if _, exited := err.(ProcessExitedError); exited {
 				t.Logf("Could not run test")
 				return
@@ -2555,7 +2555,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 
 		t.Logf("stack barrier goids: %v\n", stackBarrierGoids)
 
-		assertNoError(p.StepOut(), t, "StepOut()")
+		assertNoError(StepOut(p), t, "StepOut()")
 
 		gs, err := p.GoroutinesInfo()
 		assertNoError(err, t, "GoroutinesInfo()")
@@ -2628,7 +2628,7 @@ func TestAttachDetach(t *testing.T) {
 		http.Get("http://localhost:9191")
 	}()
 
-	assertNoError(p.Continue(), t, "Continue")
+	assertNoError(Continue(p), t, "Continue")
 
 	f, ln := currentLineNumber(p, t)
 	if ln != 11 {

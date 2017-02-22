@@ -138,7 +138,7 @@ func TestVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -216,7 +216,7 @@ func TestVariableEvaluationShort(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -271,7 +271,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -344,7 +344,7 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -377,7 +377,7 @@ func TestEmbeddedStruct(t *testing.T) {
 			{"b.s", true, "\"hello\"", "\"hello\"", "string", nil},
 			{"b2", true, "main.B {main.A: main.A {val: 42}, *main.C: *main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "main.B {main.A: (*main.A)(0x…", "main.B", nil},
 		}
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(proc.Continue(p), t, "Continue()")
 
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
@@ -398,7 +398,7 @@ func TestEmbeddedStruct(t *testing.T) {
 
 func TestComplexSetting(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *proc.Process, fixture protest.Fixture) {
-		err := p.Continue()
+		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		h := func(setExpr, value string) {
@@ -644,7 +644,7 @@ func TestEvalExpression(t *testing.T) {
 	}
 
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
 			if tc.err == nil {
@@ -668,7 +668,7 @@ func TestEvalExpression(t *testing.T) {
 
 func TestEvalAddrAndCast(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		c1addr, err := evalVariable(p, "&c1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalExpression(&c1)")
 		c1addrstr := api.ConvertVar(c1addr).SinglelineString()
@@ -694,7 +694,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 
 func TestMapEvaluation(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		m1v, err := evalVariable(p, "m1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		m1 := api.ConvertVar(m1v)
@@ -728,7 +728,7 @@ func TestMapEvaluation(t *testing.T) {
 
 func TestUnsafePointer(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		up1v, err := evalVariable(p, "up1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(up1)")
 		up1 := api.ConvertVar(up1v)
@@ -765,7 +765,7 @@ func TestIssue426(t *testing.T) {
 	// Serialization of type expressions (go/ast.Expr) containing anonymous structs or interfaces
 	// differs from the serialization used by the linker to produce DWARF type information
 	withTestProcess("testvariables2", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, testcase := range testcases {
 			v, err := evalVariable(p, testcase.name, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
@@ -816,7 +816,7 @@ func TestPackageRenames(t *testing.T) {
 	}
 
 	withTestProcess("pkgrenames", t, func(p *proc.Process, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
 			if tc.err == nil {

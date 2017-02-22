@@ -107,7 +107,7 @@ func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
 	return err
 }
 
-func (bp *Breakpoint) checkCondition(thread *Thread) (bool, error) {
+func (bp *Breakpoint) checkCondition(thread IThread) (bool, error) {
 	if bp.Cond == nil {
 		return true, nil
 	}

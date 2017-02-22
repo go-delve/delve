@@ -60,16 +60,12 @@ type ThreadInfo interface {
 
 // GoroutineInfo is an interface for getting information on running goroutines.
 type GoroutineInfo interface {
-	GoroutinesInfo() ([]*proc.G, error)
 	SelectedGoroutine() *proc.G
 }
 
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
-	Continue() error
-	Next() error
-	Step() error
-	StepOut() error
+	ContinueOnce() (trapthread proc.IThread, err error)
 	StepInstruction() error
 	SwitchThread(int) error
 	SwitchGoroutine(int) error
