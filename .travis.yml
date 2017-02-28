@@ -7,8 +7,8 @@ os:
 
 go:
   - tip
+  - 1.8
   - 1.7
-  - 1.6
 
 matrix:
   allow_failures:
