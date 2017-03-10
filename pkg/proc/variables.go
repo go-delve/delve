@@ -396,8 +396,14 @@ func (gvar *Variable) parseG() (*G, error) {
 	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
 	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
 	waitReason := constant.StringVal(gvar.fieldVariable("waitreason").Value)
+
 	stkbarVar, _ := gvar.structMember("stkbar")
-	stkbarPos, _ := constant.Int64Val(gvar.fieldVariable("stkbarPos").Value)
+	stkbarVarPosFld := gvar.fieldVariable("stkbarPos")
+	var stkbarPos int64
+	if stkbarVarPosFld != nil { // stack barriers were removed in Go 1.9
+		stkbarPos, _ = constant.Int64Val(stkbarVarPosFld.Value)
+	}
+
 	status, _ := constant.Int64Val(gvar.fieldVariable("atomicstatus").Value)
 	f, l, fn := gvar.dbp.goSymTable.PCToLine(uint64(pc))
 	g := &G{
@@ -498,6 +504,9 @@ func (g *G) Go() Location {
 
 // Returns the list of saved return addresses used by stack barriers
 func (g *G) stkbar() ([]savedLR, error) {
+	if g.stkbarVar == nil { // stack barriers were removed in Go 1.9
+		return nil, nil
+	}
 	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3})
 	if g.stkbarVar.Unreadable != nil {
 		return nil, fmt.Errorf("unreadable stkbar: %v\n", g.stkbarVar.Unreadable)
