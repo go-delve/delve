@@ -680,7 +680,7 @@ func (scope *EvalScope) packageVarAddr(name string) (*Variable, error) {
 			continue
 		}
 
-		if n == name {
+		if n == name || strings.HasSuffix(n, "/"+name) {
 			return scope.extractVarInfoFromEntry(entry, reader)
 		}
 	}
