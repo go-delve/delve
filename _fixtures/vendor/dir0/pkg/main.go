@@ -11,3 +11,5 @@ func (s *SomeType) AMethod(x int) int {
 func (s *SomeType) AnotherMethod(x int) int {
 	return x + 4
 }
+
+var SomeVar SomeType

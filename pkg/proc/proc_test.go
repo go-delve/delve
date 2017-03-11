@@ -2720,3 +2720,13 @@ func TestVarSum(t *testing.T) {
 		}
 	})
 }
+
+func TestPackageWithPathVar(t *testing.T) {
+	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		_, err := evalVariable(p, "pkg.SomeVar")
+		assertNoError(err, t, "EvalVariable(pkg.SomeVar)")
+		_, err = evalVariable(p, "pkg.SomeVar.X")
+		assertNoError(err, t, "EvalVariable(pkg.SomeVar.X)")
+	})
+}
