@@ -112,6 +112,9 @@ func (pe ProcessExitedError) Error() string {
 
 // Detach from the process being debugged, optionally killing it.
 func (dbp *Process) Detach(kill bool) (err error) {
+	if dbp.exited {
+		return nil
+	}
 	if dbp.Running() {
 		if err = dbp.Halt(); err != nil {
 			return
