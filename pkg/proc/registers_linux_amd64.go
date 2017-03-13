@@ -112,7 +112,7 @@ func (r *Regs) Get(n int) (uint64, error) {
 	case x86asm.AH:
 		return (r.regs.Rax >> 8) & mask8, nil
 	case x86asm.CH:
-		return (r.regs.Rax >> 8) & mask8, nil
+		return (r.regs.Rcx >> 8) & mask8, nil
 	case x86asm.DH:
 		return (r.regs.Rdx >> 8) & mask8, nil
 	case x86asm.BH:
