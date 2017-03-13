@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/derekparker/delve/terminal"
+	"github.com/derekparker/delve/pkg/terminal"
 )
 
 func main() {

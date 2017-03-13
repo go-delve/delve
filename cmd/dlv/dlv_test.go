@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	protest "github.com/derekparker/delve/pkg/proc/test"
@@ -20,9 +21,20 @@ func assertNoError(err error, t testing.TB, s string) {
 	}
 }
 
+func goEnv(name string) string {
+	if val := os.Getenv(name); val != "" {
+		return val
+	}
+	val, err := exec.Command("go", "env", name).Output()
+	if err != nil {
+		panic(err) // the Go tool was tested to work earlier
+	}
+	return strings.TrimSpace(string(val))
+}
+
 func TestBuild(t *testing.T) {
 	const listenAddr = "localhost:40573"
-	makefilepath := filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "derekparker", "delve", "Makefile")
+	makefilepath := filepath.Join(goEnv("GOPATH"), "src", "github.com", "derekparker", "delve", "Makefile")
 	t.Logf("makefile: %q", makefilepath)
 	var err error
 	for _, make := range []string{"make", "mingw32-make"} {

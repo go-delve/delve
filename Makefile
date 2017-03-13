@@ -68,4 +68,4 @@ test-proc-run:
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) -test.v -test.run="$(RUN)" $(PREFIX)/pkg/proc
 
 test-integration-run:
-	go test $(TEST_FLAGS) $(BUILD_FLAGS) -test.run="$(RUN)" $(PREFIX)/pkg/service/test
+	go test $(TEST_FLAGS) $(BUILD_FLAGS) -test.run="$(RUN)" $(PREFIX)/service/test
