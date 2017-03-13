@@ -40,7 +40,7 @@ func withTestProcess(name string, t testing.TB, fn func(p *Process, fixture prot
 
 	defer func() {
 		p.Halt()
-		p.Kill()
+		p.Detach(true)
 	}()
 
 	fn(p, fixture)
