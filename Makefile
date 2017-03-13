@@ -29,7 +29,8 @@ check-cert:
 ifneq "$(TRAVIS)" "true"
 ifdef DARWIN
 ifeq "$(CERT)" ""
-	$(error You must provide a CERT environment variable in order to codesign the binary.)
+	scripts/gencert.sh || (echo "An error occurred when generating and installing a new certicate"; exit 1)
+        CERT = dlv-cert
 endif
 endif
 endif
