@@ -2489,13 +2489,15 @@ func TestStacktraceWithBarriers(t *testing.T) {
 	// The original return address is saved into the stkbar slice inside the G
 	// struct.
 
+	// In Go 1.9 stack barriers have been removed and this test must be disabled.
+	if ver, _ := ParseVersionString(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(GoVersion{1, 9, -1, 0, 0}) {
+		return
+	}
+
 	// In Go 1.8 stack barriers are not inserted by default, this enables them.
 	godebugOld := os.Getenv("GODEBUG")
 	defer os.Setenv("GODEBUG", godebugOld)
 	os.Setenv("GODEBUG", "gcrescanstacks=1")
-
-	// TODO(aarzilli): in Go 1.9 stack barriers will be removed completely, therefore
-	// this test will have to be disabled
 
 	withTestProcess("binarytrees", t, func(p *Process, fixture protest.Fixture) {
 		// We want to get a user goroutine with a stack barrier, to get that we execute the program until runtime.gcInstallStackBarrier is executed AND the goroutine it was executed onto contains a call to main.bottomUpTree

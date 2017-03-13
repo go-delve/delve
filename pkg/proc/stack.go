@@ -130,8 +130,10 @@ type savedLR struct {
 }
 
 func newStackIterator(dbp *Process, pc, sp, bp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
-	stackBarrierPC := dbp.goSymTable.LookupFunc(runtimeStackBarrier).Entry
-	if stkbar != nil {
+	stackBarrierFunc := dbp.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
+	var stackBarrierPC uint64
+	if stackBarrierFunc != nil && stkbar != nil {
+		stackBarrierPC = stackBarrierFunc.Entry
 		fn := dbp.goSymTable.PCToFunc(pc)
 		if fn != nil && fn.Name == runtimeStackBarrier {
 			// We caught the goroutine as it's executing the stack barrier, we must
