@@ -799,8 +799,7 @@ func stackMatch(stack []loc, locations []Stackframe, skipRuntime bool) bool {
 
 func TestStacktraceGoroutine(t *testing.T) {
 	mainStack := []loc{{13, "main.stacktraceme"}, {26, "main.main"}}
-	agoroutineStackA := []loc{{9, "main.agoroutine"}}
-	agoroutineStackB := []loc{{10, "main.agoroutine"}}
+	agoroutineStacks := [][]loc{[]loc{{8, "main.agoroutine"}}, []loc{{9, "main.agoroutine"}}, []loc{{10, "main.agoroutine"}}}
 
 	withTestProcess("goroutinestackprog", t, func(p *Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.stacktraceme")
@@ -826,9 +825,14 @@ func TestStacktraceGoroutine(t *testing.T) {
 				mainCount++
 			}
 
-			if stackMatch(agoroutineStackA, locations, true) {
-				agoroutineCount++
-			} else if stackMatch(agoroutineStackB, locations, true) {
+			found := false
+			for _, agoroutineStack := range agoroutineStacks {
+				if stackMatch(agoroutineStack, locations, true) {
+					found = true
+				}
+			}
+
+			if found {
 				agoroutineCount++
 			} else {
 				t.Logf("Non-goroutine stack: %d (%d)", i, len(locations))
