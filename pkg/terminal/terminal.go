@@ -128,7 +128,7 @@ func (t *Term) Run() (int, error) {
 			return 1, fmt.Errorf("Prompt for input failed.\n")
 		}
 
-		cmdstr, args := parseCommand(cmdstr)
+		cmdstr, args := parseCommand(strings.TrimSpace(cmdstr))
 		if err := t.cmds.Call(cmdstr, args, t); err != nil {
 			if _, ok := err.(ExitRequestError); ok {
 				return t.handleExit()
