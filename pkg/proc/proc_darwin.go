@@ -509,3 +509,7 @@ func (dbp *Process) resume() error {
 	}
 	return nil
 }
+
+func (dbp *Process) detach() error {
+	return PtraceDetach(dbp.pid, 0)
+}

@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -2580,4 +2581,56 @@ func TestStacktraceWithBarriers(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestAttachDetach(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		// does not work on darwin
+		return
+	}
+	fixture := protest.BuildFixture("testnextnethttp")
+	cmd := exec.Command(fixture.Path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	assertNoError(cmd.Start(), t, "starting fixture")
+
+	// wait for testnextnethttp to start listening
+	t0 := time.Now()
+	for {
+		conn, err := net.Dial("tcp", "localhost:9191")
+		if err == nil {
+			conn.Close()
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+		if time.Since(t0) > 10*time.Second {
+			t.Fatal("fixture did not start")
+		}
+	}
+
+	p, err := Attach(cmd.Process.Pid)
+	assertNoError(err, t, "Attach")
+	go func() {
+		time.Sleep(1 * time.Second)
+		http.Get("http://localhost:9191")
+	}()
+
+	assertNoError(p.Continue(), t, "Continue")
+
+	f, ln := currentLineNumber(p, t)
+	if ln != 11 {
+		t.Fatalf("Expected line :11 got %s:%d", f, ln)
+	}
+
+	assertNoError(p.Detach(false), t, "Detach")
+
+	resp, err := http.Get("http://localhost:9191/nobp")
+	assertNoError(err, t, "Page request after detach")
+	bs, err := ioutil.ReadAll(resp.Body)
+	assertNoError(err, t, "Reading /nobp page")
+	if out := string(bs); strings.Index(out, "hello, world!") < 0 {
+		t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
+	}
+
+	cmd.Process.Kill()
 }
