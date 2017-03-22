@@ -6,3 +6,7 @@ The following editor plugins for delve are available:
 * [LiteIDE](https://github.com/visualfc/liteide)
 * [Go Debugger for Atom](https://github.com/lloiser/go-debug)
 * [Go Debugger for NeoVim](https://github.com/jodosha/vim-godebug)
+
+The following alternative UIs for delve are available:
+
+* [Gdlv](https://github.com/aarzilli/gdlv)
