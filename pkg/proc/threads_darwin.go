@@ -93,7 +93,7 @@ func threadBlocked(t IThread) bool {
 		return false
 	}
 	switch fn.Name {
-	case "runtime.kevent", "runtime.mach_semaphore_wait", "runtime.usleep":
+	case "runtime.kevent", "runtime.mach_semaphore_wait", "runtime.usleep", "runtime.mach_semaphore_timedwait":
 		return true
 	default:
 		return false
