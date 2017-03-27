@@ -163,10 +163,10 @@ func (d *Debugger) Detach(kill bool) error {
 }
 
 func (d *Debugger) detach(kill bool) error {
-	if d.config.AttachPid != 0 {
-		return d.target.Detach(kill)
+	if d.config.AttachPid == 0 {
+		kill = true
 	}
-	return d.target.Kill()
+	return d.target.Detach(kill)
 }
 
 // Restart will restart the target process, first killing
@@ -187,9 +187,9 @@ func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 		if err := stopProcess(d.ProcessPid()); err != nil {
 			return nil, err
 		}
-		if err := d.detach(true); err != nil {
-			return nil, err
-		}
+	}
+	if err := d.detach(true); err != nil {
+		return nil, err
 	}
 	p, err := d.Launch(d.config.ProcessArgs, d.config.WorkingDir)
 	if err != nil {
@@ -215,9 +215,8 @@ func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 			return nil, err
 		}
 	}
-	err = d.target.Detach(true)
 	d.target = p
-	return discarded, err
+	return discarded, nil
 }
 
 // State returns the current state of the debugger.
