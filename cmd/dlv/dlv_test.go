@@ -49,18 +49,22 @@ func goEnv(name string) string {
 
 func TestBuild(t *testing.T) {
 	const listenAddr = "localhost:40573"
-	makefilepath := filepath.Join(goEnv("GOPATH"), "src", "github.com", "derekparker", "delve", "Makefile")
-	t.Logf("makefile: %q", makefilepath)
 	var err error
-	for _, make := range []string{"make", "mingw32-make"} {
-		err = exec.Command(make, "-f", makefilepath, "build").Run()
+	makedir := filepath.Join(goEnv("GOPATH"), "src", "github.com", "derekparker", "delve")
+	for _, makeProgram := range []string{"make", "mingw32-make"} {
+		var out []byte
+		cmd := exec.Command(makeProgram, "build")
+		cmd.Dir = makedir
+		out, err = cmd.CombinedOutput()
 		if err == nil {
 			break
+		} else {
+			t.Logf("makefile error %s (%s): %v", makeProgram, makedir, err)
+			t.Logf("output %s", string(out))
 		}
 	}
 	assertNoError(err, t, "make")
-	wd, _ := os.Getwd()
-	dlvbin := filepath.Join(wd, "dlv")
+	dlvbin := filepath.Join(makedir, "dlv")
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
