@@ -48,6 +48,8 @@ type Config struct {
 	// AttachPid is the PID of an existing process to which the debugger should
 	// attach.
 	AttachPid int
+
+	Core string
 }
 
 // New creates a new Debugger.
@@ -62,6 +64,13 @@ func New(config *Config) (*Debugger, error) {
 		p, err := proc.Attach(d.config.AttachPid)
 		if err != nil {
 			return nil, attachErrorMessage(d.config.AttachPid, err)
+		}
+		d.target = p
+	} else if d.config.Core != "" {
+		log.Printf("reading core file %v", d.config.Core)
+		p, err := proc.ReadCore(d.config.Core, d.config.ProcessArgs[0])
+		if err != nil {
+			return nil, err
 		}
 		d.target = p
 	} else {

@@ -115,11 +115,11 @@ func Launch(cmd []string, wd string) (*Process, error) {
 
 	dbp.pid = int(pi.ProcessId)
 
-	return newDebugProcess(dbp, argv0Go)
+	return newDebugProcess(dbp, argv0Go, debugTypeLaunch)
 }
 
 // newDebugProcess prepares process pid for debugging.
-func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
+func newDebugProcess(dbp *Process, exepath string, debugType debugType) (*Process, error) {
 	// It should not actually be possible for the
 	// call to waitForDebugEvent to fail, since Windows
 	// will always fire a CREATE_PROCESS_DEBUG_EVENT event
@@ -153,7 +153,7 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 		return nil, err
 	}
 
-	return initializeDebugProcess(dbp, exepath, false)
+	return initializeDebugProcess(dbp, exepath, debugType)
 }
 
 // findExePath searches for process pid, and returns its executable path.
@@ -201,7 +201,11 @@ func Attach(pid int) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newDebugProcess(New(pid), exepath)
+	return newDebugProcess(New(pid), exepath, debugTypeAttach)
+}
+
+func ReadCore(core, exe string) (*Process, error) {
+	return nil, errors.New("Core files not supported on Darwin")
 }
 
 // Kill kills the process.

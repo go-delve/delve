@@ -114,6 +114,7 @@ func (s *ServerImpl) Run() error {
 		ProcessArgs: s.config.ProcessArgs,
 		AttachPid:   s.config.AttachPid,
 		WorkingDir:  s.config.WorkingDir,
+		Core: s.config.Core,
 	}); err != nil {
 		return err
 	}

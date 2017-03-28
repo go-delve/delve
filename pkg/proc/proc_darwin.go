@@ -118,7 +118,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	}
 
 	dbp.os.initialized = true
-	dbp, err = initializeDebugProcess(dbp, argv0Go, false)
+	dbp, err = initializeDebugProcess(dbp, argv0Go, debugTypeLaunch)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,11 @@ func Attach(pid int) (*Process, error) {
 
 	dbp.os.initialized = true
 
-	return initializeDebugProcess(dbp, "", true)
+	return initializeDebugProcess(dbp, "", debugTypeAttach)
+}
+
+func ReadCore(core, exe string) (*Process, error) {
+	return nil, errors.New("Core files not supported on Darwin")
 }
 
 // Kill kills the process.

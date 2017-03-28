@@ -41,6 +41,7 @@ const (
 // process details.
 type OSProcessDetails struct {
 	comm string
+	core *Core
 }
 
 // Launch creates and begins debugging a new process. First entry in
@@ -75,17 +76,27 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	return initializeDebugProcess(dbp, proc.Path, false)
+	return initializeDebugProcess(dbp, proc.Path, debugTypeLaunch)
 }
 
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*Process, error) {
-	return initializeDebugProcess(New(pid), "", true)
+	return initializeDebugProcess(New(pid), "", debugTypeAttach)
+}
+
+func ReadCore(core, exe string) (*Process, error) {
+	dbp := New(0)
+	c, err := readCore(core, exe)
+	if err != nil {
+		return nil, fmt.Errorf("reading core: %v", err)
+	}
+	dbp.os.core = c
+	return initializeDebugProcess(dbp, exe, debugTypeCore)
 }
 
 // Kill kills the target process.
 func (dbp *Process) Kill() (err error) {
-	if dbp.exited {
+	if dbp.exited || dbp.debugType == debugTypeCore {
 		return nil
 	}
 	if !dbp.threads[dbp.pid].Stopped() {
@@ -131,17 +142,19 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
-	if err == syscall.ESRCH {
-		if _, _, err = dbp.wait(tid, 0); err != nil {
-			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
-		}
+	if dbp.debugType != debugTypeCore {
 		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 		if err == syscall.ESRCH {
-			return nil, err
-		}
-		if err != nil {
-			return nil, fmt.Errorf("could not set options for new traced thread %d %s", tid, err)
+			if _, _, err = dbp.wait(tid, 0); err != nil {
+				return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
+			}
+			dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
+			if err == syscall.ESRCH {
+				return nil, err
+			}
+			if err != nil {
+				return nil, fmt.Errorf("could not set options for new traced thread %d %s", tid, err)
+			}
 		}
 	}
 
@@ -157,6 +170,12 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 }
 
 func (dbp *Process) updateThreadList() error {
+	if dbp.debugType == debugTypeCore {
+		for tid := range dbp.os.core.Threads {
+			dbp.addThread(tid, false)
+		}
+	}
+
 	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)
@@ -353,6 +372,9 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 
 func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 	defer wg.Done()
+	if dbp.debugType == debugTypeCore {
+		return
+	}
 
 	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
 	if err == nil {
