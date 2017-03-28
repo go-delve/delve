@@ -12,5 +12,13 @@ func main() {
 		header := w.Header().Get("Content-Type")
 		w.Write([]byte(msg + header))
 	})
-	http.ListenAndServe(":9191", nil)
+	http.HandleFunc("/nobp", func(w http.ResponseWriter, req *http.Request) {
+		msg := "hello, world!"
+		header := w.Header().Get("Content-Type")
+		w.Write([]byte(msg + header))
+	})
+	err := http.ListenAndServe(":9191", nil)
+	if err != nil {
+		panic(err)
+	}
 }

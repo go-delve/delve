@@ -663,6 +663,16 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
+func (dbp *Process) detach() error {
+	for _, thread := range dbp.threads {
+		_, err := _ResumeThread(thread.os.hThread)
+		if err != nil {
+			return err
+		}
+	}
+	return PtraceDetach(dbp.pid, 0)
+}
+
 func killProcess(pid int) error {
 	p, err := os.FindProcess(pid)
 	if err != nil {

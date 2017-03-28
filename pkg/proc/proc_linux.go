@@ -484,6 +484,24 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
+func (dbp *Process) detach() error {
+	for threadID := range dbp.threads {
+		err := PtraceDetach(threadID, 0)
+		if err != nil {
+			return err
+		}
+	}
+	// For some reason the process will sometimes enter stopped state after a
+	// detach, this doesn't happen immediately either.
+	// We have to wait a bit here, then check if the main thread is stopped and
+	// SIGCONT it if it is.
+	time.Sleep(50 * time.Millisecond)
+	if s := status(dbp.pid, dbp.os.comm); s == 'T' {
+		sys.Kill(dbp.pid, sys.SIGCONT)
+	}
+	return nil
+}
+
 func killProcess(pid int) error {
 	return sys.Kill(pid, sys.SIGINT)
 }
