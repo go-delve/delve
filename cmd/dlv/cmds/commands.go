@@ -159,7 +159,7 @@ consider compiling debugging binaries with -gcflags="-N -l".`,
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(execute(0, args, conf, executingExistingFile))
+			os.Exit(execute(0, args, conf, "", executingExistingFile))
 		},
 	}
 	RootCommand.AddCommand(execCommand)
@@ -205,6 +205,24 @@ to know what functions your process is executing.`,
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
 	RootCommand.AddCommand(traceCommand)
 
+	coreCommand := &cobra.Command{
+		Use:   "core <executable> <core>",
+		Short: "Examine a core dump.",
+		Long: `Examine a core dump.
+		
+The core command will open the specified core file and the associated
+executable and let you examine the state of the process when the
+core dump was taken.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 2 {
+				return errors.New("you must provide a core file and an executable")
+			}
+			return nil
+		},
+		Run: coreCmd,
+	}
+	RootCommand.AddCommand(coreCommand)
+
 	// 'version' subcommand.
 	versionCommand := &cobra.Command{
 		Use:   "version",
@@ -243,7 +261,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		processArgs := append([]string{abs}, targetArgs...)
-		return execute(0, processArgs, conf, executingGeneratedFile)
+		return execute(0, processArgs, conf, "", executingGeneratedFile)
 	}()
 	os.Exit(status)
 }
@@ -332,7 +350,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		defer os.Remove("./" + testdebugname)
 		processArgs := append([]string{"./" + testdebugname}, targetArgs...)
 
-		return execute(0, processArgs, conf, executingOther)
+		return execute(0, processArgs, conf, "", executingOther)
 	}()
 	os.Exit(status)
 }
@@ -343,7 +361,11 @@ func attachCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
 		os.Exit(1)
 	}
-	os.Exit(execute(pid, nil, conf, executingOther))
+	os.Exit(execute(pid, nil, conf, "", executingOther))
+}
+
+func coreCmd(cmd *cobra.Command, args []string) {
+	os.Exit(execute(0, []string{args[0]}, conf, args[1], executingOther))
 }
 
 func connectCmd(cmd *cobra.Command, args []string) {
@@ -382,7 +404,7 @@ const (
 	executingOther
 )
 
-func execute(attachPid int, processArgs []string, conf *config.Config, kind executeKind) int {
+func execute(attachPid int, processArgs []string, conf *config.Config, coreFile string, kind executeKind) int {
 	// Make a TCP listener
 	listener, err := net.Listen("tcp", Addr)
 	if err != nil {
@@ -410,6 +432,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, kind exec
 			AcceptMulti: AcceptMulti,
 			APIVersion:  APIVersion,
 			WorkingDir:  WorkingDir,
+			CoreFile:    coreFile,
 		}, Log)
 	default:
 		fmt.Printf("Unknown API version: %d\n", APIVersion)

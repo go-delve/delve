@@ -1,8 +1,12 @@
 package proc
 
 import (
+	"debug/gosym"
+	"errors"
 	"fmt"
+	"go/ast"
 	"io"
+	"sync"
 )
 
 // MemoryReader is like io.ReaderAt, but the offset is a uintptr so that it
@@ -143,4 +147,215 @@ type OffsetReaderAt struct {
 
 func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error) {
 	return r.reader.ReadAt(buf, int64(addr-r.offset))
+}
+
+type CoreProcess struct {
+	bi                BinaryInfo
+	core              *Core
+	breakpoints       map[uint64]*Breakpoint
+	currentThread     *LinuxPrStatus
+	selectedGoroutine *G
+	allGCache         []*G
+}
+
+type CoreThread struct {
+	th *LinuxPrStatus
+	p  *CoreProcess
+}
+
+var ErrWriteCore = errors.New("can not to core process")
+var ErrShortRead = errors.New("short read")
+var ErrContinueCore = errors.New("can not continue execution of core process")
+
+func OpenCore(corePath, exePath string) (*CoreProcess, error) {
+	core, err := readCore(corePath, exePath)
+	if err != nil {
+		return nil, err
+	}
+	p := &CoreProcess{
+		core:        core,
+		breakpoints: make(map[uint64]*Breakpoint),
+		bi:          NewBinaryInfo("linux", "amd64"),
+	}
+
+	var wg sync.WaitGroup
+	p.bi.LoadBinaryInfo(exePath, &wg)
+	wg.Wait()
+
+	for _, th := range p.core.Threads {
+		p.currentThread = th
+		break
+	}
+
+	scope := &EvalScope{0, 0, p.CurrentThread(), nil, &p.bi}
+	ver, isextld, err := scope.getGoInformation()
+	if err != nil {
+		return nil, err
+	}
+
+	p.bi.arch.SetGStructOffset(ver, isextld)
+	p.selectedGoroutine, _ = GetG(p.CurrentThread())
+
+	return p, nil
+}
+
+func (p *CoreProcess) BinInfo() *BinaryInfo {
+	return &p.bi
+}
+
+func (thread *CoreThread) readMemory(addr uintptr, size int) (data []byte, err error) {
+	data = make([]byte, size)
+	n, err := thread.p.core.ReadMemory(data, addr)
+	if err == nil && n != len(data) {
+		err = ErrShortRead
+	}
+	return data, err
+}
+
+func (thread *CoreThread) writeMemory(addr uintptr, data []byte) (int, error) {
+	return 0, ErrWriteCore
+}
+
+func (t *CoreThread) Location() (*Location, error) {
+	f, l, fn := t.p.bi.PCToLine(t.th.Reg.Rip)
+	return &Location{PC: t.th.Reg.Rip, File: f, Line: l, Fn: fn}, nil
+}
+
+func (t *CoreThread) Breakpoint() (*Breakpoint, bool, error) {
+	return nil, false, nil
+}
+
+func (t *CoreThread) ThreadID() int {
+	return int(t.th.Pid)
+}
+
+func (t *CoreThread) Registers(floatingPoint bool) (Registers, error) {
+	//TODO(aarzilli): handle floating point registers
+	return &t.th.Reg, nil
+}
+
+func (t *CoreThread) Arch() Arch {
+	return t.p.bi.arch
+}
+
+func (t *CoreThread) BinInfo() *BinaryInfo {
+	return &t.p.bi
+}
+
+func (t *CoreThread) StepInstruction() error {
+	return ErrContinueCore
+}
+
+func (p *CoreProcess) Breakpoints() map[uint64]*Breakpoint {
+	return p.breakpoints
+}
+
+func (p *CoreProcess) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
+	return nil, NoBreakpointError{addr: addr}
+}
+
+func (p *CoreProcess) ClearInternalBreakpoints() error {
+	return nil
+}
+
+func (p *CoreProcess) ContinueOnce() (IThread, error) {
+	return nil, ErrContinueCore
+}
+
+func (p *CoreProcess) StepInstruction() error {
+	return ErrContinueCore
+}
+
+func (p *CoreProcess) RequestManualStop() error {
+	return nil
+}
+
+func (p *CoreProcess) CurrentThread() IThread {
+	return &CoreThread{p.currentThread, p}
+}
+
+func (p *CoreProcess) Detach(bool) error {
+	return nil
+}
+
+func (p *CoreProcess) Exited() bool {
+	return false
+}
+
+func (p *CoreProcess) FindFileLocation(fileName string, lineNumber int) (uint64, error) {
+	return FindFileLocation(p.CurrentThread(), p.breakpoints, &p.bi, fileName, lineNumber)
+}
+
+func (p *CoreProcess) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
+	return FirstPCAfterPrologue(p.CurrentThread(), p.breakpoints, &p.bi, fn, sameline)
+}
+
+func (p *CoreProcess) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
+	return FindFunctionLocation(p.CurrentThread(), p.breakpoints, &p.bi, funcName, firstLine, lineOffset)
+}
+
+func (p *CoreProcess) AllGCache() *[]*G {
+	return &p.allGCache
+}
+
+func (p *CoreProcess) Halt() error {
+	return nil
+}
+
+func (p *CoreProcess) Kill() error {
+	return nil
+}
+
+func (p *CoreProcess) Pid() int {
+	return p.core.Pid
+}
+
+func (p *CoreProcess) Running() bool {
+	return false
+}
+
+func (p *CoreProcess) SelectedGoroutine() *G {
+	return p.selectedGoroutine
+}
+
+func (p *CoreProcess) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+	return nil, ErrWriteCore
+}
+
+func (p *CoreProcess) SwitchGoroutine(gid int) error {
+	g, err := FindGoroutine(p, gid)
+	if err != nil {
+		return err
+	}
+	if g == nil {
+		// user specified -1 and selectedGoroutine is nil
+		return nil
+	}
+	if g.thread != nil {
+		return p.SwitchThread(g.thread.ThreadID())
+	}
+	p.selectedGoroutine = g
+	return nil
+}
+
+func (p *CoreProcess) SwitchThread(tid int) error {
+	if th, ok := p.core.Threads[tid]; ok {
+		p.currentThread = th
+		p.selectedGoroutine, _ = GetG(p.CurrentThread())
+		return nil
+	}
+	return fmt.Errorf("thread %d does not exist", tid)
+}
+
+func (p *CoreProcess) ThreadList() []IThread {
+	r := make([]IThread, 0, len(p.core.Threads))
+	for _, v := range p.core.Threads {
+		r = append(r, &CoreThread{v, p})
+	}
+	return r
+}
+
+func (p *CoreProcess) FindThread(threadID int) (IThread, bool) {
+	t, ok := p.core.Threads[threadID]
+	return &CoreThread{t, p}, ok
 }

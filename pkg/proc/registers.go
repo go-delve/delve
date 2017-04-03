@@ -21,7 +21,7 @@ type Registers interface {
 	CX() uint64
 	TLS() uint64
 	Get(int) (uint64, error)
-	SetPC(*Thread, uint64) error
+	SetPC(IThread, uint64) error
 	Slice() []Register
 }
 

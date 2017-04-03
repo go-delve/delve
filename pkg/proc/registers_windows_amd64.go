@@ -125,7 +125,8 @@ func (r *Regs) TLS() uint64 {
 }
 
 // SetPC sets the RIP register to the value specified by `pc`.
-func (r *Regs) SetPC(thread *Thread, pc uint64) error {
+func (r *Regs) SetPC(t IThread, pc uint64) error {
+	thread := t.(*Thread)
 	context := newCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
