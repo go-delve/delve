@@ -1,5 +1,6 @@
 package main
 
 func main() {
-	panic("BOOM!")
+	msg := "BOOM!"
+	panic(msg)
 }

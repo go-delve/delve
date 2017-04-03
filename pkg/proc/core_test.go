@@ -2,14 +2,16 @@ package proc
 
 import (
 	"bytes"
+	"fmt"
+	"go/constant"
 	"io/ioutil"
 	"os/exec"
-	"reflect"
-	"testing"
-
-	"fmt"
-
 	"path"
+	"path/filepath"
+	"reflect"
+	"runtime"
+	"strings"
+	"testing"
 
 	"github.com/derekparker/delve/pkg/proc/test"
 )
@@ -122,9 +124,12 @@ func TestSplicedReader(t *testing.T) {
 	}
 }
 
-func TestReadCore(t *testing.T) {
+func TestCore(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return
+	}
 	// This is all very fragile and won't work on hosts with non-default core patterns.
-	// Might be better to check in the core?
+	// Might be better to check in the binary and core?
 	tempDir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatal(err)
@@ -132,20 +137,72 @@ func TestReadCore(t *testing.T) {
 	fix := test.BuildFixture("panic")
 	bashCmd := fmt.Sprintf("cd %v && ulimit -c unlimited && GOTRACEBACK=crash %v", tempDir, fix.Path)
 	exec.Command("bash", "-c", bashCmd).Run()
-	corePath := path.Join(tempDir, "core")
+	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
+	switch {
+	case err != nil || len(cores) > 1:
+		t.Fatalf("Got %v, wanted one file named core* in %v", cores, tempDir)
+	case len(cores) == 0:
+		t.Logf("core file was not produced, could not run test")
+		return
+	}
+	corePath := cores[0]
 
-	core, err := readCore(corePath, fix.Path)
+	p, err := OpenCore(corePath, fix.Path)
 	if err != nil {
-		t.Fatal(err)
+		pat, err := ioutil.ReadFile("/proc/sys/kernel/core_pattern")
+		t.Errorf("read core_pattern: %q, %v", pat, err)
+		apport, err := ioutil.ReadFile("/var/log/apport.log")
+		t.Errorf("read apport log: %q, %v", apport, err)
+		t.Fatalf("ReadCore() failed: %v", err)
 	}
-	if len(core.Threads) == 0 {
-		t.Error("expected at least one thread")
+	gs, err := GoroutinesInfo(p)
+	if err != nil || len(gs) == 0 {
+		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}
-	// Punch through the abstraction to verify that we got some mappings.
-	spliced := core.MemoryReader.(*SplicedMemory)
-	// There should be at least an RO section, RW section, RX section, the heap, and a thread stack.
-	if len(spliced.readers) < 5 {
-		t.Errorf("expected at least 5 memory regions, got only %v", len(spliced.readers))
+
+	var panicking *G
+	var panickingStack []Stackframe
+	for _, g := range gs {
+		stack, err := g.Stacktrace(10)
+		if err != nil {
+			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
+		}
+		for _, frame := range stack {
+			if strings.Contains(frame.Current.Fn.Name, "panic") {
+				panicking = g
+				panickingStack = stack
+			}
+		}
 	}
-	// Would be good to test more stuff but not sure what without reading debug information, etc.
+	if panicking == nil {
+		t.Fatalf("Didn't find a call to panic in goroutine stacks: %v", gs)
+	}
+
+	var mainFrame *Stackframe
+	// Walk backward, because the current function seems to be main.main
+	// in the actual call to panic().
+	for i := len(panickingStack) - 1; i >= 0; i-- {
+		if panickingStack[i].Current.Fn.Name == "main.main" {
+			mainFrame = &panickingStack[i]
+		}
+	}
+	if mainFrame == nil {
+		t.Fatalf("Couldn't find main in stack %v", panickingStack)
+	}
+	msg, err := FrameToScope(p, *mainFrame).EvalVariable("msg", LoadConfig{MaxStringLen: 64})
+	if err != nil {
+		t.Fatalf("Couldn't EvalVariable(msg, ...): %v", err)
+	}
+	if constant.StringVal(msg.Value) != "BOOM!" {
+		t.Errorf("main.msg = %q, want %q", msg.Value, "BOOM!")
+	}
+
+	regs, err := p.CurrentThread().Registers(true)
+	if err != nil {
+		t.Fatalf("Couldn't get current thread registers: %v", err)
+	}
+	regslice := regs.Slice()
+	for _, reg := range regslice {
+		t.Logf("%s = %s", reg.Name, reg.Value)
+	}
 }

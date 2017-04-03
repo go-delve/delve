@@ -48,6 +48,9 @@ type Config struct {
 	// AttachPid is the PID of an existing process to which the debugger should
 	// attach.
 	AttachPid int
+
+	// CoreFile specifies the path to the core dump to open
+	CoreFile string
 }
 
 // New creates a new Debugger.
@@ -57,14 +60,24 @@ func New(config *Config) (*Debugger, error) {
 	}
 
 	// Create the process by either attaching or launching.
-	if d.config.AttachPid > 0 {
+	switch {
+	case d.config.AttachPid > 0:
 		log.Printf("attaching to pid %d", d.config.AttachPid)
 		p, err := proc.Attach(d.config.AttachPid)
 		if err != nil {
 			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
 		d.target = p
-	} else {
+
+	case d.config.CoreFile != "":
+		log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.config.ProcessArgs[0])
+		p, err := proc.OpenCore(d.config.CoreFile, d.config.ProcessArgs[0])
+		if err != nil {
+			return nil, err
+		}
+		d.target = p
+
+	default:
 		log.Printf("launching process with args: %v", d.config.ProcessArgs)
 		p, err := proc.Launch(d.config.ProcessArgs, d.config.WorkingDir)
 		if err != nil {
@@ -112,6 +125,10 @@ func (d *Debugger) detach(kill bool) error {
 func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
+
+	if d.config.CoreFile != "" {
+		return nil, errors.New("can not restart core dump")
+	}
 
 	if !d.target.Exited() {
 		if d.target.Running() {
