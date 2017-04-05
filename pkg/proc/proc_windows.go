@@ -474,11 +474,13 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
-func (dbp *Process) detach() error {
-	for _, thread := range dbp.threads {
-		_, err := _ResumeThread(thread.os.hThread)
-		if err != nil {
-			return err
+func (dbp *Process) detach(kill bool) error {
+	if !kill {
+		for _, thread := range dbp.threads {
+			_, err := _ResumeThread(thread.os.hThread)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return PtraceDetach(dbp.pid, 0)

@@ -387,12 +387,15 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
-func (dbp *Process) detach() error {
+func (dbp *Process) detach(kill bool) error {
 	for threadID := range dbp.threads {
 		err := PtraceDetach(threadID, 0)
 		if err != nil {
 			return err
 		}
+	}
+	if kill {
+		return nil
 	}
 	// For some reason the process will sometimes enter stopped state after a
 	// detach, this doesn't happen immediately either.

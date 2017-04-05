@@ -417,6 +417,6 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
-func (dbp *Process) detach() error {
+func (dbp *Process) detach(kill bool) error {
 	return PtraceDetach(dbp.pid, 0)
 }

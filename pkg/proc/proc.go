@@ -108,7 +108,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		}
 	}
 	dbp.execPtraceFunc(func() {
-		err = dbp.detach()
+		err = dbp.detach(kill)
 		if err != nil {
 			return
 		}
