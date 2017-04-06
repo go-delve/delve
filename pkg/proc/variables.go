@@ -190,7 +190,7 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, dbp *Process, 
 		v.stride = 1
 		v.fieldType = &dwarf.UintType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
 		if v.Addr != 0 {
-			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.dbp.arch, v.Addr)
+			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.dbp.bi.arch, v.Addr)
 		}
 	case *dwarf.SliceType:
 		v.Kind = reflect.Slice
@@ -321,17 +321,17 @@ func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
 // DwarfReader returns the DwarfReader containing the
 // Dwarf information for the target process.
 func (scope *EvalScope) DwarfReader() *reader.Reader {
-	return scope.Thread.dbp.DwarfReader()
+	return scope.Thread.dbp.bi.DwarfReader()
 }
 
 // Type returns the Dwarf type entry at `offset`.
 func (scope *EvalScope) Type(offset dwarf.Offset) (dwarf.Type, error) {
-	return scope.Thread.dbp.dwarf.Type(offset)
+	return scope.Thread.dbp.bi.dwarf.Type(offset)
 }
 
 // PtrSize returns the size of a pointer.
 func (scope *EvalScope) PtrSize() int {
-	return scope.Thread.dbp.arch.PtrSize()
+	return scope.Thread.dbp.bi.arch.PtrSize()
 }
 
 // ChanRecvBlocked returns whether the goroutine is blocked on
@@ -367,7 +367,7 @@ func (gvar *Variable) parseG() (*G, error) {
 	_, deref := gvar.RealType.(*dwarf.PtrType)
 
 	if deref {
-		gaddrbytes, err := mem.readMemory(uintptr(gaddr), dbp.arch.PtrSize())
+		gaddrbytes, err := mem.readMemory(uintptr(gaddr), dbp.bi.arch.PtrSize())
 		if err != nil {
 			return nil, fmt.Errorf("error derefing *G %s", err)
 		}
@@ -405,7 +405,7 @@ func (gvar *Variable) parseG() (*G, error) {
 	}
 
 	status, _ := constant.Int64Val(gvar.fieldVariable("atomicstatus").Value)
-	f, l, fn := gvar.dbp.goSymTable.PCToLine(uint64(pc))
+	f, l, fn := gvar.dbp.bi.goSymTable.PCToLine(uint64(pc))
 	g := &G{
 		ID:         int(id),
 		GoPC:       uint64(gopc),
@@ -498,7 +498,7 @@ func (g *G) UserCurrent() Location {
 // Go returns the location of the 'go' statement
 // that spawned this goroutine.
 func (g *G) Go() Location {
-	f, l, fn := g.dbp.goSymTable.PCToLine(g.GoPC)
+	f, l, fn := g.dbp.bi.goSymTable.PCToLine(g.GoPC)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
 }
 
@@ -586,7 +586,7 @@ func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry, cfg LoadCon
 
 func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
 	reader := scope.DwarfReader()
-	off, err := scope.Thread.dbp.findFunctionDebugInfo(scope.PC)
+	off, err := scope.Thread.dbp.bi.findFunctionDebugInfo(scope.PC)
 	if err != nil {
 		return nil, err
 	}
@@ -1207,7 +1207,7 @@ func (v *Variable) writeBool(value bool) error {
 }
 
 func (v *Variable) readFunctionPtr() {
-	val, err := v.mem.readMemory(v.Addr, v.dbp.arch.PtrSize())
+	val, err := v.mem.readMemory(v.Addr, v.dbp.bi.arch.PtrSize())
 	if err != nil {
 		v.Unreadable = err
 		return
@@ -1221,14 +1221,14 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	val, err = v.mem.readMemory(fnaddr, v.dbp.arch.PtrSize())
+	val, err = v.mem.readMemory(fnaddr, v.dbp.bi.arch.PtrSize())
 	if err != nil {
 		v.Unreadable = err
 		return
 	}
 
 	v.Base = uintptr(binary.LittleEndian.Uint64(val))
-	fn := v.dbp.goSymTable.PCToFunc(uint64(v.Base))
+	fn := v.dbp.bi.goSymTable.PCToFunc(uint64(v.Base))
 	if fn == nil {
 		v.Unreadable = fmt.Errorf("could not find function for %#v", v.Base)
 		return
@@ -1603,7 +1603,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 			return
 		}
 
-		typ, err = v.dbp.findType(typename)
+		typ, err = v.dbp.bi.findType(typename)
 		if err != nil {
 			v.Unreadable = fmt.Errorf("interface type %q not found for %#x: %v", typename, data.Addr, err)
 			return
@@ -1627,7 +1627,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 			return
 		}
 
-		typ, err = v.dbp.findTypeExpr(t)
+		typ, err = v.dbp.bi.findTypeExpr(t)
 		if err != nil {
 			v.Unreadable = fmt.Errorf("interface type %q not found for %#x: %v", typename, data.Addr, err)
 			return
@@ -1637,7 +1637,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	if kind&kindDirectIface == 0 {
 		realtyp := resolveTypedef(typ)
 		if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
-			typ = pointerTo(typ, v.dbp.arch)
+			typ = pointerTo(typ, v.dbp.bi.arch)
 		}
 	}
 
@@ -1655,7 +1655,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 // Fetches all variables of a specific type in the current function scope
 func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variable, error) {
 	reader := scope.DwarfReader()
-	off, err := scope.Thread.dbp.findFunctionDebugInfo(scope.PC)
+	off, err := scope.Thread.dbp.bi.findFunctionDebugInfo(scope.PC)
 	if err != nil {
 		return nil, err
 	}

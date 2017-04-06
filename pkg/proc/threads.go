@@ -112,7 +112,7 @@ func (thread *Thread) Location() (*Location, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, l, fn := thread.dbp.PCToLine(pc)
+	f, l, fn := thread.dbp.bi.PCToLine(pc)
 	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
@@ -218,7 +218,7 @@ func (dbp *Process) next(stepInto bool) error {
 		if dbp.selectedGoroutine != nil {
 			deferPCEntry := dbp.selectedGoroutine.DeferPC()
 			if deferPCEntry != 0 {
-				_, _, deferfn := dbp.goSymTable.PCToLine(deferPCEntry)
+				_, _, deferfn := dbp.bi.goSymTable.PCToLine(deferPCEntry)
 				var err error
 				deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
 				if err != nil {
@@ -240,7 +240,7 @@ func (dbp *Process) next(stepInto bool) error {
 	}
 
 	// Add breakpoints on all the lines in the current function
-	pcs, err := dbp.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
+	pcs, err := dbp.bi.lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
 	if err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func (dbp *Process) next(stepInto bool) error {
 		}
 
 		if !covered {
-			fn := dbp.goSymTable.PCToFunc(topframe.Ret)
+			fn := dbp.bi.goSymTable.PCToFunc(topframe.Ret)
 			if dbp.selectedGoroutine != nil && fn != nil && fn.Name == "runtime.goexit" {
 				return nil
 			}
@@ -340,13 +340,13 @@ func (thread *Thread) getGVariable() (*Variable, error) {
 		return nil, err
 	}
 
-	if thread.dbp.arch.GStructOffset() == 0 {
+	if thread.dbp.bi.arch.GStructOffset() == 0 {
 		// GetG was called through SwitchThread / updateThreadList during initialization
 		// thread.dbp.arch isn't setup yet (it needs a current thread to read global variables from)
 		return nil, fmt.Errorf("g struct offset not initialized")
 	}
 
-	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+thread.dbp.arch.GStructOffset()), thread.dbp.arch.PtrSize())
+	gaddrbs, err := thread.readMemory(uintptr(regs.TLS()+thread.dbp.bi.arch.GStructOffset()), thread.dbp.bi.arch.PtrSize())
 	if err != nil {
 		return nil, err
 	}
@@ -360,7 +360,7 @@ func (thread *Thread) getGVariable() (*Variable, error) {
 }
 
 func (thread *Thread) newGVariable(gaddr uintptr, deref bool) (*Variable, error) {
-	typ, err := thread.dbp.findType("runtime.g")
+	typ, err := thread.dbp.bi.findType("runtime.g")
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (thread *Thread) newGVariable(gaddr uintptr, deref bool) (*Variable, error)
 	name := ""
 
 	if deref {
-		typ = &dwarf.PtrType{dwarf.CommonType{int64(thread.dbp.arch.PtrSize()), "", reflect.Ptr, 0}, typ}
+		typ = &dwarf.PtrType{dwarf.CommonType{int64(thread.dbp.bi.arch.PtrSize()), "", reflect.Ptr, 0}, typ}
 	} else {
 		name = "runtime.curg"
 	}

@@ -330,8 +330,8 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 				// this exception anymore.
 				atbp := true
 				if thread, found := dbp.threads[tid]; found {
-					if data, err := thread.readMemory(exception.ExceptionRecord.ExceptionAddress, dbp.arch.BreakpointSize()); err == nil {
-						instr := dbp.arch.BreakpointInstruction()
+					if data, err := thread.readMemory(exception.ExceptionRecord.ExceptionAddress, dbp.bi.arch.BreakpointSize()); err == nil {
+						instr := dbp.bi.arch.BreakpointInstruction()
 						for i := range instr {
 							if data[i] != instr[i] {
 								atbp = false

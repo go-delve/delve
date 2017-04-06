@@ -87,7 +87,7 @@ func (d *Debugger) ProcessPid() int {
 // LastModified returns the time that the process' executable was last
 // modified.
 func (d *Debugger) LastModified() time.Time {
-	return d.target.LastModified()
+	return d.target.BinInfo().LastModified()
 }
 
 // Detach detaches from the target process.
@@ -223,7 +223,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		if runtime.GOOS == "windows" {
 			// Accept fileName which is case-insensitive and slash-insensitive match
 			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
-			for symFile := range d.target.Sources() {
+			for symFile := range d.target.BinInfo().Sources() {
 				if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
 					fileName = symFile
 					break
@@ -531,7 +531,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	}
 
 	files := []string{}
-	for f := range d.target.Sources() {
+	for f := range d.target.BinInfo().Sources() {
 		if regex.Match([]byte(f)) {
 			files = append(files, f)
 		}
@@ -544,7 +544,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	return regexFilterFuncs(filter, d.target.Funcs())
+	return regexFilterFuncs(filter, d.target.BinInfo().Funcs())
 }
 
 func (d *Debugger) Types(filter string) ([]string, error) {
@@ -556,7 +556,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	types, err := d.target.Types()
+	types, err := d.target.BinInfo().Types()
 	if err != nil {
 		return nil, err
 	}
@@ -785,7 +785,7 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 
 	locs, err := loc.Find(d, s, locStr)
 	for i := range locs {
-		file, line, fn := d.target.PCToLine(locs[i].PC)
+		file, line, fn := d.target.BinInfo().PCToLine(locs[i].PC)
 		locs[i].File = file
 		locs[i].Line = line
 		locs[i].Function = api.ConvertFunction(fn)
@@ -800,7 +800,7 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 	defer d.processMutex.Unlock()
 
 	if endPC == 0 {
-		_, _, fn := d.target.PCToLine(startPC)
+		_, _, fn := d.target.BinInfo().PCToLine(startPC)
 		if fn == nil {
 			return nil, fmt.Errorf("Address 0x%x does not belong to any function", startPC)
 		}

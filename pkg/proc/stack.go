@@ -98,7 +98,7 @@ func (g *G) Stacktrace(depth int) ([]Stackframe, error) {
 // GoroutineLocation returns the location of the given
 // goroutine.
 func (dbp *Process) GoroutineLocation(g *G) *Location {
-	f, l, fn := dbp.PCToLine(g.PC)
+	f, l, fn := dbp.bi.PCToLine(g.PC)
 	return &Location{PC: g.PC, File: f, Line: l, Fn: fn}
 }
 
@@ -130,11 +130,11 @@ type savedLR struct {
 }
 
 func newStackIterator(dbp *Process, pc, sp, bp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
-	stackBarrierFunc := dbp.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
+	stackBarrierFunc := dbp.bi.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
 		stackBarrierPC = stackBarrierFunc.Entry
-		fn := dbp.goSymTable.PCToFunc(pc)
+		fn := dbp.bi.goSymTable.PCToFunc(pc)
 		if fn != nil && fn.Name == runtimeStackBarrier {
 			// We caught the goroutine as it's executing the stack barrier, we must
 			// determine whether or not g.stackPos has already been incremented or not.
@@ -188,7 +188,7 @@ func (it *stackIterator) Next() bool {
 	it.top = false
 	it.pc = it.frame.Ret
 	it.sp = uint64(it.frame.CFA)
-	it.bp, _ = readUintRaw(it.dbp.currentThread, uintptr(it.bp), int64(it.dbp.arch.PtrSize()))
+	it.bp, _ = readUintRaw(it.dbp.currentThread, uintptr(it.bp), int64(it.dbp.bi.arch.PtrSize()))
 	return true
 }
 
@@ -206,14 +206,14 @@ func (it *stackIterator) Err() error {
 }
 
 func (dbp *Process) frameInfo(pc, sp, bp uint64, top bool) (Stackframe, error) {
-	fde, err := dbp.frameEntries.FDEForPC(pc)
+	fde, err := dbp.bi.frameEntries.FDEForPC(pc)
 	if _, nofde := err.(*frame.NoFDEForPCError); nofde {
 		if bp == 0 {
 			return Stackframe{}, err
 		}
 		// When no FDE is available attempt to use BP instead
-		retaddr := uintptr(int(bp) + dbp.arch.PtrSize())
-		cfa := int64(retaddr) + int64(dbp.arch.PtrSize())
+		retaddr := uintptr(int(bp) + dbp.bi.arch.PtrSize())
+		cfa := int64(retaddr) + int64(dbp.bi.arch.PtrSize())
 		return dbp.newStackframe(pc, cfa, retaddr, nil, top)
 	}
 
@@ -228,14 +228,14 @@ func (dbp *Process) newStackframe(pc uint64, cfa int64, retaddr uintptr, fde *fr
 	if retaddr == 0 {
 		return Stackframe{}, NullAddrError{}
 	}
-	f, l, fn := dbp.PCToLine(pc)
-	ret, err := readUintRaw(dbp.currentThread, retaddr, int64(dbp.arch.PtrSize()))
+	f, l, fn := dbp.bi.PCToLine(pc)
+	ret, err := readUintRaw(dbp.currentThread, retaddr, int64(dbp.bi.arch.PtrSize()))
 	if err != nil {
 		return Stackframe{}, err
 	}
 	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: ret, addrret: uint64(retaddr)}
 	if !top {
-		r.Call.File, r.Call.Line, r.Call.Fn = dbp.PCToLine(pc - 1)
+		r.Call.File, r.Call.Line, r.Call.Fn = dbp.bi.PCToLine(pc - 1)
 		r.Call.PC = r.Current.PC
 	} else {
 		r.Call = r.Current

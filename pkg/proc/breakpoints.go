@@ -104,7 +104,7 @@ func (iae InvalidAddressError) Error() string {
 }
 
 func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
-	_, err := thread.writeMemory(uintptr(addr), dbp.arch.BreakpointInstruction())
+	_, err := thread.writeMemory(uintptr(addr), dbp.bi.arch.BreakpointInstruction())
 	return err
 }
 

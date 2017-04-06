@@ -3,7 +3,6 @@ package target
 import (
 	"debug/gosym"
 	"go/ast"
-	"time"
 
 	"github.com/derekparker/delve/pkg/proc"
 )
@@ -22,24 +21,14 @@ type Info interface {
 	Pid() int
 	Exited() bool
 	Running() bool
+	BinInfo() *proc.BinaryInfo
 
-	BinaryInfo
 	ThreadInfo
 	GoroutineInfo
 
 	FindFileLocation(fileName string, lineNumber int) (uint64, error)
 	FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error)
 	FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error)
-}
-
-// BinaryInfo is an interface for accessing information on the binary file
-// and the contents of binary sections.
-type BinaryInfo interface {
-	LastModified() time.Time
-	Sources() map[string]*gosym.Obj
-	Funcs() []gosym.Func
-	Types() ([]string, error)
-	PCToLine(uint64) (string, int, *gosym.Func)
 }
 
 // ThreadInfo is an interface for getting information on active threads
@@ -84,5 +73,4 @@ type VariableEval interface {
 	ConvertEvalScope(gid, frame int) (*proc.EvalScope, error)
 }
 
-var _ BinaryInfo = &proc.BinaryInfo{}
 var _ Interface = &proc.Process{}
