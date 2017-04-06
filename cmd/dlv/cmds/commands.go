@@ -412,7 +412,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, kind exec
 			WorkingDir:  WorkingDir,
 		}, Log)
 	default:
-		fmt.Println("Unknown API version %d", APIVersion)
+		fmt.Printf("Unknown API version: %d\n", APIVersion)
 		return 1
 	}
 
