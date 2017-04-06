@@ -110,7 +110,7 @@ func (t *Thread) blocked() bool {
 	if err != nil {
 		return false
 	}
-	fn := t.dbp.goSymTable.PCToFunc(pc)
+	fn := t.dbp.bi.goSymTable.PCToFunc(pc)
 	if fn == nil {
 		return false
 	}

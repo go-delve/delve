@@ -1,7 +1,5 @@
 package proc
 
-import "runtime"
-
 // Arch defines an interface for representing a
 // CPU architecture.
 type Arch interface {
@@ -19,11 +17,12 @@ type AMD64 struct {
 	breakInstructionLen     int
 	gStructOffset           uint64
 	hardwareBreakpointUsage []bool
+	goos                    string
 }
 
 // AMD64Arch returns an initialized AMD64
 // struct.
-func AMD64Arch() *AMD64 {
+func AMD64Arch(goos string) *AMD64 {
 	var breakInstr = []byte{0xCC}
 
 	return &AMD64{
@@ -31,6 +30,7 @@ func AMD64Arch() *AMD64 {
 		breakInstruction:        breakInstr,
 		breakInstructionLen:     len(breakInstr),
 		hardwareBreakpointUsage: make([]bool, 4),
+		goos: goos,
 	}
 }
 
@@ -38,7 +38,7 @@ func AMD64Arch() *AMD64 {
 // arch struct. The offset is dependent on the Go compiler Version
 // and whether or not the target program was externally linked.
 func (a *AMD64) SetGStructOffset(ver GoVersion, isextld bool) {
-	switch runtime.GOOS {
+	switch a.goos {
 	case "darwin":
 		a.gStructOffset = 0x8a0
 	case "linux":

@@ -2,7 +2,6 @@ package proc
 
 import (
 	"bytes"
-	"debug/gosym"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -17,10 +16,6 @@ import (
 	"time"
 
 	sys "golang.org/x/sys/unix"
-
-	"github.com/derekparker/delve/pkg/dwarf/frame"
-	"github.com/derekparker/delve/pkg/dwarf/line"
-	"golang.org/x/debug/elf"
 )
 
 // Process statuses
@@ -171,103 +166,11 @@ func (dbp *Process) updateThreadList() error {
 	return nil
 }
 
-var UnsupportedArchErr = errors.New("unsupported architecture - only linux/amd64 is supported")
-
-func (dbp *Process) findExecutable(path string) (*elf.File, string, error) {
+func findExecutable(path string, pid int) string {
 	if path == "" {
-		path = fmt.Sprintf("/proc/%d/exe", dbp.pid)
+		path = fmt.Sprintf("/proc/%d/exe", pid)
 	}
-	f, err := os.OpenFile(path, 0, os.ModePerm)
-	if err != nil {
-		return nil, path, err
-	}
-	elfFile, err := elf.NewFile(f)
-	if err != nil {
-		return nil, path, err
-	}
-	if elfFile.Machine != elf.EM_X86_64 {
-		return nil, path, UnsupportedArchErr
-	}
-	dbp.dwarf, err = elfFile.DWARF()
-	if err != nil {
-		return nil, path, err
-	}
-	return elfFile, path, nil
-}
-
-func (dbp *Process) parseDebugFrame(exe *elf.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	debugFrameSec := exe.Section(".debug_frame")
-	debugInfoSec := exe.Section(".debug_info")
-
-	if debugFrameSec != nil && debugInfoSec != nil {
-		debugFrame, err := exe.Section(".debug_frame").Data()
-		if err != nil {
-			fmt.Println("could not get .debug_frame section", err)
-			os.Exit(1)
-		}
-		dat, err := debugInfoSec.Data()
-		if err != nil {
-			fmt.Println("could not get .debug_info section", err)
-			os.Exit(1)
-		}
-		dbp.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
-	} else {
-		fmt.Println("could not find .debug_frame section in binary")
-		os.Exit(1)
-	}
-}
-
-func (dbp *Process) obtainGoSymbols(exe *elf.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	var (
-		symdat  []byte
-		pclndat []byte
-		err     error
-	)
-
-	if sec := exe.Section(".gosymtab"); sec != nil {
-		symdat, err = sec.Data()
-		if err != nil {
-			fmt.Println("could not get .gosymtab section", err)
-			os.Exit(1)
-		}
-	}
-
-	if sec := exe.Section(".gopclntab"); sec != nil {
-		pclndat, err = sec.Data()
-		if err != nil {
-			fmt.Println("could not get .gopclntab section", err)
-			os.Exit(1)
-		}
-	}
-
-	pcln := gosym.NewLineTable(pclndat, exe.Section(".text").Addr)
-	tab, err := gosym.NewTable(symdat, pcln)
-	if err != nil {
-		fmt.Println("could not get initialize line table", err)
-		os.Exit(1)
-	}
-
-	dbp.goSymTable = tab
-}
-
-func (dbp *Process) parseDebugLineInfo(exe *elf.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	if sec := exe.Section(".debug_line"); sec != nil {
-		debugLine, err := exe.Section(".debug_line").Data()
-		if err != nil {
-			fmt.Println("could not get .debug_line section", err)
-			os.Exit(1)
-		}
-		dbp.lineInfo = line.Parse(debugLine)
-	} else {
-		fmt.Println("could not find .debug_line section in binary")
-		os.Exit(1)
-	}
+	return path
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
@@ -484,12 +387,15 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
-func (dbp *Process) detach() error {
+func (dbp *Process) detach(kill bool) error {
 	for threadID := range dbp.threads {
 		err := PtraceDetach(threadID, 0)
 		if err != nil {
 			return err
 		}
+	}
+	if kill {
+		return nil
 	}
 	// For some reason the process will sometimes enter stopped state after a
 	// detach, this doesn't happen immediately either.

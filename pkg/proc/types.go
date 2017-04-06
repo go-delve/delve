@@ -38,40 +38,40 @@ const (
 )
 
 // Do not call this function directly it isn't able to deal correctly with package paths
-func (dbp *Process) findType(name string) (dwarf.Type, error) {
-	off, found := dbp.types[name]
+func (bi *BinaryInfo) findType(name string) (dwarf.Type, error) {
+	off, found := bi.types[name]
 	if !found {
 		return nil, reader.TypeNotFoundErr
 	}
-	return dbp.dwarf.Type(off)
+	return bi.dwarf.Type(off)
 }
 
-func (dbp *Process) pointerTo(typ dwarf.Type) dwarf.Type {
-	return &dwarf.PtrType{dwarf.CommonType{int64(dbp.arch.PtrSize()), "*" + typ.Common().Name, reflect.Ptr, 0}, typ}
+func pointerTo(typ dwarf.Type, arch Arch) dwarf.Type {
+	return &dwarf.PtrType{dwarf.CommonType{int64(arch.PtrSize()), "*" + typ.Common().Name, reflect.Ptr, 0}, typ}
 }
 
-func (dbp *Process) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
-	dbp.loadPackageMap()
+func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
+	bi.loadPackageMap()
 	if lit, islit := expr.(*ast.BasicLit); islit && lit.Kind == token.STRING {
 		// Allow users to specify type names verbatim as quoted
 		// string. Useful as a catch-all workaround for cases where we don't
 		// parse/serialize types correctly or can not resolve package paths.
 		typn, _ := strconv.Unquote(lit.Value)
-		return dbp.findType(typn)
+		return bi.findType(typn)
 	}
-	dbp.expandPackagesInType(expr)
+	bi.expandPackagesInType(expr)
 	if snode, ok := expr.(*ast.StarExpr); ok {
 		// Pointer types only appear in the dwarf informations when
 		// a pointer to the type is used in the target program, here
 		// we create a pointer type on the fly so that the user can
 		// specify a pointer to any variable used in the target program
-		ptyp, err := dbp.findTypeExpr(snode.X)
+		ptyp, err := bi.findTypeExpr(snode.X)
 		if err != nil {
 			return nil, err
 		}
-		return dbp.pointerTo(ptyp), nil
+		return pointerTo(ptyp, bi.arch), nil
 	}
-	return dbp.findType(exprToString(expr))
+	return bi.findType(exprToString(expr))
 }
 
 func complexType(typename string) bool {
@@ -84,12 +84,12 @@ func complexType(typename string) bool {
 	return false
 }
 
-func (dbp *Process) loadPackageMap() error {
-	if dbp.packageMap != nil {
+func (bi *BinaryInfo) loadPackageMap() error {
+	if bi.packageMap != nil {
 		return nil
 	}
-	dbp.packageMap = map[string]string{}
-	reader := dbp.DwarfReader()
+	bi.packageMap = map[string]string{}
+	reader := bi.DwarfReader()
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			return err
@@ -114,7 +114,7 @@ func (dbp *Process) loadPackageMap() error {
 			continue
 		}
 		name := path[slash+1:]
-		dbp.packageMap[name] = path
+		bi.packageMap[name] = path
 	}
 	return nil
 }
@@ -129,11 +129,11 @@ func (v sortFunctionsDebugInfoByLowpc) Swap(i, j int) {
 	v[j] = temp
 }
 
-func (dbp *Process) loadDebugInfoMaps(wg *sync.WaitGroup) {
+func (bi *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
 	defer wg.Done()
-	dbp.types = make(map[string]dwarf.Offset)
-	dbp.functions = []functionDebugInfo{}
-	reader := dbp.DwarfReader()
+	bi.types = make(map[string]dwarf.Offset)
+	bi.functions = []functionDebugInfo{}
+	reader := bi.DwarfReader()
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			break
@@ -144,8 +144,8 @@ func (dbp *Process) loadDebugInfoMaps(wg *sync.WaitGroup) {
 			if !ok {
 				continue
 			}
-			if _, exists := dbp.types[name]; !exists {
-				dbp.types[name] = entry.Offset
+			if _, exists := bi.types[name]; !exists {
+				bi.types[name] = entry.Offset
 			}
 		case dwarf.TagSubprogram:
 			lowpc, ok := entry.Val(dwarf.AttrLowpc).(uint64)
@@ -156,19 +156,19 @@ func (dbp *Process) loadDebugInfoMaps(wg *sync.WaitGroup) {
 			if !ok {
 				continue
 			}
-			dbp.functions = append(dbp.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
+			bi.functions = append(bi.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
 		}
 	}
-	sort.Sort(sortFunctionsDebugInfoByLowpc(dbp.functions))
+	sort.Sort(sortFunctionsDebugInfoByLowpc(bi.functions))
 }
 
-func (dbp *Process) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
-	i := sort.Search(len(dbp.functions), func(i int) bool {
-		fn := dbp.functions[i]
+func (bi *BinaryInfo) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
+	i := sort.Search(len(bi.functions), func(i int) bool {
+		fn := bi.functions[i]
 		return pc <= fn.lowpc || (fn.lowpc <= pc && pc < fn.highpc)
 	})
-	if i != len(dbp.functions) {
-		fn := dbp.functions[i]
+	if i != len(bi.functions) {
+		fn := bi.functions[i]
 		if fn.lowpc <= pc && pc < fn.highpc {
 			return fn.offset, nil
 		}
@@ -176,37 +176,37 @@ func (dbp *Process) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
 	return 0, errors.New("unable to find function context")
 }
 
-func (dbp *Process) expandPackagesInType(expr ast.Expr) {
+func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 	switch e := expr.(type) {
 	case *ast.ArrayType:
-		dbp.expandPackagesInType(e.Elt)
+		bi.expandPackagesInType(e.Elt)
 	case *ast.ChanType:
-		dbp.expandPackagesInType(e.Value)
+		bi.expandPackagesInType(e.Value)
 	case *ast.FuncType:
 		for i := range e.Params.List {
-			dbp.expandPackagesInType(e.Params.List[i].Type)
+			bi.expandPackagesInType(e.Params.List[i].Type)
 		}
 		if e.Results != nil {
 			for i := range e.Results.List {
-				dbp.expandPackagesInType(e.Results.List[i].Type)
+				bi.expandPackagesInType(e.Results.List[i].Type)
 			}
 		}
 	case *ast.MapType:
-		dbp.expandPackagesInType(e.Key)
-		dbp.expandPackagesInType(e.Value)
+		bi.expandPackagesInType(e.Key)
+		bi.expandPackagesInType(e.Value)
 	case *ast.ParenExpr:
-		dbp.expandPackagesInType(e.X)
+		bi.expandPackagesInType(e.X)
 	case *ast.SelectorExpr:
 		switch x := e.X.(type) {
 		case *ast.Ident:
-			if path, ok := dbp.packageMap[x.Name]; ok {
+			if path, ok := bi.packageMap[x.Name]; ok {
 				x.Name = path
 			}
 		default:
-			dbp.expandPackagesInType(e.X)
+			bi.expandPackagesInType(e.X)
 		}
 	case *ast.StarExpr:
-		dbp.expandPackagesInType(e.X)
+		bi.expandPackagesInType(e.X)
 	default:
 		// nothing to do
 	}
@@ -221,7 +221,7 @@ type nameOfRuntimeTypeEntry struct {
 // _type is a non-loaded Variable pointing to runtime._type struct in the target.
 // The returned string is in the format that's used in DWARF data
 func nameOfRuntimeType(_type *Variable) (typename string, kind int64, err error) {
-	if e, ok := _type.dbp.nameOfRuntimeType[_type.Addr]; ok {
+	if e, ok := _type.dbp.bi.nameOfRuntimeType[_type.Addr]; ok {
 		return e.typename, e.kind, nil
 	}
 
@@ -244,7 +244,7 @@ func nameOfRuntimeType(_type *Variable) (typename string, kind int64, err error)
 		return typename, kind, err
 	}
 
-	_type.dbp.nameOfRuntimeType[_type.Addr] = nameOfRuntimeTypeEntry{typename, kind}
+	_type.dbp.bi.nameOfRuntimeType[_type.Addr] = nameOfRuntimeTypeEntry{typename, kind}
 
 	return typename, kind, nil
 }
@@ -277,7 +277,7 @@ func nameOfNamedRuntimeType(_type *Variable, kind, tflag int64) (typename string
 	// For a description of how memory is organized for type names read
 	// the comment to 'type name struct' in $GOROOT/src/reflect/type.go
 
-	typename, _, _, err = _type.dbp.resolveNameOff(_type.Addr, uintptr(strOff))
+	typename, _, _, err = _type.dbp.bi.resolveNameOff(_type.Addr, uintptr(strOff), _type.dbp.currentThread)
 	if err != nil {
 		return "", err
 	}
@@ -303,7 +303,7 @@ func nameOfNamedRuntimeType(_type *Variable, kind, tflag int64) (typename string
 	if ut := uncommon(_type, tflag); ut != nil {
 		if pkgPathField := ut.loadFieldNamed("pkgpath"); pkgPathField != nil && pkgPathField.Value != nil {
 			pkgPathOff, _ := constant.Int64Val(pkgPathField.Value)
-			pkgPath, _, _, err := _type.dbp.resolveNameOff(_type.Addr, uintptr(pkgPathOff))
+			pkgPath, _, _, err := _type.dbp.bi.resolveNameOff(_type.Addr, uintptr(pkgPathOff), _type.dbp.currentThread)
 			if err != nil {
 				return "", err
 			}
@@ -376,11 +376,11 @@ func nameOfUnnamedRuntimeType(_type *Variable, kind, tflag int64) (string, error
 // (optional) and then by an array of pointers to runtime._type,
 // one for each input and output argument.
 func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string, error) {
-	rtyp, err := _type.dbp.findType("runtime._type")
+	rtyp, err := _type.dbp.bi.findType("runtime._type")
 	if err != nil {
 		return "", err
 	}
-	prtyp := _type.dbp.pointerTo(rtyp)
+	prtyp := pointerTo(rtyp, _type.dbp.bi.arch)
 
 	uadd := _type.RealType.Common().ByteSize
 	if ut := uncommon(_type, tflag); ut != nil {
@@ -407,7 +407,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 
 	for i := int64(0); i < inCount; i++ {
 		argtype := cursortyp.maybeDereference()
-		cursortyp.Addr += uintptr(_type.dbp.arch.PtrSize())
+		cursortyp.Addr += uintptr(_type.dbp.bi.arch.PtrSize())
 		argtypename, _, err := nameOfRuntimeType(argtype)
 		if err != nil {
 			return "", err
@@ -434,7 +434,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 		buf.WriteString(" (")
 		for i := int64(0); i < outCount; i++ {
 			argtype := cursortyp.maybeDereference()
-			cursortyp.Addr += uintptr(_type.dbp.arch.PtrSize())
+			cursortyp.Addr += uintptr(_type.dbp.bi.arch.PtrSize())
 			argtypename, _, err := nameOfRuntimeType(argtype)
 			if err != nil {
 				return "", err
@@ -473,14 +473,14 @@ func nameOfInterfaceRuntimeType(_type *Variable, kind, tflag int64) (string, err
 			case "name":
 				nameoff, _ := constant.Int64Val(im.Children[i].Value)
 				var err error
-				methodname, _, _, err = _type.dbp.resolveNameOff(_type.Addr, uintptr(nameoff))
+				methodname, _, _, err = _type.dbp.bi.resolveNameOff(_type.Addr, uintptr(nameoff), _type.dbp.currentThread)
 				if err != nil {
 					return "", err
 				}
 
 			case "typ":
 				typeoff, _ := constant.Int64Val(im.Children[i].Value)
-				typ, err := _type.dbp.resolveTypeOff(_type.Addr, uintptr(typeoff))
+				typ, err := _type.dbp.bi.resolveTypeOff(_type.Addr, uintptr(typeoff), _type.dbp.currentThread)
 				if err != nil {
 					return "", err
 				}
@@ -536,7 +536,7 @@ func nameOfStructRuntimeType(_type *Variable, kind, tflag int64) (string, error)
 			case "name":
 				nameoff, _ := constant.Int64Val(field.Children[i].Value)
 				var err error
-				fieldname, _, _, err = _type.dbp.loadName(uintptr(nameoff))
+				fieldname, _, _, err = _type.dbp.bi.loadName(uintptr(nameoff), _type.mem)
 				if err != nil {
 					return "", err
 				}
@@ -578,13 +578,13 @@ func fieldToType(_type *Variable, fieldName string) (string, error) {
 }
 
 func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
-	rtyp, err := _type.dbp.findType("runtime._type")
+	rtyp, err := _type.dbp.bi.findType("runtime._type")
 	if err != nil {
 		return nil, err
 	}
-	prtyp := _type.dbp.pointerTo(rtyp)
+	prtyp := pointerTo(rtyp, _type.dbp.bi.arch)
 
-	uintptrtyp, err := _type.dbp.findType("uintptr")
+	uintptrtyp, err := _type.dbp.bi.findType("uintptr")
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +602,7 @@ func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
 
 	newSliceType := func(elemtype dwarf.Type) *dwarf.SliceType {
 		r := newStructType("[]"+elemtype.Common().Name, uintptr(3*uintptrtyp.Size()))
-		appendField(r, "array", _type.dbp.pointerTo(elemtype), 0)
+		appendField(r, "array", pointerTo(elemtype, _type.dbp.bi.arch), 0)
 		appendField(r, "len", uintptrtyp, uintptr(uintptrtyp.Size()))
 		appendField(r, "cap", uintptrtyp, uintptr(2*uintptrtyp.Size()))
 		return &dwarf.SliceType{StructType: *r, ElemType: elemtype}
@@ -746,7 +746,7 @@ func uncommon(_type *Variable, tflag int64) *Variable {
 		return nil
 	}
 
-	typ, err := _type.dbp.findType("runtime.uncommontype")
+	typ, err := _type.dbp.bi.findType("runtime.uncommontype")
 	if err != nil {
 		return nil
 	}

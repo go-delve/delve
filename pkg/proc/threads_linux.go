@@ -69,7 +69,7 @@ func (t *Thread) singleStep() (err error) {
 
 func (t *Thread) blocked() bool {
 	pc, _ := t.PC()
-	fn := t.dbp.goSymTable.PCToFunc(pc)
+	fn := t.dbp.bi.goSymTable.PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
 		return true
 	}

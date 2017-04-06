@@ -109,7 +109,7 @@ func (thread *Thread) resolveCallArg(inst *ArchInst, currentGoroutine bool, regs
 		return nil
 	}
 
-	file, line, fn := thread.dbp.PCToLine(pc)
+	file, line, fn := thread.dbp.bi.PCToLine(pc)
 	if fn == nil {
 		return nil
 	}
