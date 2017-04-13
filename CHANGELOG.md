@@ -5,6 +5,33 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [0.12.2] 2017-04-13
+
+### Fixed
+
+- Fix infinite recursion with pointer loop (@aarzilli)
+- Windows: Handle delayed events (@aarzilli)
+- Fix Println call to be Printf (@derekparker)
+- Fix build on OSX (@koichi)
+- Mark malformed maps as unreadable instead of panicing (@aarzilli)
+- Fixed broken benchmarks (@derekparker)
+- Improve reliability of certain tests (@aarzilli)
+
+### Added
+
+- Go 1.8 Compatability (@aarzilli)
+- Add Go 1.8 to test matrix (@derekparker)
+- Support NaN/Inf float values (@aarzilli)
+- Handle absence of stack barriers in Go 1.9 (@drchase)
+- Add gdlv to list of alternative UIs (@aarzilli)
+
+### Changed
+
+- Optimized 'trace' functionality (@aarzilli)
+- Internal refactoring to support mutliple backends, core dumps, and more (@aarzilli) [Still ongoing]
+- Improve stacktraces (@aarzilli)
+- Improved documentation for passing flags to debugged process (@njason)
+
 ## [0.12.1] 2017-01-11
 
 ### Fixed
