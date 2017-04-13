@@ -38,9 +38,9 @@ type Stackframe struct {
 	addrret uint64
 }
 
-// Scope returns a new EvalScope using this frame.
-func (frame *Stackframe) Scope(thread *Thread) *EvalScope {
-	return &EvalScope{Thread: thread, PC: frame.Current.PC, CFA: frame.CFA}
+// FrameToScope returns a new EvalScope for this frame
+func (p *Process) FrameToScope(frame Stackframe) *EvalScope {
+	return &EvalScope{frame.Current.PC, frame.CFA, p.currentThread, nil, p.BinInfo()}
 }
 
 // ReturnAddress returns the return address of the function
@@ -61,7 +61,7 @@ func (t *Thread) stackIterator(stkbar []savedLR, stkbarPos int) (*stackIterator,
 	if err != nil {
 		return nil, err
 	}
-	return newStackIterator(t.dbp, regs.PC(), regs.SP(), regs.BP(), stkbar, stkbarPos), nil
+	return newStackIterator(&t.dbp.bi, t, regs.PC(), regs.SP(), regs.BP(), stkbar, stkbarPos), nil
 }
 
 // Stacktrace returns the stack trace for thread.
@@ -82,7 +82,7 @@ func (g *G) stackIterator() (*stackIterator, error) {
 	if g.thread != nil {
 		return g.thread.stackIterator(stkbar, g.stkbarPos)
 	}
-	return newStackIterator(g.dbp, g.PC, g.SP, 0, stkbar, g.stkbarPos), nil
+	return newStackIterator(g.variable.bi, g.variable.mem, g.PC, g.SP, 0, stkbar, g.stkbarPos), nil
 }
 
 // Stacktrace returns the stack trace for a goroutine.
@@ -117,7 +117,8 @@ type stackIterator struct {
 	top        bool
 	atend      bool
 	frame      Stackframe
-	dbp        *Process
+	bi         *BinaryInfo
+	mem        memoryReadWriter
 	err        error
 
 	stackBarrierPC uint64
@@ -129,12 +130,12 @@ type savedLR struct {
 	val uint64
 }
 
-func newStackIterator(dbp *Process, pc, sp, bp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
-	stackBarrierFunc := dbp.bi.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
+func newStackIterator(bi *BinaryInfo, mem memoryReadWriter, pc, sp, bp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
+	stackBarrierFunc := bi.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
 		stackBarrierPC = stackBarrierFunc.Entry
-		fn := dbp.bi.goSymTable.PCToFunc(pc)
+		fn := bi.goSymTable.PCToFunc(pc)
 		if fn != nil && fn.Name == runtimeStackBarrier {
 			// We caught the goroutine as it's executing the stack barrier, we must
 			// determine whether or not g.stackPos has already been incremented or not.
@@ -149,7 +150,7 @@ func newStackIterator(dbp *Process, pc, sp, bp uint64, stkbar []savedLR, stkbarP
 		}
 		stkbar = stkbar[stkbarPos:]
 	}
-	return &stackIterator{pc: pc, sp: sp, bp: bp, top: true, dbp: dbp, err: nil, atend: false, stackBarrierPC: stackBarrierPC, stkbar: stkbar}
+	return &stackIterator{pc: pc, sp: sp, bp: bp, top: true, bi: bi, mem: mem, err: nil, atend: false, stackBarrierPC: stackBarrierPC, stkbar: stkbar}
 }
 
 // Next points the iterator to the next stack frame.
@@ -157,7 +158,7 @@ func (it *stackIterator) Next() bool {
 	if it.err != nil || it.atend {
 		return false
 	}
-	it.frame, it.err = it.dbp.frameInfo(it.pc, it.sp, it.bp, it.top)
+	it.frame, it.err = it.frameInfo(it.pc, it.sp, it.bp, it.top)
 	if it.err != nil {
 		if _, nofde := it.err.(*frame.NoFDEForPCError); nofde && !it.top {
 			it.frame = Stackframe{Current: Location{PC: it.pc, File: "?", Line: -1}, Call: Location{PC: it.pc, File: "?", Line: -1}, CFA: 0, Ret: 0}
@@ -188,7 +189,7 @@ func (it *stackIterator) Next() bool {
 	it.top = false
 	it.pc = it.frame.Ret
 	it.sp = uint64(it.frame.CFA)
-	it.bp, _ = readUintRaw(it.dbp.currentThread, uintptr(it.bp), int64(it.dbp.bi.arch.PtrSize()))
+	it.bp, _ = readUintRaw(it.mem, uintptr(it.bp), int64(it.bi.arch.PtrSize()))
 	return true
 }
 
@@ -205,37 +206,37 @@ func (it *stackIterator) Err() error {
 	return it.err
 }
 
-func (dbp *Process) frameInfo(pc, sp, bp uint64, top bool) (Stackframe, error) {
-	fde, err := dbp.bi.frameEntries.FDEForPC(pc)
+func (it *stackIterator) frameInfo(pc, sp, bp uint64, top bool) (Stackframe, error) {
+	fde, err := it.bi.frameEntries.FDEForPC(pc)
 	if _, nofde := err.(*frame.NoFDEForPCError); nofde {
 		if bp == 0 {
 			return Stackframe{}, err
 		}
 		// When no FDE is available attempt to use BP instead
-		retaddr := uintptr(int(bp) + dbp.bi.arch.PtrSize())
-		cfa := int64(retaddr) + int64(dbp.bi.arch.PtrSize())
-		return dbp.newStackframe(pc, cfa, retaddr, nil, top)
+		retaddr := uintptr(int(bp) + it.bi.arch.PtrSize())
+		cfa := int64(retaddr) + int64(it.bi.arch.PtrSize())
+		return it.newStackframe(pc, cfa, retaddr, nil, top)
 	}
 
 	spoffset, retoffset := fde.ReturnAddressOffset(pc)
 	cfa := int64(sp) + spoffset
 
 	retaddr := uintptr(cfa + retoffset)
-	return dbp.newStackframe(pc, cfa, retaddr, fde, top)
+	return it.newStackframe(pc, cfa, retaddr, fde, top)
 }
 
-func (dbp *Process) newStackframe(pc uint64, cfa int64, retaddr uintptr, fde *frame.FrameDescriptionEntry, top bool) (Stackframe, error) {
+func (it *stackIterator) newStackframe(pc uint64, cfa int64, retaddr uintptr, fde *frame.FrameDescriptionEntry, top bool) (Stackframe, error) {
 	if retaddr == 0 {
 		return Stackframe{}, NullAddrError{}
 	}
-	f, l, fn := dbp.bi.PCToLine(pc)
-	ret, err := readUintRaw(dbp.currentThread, retaddr, int64(dbp.bi.arch.PtrSize()))
+	f, l, fn := it.bi.PCToLine(pc)
+	ret, err := readUintRaw(it.mem, retaddr, int64(it.bi.arch.PtrSize()))
 	if err != nil {
 		return Stackframe{}, err
 	}
 	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: ret, addrret: uint64(retaddr)}
 	if !top {
-		r.Call.File, r.Call.Line, r.Call.Fn = dbp.bi.PCToLine(pc - 1)
+		r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(pc - 1)
 		r.Call.PC = r.Current.PC
 	} else {
 		r.Call = r.Current

@@ -54,7 +54,7 @@ func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
 }
 
 func evalVariable(p *proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
-	scope, err := p.CurrentThread().Scope()
+	scope, err := p.CurrentThread().GoroutineScope()
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (tc *varTest) alternateVarTest() varTest {
 }
 
 func setVariable(p *proc.Process, symbol, value string) error {
-	scope, err := p.CurrentThread().Scope()
+	scope, err := p.CurrentThread().GoroutineScope()
 	if err != nil {
 		return err
 	}
@@ -348,7 +348,7 @@ func TestLocalVariables(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			scope, err := p.CurrentThread().Scope()
+			scope, err := p.CurrentThread().GoroutineScope()
 			assertNoError(err, t, "AsScope()")
 			vars, err := tc.fn(scope, pnormalLoadConfig)
 			assertNoError(err, t, "LocalVariables() returned an error")

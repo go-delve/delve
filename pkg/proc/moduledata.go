@@ -11,9 +11,9 @@ type moduleData struct {
 	typemapVar    *Variable
 }
 
-func (bi *BinaryInfo) loadModuleData(thread *Thread) (err error) {
+func loadModuleData(bi *BinaryInfo, mem memoryReadWriter) (err error) {
 	bi.loadModuleDataOnce.Do(func() {
-		scope, _ := thread.Scope()
+		scope := &EvalScope{0, 0, mem, nil, bi}
 		var md *Variable
 		md, err = scope.packageVarAddr("runtime.firstmoduledata")
 		if err != nil {
@@ -56,10 +56,9 @@ func (bi *BinaryInfo) loadModuleData(thread *Thread) (err error) {
 	return
 }
 
-func (bi *BinaryInfo) resolveTypeOff(typeAddr uintptr, off uintptr, thread *Thread) (*Variable, error) {
-	var mem memoryReadWriter = thread
+func resolveTypeOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem memoryReadWriter) (*Variable, error) {
 	// See runtime.(*_type).typeOff in $GOROOT/src/runtime/type.go
-	if err := bi.loadModuleData(thread); err != nil {
+	if err := loadModuleData(bi, mem); err != nil {
 		return nil, err
 	}
 
@@ -76,7 +75,7 @@ func (bi *BinaryInfo) resolveTypeOff(typeAddr uintptr, off uintptr, thread *Thre
 	}
 
 	if md == nil {
-		v, err := bi.reflectOffsMapAccess(off, thread)
+		v, err := reflectOffsMapAccess(bi, off, mem)
 		if err != nil {
 			return nil, err
 		}
@@ -91,23 +90,22 @@ func (bi *BinaryInfo) resolveTypeOff(typeAddr uintptr, off uintptr, thread *Thre
 
 	res := md.types + uintptr(off)
 
-	return newVariable("", res, rtyp, thread.dbp, thread), nil
+	return newVariable("", res, rtyp, bi, mem), nil
 }
 
-func (bi *BinaryInfo) resolveNameOff(typeAddr uintptr, off uintptr, thread *Thread) (name, tag string, pkgpathoff int32, err error) {
-	var mem memoryReadWriter = thread
+func resolveNameOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem memoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	// See runtime.resolveNameOff in $GOROOT/src/runtime/type.go
-	if err = bi.loadModuleData(thread); err != nil {
+	if err = loadModuleData(bi, mem); err != nil {
 		return "", "", 0, err
 	}
 
 	for _, md := range bi.moduleData {
 		if typeAddr >= md.types && typeAddr < md.etypes {
-			return bi.loadName(md.types+off, mem)
+			return loadName(bi, md.types+off, mem)
 		}
 	}
 
-	v, err := bi.reflectOffsMapAccess(off, thread)
+	v, err := reflectOffsMapAccess(bi, off, mem)
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -117,11 +115,11 @@ func (bi *BinaryInfo) resolveNameOff(typeAddr uintptr, off uintptr, thread *Thre
 		return "", "", 0, resv.Unreadable
 	}
 
-	return bi.loadName(resv.Addr, mem)
+	return loadName(bi, resv.Addr, mem)
 }
 
-func (bi *BinaryInfo) reflectOffsMapAccess(off uintptr, thread *Thread) (*Variable, error) {
-	scope, _ := thread.Scope()
+func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem memoryReadWriter) (*Variable, error) {
+	scope := &EvalScope{0, 0, mem, nil, bi}
 	reflectOffs, err := scope.packageVarAddr("runtime.reflectOffs")
 	if err != nil {
 		return nil, err
@@ -132,7 +130,7 @@ func (bi *BinaryInfo) reflectOffsMapAccess(off uintptr, thread *Thread) (*Variab
 		return nil, err
 	}
 
-	return reflectOffsm.mapAccess(newConstant(constant.MakeUint64(uint64(off)), thread))
+	return reflectOffsm.mapAccess(newConstant(constant.MakeUint64(uint64(off)), mem))
 }
 
 const (
@@ -142,7 +140,7 @@ const (
 	nameflagHasPkg   = 1 << 2
 )
 
-func (bi *BinaryInfo) loadName(addr uintptr, mem memoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
+func loadName(bi *BinaryInfo, addr uintptr, mem memoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	off := addr
 	namedata, err := mem.readMemory(off, 3)
 	off += 3

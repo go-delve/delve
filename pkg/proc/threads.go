@@ -168,13 +168,16 @@ func (dbp *Process) next(stepInto bool) error {
 
 	csource := filepath.Ext(topframe.Current.File) != ".go"
 	thread := dbp.currentThread
-	currentGoroutine := false
+	var regs Registers
 	if dbp.selectedGoroutine != nil && dbp.selectedGoroutine.thread != nil {
 		thread = dbp.selectedGoroutine.thread
-		currentGoroutine = true
+		regs, err = thread.Registers(false)
+		if err != nil {
+			return err
+		}
 	}
 
-	text, err := thread.Disassemble(topframe.FDE.Begin(), topframe.FDE.End(), currentGoroutine)
+	text, err := Disassemble(thread, regs, dbp.breakpoints, &dbp.bi, topframe.FDE.Begin(), topframe.FDE.End())
 	if err != nil && stepInto {
 		return err
 	}
@@ -429,8 +432,8 @@ func (thread *Thread) Halt() (err error) {
 	return
 }
 
-// Scope returns the current EvalScope for this thread.
-func (thread *Thread) Scope() (*EvalScope, error) {
+// ThreadScope returns an EvalScope for this thread.
+func (thread *Thread) ThreadScope() (*EvalScope, error) {
 	locations, err := thread.Stacktrace(0)
 	if err != nil {
 		return nil, err
@@ -438,7 +441,23 @@ func (thread *Thread) Scope() (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return locations[0].Scope(thread), nil
+	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, nil, thread.dbp.BinInfo()}, nil
+}
+
+// GoroutineScope returns an EvalScope for the goroutine running on this thread.
+func (thread *Thread) GoroutineScope() (*EvalScope, error) {
+	locations, err := thread.Stacktrace(0)
+	if err != nil {
+		return nil, err
+	}
+	if len(locations) < 1 {
+		return nil, errors.New("could not decode first frame")
+	}
+	gvar, err := thread.getGVariable()
+	if err != nil {
+		return nil, err
+	}
+	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, gvar, thread.dbp.BinInfo()}, nil
 }
 
 // SetCurrentBreakpoint sets the current breakpoint that this

@@ -130,7 +130,7 @@ func (bp *Breakpoint) checkCondition(thread *Thread) (bool, error) {
 			}
 		}
 	}
-	scope, err := thread.Scope()
+	scope, err := thread.GoroutineScope()
 	if err != nil {
 		return true, err
 	}
