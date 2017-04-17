@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/davecheney/profile"
 	"github.com/derekparker/delve/pkg/dwarf/frame"
+	"github.com/pkg/profile"
 )
 
 func BenchmarkParse(b *testing.B) {
