@@ -4,7 +4,7 @@ import (
 	"debug/gosym"
 	"encoding/binary"
 
-	"rsc.io/x86/x86asm"
+	"golang.org/x/arch/x86/x86asm"
 )
 
 var maxInstructionLength uint64 = 15
