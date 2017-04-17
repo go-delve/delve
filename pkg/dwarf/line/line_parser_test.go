@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davecheney/profile"
+	"github.com/pkg/profile"
 )
 
 func grabDebugLineSection(p string, t *testing.T) []byte {

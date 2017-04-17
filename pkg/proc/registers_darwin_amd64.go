@@ -5,8 +5,9 @@ import "C"
 import (
 	"encoding/binary"
 	"fmt"
-	"rsc.io/x86/x86asm"
 	"unsafe"
+
+	"golang.org/x/arch/x86/x86asm"
 )
 
 // Regs represents CPU registers on an AMD64 processor.

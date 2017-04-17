@@ -3,8 +3,7 @@ package proc
 import (
 	"fmt"
 
-	"rsc.io/x86/x86asm"
-
+	"golang.org/x/arch/x86/x86asm"
 	sys "golang.org/x/sys/unix"
 )
 
