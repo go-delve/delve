@@ -8,6 +8,7 @@ Many of the most widely used Go projects are built using Cobra including:
 * [Hugo](http://gohugo.io)
 * [rkt](https://github.com/coreos/rkt)
 * [etcd](https://github.com/coreos/etcd)
+* [Docker](https://github.com/docker/docker)
 * [Docker (distribution)](https://github.com/docker/distribution)
 * [OpenShift](https://www.openshift.com/)
 * [Delve](https://github.com/derekparker/delve)
@@ -22,6 +23,7 @@ Many of the most widely used Go projects are built using Cobra including:
 
 [![Build Status](https://travis-ci.org/spf13/cobra.svg "Travis CI status")](https://travis-ci.org/spf13/cobra)
 [![CircleCI status](https://circleci.com/gh/spf13/cobra.png?circle-token=:circle-token "CircleCI status")](https://circleci.com/gh/spf13/cobra)
+[![GoDoc](https://godoc.org/github.com/spf13/cobra?status.svg)](https://godoc.org/github.com/spf13/cobra) 
 
 ![cobra](https://cloud.githubusercontent.com/assets/173412/10911369/84832a8e-8212-11e5-9f82-cc96660a4794.gif)
 
@@ -156,12 +158,17 @@ In a Cobra app, typically the main.go file is very bare. It serves, one purpose,
 ```go
 package main
 
-import "{pathToYourApp}/cmd"
+import (
+	"fmt"
+	"os"
+
+	"{pathToYourApp}/cmd"
+)
 
 func main() {
 	if err := cmd.RootCmd.Execute(); err != nil {
 		fmt.Println(err)
-		os.Exit(-1)
+		os.Exit(1)
 	}
 }
 ```
@@ -170,6 +177,12 @@ func main() {
 
 Cobra provides its own program that will create your application and add any
 commands you want. It's the easiest way to incorporate Cobra into your application.
+
+In order to use the cobra command, compile it using the following command:
+
+    > go install github.com/spf13/cobra/cobra
+
+This will create the cobra executable under your go path bin directory!
 
 ### cobra init
 
@@ -226,11 +239,25 @@ The cobra generator will be easier to use if you provide a simple configuration
 file which will help you eliminate providing a bunch of repeated information in
 flags over and over.
 
-an example ~/.cobra.yaml file:
+An example ~/.cobra.yaml file:
 
 ```yaml
 author: Steve Francia <spf@spf13.com>
 license: MIT
+```
+
+You can specify no license by setting `license` to `none` or you can specify
+a custom license:
+
+```yaml
+license:
+  header: This file is part of {{ .appName }}.
+  text: |
+    {{ .copyright }}
+
+    This is my license. There are many like it, but this one is mine.
+    My license is my best friend. It is my life. I must master it as I must
+    master my life.  
 ```
 
 ## Manually implementing Cobra
@@ -292,12 +319,17 @@ In a Cobra app, typically the main.go file is very bare. It serves, one purpose,
 ```go
 package main
 
-import "{pathToYourApp}/cmd"
+import (
+	"fmt"
+	"os"
+
+	"{pathToYourApp}/cmd"
+)
 
 func main() {
 	if err := cmd.RootCmd.Execute(); err != nil {
 		fmt.Println(err)
-		os.Exit(-1)
+		os.Exit(1)
 	}
 }
 ```
@@ -316,6 +348,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"fmt"
 )
 
 func init() {
@@ -642,7 +675,7 @@ command.SetUsageTemplate(s string)
 
 ## PreRun or PostRun Hooks
 
-It is possible to run functions before or after the main `Run` function of your command. The `PersistentPreRun` and `PreRun` functions will be executed before `Run`. `PersistentPostRun` and `PostRun` will be executed after `Run`.  The `Persistent*Run` functions will be inherrited by children if they do not declare their own.  These function are run in the following order:
+It is possible to run functions before or after the main `Run` function of your command. The `PersistentPreRun` and `PreRun` functions will be executed before `Run`. `PersistentPostRun` and `PostRun` will be executed after `Run`.  The `Persistent*Run` functions will be inherited by children if they do not declare their own.  These functions are run in the following order:
 
 - `PersistentPreRun`
 - `PreRun`
@@ -713,13 +746,18 @@ func main() {
 
 ## Alternative Error Handling
 
-Cobra also has functions where the return signature is an error. This allows for errors to bubble up to the top, providing a way to handle the errors in one location. The current list of functions that return an error is:
+Cobra also has functions where the return signature is an error. This allows for errors to bubble up to the top,
+providing a way to handle the errors in one location. The current list of functions that return an error is:
 
 * PersistentPreRunE
 * PreRunE
 * RunE
 * PostRunE
 * PersistentPostRunE
+
+If you would like to silence the default `error` and `usage` output in favor of your own, you can set `SilenceUsage`
+and `SilenceErrors` to `true` on the command. A child command respects these flags if they are set on the parent
+command.
 
 **Example Usage using RunE:**
 

@@ -1,74 +1,65 @@
 {
 	"ImportPath": "github.com/derekparker/delve",
-	"GoVersion": "go1.7",
-	"GodepVersion": "v74",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
 	"Packages": [
 		"github.com/derekparker/delve/cmd/dlv",
 		"github.com/derekparker/delve/cmd/dlv/cmds",
-		"github.com/derekparker/delve/config",
-		"github.com/derekparker/delve/dwarf/frame",
-		"github.com/derekparker/delve/dwarf/line",
-		"github.com/derekparker/delve/dwarf/op",
-		"github.com/derekparker/delve/dwarf/reader",
-		"github.com/derekparker/delve/dwarf/util",
-		"github.com/derekparker/delve/proc",
-		"github.com/derekparker/delve/proc/test",
-		"github.com/derekparker/delve/scripts",
+		"github.com/derekparker/delve/pkg/config",
+		"github.com/derekparker/delve/pkg/dwarf/frame",
+		"github.com/derekparker/delve/pkg/dwarf/line",
+		"github.com/derekparker/delve/pkg/dwarf/op",
+		"github.com/derekparker/delve/pkg/dwarf/reader",
+		"github.com/derekparker/delve/pkg/dwarf/util",
+		"github.com/derekparker/delve/pkg/proc",
+		"github.com/derekparker/delve/pkg/proc/test",
+		"github.com/derekparker/delve/pkg/target",
+		"github.com/derekparker/delve/pkg/terminal",
+		"github.com/derekparker/delve/pkg/version",
 		"github.com/derekparker/delve/service",
 		"github.com/derekparker/delve/service/api",
 		"github.com/derekparker/delve/service/debugger",
+		"github.com/derekparker/delve/service/rpc1",
+		"github.com/derekparker/delve/service/rpc2",
 		"github.com/derekparker/delve/service/rpccommon",
 		"github.com/derekparker/delve/service/test",
-		"github.com/derekparker/delve/terminal",
-		"github.com/derekparker/delve/version"
+		"github.com/derekparker/delve/service/test/cmd"
 	],
 	"Deps": [
-		{
-			"ImportPath": "github.com/cpuguy83/go-md2man/md2man",
-			"Comment": "v1.0.4",
-			"Rev": "71acacd42f85e5e82f70a55327789582a5200a90"
-		},
-		{
-			"ImportPath": "github.com/davecheney/profile",
-			"Rev": "c29d1a1565bca9fbeed5eed0e5d52ba78469a16b"
-		},
 		{
 			"ImportPath": "github.com/inconshreveable/mousetrap",
 			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
 		},
 		{
 			"ImportPath": "github.com/mattn/go-colorable",
-			"Rev": "9cbef7c35391cca05f15f8181dc0b18bc9736dbb"
+			"Comment": "v0.0.7-24-gded68f7",
+			"Rev": "ded68f7a9561c023e790de24279db7ebf473ea80"
 		},
 		{
 			"ImportPath": "github.com/mattn/go-isatty",
-			"Comment": "v0.0.1",
-			"Rev": "3a115632dcd687f9c8cd01679c83a06a0e21c1f3"
+			"Comment": "v0.0.2",
+			"Rev": "fc9e8d8ef48496124e79ae0df75490096eccf6fe"
 		},
 		{
 			"ImportPath": "github.com/peterh/liner",
-			"Rev": "8975875355a81d612fafb9f5a6037bdcc2d9b073"
+			"Rev": "88609521dc4b6c858fd4c98b628147da928ce4ac"
 		},
 		{
-			"ImportPath": "github.com/russross/blackfriday",
-			"Comment": "v1.3",
-			"Rev": "8cec3a854e68dba10faabbe31c089abf4a3e57a6"
-		},
-		{
-			"ImportPath": "github.com/shurcooL/sanitized_anchor_name",
-			"Rev": "244f5ac324cb97e1987ef901a0081a77bfd8e845"
+			"ImportPath": "github.com/pkg/profile",
+			"Comment": "v1.2.0-9-g06b9068",
+			"Rev": "06b906832ed0e32302a942b63b6c5f8359034d26"
 		},
 		{
 			"ImportPath": "github.com/spf13/cobra",
-			"Rev": "65a708cee0a4424f4e353d031ce440643e312f92"
-		},
-		{
-			"ImportPath": "github.com/spf13/cobra/doc",
-			"Rev": "65a708cee0a4424f4e353d031ce440643e312f92"
+			"Rev": "b6cb3958937245a12d4d7728be080a6c758f4136"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
-			"Rev": "b084184666e02084b8ccb9b704bf0d79c466eb1d"
+			"Rev": "9e4c21054fa135711121b557932b1887f2405d92"
+		},
+		{
+			"ImportPath": "golang.org/x/arch/x86/x86asm",
+			"Rev": "58ea1a195b1a354bcd572b7ef6bbbd264dc63732"
 		},
 		{
 			"ImportPath": "golang.org/x/debug/dwarf",
@@ -84,19 +75,15 @@
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "eb2c74142fd19a79b3f237334c7384d5167b1b46"
+			"Rev": "f3918c30c5c2cb527c0b071a27c35120a6c0719a"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/windows",
-			"Rev": "eb2c74142fd19a79b3f237334c7384d5167b1b46"
+			"Rev": "f3918c30c5c2cb527c0b071a27c35120a6c0719a"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
-			"Rev": "53feefa2559fb8dfa8d81baad31be332c97d6c77"
-		},
-		{
-			"ImportPath": "rsc.io/x86/x86asm",
-			"Rev": "01d8f0379593fd888e08a4c4057d69f5765ab2e4"
+			"Rev": "cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b"
 		}
 	]
 }
