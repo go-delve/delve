@@ -841,8 +841,12 @@ func (p *GdbserverProcess) setCurrentBreakpoints() error {
 	return nil
 }
 
-func (t *GdbserverThread) readMemory(addr uintptr, size int) (data []byte, err error) {
-	return t.p.conn.readMemory(addr, size)
+func (t *GdbserverThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+	err = t.p.conn.readMemory(data, addr)
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
 }
 
 func (t *GdbserverThread) writeMemory(addr uintptr, data []byte) (written int, err error) {
@@ -1028,7 +1032,8 @@ func (t *GdbserverThread) reloadGAtPC() error {
 		}
 	}
 
-	savedcode, err := t.readMemory(uintptr(pc), len(movinstr))
+	savedcode := make([]byte, len(movinstr))
+	_, err := t.ReadMemory(savedcode, uintptr(pc))
 	if err != nil {
 		return err
 	}

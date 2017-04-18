@@ -119,20 +119,19 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
 	return len(data), nil
 }
 
-func (t *Thread) readMemory(addr uintptr, size int) ([]byte, error) {
-	if size == 0 {
-		return nil, nil
+func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
+	if len(buf) == 0 {
+		return 0, nil
 	}
 	var (
-		buf    = make([]byte, size)
 		vmData = unsafe.Pointer(&buf[0])
 		vmAddr = C.mach_vm_address_t(addr)
-		length = C.mach_msg_type_number_t(size)
+		length = C.mach_msg_type_number_t(len(buf))
 	)
 
 	ret := C.read_memory(t.dbp.os.task, vmAddr, vmData, length)
 	if ret < 0 {
-		return nil, fmt.Errorf("could not read memory")
+		return 0, fmt.Errorf("could not read memory")
 	}
-	return buf, nil
+	return len(buf), nil
 }

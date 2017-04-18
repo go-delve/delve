@@ -45,7 +45,8 @@ func Disassemble(dbp DisassembleInfo, g *G, startPC, endPC uint64) ([]AsmInstruc
 }
 
 func disassemble(memrw memoryReadWriter, regs Registers, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
-	mem, err := memrw.readMemory(uintptr(startPC), int(endPC-startPC))
+	mem := make([]byte, int(endPC-startPC))
+	_, err := memrw.ReadMemory(mem, uintptr(startPC))
 	if err != nil {
 		return nil, err
 	}

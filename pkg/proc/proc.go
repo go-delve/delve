@@ -282,7 +282,8 @@ func (dbp *Process) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Exp
 	}
 
 	thread := dbp.threads[tid]
-	originalData, err := thread.readMemory(uintptr(addr), dbp.bi.arch.BreakpointSize())
+	originalData := make([]byte, dbp.bi.arch.BreakpointSize())
+	_, err := thread.ReadMemory(originalData, uintptr(addr))
 	if err != nil {
 		return nil, err
 	}
@@ -707,7 +708,8 @@ func GoroutinesInfo(dbp EvalScopeConvertible) ([]*G, error) {
 	if err != nil {
 		return nil, err
 	}
-	allglenBytes, err := dbp.CurrentThread().readMemory(uintptr(addr), 8)
+	allglenBytes := make([]byte, 8)
+	_, err = dbp.CurrentThread().ReadMemory(allglenBytes, uintptr(addr))
 	if err != nil {
 		return nil, err
 	}
@@ -722,7 +724,8 @@ func GoroutinesInfo(dbp EvalScopeConvertible) ([]*G, error) {
 			return nil, err
 		}
 	}
-	faddr, err := dbp.CurrentThread().readMemory(uintptr(allgentryaddr), dbp.BinInfo().arch.PtrSize())
+	faddr := make([]byte, dbp.BinInfo().arch.PtrSize())
+	_, err = dbp.CurrentThread().ReadMemory(faddr, uintptr(allgentryaddr))
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {
