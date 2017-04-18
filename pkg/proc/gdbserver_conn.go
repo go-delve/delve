@@ -778,8 +778,9 @@ func (conn *gdbConn) appendThreadSelector(threadID string) {
 }
 
 // executes 'm' (read memory) command
-func (conn *gdbConn) readMemory(addr uintptr, size int) (data []byte, err error) {
-	data = make([]byte, 0, size)
+func (conn *gdbConn) readMemory(data []byte, addr uintptr) error {
+	size := len(data)
+	data = data[:0]
 
 	for size > 0 {
 		conn.outbuf.Reset()
@@ -794,7 +795,7 @@ func (conn *gdbConn) readMemory(addr uintptr, size int) (data []byte, err error)
 		fmt.Fprintf(&conn.outbuf, "$m%x,%x", addr+uintptr(len(data)), sz)
 		resp, err := conn.exec(conn.outbuf.Bytes(), "memory read")
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		for i := 0; i < len(resp); i += 2 {
@@ -802,7 +803,7 @@ func (conn *gdbConn) readMemory(addr uintptr, size int) (data []byte, err error)
 			data = append(data, uint8(n))
 		}
 	}
-	return data, nil
+	return nil
 }
 
 // executes 'M' (write memory) command

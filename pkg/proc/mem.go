@@ -2,8 +2,17 @@ package proc
 
 const cacheEnabled = true
 
+// MemoryReader is like io.ReaderAt, but the offset is a uintptr so that it
+// can address all of 64-bit memory.
+// Redundant with memoryReadWriter but more easily suited to working with
+// the standard io package.
+type MemoryReader interface {
+	// ReadMemory is just like io.ReaderAt.ReadAt.
+	ReadMemory(buf []byte, addr uintptr) (n int, err error)
+}
+
 type memoryReadWriter interface {
-	readMemory(addr uintptr, size int) (data []byte, err error)
+	MemoryReader
 	writeMemory(addr uintptr, data []byte) (written int, err error)
 }
 
@@ -17,14 +26,13 @@ func (m *memCache) contains(addr uintptr, size int) bool {
 	return addr >= m.cacheAddr && addr <= (m.cacheAddr+uintptr(len(m.cache)-size))
 }
 
-func (m *memCache) readMemory(addr uintptr, size int) (data []byte, err error) {
-	if m.contains(addr, size) {
-		d := make([]byte, size)
-		copy(d, m.cache[addr-m.cacheAddr:])
-		return d, nil
+func (m *memCache) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+	if m.contains(addr, len(data)) {
+		copy(data, m.cache[addr-m.cacheAddr:])
+		return len(data), nil
 	}
 
-	return m.mem.readMemory(addr, size)
+	return m.mem.ReadMemory(data, addr)
 }
 
 func (m *memCache) writeMemory(addr uintptr, data []byte) (written int, err error) {
@@ -42,14 +50,16 @@ func cacheMemory(mem memoryReadWriter, addr uintptr, size int) memoryReadWriter 
 		if cacheMem.contains(addr, size) {
 			return mem
 		} else {
-			cache, err := cacheMem.mem.readMemory(addr, size)
+			cache := make([]byte, size)
+			_, err := cacheMem.mem.ReadMemory(cache, addr)
 			if err != nil {
 				return mem
 			}
 			return &memCache{addr, cache, mem}
 		}
 	}
-	cache, err := mem.readMemory(addr, size)
+	cache := make([]byte, size)
+	_, err := mem.ReadMemory(cache, addr)
 	if err != nil {
 		return mem
 	}

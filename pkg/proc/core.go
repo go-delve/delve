@@ -9,15 +9,6 @@ import (
 	"sync"
 )
 
-// MemoryReader is like io.ReaderAt, but the offset is a uintptr so that it
-// can address all of 64-bit memory.
-// Redundant with memoryReadWriter but more easily suited to working with
-// the standard io package.
-type MemoryReader interface {
-	// ReadMemory is just like io.ReaderAt.ReadAt.
-	ReadMemory(buf []byte, addr uintptr) (n int, err error)
-}
-
 // A SplicedMemory represents a memory space formed from multiple regions,
 // each of which may override previously regions. For example, in the following
 // core, the program text was loaded at 0x400000:
@@ -203,13 +194,12 @@ func (p *CoreProcess) BinInfo() *BinaryInfo {
 	return &p.bi
 }
 
-func (thread *CoreThread) readMemory(addr uintptr, size int) (data []byte, err error) {
-	data = make([]byte, size)
-	n, err := thread.p.core.ReadMemory(data, addr)
+func (thread *CoreThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+	n, err = thread.p.core.ReadMemory(data, addr)
 	if err == nil && n != len(data) {
 		err = ErrShortRead
 	}
-	return data, err
+	return n, err
 }
 
 func (thread *CoreThread) writeMemory(addr uintptr, data []byte) (int, error) {

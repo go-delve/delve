@@ -142,7 +142,8 @@ const (
 
 func loadName(bi *BinaryInfo, addr uintptr, mem memoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	off := addr
-	namedata, err := mem.readMemory(off, 3)
+	namedata := make([]byte, 3)
+	_, err = mem.ReadMemory(namedata, off)
 	off += 3
 	if err != nil {
 		return "", "", 0, err
@@ -150,7 +151,8 @@ func loadName(bi *BinaryInfo, addr uintptr, mem memoryReadWriter) (name, tag str
 
 	namelen := uint16(namedata[1]<<8) | uint16(namedata[2])
 
-	rawstr, err := mem.readMemory(off, int(namelen))
+	rawstr := make([]byte, int(namelen))
+	_, err = mem.ReadMemory(rawstr, off)
 	off += uintptr(namelen)
 	if err != nil {
 		return "", "", 0, err
@@ -159,14 +161,16 @@ func loadName(bi *BinaryInfo, addr uintptr, mem memoryReadWriter) (name, tag str
 	name = string(rawstr)
 
 	if namedata[0]&nameflagHasTag != 0 {
-		taglendata, err := mem.readMemory(off, 2)
+		taglendata := make([]byte, 2)
+		_, err = mem.ReadMemory(taglendata, off)
 		off += 2
 		if err != nil {
 			return "", "", 0, err
 		}
 		taglen := uint16(taglendata[0]<<8) | uint16(taglendata[1])
 
-		rawstr, err := mem.readMemory(off, int(taglen))
+		rawstr := make([]byte, int(taglen))
+		_, err = mem.ReadMemory(rawstr, off)
 		off += uintptr(taglen)
 		if err != nil {
 			return "", "", 0, err
@@ -176,7 +180,8 @@ func loadName(bi *BinaryInfo, addr uintptr, mem memoryReadWriter) (name, tag str
 	}
 
 	if namedata[0]&nameflagHasPkg != 0 {
-		pkgdata, err := mem.readMemory(off, 4)
+		pkgdata := make([]byte, 4)
+		_, err = mem.ReadMemory(pkgdata, off)
 		if err != nil {
 			return "", "", 0, err
 		}

@@ -96,7 +96,8 @@ func resolveCallArg(inst *ArchInst, currentGoroutine bool, regs Registers, mem m
 		}
 		addr := uintptr(int64(base) + int64(index*uint64(arg.Scale)) + arg.Disp)
 		//TODO: should this always be 64 bits instead of inst.MemBytes?
-		pcbytes, err := mem.readMemory(addr, inst.MemBytes)
+		pcbytes := make([]byte, inst.MemBytes)
+		_, err := mem.ReadMemory(pcbytes, addr)
 		if err != nil {
 			return nil
 		}

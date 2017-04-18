@@ -135,7 +135,9 @@ func getRegisters(p IProcess, t *testing.T) Registers {
 }
 
 func dataAtAddr(thread memoryReadWriter, addr uint64) ([]byte, error) {
-	return thread.readMemory(uintptr(addr), 1)
+	data := make([]byte, 1)
+	_, err := thread.ReadMemory(data, uintptr(addr))
+	return data, err
 }
 
 func assertNoError(err error, t testing.TB, s string) {

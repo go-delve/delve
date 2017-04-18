@@ -367,7 +367,8 @@ func (gvar *Variable) parseG() (*G, error) {
 	_, deref := gvar.RealType.(*dwarf.PtrType)
 
 	if deref {
-		gaddrbytes, err := mem.readMemory(uintptr(gaddr), gvar.bi.arch.PtrSize())
+		gaddrbytes := make([]byte, gvar.bi.arch.PtrSize())
+		_, err := mem.ReadMemory(gaddrbytes, uintptr(gaddr))
 		if err != nil {
 			return nil, fmt.Errorf("error derefing *G %s", err)
 		}
@@ -886,7 +887,8 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		v.Value = constant.MakeUint64(val)
 
 	case reflect.Bool:
-		val, err := v.mem.readMemory(v.Addr, 1)
+		val := make([]byte, 1)
+		_, err := v.mem.ReadMemory(val, v.Addr)
 		v.Unreadable = err
 		if err == nil {
 			v.Value = constant.MakeBool(val[0] != 0)
@@ -946,7 +948,8 @@ func readStringInfo(mem memoryReadWriter, arch Arch, addr uintptr) (uintptr, int
 	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
 
 	// read len
-	val, err := mem.readMemory(addr+uintptr(arch.PtrSize()), arch.PtrSize())
+	val := make([]byte, arch.PtrSize())
+	_, err := mem.ReadMemory(val, addr+uintptr(arch.PtrSize()))
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string len %s", err)
 	}
@@ -956,7 +959,7 @@ func readStringInfo(mem memoryReadWriter, arch Arch, addr uintptr) (uintptr, int
 	}
 
 	// read addr
-	val, err = mem.readMemory(addr, arch.PtrSize())
+	_, err = mem.ReadMemory(val, addr)
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string pointer %s", err)
 	}
@@ -974,7 +977,8 @@ func readStringValue(mem memoryReadWriter, addr uintptr, strlen int64, cfg LoadC
 		count = int64(cfg.MaxStringLen)
 	}
 
-	val, err := mem.readMemory(addr, int(count))
+	val := make([]byte, int(count))
+	_, err := mem.ReadMemory(val, addr)
 	if err != nil {
 		return "", fmt.Errorf("could not read string at %#v due to %s", addr, err)
 	}
@@ -1102,7 +1106,8 @@ func (v *Variable) writeComplex(real, imag float64, size int64) error {
 func readIntRaw(mem memoryReadWriter, addr uintptr, size int64) (int64, error) {
 	var n int64
 
-	val, err := mem.readMemory(addr, int(size))
+	val := make([]byte, int(size))
+	_, err := mem.ReadMemory(val, addr)
 	if err != nil {
 		return 0, err
 	}
@@ -1142,7 +1147,8 @@ func (v *Variable) writeUint(value uint64, size int64) error {
 func readUintRaw(mem memoryReadWriter, addr uintptr, size int64) (uint64, error) {
 	var n uint64
 
-	val, err := mem.readMemory(addr, int(size))
+	val := make([]byte, int(size))
+	_, err := mem.ReadMemory(val, addr)
 	if err != nil {
 		return 0, err
 	}
@@ -1162,7 +1168,8 @@ func readUintRaw(mem memoryReadWriter, addr uintptr, size int64) (uint64, error)
 }
 
 func (v *Variable) readFloatRaw(size int64) (float64, error) {
-	val, err := v.mem.readMemory(v.Addr, int(size))
+	val := make([]byte, int(size))
+	_, err := v.mem.ReadMemory(val, v.Addr)
 	if err != nil {
 		return 0.0, err
 	}
@@ -1206,7 +1213,8 @@ func (v *Variable) writeBool(value bool) error {
 }
 
 func (v *Variable) readFunctionPtr() {
-	val, err := v.mem.readMemory(v.Addr, v.bi.arch.PtrSize())
+	val := make([]byte, v.bi.arch.PtrSize())
+	_, err := v.mem.ReadMemory(val, v.Addr)
 	if err != nil {
 		v.Unreadable = err
 		return
@@ -1220,7 +1228,7 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	val, err = v.mem.readMemory(fnaddr, v.bi.arch.PtrSize())
+	_, err = v.mem.ReadMemory(val, fnaddr)
 	if err != nil {
 		v.Unreadable = err
 		return

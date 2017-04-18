@@ -102,11 +102,10 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error)
 	return
 }
 
-func (t *Thread) readMemory(addr uintptr, size int) (data []byte, err error) {
-	if size == 0 {
+func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+	if len(data) == 0 {
 		return
 	}
-	data = make([]byte, size)
 	t.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
 	return
 }
