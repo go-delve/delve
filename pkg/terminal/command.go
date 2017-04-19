@@ -1028,7 +1028,16 @@ func parseStackArgs(argstr string) (int, bool, error) {
 }
 
 func listCommand(t *Term, ctx callContext, args string) error {
-	if ctx.Prefix == scopePrefix {
+	switch {
+	case len(args) == 0 && ctx.Prefix != scopePrefix:
+		state, err := t.client.GetState()
+		if err != nil {
+			return err
+		}
+		printcontext(t, state)
+		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+
+	case len(args) == 0 && ctx.Prefix == scopePrefix:
 		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, nil)
 		if err != nil {
 			return err
@@ -1037,28 +1046,31 @@ func listCommand(t *Term, ctx callContext, args string) error {
 			return fmt.Errorf("Frame %d does not exist in goroutine %d", ctx.Scope.Frame, ctx.Scope.GoroutineID)
 		}
 		loc := locs[ctx.Scope.Frame]
+		gid := ctx.Scope.GoroutineID
+		if gid < 0 {
+			state, err := t.client.GetState()
+			if err != nil {
+				return err
+			}
+			if state.SelectedGoroutine != nil {
+				gid = state.SelectedGoroutine.ID
+			}
+		}
+		fmt.Printf("Goroutine %d frame %d at %s:%d (PC: %#x)\n", gid, ctx.Scope.Frame, loc.File, loc.Line, loc.PC)
 		return printfile(t, loc.File, loc.Line, true)
-	}
 
-	if len(args) == 0 {
-		state, err := t.client.GetState()
+	default:
+		locs, err := t.client.FindLocation(ctx.Scope, args)
 		if err != nil {
 			return err
 		}
-		printcontext(t, state)
-		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
-		return nil
+		if len(locs) > 1 {
+			return debugger.AmbiguousLocationError{Location: args, CandidatesLocation: locs}
+		}
+		loc := locs[0]
+		fmt.Printf("Showing %s:%d (PC: %#x)\n", loc.File, loc.Line, loc.PC)
+		return printfile(t, loc.File, loc.Line, false)
 	}
-
-	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args)
-	if err != nil {
-		return err
-	}
-	if len(locs) > 1 {
-		return debugger.AmbiguousLocationError{Location: args, CandidatesLocation: locs}
-	}
-	printfile(t, locs[0].File, locs[0].Line, false)
-	return nil
 }
 
 func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
