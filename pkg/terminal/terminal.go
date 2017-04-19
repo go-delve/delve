@@ -128,8 +128,7 @@ func (t *Term) Run() (int, error) {
 			return 1, fmt.Errorf("Prompt for input failed.\n")
 		}
 
-		cmdstr, args := parseCommand(strings.TrimSpace(cmdstr))
-		if err := t.cmds.Call(cmdstr, args, t); err != nil {
+		if err := t.cmds.Call(cmdstr, t); err != nil {
 			if _, ok := err.(ExitRequestError); ok {
 				return t.handleExit()
 			}
@@ -240,12 +239,4 @@ func (t *Term) handleExit() (int, error) {
 		}
 	}
 	return 0, nil
-}
-
-func parseCommand(cmdstr string) (string, string) {
-	vals := strings.SplitN(cmdstr, " ", 2)
-	if len(vals) == 1 {
-		return vals[0], ""
-	}
-	return vals[0], strings.TrimSpace(vals[1])
 }

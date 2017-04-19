@@ -333,7 +333,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
 		defer t.Close()
-		err = cmds.Call("continue", "", t)
+		err = cmds.Call("continue", t)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
