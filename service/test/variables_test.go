@@ -1,4 +1,4 @@
-package servicetest
+package service_test
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/derekparker/delve/pkg/proc"
-	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/pkg/target"
+	"github.com/derekparker/delve/service/api"
 
 	protest "github.com/derekparker/delve/pkg/proc/test"
 )
