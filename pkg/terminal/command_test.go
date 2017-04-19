@@ -38,8 +38,6 @@ type FakeTerminal struct {
 }
 
 func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
-	cmdstr, args := parseCommand(cmdstr)
-
 	outfh, err := ioutil.TempFile("", "cmdtestout")
 	if err != nil {
 		ft.t.Fatalf("could not create temporary file: %v", err)
@@ -57,7 +55,7 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 		outstr = string(outbs)
 		os.Remove(outfh.Name())
 	}()
-	err = ft.cmds.Call(cmdstr, args, ft.Term)
+	err = ft.cmds.Call(cmdstr, ft.Term)
 	return
 }
 
@@ -305,7 +303,7 @@ func TestScopePrefix(t *testing.T) {
 			if fid < 0 {
 				t.Fatalf("Could not find frame for goroutine %d: %v", gid, stackOut)
 			}
-			term.AssertExec(fmt.Sprintf("goroutine %d frame %d locals", gid, fid), "(no locals)\n")
+			term.AssertExec(fmt.Sprintf("goroutine     %d    frame     %d     locals", gid, fid), "(no locals)\n")
 			argsOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d frame %d args", gid, fid)), "\n")
 			if len(argsOut) != 4 || argsOut[3] != "" {
 				t.Fatalf("Wrong number of arguments in goroutine %d frame %d: %v", gid, fid, argsOut)

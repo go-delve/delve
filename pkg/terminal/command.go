@@ -260,13 +260,19 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 	return noCmdAvailable
 }
 
-func (c *Commands) CallWithContext(cmdstr, args string, t *Term, ctx callContext) error {
-	return c.Find(cmdstr, ctx.Prefix)(t, ctx, args)
+func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) error {
+	vals := strings.SplitN(strings.TrimSpace(cmdstr), " ", 2)
+	cmdname := vals[0]
+	var args string
+	if len(vals) > 1 {
+		args = strings.TrimSpace(vals[1])
+	}
+	return c.Find(cmdname, ctx.Prefix)(t, ctx, args)
 }
 
-func (c *Commands) Call(cmdstr, args string, t *Term) error {
+func (c *Commands) Call(cmdstr string, t *Term) error {
 	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: 0}}
-	return c.CallWithContext(cmdstr, args, t, ctx)
+	return c.CallWithContext(cmdstr, t, ctx)
 }
 
 // Merge takes aliases defined in the config struct and merges them with the default aliases.
@@ -433,7 +439,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 }
 
 func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
-	args := strings.SplitN(argstr, " ", 3)
+	args := strings.SplitN(argstr, " ", 2)
 
 	if ctx.Prefix == onPrefix {
 		if len(args) != 1 || args[0] != "" {
@@ -443,8 +449,7 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 		return nil
 	}
 
-	switch len(args) {
-	case 1:
+	if len(args) == 1 {
 		if ctx.Prefix == scopePrefix {
 			return errors.New("no command passed to goroutine")
 		}
@@ -467,8 +472,6 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 
 		fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
 		return nil
-	case 2:
-		args = append(args, "")
 	}
 
 	var err error
@@ -477,17 +480,15 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 	if err != nil {
 		return err
 	}
-	return c.CallWithContext(args[1], args[2], t, ctx)
+	return c.CallWithContext(args[1], t, ctx)
 }
 
 func (c *Commands) frame(t *Term, ctx callContext, args string) error {
-	v := strings.SplitN(args, " ", 3)
+	v := strings.SplitN(args, " ", 2)
 
 	switch len(v) {
 	case 0, 1:
 		return errors.New("not enough arguments")
-	case 2:
-		v = append(v, "")
 	}
 
 	var err error
@@ -496,7 +497,7 @@ func (c *Commands) frame(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	return c.CallWithContext(v[1], v[2], t, ctx)
+	return c.CallWithContext(v[1], t, ctx)
 }
 
 func printscope(t *Term) error {
@@ -1328,14 +1329,10 @@ func getBreakpointByIDOrName(t *Term, arg string) (*api.Breakpoint, error) {
 }
 
 func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
-	args := strings.SplitN(argstr, " ", 3)
+	args := strings.SplitN(argstr, " ", 2)
 
 	if len(args) < 2 {
 		return errors.New("not enough arguments")
-	}
-
-	if len(args) < 3 {
-		args = append(args, "")
 	}
 
 	bp, err := getBreakpointByIDOrName(t, args[0])
@@ -1345,7 +1342,7 @@ func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
 
 	ctx.Prefix = onPrefix
 	ctx.Breakpoint = bp
-	err = c.CallWithContext(args[1], args[2], t, ctx)
+	err = c.CallWithContext(args[1], t, ctx)
 	if err != nil {
 		return err
 	}
@@ -1392,9 +1389,7 @@ func (c *Commands) executeFile(t *Term, name string) error {
 			continue
 		}
 
-		cmdstr, args := parseCommand(line)
-
-		if err := c.Call(cmdstr, args, t); err != nil {
+		if err := c.Call(line, t); err != nil {
 			fmt.Printf("%s:%d: %v\n", name, lineno, err)
 		}
 	}
