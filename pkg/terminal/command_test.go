@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -45,10 +46,10 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 		ft.t.Fatalf("could not create temporary file: %v", err)
 	}
 
-	stdout, stderr := os.Stdout, os.Stderr
-	os.Stdout, os.Stderr = outfh, outfh
+	stdout, stderr, termstdout := os.Stdout, os.Stderr, ft.Term.stdout
+	os.Stdout, os.Stderr, ft.Term.stdout = outfh, outfh, outfh
 	defer func() {
-		os.Stdout, os.Stderr = stdout, stderr
+		os.Stdout, os.Stderr, ft.Term.stdout = stdout, stderr, termstdout
 		outfh.Close()
 		outbs, err1 := ioutil.ReadFile(outfh.Name())
 		if err1 != nil {
@@ -481,6 +482,60 @@ func TestIssue387(t *testing.T) {
 		}
 		if breakpointHitCount != 10 {
 			t.Fatalf("Breakpoint hit wrong number of times, expected 10 got %d", breakpointHitCount)
+		}
+	})
+}
+
+func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end int) {
+	outstr := term.MustExec(listcmd)
+	lines := strings.Split(outstr, "\n")
+
+	t.Logf("%q: %q", listcmd, outstr)
+
+	if strings.Index(lines[0], fmt.Sprintf(":%d", cur)) < 0 {
+		t.Fatalf("Could not find current line number in first output line: %q", lines[0])
+	}
+
+	re := regexp.MustCompile(`(=>)?\s+(\d+):`)
+
+	outStart, outEnd := 0, 0
+
+	for i, line := range lines[1:] {
+		if line == "" {
+			continue
+		}
+		v := re.FindStringSubmatch(line)
+		if len(v) != 3 {
+			t.Fatalf("Could not parse line %d: %q\n", i+1, line)
+		}
+		curline, _ := strconv.Atoi(v[2])
+		if v[1] == "=>" {
+			if cur != curline {
+				t.Fatalf("Wrong current line, got %d expected %d", curline, cur)
+			}
+		}
+		if outStart == 0 {
+			outStart = curline
+		}
+		outEnd = curline
+	}
+
+	if outStart != start || outEnd != end {
+		t.Fatalf("Wrong output range, got %d:%d expected %d:%d", outStart, outEnd, start, end)
+	}
+}
+
+func TestListCmd(t *testing.T) {
+	withTestTerminal("testvariables", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+		term.MustExec("continue")
+		listIsAt(t, term, "list", 24, 19, 29)
+		listIsAt(t, term, "list 69", 69, 64, 70)
+		listIsAt(t, term, "frame 1 list", 62, 57, 67)
+		listIsAt(t, term, "frame 1 list 69", 69, 64, 70)
+		_, err := term.Exec("frame 50 list")
+		if err == nil {
+			t.Fatalf("Expected error requesting 50th frame")
 		}
 	})
 }
