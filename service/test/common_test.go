@@ -1,4 +1,4 @@
-package servicetest
+package service_test
 
 import (
 	"fmt"
