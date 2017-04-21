@@ -142,7 +142,7 @@ func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error)
 	return r.reader.ReadAt(buf, int64(addr-r.offset))
 }
 
-type CoreProcess struct {
+type Process struct {
 	bi                proc.BinaryInfo
 	core              *Core
 	breakpoints       map[uint64]*proc.Breakpoint
@@ -151,21 +151,21 @@ type CoreProcess struct {
 	allGCache         []*proc.G
 }
 
-type CoreThread struct {
+type Thread struct {
 	th *LinuxPrStatus
-	p  *CoreProcess
+	p  *Process
 }
 
 var ErrWriteCore = errors.New("can not to core process")
 var ErrShortRead = errors.New("short read")
 var ErrContinueCore = errors.New("can not continue execution of core process")
 
-func OpenCore(corePath, exePath string) (*CoreProcess, error) {
+func OpenCore(corePath, exePath string) (*Process, error) {
 	core, err := readCore(corePath, exePath)
 	if err != nil {
 		return nil, err
 	}
-	p := &CoreProcess{
+	p := &Process{
 		core:        core,
 		breakpoints: make(map[uint64]*proc.Breakpoint),
 		bi:          proc.NewBinaryInfo("linux", "amd64"),
@@ -191,11 +191,11 @@ func OpenCore(corePath, exePath string) (*CoreProcess, error) {
 	return p, nil
 }
 
-func (p *CoreProcess) BinInfo() *proc.BinaryInfo {
+func (p *Process) BinInfo() *proc.BinaryInfo {
 	return &p.bi
 }
 
-func (thread *CoreThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (thread *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	n, err = thread.p.core.ReadMemory(data, addr)
 	if err == nil && n != len(data) {
 		err = ErrShortRead
@@ -203,121 +203,121 @@ func (thread *CoreThread) ReadMemory(data []byte, addr uintptr) (n int, err erro
 	return n, err
 }
 
-func (thread *CoreThread) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (thread *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	return 0, ErrWriteCore
 }
 
-func (t *CoreThread) Location() (*proc.Location, error) {
+func (t *Thread) Location() (*proc.Location, error) {
 	f, l, fn := t.p.bi.PCToLine(t.th.Reg.Rip)
 	return &proc.Location{PC: t.th.Reg.Rip, File: f, Line: l, Fn: fn}, nil
 }
 
-func (t *CoreThread) Breakpoint() (*proc.Breakpoint, bool, error) {
+func (t *Thread) Breakpoint() (*proc.Breakpoint, bool, error) {
 	return nil, false, nil
 }
 
-func (t *CoreThread) ThreadID() int {
+func (t *Thread) ThreadID() int {
 	return int(t.th.Pid)
 }
 
-func (t *CoreThread) Registers(floatingPoint bool) (proc.Registers, error) {
+func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	//TODO(aarzilli): handle floating point registers
 	return &t.th.Reg, nil
 }
 
-func (t *CoreThread) Arch() proc.Arch {
+func (t *Thread) Arch() proc.Arch {
 	return t.p.bi.Arch
 }
 
-func (t *CoreThread) BinInfo() *proc.BinaryInfo {
+func (t *Thread) BinInfo() *proc.BinaryInfo {
 	return &t.p.bi
 }
 
-func (t *CoreThread) StepInstruction() error {
+func (t *Thread) StepInstruction() error {
 	return ErrContinueCore
 }
 
-func (t *CoreThread) Blocked() bool {
+func (t *Thread) Blocked() bool {
 	return false
 }
 
-func (p *CoreProcess) Breakpoints() map[uint64]*proc.Breakpoint {
+func (p *Process) Breakpoints() map[uint64]*proc.Breakpoint {
 	return p.breakpoints
 }
 
-func (p *CoreProcess) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
+func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	return nil, proc.NoBreakpointError{Addr: addr}
 }
 
-func (p *CoreProcess) ClearInternalBreakpoints() error {
+func (p *Process) ClearInternalBreakpoints() error {
 	return nil
 }
 
-func (p *CoreProcess) ContinueOnce() (proc.IThread, error) {
+func (p *Process) ContinueOnce() (proc.Thread, error) {
 	return nil, ErrContinueCore
 }
 
-func (p *CoreProcess) StepInstruction() error {
+func (p *Process) StepInstruction() error {
 	return ErrContinueCore
 }
 
-func (p *CoreProcess) RequestManualStop() error {
+func (p *Process) RequestManualStop() error {
 	return nil
 }
 
-func (p *CoreProcess) CurrentThread() proc.IThread {
-	return &CoreThread{p.currentThread, p}
+func (p *Process) CurrentThread() proc.Thread {
+	return &Thread{p.currentThread, p}
 }
 
-func (p *CoreProcess) Detach(bool) error {
+func (p *Process) Detach(bool) error {
 	return nil
 }
 
-func (p *CoreProcess) Exited() bool {
+func (p *Process) Exited() bool {
 	return false
 }
 
-func (p *CoreProcess) FindFileLocation(fileName string, lineNumber int) (uint64, error) {
+func (p *Process) FindFileLocation(fileName string, lineNumber int) (uint64, error) {
 	return proc.FindFileLocation(p.CurrentThread(), p.breakpoints, &p.bi, fileName, lineNumber)
 }
 
-func (p *CoreProcess) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
+func (p *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
 	return proc.FirstPCAfterPrologue(p.CurrentThread(), p.breakpoints, &p.bi, fn, sameline)
 }
 
-func (p *CoreProcess) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
+func (p *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
 	return proc.FindFunctionLocation(p.CurrentThread(), p.breakpoints, &p.bi, funcName, firstLine, lineOffset)
 }
 
-func (p *CoreProcess) AllGCache() *[]*proc.G {
+func (p *Process) AllGCache() *[]*proc.G {
 	return &p.allGCache
 }
 
-func (p *CoreProcess) Halt() error {
+func (p *Process) Halt() error {
 	return nil
 }
 
-func (p *CoreProcess) Kill() error {
+func (p *Process) Kill() error {
 	return nil
 }
 
-func (p *CoreProcess) Pid() int {
+func (p *Process) Pid() int {
 	return p.core.Pid
 }
 
-func (p *CoreProcess) Running() bool {
+func (p *Process) Running() bool {
 	return false
 }
 
-func (p *CoreProcess) SelectedGoroutine() *proc.G {
+func (p *Process) SelectedGoroutine() *proc.G {
 	return p.selectedGoroutine
 }
 
-func (p *CoreProcess) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
+func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
 	return nil, ErrWriteCore
 }
 
-func (p *CoreProcess) SwitchGoroutine(gid int) error {
+func (p *Process) SwitchGoroutine(gid int) error {
 	g, err := proc.FindGoroutine(p, gid)
 	if err != nil {
 		return err
@@ -333,7 +333,7 @@ func (p *CoreProcess) SwitchGoroutine(gid int) error {
 	return nil
 }
 
-func (p *CoreProcess) SwitchThread(tid int) error {
+func (p *Process) SwitchThread(tid int) error {
 	if th, ok := p.core.Threads[tid]; ok {
 		p.currentThread = th
 		p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
@@ -342,15 +342,15 @@ func (p *CoreProcess) SwitchThread(tid int) error {
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
-func (p *CoreProcess) ThreadList() []proc.IThread {
-	r := make([]proc.IThread, 0, len(p.core.Threads))
+func (p *Process) ThreadList() []proc.Thread {
+	r := make([]proc.Thread, 0, len(p.core.Threads))
 	for _, v := range p.core.Threads {
-		r = append(r, &CoreThread{v, p})
+		r = append(r, &Thread{v, p})
 	}
 	return r
 }
 
-func (p *CoreProcess) FindThread(threadID int) (proc.IThread, bool) {
+func (p *Process) FindThread(threadID int) (proc.Thread, bool) {
 	t, ok := p.core.Threads[threadID]
-	return &CoreThread{t, p}, ok
+	return &Thread{t, p}, ok
 }

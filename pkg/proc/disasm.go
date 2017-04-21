@@ -16,18 +16,11 @@ const (
 	IntelFlavour
 )
 
-// DisassembleInfo is the subset of target.Interface used by Disassemble.
-type DisassembleInfo interface {
-	CurrentThread() IThread
-	Breakpoints() map[uint64]*Breakpoint
-	BinInfo() *BinaryInfo
-}
-
 // Disassemble disassembles target memory between startPC and endPC, marking
 // the current instruction being executed in goroutine g.
 // If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble will evaluate the argument of the CALL instruction using the thread's registers
 // Be aware that the Bytes field of each returned instruction is a slice of a larger array of size endPC - startPC
-func Disassemble(dbp DisassembleInfo, g *G, startPC, endPC uint64) ([]AsmInstruction, error) {
+func Disassemble(dbp Process, g *G, startPC, endPC uint64) ([]AsmInstruction, error) {
 	if g == nil {
 		ct := dbp.CurrentThread()
 		regs, _ := ct.Registers(false)

@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"debug/gosym"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -70,7 +69,7 @@ func FindFunctionLocation(mem MemoryReadWriter, breakpoints map[uint64]*Breakpoi
 }
 
 // Next continues execution until the next source line.
-func Next(dbp Continuable) (err error) {
+func Next(dbp Process) (err error) {
 	if dbp.Exited() {
 		return &ProcessExitedError{}
 	}
@@ -92,26 +91,10 @@ func Next(dbp Continuable) (err error) {
 	return Continue(dbp)
 }
 
-// Continuable is the subinterface of target.Interface used to implement
-// Continue/Next/etc.
-type Continuable interface {
-	ContinueOnce() (trapthread IThread, err error)
-	CurrentThread() IThread
-	SelectedGoroutine() *G
-	Breakpoints() map[uint64]*Breakpoint
-	ThreadList() []IThread
-	SwitchThread(int) error
-	BinInfo() *BinaryInfo
-	ClearInternalBreakpoints() error
-	FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error)
-	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
-	Exited() bool
-}
-
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
-func Continue(dbp Continuable) error {
+func Continue(dbp Process) error {
 	for {
 		trapthread, err := dbp.ContinueOnce()
 		if err != nil {
@@ -191,7 +174,7 @@ func Continue(dbp Continuable) error {
 	}
 }
 
-func conditionErrors(threads []IThread) error {
+func conditionErrors(threads []Thread) error {
 	var condErr error
 	for _, th := range threads {
 		if bp, _, bperr := th.Breakpoint(); bp != nil && bperr != nil {
@@ -209,7 +192,7 @@ func conditionErrors(threads []IThread) error {
 // 	- a thread with onTriggeredInternalBreakpoint() == true
 // 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
 // 	- trapthread
-func pickCurrentThread(dbp Continuable, trapthread IThread, threads []IThread) error {
+func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
 	for _, th := range threads {
 		if bp, active, _ := th.Breakpoint(); active && bp.Internal() {
 			return dbp.SwitchThread(th.ThreadID())
@@ -228,7 +211,7 @@ func pickCurrentThread(dbp Continuable, trapthread IThread, threads []IThread) e
 
 // Step will continue until another source line is reached.
 // Will step into functions.
-func Step(dbp Continuable) (err error) {
+func Step(dbp Process) (err error) {
 	if dbp.Exited() {
 		return &ProcessExitedError{}
 	}
@@ -271,7 +254,7 @@ func SameGoroutineCondition(g *G) ast.Expr {
 
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
-func StepOut(dbp Continuable) error {
+func StepOut(dbp Process) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 	cond := SameGoroutineCondition(selg)
@@ -335,7 +318,7 @@ type AllGCache interface {
 
 // GoroutinesInfo returns an array of G structures representing the information
 // Delve cares about from the internal runtime G structure.
-func GoroutinesInfo(dbp EvalScopeConvertible) ([]*G, error) {
+func GoroutinesInfo(dbp Process) ([]*G, error) {
 	if dbp.Exited() {
 		return nil, &ProcessExitedError{}
 	}
@@ -346,7 +329,7 @@ func GoroutinesInfo(dbp EvalScopeConvertible) ([]*G, error) {
 	}
 
 	var (
-		threadg = map[int]IThread{}
+		threadg = map[int]Thread{}
 		allg    []*G
 		rdr     = dbp.BinInfo().DwarfReader()
 	)
@@ -416,7 +399,7 @@ func GoroutinesInfo(dbp EvalScopeConvertible) ([]*G, error) {
 	return allg, nil
 }
 
-func GetGoInformation(p Continuable) (ver GoVersion, isextld bool, err error) {
+func GetGoInformation(p Process) (ver GoVersion, isextld bool, err error) {
 	scope := &EvalScope{0, 0, p.CurrentThread(), nil, p.BinInfo()}
 	vv, err := scope.packageVarAddr("runtime.buildVersion")
 	if err != nil {
@@ -450,7 +433,7 @@ func GetGoInformation(p Continuable) (ver GoVersion, isextld bool, err error) {
 
 // FindGoroutine returns a G struct representing the goroutine
 // specified by `gid`.
-func FindGoroutine(dbp EvalScopeConvertible, gid int) (*G, error) {
+func FindGoroutine(dbp Process, gid int) (*G, error) {
 	if gid == -1 {
 		return dbp.SelectedGoroutine(), nil
 	}
@@ -467,19 +450,9 @@ func FindGoroutine(dbp EvalScopeConvertible, gid int) (*G, error) {
 	return nil, fmt.Errorf("Unknown goroutine %d", gid)
 }
 
-// EvalScopeConvertible is a subset of target.Interface with the methods
-// used by ConvertEvalScope/GoroutinesInfo/etc.
-type EvalScopeConvertible interface {
-	Exited() bool
-	SelectedGoroutine() *G
-	CurrentThread() IThread
-	BinInfo() *BinaryInfo
-	ThreadList() []IThread
-}
-
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
-func ConvertEvalScope(dbp EvalScopeConvertible, gid, frame int) (*EvalScope, error) {
+func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
 	ct := dbp.CurrentThread()
 	g, err := FindGoroutine(dbp, gid)
 	if err != nil {
@@ -511,6 +484,6 @@ func ConvertEvalScope(dbp EvalScopeConvertible, gid, frame int) (*EvalScope, err
 }
 
 // FrameToScope returns a new EvalScope for this frame
-func FrameToScope(p EvalScopeConvertible, frame Stackframe) *EvalScope {
+func FrameToScope(p Process, frame Stackframe) *EvalScope {
 	return &EvalScope{frame.Current.PC, frame.CFA, p.CurrentThread(), nil, p.BinInfo()}
 }

@@ -126,20 +126,20 @@ func (dbp *Process) SelectedGoroutine() *proc.G {
 	return dbp.selectedGoroutine
 }
 
-func (dbp *Process) ThreadList() []proc.IThread {
-	r := make([]proc.IThread, 0, len(dbp.threads))
+func (dbp *Process) ThreadList() []proc.Thread {
+	r := make([]proc.Thread, 0, len(dbp.threads))
 	for _, v := range dbp.threads {
 		r = append(r, v)
 	}
 	return r
 }
 
-func (dbp *Process) FindThread(threadID int) (proc.IThread, bool) {
+func (dbp *Process) FindThread(threadID int) (proc.Thread, bool) {
 	th, ok := dbp.threads[threadID]
 	return th, ok
 }
 
-func (dbp *Process) CurrentThread() proc.IThread {
+func (dbp *Process) CurrentThread() proc.Thread {
 	return dbp.currentThread
 }
 
@@ -264,7 +264,7 @@ func (dbp *Process) Status() *WaitStatus {
 	return dbp.currentThread.Status
 }
 
-func (dbp *Process) ContinueOnce() (proc.IThread, error) {
+func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	if dbp.exited {
 		return nil, &proc.ProcessExitedError{}
 	}

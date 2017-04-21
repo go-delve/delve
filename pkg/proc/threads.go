@@ -13,8 +13,8 @@ import (
 	"golang.org/x/debug/dwarf"
 )
 
-// IThread represents a thread.
-type IThread interface {
+// Thread represents a thread.
+type Thread interface {
 	MemoryReadWriter
 	Location() (*Location, error)
 	// Breakpoint will return the breakpoint that this thread is stopped at or
@@ -52,7 +52,7 @@ func (tbe ThreadBlockedError) Error() string {
 }
 
 // returns topmost frame of g or thread if g is nil
-func topframe(g *G, thread IThread) (Stackframe, error) {
+func topframe(g *G, thread Thread) (Stackframe, error) {
 	var frames []Stackframe
 	var err error
 
@@ -80,7 +80,7 @@ func topframe(g *G, thread IThread) (Stackframe, error) {
 // a breakpoint of kind StepBreakpoint is set on the CALL instruction,
 // Continue will take care of setting a breakpoint to the destination
 // once the CALL is reached.
-func next(dbp Continuable, stepInto bool) error {
+func next(dbp Process, stepInto bool) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 	topframe, err := topframe(selg, curthread)
@@ -206,7 +206,7 @@ func next(dbp Continuable, stepInto bool) error {
 	return setInternalBreakpoints(dbp, topframe.Current.PC, pcs, NextBreakpoint, cond)
 }
 
-func setStepIntoBreakpoint(dbp Continuable, text []AsmInstruction, cond ast.Expr) error {
+func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) error {
 	if len(text) <= 0 {
 		return nil
 	}
@@ -248,7 +248,7 @@ func setStepIntoBreakpoint(dbp Continuable, text []AsmInstruction, cond ast.Expr
 
 // setInternalBreakpoints sets a breakpoint to all addresses specified in pcs
 // skipping over curpc and curpc-1
-func setInternalBreakpoints(dbp Continuable, curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
+func setInternalBreakpoints(dbp Process, curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
 	for i := range pcs {
 		if pcs[i] == curpc || pcs[i] == curpc-1 {
 			continue
@@ -263,7 +263,7 @@ func setInternalBreakpoints(dbp Continuable, curpc uint64, pcs []uint64, kind Br
 	return nil
 }
 
-func getGVariable(thread IThread) (*Variable, error) {
+func getGVariable(thread Thread) (*Variable, error) {
 	arch := thread.Arch()
 	regs, err := thread.Registers(false)
 	if err != nil {
@@ -289,7 +289,7 @@ func getGVariable(thread IThread) (*Variable, error) {
 	return newGVariable(thread, uintptr(gaddr), arch.DerefTLS())
 }
 
-func newGVariable(thread IThread, gaddr uintptr, deref bool) (*Variable, error) {
+func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 	typ, err := thread.BinInfo().findType("runtime.g")
 	if err != nil {
 		return nil, err
@@ -320,7 +320,7 @@ func newGVariable(thread IThread, gaddr uintptr, deref bool) (*Variable, error) 
 //
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
-func GetG(thread IThread) (g *G, err error) {
+func GetG(thread Thread) (g *G, err error) {
 	gaddr, err := getGVariable(thread)
 	if err != nil {
 		return nil, err
@@ -337,7 +337,7 @@ func GetG(thread IThread) (g *G, err error) {
 }
 
 // ThreadScope returns an EvalScope for this thread.
-func ThreadScope(thread IThread) (*EvalScope, error) {
+func ThreadScope(thread Thread) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, 0)
 	if err != nil {
 		return nil, err
@@ -349,7 +349,7 @@ func ThreadScope(thread IThread) (*EvalScope, error) {
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on this thread.
-func GoroutineScope(thread IThread) (*EvalScope, error) {
+func GoroutineScope(thread Thread) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, 0)
 	if err != nil {
 		return nil, err
@@ -364,7 +364,7 @@ func GoroutineScope(thread IThread) (*EvalScope, error) {
 	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, gvar, thread.BinInfo()}, nil
 }
 
-func onRuntimeBreakpoint(thread IThread) bool {
+func onRuntimeBreakpoint(thread Thread) bool {
 	loc, err := thread.Location()
 	if err != nil {
 		return false
@@ -373,7 +373,7 @@ func onRuntimeBreakpoint(thread IThread) bool {
 }
 
 // onNextGorutine returns true if this thread is on the goroutine requested by the current 'next' command
-func onNextGoroutine(thread IThread, breakpoints map[uint64]*Breakpoint) (bool, error) {
+func onNextGoroutine(thread Thread, breakpoints map[uint64]*Breakpoint) (bool, error) {
 	var bp *Breakpoint
 	for i := range breakpoints {
 		if breakpoints[i].Internal() {

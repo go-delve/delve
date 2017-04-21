@@ -10,7 +10,6 @@ import (
 
 	"github.com/derekparker/delve/pkg/proc"
 	protest "github.com/derekparker/delve/pkg/proc/test"
-	"github.com/derekparker/delve/pkg/target"
 )
 
 func TestIssue419(t *testing.T) {
@@ -19,7 +18,7 @@ func TestIssue419(t *testing.T) {
 		return
 	}
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
-	withTestProcess("issue419", t, func(p target.Interface, fixture protest.Fixture) {
+	withTestProcess("issue419", t, func(p proc.Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.main")
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(proc.Continue(p), t, "Continue()")
