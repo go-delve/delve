@@ -11,7 +11,7 @@ type moduleData struct {
 	typemapVar    *Variable
 }
 
-func loadModuleData(bi *BinaryInfo, mem memoryReadWriter) (err error) {
+func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) (err error) {
 	bi.loadModuleDataOnce.Do(func() {
 		scope := &EvalScope{0, 0, mem, nil, bi}
 		var md *Variable
@@ -56,7 +56,7 @@ func loadModuleData(bi *BinaryInfo, mem memoryReadWriter) (err error) {
 	return
 }
 
-func resolveTypeOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem memoryReadWriter) (*Variable, error) {
+func resolveTypeOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem MemoryReadWriter) (*Variable, error) {
 	// See runtime.(*_type).typeOff in $GOROOT/src/runtime/type.go
 	if err := loadModuleData(bi, mem); err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func resolveTypeOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem memoryRea
 	return newVariable("", res, rtyp, bi, mem), nil
 }
 
-func resolveNameOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem memoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
+func resolveNameOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	// See runtime.resolveNameOff in $GOROOT/src/runtime/type.go
 	if err = loadModuleData(bi, mem); err != nil {
 		return "", "", 0, err
@@ -118,7 +118,7 @@ func resolveNameOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem memoryRea
 	return loadName(bi, resv.Addr, mem)
 }
 
-func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem memoryReadWriter) (*Variable, error) {
+func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem MemoryReadWriter) (*Variable, error) {
 	scope := &EvalScope{0, 0, mem, nil, bi}
 	reflectOffs, err := scope.packageVarAddr("runtime.reflectOffs")
 	if err != nil {
@@ -140,7 +140,7 @@ const (
 	nameflagHasPkg   = 1 << 2
 )
 
-func loadName(bi *BinaryInfo, addr uintptr, mem memoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
+func loadName(bi *BinaryInfo, addr uintptr, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	off := addr
 	namedata := make([]byte, 3)
 	_, err = mem.ReadMemory(namedata, off)

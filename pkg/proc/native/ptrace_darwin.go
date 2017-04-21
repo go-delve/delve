@@ -1,4 +1,4 @@
-package proc
+package native
 
 import sys "golang.org/x/sys/unix"
 

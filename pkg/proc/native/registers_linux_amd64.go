@@ -1,19 +1,21 @@
-package proc
+package native
 
 import (
 	"fmt"
 
 	"golang.org/x/arch/x86/x86asm"
 	sys "golang.org/x/sys/unix"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // Regs is a wrapper for sys.PtraceRegs.
 type Regs struct {
 	regs   *sys.PtraceRegs
-	fpregs []Register
+	fpregs []proc.Register
 }
 
-func (r *Regs) Slice() []Register {
+func (r *Regs) Slice() []proc.Register {
 	var regs = []struct {
 		k string
 		v uint64
@@ -46,12 +48,12 @@ func (r *Regs) Slice() []Register {
 		{"Fs", r.regs.Fs},
 		{"Gs", r.regs.Gs},
 	}
-	out := make([]Register, 0, len(regs)+len(r.fpregs))
+	out := make([]proc.Register, 0, len(regs)+len(r.fpregs))
 	for _, reg := range regs {
 		if reg.k == "Eflags" {
-			out = appendFlagReg(out, reg.k, reg.v, eflagsDescription, 64)
+			out = proc.AppendEflagReg(out, reg.k, reg.v)
 		} else {
-			out = appendQwordReg(out, reg.k, reg.v)
+			out = proc.AppendQwordReg(out, reg.k, reg.v)
 		}
 	}
 	out = append(out, r.fpregs...)
@@ -88,7 +90,7 @@ func (r *Regs) GAddr() (uint64, bool) {
 }
 
 // SetPC sets RIP to the value specified by 'pc'.
-func (r *Regs) SetPC(t IThread, pc uint64) (err error) {
+func (r *Regs) SetPC(t proc.IThread, pc uint64) (err error) {
 	thread := t.(*Thread)
 	r.regs.SetPC(pc)
 	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })
@@ -249,10 +251,10 @@ func (r *Regs) Get(n int) (uint64, error) {
 		return r.regs.R15, nil
 	}
 
-	return 0, UnknownRegisterError
+	return 0, proc.UnknownRegisterError
 }
 
-func registers(thread *Thread, floatingPoint bool) (Registers, error) {
+func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 	var (
 		regs sys.PtraceRegs
 		err  error
@@ -302,30 +304,30 @@ const (
 	_XSAVE_SSE_REGION_LEN        = 416
 )
 
-func (thread *Thread) fpRegisters() (regs []Register, err error) {
+func (thread *Thread) fpRegisters() (regs []proc.Register, err error) {
 	var fpregs PtraceXsave
 	thread.dbp.execPtraceFunc(func() { fpregs, err = PtraceGetRegset(thread.ID) })
 
 	// x87 registers
-	regs = appendWordReg(regs, "CW", fpregs.Cwd)
-	regs = appendWordReg(regs, "SW", fpregs.Swd)
-	regs = appendWordReg(regs, "TW", fpregs.Ftw)
-	regs = appendWordReg(regs, "FOP", fpregs.Fop)
-	regs = appendQwordReg(regs, "FIP", fpregs.Rip)
-	regs = appendQwordReg(regs, "FDP", fpregs.Rdp)
+	regs = proc.AppendWordReg(regs, "CW", fpregs.Cwd)
+	regs = proc.AppendWordReg(regs, "SW", fpregs.Swd)
+	regs = proc.AppendWordReg(regs, "TW", fpregs.Ftw)
+	regs = proc.AppendWordReg(regs, "FOP", fpregs.Fop)
+	regs = proc.AppendQwordReg(regs, "FIP", fpregs.Rip)
+	regs = proc.AppendQwordReg(regs, "FDP", fpregs.Rdp)
 
 	for i := 0; i < len(fpregs.StSpace); i += 4 {
-		regs = appendX87Reg(regs, i/4, uint16(fpregs.StSpace[i+2]), uint64(fpregs.StSpace[i+1])<<32|uint64(fpregs.StSpace[i]))
+		regs = proc.AppendX87Reg(regs, i/4, uint16(fpregs.StSpace[i+2]), uint64(fpregs.StSpace[i+1])<<32|uint64(fpregs.StSpace[i]))
 	}
 
 	// SSE registers
-	regs = appendFlagReg(regs, "MXCSR", uint64(fpregs.Mxcsr), mxcsrDescription, 32)
-	regs = appendDwordReg(regs, "MXCSR_MASK", fpregs.MxcrMask)
+	regs = proc.AppendMxcsrReg(regs, "MXCSR", uint64(fpregs.Mxcsr))
+	regs = proc.AppendDwordReg(regs, "MXCSR_MASK", fpregs.MxcrMask)
 
 	for i := 0; i < len(fpregs.XmmSpace); i += 16 {
-		regs = appendSSEReg(regs, fmt.Sprintf("XMM%d", i/16), fpregs.XmmSpace[i:i+16])
+		regs = proc.AppendSSEReg(regs, fmt.Sprintf("XMM%d", i/16), fpregs.XmmSpace[i:i+16])
 		if fpregs.AvxState {
-			regs = appendSSEReg(regs, fmt.Sprintf("YMM%d", i/16), fpregs.YmmSpace[i:i+16])
+			regs = proc.AppendSSEReg(regs, fmt.Sprintf("YMM%d", i/16), fpregs.YmmSpace[i:i+16])
 		}
 	}
 

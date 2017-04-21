@@ -201,7 +201,7 @@ func ConvertFunction(fn *gosym.Func) *Function {
 
 // ConvertGoroutine converts from proc.G to api.Goroutine.
 func ConvertGoroutine(g *proc.G) *Goroutine {
-	th := g.Thread()
+	th := g.Thread
 	tid := 0
 	if th != nil {
 		tid = th.ThreadID()

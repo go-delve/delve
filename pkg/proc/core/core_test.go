@@ -1,4 +1,4 @@
-package proc
+package core
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/test"
 )
 
@@ -155,13 +156,13 @@ func TestCore(t *testing.T) {
 		t.Errorf("read apport log: %q, %v", apport, err)
 		t.Fatalf("ReadCore() failed: %v", err)
 	}
-	gs, err := GoroutinesInfo(p)
+	gs, err := proc.GoroutinesInfo(p)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}
 
-	var panicking *G
-	var panickingStack []Stackframe
+	var panicking *proc.G
+	var panickingStack []proc.Stackframe
 	for _, g := range gs {
 		stack, err := g.Stacktrace(10)
 		if err != nil {
@@ -178,7 +179,7 @@ func TestCore(t *testing.T) {
 		t.Fatalf("Didn't find a call to panic in goroutine stacks: %v", gs)
 	}
 
-	var mainFrame *Stackframe
+	var mainFrame *proc.Stackframe
 	// Walk backward, because the current function seems to be main.main
 	// in the actual call to panic().
 	for i := len(panickingStack) - 1; i >= 0; i-- {
@@ -189,7 +190,7 @@ func TestCore(t *testing.T) {
 	if mainFrame == nil {
 		t.Fatalf("Couldn't find main in stack %v", panickingStack)
 	}
-	msg, err := FrameToScope(p, *mainFrame).EvalVariable("msg", LoadConfig{MaxStringLen: 64})
+	msg, err := proc.FrameToScope(p, *mainFrame).EvalVariable("msg", proc.LoadConfig{MaxStringLen: 64})
 	if err != nil {
 		t.Fatalf("Couldn't EvalVariable(msg, ...): %v", err)
 	}

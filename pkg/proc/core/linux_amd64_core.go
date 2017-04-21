@@ -1,4 +1,4 @@
-package proc
+package core
 
 import (
 	"bytes"
@@ -11,6 +11,8 @@ import (
 	"golang.org/x/debug/elf"
 
 	"golang.org/x/arch/x86/x86asm"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // Copied from golang.org/x/sys/unix.PtraceRegs since it's not available on
@@ -232,14 +234,14 @@ func (r *LinuxCoreRegisters) Get(n int) (uint64, error) {
 		return r.R15, nil
 	}
 
-	return 0, UnknownRegisterError
+	return 0, proc.UnknownRegisterError
 }
 
-func (r *LinuxCoreRegisters) SetPC(IThread, uint64) error {
+func (r *LinuxCoreRegisters) SetPC(proc.IThread, uint64) error {
 	return errors.New("not supported")
 }
 
-func (r *LinuxCoreRegisters) Slice() []Register {
+func (r *LinuxCoreRegisters) Slice() []proc.Register {
 	var regs = []struct {
 		k string
 		v uint64
@@ -272,12 +274,12 @@ func (r *LinuxCoreRegisters) Slice() []Register {
 		{"Fs", r.Fs},
 		{"Gs", r.Gs},
 	}
-	out := make([]Register, 0, len(regs))
+	out := make([]proc.Register, 0, len(regs))
 	for _, reg := range regs {
 		if reg.k == "Eflags" {
-			out = appendFlagReg(out, reg.k, reg.v, eflagsDescription, 64)
+			out = proc.AppendEflagReg(out, reg.k, reg.v)
 		} else {
-			out = appendQwordReg(out, reg.k, reg.v)
+			out = proc.AppendQwordReg(out, reg.k, reg.v)
 		}
 	}
 	return out
@@ -328,7 +330,7 @@ func readCore(corePath, exePath string) (*Core, error) {
 }
 
 type Core struct {
-	MemoryReader
+	proc.MemoryReader
 	Threads map[int]*LinuxPrStatus
 	Pid     int
 }
@@ -448,7 +450,7 @@ func skipPadding(r io.ReadSeeker, pad int64) error {
 	return nil
 }
 
-func buildMemory(core *elf.File, exe io.ReaderAt, notes []*Note) MemoryReader {
+func buildMemory(core *elf.File, exe io.ReaderAt, notes []*Note) proc.MemoryReader {
 	memory := &SplicedMemory{}
 
 	// For now, assume all file mappings are to the exe.

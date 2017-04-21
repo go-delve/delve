@@ -1,4 +1,4 @@
-package proc
+package native
 
 // #include "threads_darwin.h"
 // #include "proc_darwin.h"
@@ -81,14 +81,14 @@ func (t *Thread) resume() error {
 	return nil
 }
 
-func threadBlocked(t IThread) bool {
+func (t *Thread) Blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
 	regs, err := t.Registers(false)
 	if err != nil {
 		return false
 	}
 	pc := regs.PC()
-	fn := t.BinInfo().goSymTable.PCToFunc(pc)
+	fn := t.BinInfo().PCToFunc(pc)
 	if fn == nil {
 		return false
 	}
@@ -104,7 +104,7 @@ func (t *Thread) stopped() bool {
 	return C.thread_blocked(t.os.threadAct) > C.int(0)
 }
 
-func (t *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
+func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}

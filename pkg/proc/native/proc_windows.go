@@ -1,8 +1,10 @@
-package proc
+package native
 
 import (
+	"debug/pe"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,12 +13,27 @@ import (
 	"unsafe"
 
 	sys "golang.org/x/sys/windows"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // OSProcessDetails holds Windows specific information.
 type OSProcessDetails struct {
 	hProcess    syscall.Handle
 	breakThread int
+}
+
+func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
+	f, err := os.OpenFile(path, 0, os.ModePerm)
+	if err != nil {
+		return nil, nil, err
+	}
+	peFile, err := pe.NewFile(f)
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	return peFile, f, nil
 }
 
 // Launch creates and begins debugging a new process.
@@ -35,7 +52,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 
 	_, closer, err := openExecutablePathPE(argv0Go)
 	if err != nil {
-		return nil, NotExecutableErr
+		return nil, proc.NotExecutableErr
 	}
 	closer.Close()
 
@@ -129,7 +146,7 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 	}
 	if tid == 0 {
 		dbp.postExit()
-		return nil, ProcessExitedError{Pid: dbp.pid, Status: exitCode}
+		return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: exitCode}
 	}
 	// Suspend all threads so that the call to _ContinueDebugEvent will
 	// not resume the target.
@@ -330,9 +347,9 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 				// this exception anymore.
 				atbp := true
 				if thread, found := dbp.threads[tid]; found {
-					data := make([]byte, dbp.bi.arch.BreakpointSize())
+					data := make([]byte, dbp.bi.Arch.BreakpointSize())
 					if _, err := thread.ReadMemory(data, exception.ExceptionRecord.ExceptionAddress); err == nil {
-						instr := dbp.bi.arch.BreakpointInstruction()
+						instr := dbp.bi.Arch.BreakpointInstruction()
 						for i := range instr {
 							if data[i] != instr[i] {
 								atbp = false
@@ -388,7 +405,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 	if tid == 0 {
 		dbp.postExit()
-		return nil, ProcessExitedError{Pid: dbp.pid, Status: exitCode}
+		return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: exitCode}
 	}
 	th := dbp.threads[tid]
 	return th, nil

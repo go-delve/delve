@@ -15,11 +15,11 @@ const runtimeStackBarrier = "runtime.stackBarrier"
 // NoReturnAddr is returned when return address
 // could not be found during stack trace.
 type NoReturnAddr struct {
-	fn string
+	Fn string
 }
 
 func (nra NoReturnAddr) Error() string {
-	return fmt.Sprintf("could not find return address for %s", nra.fn)
+	return fmt.Sprintf("could not find return address for %s", nra.Fn)
 }
 
 // Stackframe represents a frame in a system stack.
@@ -54,12 +54,12 @@ func (g *G) stackIterator() (*stackIterator, error) {
 	if err != nil {
 		return nil, err
 	}
-	if g.thread != nil {
-		regs, err := g.thread.Registers(false)
+	if g.Thread != nil {
+		regs, err := g.Thread.Registers(false)
 		if err != nil {
 			return nil, err
 		}
-		return newStackIterator(g.variable.bi, g.thread, regs.PC(), regs.SP(), regs.BP(), stkbar, g.stkbarPos), nil
+		return newStackIterator(g.variable.bi, g.Thread, regs.PC(), regs.SP(), regs.BP(), stkbar, g.stkbarPos), nil
 	}
 	return newStackIterator(g.variable.bi, g.variable.mem, g.PC, g.SP, 0, stkbar, g.stkbarPos), nil
 }
@@ -90,7 +90,7 @@ type stackIterator struct {
 	atend      bool
 	frame      Stackframe
 	bi         *BinaryInfo
-	mem        memoryReadWriter
+	mem        MemoryReadWriter
 	err        error
 
 	stackBarrierPC uint64
@@ -102,7 +102,7 @@ type savedLR struct {
 	val uint64
 }
 
-func newStackIterator(bi *BinaryInfo, mem memoryReadWriter, pc, sp, bp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
+func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, pc, sp, bp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
 	stackBarrierFunc := bi.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
@@ -161,7 +161,7 @@ func (it *stackIterator) Next() bool {
 	it.top = false
 	it.pc = it.frame.Ret
 	it.sp = uint64(it.frame.CFA)
-	it.bp, _ = readUintRaw(it.mem, uintptr(it.bp), int64(it.bi.arch.PtrSize()))
+	it.bp, _ = readUintRaw(it.mem, uintptr(it.bp), int64(it.bi.Arch.PtrSize()))
 	return true
 }
 
@@ -185,8 +185,8 @@ func (it *stackIterator) frameInfo(pc, sp, bp uint64, top bool) (Stackframe, err
 			return Stackframe{}, err
 		}
 		// When no FDE is available attempt to use BP instead
-		retaddr := uintptr(int(bp) + it.bi.arch.PtrSize())
-		cfa := int64(retaddr) + int64(it.bi.arch.PtrSize())
+		retaddr := uintptr(int(bp) + it.bi.Arch.PtrSize())
+		cfa := int64(retaddr) + int64(it.bi.Arch.PtrSize())
 		return it.newStackframe(pc, cfa, retaddr, nil, top)
 	}
 
@@ -202,7 +202,7 @@ func (it *stackIterator) newStackframe(pc uint64, cfa int64, retaddr uintptr, fd
 		return Stackframe{}, NullAddrError{}
 	}
 	f, l, fn := it.bi.PCToLine(pc)
-	ret, err := readUintRaw(it.mem, retaddr, int64(it.bi.arch.PtrSize()))
+	ret, err := readUintRaw(it.mem, retaddr, int64(it.bi.Arch.PtrSize()))
 	if err != nil {
 		return Stackframe{}, err
 	}

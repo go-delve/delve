@@ -11,15 +11,15 @@ type MemoryReader interface {
 	ReadMemory(buf []byte, addr uintptr) (n int, err error)
 }
 
-type memoryReadWriter interface {
+type MemoryReadWriter interface {
 	MemoryReader
-	writeMemory(addr uintptr, data []byte) (written int, err error)
+	WriteMemory(addr uintptr, data []byte) (written int, err error)
 }
 
 type memCache struct {
 	cacheAddr uintptr
 	cache     []byte
-	mem       memoryReadWriter
+	mem       MemoryReadWriter
 }
 
 func (m *memCache) contains(addr uintptr, size int) bool {
@@ -35,11 +35,11 @@ func (m *memCache) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	return m.mem.ReadMemory(data, addr)
 }
 
-func (m *memCache) writeMemory(addr uintptr, data []byte) (written int, err error) {
-	return m.mem.writeMemory(addr, data)
+func (m *memCache) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+	return m.mem.WriteMemory(addr, data)
 }
 
-func cacheMemory(mem memoryReadWriter, addr uintptr, size int) memoryReadWriter {
+func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter {
 	if !cacheEnabled {
 		return mem
 	}

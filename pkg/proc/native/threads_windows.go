@@ -1,9 +1,12 @@
-package proc
+package native
 
 import (
+	"errors"
 	"syscall"
 
 	sys "golang.org/x/sys/windows"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // WaitStatus is a synonym for the platform-specific WaitStatus
@@ -57,7 +60,7 @@ func (t *Thread) singleStep() error {
 		}
 		if tid == 0 {
 			t.dbp.postExit()
-			return ProcessExitedError{Pid: t.dbp.pid, Status: exitCode}
+			return proc.ProcessExitedError{Pid: t.dbp.pid, Status: exitCode}
 		}
 
 		if t.dbp.os.breakThread == t.ID {
@@ -103,7 +106,7 @@ func (t *Thread) resume() error {
 	return err
 }
 
-func threadBlocked(t IThread) bool {
+func (t *Thread) Blocked() bool {
 	// TODO: Probably incorrect - what are the runtime functions that
 	// indicate blocking on Windows?
 	regs, err := t.Registers(false)
@@ -111,7 +114,7 @@ func threadBlocked(t IThread) bool {
 		return false
 	}
 	pc := regs.PC()
-	fn := t.BinInfo().goSymTable.PCToFunc(pc)
+	fn := t.BinInfo().PCToFunc(pc)
 	if fn == nil {
 		return false
 	}
@@ -129,7 +132,7 @@ func (t *Thread) stopped() bool {
 	return true
 }
 
-func (t *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
+func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	var count uintptr
 	err := _WriteProcessMemory(t.dbp.os.hProcess, addr, &data[0], uintptr(len(data)), &count)
 	if err != nil {
@@ -137,6 +140,8 @@ func (t *Thread) writeMemory(addr uintptr, data []byte) (int, error) {
 	}
 	return int(count), nil
 }
+
+var ErrShortRead = errors.New("short read")
 
 func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	if len(buf) == 0 {

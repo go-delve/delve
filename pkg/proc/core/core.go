@@ -1,4 +1,4 @@
-package proc
+package core
 
 import (
 	"debug/gosym"
@@ -7,6 +7,8 @@ import (
 	"go/ast"
 	"io"
 	"sync"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // A SplicedMemory represents a memory space formed from multiple regions,
@@ -29,11 +31,11 @@ type SplicedMemory struct {
 type readerEntry struct {
 	offset uintptr
 	length uintptr
-	reader MemoryReader
+	reader proc.MemoryReader
 }
 
 // Add adds a new region to the SplicedMemory, which may override existing regions.
-func (r *SplicedMemory) Add(reader MemoryReader, off, length uintptr) {
+func (r *SplicedMemory) Add(reader proc.MemoryReader, off, length uintptr) {
 	if length == 0 {
 		return
 	}
@@ -141,12 +143,12 @@ func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error)
 }
 
 type CoreProcess struct {
-	bi                BinaryInfo
+	bi                proc.BinaryInfo
 	core              *Core
-	breakpoints       map[uint64]*Breakpoint
+	breakpoints       map[uint64]*proc.Breakpoint
 	currentThread     *LinuxPrStatus
-	selectedGoroutine *G
-	allGCache         []*G
+	selectedGoroutine *proc.G
+	allGCache         []*proc.G
 }
 
 type CoreThread struct {
@@ -165,8 +167,8 @@ func OpenCore(corePath, exePath string) (*CoreProcess, error) {
 	}
 	p := &CoreProcess{
 		core:        core,
-		breakpoints: make(map[uint64]*Breakpoint),
-		bi:          NewBinaryInfo("linux", "amd64"),
+		breakpoints: make(map[uint64]*proc.Breakpoint),
+		bi:          proc.NewBinaryInfo("linux", "amd64"),
 	}
 
 	var wg sync.WaitGroup
@@ -178,19 +180,18 @@ func OpenCore(corePath, exePath string) (*CoreProcess, error) {
 		break
 	}
 
-	scope := &EvalScope{0, 0, p.CurrentThread(), nil, &p.bi}
-	ver, isextld, err := scope.getGoInformation()
+	ver, isextld, err := proc.GetGoInformation(p)
 	if err != nil {
 		return nil, err
 	}
 
-	p.bi.arch.SetGStructOffset(ver, isextld)
-	p.selectedGoroutine, _ = GetG(p.CurrentThread())
+	p.bi.Arch.SetGStructOffset(ver, isextld)
+	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
 	return p, nil
 }
 
-func (p *CoreProcess) BinInfo() *BinaryInfo {
+func (p *CoreProcess) BinInfo() *proc.BinaryInfo {
 	return &p.bi
 }
 
@@ -202,16 +203,16 @@ func (thread *CoreThread) ReadMemory(data []byte, addr uintptr) (n int, err erro
 	return n, err
 }
 
-func (thread *CoreThread) writeMemory(addr uintptr, data []byte) (int, error) {
+func (thread *CoreThread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	return 0, ErrWriteCore
 }
 
-func (t *CoreThread) Location() (*Location, error) {
+func (t *CoreThread) Location() (*proc.Location, error) {
 	f, l, fn := t.p.bi.PCToLine(t.th.Reg.Rip)
-	return &Location{PC: t.th.Reg.Rip, File: f, Line: l, Fn: fn}, nil
+	return &proc.Location{PC: t.th.Reg.Rip, File: f, Line: l, Fn: fn}, nil
 }
 
-func (t *CoreThread) Breakpoint() (*Breakpoint, bool, error) {
+func (t *CoreThread) Breakpoint() (*proc.Breakpoint, bool, error) {
 	return nil, false, nil
 }
 
@@ -219,16 +220,16 @@ func (t *CoreThread) ThreadID() int {
 	return int(t.th.Pid)
 }
 
-func (t *CoreThread) Registers(floatingPoint bool) (Registers, error) {
+func (t *CoreThread) Registers(floatingPoint bool) (proc.Registers, error) {
 	//TODO(aarzilli): handle floating point registers
 	return &t.th.Reg, nil
 }
 
-func (t *CoreThread) Arch() Arch {
-	return t.p.bi.arch
+func (t *CoreThread) Arch() proc.Arch {
+	return t.p.bi.Arch
 }
 
-func (t *CoreThread) BinInfo() *BinaryInfo {
+func (t *CoreThread) BinInfo() *proc.BinaryInfo {
 	return &t.p.bi
 }
 
@@ -236,19 +237,23 @@ func (t *CoreThread) StepInstruction() error {
 	return ErrContinueCore
 }
 
-func (p *CoreProcess) Breakpoints() map[uint64]*Breakpoint {
+func (t *CoreThread) Blocked() bool {
+	return false
+}
+
+func (p *CoreProcess) Breakpoints() map[uint64]*proc.Breakpoint {
 	return p.breakpoints
 }
 
-func (p *CoreProcess) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
-	return nil, NoBreakpointError{addr: addr}
+func (p *CoreProcess) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
+	return nil, proc.NoBreakpointError{Addr: addr}
 }
 
 func (p *CoreProcess) ClearInternalBreakpoints() error {
 	return nil
 }
 
-func (p *CoreProcess) ContinueOnce() (IThread, error) {
+func (p *CoreProcess) ContinueOnce() (proc.IThread, error) {
 	return nil, ErrContinueCore
 }
 
@@ -260,7 +265,7 @@ func (p *CoreProcess) RequestManualStop() error {
 	return nil
 }
 
-func (p *CoreProcess) CurrentThread() IThread {
+func (p *CoreProcess) CurrentThread() proc.IThread {
 	return &CoreThread{p.currentThread, p}
 }
 
@@ -273,18 +278,18 @@ func (p *CoreProcess) Exited() bool {
 }
 
 func (p *CoreProcess) FindFileLocation(fileName string, lineNumber int) (uint64, error) {
-	return FindFileLocation(p.CurrentThread(), p.breakpoints, &p.bi, fileName, lineNumber)
+	return proc.FindFileLocation(p.CurrentThread(), p.breakpoints, &p.bi, fileName, lineNumber)
 }
 
 func (p *CoreProcess) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	return FirstPCAfterPrologue(p.CurrentThread(), p.breakpoints, &p.bi, fn, sameline)
+	return proc.FirstPCAfterPrologue(p.CurrentThread(), p.breakpoints, &p.bi, fn, sameline)
 }
 
 func (p *CoreProcess) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	return FindFunctionLocation(p.CurrentThread(), p.breakpoints, &p.bi, funcName, firstLine, lineOffset)
+	return proc.FindFunctionLocation(p.CurrentThread(), p.breakpoints, &p.bi, funcName, firstLine, lineOffset)
 }
 
-func (p *CoreProcess) AllGCache() *[]*G {
+func (p *CoreProcess) AllGCache() *[]*proc.G {
 	return &p.allGCache
 }
 
@@ -304,16 +309,16 @@ func (p *CoreProcess) Running() bool {
 	return false
 }
 
-func (p *CoreProcess) SelectedGoroutine() *G {
+func (p *CoreProcess) SelectedGoroutine() *proc.G {
 	return p.selectedGoroutine
 }
 
-func (p *CoreProcess) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+func (p *CoreProcess) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
 	return nil, ErrWriteCore
 }
 
 func (p *CoreProcess) SwitchGoroutine(gid int) error {
-	g, err := FindGoroutine(p, gid)
+	g, err := proc.FindGoroutine(p, gid)
 	if err != nil {
 		return err
 	}
@@ -321,8 +326,8 @@ func (p *CoreProcess) SwitchGoroutine(gid int) error {
 		// user specified -1 and selectedGoroutine is nil
 		return nil
 	}
-	if g.thread != nil {
-		return p.SwitchThread(g.thread.ThreadID())
+	if g.Thread != nil {
+		return p.SwitchThread(g.Thread.ThreadID())
 	}
 	p.selectedGoroutine = g
 	return nil
@@ -331,21 +336,21 @@ func (p *CoreProcess) SwitchGoroutine(gid int) error {
 func (p *CoreProcess) SwitchThread(tid int) error {
 	if th, ok := p.core.Threads[tid]; ok {
 		p.currentThread = th
-		p.selectedGoroutine, _ = GetG(p.CurrentThread())
+		p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
-func (p *CoreProcess) ThreadList() []IThread {
-	r := make([]IThread, 0, len(p.core.Threads))
+func (p *CoreProcess) ThreadList() []proc.IThread {
+	r := make([]proc.IThread, 0, len(p.core.Threads))
 	for _, v := range p.core.Threads {
 		r = append(r, &CoreThread{v, p})
 	}
 	return r
 }
 
-func (p *CoreProcess) FindThread(threadID int) (IThread, bool) {
+func (p *CoreProcess) FindThread(threadID int) (proc.IThread, bool) {
 	t, ok := p.core.Threads[threadID]
 	return &CoreThread{t, p}, ok
 }

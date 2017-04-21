@@ -32,15 +32,18 @@ type Register struct {
 	Value string
 }
 
-func appendWordReg(regs []Register, name string, value uint16) []Register {
+// AppendWordReg appends a word (16 bit) register to regs.
+func AppendWordReg(regs []Register, name string, value uint16) []Register {
 	return append(regs, Register{name, fmt.Sprintf("%#04x", value)})
 }
 
-func appendDwordReg(regs []Register, name string, value uint32) []Register {
+// AppendDwordReg appends a double word (32 bit) register to regs.
+func AppendDwordReg(regs []Register, name string, value uint32) []Register {
 	return append(regs, Register{name, fmt.Sprintf("%#08x", value)})
 }
 
-func appendQwordReg(regs []Register, name string, value uint64) []Register {
+// AppendQwordReg appends a quad word (64 bit) register to regs.
+func AppendQwordReg(regs []Register, name string, value uint64) []Register {
 	return append(regs, Register{name, fmt.Sprintf("%#016x", value)})
 }
 
@@ -48,7 +51,18 @@ func appendFlagReg(regs []Register, name string, value uint64, descr flagRegiste
 	return append(regs, Register{name, descr.Describe(value, size)})
 }
 
-func appendX87Reg(regs []Register, index int, exponent uint16, mantissa uint64) []Register {
+// AppendEflagReg appends EFLAG register to regs.
+func AppendEflagReg(regs []Register, name string, value uint64) []Register {
+	return appendFlagReg(regs, name, value, eflagsDescription, 64)
+}
+
+// AppendMxcsrReg appends MXCSR register to regs.
+func AppendMxcsrReg(regs []Register, name string, value uint64) []Register {
+	return appendFlagReg(regs, name, value, mxcsrDescription, 32)
+}
+
+// AppendX87Reg appends a 80 bit float register to regs.
+func AppendX87Reg(regs []Register, index int, exponent uint16, mantissa uint64) []Register {
 	var f float64
 	fset := false
 
@@ -103,7 +117,8 @@ func appendX87Reg(regs []Register, index int, exponent uint16, mantissa uint64) 
 	return append(regs, Register{fmt.Sprintf("ST(%d)", index), fmt.Sprintf("%#04x%016x\t%g", exponent, mantissa, f)})
 }
 
-func appendSSEReg(regs []Register, name string, xmm []byte) []Register {
+// AppendSSEReg appends a 256 bit SSE register to regs.
+func AppendSSEReg(regs []Register, name string, xmm []byte) []Register {
 	buf := bytes.NewReader(xmm)
 
 	var out bytes.Buffer
@@ -140,20 +155,6 @@ func appendSSEReg(regs []Register, name string, xmm []byte) []Register {
 }
 
 var UnknownRegisterError = errors.New("unknown register")
-
-// Registers obtains register values from the debugged process.
-func (t *Thread) Registers(floatingPoint bool) (Registers, error) {
-	return registers(t, floatingPoint)
-}
-
-// PC returns the current PC for this thread.
-func (t *Thread) PC() (uint64, error) {
-	regs, err := t.Registers(false)
-	if err != nil {
-		return 0, err
-	}
-	return regs.PC(), nil
-}
 
 type flagRegisterDescr []flagDescr
 type flagDescr struct {

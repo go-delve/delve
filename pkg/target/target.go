@@ -5,6 +5,9 @@ import (
 	"go/ast"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/core"
+	"github.com/derekparker/delve/pkg/proc/gdbserial"
+	"github.com/derekparker/delve/pkg/proc/native"
 )
 
 // Target represents the target of the debugger. This
@@ -89,6 +92,6 @@ type VariableEval interface {
 	ConvertEvalScope(gid, frame int) (*proc.EvalScope, error)
 }
 
-var _ Interface = &proc.Process{}
-var _ Interface = &proc.CoreProcess{}
-var _ Interface = &proc.GdbserverProcess{}
+var _ Interface = &native.Process{}
+var _ Interface = &core.CoreProcess{}
+var _ Interface = &gdbserial.GdbserverProcess{}

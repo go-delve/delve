@@ -63,7 +63,7 @@ func (inst *AsmInstruction) IsCall() bool {
 	return inst.Inst.Op == x86asm.CALL || inst.Inst.Op == x86asm.LCALL
 }
 
-func resolveCallArg(inst *ArchInst, currentGoroutine bool, regs Registers, mem memoryReadWriter, bininfo *BinaryInfo) *Location {
+func resolveCallArg(inst *ArchInst, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	if inst.Op != x86asm.CALL && inst.Op != x86asm.LCALL {
 		return nil
 	}
@@ -140,13 +140,9 @@ func init() {
 	}
 }
 
-func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	return FirstPCAfterPrologue(dbp.currentThread, dbp.breakpoints, &dbp.bi, fn, sameline)
-}
-
 // FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
 // If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry
-func FirstPCAfterPrologue(mem memoryReadWriter, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, fn *gosym.Func, sameline bool) (uint64, error) {
+func FirstPCAfterPrologue(mem MemoryReadWriter, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, fn *gosym.Func, sameline bool) (uint64, error) {
 	text, err := disassemble(mem, nil, breakpoints, bi, fn.Entry, fn.End)
 	if err != nil {
 		return fn.Entry, err

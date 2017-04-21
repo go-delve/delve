@@ -1,4 +1,4 @@
-package proc
+package native
 
 // #include "proc_darwin.h"
 // #include "threads_darwin.h"
@@ -15,6 +15,8 @@ import (
 	"unsafe"
 
 	sys "golang.org/x/sys/unix"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // OSProcessDetails holds Darwin specific information.
@@ -36,7 +38,7 @@ type OSProcessDetails struct {
 func Launch(cmd []string, wd string) (*Process, error) {
 	// check that the argument to Launch is an executable file
 	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, NotExecutableErr
+		return nil, proc.NotExecutableErr
 	}
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
@@ -285,7 +287,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				return nil, err
 			}
 			dbp.postExit()
-			return nil, ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
+			return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
 
 		case C.MACH_RCV_INTERRUPTED:
 			if !dbp.halt {
@@ -393,7 +395,7 @@ func (dbp *Process) exitGuard(err error) error {
 	_, status, werr := dbp.wait(dbp.pid, sys.WNOHANG)
 	if werr == nil && status.Exited() {
 		dbp.postExit()
-		return ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
+		return proc.ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
 	}
 	return err
 }

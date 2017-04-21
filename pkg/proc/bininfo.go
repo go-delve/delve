@@ -22,13 +22,13 @@ import (
 type BinaryInfo struct {
 	lastModified time.Time // Time the executable of this process was last modified
 
-	goos   string
+	GOOS   string
 	closer io.Closer
 
 	// Maps package names to package paths, needed to lookup types inside DWARF info
 	packageMap map[string]string
 
-	arch         Arch
+	Arch         Arch
 	dwarf        *dwarf.Data
 	frameEntries frame.FrameDescriptionEntries
 	lineInfo     line.DebugLines
@@ -46,12 +46,12 @@ var UnsupportedWindowsArchErr = errors.New("unsupported architecture of windows/
 var UnsupportedDarwinArchErr = errors.New("unsupported architecture - only darwin/amd64 is supported")
 
 func NewBinaryInfo(goos, goarch string) BinaryInfo {
-	r := BinaryInfo{goos: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry)}
+	r := BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry)}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info)
 	switch goarch {
 	case "amd64":
-		r.arch = AMD64Arch(goos)
+		r.Arch = AMD64Arch(goos)
 	}
 
 	return r
@@ -63,7 +63,7 @@ func (bininfo *BinaryInfo) LoadBinaryInfo(path string, wg *sync.WaitGroup) error
 		bininfo.lastModified = fi.ModTime()
 	}
 
-	switch bininfo.goos {
+	switch bininfo.GOOS {
 	case "linux":
 		return bininfo.LoadBinaryInfoElf(path, wg)
 	case "windows":
@@ -110,6 +110,11 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *gosym.Func) {
 // LineToPC converts a file:line into a memory address.
 func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *gosym.Func, err error) {
 	return bi.goSymTable.LineToPC(filename, lineno)
+}
+
+// PCToFunc returns the function containing the given PC address
+func (bi *BinaryInfo) PCToFunc(pc uint64) *gosym.Func {
+	return bi.goSymTable.PCToFunc(pc)
 }
 
 func (bi *BinaryInfo) Close() error {
