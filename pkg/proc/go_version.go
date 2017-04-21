@@ -9,15 +9,16 @@ import (
 // the Go compiler version used to compile
 // the target binary.
 type GoVersion struct {
-	Major int
-	Minor int
-	Rev   int
-	Beta  int
-	RC    int
+	Major    int
+	Minor    int
+	Rev      int
+	Beta     int
+	RC    	 int
+	Proposal string
 }
 
 var (
-	GoVer18Beta = GoVersion{1, 8, -1, 0, 0}
+	GoVer18Beta = GoVersion{1, 8, -1, 0, 0, ""}
 )
 
 func ParseVersionString(ver string) (GoVersion, bool) {
@@ -25,12 +26,12 @@ func ParseVersionString(ver string) (GoVersion, bool) {
 	var err1, err2, err3 error
 
 	if strings.HasPrefix(ver, "devel") {
-		return GoVersion{-1, 0, 0, 0, 0}, true
+		return GoVersion{-1, 0, 0, 0, 0, ""}, true
 	}
 
 	if strings.HasPrefix(ver, "go") {
 		ver := strings.Split(ver, " ")[0]
-		v := strings.SplitN(ver[2:], ".", 3)
+		v := strings.SplitN(ver[2:], ".", 4)
 		switch len(v) {
 		case 2:
 			r.Major, err1 = strconv.Atoi(v[0])
@@ -52,6 +53,7 @@ func ParseVersionString(ver string) (GoVersion, bool) {
 
 			r.Minor, err2 = strconv.Atoi(vr[0])
 			r.Rev = -1
+			r.Proposal = ""
 
 			if err1 != nil || err2 != nil || err3 != nil {
 				return GoVersion{}, false
@@ -64,7 +66,20 @@ func ParseVersionString(ver string) (GoVersion, bool) {
 			r.Major, err1 = strconv.Atoi(v[0])
 			r.Minor, err2 = strconv.Atoi(v[1])
 			r.Rev, err3 = strconv.Atoi(v[2])
+			r.Proposal = ""
 			if err1 != nil || err2 != nil || err3 != nil {
+				return GoVersion{}, false
+			}
+
+			return r, true
+
+		case 4:
+
+			r.Major, err1 = strconv.Atoi(v[0])
+			r.Minor, err2 = strconv.Atoi(v[1])
+			r.Rev, err3 = strconv.Atoi(v[2])
+			r.Proposal = v[3];
+			if err1 != nil || err2 != nil || err3 != nil || r.Proposal == "" {
 				return GoVersion{}, false
 			}
 

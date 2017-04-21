@@ -645,7 +645,7 @@ func TestEvalExpression(t *testing.T) {
 	}
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major >= 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major >= 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		for i := range testcases {
 			if testcases[i].name == "iface3" {
 				testcases[i].value = "interface {}(*map[string]go/constant.Value) *[]"
@@ -766,7 +766,7 @@ func TestIssue426(t *testing.T) {
 	}
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 8, -1, 0, 0}) {
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 8, -1, 0, 0, ""}) {
 		testcases[2].typ = `struct { main.val go/constant.Value }`
 		testcases[3].typ = `func(struct { main.i int }, interface {}, struct { main.val go/constant.Value })`
 		testcases[4].typ = `struct { main.i int; main.j int }`
@@ -821,7 +821,7 @@ func TestPackageRenames(t *testing.T) {
 	}
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		// Not supported on 1.6 or earlier
 		return
 	}

@@ -269,7 +269,7 @@ func TestNextGeneral(t *testing.T) {
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
@@ -1161,7 +1161,7 @@ func TestClientServer_Issue528(t *testing.T) {
 	// f744717d1924340b8f5e5a385e99078693ad9097
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		t.Log("Test skipped")
 		return
 	}
