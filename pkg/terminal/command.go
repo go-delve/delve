@@ -218,6 +218,41 @@ Supported commands: print, stack and goroutine)`},
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
 	}
 
+	if client == nil || client.Recorded() {
+		c.cmds = append(c.cmds, command{
+			aliases: []string{"rewind", "rw"},
+			cmdFn:   rewind,
+			helpMsg: "Run backwards until breakpoint or program termination.",
+		})
+		c.cmds = append(c.cmds, command{
+			aliases: []string{"check", "checkpoint"},
+			cmdFn:   checkpoint,
+			helpMsg: `Creates a checkpoint at the current position.
+			
+	checkpoint [where]`,
+		})
+		c.cmds = append(c.cmds, command{
+			aliases: []string{"checkpoints"},
+			cmdFn:   checkpoints,
+			helpMsg: "Print out info for existing checkpoints.",
+		})
+		c.cmds = append(c.cmds, command{
+			aliases: []string{"clear-checkpoint", "clearcheck"},
+			cmdFn:   clearCheckpoint,
+			helpMsg: `Deletes checkpoint.
+			
+	checkpoint <id>`,
+		})
+		for i := range c.cmds {
+			v := &c.cmds[i]
+			if v.match("restart") {
+				v.helpMsg = `Restart process from a checkpoint or event.
+	
+	restart [event number or checkpoint id]`
+			}
+		}
+	}
+
 	sort.Sort(ByFirstAlias(c.cmds))
 	return c
 }
@@ -569,13 +604,23 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 }
 
 func restart(t *Term, ctx callContext, args string) error {
-	discarded, err := t.client.Restart()
+	discarded, err := t.client.RestartFrom(args)
 	if err != nil {
 		return err
 	}
-	fmt.Println("Process restarted with PID", t.client.ProcessPid())
+	if !t.client.Recorded() {
+		fmt.Println("Process restarted with PID", t.client.ProcessPid())
+	}
 	for i := range discarded {
 		fmt.Printf("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
+	}
+	if t.client.Recorded() {
+		state, err := t.client.GetState()
+		if err != nil {
+			return err
+		}
+		printcontext(t, state)
+		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 	}
 	return nil
 }
@@ -1196,6 +1241,10 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 
 	printcontextThread(t, state.CurrentThread)
 
+	if state.When != "" {
+		fmt.Println(state.When)
+	}
+
 	return nil
 }
 
@@ -1407,6 +1456,74 @@ func (c *Commands) executeFile(t *Term, name string) error {
 	}
 
 	return scanner.Err()
+}
+
+func rewind(t *Term, ctx callContext, args string) error {
+	stateChan := t.client.Rewind()
+	var state *api.DebuggerState
+	for state = range stateChan {
+		if state.Err != nil {
+			return state.Err
+		}
+		printcontext(t, state)
+	}
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	return nil
+}
+
+func checkpoint(t *Term, ctx callContext, args string) error {
+	if args == "" {
+		state, err := t.client.GetState()
+		if err != nil {
+			return err
+		}
+		var loc api.Location = api.Location{PC: state.CurrentThread.PC, File: state.CurrentThread.File, Line: state.CurrentThread.Line, Function: state.CurrentThread.Function}
+		if state.SelectedGoroutine != nil {
+			loc = state.SelectedGoroutine.CurrentLoc
+		}
+		fname := "???"
+		if loc.Function != nil {
+			fname = loc.Function.Name
+		}
+		args = fmt.Sprintf("%s() %s:%d (%#x)", fname, loc.File, loc.Line, loc.PC)
+	}
+
+	cpid, err := t.client.Checkpoint(args)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Checkpoint c%d created.\n", cpid)
+	return nil
+}
+
+func checkpoints(t *Term, ctx callContext, args string) error {
+	cps, err := t.client.ListCheckpoints()
+	if err != nil {
+		return err
+	}
+	w := new(tabwriter.Writer)
+	w.Init(os.Stdout, 4, 4, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tWhen\tWhere")
+	for _, cp := range cps {
+		fmt.Fprintf(w, "c%d\t%s\t%s\n", cp.ID, cp.When, cp.Where)
+	}
+	w.Flush()
+	return nil
+}
+
+func clearCheckpoint(t *Term, ctx callContext, args string) error {
+	if len(args) < 0 {
+		return errors.New("not enough arguments to clear-checkpoint")
+	}
+	if args[0] != 'c' {
+		return errors.New("clear-checkpoint argument must be a checkpoint ID")
+	}
+	id, err := strconv.Atoi(args[1:])
+	if err != nil {
+		return errors.New("clear-checkpoint argument must be a checkpoint ID")
+	}
+	return t.client.ClearCheckpoint(id)
 }
 
 func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {

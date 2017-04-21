@@ -20,6 +20,7 @@ type functionDebugInfo struct {
 }
 
 var NotExecutableErr = errors.New("not an executable file")
+var NotRecordedErr = errors.New("not a recording")
 
 // ProcessExitedError indicates that the process has exited and contains both
 // process id and exit status.
@@ -114,7 +115,7 @@ func Continue(dbp Process) error {
 		switch {
 		case curbp == nil:
 			// runtime.Breakpoint or manual stop
-			if onRuntimeBreakpoint(curthread) {
+			if recorded, _ := dbp.Recorded(); onRuntimeBreakpoint(curthread) && !recorded {
 				// Single-step current thread until we exit runtime.breakpoint and
 				// runtime.Breakpoint.
 				// On go < 1.8 it was sufficient to single-step twice on go1.8 a change

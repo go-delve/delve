@@ -59,6 +59,9 @@ func (s *RPCServer) Detach(arg DetachIn, out *DetachOut) error {
 }
 
 type RestartIn struct {
+	// Position to restart from, if it starts with 'c' it's a checkpoint ID,
+	// otherwise it's an event number. Only valid for recorded targets.
+	Position string
 }
 
 type RestartOut struct {
@@ -71,7 +74,7 @@ func (s *RPCServer) Restart(arg RestartIn, out *RestartOut) error {
 		return errors.New("cannot restart process Delve did not create")
 	}
 	var err error
-	out.DiscardedBreakpoints, err = s.debugger.Restart()
+	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Position)
 	return err
 }
 
@@ -572,4 +575,55 @@ func (c *RPCServer) Disassemble(arg DisassembleIn, out *DisassembleOut) error {
 	var err error
 	out.Disassemble, err = c.debugger.Disassemble(arg.Scope, arg.StartPC, arg.EndPC, arg.Flavour)
 	return err
+}
+
+type RecordedIn struct {
+}
+
+type RecordedOut struct {
+	Recorded       bool
+	TraceDirectory string
+}
+
+func (s *RPCServer) Recorded(arg RecordedIn, out *RecordedOut) error {
+	out.Recorded, out.TraceDirectory = s.debugger.Recorded()
+	return nil
+}
+
+type CheckpointIn struct {
+	Where string
+}
+
+type CheckpointOut struct {
+	ID int
+}
+
+func (s *RPCServer) Checkpoint(arg CheckpointIn, out *CheckpointOut) error {
+	var err error
+	out.ID, err = s.debugger.Checkpoint(arg.Where)
+	return err
+}
+
+type ListCheckpointsIn struct {
+}
+
+type ListCheckpointsOut struct {
+	Checkpoints []api.Checkpoint
+}
+
+func (s *RPCServer) ListCheckpoints(arg ListCheckpointsIn, out *ListCheckpointsOut) error {
+	var err error
+	out.Checkpoints, err = s.debugger.Checkpoints()
+	return err
+}
+
+type ClearCheckpointIn struct {
+	ID int
+}
+
+type ClearCheckpointOut struct {
+}
+
+func (s *RPCServer) ClearCheckpoint(arg ClearCheckpointIn, out *ClearCheckpointOut) error {
+	return s.debugger.ClearCheckpoint(arg.ID)
 }

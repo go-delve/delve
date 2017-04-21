@@ -66,6 +66,14 @@ func (dbp *Process) BinInfo() *proc.BinaryInfo {
 	return &dbp.bi
 }
 
+func (dbp *Process) Recorded() (bool, string)                { return false, "" }
+func (dbp *Process) Restart(string) error                    { return proc.NotRecordedErr }
+func (dbp *Process) Direction(proc.Direction) error          { return proc.NotRecordedErr }
+func (dbp *Process) When() (string, error)                   { return "", nil }
+func (dbp *Process) Checkpoint(string) (int, error)          { return -1, proc.NotRecordedErr }
+func (dbp *Process) Checkpoints() ([]proc.Checkpoint, error) { return nil, proc.NotRecordedErr }
+func (dbp *Process) ClearCheckpoint(int) error               { return proc.NotRecordedErr }
+
 // Detach from the process being debugged, optionally killing it.
 func (dbp *Process) Detach(kill bool) (err error) {
 	if dbp.exited {

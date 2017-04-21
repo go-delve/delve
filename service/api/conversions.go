@@ -274,3 +274,7 @@ func ConvertRegisters(in []proc.Register) (out []Register) {
 	}
 	return
 }
+
+func ConvertCheckpoint(in proc.Checkpoint) (out Checkpoint) {
+	return Checkpoint{ID: in.ID, When: in.When, Where: in.Where}
+}

@@ -17,6 +17,9 @@ func TestIssue419(t *testing.T) {
 		// debugserver bug?
 		return
 	}
+	if testBackend == "rr" {
+		return
+	}
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
 	withTestProcess("issue419", t, func(p proc.Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.main")

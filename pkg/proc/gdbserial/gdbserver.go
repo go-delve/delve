@@ -92,6 +92,8 @@ const (
 
 const heartbeatInterval = 10 * time.Second
 
+var ErrDirChange = errors.New("direction change with internal breakpoints")
+
 // Process implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
 type Process struct {
@@ -109,8 +111,9 @@ type Process struct {
 	breakpointIDCounter         int
 	internalBreakpointIDCounter int
 
-	gcmdok         bool // true if the stub supports g and G commands
-	threadStopInfo bool // true if the stub supports qThreadStopInfo
+	gcmdok         bool   // true if the stub supports g and G commands
+	threadStopInfo bool   // true if the stub supports qThreadStopInfo
+	tracedir       string // if attached to rr the path to the trace directory
 
 	loadGInstrAddr uint64 // address of the g loading instruction, zero if we couldn't allocate it
 
@@ -173,6 +176,7 @@ func Connect(addr string, path string, pid int, attempts int) (*Process, error) 
 			conn:                conn,
 			maxTransmitAttempts: maxTransmitAttempts,
 			inbuf:               make([]byte, 0, initialInputBufferSize),
+			direction:           proc.Forward,
 		},
 
 		threads:        make(map[int]*Thread),
@@ -241,7 +245,7 @@ func Connect(addr string, path string, pid int, attempts int) (*Process, error) 
 
 	if p.conn.pid <= 0 {
 		p.conn.pid, _, err = p.loadProcessInfo(0)
-		if err != nil {
+		if err != nil && !isProtocolErrorUnsupported(err) {
 			conn.Close()
 			p.bi.Close()
 			return nil, err
@@ -415,6 +419,10 @@ func (p *Process) BinInfo() *proc.BinaryInfo {
 	return &p.bi
 }
 
+func (p *Process) Recorded() (bool, string) {
+	return p.tracedir != "", p.tracedir
+}
+
 func (p *Process) Pid() int {
 	return int(p.conn.pid)
 }
@@ -464,11 +472,13 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 		return nil, &proc.ProcessExitedError{Pid: p.conn.pid}
 	}
 
-	// step threads stopped at any breakpoint over their breakpoint
-	for _, thread := range p.threads {
-		if thread.CurrentBreakpoint != nil {
-			if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
-				return nil, err
+	if p.conn.direction == proc.Forward {
+		// step threads stopped at any breakpoint over their breakpoint
+		for _, thread := range p.threads {
+			if thread.CurrentBreakpoint != nil {
+				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -593,11 +603,17 @@ func (p *Process) SwitchGoroutine(gid int) error {
 }
 
 func (p *Process) RequestManualStop() error {
+	if !p.conn.running {
+		return nil
+	}
 	p.ctrlC = true
 	return p.conn.sendCtrlC()
 }
 
 func (p *Process) Halt() error {
+	if p.exited {
+		return nil
+	}
 	p.ctrlC = true
 	return p.conn.sendCtrlC()
 }
@@ -632,6 +648,153 @@ func (p *Process) Detach(kill bool) error {
 		p.process.Wait()
 	}
 	return p.bi.Close()
+}
+
+func (p *Process) Restart(pos string) error {
+	if p.tracedir == "" {
+		return proc.NotRecordedErr
+	}
+
+	p.exited = false
+
+	p.allGCache = nil
+	for _, th := range p.threads {
+		th.clearBreakpointState()
+	}
+
+	p.ctrlC = false
+
+	err := p.conn.restart(pos)
+	if err != nil {
+		return err
+	}
+
+	// for some reason we have to send a vCont;c after a vRun to make rr behave
+	// properly, because that's what gdb does.
+	_, _, err = p.conn.resume(0, nil)
+	if err != nil {
+		return err
+	}
+
+	err = p.updateThreadList(&threadUpdater{p: p})
+	if err != nil {
+		return err
+	}
+	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
+
+	for addr := range p.breakpoints {
+		p.conn.setBreakpoint(addr)
+	}
+
+	if err := p.setCurrentBreakpoints(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *Process) When() (string, error) {
+	if p.tracedir == "" {
+		return "", proc.NotRecordedErr
+	}
+	event, err := p.conn.qRRCmd("when")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(event), nil
+}
+
+const (
+	checkpointPrefix = "Checkpoint "
+)
+
+func (p *Process) Checkpoint(where string) (int, error) {
+	if p.tracedir == "" {
+		return -1, proc.NotRecordedErr
+	}
+	resp, err := p.conn.qRRCmd("checkpoint", where)
+	if err != nil {
+		return -1, err
+	}
+
+	if !strings.HasPrefix(resp, checkpointPrefix) {
+		return -1, fmt.Errorf("can not parse checkpoint response %q", resp)
+	}
+
+	idstr := resp[len(checkpointPrefix):]
+	space := strings.Index(idstr, " ")
+	if space < 0 {
+		return -1, fmt.Errorf("can not parse checkpoint response %q", resp)
+	}
+	idstr = idstr[:space]
+
+	cpid, err := strconv.Atoi(idstr)
+	if err != nil {
+		return -1, err
+	}
+	return cpid, nil
+}
+
+func (p *Process) Checkpoints() ([]proc.Checkpoint, error) {
+	if p.tracedir == "" {
+		return nil, proc.NotRecordedErr
+	}
+	resp, err := p.conn.qRRCmd("info checkpoints")
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(resp, "\n")
+	r := make([]proc.Checkpoint, 0, len(lines)-1)
+	for _, line := range lines[1:] {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("can not parse \"info checkpoints\" output line %q", line)
+		}
+		cpid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			return nil, fmt.Errorf("can not parse \"info checkpoints\" output line %q: %v", line, err)
+		}
+		r = append(r, proc.Checkpoint{cpid, fields[1], fields[2]})
+	}
+	return r, nil
+}
+
+const deleteCheckpointPrefix = "Deleted checkpoint "
+
+func (p *Process) ClearCheckpoint(id int) error {
+	if p.tracedir == "" {
+		return proc.NotRecordedErr
+	}
+	resp, err := p.conn.qRRCmd("delete checkpoint", strconv.Itoa(id))
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(resp, deleteCheckpointPrefix) {
+		return errors.New(resp)
+	}
+	return nil
+}
+
+func (p *Process) Direction(dir proc.Direction) error {
+	if p.tracedir == "" {
+		return proc.NotRecordedErr
+	}
+	if p.conn.conn == nil {
+		return proc.ProcessExitedError{Pid: p.conn.pid}
+	}
+	if p.conn.direction == dir {
+		return nil
+	}
+	for _, bp := range p.Breakpoints() {
+		if bp.Internal() {
+			return ErrDirChange
+		}
+	}
+	p.conn.direction = dir
+	return nil
 }
 
 func (p *Process) Breakpoints() map[uint64]*proc.Breakpoint {
@@ -759,6 +922,12 @@ func (tu *threadUpdater) Finish() {
 		}
 		delete(tu.p.threads, threadID)
 		if tu.p.currentThread.ID == threadID {
+			tu.p.currentThread = nil
+		}
+	}
+	if tu.p.currentThread != nil {
+		if _, exists := tu.p.threads[tu.p.currentThread.ID]; !exists {
+			// current thread was removed
 			tu.p.currentThread = nil
 		}
 	}
@@ -988,6 +1157,16 @@ func (t *Thread) reloadRegisters() error {
 			if err := t.p.conn.readRegister(t.strID, reginfo.Regnum, t.regs.regs[reginfo.Name].value); err != nil {
 				return err
 			}
+		}
+	}
+
+	switch t.p.bi.GOOS {
+	case "linux":
+		if reg, hasFsBase := t.regs.regs[regnameFsBase]; hasFsBase {
+			t.regs.gaddr = 0
+			t.regs.tls = binary.LittleEndian.Uint64(reg.value)
+			t.regs.hasgaddr = false
+			return nil
 		}
 	}
 
