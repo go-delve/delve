@@ -131,7 +131,7 @@ func (r *Regs) GAddr() (uint64, bool) {
 }
 
 // SetPC sets the RIP register to the value specified by `pc`.
-func (r *Regs) SetPC(t proc.IThread, pc uint64) error {
+func (r *Regs) SetPC(t proc.Thread, pc uint64) error {
 	thread := t.(*Thread)
 	context := newCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL

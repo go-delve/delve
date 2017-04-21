@@ -17,7 +17,6 @@ import (
 	"github.com/derekparker/delve/pkg/proc/core"
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
 	"github.com/derekparker/delve/pkg/proc/native"
-	"github.com/derekparker/delve/pkg/target"
 	"github.com/derekparker/delve/service/api"
 )
 
@@ -33,7 +32,7 @@ type Debugger struct {
 	config *Config
 	// TODO(DO NOT MERGE WITHOUT) rename to targetMutex
 	processMutex sync.Mutex
-	target       target.Interface
+	target       proc.Process
 }
 
 // Config provides the configuration to start a Debugger.
@@ -100,7 +99,7 @@ func New(config *Config) (*Debugger, error) {
 	return d, nil
 }
 
-func (d *Debugger) Launch(processArgs []string, wd string) (target.Interface, error) {
+func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error) {
 	switch d.config.Backend {
 	case "native":
 		return native.Launch(processArgs, wd)
@@ -121,7 +120,7 @@ func (d *Debugger) Launch(processArgs []string, wd string) (target.Interface, er
 // the target's executable.
 var ErrNoAttachPath = errors.New("must specify executable path on macOS")
 
-func (d *Debugger) Attach(pid int, path string) (target.Interface, error) {
+func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
 	switch d.config.Backend {
 	case "native":
 		return native.Attach(pid)

@@ -95,7 +95,7 @@ func (iae InvalidAddressError) Error() string {
 }
 
 // CheckCondition evaluates bp's condition on thread.
-func (bp *Breakpoint) CheckCondition(thread IThread) (bool, error) {
+func (bp *Breakpoint) CheckCondition(thread Thread) (bool, error) {
 	if bp.Cond == nil {
 		return true, nil
 	}

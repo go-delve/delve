@@ -90,7 +90,7 @@ func (r *Regs) GAddr() (uint64, bool) {
 }
 
 // SetPC sets RIP to the value specified by 'pc'.
-func (r *Regs) SetPC(t proc.IThread, pc uint64) (err error) {
+func (r *Regs) SetPC(t proc.Thread, pc uint64) (err error) {
 	thread := t.(*Thread)
 	r.regs.SetPC(pc)
 	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })

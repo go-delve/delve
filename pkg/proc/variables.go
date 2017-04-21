@@ -129,7 +129,7 @@ type G struct {
 	CurrentLoc Location
 
 	// Thread that this goroutine is currently allocated to
-	Thread IThread
+	Thread Thread
 
 	variable *Variable
 }
@@ -157,7 +157,7 @@ func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType dwarf.T
 	return newVariable(name, addr, dwarfType, scope.BinInfo, scope.Mem)
 }
 
-func newVariableFromThread(t IThread, name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+func newVariableFromThread(t Thread, name string, addr uintptr, dwarfType dwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, t.BinInfo(), t)
 }
 
@@ -366,7 +366,7 @@ func (gvar *Variable) parseG() (*G, error) {
 	}
 	if gaddr == 0 {
 		id := 0
-		if thread, ok := mem.(IThread); ok {
+		if thread, ok := mem.(Thread); ok {
 			id = thread.ThreadID()
 		}
 		return nil, NoGError{tid: id}

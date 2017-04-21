@@ -237,7 +237,7 @@ func (r *LinuxCoreRegisters) Get(n int) (uint64, error) {
 	return 0, proc.UnknownRegisterError
 }
 
-func (r *LinuxCoreRegisters) SetPC(proc.IThread, uint64) error {
+func (r *LinuxCoreRegisters) SetPC(proc.Thread, uint64) error {
 	return errors.New("not supported")
 }
 

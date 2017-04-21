@@ -1,18 +1,13 @@
-package target
+package proc
 
 import (
 	"debug/gosym"
 	"go/ast"
-
-	"github.com/derekparker/delve/pkg/proc"
-	"github.com/derekparker/delve/pkg/proc/core"
-	"github.com/derekparker/delve/pkg/proc/gdbserial"
-	"github.com/derekparker/delve/pkg/proc/native"
 )
 
-// Target represents the target of the debugger. This
+// Process represents the target of the debugger. This
 // target could be a system process, core file, etc.
-type Interface interface {
+type Process interface {
 	Info
 	ProcessManipulation
 	BreakpointManipulation
@@ -23,7 +18,7 @@ type Info interface {
 	Pid() int
 	Exited() bool
 	Running() bool
-	BinInfo() *proc.BinaryInfo
+	BinInfo() *BinaryInfo
 
 	ThreadInfo
 	GoroutineInfo
@@ -56,19 +51,19 @@ type Info interface {
 // ThreadInfo is an interface for getting information on active threads
 // in the process.
 type ThreadInfo interface {
-	FindThread(threadID int) (proc.IThread, bool)
-	ThreadList() []proc.IThread
-	CurrentThread() proc.IThread
+	FindThread(threadID int) (Thread, bool)
+	ThreadList() []Thread
+	CurrentThread() Thread
 }
 
 // GoroutineInfo is an interface for getting information on running goroutines.
 type GoroutineInfo interface {
-	SelectedGoroutine() *proc.G
+	SelectedGoroutine() *G
 }
 
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
-	ContinueOnce() (trapthread proc.IThread, err error)
+	ContinueOnce() (trapthread Thread, err error)
 	StepInstruction() error
 	SwitchThread(int) error
 	SwitchGoroutine(int) error
@@ -80,18 +75,14 @@ type ProcessManipulation interface {
 
 // BreakpointManipulation is an interface for managing breakpoints.
 type BreakpointManipulation interface {
-	Breakpoints() map[uint64]*proc.Breakpoint
-	SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error)
-	ClearBreakpoint(addr uint64) (*proc.Breakpoint, error)
+	Breakpoints() map[uint64]*Breakpoint
+	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
+	ClearBreakpoint(addr uint64) (*Breakpoint, error)
 	ClearInternalBreakpoints() error
 }
 
 // VariableEval is an interface for dealing with eval scopes.
 type VariableEval interface {
-	FrameToScope(proc.Stackframe) *proc.EvalScope
-	ConvertEvalScope(gid, frame int) (*proc.EvalScope, error)
+	FrameToScope(Stackframe) *EvalScope
+	ConvertEvalScope(gid, frame int) (*EvalScope, error)
 }
-
-var _ Interface = &native.Process{}
-var _ Interface = &core.CoreProcess{}
-var _ Interface = &gdbserial.GdbserverProcess{}
