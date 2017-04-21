@@ -69,7 +69,7 @@ func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
 		if err != nil {
 			return nil, err
 		}
-		return pointerTo(ptyp, bi.arch), nil
+		return pointerTo(ptyp, bi.Arch), nil
 	}
 	return bi.findType(exprToString(expr))
 }
@@ -380,7 +380,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 	if err != nil {
 		return "", err
 	}
-	prtyp := pointerTo(rtyp, _type.bi.arch)
+	prtyp := pointerTo(rtyp, _type.bi.Arch)
 
 	uadd := _type.RealType.Common().ByteSize
 	if ut := uncommon(_type, tflag); ut != nil {
@@ -407,7 +407,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 
 	for i := int64(0); i < inCount; i++ {
 		argtype := cursortyp.maybeDereference()
-		cursortyp.Addr += uintptr(_type.bi.arch.PtrSize())
+		cursortyp.Addr += uintptr(_type.bi.Arch.PtrSize())
 		argtypename, _, err := nameOfRuntimeType(argtype)
 		if err != nil {
 			return "", err
@@ -434,7 +434,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 		buf.WriteString(" (")
 		for i := int64(0); i < outCount; i++ {
 			argtype := cursortyp.maybeDereference()
-			cursortyp.Addr += uintptr(_type.bi.arch.PtrSize())
+			cursortyp.Addr += uintptr(_type.bi.Arch.PtrSize())
 			argtypename, _, err := nameOfRuntimeType(argtype)
 			if err != nil {
 				return "", err
@@ -582,7 +582,7 @@ func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	prtyp := pointerTo(rtyp, _type.bi.arch)
+	prtyp := pointerTo(rtyp, _type.bi.Arch)
 
 	uintptrtyp, err := _type.bi.findType("uintptr")
 	if err != nil {
@@ -602,7 +602,7 @@ func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
 
 	newSliceType := func(elemtype dwarf.Type) *dwarf.SliceType {
 		r := newStructType("[]"+elemtype.Common().Name, uintptr(3*uintptrtyp.Size()))
-		appendField(r, "array", pointerTo(elemtype, _type.bi.arch), 0)
+		appendField(r, "array", pointerTo(elemtype, _type.bi.Arch), 0)
 		appendField(r, "len", uintptrtyp, uintptr(uintptrtyp.Size()))
 		appendField(r, "cap", uintptrtyp, uintptr(2*uintptrtyp.Size()))
 		return &dwarf.SliceType{StructType: *r, ElemType: elemtype}

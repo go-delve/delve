@@ -1,6 +1,6 @@
 // +build linux darwin
 
-package proc
+package gdbserial
 
 import "syscall"
 

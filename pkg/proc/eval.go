@@ -67,10 +67,10 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 		// try to interpret the selector as a package variable
 		if maybePkg, ok := node.X.(*ast.Ident); ok {
 			if maybePkg.Name == "runtime" && node.Sel.Name == "curg" {
-				if scope.gvar == nil {
+				if scope.Gvar == nil {
 					return nilVariable, nil
 				}
-				return scope.gvar.clone(), nil
+				return scope.Gvar.clone(), nil
 			} else if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
 				return v, nil
 			}
@@ -144,7 +144,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		fnnode = p.X
 	}
 
-	styp, err := scope.bi.findTypeExpr(fnnode)
+	styp, err := scope.BinInfo.findTypeExpr(fnnode)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 	converr := fmt.Errorf("can not convert %q to %s", exprToString(node.Args[0]), typ.String())
 
-	v := newVariable("", 0, styp, scope.bi, scope.Mem)
+	v := newVariable("", 0, styp, scope.BinInfo, scope.Mem)
 	v.loaded = true
 
 	switch ttyp := typ.(type) {
@@ -457,7 +457,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return v, nil
 	}
 	// if it's not a local variable then it could be a package variable w/o explicit package name
-	_, _, fn := scope.bi.PCToLine(scope.PC)
+	_, _, fn := scope.BinInfo.PCToLine(scope.PC)
 	if fn != nil {
 		if v, err = scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
 			v.Name = node.Name
@@ -495,7 +495,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 	if xv.Children[0].Addr == 0 {
 		return nil, fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), exprToString(node.Type))
 	}
-	typ, err := scope.bi.findTypeExpr(node.Type)
+	typ, err := scope.BinInfo.findTypeExpr(node.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -640,7 +640,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 	xev.OnlyAddr = true
 
 	typename := "*" + xev.DwarfType.Common().Name
-	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.bi.arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
+	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.BinInfo.Arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
 	rv.Children = []Variable{*xev}
 	rv.loaded = true
 

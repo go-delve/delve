@@ -1,14 +1,16 @@
 // +build linux darwin
 
-package proc
+package proc_test
 
 import (
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
-	"runtime"
 
+	"github.com/derekparker/delve/pkg/proc"
 	protest "github.com/derekparker/delve/pkg/proc/test"
+	"github.com/derekparker/delve/pkg/target"
 )
 
 func TestIssue419(t *testing.T) {
@@ -17,10 +19,10 @@ func TestIssue419(t *testing.T) {
 		return
 	}
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
-	withTestProcess("issue419", t, func(p IProcess, fixture protest.Fixture) {
+	withTestProcess("issue419", t, func(p target.Interface, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.main")
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(Continue(p), t, "Continue()")
+		assertNoError(proc.Continue(p), t, "Continue()")
 		go func() {
 			for {
 				time.Sleep(500 * time.Millisecond)
@@ -39,8 +41,8 @@ func TestIssue419(t *testing.T) {
 				}
 			}
 		}()
-		err = Continue(p)
-		if _, exited := err.(ProcessExitedError); !exited {
+		err = proc.Continue(p)
+		if _, exited := err.(proc.ProcessExitedError); !exited {
 			t.Fatalf("Unexpected error after Continue(): %v\n", err)
 		}
 	})

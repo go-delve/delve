@@ -1,4 +1,4 @@
-package proc
+package native
 
 import (
 	"bytes"
@@ -16,6 +16,8 @@ import (
 	"time"
 
 	sys "golang.org/x/sys/unix"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // Process statuses
@@ -43,34 +45,34 @@ type OSProcessDetails struct {
 // to be supplied to that process. `wd` is working directory of the program.
 func Launch(cmd []string, wd string) (*Process, error) {
 	var (
-		proc *exec.Cmd
-		err  error
+		process *exec.Cmd
+		err     error
 	)
 	// check that the argument to Launch is an executable file
 	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, NotExecutableErr
+		return nil, proc.NotExecutableErr
 	}
 	dbp := New(0)
 	dbp.execPtraceFunc(func() {
-		proc = exec.Command(cmd[0])
-		proc.Args = cmd
-		proc.Stdout = os.Stdout
-		proc.Stderr = os.Stderr
-		proc.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true}
+		process = exec.Command(cmd[0])
+		process.Args = cmd
+		process.Stdout = os.Stdout
+		process.Stderr = os.Stderr
+		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true}
 		if wd != "" {
-			proc.Dir = wd
+			process.Dir = wd
 		}
-		err = proc.Start()
+		err = process.Start()
 	})
 	if err != nil {
 		return nil, err
 	}
-	dbp.pid = proc.Process.Pid
-	_, _, err = dbp.wait(proc.Process.Pid, 0)
+	dbp.pid = process.Process.Pid
+	_, _, err = dbp.wait(process.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	return initializeDebugProcess(dbp, proc.Path, false)
+	return initializeDebugProcess(dbp, process.Path, false)
 }
 
 // Attach to an existing process with the given PID.
@@ -189,7 +191,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		if status.Exited() {
 			if wpid == dbp.pid {
 				dbp.postExit()
-				return nil, ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
+				return nil, proc.ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
 			}
 			delete(dbp.threads, wpid)
 			continue
@@ -246,7 +248,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			// TODO(dp) alert user about unexpected signals here.
 			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
 				if err == sys.ESRCH {
-					return nil, ProcessExitedError{Pid: dbp.pid}
+					return nil, proc.ProcessExitedError{Pid: dbp.pid}
 				}
 				return nil, err
 			}

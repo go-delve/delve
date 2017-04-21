@@ -1,9 +1,11 @@
-package proc
+package native
 
 import (
 	"fmt"
 
 	sys "golang.org/x/sys/unix"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 type WaitStatus sys.WaitStatus
@@ -59,7 +61,7 @@ func (t *Thread) singleStep() (err error) {
 			if status != nil {
 				rs = status.ExitStatus()
 			}
-			return ProcessExitedError{Pid: t.dbp.pid, Status: rs}
+			return proc.ProcessExitedError{Pid: t.dbp.pid, Status: rs}
 		}
 		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
 			return nil
@@ -67,20 +69,20 @@ func (t *Thread) singleStep() (err error) {
 	}
 }
 
-func threadBlocked(t IThread) bool {
+func (t *Thread) Blocked() bool {
 	regs, err := t.Registers(false)
 	if err != nil {
 		return false
 	}
 	pc := regs.PC()
-	fn := t.BinInfo().goSymTable.PCToFunc(pc)
+	fn := t.BinInfo().PCToFunc(pc)
 	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
 		return true
 	}
 	return false
 }
 
-func (t *Thread) saveRegisters() (Registers, error) {
+func (t *Thread) saveRegisters() (proc.Registers, error) {
 	var err error
 	t.dbp.execPtraceFunc(func() { err = sys.PtraceGetRegs(t.ID, &t.os.registers) })
 	if err != nil {
@@ -94,7 +96,7 @@ func (t *Thread) restoreRegisters() (err error) {
 	return
 }
 
-func (t *Thread) writeMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
 	if len(data) == 0 {
 		return
 	}

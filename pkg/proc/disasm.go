@@ -35,16 +35,16 @@ func Disassemble(dbp DisassembleInfo, g *G, startPC, endPC uint64) ([]AsmInstruc
 	}
 
 	var regs Registers
-	var mem memoryReadWriter = dbp.CurrentThread()
-	if g.thread != nil {
-		mem = g.thread
-		regs, _ = g.thread.Registers(false)
+	var mem MemoryReadWriter = dbp.CurrentThread()
+	if g.Thread != nil {
+		mem = g.Thread
+		regs, _ = g.Thread.Registers(false)
 	}
 
 	return disassemble(mem, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC)
 }
 
-func disassemble(memrw memoryReadWriter, regs Registers, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
+func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
 	mem := make([]byte, int(endPC-startPC))
 	_, err := memrw.ReadMemory(mem, uintptr(startPC))
 	if err != nil {

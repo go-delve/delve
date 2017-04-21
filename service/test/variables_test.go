@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/gdbserial"
+	"github.com/derekparker/delve/pkg/proc/native"
 	"github.com/derekparker/delve/pkg/target"
 	"github.com/derekparker/delve/service/api"
 
@@ -84,9 +86,9 @@ func withTestProcess(name string, t *testing.T, fn func(p target.Interface, fixt
 	var err error
 	switch testBackend {
 	case "native":
-		p, err = proc.Launch([]string{fixture.Path}, ".")
+		p, err = native.Launch([]string{fixture.Path}, ".")
 	case "lldb":
-		p, err = proc.LLDBLaunch([]string{fixture.Path}, ".")
+		p, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".")
 	default:
 		t.Fatalf("unknown backend %q", testBackend)
 	}

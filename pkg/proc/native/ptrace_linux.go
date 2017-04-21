@@ -1,4 +1,4 @@
-package proc
+package native
 
 import (
 	"encoding/binary"

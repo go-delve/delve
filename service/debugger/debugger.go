@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/core"
+	"github.com/derekparker/delve/pkg/proc/gdbserial"
+	"github.com/derekparker/delve/pkg/proc/native"
 	"github.com/derekparker/delve/pkg/target"
 	"github.com/derekparker/delve/service/api"
 )
@@ -77,7 +80,7 @@ func New(config *Config) (*Debugger, error) {
 
 	case d.config.CoreFile != "":
 		log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.config.ProcessArgs[0])
-		p, err := proc.OpenCore(d.config.CoreFile, d.config.ProcessArgs[0])
+		p, err := core.OpenCore(d.config.CoreFile, d.config.ProcessArgs[0])
 		if err != nil {
 			return nil, err
 		}
@@ -100,14 +103,14 @@ func New(config *Config) (*Debugger, error) {
 func (d *Debugger) Launch(processArgs []string, wd string) (target.Interface, error) {
 	switch d.config.Backend {
 	case "native":
-		return proc.Launch(processArgs, wd)
+		return native.Launch(processArgs, wd)
 	case "lldb":
-		return proc.LLDBLaunch(processArgs, wd)
+		return gdbserial.LLDBLaunch(processArgs, wd)
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return proc.LLDBLaunch(processArgs, wd)
+			return gdbserial.LLDBLaunch(processArgs, wd)
 		}
-		return proc.Launch(processArgs, wd)
+		return native.Launch(processArgs, wd)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
@@ -121,20 +124,20 @@ var ErrNoAttachPath = errors.New("must specify executable path on macOS")
 func (d *Debugger) Attach(pid int, path string) (target.Interface, error) {
 	switch d.config.Backend {
 	case "native":
-		return proc.Attach(pid)
+		return native.Attach(pid)
 	case "lldb":
 		if runtime.GOOS == "darwin" && path == "" {
 			return nil, ErrNoAttachPath
 		}
-		return proc.LLDBAttach(pid, path)
+		return gdbserial.LLDBAttach(pid, path)
 	case "default":
 		if runtime.GOOS == "darwin" {
 			if path == "" {
 				return nil, ErrNoAttachPath
 			}
-			return proc.LLDBAttach(pid, path)
+			return gdbserial.LLDBAttach(pid, path)
 		}
-		return proc.Attach(pid)
+		return native.Attach(pid)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}

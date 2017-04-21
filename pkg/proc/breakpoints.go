@@ -72,42 +72,30 @@ func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.ID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
 }
 
-// ClearBreakpoint clears the specified breakpoint.
-func (thread *Thread) ClearBreakpoint(bp *Breakpoint) (*Breakpoint, error) {
-	if _, err := thread.writeMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
-		return nil, fmt.Errorf("could not clear breakpoint %s", err)
-	}
-	return bp, nil
-}
-
 // BreakpointExistsError is returned when trying to set a breakpoint at
 // an address that already has a breakpoint set for it.
 type BreakpointExistsError struct {
-	file string
-	line int
-	addr uint64
+	File string
+	Line int
+	Addr uint64
 }
 
 func (bpe BreakpointExistsError) Error() string {
-	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.file, bpe.line, bpe.addr)
+	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.File, bpe.Line, bpe.Addr)
 }
 
 // InvalidAddressError represents the result of
 // attempting to set a breakpoint at an invalid address.
 type InvalidAddressError struct {
-	address uint64
+	Address uint64
 }
 
 func (iae InvalidAddressError) Error() string {
-	return fmt.Sprintf("Invalid address %#v\n", iae.address)
+	return fmt.Sprintf("Invalid address %#v\n", iae.Address)
 }
 
-func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
-	_, err := thread.writeMemory(uintptr(addr), dbp.bi.arch.BreakpointInstruction())
-	return err
-}
-
-func (bp *Breakpoint) checkCondition(thread IThread) (bool, error) {
+// CheckCondition evaluates bp's condition on thread.
+func (bp *Breakpoint) CheckCondition(thread IThread) (bool, error) {
 	if bp.Cond == nil {
 		return true, nil
 	}
@@ -154,9 +142,9 @@ func (bp *Breakpoint) Internal() bool {
 // NoBreakpointError is returned when trying to
 // clear a breakpoint that does not exist.
 type NoBreakpointError struct {
-	addr uint64
+	Addr uint64
 }
 
 func (nbp NoBreakpointError) Error() string {
-	return fmt.Sprintf("no breakpoint at %#v", nbp.addr)
+	return fmt.Sprintf("no breakpoint at %#v", nbp.Addr)
 }

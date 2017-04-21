@@ -1,4 +1,4 @@
-package proc
+package gdbserial
 
 import (
 	"bufio"
@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 type gdbConn struct {
@@ -630,7 +632,7 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 			semicolon = len(resp)
 		}
 		status, _ := strconv.ParseUint(string(resp[1:semicolon]), 16, 8)
-		return false, stopPacket{}, ProcessExitedError{Pid: conn.pid, Status: int(status)}
+		return false, stopPacket{}, proc.ProcessExitedError{Pid: conn.pid, Status: int(status)}
 
 	case 'N':
 		// we were singlestepping the thread and the thread exited

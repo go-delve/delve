@@ -13,27 +13,9 @@ import (
 	"golang.org/x/debug/dwarf"
 )
 
-// Thread represents a single thread in the traced process
-// ID represents the thread id or port, Process holds a reference to the
-// Process struct that contains info on the process as
-// a whole, and Status represents the last result of a `wait` call
-// on this thread.
-type Thread struct {
-	ID                       int         // Thread ID or mach port
-	Status                   *WaitStatus // Status returned from last wait call
-	CurrentBreakpoint        *Breakpoint // Breakpoint thread is currently stopped at
-	BreakpointConditionMet   bool        // Output of evaluating the breakpoint's condition
-	BreakpointConditionError error       // Error evaluating the breakpoint's condition
-
-	dbp            *Process
-	singleStepping bool
-	running        bool
-	os             *OSSpecificDetails
-}
-
 // IThread represents a thread.
 type IThread interface {
-	memoryReadWriter
+	MemoryReadWriter
 	Location() (*Location, error)
 	// Breakpoint will return the breakpoint that this thread is stopped at or
 	// nil if the thread is not stopped at any breakpoint.
@@ -47,6 +29,8 @@ type IThread interface {
 	Arch() Arch
 	BinInfo() *BinaryInfo
 	StepInstruction() error
+	// Blocked returns true if the thread is blocked
+	Blocked() bool
 }
 
 // Location represents the location of a thread.
@@ -57,88 +41,6 @@ type Location struct {
 	File string
 	Line int
 	Fn   *gosym.Func
-}
-
-// Continue the execution of this thread.
-//
-// If we are currently at a breakpoint, we'll clear it
-// first and then resume execution. Thread will continue until
-// it hits a breakpoint or is signaled.
-func (thread *Thread) Continue() error {
-	pc, err := thread.PC()
-	if err != nil {
-		return err
-	}
-	// Check whether we are stopped at a breakpoint, and
-	// if so, single step over it before continuing.
-	if _, ok := thread.dbp.FindBreakpoint(pc); ok {
-		if err := thread.StepInstruction(); err != nil {
-			return err
-		}
-	}
-	return thread.resume()
-}
-
-// StepInstruction steps a single instruction.
-//
-// Executes exactly one instruction and then returns.
-// If the thread is at a breakpoint, we first clear it,
-// execute the instruction, and then replace the breakpoint.
-// Otherwise we simply execute the next instruction.
-func (thread *Thread) StepInstruction() (err error) {
-	thread.running = true
-	thread.singleStepping = true
-	defer func() {
-		thread.singleStepping = false
-		thread.running = false
-	}()
-	pc, err := thread.PC()
-	if err != nil {
-		return err
-	}
-
-	bp, ok := thread.dbp.FindBreakpoint(pc)
-	if ok {
-		// Clear the breakpoint so that we can continue execution.
-		_, err = thread.ClearBreakpoint(bp)
-		if err != nil {
-			return err
-		}
-
-		// Restore breakpoint now that we have passed it.
-		defer func() {
-			err = thread.dbp.writeSoftwareBreakpoint(thread, bp.Addr)
-		}()
-	}
-
-	err = thread.singleStep()
-	if err != nil {
-		if _, exited := err.(ProcessExitedError); exited {
-			return err
-		}
-		return fmt.Errorf("step failed: %s", err.Error())
-	}
-	return nil
-}
-
-// Location returns the threads location, including the file:line
-// of the corresponding source code, the function we're in
-// and the current instruction address.
-func (thread *Thread) Location() (*Location, error) {
-	pc, err := thread.PC()
-	if err != nil {
-		return nil, err
-	}
-	f, l, fn := thread.dbp.bi.PCToLine(pc)
-	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
-}
-
-func (thread *Thread) Arch() Arch {
-	return thread.dbp.bi.arch
-}
-
-func (thread *Thread) BinInfo() *BinaryInfo {
-	return &thread.dbp.bi
 }
 
 // ThreadBlockedError is returned when the thread
@@ -155,7 +57,7 @@ func topframe(g *G, thread IThread) (Stackframe, error) {
 	var err error
 
 	if g == nil {
-		if threadBlocked(thread) {
+		if thread.Blocked() {
 			return Stackframe{}, ThreadBlockedError{}
 		}
 		frames, err = ThreadStacktrace(thread, 0)
@@ -194,11 +96,11 @@ func next(dbp Continuable, stepInto bool) error {
 	}()
 
 	csource := filepath.Ext(topframe.Current.File) != ".go"
-	var thread memoryReadWriter = curthread
+	var thread MemoryReadWriter = curthread
 	var regs Registers
-	if selg != nil && selg.Thread() != nil {
-		thread = selg.Thread()
-		regs, err = selg.Thread().Registers(false)
+	if selg != nil && selg.Thread != nil {
+		thread = selg.Thread
+		regs, err = selg.Thread.Registers(false)
 		if err != nil {
 			return err
 		}
@@ -215,7 +117,7 @@ func next(dbp Continuable, stepInto bool) error {
 		}
 	}
 
-	cond := sameGoroutineCondition(selg)
+	cond := SameGoroutineCondition(selg)
 
 	if stepInto {
 		for _, instr := range text {
@@ -361,15 +263,6 @@ func setInternalBreakpoints(dbp Continuable, curpc uint64, pcs []uint64, kind Br
 	return nil
 }
 
-// SetPC sets the PC for this thread.
-func (thread *Thread) SetPC(pc uint64) error {
-	regs, err := thread.Registers(false)
-	if err != nil {
-		return err
-	}
-	return regs.SetPC(thread, pc)
-}
-
 func getGVariable(thread IThread) (*Variable, error) {
 	arch := thread.Arch()
 	regs, err := thread.Registers(false)
@@ -435,34 +328,11 @@ func GetG(thread IThread) (g *G, err error) {
 
 	g, err = gaddr.parseG()
 	if err == nil {
-		g.thread = thread
+		g.Thread = thread
 		if loc, err := thread.Location(); err == nil {
 			g.CurrentLoc = *loc
 		}
 	}
-	return
-}
-
-// Stopped returns whether the thread is stopped at
-// the operating system level. Actual implementation
-// is OS dependant, look in OS thread file.
-func (thread *Thread) Stopped() bool {
-	return thread.stopped()
-}
-
-// Halt stops this thread from executing. Actual
-// implementation is OS dependant. Look in OS
-// thread file.
-func (thread *Thread) Halt() (err error) {
-	defer func() {
-		if err == nil {
-			thread.running = false
-		}
-	}()
-	if thread.Stopped() {
-		return
-	}
-	err = thread.halt()
 	return
 }
 
@@ -494,36 +364,6 @@ func GoroutineScope(thread IThread) (*EvalScope, error) {
 	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, gvar, thread.BinInfo()}, nil
 }
 
-// SetCurrentBreakpoint sets the current breakpoint that this
-// thread is stopped at as CurrentBreakpoint on the thread struct.
-func (thread *Thread) SetCurrentBreakpoint() error {
-	thread.CurrentBreakpoint = nil
-	pc, err := thread.PC()
-	if err != nil {
-		return err
-	}
-	if bp, ok := thread.dbp.FindBreakpoint(pc); ok {
-		thread.CurrentBreakpoint = bp
-		if err = thread.SetPC(bp.Addr); err != nil {
-			return err
-		}
-		thread.BreakpointConditionMet, thread.BreakpointConditionError = bp.checkCondition(thread)
-		if thread.CurrentBreakpoint != nil && thread.BreakpointConditionMet {
-			if g, err := GetG(thread); err == nil {
-				thread.CurrentBreakpoint.HitCount[g.ID]++
-			}
-			thread.CurrentBreakpoint.TotalHitCount++
-		}
-	}
-	return nil
-}
-
-func (thread *Thread) clearBreakpointState() {
-	thread.CurrentBreakpoint = nil
-	thread.BreakpointConditionMet = false
-	thread.BreakpointConditionError = nil
-}
-
 func onRuntimeBreakpoint(thread IThread) bool {
 	loc, err := thread.Location()
 	if err != nil {
@@ -551,13 +391,5 @@ func onNextGoroutine(thread IThread, breakpoints map[uint64]*Breakpoint) (bool, 
 			bp.Kind = NextDeferBreakpoint
 		}()
 	}
-	return bp.checkCondition(thread)
-}
-
-func (th *Thread) Breakpoint() (*Breakpoint, bool, error) {
-	return th.CurrentBreakpoint, (th.CurrentBreakpoint != nil && th.BreakpointConditionMet), th.BreakpointConditionError
-}
-
-func (th *Thread) ThreadID() int {
-	return th.ID
+	return bp.CheckCondition(thread)
 }
