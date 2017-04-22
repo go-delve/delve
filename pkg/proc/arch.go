@@ -44,7 +44,7 @@ func (a *AMD64) SetGStructOffset(ver GoVersion, isextld bool) {
 		a.gStructOffset = 0x8a0
 	case "linux":
 		a.gStructOffset = 0xfffffffffffffff0
-		if isextld || ver.AfterOrEqual(GoVersion{1, 5, -1, 2, 0}) || ver.IsDevel() {
+		if isextld || ver.AfterOrEqual(GoVersion{1, 5, -1, 2, 0, ""}) || ver.IsDevel() {
 			a.gStructOffset += 8
 		}
 	case "windows":

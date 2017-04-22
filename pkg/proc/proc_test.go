@@ -407,7 +407,7 @@ func TestNextGeneral(t *testing.T) {
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
@@ -1004,12 +1004,13 @@ func versionAfterOrEqual(t *testing.T, verStr string, ver proc.GoVersion) {
 }
 
 func TestParseVersionString(t *testing.T) {
-	versionAfterOrEqual(t, "go1.4", proc.GoVersion{1, 4, 0, 0, 0})
-	versionAfterOrEqual(t, "go1.5.0", proc.GoVersion{1, 5, 0, 0, 0})
-	versionAfterOrEqual(t, "go1.4.2", proc.GoVersion{1, 4, 2, 0, 0})
-	versionAfterOrEqual(t, "go1.5beta2", proc.GoVersion{1, 5, -1, 2, 0})
-	versionAfterOrEqual(t, "go1.5rc2", proc.GoVersion{1, 5, -1, 0, 2})
-	versionAfterOrEqual(t, "go1.6.1 (appengine-1.9.37)", proc.GoVersion{1, 6, 1, 0, 0})
+	versionAfterOrEqual(t, "go1.4", proc.GoVersion{1, 4, 0, 0, 0, ""})
+	versionAfterOrEqual(t, "go1.5.0", proc.GoVersion{1, 5, 0, 0, 0, ""})
+	versionAfterOrEqual(t, "go1.4.2", proc.GoVersion{1, 4, 2, 0, 0, ""})
+	versionAfterOrEqual(t, "go1.5beta2", proc.GoVersion{1, 5, -1, 2, 0, ""})
+	versionAfterOrEqual(t, "go1.5rc2", proc.GoVersion{1, 5, -1, 0, 2, ""})
+	versionAfterOrEqual(t, "go1.6.1 (appengine-1.9.37)", proc.GoVersion{1, 6, 1, 0, 0, ""})
+	versionAfterOrEqual(t, "go1.8.1.typealias", proc.GoVersion{1, 6, 1, 0, 0, ""})
 	ver, ok := proc.ParseVersionString("devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64")
 	if !ok {
 		t.Fatalf("Could not parse devel version string")
@@ -1759,7 +1760,7 @@ func TestPackageVariables(t *testing.T) {
 
 func TestIssue149(t *testing.T) {
 	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		return
 	}
 	// setting breakpoint on break statement
@@ -1951,7 +1952,7 @@ func TestIssue509(t *testing.T) {
 
 func TestUnsupportedArch(t *testing.T) {
 	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major < 0 || !ver.AfterOrEqual(proc.GoVersion{1, 6, -1, 0, 0}) || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major < 0 || !ver.AfterOrEqual(proc.GoVersion{1, 6, -1, 0, 0, ""}) || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		// cross compile (with -N?) works only on select versions of go
 		return
 	}
@@ -2090,7 +2091,7 @@ func TestStepIgnorePrivateRuntime(t *testing.T) {
 	// (such as runtime.convT2E in this case)
 	ver, _ := proc.ParseVersionString(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0}) {
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
 		testseq("teststepprog", contStep, []nextTest{
 			{21, 13},
 			{13, 14},
@@ -2543,7 +2544,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 	// struct.
 
 	// In Go 1.9 stack barriers have been removed and this test must be disabled.
-	if ver, _ := proc.ParseVersionString(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0}) {
+	if ver, _ := proc.ParseVersionString(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
 		return
 	}
 
