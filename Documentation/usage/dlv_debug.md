@@ -10,10 +10,11 @@ Compiles your program with optimizations disabled, starts and attaches to it.
 By default, with no arguments, Delve will compile the 'main' package in the
 current directory, and begin to debug it. Alternatively you can specify a
 package name and Delve will compile that package instead, and begin a new debug
-session.
+session. To pass command line arguments to the package being run append them
+after a double dash.
 
 ```
-dlv debug [package]
+dlv debug [package] [arguments] [-- <package-arguments>...]
 ```
 
 ### Options inherited from parent commands
