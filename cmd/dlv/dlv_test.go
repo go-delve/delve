@@ -76,14 +76,16 @@ func TestBuild(t *testing.T) {
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
 	cmd.Start()
+	done := make(chan struct{})
 	defer func() {
 		if runtime.GOOS != "windows" {
 			cmd.Process.Signal(os.Interrupt)
-			cmd.Wait()
 		} else {
 			// sending os.Interrupt on windows is not supported
 			cmd.Process.Kill()
 		}
+		<-done
+		cmd.Wait()
 	}()
 
 	scan := bufio.NewScanner(stdout)
@@ -93,6 +95,7 @@ func TestBuild(t *testing.T) {
 		for scan.Scan() {
 			// keep pipe empty
 		}
+		close(done)
 	}()
 
 	client := rpc2.NewClient(listenAddr)
