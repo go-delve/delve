@@ -1,7 +1,6 @@
 package native
 
 import (
-	"debug/gosym"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -165,23 +164,6 @@ func (dbp *Process) LoadInformation(path string) error {
 	return nil
 }
 
-func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	return proc.FindFunctionLocation(dbp.currentThread, dbp.breakpoints, &dbp.bi, funcName, firstLine, lineOffset)
-}
-
-func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
-	return proc.FindFileLocation(dbp.currentThread, dbp.breakpoints, &dbp.bi, fileName, lineno)
-}
-
-func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	return proc.FirstPCAfterPrologue(dbp.currentThread, dbp.breakpoints, &dbp.bi, fn, sameline)
-}
-
-// CurrentLocation returns the location of the current thread.
-func (dbp *Process) CurrentLocation() (*proc.Location, error) {
-	return dbp.currentThread.Location()
-}
-
 // RequestManualStop sets the `halt` flag and
 // sends SIGSTOP to all threads.
 func (dbp *Process) RequestManualStop() error {
@@ -257,11 +239,6 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	delete(dbp.breakpoints, addr)
 
 	return bp, nil
-}
-
-// Status returns the status of the current main thread context.
-func (dbp *Process) Status() *WaitStatus {
-	return dbp.currentThread.Status
 }
 
 func (dbp *Process) ContinueOnce() (proc.Thread, error) {
@@ -365,33 +342,6 @@ func (dbp *Process) Halt() (err error) {
 	return nil
 }
 
-// Registers obtains register values from the
-// "current" thread of the traced process.
-func (dbp *Process) Registers() (proc.Registers, error) {
-	return dbp.currentThread.Registers(false)
-}
-
-// PC returns the PC of the current thread.
-func (dbp *Process) PC() (uint64, error) {
-	return dbp.currentThread.PC()
-}
-
-// CurrentBreakpoint returns the breakpoint the current thread
-// is stopped at.
-func (dbp *Process) CurrentBreakpoint() *proc.Breakpoint {
-	return dbp.currentThread.CurrentBreakpoint
-}
-
-// FindBreakpointByID finds the breakpoint for the given ID.
-func (dbp *Process) FindBreakpointByID(id int) (*proc.Breakpoint, bool) {
-	for _, bp := range dbp.breakpoints {
-		if bp.ID == id {
-			return bp, true
-		}
-	}
-	return nil, false
-}
-
 // FindBreakpoint finds the breakpoint for the given pc.
 func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
@@ -446,7 +396,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	// the offset of g struct inside TLS
 	dbp.selectedGoroutine, _ = proc.GetG(dbp.currentThread)
 
-	panicpc, err := dbp.FindFunctionLocation("runtime.startpanic", true, 0)
+	panicpc, err := proc.FindFunctionLocation(dbp, "runtime.startpanic", true, 0)
 	if err == nil {
 		bp, err := dbp.SetBreakpoint(panicpc, proc.UserBreakpoint, nil)
 		if err == nil {
@@ -507,19 +457,3 @@ func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
 func (dbp *Process) AllGCache() *[]*proc.G {
 	return &dbp.allGCache
 }
-
-/*
-
-// EvalPackageVariable will evaluate the package level variable
-// specified by 'name'.
-func (dbp *Process) EvalPackageVariable(name string, cfg proc.LoadConfig) (*proc.Variable, error) {
-	scope := &proc.EvalScope{0, 0, dbp.currentThread, nil, dbp.BinInfo()}
-
-	v, err := scope.packageVarAddr(name)
-	if err != nil {
-		return nil, err
-	}
-	v.loadValue(cfg)
-	return v, nil
-}
-*/

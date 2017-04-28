@@ -203,7 +203,7 @@ func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 			continue
 		}
 		if len(oldBp.File) > 0 {
-			oldBp.Addr, err = p.FindFileLocation(oldBp.File, oldBp.Line)
+			oldBp.Addr, err = proc.FindFileLocation(p, oldBp.File, oldBp.Line)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{oldBp, err.Error()})
 				continue
@@ -298,12 +298,12 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 				}
 			}
 		}
-		addr, err = d.target.FindFileLocation(fileName, requestedBp.Line)
+		addr, err = proc.FindFileLocation(d.target, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
 		if requestedBp.Line >= 0 {
-			addr, err = d.target.FindFunctionLocation(requestedBp.FunctionName, false, requestedBp.Line)
+			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, false, requestedBp.Line)
 		} else {
-			addr, err = d.target.FindFunctionLocation(requestedBp.FunctionName, true, 0)
+			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, true, 0)
 		}
 	default:
 		addr = requestedBp.Addr

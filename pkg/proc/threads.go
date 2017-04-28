@@ -158,7 +158,7 @@ func next(dbp Process, stepInto bool) error {
 			if deferPCEntry != 0 {
 				_, _, deferfn := dbp.BinInfo().PCToLine(deferPCEntry)
 				var err error
-				deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
+				deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
 				if err != nil {
 					return err
 				}
@@ -236,7 +236,7 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 	// those extra checks should be done here.
 
 	// Set a breakpoint after the function's prologue
-	pc, _ := dbp.FirstPCAfterPrologue(fn, false)
+	pc, _ := FirstPCAfterPrologue(dbp, fn, false)
 	if _, err := dbp.SetBreakpoint(pc, NextBreakpoint, cond); err != nil {
 		if _, ok := err.(BreakpointExistsError); !ok {
 			return err
