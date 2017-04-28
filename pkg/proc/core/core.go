@@ -1,7 +1,6 @@
 package core
 
 import (
-	"debug/gosym"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -275,18 +274,6 @@ func (p *Process) Detach(bool) error {
 
 func (p *Process) Exited() bool {
 	return false
-}
-
-func (p *Process) FindFileLocation(fileName string, lineNumber int) (uint64, error) {
-	return proc.FindFileLocation(p.CurrentThread(), p.breakpoints, &p.bi, fileName, lineNumber)
-}
-
-func (p *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	return proc.FirstPCAfterPrologue(p.CurrentThread(), p.breakpoints, &p.bi, fn, sameline)
-}
-
-func (p *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	return proc.FindFunctionLocation(p.CurrentThread(), p.breakpoints, &p.bi, funcName, firstLine, lineOffset)
 }
 
 func (p *Process) AllGCache() *[]*proc.G {

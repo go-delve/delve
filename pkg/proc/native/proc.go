@@ -1,7 +1,6 @@
 package native
 
 import (
-	"debug/gosym"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -163,18 +162,6 @@ func (dbp *Process) LoadInformation(path string) error {
 	wg.Wait()
 
 	return nil
-}
-
-func (dbp *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	return proc.FindFunctionLocation(dbp.currentThread, dbp.breakpoints, &dbp.bi, funcName, firstLine, lineOffset)
-}
-
-func (dbp *Process) FindFileLocation(fileName string, lineno int) (uint64, error) {
-	return proc.FindFileLocation(dbp.currentThread, dbp.breakpoints, &dbp.bi, fileName, lineno)
-}
-
-func (dbp *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	return proc.FirstPCAfterPrologue(dbp.currentThread, dbp.breakpoints, &dbp.bi, fn, sameline)
 }
 
 // RequestManualStop sets the `halt` flag and
@@ -409,7 +396,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 	// the offset of g struct inside TLS
 	dbp.selectedGoroutine, _ = proc.GetG(dbp.currentThread)
 
-	panicpc, err := dbp.FindFunctionLocation("runtime.startpanic", true, 0)
+	panicpc, err := proc.FindFunctionLocation(dbp, "runtime.startpanic", true, 0)
 	if err == nil {
 		bp, err := dbp.SetBreakpoint(panicpc, proc.UserBreakpoint, nil)
 		if err == nil {

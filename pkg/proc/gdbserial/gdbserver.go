@@ -62,7 +62,6 @@
 package gdbserial
 
 import (
-	"debug/gosym"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -259,7 +258,7 @@ func Connect(addr string, path string, pid int, attempts int) (*Process, error) 
 	p.bi.Arch.SetGStructOffset(ver, isextld)
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
-	panicpc, err := p.FindFunctionLocation("runtime.startpanic", true, 0)
+	panicpc, err := proc.FindFunctionLocation(p, "runtime.startpanic", true, 0)
 	if err == nil {
 		bp, err := p.SetBreakpoint(panicpc, proc.UserBreakpoint, nil)
 		if err == nil {
@@ -415,18 +414,6 @@ func (p *Process) Exited() bool {
 
 func (p *Process) Running() bool {
 	return p.conn.running
-}
-
-func (p *Process) FindFileLocation(fileName string, lineNumber int) (uint64, error) {
-	return proc.FindFileLocation(p.CurrentThread(), p.breakpoints, &p.bi, fileName, lineNumber)
-}
-
-func (p *Process) FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error) {
-	return proc.FirstPCAfterPrologue(p.CurrentThread(), p.breakpoints, &p.bi, fn, sameline)
-}
-
-func (p *Process) FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error) {
-	return proc.FindFunctionLocation(p.CurrentThread(), p.breakpoints, &p.bi, funcName, firstLine, lineOffset)
 }
 
 func (p *Process) FindThread(threadID int) (proc.Thread, bool) {

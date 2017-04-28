@@ -34,13 +34,13 @@ func (pe ProcessExitedError) Error() string {
 
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normailzed to lower case and '/' on Windows.
-func FindFileLocation(mem MemoryReadWriter, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, fileName string, lineno int) (uint64, error) {
-	pc, fn, err := bi.goSymTable.LineToPC(fileName, lineno)
+func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
+	pc, fn, err := p.BinInfo().goSymTable.LineToPC(fileName, lineno)
 	if err != nil {
 		return 0, err
 	}
 	if fn.Entry == pc {
-		pc, _ = FirstPCAfterPrologue(mem, breakpoints, bi, fn, true)
+		pc, _ = FirstPCAfterPrologue(p, fn, true)
 	}
 	return pc, nil
 }
@@ -51,14 +51,15 @@ func FindFileLocation(mem MemoryReadWriter, breakpoints map[uint64]*Breakpoint, 
 // Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
 // Note that setting breakpoints at that address will cause surprising behavior:
 // https://github.com/derekparker/delve/issues/170
-func FindFunctionLocation(mem MemoryReadWriter, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, funcName string, firstLine bool, lineOffset int) (uint64, error) {
+func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset int) (uint64, error) {
+	bi := p.BinInfo()
 	origfn := bi.goSymTable.LookupFunc(funcName)
 	if origfn == nil {
 		return 0, fmt.Errorf("Could not find function %s\n", funcName)
 	}
 
 	if firstLine {
-		return FirstPCAfterPrologue(mem, breakpoints, bi, origfn, false)
+		return FirstPCAfterPrologue(p, origfn, false)
 	} else if lineOffset > 0 {
 		filename, lineno, _ := bi.goSymTable.PCToLine(origfn.Entry)
 		breakAddr, _, err := bi.goSymTable.LineToPC(filename, lineno+lineOffset)
@@ -272,7 +273,7 @@ func StepOut(dbp Process) error {
 			deferPCEntry := selg.DeferPC()
 			if deferPCEntry != 0 {
 				_, _, deferfn := dbp.BinInfo().PCToLine(deferPCEntry)
-				deferpc, err = dbp.FirstPCAfterPrologue(deferfn, false)
+				deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
 				if err != nil {
 					return err
 				}

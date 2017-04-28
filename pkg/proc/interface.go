@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"debug/gosym"
 	"go/ast"
 )
 
@@ -22,30 +21,6 @@ type Info interface {
 
 	ThreadInfo
 	GoroutineInfo
-
-	// FindFileLocation returns the address of the first instruction belonging
-	// to line lineNumber in file fileName.
-	FindFileLocation(fileName string, lineNumber int) (uint64, error)
-
-	// FirstPCAfterPrologue returns the first instruction address after fn's
-	// prologue.
-	// If sameline is true and the first instruction after the prologue belongs
-	// to a different source line the entry point will be returned instead.
-	FirstPCAfterPrologue(fn *gosym.Func, sameline bool) (uint64, error)
-
-	// FindFunctionLocation finds address of a function's line
-	//
-	// If firstLine == true is passed FindFunctionLocation will attempt to find
-	// the first line of the function.
-	//
-	// If lineOffset is passed FindFunctionLocation will return the address of
-	// that line.
-	//
-	// Pass lineOffset == 0 and firstLine == false if you want the address for
-	// the function's entry point. Note that setting breakpoints at that
-	// address will cause surprising behavior:
-	// https://github.com/derekparker/delve/issues/170
-	FindFunctionLocation(funcName string, firstLine bool, lineOffset int) (uint64, error)
 }
 
 // ThreadInfo is an interface for getting information on active threads
