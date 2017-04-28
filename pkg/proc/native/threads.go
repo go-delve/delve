@@ -189,7 +189,6 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return registers(t, floatingPoint)
 }
 
-// PC returns the current PC for this thread.
 func (t *Thread) PC() (uint64, error) {
 	regs, err := t.Registers(false)
 	if err != nil {
