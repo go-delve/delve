@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/derekparker/delve/service/api"
@@ -23,6 +24,12 @@ func assertError(err error, t *testing.T, s string) {
 		_, file, line, _ := runtime.Caller(1)
 		fname := filepath.Base(file)
 		t.Fatalf("failed assertion at %s:%d: %s (no error)\n", fname, line, s)
+	}
+
+	if strings.Index(err.Error(), "Internal debugger error") >= 0 {
+		_, file, line, _ := runtime.Caller(1)
+		fname := filepath.Base(file)
+		t.Fatalf("failed assertion at %s:%d: %s internal debugger error: %v\n", fname, line, s, err)
 	}
 }
 

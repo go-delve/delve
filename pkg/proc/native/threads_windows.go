@@ -133,6 +133,9 @@ func (t *Thread) stopped() bool {
 }
 
 func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
+	if t.dbp.exited {
+		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+	}
 	var count uintptr
 	err := _WriteProcessMemory(t.dbp.os.hProcess, addr, &data[0], uintptr(len(data)), &count)
 	if err != nil {
@@ -144,6 +147,9 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 var ErrShortRead = errors.New("short read")
 
 func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
+	if t.dbp.exited {
+		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+	}
 	if len(buf) == 0 {
 		return 0, nil
 	}
