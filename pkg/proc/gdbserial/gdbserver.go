@@ -554,6 +554,9 @@ func (p *Process) StepInstruction() error {
 }
 
 func (p *Process) SwitchThread(tid int) error {
+	if p.exited {
+		return proc.ProcessExitedError{Pid: p.conn.pid}
+	}
 	if th, ok := p.threads[tid]; ok {
 		p.currentThread = th
 		p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())

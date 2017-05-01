@@ -8,6 +8,8 @@ import (
 	"unsafe"
 
 	sys "golang.org/x/sys/unix"
+
+	"github.com/derekparker/delve/pkg/proc"
 )
 
 // WaitStatus is a synonym for the platform-specific WaitStatus
@@ -105,6 +107,9 @@ func (t *Thread) stopped() bool {
 }
 
 func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
+	if t.dbp.exited {
+		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+	}
 	if len(data) == 0 {
 		return 0, nil
 	}
@@ -120,6 +125,9 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 }
 
 func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
+	if t.dbp.exited {
+		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+	}
 	if len(buf) == 0 {
 		return 0, nil
 	}
