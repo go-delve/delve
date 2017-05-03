@@ -2184,8 +2184,8 @@ func TestStepCallPtr(t *testing.T) {
 func TestStepReturnAndPanic(t *testing.T) {
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
-	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	ver, _ := proc.ParseVersionString(runtime.Version())
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
 		testseq("defercall", contStep, []nextTest{
 			{17, 5},
 			{5, 6},
