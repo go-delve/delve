@@ -437,9 +437,20 @@ func TestEmbeddedStruct(t *testing.T) {
 			{"b.ptr.val", true, "1337", "1337", "int", nil},
 			{"b.C.s", true, "\"hello\"", "\"hello\"", "string", nil},
 			{"b.s", true, "\"hello\"", "\"hello\"", "string", nil},
-			{"b2", true, "main.B {main.A: main.A {val: 42}, *main.C: *main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "main.B {main.A: (*main.A)(0x…", "main.B", nil},
+			{"b2", true, "main.B {A: main.A {val: 42}, C: *main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "main.B {A: (*main.A)(0x…", "main.B", nil},
 		}
 		assertNoError(proc.Continue(p), t, "Continue()")
+
+		ver, _ := proc.ParseVersionString(runtime.Version())
+		if ver.Major >= 0 && !ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+			// on go < 1.9 embedded fields had different names
+			for i := range testcases {
+				if testcases[i].name == "b2" {
+					testcases[i].value = "main.B {main.A: main.A {val: 42}, *main.C: *main.C nil, a: main.A {val: 47}, ptr: *main.A nil}"
+					testcases[i].alternate = "main.B {main.A: (*main.A)(0x…"
+				}
+			}
+		}
 
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
@@ -877,7 +888,7 @@ func TestPackageRenames(t *testing.T) {
 		{"aslice", true, `interface {}([]github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) [{X: 3},{X: 4}]`, "", "interface {}", nil},
 		{"afunc", true, `interface {}(func(github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType, github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType)) main.main.func1`, "", "interface {}", nil},
 		{"astruct", true, `interface {}(*struct { A github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; B github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType }) *{A: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, B: github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 3}}`, "", "interface {}", nil},
-		{"astruct2", true, `interface {}(*struct { github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; X int }) *{github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
+		{"astruct2", true, `interface {}(*struct { github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; X int }) *{SomeType: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
 		{"iface2iface", true, `interface {}(*interface { AMethod(int) int; AnotherMethod(int) int }) **github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 4}`, "", "interface {}", nil},
 	}
 
@@ -891,6 +902,12 @@ func TestPackageRenames(t *testing.T) {
 	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
+			if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+				// before 1.9 embedded struct field have fieldname == type
+				if tc.name == "astruct2" {
+					tc.value = `interface {}(*struct { github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; X int }) *{github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`
+				}
+			}
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
 			if tc.err == nil {
 				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
