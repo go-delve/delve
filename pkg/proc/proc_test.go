@@ -580,13 +580,28 @@ func TestNextFunctionReturn(t *testing.T) {
 }
 
 func TestNextFunctionReturnDefer(t *testing.T) {
-	testcases := []nextTest{
-		{5, 8},
-		{8, 9},
-		{9, 10},
-		{10, 6},
-		{6, 7},
-		{7, 8},
+	var testcases []nextTest
+
+	ver, _ := proc.ParseVersionString(runtime.Version())
+
+	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+		testcases = []nextTest{
+			{5, 6},
+			{6, 9},
+			{9, 10},
+			{10, 6},
+			{6, 7},
+			{7, 8},
+		}
+	} else {
+		testcases = []nextTest{
+			{5, 8},
+			{8, 9},
+			{9, 10},
+			{10, 6},
+			{6, 7},
+			{7, 8},
+		}
 	}
 	protest.AllowRecording(t)
 	testseq("testnextdefer", contNext, testcases, "main.main", t)
@@ -2169,14 +2184,28 @@ func TestStepCallPtr(t *testing.T) {
 func TestStepReturnAndPanic(t *testing.T) {
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
-	testseq("defercall", contStep, []nextTest{
-		{17, 5},
-		{5, 6},
-		{6, 7},
-		{7, 18},
-		{18, 5},
-		{5, 6},
-		{6, 7}}, "", t)
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+		testseq("defercall", contStep, []nextTest{
+			{17, 5},
+			{5, 6},
+			{6, 7},
+			{7, 17},
+			{17, 18},
+			{18, 5},
+			{5, 6},
+			{6, 7}}, "", t)
+
+	} else {
+		testseq("defercall", contStep, []nextTest{
+			{17, 5},
+			{5, 6},
+			{6, 7},
+			{7, 18},
+			{18, 5},
+			{5, 6},
+			{6, 7}}, "", t)
+	}
 }
 
 func TestStepDeferReturn(t *testing.T) {
