@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/derekparker/delve/pkg/dwarf/frame"
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
 	"github.com/derekparker/delve/pkg/proc/native"
@@ -429,9 +430,9 @@ func testseq(program string, contFunc contFunc, testcases []nextTest, initialLoc
 func TestNextGeneral(t *testing.T) {
 	var testcases []nextTest
 
-	ver, _ := proc.ParseVersionString(runtime.Version())
+	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
@@ -582,9 +583,9 @@ func TestNextFunctionReturn(t *testing.T) {
 func TestNextFunctionReturnDefer(t *testing.T) {
 	var testcases []nextTest
 
-	ver, _ := proc.ParseVersionString(runtime.Version())
+	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		testcases = []nextTest{
 			{5, 6},
 			{6, 9},
@@ -1060,34 +1061,6 @@ func TestContinueMulti(t *testing.T) {
 			t.Fatalf("Sayhi breakpoint hit wrong number of times: %d\n", sayhiCount)
 		}
 	})
-}
-
-func versionAfterOrEqual(t *testing.T, verStr string, ver proc.GoVersion) {
-	pver, ok := proc.ParseVersionString(verStr)
-	if !ok {
-		t.Fatalf("Could not parse version string <%s>", verStr)
-	}
-	if !pver.AfterOrEqual(ver) {
-		t.Fatalf("Version <%s> parsed as %v not after %v", verStr, pver, ver)
-	}
-	t.Logf("version string <%s> → %v", verStr, ver)
-}
-
-func TestParseVersionString(t *testing.T) {
-	versionAfterOrEqual(t, "go1.4", proc.GoVersion{1, 4, 0, 0, 0, ""})
-	versionAfterOrEqual(t, "go1.5.0", proc.GoVersion{1, 5, 0, 0, 0, ""})
-	versionAfterOrEqual(t, "go1.4.2", proc.GoVersion{1, 4, 2, 0, 0, ""})
-	versionAfterOrEqual(t, "go1.5beta2", proc.GoVersion{1, 5, -1, 2, 0, ""})
-	versionAfterOrEqual(t, "go1.5rc2", proc.GoVersion{1, 5, -1, 0, 2, ""})
-	versionAfterOrEqual(t, "go1.6.1 (appengine-1.9.37)", proc.GoVersion{1, 6, 1, 0, 0, ""})
-	versionAfterOrEqual(t, "go1.8.1.typealias", proc.GoVersion{1, 6, 1, 0, 0, ""})
-	ver, ok := proc.ParseVersionString("devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64")
-	if !ok {
-		t.Fatalf("Could not parse devel version string")
-	}
-	if !ver.IsDevel() {
-		t.Fatalf("Devel version string not correctly recognized")
-	}
 }
 
 func TestBreakpointOnFunctionEntry(t *testing.T) {
@@ -1882,8 +1855,8 @@ func TestPackageVariables(t *testing.T) {
 }
 
 func TestIssue149(t *testing.T) {
-	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		return
 	}
 	// setting breakpoint on break statement
@@ -2074,8 +2047,8 @@ func TestIssue509(t *testing.T) {
 }
 
 func TestUnsupportedArch(t *testing.T) {
-	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major < 0 || !ver.AfterOrEqual(proc.GoVersion{1, 6, -1, 0, 0, ""}) || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major < 0 || !ver.AfterOrEqual(goversion.GoVersion{1, 6, -1, 0, 0, ""}) || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		// cross compile (with -N?) works only on select versions of go
 		return
 	}
@@ -2184,8 +2157,8 @@ func TestStepCallPtr(t *testing.T) {
 func TestStepReturnAndPanic(t *testing.T) {
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
-	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		testseq("defercall", contStep, []nextTest{
 			{17, 5},
 			{5, 6},
@@ -2227,9 +2200,9 @@ func TestStepDeferReturn(t *testing.T) {
 func TestStepIgnorePrivateRuntime(t *testing.T) {
 	// Tests that Step will ignore calls to private runtime functions
 	// (such as runtime.convT2E in this case)
-	ver, _ := proc.ParseVersionString(runtime.Version())
+	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		testseq("teststepprog", contStep, []nextTest{
 			{21, 13},
 			{13, 14},
@@ -2705,7 +2678,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 	// struct.
 
 	// In Go 1.9 stack barriers have been removed and this test must be disabled.
-	if ver, _ := proc.ParseVersionString(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		return
 	}
 

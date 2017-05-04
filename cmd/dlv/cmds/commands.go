@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/derekparker/delve/pkg/config"
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/pkg/terminal"
 	"github.com/derekparker/delve/pkg/version"
 	"github.com/derekparker/delve/service"
@@ -76,8 +77,11 @@ func New(docCall bool) *cobra.Command {
 	conf = config.LoadConfig()
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
-		// Work-around for https://github.com/golang/go/issues/13154
-		buildFlagsDefault = "-ldflags='-linkmode internal'"
+		ver, _ := goversion.Installed()
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+			// Work-around for https://github.com/golang/go/issues/13154
+			buildFlagsDefault = "-ldflags='-linkmode internal'"
+		}
 	}
 
 	// Main dlv root command.

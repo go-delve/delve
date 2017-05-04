@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
 	"github.com/derekparker/delve/pkg/proc/native"
@@ -441,8 +442,8 @@ func TestEmbeddedStruct(t *testing.T) {
 		}
 		assertNoError(proc.Continue(p), t, "Continue()")
 
-		ver, _ := proc.ParseVersionString(runtime.Version())
-		if ver.Major >= 0 && !ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+		ver, _ := goversion.Parse(runtime.Version())
+		if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 			// on go < 1.9 embedded fields had different names
 			for i := range testcases {
 				if testcases[i].name == "b2" {
@@ -711,8 +712,8 @@ func TestEvalExpression(t *testing.T) {
 		{"tm", false, "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [...]}", "main.truncatedMap", nil},
 	}
 
-	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major >= 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		for i := range testcases {
 			if testcases[i].name == "iface3" {
 				testcases[i].value = "interface {}(*map[string]go/constant.Value) *[]"
@@ -836,8 +837,8 @@ func TestIssue426(t *testing.T) {
 		{"anoniface1", `interface { OtherFunction(int, int); SomeFunction(struct { val go/constant.Value }) }`},
 	}
 
-	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 8, -1, 0, 0, ""}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 8, -1, 0, 0, ""}) {
 		testcases[2].typ = `struct { main.val go/constant.Value }`
 		testcases[3].typ = `func(struct { main.i int }, interface {}, struct { main.val go/constant.Value })`
 		testcases[4].typ = `struct { main.i int; main.j int }`
@@ -892,8 +893,8 @@ func TestPackageRenames(t *testing.T) {
 		{"iface2iface", true, `interface {}(*interface { AMethod(int) int; AnotherMethod(int) int }) **github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 4}`, "", "interface {}", nil},
 	}
 
-	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		// Not supported on 1.6 or earlier
 		return
 	}
@@ -902,7 +903,7 @@ func TestPackageRenames(t *testing.T) {
 	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
-			if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 9, -1, 0, 0, ""}) {
+			if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 				// before 1.9 embedded struct field have fieldname == type
 				if tc.name == "astruct2" {
 					tc.value = `interface {}(*struct { github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; X int }) *{github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`

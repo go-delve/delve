@@ -1,6 +1,7 @@
-package proc
+package goversion
 
 import (
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -13,7 +14,7 @@ type GoVersion struct {
 	Minor    int
 	Rev      int
 	Beta     int
-	RC    	 int
+	RC       int
 	Proposal string
 }
 
@@ -21,7 +22,8 @@ var (
 	GoVer18Beta = GoVersion{1, 8, -1, 0, 0, ""}
 )
 
-func ParseVersionString(ver string) (GoVersion, bool) {
+// Parse parses a go verison string
+func Parse(ver string) (GoVersion, bool) {
 	var r GoVersion
 	var err1, err2, err3 error
 
@@ -129,4 +131,22 @@ func (v *GoVersion) AfterOrEqual(b GoVersion) bool {
 // is a development version.
 func (v *GoVersion) IsDevel() bool {
 	return v.Major < 0
+}
+
+const goVersionPrefix = "go version "
+
+// Installed runs "go verison" and parses the output
+func Installed() (GoVersion, bool) {
+	out, err := exec.Command("go", "version").CombinedOutput()
+	if err != nil {
+		return GoVersion{}, false
+	}
+
+	s := string(out)
+
+	if !strings.HasPrefix(s, goVersionPrefix) {
+		return GoVersion{}, false
+	}
+
+	return Parse(s[len(goVersionPrefix):])
 }

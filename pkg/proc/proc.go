@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 type functionDebugInfo struct {
