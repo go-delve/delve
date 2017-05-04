@@ -2730,3 +2730,17 @@ func TestPackageWithPathVar(t *testing.T) {
 		assertNoError(err, t, "EvalVariable(pkg.SomeVar.X)")
 	})
 }
+
+func TestEnvironment(t *testing.T) {
+	os.Setenv("SOMEVAR", "bah")
+	withTestProcess("testenv", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		v, err := evalVariable(p, "x")
+		assertNoError(err, t, "EvalVariable()")
+		vv := constant.StringVal(v.Value)
+		t.Logf("v = %q", vv)
+		if vv != "bah" {
+			t.Fatalf("value of v is %q (expected \"bah\")", vv)
+		}
+	})
+}

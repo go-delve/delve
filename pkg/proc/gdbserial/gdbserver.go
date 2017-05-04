@@ -313,8 +313,8 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 
 	var proc *exec.Cmd
 	if _, err := os.Stat(debugserverExecutable); err == nil {
-		args := make([]string, 0, len(cmd)+1)
-		args = append(args, "127.0.0.1"+port)
+		args := make([]string, 0, len(cmd)+2)
+		args = append(args, "-F", "127.0.0.1"+port)
 		args = append(args, cmd...)
 
 		isDebugserver = true
