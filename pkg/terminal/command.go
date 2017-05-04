@@ -169,6 +169,8 @@ If regex is specified only function arguments with a name matching it will be re
 		{aliases: []string{"locals"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: locals, helpMsg: `Print local variables.
 
 	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
+	
+The name of variables that are shadowed in the current scope will be shown in parenthesis.
 
 If regex is specified only local variables with a name matching it will be returned. If -v is specified more information about each local variable will be shown.`},
 		{aliases: []string{"vars"}, cmdFn: vars, helpMsg: `Print package variables.
@@ -935,10 +937,14 @@ func printFilteredVariables(varType string, vars []api.Variable, filter string, 
 	for _, v := range vars {
 		if reg == nil || reg.Match([]byte(v.Name)) {
 			match = true
+			name := v.Name
+			if v.Flags&api.VariableShadowed != 0 {
+				name = "(" + name + ")"
+			}
 			if cfg == ShortLoadConfig {
-				fmt.Printf("%s = %s\n", v.Name, v.SinglelineString())
+				fmt.Printf("%s = %s\n", name, v.SinglelineString())
 			} else {
-				fmt.Printf("%s = %s\n", v.Name, v.MultilineString(""))
+				fmt.Printf("%s = %s\n", name, v.MultilineString(""))
 			}
 		}
 	}

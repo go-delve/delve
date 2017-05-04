@@ -147,10 +147,16 @@ type Function struct {
 	GoType uint64 `json:"goType"`
 }
 
+// VariableFlags is the type of the Flags field of Variable.
 type VariableFlags uint16
 
 const (
+	// VariableEscaped is set for local variables that escaped to the heap
 	VariableEscaped = VariableFlags(proc.VariableEscaped)
+
+	// VariableShadowed is set for local variables that are shadowed by a
+	// variable with the same name in another scope
+	VariableShadowed = VariableFlags(proc.VariableShadowed)
 )
 
 // Variable describes a variable.

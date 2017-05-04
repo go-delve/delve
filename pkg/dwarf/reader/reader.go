@@ -257,30 +257,6 @@ func (reader *Reader) InstructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	return append([]byte{}, instructions...), nil
 }
 
-// NextScopeVariable moves the reader to the next debug entry that describes a local variable and returns the entry.
-func (reader *Reader) NextScopeVariable() (*dwarf.Entry, error) {
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
-		if err != nil {
-			return nil, err
-		}
-
-		// All scope variables will be at the same depth
-		reader.SkipChildren()
-
-		// End of the current depth
-		if entry.Tag == 0 {
-			break
-		}
-
-		if entry.Tag == dwarf.TagVariable || entry.Tag == dwarf.TagFormalParameter {
-			return entry, nil
-		}
-	}
-
-	// No more items
-	return nil, nil
-}
-
 // NextMememberVariable moves the reader to the next debug entry that describes a member variable and returns the entry.
 func (reader *Reader) NextMemberVariable() (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {

@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"debug/dwarf"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -445,28 +446,34 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return nilVariable, nil
 	}
 
-	// try to interpret this as a local variable
-	v, err := scope.extractVarInfo(node.Name)
-	if err == nil {
-		return v, nil
+	vars, err := scope.variablesByTag(dwarf.TagVariable, nil)
+	if err != nil {
+		return nil, err
 	}
-	origErr := err
-	// workaround: sometimes go inserts an entry for '&varname' instead of varname
-	v, err = scope.extractVarInfo("&" + node.Name)
-	if err == nil {
-		v = v.maybeDereference()
-		v.Name = node.Name
-		return v, nil
+	for i := range vars {
+		if vars[i].Name == node.Name && vars[i].Flags&VariableShadowed == 0 {
+			return vars[i], nil
+		}
 	}
+	args, err := scope.variablesByTag(dwarf.TagFormalParameter, nil)
+	if err != nil {
+		return nil, err
+	}
+	for i := range args {
+		if args[i].Name == node.Name {
+			return args[i], nil
+		}
+	}
+
 	// if it's not a local variable then it could be a package variable w/o explicit package name
 	_, _, fn := scope.BinInfo.PCToLine(scope.PC)
 	if fn != nil {
-		if v, err = scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
+		if v, err := scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
 			v.Name = node.Name
 			return v, nil
 		}
 	}
-	return nil, origErr
+	return nil, fmt.Errorf("could not find symbol value for %s", node.Name)
 }
 
 // Evaluates expressions <subexpr>.<field name> where subexpr is not a package name
