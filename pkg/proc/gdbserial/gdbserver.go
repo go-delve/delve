@@ -292,13 +292,20 @@ func unusedPort() string {
 
 const debugserverExecutable = "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
 
+var ErrUnsupportedOS = errors.New("lldb backend not supported on windows")
+
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
 func LLDBLaunch(cmd []string, wd string) (*Process, error) {
-	// check that the argument to Launch is an executable file
-	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, proc.NotExecutableErr
+	switch runtime.GOOS {
+	case "windows":
+		return nil, ErrUnsupportedOS
+	default:
+		// check that the argument to Launch is an executable file
+		if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
+			return nil, proc.NotExecutableErr
+		}
 	}
 
 	port := unusedPort()
@@ -354,6 +361,10 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 // for some stubs that do not provide an automated way of determining it
 // (for example debugserver).
 func LLDBAttach(pid int, path string) (*Process, error) {
+	if runtime.GOOS == "windows" {
+		return nil, ErrUnsupportedOS
+	}
+
 	port := unusedPort()
 	isDebugserver := false
 	var proc *exec.Cmd
@@ -921,8 +932,8 @@ func (t *Thread) Blocked() bool {
 func (p *Process) loadGInstr() []byte {
 	switch p.bi.GOOS {
 	case "windows":
-		//TODO(aarzilli): implement
-		panic("not implemented")
+		// mov rcx, QWORD PTR gs:0x28
+		return []byte{0x65, 0x48, 0x8b, 0x0c, 0x25, 0x28, 0x00, 0x00, 0x00}
 	case "linux":
 		switch p.bi.Arch.GStructOffset() {
 		case 0xfffffffffffffff8, 0x0:
