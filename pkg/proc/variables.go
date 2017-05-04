@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"math"
 	"reflect"
+	"sort"
 	"strings"
 	"unsafe"
 
@@ -45,6 +46,9 @@ type VariableFlags uint16
 const (
 	// VariableEscaped is set for local variables that escaped to the heap
 	VariableEscaped VariableFlags = (1 << iota)
+	// VariableShadowed is set for local variables that are shadowed by a
+	// variable with the same name in another scope
+	VariableShadowed
 )
 
 // Variable represents a variable. It contains the address, name,
@@ -579,52 +583,22 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 	return xv.setValue(yv)
 }
 
-func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry, cfg LoadConfig) (*Variable, error) {
-	rdr := scope.DwarfReader()
-	v, err := scope.extractVarInfoFromEntry(entry, rdr)
+func (scope *EvalScope) extractVariableFromEntry(entry *dwarf.Entry) (*Variable, error) {
+	v, err := scope.extractVarInfoFromEntry(entry)
 	if err != nil {
 		return nil, err
 	}
 	return v, nil
 }
 
-func (scope *EvalScope) extractVarInfo(varName string) (*Variable, error) {
-	reader := scope.DwarfReader()
-	off, err := scope.BinInfo.findFunctionDebugInfo(scope.PC)
-	if err != nil {
-		return nil, err
-	}
-	reader.Seek(off)
-	reader.Next()
-
-	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
-		if err != nil {
-			return nil, err
-		}
-		if entry.Tag == 0 {
-			break
-		}
-
-		n, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok {
-			continue
-		}
-
-		if n == varName {
-			return scope.extractVarInfoFromEntry(entry, reader)
-		}
-	}
-	return nil, fmt.Errorf("could not find symbol value for %s", varName)
-}
-
 // LocalVariables returns all local variables from the current function scope.
 func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
-	return scope.variablesByTag(dwarf.TagVariable, cfg)
+	return scope.variablesByTag(dwarf.TagVariable, &cfg)
 }
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
-	return scope.variablesByTag(dwarf.TagFormalParameter, cfg)
+	return scope.variablesByTag(dwarf.TagFormalParameter, &cfg)
 }
 
 // PackageVariables returns the name, value, and type of all package variables in the application.
@@ -648,7 +622,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		val, err := scope.extractVariableFromEntry(entry, cfg)
+		val, err := scope.extractVariableFromEntry(entry)
 		if err != nil {
 			continue
 		}
@@ -668,7 +642,7 @@ func (scope *EvalScope) packageVarAddr(name string) (*Variable, error) {
 			if err != nil {
 				return nil, err
 			}
-			return scope.extractVarInfoFromEntry(entry, reader)
+			return scope.extractVarInfoFromEntry(entry)
 		}
 	}
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
@@ -735,7 +709,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry, rdr *reader.Reader) (*Variable, error) {
+func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry) (*Variable, error) {
 	if entry == nil {
 		return nil, fmt.Errorf("invalid entry")
 	}
@@ -1665,37 +1639,59 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	}
 }
 
+type variablesByDepth struct {
+	vars   []*Variable
+	depths []int
+}
+
+func (v *variablesByDepth) Len() int { return len(v.vars) }
+
+func (v *variablesByDepth) Less(i int, j int) bool { return v.depths[i] < v.depths[j] }
+
+func (v *variablesByDepth) Swap(i int, j int) {
+	v.depths[i], v.depths[j] = v.depths[j], v.depths[i]
+	v.vars[i], v.vars[j] = v.vars[j], v.vars[i]
+}
+
 // Fetches all variables of a specific type in the current function scope
-func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variable, error) {
-	reader := scope.DwarfReader()
+func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg *LoadConfig) ([]*Variable, error) {
 	off, err := scope.BinInfo.findFunctionDebugInfo(scope.PC)
 	if err != nil {
 		return nil, err
 	}
-	reader.Seek(off)
-	reader.Next()
 
 	var vars []*Variable
-	for entry, err := reader.NextScopeVariable(); entry != nil; entry, err = reader.NextScopeVariable() {
+	var depths []int
+	varReader := reader.Variables(scope.BinInfo.dwarf, off, scope.PC, tag == dwarf.TagVariable)
+	hasScopes := false
+	for varReader.Next() {
+		entry := varReader.Entry()
+		if entry.Tag != tag {
+			continue
+		}
+		val, err := scope.extractVariableFromEntry(entry)
 		if err != nil {
-			return nil, err
+			// skip variables that we can't parse yet
+			continue
 		}
-		if entry.Tag == 0 {
-			break
-		}
-
-		if entry.Tag == tag {
-			val, err := scope.extractVariableFromEntry(entry, cfg)
-			if err != nil {
-				// skip variables that we can't parse yet
-				continue
-			}
-
-			vars = append(vars, val)
+		vars = append(vars, val)
+		depth := varReader.Depth()
+		depths = append(depths, depth)
+		if depth > 1 {
+			hasScopes = true
 		}
 	}
+
+	if err := varReader.Err(); err != nil {
+		return nil, err
+	}
+
 	if len(vars) <= 0 {
 		return vars, nil
+	}
+
+	if hasScopes {
+		sort.Stable(&variablesByDepth{vars, depths})
 	}
 
 	// prefetch the whole chunk of memory relative to these variables
@@ -1728,6 +1724,8 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variab
 		}
 	}
 
+	lvn := map[string]*Variable{} // lvn[n] is the last variable we saw named n
+
 	for i, v := range vars {
 		if name := v.Name; len(name) > 1 && name[0] == '&' {
 			v = v.maybeDereference()
@@ -1735,7 +1733,15 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variab
 			v.Flags |= VariableEscaped
 			vars[i] = v
 		}
-		v.loadValue(cfg)
+		if hasScopes {
+			if otherv := lvn[v.Name]; otherv != nil {
+				otherv.Flags |= VariableShadowed
+			}
+			lvn[v.Name] = v
+		}
+		if cfg != nil {
+			v.loadValue(*cfg)
+		}
 	}
 
 	return vars, nil

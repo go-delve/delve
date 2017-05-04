@@ -3032,3 +3032,43 @@ func TestIssue871(t *testing.T) {
 		}
 	})
 }
+
+func TestShadowedFlag(t *testing.T) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+		return
+	}
+	withTestProcess("testshadow", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue")
+		scope, err := proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+		locals, err := scope.LocalVariables(normalLoadConfig)
+		assertNoError(err, t, "LocalVariables")
+		foundShadowed := false
+		foundNonShadowed := false
+		for _, v := range locals {
+			if v.Flags&proc.VariableShadowed != 0 {
+				if v.Name != "a" {
+					t.Errorf("wrong shadowed variable %s", v.Name)
+				}
+				foundShadowed = true
+				if n, _ := constant.Int64Val(v.Value); n != 0 {
+					t.Errorf("wrong value for shadowed variable a: %d", n)
+				}
+			} else {
+				if v.Name != "a" {
+					t.Errorf("wrong non-shadowed variable %s", v.Name)
+				}
+				foundNonShadowed = true
+				if n, _ := constant.Int64Val(v.Value); n != 1 {
+					t.Errorf("wrong value for non-shadowed variable a: %d", n)
+				}
+			}
+		}
+		if !foundShadowed {
+			t.Error("could not find any shadowed variable")
+		}
+		if !foundNonShadowed {
+			t.Error("could not find any non-shadowed variable")
+		}
+	})
+}
