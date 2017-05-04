@@ -15,7 +15,7 @@ import (
 
 	protest "github.com/derekparker/delve/pkg/proc/test"
 
-	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc2"
@@ -284,9 +284,9 @@ func testnext2(testcases []nextTest, initialLocation string, t *testing.T) {
 func TestNextGeneral(t *testing.T) {
 	var testcases []nextTest
 
-	ver, _ := proc.ParseVersionString(runtime.Version())
+	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
@@ -1098,8 +1098,8 @@ func TestSkipPrologue2(t *testing.T) {
 
 		callme3 := findLocationHelper(t, c, "main.callme3", false, 1, 0)[0]
 		callme3Z := findLocationHelper(t, c, "main.callme3:0", false, 1, 0)[0]
-		ver, _ := proc.ParseVersionString(runtime.Version())
-		if ver.Major < 0 || ver.AfterOrEqual(proc.GoVer18Beta) {
+		ver, _ := goversion.Parse(runtime.Version())
+		if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVer18Beta) {
 			findLocationHelper(t, c, "callme.go:19", false, 1, callme3)
 		} else {
 			// callme3 does not have local variables therefore the first line of the
@@ -1199,8 +1199,8 @@ func TestClientServer_Issue528(t *testing.T) {
 	// Was fixed in go 1.7 // Commit that fixes the issue in go:
 	// f744717d1924340b8f5e5a385e99078693ad9097
 
-	ver, _ := proc.ParseVersionString(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(proc.GoVersion{1, 7, -1, 0, 0, ""}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
 		t.Log("Test skipped")
 		return
 	}
