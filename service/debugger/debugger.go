@@ -78,8 +78,16 @@ func New(config *Config) (*Debugger, error) {
 		d.target = p
 
 	case d.config.CoreFile != "":
-		log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.config.ProcessArgs[0])
-		p, err := core.OpenCore(d.config.CoreFile, d.config.ProcessArgs[0])
+		var p proc.Process
+		var err error
+		switch d.config.Backend {
+		case "rr":
+			log.Printf("opening trace %s", d.config.CoreFile)
+			p, err = gdbserial.Replay(d.config.CoreFile, false)
+		default:
+			log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.config.ProcessArgs[0])
+			p, err = core.OpenCore(d.config.CoreFile, d.config.ProcessArgs[0])
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -105,6 +113,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error)
 		return native.Launch(processArgs, wd)
 	case "lldb":
 		return gdbserial.LLDBLaunch(processArgs, wd)
+	case "rr":
+		p, _, err := gdbserial.RecordAndReplay(processArgs, wd, false)
+		return p, err
 	case "default":
 		if runtime.GOOS == "darwin" {
 			return gdbserial.LLDBLaunch(processArgs, wd)
@@ -173,12 +184,19 @@ func (d *Debugger) detach(kill bool) error {
 
 // Restart will restart the target process, first killing
 // and then exec'ing it again.
-func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
+// If the target process is a recording it will restart it from the given
+// position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
+// event number.
+func (d *Debugger) Restart(pos string) ([]api.DiscardedBreakpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	if d.config.CoreFile != "" {
-		return nil, errors.New("can not restart core dump")
+	if recorded, _ := d.target.Recorded(); recorded {
+		return nil, d.target.Restart(pos)
+	}
+
+	if pos != "" {
+		return nil, proc.NotRecordedErr
 	}
 
 	if !d.target.Exited() {
@@ -203,6 +221,7 @@ func (d *Debugger) Restart() ([]api.DiscardedBreakpoint, error) {
 			continue
 		}
 		if len(oldBp.File) > 0 {
+			var err error
 			oldBp.Addr, err = proc.FindFileLocation(p, oldBp.File, oldBp.Line)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{oldBp, err.Error()})
@@ -260,6 +279,10 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 			state.NextInProgress = true
 			break
 		}
+	}
+
+	if recorded, _ := d.target.Recorded(); recorded {
+		state.When, _ = d.target.When()
 	}
 
 	return state, nil
@@ -480,6 +503,32 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	switch command.Name {
 	case api.Continue:
 		log.Print("continuing")
+		err = proc.Continue(d.target)
+		if err != nil {
+			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
+				state := &api.DebuggerState{}
+				state.Exited = true
+				state.ExitStatus = exitedErr.Status
+				state.Err = errors.New(exitedErr.Error())
+				return state, nil
+			}
+			return nil, err
+		}
+		state, stateErr := d.state()
+		if stateErr != nil {
+			return state, stateErr
+		}
+		err = d.collectBreakpointInformation(state)
+		return state, err
+
+	case api.Rewind:
+		log.Print("rewinding")
+		if err := d.target.Direction(proc.Backward); err != nil {
+			return nil, err
+		}
+		defer func() {
+			d.target.Direction(proc.Forward)
+		}()
 		err = proc.Continue(d.target)
 		if err != nil {
 			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
@@ -896,4 +945,37 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 	}
 
 	return disass, nil
+}
+
+// Recorded returns true if the target is a recording.
+func (d *Debugger) Recorded() (recorded bool, tracedir string) {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+	return d.target.Recorded()
+}
+
+func (d *Debugger) Checkpoint(where string) (int, error) {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+	return d.target.Checkpoint(where)
+}
+
+func (d *Debugger) Checkpoints() ([]api.Checkpoint, error) {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+	cps, err := d.target.Checkpoints()
+	if err != nil {
+		return nil, err
+	}
+	r := make([]api.Checkpoint, len(cps))
+	for i := range cps {
+		r[i] = api.ConvertCheckpoint(cps[i])
+	}
+	return r, nil
+}
+
+func (d *Debugger) ClearCheckpoint(id int) error {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+	return d.target.ClearCheckpoint(id)
 }

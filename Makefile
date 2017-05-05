@@ -73,6 +73,17 @@ ifneq "$(shell which lldb-server)" ""
 	@echo 'Testing LLDB backend (terminal)'
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/terminal -backend=lldb
 endif
+ifneq "$(shell which rr)" ""
+	@echo
+	@echo 'Testing Mozilla RR backend (proc)'
+	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/proc -backend=rr
+	@echo
+	@echo 'Testing Mozilla RR backend (integration)'
+	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/service/test -backend=rr
+	@echo
+	@echo 'Testing Mozilla RR backend (terminal)'
+	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/terminal -backend=rr
+endif
 
 test-proc-run:
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) -test.v -test.run="$(RUN)" -backend=$(BACKEND) $(PREFIX)/pkg/proc

@@ -86,6 +86,9 @@ func (ft *FakeTerminal) AssertExecError(cmdstr, tgterr string) {
 }
 
 func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
+	if testBackend == "rr" {
+		test.MustHaveRecordingAllowed(t)
+	}
 	os.Setenv("TERM", "dumb")
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -103,6 +106,9 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 	client := rpc2.NewClient(listener.Addr().String())
 	defer func() {
 		client.Detach(true)
+		if dir, _ := client.TraceDirectory(); dir != "" {
+			test.SafeRemoveAll(dir)
+		}
 	}()
 
 	ft := &FakeTerminal{
@@ -207,6 +213,7 @@ func TestIssue354(t *testing.T) {
 }
 
 func TestIssue411(t *testing.T) {
+	test.AllowRecording(t)
 	withTestTerminal("math", t, func(term *FakeTerminal) {
 		term.MustExec("break math.go:8")
 		term.MustExec("trace math.go:9")
@@ -221,6 +228,7 @@ func TestIssue411(t *testing.T) {
 func TestScopePrefix(t *testing.T) {
 	const goroutinesLinePrefix = "  Goroutine "
 	const goroutinesCurLinePrefix = "* Goroutine "
+	test.AllowRecording(t)
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b stacktraceme")
 		term.MustExec("continue")
@@ -344,6 +352,7 @@ func TestScopePrefix(t *testing.T) {
 
 func TestOnPrefix(t *testing.T) {
 	const prefix = "\ti: "
+	test.AllowRecording(t)
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b agobp main.agoroutine")
 		term.MustExec("on agobp print i")
@@ -384,6 +393,7 @@ func TestOnPrefix(t *testing.T) {
 }
 
 func TestNoVars(t *testing.T) {
+	test.AllowRecording(t)
 	withTestTerminal("locationsUpperCase", t, func(term *FakeTerminal) {
 		term.MustExec("b main.main")
 		term.MustExec("continue")
@@ -395,6 +405,7 @@ func TestNoVars(t *testing.T) {
 
 func TestOnPrefixLocals(t *testing.T) {
 	const prefix = "\ti: "
+	test.AllowRecording(t)
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b agobp main.agoroutine")
 		term.MustExec("on agobp args -v")
@@ -449,6 +460,7 @@ func countOccourences(s string, needle string) int {
 
 func TestIssue387(t *testing.T) {
 	// a breakpoint triggering during a 'next' operation will interrupt it
+	test.AllowRecording(t)
 	withTestTerminal("issue387", t, func(term *FakeTerminal) {
 		breakpointHitCount := 0
 		term.MustExec("break dostuff")
@@ -498,13 +510,13 @@ func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end 
 
 	outStart, outEnd := 0, 0
 
-	for i, line := range lines[1:] {
+	for _, line := range lines[1:] {
 		if line == "" {
 			continue
 		}
 		v := re.FindStringSubmatch(line)
 		if len(v) != 3 {
-			t.Fatalf("Could not parse line %d: %q\n", i+1, line)
+			continue
 		}
 		curline, _ := strconv.Atoi(v[2])
 		if v[1] == "=>" {
@@ -518,8 +530,10 @@ func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end 
 		outEnd = curline
 	}
 
-	if outStart != start || outEnd != end {
-		t.Fatalf("Wrong output range, got %d:%d expected %d:%d", outStart, outEnd, start, end)
+	if start != -1 || end != -1 {
+		if outStart != start || outEnd != end {
+			t.Fatalf("Wrong output range, got %d:%d expected %d:%d", outStart, outEnd, start, end)
+		}
 	}
 }
 
@@ -535,5 +549,35 @@ func TestListCmd(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected error requesting 50th frame")
 		}
+	})
+}
+
+func TestReverseContinue(t *testing.T) {
+	test.AllowRecording(t)
+	if testBackend != "rr" {
+		return
+	}
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		term.MustExec("break main.sayhi")
+		listIsAt(t, term, "continue", 16, -1, -1)
+		listIsAt(t, term, "continue", 12, -1, -1)
+		listIsAt(t, term, "rewind", 16, -1, -1)
+	})
+}
+
+func TestCheckpoints(t *testing.T) {
+	test.AllowRecording(t)
+	if testBackend != "rr" {
+		return
+	}
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		listIsAt(t, term, "continue", 16, -1, -1)
+		term.MustExec("checkpoint")
+		term.MustExec("checkpoints")
+		listIsAt(t, term, "next", 17, -1, -1)
+		listIsAt(t, term, "next", 18, -1, -1)
+		listIsAt(t, term, "restart c1", 16, -1, -1)
 	})
 }

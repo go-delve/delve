@@ -51,7 +51,13 @@ func (c *RPCClient) Detach(kill bool) error {
 
 func (c *RPCClient) Restart() ([]api.DiscardedBreakpoint, error) {
 	out := new(RestartOut)
-	err := c.call("Restart", RestartIn{}, out)
+	err := c.call("Restart", RestartIn{""}, out)
+	return out.DiscardedBreakpoints, err
+}
+
+func (c *RPCClient) RestartFrom(pos string) ([]api.DiscardedBreakpoint, error) {
+	out := new(RestartOut)
+	err := c.call("Restart", RestartIn{pos}, out)
 	return out.DiscardedBreakpoints, err
 }
 
@@ -62,11 +68,19 @@ func (c *RPCClient) GetState() (*api.DebuggerState, error) {
 }
 
 func (c *RPCClient) Continue() <-chan *api.DebuggerState {
+	return c.continueDir(api.Continue)
+}
+
+func (c *RPCClient) Rewind() <-chan *api.DebuggerState {
+	return c.continueDir(api.Rewind)
+}
+
+func (c *RPCClient) continueDir(cmd string) <-chan *api.DebuggerState {
 	ch := make(chan *api.DebuggerState)
 	go func() {
 		for {
 			out := new(CommandOut)
-			err := c.call("Command", &api.DebuggerCommand{Name: api.Continue}, &out)
+			err := c.call("Command", &api.DebuggerCommand{Name: cmd}, &out)
 			state := out.State
 			if err != nil {
 				state.Err = err
@@ -297,6 +311,41 @@ func (c *RPCClient) DisassemblePC(scope api.EvalScope, pc uint64, flavour api.As
 	var out DisassembleOut
 	err := c.call("Disassemble", DisassembleIn{scope, pc, 0, flavour}, &out)
 	return out.Disassemble, err
+}
+
+// Recorded returns true if the debugger target is a recording.
+func (c *RPCClient) Recorded() bool {
+	out := new(RecordedOut)
+	c.call("Recorded", RecordedIn{}, out)
+	return out.Recorded
+}
+
+// TraceDirectory returns the path to the trace directory for a recording.
+func (c *RPCClient) TraceDirectory() (string, error) {
+	var out RecordedOut
+	err := c.call("Recorded", RecordedIn{}, &out)
+	return out.TraceDirectory, err
+}
+
+// Checkpoint sets a checkpoint at the current position.
+func (c *RPCClient) Checkpoint(where string) (checkpointID int, err error) {
+	var out CheckpointOut
+	err = c.call("Checkpoint", CheckpointIn{where}, &out)
+	return out.ID, err
+}
+
+// ListCheckpoints gets all checkpoints.
+func (c *RPCClient) ListCheckpoints() ([]api.Checkpoint, error) {
+	var out ListCheckpointsOut
+	err := c.call("ListCheckpoints", ListCheckpointsIn{}, &out)
+	return out.Checkpoints, err
+}
+
+// ClearCheckpoint removes a checkpoint
+func (c *RPCClient) ClearCheckpoint(id int) error {
+	var out ClearCheckpointOut
+	err := c.call("ClearCheckpoint", ClearCheckpointIn{id}, &out)
+	return err
 }
 
 func (c *RPCClient) url(path string) string {

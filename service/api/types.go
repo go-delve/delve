@@ -29,6 +29,8 @@ type DebuggerState struct {
 	// Exited indicates whether the debugged process has exited.
 	Exited     bool `json:"exited"`
 	ExitStatus int  `json:"exitStatus"`
+	// When contains a description of the current position in a recording
+	When string
 	// Filled by RPCClient.Continue, indicates an error
 	Err error `json:"-"`
 }
@@ -236,6 +238,8 @@ type EvalScope struct {
 const (
 	// Continue resumes process execution.
 	Continue = "continue"
+	// Rewind resumes process execution backwards (target must be a recording).
+	Rewind = "rewind"
 	// Step continues to next source line, entering function calls.
 	Step = "step"
 	// StepOut continues to the return address of the current function
@@ -317,4 +321,10 @@ func (regs Registers) String() string {
 type DiscardedBreakpoint struct {
 	Breakpoint *Breakpoint
 	Reason     string
+}
+
+type Checkpoint struct {
+	ID    int
+	When  string
+	Where string
 }

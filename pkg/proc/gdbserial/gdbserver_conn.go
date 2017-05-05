@@ -25,6 +25,8 @@ type gdbConn struct {
 
 	running bool
 
+	direction proc.Direction // direction of execution
+
 	packetSize int               // maximum packet size supported by stub
 	regsInfo   []gdbRegisterInfo // list of registers
 
@@ -38,10 +40,12 @@ type gdbConn struct {
 }
 
 const (
-	regnamePC = "rip"
-	regnameCX = "rcx"
-	regnameSP = "rsp"
-	regnameBP = "rbp"
+	regnamePC     = "rip"
+	regnameCX     = "rcx"
+	regnameSP     = "rsp"
+	regnameBP     = "rbp"
+	regnameFsBase = "fs_base"
+	regnameGsBase = "gs_base"
 )
 
 var ErrTooManyAttempts = errors.New("too many transmit attempts")
@@ -269,6 +273,9 @@ func (conn *gdbConn) readRegisterInfo() (err error) {
 		fmt.Fprintf(&conn.outbuf, "$qRegisterInfo%x", regnum)
 		respbytes, err := conn.exec(conn.outbuf.Bytes(), "register info")
 		if err != nil {
+			if regnum == 0 {
+				return err
+			}
 			break
 		}
 
@@ -410,7 +417,7 @@ func (conn *gdbConn) kill() error {
 		// kill. This is not an error.
 		conn.conn.Close()
 		conn.conn = nil
-		return nil
+		return proc.ProcessExitedError{Pid: conn.pid}
 	}
 	if err != nil {
 		return err
@@ -515,11 +522,19 @@ func (conn *gdbConn) writeRegister(threadID string, regnum int, data []byte) err
 // resume executes a 'vCont' command on all threads with action 'c' if sig
 // is 0 or 'C' if it isn't.
 func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error) {
-	conn.outbuf.Reset()
-	if sig == 0 {
-		fmt.Fprintf(&conn.outbuf, "$vCont;c")
+	if conn.direction == proc.Forward {
+		conn.outbuf.Reset()
+		if sig == 0 {
+			fmt.Fprintf(&conn.outbuf, "$vCont;c")
+		} else {
+			fmt.Fprintf(&conn.outbuf, "$vCont;C%02x", sig)
+		}
 	} else {
-		fmt.Fprintf(&conn.outbuf, "$vCont;C%02x", sig)
+		if err := conn.selectThread('c', "p-1.-1", "resume"); err != nil {
+			return "", 0, err
+		}
+		conn.outbuf.Reset()
+		fmt.Fprintf(&conn.outbuf, "$bc")
 	}
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
 		return "", 0, err
@@ -533,8 +548,16 @@ func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error)
 
 // step executes a 'vCont' command on the specified thread with 's' action.
 func (conn *gdbConn) step(threadID string, tu *threadUpdater) (string, uint8, error) {
-	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$vCont;s:%s", threadID)
+	if conn.direction == proc.Forward {
+		conn.outbuf.Reset()
+		fmt.Fprintf(&conn.outbuf, "$vCont;s:%s", threadID)
+	} else {
+		if err := conn.selectThread('c', threadID, "step"); err != nil {
+			return "", 0, err
+		}
+		conn.outbuf.Reset()
+		fmt.Fprintf(&conn.outbuf, "$bs")
+	}
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
 		return "", 0, err
 	}
@@ -808,15 +831,19 @@ func (conn *gdbConn) readMemory(data []byte, addr uintptr) error {
 	return nil
 }
 
+func writeAsciiBytes(w io.Writer, data []byte) {
+	for _, b := range data {
+		fmt.Fprintf(w, "%02x", b)
+	}
+}
+
 // executes 'M' (write memory) command
 func (conn *gdbConn) writeMemory(addr uintptr, data []byte) (written int, err error) {
 	conn.outbuf.Reset()
 	//TODO(aarzilli): do not send packets larger than conn.PacketSize
 	fmt.Fprintf(&conn.outbuf, "$M%x,%x:", addr, len(data))
 
-	for _, b := range data {
-		fmt.Fprintf(&conn.outbuf, "%02x", b)
-	}
+	writeAsciiBytes(&conn.outbuf, data)
 
 	_, err = conn.exec(conn.outbuf.Bytes(), "memory write")
 	if err != nil {
@@ -849,6 +876,41 @@ func (conn *gdbConn) threadStopInfo(threadID string) (sig uint8, reason string, 
 		return 0, "", err
 	}
 	return sp.sig, sp.reason, nil
+}
+
+// restart executes a 'vRun' command.
+func (conn *gdbConn) restart(pos string) error {
+	conn.outbuf.Reset()
+	fmt.Fprintf(&conn.outbuf, "$vRun;")
+	if pos != "" {
+		fmt.Fprintf(&conn.outbuf, ";")
+		writeAsciiBytes(&conn.outbuf, []byte(pos))
+	}
+	_, err := conn.exec(conn.outbuf.Bytes(), "restart")
+	return err
+}
+
+// qRRCmd executes a qRRCmd command
+func (conn *gdbConn) qRRCmd(args ...string) (string, error) {
+	if len(args) == 0 {
+		panic("must specify at least one argument for qRRCmd")
+	}
+	conn.outbuf.Reset()
+	fmt.Fprintf(&conn.outbuf, "$qRRCmd")
+	for _, arg := range args {
+		fmt.Fprintf(&conn.outbuf, ":")
+		writeAsciiBytes(&conn.outbuf, []byte(arg))
+	}
+	resp, err := conn.exec(conn.outbuf.Bytes(), "qRRCmd")
+	if err != nil {
+		return "", err
+	}
+	data := make([]byte, 0, len(resp)/2)
+	for i := 0; i < len(resp); i += 2 {
+		n, _ := strconv.ParseUint(string(resp[i:i+2]), 16, 8)
+		data = append(data, uint8(n))
+	}
+	return string(data), nil
 }
 
 // exec executes a message to the stub and reads a response.

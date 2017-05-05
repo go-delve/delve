@@ -21,6 +21,9 @@ import (
 )
 
 func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
+	if testBackend == "rr" {
+		protest.MustHaveRecordingAllowed(t)
+	}
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
@@ -43,6 +46,12 @@ func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
 }
 
 func Test1RunWithInvalidPath(t *testing.T) {
+	if testBackend == "rr" {
+		// This test won't work because rr returns an error, after recording, when
+		// the recording failed but also when the recording succeeded but the
+		// inferior returned an error. Therefore we have to ignore errors from rr.
+		return
+	}
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)

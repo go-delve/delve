@@ -1,19 +1,18 @@
-## dlv exec
+## dlv core
 
-Execute a precompiled binary, and begin a debug session.
+Examine a core dump.
 
 ### Synopsis
 
 
-Execute a precompiled binary and begin a debug session.
-
-This command will cause Delve to exec the binary and immediately attach to it to
-begin a new debug session. Please note that if the binary was not compiled with
-optimizations disabled, it may be difficult to properly debug it. Please
-consider compiling debugging binaries with -gcflags="-N -l".
+Examine a core dump.
+		
+The core command will open the specified core file and the associated
+executable and let you examine the state of the process when the
+core dump was taken.
 
 ```
-dlv exec [./path/to/binary]
+dlv core <executable> <core>
 ```
 
 ### Options inherited from parent commands

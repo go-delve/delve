@@ -194,6 +194,14 @@ func (p *Process) BinInfo() *proc.BinaryInfo {
 	return &p.bi
 }
 
+func (p *Process) Recorded() (bool, string)                { return true, "" }
+func (p *Process) Restart(string) error                    { return ErrContinueCore }
+func (p *Process) Direction(proc.Direction) error          { return ErrContinueCore }
+func (p *Process) When() (string, error)                   { return "", nil }
+func (p *Process) Checkpoint(string) (int, error)          { return -1, ErrContinueCore }
+func (p *Process) Checkpoints() ([]proc.Checkpoint, error) { return nil, nil }
+func (p *Process) ClearCheckpoint(int) error               { return errors.New("checkpoint not found") }
+
 func (thread *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	n, err = thread.p.core.ReadMemory(data, addr)
 	if err == nil && n != len(data) {

@@ -55,11 +55,34 @@ func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
 	}
 }
 
-func evalVariable(p proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
-	scope, err := proc.GoroutineScope(p.CurrentThread())
+func findFirstNonRuntimeFrame(p proc.Process) (proc.Stackframe, error) {
+	frames, err := proc.ThreadStacktrace(p.CurrentThread(), 10)
 	if err != nil {
-		return nil, err
+		return proc.Stackframe{}, err
 	}
+
+	for _, frame := range frames {
+		if frame.Current.Fn != nil && !strings.HasPrefix(frame.Current.Fn.Name, "runtime.") {
+			return frame, nil
+		}
+	}
+	return proc.Stackframe{}, fmt.Errorf("non-runtime frame not found")
+}
+
+func evalVariable(p proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
+	var scope *proc.EvalScope
+	var err error
+
+	if testBackend == "rr" {
+		var frame proc.Stackframe
+		frame, err = findFirstNonRuntimeFrame(p)
+		if err == nil {
+			scope = proc.FrameToScope(p, frame)
+		}
+	} else {
+		scope, err = proc.GoroutineScope(p.CurrentThread())
+	}
+
 	return scope.EvalVariable(symbol, cfg)
 }
 
@@ -83,11 +106,17 @@ func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture 
 	fixture := protest.BuildFixture(name)
 	var p proc.Process
 	var err error
+	var tracedir string
 	switch testBackend {
 	case "native":
 		p, err = native.Launch([]string{fixture.Path}, ".")
 	case "lldb":
 		p, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".")
+	case "rr":
+		protest.MustHaveRecordingAllowed(t)
+		t.Log("recording")
+		p, tracedir, err = gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true)
+		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatalf("unknown backend %q", testBackend)
 	}
@@ -98,6 +127,9 @@ func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture 
 	defer func() {
 		p.Halt()
 		p.Detach(true)
+		if tracedir != "" {
+			protest.SafeRemoveAll(tracedir)
+		}
 	}()
 
 	fn(p, fixture)
@@ -148,6 +180,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"NonExistent", true, "", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
+	protest.AllowRecording(t)
 	withTestProcess("testvariables", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
@@ -166,7 +199,7 @@ func TestVariableEvaluation(t *testing.T) {
 				}
 			}
 
-			if tc.alternate != "" {
+			if tc.alternate != "" && testBackend != "rr" {
 				assertNoError(setVariable(p, tc.name, tc.alternate), t, "SetVariable()")
 				variable, err = evalVariable(p, tc.name, pnormalLoadConfig)
 				assertNoError(err, t, "EvalVariable()")
@@ -226,6 +259,7 @@ func TestVariableEvaluationShort(t *testing.T) {
 		{"NonExistent", true, "", "", "", fmt.Errorf("could not find symbol value for NonExistent")},
 	}
 
+	protest.AllowRecording(t)
 	withTestProcess("testvariables", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
@@ -281,6 +315,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 		Nest: *(*main.Nest)(…`, "", "main.Nest", nil},
 	}
 
+	protest.AllowRecording(t)
 	withTestProcess("testvariables", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
@@ -354,13 +389,26 @@ func TestLocalVariables(t *testing.T) {
 				{"baz", true, "\"bazburzum\"", "", "string", nil}}},
 	}
 
+	protest.AllowRecording(t)
 	withTestProcess("testvariables", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			scope, err := proc.GoroutineScope(p.CurrentThread())
-			assertNoError(err, t, "AsScope()")
+			var scope *proc.EvalScope
+			var err error
+
+			if testBackend == "rr" {
+				var frame proc.Stackframe
+				frame, err = findFirstNonRuntimeFrame(p)
+				if err == nil {
+					scope = proc.FrameToScope(p, frame)
+				}
+			} else {
+				scope, err = proc.GoroutineScope(p.CurrentThread())
+			}
+
+			assertNoError(err, t, "scope")
 			vars, err := tc.fn(scope, pnormalLoadConfig)
 			assertNoError(err, t, "LocalVariables() returned an error")
 
@@ -378,6 +426,7 @@ func TestLocalVariables(t *testing.T) {
 }
 
 func TestEmbeddedStruct(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		testcases := []varTest{
 			{"b.val", true, "-314", "-314", "int", nil},
@@ -654,6 +703,7 @@ func TestEvalExpression(t *testing.T) {
 		}
 	}
 
+	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
@@ -678,6 +728,7 @@ func TestEvalExpression(t *testing.T) {
 }
 
 func TestEvalAddrAndCast(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		c1addr, err := evalVariable(p, "&c1", pnormalLoadConfig)
@@ -704,6 +755,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 }
 
 func TestMapEvaluation(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		m1v, err := evalVariable(p, "m1", pnormalLoadConfig)
@@ -738,6 +790,7 @@ func TestMapEvaluation(t *testing.T) {
 }
 
 func TestUnsafePointer(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		up1v, err := evalVariable(p, "up1", pnormalLoadConfig)
@@ -775,6 +828,7 @@ func TestIssue426(t *testing.T) {
 
 	// Serialization of type expressions (go/ast.Expr) containing anonymous structs or interfaces
 	// differs from the serialization used by the linker to produce DWARF type information
+	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, testcase := range testcases {
@@ -826,6 +880,7 @@ func TestPackageRenames(t *testing.T) {
 		return
 	}
 
+	protest.AllowRecording(t)
 	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {

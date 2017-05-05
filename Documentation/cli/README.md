@@ -5,7 +5,10 @@ Command | Description
 [args](#args) | Print function arguments.
 [break](#break) | Sets a breakpoint.
 [breakpoints](#breakpoints) | Print out info for active breakpoints.
+[check](#check) | Creates a checkpoint at the current position.
+[checkpoints](#checkpoints) | Print out info for existing checkpoints.
 [clear](#clear) | Deletes breakpoint.
+[clear-checkpoint](#clear-checkpoint) | Deletes checkpoint.
 [clearall](#clearall) | Deletes multiple breakpoints.
 [condition](#condition) | Set breakpoint condition.
 [continue](#continue) | Run until breakpoint or program termination.
@@ -22,7 +25,8 @@ Command | Description
 [on](#on) | Executes a command when a breakpoint is hit.
 [print](#print) | Evaluate an expression.
 [regs](#regs) | Print contents of CPU registers.
-[restart](#restart) | Restart process.
+[restart](#restart) | Restart process from a checkpoint or event.
+[rewind](#rewind) | Run backwards until breakpoint or program termination.
 [set](#set) | Changes the value of a variable.
 [source](#source) | Executes a file containing a list of delve commands
 [sources](#sources) | Print list of source files.
@@ -60,11 +64,29 @@ Print out info for active breakpoints.
 
 Aliases: bp
 
+## check
+Creates a checkpoint at the current position.
+			
+	checkpoint [where]
+
+Aliases: checkpoint
+
+## checkpoints
+Print out info for existing checkpoints.
+
+
 ## clear
 Deletes breakpoint.
 
 	clear <breakpoint name or id>
 
+
+## clear-checkpoint
+Deletes checkpoint.
+			
+	checkpoint <id>
+
+Aliases: clearcheck
 
 ## clearall
 Deletes multiple breakpoints.
@@ -202,9 +224,16 @@ Argument -a shows more registers.
 
 
 ## restart
-Restart process.
+Restart process from a checkpoint or event.
+	
+	restart [event number or checkpoint id]
 
 Aliases: r
+
+## rewind
+Run backwards until breakpoint or program termination.
+
+Aliases: rw
 
 ## set
 Changes the value of a variable.
