@@ -75,6 +75,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 		return nil, fmt.Errorf("could not fork/exec")
 	}
 	dbp.pid = pid
+	dbp.childProcess = true
 	for i := range argvSlice {
 		C.free(unsafe.Pointer(argvSlice[i]))
 	}

@@ -68,6 +68,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 		return nil, err
 	}
 	dbp.pid = process.Process.Pid
+	dbp.childProcess = true
 	_, _, err = dbp.wait(process.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
