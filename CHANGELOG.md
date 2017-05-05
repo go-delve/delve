@@ -5,12 +5,27 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
-## [NEWEST VERSION] RELEASE DATE
+## [1.0.0-rc.1] 2017-05-05
 
 ### Added
 
 - Added support for core files (@heschik)
 - Added support for lldb-server and debugserver as backend, using debugserver by default on macOS (@aarzilli)
+- Added support for Mozilla RR as backend (@aarzilli)
+
+### Fixed
+
+- Detach should correctly kill child process we created (@aarzilli)
+- Correctly return error when reading/writing memory of exited process (@aarzilli)
+- Fix race condition in test (@hyangah)
+- Fix version extraction to support proposals (@allada)
+- Tolerate spaces better after command prefixes (@aarzilli)
+
+### Changed
+
+- Updated Mac OSX install instructions (@aarzilli)
+- Refactor of core code in proc (@aarzilli)
+- Improve list command (@aarzilli)
 
 ## [0.12.2] 2017-04-13
 
