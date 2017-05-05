@@ -41,6 +41,7 @@ type Process struct {
 	exited                      bool
 	ptraceChan                  chan func()
 	ptraceDoneChan              chan interface{}
+	childProcess                bool // this process was launched, not attached to
 }
 
 // New returns an initialized Process struct. Before returning,
@@ -69,6 +70,14 @@ func (dbp *Process) BinInfo() *proc.BinaryInfo {
 // Detach from the process being debugged, optionally killing it.
 func (dbp *Process) Detach(kill bool) (err error) {
 	if dbp.exited {
+		return nil
+	}
+	if kill && dbp.childProcess {
+		err := dbp.Kill()
+		if err != nil {
+			return err
+		}
+		dbp.bi.Close()
 		return nil
 	}
 	if dbp.Running() {

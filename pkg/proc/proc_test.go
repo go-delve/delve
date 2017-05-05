@@ -918,6 +918,20 @@ func TestKill(t *testing.T) {
 			}
 		}
 	})
+	withTestProcess("testprog", t, func(p proc.Process, fixture protest.Fixture) {
+		if err := p.Detach(true); err != nil {
+			t.Fatal(err)
+		}
+		if p.Exited() != true {
+			t.Fatal("expected process to have exited")
+		}
+		if runtime.GOOS == "linux" {
+			_, err := os.Open(fmt.Sprintf("/proc/%d/", p.Pid()))
+			if err == nil {
+				t.Fatal("process has not exited", p.Pid())
+			}
+		}
+	})
 }
 
 func testGSupportFunc(name string, t *testing.T, p proc.Process, fixture protest.Fixture) {

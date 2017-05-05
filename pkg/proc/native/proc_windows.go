@@ -125,6 +125,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	sys.CloseHandle(sys.Handle(pi.Thread))
 
 	dbp.pid = int(pi.ProcessId)
+	dbp.childProcess = true
 
 	return newDebugProcess(dbp, argv0Go)
 }
