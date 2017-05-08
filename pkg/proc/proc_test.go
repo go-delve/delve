@@ -533,6 +533,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 		initVval, _ := constant.Int64Val(initV.Value)
 		assertNoError(err, t, "EvalVariable")
 		for _, tc := range testcases {
+			t.Logf("test case %v", tc)
 			g, err := proc.GetG(p.CurrentThread())
 			assertNoError(err, t, "GetG()")
 			if p.SelectedGoroutine().ID != g.ID {
@@ -2248,7 +2249,7 @@ func TestStepOut(t *testing.T) {
 
 		f, lno = currentLineNumber(p, t)
 		if lno != 35 {
-			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 34)
+			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 35)
 		}
 	})
 }
@@ -2877,6 +2878,59 @@ func TestEnvironment(t *testing.T) {
 		t.Logf("v = %q", vv)
 		if vv != "bah" {
 			t.Fatalf("value of v is %q (expected \"bah\")", vv)
+		}
+	})
+}
+
+func getFrameOff(p proc.Process, t *testing.T) int64 {
+	frameoffvar, err := evalVariable(p, "runtime.frameoff")
+	assertNoError(err, t, "EvalVariable(runtime.frameoff)")
+	frameoff, _ := constant.Int64Val(frameoffvar.Value)
+	return frameoff
+}
+
+func TestRecursiveNext(t *testing.T) {
+	protest.AllowRecording(t)
+	testcases := []nextTest{
+		{6, 7},
+		{7, 10},
+		{10, 11},
+		{11, 17},
+	}
+	testseq("increment", contNext, testcases, "main.Increment", t)
+
+	withTestProcess("increment", t, func(p proc.Process, fixture protest.Fixture) {
+		bp, err := setFunctionBreakpoint(p, "main.Increment")
+		assertNoError(err, t, "setFunctionBreakpoint")
+		assertNoError(proc.Continue(p), t, "Continue")
+		_, err = p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint")
+		assertNoError(proc.Next(p), t, "Next 1")
+		assertNoError(proc.Next(p), t, "Next 2")
+		assertNoError(proc.Next(p), t, "Next 3")
+		frameoff0 := getFrameOff(p, t)
+		assertNoError(proc.Step(p), t, "Step")
+		frameoff1 := getFrameOff(p, t)
+		if frameoff0 == frameoff1 {
+			t.Fatalf("did not step into function?")
+		}
+		_, ln := currentLineNumber(p, t)
+		if ln != 6 {
+			t.Fatalf("program did not continue to expected location %d", ln)
+		}
+		assertNoError(proc.Next(p), t, "Next 4")
+		_, ln = currentLineNumber(p, t)
+		if ln != 7 {
+			t.Fatalf("program did not continue to expected location %d", ln)
+		}
+		assertNoError(proc.StepOut(p), t, "StepOut")
+		_, ln = currentLineNumber(p, t)
+		if ln != 11 {
+			t.Fatalf("program did not continue to expected location %d", ln)
+		}
+		frameoff2 := getFrameOff(p, t)
+		if frameoff0 != frameoff2 {
+			t.Fatalf("frame offset mismatch %x != %x", frameoff0, frameoff2)
 		}
 	})
 }

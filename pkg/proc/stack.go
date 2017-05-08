@@ -30,6 +30,8 @@ type Stackframe struct {
 	Call Location
 	// Start address of the stack frame.
 	CFA int64
+	// High address of the stack.
+	StackHi uint64
 	// Description of the stack frame.
 	FDE *frame.FrameDescriptionEntry
 	// Return address for this stack frame (as read from the stack frame itself).
@@ -45,7 +47,7 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 	if err != nil {
 		return nil, err
 	}
-	it := newStackIterator(thread.BinInfo(), thread, regs.PC(), regs.SP(), regs.BP(), nil, -1)
+	it := newStackIterator(thread.BinInfo(), thread, regs.PC(), regs.SP(), regs.BP(), 0, nil, -1)
 	return it.stacktrace(depth)
 }
 
@@ -59,9 +61,9 @@ func (g *G) stackIterator() (*stackIterator, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newStackIterator(g.variable.bi, g.Thread, regs.PC(), regs.SP(), regs.BP(), stkbar, g.stkbarPos), nil
+		return newStackIterator(g.variable.bi, g.Thread, regs.PC(), regs.SP(), regs.BP(), g.stackhi, stkbar, g.stkbarPos), nil
 	}
-	return newStackIterator(g.variable.bi, g.variable.mem, g.PC, g.SP, 0, stkbar, g.stkbarPos), nil
+	return newStackIterator(g.variable.bi, g.variable.mem, g.PC, g.SP, 0, g.stackhi, stkbar, g.stkbarPos), nil
 }
 
 // Stacktrace returns the stack trace for a goroutine.
@@ -93,6 +95,7 @@ type stackIterator struct {
 	mem        MemoryReadWriter
 	err        error
 
+	stackhi        uint64
 	stackBarrierPC uint64
 	stkbar         []savedLR
 }
@@ -102,7 +105,7 @@ type savedLR struct {
 	val uint64
 }
 
-func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, pc, sp, bp uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
+func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, pc, sp, bp, stackhi uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
 	stackBarrierFunc := bi.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
@@ -122,7 +125,7 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, pc, sp, bp uint64, s
 		}
 		stkbar = stkbar[stkbarPos:]
 	}
-	return &stackIterator{pc: pc, sp: sp, bp: bp, top: true, bi: bi, mem: mem, err: nil, atend: false, stackBarrierPC: stackBarrierPC, stkbar: stkbar}
+	return &stackIterator{pc: pc, sp: sp, bp: bp, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar}
 }
 
 // Next points the iterator to the next stack frame.
@@ -206,7 +209,7 @@ func (it *stackIterator) newStackframe(pc uint64, cfa int64, retaddr uintptr, fd
 	if err != nil {
 		return Stackframe{}, err
 	}
-	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: ret, addrret: uint64(retaddr)}
+	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: ret, addrret: uint64(retaddr), StackHi: it.stackhi}
 	if !top {
 		r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(pc - 1)
 		r.Call.PC = r.Current.PC

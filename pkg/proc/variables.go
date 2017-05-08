@@ -124,6 +124,7 @@ type G struct {
 	Status     uint64
 	stkbarVar  *Variable // stkbar field of g struct
 	stkbarPos  int       // stkbarPos field of g struct
+	stackhi    uint64    // value of stack.hi
 
 	// Information on goroutine location
 	CurrentLoc Location
@@ -142,6 +143,7 @@ type EvalScope struct {
 	Mem     MemoryReadWriter // Target's memory
 	Gvar    *Variable
 	BinInfo *BinaryInfo
+	StackHi uint64
 }
 
 // IsNilErr is returned when a variable is nil.
@@ -377,7 +379,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		}
 		gvar = gvar.maybeDereference()
 	}
-	gvar.loadValue(LoadConfig{false, 1, 64, 0, -1})
+	gvar.loadValue(LoadConfig{false, 2, 64, 0, -1})
 	if gvar.Unreadable != nil {
 		return nil, gvar.Unreadable
 	}
@@ -387,6 +389,12 @@ func (gvar *Variable) parseG() (*G, error) {
 	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
 	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
 	waitReason := constant.StringVal(gvar.fieldVariable("waitreason").Value)
+	var stackhi uint64
+	if stackVar := gvar.fieldVariable("stack"); stackVar != nil {
+		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
+			stackhi, _ = constant.Uint64Val(stackhiVar.Value)
+		}
+	}
 
 	stkbarVar, _ := gvar.structMember("stkbar")
 	stkbarVarPosFld := gvar.fieldVariable("stkbarPos")
@@ -408,6 +416,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		variable:   gvar,
 		stkbarVar:  stkbarVar,
 		stkbarPos:  int(stkbarPos),
+		stackhi:    stackhi,
 	}
 	return g, nil
 }

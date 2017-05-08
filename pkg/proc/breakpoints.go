@@ -117,11 +117,15 @@ func (bp *Breakpoint) CheckCondition(thread Thread) (bool, error) {
 			}
 		}
 	}
+	return evalBreakpointCondition(thread, bp.Cond)
+}
+
+func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
 	scope, err := GoroutineScope(thread)
 	if err != nil {
 		return true, err
 	}
-	v, err := scope.evalAST(bp.Cond)
+	v, err := scope.evalAST(cond)
 	if err != nil {
 		return true, fmt.Errorf("error evaluating expression: %v", err)
 	}
