@@ -473,6 +473,13 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 	return nil
 }
 
+func selectedGID(state *api.DebuggerState) int {
+	if state.SelectedGoroutine == nil {
+		return 0
+	}
+	return state.SelectedGoroutine.ID
+}
+
 func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 	args := strings.SplitN(argstr, " ", 2)
 
@@ -505,7 +512,7 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 			return err
 		}
 
-		fmt.Printf("Switched from %d to %d (thread %d)\n", oldState.SelectedGoroutine.ID, gid, newState.CurrentThread.ID)
+		fmt.Printf("Switched from %d to %d (thread %d)\n", selectedGID(oldState), gid, newState.CurrentThread.ID)
 		return nil
 	}
 
