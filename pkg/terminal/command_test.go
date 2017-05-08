@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/derekparker/delve/pkg/proc/test"
 	"github.com/derekparker/delve/service"
@@ -38,6 +40,8 @@ type FakeTerminal struct {
 	t testing.TB
 }
 
+const logCommandOutput = false
+
 func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 	outfh, err := ioutil.TempFile("", "cmdtestout")
 	if err != nil {
@@ -54,6 +58,9 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 			ft.t.Fatalf("could not read temporary output file: %v", err)
 		}
 		outstr = string(outbs)
+		if logCommandOutput {
+			ft.t.Logf("command %q -> %q", cmdstr, outstr)
+		}
 		os.Remove(outfh.Name())
 	}()
 	err = ft.cmds.Call(cmdstr, ft.Term)
@@ -579,5 +586,20 @@ func TestCheckpoints(t *testing.T) {
 		listIsAt(t, term, "next", 17, -1, -1)
 		listIsAt(t, term, "next", 18, -1, -1)
 		listIsAt(t, term, "restart c1", 16, -1, -1)
+	})
+}
+
+func TestIssue827(t *testing.T) {
+	// switching goroutines when the current thread isn't running any goroutine
+	// causes nil pointer dereference.
+	withTestTerminal("notify-v2", t, func(term *FakeTerminal) {
+		go func() {
+			time.Sleep(1 * time.Second)
+			http.Get("http://127.0.0.1:8888/test")
+			time.Sleep(1 * time.Second)
+			term.client.Halt()
+		}()
+		term.MustExec("continue")
+		term.MustExec("goroutine 1")
 	})
 }
