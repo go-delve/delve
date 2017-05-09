@@ -267,6 +267,7 @@ func Connect(addr string, path string, pid int, attempts int) (*Process, error) 
 		bp, err := p.SetBreakpoint(panicpc, proc.UserBreakpoint, nil)
 		if err == nil {
 			bp.Name = "unrecovered-panic"
+			bp.Variables = []string{"runtime.curg._panic.arg"}
 			bp.ID = -1
 			p.breakpointIDCounter--
 		}

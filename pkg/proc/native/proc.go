@@ -418,6 +418,7 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		bp, err := dbp.SetBreakpoint(panicpc, proc.UserBreakpoint, nil)
 		if err == nil {
 			bp.Name = "unrecovered-panic"
+			bp.Variables = []string{"runtime.curg._panic.arg"}
 			bp.ID = -1
 			dbp.breakpointIDCounter--
 		}
