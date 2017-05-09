@@ -546,6 +546,9 @@ func TestNextConcurrentVariant2(t *testing.T) {
 			var vval int64
 			for {
 				v, err := evalVariable(p, "n")
+				for _, thread := range p.ThreadList() {
+					proc.GetG(thread)
+				}
 				assertNoError(err, t, "EvalVariable")
 				vval, _ = constant.Int64Val(v.Value)
 				if bp, _, _ := p.CurrentThread().Breakpoint(); bp == nil {
