@@ -380,7 +380,10 @@ func (gvar *Variable) parseG() (*G, error) {
 	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
 	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
 	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
-	waitReason := constant.StringVal(gvar.fieldVariable("waitreason").Value)
+	waitReason := ""
+	if wrvar := gvar.fieldVariable("waitreason"); wrvar.Value != nil {
+		waitReason = constant.StringVal(wrvar.Value)
+	}
 	var stackhi uint64
 	if stackVar := gvar.fieldVariable("stack"); stackVar != nil {
 		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
