@@ -86,6 +86,7 @@ const (
 	showLldbServerOutput     = false
 	logGdbWireMaxLen         = 120
 
+	maxConnectAttempts     = 10   // number of connection attempts to stub
 	maxTransmitAttempts    = 3    // number of retransmission attempts on failed checksum
 	initialInputBufferSize = 2048 // size of the input buffer for gdbConn
 )
@@ -152,20 +153,31 @@ type gdbRegister struct {
 	regnum int
 }
 
-// Connect creates a GdbserverProcess connected to address addr.
+// Connect connects to a stub and performs a handshake.
+//
+// If listener is not nil Connect will accept a connection from the stub
+// (which should be instructed to operate in client mode), otherwise it will
+// connect to addr.
+//
 // Path and pid are, respectively, the path to the executable of the target
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func Connect(addr string, path string, pid int, attempts int) (*Process, error) {
+func Connect(listener net.Listener, addr string, path string, pid int, attempts int) (*Process, error) {
 	var conn net.Conn
 	var err error
-	for i := 0; i < attempts; i++ {
-		conn, err = net.Dial("tcp", addr)
-		if err == nil {
-			break
+
+	if listener != nil {
+		conn, err = listener.Accept()
+		listener.Close()
+	} else {
+		for i := 0; i < attempts; i++ {
+			conn, err = net.Dial("tcp", addr)
+			if err == nil {
+				break
+			}
+			time.Sleep(time.Second)
 		}
-		time.Sleep(time.Second)
 	}
 	if err != nil {
 		return nil, err
@@ -282,11 +294,7 @@ func Connect(addr string, path string, pid int, attempts int) (*Process, error) 
 // before reassigning one port they just assigned, unless there's heavy
 // churn in the ephemeral range this should work.
 func unusedPort() string {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		return ":8081"
-	}
-	listener, err := net.ListenTCP("tcp", addr)
+	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return ":8081"
 	}
@@ -313,19 +321,26 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		}
 	}
 
-	port := unusedPort()
 	isDebugserver := false
 
+	var listener net.Listener
+	var port string
 	var proc *exec.Cmd
 	if _, err := os.Stat(debugserverExecutable); err == nil {
-		args := make([]string, 0, len(cmd)+2)
-		args = append(args, "-F", "127.0.0.1"+port)
+		listener, err = net.Listen("tcp", "localhost:0")
+		if err != nil {
+			return nil, err
+		}
+		listener.(*net.TCPListener).SetDeadline(time.Now().Add(maxConnectAttempts * time.Second))
+		args := make([]string, 0, len(cmd)+3)
+		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port))
 		args = append(args, cmd...)
 
 		isDebugserver = true
 
 		proc = exec.Command(debugserverExecutable, args...)
 	} else {
+		port = unusedPort()
 		args := make([]string, 0, len(cmd)+3)
 		args = append(args, "gdbserver")
 		args = append(args, port, "--")
@@ -349,7 +364,7 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		return nil, err
 	}
 
-	p, err := Connect(port, cmd[0], 0, 10)
+	p, err := Connect(listener, port, cmd[0], 0, maxConnectAttempts)
 	if err != nil {
 		return nil, err
 	}
@@ -370,13 +385,20 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 		return nil, ErrUnsupportedOS
 	}
 
-	port := unusedPort()
 	isDebugserver := false
 	var proc *exec.Cmd
+	var listener net.Listener
+	var port string
 	if _, err := os.Stat(debugserverExecutable); err == nil {
 		isDebugserver = true
-		proc = exec.Command(debugserverExecutable, "127.0.0.1"+port, "--attach="+strconv.Itoa(pid))
+		listener, err = net.Listen("tcp", "localhost:0")
+		if err != nil {
+			return nil, err
+		}
+		listener.(*net.TCPListener).SetDeadline(time.Now().Add(maxConnectAttempts * time.Second))
+		proc = exec.Command(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
+		port = unusedPort()
 		proc = exec.Command("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
 	}
 
@@ -390,7 +412,7 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 		return nil, err
 	}
 
-	p, err := Connect(port, path, pid, 10)
+	p, err := Connect(listener, port, path, pid, maxConnectAttempts)
 	if err != nil {
 		return nil, err
 	}
