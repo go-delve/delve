@@ -70,7 +70,7 @@ func Replay(tracedir string, quiet bool) (*Process, error) {
 		rrcmd.Process.Kill()
 		return nil, err
 	}
-	p, err := Connect(init.port, init.exe, 0, 10)
+	p, err := Connect(nil, init.port, init.exe, 0, maxConnectAttempts)
 	if err != nil {
 		rrcmd.Process.Kill()
 		return nil, err
