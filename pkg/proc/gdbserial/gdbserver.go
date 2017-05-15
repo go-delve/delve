@@ -332,8 +332,8 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 			return nil, err
 		}
 		listener.(*net.TCPListener).SetDeadline(time.Now().Add(maxConnectAttempts * time.Second))
-		args := make([]string, 0, len(cmd)+3)
-		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port))
+		args := make([]string, 0, len(cmd)+4)
+		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--")
 		args = append(args, cmd...)
 
 		isDebugserver = true

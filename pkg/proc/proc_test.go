@@ -1910,6 +1910,7 @@ func TestCmdLineArgs(t *testing.T) {
 
 	// make sure multiple arguments (including one with spaces) are passed to the binary correctly
 	withTestProcessArgs("testargs", t, ".", expectSuccess, []string{"test"})
+	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"-test"})
 	withTestProcessArgs("testargs", t, ".", expectSuccess, []string{"test", "pass flag"})
 	// check that arguments with spaces are *only* passed correctly when correctly called
 	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test pass", "flag"})
