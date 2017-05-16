@@ -71,6 +71,8 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 					return nilVariable, nil
 				}
 				return scope.Gvar.clone(), nil
+			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
+				return newConstant(constant.MakeInt64(scope.CFA-int64(scope.StackHi)), scope.Mem), nil
 			} else if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
 				return v, nil
 			}
@@ -851,7 +853,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		r := xv.newVariable("", 0, typ)
 		r.Value = rc
 		if r.Kind == reflect.String {
-			r.Len = xv.Len+yv.Len
+			r.Len = xv.Len + yv.Len
 		}
 		return r, nil
 	}

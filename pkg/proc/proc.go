@@ -254,19 +254,41 @@ func SameGoroutineCondition(g *G) ast.Expr {
 	}
 }
 
+func frameoffCondition(frameoff int64) ast.Expr {
+	return &ast.BinaryExpr{
+		Op: token.EQL,
+		X: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: "runtime"},
+			Sel: &ast.Ident{Name: "frameoff"},
+		},
+		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.FormatInt(frameoff, 10)},
+	}
+}
+
+func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
+	if cond == nil {
+		return nil
+	}
+	return &ast.BinaryExpr{
+		Op: token.LAND,
+		X:  cond,
+		Y:  frameoffCondition(frameoff),
+	}
+}
+
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
 func StepOut(dbp Process) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
-	cond := SameGoroutineCondition(selg)
 
-	topframe, err := topframe(selg, curthread)
+	topframe, retframe, err := topframe(selg, curthread)
 	if err != nil {
 		return err
 	}
 
-	pcs := []uint64{}
+	sameGCond := SameGoroutineCondition(selg)
+	retFrameCond := andFrameoffCondition(sameGCond, retframe.CFA-int64(retframe.StackHi))
 
 	var deferpc uint64 = 0
 	if filepath.Ext(topframe.Current.File) == ".go" {
@@ -278,7 +300,6 @@ func StepOut(dbp Process) error {
 				if err != nil {
 					return err
 				}
-				pcs = append(pcs, deferpc)
 			}
 		}
 	}
@@ -288,7 +309,7 @@ func StepOut(dbp Process) error {
 	}
 
 	if deferpc != 0 && deferpc != topframe.Current.PC {
-		bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, cond)
+		bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
 		if err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
 				dbp.ClearInternalBreakpoints()
@@ -304,9 +325,17 @@ func StepOut(dbp Process) error {
 	}
 
 	if topframe.Ret != 0 {
-		if err := setInternalBreakpoints(dbp, topframe.Current.PC, []uint64{topframe.Ret}, NextBreakpoint, cond); err != nil {
-			return err
+		_, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond)
+		if err != nil {
+			if _, isexists := err.(BreakpointExistsError); !isexists {
+				dbp.ClearInternalBreakpoints()
+				return err
+			}
 		}
+	}
+
+	if bp, _, _ := curthread.Breakpoint(); bp == nil {
+		curthread.SetCurrentBreakpoint()
 	}
 
 	return Continue(dbp)
@@ -402,7 +431,7 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 }
 
 func GetGoInformation(p Process) (ver GoVersion, isextld bool, err error) {
-	scope := &EvalScope{0, 0, p.CurrentThread(), nil, p.BinInfo()}
+	scope := &EvalScope{0, 0, p.CurrentThread(), nil, p.BinInfo(), 0}
 	vv, err := scope.packageVarAddr("runtime.buildVersion")
 	if err != nil {
 		return ver, false, fmt.Errorf("Could not determine version number: %v", err)
@@ -482,10 +511,10 @@ func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
 
 	PC, CFA := locs[frame].Current.PC, locs[frame].CFA
 
-	return &EvalScope{PC, CFA, thread, g.variable, dbp.BinInfo()}, nil
+	return &EvalScope{PC, CFA, thread, g.variable, dbp.BinInfo(), g.stackhi}, nil
 }
 
 // FrameToScope returns a new EvalScope for this frame
 func FrameToScope(p Process, frame Stackframe) *EvalScope {
-	return &EvalScope{frame.Current.PC, frame.CFA, p.CurrentThread(), nil, p.BinInfo()}
+	return &EvalScope{frame.Current.PC, frame.CFA, p.CurrentThread(), nil, p.BinInfo(), frame.StackHi}
 }

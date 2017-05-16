@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/token"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -31,6 +32,8 @@ type Thread interface {
 	StepInstruction() error
 	// Blocked returns true if the thread is blocked
 	Blocked() bool
+	// SetCurrentBreakpoint updates the current breakpoint of this thread
+	SetCurrentBreakpoint() error
 }
 
 // Location represents the location of a thread.
@@ -51,26 +54,30 @@ func (tbe ThreadBlockedError) Error() string {
 	return ""
 }
 
-// returns topmost frame of g or thread if g is nil
-func topframe(g *G, thread Thread) (Stackframe, error) {
+// topframe returns the two topmost frames of g, or thread if g is nil.
+func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 	var frames []Stackframe
 	var err error
 
 	if g == nil {
 		if thread.Blocked() {
-			return Stackframe{}, ThreadBlockedError{}
+			return Stackframe{}, Stackframe{}, ThreadBlockedError{}
 		}
-		frames, err = ThreadStacktrace(thread, 0)
+		frames, err = ThreadStacktrace(thread, 1)
 	} else {
-		frames, err = g.Stacktrace(0)
+		frames, err = g.Stacktrace(1)
 	}
 	if err != nil {
-		return Stackframe{}, err
+		return Stackframe{}, Stackframe{}, err
 	}
-	if len(frames) < 1 {
-		return Stackframe{}, errors.New("empty stack trace")
+	switch len(frames) {
+	case 0:
+		return Stackframe{}, Stackframe{}, errors.New("empty stack trace")
+	case 1:
+		return frames[0], Stackframe{}, nil
+	default:
+		return frames[0], frames[1], nil
 	}
-	return frames[0], nil
 }
 
 // Set breakpoints at every line, and the return address. Also look for
@@ -80,10 +87,20 @@ func topframe(g *G, thread Thread) (Stackframe, error) {
 // a breakpoint of kind StepBreakpoint is set on the CALL instruction,
 // Continue will take care of setting a breakpoint to the destination
 // once the CALL is reached.
+//
+// Regardless of stepInto the following breakpoints will be set:
+// - a breakpoint on the first deferred function with NextDeferBreakpoint
+//   kind, the list of all the addresses to deferreturn calls in this function
+//   and condition checking that we remain on the same goroutine
+// - a breakpoint on each line of the function, with a condition checking
+//   that we stay on the same stack frame and goroutine.
+// - a breakpoint on the return address of the function, with a condition
+//   checking that we move to the previous stack frame and stay on the same
+//   goroutine.
 func next(dbp Process, stepInto bool) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
-	topframe, err := topframe(selg, curthread)
+	topframe, retframe, err := topframe(selg, curthread)
 	if err != nil {
 		return err
 	}
@@ -117,7 +134,21 @@ func next(dbp Process, stepInto bool) error {
 		}
 	}
 
-	cond := SameGoroutineCondition(selg)
+	sameGCond := SameGoroutineCondition(selg)
+	retFrameCond := andFrameoffCondition(sameGCond, retframe.CFA-int64(retframe.StackHi))
+	sameFrameCond := andFrameoffCondition(sameGCond, topframe.CFA-int64(topframe.StackHi))
+	var sameOrRetFrameCond ast.Expr
+	if sameGCond != nil {
+		sameOrRetFrameCond = &ast.BinaryExpr{
+			Op: token.LAND,
+			X:  sameGCond,
+			Y: &ast.BinaryExpr{
+				Op: token.LOR,
+				X:  frameoffCondition(topframe.CFA - int64(topframe.StackHi)),
+				Y:  frameoffCondition(retframe.CFA - int64(retframe.StackHi)),
+			},
+		}
+	}
 
 	if stepInto {
 		for _, instr := range text {
@@ -126,12 +157,12 @@ func next(dbp Process, stepInto bool) error {
 			}
 
 			if instr.DestLoc != nil && instr.DestLoc.Fn != nil {
-				if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, cond); err != nil {
+				if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, sameGCond); err != nil {
 					return err
 				}
 			} else {
 				// Non-absolute call instruction, set a StepBreakpoint here
-				if _, err := dbp.SetBreakpoint(instr.Loc.PC, StepBreakpoint, cond); err != nil {
+				if _, err := dbp.SetBreakpoint(instr.Loc.PC, StepBreakpoint, sameGCond); err != nil {
 					if _, ok := err.(BreakpointExistsError); !ok {
 						return err
 					}
@@ -165,7 +196,7 @@ func next(dbp Process, stepInto bool) error {
 			}
 		}
 		if deferpc != 0 && deferpc != topframe.Current.PC {
-			bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, cond)
+			bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
 			if err != nil {
 				if _, ok := err.(BreakpointExistsError); !ok {
 					return err
@@ -201,9 +232,33 @@ func next(dbp Process, stepInto bool) error {
 	}
 
 	// Add a breakpoint on the return address for the current frame
-	pcs = append(pcs, topframe.Ret)
+	for _, pc := range pcs {
+		if _, err := dbp.SetBreakpoint(pc, NextBreakpoint, sameFrameCond); err != nil {
+			if _, ok := err.(BreakpointExistsError); !ok {
+				dbp.ClearInternalBreakpoints()
+				return err
+			}
+		}
+
+	}
+	if bp, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond); err != nil {
+		if _, isexists := err.(BreakpointExistsError); isexists {
+			if bp.Kind == NextBreakpoint {
+				// If the return address shares the same address with one of the lines
+				// of the function (because we are stepping through a recursive
+				// function) then the corresponding breakpoint should be active both on
+				// this frame and on the return frame.
+				bp.Cond = sameOrRetFrameCond
+			}
+		} else {
+			return err
+		}
+	}
+	if bp, _, _ := curthread.Breakpoint(); bp == nil {
+		curthread.SetCurrentBreakpoint()
+	}
 	success = true
-	return setInternalBreakpoints(dbp, topframe.Current.PC, pcs, NextBreakpoint, cond)
+	return nil
 }
 
 func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) error {
@@ -243,23 +298,6 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 		}
 	}
 
-	return nil
-}
-
-// setInternalBreakpoints sets a breakpoint to all addresses specified in pcs
-// skipping over curpc and curpc-1
-func setInternalBreakpoints(dbp Process, curpc uint64, pcs []uint64, kind BreakpointKind, cond ast.Expr) error {
-	for i := range pcs {
-		if pcs[i] == curpc || pcs[i] == curpc-1 {
-			continue
-		}
-		if _, err := dbp.SetBreakpoint(pcs[i], kind, cond); err != nil {
-			if _, ok := err.(BreakpointExistsError); !ok {
-				dbp.ClearInternalBreakpoints()
-				return err
-			}
-		}
-	}
 	return nil
 }
 
@@ -345,7 +383,7 @@ func ThreadScope(thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, nil, thread.BinInfo()}, nil
+	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, nil, thread.BinInfo(), 0}, nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on this thread.
@@ -357,11 +395,11 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	gvar, err := getGVariable(thread)
+	g, err := GetG(thread)
 	if err != nil {
 		return nil, err
 	}
-	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, gvar, thread.BinInfo()}, nil
+	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, g.variable, thread.BinInfo(), g.stackhi}, nil
 }
 
 func onRuntimeBreakpoint(thread Thread) bool {
@@ -384,12 +422,30 @@ func onNextGoroutine(thread Thread, breakpoints map[uint64]*Breakpoint) (bool, e
 	if bp == nil {
 		return false, nil
 	}
-	if bp.Kind == NextDeferBreakpoint {
-		// we just want to check the condition on the goroutine id here
-		bp.Kind = NextBreakpoint
-		defer func() {
-			bp.Kind = NextDeferBreakpoint
-		}()
+	// Internal breakpoint conditions can take multiple different forms:
+	// Step into breakpoints:
+	//   runtime.curg.goid == X
+	// Next or StepOut breakpoints:
+	//   runtime.curg.goid == X && runtime.frameoff == Y
+	// Breakpoints that can be hit either by stepping on a line in the same
+	// function or by returning from the function:
+	//   runtime.curg.goid == X && (runtime.frameoff == Y || runtime.frameoff == Z)
+	// Here we are only interested in testing the runtime.curg.goid clause.
+	w := onNextGoroutineWalker{thread: thread}
+	ast.Walk(&w, bp.Cond)
+	return w.ret, w.err
+}
+
+type onNextGoroutineWalker struct {
+	thread Thread
+	ret    bool
+	err    error
+}
+
+func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
+	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL && exprToString(binx.X) == "runtime.curg.goid" {
+		w.ret, w.err = evalBreakpointCondition(w.thread, n.(ast.Expr))
+		return nil
 	}
-	return bp.CheckCondition(thread)
+	return w
 }

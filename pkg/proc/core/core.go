@@ -248,6 +248,10 @@ func (t *Thread) Blocked() bool {
 	return false
 }
 
+func (t *Thread) SetCurrentBreakpoint() error {
+	return nil
+}
+
 func (p *Process) Breakpoints() map[uint64]*proc.Breakpoint {
 	return p.breakpoints
 }

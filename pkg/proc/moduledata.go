@@ -13,7 +13,7 @@ type moduleData struct {
 
 func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) (err error) {
 	bi.loadModuleDataOnce.Do(func() {
-		scope := &EvalScope{0, 0, mem, nil, bi}
+		scope := &EvalScope{0, 0, mem, nil, bi, 0}
 		var md *Variable
 		md, err = scope.packageVarAddr("runtime.firstmoduledata")
 		if err != nil {
@@ -119,7 +119,7 @@ func resolveNameOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem MemoryRea
 }
 
 func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem MemoryReadWriter) (*Variable, error) {
-	scope := &EvalScope{0, 0, mem, nil, bi}
+	scope := &EvalScope{0, 0, mem, nil, bi, 0}
 	reflectOffs, err := scope.packageVarAddr("runtime.reflectOffs")
 	if err != nil {
 		return nil, err
