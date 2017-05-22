@@ -86,7 +86,6 @@ const (
 	showLldbServerOutput     = false
 	logGdbWireMaxLen         = 120
 
-	maxConnectAttempts     = 10   // number of connection attempts to stub
 	maxTransmitAttempts    = 3    // number of retransmission attempts on failed checksum
 	initialInputBufferSize = 2048 // size of the input buffer for gdbConn
 )
@@ -118,7 +117,8 @@ type Process struct {
 
 	loadGInstrAddr uint64 // address of the g loading instruction, zero if we couldn't allocate it
 
-	process *exec.Cmd
+	process  *os.Process
+	waitChan chan *os.ProcessState
 
 	allGCache []*proc.G
 }
@@ -153,56 +153,88 @@ type gdbRegister struct {
 	regnum int
 }
 
-// Connect connects to a stub and performs a handshake.
-//
-// If listener is not nil Connect will accept a connection from the stub
-// (which should be instructed to operate in client mode), otherwise it will
-// connect to addr.
-//
-// Path and pid are, respectively, the path to the executable of the target
-// program and the PID of the target process, both are optional, however
-// some stubs do not provide ways to determine path and pid automatically
-// and Connect will be unable to function without knowing them.
-func Connect(listener net.Listener, addr string, path string, pid int, attempts int) (*Process, error) {
-	var conn net.Conn
-	var err error
-
-	if listener != nil {
-		conn, err = listener.Accept()
-		listener.Close()
-	} else {
-		for i := 0; i < attempts; i++ {
-			conn, err = net.Dial("tcp", addr)
-			if err == nil {
-				break
-			}
-			time.Sleep(time.Second)
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-
+// New creates a new Process instance.
+// If process is not nil it is the stub's process and will be killed after
+// Detach.
+// Use Listen, Dial or Connect to complete connection.
+func New(process *os.Process) *Process {
 	p := &Process{
 		conn: gdbConn{
-			conn:                conn,
 			maxTransmitAttempts: maxTransmitAttempts,
 			inbuf:               make([]byte, 0, initialInputBufferSize),
 			direction:           proc.Forward,
 		},
-
 		threads:        make(map[int]*Thread),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
 		breakpoints:    make(map[uint64]*proc.Breakpoint),
 		gcmdok:         true,
 		threadStopInfo: true,
+		process:        process,
 	}
 
+	if process != nil {
+		p.waitChan = make(chan *os.ProcessState)
+		go func() {
+			state, _ := process.Wait()
+			p.waitChan <- state
+		}()
+	}
+
+	return p
+}
+
+// Listen waits for a connection from the stub.
+func (p *Process) Listen(listener net.Listener, path string, pid int) error {
+	acceptChan := make(chan net.Conn)
+
+	go func() {
+		conn, _ := listener.Accept()
+		acceptChan <- conn
+	}()
+
+	select {
+	case conn := <-acceptChan:
+		listener.Close()
+		if conn == nil {
+			return errors.New("could not connect")
+		}
+		return p.Connect(conn, path, pid)
+	case status := <-p.waitChan:
+		listener.Close()
+		return fmt.Errorf("stub exited while waiting for connection: %v", status)
+	}
+}
+
+// Dial attempts to connect to the stub.
+func (p *Process) Dial(addr string, path string, pid int) error {
+	for {
+		conn, err := net.Dial("tcp", addr)
+		if err == nil {
+			return p.Connect(conn, path, pid)
+		}
+		select {
+		case status := <-p.waitChan:
+			return fmt.Errorf("stub exited while attempting to connect: %v", status)
+		default:
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// Connect connects to a stub and performs a handshake.
+//
+// Path and pid are, respectively, the path to the executable of the target
+// program and the PID of the target process, both are optional, however
+// some stubs do not provide ways to determine path and pid automatically
+// and Connect will be unable to function without knowing them.
+func (p *Process) Connect(conn net.Conn, path string, pid int) error {
+	p.conn.conn = conn
+
 	p.conn.pid = pid
-	err = p.conn.handshake()
+	err := p.conn.handshake()
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return err
 	}
 
 	if path == "" {
@@ -217,11 +249,11 @@ func Connect(listener net.Listener, addr string, path string, pid int, attempts 
 				_, path, err = p.loadProcessInfo(pid)
 				if err != nil {
 					conn.Close()
-					return nil, err
+					return err
 				}
 			} else {
 				conn.Close()
-				return nil, fmt.Errorf("could not determine executable path: %v", err)
+				return fmt.Errorf("could not determine executable path: %v", err)
 			}
 		}
 	}
@@ -244,7 +276,7 @@ func Connect(listener net.Listener, addr string, path string, pid int, attempts 
 	err = p.bi.LoadBinaryInfo(path, &wg)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return err
 	}
 	wg.Wait()
 
@@ -252,7 +284,7 @@ func Connect(listener net.Listener, addr string, path string, pid int, attempts 
 	if err != nil {
 		conn.Close()
 		p.bi.Close()
-		return nil, err
+		return err
 	}
 
 	if p.conn.pid <= 0 {
@@ -260,7 +292,7 @@ func Connect(listener net.Listener, addr string, path string, pid int, attempts 
 		if err != nil && !isProtocolErrorUnsupported(err) {
 			conn.Close()
 			p.bi.Close()
-			return nil, err
+			return err
 		}
 	}
 
@@ -268,7 +300,7 @@ func Connect(listener net.Listener, addr string, path string, pid int, attempts 
 	if err != nil {
 		conn.Close()
 		p.bi.Close()
-		return nil, err
+		return err
 	}
 
 	p.bi.Arch.SetGStructOffset(ver, isextld)
@@ -285,7 +317,7 @@ func Connect(listener net.Listener, addr string, path string, pid int, attempts 
 		}
 	}
 
-	return p, nil
+	return nil
 }
 
 // unusedPort returns an unused tcp port
@@ -331,7 +363,6 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		if err != nil {
 			return nil, err
 		}
-		listener.(*net.TCPListener).SetDeadline(time.Now().Add(maxConnectAttempts * time.Second))
 		args := make([]string, 0, len(cmd)+4)
 		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--")
 		args = append(args, cmd...)
@@ -364,14 +395,17 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		return nil, err
 	}
 
-	p, err := Connect(listener, port, cmd[0], 0, maxConnectAttempts)
+	p := New(proc.Process)
+	p.conn.isDebugserver = isDebugserver
+
+	if listener != nil {
+		err = p.Listen(listener, cmd[0], 0)
+	} else {
+		err = p.Dial(port, cmd[0], 0)
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	p.conn.isDebugserver = isDebugserver
-	p.process = proc
-
 	return p, nil
 }
 
@@ -395,7 +429,6 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 		if err != nil {
 			return nil, err
 		}
-		listener.(*net.TCPListener).SetDeadline(time.Now().Add(maxConnectAttempts * time.Second))
 		proc = exec.Command(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
 		port = unusedPort()
@@ -412,14 +445,17 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 		return nil, err
 	}
 
-	p, err := Connect(listener, port, path, pid, maxConnectAttempts)
+	p := New(proc.Process)
+	p.conn.isDebugserver = isDebugserver
+
+	if listener != nil {
+		err = p.Listen(listener, path, pid)
+	} else {
+		err = p.Dial(port, path, pid)
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	p.conn.isDebugserver = isDebugserver
-	p.process = proc
-
 	return p, nil
 }
 
@@ -667,8 +703,8 @@ func (p *Process) Detach(kill bool) error {
 		}
 	}
 	if p.process != nil {
-		p.process.Process.Kill()
-		p.process.Wait()
+		p.process.Kill()
+		<-p.waitChan
 	}
 	return p.bi.Close()
 }
