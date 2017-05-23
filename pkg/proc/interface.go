@@ -92,9 +92,3 @@ type BreakpointManipulation interface {
 	ClearBreakpoint(addr uint64) (*Breakpoint, error)
 	ClearInternalBreakpoints() error
 }
-
-// VariableEval is an interface for dealing with eval scopes.
-type VariableEval interface {
-	FrameToScope(Stackframe) *EvalScope
-	ConvertEvalScope(gid, frame int) (*EvalScope, error)
-}

@@ -92,14 +92,6 @@ type LoadConfig struct {
 var loadSingleValue = LoadConfig{false, 0, 64, 0, 0}
 var loadFullValue = LoadConfig{true, 1, 64, 64, -1}
 
-// M represents a runtime M (OS thread) structure.
-type M struct {
-	procid   int     // Thread ID or port.
-	spinning uint8   // Busy looping.
-	blocked  uint8   // Waiting on futex / semaphore.
-	curg     uintptr // Current G running on this thread.
-}
-
 // G status, from: src/runtime/runtime2.go
 const (
 	Gidle           uint64 = iota // 0
