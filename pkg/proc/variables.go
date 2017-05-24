@@ -1250,7 +1250,12 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 			break
 		}
 		key := it.key()
-		val := it.value()
+		var val *Variable
+		if it.values.fieldType.Size() > 0 {
+			val = it.value()
+		} else {
+			val = v.newVariable("", it.values.Addr, it.values.fieldType)
+		}
 		key.loadValueInternal(recurseLevel+1, cfg)
 		val.loadValueInternal(recurseLevel+1, cfg)
 		if key.Unreadable != nil || val.Unreadable != nil {
@@ -1430,7 +1435,14 @@ func (it *mapIterator) nextBucket() bool {
 		return false
 	}
 
-	if it.tophashes.Len != it.keys.Len || it.tophashes.Len != it.values.Len {
+	if it.tophashes.Len != it.keys.Len {
+		it.v.Unreadable = mapBucketContentsInconsistentLenErr
+		return false
+	}
+
+	if it.values.fieldType.Size() > 0 && it.tophashes.Len != it.values.Len {
+		// if the type of the value is zero-sized (i.e. struct{}) then the values
+		// array's length is zero.
 		it.v.Unreadable = mapBucketContentsInconsistentLenErr
 		return false
 	}
