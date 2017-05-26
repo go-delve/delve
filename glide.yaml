@@ -1,0 +1,35 @@
+package: github.com/derekparker/delve
+import:
+- package: github.com/inconshreveable/mousetrap
+  version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
+- package: github.com/mattn/go-colorable
+  version: ded68f7a9561c023e790de24279db7ebf473ea80
+- package: github.com/mattn/go-isatty
+  version: ^0.0.2
+- package: github.com/peterh/liner
+  version: 88609521dc4b6c858fd4c98b628147da928ce4ac
+- package: github.com/pkg/profile
+  version: 06b906832ed0e32302a942b63b6c5f8359034d26
+- package: github.com/spf13/cobra
+  version: b6cb3958937245a12d4d7728be080a6c758f4136
+  subpackages:
+  - doc
+- package: github.com/spf13/pflag
+  version: 9e4c21054fa135711121b557932b1887f2405d92
+- package: golang.org/x/arch
+  version: 58ea1a195b1a354bcd572b7ef6bbbd264dc63732
+  subpackages:
+  - x86/x86asm
+- package: golang.org/x/debug
+  version: fb508927b491eca48a708e9d000fdb7afa53c32b
+  subpackages:
+  - dwarf
+  - elf
+  - macho
+- package: golang.org/x/sys
+  version: f3918c30c5c2cb527c0b071a27c35120a6c0719a
+  subpackages:
+  - unix
+  - windows
+- package: gopkg.in/yaml.v2
+  version: cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b
