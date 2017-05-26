@@ -11,9 +11,12 @@
 		"github.com/derekparker/delve/pkg/dwarf/op",
 		"github.com/derekparker/delve/pkg/dwarf/reader",
 		"github.com/derekparker/delve/pkg/dwarf/util",
+		"github.com/derekparker/delve/pkg/godephelper",
 		"github.com/derekparker/delve/pkg/proc",
+		"github.com/derekparker/delve/pkg/proc/core",
+		"github.com/derekparker/delve/pkg/proc/gdbserial",
+		"github.com/derekparker/delve/pkg/proc/native",
 		"github.com/derekparker/delve/pkg/proc/test",
-		"github.com/derekparker/delve/pkg/target",
 		"github.com/derekparker/delve/pkg/terminal",
 		"github.com/derekparker/delve/pkg/version",
 		"github.com/derekparker/delve/service",
@@ -26,6 +29,11 @@
 		"github.com/derekparker/delve/service/test/cmd"
 	],
 	"Deps": [
+		{
+			"ImportPath": "github.com/cpuguy83/go-md2man/md2man",
+			"Comment": "v1.0.6",
+			"Rev": "a65d4d2de4d5f7c74868dfa9b202a3c8be315aaa"
+		},
 		{
 			"ImportPath": "github.com/inconshreveable/mousetrap",
 			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
@@ -50,7 +58,20 @@
 			"Rev": "06b906832ed0e32302a942b63b6c5f8359034d26"
 		},
 		{
+			"ImportPath": "github.com/russross/blackfriday",
+			"Comment": "v1.4-44-gb253417",
+			"Rev": "b253417e1cb644d645a0a3bb1fa5034c8030127c"
+		},
+		{
+			"ImportPath": "github.com/shurcooL/sanitized_anchor_name",
+			"Rev": "79c90efaf01eddc01945af5bc1797859189b830b"
+		},
+		{
 			"ImportPath": "github.com/spf13/cobra",
+			"Rev": "b6cb3958937245a12d4d7728be080a6c758f4136"
+		},
+		{
+			"ImportPath": "github.com/spf13/cobra/doc",
 			"Rev": "b6cb3958937245a12d4d7728be080a6c758f4136"
 		},
 		{
