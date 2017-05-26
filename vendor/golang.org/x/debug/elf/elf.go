@@ -38,7 +38,7 @@
  * SUCH DAMAGE.
  */
 
-package elf
+package elf // import "golang.org/x/debug/elf"
 
 import "strconv"
 
