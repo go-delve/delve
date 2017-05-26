@@ -691,6 +691,9 @@ func TestEvalExpression(t *testing.T) {
 
 		{"ifacearr", false, "[]error len: 2, cap: 2, [*main.astruct {A: 0, B: 0},nil]", "[]error len: 2, cap: 2, [...]", "[]error", nil},
 		{"efacearr", false, `[]interface {} len: 3, cap: 3, [*main.astruct {A: 0, B: 0},*"test",nil]`, "[]interface {} len: 3, cap: 3, [...]", "[]interface {}", nil},
+
+		{"zsslice", false, `[]struct {} len: 3, cap: 3, [{},{},{}]`, `[]struct {} len: 3, cap: 3, [...]`, "[]struct {}", nil},
+		{"zsvmap", false, `map[string]struct {} ["testkey": {}, ]`, `map[string]struct {} [...]`, "map[string]struct {}", nil},
 	}
 
 	ver, _ := proc.ParseVersionString(runtime.Version())
