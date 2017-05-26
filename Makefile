@@ -65,7 +65,7 @@ endif
 ifneq "$(shell which lldb-server)" ""
 	@echo
 	@echo 'Testing LLDB backend (proc)'
-	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/proc -backend=lldb 
+	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/proc -backend=lldb
 	@echo
 	@echo 'Testing LLDB backend (integration)'
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/service/test -backend=lldb
@@ -90,3 +90,9 @@ test-proc-run:
 
 test-integration-run:
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) -test.run="$(RUN)" -backend=$(BACKEND) $(PREFIX)/service/test
+
+vendor: glide.yaml
+	@glide up -v
+	@glide-vc --use-lock-file --no-tests --only-code
+
+.PHONY: vendor test-integration-run test-proc-run test check-cert install build

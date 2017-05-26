@@ -5,7 +5,7 @@
 // Mach-O header data structures
 // http://developer.apple.com/mac/library/documentation/DeveloperTools/Conceptual/MachORuntime/Reference/reference.html
 
-package macho
+package macho // import "golang.org/x/debug/macho"
 
 import "strconv"
 
