@@ -120,7 +120,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 			// if we truly don't have permissions.
 			return nil, fmt.Errorf("could not attach to new thread %d %s", tid, err)
 		}
-		pid, status, err := dbp.wait(tid, 0)
+		pid, status, err := dbp.waitFast(tid)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +131,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
 	if err == syscall.ESRCH {
-		if _, _, err = dbp.wait(tid, 0); err != nil {
+		if _, _, err = dbp.waitFast(tid); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
 		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
