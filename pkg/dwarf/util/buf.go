@@ -4,23 +4,21 @@
 
 // Buffered reading and decoding of DWARF data streams.
 
-package dwarf
+package util
 
 import (
-	"encoding/binary"
+	"debug/dwarf"
 	"fmt"
-	"strconv"
 )
 
 // Data buffer being decoded.
 type buf struct {
-	dwarf  *Data
-	order  binary.ByteOrder
+	dwarf  *dwarf.Data
 	format dataFormat
 	name   string
-	off    Offset
+	off    dwarf.Offset
 	data   []byte
-	err    error
+	Err    error
 }
 
 // Data format, other than byte order.  This affects the handling of
@@ -37,22 +35,22 @@ type dataFormat interface {
 }
 
 // Some parts of DWARF have no data format, e.g., abbrevs.
-type unknownFormat struct{}
+type UnknownFormat struct{}
 
-func (u unknownFormat) version() int {
+func (u UnknownFormat) version() int {
 	return 0
 }
 
-func (u unknownFormat) dwarf64() (bool, bool) {
+func (u UnknownFormat) dwarf64() (bool, bool) {
 	return false, false
 }
 
-func (u unknownFormat) addrsize() int {
+func (u UnknownFormat) addrsize() int {
 	return 0
 }
 
-func makeBuf(d *Data, format dataFormat, name string, off Offset, data []byte) buf {
-	return buf{d, d.order, format, name, off, data, nil}
+func MakeBuf(d *dwarf.Data, format dataFormat, name string, off dwarf.Offset, data []byte) buf {
+	return buf{d, format, name, off, data, nil}
 }
 
 func (b *buf) slice(length int) buf {
@@ -63,7 +61,7 @@ func (b *buf) slice(length int) buf {
 	return n
 }
 
-func (b *buf) uint8() uint8 {
+func (b *buf) Uint8() uint8 {
 	if len(b.data) < 1 {
 		b.error("underflow")
 		return 0
@@ -81,7 +79,7 @@ func (b *buf) bytes(n int) []byte {
 	}
 	data := b.data[0:n]
 	b.data = b.data[n:]
-	b.off += Offset(n)
+	b.off += dwarf.Offset(n)
 	return data
 }
 
@@ -94,7 +92,7 @@ func (b *buf) string() string {
 		if b.data[i] == 0 {
 			s := string(b.data[0:i])
 			b.data = b.data[i+1:]
-			b.off += Offset(i + 1)
+			b.off += dwarf.Offset(i + 1)
 			return s
 		}
 	}
@@ -102,39 +100,15 @@ func (b *buf) string() string {
 	return ""
 }
 
-func (b *buf) uint16() uint16 {
-	a := b.bytes(2)
-	if a == nil {
-		return 0
-	}
-	return b.order.Uint16(a)
-}
-
-func (b *buf) uint32() uint32 {
-	a := b.bytes(4)
-	if a == nil {
-		return 0
-	}
-	return b.order.Uint32(a)
-}
-
-func (b *buf) uint64() uint64 {
-	a := b.bytes(8)
-	if a == nil {
-		return 0
-	}
-	return b.order.Uint64(a)
-}
-
 // Read a varint, which is 7 bits per byte, little endian.
 // the 0x80 bit means read another byte.
-func (b *buf) varint() (c uint64, bits uint) {
+func (b *buf) Varint() (c uint64, bits uint) {
 	for i := 0; i < len(b.data); i++ {
 		byte := b.data[i]
 		c |= uint64(byte&0x7F) << bits
 		bits += 7
 		if byte&0x80 == 0 {
-			b.off += Offset(i + 1)
+			b.off += dwarf.Offset(i + 1)
 			b.data = b.data[i+1:]
 			return c, bits
 		}
@@ -143,14 +117,14 @@ func (b *buf) varint() (c uint64, bits uint) {
 }
 
 // Unsigned int is just a varint.
-func (b *buf) uint() uint64 {
-	x, _ := b.varint()
+func (b *buf) Uint() uint64 {
+	x, _ := b.Varint()
 	return x
 }
 
 // Signed int is a sign-extended varint.
-func (b *buf) int() int64 {
-	ux, bits := b.varint()
+func (b *buf) Int() int64 {
+	ux, bits := b.Varint()
 	x := int64(ux)
 	if x&(1<<(bits-1)) != 0 {
 		x |= -1 << bits
@@ -158,24 +132,8 @@ func (b *buf) int() int64 {
 	return x
 }
 
-// Address-sized uint.
-func (b *buf) addr() uint64 {
-	switch b.format.addrsize() {
-	case 1:
-		return uint64(b.uint8())
-	case 2:
-		return uint64(b.uint16())
-	case 4:
-		return uint64(b.uint32())
-	case 8:
-		return uint64(b.uint64())
-	}
-	b.error("unknown address size")
-	return 0
-}
-
-// assertEmpty checks that everything has been read from b.
-func (b *buf) assertEmpty() {
+// AssertEmpty checks that everything has been read from b.
+func (b *buf) AssertEmpty() {
 	if len(b.data) == 0 {
 		return
 	}
@@ -186,18 +144,8 @@ func (b *buf) assertEmpty() {
 }
 
 func (b *buf) error(s string) {
-	if b.err == nil {
+	if b.Err == nil {
 		b.data = nil
-		b.err = DecodeError{b.name, b.off, s}
+		b.Err = dwarf.DecodeError{b.name, b.off, s}
 	}
-}
-
-type DecodeError struct {
-	Name   string
-	Offset Offset
-	Err    string
-}
-
-func (e DecodeError) Error() string {
-	return "decoding dwarf section " + e.Name + " at offset 0x" + strconv.FormatInt(int64(e.Offset), 16) + ": " + e.Err
 }

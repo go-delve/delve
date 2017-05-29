@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"debug/dwarf"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -8,8 +9,7 @@ import (
 	"go/token"
 	"path/filepath"
 	"strconv"
-
-	"golang.org/x/debug/dwarf"
+	"strings"
 )
 
 type functionDebugInfo struct {

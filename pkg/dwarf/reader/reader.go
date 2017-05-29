@@ -1,11 +1,11 @@
 package reader
 
 import (
+	"debug/dwarf"
 	"errors"
 	"fmt"
 
 	"github.com/derekparker/delve/pkg/dwarf/op"
-	"golang.org/x/debug/dwarf"
 )
 
 type Reader struct {
