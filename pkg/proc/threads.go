@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"strings"
 
-	"golang.org/x/debug/dwarf"
+	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 )
 
 // Thread represents a thread.
@@ -324,7 +324,7 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 	name := ""
 
 	if deref {
-		typ = &dwarf.PtrType{dwarf.CommonType{int64(thread.Arch().PtrSize()), "", reflect.Ptr, 0}, typ}
+		typ = &godwarf.PtrType{godwarf.CommonType{int64(thread.Arch().PtrSize()), "", reflect.Ptr, 0}, typ}
 	} else {
 		name = "runtime.curg"
 	}

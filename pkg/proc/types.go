@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -14,9 +15,8 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
-
-	"golang.org/x/debug/dwarf"
 )
 
 // The kind field in runtime._type is a reflect.Kind value plus
@@ -38,19 +38,19 @@ const (
 )
 
 // Do not call this function directly it isn't able to deal correctly with package paths
-func (bi *BinaryInfo) findType(name string) (dwarf.Type, error) {
+func (bi *BinaryInfo) findType(name string) (godwarf.Type, error) {
 	off, found := bi.types[name]
 	if !found {
 		return nil, reader.TypeNotFoundErr
 	}
-	return bi.dwarf.Type(off)
+	return godwarf.ReadType(bi.dwarf, off, bi.typeCache)
 }
 
-func pointerTo(typ dwarf.Type, arch Arch) dwarf.Type {
-	return &dwarf.PtrType{dwarf.CommonType{int64(arch.PtrSize()), "*" + typ.Common().Name, reflect.Ptr, 0}, typ}
+func pointerTo(typ godwarf.Type, arch Arch) godwarf.Type {
+	return &godwarf.PtrType{godwarf.CommonType{int64(arch.PtrSize()), "*" + typ.Common().Name, reflect.Ptr, 0}, typ}
 }
 
-func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (dwarf.Type, error) {
+func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 	bi.loadPackageMap()
 	if lit, islit := expr.(*ast.BasicLit); islit && lit.Kind == token.STRING {
 		// Allow users to specify type names verbatim as quoted
@@ -590,26 +590,26 @@ func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
 		return nil, err
 	}
 
-	uint32typ := &dwarf.UintType{dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 4, Name: "uint32"}}}
-	uint16typ := &dwarf.UintType{dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 2, Name: "uint16"}}}
+	uint32typ := &godwarf.UintType{godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 4, Name: "uint32"}}}
+	uint16typ := &godwarf.UintType{godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 2, Name: "uint16"}}}
 
-	newStructType := func(name string, sz uintptr) *dwarf.StructType {
-		return &dwarf.StructType{dwarf.CommonType{Name: name, ByteSize: int64(sz)}, name, "struct", nil, false}
+	newStructType := func(name string, sz uintptr) *godwarf.StructType {
+		return &godwarf.StructType{godwarf.CommonType{Name: name, ByteSize: int64(sz)}, name, "struct", nil, false}
 	}
 
-	appendField := func(typ *dwarf.StructType, name string, fieldtype dwarf.Type, off uintptr) {
-		typ.Field = append(typ.Field, &dwarf.StructField{Name: name, ByteOffset: int64(off), Type: fieldtype})
+	appendField := func(typ *godwarf.StructType, name string, fieldtype godwarf.Type, off uintptr) {
+		typ.Field = append(typ.Field, &godwarf.StructField{Name: name, ByteOffset: int64(off), Type: fieldtype})
 	}
 
-	newSliceType := func(elemtype dwarf.Type) *dwarf.SliceType {
+	newSliceType := func(elemtype godwarf.Type) *godwarf.SliceType {
 		r := newStructType("[]"+elemtype.Common().Name, uintptr(3*uintptrtyp.Size()))
 		appendField(r, "array", pointerTo(elemtype, _type.bi.Arch), 0)
 		appendField(r, "len", uintptrtyp, uintptr(uintptrtyp.Size()))
 		appendField(r, "cap", uintptrtyp, uintptr(2*uintptrtyp.Size()))
-		return &dwarf.SliceType{StructType: *r, ElemType: elemtype}
+		return &godwarf.SliceType{StructType: *r, ElemType: elemtype}
 	}
 
-	var typ *dwarf.StructType
+	var typ *godwarf.StructType
 
 	type rtype struct {
 		size       uintptr

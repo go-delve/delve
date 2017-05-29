@@ -6,16 +6,43 @@
 // The format is heavily biased toward C, but for simplicity
 // the String methods use a pseudo-Go syntax.
 
-package dwarf
+// Borrowed from golang.org/x/debug/dwarf/type.go
+
+package godwarf
 
 import (
+	"debug/dwarf"
 	"fmt"
 	"reflect"
 	"strconv"
+
+	"github.com/derekparker/delve/pkg/dwarf/op"
+	"github.com/derekparker/delve/pkg/dwarf/util"
+)
+
+const (
+	AttrGoKind          dwarf.Attr = 0x2900
+	AttrGoKey           dwarf.Attr = 0x2901
+	AttrGoElem          dwarf.Attr = 0x2902
+	AttrGoEmbeddedField dwarf.Attr = 0x2903
+)
+
+// Basic type encodings -- the value for AttrEncoding in a TagBaseType Entry.
+const (
+	encAddress        = 0x01
+	encBoolean        = 0x02
+	encComplexFloat   = 0x03
+	encFloat          = 0x04
+	encSigned         = 0x05
+	encSignedChar     = 0x06
+	encUnsigned       = 0x07
+	encUnsignedChar   = 0x08
+	encImaginaryFloat = 0x09
 )
 
 // A Type conventionally represents a pointer to any of the
 // specific Type structures (CharType, StructType, etc.).
+//TODO: remove this use dwarf.Type
 type Type interface {
 	Common() *CommonType
 	String() string
@@ -29,7 +56,7 @@ type CommonType struct {
 	ByteSize    int64        // size of value of this type, in bytes
 	Name        string       // name that can be used to refer to type
 	ReflectKind reflect.Kind // the reflect kind of the type.
-	Offset      Offset       // the offset at which this type was read
+	Offset      dwarf.Offset // the offset at which this type was read
 }
 
 func (c *CommonType) Common() *CommonType { return c }
@@ -158,6 +185,7 @@ type StructField struct {
 	ByteSize   int64
 	BitOffset  int64 // within the ByteSize bytes at ByteOffset
 	BitSize    int64 // zero if not a bit field
+	Embedded   bool
 }
 
 func (t *StructType) String() string {
@@ -329,31 +357,19 @@ func (t *ChanType) String() string {
 	return "chan " + t.ElemType.String()
 }
 
-// typeReader is used to read from either the info section or the
-// types section.
-type typeReader interface {
-	Seek(Offset)
-	Next() (*Entry, error)
-	clone() typeReader
-	offset() Offset
-	// AddressSize returns the size in bytes of addresses in the current
-	// compilation unit.
-	AddressSize() int
-}
-
 // Type reads the type at off in the DWARF ``info'' section.
-func (d *Data) Type(off Offset) (Type, error) {
-	return d.readType("info", d.Reader(), off, d.typeCache)
+func ReadType(d *dwarf.Data, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
+	return readType(d, "info", d.Reader(), off, typeCache)
 }
 
-func getKind(e *Entry) reflect.Kind {
+func getKind(e *dwarf.Entry) reflect.Kind {
 	integer, _ := e.Val(AttrGoKind).(int64)
 	return reflect.Kind(integer)
 }
 
 // readType reads a type from r at off of name using and updating a
 // type cache.
-func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Offset]Type) (Type, error) {
+func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
 	if t, ok := typeCache[off]; ok {
 		return t, nil
 	}
@@ -364,10 +380,10 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 	}
 	addressSize := r.AddressSize()
 	if e == nil || e.Offset != off {
-		return nil, DecodeError{name, off, "no type at offset"}
+		return nil, dwarf.DecodeError{name, off, "no type at offset"}
 	}
 
-	// Parse type from Entry.
+	// Parse type from dwarf.Entry.
 	// Must always set typeCache[off] before calling
 	// d.Type recursively, to handle circular types correctly.
 	var typ Type
@@ -375,7 +391,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 	nextDepth := 0
 
 	// Get next child; set err if error happens.
-	next := func() *Entry {
+	next := func() *dwarf.Entry {
 		if !e.Children {
 			return nil
 		}
@@ -388,10 +404,6 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			kid, err1 := r.Next()
 			if err1 != nil {
 				err = err1
-				return nil
-			}
-			if kid == nil {
-				err = DecodeError{name, r.offset(), "unexpected end of DWARF entries"}
 				return nil
 			}
 			if kid.Tag == 0 {
@@ -411,20 +423,19 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		}
 	}
 
-	// Get Type referred to by Entry's attr.
+	// Get Type referred to by dwarf.Entry's attr.
 	// Set err if error happens.  Not having a type is an error.
-	typeOf := func(e *Entry, attr Attr) Type {
+	typeOf := func(e *dwarf.Entry, attr dwarf.Attr) Type {
 		tval := e.Val(attr)
 		var t Type
 		switch toff := tval.(type) {
-		case Offset:
-			if t, err = d.readType(name, r.clone(), toff, typeCache); err != nil {
+		case dwarf.Offset:
+			if t, err = readType(d, name, d.Reader(), toff, typeCache); err != nil {
 				return nil
 			}
 		case uint64:
-			if t, err = d.sigToType(toff); err != nil {
-				return nil
-			}
+			err = dwarf.DecodeError{name, e.Offset, "DWARFv4 section debug_types unsupported"}
+			return nil
 		default:
 			// It appears that no Type means "void".
 			return new(VoidType)
@@ -433,7 +444,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 	}
 
 	switch e.Tag {
-	case TagArrayType:
+	case dwarf.TagArrayType:
 		// Multi-dimensional array.  (DWARF v2 §5.4)
 		// Attributes:
 		//	AttrType:subtype [required]
@@ -444,16 +455,16 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		//	TagSubrangeType or TagEnumerationType giving one dimension.
 		//	dimensions are in left to right order.
 		t := new(ArrayType)
-		t.Name, _ = e.Val(AttrName).(string)
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
-		if t.Type = typeOf(e, AttrType); err != nil {
+		if t.Type = typeOf(e, dwarf.AttrType); err != nil {
 			goto Error
 		}
-		if bytes, ok := e.Val(AttrStride).(int64); ok {
+		if bytes, ok := e.Val(dwarf.AttrStride).(int64); ok {
 			t.StrideBitSize = 8 * bytes
-		} else if bits, ok := e.Val(AttrStrideSize).(int64); ok {
+		} else if bits, ok := e.Val(dwarf.AttrStrideSize).(int64); ok {
 			t.StrideBitSize = bits
 		} else {
 			// If there's no stride specified, assume it's the size of the
@@ -467,11 +478,11 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			// TODO(rsc): Can also be TagEnumerationType
 			// but haven't seen that in the wild yet.
 			switch kid.Tag {
-			case TagSubrangeType:
-				count, ok := kid.Val(AttrCount).(int64)
+			case dwarf.TagSubrangeType:
+				count, ok := kid.Val(dwarf.AttrCount).(int64)
 				if !ok {
 					// Old binaries may have an upper bound instead.
-					count, ok = kid.Val(AttrUpperBound).(int64)
+					count, ok = kid.Val(dwarf.AttrUpperBound).(int64)
 					if ok {
 						count++ // Length is one more than upper bound.
 					} else {
@@ -486,8 +497,8 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 					t.Type = &ArrayType{Type: t.Type, Count: count}
 				}
 				ndim++
-			case TagEnumerationType:
-				err = DecodeError{name, kid.Offset, "cannot handle enumeration type as array bound"}
+			case dwarf.TagEnumerationType:
+				err = dwarf.DecodeError{name, kid.Offset, "cannot handle enumeration type as array bound"}
 				goto Error
 			}
 		}
@@ -496,7 +507,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			t.Count = -1
 		}
 
-	case TagBaseType:
+	case dwarf.TagBaseType:
 		// Basic type.  (DWARF v2 §5.1)
 		// Attributes:
 		//	AttrName: name of base type in programming language of the compilation unit [required]
@@ -504,15 +515,15 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		//	AttrByteSize: size of type in bytes [required]
 		//	AttrBitOffset: for sub-byte types, size in bits
 		//	AttrBitSize: for sub-byte types, bit offset of high order bit in the AttrByteSize bytes
-		name, _ := e.Val(AttrName).(string)
-		enc, ok := e.Val(AttrEncoding).(int64)
+		name, _ := e.Val(dwarf.AttrName).(string)
+		enc, ok := e.Val(dwarf.AttrEncoding).(int64)
 		if !ok {
-			err = DecodeError{name, e.Offset, "missing encoding attribute for " + name}
+			err = dwarf.DecodeError{name, e.Offset, "missing encoding attribute for " + name}
 			goto Error
 		}
 		switch enc {
 		default:
-			err = DecodeError{name, e.Offset, "unrecognized encoding attribute value"}
+			err = dwarf.DecodeError{name, e.Offset, "unrecognized encoding attribute value"}
 			goto Error
 
 		case encAddress:
@@ -525,7 +536,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 				// clang writes out 'complex' instead of 'complex float' or 'complex double'.
 				// clang also writes out a byte size that we can use to distinguish.
 				// See issue 8694.
-				switch byteSize, _ := e.Val(AttrByteSize).(int64); byteSize {
+				switch byteSize, _ := e.Val(dwarf.AttrByteSize).(int64); byteSize {
 				case 8:
 					name = "complex float"
 				case 16:
@@ -548,11 +559,11 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			Basic() *BasicType
 		}).Basic()
 		t.Name = name
-		t.BitSize, _ = e.Val(AttrBitSize).(int64)
-		t.BitOffset, _ = e.Val(AttrBitOffset).(int64)
+		t.BitSize, _ = e.Val(dwarf.AttrBitSize).(int64)
+		t.BitOffset, _ = e.Val(dwarf.AttrBitOffset).(int64)
 		t.ReflectKind = getKind(e)
 
-	case TagClassType, TagStructType, TagUnionType:
+	case dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType:
 		// Structure, union, or class type.  (DWARF v2 §5.5)
 		// Also Slices and Strings (Go-specific).
 		// Attributes:
@@ -586,26 +597,26 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		}
 		typeCache[off] = typ
 		switch e.Tag {
-		case TagClassType:
+		case dwarf.TagClassType:
 			t.Kind = "class"
-		case TagStructType:
+		case dwarf.TagStructType:
 			t.Kind = "struct"
-		case TagUnionType:
+		case dwarf.TagUnionType:
 			t.Kind = "union"
 		}
-		t.Name, _ = e.Val(AttrName).(string)
-		t.StructName, _ = e.Val(AttrName).(string)
-		t.Incomplete = e.Val(AttrDeclaration) != nil
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
+		t.StructName, _ = e.Val(dwarf.AttrName).(string)
+		t.Incomplete = e.Val(dwarf.AttrDeclaration) != nil
 		t.Field = make([]*StructField, 0, 8)
 		var lastFieldType Type
 		var lastFieldBitOffset int64
 		for kid := next(); kid != nil; kid = next() {
-			if kid.Tag == TagMember {
+			if kid.Tag == dwarf.TagMember {
 				f := new(StructField)
-				if f.Type = typeOf(kid, AttrType); err != nil {
+				if f.Type = typeOf(kid, dwarf.AttrType); err != nil {
 					goto Error
 				}
-				switch loc := kid.Val(AttrDataMemberLoc).(type) {
+				switch loc := kid.Val(dwarf.AttrDataMemberLoc).(type) {
 				case []byte:
 					// TODO: Should have original compilation
 					// unit here, not unknownFormat.
@@ -613,28 +624,28 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 						// Empty exprloc. f.ByteOffset=0.
 						break
 					}
-					b := makeBuf(d, unknownFormat{}, "location", 0, loc)
-					op := b.uint8()
-					switch op {
-					case opPlusUconst:
+					b := util.MakeBuf(d, util.UnknownFormat{}, "location", 0, loc)
+					op_ := b.Uint8()
+					switch op_ {
+					case op.DW_OP_plus_uconsts:
 						// Handle opcode sequence [DW_OP_plus_uconst <uleb128>]
-						f.ByteOffset = int64(b.uint())
-						b.assertEmpty()
-					case opConsts:
+						f.ByteOffset = int64(b.Uint())
+						b.AssertEmpty()
+					case op.DW_OP_consts:
 						// Handle opcode sequence [DW_OP_consts <sleb128> DW_OP_plus]
-						f.ByteOffset = b.int()
-						op = b.uint8()
-						if op != opPlus {
-							err = DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op)}
+						f.ByteOffset = b.Int()
+						op_ = b.Uint8()
+						if op_ != op.DW_OP_plus {
+							err = dwarf.DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op_)}
 							goto Error
 						}
-						b.assertEmpty()
+						b.AssertEmpty()
 					default:
-						err = DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op)}
+						err = dwarf.DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op_)}
 						goto Error
 					}
-					if b.err != nil {
-						err = b.err
+					if b.Err != nil {
+						err = b.Err
 						goto Error
 					}
 				case int64:
@@ -642,10 +653,11 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 				}
 
 				haveBitOffset := false
-				f.Name, _ = kid.Val(AttrName).(string)
-				f.ByteSize, _ = kid.Val(AttrByteSize).(int64)
-				f.BitOffset, haveBitOffset = kid.Val(AttrBitOffset).(int64)
-				f.BitSize, _ = kid.Val(AttrBitSize).(int64)
+				f.Name, _ = kid.Val(dwarf.AttrName).(string)
+				f.ByteSize, _ = kid.Val(dwarf.AttrByteSize).(int64)
+				f.BitOffset, haveBitOffset = kid.Val(dwarf.AttrBitOffset).(int64)
+				f.BitSize, _ = kid.Val(dwarf.AttrBitSize).(int64)
+				f.Embedded, _ = kid.Val(AttrGoEmbeddedField).(bool)
 				t.Field = append(t.Field, f)
 
 				bito := f.BitOffset
@@ -662,35 +674,35 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			}
 		}
 		if t.Kind != "union" {
-			b, ok := e.Val(AttrByteSize).(int64)
+			b, ok := e.Val(dwarf.AttrByteSize).(int64)
 			if ok && b*8 == lastFieldBitOffset {
 				// Final field must be zero width.  Fix array length.
 				zeroArray(lastFieldType)
 			}
 		}
 
-	case TagConstType, TagVolatileType, TagRestrictType:
+	case dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType:
 		// Type modifier (DWARF v2 §5.2)
 		// Attributes:
 		//	AttrType: subtype
 		t := new(QualType)
-		t.Name, _ = e.Val(AttrName).(string)
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
-		if t.Type = typeOf(e, AttrType); err != nil {
+		if t.Type = typeOf(e, dwarf.AttrType); err != nil {
 			goto Error
 		}
 		switch e.Tag {
-		case TagConstType:
+		case dwarf.TagConstType:
 			t.Qual = "const"
-		case TagRestrictType:
+		case dwarf.TagRestrictType:
 			t.Qual = "restrict"
-		case TagVolatileType:
+		case dwarf.TagVolatileType:
 			t.Qual = "volatile"
 		}
 
-	case TagEnumerationType:
+	case dwarf.TagEnumerationType:
 		// Enumeration type (DWARF v2 §5.6)
 		// Attributes:
 		//	AttrName: enum name if any
@@ -703,14 +715,14 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
-		t.Name, _ = e.Val(AttrName).(string)
-		t.EnumName, _ = e.Val(AttrName).(string)
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
+		t.EnumName, _ = e.Val(dwarf.AttrName).(string)
 		t.Val = make([]*EnumValue, 0, 8)
 		for kid := next(); kid != nil; kid = next() {
-			if kid.Tag == TagEnumerator {
+			if kid.Tag == dwarf.TagEnumerator {
 				f := new(EnumValue)
-				f.Name, _ = kid.Val(AttrName).(string)
-				f.Val, _ = kid.Val(AttrConstValue).(int64)
+				f.Name, _ = kid.Val(dwarf.AttrName).(string)
+				f.Val, _ = kid.Val(dwarf.AttrConstValue).(int64)
 				n := len(t.Val)
 				if n >= cap(t.Val) {
 					val := make([]*EnumValue, n, n*2)
@@ -722,23 +734,23 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			}
 		}
 
-	case TagPointerType:
+	case dwarf.TagPointerType:
 		// Type modifier (DWARF v2 §5.2)
 		// Attributes:
 		//	AttrType: subtype [not required!  void* has no AttrType]
 		//	AttrAddrClass: address class [ignored]
 		t := new(PtrType)
-		t.Name, _ = e.Val(AttrName).(string)
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
-		if e.Val(AttrType) == nil {
+		if e.Val(dwarf.AttrType) == nil {
 			t.Type = &VoidType{}
 			break
 		}
-		t.Type = typeOf(e, AttrType)
+		t.Type = typeOf(e, dwarf.AttrType)
 
-	case TagSubroutineType:
+	case dwarf.TagSubroutineType:
 		// Subroutine type.  (DWARF v2 §5.7)
 		// Attributes:
 		//	AttrType: type of return value if any
@@ -749,11 +761,11 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		//		AttrType: type of parameter
 		//	TagUnspecifiedParameter: final ...
 		t := new(FuncType)
-		t.Name, _ = e.Val(AttrName).(string)
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
 		t.ReflectKind = getKind(e)
 		typ = t
 		typeCache[off] = t
-		if t.ReturnType = typeOf(e, AttrType); err != nil {
+		if t.ReturnType = typeOf(e, dwarf.AttrType); err != nil {
 			goto Error
 		}
 		t.ParamType = make([]Type, 0, 8)
@@ -762,17 +774,17 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			switch kid.Tag {
 			default:
 				continue
-			case TagFormalParameter:
-				if tkid = typeOf(kid, AttrType); err != nil {
+			case dwarf.TagFormalParameter:
+				if tkid = typeOf(kid, dwarf.AttrType); err != nil {
 					goto Error
 				}
-			case TagUnspecifiedParameters:
+			case dwarf.TagUnspecifiedParameters:
 				tkid = &DotDotDotType{}
 			}
 			t.ParamType = append(t.ParamType, tkid)
 		}
 
-	case TagTypedef:
+	case dwarf.TagTypedef:
 		// Typedef (DWARF v2 §5.3)
 		// Also maps and channels (Go-specific).
 		// Attributes:
@@ -802,17 +814,17 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			typ = t
 		}
 		typeCache[off] = typ
-		t.Name, _ = e.Val(AttrName).(string)
-		t.Type = typeOf(e, AttrType)
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
+		t.Type = typeOf(e, dwarf.AttrType)
 
-	case TagUnspecifiedType:
+	case dwarf.TagUnspecifiedType:
 		// Unspecified type (DWARF v3 §5.2)
 		// Attributes:
 		//      AttrName: name
 		t := new(UnspecifiedType)
 		typ = t
 		typeCache[off] = t
-		t.Name, _ = e.Val(AttrName).(string)
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
 	}
 
 	if err != nil {
@@ -822,7 +834,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 	typ.Common().Offset = off
 
 	{
-		b, ok := e.Val(AttrByteSize).(int64)
+		b, ok := e.Val(dwarf.AttrByteSize).(int64)
 		if !ok {
 			b = -1
 			switch t := typ.(type) {

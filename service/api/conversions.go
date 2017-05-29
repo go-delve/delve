@@ -9,9 +9,8 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/proc"
-
-	"golang.org/x/debug/dwarf"
 )
 
 // ConvertBreakpoint converts from a proc.Breakpoint to
@@ -85,7 +84,7 @@ func ConvertThread(th proc.Thread) *Thread {
 	}
 }
 
-func prettyTypeName(typ dwarf.Type) string {
+func prettyTypeName(typ godwarf.Type) string {
 	if typ == nil {
 		return ""
 	}

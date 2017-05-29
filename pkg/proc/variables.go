@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"debug/dwarf"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,9 +14,9 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
-	"golang.org/x/debug/dwarf"
 )
 
 const (
@@ -54,8 +55,8 @@ type Variable struct {
 	Addr      uintptr
 	OnlyAddr  bool
 	Name      string
-	DwarfType dwarf.Type
-	RealType  dwarf.Type
+	DwarfType godwarf.Type
+	RealType  godwarf.Type
 	Kind      reflect.Kind
 	mem       MemoryReadWriter
 	bi        *BinaryInfo
@@ -74,7 +75,7 @@ type Variable struct {
 	// address of the function entry point for function variables (0 for nil function pointers)
 	Base      uintptr
 	stride    int64
-	fieldType dwarf.Type
+	fieldType godwarf.Type
 
 	// number of elements to skip when loading a map
 	mapSkip int
@@ -156,19 +157,19 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
-func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType godwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, scope.BinInfo, scope.Mem)
 }
 
-func newVariableFromThread(t Thread, name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+func newVariableFromThread(t Thread, name string, addr uintptr, dwarfType godwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, t.BinInfo(), t)
 }
 
-func (v *Variable) newVariable(name string, addr uintptr, dwarfType dwarf.Type) *Variable {
+func (v *Variable) newVariable(name string, addr uintptr, dwarfType godwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, v.bi, v.mem)
 }
 
-func newVariable(name string, addr uintptr, dwarfType dwarf.Type, bi *BinaryInfo, mem MemoryReadWriter) *Variable {
+func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryInfo, mem MemoryReadWriter) *Variable {
 	v := &Variable{
 		Name:      name,
 		Addr:      addr,
@@ -180,32 +181,32 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, bi *BinaryInfo
 	v.RealType = resolveTypedef(v.DwarfType)
 
 	switch t := v.RealType.(type) {
-	case *dwarf.PtrType:
+	case *godwarf.PtrType:
 		v.Kind = reflect.Ptr
-		if _, isvoid := t.Type.(*dwarf.VoidType); isvoid {
+		if _, isvoid := t.Type.(*godwarf.VoidType); isvoid {
 			v.Kind = reflect.UnsafePointer
 		}
-	case *dwarf.ChanType:
+	case *godwarf.ChanType:
 		v.Kind = reflect.Chan
-	case *dwarf.MapType:
+	case *godwarf.MapType:
 		v.Kind = reflect.Map
-	case *dwarf.StringType:
+	case *godwarf.StringType:
 		v.Kind = reflect.String
 		v.stride = 1
-		v.fieldType = &dwarf.UintType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
+		v.fieldType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
 		if v.Addr != 0 {
 			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.bi.Arch, v.Addr)
 		}
-	case *dwarf.SliceType:
+	case *godwarf.SliceType:
 		v.Kind = reflect.Slice
 		if v.Addr != 0 {
 			v.loadSliceInfo(t)
 		}
-	case *dwarf.InterfaceType:
+	case *godwarf.InterfaceType:
 		v.Kind = reflect.Interface
-	case *dwarf.StructType:
+	case *godwarf.StructType:
 		v.Kind = reflect.Struct
-	case *dwarf.ArrayType:
+	case *godwarf.ArrayType:
 		v.Kind = reflect.Array
 		v.Base = v.Addr
 		v.Len = t.Count
@@ -216,31 +217,31 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, bi *BinaryInfo
 		if t.Count > 0 {
 			v.stride = t.ByteSize / t.Count
 		}
-	case *dwarf.ComplexType:
+	case *godwarf.ComplexType:
 		switch t.ByteSize {
 		case 8:
 			v.Kind = reflect.Complex64
 		case 16:
 			v.Kind = reflect.Complex128
 		}
-	case *dwarf.IntType:
+	case *godwarf.IntType:
 		v.Kind = reflect.Int
-	case *dwarf.UintType:
+	case *godwarf.UintType:
 		v.Kind = reflect.Uint
-	case *dwarf.FloatType:
+	case *godwarf.FloatType:
 		switch t.ByteSize {
 		case 4:
 			v.Kind = reflect.Float32
 		case 8:
 			v.Kind = reflect.Float64
 		}
-	case *dwarf.BoolType:
+	case *godwarf.BoolType:
 		v.Kind = reflect.Bool
-	case *dwarf.FuncType:
+	case *godwarf.FuncType:
 		v.Kind = reflect.Func
-	case *dwarf.VoidType:
+	case *godwarf.VoidType:
 		v.Kind = reflect.Invalid
-	case *dwarf.UnspecifiedType:
+	case *godwarf.UnspecifiedType:
 		v.Kind = reflect.Invalid
 	default:
 		v.Unreadable = fmt.Errorf("Unknown type: %T", t)
@@ -249,9 +250,9 @@ func newVariable(name string, addr uintptr, dwarfType dwarf.Type, bi *BinaryInfo
 	return v
 }
 
-func resolveTypedef(typ dwarf.Type) dwarf.Type {
+func resolveTypedef(typ godwarf.Type) godwarf.Type {
 	for {
-		if tt, ok := typ.(*dwarf.TypedefType); ok {
+		if tt, ok := typ.(*godwarf.TypedefType); ok {
 			typ = tt.Type
 		} else {
 			return typ
@@ -302,7 +303,7 @@ func (v *Variable) TypeString() string {
 	return v.Kind.String()
 }
 
-func (v *Variable) toField(field *dwarf.StructField) (*Variable, error) {
+func (v *Variable) toField(field *godwarf.StructField) (*Variable, error) {
 	if v.Unreadable != nil {
 		return v.clone(), nil
 	}
@@ -329,8 +330,8 @@ func (scope *EvalScope) DwarfReader() *reader.Reader {
 }
 
 // Type returns the Dwarf type entry at `offset`.
-func (scope *EvalScope) Type(offset dwarf.Offset) (dwarf.Type, error) {
-	return scope.BinInfo.dwarf.Type(offset)
+func (scope *EvalScope) Type(offset dwarf.Offset) (godwarf.Type, error) {
+	return godwarf.ReadType(scope.BinInfo.dwarf, offset, scope.BinInfo.typeCache)
 }
 
 // PtrSize returns the size of a pointer.
@@ -357,7 +358,7 @@ func (ng NoGError) Error() string {
 func (gvar *Variable) parseG() (*G, error) {
 	mem := gvar.mem
 	gaddr := uint64(gvar.Addr)
-	_, deref := gvar.RealType.(*dwarf.PtrType)
+	_, deref := gvar.RealType.(*godwarf.PtrType)
 
 	if deref {
 		gaddrbytes := make([]byte, gvar.bi.Arch.PtrSize())
@@ -375,7 +376,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		return nil, NoGError{tid: id}
 	}
 	for {
-		if _, isptr := gvar.RealType.(*dwarf.PtrType); !isptr {
+		if _, isptr := gvar.RealType.(*godwarf.PtrType); !isptr {
 			break
 		}
 		gvar = gvar.maybeDereference()
@@ -684,7 +685,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	}
 
 	switch t := structVar.RealType.(type) {
-	case *dwarf.StructType:
+	case *godwarf.StructType:
 		for _, field := range t.Field {
 			if field.Name != memberName {
 				continue
@@ -777,7 +778,7 @@ func (v *Variable) maybeDereference() *Variable {
 	}
 
 	switch t := v.RealType.(type) {
-	case *dwarf.PtrType:
+	case *godwarf.PtrType:
 		ptrval, err := readUintRaw(v.mem, uintptr(v.Addr), t.ByteSize)
 		r := v.newVariable("", uintptr(ptrval), t.Type)
 		if err != nil {
@@ -819,7 +820,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 	case reflect.Chan:
 		sv := v.clone()
-		sv.RealType = resolveTypedef(&(sv.RealType.(*dwarf.ChanType).TypedefType))
+		sv.RealType = resolveTypedef(&(sv.RealType.(*godwarf.ChanType).TypedefType))
 		sv = sv.maybeDereference()
 		sv.loadValueInternal(0, loadFullValue)
 		v.Children = sv.Children
@@ -844,7 +845,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 	case reflect.Struct:
 		v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
-		t := v.RealType.(*dwarf.StructType)
+		t := v.RealType.(*godwarf.StructType)
 		v.Len = int64(len(t.Field))
 		// Recursively call extractValue to grab
 		// the value of all the members of the struct.
@@ -865,14 +866,14 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		v.loadInterface(recurseLevel, true, cfg)
 
 	case reflect.Complex64, reflect.Complex128:
-		v.readComplex(v.RealType.(*dwarf.ComplexType).ByteSize)
+		v.readComplex(v.RealType.(*godwarf.ComplexType).ByteSize)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var val int64
-		val, v.Unreadable = readIntRaw(v.mem, v.Addr, v.RealType.(*dwarf.IntType).ByteSize)
+		val, v.Unreadable = readIntRaw(v.mem, v.Addr, v.RealType.(*godwarf.IntType).ByteSize)
 		v.Value = constant.MakeInt64(val)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		var val uint64
-		val, v.Unreadable = readUintRaw(v.mem, v.Addr, v.RealType.(*dwarf.UintType).ByteSize)
+		val, v.Unreadable = readUintRaw(v.mem, v.Addr, v.RealType.(*godwarf.UintType).ByteSize)
 		v.Value = constant.MakeUint64(val)
 
 	case reflect.Bool:
@@ -884,7 +885,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		}
 	case reflect.Float32, reflect.Float64:
 		var val float64
-		val, v.Unreadable = v.readFloatRaw(v.RealType.(*dwarf.FloatType).ByteSize)
+		val, v.Unreadable = v.readFloatRaw(v.RealType.(*godwarf.FloatType).ByteSize)
 		v.Value = constant.MakeFloat64(val)
 		switch {
 		case math.IsInf(val, +1):
@@ -920,7 +921,7 @@ func (v *Variable) setValue(y *Variable) error {
 		imag, _ := constant.Float64Val(constant.Imag(y.Value))
 		err = v.writeComplex(real, imag, v.RealType.Size())
 	default:
-		if t, isptr := v.RealType.(*dwarf.PtrType); isptr {
+		if t, isptr := v.RealType.(*godwarf.PtrType); isptr {
 			err = v.writeUint(uint64(y.Children[0].Addr), int64(t.ByteSize))
 		} else {
 			return fmt.Errorf("can not set variables of type %s (not implemented)", v.Kind.String())
@@ -977,7 +978,7 @@ func readStringValue(mem MemoryReadWriter, addr uintptr, strlen int64, cfg LoadC
 	return retstr, nil
 }
 
-func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
+func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 	v.mem = cacheMemory(v.mem, v.Addr, int(t.Size()))
 
 	var err error
@@ -989,7 +990,7 @@ func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
 			if err == nil {
 				v.Base = uintptr(base)
 				// Dereference array type to get value type
-				ptrType, ok := f.Type.(*dwarf.PtrType)
+				ptrType, ok := f.Type.(*godwarf.PtrType)
 				if !ok {
 					v.Unreadable = fmt.Errorf("Invalid type %s in slice array", f.Type)
 					return
@@ -1018,7 +1019,7 @@ func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
 	}
 
 	v.stride = v.fieldType.Size()
-	if t, ok := v.fieldType.(*dwarf.PtrType); ok {
+	if t, ok := v.fieldType.(*godwarf.PtrType); ok {
 		v.stride = t.ByteSize
 	}
 }
@@ -1071,7 +1072,7 @@ func (v *Variable) readComplex(size int64) {
 		return
 	}
 
-	ftyp := &dwarf.FloatType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: fs, Name: fmt.Sprintf("float%d", fs)}, BitSize: fs * 8, BitOffset: 0}}
+	ftyp := &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: fs, Name: fmt.Sprintf("float%d", fs)}, BitSize: fs * 8, BitOffset: 0}}
 
 	realvar := v.newVariable("real", v.Addr, ftyp)
 	imagvar := v.newVariable("imaginary", v.Addr+uintptr(fs), ftyp)
@@ -1291,11 +1292,11 @@ type mapIterator struct {
 // Code derived from go/src/runtime/hashmap.go
 func (v *Variable) mapIterator() *mapIterator {
 	sv := v.clone()
-	sv.RealType = resolveTypedef(&(sv.RealType.(*dwarf.MapType).TypedefType))
+	sv.RealType = resolveTypedef(&(sv.RealType.(*godwarf.MapType).TypedefType))
 	sv = sv.maybeDereference()
 	v.Base = sv.Addr
 
-	maptype, ok := sv.RealType.(*dwarf.StructType)
+	maptype, ok := sv.RealType.(*godwarf.StructType)
 	if !ok {
 		v.Unreadable = fmt.Errorf("wrong real type for map")
 		return nil
@@ -1402,7 +1403,7 @@ func (it *mapIterator) nextBucket() bool {
 	it.values = nil
 	it.overflow = nil
 
-	for _, f := range it.b.DwarfType.(*dwarf.StructType).Field {
+	for _, f := range it.b.DwarfType.(*godwarf.StructType).Field {
 		field, err := it.b.toField(f)
 		if err != nil {
 			it.v.Unreadable = err
@@ -1492,7 +1493,7 @@ func mapEvacuated(b *Variable) bool {
 	if b.Addr == 0 {
 		return true
 	}
-	for _, f := range b.DwarfType.(*dwarf.StructType).Field {
+	for _, f := range b.DwarfType.(*godwarf.StructType).Field {
 		if f.Name != "tophash" {
 			continue
 		}
@@ -1509,7 +1510,7 @@ func mapEvacuated(b *Variable) bool {
 
 func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig) {
 	var _type, typestring, data *Variable
-	var typ dwarf.Type
+	var typ godwarf.Type
 	var err error
 	isnil := false
 
@@ -1542,7 +1543,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
-	ityp := resolveTypedef(&v.RealType.(*dwarf.InterfaceType).TypedefType).(*dwarf.StructType)
+	ityp := resolveTypedef(&v.RealType.(*godwarf.InterfaceType).TypedefType).(*godwarf.StructType)
 
 	for _, f := range ityp.Field {
 		switch f.Name {
@@ -1643,7 +1644,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	deref := false
 	if kind&kindDirectIface == 0 {
 		realtyp := resolveTypedef(typ)
-		if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
+		if _, isptr := realtyp.(*godwarf.PtrType); !isptr {
 			typ = pointerTo(typ, v.bi.Arch)
 			deref = true
 		}

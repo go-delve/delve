@@ -12,8 +12,8 @@ import (
 	"go/token"
 	"reflect"
 
+	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
-	"golang.org/x/debug/dwarf"
 )
 
 var OperationOnSpecialFloatError = errors.New("operations on non-finite floats not implemented")
@@ -158,7 +158,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	v.loaded = true
 
 	switch ttyp := typ.(type) {
-	case *dwarf.PtrType:
+	case *godwarf.PtrType:
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			// ok
@@ -173,7 +173,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		v.Children = []Variable{*(scope.newVariable("", uintptr(n), ttyp.Type))}
 		return v, nil
 
-	case *dwarf.UintType:
+	case *godwarf.UintType:
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			n, _ := constant.Int64Val(argv.Value)
@@ -188,7 +188,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 			v.Value = constant.MakeUint64(uint64(x))
 			return v, nil
 		}
-	case *dwarf.IntType:
+	case *godwarf.IntType:
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			n, _ := constant.Int64Val(argv.Value)
@@ -203,7 +203,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 			v.Value = constant.MakeInt64(int64(x))
 			return v, nil
 		}
-	case *dwarf.FloatType:
+	case *godwarf.FloatType:
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			fallthrough
@@ -213,7 +213,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 			v.Value = argv.Value
 			return v, nil
 		}
-	case *dwarf.ComplexType:
+	case *godwarf.ComplexType:
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			fallthrough
@@ -378,10 +378,10 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 
 	sz := int64(0)
 	if realev.RealType != nil {
-		sz = realev.RealType.(*dwarf.FloatType).Size()
+		sz = realev.RealType.(*godwarf.FloatType).Size()
 	}
 	if imagev.RealType != nil {
-		isz := imagev.RealType.(*dwarf.FloatType).Size()
+		isz := imagev.RealType.(*godwarf.FloatType).Size()
 		if isz > sz {
 			sz = isz
 		}
@@ -391,7 +391,7 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		sz = 128
 	}
 
-	typ := &dwarf.ComplexType{BasicType: dwarf.BasicType{CommonType: dwarf.CommonType{ByteSize: int64(sz / 8), Name: fmt.Sprintf("complex%d", sz)}, BitSize: sz, BitOffset: 0}}
+	typ := &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(sz / 8), Name: fmt.Sprintf("complex%d", sz)}, BitSize: sz, BitOffset: 0}}
 
 	r := realev.newVariable("", 0, typ)
 	r.Value = constant.BinaryOp(realev.Value, token.ADD, constant.MakeImag(imagev.Value))
@@ -647,7 +647,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 	xev.OnlyAddr = true
 
 	typename := "*" + xev.DwarfType.Common().Name
-	rv := scope.newVariable("", 0, &dwarf.PtrType{CommonType: dwarf.CommonType{ByteSize: int64(scope.BinInfo.Arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
+	rv := scope.newVariable("", 0, &godwarf.PtrType{CommonType: godwarf.CommonType{ByteSize: int64(scope.BinInfo.Arch.PtrSize()), Name: typename}, Type: xev.DwarfType})
 	rv.Children = []Variable{*xev}
 	rv.loaded = true
 
@@ -719,7 +719,7 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 	return newConstant(rc, xv.mem), nil
 }
 
-func negotiateType(op token.Token, xv, yv *Variable) (dwarf.Type, error) {
+func negotiateType(op token.Token, xv, yv *Variable) (godwarf.Type, error) {
 	if xv == nilVariable {
 		return nil, negotiateTypeNil(op, yv)
 	}
@@ -821,8 +821,8 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 
 	op := node.Op
 	if typ != nil && (op == token.QUO) {
-		_, isint := typ.(*dwarf.IntType)
-		_, isuint := typ.(*dwarf.UintType)
+		_, isint := typ.(*godwarf.IntType)
+		_, isuint := typ.(*godwarf.UintType)
 		if isint || isuint {
 			// forces integer division if the result type is integer
 			op = token.QUO_ASSIGN
@@ -979,7 +979,7 @@ func (v *Variable) asInt() (int64, error) {
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
-		if _, ok := v.DwarfType.(*dwarf.IntType); !ok {
+		if _, ok := v.DwarfType.(*godwarf.IntType); !ok {
 			return 0, fmt.Errorf("can not convert value of type %s to int", v.DwarfType.String())
 		}
 	}
@@ -997,7 +997,7 @@ func (v *Variable) asUint() (uint64, error) {
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
-		if _, ok := v.DwarfType.(*dwarf.UintType); !ok {
+		if _, ok := v.DwarfType.(*godwarf.UintType); !ok {
 			return 0, fmt.Errorf("can not convert value of type %s to uint", v.DwarfType.String())
 		}
 	}
@@ -1005,7 +1005,7 @@ func (v *Variable) asUint() (uint64, error) {
 	return n, nil
 }
 
-func (v *Variable) isType(typ dwarf.Type, kind reflect.Kind) error {
+func (v *Variable) isType(typ godwarf.Type, kind reflect.Kind) error {
 	if v.DwarfType != nil {
 		if typ != nil && typ.String() != v.RealType.String() {
 			return fmt.Errorf("can not convert value of type %s to %s", v.DwarfType.String(), typ.String())
@@ -1033,27 +1033,27 @@ func (v *Variable) isType(typ dwarf.Type, kind reflect.Kind) error {
 	}
 
 	switch typ.(type) {
-	case *dwarf.IntType:
+	case *godwarf.IntType:
 		if v.Value.Kind() != constant.Int {
 			return converr
 		}
-	case *dwarf.UintType:
+	case *godwarf.UintType:
 		if v.Value.Kind() != constant.Int {
 			return converr
 		}
-	case *dwarf.FloatType:
+	case *godwarf.FloatType:
 		if (v.Value.Kind() != constant.Int) && (v.Value.Kind() != constant.Float) {
 			return converr
 		}
-	case *dwarf.BoolType:
+	case *godwarf.BoolType:
 		if v.Value.Kind() != constant.Bool {
 			return converr
 		}
-	case *dwarf.StringType:
+	case *godwarf.StringType:
 		if v.Value.Kind() != constant.String {
 			return converr
 		}
-	case *dwarf.ComplexType:
+	case *godwarf.ComplexType:
 		if v.Value.Kind() != constant.Complex && v.Value.Kind() != constant.Float && v.Value.Kind() != constant.Int {
 			return converr
 		}
@@ -1118,10 +1118,10 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	}
 
 	typ := v.DwarfType
-	if _, isarr := v.DwarfType.(*dwarf.ArrayType); isarr {
-		typ = &dwarf.SliceType{
-			StructType: dwarf.StructType{
-				CommonType: dwarf.CommonType{
+	if _, isarr := v.DwarfType.(*godwarf.ArrayType); isarr {
+		typ = &godwarf.SliceType{
+			StructType: godwarf.StructType{
+				CommonType: godwarf.CommonType{
 					ByteSize: 24,
 					Name:     "",
 				},

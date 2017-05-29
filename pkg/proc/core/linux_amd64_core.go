@@ -2,13 +2,12 @@ package core
 
 import (
 	"bytes"
+	"debug/elf"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-
-	"golang.org/x/debug/elf"
 
 	"golang.org/x/arch/x86/x86asm"
 
