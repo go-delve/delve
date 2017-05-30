@@ -824,6 +824,9 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 	case reflect.Map:
 		if recurseLevel <= cfg.MaxVariableRecurse {
 			v.loadMap(recurseLevel, cfg)
+		} else {
+			// loads length so that the client knows that the map isn't empty
+			v.mapIterator()
 		}
 
 	case reflect.String:
