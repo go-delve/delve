@@ -657,6 +657,8 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "+1", false, 1, locationsprog35Addr)
 		findLocationHelper(t, c, "35", false, 1, locationsprog35Addr)
 		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:33", false, 1, 0)[0])
+
+		findLocationHelper(t, c, `*amap["k"]`, false, 1, findLocationHelper(t, c, `amap["k"]`, false, 1, 0)[0])
 	})
 
 	withTestClient2("testnextdefer", t, func(c service.Client) {

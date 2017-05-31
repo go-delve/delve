@@ -362,7 +362,15 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	}
 
 	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 {
-		return nil, fmt.Errorf("Location %q not found", locStr)
+		// if no result was found treat this locations string could be an
+		// expression that the user forgot to prefix with '*', try treating it as
+		// such.
+		addrSpec := &AddrLocationSpec{locStr}
+		locs, err := addrSpec.Find(d, scope, locStr)
+		if err != nil {
+			return nil, fmt.Errorf("Location \"%s\" not found", locStr)
+		}
+		return locs, nil
 	} else if matching > 1 {
 		return nil, AmbiguousLocationError{Location: locStr, CandidatesString: append(candidateFiles, candidateFuncs...)}
 	}
