@@ -71,8 +71,9 @@ func BuildFixture(name string) Fixture {
 	cmd.Dir = dir
 
 	// Build the test binary
-	if err := cmd.Run(); err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Printf("Error compiling %s: %s\n", path, err)
+		fmt.Printf("%s\n", string(out))
 		os.Exit(1)
 	}
 
