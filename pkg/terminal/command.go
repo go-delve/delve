@@ -160,7 +160,7 @@ If regex is specified only the functions matching it will be returned.`},
 
 	types [<regex>]
 
-If regex is specified only the functions matching it will be returned.`},
+If regex is specified only the types matching it will be returned.`},
 		{aliases: []string{"args"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: args, helpMsg: `Print function arguments.
 
 	[goroutine <n>] [frame <m>] args [-v] [<regex>]

@@ -307,7 +307,7 @@ Print list of types
 
 	types [<regex>]
 
-If regex is specified only the functions matching it will be returned.
+If regex is specified only the types matching it will be returned.
 
 
 ## vars
