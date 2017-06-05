@@ -153,7 +153,7 @@ session.`,
 
 	// 'exec' subcommand.
 	execCommand := &cobra.Command{
-		Use:   "exec [./path/to/binary]",
+		Use:   "exec <path/to/binary>",
 		Short: "Execute a precompiled binary, and begin a debug session.",
 		Long: `Execute a precompiled binary and begin a debug session.
 
