@@ -213,27 +213,22 @@ func TestHalt(t *testing.T) {
 		_, err := setFunctionBreakpoint(p, "main.loop")
 		assertNoError(err, t, "SetBreakpoint")
 		assertNoError(proc.Continue(p), t, "Continue")
-		if p.Running() {
-			t.Fatal("process still running")
-		}
 		if p, ok := p.(*native.Process); ok {
 			for _, th := range p.ThreadList() {
 				_, err := th.Registers(false)
 				assertNoError(err, t, "Registers")
 			}
 		}
+		resumeChan := make(chan struct{})
 		go func() {
-			for {
-				time.Sleep(100 * time.Millisecond)
-				if p.Running() {
-					if err := p.RequestManualStop(); err != nil {
-						t.Fatal(err)
-					}
-					stopChan <- nil
-					return
-				}
+			<-resumeChan
+			time.Sleep(100 * time.Millisecond)
+			if err := p.RequestManualStop(); err != nil {
+				t.Fatal(err)
 			}
+			stopChan <- nil
 		}()
+		p.ResumeNotify(resumeChan)
 		assertNoError(proc.Continue(p), t, "Continue")
 		<-stopChan
 		// Loop through threads and make sure they are all
@@ -601,9 +596,6 @@ func TestNextNetHTTP(t *testing.T) {
 	}
 	withTestProcess("testnextnethttp", t, func(p proc.Process, fixture protest.Fixture) {
 		go func() {
-			for !p.Running() {
-				time.Sleep(50 * time.Millisecond)
-			}
 			// Wait for program to start listening.
 			for {
 				conn, err := net.Dial("tcp", "localhost:9191")
@@ -1934,10 +1926,6 @@ func TestIssue462(t *testing.T) {
 	}
 	withTestProcess("testnextnethttp", t, func(p proc.Process, fixture protest.Fixture) {
 		go func() {
-			for !p.Running() {
-				time.Sleep(50 * time.Millisecond)
-			}
-
 			// Wait for program to start listening.
 			for {
 				conn, err := net.Dial("tcp", "localhost:9191")
