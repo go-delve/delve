@@ -291,7 +291,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
 
 		case C.MACH_RCV_INTERRUPTED:
-			if !dbp.halt {
+			dbp.haltMu.Lock()
+			halt := dbp.halt
+			dbp.haltMu.Unlock()
+			if !halt {
 				// Call trapWait again, it seems
 				// MACH_RCV_INTERRUPTED is emitted before
 				// process natural death _sometimes_.
@@ -319,7 +322,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		dbp.updateThreadList()
 		th, ok := dbp.threads[int(port)]
 		if !ok {
-			if dbp.halt {
+			dbp.haltMu.Lock()
+			halt := dbp.halt
+			dbp.haltMu.Unlock()
+			if halt {
 				dbp.halt = false
 				return th, nil
 			}
