@@ -5,12 +5,6 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
-## [RELEASE TO BE DEFINED] DATE TO BE DEFINED
-
-### Fixed
-
-- Data races in tests (@aarzilli)
-
 ## [1.0.0-rc.2] DATE TO BE DEFINED
 
 ### Added
@@ -23,11 +17,13 @@ All changes mention the author, unless contributed by me (@derekparker).
 - Fix behavior of next, step and stepout with recursive functions (@aarzilli)
 - Parsing of maps with zero sized values (@aarzilli)
 - Typo in the documentation of `types` command (@custa)
+- Data races in tests (@aarzilli)
 
 ### Changed
 
 - Switched from godeps to glide (@derekparker)
 - Better performance of linux native backend (@aarzilli)
+- Collect breakpoints information if necessary after a next, step or stepout command (@aarzilli)
 
 ## [1.0.0-rc.1] 2017-05-05
 
