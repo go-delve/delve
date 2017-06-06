@@ -6,6 +6,11 @@ import (
 
 // Process represents the target of the debugger. This
 // target could be a system process, core file, etc.
+//
+// Implementations of Process are not required to be thread safe and users
+// of Process should not assume they are.
+// There is one exception to this rule: it is safe to call RequestManualStop
+// concurrently with ContinueOnce.
 type Process interface {
 	Info
 	ProcessManipulation

@@ -5,6 +5,12 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [RELEASE TO BE DEFINED] DATE TO BE DEFINED
+
+### Fixed
+
+- Data races in tests (@aarzilli)
+
 ## [1.0.0-rc.2] DATE TO BE DEFINED
 
 ### Added
