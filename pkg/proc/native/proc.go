@@ -39,6 +39,7 @@ type Process struct {
 	firstStart                  bool
 	haltMu                      sync.Mutex
 	halt                        bool
+	resumeChan                  chan<- struct{}
 	exited                      bool
 	ptraceChan                  chan func()
 	ptraceDoneChan              chan interface{}
@@ -89,11 +90,6 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		dbp.bi.Close()
 		return nil
 	}
-	if dbp.Running() {
-		if err = dbp.Halt(); err != nil {
-			return
-		}
-	}
 	if !kill {
 		// Clean up any breakpoints we've set.
 		for _, bp := range dbp.breakpoints {
@@ -124,15 +120,8 @@ func (dbp *Process) Exited() bool {
 	return dbp.exited
 }
 
-// Running returns whether the debugged
-// process is currently executing.
-func (dbp *Process) Running() bool {
-	for _, th := range dbp.threads {
-		if th.running {
-			return true
-		}
-	}
-	return false
+func (dbp *Process) ResumeNotify(ch chan<- struct{}) {
+	dbp.resumeChan = ch
 }
 
 func (dbp *Process) Pid() int {
@@ -273,6 +262,11 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	dbp.allGCache = nil
 	for _, th := range dbp.threads {
 		th.clearBreakpointState()
+	}
+
+	if dbp.resumeChan != nil {
+		close(dbp.resumeChan)
+		dbp.resumeChan = nil
 	}
 
 	trapthread, err := dbp.trapWait(-1)

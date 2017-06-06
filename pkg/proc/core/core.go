@@ -304,8 +304,7 @@ func (p *Process) Pid() int {
 	return p.core.Pid
 }
 
-func (p *Process) Running() bool {
-	return false
+func (p *Process) ResumeNotify(chan<- struct{}) {
 }
 
 func (p *Process) SelectedGoroutine() *proc.G {

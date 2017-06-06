@@ -23,7 +23,8 @@ type gdbConn struct {
 	inbuf  []byte
 	outbuf bytes.Buffer
 
-	running bool
+	running    bool
+	resumeChan chan<- struct{}
 
 	direction proc.Direction // direction of execution
 
@@ -543,6 +544,10 @@ func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error)
 	defer func() {
 		conn.running = false
 	}()
+	if conn.resumeChan != nil {
+		close(conn.resumeChan)
+		conn.resumeChan = nil
+	}
 	return conn.waitForvContStop("resume", "-1", tu)
 }
 

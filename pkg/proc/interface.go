@@ -52,8 +52,10 @@ type Checkpoint struct {
 // Info is an interface that provides general information on the target.
 type Info interface {
 	Pid() int
+	// ResumeNotify specifies a channel that will be closed the next time
+	// ContinueOnce finishes resuming the target.
+	ResumeNotify(chan<- struct{})
 	Exited() bool
-	Running() bool
 	BinInfo() *BinaryInfo
 
 	ThreadInfo

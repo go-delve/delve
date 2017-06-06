@@ -490,8 +490,8 @@ func (p *Process) Exited() bool {
 	return p.exited
 }
 
-func (p *Process) Running() bool {
-	return p.conn.running
+func (p *Process) ResumeNotify(ch chan<- struct{}) {
+	p.conn.resumeChan = ch
 }
 
 func (p *Process) FindThread(threadID int) (proc.Thread, bool) {

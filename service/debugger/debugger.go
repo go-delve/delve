@@ -200,9 +200,6 @@ func (d *Debugger) Restart(pos string) ([]api.DiscardedBreakpoint, error) {
 	}
 
 	if !d.target.Exited() {
-		if d.target.Running() {
-			d.target.Halt()
-		}
 		// Ensure the process is in a PTRACE_STOP.
 		if err := stopProcess(d.ProcessPid()); err != nil {
 			return nil, err
