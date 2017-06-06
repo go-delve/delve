@@ -37,6 +37,7 @@ type Process struct {
 	breakpointIDCounter         int
 	internalBreakpointIDCounter int
 	firstStart                  bool
+	haltMu                      sync.Mutex
 	halt                        bool
 	exited                      bool
 	ptraceChan                  chan func()
@@ -187,6 +188,8 @@ func (dbp *Process) RequestManualStop() error {
 	if dbp.exited {
 		return &proc.ProcessExitedError{}
 	}
+	dbp.haltMu.Lock()
+	defer dbp.haltMu.Unlock()
 	dbp.halt = true
 	return dbp.requestManualStop()
 }

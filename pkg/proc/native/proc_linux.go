@@ -236,7 +236,10 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			// Sometimes we get an unknown thread, ignore it?
 			continue
 		}
-		if status.StopSignal() == sys.SIGTRAP && dbp.halt {
+		dbp.haltMu.Lock()
+		halt := dbp.halt
+		dbp.haltMu.Unlock()
+		if status.StopSignal() == sys.SIGTRAP && halt {
 			th.running = false
 			dbp.halt = false
 			return th, nil
