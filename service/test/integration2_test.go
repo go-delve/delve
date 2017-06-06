@@ -1333,5 +1333,38 @@ func TestClientServer_ReverseContinue(t *testing.T) {
 			t.Fatalf("Expected rewind to go back to the first breakpoint: %#x", state.CurrentThread.PC)
 		}
 	})
+}
 
+func TestClientServer_collectBreakpointInfoOnNext(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{
+			Addr:       findLocationHelper(t, c, "testnextprog.go:23", false, 1, 0)[0],
+			Variables:  []string{"j"},
+			LoadLocals: &normalLoadConfig})
+		assertNoError(err, t, "CreateBreakpoint()")
+		_, err = c.CreateBreakpoint(&api.Breakpoint{
+			Addr:       findLocationHelper(t, c, "testnextprog.go:24", false, 1, 0)[0],
+			Variables:  []string{"j"},
+			LoadLocals: &normalLoadConfig})
+		assertNoError(err, t, "CreateBreakpoint()")
+
+		stateBefore := <-c.Continue()
+		assertNoError(stateBefore.Err, t, "Continue()")
+		if stateBefore.CurrentThread.Line != 23 {
+			t.Fatalf("wrong line number %s:%d, expected %d", stateBefore.CurrentThread.File, stateBefore.CurrentThread.Line, 23)
+		}
+		if bi := stateBefore.CurrentThread.BreakpointInfo; bi == nil || len(bi.Variables) != 1 {
+			t.Fatalf("bad breakpoint info %v", bi)
+		}
+
+		stateAfter, err := c.Next()
+		assertNoError(err, t, "Next()")
+		if stateAfter.CurrentThread.Line != 24 {
+			t.Fatalf("wrong line number %s:%d, expected %d", stateAfter.CurrentThread.File, stateAfter.CurrentThread.Line, 24)
+		}
+		if bi := stateAfter.CurrentThread.BreakpointInfo; bi == nil || len(bi.Variables) != 1 {
+			t.Fatalf("bad breakpoint info %v", bi)
+		}
+	})
 }

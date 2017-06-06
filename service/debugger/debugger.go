@@ -494,6 +494,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = d.target.RequestManualStop()
 	}
 
+	withBreakpointInfo := true
+
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -501,23 +503,6 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.Continue:
 		log.Print("continuing")
 		err = proc.Continue(d.target)
-		if err != nil {
-			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
-				state := &api.DebuggerState{}
-				state.Exited = true
-				state.ExitStatus = exitedErr.Status
-				state.Err = errors.New(exitedErr.Error())
-				return state, nil
-			}
-			return nil, err
-		}
-		state, stateErr := d.state()
-		if stateErr != nil {
-			return state, stateErr
-		}
-		err = d.collectBreakpointInformation(state)
-		return state, err
-
 	case api.Rewind:
 		log.Print("rewinding")
 		if err := d.target.Direction(proc.Backward); err != nil {
@@ -527,23 +512,6 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 			d.target.Direction(proc.Forward)
 		}()
 		err = proc.Continue(d.target)
-		if err != nil {
-			if exitedErr, exited := err.(proc.ProcessExitedError); exited {
-				state := &api.DebuggerState{}
-				state.Exited = true
-				state.ExitStatus = exitedErr.Status
-				state.Err = errors.New(exitedErr.Error())
-				return state, nil
-			}
-			return nil, err
-		}
-		state, stateErr := d.state()
-		if stateErr != nil {
-			return state, stateErr
-		}
-		err = d.collectBreakpointInformation(state)
-		return state, err
-
 	case api.Next:
 		log.Print("nexting")
 		err = proc.Next(d.target)
@@ -559,16 +527,34 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.SwitchThread:
 		log.Printf("switching to thread %d", command.ThreadID)
 		err = d.target.SwitchThread(command.ThreadID)
+		withBreakpointInfo = false
 	case api.SwitchGoroutine:
 		log.Printf("switching to goroutine %d", command.GoroutineID)
 		err = d.target.SwitchGoroutine(command.GoroutineID)
+		withBreakpointInfo = false
 	case api.Halt:
 		// RequestManualStop already called
+		withBreakpointInfo = false
 	}
+
 	if err != nil {
+		if exitedErr, exited := err.(proc.ProcessExitedError); withBreakpointInfo && exited {
+			state := &api.DebuggerState{}
+			state.Exited = true
+			state.ExitStatus = exitedErr.Status
+			state.Err = errors.New(exitedErr.Error())
+			return state, nil
+		}
 		return nil, err
 	}
-	return d.state()
+	state, stateErr := d.state()
+	if stateErr != nil {
+		return state, stateErr
+	}
+	if withBreakpointInfo {
+		err = d.collectBreakpointInformation(state)
+	}
+	return state, err
 }
 
 func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error {
