@@ -118,8 +118,9 @@ type Location struct {
 
 type Stackframe struct {
 	Location
-	Locals    []Variable
-	Arguments []Variable
+	Locals      []Variable
+	Arguments   []Variable
+	FrameOffset int64
 }
 
 func (frame *Stackframe) Var(name string) *Variable {

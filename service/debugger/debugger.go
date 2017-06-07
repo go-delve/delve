@@ -870,7 +870,10 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]a
 func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
 	locations := make([]api.Stackframe, 0, len(rawlocs))
 	for i := range rawlocs {
-		frame := api.Stackframe{Location: api.ConvertLocation(rawlocs[i].Call)}
+		frame := api.Stackframe{
+			Location:    api.ConvertLocation(rawlocs[i].Call),
+			FrameOffset: rawlocs[i].CFA - int64(rawlocs[i].StackHi),
+		}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
 			scope := proc.FrameToScope(d.target, rawlocs[i])
