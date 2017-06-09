@@ -198,7 +198,7 @@ func (dbp *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond as
 	tid := dbp.currentThread.ID
 
 	if bp, ok := dbp.FindBreakpoint(addr); ok {
-		return nil, proc.BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+		return bp, proc.BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 	}
 
 	f, l, fn := dbp.bi.PCToLine(uint64(addr))

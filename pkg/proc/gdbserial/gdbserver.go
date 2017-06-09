@@ -874,7 +874,7 @@ func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 
 func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
 	if bp, ok := p.breakpoints[addr]; ok {
-		return nil, proc.BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+		return bp, proc.BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 	}
 	f, l, fn := p.bi.PCToLine(uint64(addr))
 	if fn == nil {
