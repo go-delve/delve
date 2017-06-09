@@ -5,6 +5,24 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [1.0.0-rc.2] DATE TO BE DEFINED
+
+### Added
+
+- Automatically print panic reason for unrecovered panics (@aarzilli)
+
+### Fixed
+
+- Better interoperation with debugserver on macOS (@aarzilli)
+- Fix behavior of next, step and stepout with recursive functions (@aarzilli)
+- Parsing of maps with zero sized values (@aarzilli)
+- Typo in the documentation of `types` command (@custa)
+
+### Changed
+
+- Switched from godeps to glide (@derekparker)
+- Better performance of linux native backend (@aarzilli)
+
 ## [1.0.0-rc.1] 2017-05-05
 
 ### Added
