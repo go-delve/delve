@@ -147,6 +147,12 @@ type Function struct {
 	GoType uint64 `json:"goType"`
 }
 
+type VariableFlags uint16
+
+const (
+	VariableEscaped = VariableFlags(proc.VariableEscaped)
+)
+
 // Variable describes a variable.
 type Variable struct {
 	// Name of the variable or struct member
@@ -159,6 +165,8 @@ type Variable struct {
 	Type string `json:"type"`
 	// Type of the variable after resolving any typedefs
 	RealType string `json:"realType"`
+
+	Flags VariableFlags `json:"flags"`
 
 	Kind reflect.Kind `json:"kind"`
 

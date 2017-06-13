@@ -2984,3 +2984,49 @@ func TestStepInstructionNoGoroutine(t *testing.T) {
 		assertNoError(p.StepInstruction(), t, "StepInstruction")
 	})
 }
+
+func TestIssue871(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("issue871", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue")
+
+		var scope *proc.EvalScope
+		var err error
+		if testBackend == "rr" {
+			var frame proc.Stackframe
+			frame, err = findFirstNonRuntimeFrame(p)
+			if err == nil {
+				scope = proc.FrameToScope(p, frame)
+			}
+		} else {
+			scope, err = proc.GoroutineScope(p.CurrentThread())
+		}
+		assertNoError(err, t, "scope")
+
+		locals, err := scope.LocalVariables(normalLoadConfig)
+		assertNoError(err, t, "LocalVariables")
+
+		foundA, foundB := false, false
+
+		for _, v := range locals {
+			t.Logf("local %v", v)
+			switch v.Name {
+			case "a":
+				foundA = true
+				if v.Flags&proc.VariableEscaped == 0 {
+					t.Errorf("variable a not flagged as escaped")
+				}
+			case "b":
+				foundB = true
+			}
+		}
+
+		if !foundA {
+			t.Errorf("variable a not found")
+		}
+
+		if !foundB {
+			t.Errorf("variable b not found")
+		}
+	})
+}
