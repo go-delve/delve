@@ -24,12 +24,14 @@ All changes mention the author, unless contributed by me (@derekparker).
 - Parsing of maps with zero sized values (@aarzilli)
 - Typo in the documentation of `types` command (@custa)
 - Data races in tests (@aarzilli)
+- Fixed SetBreakpoint in native and gdbserial to return the breakpoint if it already exists (@dlsniper)
 
 ### Changed
 
 - Switched from godeps to glide (@derekparker)
 - Better performance of linux native backend (@aarzilli)
 - Collect breakpoints information if necessary after a next, step or stepout command (@aarzilli)
+- Autodereference escaped variables (@aarzilli)
 
 ## [1.0.0-rc.1] 2017-05-05
 

@@ -39,6 +39,13 @@ const (
 	FloatIsNegInf
 )
 
+type VariableFlags uint16
+
+const (
+	// VariableEscaped is set for local variables that escaped to the heap
+	VariableEscaped VariableFlags = (1 << iota)
+)
+
 // Variable represents a variable. It contains the address, name,
 // type and other information parsed from both the Dwarf information
 // and the memory of the debugged process.
@@ -58,6 +65,8 @@ type Variable struct {
 
 	Len int64
 	Cap int64
+
+	Flags VariableFlags
 
 	// Base address of arrays, Base address of the backing array for slices (0 for nil slices)
 	// Base address of the backing byte array for strings
@@ -1717,7 +1726,13 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg LoadConfig) ([]*Variab
 		}
 	}
 
-	for _, v := range vars {
+	for i, v := range vars {
+		if name := v.Name; len(name) > 1 && name[0] == '&' {
+			v = v.maybeDereference()
+			v.Name = name[1:]
+			v.Flags |= VariableEscaped
+			vars[i] = v
+		}
 		v.loadValue(cfg)
 	}
 
