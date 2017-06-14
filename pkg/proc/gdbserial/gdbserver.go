@@ -108,6 +108,8 @@ type Process struct {
 	exited bool
 	ctrlC  bool // ctrl-c was sent to stop inferior
 
+	manualStopRequested bool
+
 	breakpoints                 map[uint64]*proc.Breakpoint
 	breakpointIDCounter         int
 	internalBreakpointIDCounter int
@@ -540,7 +542,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 		th.clearBreakpointState()
 	}
 
-	p.ctrlC = false
+	p.setCtrlC(false)
 
 	// resume all threads
 	var threadID string
@@ -565,7 +567,7 @@ continueLoop:
 		// the ctrlC flag to know that we are the originators.
 		switch sig {
 		case interruptSignal: // interrupt
-			if p.ctrlC {
+			if p.getCtrlC() {
 				break continueLoop
 			}
 		case breakpointSignal: // breakpoint
@@ -655,18 +657,42 @@ func (p *Process) SwitchGoroutine(gid int) error {
 }
 
 func (p *Process) RequestManualStop() error {
+	p.conn.manualStopMutex.Lock()
+	p.manualStopRequested = true
 	if !p.conn.running {
+		p.conn.manualStopMutex.Unlock()
 		return nil
 	}
 	p.ctrlC = true
+	p.conn.manualStopMutex.Unlock()
 	return p.conn.sendCtrlC()
+}
+
+func (p *Process) ManualStopRequested() bool {
+	p.conn.manualStopMutex.Lock()
+	msr := p.manualStopRequested
+	p.manualStopRequested = false
+	p.conn.manualStopMutex.Unlock()
+	return msr
+}
+
+func (p *Process) setCtrlC(v bool) {
+	p.conn.manualStopMutex.Lock()
+	p.ctrlC = v
+	p.conn.manualStopMutex.Unlock()
+}
+
+func (p *Process) getCtrlC() bool {
+	p.conn.manualStopMutex.Lock()
+	defer p.conn.manualStopMutex.Unlock()
+	return p.ctrlC
 }
 
 func (p *Process) Halt() error {
 	if p.exited {
 		return nil
 	}
-	p.ctrlC = true
+	p.setCtrlC(true)
 	return p.conn.sendCtrlC()
 }
 
@@ -715,7 +741,7 @@ func (p *Process) Restart(pos string) error {
 		th.clearBreakpointState()
 	}
 
-	p.ctrlC = false
+	p.setCtrlC(false)
 
 	err := p.conn.restart(pos)
 	if err != nil {

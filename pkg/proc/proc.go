@@ -95,7 +95,11 @@ func Next(dbp Process) (err error) {
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
 func Continue(dbp Process) error {
+	dbp.ManualStopRequested()
 	for {
+		if dbp.ManualStopRequested() {
+			return nil
+		}
 		trapthread, err := dbp.ContinueOnce()
 		if err != nil {
 			return err

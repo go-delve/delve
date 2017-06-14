@@ -269,6 +269,10 @@ func (p *Process) RequestManualStop() error {
 	return nil
 }
 
+func (p *Process) ManualStopRequested() bool {
+	return false
+}
+
 func (p *Process) CurrentThread() proc.Thread {
 	return &Thread{p.currentThread, p}
 }

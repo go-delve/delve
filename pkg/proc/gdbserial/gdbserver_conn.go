@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/derekparker/delve/pkg/proc"
@@ -23,8 +24,9 @@ type gdbConn struct {
 	inbuf  []byte
 	outbuf bytes.Buffer
 
-	running    bool
-	resumeChan chan<- struct{}
+	manualStopMutex sync.Mutex
+	running         bool
+	resumeChan      chan<- struct{}
 
 	direction proc.Direction // direction of execution
 
@@ -536,12 +538,17 @@ func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error)
 		conn.outbuf.Reset()
 		fmt.Fprint(&conn.outbuf, "$bc")
 	}
+	conn.manualStopMutex.Lock()
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
+		conn.manualStopMutex.Unlock()
 		return "", 0, err
 	}
 	conn.running = true
+	conn.manualStopMutex.Unlock()
 	defer func() {
+		conn.manualStopMutex.Lock()
 		conn.running = false
+		conn.manualStopMutex.Unlock()
 	}()
 	if conn.resumeChan != nil {
 		close(conn.resumeChan)
