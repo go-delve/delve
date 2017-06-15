@@ -575,7 +575,11 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater) (string, uint8, er
 	return conn.waitForvContStop("singlestep", threadID, tu)
 }
 
+var threadBlockedError = errors.New("thread blocked")
+
 func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threadUpdater) (string, uint8, error) {
+	count := 0
+	failed := false
 	for {
 		conn.conn.SetReadDeadline(time.Now().Add(heartbeatInterval))
 		resp, err := conn.recv(nil, context)
@@ -588,6 +592,13 @@ func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threa
 			if conn.isDebugserver {
 				conn.send([]byte("$?"))
 			}
+			if count > 1 && context == "singlestep" {
+				failed = true
+				conn.sendCtrlC()
+			}
+			count++
+		} else if failed {
+			return "", 0, threadBlockedError
 		} else if err != nil {
 			return "", 0, err
 		} else {

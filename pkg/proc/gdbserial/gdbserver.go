@@ -1155,8 +1155,11 @@ func (t *Thread) Blocked() bool {
 		return false
 	}
 	pc := regs.PC()
-	fn := t.BinInfo().PCToFunc(pc)
+	f, ln, fn := t.BinInfo().PCToLine(pc)
 	if fn == nil {
+		if f == "" && ln == 0 {
+			return true
+		}
 		return false
 	}
 	switch fn.Name {
@@ -1332,6 +1335,12 @@ func (t *Thread) reloadGAtPC() error {
 
 	_, _, err = t.p.conn.step(t.strID, nil)
 	if err != nil {
+		if err == threadBlockedError {
+			t.regs.tls = 0
+			t.regs.gaddr = 0
+			t.regs.hasgaddr = true
+			return nil
+		}
 		return err
 	}
 
@@ -1379,6 +1388,12 @@ func (t *Thread) reloadGAlloc() error {
 
 	_, _, err = t.p.conn.step(t.strID, nil)
 	if err != nil {
+		if err == threadBlockedError {
+			t.regs.tls = 0
+			t.regs.gaddr = 0
+			t.regs.hasgaddr = true
+			return nil
+		}
 		return err
 	}
 
