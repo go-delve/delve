@@ -739,11 +739,7 @@ func (p *Process) Restart(pos string) error {
 		p.conn.setBreakpoint(addr)
 	}
 
-	if err := p.setCurrentBreakpoints(); err != nil {
-		return err
-	}
-
-	return nil
+	return p.setCurrentBreakpoints()
 }
 
 func (p *Process) When() (string, error) {

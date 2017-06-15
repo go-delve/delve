@@ -83,6 +83,10 @@ func evalVariable(p proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Var
 		scope, err = proc.GoroutineScope(p.CurrentThread())
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
 	return scope.EvalVariable(symbol, cfg)
 }
 
@@ -99,8 +103,6 @@ func setVariable(p proc.Process, symbol, value string) error {
 	}
 	return scope.SetVariable(symbol, value)
 }
-
-const varTestBreakpointLineNumber = 59
 
 func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name)

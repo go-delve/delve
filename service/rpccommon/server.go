@@ -244,7 +244,6 @@ func suitableMethods(rcvr interface{}, methods map[string]*methodType) {
 		}
 		methods[sname+"."+mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType, Synchronous: synchronous, Rcvr: rcvrv}
 	}
-	return
 }
 
 func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {

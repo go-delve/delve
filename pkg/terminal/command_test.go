@@ -369,7 +369,7 @@ func TestOnPrefix(t *testing.T) {
 		for {
 			outstr, err := term.Exec("continue")
 			if err != nil {
-				if strings.Index(err.Error(), "exited") < 0 {
+				if !strings.Contains(err.Error(), "exited") {
 					t.Fatalf("Unexpected error executing 'continue': %v", err)
 				}
 				break
@@ -422,7 +422,7 @@ func TestOnPrefixLocals(t *testing.T) {
 		for {
 			outstr, err := term.Exec("continue")
 			if err != nil {
-				if strings.Index(err.Error(), "exited") < 0 {
+				if !strings.Contains(err.Error(), "exited") {
 					t.Fatalf("Unexpected error executing 'continue': %v", err)
 				}
 				break
@@ -476,7 +476,7 @@ func TestIssue387(t *testing.T) {
 			breakpointHitCount += countOccourences(outstr, "issue387.go:8")
 			t.Log(outstr)
 			if err != nil {
-				if strings.Index(err.Error(), "exited") < 0 {
+				if !strings.Contains(err.Error(), "exited") {
 					t.Fatalf("Unexpected error executing 'continue': %v", err)
 				}
 				break
@@ -509,7 +509,7 @@ func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end 
 
 	t.Logf("%q: %q", listcmd, outstr)
 
-	if strings.Index(lines[0], fmt.Sprintf(":%d", cur)) < 0 {
+	if !strings.Contains(lines[0], fmt.Sprintf(":%d", cur)) {
 		t.Fatalf("Could not find current line number in first output line: %q", lines[0])
 	}
 

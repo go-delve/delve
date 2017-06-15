@@ -397,6 +397,9 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 	}
 	faddr := make([]byte, dbp.BinInfo().Arch.PtrSize())
 	_, err = dbp.CurrentThread().ReadMemory(faddr, uintptr(allgentryaddr))
+	if err != nil {
+		return nil, err
+	}
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(0); i < allglen; i++ {

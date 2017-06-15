@@ -481,7 +481,7 @@ func (g *G) UserCurrent() Location {
 		frame := it.Frame()
 		if frame.Call.Fn != nil {
 			name := frame.Call.Fn.Name
-			if (strings.Index(name, ".") >= 0) && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
+			if strings.Contains(name, ".") && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
 				return frame.Call
 			}
 		}
@@ -712,7 +712,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 				return nil, err
 			}
 			embeddedVar.Name = structVar.Name
-			embeddedField, err := embeddedVar.structMember(memberName)
+			embeddedField, _ := embeddedVar.structMember(memberName)
 			if embeddedField != nil {
 				return embeddedField, nil
 			}
@@ -1016,8 +1016,6 @@ func (v *Variable) loadSliceInfo(t *dwarf.SliceType) {
 	if t, ok := v.fieldType.(*dwarf.PtrType); ok {
 		v.stride = t.ByteSize
 	}
-
-	return
 }
 
 func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
@@ -1652,7 +1650,6 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	} else {
 		v.Children[0].OnlyAddr = true
 	}
-	return
 }
 
 // Fetches all variables of a specific type in the current function scope

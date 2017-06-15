@@ -196,7 +196,7 @@ func TestClientServer_exit(t *testing.T) {
 		if !state.Exited {
 			t.Fatalf("Expected exit after continue: %v", state)
 		}
-		state, err = c.GetState()
+		_, err = c.GetState()
 		if err == nil {
 			t.Fatal("Expected error on querying state from exited process")
 		}
@@ -762,6 +762,9 @@ func TestClientServer_SetVariable(t *testing.T) {
 		assertNoError(c.SetVariable(api.EvalScope{-1, 0}, "a2", "8"), t, "SetVariable()")
 
 		a2, err := c.EvalVariable(api.EvalScope{-1, 0}, "a2", normalLoadConfig)
+		if err != nil {
+			t.Fatalf("Could not evaluate variable: %v", err)
+		}
 
 		t.Logf("a2: %v", a2)
 
