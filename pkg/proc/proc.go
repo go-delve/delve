@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"golang.org/x/debug/dwarf"
 )
@@ -430,36 +429,22 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 	return allg, nil
 }
 
-func GetGoInformation(p Process) (ver GoVersion, isextld bool, err error) {
+func GetGoVersion(p Process) (GoVersion, error) {
 	scope := &EvalScope{0, 0, p.CurrentThread(), nil, p.BinInfo(), 0}
 	vv, err := scope.packageVarAddr("runtime.buildVersion")
 	if err != nil {
-		return ver, false, fmt.Errorf("Could not determine version number: %v", err)
+		return GoVersion{}, fmt.Errorf("could not determine version number: %v", err)
 	}
 	vv.loadValue(LoadConfig{true, 0, 64, 0, 0})
 	if vv.Unreadable != nil {
-		err = fmt.Errorf("Unreadable version number: %v\n", vv.Unreadable)
-		return
+		return GoVersion{}, fmt.Errorf("unreadable version number: %v\n", vv.Unreadable)
 	}
 
 	ver, ok := ParseVersionString(constant.StringVal(vv.Value))
 	if !ok {
-		err = fmt.Errorf("Could not parse version number: %v\n", vv.Value)
-		return
+		return GoVersion{}, fmt.Errorf("could not parse version number: %v\n", vv.Value)
 	}
-
-	rdr := scope.BinInfo.DwarfReader()
-	rdr.Seek(0)
-	for entry, err := rdr.NextCompileUnit(); entry != nil; entry, err = rdr.NextCompileUnit() {
-		if err != nil {
-			return ver, isextld, err
-		}
-		if prod, ok := entry.Val(dwarf.AttrProducer).(string); ok && (strings.HasPrefix(prod, "GNU AS")) {
-			isextld = true
-			break
-		}
-	}
-	return
+	return ver, nil
 }
 
 // FindGoroutine returns a G struct representing the goroutine

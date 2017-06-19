@@ -302,29 +302,22 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 }
 
 func getGVariable(thread Thread) (*Variable, error) {
-	arch := thread.Arch()
 	regs, err := thread.Registers(false)
 	if err != nil {
 		return nil, err
 	}
 
-	if arch.GStructOffset() == 0 {
-		// GetG was called through SwitchThread / updateThreadList during initialization
-		// thread.dbp.arch isn't setup yet (it needs a current thread to read global variables from)
-		return nil, fmt.Errorf("g struct offset not initialized")
-	}
-
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
-		gaddrbs := make([]byte, arch.PtrSize())
-		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+arch.GStructOffset()))
+		gaddrbs := make([]byte, thread.Arch().PtrSize())
+		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()))
 		if err != nil {
 			return nil, err
 		}
 		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
 
-	return newGVariable(thread, uintptr(gaddr), arch.DerefTLS())
+	return newGVariable(thread, uintptr(gaddr), thread.Arch().DerefTLS())
 }
 
 func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {

@@ -28,13 +28,14 @@ type BinaryInfo struct {
 	// Maps package names to package paths, needed to lookup types inside DWARF info
 	packageMap map[string]string
 
-	Arch         Arch
-	dwarf        *dwarf.Data
-	frameEntries frame.FrameDescriptionEntries
-	lineInfo     line.DebugLines
-	goSymTable   *gosym.Table
-	types        map[string]dwarf.Offset
-	functions    []functionDebugInfo
+	Arch          Arch
+	dwarf         *dwarf.Data
+	frameEntries  frame.FrameDescriptionEntries
+	lineInfo      line.DebugLines
+	goSymTable    *gosym.Table
+	types         map[string]dwarf.Offset
+	functions     []functionDebugInfo
+	gStructOffset uint64
 
 	loadModuleDataOnce sync.Once
 	moduleData         []moduleData
@@ -72,6 +73,12 @@ func (bininfo *BinaryInfo) LoadBinaryInfo(path string, wg *sync.WaitGroup) error
 		return bininfo.LoadBinaryInfoMacho(path, wg)
 	}
 	return errors.New("unsupported operating system")
+}
+
+// GStructOffset returns the offset of the G
+// struct in thread local storage.
+func (bi *BinaryInfo) GStructOffset() uint64 {
+	return bi.gStructOffset
 }
 
 func (bi *BinaryInfo) LastModified() time.Time {
@@ -141,11 +148,12 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 		return err
 	}
 
-	wg.Add(4)
+	wg.Add(5)
 	go bi.parseDebugFrameElf(elfFile, wg)
 	go bi.obtainGoSymbolsElf(elfFile, wg)
 	go bi.parseDebugLineInfoElf(elfFile, wg)
 	go bi.loadDebugInfoMaps(wg)
+	go bi.setGStructOffsetElf(elfFile, wg)
 	return nil
 }
 
@@ -224,6 +232,44 @@ func (bi *BinaryInfo) parseDebugLineInfoElf(exe *elf.File, wg *sync.WaitGroup) {
 	}
 }
 
+func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// This is a bit arcane. Essentially:
+	// - If the program is pure Go, it can do whatever it wants, and puts the G
+	//   pointer at %fs-8.
+	// - Otherwise, Go asks the external linker to place the G pointer by
+	//   emitting runtime.tlsg, a TLS symbol, which is relocated to the chosen
+	//   offset in libc's TLS block.
+	symbols, err := exe.Symbols()
+	if err != nil {
+		fmt.Println("could not parse ELF symbols", err)
+		os.Exit(1)
+	}
+	var tlsg *elf.Symbol
+	for _, symbol := range symbols {
+		if symbol.Name == "runtime.tlsg" {
+			s := symbol
+			tlsg = &s
+			break
+		}
+	}
+	if tlsg == nil {
+		bi.gStructOffset = ^uint64(8) + 1 // -8
+		return
+	}
+	var tls *elf.Prog
+	for _, prog := range exe.Progs {
+		if prog.Type == elf.PT_TLS {
+			tls = prog
+			break
+		}
+	}
+	// The TLS register points to the end of the TLS block, which is
+	// tls.Memsz long. runtime.tlsg is an offset from the beginning of that block.
+	bi.gStructOffset = ^(tls.Memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
+}
+
 // PE ////////////////////////////////////////////////////////////////
 
 func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
@@ -245,6 +291,12 @@ func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
 	go bi.obtainGoSymbolsPE(peFile, wg)
 	go bi.parseDebugLineInfoPE(peFile, wg)
 	go bi.loadDebugInfoMaps(wg)
+
+	// Use ArbitraryUserPointer (0x28) as pointer to pointer
+	// to G struct per:
+	// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
+
+	bi.gStructOffset = 0x28
 	return nil
 }
 
@@ -444,6 +496,7 @@ func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error
 	go bi.obtainGoSymbolsMacho(exe, wg)
 	go bi.parseDebugLineInfoMacho(exe, wg)
 	go bi.loadDebugInfoMaps(wg)
+	bi.gStructOffset = 0x8a0
 	return nil
 }
 

@@ -178,13 +178,6 @@ func OpenCore(corePath, exePath string) (*Process, error) {
 		p.currentThread = th
 		break
 	}
-
-	ver, isextld, err := proc.GetGoInformation(p)
-	if err != nil {
-		return nil, err
-	}
-
-	p.bi.Arch.SetGStructOffset(ver, isextld)
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
 	return p, nil
