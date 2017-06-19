@@ -21,7 +21,7 @@ This should be as simple as:
 Now you can install delve using `go get`:
 
 ```
-$ go get github.com/derekparker/delve/cmd/dlv
+$ go get -u github.com/derekparker/delve/cmd/dlv
 ```
 
 With this method you will not be able to use delve's native backend.
