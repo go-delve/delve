@@ -10,5 +10,5 @@ var Build string
 
 func main() {
 	version.DelveVersion.Build = Build
-	cmds.New().Execute()
+	cmds.New(false).Execute()
 }

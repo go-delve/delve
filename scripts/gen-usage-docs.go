@@ -8,5 +8,5 @@ import (
 )
 
 func main() {
-	doc.GenMarkdownTree(cmds.New(), "./Documentation/usage")
+	doc.GenMarkdownTree(cmds.New(true), "./Documentation/usage")
 }

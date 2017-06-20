@@ -71,7 +71,7 @@ Pass flags to the program you are debugging using ` + "`--`" + `, for example:
 ` + "`dlv exec ./hello -- server --config conf/config.toml`"
 
 // New returns an initialized command tree.
-func New() *cobra.Command {
+func New(docCall bool) *cobra.Command {
 	// Config setup and load.
 	conf = config.LoadConfig()
 	buildFlagsDefault := ""
@@ -242,7 +242,7 @@ core dump was taken.`,
 	}
 	RootCommand.AddCommand(versionCommand)
 
-	if path, _ := exec.LookPath("rr"); path != "" {
+	if path, _ := exec.LookPath("rr"); path != "" || docCall {
 		replayCommand := &cobra.Command{
 			Use:   "replay [trace directory]",
 			Short: "Replays a rr trace.",
