@@ -398,12 +398,6 @@ func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, e
 		return nil, err
 	}
 
-	ver, isextld, err := proc.GetGoInformation(dbp)
-	if err != nil {
-		return nil, err
-	}
-
-	dbp.bi.Arch.SetGStructOffset(ver, isextld)
 	// selectedGoroutine can not be set correctly by the call to updateThreadList
 	// because without calling SetGStructOffset we can not read the G struct of currentThread
 	// but without calling updateThreadList we can not examine memory to determine

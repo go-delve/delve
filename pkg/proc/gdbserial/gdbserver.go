@@ -62,6 +62,7 @@
 package gdbserial
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -258,6 +259,14 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 		}
 	}
 
+	var wg sync.WaitGroup
+	err = p.bi.LoadBinaryInfo(path, &wg)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	wg.Wait()
+
 	// None of the stubs we support returns the value of fs_base or gs_base
 	// along with the registers, therefore we have to resort to executing a MOV
 	// instruction on the inferior to find out where the G struct of a given
@@ -271,14 +280,6 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 			p.loadGInstrAddr = addr
 		}
 	}
-
-	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(path, &wg)
-	if err != nil {
-		conn.Close()
-		return err
-	}
-	wg.Wait()
 
 	err = p.updateThreadList(&threadUpdater{p: p})
 	if err != nil {
@@ -296,14 +297,6 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 		}
 	}
 
-	ver, isextld, err := proc.GetGoInformation(p)
-	if err != nil {
-		conn.Close()
-		p.bi.Close()
-		return err
-	}
-
-	p.bi.Arch.SetGStructOffset(ver, isextld)
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
 	panicpc, err := proc.FindFunctionLocation(p, "runtime.startpanic", true, 0)
@@ -1158,27 +1151,24 @@ func (t *Thread) Blocked() bool {
 // OS/architecture that can be executed to load the address of G from an
 // inferior's thread.
 func (p *Process) loadGInstr() []byte {
+	var op []byte
 	switch p.bi.GOOS {
 	case "windows":
-		// mov rcx, QWORD PTR gs:0x28
-		return []byte{0x65, 0x48, 0x8b, 0x0c, 0x25, 0x28, 0x00, 0x00, 0x00}
+		// mov rcx, QWORD PTR gs:{uint32(off)}
+		op = []byte{0x65, 0x48, 0x8b, 0x0c, 0x25}
 	case "linux":
-		switch p.bi.Arch.GStructOffset() {
-		case 0xfffffffffffffff8, 0x0:
-			// mov    rcx,QWORD PTR fs:0xfffffffffffffff8
-			return []byte{0x64, 0x48, 0x8B, 0x0C, 0x25, 0xF8, 0xFF, 0xFF, 0xFF}
-		case 0xfffffffffffffff0:
-			// mov    rcx,QWORD PTR fs:0xfffffffffffffff0
-			return []byte{0x64, 0x48, 0x8B, 0x0C, 0x25, 0xF0, 0xFF, 0xFF, 0xFF}
-		default:
-			panic("not implemented")
-		}
+		// mov rcx,QWORD PTR fs:{uint32(off)}
+		op = []byte{0x64, 0x48, 0x8B, 0x0C, 0x25}
 	case "darwin":
-		// mov    rcx,QWORD PTR gs:0x8a0
-		return []byte{0x65, 0x48, 0x8B, 0x0C, 0x25, 0xA0, 0x08, 0x00, 0x00}
+		// mov rcx,QWORD PTR gs:{uint32(off)}
+		op = []byte{0x65, 0x48, 0x8B, 0x0C, 0x25}
 	default:
 		panic("unsupported operating system attempting to find Goroutine on Thread")
 	}
+	buf := &bytes.Buffer{}
+	buf.Write(op)
+	binary.Write(buf, binary.LittleEndian, uint32(p.bi.GStructOffset()))
+	return buf.Bytes()
 }
 
 // reloadRegisters loads the current value of the thread's registers.
