@@ -150,7 +150,7 @@ func TestIssue398(t *testing.T) {
 
 	testIssue398(t, dlvbin, []string{"exit"})
 
-	const hello = "hello world!\n"
+	const hello = "hello world!"
 	stdout, _ := testIssue398(t, dlvbin, []string{"continue", "exit"})
 	if !strings.Contains(string(stdout), hello) {
 		t.Errorf("stdout %q should contain %q", stdout, hello)
