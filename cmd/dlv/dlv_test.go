@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,4 +98,61 @@ func TestBuild(t *testing.T) {
 
 	client.Detach(true)
 	cmd.Wait()
+}
+
+func testIssue398(t *testing.T, dlvbin string, cmds []string) (stdout, stderr []byte) {
+	var stdoutBuf, stderrBuf bytes.Buffer
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+	cmd := exec.Command(dlvbin, "debug")
+	cmd.Dir = buildtestdir
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cmds {
+		fmt.Fprintf(stdin, "%s\n", c)
+	}
+	// ignore "dlv debug" command error, it returns
+	// errors even after successful debug session.
+	cmd.Wait()
+	stdout, stderr = stdoutBuf.Bytes(), stderrBuf.Bytes()
+
+	debugbin := filepath.Join(buildtestdir, "debug")
+	_, err = os.Stat(debugbin)
+	if err == nil {
+		t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", cmds, debugbin, stdout, stderr)
+		return
+	}
+	if !os.IsNotExist(err) {
+		t.Errorf("running %q: %v\nstdout is %q, stderr is %q", cmds, err, stdout, stderr)
+		return
+	}
+	return
+}
+
+func TestIssue398(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "TestIssue398")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	dlvbin := filepath.Join(tmpdir, "dlv.exe")
+	out, err := exec.Command("go", "build", "-o", dlvbin, "github.com/derekparker/delve/cmd/dlv").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go build -o %v github.com/derekparker/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
+	}
+
+	testIssue398(t, dlvbin, []string{"exit"})
+
+	const hello = "hello world!\n"
+	stdout, _ := testIssue398(t, dlvbin, []string{"continue", "exit"})
+	if !strings.Contains(string(stdout), hello) {
+		t.Errorf("stdout %q should contain %q", stdout, hello)
+	}
 }

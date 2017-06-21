@@ -444,6 +444,7 @@ func (dbp *Process) postExit() {
 	dbp.exited = true
 	close(dbp.ptraceChan)
 	close(dbp.ptraceDoneChan)
+	dbp.bi.Close()
 }
 
 func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {

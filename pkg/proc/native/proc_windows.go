@@ -177,7 +177,10 @@ func (dbp *Process) Kill() error {
 	// but some tests appear to Kill twice causing
 	// this to fail on second attempt.
 	_ = syscall.TerminateProcess(dbp.os.hProcess, 1)
-	dbp.exited = true
+	dbp.execPtraceFunc(func() {
+		dbp.waitForDebugEvent(waitBlocking)
+	})
+	dbp.postExit()
 	return nil
 }
 
