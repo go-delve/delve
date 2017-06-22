@@ -4,6 +4,7 @@ import (
 	"debug/elf"
 	"debug/macho"
 	"debug/pe"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,14 @@ import (
 
 	"github.com/pkg/profile"
 )
+
+var userTestFile string
+
+func TestMain(m *testing.M) {
+	flag.StringVar(&userTestFile, "user", "", "runs line parsing test on one extra file")
+	flag.Parse()
+	os.Exit(m.Run())
+}
 
 func grabDebugLineSection(p string, t *testing.T) []byte {
 	f, err := os.Open(p)
@@ -28,7 +37,11 @@ func grabDebugLineSection(p string, t *testing.T) []byte {
 
 	pf, err := pe.NewFile(f)
 	if err == nil {
-		data, _ := pf.Section(".debug_line").Data()
+		sec := pf.Section(".debug_line")
+		data, _ := sec.Data()
+		if 0 < sec.VirtualSize && sec.VirtualSize < sec.Size {
+			return data[:sec.VirtualSize]
+		}
 		return data
 	}
 
@@ -45,18 +58,7 @@ const (
 	lineRangeGo18 uint8 = 10
 )
 
-func TestDebugLinePrologueParser(t *testing.T) {
-	// Test against known good values, from readelf --debug-dump=rawline _fixtures/testnextprog
-	p, err := filepath.Abs("../../../_fixtures/testnextprog")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = exec.Command("go", "build", "-gcflags=-N -l", "-o", p, p+".go").Run()
-	if err != nil {
-		t.Fatal("Could not compile test file", p, err)
-	}
-	defer os.Remove(p)
+func testDebugLinePrologueParser(p string, t *testing.T) {
 	data := grabDebugLineSection(p, t)
 	debugLines := Parse(data)
 	dbl := debugLines[0]
@@ -111,6 +113,29 @@ func TestDebugLinePrologueParser(t *testing.T) {
 	if !ok {
 		t.Fatal("File names table not parsed correctly")
 	}
+}
+
+func TestUserFile(t *testing.T) {
+	if userTestFile == "" {
+		return
+	}
+	t.Logf("testing %q", userTestFile)
+	testDebugLinePrologueParser(userTestFile, t)
+}
+
+func TestDebugLinePrologueParser(t *testing.T) {
+	// Test against known good values, from readelf --debug-dump=rawline _fixtures/testnextprog
+	p, err := filepath.Abs("../../../_fixtures/testnextprog")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = exec.Command("go", "build", "-gcflags=-N -l", "-o", p, p+".go").Run()
+	if err != nil {
+		t.Fatal("Could not compile test file", p, err)
+	}
+	defer os.Remove(p)
+	testDebugLinePrologueParser(p, t)
 }
 
 func BenchmarkLineParser(b *testing.B) {
