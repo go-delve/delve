@@ -58,12 +58,12 @@ endif
 test: check-cert
 ifeq "$(TRAVIS)" "true"
 ifdef DARWIN
-	sudo -E go test -v $(ALL_PACKAGES)
+	sudo -E go test -p 1 -v $(ALL_PACKAGES)
 else
-	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(ALL_PACKAGES)
+	go test -p 1 $(TEST_FLAGS) $(BUILD_FLAGS) $(ALL_PACKAGES)
 endif
 else
-	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(ALL_PACKAGES)
+	go test -p 1 $(TEST_FLAGS) $(BUILD_FLAGS) $(ALL_PACKAGES)
 endif
 ifneq "$(shell which lldb-server)" ""
 	@echo
