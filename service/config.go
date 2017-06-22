@@ -31,4 +31,7 @@ type Config struct {
 
 	// Selects server backend.
 	Backend string
+
+	// DisconnectChan will be closed by the server when the client disconnects
+	DisconnectChan chan<- struct{}
 }

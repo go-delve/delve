@@ -321,6 +321,9 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 		}
 	}
 	codec.Close()
+	if !s.config.AcceptMulti && s.config.DisconnectChan != nil {
+		close(s.config.DisconnectChan)
+	}
 }
 
 // A value sent as a placeholder for the server's response value when the server
