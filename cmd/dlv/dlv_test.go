@@ -135,6 +135,7 @@ func testIssue398(t *testing.T, dlvbin string, cmds []string) (stdout, stderr []
 	return
 }
 
+// TestIssue398 verifies that the debug executable is removed after exit.
 func TestIssue398(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "TestIssue398")
 	if err != nil {
