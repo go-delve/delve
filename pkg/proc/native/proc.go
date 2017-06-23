@@ -1,7 +1,6 @@
 package native
 
 import (
-	"errors"
 	"fmt"
 	"go/ast"
 	"os"
@@ -297,26 +296,27 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 // asssociated with the selected goroutine. All other
 // threads will remain stopped.
 func (dbp *Process) StepInstruction() (err error) {
-	if dbp.selectedGoroutine == nil {
-		return errors.New("cannot single step: no selected goroutine")
-	}
-	if dbp.selectedGoroutine.Thread == nil {
-		// Step called on parked goroutine
-		if _, err := dbp.SetBreakpoint(dbp.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(dbp.selectedGoroutine)); err != nil {
-			return err
+	thread := dbp.currentThread
+	if dbp.selectedGoroutine != nil {
+		if dbp.selectedGoroutine.Thread == nil {
+			// Step called on parked goroutine
+			if _, err := dbp.SetBreakpoint(dbp.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(dbp.selectedGoroutine)); err != nil {
+				return err
+			}
+			return proc.Continue(dbp)
 		}
-		return proc.Continue(dbp)
+		thread = dbp.selectedGoroutine.Thread.(*Thread)
 	}
 	dbp.allGCache = nil
 	if dbp.exited {
 		return &proc.ProcessExitedError{}
 	}
-	dbp.selectedGoroutine.Thread.(*Thread).clearBreakpointState()
-	err = dbp.selectedGoroutine.Thread.(*Thread).StepInstruction()
+	thread.clearBreakpointState()
+	err = thread.StepInstruction()
 	if err != nil {
 		return err
 	}
-	return dbp.selectedGoroutine.Thread.(*Thread).SetCurrentBreakpoint()
+	return thread.SetCurrentBreakpoint()
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.

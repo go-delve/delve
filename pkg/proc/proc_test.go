@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/derekparker/delve/pkg/dwarf/frame"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
 	"github.com/derekparker/delve/pkg/proc/native"
@@ -2952,5 +2953,31 @@ func TestIssue877(t *testing.T) {
 		if vv != envval {
 			t.Fatalf("value of v is %q (expected %q)", vv, envval)
 		}
+	})
+}
+
+func TestIssue893(t *testing.T) {
+	// Test what happens when next is called immediately after launching the
+	// executable, acceptable behaviors are: (a) no error, (b) no source at PC
+	// error.
+	protest.AllowRecording(t)
+	withTestProcess("increment", t, func(p proc.Process, fixture protest.Fixture) {
+		err := proc.Next(p)
+		if err == nil {
+			return
+		}
+		if _, ok := err.(*frame.NoFDEForPCError); ok {
+			return
+		}
+		assertNoError(err, t, "Next")
+	})
+}
+
+func TestStepInstructionNoGoroutine(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("increment", t, func(p proc.Process, fixture protest.Fixture) {
+		// Call StepInstruction immediately after launching the program, it should
+		// work even though no goroutine is selected.
+		assertNoError(p.StepInstruction(), t, "StepInstruction")
 	})
 }
