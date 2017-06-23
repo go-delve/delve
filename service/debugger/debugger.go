@@ -538,7 +538,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	}
 
 	if err != nil {
-		if exitedErr, exited := err.(proc.ProcessExitedError); withBreakpointInfo && exited {
+		if exitedErr, exited := err.(proc.ProcessExitedError); (command.Name == api.Continue || command.Name == api.Rewind) && exited {
 			state := &api.DebuggerState{}
 			state.Exited = true
 			state.ExitStatus = exitedErr.Status
