@@ -407,7 +407,7 @@ func onRuntimeBreakpoint(thread Thread) bool {
 func onNextGoroutine(thread Thread, breakpoints map[uint64]*Breakpoint) (bool, error) {
 	var bp *Breakpoint
 	for i := range breakpoints {
-		if breakpoints[i].Internal() {
+		if breakpoints[i].Internal() && breakpoints[i].Cond != nil {
 			bp = breakpoints[i]
 			break
 		}
