@@ -623,25 +623,26 @@ continueLoop:
 }
 
 func (p *Process) StepInstruction() error {
-	if p.selectedGoroutine == nil {
-		return errors.New("cannot single step: no selected goroutine")
-	}
-	if p.selectedGoroutine.Thread == nil {
-		if _, err := p.SetBreakpoint(p.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(p.selectedGoroutine)); err != nil {
-			return err
+	thread := p.currentThread
+	if p.selectedGoroutine != nil {
+		if p.selectedGoroutine.Thread == nil {
+			if _, err := p.SetBreakpoint(p.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(p.selectedGoroutine)); err != nil {
+				return err
+			}
+			return proc.Continue(p)
 		}
-		return proc.Continue(p)
+		thread = p.selectedGoroutine.Thread.(*Thread)
 	}
 	p.allGCache = nil
 	if p.exited {
 		return &proc.ProcessExitedError{Pid: p.conn.pid}
 	}
-	p.selectedGoroutine.Thread.(*Thread).clearBreakpointState()
-	err := p.selectedGoroutine.Thread.(*Thread).StepInstruction()
+	thread.clearBreakpointState()
+	err := thread.StepInstruction()
 	if err != nil {
 		return err
 	}
-	return p.selectedGoroutine.Thread.(*Thread).SetCurrentBreakpoint()
+	return thread.SetCurrentBreakpoint()
 }
 
 func (p *Process) SwitchThread(tid int) error {
