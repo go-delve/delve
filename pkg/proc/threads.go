@@ -250,10 +250,11 @@ func next(dbp Process, stepInto bool) error {
 				// this frame and on the return frame.
 				bp.Cond = sameOrRetFrameCond
 			}
-		} else {
-			return err
 		}
+		// Return address could be wrong, if we are unable to set a breakpoint
+		// there it's ok.
 	}
+
 	if bp, _, _ := curthread.Breakpoint(); bp == nil {
 		curthread.SetCurrentBreakpoint()
 	}
