@@ -121,6 +121,7 @@ type Stackframe struct {
 	Locals      []Variable
 	Arguments   []Variable
 	FrameOffset int64
+	Err         string
 }
 
 func (frame *Stackframe) Var(name string) *Variable {
