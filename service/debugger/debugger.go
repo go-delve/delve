@@ -594,6 +594,12 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		if !found {
 			return fmt.Errorf("could not find thread %d", state.Threads[i].ID)
 		}
+
+		if len(bp.Variables) == 0 && bp.LoadArgs == nil && bp.LoadLocals == nil {
+			// don't try to create goroutine scope if there is nothing to load
+			continue
+		}
+
 		s, err := proc.GoroutineScope(thread)
 		if err != nil {
 			return err
@@ -605,9 +611,10 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		for i := range bp.Variables {
 			v, err := s.EvalVariable(bp.Variables[i], proc.LoadConfig{true, 1, 64, 64, -1})
 			if err != nil {
-				return err
+				bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
+			} else {
+				bpi.Variables[i] = *api.ConvertVar(v)
 			}
-			bpi.Variables[i] = *api.ConvertVar(v)
 		}
 		if bp.LoadArgs != nil {
 			if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {

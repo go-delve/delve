@@ -1371,3 +1371,16 @@ func TestClientServer_collectBreakpointInfoOnNext(t *testing.T) {
 		}
 	})
 }
+
+func TestClientServer_collectBreakpointInfoError(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{
+			Addr:       findLocationHelper(t, c, "testnextprog.go:23", false, 1, 0)[0],
+			Variables:  []string{"nonexistentvariable", "j"},
+			LoadLocals: &normalLoadConfig})
+		assertNoError(err, t, "CreateBreakpoint()")
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+	})
+}
