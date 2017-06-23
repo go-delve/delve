@@ -316,7 +316,14 @@ func (dbp *Process) StepInstruction() (err error) {
 	if err != nil {
 		return err
 	}
-	return thread.SetCurrentBreakpoint()
+	err = thread.SetCurrentBreakpoint()
+	if err != nil {
+		return err
+	}
+	if g, _ := proc.GetG(thread); g != nil {
+		dbp.selectedGoroutine = g
+	}
+	return nil
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.

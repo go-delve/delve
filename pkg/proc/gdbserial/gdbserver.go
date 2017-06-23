@@ -642,7 +642,14 @@ func (p *Process) StepInstruction() error {
 	if err != nil {
 		return err
 	}
-	return thread.SetCurrentBreakpoint()
+	err = thread.SetCurrentBreakpoint()
+	if err != nil {
+		return err
+	}
+	if g, _ := proc.GetG(thread); g != nil {
+		p.selectedGoroutine = g
+	}
+	return nil
 }
 
 func (p *Process) SwitchThread(tid int) error {
