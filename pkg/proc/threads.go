@@ -112,7 +112,8 @@ func next(dbp Process, stepInto bool) error {
 		}
 	}()
 
-	csource := filepath.Ext(topframe.Current.File) != ".go"
+	ext := filepath.Ext(topframe.Current.File)
+	csource := ext != ".go" && ext != ".s"
 	var thread MemoryReadWriter = curthread
 	var regs Registers
 	if selg != nil && selg.Thread != nil {
