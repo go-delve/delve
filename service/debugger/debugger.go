@@ -857,6 +857,9 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 			Location:    api.ConvertLocation(rawlocs[i].Call),
 			FrameOffset: rawlocs[i].CFA - int64(rawlocs[i].StackHi),
 		}
+		if rawlocs[i].Err != nil {
+			frame.Err = rawlocs[i].Err.Error()
+		}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
 			scope := proc.FrameToScope(d.target, rawlocs[i])

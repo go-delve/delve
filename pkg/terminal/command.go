@@ -1210,6 +1210,10 @@ func printStack(stack []api.Stackframe, ind string) {
 	s := ind + strings.Repeat(" ", d+2+len(ind))
 
 	for i := range stack {
+		if stack[i].Err != "" {
+			fmt.Printf("%serror: %s\n", s, stack[i].Err)
+			continue
+		}
 		name := "(nil)"
 		if stack[i].Function != nil {
 			name = stack[i].Function.Name

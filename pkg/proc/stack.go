@@ -38,6 +38,8 @@ type Stackframe struct {
 	Ret uint64
 	// Address to the memory location containing the return address
 	addrret uint64
+	// Err is set if an error occoured during stacktrace
+	Err error
 }
 
 // Stacktrace returns the stack trace for thread.
@@ -207,7 +209,7 @@ func (it *stackIterator) newStackframe(pc uint64, cfa int64, retaddr uintptr, fd
 	f, l, fn := it.bi.PCToLine(pc)
 	ret, err := readUintRaw(it.mem, retaddr, int64(it.bi.Arch.PtrSize()))
 	if err != nil {
-		return Stackframe{}, err
+		it.err = err
 	}
 	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: ret, addrret: uint64(retaddr), StackHi: it.stackhi}
 	if !top {
@@ -231,7 +233,10 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 		}
 	}
 	if err := it.Err(); err != nil {
-		return nil, err
+		if len(frames) == 0 {
+			return nil, err
+		}
+		frames = append(frames, Stackframe{Err: err})
 	}
 	return frames, nil
 }
