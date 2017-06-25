@@ -173,13 +173,24 @@ func (dbp *Process) Kill() error {
 	if !dbp.threads[dbp.pid].Stopped() {
 		return errors.New("process must be stopped in order to kill it")
 	}
+
+	p, err := os.FindProcess(dbp.pid)
+	if err != nil {
+		return err
+	}
+	defer p.Release()
+
 	// TODO: Should not have to ignore failures here,
 	// but some tests appear to Kill twice causing
 	// this to fail on second attempt.
 	_ = syscall.TerminateProcess(dbp.os.hProcess, 1)
+
 	dbp.execPtraceFunc(func() {
 		dbp.waitForDebugEvent(waitBlocking)
 	})
+
+	p.Wait()
+
 	dbp.postExit()
 	return nil
 }
