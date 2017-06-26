@@ -455,6 +455,8 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		Stop(bool) error
 	}
 
+	disconnectChan := make(chan struct{})
+
 	// Create and start a debugger server
 	switch APIVersion {
 	case 1, 2:
@@ -467,6 +469,8 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			WorkingDir:  WorkingDir,
 			Backend:     Backend,
 			CoreFile:    coreFile,
+
+			DisconnectChan: disconnectChan,
 		}, Log)
 	default:
 		fmt.Printf("Unknown API version: %d\n", APIVersion)
@@ -496,7 +500,10 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		fmt.Printf("API server listening at: %s\n", listener.Addr())
 		ch := make(chan os.Signal)
 		signal.Notify(ch, syscall.SIGINT)
-		<-ch
+		select {
+		case <-ch:
+		case <-disconnectChan:
+		}
 		err = server.Stop(true)
 	} else {
 		// Create and start a terminal

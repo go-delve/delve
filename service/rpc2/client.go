@@ -45,6 +45,7 @@ func (c *RPCClient) LastModified() time.Time {
 }
 
 func (c *RPCClient) Detach(kill bool) error {
+	defer c.client.Close()
 	out := new(DetachOut)
 	return c.call("Detach", DetachIn{kill}, out)
 }

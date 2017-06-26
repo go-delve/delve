@@ -698,6 +698,7 @@ func (p *Process) Detach(kill bool) error {
 	if p.process != nil {
 		p.process.Kill()
 		<-p.waitChan
+		p.process = nil
 	}
 	return p.bi.Close()
 }
