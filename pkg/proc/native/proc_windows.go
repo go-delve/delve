@@ -56,75 +56,24 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	}
 	closer.Close()
 
-	// Duplicate the stdin/stdout/stderr handles
-	files := []uintptr{uintptr(syscall.Stdin), uintptr(syscall.Stdout), uintptr(syscall.Stderr)}
-	p, _ := syscall.GetCurrentProcess()
-	fd := make([]syscall.Handle, len(files))
-	for i := range files {
-		err := syscall.DuplicateHandle(p, syscall.Handle(files[i]), p, &fd[i], 0, true, syscall.DUPLICATE_SAME_ACCESS)
-		if err != nil {
-			return nil, err
-		}
-		defer syscall.CloseHandle(syscall.Handle(fd[i]))
-	}
-
-	argv0, err := syscall.UTF16PtrFromString(argv0Go)
-	if err != nil {
-		return nil, err
-	}
-
-	// create suitable command line for CreateProcess
-	// see https://github.com/golang/go/blob/master/src/syscall/exec_windows.go#L326
-	// adapted from standard library makeCmdLine
-	// see https://github.com/golang/go/blob/master/src/syscall/exec_windows.go#L86
-	var cmdLineGo string
-	if len(cmd) >= 1 {
-		for _, v := range cmd {
-			if cmdLineGo != "" {
-				cmdLineGo += " "
-			}
-			cmdLineGo += syscall.EscapeArg(v)
-		}
-	}
-
-	var cmdLine *uint16
-	if cmdLineGo != "" {
-		if cmdLine, err = syscall.UTF16PtrFromString(cmdLineGo); err != nil {
-			return nil, err
-		}
-	}
-
-	var workingDir *uint16
-	if wd != "" {
-		if workingDir, err = syscall.UTF16PtrFromString(wd); err != nil {
-			return nil, err
-		}
-	}
-
-	// Initialize the startup info and create process
-	si := new(sys.StartupInfo)
-	si.Cb = uint32(unsafe.Sizeof(*si))
-	si.Flags = syscall.STARTF_USESTDHANDLES
-	si.StdInput = sys.Handle(fd[0])
-	si.StdOutput = sys.Handle(fd[1])
-	si.StdErr = sys.Handle(fd[2])
-	pi := new(sys.ProcessInformation)
-
+	var p *os.Process
 	dbp := New(0)
 	dbp.execPtraceFunc(func() {
-		if wd == "" {
-			err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, _DEBUG_ONLY_THIS_PROCESS, nil, nil, si, pi)
-		} else {
-			err = sys.CreateProcess(argv0, cmdLine, nil, nil, true, _DEBUG_ONLY_THIS_PROCESS, nil, workingDir, si, pi)
+		attr := &os.ProcAttr{
+			Dir:   wd,
+			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+			Sys: &syscall.SysProcAttr{
+				CreationFlags: _DEBUG_ONLY_THIS_PROCESS,
+			},
 		}
+		p, err = os.StartProcess(argv0Go, cmd, attr)
 	})
 	if err != nil {
 		return nil, err
 	}
-	sys.CloseHandle(sys.Handle(pi.Process))
-	sys.CloseHandle(sys.Handle(pi.Thread))
+	defer p.Release()
 
-	dbp.pid = int(pi.ProcessId)
+	dbp.pid = p.Pid
 	dbp.childProcess = true
 
 	return newDebugProcess(dbp, argv0Go)
