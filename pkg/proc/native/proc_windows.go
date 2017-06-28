@@ -114,7 +114,7 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 		return nil, err
 	}
 
-	return initializeDebugProcess(dbp, exepath, false)
+	return initializeDebugProcess(dbp, exepath)
 }
 
 // findExePath searches for process pid, and returns its executable path.
@@ -451,7 +451,7 @@ func (dbp *Process) detach(kill bool) error {
 			}
 		}
 	}
-	return PtraceDetach(dbp.pid, 0)
+	return _DebugActiveProcessStop(uint32(dbp.pid))
 }
 
 func killProcess(pid int) error {
