@@ -404,7 +404,7 @@ func coreCmd(cmd *cobra.Command, args []string) {
 func connectCmd(cmd *cobra.Command, args []string) {
 	addr := args[0]
 	if addr == "" {
-		fmt.Fprintf(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
+		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
 		os.Exit(1)
 	}
 	os.Exit(connect(addr, conf))
@@ -446,7 +446,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	defer listener.Close()
 
 	if Headless && (InitFile != "") {
-		fmt.Fprintf(os.Stderr, "Warning: init file ignored\n")
+		fmt.Fprint(os.Stderr, "Warning: init file ignored\n")
 	}
 
 	var server interface {

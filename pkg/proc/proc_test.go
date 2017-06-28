@@ -872,7 +872,11 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 
 func TestStacktraceGoroutine(t *testing.T) {
 	mainStack := []loc{{13, "main.stacktraceme"}, {26, "main.main"}}
-	agoroutineStacks := [][]loc{[]loc{{8, "main.agoroutine"}}, []loc{{9, "main.agoroutine"}}, []loc{{10, "main.agoroutine"}}}
+	agoroutineStacks := [][]loc{
+		{{8, "main.agoroutine"}},
+		{{9, "main.agoroutine"}},
+		{{10, "main.agoroutine"}},
+	}
 
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
@@ -1896,7 +1900,7 @@ func TestCmdLineArgs(t *testing.T) {
 			t.Fatalf("Process did not exit: %v", err)
 		} else {
 			if exit.Status != 0 {
-				t.Fatalf("process exited with invalid status", exit.Status)
+				t.Fatalf("process exited with invalid status %d", exit.Status)
 			}
 		}
 	}
@@ -2369,7 +2373,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 
 			if oldk, ok := kvals[gid]; ok {
 				if oldk >= k {
-					t.Fatalf("Goroutine %d did not make progress?")
+					t.Fatalf("Goroutine %d did not make progress?", gid)
 				}
 			}
 			kvals[gid] = k
@@ -2757,7 +2761,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 			}
 
 			if !found {
-				t.Log("Truncated stacktrace for %d\n", goid)
+				t.Logf("Truncated stacktrace for %d\n", goid)
 			}
 		}
 	})

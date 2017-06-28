@@ -27,10 +27,10 @@ func replaceDocPath(s string) string {
 }
 
 func (commands *Commands) WriteMarkdown(w io.Writer) {
-	fmt.Fprintf(w, "# Commands\n\n")
+	fmt.Fprint(w, "# Commands\n\n")
 
-	fmt.Fprintf(w, "Command | Description\n")
-	fmt.Fprintf(w, "--------|------------\n")
+	fmt.Fprint(w, "Command | Description\n")
+	fmt.Fprint(w, "--------|------------\n")
 	for _, cmd := range commands.cmds {
 		h := cmd.helpMsg
 		if idx := strings.Index(h, "\n"); idx >= 0 {
@@ -38,17 +38,17 @@ func (commands *Commands) WriteMarkdown(w io.Writer) {
 		}
 		fmt.Fprintf(w, "[%s](#%s) | %s\n", cmd.aliases[0], cmd.aliases[0], h)
 	}
-	fmt.Fprintf(w, "\n")
+	fmt.Fprint(w, "\n")
 
 	for _, cmd := range commands.cmds {
 		fmt.Fprintf(w, "## %s\n%s\n\n", cmd.aliases[0], replaceDocPath(cmd.helpMsg))
 		if len(cmd.aliases) > 1 {
-			fmt.Fprintf(w, "Aliases:")
+			fmt.Fprint(w, "Aliases:")
 			for _, alias := range cmd.aliases[1:] {
 				fmt.Fprintf(w, " %s", alias)
 			}
-			fmt.Fprintf(w, "\n")
+			fmt.Fprint(w, "\n")
 		}
-		fmt.Fprintf(w, "\n")
+		fmt.Fprint(w, "\n")
 	}
 }

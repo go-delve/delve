@@ -3,10 +3,11 @@ package terminal
 import (
 	"bufio"
 	"fmt"
-	"github.com/derekparker/delve/service/api"
 	"io"
 	"path/filepath"
 	"text/tabwriter"
+
+	"github.com/derekparker/delve/service/api"
 )
 
 func DisasmPrint(dv api.AsmInstructions, out io.Writer) {

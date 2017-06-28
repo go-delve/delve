@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/constant"
 	"go/token"
 	"path/filepath"
 	"strconv"
@@ -430,24 +429,6 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 	}
 
 	return allg, nil
-}
-
-func GetGoVersion(p Process) (GoVersion, error) {
-	scope := &EvalScope{0, 0, p.CurrentThread(), nil, p.BinInfo(), 0}
-	vv, err := scope.packageVarAddr("runtime.buildVersion")
-	if err != nil {
-		return GoVersion{}, fmt.Errorf("could not determine version number: %v", err)
-	}
-	vv.loadValue(LoadConfig{true, 0, 64, 0, 0})
-	if vv.Unreadable != nil {
-		return GoVersion{}, fmt.Errorf("unreadable version number: %v\n", vv.Unreadable)
-	}
-
-	ver, ok := ParseVersionString(constant.StringVal(vv.Value))
-	if !ok {
-		return GoVersion{}, fmt.Errorf("could not parse version number: %v\n", vv.Value)
-	}
-	return ver, nil
 }
 
 // FindGoroutine returns a G struct representing the goroutine
