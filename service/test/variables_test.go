@@ -538,9 +538,9 @@ func TestEvalExpression(t *testing.T) {
 		{"err2", true, "error(*main.bstruct) *{a: main.astruct {A: 1, B: 2}}", "error(*main.bstruct) 0x…", "error", nil},
 		{"errnil", true, "error nil", "error nil", "error", nil},
 		{"iface1", true, "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}(*main.astruct) 0x…", "interface {}", nil},
-		{"iface2", true, "interface {}(*string) *\"test\"", "interface {}(*string) 0x…", "interface {}", nil},
+		{"iface2", true, "interface {}(string) \"test\"", "interface {}(string) \"test\"", "interface {}", nil},
 		{"iface3", true, "interface {}(map[string]go/constant.Value) []", "interface {}(map[string]go/constant.Value) []", "interface {}", nil},
-		{"iface4", true, "interface {}(*[]go/constant.Value) *[*4]", "interface {}(*[]go/constant.Value) 0x…", "interface {}", nil},
+		{"iface4", true, "interface {}([]go/constant.Value) [4]", "interface {}([]go/constant.Value) [...]", "interface {}", nil},
 		{"ifacenil", true, "interface {} nil", "interface {} nil", "interface {}", nil},
 		{"err1 == err2", false, "false", "false", "", nil},
 		{"err1 == iface1", false, "", "", "", fmt.Errorf("mismatched types \"error\" and \"interface {}\"")},
@@ -549,7 +549,7 @@ func TestEvalExpression(t *testing.T) {
 		{"err1.(*main.astruct)", false, "*main.astruct {A: 1, B: 2}", "(*main.astruct)(0x…", "*main.astruct", nil},
 		{"err1.(*main.bstruct)", false, "", "", "", fmt.Errorf("interface conversion: error is *main.astruct, not *main.bstruct")},
 		{"errnil.(*main.astruct)", false, "", "", "", fmt.Errorf("interface conversion: error is nil, not *main.astruct")},
-		{"const1", true, "go/constant.Value(*go/constant.int64Val) *3", "go/constant.Value(*go/constant.int64Val) 0x…", "go/constant.Value", nil},
+		{"const1", true, "go/constant.Value(go/constant.int64Val) 3", "go/constant.Value(go/constant.int64Val) 3", "go/constant.Value", nil},
 
 		// combined expressions
 		{"c1.pb.a.A", true, "1", "1", "int", nil},
@@ -690,7 +690,7 @@ func TestEvalExpression(t *testing.T) {
 		{"sd", false, "main.D {u1: 0, u2: 0, u3: 0, u4: 0, u5: 0, u6: 0}", "main.D {u1: 0, u2: 0, u3: 0,...+3 more}", "main.D", nil},
 
 		{"ifacearr", false, "[]error len: 2, cap: 2, [*main.astruct {A: 0, B: 0},nil]", "[]error len: 2, cap: 2, [...]", "[]error", nil},
-		{"efacearr", false, `[]interface {} len: 3, cap: 3, [*main.astruct {A: 0, B: 0},*"test",nil]`, "[]interface {} len: 3, cap: 3, [...]", "[]interface {}", nil},
+		{"efacearr", false, `[]interface {} len: 3, cap: 3, [*main.astruct {A: 0, B: 0},"test",nil]`, "[]interface {} len: 3, cap: 3, [...]", "[]interface {}", nil},
 
 		{"zsslice", false, `[]struct {} len: 3, cap: 3, [{},{},{}]`, `[]struct {} len: 3, cap: 3, [...]`, "[]struct {}", nil},
 		{"zsvmap", false, `map[string]struct {} ["testkey": {}, ]`, `map[string]struct {} [...]`, "map[string]struct {}", nil},
@@ -867,11 +867,11 @@ func TestPackageRenames(t *testing.T) {
 		// Interfaces to anonymous types
 		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
 		{"dir0someType", true, "interface {}(*github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) *{X: 3}", "", "interface {}", nil},
-		{"dir1someType", true, "interface {}(*github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType) *{X: 1, Y: 2}", "", "interface {}", nil},
+		{"dir1someType", true, "interface {}(github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType) {X: 1, Y: 2}", "", "interface {}", nil},
 		{"amap3", true, "interface {}(map[github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType]github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType) [{X: 4}: {X: 5, Y: 6}, ]", "", "interface {}", nil},
-		{"anarray", true, `interface {}(*[2]github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) *[{X: 1},{X: 2}]`, "", "interface {}", nil},
+		{"anarray", true, `interface {}([2]github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) [{X: 1},{X: 2}]`, "", "interface {}", nil},
 		{"achan", true, `interface {}(chan github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) chan github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType 0/0`, "", "interface {}", nil},
-		{"aslice", true, `interface {}(*[]github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) *[{X: 3},{X: 4}]`, "", "interface {}", nil},
+		{"aslice", true, `interface {}([]github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType) [{X: 3},{X: 4}]`, "", "interface {}", nil},
 		{"afunc", true, `interface {}(func(github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType, github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType)) main.main.func1`, "", "interface {}", nil},
 		{"astruct", true, `interface {}(*struct { A github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; B github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType }) *{A: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, B: github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 3}}`, "", "interface {}", nil},
 		{"astruct2", true, `interface {}(*struct { github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; X int }) *{github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},

@@ -504,6 +504,11 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 	if xv.Children[0].DwarfType.Common().Name != typ.Common().Name {
 		return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.Common().Name, xv.Children[0].TypeString(), typ.Common().Name)
 	}
+	// loadInterface will set OnlyAddr for the data member since here we are
+	// passing false to loadData, however returning the variable with OnlyAddr
+	// set here would be wrong since, once the expression evaluation
+	// terminates, the value of this variable will be loaded.
+	xv.Children[0].OnlyAddr = false
 	return &xv.Children[0], nil
 }
 
