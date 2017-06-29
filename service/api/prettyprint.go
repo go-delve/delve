@@ -96,6 +96,8 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 			} else {
 				v.Children[0].writeTo(buf, false, newlines, !includeType, indent)
 			}
+		} else if data.OnlyAddr {
+			fmt.Fprintf(buf, "*(*%q)(0x%x)", v.Type, v.Addr)
 		} else {
 			v.Children[0].writeTo(buf, false, newlines, !includeType, indent)
 		}

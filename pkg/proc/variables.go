@@ -1635,14 +1635,20 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		}
 	}
 
+	deref := false
 	if kind&kindDirectIface == 0 {
 		realtyp := resolveTypedef(typ)
 		if _, isptr := realtyp.(*dwarf.PtrType); !isptr {
 			typ = pointerTo(typ, v.bi.Arch)
+			deref = true
 		}
 	}
 
 	data = data.newVariable("data", data.Addr, typ)
+	if deref {
+		data = data.maybeDereference()
+		data.Name = "data"
+	}
 
 	v.Children = []Variable{*data}
 	if loadData && recurseLevel <= cfg.MaxVariableRecurse {
