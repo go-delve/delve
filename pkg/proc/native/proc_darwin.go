@@ -116,7 +116,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	}
 
 	dbp.os.initialized = true
-	dbp, err = initializeDebugProcess(dbp, argv0Go, false)
+	dbp, err = initializeDebugProcess(dbp, argv0Go)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,17 @@ func Attach(pid int) (*Process, error) {
 
 	dbp.os.initialized = true
 
-	return initializeDebugProcess(dbp, "", true)
+	var err error
+	dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })
+	if err != nil {
+		return nil, err
+	}
+	_, _, err = dbp.wait(dbp.pid, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return initializeDebugProcess(dbp, "")
 }
 
 // Kill kills the process.

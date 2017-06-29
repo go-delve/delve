@@ -73,12 +73,24 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	return initializeDebugProcess(dbp, process.Path, false)
+	return initializeDebugProcess(dbp, process.Path)
 }
 
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*Process, error) {
-	return initializeDebugProcess(New(pid), "", true)
+	dbp := New(pid)
+
+	var err error
+	dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })
+	if err != nil {
+		return nil, err
+	}
+	_, _, err = dbp.wait(dbp.pid, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return initializeDebugProcess(dbp, "")
 }
 
 // Kill kills the target process.

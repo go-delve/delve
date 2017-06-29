@@ -370,19 +370,7 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 }
 
 // Returns a new Process struct.
-func initializeDebugProcess(dbp *Process, path string, attach bool) (*Process, error) {
-	if attach {
-		var err error
-		dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })
-		if err != nil {
-			return nil, err
-		}
-		_, _, err = dbp.wait(dbp.pid, 0)
-		if err != nil {
-			return nil, err
-		}
-	}
-
+func initializeDebugProcess(dbp *Process, path string) (*Process, error) {
 	process, err := os.FindProcess(dbp.pid)
 	if err != nil {
 		return nil, err
