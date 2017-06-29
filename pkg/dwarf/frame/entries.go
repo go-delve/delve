@@ -32,10 +32,7 @@ type FrameDescriptionEntry struct {
 // Returns whether or not the given address is within the
 // bounds of this frame.
 func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
-	if (addr - fde.begin) < fde.end {
-		return true
-	}
-	return false
+	return (addr - fde.begin) < fde.end
 }
 
 // Address of first location for this frame.

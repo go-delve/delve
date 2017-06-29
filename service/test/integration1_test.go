@@ -172,7 +172,7 @@ func Test1ClientServer_exit(t *testing.T) {
 		if !state.Exited {
 			t.Fatalf("Expected exit after continue: %v", state)
 		}
-		state, err = c.GetState()
+		_, err = c.GetState()
 		if err == nil {
 			t.Fatal("Expected error on querying state from exited process")
 		}
@@ -699,6 +699,9 @@ func Test1ClientServer_SetVariable(t *testing.T) {
 		assertNoError(c.SetVariable(api.EvalScope{-1, 0}, "a2", "8"), t, "SetVariable()")
 
 		a2, err := c.EvalVariable(api.EvalScope{-1, 0}, "a2")
+		if err != nil {
+			t.Fatalf("Could not evaluate variable: %v", err)
+		}
 
 		t.Logf("a2: %v", a2)
 
@@ -737,7 +740,7 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 					if arg.Name != "i" {
 						continue
 					}
-					t.Logf("frame %d, variable i is %v\n", arg)
+					t.Logf("frame %d, variable i is %v\n", i,  arg)
 					argn, err := strconv.Atoi(arg.Value)
 					if err == nil {
 						found[argn] = true

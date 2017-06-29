@@ -169,7 +169,7 @@ func (thread *Thread) clearBreakpointState() {
 }
 
 func (th *Thread) Breakpoint() (*proc.Breakpoint, bool, error) {
-	return th.CurrentBreakpoint, (th.CurrentBreakpoint != nil && th.BreakpointConditionMet), th.BreakpointConditionError
+	return th.CurrentBreakpoint, th.CurrentBreakpoint != nil && th.BreakpointConditionMet, th.BreakpointConditionError
 }
 
 func (th *Thread) ThreadID() int {

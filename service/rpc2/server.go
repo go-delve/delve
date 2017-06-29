@@ -109,7 +109,6 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 	var out CommandOut
 	out.State = *st
 	cb.Return(out, nil)
-	return
 }
 
 type GetBreakpointIn struct {

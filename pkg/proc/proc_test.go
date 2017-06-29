@@ -208,7 +208,7 @@ func setFileBreakpoint(p proc.Process, t *testing.T, fixture protest.Fixture, li
 }
 
 func TestHalt(t *testing.T) {
-	stopChan := make(chan interface{})
+	stopChan := make(chan interface{}, 1)
 	withTestProcess("loopprog", t, func(p proc.Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "main.loop")
 		assertNoError(err, t, "SetBreakpoint")
@@ -219,18 +219,20 @@ func TestHalt(t *testing.T) {
 				assertNoError(err, t, "Registers")
 			}
 		}
-		resumeChan := make(chan struct{})
+		resumeChan := make(chan struct{}, 1)
 		go func() {
 			<-resumeChan
 			time.Sleep(100 * time.Millisecond)
-			if err := p.RequestManualStop(); err != nil {
-				t.Fatal(err)
-			}
-			stopChan <- nil
+			stopChan <- p.RequestManualStop()
 		}()
 		p.ResumeNotify(resumeChan)
 		assertNoError(proc.Continue(p), t, "Continue")
-		<-stopChan
+		retVal := <-stopChan
+
+		if err, ok := retVal.(error); ok && err != nil {
+			t.Fatal()
+		}
+
 		// Loop through threads and make sure they are all
 		// actually stopped, err will not be nil if the process
 		// is still running.
@@ -870,7 +872,11 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 
 func TestStacktraceGoroutine(t *testing.T) {
 	mainStack := []loc{{13, "main.stacktraceme"}, {26, "main.main"}}
-	agoroutineStacks := [][]loc{[]loc{{8, "main.agoroutine"}}, []loc{{9, "main.agoroutine"}}, []loc{{10, "main.agoroutine"}}}
+	agoroutineStacks := [][]loc{
+		{{8, "main.agoroutine"}},
+		{{9, "main.agoroutine"}},
+		{{10, "main.agoroutine"}},
+	}
 
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
@@ -940,7 +946,7 @@ func TestKill(t *testing.T) {
 		if err := p.Kill(); err != nil {
 			t.Fatal(err)
 		}
-		if p.Exited() != true {
+		if !p.Exited() {
 			t.Fatal("expected process to have exited")
 		}
 		if runtime.GOOS == "linux" {
@@ -954,7 +960,7 @@ func TestKill(t *testing.T) {
 		if err := p.Detach(true); err != nil {
 			t.Fatal(err)
 		}
-		if p.Exited() != true {
+		if !p.Exited() {
 			t.Fatal("expected process to have exited")
 		}
 		if runtime.GOOS == "linux" {
@@ -1789,6 +1795,9 @@ func TestIssue332_Part2(t *testing.T) {
 		pcAfterPrologue, err := proc.FindFunctionLocation(p, "main.changeMe", true, -1)
 		assertNoError(err, t, "FindFunctionLocation()")
 		pcEntry, err := proc.FindFunctionLocation(p, "main.changeMe", false, 0)
+		if err != nil {
+			t.Fatalf("got error while finding function location: %v", err)
+		}
 		if pcAfterPrologue == pcEntry {
 			t.Fatalf("main.changeMe and main.changeMe:0 are the same (%x)", pcAfterPrologue)
 		}
@@ -1891,7 +1900,7 @@ func TestCmdLineArgs(t *testing.T) {
 			t.Fatalf("Process did not exit: %v", err)
 		} else {
 			if exit.Status != 0 {
-				t.Fatalf("process exited with invalid status", exit.Status)
+				t.Fatalf("process exited with invalid status %d", exit.Status)
 			}
 		}
 	}
@@ -2364,7 +2373,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 
 			if oldk, ok := kvals[gid]; ok {
 				if oldk >= k {
-					t.Fatalf("Goroutine %d did not make progress?")
+					t.Fatalf("Goroutine %d did not make progress?", gid)
 				}
 			}
 			kvals[gid] = k
@@ -2752,7 +2761,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 			}
 
 			if !found {
-				t.Log("Truncated stacktrace for %d\n", goid)
+				t.Logf("Truncated stacktrace for %d\n", goid)
 			}
 		}
 	})
@@ -2824,7 +2833,7 @@ func TestAttachDetach(t *testing.T) {
 	assertNoError(err, t, "Page request after detach")
 	bs, err := ioutil.ReadAll(resp.Body)
 	assertNoError(err, t, "Reading /nobp page")
-	if out := string(bs); strings.Index(out, "hello, world!") < 0 {
+	if out := string(bs); !strings.Contains(out, "hello, world!") {
 		t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
 	}
 

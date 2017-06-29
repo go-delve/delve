@@ -15,7 +15,6 @@ import (
 // Client is a RPC service.Client.
 type RPCClient struct {
 	addr       string
-	processPid int
 	client     *rpc.Client
 	haltMu     sync.Mutex
 	haltReq    bool
@@ -301,10 +300,6 @@ func (c *RPCClient) DisassemblePC(scope api.EvalScope, pc uint64, flavour api.As
 	var r api.AsmInstructions
 	err := c.call("Disassemble", DisassembleRequest{scope, pc, 0, flavour}, &r)
 	return r, err
-}
-
-func (c *RPCClient) url(path string) string {
-	return fmt.Sprintf("http://%s%s", c.addr, path)
 }
 
 func (c *RPCClient) call(method string, args, reply interface{}) error {

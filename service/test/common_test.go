@@ -26,7 +26,7 @@ func assertError(err error, t *testing.T, s string) {
 		t.Fatalf("failed assertion at %s:%d: %s (no error)\n", fname, line, s)
 	}
 
-	if strings.Index(err.Error(), "Internal debugger error") >= 0 {
+	if strings.Contains(err.Error(), "Internal debugger error") {
 		_, file, line, _ := runtime.Caller(1)
 		fname := filepath.Base(file)
 		t.Fatalf("failed assertion at %s:%d: %s internal debugger error: %v\n", fname, line, s, err)

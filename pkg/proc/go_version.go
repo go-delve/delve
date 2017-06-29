@@ -78,7 +78,7 @@ func ParseVersionString(ver string) (GoVersion, bool) {
 			r.Major, err1 = strconv.Atoi(v[0])
 			r.Minor, err2 = strconv.Atoi(v[1])
 			r.Rev, err3 = strconv.Atoi(v[2])
-			r.Proposal = v[3];
+			r.Proposal = v[3]
 			if err1 != nil || err2 != nil || err3 != nil || r.Proposal == "" {
 				return GoVersion{}, false
 			}

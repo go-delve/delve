@@ -178,7 +178,7 @@ func parseFuncLocationSpec(in string) *FuncLocationSpec {
 		r := stripReceiverDecoration(v[0])
 		if r != v[0] {
 			spec.ReceiverName = r
-		} else if strings.Index(r, "/") >= 0 {
+		} else if strings.Contains(r, "/") {
 			spec.PackageName = r
 		} else {
 			spec.PackageOrReceiverName = r
@@ -198,7 +198,7 @@ func parseFuncLocationSpec(in string) *FuncLocationSpec {
 		spec.AbsolutePackage = true
 	}
 
-	if strings.Index(spec.BaseName, "/") >= 0 || strings.Index(spec.ReceiverName, "/") >= 0 {
+	if strings.Contains(spec.BaseName, "/") || strings.Contains(spec.ReceiverName, "/") {
 		return nil
 	}
 

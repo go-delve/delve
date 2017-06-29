@@ -33,7 +33,6 @@ func patchPCRel(pc uint64, inst *x86asm.Inst) {
 			inst.Args[i] = x86asm.Imm(int64(pc) + int64(rel) + int64(inst.Len))
 		}
 	}
-	return
 }
 
 func (inst *AsmInstruction) Text(flavour AssemblyFlavour) string {

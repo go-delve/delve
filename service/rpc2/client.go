@@ -14,7 +14,6 @@ import (
 // Client is a RPC service.Client.
 type RPCClient struct {
 	addr       string
-	processPid int
 	client     *rpc.Client
 }
 
@@ -347,10 +346,6 @@ func (c *RPCClient) ClearCheckpoint(id int) error {
 	var out ClearCheckpointOut
 	err := c.call("ClearCheckpoint", ClearCheckpointIn{id}, &out)
 	return err
-}
-
-func (c *RPCClient) url(path string) string {
-	return fmt.Sprintf("http://%s%s", c.addr, path)
 }
 
 func (c *RPCClient) call(method string, args, reply interface{}) error {

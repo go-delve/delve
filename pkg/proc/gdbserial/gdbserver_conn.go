@@ -50,7 +50,6 @@ const (
 )
 
 var ErrTooManyAttempts = errors.New("too many transmit attempts")
-var ErrNoTargetDescrption = errors.New("target description not supported")
 
 // GdbProtocolError is an error response (Exx) of Gdb Remote Serial Protocol
 // or an "unsupported command" response (empty packet).
@@ -526,7 +525,7 @@ func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error)
 	if conn.direction == proc.Forward {
 		conn.outbuf.Reset()
 		if sig == 0 {
-			fmt.Fprintf(&conn.outbuf, "$vCont;c")
+			fmt.Fprint(&conn.outbuf, "$vCont;c")
 		} else {
 			fmt.Fprintf(&conn.outbuf, "$vCont;C%02x", sig)
 		}
@@ -535,7 +534,7 @@ func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error)
 			return "", 0, err
 		}
 		conn.outbuf.Reset()
-		fmt.Fprintf(&conn.outbuf, "$bc")
+		fmt.Fprint(&conn.outbuf, "$bc")
 	}
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
 		return "", 0, err
@@ -561,7 +560,7 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater) (string, uint8, er
 			return "", 0, err
 		}
 		conn.outbuf.Reset()
-		fmt.Fprintf(&conn.outbuf, "$bs")
+		fmt.Fprint(&conn.outbuf, "$bs")
 	}
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
 		return "", 0, err
@@ -698,7 +697,7 @@ func (conn *gdbConn) queryProcessInfo(pid int) (map[string]string, error) {
 	if pid != 0 {
 		fmt.Fprintf(&conn.outbuf, "$qProcessInfoPID:%d", pid)
 	} else {
-		fmt.Fprintf(&conn.outbuf, "$qProcessInfo")
+		fmt.Fprint(&conn.outbuf, "$qProcessInfo")
 	}
 	resp, err := conn.exec(conn.outbuf.Bytes(), "process info for pid")
 	if err != nil {
@@ -886,9 +885,9 @@ func (conn *gdbConn) threadStopInfo(threadID string) (sig uint8, reason string, 
 // restart executes a 'vRun' command.
 func (conn *gdbConn) restart(pos string) error {
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$vRun;")
+	fmt.Fprint(&conn.outbuf, "$vRun;")
 	if pos != "" {
-		fmt.Fprintf(&conn.outbuf, ";")
+		fmt.Fprint(&conn.outbuf, ";")
 		writeAsciiBytes(&conn.outbuf, []byte(pos))
 	}
 	_, err := conn.exec(conn.outbuf.Bytes(), "restart")
@@ -901,9 +900,9 @@ func (conn *gdbConn) qRRCmd(args ...string) (string, error) {
 		panic("must specify at least one argument for qRRCmd")
 	}
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$qRRCmd")
+	fmt.Fprint(&conn.outbuf, "$qRRCmd")
 	for _, arg := range args {
-		fmt.Fprintf(&conn.outbuf, ":")
+		fmt.Fprint(&conn.outbuf, ":")
 		writeAsciiBytes(&conn.outbuf, []byte(arg))
 	}
 	resp, err := conn.exec(conn.outbuf.Bytes(), "qRRCmd")

@@ -404,7 +404,7 @@ func coreCmd(cmd *cobra.Command, args []string) {
 func connectCmd(cmd *cobra.Command, args []string) {
 	addr := args[0]
 	if addr == "" {
-		fmt.Fprintf(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
+		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
 		os.Exit(1)
 	}
 	os.Exit(connect(addr, conf))
@@ -419,8 +419,7 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 
 func connect(addr string, conf *config.Config) int {
 	// Create and start a terminal - attach to running instance
-	var client service.Client
-	client = rpc2.NewClient(addr)
+	client := rpc2.NewClient(addr)
 	term := terminal.New(client, conf)
 	status, err := term.Run()
 	if err != nil {
@@ -447,7 +446,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	defer listener.Close()
 
 	if Headless && (InitFile != "") {
-		fmt.Fprintf(os.Stderr, "Warning: init file ignored\n")
+		fmt.Fprint(os.Stderr, "Warning: init file ignored\n")
 	}
 
 	var server interface {
@@ -498,7 +497,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	if Headless {
 		// Print listener address
 		fmt.Printf("API server listening at: %s\n", listener.Addr())
-		ch := make(chan os.Signal)
+		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT)
 		select {
 		case <-ch:
@@ -507,8 +506,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		err = server.Stop(true)
 	} else {
 		// Create and start a terminal
-		var client service.Client
-		client = rpc2.NewClient(listener.Addr().String())
+		client := rpc2.NewClient(listener.Addr().String())
 		term := terminal.New(client, conf)
 		term.InitFile = InitFile
 		status, err = term.Run()

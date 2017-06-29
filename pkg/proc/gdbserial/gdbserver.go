@@ -739,11 +739,7 @@ func (p *Process) Restart(pos string) error {
 		p.conn.setBreakpoint(addr)
 	}
 
-	if err := p.setCurrentBreakpoints(); err != nil {
-		return err
-	}
-
-	return nil
+	return p.setCurrentBreakpoints()
 }
 
 func (p *Process) When() (string, error) {
@@ -1274,7 +1270,7 @@ func (t *Thread) reloadGAtPC() error {
 	// around by clearing and re-setting the breakpoint in a specific sequence
 	// with the memory writes.
 	// Additionally all breakpoints in [pc, pc+len(movinstr)] need to be removed
-	for addr, _ := range t.p.breakpoints {
+	for addr := range t.p.breakpoints {
 		if addr >= pc && addr <= pc+uint64(len(movinstr)) {
 			err := t.p.conn.clearBreakpoint(addr)
 			if err != nil {
