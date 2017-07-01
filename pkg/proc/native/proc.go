@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"os"
 	"runtime"
 	"sync"
 
@@ -14,9 +13,8 @@ import (
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	bi      proc.BinaryInfo
-	pid     int         // Process Pid
-	Process *os.Process // Pointer to process struct for the actual process we are debugging
+	bi  proc.BinaryInfo
+	pid int // Process Pid
 
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
@@ -371,13 +369,7 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 
 // Returns a new Process struct.
 func initializeDebugProcess(dbp *Process, path string) (*Process, error) {
-	process, err := os.FindProcess(dbp.pid)
-	if err != nil {
-		return nil, err
-	}
-
-	dbp.Process = process
-	err = dbp.LoadInformation(path)
+	err := dbp.LoadInformation(path)
 	if err != nil {
 		return nil, err
 	}
