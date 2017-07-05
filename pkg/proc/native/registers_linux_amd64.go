@@ -1,8 +1,6 @@
 package native
 
 import (
-	"fmt"
-
 	"golang.org/x/arch/x86/x86asm"
 	sys "golang.org/x/sys/unix"
 
@@ -273,27 +271,6 @@ func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 	return r, nil
 }
 
-// tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
-type PtraceFpRegs struct {
-	Cwd      uint16
-	Swd      uint16
-	Ftw      uint16
-	Fop      uint16
-	Rip      uint64
-	Rdp      uint64
-	Mxcsr    uint32
-	MxcrMask uint32
-	StSpace  [32]uint32
-	XmmSpace [256]byte
-	padding  [24]uint32
-}
-
-type PtraceXsave struct {
-	PtraceFpRegs
-	AvxState bool // contains AVX state
-	YmmSpace [256]byte
-}
-
 const (
 	_X86_XSTATE_MAX_SIZE = 2688
 	_NT_X86_XSTATE       = 0x202
@@ -305,31 +282,8 @@ const (
 )
 
 func (thread *Thread) fpRegisters() (regs []proc.Register, err error) {
-	var fpregs PtraceXsave
+	var fpregs proc.LinuxX86Xstate
 	thread.dbp.execPtraceFunc(func() { fpregs, err = PtraceGetRegset(thread.ID) })
-
-	// x87 registers
-	regs = proc.AppendWordReg(regs, "CW", fpregs.Cwd)
-	regs = proc.AppendWordReg(regs, "SW", fpregs.Swd)
-	regs = proc.AppendWordReg(regs, "TW", fpregs.Ftw)
-	regs = proc.AppendWordReg(regs, "FOP", fpregs.Fop)
-	regs = proc.AppendQwordReg(regs, "FIP", fpregs.Rip)
-	regs = proc.AppendQwordReg(regs, "FDP", fpregs.Rdp)
-
-	for i := 0; i < len(fpregs.StSpace); i += 4 {
-		regs = proc.AppendX87Reg(regs, i/4, uint16(fpregs.StSpace[i+2]), uint64(fpregs.StSpace[i+1])<<32|uint64(fpregs.StSpace[i]))
-	}
-
-	// SSE registers
-	regs = proc.AppendMxcsrReg(regs, "MXCSR", uint64(fpregs.Mxcsr))
-	regs = proc.AppendDwordReg(regs, "MXCSR_MASK", fpregs.MxcrMask)
-
-	for i := 0; i < len(fpregs.XmmSpace); i += 16 {
-		regs = proc.AppendSSEReg(regs, fmt.Sprintf("XMM%d", i/16), fpregs.XmmSpace[i:i+16])
-		if fpregs.AvxState {
-			regs = proc.AppendSSEReg(regs, fmt.Sprintf("YMM%d", i/16), fpregs.YmmSpace[i:i+16])
-		}
-	}
-
+	regs = fpregs.Decode()
 	return
 }
