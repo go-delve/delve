@@ -2934,3 +2934,23 @@ func TestRecursiveNext(t *testing.T) {
 		}
 	})
 }
+
+// TestIssue877 ensures that the environment variables starting with DYLD_ and LD_
+// are passed when executing the binary on OSX via debugserver
+func TestIssue877(t *testing.T) {
+	if runtime.GOOS != "darwin" && testBackend == "lldb" {
+		return
+	}
+	const envval = "/usr/local/lib"
+	os.Setenv("DYLD_LIBRARY_PATH", envval)
+	withTestProcess("issue877", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		v, err := evalVariable(p, "dyldenv")
+		assertNoError(err, t, "EvalVariable()")
+		vv := constant.StringVal(v.Value)
+		t.Logf("v = %q", vv)
+		if vv != envval {
+			t.Fatalf("value of v is %q (expected %q)", vv, envval)
+		}
+	})
+}
