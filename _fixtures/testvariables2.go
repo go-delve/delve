@@ -163,6 +163,8 @@ func main() {
 	var err1 error = c1.sa[0]
 	var err2 error = c1.pb
 	var errnil error = nil
+	var psa *astruct = nil
+	var errtypednil error = psa
 	var iface1 interface{} = c1.sa[0]
 	var iface2 interface{} = "test"
 	var iface3 interface{} = map[string]constant.Value{}
@@ -237,5 +239,5 @@ func main() {
 	}
 
 	runtime.Breakpoint()
-	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, errtypednil)
 }

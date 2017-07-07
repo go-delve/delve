@@ -947,7 +947,7 @@ func (v *Variable) isNil() bool {
 	case reflect.Ptr:
 		return v.Children[0].Addr == 0
 	case reflect.Interface:
-		return false
+		return v.Children[0].Addr == 0 && v.Children[0].Kind == reflect.Invalid
 	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
 		return v.Base == 0
 	}
