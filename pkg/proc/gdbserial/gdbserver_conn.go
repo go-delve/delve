@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/derekparker/delve/pkg/proc"
@@ -23,8 +24,9 @@ type gdbConn struct {
 	inbuf  []byte
 	outbuf bytes.Buffer
 
-	running    bool
-	resumeChan chan<- struct{}
+	manualStopMutex sync.Mutex
+	running         bool
+	resumeChan      chan<- struct{}
 
 	direction proc.Direction // direction of execution
 
@@ -536,12 +538,17 @@ func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error)
 		conn.outbuf.Reset()
 		fmt.Fprint(&conn.outbuf, "$bc")
 	}
+	conn.manualStopMutex.Lock()
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
+		conn.manualStopMutex.Unlock()
 		return "", 0, err
 	}
 	conn.running = true
+	conn.manualStopMutex.Unlock()
 	defer func() {
+		conn.manualStopMutex.Lock()
 		conn.running = false
+		conn.manualStopMutex.Unlock()
 	}()
 	if conn.resumeChan != nil {
 		close(conn.resumeChan)
@@ -568,7 +575,11 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater) (string, uint8, er
 	return conn.waitForvContStop("singlestep", threadID, tu)
 }
 
+var threadBlockedError = errors.New("thread blocked")
+
 func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threadUpdater) (string, uint8, error) {
+	count := 0
+	failed := false
 	for {
 		conn.conn.SetReadDeadline(time.Now().Add(heartbeatInterval))
 		resp, err := conn.recv(nil, context)
@@ -581,6 +592,13 @@ func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threa
 			if conn.isDebugserver {
 				conn.send([]byte("$?"))
 			}
+			if count > 1 && context == "singlestep" {
+				failed = true
+				conn.sendCtrlC()
+			}
+			count++
+		} else if failed {
+			return "", 0, threadBlockedError
 		} else if err != nil {
 			return "", 0, err
 		} else {

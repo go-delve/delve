@@ -44,6 +44,7 @@ type Process struct {
 	ptraceChan                  chan func()
 	ptraceDoneChan              chan interface{}
 	childProcess                bool // this process was launched, not attached to
+	manualStopRequested         bool
 }
 
 // New returns an initialized Process struct. Before returning,
@@ -179,8 +180,17 @@ func (dbp *Process) RequestManualStop() error {
 	}
 	dbp.haltMu.Lock()
 	defer dbp.haltMu.Unlock()
+	dbp.manualStopRequested = true
 	dbp.halt = true
 	return dbp.requestManualStop()
+}
+
+func (dbp *Process) ManualStopRequested() bool {
+	dbp.haltMu.Lock()
+	msr := dbp.manualStopRequested
+	dbp.manualStopRequested = false
+	dbp.haltMu.Unlock()
+	return msr
 }
 
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
