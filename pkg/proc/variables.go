@@ -650,18 +650,14 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 }
 
 func (scope *EvalScope) packageVarAddr(name string) (*Variable, error) {
-	reader := scope.DwarfReader()
-	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
-		if err != nil {
-			return nil, err
-		}
-
-		n, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok {
-			continue
-		}
-
+	for n, off := range scope.BinInfo.packageVars {
 		if n == name || strings.HasSuffix(n, "/"+name) {
+			reader := scope.DwarfReader()
+			reader.Seek(off)
+			entry, err := reader.Next()
+			if err != nil {
+				return nil, err
+			}
 			return scope.extractVarInfoFromEntry(entry, reader)
 		}
 	}
