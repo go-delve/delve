@@ -2,10 +2,13 @@
 UNAME=$(shell uname)
 PREFIX=github.com/derekparker/delve
 GOVERSION=$(shell go version)
+BUILD_SHA=$(shell git rev-parse HEAD)
 LLDB_SERVER=$(shell which lldb-server)
 
 ifeq "$(UNAME)" "Darwin"
-    BUILD_FLAGS=-ldflags="-s"
+    BUILD_FLAGS=-ldflags="-s -X main.Build=$(BUILD_SHA)"
+else
+    BUILD_FLAGS=-ldflags="-X main.Build=$(BUILD_SHA)"
 endif
 
 # Workaround for GO15VENDOREXPERIMENT bug (https://github.com/golang/go/issues/11659)
