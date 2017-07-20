@@ -9,6 +9,8 @@ import (
 var Build string
 
 func main() {
-	version.DelveVersion.Build = Build
+	if Build != "" {
+		version.DelveVersion.Build = Build
+	}
 	cmds.New(false).Execute()
 }
