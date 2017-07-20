@@ -327,63 +327,66 @@ func (ale AmbiguousLocationError) Error() string {
 }
 
 func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
-	funcs := d.target.BinInfo().Funcs()
-	files := d.target.BinInfo().Sources()
-
-	candidates := []string{}
-	for file := range files {
+	limit := maxFindLocationCandidates
+	var candidateFiles []string
+	for file := range d.target.BinInfo().Sources() {
 		if loc.FileMatch(file) {
-			candidates = append(candidates, file)
-			if len(candidates) >= maxFindLocationCandidates {
+			candidateFiles = append(candidateFiles, file)
+			if len(candidateFiles) >= limit {
 				break
 			}
 		}
 	}
 
+	limit -= len(candidateFiles)
+
+	var candidateFuncs []string
 	if loc.FuncBase != nil {
-		for _, f := range funcs {
+		for _, f := range d.target.BinInfo().Funcs() {
 			if f.Sym == nil {
 				continue
 			}
-			if loc.FuncBase.Match(f.Sym) {
-				if loc.Base == f.Name {
-					// if an exact match for the function name is found use it
-					candidates = []string{f.Name}
-					break
-				}
-				if len(candidates) < maxFindLocationCandidates {
-					candidates = append(candidates, f.Name)
-				}
+			if !loc.FuncBase.Match(f.Sym) {
+				continue
+			}
+			if loc.Base == f.Name {
+				// if an exact match for the function name is found use it
+				candidateFuncs = []string{f.Name}
+				break
+			}
+			candidateFuncs = append(candidateFuncs, f.Name)
+			if len(candidateFuncs) >= limit {
+				break
 			}
 		}
 	}
 
-	switch len(candidates) {
-	case 1:
-		var addr uint64
-		var err error
-		if filepath.IsAbs(candidates[0]) {
-			if loc.LineOffset < 0 {
-				return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
-			}
-			addr, err = proc.FindFileLocation(d.target, candidates[0], loc.LineOffset)
+	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 {
+		return nil, fmt.Errorf("Location %q not found", locStr)
+	} else if matching > 1 {
+		return nil, AmbiguousLocationError{Location: locStr, CandidatesString: append(candidateFiles, candidateFuncs...)}
+	}
+
+	// len(candidateFiles) + len(candidateFuncs) == 1
+	var addr uint64
+	var err error
+	if len(candidateFiles) == 1 {
+		if loc.LineOffset < 0 {
+			return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
+		}
+		addr, err = proc.FindFileLocation(d.target, candidateFiles[0], loc.LineOffset)
+	} else { // len(candidateFUncs) == 1
+		if loc.LineOffset < 0 {
+			addr, err = proc.FindFunctionLocation(d.target, candidateFuncs[0], true, 0)
 		} else {
-			if loc.LineOffset < 0 {
-				addr, err = proc.FindFunctionLocation(d.target, candidates[0], true, 0)
-			} else {
-				addr, err = proc.FindFunctionLocation(d.target, candidates[0], false, loc.LineOffset)
-			}
+			addr, err = proc.FindFunctionLocation(d.target, candidateFuncs[0], false, loc.LineOffset)
 		}
-		if err != nil {
-			return nil, err
-		}
-		return []api.Location{{PC: addr}}, nil
-
-	case 0:
-		return nil, fmt.Errorf("Location \"%s\" not found", locStr)
-	default:
-		return nil, AmbiguousLocationError{Location: locStr, CandidatesString: candidates}
 	}
+
+	if err != nil {
+		return nil, err
+	}
+	return []api.Location{{PC: addr}}, nil
 }
 
 func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
