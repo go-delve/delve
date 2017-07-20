@@ -132,6 +132,7 @@ func (v sortFunctionsDebugInfoByLowpc) Swap(i, j int) {
 func (bi *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
 	defer wg.Done()
 	bi.types = make(map[string]dwarf.Offset)
+	bi.packageVars = make(map[string]dwarf.Offset)
 	bi.functions = []functionDebugInfo{}
 	reader := bi.DwarfReader()
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
@@ -140,23 +141,23 @@ func (bi *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
 		}
 		switch entry.Tag {
 		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
-			name, ok := entry.Val(dwarf.AttrName).(string)
-			if !ok {
-				continue
+			if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+				if _, exists := bi.types[name]; !exists {
+					bi.types[name] = entry.Offset
+				}
 			}
-			if _, exists := bi.types[name]; !exists {
-				bi.types[name] = entry.Offset
+			reader.SkipChildren()
+		case dwarf.TagVariable:
+			if n, ok := entry.Val(dwarf.AttrName).(string); ok {
+				bi.packageVars[n] = entry.Offset
 			}
 		case dwarf.TagSubprogram:
-			lowpc, ok := entry.Val(dwarf.AttrLowpc).(uint64)
-			if !ok {
-				continue
+			lowpc, ok1 := entry.Val(dwarf.AttrLowpc).(uint64)
+			highpc, ok2 := entry.Val(dwarf.AttrHighpc).(uint64)
+			if ok1 && ok2 {
+				bi.functions = append(bi.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
 			}
-			highpc, ok := entry.Val(dwarf.AttrHighpc).(uint64)
-			if !ok {
-				continue
-			}
-			bi.functions = append(bi.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
+			reader.SkipChildren()
 		}
 	}
 	sort.Sort(sortFunctionsDebugInfoByLowpc(bi.functions))

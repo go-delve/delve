@@ -334,6 +334,20 @@ const debugserverExecutable = "/Library/Developer/CommandLineTools/Library/Priva
 
 var ErrUnsupportedOS = errors.New("lldb backend not supported on windows")
 
+func getLdEnvVars() []string {
+	var result []string
+
+	environ := os.Environ()
+	for i := 0; i < len(environ); i++ {
+		if strings.HasPrefix(environ[i], "LD_") ||
+			strings.HasPrefix(environ[i], "DYLD_") {
+			result = append(result, "-e", environ[i])
+		}
+	}
+
+	return result
+}
+
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
@@ -358,7 +372,9 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		if err != nil {
 			return nil, err
 		}
-		args := make([]string, 0, len(cmd)+4)
+		ldEnvVars := getLdEnvVars()
+		args := make([]string, 0, len(cmd)+4+len(ldEnvVars))
+		args = append(args, ldEnvVars...)
 		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--")
 		args = append(args, cmd...)
 

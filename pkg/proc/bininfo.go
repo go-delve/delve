@@ -34,6 +34,7 @@ type BinaryInfo struct {
 	lineInfo      line.DebugLines
 	goSymTable    *gosym.Table
 	types         map[string]dwarf.Offset
+	packageVars   map[string]dwarf.Offset
 	functions     []functionDebugInfo
 	gStructOffset uint64
 
