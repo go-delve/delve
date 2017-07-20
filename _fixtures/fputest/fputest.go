@@ -1,6 +1,9 @@
 package main
 
-import "runtime"
+import (
+	"os"
+	"runtime"
+)
 
 func fputestsetup(f64a, f64b, f64c, f64d float64, f32a, f32b, f32c, f32d float32)
 
@@ -15,5 +18,9 @@ func main() {
 	var f32d float32 = 1.8
 
 	fputestsetup(f64a, f64b, f64c, f64d, f32a, f32b, f32c, f32d)
-	runtime.Breakpoint()
+	if len(os.Args) < 2 || os.Args[1] != "panic" {
+		runtime.Breakpoint()
+	} else {
+		panic("booom!")
+	}
 }

@@ -145,14 +145,15 @@ type Process struct {
 	bi                proc.BinaryInfo
 	core              *Core
 	breakpoints       map[uint64]*proc.Breakpoint
-	currentThread     *LinuxPrStatus
+	currentThread     *Thread
 	selectedGoroutine *proc.G
 	allGCache         []*proc.G
 }
 
 type Thread struct {
-	th *LinuxPrStatus
-	p  *Process
+	th     *LinuxPrStatus
+	fpregs []proc.Register
+	p      *Process
 }
 
 var ErrWriteCore = errors.New("can not to core process")
@@ -168,6 +169,9 @@ func OpenCore(corePath, exePath string) (*Process, error) {
 		core:        core,
 		breakpoints: make(map[uint64]*proc.Breakpoint),
 		bi:          proc.NewBinaryInfo("linux", "amd64"),
+	}
+	for _, thread := range core.Threads {
+		thread.p = p
 	}
 
 	var wg sync.WaitGroup
@@ -221,8 +225,11 @@ func (t *Thread) ThreadID() int {
 }
 
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
-	//TODO(aarzilli): handle floating point registers
-	return &t.th.Reg, nil
+	r := &Registers{&t.th.Reg, nil}
+	if floatingPoint {
+		r.fpregs = t.fpregs
+	}
+	return r, nil
 }
 
 func (t *Thread) Arch() proc.Arch {
@@ -274,7 +281,7 @@ func (p *Process) ManualStopRequested() bool {
 }
 
 func (p *Process) CurrentThread() proc.Thread {
-	return &Thread{p.currentThread, p}
+	return p.currentThread
 }
 
 func (p *Process) Detach(bool) error {
@@ -340,12 +347,62 @@ func (p *Process) SwitchThread(tid int) error {
 func (p *Process) ThreadList() []proc.Thread {
 	r := make([]proc.Thread, 0, len(p.core.Threads))
 	for _, v := range p.core.Threads {
-		r = append(r, &Thread{v, p})
+		r = append(r, v)
 	}
 	return r
 }
 
 func (p *Process) FindThread(threadID int) (proc.Thread, bool) {
 	t, ok := p.core.Threads[threadID]
-	return &Thread{t, p}, ok
+	return t, ok
+}
+
+type Registers struct {
+	*LinuxCoreRegisters
+	fpregs []proc.Register
+}
+
+func (r *Registers) Slice() []proc.Register {
+	var regs = []struct {
+		k string
+		v uint64
+	}{
+		{"Rip", r.Rip},
+		{"Rsp", r.Rsp},
+		{"Rax", r.Rax},
+		{"Rbx", r.Rbx},
+		{"Rcx", r.Rcx},
+		{"Rdx", r.Rdx},
+		{"Rdi", r.Rdi},
+		{"Rsi", r.Rsi},
+		{"Rbp", r.Rbp},
+		{"R8", r.R8},
+		{"R9", r.R9},
+		{"R10", r.R10},
+		{"R11", r.R11},
+		{"R12", r.R12},
+		{"R13", r.R13},
+		{"R14", r.R14},
+		{"R15", r.R15},
+		{"Orig_rax", r.Orig_rax},
+		{"Cs", r.Cs},
+		{"Eflags", r.Eflags},
+		{"Ss", r.Ss},
+		{"Fs_base", r.Fs_base},
+		{"Gs_base", r.Gs_base},
+		{"Ds", r.Ds},
+		{"Es", r.Es},
+		{"Fs", r.Fs},
+		{"Gs", r.Gs},
+	}
+	out := make([]proc.Register, 0, len(regs))
+	for _, reg := range regs {
+		if reg.k == "Eflags" {
+			out = proc.AppendEflagReg(out, reg.k, reg.v)
+		} else {
+			out = proc.AppendQwordReg(out, reg.k, reg.v)
+		}
+	}
+	out = append(out, r.fpregs...)
+	return out
 }

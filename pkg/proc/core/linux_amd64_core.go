@@ -54,7 +54,8 @@ type LinuxCoreTimeval struct {
 	Usec int64
 }
 
-const NT_FILE elf.NType = 0x46494c45 // "FILE".
+const NT_FILE elf.NType = 0x46494c45  // "FILE".
+const NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAVE area.
 
 func (r *LinuxCoreRegisters) PC() uint64 {
 	return r.Rip
@@ -241,50 +242,6 @@ func (r *LinuxCoreRegisters) SetPC(proc.Thread, uint64) error {
 	return errors.New("not supported")
 }
 
-func (r *LinuxCoreRegisters) Slice() []proc.Register {
-	var regs = []struct {
-		k string
-		v uint64
-	}{
-		{"Rip", r.Rip},
-		{"Rsp", r.Rsp},
-		{"Rax", r.Rax},
-		{"Rbx", r.Rbx},
-		{"Rcx", r.Rcx},
-		{"Rdx", r.Rdx},
-		{"Rdi", r.Rdi},
-		{"Rsi", r.Rsi},
-		{"Rbp", r.Rbp},
-		{"R8", r.R8},
-		{"R9", r.R9},
-		{"R10", r.R10},
-		{"R11", r.R11},
-		{"R12", r.R12},
-		{"R13", r.R13},
-		{"R14", r.R14},
-		{"R15", r.R15},
-		{"Orig_rax", r.Orig_rax},
-		{"Cs", r.Cs},
-		{"Eflags", r.Eflags},
-		{"Ss", r.Ss},
-		{"Fs_base", r.Fs_base},
-		{"Gs_base", r.Gs_base},
-		{"Ds", r.Ds},
-		{"Es", r.Es},
-		{"Fs", r.Fs},
-		{"Gs", r.Gs},
-	}
-	out := make([]proc.Register, 0, len(regs))
-	for _, reg := range regs {
-		if reg.k == "Eflags" {
-			out = proc.AppendEflagReg(out, reg.k, reg.v)
-		} else {
-			out = proc.AppendQwordReg(out, reg.k, reg.v)
-		}
-	}
-	return out
-}
-
 // readCore reads a core file from corePath corresponding to the executable at
 // exePath. For details on the Linux ELF core format, see:
 // http://www.gabriel.urdhr.fr/2015/05/29/core-file/,
@@ -292,7 +249,7 @@ func (r *LinuxCoreRegisters) Slice() []proc.Register {
 // elf_core_dump in http://lxr.free-electrons.com/source/fs/binfmt_elf.c,
 // and, if absolutely desperate, readelf.c from the binutils source.
 func readCore(corePath, exePath string) (*Core, error) {
-	core, err := elf.Open(corePath)
+	coreFile, err := elf.Open(corePath)
 	if err != nil {
 		return nil, err
 	}
@@ -301,37 +258,42 @@ func readCore(corePath, exePath string) (*Core, error) {
 		return nil, err
 	}
 
-	if core.Type != elf.ET_CORE {
-		return nil, fmt.Errorf("%v is not a core file", core)
+	if coreFile.Type != elf.ET_CORE {
+		return nil, fmt.Errorf("%v is not a core file", coreFile)
 	}
 
-	notes, err := readNotes(core)
+	notes, err := readNotes(coreFile)
 	if err != nil {
 		return nil, err
 	}
-	memory := buildMemory(core, exe, notes)
+	memory := buildMemory(coreFile, exe, notes)
 
-	threads := map[int]*LinuxPrStatus{}
-	pid := 0
+	core := &Core{
+		MemoryReader: memory,
+		Threads:      map[int]*Thread{},
+	}
+
+	var lastThread *Thread
 	for _, note := range notes {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
 			t := note.Desc.(*LinuxPrStatus)
-			threads[int(t.Pid)] = t
+			lastThread = &Thread{t, nil, nil}
+			core.Threads[int(t.Pid)] = lastThread
+		case NT_X86_XSTATE:
+			if lastThread != nil {
+				lastThread.fpregs = note.Desc.(*proc.LinuxX86Xstate).Decode()
+			}
 		case elf.NT_PRPSINFO:
-			pid = int(note.Desc.(*LinuxPrPsInfo).Pid)
+			core.Pid = int(note.Desc.(*LinuxPrPsInfo).Pid)
 		}
 	}
-	return &Core{
-		MemoryReader: memory,
-		Threads:      threads,
-		Pid:          pid,
-	}, nil
+	return core, nil
 }
 
 type Core struct {
 	proc.MemoryReader
-	Threads map[int]*LinuxPrStatus
+	Threads map[int]*Thread
 	Pid     int
 }
 
@@ -341,7 +303,7 @@ type Core struct {
 // - NT_PRPSINFO: Information about a process, including PID and signal. Desc is a LinuxPrPsInfo.
 // - NT_PRSTATUS: Information about a thread, including base registers, state, etc. Desc is a LinuxPrStatus.
 // - NT_FPREGSET (Not implemented): x87 floating point registers.
-// - NT_X86_XSTATE (Not implemented): Other registers, including AVX and such.
+// - NT_X86_XSTATE: Other registers, including AVX and such.
 type Note struct {
 	Type elf.NType
 	Name string
@@ -428,6 +390,12 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 			data.entries = append(data.entries, entry)
 		}
 		note.Desc = data
+	case NT_X86_XSTATE:
+		var fpregs proc.LinuxX86Xstate
+		if err := proc.LinuxX86XstateRead(desc, true, &fpregs); err != nil {
+			return nil, err
+		}
+		note.Desc = &fpregs
 	}
 	if err := skipPadding(r, 4); err != nil {
 		return nil, fmt.Errorf("aligning after desc: %v", err)
