@@ -4,7 +4,6 @@ import (
 	"debug/gosym"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"go/ast"
 	"go/token"
 	"path/filepath"
@@ -127,12 +126,6 @@ func next(dbp Process, stepInto bool) error {
 	text, err := disassemble(thread, regs, dbp.Breakpoints(), dbp.BinInfo(), topframe.FDE.Begin(), topframe.FDE.End())
 	if err != nil && stepInto {
 		return err
-	}
-
-	for i := range text {
-		if text[i].Inst == nil {
-			fmt.Printf("error at instruction %d\n", i)
-		}
 	}
 
 	sameGCond := SameGoroutineCondition(selg)
