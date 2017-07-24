@@ -80,12 +80,8 @@ func Next(dbp Process) (err error) {
 	}
 
 	if err = next(dbp, false); err != nil {
-		switch err.(type) {
-		case ThreadBlockedError, NoReturnAddr: // Noop
-		default:
-			dbp.ClearInternalBreakpoints()
-			return
-		}
+		dbp.ClearInternalBreakpoints()
+		return
 	}
 
 	return Continue(dbp)

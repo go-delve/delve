@@ -2969,6 +2969,9 @@ func TestIssue893(t *testing.T) {
 		if _, ok := err.(*frame.NoFDEForPCError); ok {
 			return
 		}
+		if _, ok := err.(proc.ThreadBlockedError); ok {
+			return
+		}
 		assertNoError(err, t, "Next")
 	})
 }
