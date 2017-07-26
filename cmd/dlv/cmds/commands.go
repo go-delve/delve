@@ -383,7 +383,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		defer os.Remove("./" + testdebugname)
 		processArgs := append([]string{"./" + testdebugname}, targetArgs...)
 
-		return execute(0, processArgs, conf, "", executingOther)
+		return execute(0, processArgs, conf, "", executingGeneratedTest)
 	}()
 	os.Exit(status)
 }
@@ -433,6 +433,7 @@ type executeKind int
 const (
 	executingExistingFile = executeKind(iota)
 	executingGeneratedFile
+	executingGeneratedTest
 	executingOther
 )
 
@@ -507,6 +508,13 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	} else {
 		// Create and start a terminal
 		client := rpc2.NewClient(listener.Addr().String())
+		if client.Recorded() && (kind == executingGeneratedFile || kind == executingGeneratedTest) {
+			// When using the rr backend remove the trace directory if we built the
+			// executable
+			if tracedir, err := client.TraceDirectory(); err == nil {
+				defer SafeRemoveAll(tracedir)
+			}
+		}
 		term := terminal.New(client, conf)
 		term.InitFile = InitFile
 		status, err = term.Run()
@@ -600,4 +608,29 @@ func splitQuotedFields(in string) []string {
 	}
 
 	return r
+}
+
+// SafeRemoveAll removes dir and its contents but only as long as dir does
+// not contain directories.
+func SafeRemoveAll(dir string) {
+	dh, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer dh.Close()
+	fis, err := dh.Readdir(-1)
+	if err != nil {
+		return
+	}
+	for _, fi := range fis {
+		if fi.IsDir() {
+			return
+		}
+	}
+	for _, fi := range fis {
+		if err := os.Remove(filepath.Join(dir, fi.Name())); err != nil {
+			return
+		}
+	}
+	os.Remove(dir)
 }
