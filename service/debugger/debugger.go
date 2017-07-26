@@ -457,8 +457,9 @@ func (d *Debugger) Threads() ([]*api.Thread, error) {
 	defer d.processMutex.Unlock()
 
 	if d.target.Exited() {
-		return nil, &proc.ProcessExitedError{}
+		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
 	}
+
 	threads := []*api.Thread{}
 	for _, th := range d.target.ThreadList() {
 		threads = append(threads, api.ConvertThread(th))
@@ -472,7 +473,7 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 	defer d.processMutex.Unlock()
 
 	if d.target.Exited() {
-		return nil, &proc.ProcessExitedError{}
+		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
 	}
 
 	for _, th := range d.target.ThreadList() {
@@ -838,6 +839,10 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]a
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
+	if d.target.Exited() {
+		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
+	}
+
 	var rawlocs []proc.Stackframe
 
 	g, err := proc.FindGoroutine(d.target, goroutineID)
@@ -893,6 +898,10 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
+	if d.target.Exited() {
+		return nil, &proc.ProcessExitedError{Pid: d.target.Pid()}
+	}
+
 	loc, err := parseLocationSpec(locStr)
 	if err != nil {
 		return nil, err
@@ -910,11 +919,15 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 	return locs, err
 }
 
-// Disassembles code between startPC and endPC
+// Disassemble code between startPC and endPC
 // if endPC == 0 it will find the function containing startPC and disassemble the whole function
 func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
+
+	if d.target.Exited() {
+		return nil, &proc.ProcessExitedError{Pid: d.target.Pid()}
+	}
 
 	if endPC == 0 {
 		_, _, fn := d.target.BinInfo().PCToLine(startPC)

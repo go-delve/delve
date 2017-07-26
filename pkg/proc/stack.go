@@ -42,7 +42,7 @@ type Stackframe struct {
 	Err error
 }
 
-// Stacktrace returns the stack trace for thread.
+// ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
 func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 	regs, err := thread.Registers(false)
