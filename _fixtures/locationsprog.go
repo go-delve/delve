@@ -36,3 +36,13 @@ func main() {
 	anotherFunction()
 	ioutil.ReadFile("nonexistent.file.txt")
 }
+
+var amap map[string]func()
+
+func init() {
+	amap = map[string]func(){
+		"k": func() {
+			fmt.Printf("hello world")
+		},
+	}
+}

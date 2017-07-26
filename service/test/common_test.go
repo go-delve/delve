@@ -94,7 +94,7 @@ func findLocationHelper(t *testing.T, c LocationFinder, loc string, shouldErr bo
 	}
 
 	if checkAddr != 0 && checkAddr != locs[0].PC {
-		t.Fatalf("Wrong address returned for location <%s> (got %v, epected %v)", loc, locs[0].PC, checkAddr)
+		t.Fatalf("Wrong address returned for location <%s> (got %#x, epected %#x)", loc, locs[0].PC, checkAddr)
 	}
 
 	addrs := make([]uint64, len(locs))
