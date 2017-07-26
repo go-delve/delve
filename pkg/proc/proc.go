@@ -71,7 +71,7 @@ func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset
 // Next continues execution until the next source line.
 func Next(dbp Process) (err error) {
 	if dbp.Exited() {
-		return &ProcessExitedError{}
+		return &ProcessExitedError{Pid: dbp.Pid()}
 	}
 	for _, bp := range dbp.Breakpoints() {
 		if bp.Internal() {
@@ -91,6 +91,9 @@ func Next(dbp Process) (err error) {
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
 func Continue(dbp Process) error {
+	if dbp.Exited() {
+		return &ProcessExitedError{Pid: dbp.Pid()}
+	}
 	dbp.ManualStopRequested()
 	for {
 		if dbp.ManualStopRequested() {
@@ -213,7 +216,7 @@ func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
 // Will step into functions.
 func Step(dbp Process) (err error) {
 	if dbp.Exited() {
-		return &ProcessExitedError{}
+		return &ProcessExitedError{Pid: dbp.Pid()}
 	}
 	for _, bp := range dbp.Breakpoints() {
 		if bp.Internal() {
@@ -277,6 +280,9 @@ func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
 func StepOut(dbp Process) error {
+	if dbp.Exited() {
+		return &ProcessExitedError{Pid: dbp.Pid()}
+	}
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 
@@ -349,7 +355,7 @@ type AllGCache interface {
 // Delve cares about from the internal runtime G structure.
 func GoroutinesInfo(dbp Process) ([]*G, error) {
 	if dbp.Exited() {
-		return nil, &ProcessExitedError{}
+		return nil, &ProcessExitedError{Pid: dbp.Pid()}
 	}
 	if dbp, ok := dbp.(AllGCache); ok {
 		if allGCache := dbp.AllGCache(); *allGCache != nil {
@@ -453,6 +459,9 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
+	if dbp.Exited() {
+		return nil, &ProcessExitedError{Pid: dbp.Pid()}
+	}
 	ct := dbp.CurrentThread()
 	g, err := FindGoroutine(dbp, gid)
 	if err != nil {

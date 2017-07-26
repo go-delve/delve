@@ -173,7 +173,7 @@ func (dbp *Process) LoadInformation(path string) error {
 // sends SIGSTOP to all threads.
 func (dbp *Process) RequestManualStop() error {
 	if dbp.exited {
-		return &proc.ProcessExitedError{}
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 	dbp.haltMu.Lock()
 	defer dbp.haltMu.Unlock()
@@ -241,7 +241,7 @@ func (dbp *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond as
 // ClearBreakpoint clears the breakpoint at addr.
 func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	if dbp.exited {
-		return nil, &proc.ProcessExitedError{}
+		return nil, &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 	bp, ok := dbp.FindBreakpoint(addr)
 	if !ok {
@@ -259,7 +259,7 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 
 func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	if dbp.exited {
-		return nil, &proc.ProcessExitedError{}
+		return nil, &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 
 	if err := dbp.resume(); err != nil {
@@ -307,7 +307,7 @@ func (dbp *Process) StepInstruction() (err error) {
 	}
 	dbp.allGCache = nil
 	if dbp.exited {
-		return &proc.ProcessExitedError{}
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 	thread.clearBreakpointState()
 	err = thread.StepInstruction()
@@ -327,7 +327,7 @@ func (dbp *Process) StepInstruction() (err error) {
 // SwitchThread changes from current thread to the thread specified by `tid`.
 func (dbp *Process) SwitchThread(tid int) error {
 	if dbp.exited {
-		return &proc.ProcessExitedError{}
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 	if th, ok := dbp.threads[tid]; ok {
 		dbp.currentThread = th
@@ -341,7 +341,7 @@ func (dbp *Process) SwitchThread(tid int) error {
 // running the specified goroutine.
 func (dbp *Process) SwitchGoroutine(gid int) error {
 	if dbp.exited {
-		return &proc.ProcessExitedError{}
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 	g, err := proc.FindGoroutine(dbp, gid)
 	if err != nil {
@@ -361,7 +361,7 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 // Halt stops all threads.
 func (dbp *Process) Halt() (err error) {
 	if dbp.exited {
-		return &proc.ProcessExitedError{}
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 	for _, th := range dbp.threads {
 		if err := th.Halt(); err != nil {

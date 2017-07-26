@@ -21,6 +21,9 @@ const (
 // If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble will evaluate the argument of the CALL instruction using the thread's registers
 // Be aware that the Bytes field of each returned instruction is a slice of a larger array of size endPC - startPC
 func Disassemble(dbp Process, g *G, startPC, endPC uint64) ([]AsmInstruction, error) {
+	if dbp.Exited() {
+		return nil, &ProcessExitedError{Pid: dbp.Pid()}
+	}
 	if g == nil {
 		ct := dbp.CurrentThread()
 		regs, _ := ct.Registers(false)
