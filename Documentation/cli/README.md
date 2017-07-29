@@ -11,6 +11,7 @@ Command | Description
 [clear-checkpoint](#clear-checkpoint) | Deletes checkpoint.
 [clearall](#clearall) | Deletes multiple breakpoints.
 [condition](#condition) | Set breakpoint condition.
+[config](#config) | Changes configuration parameters.
 [continue](#continue) | Run until breakpoint or program termination.
 [disassemble](#disassemble) | Disassembler.
 [exit](#exit) | Exit the debugger.
@@ -104,6 +105,32 @@ Set breakpoint condition.
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.
 
 Aliases: cond
+
+## config
+Changes configuration parameters.
+		
+	config -list
+	
+Show all configuration parameters.
+
+	config -save
+
+Saves the configuration file to disk, overwriting the current configuration file.
+
+	config <parameter> <value>
+	
+Changes the value of a configuration parameter.
+
+	config subistitute-path <from> <to>
+	config subistitute-path <from>
+	
+Adds or removes a path subistitution rule.
+
+	config alias <command> <alias>
+	config alias <alias>
+	
+Defines <alias> as an alias to <command> or removes an alias.
+
 
 ## continue
 Run until breakpoint or program termination.

@@ -20,7 +20,7 @@ type SubstitutePathRule struct {
 	// Directory path will be substituted if it matches `From`.
 	From string
 	// Path to which substitution is performed.
-	To   string
+	To string
 }
 
 // Slice of source code path substitution rules.
@@ -29,9 +29,16 @@ type SubstitutePathRules []SubstitutePathRule
 // Config defines all configuration options available to be set through the config file.
 type Config struct {
 	// Commands aliases.
-	Aliases        map[string][]string
+	Aliases map[string][]string `yaml:"aliases"`
 	// Source code path substitution rules.
 	SubstitutePath SubstitutePathRules `yaml:"substitute-path"`
+
+	// MaxStringLen is the maximum string length that the commands print,
+	// locals, args and vars should read (in verbose mode).
+	MaxStringLen *int `yaml:"max-string-len,omitempty"`
+	// MaxArrayValues is the maximum number of array items that the commands
+	// print, locals, args and vars should read (in verbose mode).
+	MaxArrayValues *int `yaml:"max-array-values,omitempty"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -73,6 +80,27 @@ func LoadConfig() *Config {
 	}
 
 	return &c
+}
+
+func SaveConfig(conf *Config) error {
+	fullConfigFile, err := GetConfigFilePath(configFile)
+	if err != nil {
+		return err
+	}
+
+	out, err := yaml.Marshal(*conf)
+	if err != nil {
+		return err
+	}
+
+	f, err := os.Create(fullConfigFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = f.Write(out)
+	return err
 }
 
 func createDefaultConfig(path string) {
