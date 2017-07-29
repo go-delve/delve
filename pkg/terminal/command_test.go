@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/derekparker/delve/pkg/config"
 	"github.com/derekparker/delve/pkg/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
@@ -121,7 +122,7 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 
 	ft := &FakeTerminal{
 		t:    t,
-		Term: New(client, nil),
+		Term: New(client, &config.Config{}),
 	}
 	fn(ft)
 }
@@ -603,4 +604,76 @@ func TestIssue827(t *testing.T) {
 		term.MustExec("continue")
 		term.MustExec("goroutine 1")
 	})
+}
+
+func findCmdName(c *Commands, cmdstr string, prefix cmdPrefix) string {
+	for _, v := range c.cmds {
+		if v.match(cmdstr) {
+			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
+				continue
+			}
+			return v.aliases[0]
+		}
+	}
+	return ""
+}
+
+func TestConfig(t *testing.T) {
+	var term Term
+	term.conf = &config.Config{}
+	term.cmds = DebugCommands(nil)
+
+	err := configureCmd(&term, callContext{}, "nonexistent-parameter 10")
+	if err == nil {
+		t.Fatalf("expected error executing configureCmd(nonexistent-parameter)")
+	}
+
+	err = configureCmd(&term, callContext{}, "max-string-len 10")
+	if err != nil {
+		t.Fatalf("error executing configureCmd(max-string-len): %v", err)
+	}
+	if term.conf.MaxStringLen == nil {
+		t.Fatalf("expected MaxStringLen 10, got nil")
+	}
+	if *term.conf.MaxStringLen != 10 {
+		t.Fatalf("expected MaxStringLen 10, got: %d", *term.conf.MaxStringLen)
+	}
+
+	err = configureCmd(&term, callContext{}, "substitute-path a b")
+	if err != nil {
+		t.Fatalf("error executing configureCmd(substitute-path a b): %v", err)
+	}
+	if len(term.conf.SubstitutePath) != 1 || (term.conf.SubstitutePath[0] != config.SubstitutePathRule{"a", "b"}) {
+		t.Fatalf("unexpected SubstitutePathRules after insert %v", term.conf.SubstitutePath)
+	}
+
+	err = configureCmd(&term, callContext{}, "substitute-path a")
+	if err != nil {
+		t.Fatalf("error executing configureCmd(substitute-path a): %v", err)
+	}
+	if len(term.conf.SubstitutePath) != 0 {
+		t.Fatalf("unexpected SubstitutePathRules after delete %v", term.conf.SubstitutePath)
+	}
+
+	err = configureCmd(&term, callContext{}, "alias print blah")
+	if err != nil {
+		t.Fatalf("error executing configureCmd(alias print blah): %v", err)
+	}
+	if len(term.conf.Aliases["print"]) != 1 {
+		t.Fatalf("aliases not changed after configure command %v", term.conf.Aliases)
+	}
+	if findCmdName(term.cmds, "blah", noPrefix) != "print" {
+		t.Fatalf("new alias not found")
+	}
+
+	err = configureCmd(&term, callContext{}, "alias blah")
+	if err != nil {
+		t.Fatalf("error executing configureCmd(alias blah): %v", err)
+	}
+	if len(term.conf.Aliases["print"]) != 0 {
+		t.Fatalf("alias not removed after configure command %v", term.conf.Aliases)
+	}
+	if findCmdName(term.cmds, "blah", noPrefix) != "" {
+		t.Fatalf("new alias found after delete")
+	}
 }

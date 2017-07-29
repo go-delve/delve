@@ -1,7 +1,6 @@
 package cmds
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -12,7 +11,6 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
-	"unicode"
 
 	"github.com/derekparker/delve/pkg/config"
 	"github.com/derekparker/delve/pkg/goversion"
@@ -534,7 +532,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 func gobuild(debugname, pkg string) error {
 	args := []string{"-gcflags", "-N -l", "-o", debugname}
 	if BuildFlags != "" {
-		args = append(args, splitQuotedFields(BuildFlags)...)
+		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
 	}
 	if ver, _ := goversion.Installed(); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		// after go1.9 building with -gcflags='-N -l' and -a simultaneously works
@@ -547,7 +545,7 @@ func gobuild(debugname, pkg string) error {
 func gotestbuild(pkg string) error {
 	args := []string{"-gcflags", "-N -l", "-c", "-o", testdebugname}
 	if BuildFlags != "" {
-		args = append(args, splitQuotedFields(BuildFlags)...)
+		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
 	}
 	if ver, _ := goversion.Installed(); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		// after go1.9 building with -gcflags='-N -l' and -a simultaneously works
@@ -563,63 +561,6 @@ func gocommand(command string, args ...string) error {
 	goBuild := exec.Command("go", allargs...)
 	goBuild.Stderr = os.Stderr
 	return goBuild.Run()
-}
-
-// Like strings.Fields but ignores spaces inside areas surrounded
-// by single quotes.
-// To specify a single quote use backslash to escape it: '\''
-func splitQuotedFields(in string) []string {
-	type stateEnum int
-	const (
-		inSpace stateEnum = iota
-		inField
-		inQuote
-		inQuoteEscaped
-	)
-	state := inSpace
-	r := []string{}
-	var buf bytes.Buffer
-
-	for _, ch := range in {
-		switch state {
-		case inSpace:
-			if ch == '\'' {
-				state = inQuote
-			} else if !unicode.IsSpace(ch) {
-				buf.WriteRune(ch)
-				state = inField
-			}
-
-		case inField:
-			if ch == '\'' {
-				state = inQuote
-			} else if unicode.IsSpace(ch) {
-				r = append(r, buf.String())
-				buf.Reset()
-			} else {
-				buf.WriteRune(ch)
-			}
-
-		case inQuote:
-			if ch == '\'' {
-				state = inField
-			} else if ch == '\\' {
-				state = inQuoteEscaped
-			} else {
-				buf.WriteRune(ch)
-			}
-
-		case inQuoteEscaped:
-			buf.WriteRune(ch)
-			state = inQuote
-		}
-	}
-
-	if buf.Len() != 0 {
-		r = append(r, buf.String())
-	}
-
-	return r
 }
 
 // SafeRemoveAll removes dir and its contents but only as long as dir does

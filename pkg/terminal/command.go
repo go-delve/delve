@@ -41,6 +41,7 @@ type cmdfunc func(t *Term, ctx callContext, args string) error
 
 type command struct {
 	aliases         []string
+	builtinAliases  []string
 	allowedPrefixes cmdPrefix
 	helpMsg         string
 	cmdFn           cmdfunc
@@ -222,6 +223,29 @@ Supported commands: print, stack and goroutine)`},
 	condition <breakpoint name or id> <boolean expression>.
 	
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
+		{aliases: []string{"config"}, cmdFn: configureCmd, helpMsg: `Changes configuration parameters.
+		
+	config -list
+	
+Show all configuration parameters.
+
+	config -save
+
+Saves the configuration file to disk, overwriting the current configuration file.
+
+	config <parameter> <value>
+	
+Changes the value of a configuration parameter.
+
+	config subistitute-path <from> <to>
+	config subistitute-path <from>
+	
+Adds or removes a path subistitution rule.
+
+	config alias <command> <alias>
+	config alias <alias>
+	
+Defines <alias> as an alias to <command> or removes an alias.`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -319,7 +343,16 @@ func (c *Commands) Call(cmdstr string, t *Term) error {
 // Merge takes aliases defined in the config struct and merges them with the default aliases.
 func (c *Commands) Merge(allAliases map[string][]string) {
 	for i := range c.cmds {
+		if c.cmds[i].builtinAliases != nil {
+			c.cmds[i].aliases = append(c.cmds[i].aliases[:0], c.cmds[i].builtinAliases...)
+		}
+	}
+	for i := range c.cmds {
 		if aliases, ok := allAliases[c.cmds[i].aliases[0]]; ok {
+			if c.cmds[i].builtinAliases == nil {
+				c.cmds[i].builtinAliases = make([]string, len(c.cmds[i].aliases))
+				copy(c.cmds[i].builtinAliases, c.cmds[i].aliases)
+			}
 			c.cmds[i].aliases = append(c.cmds[i].aliases, aliases...)
 		}
 	}
@@ -906,7 +939,7 @@ func printVar(t *Term, ctx callContext, args string) error {
 		ctx.Breakpoint.Variables = append(ctx.Breakpoint.Variables, args)
 		return nil
 	}
-	val, err := t.client.EvalVariable(ctx.Scope, args, LongLoadConfig)
+	val, err := t.client.EvalVariable(ctx.Scope, args, t.loadConfig())
 	if err != nil {
 		return err
 	}
@@ -1001,19 +1034,19 @@ func types(t *Term, ctx callContext, args string) error {
 	return printSortedStrings(t.client.ListTypes(args))
 }
 
-func parseVarArguments(args string) (filter string, cfg api.LoadConfig) {
+func parseVarArguments(args string, t *Term) (filter string, cfg api.LoadConfig) {
 	if v := strings.SplitN(args, " ", 2); len(v) >= 1 && v[0] == "-v" {
 		if len(v) == 2 {
-			return v[1], LongLoadConfig
+			return v[1], t.loadConfig()
 		} else {
-			return "", LongLoadConfig
+			return "", t.loadConfig()
 		}
 	}
 	return args, ShortLoadConfig
 }
 
 func args(t *Term, ctx callContext, args string) error {
-	filter, cfg := parseVarArguments(args)
+	filter, cfg := parseVarArguments(args, t)
 	if ctx.Prefix == onPrefix {
 		if filter != "" {
 			return fmt.Errorf("filter not supported on breakpoint")
@@ -1029,7 +1062,7 @@ func args(t *Term, ctx callContext, args string) error {
 }
 
 func locals(t *Term, ctx callContext, args string) error {
-	filter, cfg := parseVarArguments(args)
+	filter, cfg := parseVarArguments(args, t)
 	if ctx.Prefix == onPrefix {
 		if filter != "" {
 			return fmt.Errorf("filter not supported on breakpoint")
@@ -1045,7 +1078,7 @@ func locals(t *Term, ctx callContext, args string) error {
 }
 
 func vars(t *Term, ctx callContext, args string) error {
-	filter, cfg := parseVarArguments(args)
+	filter, cfg := parseVarArguments(args, t)
 	vars, err := t.client.ListPackageVariables(filter, cfg)
 	if err != nil {
 		return err

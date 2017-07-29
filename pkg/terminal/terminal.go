@@ -14,6 +14,7 @@ import (
 
 	"github.com/derekparker/delve/pkg/config"
 	"github.com/derekparker/delve/service"
+	"github.com/derekparker/delve/service/api"
 )
 
 const (
@@ -239,4 +240,19 @@ func (t *Term) handleExit() (int, error) {
 		}
 	}
 	return 0, nil
+}
+
+// loadConfig returns an api.LoadConfig with the parameterss specified in
+// the configuration file.
+func (t *Term) loadConfig() api.LoadConfig {
+	r := api.LoadConfig{true, 1, 64, 64, -1}
+
+	if t.conf.MaxStringLen != nil {
+		r.MaxStringLen = *t.conf.MaxStringLen
+	}
+	if t.conf.MaxArrayValues != nil {
+		r.MaxArrayValues = *t.conf.MaxArrayValues
+	}
+
+	return r
 }
