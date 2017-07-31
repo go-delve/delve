@@ -56,8 +56,9 @@ func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 	}
 	client := rpc2.NewClient(listener.Addr().String())
 	defer func() {
+		dir, _ := client.TraceDirectory()
 		client.Detach(true)
-		if dir, _ := client.TraceDirectory(); dir != "" {
+		if dir != "" {
 			protest.SafeRemoveAll(dir)
 		}
 	}()
