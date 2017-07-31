@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/derekparker/delve/cmd/dlv/cmds"
 	"github.com/derekparker/delve/pkg/version"
 )
@@ -12,5 +14,6 @@ func main() {
 	if Build != "" {
 		version.DelveVersion.Build = Build
 	}
+	os.Setenv("CGO_CFLAGS", "-O -g")
 	cmds.New(false).Execute()
 }
