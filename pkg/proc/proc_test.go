@@ -48,39 +48,10 @@ func TestMain(m *testing.M) {
 }
 
 func withTestProcess(name string, t testing.TB, fn func(p proc.Process, fixture protest.Fixture)) {
-	fixture := protest.BuildFixture(name, 0)
-	var p proc.Process
-	var err error
-	var tracedir string
-	switch testBackend {
-	case "native":
-		p, err = native.Launch([]string{fixture.Path}, ".")
-	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".")
-	case "rr":
-		protest.MustHaveRecordingAllowed(t)
-		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true)
-		t.Logf("replaying %q", tracedir)
-	default:
-		t.Fatalf("unknown backend %q", testBackend)
-	}
-	if err != nil {
-		t.Fatal("Launch():", err)
-	}
-
-	defer func() {
-		p.Halt()
-		p.Detach(true)
-		if tracedir != "" {
-			protest.SafeRemoveAll(tracedir)
-		}
-	}()
-
-	fn(p, fixture)
+	withTestProcessArgs(name, t, ".", []string{}, fn)
 }
 
-func withTestProcessArgs(name string, t testing.TB, wd string, fn func(p proc.Process, fixture protest.Fixture), args []string) {
+func withTestProcessArgs(name string, t testing.TB, wd string, args []string, fn func(p proc.Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name, 0)
 	var p proc.Process
 	var err error
@@ -94,7 +65,7 @@ func withTestProcessArgs(name string, t testing.TB, wd string, fn func(p proc.Pr
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay([]string{fixture.Path}, wd, true)
+		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true)
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
@@ -1897,18 +1868,18 @@ func TestCmdLineArgs(t *testing.T) {
 	}
 
 	// make sure multiple arguments (including one with spaces) are passed to the binary correctly
-	withTestProcessArgs("testargs", t, ".", expectSuccess, []string{"test"})
-	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"-test"})
-	withTestProcessArgs("testargs", t, ".", expectSuccess, []string{"test", "pass flag"})
+	withTestProcessArgs("testargs", t, ".", []string{"test"}, expectSuccess)
+	withTestProcessArgs("testargs", t, ".", []string{"-test"}, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test", "pass flag"}, expectSuccess)
 	// check that arguments with spaces are *only* passed correctly when correctly called
-	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test pass", "flag"})
-	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test", "pass", "flag"})
-	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test pass flag"})
+	withTestProcessArgs("testargs", t, ".", []string{"test pass", "flag"}, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test", "pass", "flag"}, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test pass flag"}, expectPanic)
 	// and that invalid cases (wrong arguments or no arguments) panic
 	withTestProcess("testargs", t, expectPanic)
-	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"invalid"})
-	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"test", "invalid"})
-	withTestProcessArgs("testargs", t, ".", expectPanic, []string{"invalid", "pass flag"})
+	withTestProcessArgs("testargs", t, ".", []string{"invalid"}, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test", "invalid"}, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"invalid", "pass flag"}, expectPanic)
 }
 
 func TestIssue462(t *testing.T) {
@@ -2549,7 +2520,7 @@ func TestWorkDir(t *testing.T) {
 		wd = "/private/tmp"
 	}
 	protest.AllowRecording(t)
-	withTestProcessArgs("workdir", t, wd, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcessArgs("workdir", t, wd, []string{}, func(p proc.Process, fixture protest.Fixture) {
 		addr, _, err := p.BinInfo().LineToPC(fixture.Source, 14)
 		assertNoError(err, t, "LineToPC")
 		p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
@@ -2560,7 +2531,7 @@ func TestWorkDir(t *testing.T) {
 		if wd != str {
 			t.Fatalf("Expected %s got %s\n", wd, str)
 		}
-	}, []string{})
+	})
 }
 
 func TestNegativeIntEvaluation(t *testing.T) {

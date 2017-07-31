@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/derekparker/delve/pkg/goversion"
 )
 
 var EnableRace = flag.Bool("racetarget", false, "Enables race detector on inferior process")
@@ -44,12 +46,17 @@ func FindFixturesDir() string {
 type BuildFlags uint32
 
 const (
-	LinkStrip = 1 << iota
+	LinkStrip BuildFlags = 1 << iota
+	EnableCGOOptimization
 )
 
 func BuildFixture(name string, flags BuildFlags) Fixture {
 	if f, ok := Fixtures[name]; ok && flags == 0 {
 		return f
+	}
+
+	if flags&EnableCGOOptimization == 0 {
+		os.Setenv("CGO_CFLAGS", "-O0 -g")
 	}
 
 	fixturesDir := FindFixturesDir()
@@ -67,7 +74,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.%s", name, hex.EncodeToString(r)))
 
 	buildFlags := []string{"build"}
-	if runtime.GOOS == "windows" {
+	if ver, _ := goversion.Parse(runtime.Version()); runtime.GOOS == "windows" && ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
