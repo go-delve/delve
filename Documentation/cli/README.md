@@ -84,7 +84,7 @@ Deletes breakpoint.
 ## clear-checkpoint
 Deletes checkpoint.
 			
-	checkpoint <id>
+	clear-checkpoint <id>
 
 Aliases: clearcheck
 
@@ -189,6 +189,8 @@ Aliases: ls
 Print local variables.
 
 	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
+
+The name of variables that are shadowed in the current scope will be shown in parenthesis.
 
 If regex is specified only local variables with a name matching it will be returned. If -v is specified more information about each local variable will be shown.
 

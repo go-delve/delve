@@ -169,7 +169,7 @@ If regex is specified only function arguments with a name matching it will be re
 		{aliases: []string{"locals"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: locals, helpMsg: `Print local variables.
 
 	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
-	
+
 The name of variables that are shadowed in the current scope will be shown in parenthesis.
 
 If regex is specified only local variables with a name matching it will be returned. If -v is specified more information about each local variable will be shown.`},
@@ -243,7 +243,7 @@ Specifies that the breakpoint or tracepoint should break only if the boolean exp
 			cmdFn:   clearCheckpoint,
 			helpMsg: `Deletes checkpoint.
 			
-	checkpoint <id>`,
+	clear-checkpoint <id>`,
 		})
 		for i := range c.cmds {
 			v := &c.cmds[i]
