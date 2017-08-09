@@ -39,6 +39,7 @@ Command | Description
 [trace](#trace) | Set tracepoint.
 [types](#types) | Print list of types
 [vars](#vars) | Print package variables.
+[whatis](#whatis) | Prints type of an expression.
 
 ## args
 Print function arguments.
@@ -318,5 +319,11 @@ Print package variables.
 	vars [-v] [<regex>]
 
 If regex is specified only package variables with a name matching it will be returned. If -v is specified more information about each package variable will be shown.
+
+
+## whatis
+Prints type of an expression.
+		
+		whatis <expression>.
 
 
