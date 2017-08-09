@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -141,6 +142,9 @@ Called with more arguments it will execute a command on the specified goroutine.
 	[goroutine <n>] [frame <m>] print <expression>
 
 See $GOPATH/src/github.com/derekparker/delve/Documentation/cli/expr.md for a description of supported expressions.`},
+		{aliases: []string{"whatis"}, allowedPrefixes: scopePrefix, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
+		
+		whatis <expression>.`},
 		{aliases: []string{"set"}, allowedPrefixes: scopePrefix, cmdFn: setVar, helpMsg: `Changes the value of a variable.
 
 	[goroutine <n>] [frame <m>] set <variable> = <value>
@@ -911,6 +915,26 @@ func printVar(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
+func whatisCommand(t *Term, ctx callContext, args string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("not enough arguments")
+	}
+	val, err := t.client.EvalVariable(ctx.Scope, args, ShortLoadConfig)
+	if err != nil {
+		return err
+	}
+	if val.Type != "" {
+		fmt.Println(val.Type)
+	}
+	if val.RealType != val.Type {
+		fmt.Printf("Real type: %s\n", val.RealType)
+	}
+	if val.Kind == reflect.Interface && len(val.Children) > 0 {
+		fmt.Printf("Concrete type: %s\n", val.Children[0].Type)
+	}
+	return nil
+}
+
 func setVar(t *Term, ctx callContext, args string) error {
 	// HACK: in go '=' is not an operator, we detect the error and try to recover from it by splitting the input string
 	_, err := parser.ParseExpr(args)
@@ -1194,7 +1218,6 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		return disasmErr
 	}
 
-	fmt.Printf("printing\n")
 	DisasmPrint(disasm, os.Stdout)
 
 	return nil
