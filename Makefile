@@ -65,7 +65,7 @@ endif
 else
 	go test -p 1 $(TEST_FLAGS) $(BUILD_FLAGS) $(ALL_PACKAGES)
 endif
-ifneq "$(shell which lldb-server)" ""
+ifneq "$(shell which lldb-server 2>/dev/null)" ""
 	@echo
 	@echo 'Testing LLDB backend (proc)'
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/proc -backend=lldb
@@ -76,7 +76,7 @@ ifneq "$(shell which lldb-server)" ""
 	@echo 'Testing LLDB backend (terminal)'
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/terminal -backend=lldb
 endif
-ifneq "$(shell which rr)" ""
+ifneq "$(shell which rr 2>/dev/null)" ""
 	@echo
 	@echo 'Testing Mozilla RR backend (proc)'
 	go test $(TEST_FLAGS) $(BUILD_FLAGS) $(PREFIX)/pkg/proc -backend=rr

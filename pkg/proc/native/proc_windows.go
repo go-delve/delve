@@ -191,7 +191,7 @@ func (dbp *Process) Kill() error {
 	_ = syscall.TerminateProcess(dbp.os.hProcess, 1)
 
 	dbp.execPtraceFunc(func() {
-		dbp.waitForDebugEvent(waitBlocking)
+		dbp.waitForDebugEvent(waitBlocking | waitDontHandleExceptions)
 	})
 
 	p.Wait()
@@ -242,6 +242,7 @@ type waitForDebugEventFlags int
 const (
 	waitBlocking waitForDebugEventFlags = 1 << iota
 	waitSuspendNewThreads
+	waitDontHandleExceptions
 )
 
 func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, exitCode int, err error) {
@@ -305,6 +306,10 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 		case _RIP_EVENT:
 			break
 		case _EXCEPTION_DEBUG_EVENT:
+			if flags&waitDontHandleExceptions != 0 {
+				continueStatus = _DBG_EXCEPTION_NOT_HANDLED
+				break
+			}
 			exception := (*_EXCEPTION_DEBUG_INFO)(unionPtr)
 			tid := int(debugEvent.ThreadId)
 
