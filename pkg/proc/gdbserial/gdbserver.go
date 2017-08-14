@@ -63,6 +63,7 @@ package gdbserial
 
 import (
 	"bytes"
+	"debug/macho"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -257,6 +258,18 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 			} else {
 				conn.Close()
 				return fmt.Errorf("could not determine executable path: %v", err)
+			}
+		}
+	}
+
+	if path == "" {
+		// try using jGetLoadedDynamicLibrariesInfos which is the only way to do
+		// this supported on debugserver (but only on macOS >= 12.10)
+		images, _ := p.conn.getLoadedDynamicLibraries()
+		for _, image := range images {
+			if image.MachHeader.FileType == macho.TypeExec {
+				path = image.Pathname
+				break
 			}
 		}
 	}
