@@ -1951,8 +1951,7 @@ func TestNextParked(t *testing.T) {
 
 		// continue until a parked goroutine exists
 		var parkedg *proc.G
-	LookForParkedG:
-		for {
+		for parkedg == nil {
 			err := proc.Continue(p)
 			if _, exited := err.(proc.ProcessExitedError); exited {
 				t.Log("could not find parked goroutine")
@@ -1963,10 +1962,24 @@ func TestNextParked(t *testing.T) {
 			gs, err := proc.GoroutinesInfo(p)
 			assertNoError(err, t, "GoroutinesInfo()")
 
+			// Search for a parked goroutine that we know for sure will have to be
+			// resumed before the program can exit. This is a parked goroutine that:
+			// 1. is executing main.sayhi
+			// 2. hasn't called wg.Done yet
 			for _, g := range gs {
-				if g.Thread == nil {
-					parkedg = g
-					break LookForParkedG
+				if g.Thread != nil {
+					continue
+				}
+				frames, _ := g.Stacktrace(5)
+				for _, frame := range frames {
+					// line 11 is the line where wg.Done is called
+					if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.sayhi" && frame.Current.Line < 11 {
+						parkedg = g
+						break
+					}
+				}
+				if parkedg != nil {
+					break
 				}
 			}
 		}
