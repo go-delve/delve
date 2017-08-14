@@ -136,15 +136,9 @@ func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
 	case "native":
 		return native.Attach(pid)
 	case "lldb":
-		if runtime.GOOS == "darwin" && path == "" {
-			return nil, ErrNoAttachPath
-		}
 		return gdbserial.LLDBAttach(pid, path)
 	case "default":
 		if runtime.GOOS == "darwin" {
-			if path == "" {
-				return nil, ErrNoAttachPath
-			}
 			return gdbserial.LLDBAttach(pid, path)
 		}
 		return native.Attach(pid)

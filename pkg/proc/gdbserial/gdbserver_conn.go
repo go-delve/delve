@@ -3,6 +3,8 @@ package gdbserial
 import (
 	"bufio"
 	"bytes"
+	"debug/macho"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -582,7 +584,7 @@ func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threa
 	failed := false
 	for {
 		conn.conn.SetReadDeadline(time.Now().Add(heartbeatInterval))
-		resp, err := conn.recv(nil, context)
+		resp, err := conn.recv(nil, context, false)
 		conn.conn.SetReadDeadline(time.Time{})
 		if neterr, isneterr := err.(net.Error); isneterr && neterr.Timeout() {
 			// Debugserver sometimes forgets to inform us that inferior stopped,
@@ -935,6 +937,35 @@ func (conn *gdbConn) qRRCmd(args ...string) (string, error) {
 	return string(data), nil
 }
 
+type imageList struct {
+	Images []imageDescription `json:"images"`
+}
+
+type imageDescription struct {
+	Pathname   string     `json:"pathname"`
+	MachHeader machHeader `json:"mach_header"`
+}
+
+type machHeader struct {
+	FileType macho.Type `json:"filetype"`
+}
+
+// getLoadedDynamicLibraries executes jGetLoadedDynamicLibrariesInfos which
+// returns the list of loaded dynamic libraries
+func (conn *gdbConn) getLoadedDynamicLibraries() ([]imageDescription, error) {
+	cmd := []byte("$jGetLoadedDynamicLibrariesInfos:{\"fetch_all_solibs\":true}")
+	if err := conn.send(cmd); err != nil {
+		return nil, err
+	}
+	resp, err := conn.recv(cmd, "get dynamic libraries", true)
+	if err != nil {
+		return nil, err
+	}
+	var images imageList
+	err = json.Unmarshal(resp, &images)
+	return images.Images, err
+}
+
 // exec executes a message to the stub and reads a response.
 // The details of the wire protocol are described here:
 //  https://sourceware.org/gdb/onlinedocs/gdb/Overview.html#Overview
@@ -942,8 +973,7 @@ func (conn *gdbConn) exec(cmd []byte, context string) ([]byte, error) {
 	if err := conn.send(cmd); err != nil {
 		return nil, err
 	}
-	return conn.recv(cmd, context)
-
+	return conn.recv(cmd, context, false)
 }
 
 var hexdigit = []byte{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}
@@ -988,7 +1018,7 @@ func (conn *gdbConn) send(cmd []byte) error {
 	return nil
 }
 
-func (conn *gdbConn) recv(cmd []byte, context string) (resp []byte, err error) {
+func (conn *gdbConn) recv(cmd []byte, context string, binary bool) (resp []byte, err error) {
 	attempt := 0
 	for {
 		var err error
@@ -1044,7 +1074,11 @@ func (conn *gdbConn) recv(cmd []byte, context string) (resp []byte, err error) {
 		conn.sendack('-')
 	}
 
-	conn.inbuf, resp = wiredecode(resp, conn.inbuf)
+	if binary {
+		conn.inbuf, resp = binarywiredecode(resp, conn.inbuf)
+	} else {
+		conn.inbuf, resp = wiredecode(resp, conn.inbuf)
+	}
 
 	if len(resp) == 0 || resp[0] == 'E' {
 		cmdstr := ""
@@ -1080,6 +1114,9 @@ func (conn *gdbConn) sendack(c byte) {
 	}
 }
 
+// escapeXor is the value mandated by the specification to escape characters
+const escapeXor byte = 0x20
+
 // wiredecode decodes the contents of in into buf.
 // If buf is nil it will be allocated ex-novo, if the size of buf is not
 // enough to hold the decoded contents it will be grown.
@@ -1100,7 +1137,8 @@ func wiredecode(in, buf []byte) (newbuf, msg []byte) {
 			if i+1 >= len(in) {
 				buf = append(buf, ch)
 			} else {
-				buf = append(buf, in[i+1]^0x20)
+				buf = append(buf, in[i+1]^escapeXor)
+				i++
 			}
 		case ':':
 			buf = append(buf, ch)
@@ -1121,6 +1159,36 @@ func wiredecode(in, buf []byte) (newbuf, msg []byte) {
 				}
 				i++
 			}
+		default:
+			buf = append(buf, ch)
+		}
+	}
+	return buf, buf[start:]
+}
+
+// binarywiredecode is like wiredecode but decodes the wire encoding for
+// binary packets, such as the 'x' and 'X' packets as well as all the json
+// packets used by lldb/debugserver.
+func binarywiredecode(in, buf []byte) (newbuf, msg []byte) {
+	if buf != nil {
+		buf = buf[:0]
+	} else {
+		buf = make([]byte, 0, 256)
+	}
+
+	start := 1
+
+	for i := 0; i < len(in); i++ {
+		switch ch := in[i]; ch {
+		case '}': // escape
+			if i+1 >= len(in) {
+				buf = append(buf, ch)
+			} else {
+				buf = append(buf, in[i+1]^escapeXor)
+				i++
+			}
+		case '#': // end of packet
+			return buf, buf[start:]
 		default:
 			buf = append(buf, ch)
 		}
