@@ -31,7 +31,7 @@ func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
 	defer listener.Close()
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
-		ProcessArgs: []string{protest.BuildFixture(name).Path},
+		ProcessArgs: []string{protest.BuildFixture(name, 0).Path},
 		Backend:     testBackend,
 	}, false)
 	if err := server.Run(); err != nil {
@@ -740,7 +740,7 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 					if arg.Name != "i" {
 						continue
 					}
-					t.Logf("frame %d, variable i is %v\n", i,  arg)
+					t.Logf("frame %d, variable i is %v\n", i, arg)
 					argn, err := strconv.Atoi(arg.Value)
 					if err == nil {
 						found[argn] = true

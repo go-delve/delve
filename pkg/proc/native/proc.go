@@ -163,10 +163,13 @@ func (dbp *Process) LoadInformation(path string) error {
 
 	wg.Add(1)
 	go dbp.loadProcessInformation(&wg)
-	dbp.bi.LoadBinaryInfo(path, &wg)
+	err := dbp.bi.LoadBinaryInfo(path, &wg)
 	wg.Wait()
+	if err == nil {
+		err = dbp.bi.LoadError()
+	}
 
-	return nil
+	return err
 }
 
 // RequestManualStop sets the `halt` flag and
@@ -388,11 +391,11 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 func initializeDebugProcess(dbp *Process, path string) (*Process, error) {
 	err := dbp.LoadInformation(path)
 	if err != nil {
-		return nil, err
+		return dbp, err
 	}
 
 	if err := dbp.updateThreadList(); err != nil {
-		return nil, err
+		return dbp, err
 	}
 
 	// selectedGoroutine can not be set correctly by the call to updateThreadList

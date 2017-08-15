@@ -43,6 +43,9 @@ type BinaryInfo struct {
 	loadModuleDataOnce sync.Once
 	moduleData         []moduleData
 	nameOfRuntimeType  map[uintptr]nameOfRuntimeTypeEntry
+
+	loadErrMu sync.Mutex
+	loadErr   error
 }
 
 var UnsupportedLinuxArchErr = errors.New("unsupported architecture - only linux/amd64 is supported")
@@ -131,6 +134,16 @@ func (bi *BinaryInfo) Close() error {
 	return bi.closer.Close()
 }
 
+func (bi *BinaryInfo) setLoadError(fmtstr string, args ...interface{}) {
+	bi.loadErrMu.Lock()
+	bi.loadErr = fmt.Errorf(fmtstr, args...)
+	bi.loadErrMu.Unlock()
+}
+
+func (bi *BinaryInfo) LoadError() error {
+	return bi.loadErr
+}
+
 // ELF ///////////////////////////////////////////////////////////////
 
 func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
@@ -169,18 +182,18 @@ func (bi *BinaryInfo) parseDebugFrameElf(exe *elf.File, wg *sync.WaitGroup) {
 	if debugFrameSec != nil && debugInfoSec != nil {
 		debugFrame, err := exe.Section(".debug_frame").Data()
 		if err != nil {
-			fmt.Println("could not get .debug_frame section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .debug_frame section: %v", err)
+			return
 		}
 		dat, err := debugInfoSec.Data()
 		if err != nil {
-			fmt.Println("could not get .debug_info section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .debug_frame section: %v", err)
+			return
 		}
 		bi.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
 	} else {
-		fmt.Println("could not find .debug_frame section in binary")
-		os.Exit(1)
+		bi.setLoadError("could not find .debug_frame section in binary")
+		return
 	}
 }
 
@@ -196,24 +209,24 @@ func (bi *BinaryInfo) obtainGoSymbolsElf(exe *elf.File, wg *sync.WaitGroup) {
 	if sec := exe.Section(".gosymtab"); sec != nil {
 		symdat, err = sec.Data()
 		if err != nil {
-			fmt.Println("could not get .gosymtab section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .gosymtab section: %v", err)
+			return
 		}
 	}
 
 	if sec := exe.Section(".gopclntab"); sec != nil {
 		pclndat, err = sec.Data()
 		if err != nil {
-			fmt.Println("could not get .gopclntab section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .gopclntab section: %v", err)
+			return
 		}
 	}
 
 	pcln := gosym.NewLineTable(pclndat, exe.Section(".text").Addr)
 	tab, err := gosym.NewTable(symdat, pcln)
 	if err != nil {
-		fmt.Println("could not get initialize line table", err)
-		os.Exit(1)
+		bi.setLoadError("could not get initialize line table: %v", err)
+		return
 	}
 
 	bi.goSymTable = tab
@@ -225,13 +238,13 @@ func (bi *BinaryInfo) parseDebugLineInfoElf(exe *elf.File, wg *sync.WaitGroup) {
 	if sec := exe.Section(".debug_line"); sec != nil {
 		debugLine, err := exe.Section(".debug_line").Data()
 		if err != nil {
-			fmt.Println("could not get .debug_line section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .debug_line section: %v", err)
+			return
 		}
 		bi.lineInfo = line.Parse(debugLine)
 	} else {
-		fmt.Println("could not find .debug_line section in binary")
-		os.Exit(1)
+		bi.setLoadError("could not find .debug_line section in binary")
+		return
 	}
 }
 
@@ -246,8 +259,8 @@ func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
 	//   offset in libc's TLS block.
 	symbols, err := exe.Symbols()
 	if err != nil {
-		fmt.Println("could not parse ELF symbols", err)
-		os.Exit(1)
+		bi.setLoadError("could not parse ELF symbols: %v", err)
+		return
 	}
 	var tlsg *elf.Symbol
 	for _, symbol := range symbols {
@@ -325,41 +338,41 @@ func (bi *BinaryInfo) parseDebugFramePE(exe *pe.File, wg *sync.WaitGroup) {
 	if debugFrameSec != nil && debugInfoSec != nil {
 		debugFrame, err := debugFrameSec.Data()
 		if err != nil && uint32(len(debugFrame)) < debugFrameSec.Size {
-			fmt.Println("could not get .debug_frame section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .debug_frame section: %v", err)
+			return
 		}
 		if 0 < debugFrameSec.VirtualSize && debugFrameSec.VirtualSize < debugFrameSec.Size {
 			debugFrame = debugFrame[:debugFrameSec.VirtualSize]
 		}
 		dat, err := debugInfoSec.Data()
 		if err != nil {
-			fmt.Println("could not get .debug_info section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .debug_info section: %v", err)
+			return
 		}
 		bi.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
 	} else {
-		fmt.Println("could not find .debug_frame section in binary")
-		os.Exit(1)
+		bi.setLoadError("could not find .debug_frame section in binary")
+		return
 	}
 }
 
-func (dbp *BinaryInfo) obtainGoSymbolsPE(exe *pe.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) obtainGoSymbolsPE(exe *pe.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	_, symdat, pclndat, err := pclnPE(exe)
 	if err != nil {
-		fmt.Println("could not get Go symbols", err)
-		os.Exit(1)
+		bi.setLoadError("could not get Go symbols: %v", err)
+		return
 	}
 
 	pcln := gosym.NewLineTable(pclndat, uint64(exe.Section(".text").Offset))
 	tab, err := gosym.NewTable(symdat, pcln)
 	if err != nil {
-		fmt.Println("could not get initialize line table", err)
-		os.Exit(1)
+		bi.setLoadError("could not get initialize line table: %v", err)
+		return
 	}
 
-	dbp.goSymTable = tab
+	bi.goSymTable = tab
 }
 
 // Borrowed from https://golang.org/src/cmd/internal/objfile/pe.go
@@ -438,16 +451,16 @@ func (bi *BinaryInfo) parseDebugLineInfoPE(exe *pe.File, wg *sync.WaitGroup) {
 	if sec := exe.Section(".debug_line"); sec != nil {
 		debugLine, err := sec.Data()
 		if err != nil && uint32(len(debugLine)) < sec.Size {
-			fmt.Println("could not get .debug_line section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .debug_line section: %v", err)
+			return
 		}
 		if 0 < sec.VirtualSize && sec.VirtualSize < sec.Size {
 			debugLine = debugLine[:sec.VirtualSize]
 		}
 		bi.lineInfo = line.Parse(debugLine)
 	} else {
-		fmt.Println("could not find .debug_line section in binary")
-		os.Exit(1)
+		bi.setLoadError("could not find .debug_line section in binary")
+		return
 	}
 }
 
@@ -485,18 +498,18 @@ func (bi *BinaryInfo) parseDebugFrameMacho(exe *macho.File, wg *sync.WaitGroup) 
 	if debugFrameSec != nil && debugInfoSec != nil {
 		debugFrame, err := exe.Section("__debug_frame").Data()
 		if err != nil {
-			fmt.Println("could not get __debug_frame section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get __debug_frame section: %v", err)
+			return
 		}
 		dat, err := debugInfoSec.Data()
 		if err != nil {
-			fmt.Println("could not get .debug_info section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .debug_info section: %v", err)
+			return
 		}
 		bi.frameEntries = frame.Parse(debugFrame, frame.DwarfEndian(dat))
 	} else {
-		fmt.Println("could not find __debug_frame section in binary")
-		os.Exit(1)
+		bi.setLoadError("could not find __debug_frame section in binary")
+		return
 	}
 }
 
@@ -512,24 +525,24 @@ func (bi *BinaryInfo) obtainGoSymbolsMacho(exe *macho.File, wg *sync.WaitGroup) 
 	if sec := exe.Section("__gosymtab"); sec != nil {
 		symdat, err = sec.Data()
 		if err != nil {
-			fmt.Println("could not get .gosymtab section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .gosymtab section: %v", err)
+			return
 		}
 	}
 
 	if sec := exe.Section("__gopclntab"); sec != nil {
 		pclndat, err = sec.Data()
 		if err != nil {
-			fmt.Println("could not get .gopclntab section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get .gopclntab section: %v", err)
+			return
 		}
 	}
 
 	pcln := gosym.NewLineTable(pclndat, exe.Section("__text").Addr)
 	tab, err := gosym.NewTable(symdat, pcln)
 	if err != nil {
-		fmt.Println("could not get initialize line table", err)
-		os.Exit(1)
+		bi.setLoadError("could not get initialize line table: %v", err)
+		return
 	}
 
 	bi.goSymTable = tab
@@ -541,12 +554,12 @@ func (bi *BinaryInfo) parseDebugLineInfoMacho(exe *macho.File, wg *sync.WaitGrou
 	if sec := exe.Section("__debug_line"); sec != nil {
 		debugLine, err := exe.Section("__debug_line").Data()
 		if err != nil {
-			fmt.Println("could not get __debug_line section", err)
-			os.Exit(1)
+			bi.setLoadError("could not get __debug_line section: %v", err)
+			return
 		}
 		bi.lineInfo = line.Parse(debugLine)
 	} else {
-		fmt.Println("could not find __debug_line section in binary")
-		os.Exit(1)
+		bi.setLoadError("could not find __debug_line section in binary")
+		return
 	}
 }

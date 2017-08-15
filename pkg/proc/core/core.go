@@ -175,8 +175,14 @@ func OpenCore(corePath, exePath string) (*Process, error) {
 	}
 
 	var wg sync.WaitGroup
-	p.bi.LoadBinaryInfo(exePath, &wg)
+	err = p.bi.LoadBinaryInfo(exePath, &wg)
 	wg.Wait()
+	if err == nil {
+		err = p.bi.LoadError()
+	}
+	if err != nil {
+		return nil, err
+	}
 
 	for _, th := range p.core.Threads {
 		p.currentThread = th

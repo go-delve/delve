@@ -152,7 +152,12 @@ func Attach(pid int) (*Process, error) {
 		return nil, err
 	}
 
-	return initializeDebugProcess(dbp, "")
+	dbp, err = initializeDebugProcess(dbp, "")
+	if err != nil {
+		dbp.Detach(false)
+		return nil, err
+	}
+	return dbp, nil
 }
 
 // Kill kills the process.

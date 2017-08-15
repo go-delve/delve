@@ -132,7 +132,7 @@ func withCoreFile(t *testing.T, name, args string) *Process {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fix := test.BuildFixture(name)
+	fix := test.BuildFixture(name, 0)
 	bashCmd := fmt.Sprintf("cd %v && ulimit -c unlimited && GOTRACEBACK=crash %v %s", tempDir, fix.Path, args)
 	exec.Command("bash", "-c", bashCmd).Run()
 	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
