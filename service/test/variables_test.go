@@ -106,7 +106,7 @@ func setVariable(p proc.Process, symbol, value string) error {
 }
 
 func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture protest.Fixture)) {
-	fixture := protest.BuildFixture(name)
+	fixture := protest.BuildFixture(name, 0)
 	var p proc.Process
 	var err error
 	var tracedir string

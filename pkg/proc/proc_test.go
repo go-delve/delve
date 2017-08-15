@@ -48,7 +48,7 @@ func TestMain(m *testing.M) {
 }
 
 func withTestProcess(name string, t testing.TB, fn func(p proc.Process, fixture protest.Fixture)) {
-	fixture := protest.BuildFixture(name)
+	fixture := protest.BuildFixture(name, 0)
 	var p proc.Process
 	var err error
 	var tracedir string
@@ -81,7 +81,7 @@ func withTestProcess(name string, t testing.TB, fn func(p proc.Process, fixture 
 }
 
 func withTestProcessArgs(name string, t testing.TB, wd string, fn func(p proc.Process, fixture protest.Fixture), args []string) {
-	fixture := protest.BuildFixture(name)
+	fixture := protest.BuildFixture(name, 0)
 	var p proc.Process
 	var err error
 	var tracedir string
@@ -2794,7 +2794,7 @@ func TestAttachDetach(t *testing.T) {
 	if testBackend == "rr" {
 		return
 	}
-	fixture := protest.BuildFixture("testnextnethttp")
+	fixture := protest.BuildFixture("testnextnethttp", 0)
 	cmd := exec.Command(fixture.Path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -3084,4 +3084,66 @@ func TestShadowedFlag(t *testing.T) {
 			t.Error("could not find any non-shadowed variable")
 		}
 	})
+}
+
+func TestAttachStripped(t *testing.T) {
+	if testBackend == "lldb" && runtime.GOOS == "linux" {
+		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
+			t.Logf("can not run TestAttachStripped: %v\n", bs)
+			return
+		}
+	}
+	if testBackend == "rr" {
+		return
+	}
+	if runtime.GOOS == "darwin" {
+		t.Log("-s does not produce stripped executables on macOS")
+		return
+	}
+	fixture := protest.BuildFixture("testnextnethttp", protest.LinkStrip)
+	cmd := exec.Command(fixture.Path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	assertNoError(cmd.Start(), t, "starting fixture")
+
+	// wait for testnextnethttp to start listening
+	t0 := time.Now()
+	for {
+		conn, err := net.Dial("tcp", "localhost:9191")
+		if err == nil {
+			conn.Close()
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+		if time.Since(t0) > 10*time.Second {
+			t.Fatal("fixture did not start")
+		}
+	}
+
+	var p proc.Process
+	var err error
+
+	switch testBackend {
+	case "native":
+		p, err = native.Attach(cmd.Process.Pid)
+	case "lldb":
+		path := ""
+		if runtime.GOOS == "darwin" {
+			path = fixture.Path
+		}
+		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path)
+	default:
+		t.Fatalf("unknown backend %q", testBackend)
+	}
+
+	t.Logf("error is %v", err)
+
+	if err == nil {
+		p.Detach(true)
+		t.Fatalf("expected error after attach, got nothing")
+	} else {
+		cmd.Process.Kill()
+	}
+	os.Remove(fixture.Path)
 }

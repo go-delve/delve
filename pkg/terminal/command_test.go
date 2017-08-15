@@ -104,7 +104,7 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 	defer listener.Close()
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
-		ProcessArgs: []string{test.BuildFixture(name).Path},
+		ProcessArgs: []string{test.BuildFixture(name, 0).Path},
 		Backend:     testBackend,
 	}, false)
 	if err := server.Run(); err != nil {

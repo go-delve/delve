@@ -38,8 +38,14 @@ func FindFixturesDir() string {
 	return fixturesDir
 }
 
-func BuildFixture(name string) Fixture {
-	if f, ok := Fixtures[name]; ok {
+type BuildFlags uint32
+
+const (
+	LinkStrip = 1 << iota
+)
+
+func BuildFixture(name string, flags BuildFlags) Fixture {
+	if f, ok := Fixtures[name]; ok && flags == 0 {
 		return f
 	}
 
@@ -62,6 +68,9 @@ func BuildFixture(name string) Fixture {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
+	if flags&LinkStrip != 0 {
+		buildFlags = append(buildFlags, "-ldflags=-s")
+	}
 	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile)
 	if path != "" {
 		buildFlags = append(buildFlags, name+".go")
@@ -80,7 +89,13 @@ func BuildFixture(name string) Fixture {
 	source, _ := filepath.Abs(path)
 	source = filepath.ToSlash(source)
 
-	Fixtures[name] = Fixture{Name: name, Path: tmpfile, Source: source}
+	fixture := Fixture{Name: name, Path: tmpfile, Source: source}
+
+	if flags != 0 {
+		return fixture
+	}
+
+	Fixtures[name] = fixture
 	return Fixtures[name]
 }
 

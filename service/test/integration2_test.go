@@ -48,7 +48,7 @@ func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 	defer listener.Close()
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
-		ProcessArgs: []string{protest.BuildFixture(name).Path},
+		ProcessArgs: []string{protest.BuildFixture(name, 0).Path},
 		Backend:     testBackend,
 	}, false)
 	if err := server.Run(); err != nil {

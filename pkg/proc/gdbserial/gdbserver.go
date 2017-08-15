@@ -263,11 +263,14 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 
 	var wg sync.WaitGroup
 	err = p.bi.LoadBinaryInfo(path, &wg)
+	wg.Wait()
+	if err == nil {
+		err = p.bi.LoadError()
+	}
 	if err != nil {
 		conn.Close()
 		return err
 	}
-	wg.Wait()
 
 	// None of the stubs we support returns the value of fs_base or gs_base
 	// along with the registers, therefore we have to resort to executing a MOV
