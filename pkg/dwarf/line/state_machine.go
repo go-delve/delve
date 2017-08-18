@@ -32,6 +32,15 @@ type StateMachine struct {
 	// value of the state machine should be appended to the matrix representing
 	// the compilation unit)
 	valid bool
+
+	started bool
+
+	buf     *bytes.Buffer // remaining instructions
+	opcodes []opcodefn
+
+	lastAddress uint64
+	lastFile    string
+	lastLine    int
 }
 
 type opcodefn func(*StateMachine, *bytes.Buffer)
@@ -47,11 +56,6 @@ const (
 	DW_LNS_set_basic_block  = 7
 	DW_LNS_const_add_pc     = 8
 	DW_LNS_fixed_advance_pc = 9
-
-	// DWARF v4
-	DW_LNS_set_prologue_end   = 10
-	DW_LNS_set_epilouge_begin = 11
-	DW_LNS_set_isa            = 12
 )
 
 // Extended opcodes
@@ -71,11 +75,6 @@ var standardopcodes = map[byte]opcodefn{
 	DW_LNS_set_basic_block:  setbasicblock,
 	DW_LNS_const_add_pc:     constaddpc,
 	DW_LNS_fixed_advance_pc: fixedadvancepc,
-
-	// DWARF v4
-	DW_LNS_set_prologue_end:   donothing0,
-	DW_LNS_set_epilouge_begin: donothing0,
-	DW_LNS_set_isa:            donothing1,
 }
 
 var extendedopcodes = map[byte]opcodefn{
@@ -84,8 +83,13 @@ var extendedopcodes = map[byte]opcodefn{
 	DW_LINE_define_file:  definefile,
 }
 
-func newStateMachine(dbl *DebugLineInfo) *StateMachine {
-	return &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1}
+func newStateMachine(dbl *DebugLineInfo, instructions []byte) *StateMachine {
+	opcodes := make([]opcodefn, len(standardopcodes)+1)
+	opcodes[0] = execExtendedOpcode
+	for op := range standardopcodes {
+		opcodes[op] = standardopcodes[op]
+	}
+	return &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1, buf: bytes.NewBuffer(instructions), opcodes: opcodes}
 }
 
 // Returns all PCs for a given file/line. Useful for loops where the 'for' line
@@ -98,12 +102,13 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64)
 	var (
 		foundFile bool
 		lastAddr  uint64
-		sm        = newStateMachine(lineInfo)
-		buf       = bytes.NewBuffer(lineInfo.Instructions)
+		sm        = newStateMachine(lineInfo, lineInfo.Instructions)
 	)
 
-	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-		findAndExecOpcode(sm, buf, b)
+	for {
+		if err := sm.next(); err != nil {
+			break
+		}
 		if foundFile && sm.file != f {
 			return
 		}
@@ -116,8 +121,10 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64)
 			// Keep going until we're on a different line. We only care about
 			// when a line comes back around (i.e. for loop) so get to next line,
 			// and try to find the line we care about again.
-			for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-				findAndExecOpcode(sm, buf, b)
+			for {
+				if err := sm.next(); err != nil {
+					break
+				}
 				if line < sm.line {
 					break
 				}
@@ -137,12 +144,13 @@ func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64) ([]uint64, error
 	var (
 		pcs      []uint64
 		lastaddr uint64
-		sm       = newStateMachine(lineInfo)
-		buf      = bytes.NewBuffer(lineInfo.Instructions)
+		sm       = newStateMachine(lineInfo, lineInfo.Instructions)
 	)
 
-	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-		findAndExecOpcode(sm, buf, b)
+	for {
+		if err := sm.next(); err != nil {
+			break
+		}
 		if !sm.valid {
 			continue
 		}
@@ -157,34 +165,76 @@ func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64) ([]uint64, error
 	return pcs, nil
 }
 
+// copy returns a copy of this state machine, running the returned state
+// machine will not affect sm.
+func (sm *StateMachine) copy() *StateMachine {
+	var r StateMachine
+	r = *sm
+	r.buf = bytes.NewBuffer(sm.buf.Bytes())
+	return &r
+}
+
 // PCToLine returns the filename and line number associated with pc.
 // If pc isn't found inside lineInfo's table it will return the filename and
 // line number associated with the closest PC address preceding pc.
-func (lineInfo *DebugLineInfo) PCToLine(pc uint64) (string, int) {
+// basePC will be used for caching, it's normally the entry point for the
+// function containing pc.
+func (lineInfo *DebugLineInfo) PCToLine(basePC, pc uint64) (string, int) {
 	if lineInfo == nil {
 		return "", 0
 	}
-
-	var (
-		buf          = bytes.NewBuffer(lineInfo.Instructions)
-		sm           = newStateMachine(lineInfo)
-		lastFilename string
-		lastLineno   int
-	)
-	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-		findAndExecOpcode(sm, buf, b)
-		if !sm.valid {
-			continue
-		}
-		if sm.address > pc {
-			return lastFilename, lastLineno
-		}
-		if sm.address == pc {
-			return sm.file, sm.line
-		}
-		lastFilename, lastLineno = sm.file, sm.line
+	if basePC > pc {
+		panic(fmt.Errorf("basePC after pc %#x %#x", basePC, pc))
 	}
-	return "", 0
+
+	var sm *StateMachine
+	if basePC == 0 {
+		sm = newStateMachine(lineInfo, lineInfo.Instructions)
+	} else {
+		// Try to use the last state machine that we used for this function, if
+		// there isn't one or it's already past pc try to clone the cached state
+		// machine stopped at the entry point of the function.
+		// As a last resort start from the start of the debug_line section.
+		sm = lineInfo.lastMachineCache[basePC]
+		if sm == nil || sm.lastAddress > pc {
+			sm = lineInfo.stateMachineCache[basePC]
+			if sm == nil {
+				sm = newStateMachine(lineInfo, lineInfo.Instructions)
+				sm.PCToLine(basePC)
+				lineInfo.stateMachineCache[basePC] = sm
+			}
+			sm = sm.copy()
+			lineInfo.lastMachineCache[basePC] = sm
+		}
+	}
+
+	file, line, _ := sm.PCToLine(pc)
+	return file, line
+}
+
+func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
+	if !sm.started {
+		if err := sm.next(); err != nil {
+			return "", 0, false
+		}
+	}
+	if sm.lastAddress > pc {
+		return "", 0, false
+	}
+	for {
+		if sm.valid {
+			if sm.address > pc {
+				return sm.lastFile, sm.lastLine, true
+			}
+			if sm.address == pc {
+				return sm.file, sm.line, true
+			}
+		}
+		if err := sm.next(); err != nil {
+			break
+		}
+	}
+	return "", 0, false
 }
 
 // LineToPC returns the first PC address associated with filename:lineno.
@@ -195,12 +245,13 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 
 	var (
 		foundFile bool
-		sm        = newStateMachine(lineInfo)
-		buf       = bytes.NewBuffer(lineInfo.Instructions)
+		sm        = newStateMachine(lineInfo, lineInfo.Instructions)
 	)
 
-	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
-		findAndExecOpcode(sm, buf, b)
+	for {
+		if err := sm.next(); err != nil {
+			break
+		}
 		if foundFile && sm.file != filename {
 			break
 		}
@@ -214,15 +265,30 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 	return 0
 }
 
-func findAndExecOpcode(sm *StateMachine, buf *bytes.Buffer, b byte) {
-	switch {
-	case b == 0:
-		execExtendedOpcode(sm, b, buf)
-	case b < sm.dbl.Prologue.OpcodeBase:
-		execStandardOpcode(sm, b, buf)
-	default:
+func (sm *StateMachine) next() error {
+	sm.started = true
+	if sm.valid {
+		sm.lastAddress, sm.lastFile, sm.lastLine = sm.address, sm.file, sm.line
+	}
+	b, err := sm.buf.ReadByte()
+	if err != nil {
+		return err
+	}
+	if int(b) < len(sm.opcodes) {
+		sm.lastWasStandard = b != 0
+		sm.valid = false
+		sm.opcodes[b](sm, sm.buf)
+	} else if b < sm.dbl.Prologue.OpcodeBase {
+		// unimplemented standard opcode, read the number of arguments specified
+		// in the prologue and do nothing with them
+		opnum := sm.dbl.Prologue.StdOpLengths[b-1]
+		for i := 0; i < int(opnum); i++ {
+			util.DecodeSLEB128(sm.buf)
+		}
+	} else {
 		execSpecialOpcode(sm, b)
 	}
+	return nil
 }
 
 func execSpecialOpcode(sm *StateMachine, instr byte) {
@@ -243,28 +309,12 @@ func execSpecialOpcode(sm *StateMachine, instr byte) {
 	sm.valid = true
 }
 
-func execExtendedOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
+func execExtendedOpcode(sm *StateMachine, buf *bytes.Buffer) {
 	_, _ = util.DecodeULEB128(buf)
 	b, _ := buf.ReadByte()
-	fn, ok := extendedopcodes[b]
-	if !ok {
-		panic(fmt.Sprintf("Encountered unknown extended opcode %#v\n", b))
+	if fn, ok := extendedopcodes[b]; ok {
+		fn(sm, buf)
 	}
-	sm.lastWasStandard = false
-	sm.valid = false
-
-	fn(sm, buf)
-}
-
-func execStandardOpcode(sm *StateMachine, instr byte, buf *bytes.Buffer) {
-	fn, ok := standardopcodes[instr]
-	if !ok {
-		panic(fmt.Sprintf("Encountered unknown standard opcode %#v\n", instr))
-	}
-	sm.lastWasStandard = true
-	sm.valid = false
-
-	fn(sm, buf)
 }
 
 func copyfn(sm *StateMachine, buf *bytes.Buffer) {
@@ -310,15 +360,6 @@ func fixedadvancepc(sm *StateMachine, buf *bytes.Buffer) {
 	binary.Read(buf, binary.LittleEndian, &operand)
 
 	sm.address += uint64(operand)
-}
-
-func donothing0(sm *StateMachine, buf *bytes.Buffer) {
-	// does nothing, no operands
-}
-
-func donothing1(sm *StateMachine, buf *bytes.Buffer) {
-	// does nothing, consumes one operand
-	util.DecodeSLEB128(buf)
 }
 
 func endsequence(sm *StateMachine, buf *bytes.Buffer) {
