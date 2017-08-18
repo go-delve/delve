@@ -175,7 +175,7 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 	if fn == nil {
 		return "", 0, nil
 	}
-	f, ln := fn.cu.lineInfo.PCToLine(pc)
+	f, ln := fn.cu.lineInfo.PCToLine(fn.Entry, pc)
 	return f, ln, fn
 }
 

@@ -5,11 +5,14 @@ import (
 	"debug/macho"
 	"debug/pe"
 	"flag"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pkg/profile"
 )
@@ -155,5 +158,118 @@ func BenchmarkLineParser(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = ParseAll(data)
+	}
+}
+
+func loadBenchmarkData(tb testing.TB) DebugLines {
+	p, err := filepath.Abs("../../../_fixtures/debug_line_benchmark_data")
+	if err != nil {
+		tb.Fatal("Could not find test data", p, err)
+	}
+
+	data, err := ioutil.ReadFile(p)
+	if err != nil {
+		tb.Fatal("Could not read test data", err)
+	}
+
+	return ParseAll(data)
+}
+
+func BenchmarkStateMachine(b *testing.B) {
+	lineInfos := loadBenchmarkData(b)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		sm := newStateMachine(lineInfos[0], lineInfos[0].Instructions)
+
+		for {
+			if err := sm.next(); err != nil {
+				break
+			}
+		}
+	}
+}
+
+type pctolineEntry struct {
+	pc   uint64
+	file string
+	line int
+}
+
+func (entry *pctolineEntry) match(file string, line int) bool {
+	if entry.file == "" {
+		return true
+	}
+	return entry.file == file && entry.line == line
+}
+
+func setupTestPCToLine(t testing.TB, lineInfos DebugLines) []pctolineEntry {
+	entries := []pctolineEntry{}
+
+	sm := newStateMachine(lineInfos[0], lineInfos[0].Instructions)
+	for {
+		if err := sm.next(); err != nil {
+			break
+		}
+		if sm.valid {
+			if len(entries) == 0 || entries[len(entries)-1].pc != sm.address {
+				entries = append(entries, pctolineEntry{pc: sm.address, file: sm.file, line: sm.line})
+			} else if len(entries) > 0 {
+				// having two entries at the same PC address messes up the test
+				entries[len(entries)-1].file = ""
+			}
+		}
+	}
+
+	for i := 1; i < len(entries); i++ {
+		if entries[i].pc <= entries[i-1].pc {
+			t.Fatalf("not monotonically increasing %d %x", i, entries[i].pc)
+		}
+	}
+
+	return entries
+}
+
+func runTestPCToLine(t testing.TB, lineInfos DebugLines, entries []pctolineEntry, log bool, testSize uint64) {
+	const samples = 1000
+	t0 := time.Now()
+
+	i := 0
+	for pc := entries[0].pc; pc <= entries[0].pc+testSize; pc++ {
+		file, line := lineInfos[0].PCToLine(pc/0x1000*0x1000, pc)
+		if pc == entries[i].pc {
+			if i%samples == 0 && log {
+				fmt.Printf("match %x / %x (%v)\n", pc, entries[len(entries)-1].pc, time.Since(t0)/samples)
+				t0 = time.Now()
+			}
+
+			if !entries[i].match(file, line) {
+				t.Fatalf("Mismatch at PC %#x, expected %s:%d got %s:%d", pc, entries[i].file, entries[i].line, file, line)
+			}
+			i++
+		} else {
+			if !entries[i-1].match(file, line) {
+				t.Fatalf("Mismatch at PC %#x, expected %s:%d (from previous valid entry) got %s:%d", pc, entries[i-1].file, entries[i-1].line, file, line)
+			}
+		}
+	}
+}
+
+func TestPCToLine(t *testing.T) {
+	lineInfos := loadBenchmarkData(t)
+
+	entries := setupTestPCToLine(t, lineInfos)
+	runTestPCToLine(t, lineInfos, entries, true, 0x50000)
+	t.Logf("restart form beginning")
+	runTestPCToLine(t, lineInfos, entries, true, 0x10000)
+}
+
+func BenchmarkPCToLine(b *testing.B) {
+	lineInfos := loadBenchmarkData(b)
+
+	entries := setupTestPCToLine(b, lineInfos)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		runTestPCToLine(b, lineInfos, entries, false, 0x10000)
 	}
 }

@@ -55,7 +55,7 @@ func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset
 	if firstLine {
 		return FirstPCAfterPrologue(p, origfn, false)
 	} else if lineOffset > 0 {
-		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry)
+		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
 		breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)
 		return breakAddr, err
 	}

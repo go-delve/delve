@@ -26,6 +26,12 @@ type DebugLineInfo struct {
 	FileNames    []*FileEntry
 	Instructions []byte
 	Lookup       map[string]*FileEntry
+
+	// stateMachineCache[pc] is a state machine stopped at pc
+	stateMachineCache map[uint64]*StateMachine
+
+	// lastMachineCache[pc] is a state machine stopped at an address after pc
+	lastMachineCache map[uint64]*StateMachine
 }
 
 type FileEntry struct {
@@ -60,6 +66,9 @@ func Parse(compdir string, buf *bytes.Buffer) *DebugLineInfo {
 	if compdir != "" {
 		dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)
 	}
+
+	dbl.stateMachineCache = make(map[uint64]*StateMachine)
+	dbl.lastMachineCache = make(map[uint64]*StateMachine)
 
 	parseDebugLinePrologue(dbl, buf)
 	parseIncludeDirs(dbl, buf)
