@@ -38,6 +38,8 @@ type StateMachine struct {
 	buf     *bytes.Buffer // remaining instructions
 	opcodes []opcodefn
 
+	definedFiles []*FileEntry // files defined with DW_LINE_define_file
+
 	lastAddress uint64
 	lastFile    string
 	lastLine    int
@@ -335,7 +337,16 @@ func advanceline(sm *StateMachine, buf *bytes.Buffer) {
 
 func setfile(sm *StateMachine, buf *bytes.Buffer) {
 	i, _ := util.DecodeULEB128(buf)
-	sm.file = sm.dbl.FileNames[i-1].Path
+	if i-1 < uint64(len(sm.dbl.FileNames)) {
+		sm.file = sm.dbl.FileNames[i-1].Path
+	} else {
+		j := (i - 1) - uint64(len(sm.dbl.FileNames))
+		if j < uint64(len(sm.definedFiles)) {
+			sm.file = sm.definedFiles[j].Path
+		} else {
+			sm.file = ""
+		}
+	}
 }
 
 func setcolumn(sm *StateMachine, buf *bytes.Buffer) {
@@ -376,12 +387,6 @@ func setaddress(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func definefile(sm *StateMachine, buf *bytes.Buffer) {
-	var (
-		_, _ = util.ParseString(buf)
-		_, _ = util.DecodeULEB128(buf)
-		_, _ = util.DecodeULEB128(buf)
-		_, _ = util.DecodeULEB128(buf)
-	)
-
-	// Don't do anything here yet.
+	entry := readFileEntry(sm.dbl, sm.buf, false)
+	sm.definedFiles = append(sm.definedFiles, entry)
 }
