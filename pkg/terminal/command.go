@@ -196,9 +196,11 @@ Argument -a shows more registers.`},
 Show source around current point or provided linespec.`},
 		{aliases: []string{"stack", "bt"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
-	[goroutine <n>] [frame <m>] stack [<depth>] [-full]
-
-If -full is specified every stackframe will be decorated by the value of its local variables and function arguments.`},
+	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-g] [-s] [-offsets]
+	
+	-full		every stackframe is decorated with the value of its local variables and arguments.
+	-offsets	prints frame offset of each frame
+`},
 		{aliases: []string{"frame"}, allowedPrefixes: scopePrefix, cmdFn: c.frame, helpMsg: `Executes command on a different frame.
 
 	frame <frame index> <command>.`},
@@ -1112,46 +1114,55 @@ func regs(t *Term, ctx callContext, args string) error {
 }
 
 func stackCommand(t *Term, ctx callContext, args string) error {
-	depth, full, err := parseStackArgs(args)
+	sa, err := parseStackArgs(args)
 	if err != nil {
 		return err
 	}
 	if ctx.Prefix == onPrefix {
-		ctx.Breakpoint.Stacktrace = depth
+		ctx.Breakpoint.Stacktrace = sa.depth
 		return nil
 	}
 	var cfg *api.LoadConfig
-	if full {
+	if sa.full {
 		cfg = &ShortLoadConfig
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, depth, cfg)
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, sa.depth, cfg)
 	if err != nil {
 		return err
 	}
-	printStack(stack, "")
+	printStack(stack, "", sa.offsets)
 	return nil
 }
 
-func parseStackArgs(argstr string) (int, bool, error) {
-	var (
-		depth = 10
-		full  = false
-	)
+type stackArgs struct {
+	depth   int
+	full    bool
+	offsets bool
+}
+
+func parseStackArgs(argstr string) (stackArgs, error) {
+	r := stackArgs{
+		depth: 10,
+		full:  false,
+	}
 	if argstr != "" {
 		args := strings.Split(argstr, " ")
 		for i := range args {
-			if args[i] == "-full" {
-				full = true
-			} else {
+			switch args[i] {
+			case "-full":
+				r.full = true
+			case "-offsets":
+				r.offsets = true
+			default:
 				n, err := strconv.Atoi(args[i])
 				if err != nil {
-					return 0, false, fmt.Errorf("depth must be a number")
+					return stackArgs{}, fmt.Errorf("depth must be a number")
 				}
-				depth = n
+				r.depth = n
 			}
 		}
 	}
-	return depth, full, nil
+	return r, nil
 }
 
 func listCommand(t *Term, ctx callContext, args string) error {
@@ -1275,7 +1286,7 @@ func digits(n int) int {
 	return int(math.Floor(math.Log10(float64(n)))) + 1
 }
 
-func printStack(stack []api.Stackframe, ind string) {
+func printStack(stack []api.Stackframe, ind string, offsets bool) {
 	if len(stack) == 0 {
 		return
 	}
@@ -1294,6 +1305,10 @@ func printStack(stack []api.Stackframe, ind string) {
 		}
 		fmt.Printf(fmtstr, ind, i, stack[i].PC, name)
 		fmt.Printf("%sat %s:%d\n", s, ShortenFilePath(stack[i].File), stack[i].Line)
+
+		if offsets {
+			fmt.Printf("%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
+		}
 
 		for j := range stack[i].Arguments {
 			fmt.Printf("%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString())
@@ -1405,7 +1420,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 
 		if bpi.Stacktrace != nil {
 			fmt.Printf("\tStack:\n")
-			printStack(bpi.Stacktrace, "\t\t")
+			printStack(bpi.Stacktrace, "\t\t", false)
 		}
 	}
 }

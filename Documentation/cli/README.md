@@ -290,9 +290,11 @@ If regex is specified only the source files matching it will be returned.
 ## stack
 Print stack trace.
 
-	[goroutine <n>] [frame <m>] stack [<depth>] [-full]
+	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-g] [-s] [-offsets]
+	
+	-full		every stackframe is decorated with the value of its local variables and arguments.
+	-offsets	prints frame offset of each frame
 
-If -full is specified every stackframe will be decorated by the value of its local variables and function arguments.
 
 Aliases: bt
 
