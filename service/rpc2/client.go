@@ -13,8 +13,8 @@ import (
 
 // Client is a RPC service.Client.
 type RPCClient struct {
-	addr       string
-	client     *rpc.Client
+	addr   string
+	client *rpc.Client
 }
 
 // Ensure the implementation satisfies the interface.
