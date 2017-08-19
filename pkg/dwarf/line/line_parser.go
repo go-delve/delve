@@ -114,23 +114,32 @@ func parseIncludeDirs(info *DebugLineInfo, buf *bytes.Buffer) {
 
 func parseFileEntries(info *DebugLineInfo, buf *bytes.Buffer) {
 	for {
-		entry := new(FileEntry)
-
-		entry.Path, _ = util.ParseString(buf)
+		entry := readFileEntry(info, buf, true)
 		if entry.Path == "" {
 			break
-		}
-
-		entry.DirIdx, _ = util.DecodeULEB128(buf)
-		entry.LastModTime, _ = util.DecodeULEB128(buf)
-		entry.Length, _ = util.DecodeULEB128(buf)
-		if !filepath.IsAbs(entry.Path) {
-			if entry.DirIdx >= 0 && entry.DirIdx < uint64(len(info.IncludeDirs)) {
-				entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
-			}
 		}
 
 		info.FileNames = append(info.FileNames, entry)
 		info.Lookup[entry.Path] = entry
 	}
+}
+
+func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool) *FileEntry {
+	entry := new(FileEntry)
+
+	entry.Path, _ = util.ParseString(buf)
+	if entry.Path == "" && exitOnEmptyPath {
+		return entry
+	}
+
+	entry.DirIdx, _ = util.DecodeULEB128(buf)
+	entry.LastModTime, _ = util.DecodeULEB128(buf)
+	entry.Length, _ = util.DecodeULEB128(buf)
+	if !filepath.IsAbs(entry.Path) {
+		if entry.DirIdx >= 0 && entry.DirIdx < uint64(len(info.IncludeDirs)) {
+			entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
+		}
+	}
+
+	return entry
 }
