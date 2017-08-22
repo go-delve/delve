@@ -224,6 +224,25 @@ func (bi *BinaryInfo) LoadError() error {
 	return bi.loadErr
 }
 
+type nilCloser struct{}
+
+func (c *nilCloser) Close() error { return nil }
+
+// New creates a new BinaryInfo object using the specified data. Use LoadBinary instead.
+func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes []byte, debugLineBytes []byte) {
+	bi.closer = (*nilCloser)(nil)
+	bi.dwarf = dwdata
+
+	if debugFrameBytes != nil {
+		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes))
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go bi.loadDebugInfoMaps(debugLineBytes, &wg)
+	wg.Wait()
+}
+
 // ELF ///////////////////////////////////////////////////////////////
 
 func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {

@@ -625,16 +625,16 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 						break
 					}
 					b := util.MakeBuf(d, util.UnknownFormat{}, "location", 0, loc)
-					op_ := b.Uint8()
+					op_ := op.Opcode(b.Uint8())
 					switch op_ {
-					case op.DW_OP_plus_uconsts:
+					case op.DW_OP_plus_uconst:
 						// Handle opcode sequence [DW_OP_plus_uconst <uleb128>]
 						f.ByteOffset = int64(b.Uint())
 						b.AssertEmpty()
 					case op.DW_OP_consts:
 						// Handle opcode sequence [DW_OP_consts <sleb128> DW_OP_plus]
 						f.ByteOffset = b.Int()
-						op_ = b.Uint8()
+						op_ = op.Opcode(b.Uint8())
 						if op_ != op.DW_OP_plus {
 							err = dwarf.DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op_)}
 							goto Error

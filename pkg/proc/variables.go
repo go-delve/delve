@@ -763,11 +763,12 @@ func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry) (*Variable, 
 	}
 
 	addr, err := op.ExecuteStackProgram(op.DwarfRegisters{CFA: scope.CFA}, instructions)
-	if err != nil {
-		return nil, err
-	}
 
-	return scope.newVariable(n, uintptr(addr), t), nil
+	v := scope.newVariable(n, uintptr(addr), t)
+	if err != nil {
+		v.Unreadable = err
+	}
+	return v, nil
 }
 
 // If v is a pointer a new variable is returned containing the value pointed by v.
