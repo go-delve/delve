@@ -26,12 +26,14 @@ type context struct {
 	DwarfRegisters
 }
 
-var oplut = map[byte]stackfn{
+type Opcode byte
+
+var oplut = map[Opcode]stackfn{
 	DW_OP_call_frame_cfa: callframecfa,
 	DW_OP_plus:           plus,
 	DW_OP_consts:         consts,
 	DW_OP_addr:           addr,
-	DW_OP_plus_uconsts:   plusuconsts,
+	DW_OP_plus_uconst:    plusuconsts,
 }
 
 func ExecuteStackProgram(regs DwarfRegisters, instructions []byte) (int64, error) {

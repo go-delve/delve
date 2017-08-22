@@ -140,7 +140,7 @@ var NoSourceError = errors.New("no source available")
 
 func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64) ([]uint64, error) {
 	if lineInfo == nil {
-		return nil, nil
+		return nil, NoSourceError
 	}
 
 	var (
