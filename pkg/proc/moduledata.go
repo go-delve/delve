@@ -3,6 +3,8 @@ package proc
 import (
 	"go/constant"
 	"unsafe"
+
+	"github.com/derekparker/delve/pkg/dwarf/op"
 )
 
 // delve counterpart to runtime.moduledata
@@ -13,7 +15,7 @@ type moduleData struct {
 
 func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) (err error) {
 	bi.loadModuleDataOnce.Do(func() {
-		scope := &EvalScope{0, 0, mem, nil, bi, 0}
+		scope := &EvalScope{0, op.DwarfRegisters{}, mem, nil, bi, 0}
 		var md *Variable
 		md, err = scope.packageVarAddr("runtime.firstmoduledata")
 		if err != nil {
@@ -81,7 +83,7 @@ func resolveTypeOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem MemoryRea
 		}
 		v.loadValue(LoadConfig{false, 1, 0, 0, -1})
 		addr, _ := constant.Int64Val(v.Value)
-		return v.newVariable(v.Name, uintptr(addr), rtyp), nil
+		return v.newVariable(v.Name, uintptr(addr), rtyp, mem), nil
 	}
 
 	if t, _ := md.typemapVar.mapAccess(newConstant(constant.MakeUint64(uint64(off)), mem)); t != nil {
@@ -119,7 +121,7 @@ func resolveNameOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem MemoryRea
 }
 
 func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem MemoryReadWriter) (*Variable, error) {
-	scope := &EvalScope{0, 0, mem, nil, bi, 0}
+	scope := &EvalScope{0, op.DwarfRegisters{}, mem, nil, bi, 0}
 	reflectOffs, err := scope.packageVarAddr("runtime.reflectOffs")
 	if err != nil {
 		return nil, err

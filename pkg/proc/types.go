@@ -170,7 +170,9 @@ func (v compileUnitsByLowpc) Less(i int, j int) bool { return v[i].LowPC < v[j].
 func (v compileUnitsByLowpc) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
 
 func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGroup) {
-	defer wg.Done()
+	if wg != nil {
+		defer wg.Done()
+	}
 	bi.types = make(map[string]dwarf.Offset)
 	bi.packageVars = make(map[string]dwarf.Offset)
 	bi.Functions = []Function{}
@@ -502,7 +504,7 @@ func nameOfFuncRuntimeType(_type *Variable, tflag int64, anonymous bool) (string
 		outCount = outCount & (1<<15 - 1)
 	}
 
-	cursortyp := _type.newVariable("", _type.Addr+uintptr(uadd), prtyp)
+	cursortyp := _type.newVariable("", _type.Addr+uintptr(uadd), prtyp, _type.mem)
 	var buf bytes.Buffer
 	if anonymous {
 		buf.WriteString("func(")
@@ -710,7 +712,7 @@ func specificRuntimeType(_type *Variable, kind int64) (*Variable, error) {
 		return _type, nil
 	}
 
-	return _type.newVariable(_type.Name, _type.Addr, typ), nil
+	return _type.newVariable(_type.Name, _type.Addr, typ, _type.mem), nil
 }
 
 // See reflect.(*rtype).uncommon in $GOROOT/src/reflect/type.go
@@ -724,7 +726,7 @@ func uncommon(_type *Variable, tflag int64) *Variable {
 		return nil
 	}
 
-	return _type.newVariable(_type.Name, _type.Addr+uintptr(_type.RealType.Size()), typ)
+	return _type.newVariable(_type.Name, _type.Addr+uintptr(_type.RealType.Size()), typ, _type.mem)
 }
 
 // typeForKind returns a *dwarf.StructType describing the specialization of

@@ -4,10 +4,10 @@ import "testing"
 
 func TestExecuteStackProgram(t *testing.T) {
 	var (
-		instructions = []byte{DW_OP_consts, 0x1c, DW_OP_consts, 0x1c, DW_OP_plus}
+		instructions = []byte{byte(DW_OP_consts), 0x1c, byte(DW_OP_consts), 0x1c, byte(DW_OP_plus)}
 		expected     = int64(56)
 	)
-	actual, err := ExecuteStackProgram(DwarfRegisters{}, instructions)
+	actual, _, err := ExecuteStackProgram(DwarfRegisters{}, instructions)
 	if err != nil {
 		t.Fatal(err)
 	}

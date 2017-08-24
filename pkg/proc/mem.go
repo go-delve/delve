@@ -1,5 +1,11 @@
 package proc
 
+import (
+	"errors"
+
+	"github.com/derekparker/delve/pkg/dwarf/op"
+)
+
 const cacheEnabled = true
 
 // MemoryReader is like io.ReaderAt, but the offset is a uintptr so that it
@@ -46,7 +52,8 @@ func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter 
 	if size <= 0 {
 		return mem
 	}
-	if cacheMem, isCache := mem.(*memCache); isCache {
+	switch cacheMem := mem.(type) {
+	case *memCache:
 		if cacheMem.contains(addr, size) {
 			return mem
 		} else {
@@ -57,6 +64,8 @@ func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter 
 			}
 			return &memCache{addr, cache, mem}
 		}
+	case *compositeMemory:
+		return mem
 	}
 	cache := make([]byte, size)
 	_, err := mem.ReadMemory(cache, addr)
@@ -64,4 +73,63 @@ func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter 
 		return mem
 	}
 	return &memCache{addr, cache, mem}
+}
+
+// fakeAddress used by extractVarInfoFromEntry for variables that do not
+// have a memory address, we can't use 0 because a lot of code (likely
+// including client code) assumes that addr == 0 is nil
+const fakeAddress = 0xbeef0000
+
+type compositeMemory struct {
+	realmem MemoryReadWriter
+	regs    op.DwarfRegisters
+	pieces  []op.Piece
+	data    []byte
+}
+
+func newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece) *compositeMemory {
+	cmem := &compositeMemory{realmem: mem, regs: regs, pieces: pieces, data: []byte{}}
+	for _, piece := range pieces {
+		if piece.IsRegister {
+			reg := regs.Bytes(piece.RegNum)
+			sz := piece.Size
+			if sz == 0 && len(pieces) == 1 {
+				sz = len(reg)
+			}
+			cmem.data = append(cmem.data, reg[:sz]...)
+		} else {
+			buf := make([]byte, piece.Size)
+			mem.ReadMemory(buf, uintptr(piece.Addr))
+			cmem.data = append(cmem.data, buf...)
+		}
+	}
+	return cmem
+}
+
+func (mem *compositeMemory) ReadMemory(data []byte, addr uintptr) (int, error) {
+	addr -= fakeAddress
+	if addr >= uintptr(len(mem.data)) || addr+uintptr(len(data)) > uintptr(len(mem.data)) {
+		return 0, errors.New("read out of bounds")
+	}
+	copy(data, mem.data[addr:addr+uintptr(len(data))])
+	return len(data), nil
+}
+
+func (mem *compositeMemory) WriteMemory(addr uintptr, data []byte) (int, error) {
+	//TODO(aarzilli): implement
+	return 0, errors.New("can't write composite memory")
+}
+
+// DereferenceMemory returns a MemoryReadWriter that can read and write the
+// memory pointed to by pointers in this memory.
+// Normally mem and mem.Dereference are the same object, they are different
+// only if this MemoryReadWriter is used to access memory outside of the
+// normal address space of the inferior process (such as data contained in
+// registers, or composite memory).
+func DereferenceMemory(mem MemoryReadWriter) MemoryReadWriter {
+	switch mem := mem.(type) {
+	case *compositeMemory:
+		return mem.realmem
+	}
+	return mem
 }

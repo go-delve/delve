@@ -9,34 +9,33 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/util"
 )
 
-const (
-	DW_OP_addr           = 0x3
-	DW_OP_call_frame_cfa = 0x9c
-	DW_OP_plus           = 0x22
-	DW_OP_consts         = 0x11
-	DW_OP_plus_uconsts   = 0x23
-)
+type Opcode byte
 
-type stackfn func(byte, *context) error
+//go:generate go run ../../../scripts/gen-opcodes.go opcodes.table opcodes.go
+
+type stackfn func(Opcode, *context) error
 
 type context struct {
-	buf   *bytes.Buffer
-	stack []int64
+	buf    *bytes.Buffer
+	stack  []int64
+	pieces []Piece
+	reg    bool
 
 	DwarfRegisters
 }
 
-type Opcode byte
-
-var oplut = map[Opcode]stackfn{
-	DW_OP_call_frame_cfa: callframecfa,
-	DW_OP_plus:           plus,
-	DW_OP_consts:         consts,
-	DW_OP_addr:           addr,
-	DW_OP_plus_uconst:    plusuconsts,
+// Piece is a piece of memory stored either at an addres or in a register.
+type Piece struct {
+	Size       int
+	Addr       int64
+	RegNum     uint64
+	IsRegister bool
 }
 
-func ExecuteStackProgram(regs DwarfRegisters, instructions []byte) (int64, error) {
+// ExecuteStackProgram executes a DWARF location expression and returns
+// either an address (int64), or a slice of Pieces for location expressions
+// that don't evaluate to an address (such as register and composite expressions).
+func ExecuteStackProgram(regs DwarfRegisters, instructions []byte) (int64, []Piece, error) {
 	ctxt := &context{
 		buf:            bytes.NewBuffer(instructions),
 		stack:          make([]int64, 0, 3),
@@ -44,42 +43,50 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte) (int64, error
 	}
 
 	for {
-		opcode, err := ctxt.buf.ReadByte()
+		opcodeByte, err := ctxt.buf.ReadByte()
 		if err != nil {
+			break
+		}
+		opcode := Opcode(opcodeByte)
+		if ctxt.reg && opcode != DW_OP_piece {
 			break
 		}
 		fn, ok := oplut[opcode]
 		if !ok {
-			return 0, fmt.Errorf("invalid instruction %#v", opcode)
+			return 0, nil, fmt.Errorf("invalid instruction %#v", opcode)
 		}
 
 		err = fn(opcode, ctxt)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	}
 
-	if len(ctxt.stack) == 0 {
-		return 0, errors.New("empty OP stack")
+	if ctxt.pieces != nil {
+		return 0, ctxt.pieces, nil
 	}
 
-	return ctxt.stack[len(ctxt.stack)-1], nil
+	if len(ctxt.stack) == 0 {
+		return 0, nil, errors.New("empty OP stack")
+	}
+
+	return ctxt.stack[len(ctxt.stack)-1], nil, nil
 }
 
-func callframecfa(opcode byte, ctxt *context) error {
+func callframecfa(opcode Opcode, ctxt *context) error {
 	if ctxt.CFA == 0 {
-		return fmt.Errorf("Could not retrieve call frame CFA for current PC")
+		return fmt.Errorf("Could not retrieve CFA for current PC")
 	}
 	ctxt.stack = append(ctxt.stack, int64(ctxt.CFA))
 	return nil
 }
 
-func addr(opcode byte, ctxt *context) error {
+func addr(opcode Opcode, ctxt *context) error {
 	ctxt.stack = append(ctxt.stack, int64(binary.LittleEndian.Uint64(ctxt.buf.Next(8))))
 	return nil
 }
 
-func plus(opcode byte, ctxt *context) error {
+func plus(opcode Opcode, ctxt *context) error {
 	var (
 		slen   = len(ctxt.stack)
 		digits = ctxt.stack[slen-2 : slen]
@@ -90,21 +97,50 @@ func plus(opcode byte, ctxt *context) error {
 	return nil
 }
 
-func plusuconsts(opcode byte, ctxt *context) error {
+func plusuconsts(opcode Opcode, ctxt *context) error {
 	slen := len(ctxt.stack)
 	num, _ := util.DecodeULEB128(ctxt.buf)
 	ctxt.stack[slen-1] = ctxt.stack[slen-1] + int64(num)
 	return nil
 }
 
-func consts(opcode byte, ctxt *context) error {
+func consts(opcode Opcode, ctxt *context) error {
 	num, _ := util.DecodeSLEB128(ctxt.buf)
 	ctxt.stack = append(ctxt.stack, num)
 	return nil
 }
 
-func framebase(opcode byte, ctxt *context) error {
+func framebase(opcode Opcode, ctxt *context) error {
 	num, _ := util.DecodeSLEB128(ctxt.buf)
 	ctxt.stack = append(ctxt.stack, ctxt.FrameBase+num)
+	return nil
+}
+
+func register(opcode Opcode, ctxt *context) error {
+	ctxt.reg = true
+	if opcode == DW_OP_regx {
+		n, _ := util.DecodeSLEB128(ctxt.buf)
+		ctxt.pieces = append(ctxt.pieces, Piece{IsRegister: true, RegNum: uint64(n)})
+	} else {
+		ctxt.pieces = append(ctxt.pieces, Piece{IsRegister: true, RegNum: uint64(opcode - DW_OP_reg0)})
+	}
+	return nil
+}
+
+func piece(opcode Opcode, ctxt *context) error {
+	sz, _ := util.DecodeULEB128(ctxt.buf)
+	if ctxt.reg {
+		ctxt.reg = false
+		ctxt.pieces[len(ctxt.pieces)-1].Size = int(sz)
+		return nil
+	}
+
+	if len(ctxt.stack) == 0 {
+		return errors.New("empty OP stack")
+	}
+
+	addr := ctxt.stack[len(ctxt.stack)-1]
+	ctxt.pieces = append(ctxt.pieces, Piece{Size: int(sz), Addr: addr})
+	ctxt.stack = ctxt.stack[:0]
 	return nil
 }

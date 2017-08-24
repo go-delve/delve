@@ -481,12 +481,10 @@ func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
 		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
 	}
 
-	PC, CFA := locs[frame].Current.PC, locs[frame].Regs.CFA
-
-	return &EvalScope{PC, CFA, thread, g.variable, dbp.BinInfo(), g.stackhi}, nil
+	return &EvalScope{locs[frame].Current.PC, locs[frame].Regs, thread, g.variable, dbp.BinInfo(), locs[frame].StackHi}, nil
 }
 
 // FrameToScope returns a new EvalScope for this frame
 func FrameToScope(p Process, frame Stackframe) *EvalScope {
-	return &EvalScope{frame.Current.PC, frame.Regs.CFA, p.CurrentThread(), nil, p.BinInfo(), frame.StackHi}
+	return &EvalScope{frame.Current.PC, frame.Regs, p.CurrentThread(), nil, p.BinInfo(), frame.StackHi}
 }
