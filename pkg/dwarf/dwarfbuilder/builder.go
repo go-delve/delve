@@ -34,7 +34,7 @@ func New() *Builder {
 }
 
 // Build closes b and returns all the dwarf sections.
-func (b *Builder) Build() (abbrev, aranges, frame, info, line, pubnames, ranges, str []byte, err error) {
+func (b *Builder) Build() (abbrev, aranges, frame, info, line, pubnames, ranges, str, loc []byte, err error) {
 	b.TagClose()
 
 	if len(b.tagStack) > 0 {
@@ -45,6 +45,7 @@ func (b *Builder) Build() (abbrev, aranges, frame, info, line, pubnames, ranges,
 	abbrev = b.makeAbbrevTable()
 	info = b.info.Bytes()
 	binary.LittleEndian.PutUint32(info, uint32(len(info)-4))
+	loc = b.loc.Bytes()
 
 	return
 }

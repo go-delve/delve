@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"debug/dwarf"
 	"errors"
 	"fmt"
 
@@ -173,6 +174,19 @@ func (it *stackIterator) Err() error {
 	return it.err
 }
 
+// frameBase calculates the frame base pseudo-register for DWARF for fn and
+// the current frame.
+func (it *stackIterator) frameBase(fn *Function) int64 {
+	rdr := it.bi.dwarf.Reader()
+	rdr.Seek(fn.offset)
+	e, err := rdr.Next()
+	if err != nil {
+		return 0
+	}
+	fb, _, _ := it.bi.Location(e, dwarf.AttrFrameBase, it.pc, it.regs)
+	return fb
+}
+
 func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 	if retaddr == 0 {
 		it.err = NullAddrError{}
@@ -182,6 +196,8 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 	if fn == nil {
 		f = "?"
 		l = -1
+	} else {
+		it.regs.FrameBase = it.frameBase(fn)
 	}
 	r := Stackframe{Current: Location{PC: it.pc, File: f, Line: l, Fn: fn}, Regs: it.regs, Ret: ret, addrret: retaddr, StackHi: it.stackhi}
 	if !it.top {
@@ -281,13 +297,13 @@ func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, c
 	case frame.RuleRegister:
 		return it.regs.Reg(rule.Reg), nil
 	case frame.RuleExpression:
-		v, err := op.ExecuteStackProgram(it.regs, rule.Expression)
+		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression)
 		if err != nil {
 			return nil, err
 		}
 		return it.readRegisterAt(regnum, uint64(v))
 	case frame.RuleValExpression:
-		v, err := op.ExecuteStackProgram(it.regs, rule.Expression)
+		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression)
 		if err != nil {
 			return nil, err
 		}

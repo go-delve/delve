@@ -5,6 +5,7 @@ import (
 	"debug/elf"
 	"debug/macho"
 	"debug/pe"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/line"
+	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
@@ -32,6 +34,7 @@ type BinaryInfo struct {
 	Arch          Arch
 	dwarf         *dwarf.Data
 	frameEntries  frame.FrameDescriptionEntries
+	loclist       loclistReader
 	compileUnits  []*compileUnit
 	types         map[string]dwarf.Offset
 	packageVars   map[string]dwarf.Offset
@@ -114,6 +117,65 @@ func (fn *Function) BaseName() string {
 		return fn.Name[i+1:]
 	}
 	return fn.Name
+}
+
+type loclistReader struct {
+	data  []byte
+	cur   int
+	ptrSz int
+}
+
+func (rdr *loclistReader) Seek(off int) {
+	rdr.cur = off
+}
+
+func (rdr *loclistReader) read(sz int) []byte {
+	r := rdr.data[rdr.cur : rdr.cur+sz]
+	rdr.cur += sz
+	return r
+}
+
+func (rdr *loclistReader) oneAddr() uint64 {
+	switch rdr.ptrSz {
+	case 4:
+		addr := binary.LittleEndian.Uint32(rdr.read(rdr.ptrSz))
+		if addr == ^uint32(0) {
+			return ^uint64(0)
+		}
+		return uint64(addr)
+	case 8:
+		addr := uint64(binary.LittleEndian.Uint64(rdr.read(rdr.ptrSz)))
+		return addr
+	default:
+		panic("bad address size")
+	}
+}
+
+func (rdr *loclistReader) Next(e *loclistEntry) bool {
+	e.lowpc = rdr.oneAddr()
+	e.highpc = rdr.oneAddr()
+
+	if e.lowpc == 0 && e.highpc == 0 {
+		return false
+	}
+
+	if e.BaseAddressSelection() {
+		e.instr = nil
+		return true
+	}
+
+	instrlen := binary.LittleEndian.Uint16(rdr.read(2))
+	e.instr = rdr.read(int(instrlen))
+	return true
+}
+
+type loclistEntry struct {
+	lowpc, highpc uint64
+	instr         []byte
+}
+
+func (e *loclistEntry) BaseAddressSelection() bool {
+	return e.lowpc == ^uint64(0)
 }
 
 func NewBinaryInfo(goos, goarch string) BinaryInfo {
@@ -228,8 +290,9 @@ type nilCloser struct{}
 
 func (c *nilCloser) Close() error { return nil }
 
-// New creates a new BinaryInfo object using the specified data. Use LoadBinary instead.
-func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes []byte, debugLineBytes []byte) {
+// LoadFromData creates a new BinaryInfo object using the specified data.
+// This is used for debugging BinaryInfo, you should use LoadBinary instead.
+func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes, debugLineBytes, debugLocBytes []byte) {
 	bi.closer = (*nilCloser)(nil)
 	bi.dwarf = dwdata
 
@@ -237,10 +300,73 @@ func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes []byte, d
 		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes))
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go bi.loadDebugInfoMaps(debugLineBytes, &wg)
-	wg.Wait()
+	bi.loclistInit(debugLocBytes)
+
+	bi.loadDebugInfoMaps(debugLineBytes, nil)
+}
+
+func (bi *BinaryInfo) loclistInit(data []byte) {
+	bi.loclist.data = data
+	bi.loclist.ptrSz = bi.Arch.PtrSize()
+}
+
+// Location returns the location described by attribute attr of entry.
+// This will either be an int64 address or a slice of Pieces for locations
+// that don't correspond to a single memory address (registers, composite
+// locations).
+func (bi *BinaryInfo) Location(entry *dwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, error) {
+	a := entry.Val(attr)
+	if a == nil {
+		return 0, nil, fmt.Errorf("no location attribute %s", attr)
+	}
+	if instr, ok := a.([]byte); ok {
+		return op.ExecuteStackProgram(regs, instr)
+	}
+	off, ok := a.(int64)
+	if !ok {
+		return 0, nil, fmt.Errorf("could not interpret location attribute %s", attr)
+	}
+	if bi.loclist.data == nil {
+		return 0, nil, fmt.Errorf("could not find loclist entry at %#x for address %#x (no debug_loc section found)", off, pc)
+	}
+	instr := bi.loclistEntry(off, pc)
+	if instr == nil {
+		return 0, nil, fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
+	}
+	return op.ExecuteStackProgram(regs, instr)
+}
+
+// loclistEntry returns the loclist entry in the loclist starting at off,
+// for address pc.
+func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
+	var base uint64
+	if cu := bi.findCompileUnit(pc); cu != nil {
+		base = cu.LowPC
+	}
+
+	bi.loclist.Seek(int(off))
+	var e loclistEntry
+	for bi.loclist.Next(&e) {
+		if e.BaseAddressSelection() {
+			base = e.highpc
+			continue
+		}
+		if pc >= e.lowpc+base && pc < e.highpc+base {
+			return e.instr
+		}
+	}
+
+	return nil
+}
+
+// findCompileUnit returns the compile unit containing address pc.
+func (bi *BinaryInfo) findCompileUnit(pc uint64) *compileUnit {
+	for _, cu := range bi.compileUnits {
+		if pc >= cu.LowPC && pc < cu.HighPC {
+			return cu
+		}
+	}
+	return nil
 }
 
 // ELF ///////////////////////////////////////////////////////////////
@@ -267,6 +393,7 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 	if err != nil {
 		return err
 	}
+	bi.loclistInit(getDebugLocElf(elfFile))
 
 	wg.Add(3)
 	go bi.parseDebugFrameElf(elfFile, wg)
@@ -308,6 +435,14 @@ func getDebugLineInfoElf(exe *elf.File) ([]byte, error) {
 		return debugLine, nil
 	}
 	return nil, errors.New("could not find .debug_line section in binary")
+}
+
+func getDebugLocElf(exe *elf.File) []byte {
+	if sec := exe.Section(".debug_loc"); sec != nil {
+		debugLoc, _ := exe.Section(".debug_loc").Data()
+		return debugLoc
+	}
+	return nil
 }
 
 func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
@@ -368,6 +503,7 @@ func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
 	if err != nil {
 		return err
 	}
+	bi.loclistInit(getDebugLocPE(peFile))
 
 	wg.Add(2)
 	go bi.parseDebugFramePE(peFile, wg)
@@ -505,6 +641,14 @@ func getDebugLineInfoPE(exe *pe.File) ([]byte, error) {
 	return nil, errors.New("could not find .debug_line section in binary")
 }
 
+func getDebugLocPE(exe *pe.File) []byte {
+	if sec := exe.Section(".debug_loc"); sec != nil {
+		debugLoc, _ := sec.Data()
+		return debugLoc
+	}
+	return nil
+}
+
 // MACH-O ////////////////////////////////////////////////////////////
 
 func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error {
@@ -525,6 +669,7 @@ func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error
 	if err != nil {
 		return err
 	}
+	bi.loclistInit(getDebugLocMacho(exe))
 
 	wg.Add(2)
 	go bi.parseDebugFrameMacho(exe, wg)
@@ -566,4 +711,12 @@ func getDebugLineInfoMacho(exe *macho.File) ([]byte, error) {
 		return debugLine, nil
 	}
 	return nil, errors.New("could not find __debug_line section in binary")
+}
+
+func getDebugLocMacho(exe *macho.File) []byte {
+	if sec := exe.Section("__debug_loc"); sec != nil {
+		debugLoc, _ := sec.Data()
+		return debugLoc
+	}
+	return nil
 }

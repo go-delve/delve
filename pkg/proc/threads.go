@@ -379,7 +379,7 @@ func ThreadScope(thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return &EvalScope{locations[0].Current.PC, locations[0].Regs.CFA, thread, nil, thread.BinInfo(), 0}, nil
+	return &EvalScope{locations[0].Current.PC, locations[0].Regs, thread, nil, thread.BinInfo(), 0}, nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on this thread.
@@ -395,7 +395,7 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &EvalScope{locations[0].Current.PC, locations[0].Regs.CFA, thread, g.variable, thread.BinInfo(), g.stackhi}, nil
+	return &EvalScope{locations[0].Current.PC, locations[0].Regs, thread, g.variable, thread.BinInfo(), g.stackhi}, nil
 }
 
 func onRuntimeBreakpoint(thread Thread) bool {

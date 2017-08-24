@@ -16,18 +16,19 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/core"
 )
 
 const defaultCFA = 0xc420051d00
 
 func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) *proc.BinaryInfo {
-	abbrev, aranges, frame, info, line, pubnames, ranges, str, err := dwb.Build()
+	abbrev, aranges, frame, info, line, pubnames, ranges, str, loc, err := dwb.Build()
 	assertNoError(err, t, "dwarbuilder.Build")
 	dwdata, err := dwarf.New(abbrev, aranges, frame, info, line, pubnames, ranges, str)
 	assertNoError(err, t, "creating dwarf")
 
 	bi := proc.NewBinaryInfo("linux", "amd64")
-	bi.LoadFromData(dwdata, frame, line)
+	bi.LoadFromData(dwdata, frame, line, loc)
 
 	return &bi
 }
@@ -66,22 +67,6 @@ func (mem *fakeMemory) WriteMemory(uintptr, []byte) (int, error) {
 	return 0, fmt.Errorf("not implemented")
 }
 
-// fakeRegisters implements op.DwarfRegisters with arbitrary values for each
-// register.
-type fakeRegisters struct {
-	regs [32]uint64
-}
-
-func (regs *fakeRegisters) Set(i int, val uint64) {
-	regs.regs[i] = val
-}
-
-func (regs *fakeRegisters) Get(i int) []byte {
-	var out bytes.Buffer
-	binary.Write(&out, binary.LittleEndian, regs.regs[i])
-	return out.Bytes()
-}
-
 func uintExprCheck(t *testing.T, scope *proc.EvalScope, expr string, tgt uint64) {
 	thevar, err := scope.EvalExpression(expr, normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", expr))
@@ -95,12 +80,20 @@ func uintExprCheck(t *testing.T, scope *proc.EvalScope, expr string, tgt uint64)
 }
 
 func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegisters, bi *proc.BinaryInfo, testCases map[string]uint16) *proc.EvalScope {
-	scope := &proc.EvalScope{PC: 0x40100, CFA: defaultCFA, Mem: mem, Gvar: nil, BinInfo: bi}
+	scope := &proc.EvalScope{PC: 0x40100, Regs: regs, Mem: mem, Gvar: nil, BinInfo: bi}
 	for name, value := range testCases {
 		uintExprCheck(t, scope, name, uint64(value))
 	}
 
 	return scope
+}
+
+func dwarfRegisters(regs *core.Registers) op.DwarfRegisters {
+	a := proc.AMD64Arch("linux")
+	dwarfRegs := a.RegistersToDwarfRegisters(regs)
+	dwarfRegs.CFA = defaultCFA
+	dwarfRegs.FrameBase = defaultCFA
+	return dwarfRegs
 }
 
 func TestDwarfExprRegisters(t *testing.T) {
@@ -112,23 +105,23 @@ func TestDwarfExprRegisters(t *testing.T) {
 
 	dwb := dwarfbuilder.New()
 
-	uint16off := dwb.BaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
+	uint16off := dwb.AddBaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
 
-	dwb.Subprogram("main.main", 0x40100, 0x41000)
+	dwb.AddSubprogram("main.main", 0x40100, 0x41000)
 	dwb.Attr(dwarf.AttrFrameBase, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa))
-	dwb.Variable("a", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_reg0))
-	dwb.Variable("b", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_fbreg, int(8)))
-	dwb.Variable("c", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_regx, int(1)))
+	dwb.AddVariable("a", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_reg0))
+	dwb.AddVariable("b", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_fbreg, int(8)))
+	dwb.AddVariable("c", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_regx, int(1)))
 	dwb.TagClose()
 
 	bi := fakeBinaryInfo(t, dwb)
 
 	mem := newFakeMemory(defaultCFA, uint64(0), uint64(testCases["b"]), uint16(testCases["pair.v"]))
-	var regs fakeRegisters
-	regs.Set(0, uint64(testCases["a"]))
-	regs.Set(1, uint64(testCases["c"]))
+	regs := core.Registers{LinuxCoreRegisters: &core.LinuxCoreRegisters{}}
+	regs.Rax = uint64(testCases["a"])
+	regs.Rdx = uint64(testCases["c"])
 
-	dwarfExprCheck(t, mem, &regs, bi, testCases)
+	dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases)
 }
 
 func TestDwarfExprComposite(t *testing.T) {
@@ -141,46 +134,47 @@ func TestDwarfExprComposite(t *testing.T) {
 
 	dwb := dwarfbuilder.New()
 
-	uint16off := dwb.BaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
-	intoff := dwb.BaseType("int", dwarfbuilder.DW_ATE_signed, 8)
+	uint16off := dwb.AddBaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
+	intoff := dwb.AddBaseType("int", dwarfbuilder.DW_ATE_signed, 8)
 
-	byteoff := dwb.BaseType("uint8", dwarfbuilder.DW_ATE_unsigned, 1)
+	byteoff := dwb.AddBaseType("uint8", dwarfbuilder.DW_ATE_unsigned, 1)
 
 	byteptroff := dwb.TagOpen(dwarf.TagPointerType, "*uint8")
 	dwb.Attr(godwarf.AttrGoKind, uint8(22))
 	dwb.Attr(dwarf.AttrType, byteoff)
 	dwb.TagClose()
 
-	pairoff := dwb.StructType("main.pair", 4)
+	pairoff := dwb.AddStructType("main.pair", 4)
 	dwb.Attr(godwarf.AttrGoKind, uint8(25))
-	dwb.Member("k", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(0)))
-	dwb.Member("v", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(2)))
+	dwb.AddMember("k", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(0)))
+	dwb.AddMember("v", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(2)))
 	dwb.TagClose()
 
-	stringoff := dwb.StructType("string", 16)
+	stringoff := dwb.AddStructType("string", 16)
 	dwb.Attr(godwarf.AttrGoKind, uint8(24))
-	dwb.Member("str", byteptroff, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(0)))
-	dwb.Member("len", intoff, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(8)))
+	dwb.AddMember("str", byteptroff, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(0)))
+	dwb.AddMember("len", intoff, dwarfbuilder.LocationBlock(op.DW_OP_plus_uconst, uint(8)))
 	dwb.TagClose()
 
-	dwb.Subprogram("main.main", 0x40100, 0x41000)
-	dwb.Variable("pair", pairoff, dwarfbuilder.LocationBlock(
+	dwb.AddSubprogram("main.main", 0x40100, 0x41000)
+	dwb.AddVariable("pair", pairoff, dwarfbuilder.LocationBlock(
 		op.DW_OP_reg2, op.DW_OP_piece, uint(2),
 		op.DW_OP_call_frame_cfa, op.DW_OP_consts, int(16), op.DW_OP_plus, op.DW_OP_piece, uint(2)))
-	dwb.Variable("s", stringoff, dwarfbuilder.LocationBlock(
+	dwb.AddVariable("s", stringoff, dwarfbuilder.LocationBlock(
 		op.DW_OP_reg1, op.DW_OP_piece, uint(8),
 		op.DW_OP_reg0, op.DW_OP_piece, uint(8)))
 	dwb.TagClose()
 
 	bi := fakeBinaryInfo(t, dwb)
 
-	mem := newFakeMemory(defaultCFA, uint64(0), uint64(0), uint16(testCases["pair.v"]), stringVal)
-	var regs fakeRegisters
-	regs.Set(0, uint64(len(stringVal)))
-	regs.Set(1, defaultCFA+18)
-	regs.Set(2, uint64(testCases["pair.k"]))
+	mem := newFakeMemory(defaultCFA, uint64(0), uint64(0), uint16(testCases["pair.v"]), []byte(stringVal))
+	var regs core.Registers
+	regs.LinuxCoreRegisters = &core.LinuxCoreRegisters{}
+	regs.Rax = uint64(len(stringVal))
+	regs.Rdx = defaultCFA + 18
+	regs.Rcx = uint64(testCases["pair.k"])
 
-	scope := dwarfExprCheck(t, mem, &regs, bi, testCases)
+	scope := dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases)
 
 	thevar, err := scope.EvalExpression("s", normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalExpression(s)", "s"))
@@ -199,10 +193,10 @@ func TestDwarfExprLoclist(t *testing.T) {
 
 	dwb := dwarfbuilder.New()
 
-	uint16off := dwb.BaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
+	uint16off := dwb.AddBaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
 
-	dwb.Subprogram("main.main", 0x40100, 0x41000)
-	dwb.Variable("a", uint16off, []dwarfbuilder.LocEntry{
+	dwb.AddSubprogram("main.main", 0x40100, 0x41000)
+	dwb.AddVariable("a", uint16off, []dwarfbuilder.LocEntry{
 		{0x40100, 0x40700, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa)},
 		{0x40700, 0x41000, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa, op.DW_OP_consts, int(2), op.DW_OP_plus)},
 	})
@@ -211,8 +205,9 @@ func TestDwarfExprLoclist(t *testing.T) {
 	bi := fakeBinaryInfo(t, dwb)
 
 	mem := newFakeMemory(defaultCFA, uint16(before), uint16(after))
+	regs := core.Registers{LinuxCoreRegisters: &core.LinuxCoreRegisters{}}
 
-	scope := &proc.EvalScope{PC: 0x40100, CFA: defaultCFA, Mem: mem, Gvar: nil, BinInfo: bi}
+	scope := &proc.EvalScope{PC: 0x40100, Regs: dwarfRegisters(&regs), Mem: mem, Gvar: nil, BinInfo: bi}
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800
