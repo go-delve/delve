@@ -47,6 +47,11 @@ const (
 	DW_LNS_set_basic_block  = 7
 	DW_LNS_const_add_pc     = 8
 	DW_LNS_fixed_advance_pc = 9
+
+	// DWARF v4
+	DW_LNS_set_prologue_end   = 10
+	DW_LNS_set_epilouge_begin = 11
+	DW_LNS_set_isa            = 12
 )
 
 // Extended opcodes
@@ -66,6 +71,11 @@ var standardopcodes = map[byte]opcodefn{
 	DW_LNS_set_basic_block:  setbasicblock,
 	DW_LNS_const_add_pc:     constaddpc,
 	DW_LNS_fixed_advance_pc: fixedadvancepc,
+
+	// DWARF v4
+	DW_LNS_set_prologue_end:   donothing0,
+	DW_LNS_set_epilouge_begin: donothing0,
+	DW_LNS_set_isa:            donothing1,
 }
 
 var extendedopcodes = map[byte]opcodefn{
@@ -75,16 +85,19 @@ var extendedopcodes = map[byte]opcodefn{
 }
 
 func newStateMachine(dbl *DebugLineInfo) *StateMachine {
-	return &StateMachine{dbl: dbl, file: dbl.FileNames[0].Name, line: 1}
+	return &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1}
 }
 
 // Returns all PCs for a given file/line. Useful for loops where the 'for' line
 // could be split amongst 2 PCs.
-func (dbl *DebugLines) AllPCsForFileLine(f string, l int) (pcs []uint64) {
+func (lineInfo *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64) {
+	if lineInfo == nil {
+		return nil
+	}
+
 	var (
 		foundFile bool
 		lastAddr  uint64
-		lineInfo  = dbl.GetLineInfo(f)
 		sm        = newStateMachine(lineInfo)
 		buf       = bytes.NewBuffer(lineInfo.Instructions)
 	)
@@ -116,11 +129,11 @@ func (dbl *DebugLines) AllPCsForFileLine(f string, l int) (pcs []uint64) {
 
 var NoSourceError = errors.New("no source available")
 
-func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) ([]uint64, error) {
-	lineInfo := dbl.GetLineInfo(filename)
+func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64) ([]uint64, error) {
 	if lineInfo == nil {
-		return nil, NoSourceError
+		return nil, nil
 	}
+
 	var (
 		pcs      []uint64
 		lastaddr uint64
@@ -142,6 +155,63 @@ func (dbl *DebugLines) AllPCsBetween(begin, end uint64, filename string) ([]uint
 		}
 	}
 	return pcs, nil
+}
+
+// PCToLine returns the filename and line number associated with pc.
+// If pc isn't found inside lineInfo's table it will return the filename and
+// line number associated with the closest PC address preceding pc.
+func (lineInfo *DebugLineInfo) PCToLine(pc uint64) (string, int) {
+	if lineInfo == nil {
+		return "", 0
+	}
+
+	var (
+		buf          = bytes.NewBuffer(lineInfo.Instructions)
+		sm           = newStateMachine(lineInfo)
+		lastFilename string
+		lastLineno   int
+	)
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+		if !sm.valid {
+			continue
+		}
+		if sm.address > pc {
+			return lastFilename, lastLineno
+		}
+		if sm.address == pc {
+			return sm.file, sm.line
+		}
+		lastFilename, lastLineno = sm.file, sm.line
+	}
+	return "", 0
+}
+
+// LineToPC returns the first PC address associated with filename:lineno.
+func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
+	if lineInfo == nil {
+		return 0
+	}
+
+	var (
+		foundFile bool
+		sm        = newStateMachine(lineInfo)
+		buf       = bytes.NewBuffer(lineInfo.Instructions)
+	)
+
+	for b, err := buf.ReadByte(); err == nil; b, err = buf.ReadByte() {
+		findAndExecOpcode(sm, buf, b)
+		if foundFile && sm.file != filename {
+			break
+		}
+		if sm.line == lineno && sm.file == filename {
+			foundFile = true
+			if sm.valid {
+				return sm.address
+			}
+		}
+	}
+	return 0
 }
 
 func findAndExecOpcode(sm *StateMachine, buf *bytes.Buffer, b byte) {
@@ -215,7 +285,7 @@ func advanceline(sm *StateMachine, buf *bytes.Buffer) {
 
 func setfile(sm *StateMachine, buf *bytes.Buffer) {
 	i, _ := util.DecodeULEB128(buf)
-	sm.file = sm.dbl.FileNames[i-1].Name
+	sm.file = sm.dbl.FileNames[i-1].Path
 }
 
 func setcolumn(sm *StateMachine, buf *bytes.Buffer) {
@@ -240,6 +310,15 @@ func fixedadvancepc(sm *StateMachine, buf *bytes.Buffer) {
 	binary.Read(buf, binary.LittleEndian, &operand)
 
 	sm.address += uint64(operand)
+}
+
+func donothing0(sm *StateMachine, buf *bytes.Buffer) {
+	// does nothing, no operands
+}
+
+func donothing1(sm *StateMachine, buf *bytes.Buffer) {
+	// does nothing, consumes one operand
+	util.DecodeSLEB128(buf)
 }
 
 func endsequence(sm *StateMachine, buf *bytes.Buffer) {

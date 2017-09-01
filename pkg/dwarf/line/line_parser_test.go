@@ -60,7 +60,7 @@ const (
 
 func testDebugLinePrologueParser(p string, t *testing.T) {
 	data := grabDebugLineSection(p, t)
-	debugLines := Parse(data)
+	debugLines := ParseAll(data)
 	dbl := debugLines[0]
 	prologue := dbl.Prologue
 
@@ -105,7 +105,7 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 
 	ok := false
 	for _, n := range dbl.FileNames {
-		if strings.Contains(n.Name, "/delve/_fixtures/testnextprog.go") {
+		if strings.Contains(n.Path, "/delve/_fixtures/testnextprog.go") {
 			ok = true
 			break
 		}
@@ -154,6 +154,6 @@ func BenchmarkLineParser(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = Parse(data)
+		_ = ParseAll(data)
 	}
 }

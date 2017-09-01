@@ -511,7 +511,7 @@ func (g *G) UserCurrent() Location {
 // Go returns the location of the 'go' statement
 // that spawned this goroutine.
 func (g *G) Go() Location {
-	f, l, fn := g.variable.bi.goSymTable.PCToLine(g.GoPC)
+	f, l, fn := g.variable.bi.PCToLine(g.GoPC)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
 }
 
@@ -1203,7 +1203,7 @@ func (v *Variable) readFunctionPtr() {
 	}
 
 	v.Base = uintptr(binary.LittleEndian.Uint64(val))
-	fn := v.bi.goSymTable.PCToFunc(uint64(v.Base))
+	fn := v.bi.PCToFunc(uint64(v.Base))
 	if fn == nil {
 		v.Unreadable = fmt.Errorf("could not find function for %#v", v.Base)
 		return
@@ -1660,14 +1660,14 @@ func (v *variablesByDepth) Swap(i int, j int) {
 
 // Fetches all variables of a specific type in the current function scope
 func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg *LoadConfig) ([]*Variable, error) {
-	off, err := scope.BinInfo.findFunctionDebugInfo(scope.PC)
-	if err != nil {
-		return nil, err
+	fn := scope.BinInfo.PCToFunc(scope.PC)
+	if fn == nil {
+		return nil, errors.New("unable to find function context")
 	}
 
 	var vars []*Variable
 	var depths []int
-	varReader := reader.Variables(scope.BinInfo.dwarf, off, scope.PC, tag == dwarf.TagVariable)
+	varReader := reader.Variables(scope.BinInfo.dwarf, fn.offset, scope.PC, tag == dwarf.TagVariable)
 	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()
