@@ -74,8 +74,8 @@ const (
 	RuleExpression
 	RuleValExpression
 	RuleArchitectural
-	RuleCFA       // Value is rule.Reg + rule.Offset
-	RuleRegOffset // Value is stored at address rule.Reg + rule.Offset
+	RuleCFA          // Value is rule.Reg + rule.Offset
+	RuleFramePointer // Value is stored at address rule.Reg + rule.Offset, but only if it's less than the current CFA, otherwise same value
 )
 
 const low_6_offset = 0x3f

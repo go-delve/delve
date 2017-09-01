@@ -3121,3 +3121,219 @@ func TestIssue844(t *testing.T) {
 		}
 	})
 }
+
+func logStacktrace(t *testing.T, frames []proc.Stackframe) {
+	for j := range frames {
+		name := "?"
+		if frames[j].Current.Fn != nil {
+			name = frames[j].Current.Fn.Name
+		}
+
+		t.Logf("\t%#x %#x %#x %s at %s:%d\n", frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
+	}
+}
+
+// stacktraceCheck checks that all the functions listed in tc appear in
+// frames in the same order.
+// Checks that all the functions in tc starting with "C." or with "!" are in
+// a systemstack frame.
+// Returns a slice m where m[i] is the index in frames of the function tc[i]
+// or nil if any check fails.
+func stacktraceCheck(t *testing.T, tc []string, frames []proc.Stackframe) []int {
+	m := make([]int, len(tc))
+	i, j := 0, 0
+	for i < len(tc) {
+		tcname := tc[i]
+		tcsystem := strings.HasPrefix(tcname, "C.")
+		if tcname[0] == '!' {
+			tcsystem = true
+			tcname = tcname[1:]
+		}
+		for j < len(frames) {
+			name := "?"
+			if frames[j].Current.Fn != nil {
+				name = frames[j].Current.Fn.Name
+			}
+			if name == tcname {
+				m[i] = j
+				if tcsystem != frames[j].SystemStack {
+					t.Logf("system stack check failed for frame %d (expected %v got %v)", j, tcsystem, frames[j].SystemStack)
+					t.Logf("expected: %v\n", tc)
+					return nil
+				}
+				break
+			}
+
+			j++
+		}
+		if j >= len(frames) {
+			t.Logf("couldn't find frame %d %s", i, tc)
+			t.Logf("expected: %v\n", tc)
+			return nil
+		}
+
+		i++
+	}
+	return m
+}
+
+func frameInFile(frame proc.Stackframe, file string) bool {
+	for _, loc := range []proc.Location{frame.Current, frame.Call} {
+		if !strings.HasSuffix(loc.File, "/"+file) && !strings.HasSuffix(loc.File, "\\"+file) {
+			return false
+		}
+		if loc.Line <= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func TestCgoStacktrace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		ver, _ := goversion.Parse(runtime.Version())
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+			t.Skip("disabled on windows with go before version 1.9")
+		}
+	}
+	if runtime.GOOS == "darwin" {
+		ver, _ := goversion.Parse(runtime.Version())
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 8, -1, 0, 0, ""}) {
+			t.Skip("disabled on macOS with go before version 1.8")
+		}
+	}
+
+	// Tests that:
+	// a) we correctly identify the goroutine while we are executing cgo code
+	// b) that we can stitch together the system stack (where cgo code
+	// executes) and the normal goroutine stack
+
+	// Each test case describes how the stack trace should appear after a
+	// continue. The first function on each test case is the topmost function
+	// that should be found on the stack, the actual stack trace can have more
+	// frame than those listed here but all the frames listed must appear in
+	// the specified order.
+	testCases := [][]string{
+		[]string{"main.main"},
+		[]string{"C.helloworld_pt2", "C.helloworld", "main.main"},
+		[]string{"main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
+		[]string{"C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
+		[]string{"main.helloWorld2", "C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"}}
+
+	var gid int
+
+	frameOffs := map[string]int64{}
+	framePointerOffs := map[string]int64{}
+
+	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
+		for itidx, tc := range testCases {
+			assertNoError(proc.Continue(p), t, fmt.Sprintf("Continue at iteration step %d", itidx))
+
+			g, err := proc.GetG(p.CurrentThread())
+			assertNoError(err, t, fmt.Sprintf("GetG at iteration step %d", itidx))
+
+			if itidx == 0 {
+				gid = g.ID
+			} else {
+				if gid != g.ID {
+					t.Fatalf("wrong goroutine id at iteration step %d (expected %d got %d)", itidx, gid, g.ID)
+				}
+			}
+
+			frames, err := g.Stacktrace(100)
+			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
+
+			t.Logf("iteration step %d", itidx)
+			logStacktrace(t, frames)
+
+			m := stacktraceCheck(t, tc, frames)
+			mismatch := (m == nil)
+
+			for i, j := range m {
+				if strings.HasPrefix(tc[i], "C.hellow") {
+					if !frameInFile(frames[j], "hello.c") {
+						t.Logf("position in %q is %s:%d (call %s:%d)", tc[i], frames[j].Current.File, frames[j].Current.Line, frames[j].Call.File, frames[j].Call.Line)
+						mismatch = true
+						break
+					}
+				}
+				if frameOff, ok := frameOffs[tc[i]]; ok {
+					if frameOff != frames[j].FrameOffset() {
+						t.Logf("frame %s offset mismatch", tc[i])
+					}
+					if framePointerOffs[tc[i]] != frames[j].FramePointerOffset() {
+						t.Logf("frame %s pointer offset mismatch", tc[i])
+					}
+				} else {
+					frameOffs[tc[i]] = frames[j].FrameOffset()
+					framePointerOffs[tc[i]] = frames[j].FramePointerOffset()
+				}
+			}
+
+			// also check that ThreadStacktrace produces the same list of frames
+			threadFrames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
+			assertNoError(err, t, fmt.Sprintf("ThreadStacktrace at iteration step %d", itidx))
+
+			if len(threadFrames) != len(frames) {
+				mismatch = true
+			} else {
+				for j := range frames {
+					if frames[j].Current.File != threadFrames[j].Current.File || frames[j].Current.Line != threadFrames[j].Current.Line {
+						t.Logf("stack mismatch between goroutine stacktrace and thread stacktrace")
+						t.Logf("thread stacktrace:")
+						logStacktrace(t, threadFrames)
+						mismatch = true
+						break
+					}
+				}
+			}
+			if mismatch {
+				t.Fatal("see previous loglines")
+			}
+		}
+	})
+}
+
+func TestCgoSources(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		ver, _ := goversion.Parse(runtime.Version())
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+			t.Skip("disabled on windows with go before version 1.9")
+		}
+	}
+
+	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
+		sources := p.BinInfo().Sources
+		for _, needle := range []string{"main.go", "hello.c"} {
+			found := false
+			for _, k := range sources {
+				if strings.HasSuffix(k, "/"+needle) || strings.HasSuffix(k, "\\"+needle) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("File %s not found", needle)
+			}
+		}
+	})
+}
+
+func TestSystemstackStacktrace(t *testing.T) {
+	// check that we can follow a stack switch initiated by runtime.systemstack()
+	withTestProcess("panic", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "runtime.startpanic_m")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(proc.Continue(p), t, "first continue")
+		assertNoError(proc.Continue(p), t, "second continue")
+		g, err := proc.GetG(p.CurrentThread())
+		assertNoError(err, t, "GetG")
+		frames, err := g.Stacktrace(100)
+		assertNoError(err, t, "stacktrace")
+		logStacktrace(t, frames)
+		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "!runtime.systemstack", "runtime.startpanic", "main.main"}, frames)
+		if m == nil {
+			t.Fatal("see previous loglines")
+		}
+	})
+}

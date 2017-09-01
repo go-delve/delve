@@ -137,8 +137,8 @@ func next(dbp Process, stepInto bool) error {
 	}
 
 	sameGCond := SameGoroutineCondition(selg)
-	retFrameCond := andFrameoffCondition(sameGCond, retframe.Regs.CFA-int64(retframe.StackHi))
-	sameFrameCond := andFrameoffCondition(sameGCond, topframe.Regs.CFA-int64(topframe.StackHi))
+	retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
+	sameFrameCond := andFrameoffCondition(sameGCond, topframe.FrameOffset())
 	var sameOrRetFrameCond ast.Expr
 	if sameGCond != nil {
 		sameOrRetFrameCond = &ast.BinaryExpr{
@@ -146,8 +146,8 @@ func next(dbp Process, stepInto bool) error {
 			X:  sameGCond,
 			Y: &ast.BinaryExpr{
 				Op: token.LOR,
-				X:  frameoffCondition(topframe.Regs.CFA - int64(topframe.StackHi)),
-				Y:  frameoffCondition(retframe.Regs.CFA - int64(retframe.StackHi)),
+				X:  frameoffCondition(topframe.FrameOffset()),
+				Y:  frameoffCondition(retframe.FrameOffset()),
 			},
 		}
 	}
@@ -361,11 +361,27 @@ func GetG(thread Thread) (g *G, err error) {
 	}
 
 	g, err = gaddr.parseG()
-	if err == nil {
-		g.Thread = thread
-		if loc, err := thread.Location(); err == nil {
-			g.CurrentLoc = *loc
+	if err != nil {
+		return
+	}
+	if g.ID == 0 {
+		// The runtime uses a special goroutine with ID == 0 to mark that the
+		// current goroutine is executing on the system stack (sometimes also
+		// referred to as the g0 stack or scheduler stack, I'm not sure if there's
+		// actually any difference between those).
+		// For our purposes it's better if we always return the real goroutine
+		// since the rest of the code assumes the goroutine ID is univocal.
+		// The real 'current goroutine' is stored in g0.m.curg
+		curgvar, _ := g.variable.fieldVariable("m").structMember("curg")
+		g, err = curgvar.parseG()
+		if err != nil {
+			return
 		}
+		g.SystemStack = true
+	}
+	g.Thread = thread
+	if loc, err := thread.Location(); err == nil {
+		g.CurrentLoc = *loc
 	}
 	return
 }
@@ -395,7 +411,7 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &EvalScope{locations[0].Current.PC, locations[0].Regs, thread, g.variable, thread.BinInfo(), g.stackhi}, nil
+	return &EvalScope{locations[0].Current.PC, locations[0].Regs, thread, g.variable, thread.BinInfo(), locations[0].FrameOffset()}, nil
 }
 
 func onRuntimeBreakpoint(thread Thread) bool {

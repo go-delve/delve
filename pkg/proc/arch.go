@@ -15,7 +15,7 @@ type Arch interface {
 	BreakpointInstruction() []byte
 	BreakpointSize() int
 	DerefTLS() bool
-	FixFrameUnwindContext(*frame.FrameContext) *frame.FrameContext
+	FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext
 	RegSize(uint64) int
 	RegistersToDwarfRegisters(Registers) op.DwarfRegisters
 	GoroutineToDwarfRegisters(*G) op.DwarfRegisters
@@ -29,6 +29,12 @@ type AMD64 struct {
 	gStructOffset           uint64
 	hardwareBreakpointUsage []bool
 	goos                    string
+
+	// crosscall2fn is the DIE of crosscall2, a function used by the go runtime
+	// to call C functions. This function in go 1.9 (and previous versions) had
+	// a bad frame descriptor which needs to be fixed to generate good stack
+	// traces.
+	crosscall2fn *Function
 }
 
 const (
@@ -75,9 +81,15 @@ func (a *AMD64) DerefTLS() bool {
 	return a.goos == "windows"
 }
 
+const (
+	crosscall2SPOffsetBad        = 0x8
+	crosscall2SPOffsetWindows    = 0x118
+	crosscall2SPOffsetNonWindows = 0x58
+)
+
 // FixFrameUnwindContext adds default architecture rules to fctxt or returns
 // the default frame unwind context if fctxt is nil.
-func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext) *frame.FrameContext {
+func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
 	if fctxt == nil {
 		// When there's no frame descriptor entry use BP (the frame pointer) instead
 		// - return register is [bp + a.PtrSize()] (i.e. [cfa-a.PtrSize()])
@@ -109,13 +121,30 @@ func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext) *frame.FrameCon
 		}
 	}
 
+	if a.crosscall2fn == nil {
+		a.crosscall2fn = bi.LookupFunc["crosscall2"]
+	}
+
+	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
+		rule := fctxt.CFA
+		if rule.Offset == crosscall2SPOffsetBad {
+			switch a.goos {
+			case "windows":
+				rule.Offset += crosscall2SPOffsetWindows
+			default:
+				rule.Offset += crosscall2SPOffsetNonWindows
+			}
+		}
+		fctxt.CFA = rule
+	}
+
 	// We assume that RBP is the frame pointer and we want to keep it updated,
 	// so that we can use it to unwind the stack even when we encounter frames
 	// without descriptor entries.
 	// If there isn't a rule already we emit one.
 	if fctxt.Regs[amd64DwarfBPRegNum].Rule == frame.RuleUndefined {
 		fctxt.Regs[amd64DwarfBPRegNum] = frame.DWRule{
-			Rule:   frame.RuleRegOffset,
+			Rule:   frame.RuleFramePointer,
 			Reg:    amd64DwarfBPRegNum,
 			Offset: 0,
 		}
@@ -241,7 +270,7 @@ func (a *AMD64) RegistersToDwarfRegisters(regs Registers) op.DwarfRegisters {
 		}
 	}
 
-	return op.DwarfRegisters{Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum}
+	return op.DwarfRegisters{Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
 }
 
 // GoroutineToDwarfRegisters extract the saved DWARF registers from a parked
@@ -251,5 +280,5 @@ func (a *AMD64) GoroutineToDwarfRegisters(g *G) op.DwarfRegisters {
 	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(g.PC)
 	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(g.SP)
 	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(g.BP)
-	return op.DwarfRegisters{Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum}
+	return op.DwarfRegisters{Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
 }

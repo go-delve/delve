@@ -138,6 +138,8 @@ type G struct {
 	stkbarPos  int       // stkbarPos field of g struct
 	stackhi    uint64    // value of stack.hi
 
+	SystemStack bool // SystemStack is true if this goroutine is currently executing on a system stack.
+
 	// Information on goroutine location
 	CurrentLoc Location
 
@@ -155,7 +157,8 @@ type EvalScope struct {
 	Mem     MemoryReadWriter // Target's memory
 	Gvar    *Variable
 	BinInfo *BinaryInfo
-	StackHi uint64
+
+	frameOffset int64
 }
 
 // IsNilErr is returned when a variable is nil.
