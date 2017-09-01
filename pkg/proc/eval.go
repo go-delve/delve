@@ -183,7 +183,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 				}
 				return scope.Gvar.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
-				return newConstant(constant.MakeInt64(scope.Regs.CFA-int64(scope.StackHi)), scope.Mem), nil
+				return newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem), nil
 			} else if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
 				return v, nil
 			}

@@ -286,7 +286,7 @@ func StepOut(dbp Process) error {
 	}
 
 	sameGCond := SameGoroutineCondition(selg)
-	retFrameCond := andFrameoffCondition(sameGCond, retframe.Regs.CFA-int64(retframe.StackHi))
+	retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
 
 	var deferpc uint64 = 0
 	if filepath.Ext(topframe.Current.File) == ".go" {
@@ -358,7 +358,7 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 	}
 
 	var (
-		threadg = map[int]Thread{}
+		threadg = map[int]*G{}
 		allg    []*G
 		rdr     = dbp.BinInfo().DwarfReader()
 	)
@@ -370,7 +370,7 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 		}
 		g, _ := GetG(th)
 		if g != nil {
-			threadg[g.ID] = th
+			threadg[g.ID] = g
 		}
 	}
 
@@ -410,14 +410,15 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 		if err != nil {
 			return nil, err
 		}
-		if thread, allocated := threadg[g.ID]; allocated {
-			loc, err := thread.Location()
+		if thg, allocated := threadg[g.ID]; allocated {
+			loc, err := thg.Thread.Location()
 			if err != nil {
 				return nil, err
 			}
-			g.Thread = thread
+			g.Thread = thg.Thread
 			// Prefer actual thread location information.
 			g.CurrentLoc = *loc
+			g.SystemStack = thg.SystemStack
 		}
 		if g.Status != Gdead {
 			allg = append(allg, g)
@@ -481,10 +482,10 @@ func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
 		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
 	}
 
-	return &EvalScope{locs[frame].Current.PC, locs[frame].Regs, thread, g.variable, dbp.BinInfo(), locs[frame].StackHi}, nil
+	return &EvalScope{locs[frame].Current.PC, locs[frame].Regs, thread, g.variable, dbp.BinInfo(), locs[frame].FrameOffset()}, nil
 }
 
 // FrameToScope returns a new EvalScope for this frame
 func FrameToScope(p Process, frame Stackframe) *EvalScope {
-	return &EvalScope{frame.Current.PC, frame.Regs, p.CurrentThread(), nil, p.BinInfo(), frame.StackHi}
+	return &EvalScope{frame.Current.PC, frame.Regs, p.CurrentThread(), nil, p.BinInfo(), frame.FrameOffset()}
 }
