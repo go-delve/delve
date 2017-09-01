@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
+	"github.com/derekparker/delve/pkg/dwarf/line"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
@@ -155,62 +157,128 @@ func (bi *BinaryInfo) loadPackageMap() error {
 	return nil
 }
 
-type sortFunctionsDebugInfoByLowpc []functionDebugInfo
+type functionsDebugInfoByEntry []Function
 
-func (v sortFunctionsDebugInfoByLowpc) Len() int           { return len(v) }
-func (v sortFunctionsDebugInfoByLowpc) Less(i, j int) bool { return v[i].lowpc < v[j].lowpc }
-func (v sortFunctionsDebugInfoByLowpc) Swap(i, j int) {
-	temp := v[i]
-	v[i] = v[j]
-	v[j] = temp
-}
+func (v functionsDebugInfoByEntry) Len() int           { return len(v) }
+func (v functionsDebugInfoByEntry) Less(i, j int) bool { return v[i].Entry < v[j].Entry }
+func (v functionsDebugInfoByEntry) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 
-func (bi *BinaryInfo) loadDebugInfoMaps(wg *sync.WaitGroup) {
+type compileUnitsByLowpc []*compileUnit
+
+func (v compileUnitsByLowpc) Len() int               { return len(v) }
+func (v compileUnitsByLowpc) Less(i int, j int) bool { return v[i].LowPC < v[j].LowPC }
+func (v compileUnitsByLowpc) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
+
+func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 	bi.types = make(map[string]dwarf.Offset)
 	bi.packageVars = make(map[string]dwarf.Offset)
-	bi.functions = []functionDebugInfo{}
+	bi.Functions = []Function{}
+	bi.compileUnits = []*compileUnit{}
 	reader := bi.DwarfReader()
+	var cu *compileUnit = nil
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			break
 		}
 		switch entry.Tag {
+		case dwarf.TagCompileUnit:
+			cu = &compileUnit{}
+			cu.entry = entry
+			if lang, _ := entry.Val(dwarf.AttrLanguage).(int64); lang == dwarfGoLanguage {
+				cu.isgo = true
+			}
+			cu.Name, _ = entry.Val(dwarf.AttrName).(string)
+			compdir, _ := entry.Val(dwarf.AttrCompDir).(string)
+			if compdir != "" {
+				cu.Name = filepath.Join(compdir, cu.Name)
+			}
+			if ranges, _ := bi.dwarf.Ranges(entry); len(ranges) == 1 {
+				cu.LowPC = ranges[0][0]
+				cu.HighPC = ranges[0][1]
+			}
+			lineInfoOffset, _ := entry.Val(dwarf.AttrStmtList).(int64)
+			if lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
+				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]))
+			}
+			bi.compileUnits = append(bi.compileUnits, cu)
+
 		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
 			if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+				if !cu.isgo {
+					name = "C." + name
+				}
 				if _, exists := bi.types[name]; !exists {
 					bi.types[name] = entry.Offset
 				}
 			}
 			reader.SkipChildren()
+
 		case dwarf.TagVariable:
 			if n, ok := entry.Val(dwarf.AttrName).(string); ok {
+				if !cu.isgo {
+					n = "C." + n
+				}
 				bi.packageVars[n] = entry.Offset
 			}
+
 		case dwarf.TagSubprogram:
-			lowpc, ok1 := entry.Val(dwarf.AttrLowpc).(uint64)
-			highpc, ok2 := entry.Val(dwarf.AttrHighpc).(uint64)
+			ok1 := false
+			var lowpc, highpc uint64
+			if ranges, _ := bi.dwarf.Ranges(entry); len(ranges) == 1 {
+				ok1 = true
+				lowpc = ranges[0][0]
+				highpc = ranges[0][1]
+			}
+			name, ok2 := entry.Val(dwarf.AttrName).(string)
 			if ok1 && ok2 {
-				bi.functions = append(bi.functions, functionDebugInfo{lowpc, highpc, entry.Offset})
+				if !cu.isgo {
+					name = "C." + name
+				}
+				bi.Functions = append(bi.Functions, Function{
+					Name:  name,
+					Entry: lowpc, End: highpc,
+					offset: entry.Offset,
+					cu:     cu,
+				})
 			}
 			reader.SkipChildren()
+
 		}
 	}
-	sort.Sort(sortFunctionsDebugInfoByLowpc(bi.functions))
+	sort.Sort(compileUnitsByLowpc(bi.compileUnits))
+	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
+
+	bi.LookupFunc = make(map[string]*Function)
+	for i := range bi.Functions {
+		bi.LookupFunc[bi.Functions[i].Name] = &bi.Functions[i]
+	}
+
+	bi.Sources = []string{}
+	for _, cu := range bi.compileUnits {
+		if cu.lineInfo != nil {
+			for _, fileEntry := range cu.lineInfo.FileNames {
+				bi.Sources = append(bi.Sources, fileEntry.Path)
+			}
+		}
+	}
+	sort.Strings(bi.Sources)
+	bi.Sources = uniq(bi.Sources)
 }
 
-func (bi *BinaryInfo) findFunctionDebugInfo(pc uint64) (dwarf.Offset, error) {
-	i := sort.Search(len(bi.functions), func(i int) bool {
-		fn := bi.functions[i]
-		return pc <= fn.lowpc || (fn.lowpc <= pc && pc < fn.highpc)
-	})
-	if i != len(bi.functions) {
-		fn := bi.functions[i]
-		if fn.lowpc <= pc && pc < fn.highpc {
-			return fn.offset, nil
-		}
+func uniq(s []string) []string {
+	if len(s) <= 0 {
+		return s
 	}
-	return 0, errors.New("unable to find function context")
+	src, dst := 1, 1
+	for src < len(s) {
+		if s[src] != s[dst-1] {
+			s[dst] = s[src]
+			dst++
+		}
+		src++
+	}
+	return s[:dst]
 }
 
 func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {

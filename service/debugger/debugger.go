@@ -1,7 +1,6 @@
 package debugger
 
 import (
-	"debug/gosym"
 	"errors"
 	"fmt"
 	"go/parser"
@@ -305,7 +304,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		if runtime.GOOS == "windows" {
 			// Accept fileName which is case-insensitive and slash-insensitive match
 			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
-			for symFile := range d.target.BinInfo().Sources() {
+			for _, symFile := range d.target.BinInfo().Sources {
 				if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
 					fileName = symFile
 					break
@@ -637,7 +636,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	}
 
 	files := []string{}
-	for f := range d.target.BinInfo().Sources() {
+	for _, f := range d.target.BinInfo().Sources {
 		if regex.Match([]byte(f)) {
 			files = append(files, f)
 		}
@@ -650,7 +649,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	return regexFilterFuncs(filter, d.target.BinInfo().Funcs())
+	return regexFilterFuncs(filter, d.target.BinInfo().Functions)
 }
 
 func (d *Debugger) Types(filter string) ([]string, error) {
@@ -677,7 +676,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 	return r, nil
 }
 
-func regexFilterFuncs(filter string, allFuncs []gosym.Func) ([]string, error) {
+func regexFilterFuncs(filter string, allFuncs []proc.Function) ([]string, error) {
 	regex, err := regexp.Compile(filter)
 	if err != nil {
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
@@ -685,7 +684,7 @@ func regexFilterFuncs(filter string, allFuncs []gosym.Func) ([]string, error) {
 
 	funcs := []string{}
 	for _, f := range allFuncs {
-		if f.Sym != nil && regex.Match([]byte(f.Name)) {
+		if regex.Match([]byte(f.Name)) {
 			funcs = append(funcs, f.Name)
 		}
 	}

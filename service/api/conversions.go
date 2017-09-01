@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"debug/gosym"
 	"go/constant"
 	"go/printer"
 	"go/token"
@@ -187,16 +186,20 @@ func ConvertVar(v *proc.Variable) *Variable {
 
 // ConvertFunction converts from gosym.Func to
 // api.Function.
-func ConvertFunction(fn *gosym.Func) *Function {
+func ConvertFunction(fn *proc.Function) *Function {
 	if fn == nil {
 		return nil
 	}
 
+	// fn here used to be a *gosym.Func, the fields Type and GoType below
+	// corresponded to the omonymous field of gosym.Func. Since the contents of
+	// those fields is not documented their value was replaced with 0 when
+	// gosym.Func was replaced by debug_info entries.
 	return &Function{
 		Name:   fn.Name,
-		Type:   fn.Type,
-		Value:  fn.Value,
-		GoType: fn.GoType,
+		Type:   0,
+		Value:  fn.Entry,
+		GoType: 0,
 	}
 }
 

@@ -32,8 +32,6 @@ type Stackframe struct {
 	CFA int64
 	// High address of the stack.
 	StackHi uint64
-	// Description of the stack frame.
-	FDE *frame.FrameDescriptionEntry
 	// Return address for this stack frame (as read from the stack frame itself).
 	Ret uint64
 	// Address to the memory location containing the return address
@@ -108,11 +106,11 @@ type savedLR struct {
 }
 
 func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, pc, sp, bp, stackhi uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
-	stackBarrierFunc := bi.goSymTable.LookupFunc(runtimeStackBarrier) // stack barriers were removed in Go 1.9
+	stackBarrierFunc := bi.LookupFunc[runtimeStackBarrier] // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
 		stackBarrierPC = stackBarrierFunc.Entry
-		fn := bi.goSymTable.PCToFunc(pc)
+		fn := bi.PCToFunc(pc)
 		if fn != nil && fn.Name == runtimeStackBarrier {
 			// We caught the goroutine as it's executing the stack barrier, we must
 			// determine whether or not g.stackPos has already been incremented or not.
@@ -211,7 +209,7 @@ func (it *stackIterator) newStackframe(pc uint64, cfa int64, retaddr uintptr, fd
 	if err != nil {
 		it.err = err
 	}
-	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, FDE: fde, Ret: ret, addrret: uint64(retaddr), StackHi: it.stackhi}
+	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, Ret: ret, addrret: uint64(retaddr), StackHi: it.stackhi}
 	if !top {
 		r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(pc - 1)
 		r.Call.PC = r.Current.PC

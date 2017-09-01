@@ -1,9 +1,9 @@
 package proc
 
 import (
-	"debug/gosym"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"path/filepath"
@@ -42,7 +42,7 @@ type Location struct {
 	PC   uint64
 	File string
 	Line int
-	Fn   *gosym.Func
+	Fn   *Function
 }
 
 // ThreadBlockedError is returned when the thread
@@ -104,6 +104,10 @@ func next(dbp Process, stepInto bool) error {
 		return err
 	}
 
+	if topframe.Current.Fn == nil {
+		return fmt.Errorf("no source for pc %#x", topframe.Current.PC)
+	}
+
 	success := false
 	defer func() {
 		if !success {
@@ -123,7 +127,7 @@ func next(dbp Process, stepInto bool) error {
 		}
 	}
 
-	text, err := disassemble(thread, regs, dbp.Breakpoints(), dbp.BinInfo(), topframe.FDE.Begin(), topframe.FDE.End())
+	text, err := disassemble(thread, regs, dbp.Breakpoints(), dbp.BinInfo(), topframe.Current.Fn.Entry, topframe.Current.Fn.End)
 	if err != nil && stepInto {
 		return err
 	}
@@ -203,7 +207,7 @@ func next(dbp Process, stepInto bool) error {
 	}
 
 	// Add breakpoints on all the lines in the current function
-	pcs, err := dbp.BinInfo().lineInfo.AllPCsBetween(topframe.FDE.Begin(), topframe.FDE.End()-1, topframe.Current.File)
+	pcs, err := topframe.Current.Fn.cu.lineInfo.AllPCsBetween(topframe.Current.Fn.Entry, topframe.Current.Fn.End-1)
 	if err != nil {
 		return err
 	}
@@ -211,14 +215,14 @@ func next(dbp Process, stepInto bool) error {
 	if !csource {
 		var covered bool
 		for i := range pcs {
-			if topframe.FDE.Cover(pcs[i]) {
+			if topframe.Current.Fn.Entry <= pcs[i] && pcs[i] < topframe.Current.Fn.End {
 				covered = true
 				break
 			}
 		}
 
 		if !covered {
-			fn := dbp.BinInfo().goSymTable.PCToFunc(topframe.Ret)
+			fn := dbp.BinInfo().PCToFunc(topframe.Ret)
 			if selg != nil && fn != nil && fn.Name == "runtime.goexit" {
 				return nil
 			}

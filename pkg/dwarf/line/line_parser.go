@@ -3,6 +3,7 @@ package line
 import (
 	"bytes"
 	"encoding/binary"
+	"path/filepath"
 
 	"github.com/derekparker/delve/pkg/dwarf/util"
 )
@@ -28,7 +29,7 @@ type DebugLineInfo struct {
 }
 
 type FileEntry struct {
-	Name        string
+	Path        string
 	DirIdx      uint64
 	LastModTime uint64
 	Length      uint64
@@ -36,17 +37,8 @@ type FileEntry struct {
 
 type DebugLines []*DebugLineInfo
 
-func (d *DebugLines) GetLineInfo(name string) *DebugLineInfo {
-	// Find in which table file exists and return it.
-	for _, l := range *d {
-		if _, ok := l.Lookup[name]; ok {
-			return l
-		}
-	}
-	return nil
-}
-
-func Parse(data []byte) DebugLines {
+// ParseAll parses all debug_line segments found in data
+func ParseAll(data []byte) DebugLines {
 	var (
 		lines = make(DebugLines, 0)
 		buf   = bytes.NewBuffer(data)
@@ -54,23 +46,32 @@ func Parse(data []byte) DebugLines {
 
 	// We have to parse multiple file name tables here.
 	for buf.Len() > 0 {
-		dbl := new(DebugLineInfo)
-		dbl.Lookup = make(map[string]*FileEntry)
-
-		parseDebugLinePrologue(dbl, buf)
-		parseIncludeDirs(dbl, buf)
-		parseFileEntries(dbl, buf)
-
-		// Instructions size calculation breakdown:
-		//   - dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
-		//   - dbl.Prologue.Length is the length of the prologue not including unit length, version or prologue length itself.
-		//   - So you have UnitLength - PrologueLength - (version_length_bytes(2) + prologue_length_bytes(4)).
-		dbl.Instructions = buf.Next(int(dbl.Prologue.UnitLength - dbl.Prologue.Length - 6))
-
-		lines = append(lines, dbl)
+		lines = append(lines, Parse("", buf))
 	}
 
 	return lines
+}
+
+// Parse parses a single debug_line segment from buf. Compdir is the
+// DW_AT_comp_dir attribute of the associated compile unit.
+func Parse(compdir string, buf *bytes.Buffer) *DebugLineInfo {
+	dbl := new(DebugLineInfo)
+	dbl.Lookup = make(map[string]*FileEntry)
+	if compdir != "" {
+		dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)
+	}
+
+	parseDebugLinePrologue(dbl, buf)
+	parseIncludeDirs(dbl, buf)
+	parseFileEntries(dbl, buf)
+
+	// Instructions size calculation breakdown:
+	//   - dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
+	//   - dbl.Prologue.Length is the length of the prologue not including unit length, version or prologue length itself.
+	//   - So you have UnitLength - PrologueLength - (version_length_bytes(2) + prologue_length_bytes(4)).
+	dbl.Instructions = buf.Next(int(dbl.Prologue.UnitLength - dbl.Prologue.Length - 6))
+
+	return dbl
 }
 
 func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
@@ -106,17 +107,21 @@ func parseFileEntries(info *DebugLineInfo, buf *bytes.Buffer) {
 	for {
 		entry := new(FileEntry)
 
-		name, _ := util.ParseString(buf)
-		if name == "" {
+		entry.Path, _ = util.ParseString(buf)
+		if entry.Path == "" {
 			break
 		}
 
-		entry.Name = name
 		entry.DirIdx, _ = util.DecodeULEB128(buf)
 		entry.LastModTime, _ = util.DecodeULEB128(buf)
 		entry.Length, _ = util.DecodeULEB128(buf)
+		if !filepath.IsAbs(entry.Path) {
+			if entry.DirIdx >= 0 && entry.DirIdx < uint64(len(info.IncludeDirs)) {
+				entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
+			}
+		}
 
 		info.FileNames = append(info.FileNames, entry)
-		info.Lookup[name] = entry
+		info.Lookup[entry.Path] = entry
 	}
 }

@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"debug/dwarf"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -10,11 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 )
-
-type functionDebugInfo struct {
-	lowpc, highpc uint64
-	offset        dwarf.Offset
-}
 
 var NotExecutableErr = errors.New("not an executable file")
 var NotRecordedErr = errors.New("not a recording")
@@ -35,7 +29,7 @@ func (pe ProcessExitedError) Error() string {
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normailzed to lower case and '/' on Windows.
 func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
-	pc, fn, err := p.BinInfo().goSymTable.LineToPC(fileName, lineno)
+	pc, fn, err := p.BinInfo().LineToPC(fileName, lineno)
 	if err != nil {
 		return 0, err
 	}
@@ -53,7 +47,7 @@ func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
 // https://github.com/derekparker/delve/issues/170
 func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset int) (uint64, error) {
 	bi := p.BinInfo()
-	origfn := bi.goSymTable.LookupFunc(funcName)
+	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
 		return 0, fmt.Errorf("Could not find function %s\n", funcName)
 	}
@@ -61,8 +55,8 @@ func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset
 	if firstLine {
 		return FirstPCAfterPrologue(p, origfn, false)
 	} else if lineOffset > 0 {
-		filename, lineno, _ := bi.goSymTable.PCToLine(origfn.Entry)
-		breakAddr, _, err := bi.goSymTable.LineToPC(filename, lineno+lineOffset)
+		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry)
+		breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)
 		return breakAddr, err
 	}
 
