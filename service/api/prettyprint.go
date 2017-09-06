@@ -132,6 +132,10 @@ func (v *Variable) writeSliceTo(buf io.Writer, newlines, includeType bool, inden
 	if includeType {
 		fmt.Fprintf(buf, "%s len: %d, cap: %d, ", v.Type, v.Len, v.Cap)
 	}
+	if v.Base == 0 && len(v.Children) == 0 {
+		fmt.Fprintf(buf, "nil")
+		return
+	}
 	v.writeSliceOrArrayTo(buf, newlines, indent)
 }
 
@@ -185,6 +189,10 @@ func (v *Variable) writeStructTo(buf io.Writer, newlines, includeType bool, inde
 func (v *Variable) writeMapTo(buf io.Writer, newlines, includeType bool, indent string) {
 	if includeType {
 		fmt.Fprintf(buf, "%s ", v.Type)
+	}
+	if v.Base == 0 && len(v.Children) == 0 {
+		fmt.Fprintf(buf, "nil")
+		return
 	}
 
 	nl := newlines && (len(v.Children) > 0)

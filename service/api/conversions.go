@@ -121,6 +121,7 @@ func ConvertVar(v *proc.Variable) *Variable {
 		Len:      v.Len,
 		Cap:      v.Cap,
 		Flags:    VariableFlags(v.Flags),
+		Base:     v.Base,
 	}
 
 	r.Type = prettyTypeName(v.DwarfType)

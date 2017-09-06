@@ -197,6 +197,12 @@ type Variable struct {
 	// The other length cap applied to this field is related to maximum recursion depth, when the maximum recursion depth is reached this field is left empty, contrary to the previous one this cap also applies to structs (otherwise structs will always have all their member fields returned)
 	Children []Variable `json:"children"`
 
+	// Base address of arrays, Base address of the backing array for slices (0 for nil slices)
+	// Base address of the backing byte array for strings
+	// address of the struct backing chan and map variables
+	// address of the function entry point for function variables (0 for nil function pointers)
+	Base uintptr `json:"base"`
+
 	// Unreadable addresses will have this field set
 	Unreadable string `json:"unreadable"`
 }
