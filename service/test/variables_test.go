@@ -642,7 +642,7 @@ func TestEvalExpression(t *testing.T) {
 		{"nil+1", false, "", "", "", fmt.Errorf("operator + can not be applied to \"nil\"")},
 		{"fn1", false, "main.afunc", "main.afunc", "main.functype", nil},
 		{"fn2", false, "nil", "nil", "main.functype", nil},
-		{"nilslice", false, "[]int len: 0, cap: 0, []", "[]int len: 0, cap: 0, []", "[]int", nil},
+		{"nilslice", false, "[]int len: 0, cap: 0, nil", "[]int len: 0, cap: 0, nil", "[]int", nil},
 		{"fn1 == fn2", false, "", "", "", fmt.Errorf("can not compare func variables")},
 		{"fn1 == nil", false, "false", "false", "", nil},
 		{"fn1 != nil", false, "true", "true", "", nil},
@@ -710,6 +710,10 @@ func TestEvalExpression(t *testing.T) {
 		{"zsslice", false, `[]struct {} len: 3, cap: 3, [{},{},{}]`, `[]struct {} len: 3, cap: 3, [...]`, "[]struct {}", nil},
 		{"zsvmap", false, `map[string]struct {} ["testkey": {}, ]`, `map[string]struct {} [...]`, "map[string]struct {}", nil},
 		{"tm", false, "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [...]}", "main.truncatedMap", nil},
+
+		{"emptyslice", false, `[]string len: 0, cap: 0, []`, `[]string len: 0, cap: 0, []`, "[]string", nil},
+		{"emptymap", false, `map[string]string []`, `map[string]string []`, "map[string]string", nil},
+		{"mnil", false, `map[string]main.astruct nil`, `map[string]main.astruct nil`, "map[string]main.astruct", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
