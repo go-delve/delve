@@ -165,6 +165,9 @@ const (
 	// VariableShadowed is set for local variables that are shadowed by a
 	// variable with the same name in another scope
 	VariableShadowed = VariableFlags(proc.VariableShadowed)
+
+	// VariableConstant means this variable is a constant value
+	VariableConstant
 )
 
 // Variable describes a variable.
