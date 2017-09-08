@@ -1681,6 +1681,14 @@ func TestStepIntoFunction(t *testing.T) {
 
 func TestIssue384(t *testing.T) {
 	// Crash related to reading uninitialized memory, introduced by the memory prefetching optimization
+
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// go 1.10 emits DW_AT_decl_line and we won't be able to evaluate 'st'
+		// which is declared after line 13.
+		return
+	}
+
 	protest.AllowRecording(t)
 	withTestProcess("issue384", t, func(p proc.Process, fixture protest.Fixture) {
 		start, _, err := p.BinInfo().LineToPC(fixture.Source, 13)
@@ -3371,6 +3379,34 @@ func TestIssue1008(t *testing.T) {
 		}
 		if loc.Line > 31 {
 			t.Errorf("unexpected location %s:%d (file only has 30 lines)\n", loc.File, loc.Line)
+		}
+	})
+}
+
+func TestDeclLine(t *testing.T) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		t.Skip("go 1.9 and prior versions do not emit DW_AT_decl_line")
+	}
+
+	withTestProcess("decllinetest", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue")
+		scope, err := proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope (1)")
+		vars, err := scope.LocalVariables(normalLoadConfig)
+		assertNoError(err, t, "LocalVariables (1)")
+		if len(vars) != 1 {
+			t.Fatalf("wrong number of variables %d", len(vars))
+		}
+
+		assertNoError(proc.Continue(p), t, "Continue")
+		scope, err = proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope (2)")
+		scope.LocalVariables(normalLoadConfig)
+		vars, err = scope.LocalVariables(normalLoadConfig)
+		assertNoError(err, t, "LocalVariables (2)")
+		if len(vars) != 2 {
+			t.Fatalf("wrong number of variables %d", len(vars))
 		}
 	})
 }
