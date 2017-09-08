@@ -15,16 +15,17 @@ type VariableReader struct {
 	depth       int
 	onlyVisible bool
 	pc          uint64
+	line        int
 	err         error
 }
 
 // Variables returns a VariableReader for the function or lexical block at off.
 // If onlyVisible is true only variables visible at pc will be returned by
 // the VariableReader.
-func Variables(dwarf *dwarf.Data, off dwarf.Offset, pc uint64, onlyVisible bool) *VariableReader {
+func Variables(dwarf *dwarf.Data, off dwarf.Offset, pc uint64, line int, onlyVisible bool) *VariableReader {
 	reader := dwarf.Reader()
 	reader.Seek(off)
-	return &VariableReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, onlyVisible: onlyVisible, pc: pc, err: nil}
+	return &VariableReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, onlyVisible: onlyVisible, pc: pc, line: line, err: nil}
 }
 
 // Next reads the next variable entry, returns false if there aren't any.
@@ -69,7 +70,9 @@ func (vrdr *VariableReader) Next() bool {
 				vrdr.err = errors.New("offset was not lexical block or subprogram")
 				return false
 			}
-			return true
+			if declLine, ok := vrdr.entry.Val(dwarf.AttrDeclLine).(int64); !ok || vrdr.line >= int(declLine) {
+				return true
+			}
 		}
 	}
 }

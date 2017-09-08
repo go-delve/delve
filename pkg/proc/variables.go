@@ -1745,9 +1745,11 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg *LoadConfig) ([]*Varia
 		return nil, errors.New("unable to find function context")
 	}
 
+	_, line, _ := scope.BinInfo.PCToLine(scope.PC)
+
 	var vars []*Variable
 	var depths []int
-	varReader := reader.Variables(scope.BinInfo.dwarf, fn.offset, scope.PC, tag == dwarf.TagVariable)
+	varReader := reader.Variables(scope.BinInfo.dwarf, fn.offset, scope.PC, line, tag == dwarf.TagVariable)
 	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()
