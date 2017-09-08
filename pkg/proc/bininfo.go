@@ -53,6 +53,9 @@ type BinaryInfo struct {
 	moduleData         []moduleData
 	nameOfRuntimeType  map[uintptr]nameOfRuntimeTypeEntry
 
+	// consts[off] lists all the constants with the type defined at offset off.
+	consts constantsMap
+
 	loadErrMu sync.Mutex
 	loadErr   error
 }
@@ -83,13 +86,17 @@ type Function struct {
 // or the empty string if there is none.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) PackageName() string {
-	pathend := strings.LastIndex(fn.Name, "/")
+	return packageName(fn.Name)
+}
+
+func packageName(name string) string {
+	pathend := strings.LastIndex(name, "/")
 	if pathend < 0 {
 		pathend = 0
 	}
 
-	if i := strings.Index(fn.Name[pathend:], "."); i != -1 {
-		return fn.Name[:pathend+i]
+	if i := strings.Index(name[pathend:], "."); i != -1 {
+		return name[:pathend+i]
 	}
 	return ""
 }
@@ -117,6 +124,20 @@ func (fn *Function) BaseName() string {
 		return fn.Name[i+1:]
 	}
 	return fn.Name
+}
+
+type constantsMap map[dwarf.Offset]*constantType
+
+type constantType struct {
+	initialized bool
+	values      []constantValue
+}
+
+type constantValue struct {
+	name      string
+	fullName  string
+	value     int64
+	singleBit bool
 }
 
 type loclistReader struct {

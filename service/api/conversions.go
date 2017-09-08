@@ -139,7 +139,10 @@ func ConvertVar(v *proc.Variable) *Variable {
 		case reflect.String, reflect.Func:
 			r.Value = constant.StringVal(v.Value)
 		default:
-			r.Value = v.Value.String()
+			r.Value = v.ConstDescr()
+			if r.Value == "" {
+				r.Value = v.Value.String()
+			}
 		}
 	}
 

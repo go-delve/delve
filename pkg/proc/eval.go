@@ -184,7 +184,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 				return scope.Gvar.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
 				return newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem), nil
-			} else if v, err := scope.packageVarAddr(maybePkg.Name + "." + node.Sel.Name); err == nil {
+			} else if v, err := scope.findGlobal(maybePkg.Name + "." + node.Sel.Name); err == nil {
 				return v, nil
 			}
 		}
@@ -586,7 +586,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 	// if it's not a local variable then it could be a package variable w/o explicit package name
 	_, _, fn := scope.BinInfo.PCToLine(scope.PC)
 	if fn != nil {
-		if v, err := scope.packageVarAddr(fn.PackageName() + "." + node.Name); err == nil {
+		if v, err := scope.findGlobal(fn.PackageName() + "." + node.Name); err == nil {
 			v.Name = node.Name
 			return v, nil
 		}

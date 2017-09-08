@@ -949,3 +949,30 @@ func TestPackageRenames(t *testing.T) {
 		}
 	})
 }
+
+func TestConstants(t *testing.T) {
+	testcases := []varTest{
+		{"a", true, "constTwo", "", "main.ConstType", nil},
+		{"b", true, "constThree", "", "main.ConstType", nil},
+		{"c", true, "bitZero|bitOne", "", "main.BitFieldType", nil},
+		{"d", true, "33", "", "main.BitFieldType", nil},
+		{"e", true, "10", "", "main.ConstType", nil},
+		{"f", true, "0", "", "main.BitFieldType", nil},
+		{"bitZero", true, "1", "", "main.BitFieldType", nil},
+		{"bitOne", true, "2", "", "main.BitFieldType", nil},
+		{"constTwo", true, "2", "", "main.ConstType", nil},
+	}
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Not supported on 1.9 or earlier
+		return
+	}
+	withTestProcess("consts", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue")
+		for _, testcase := range testcases {
+			variable, err := evalVariable(p, testcase.name, pnormalLoadConfig)
+			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
+			assertVariable(t, variable, testcase)
+		}
+	})
+}
