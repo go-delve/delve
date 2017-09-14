@@ -5,7 +5,8 @@ Delve can evaluate a subset of go expression language, specifically the followin
 - All (binary and unary) on basic types except <-, ++ and --
 - Comparison operators on any type
 - Type casts between numeric types
-- Type casts of integer constants into any pointer type
+- Type casts of integer constants into any pointer type and vice versa
+- Type casts between string, []byte and []rune
 - Struct member access (i.e. `somevar.memberfield`)
 - Slicing and indexing operators on arrays, slices and strings
 - Map access

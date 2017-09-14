@@ -34,7 +34,7 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 		return
 	}
 
-	if !top && v.Addr == 0 {
+	if !top && v.Addr == 0 && v.Value == "" {
 		if includeType && v.Type != "void" {
 			fmt.Fprintf(buf, "%s nil", v.Type)
 		} else {
