@@ -235,6 +235,9 @@ func main() {
 	emptyslice := []string{}
 	emptymap := make(map[string]string)
 
+	byteslice := []byte{116, 195, 168, 115, 116}
+	runeslice := []rune{116, 232, 115, 116}
+
 	var amb1 = 1
 	runtime.Breakpoint()
 	for amb1 := 0; amb1 < 10; amb1++ {
@@ -242,5 +245,5 @@ func main() {
 	}
 
 	runtime.Breakpoint()
-	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, errtypednil, emptyslice, emptymap)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, errtypednil, emptyslice, emptymap, byteslice, runeslice)
 }

@@ -81,6 +81,32 @@ func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 		}
 		return pointerTo(ptyp, bi.Arch), nil
 	}
+	if anode, ok := expr.(*ast.ArrayType); ok {
+		// Byte array types (i.e. [N]byte) are only present in DWARF if they are
+		// used by the program, but it's convenient to make all of them available
+		// to the user so that they can be used to read arbitrary memory, byte by
+		// byte.
+
+		alen, litlen := anode.Len.(*ast.BasicLit)
+		if litlen && alen.Kind == token.INT {
+			n, _ := strconv.Atoi(alen.Value)
+			switch exprToString(anode.Elt) {
+			case "byte", "uint8":
+				btyp, err := bi.findType("uint8")
+				if err != nil {
+					return nil, err
+				}
+				return &godwarf.ArrayType{
+					CommonType: godwarf.CommonType{
+						ReflectKind: reflect.Array,
+						ByteSize:    int64(n),
+						Name:        fmt.Sprintf("[%d]uint8", n)},
+					Type:          btyp,
+					StrideBitSize: 8,
+					Count:         int64(n)}, nil
+			}
+		}
+	}
 	return bi.findType(exprToString(expr))
 }
 

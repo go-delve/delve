@@ -26,7 +26,10 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 		return nil, err
 	}
 
-	ev, err := scope.evalAST(t)
+	ev, err := scope.evalToplevelTypeCast(t, cfg)
+	if ev == nil && err == nil {
+		ev, err = scope.evalAST(t)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -35,6 +38,113 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 		ev.Name = expr
 	}
 	return ev, nil
+}
+
+// evalToplevelTypeCast implements certain type casts that we only support
+// at the outermost levels of an expression.
+func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Variable, error) {
+	call, _ := t.(*ast.CallExpr)
+	if call == nil || len(call.Args) != 1 {
+		return nil, nil
+	}
+	targetTypeStr := exprToString(removeParen(call.Fun))
+	var targetType godwarf.Type
+	switch targetTypeStr {
+	case "[]byte", "[]uint8":
+		targetType = fakeSliceType(&godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "uint8"}, BitSize: 8, BitOffset: 0}})
+	case "[]int32", "[]rune":
+		targetType = fakeSliceType(&godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "int32"}, BitSize: 32, BitOffset: 0}})
+	case "string":
+		var err error
+		targetType, err = scope.BinInfo.findType("string")
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, nil
+	}
+
+	argv, err := scope.evalToplevelTypeCast(call.Args[0], cfg)
+	if argv == nil && err == nil {
+		argv, err = scope.evalAST(call.Args[0])
+	}
+	if err != nil {
+		return nil, err
+	}
+	argv.loadValue(cfg)
+	if argv.Unreadable != nil {
+		return nil, argv.Unreadable
+	}
+
+	v := newVariable("", 0, targetType, scope.BinInfo, scope.Mem)
+	v.loaded = true
+
+	converr := fmt.Errorf("can not convert %q to %s", exprToString(call.Args[0]), targetTypeStr)
+
+	switch targetTypeStr {
+	case "[]byte", "[]uint8":
+		if argv.Kind != reflect.String {
+			return nil, converr
+		}
+		for i, ch := range []byte(constant.StringVal(argv.Value)) {
+			e := scope.newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType)
+			e.loaded = true
+			e.Value = constant.MakeInt64(int64(ch))
+			v.Children = append(v.Children, *e)
+		}
+		v.Len = int64(len(v.Children))
+		v.Cap = v.Len
+		return v, nil
+
+	case "[]int32", "[]rune":
+		if argv.Kind != reflect.String {
+			return nil, converr
+		}
+		for i, ch := range constant.StringVal(argv.Value) {
+			e := scope.newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType)
+			e.loaded = true
+			e.Value = constant.MakeInt64(int64(ch))
+			v.Children = append(v.Children, *e)
+		}
+		v.Len = int64(len(v.Children))
+		v.Cap = v.Len
+		return v, nil
+
+	case "string":
+		if argv.Kind != reflect.Slice {
+			return nil, nil
+		}
+		switch elemType := argv.RealType.(*godwarf.SliceType).ElemType.(type) {
+		case *godwarf.UintType:
+			if elemType.Name != "uint8" && elemType.Name != "byte" {
+				return nil, nil
+			}
+			bytes := make([]byte, len(argv.Children))
+			for i := range argv.Children {
+				n, _ := constant.Int64Val(argv.Children[i].Value)
+				bytes[i] = byte(n)
+			}
+			v.Value = constant.MakeString(string(bytes))
+
+		case *godwarf.IntType:
+			if elemType.Name != "int32" && elemType.Name != "rune" {
+				return nil, nil
+			}
+			runes := make([]rune, len(argv.Children))
+			for i := range argv.Children {
+				n, _ := constant.Int64Val(argv.Children[i].Value)
+				runes[i] = rune(n)
+			}
+			v.Value = constant.MakeString(string(runes))
+
+		default:
+			return nil, nil
+		}
+		v.Len = int64(len(constant.StringVal(v.Value)))
+		return v, nil
+	}
+
+	return nil, nil
 }
 
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
@@ -125,6 +235,17 @@ func exprToString(t ast.Expr) string {
 	return buf.String()
 }
 
+func removeParen(n ast.Expr) ast.Expr {
+	for {
+		p, ok := n.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		n = p.X
+	}
+	return n
+}
+
 // Eval type cast expressions
 func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	argv, err := scope.evalAST(node.Args[0])
@@ -139,13 +260,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	fnnode := node.Fun
 
 	// remove all enclosing parenthesis from the type name
-	for {
-		p, ok := fnnode.(*ast.ParenExpr)
-		if !ok {
-			break
-		}
-		fnnode = p.X
-	}
+	fnnode = removeParen(fnnode)
 
 	styp, err := scope.BinInfo.findTypeExpr(fnnode)
 	if err != nil {
@@ -187,6 +302,9 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		case reflect.Float32, reflect.Float64:
 			x, _ := constant.Float64Val(argv.Value)
 			v.Value = constant.MakeUint64(uint64(x))
+			return v, nil
+		case reflect.Ptr:
+			v.Value = constant.MakeUint64(uint64(argv.Children[0].Addr))
 			return v, nil
 		}
 	case *godwarf.IntType:
@@ -1126,18 +1244,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 
 	typ := v.DwarfType
 	if _, isarr := v.DwarfType.(*godwarf.ArrayType); isarr {
-		typ = &godwarf.SliceType{
-			StructType: godwarf.StructType{
-				CommonType: godwarf.CommonType{
-					ByteSize: 24,
-					Name:     "",
-				},
-				StructName: fmt.Sprintf("[]%s", v.fieldType.Common().Name),
-				Kind:       "struct",
-				Field:      nil,
-			},
-			ElemType: v.fieldType,
-		}
+		typ = fakeSliceType(v.fieldType)
 	}
 
 	r := v.newVariable("", 0, typ)
@@ -1148,4 +1255,19 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	r.fieldType = v.fieldType
 
 	return r, nil
+}
+
+func fakeSliceType(fieldType godwarf.Type) godwarf.Type {
+	return &godwarf.SliceType{
+		StructType: godwarf.StructType{
+			CommonType: godwarf.CommonType{
+				ByteSize: 24,
+				Name:     "",
+			},
+			StructName: fmt.Sprintf("[]%s", fieldType.Common().Name),
+			Kind:       "struct",
+			Field:      nil,
+		},
+		ElemType: fieldType,
+	}
 }
