@@ -671,11 +671,18 @@ func restart(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
+func printfileNoState(t *Term) {
+	if state, _ := t.client.GetState(); state != nil && state.CurrentThread != nil {
+		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	}
+}
+
 func cont(t *Term, ctx callContext, args string) error {
 	stateChan := t.client.Continue()
 	var state *api.DebuggerState
 	for state = range stateChan {
 		if state.Err != nil {
+			printfileNoState(t)
 			return state.Err
 		}
 		printcontext(t, state)
@@ -694,6 +701,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 		var state *api.DebuggerState
 		for state = range stateChan {
 			if state.Err != nil {
+				printfileNoState(t)
 				return state.Err
 			}
 			printcontext(t, state)
@@ -728,6 +736,7 @@ func step(t *Term, ctx callContext, args string) error {
 	}
 	state, err := t.client.Step()
 	if err != nil {
+		printfileNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -740,6 +749,7 @@ func stepInstruction(t *Term, ctx callContext, args string) error {
 	}
 	state, err := t.client.StepInstruction()
 	if err != nil {
+		printfileNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -753,6 +763,7 @@ func next(t *Term, ctx callContext, args string) error {
 	}
 	state, err := t.client.Next()
 	if err != nil {
+		printfileNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -765,6 +776,7 @@ func stepout(t *Term, ctx callContext, args string) error {
 	}
 	state, err := t.client.StepOut()
 	if err != nil {
+		printfileNoState(t)
 		return err
 	}
 	printcontext(t, state)

@@ -321,7 +321,7 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 	if err == nil {
 		bp, err := p.SetBreakpoint(panicpc, proc.UserBreakpoint, nil)
 		if err == nil {
-			bp.Name = "unrecovered-panic"
+			bp.Name = proc.UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}
 			bp.ID = -1
 			p.breakpointIDCounter--
@@ -631,7 +631,22 @@ continueLoop:
 
 	for _, thread := range p.threads {
 		if thread.strID == threadID {
-			return thread, nil
+			var err error = nil
+			switch sig {
+			case 0x91:
+				err = errors.New("bad access")
+			case 0x92:
+				err = errors.New("bad instruction")
+			case 0x93:
+				err = errors.New("arithmetic exception")
+			case 0x94:
+				err = errors.New("emulation exception")
+			case 0x95:
+				err = errors.New("software exception")
+			case 0x96:
+				err = errors.New("breakpoint exception")
+			}
+			return thread, err
 		}
 	}
 
