@@ -19,6 +19,8 @@ type functionDebugInfo struct {
 var NotExecutableErr = errors.New("not an executable file")
 var NotRecordedErr = errors.New("not a recording")
 
+const UnrecoveredPanic = "unrecovered-panic"
+
 // ProcessExitedError indicates that the process has exited and contains both
 // process id and exit status.
 type ProcessExitedError struct {
@@ -168,6 +170,9 @@ func Continue(dbp Process) error {
 				if err != nil {
 					return err
 				}
+			}
+			if curbp.Name == UnrecoveredPanic {
+				dbp.ClearInternalBreakpoints()
 			}
 			return conditionErrors(threads)
 		default:

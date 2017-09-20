@@ -1871,7 +1871,7 @@ func TestPanicBreakpoint(t *testing.T) {
 	withTestProcess("panic", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		bp, _, _ := p.CurrentThread().Breakpoint()
-		if bp == nil || bp.Name != "unrecovered-panic" {
+		if bp == nil || bp.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	})
@@ -1881,7 +1881,7 @@ func TestCmdLineArgs(t *testing.T) {
 	expectSuccess := func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		bp, _, _ := p.CurrentThread().Breakpoint()
-		if bp != nil && bp.Name == "unrecovered-panic" {
+		if bp != nil && bp.Name == proc.UnrecoveredPanic {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", bp)
 		}
 		exit, exited := err.(proc.ProcessExitedError)
@@ -1897,7 +1897,7 @@ func TestCmdLineArgs(t *testing.T) {
 	expectPanic := func(p proc.Process, fixture protest.Fixture) {
 		proc.Continue(p)
 		bp, _, _ := p.CurrentThread().Breakpoint()
-		if bp == nil || bp.Name != "unrecovered-panic" {
+		if bp == nil || bp.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	}
@@ -2283,7 +2283,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		for _, b := range p.Breakpoints() {
-			if b.Name == "unrecovered-panic" {
+			if b.Name == proc.UnrecoveredPanic {
 				_, err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
@@ -2354,7 +2354,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint()")
 
 		for _, b := range p.Breakpoints() {
-			if b.Name == "unrecovered-panic" {
+			if b.Name == proc.UnrecoveredPanic {
 				_, err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
