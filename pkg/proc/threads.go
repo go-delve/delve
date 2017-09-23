@@ -196,7 +196,7 @@ func next(dbp Process, stepInto bool) error {
 					return err
 				}
 			}
-			if bp != nil {
+			if bp != nil && stepInto {
 				bp.DeferReturns = deferreturns
 			}
 		}
