@@ -590,18 +590,12 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 			{5, 6},
 			{6, 9},
 			{9, 10},
-			{10, 6},
-			{6, 7},
-			{7, 8},
 		}
 	} else {
 		testcases = []nextTest{
 			{5, 8},
 			{8, 9},
 			{9, 10},
-			{10, 6},
-			{6, 7},
-			{7, 8},
 		}
 	}
 	protest.AllowRecording(t)
@@ -2132,10 +2126,6 @@ func TestNextDeferReturnAndDirectCall(t *testing.T) {
 		{10, 11},
 		{11, 12},
 		{12, 13},
-		{13, 5},
-		{5, 6},
-		{6, 7},
-		{7, 13},
 		{13, 28}}, "main.callAndDeferReturn", t)
 }
 
