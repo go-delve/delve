@@ -40,7 +40,7 @@ func Disassemble(dbp Process, g *G, startPC, endPC uint64) ([]AsmInstruction, er
 	return disassemble(mem, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC)
 }
 
-func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints map[uint64]*Breakpoint, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
+func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
 	mem := make([]byte, int(endPC-startPC))
 	_, err := memrw.ReadMemory(mem, uintptr(startPC))
 	if err != nil {
@@ -56,7 +56,7 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints map[uint64]
 	}
 
 	for len(mem) > 0 {
-		bp, atbp := breakpoints[pc]
+		bp, atbp := breakpoints.M[pc]
 		if atbp {
 			for i := range bp.OriginalData {
 				mem[i] = bp.OriginalData[i]

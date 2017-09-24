@@ -361,7 +361,7 @@ type nextTest struct {
 
 func countBreakpoints(p proc.Process) int {
 	bpcount := 0
-	for _, bp := range p.Breakpoints() {
+	for _, bp := range p.Breakpoints().M {
 		if bp.ID >= 0 {
 			bpcount++
 		}
@@ -422,7 +422,7 @@ func testseq(program string, contFunc contFunc, testcases []nextTest, initialLoc
 		}
 
 		if countBreakpoints(p) != 0 {
-			t.Fatal("Not all breakpoints were cleaned up", len(p.Breakpoints()))
+			t.Fatal("Not all breakpoints were cleaned up", len(p.Breakpoints().M))
 		}
 	})
 }
@@ -2272,7 +2272,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 		_, err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
-		for _, b := range p.Breakpoints() {
+		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
 				_, err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
@@ -2327,7 +2327,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 }
 
 func nextInProgress(p proc.Process) bool {
-	for _, bp := range p.Breakpoints() {
+	for _, bp := range p.Breakpoints().M {
 		if bp.Internal() {
 			return true
 		}
@@ -2343,7 +2343,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 		_, err = p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 
-		for _, b := range p.Breakpoints() {
+		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
 				_, err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")

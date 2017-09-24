@@ -144,7 +144,7 @@ func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error)
 type Process struct {
 	bi                proc.BinaryInfo
 	core              *Core
-	breakpoints       map[uint64]*proc.Breakpoint
+	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G
 	allGCache         []*proc.G
@@ -167,7 +167,7 @@ func OpenCore(corePath, exePath string) (*Process, error) {
 	}
 	p := &Process{
 		core:        core,
-		breakpoints: make(map[uint64]*proc.Breakpoint),
+		breakpoints: proc.NewBreakpointMap(),
 		bi:          proc.NewBinaryInfo("linux", "amd64"),
 	}
 	for _, thread := range core.Threads {
@@ -258,8 +258,8 @@ func (t *Thread) SetCurrentBreakpoint() error {
 	return nil
 }
 
-func (p *Process) Breakpoints() map[uint64]*proc.Breakpoint {
-	return p.breakpoints
+func (p *Process) Breakpoints() *proc.BreakpointMap {
+	return &p.breakpoints
 }
 
 func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {

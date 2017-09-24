@@ -411,11 +411,11 @@ func onRuntimeBreakpoint(thread Thread) bool {
 }
 
 // onNextGorutine returns true if this thread is on the goroutine requested by the current 'next' command
-func onNextGoroutine(thread Thread, breakpoints map[uint64]*Breakpoint) (bool, error) {
+func onNextGoroutine(thread Thread, breakpoints *BreakpointMap) (bool, error) {
 	var bp *Breakpoint
-	for i := range breakpoints {
-		if breakpoints[i].Internal() && breakpoints[i].Cond != nil {
-			bp = breakpoints[i]
+	for i := range breakpoints.M {
+		if breakpoints.M[i].Internal() && breakpoints.M[i].Cond != nil {
+			bp = breakpoints.M[i]
 			break
 		}
 	}

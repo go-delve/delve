@@ -97,7 +97,7 @@ type ProcessManipulation interface {
 
 // BreakpointManipulation is an interface for managing breakpoints.
 type BreakpointManipulation interface {
-	Breakpoints() map[uint64]*Breakpoint
+	Breakpoints() *BreakpointMap
 	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
 	ClearBreakpoint(addr uint64) (*Breakpoint, error)
 	ClearInternalBreakpoints() error

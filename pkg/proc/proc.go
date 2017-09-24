@@ -68,7 +68,7 @@ func Next(dbp Process) (err error) {
 	if dbp.Exited() {
 		return &ProcessExitedError{Pid: dbp.Pid()}
 	}
-	for _, bp := range dbp.Breakpoints() {
+	for _, bp := range dbp.Breakpoints().M {
 		if bp.Internal() {
 			return fmt.Errorf("next while nexting")
 		}
@@ -216,7 +216,7 @@ func Step(dbp Process) (err error) {
 	if dbp.Exited() {
 		return &ProcessExitedError{Pid: dbp.Pid()}
 	}
-	for _, bp := range dbp.Breakpoints() {
+	for _, bp := range dbp.Breakpoints().M {
 		if bp.Internal() {
 			return fmt.Errorf("next while nexting")
 		}
