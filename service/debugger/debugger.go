@@ -264,7 +264,7 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 		}
 	}
 
-	for _, bp := range d.target.Breakpoints() {
+	for _, bp := range d.target.Breakpoints().M {
 		if bp.Internal() {
 			state.NextInProgress = true
 			break
@@ -398,7 +398,7 @@ func (d *Debugger) Breakpoints() []*api.Breakpoint {
 
 func (d *Debugger) breakpoints() []*api.Breakpoint {
 	bps := []*api.Breakpoint{}
-	for _, bp := range d.target.Breakpoints() {
+	for _, bp := range d.target.Breakpoints().M {
 		if bp.Internal() {
 			continue
 		}
@@ -420,7 +420,7 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 }
 
 func (d *Debugger) findBreakpoint(id int) *proc.Breakpoint {
-	for _, bp := range d.target.Breakpoints() {
+	for _, bp := range d.target.Breakpoints().M {
 		if bp.ID == id {
 			return bp
 		}

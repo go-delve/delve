@@ -65,7 +65,7 @@ func (thread *Thread) StepInstruction() (err error) {
 	bp, ok := thread.dbp.FindBreakpoint(pc)
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
-		_, err = thread.ClearBreakpoint(bp)
+		err = thread.ClearBreakpoint(bp)
 		if err != nil {
 			return err
 		}
@@ -177,11 +177,11 @@ func (th *Thread) ThreadID() int {
 }
 
 // ClearBreakpoint clears the specified breakpoint.
-func (thread *Thread) ClearBreakpoint(bp *proc.Breakpoint) (*proc.Breakpoint, error) {
+func (thread *Thread) ClearBreakpoint(bp *proc.Breakpoint) error {
 	if _, err := thread.WriteMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
-		return nil, fmt.Errorf("could not clear breakpoint %s", err)
+		return fmt.Errorf("could not clear breakpoint %s", err)
 	}
-	return bp, nil
+	return nil
 }
 
 // Registers obtains register values from the debugged process.

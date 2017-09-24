@@ -152,3 +152,104 @@ type NoBreakpointError struct {
 func (nbp NoBreakpointError) Error() string {
 	return fmt.Sprintf("no breakpoint at %#v", nbp.Addr)
 }
+
+type BreakpointMap struct {
+	M map[uint64]*Breakpoint
+
+	breakpointIDCounter         int
+	internalBreakpointIDCounter int
+}
+
+func NewBreakpointMap() BreakpointMap {
+	return BreakpointMap{
+		M: make(map[uint64]*Breakpoint),
+	}
+}
+
+func (bpmap *BreakpointMap) ResetBreakpointIDCounter() {
+	bpmap.breakpointIDCounter = 0
+}
+
+type writeBreakpointFn func(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
+type clearBreakpointFn func(*Breakpoint) error
+
+// Set creates a breakpoint at addr calling writeBreakpoint. Do not call this
+// function, call proc.Process.SetBreakpoint instead, this function exists
+// to implement proc.Process.SetBreakpoint.
+func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr, writeBreakpoint writeBreakpointFn) (*Breakpoint, error) {
+	if bp, ok := bpmap.M[addr]; ok {
+		return bp, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+	}
+
+	f, l, fn, originalData, err := writeBreakpoint(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	newBreakpoint := &Breakpoint{
+		FunctionName: fn.Name,
+		File:         f,
+		Line:         l,
+		Addr:         addr,
+		Kind:         kind,
+		Cond:         cond,
+		OriginalData: originalData,
+		HitCount:     map[int]uint64{},
+	}
+
+	if kind != UserBreakpoint {
+		bpmap.internalBreakpointIDCounter++
+		newBreakpoint.ID = bpmap.internalBreakpointIDCounter
+	} else {
+		bpmap.breakpointIDCounter++
+		newBreakpoint.ID = bpmap.breakpointIDCounter
+	}
+
+	bpmap.M[addr] = newBreakpoint
+
+	return newBreakpoint, nil
+}
+
+// SetWithID creates a breakpoint at addr, with the specified ID.
+func (bpmap *BreakpointMap) SetWithID(id int, addr uint64, writeBreakpoint writeBreakpointFn) (*Breakpoint, error) {
+	bp, err := bpmap.Set(addr, UserBreakpoint, nil, writeBreakpoint)
+	if err == nil {
+		bp.ID = id
+		bpmap.breakpointIDCounter--
+	}
+	return bp, err
+}
+
+// Clear clears the breakpoint at addr.
+// Do not call this function call proc.Process.ClearBreakpoint instead.
+func (bpmap *BreakpointMap) Clear(addr uint64, clearBreakpoint clearBreakpointFn) (*Breakpoint, error) {
+	bp, ok := bpmap.M[addr]
+	if !ok {
+		return nil, NoBreakpointError{Addr: addr}
+	}
+
+	if err := clearBreakpoint(bp); err != nil {
+		return nil, err
+	}
+
+	delete(bpmap.M, addr)
+
+	return bp, nil
+}
+
+// ClearInternalBreakpoints removes all internal breakpoints from the map,
+// calling clearBreakpoint on each one.
+// Do not call this function, call proc.Process.ClearInternalBreakpoints
+// instead, this function is used to implement that.
+func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakpointFn) error {
+	for addr, bp := range bpmap.M {
+		if !bp.Internal() {
+			continue
+		}
+		if err := clearBreakpoint(bp); err != nil {
+			return err
+		}
+		delete(bpmap.M, addr)
+	}
+	return nil
+}
