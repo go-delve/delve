@@ -222,8 +222,8 @@ func (t *Thread) Location() (*proc.Location, error) {
 	return &proc.Location{PC: t.th.Reg.Rip, File: f, Line: l, Fn: fn}, nil
 }
 
-func (t *Thread) Breakpoint() (*proc.Breakpoint, bool, error) {
-	return nil, false, nil
+func (t *Thread) Breakpoint() proc.BreakpointState {
+	return proc.BreakpointState{}
 }
 
 func (t *Thread) ThreadID() int {

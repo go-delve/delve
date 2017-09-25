@@ -550,7 +550,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 				}
 				assertNoError(err, t, "EvalVariable")
 				vval, _ = constant.Int64Val(v.Value)
-				if bp, _, _ := p.CurrentThread().Breakpoint(); bp == nil {
+				if bpstate := p.CurrentThread().Breakpoint(); bpstate.Breakpoint == nil {
 					if vval != initVval {
 						t.Fatal("Did not end up on same goroutine")
 					}
@@ -1038,11 +1038,11 @@ func TestContinueMulti(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			if bp, _, _ := p.CurrentThread().Breakpoint(); bp.ID == bp1.ID {
+			if bp := p.CurrentThread().Breakpoint(); bp.ID == bp1.ID {
 				mainCount++
 			}
 
-			if bp, _, _ := p.CurrentThread().Breakpoint(); bp.ID == bp2.ID {
+			if bp := p.CurrentThread().Breakpoint(); bp.ID == bp2.ID {
 				sayhiCount++
 			}
 		}
@@ -1447,7 +1447,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				assertNoError(err, t, "Continue()")
 			}
 			for _, th := range p.ThreadList() {
-				if bp, _, _ := th.Breakpoint(); bp == nil {
+				if bp := th.Breakpoint(); bp.Breakpoint == nil {
 					continue
 				}
 				scope, err := proc.GoroutineScope(th)
@@ -1864,8 +1864,8 @@ func TestPanicBreakpoint(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("panic", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		bp, _, _ := p.CurrentThread().Breakpoint()
-		if bp == nil || bp.Name != proc.UnrecoveredPanic {
+		bp := p.CurrentThread().Breakpoint()
+		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	})
@@ -1874,8 +1874,8 @@ func TestPanicBreakpoint(t *testing.T) {
 func TestCmdLineArgs(t *testing.T) {
 	expectSuccess := func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
-		bp, _, _ := p.CurrentThread().Breakpoint()
-		if bp != nil && bp.Name == proc.UnrecoveredPanic {
+		bp := p.CurrentThread().Breakpoint()
+		if bp.Breakpoint != nil && bp.Name == proc.UnrecoveredPanic {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", bp)
 		}
 		exit, exited := err.(proc.ProcessExitedError)
@@ -1890,8 +1890,8 @@ func TestCmdLineArgs(t *testing.T) {
 
 	expectPanic := func(p proc.Process, fixture protest.Fixture) {
 		proc.Continue(p)
-		bp, _, _ := p.CurrentThread().Breakpoint()
-		if bp == nil || bp.Name != proc.UnrecoveredPanic {
+		bp := p.CurrentThread().Breakpoint()
+		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	}
@@ -2326,15 +2326,6 @@ func TestStepConcurrentDirect(t *testing.T) {
 	})
 }
 
-func nextInProgress(p proc.Process) bool {
-	for _, bp := range p.Breakpoints().M {
-		if bp.Internal() {
-			return true
-		}
-	}
-	return false
-}
-
 func TestStepConcurrentPtr(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
@@ -2364,10 +2355,9 @@ func TestStepConcurrentPtr(t *testing.T) {
 			f, ln := currentLineNumber(p, t)
 			if ln != 24 {
 				for _, th := range p.ThreadList() {
-					bp, bpactive, bperr := th.Breakpoint()
-					t.Logf("thread %d stopped on breakpoint %v %v %v", th.ThreadID(), bp, bpactive, bperr)
+					t.Logf("thread %d stopped on breakpoint %v", th.ThreadID(), th.Breakpoint())
 				}
-				curbp, _, _ := p.CurrentThread().Breakpoint()
+				curbp := p.CurrentThread().Breakpoint()
 				t.Fatalf("Program did not continue at expected location (24): %s:%d %#x [%v] (gid %d count %d)", f, ln, currentPC(p, t), curbp, p.SelectedGoroutine().ID, count)
 			}
 
@@ -2385,7 +2375,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 			kvals[gid] = k
 
 			assertNoError(proc.Step(p), t, "Step()")
-			for nextInProgress(p) {
+			for p.Breakpoints().HasInternalBreakpoints() {
 				if p.SelectedGoroutine().ID == gid {
 					t.Fatalf("step did not step into function call (but internal breakpoints still active?) (%d %d)", gid, p.SelectedGoroutine().ID)
 				}
@@ -2705,7 +2695,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 			gs, err := proc.GoroutinesInfo(p)
 			assertNoError(err, t, "GoroutinesInfo()")
 			for _, th := range p.ThreadList() {
-				if bp, _, _ := th.Breakpoint(); bp == nil {
+				if bp := th.Breakpoint(); bp.Breakpoint == nil {
 					continue
 				}
 
@@ -3139,4 +3129,24 @@ func TestAttachStripped(t *testing.T) {
 		cmd.Process.Kill()
 	}
 	os.Remove(fixture.Path)
+}
+
+func TestIssue844(t *testing.T) {
+	// Conditional breakpoints should not prevent next from working if their
+	// condition isn't met.
+	withTestProcess("nextcond", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 9)
+		condbp := setFileBreakpoint(p, t, fixture, 10)
+		condbp.Cond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "n"},
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "11"},
+		}
+		assertNoError(proc.Continue(p), t, "Continue")
+		assertNoError(proc.Next(p), t, "Next")
+		f, l := currentLineNumber(p, t)
+		if l != 10 {
+			t.Fatalf("continued to wrong location %s:%d (expected 10)", f, l)
+		}
+	})
 }

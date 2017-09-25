@@ -99,7 +99,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 
 	dbp.allGCache = nil
 	for _, th := range dbp.threads {
-		th.clearBreakpointState()
+		th.CurrentBreakpoint.Clear()
 	}
 
 	trapthread, err := dbp.trapWait(-1)
@@ -425,11 +425,11 @@ func (dbp *Process) exitGuard(err error) error {
 func (dbp *Process) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
-		if thread.CurrentBreakpoint != nil {
+		if thread.CurrentBreakpoint.Breakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
 			}
-			thread.CurrentBreakpoint = nil
+			thread.CurrentBreakpoint.Clear()
 		}
 	}
 	// everything is resumed

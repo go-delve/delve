@@ -369,7 +369,7 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 
 func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint == nil {
+		if th.CurrentBreakpoint.Breakpoint == nil {
 			if err := th.SetCurrentBreakpoint(); err != nil {
 				if err == sys.ESRCH {
 					// This thread quit between the point where we received the breakpoint and
@@ -399,11 +399,11 @@ func (dbp *Process) exitGuard(err error) error {
 func (dbp *Process) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
-		if thread.CurrentBreakpoint != nil {
+		if thread.CurrentBreakpoint.Breakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
 			}
-			thread.CurrentBreakpoint = nil
+			thread.CurrentBreakpoint.Clear()
 		}
 	}
 	// everything is resumed

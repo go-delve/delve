@@ -17,11 +17,17 @@ type Breakpoint struct {
 	File         string
 	Line         int
 
-	Addr         uint64         // Address breakpoint is set for.
-	OriginalData []byte         // If software breakpoint, the data we replace with breakpoint instruction.
-	Name         string         // User defined name of the breakpoint
-	ID           int            // Monotonically increasing ID.
-	Kind         BreakpointKind // Whether this is an internal breakpoint (for next'ing or stepping).
+	Addr         uint64 // Address breakpoint is set for.
+	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
+	Name         string // User defined name of the breakpoint
+	ID           int    // Monotonically increasing ID.
+
+	// Kind describes whether this is an internal breakpoint (for next'ing or
+	// stepping).
+	// A single breakpoint can be both a UserBreakpoint and some kind of
+	// internal breakpoint, but it can not be two different kinds of internal
+	// breakpoint.
+	Kind BreakpointKind
 
 	// Breakpoint information
 	Tracepoint    bool     // Tracepoint flag
@@ -45,15 +51,17 @@ type Breakpoint struct {
 	DeferReturns []uint64
 	// Cond: if not nil the breakpoint will be triggered only if evaluating Cond returns true
 	Cond ast.Expr
+	// internalCond is the same as Cond but used for the condition of internal breakpoints
+	internalCond ast.Expr
 }
 
 // Breakpoint Kind determines the behavior of delve when the
 // breakpoint is reached.
-type BreakpointKind int
+type BreakpointKind uint16
 
 const (
 	// UserBreakpoint is a user set breakpoint
-	UserBreakpoint BreakpointKind = iota
+	UserBreakpoint BreakpointKind = (1 << iota)
 	// NextBreakpoint is a breakpoint set by Next, Continue
 	// will stop on it and delete it
 	NextBreakpoint
@@ -95,11 +103,15 @@ func (iae InvalidAddressError) Error() string {
 }
 
 // CheckCondition evaluates bp's condition on thread.
-func (bp *Breakpoint) CheckCondition(thread Thread) (bool, error) {
-	if bp.Cond == nil {
-		return true, nil
+func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
+	bpstate := BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
+	if bp.Cond == nil && bp.internalCond == nil {
+		bpstate.Active = true
+		bpstate.Internal = bp.Kind != UserBreakpoint
+		return bpstate
 	}
-	if bp.Kind == NextDeferBreakpoint {
+	nextDeferOk := true
+	if bp.Kind&NextDeferBreakpoint != 0 {
 		frames, err := ThreadStacktrace(thread, 2)
 		if err == nil {
 			ispanic := len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic"
@@ -112,15 +124,43 @@ func (bp *Breakpoint) CheckCondition(thread Thread) (bool, error) {
 					}
 				}
 			}
-			if !ispanic && !isdeferreturn {
-				return false, nil
-			}
+			nextDeferOk = ispanic || isdeferreturn
 		}
 	}
-	return evalBreakpointCondition(thread, bp.Cond)
+	if bp.Kind != UserBreakpoint {
+		// Check internalCondition if this is also an internal breakpoint
+		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.internalCond)
+		bpstate.Active = bpstate.Active && nextDeferOk
+		if bpstate.Active || bpstate.CondError != nil {
+			bpstate.Internal = true
+			return bpstate
+		}
+	}
+	if bp.Kind&UserBreakpoint != 0 {
+		// Check normal condition if this is also a user breakpoint
+		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.Cond)
+	}
+	return bpstate
+}
+
+// IsInternal returns true if bp is an internal breakpoint.
+// User-set breakpoints can overlap with internal breakpoints, in that case
+// both IsUser and IsInternal will be true.
+func (bp *Breakpoint) IsInternal() bool {
+	return bp.Kind != UserBreakpoint
+}
+
+// IsUser returns true if bp is a user-set breakpoint.
+// User-set breakpoints can overlap with internal breakpoints, in that case
+// both IsUser and IsInternal will be true.
+func (bp *Breakpoint) IsUser() bool {
+	return bp.Kind&UserBreakpoint != 0
 }
 
 func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
+	if cond == nil {
+		return true, nil
+	}
 	scope, err := GoroutineScope(thread)
 	if err != nil {
 		return true, err
@@ -138,11 +178,6 @@ func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
 	return constant.BoolVal(v.Value), nil
 }
 
-// Internal returns true for breakpoints not set directly by the user.
-func (bp *Breakpoint) Internal() bool {
-	return bp.Kind != UserBreakpoint
-}
-
 // NoBreakpointError is returned when trying to
 // clear a breakpoint that does not exist.
 type NoBreakpointError struct {
@@ -153,6 +188,7 @@ func (nbp NoBreakpointError) Error() string {
 	return fmt.Sprintf("no breakpoint at %#v", nbp.Addr)
 }
 
+// BreakpointMap represents an (address, breakpoint) map.
 type BreakpointMap struct {
 	M map[uint64]*Breakpoint
 
@@ -160,12 +196,14 @@ type BreakpointMap struct {
 	internalBreakpointIDCounter int
 }
 
+// NewBreakpointMap creates a new BreakpointMap.
 func NewBreakpointMap() BreakpointMap {
 	return BreakpointMap{
 		M: make(map[uint64]*Breakpoint),
 	}
 }
 
+// ResetBreakpointIDCounter resets the breakpoint ID counter of bpmap.
 func (bpmap *BreakpointMap) ResetBreakpointIDCounter() {
 	bpmap.breakpointIDCounter = 0
 }
@@ -178,7 +216,19 @@ type clearBreakpointFn func(*Breakpoint) error
 // to implement proc.Process.SetBreakpoint.
 func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr, writeBreakpoint writeBreakpointFn) (*Breakpoint, error) {
 	if bp, ok := bpmap.M[addr]; ok {
-		return bp, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+		// We can overlap one internal breakpoint with one user breakpoint, we
+		// need to support this otherwise a conditional breakpoint can mask a
+		// breakpoint set by next or step.
+		if (kind != UserBreakpoint && bp.Kind != UserBreakpoint) || (kind == UserBreakpoint && bp.Kind&UserBreakpoint != 0) {
+			return bp, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+		}
+		bp.Kind |= kind
+		if kind != UserBreakpoint {
+			bp.internalCond = cond
+		} else {
+			bp.Cond = cond
+		}
+		return bp, nil
 	}
 
 	f, l, fn, originalData, err := writeBreakpoint(addr)
@@ -192,7 +242,6 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 		Line:         l,
 		Addr:         addr,
 		Kind:         kind,
-		Cond:         cond,
 		OriginalData: originalData,
 		HitCount:     map[int]uint64{},
 	}
@@ -200,9 +249,11 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 	if kind != UserBreakpoint {
 		bpmap.internalBreakpointIDCounter++
 		newBreakpoint.ID = bpmap.internalBreakpointIDCounter
+		newBreakpoint.internalCond = cond
 	} else {
 		bpmap.breakpointIDCounter++
 		newBreakpoint.ID = bpmap.breakpointIDCounter
+		newBreakpoint.Cond = cond
 	}
 
 	bpmap.M[addr] = newBreakpoint
@@ -228,6 +279,12 @@ func (bpmap *BreakpointMap) Clear(addr uint64, clearBreakpoint clearBreakpointFn
 		return nil, NoBreakpointError{Addr: addr}
 	}
 
+	bp.Kind &= ^UserBreakpoint
+	bp.Cond = nil
+	if bp.Kind != 0 {
+		return bp, nil
+	}
+
 	if err := clearBreakpoint(bp); err != nil {
 		return nil, err
 	}
@@ -243,7 +300,9 @@ func (bpmap *BreakpointMap) Clear(addr uint64, clearBreakpoint clearBreakpointFn
 // instead, this function is used to implement that.
 func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakpointFn) error {
 	for addr, bp := range bpmap.M {
-		if !bp.Internal() {
+		bp.Kind = bp.Kind & UserBreakpoint
+		bp.internalCond = nil
+		if bp.Kind != 0 {
 			continue
 		}
 		if err := clearBreakpoint(bp); err != nil {
@@ -252,4 +311,46 @@ func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakp
 		delete(bpmap.M, addr)
 	}
 	return nil
+}
+
+// HasInternalBreakpoints returns true if bpmap has at least one internal
+// breakpoint set.
+func (bpmap *BreakpointMap) HasInternalBreakpoints() bool {
+	for _, bp := range bpmap.M {
+		if bp.Kind != UserBreakpoint {
+			return true
+		}
+	}
+	return false
+}
+
+// BreakpointState describes the state of a breakpoint in a thread.
+type BreakpointState struct {
+	*Breakpoint
+	// Active is true if the breakpoint condition was met.
+	Active bool
+	// Internal is true if the breakpoint was matched as an internal
+	// breakpoint.
+	Internal bool
+	// CondError contains any error encountered while evaluating the
+	// breakpoint's condition.
+	CondError error
+}
+
+func (bpstate *BreakpointState) Clear() {
+	bpstate.Breakpoint = nil
+	bpstate.Active = false
+	bpstate.Internal = false
+	bpstate.CondError = nil
+}
+
+func (bpstate *BreakpointState) String() string {
+	s := bpstate.Breakpoint.String()
+	if bpstate.Active {
+		s += " active"
+	}
+	if bpstate.Internal {
+		s += " internal"
+	}
+	return s
 }

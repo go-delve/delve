@@ -127,14 +127,12 @@ type Process struct {
 
 // Thread is a thread.
 type Thread struct {
-	ID                       int
-	strID                    string
-	regs                     gdbRegisters
-	CurrentBreakpoint        *proc.Breakpoint
-	BreakpointConditionMet   bool
-	BreakpointConditionError error
-	p                        *Process
-	setbp                    bool // thread was stopped because of a breakpoint
+	ID                int
+	strID             string
+	regs              gdbRegisters
+	CurrentBreakpoint proc.BreakpointState
+	p                 *Process
+	setbp             bool // thread was stopped because of a breakpoint
 }
 
 // gdbRegisters represents the current value of the registers of a thread.
@@ -557,7 +555,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 	if p.conn.direction == proc.Forward {
 		// step threads stopped at any breakpoint over their breakpoint
 		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint != nil {
+			if thread.CurrentBreakpoint.Breakpoint != nil {
 				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
 					return nil, err
 				}
@@ -914,10 +912,8 @@ func (p *Process) Direction(dir proc.Direction) error {
 	if p.conn.direction == dir {
 		return nil
 	}
-	for _, bp := range p.Breakpoints().M {
-		if bp.Internal() {
-			return ErrDirChange
-		}
+	if p.Breakpoints().HasInternalBreakpoints() {
+		return ErrDirChange
 	}
 	p.conn.direction = dir
 	return nil
@@ -971,8 +967,8 @@ func (p *Process) ClearInternalBreakpoints() error {
 			return err
 		}
 		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint == bp {
-				thread.CurrentBreakpoint = nil
+			if thread.CurrentBreakpoint.Breakpoint == bp {
+				thread.clearBreakpointState()
 			}
 		}
 		return nil
@@ -1098,7 +1094,7 @@ func (p *Process) setCurrentBreakpoints() error {
 	}
 	if !p.threadStopInfo {
 		for _, th := range p.threads {
-			if th.CurrentBreakpoint == nil {
+			if th.CurrentBreakpoint.Breakpoint == nil {
 				err := th.SetCurrentBreakpoint()
 				if err != nil {
 					return err
@@ -1131,8 +1127,8 @@ func (t *Thread) Location() (*proc.Location, error) {
 	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
-func (t *Thread) Breakpoint() (breakpoint *proc.Breakpoint, active bool, condErr error) {
-	return t.CurrentBreakpoint, (t.CurrentBreakpoint != nil && t.BreakpointConditionMet), t.BreakpointConditionError
+func (t *Thread) Breakpoint() proc.BreakpointState {
+	return t.CurrentBreakpoint
 }
 
 func (t *Thread) ThreadID() int {
@@ -1431,13 +1427,11 @@ func (t *Thread) reloadGAlloc() error {
 
 func (t *Thread) clearBreakpointState() {
 	t.setbp = false
-	t.CurrentBreakpoint = nil
-	t.BreakpointConditionMet = false
-	t.BreakpointConditionError = nil
+	t.CurrentBreakpoint.Clear()
 }
 
 func (thread *Thread) SetCurrentBreakpoint() error {
-	thread.CurrentBreakpoint = nil
+	thread.clearBreakpointState()
 	regs, err := thread.Registers(false)
 	if err != nil {
 		return err
@@ -1449,9 +1443,8 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 				return err
 			}
 		}
-		thread.CurrentBreakpoint = bp
-		thread.BreakpointConditionMet, thread.BreakpointConditionError = bp.CheckCondition(thread)
-		if thread.CurrentBreakpoint != nil && thread.BreakpointConditionMet {
+		thread.CurrentBreakpoint = bp.CheckCondition(thread)
+		if thread.CurrentBreakpoint.Breakpoint != nil && thread.CurrentBreakpoint.Active {
 			if g, err := proc.GetG(thread); err == nil {
 				thread.CurrentBreakpoint.HitCount[g.ID]++
 			}
