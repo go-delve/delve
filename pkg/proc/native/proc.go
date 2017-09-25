@@ -210,8 +210,7 @@ func (dbp *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, [
 }
 
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
-// break point table. Setting a break point must be thread specific due to
-// ptrace actions needing the thread to be in a signal-delivery-stop.
+// break point table.
 func (dbp *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
 	return dbp.breakpoints.Set(addr, kind, cond, dbp.writeBreakpoint)
 }
@@ -235,7 +234,7 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 
 	dbp.allGCache = nil
 	for _, th := range dbp.threads {
-		th.clearBreakpointState()
+		th.CurrentBreakpoint.Clear()
 	}
 
 	if dbp.resumeChan != nil {
@@ -276,7 +275,7 @@ func (dbp *Process) StepInstruction() (err error) {
 	if dbp.exited {
 		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
-	thread.clearBreakpointState()
+	thread.CurrentBreakpoint.Clear()
 	err = thread.StepInstruction()
 	if err != nil {
 		return err
@@ -386,8 +385,8 @@ func (dbp *Process) ClearInternalBreakpoints() error {
 			return err
 		}
 		for _, thread := range dbp.threads {
-			if thread.CurrentBreakpoint == bp {
-				thread.CurrentBreakpoint = nil
+			if thread.CurrentBreakpoint.Breakpoint == bp {
+				thread.CurrentBreakpoint.Clear()
 			}
 		}
 		return nil

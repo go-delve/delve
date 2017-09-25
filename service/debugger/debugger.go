@@ -264,12 +264,7 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 		}
 	}
 
-	for _, bp := range d.target.Breakpoints().M {
-		if bp.Internal() {
-			state.NextInProgress = true
-			break
-		}
-	}
+	state.NextInProgress = d.target.Breakpoints().HasInternalBreakpoints()
 
 	if recorded, _ := d.target.Recorded(); recorded {
 		state.When, _ = d.target.When()
@@ -399,10 +394,9 @@ func (d *Debugger) Breakpoints() []*api.Breakpoint {
 func (d *Debugger) breakpoints() []*api.Breakpoint {
 	bps := []*api.Breakpoint{}
 	for _, bp := range d.target.Breakpoints().M {
-		if bp.Internal() {
-			continue
+		if bp.IsUser() {
+			bps = append(bps, api.ConvertBreakpoint(bp))
 		}
-		bps = append(bps, api.ConvertBreakpoint(bp))
 	}
 	return bps
 }

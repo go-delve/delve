@@ -19,11 +19,7 @@ type Thread interface {
 	Location() (*Location, error)
 	// Breakpoint will return the breakpoint that this thread is stopped at or
 	// nil if the thread is not stopped at any breakpoint.
-	// Active will be true if the thread is stopped at a breakpoint and the
-	// breakpoint's condition is met.
-	// If there was an error evaluating the breakpoint's condition it will be
-	// returned as condErr
-	Breakpoint() (breakpoint *Breakpoint, active bool, condErr error)
+	Breakpoint() BreakpointState
 	ThreadID() int
 	Registers(floatingPoint bool) (Registers, error)
 	Arch() Arch
@@ -261,7 +257,7 @@ func next(dbp Process, stepInto bool) error {
 		// there it's ok.
 	}
 
-	if bp, _, _ := curthread.Breakpoint(); bp == nil {
+	if bp := curthread.Breakpoint(); bp.Breakpoint == nil {
 		curthread.SetCurrentBreakpoint()
 	}
 	success = true
@@ -414,7 +410,7 @@ func onRuntimeBreakpoint(thread Thread) bool {
 func onNextGoroutine(thread Thread, breakpoints *BreakpointMap) (bool, error) {
 	var bp *Breakpoint
 	for i := range breakpoints.M {
-		if breakpoints.M[i].Internal() && breakpoints.M[i].Cond != nil {
+		if breakpoints.M[i].Kind != UserBreakpoint && breakpoints.M[i].internalCond != nil {
 			bp = breakpoints.M[i]
 			break
 		}
@@ -432,7 +428,7 @@ func onNextGoroutine(thread Thread, breakpoints *BreakpointMap) (bool, error) {
 	//   runtime.curg.goid == X && (runtime.frameoff == Y || runtime.frameoff == Z)
 	// Here we are only interested in testing the runtime.curg.goid clause.
 	w := onNextGoroutineWalker{thread: thread}
-	ast.Walk(&w, bp.Cond)
+	ast.Walk(&w, bp.internalCond)
 	return w.ret, w.err
 }
 

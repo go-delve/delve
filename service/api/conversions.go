@@ -64,8 +64,8 @@ func ConvertThread(th proc.Thread) *Thread {
 
 	var bp *Breakpoint
 
-	if b, active, _ := th.Breakpoint(); active {
-		bp = ConvertBreakpoint(b)
+	if b := th.Breakpoint(); b.Active {
+		bp = ConvertBreakpoint(b.Breakpoint)
 	}
 
 	if g, _ := proc.GetG(th); g != nil {

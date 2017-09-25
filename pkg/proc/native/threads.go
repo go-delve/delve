@@ -12,11 +12,9 @@ import (
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type Thread struct {
-	ID                       int              // Thread ID or mach port
-	Status                   *WaitStatus      // Status returned from last wait call
-	CurrentBreakpoint        *proc.Breakpoint // Breakpoint thread is currently stopped at
-	BreakpointConditionMet   bool             // Output of evaluating the breakpoint's condition
-	BreakpointConditionError error            // Error evaluating the breakpoint's condition
+	ID                int                  // Thread ID or mach port
+	Status            *WaitStatus          // Status returned from last wait call
+	CurrentBreakpoint proc.BreakpointState // Breakpoint thread is currently stopped at
 
 	dbp            *Process
 	singleStepping bool
@@ -141,18 +139,17 @@ func (thread *Thread) Halt() (err error) {
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
 func (thread *Thread) SetCurrentBreakpoint() error {
-	thread.CurrentBreakpoint = nil
+	thread.CurrentBreakpoint.Clear()
 	pc, err := thread.PC()
 	if err != nil {
 		return err
 	}
 	if bp, ok := thread.dbp.FindBreakpoint(pc); ok {
-		thread.CurrentBreakpoint = bp
 		if err = thread.SetPC(bp.Addr); err != nil {
 			return err
 		}
-		thread.BreakpointConditionMet, thread.BreakpointConditionError = bp.CheckCondition(thread)
-		if thread.CurrentBreakpoint != nil && thread.BreakpointConditionMet {
+		thread.CurrentBreakpoint = bp.CheckCondition(thread)
+		if thread.CurrentBreakpoint.Breakpoint != nil && thread.CurrentBreakpoint.Active {
 			if g, err := proc.GetG(thread); err == nil {
 				thread.CurrentBreakpoint.HitCount[g.ID]++
 			}
@@ -162,14 +159,8 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 	return nil
 }
 
-func (thread *Thread) clearBreakpointState() {
-	thread.CurrentBreakpoint = nil
-	thread.BreakpointConditionMet = false
-	thread.BreakpointConditionError = nil
-}
-
-func (th *Thread) Breakpoint() (*proc.Breakpoint, bool, error) {
-	return th.CurrentBreakpoint, th.CurrentBreakpoint != nil && th.BreakpointConditionMet, th.BreakpointConditionError
+func (th *Thread) Breakpoint() proc.BreakpointState {
+	return th.CurrentBreakpoint
 }
 
 func (th *Thread) ThreadID() int {
