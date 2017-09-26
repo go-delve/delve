@@ -21,7 +21,7 @@ Delve is a debugger for the Go programming language. The goal of the project is 
 The example sequence of commands shows you how to set a breakpoint on `main.main`, continue to the breakpoint, list the source code at the breakpoint, and then proceed through the program one line at a time.
 
 ```
-$ dlv exec ./hello -- server --config conf/config.toml
+$ dlv exec ./my-program -- arguments --for my --program
 (dlv) break main.main
 (dlv) c
 (dlv) list
