@@ -8,36 +8,26 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/util"
 )
 
-type CurrentFrameAddress struct {
-	register   uint64
-	offset     int64
-	expression []byte
-	rule       byte
-}
-
 type DWRule struct {
-	rule       byte
-	offset     int64
-	newreg     uint64
-	expression []byte
+	Rule       Rule
+	Offset     int64
+	Reg        uint64
+	Expression []byte
 }
 
 type FrameContext struct {
 	loc           uint64
 	order         binary.ByteOrder
 	address       uint64
-	cfa           CurrentFrameAddress
-	regs          map[uint64]DWRule
+	CFA           DWRule
+	Regs          map[uint64]DWRule
 	initialRegs   map[uint64]DWRule
 	prevRegs      map[uint64]DWRule
 	buf           *bytes.Buffer
 	cie           *CommonInformationEntry
+	RetAddrReg    uint64
 	codeAlignment uint64
 	dataAlignment int64
-}
-
-func (fctx *FrameContext) CFAOffset() int64 {
-	return fctx.cfa.offset
 }
 
 // Instructions used to recreate the table from the .debug_frame data.
@@ -73,15 +63,19 @@ const (
 )
 
 // Rules defined for register values.
+type Rule byte
+
 const (
-	rule_undefined = iota
-	rule_sameval
-	rule_offset
-	rule_valoffset
-	rule_register
-	rule_expression
-	rule_valexpression
-	rule_architectural
+	RuleUndefined Rule = iota
+	RuleSameVal
+	RuleOffset
+	RuleValOffset
+	RuleRegister
+	RuleExpression
+	RuleValExpression
+	RuleArchitectural
+	RuleCFA       // Value is rule.Reg + rule.Offset
+	RuleRegOffset // Value is stored at address rule.Reg + rule.Offset
 )
 
 const low_6_offset = 0x3f
@@ -124,7 +118,8 @@ func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
 	copy(initialInstructions, cie.InitialInstructions)
 	frame := &FrameContext{
 		cie:           cie,
-		regs:          make(map[uint64]DWRule),
+		Regs:          make(map[uint64]DWRule),
+		RetAddrReg:    cie.ReturnAddressRegister,
 		initialRegs:   make(map[uint64]DWRule),
 		prevRegs:      make(map[uint64]DWRule),
 		codeAlignment: cie.CodeAlignmentFactor,
@@ -142,9 +137,7 @@ func executeDwarfProgramUntilPC(fde *FrameDescriptionEntry, pc uint64) *FrameCon
 	frame.order = fde.order
 	frame.loc = fde.Begin()
 	frame.address = pc
-	fdeInstructions := make([]byte, len(fde.Instructions))
-	copy(fdeInstructions, fde.Instructions)
-	frame.ExecuteUntilPC(fdeInstructions)
+	frame.ExecuteUntilPC(fde.Instructions)
 
 	return frame
 }
@@ -262,7 +255,7 @@ func offset(frame *FrameContext) {
 		offset, _ = util.DecodeULEB128(frame.buf)
 	)
 
-	frame.regs[uint64(reg)] = DWRule{offset: int64(offset) * frame.dataAlignment, rule: rule_offset}
+	frame.Regs[uint64(reg)] = DWRule{Offset: int64(offset) * frame.dataAlignment, Rule: RuleOffset}
 }
 
 func restore(frame *FrameContext) {
@@ -274,9 +267,9 @@ func restore(frame *FrameContext) {
 	reg := uint64(b & low_6_offset)
 	oldrule, ok := frame.initialRegs[reg]
 	if ok {
-		frame.regs[reg] = DWRule{offset: oldrule.offset, rule: rule_offset}
+		frame.Regs[reg] = DWRule{Offset: oldrule.Offset, Rule: RuleOffset}
 	} else {
-		frame.regs[reg] = DWRule{rule: rule_undefined}
+		frame.Regs[reg] = DWRule{Rule: RuleUndefined}
 	}
 }
 
@@ -293,31 +286,31 @@ func offsetextended(frame *FrameContext) {
 		offset, _ = util.DecodeULEB128(frame.buf)
 	)
 
-	frame.regs[reg] = DWRule{offset: int64(offset) * frame.dataAlignment, rule: rule_offset}
+	frame.Regs[reg] = DWRule{Offset: int64(offset) * frame.dataAlignment, Rule: RuleOffset}
 }
 
 func undefined(frame *FrameContext) {
 	reg, _ := util.DecodeULEB128(frame.buf)
-	frame.regs[reg] = DWRule{rule: rule_undefined}
+	frame.Regs[reg] = DWRule{Rule: RuleUndefined}
 }
 
 func samevalue(frame *FrameContext) {
 	reg, _ := util.DecodeULEB128(frame.buf)
-	frame.regs[reg] = DWRule{rule: rule_sameval}
+	frame.Regs[reg] = DWRule{Rule: RuleSameVal}
 }
 
 func register(frame *FrameContext) {
 	reg1, _ := util.DecodeULEB128(frame.buf)
 	reg2, _ := util.DecodeULEB128(frame.buf)
-	frame.regs[reg1] = DWRule{newreg: reg2, rule: rule_register}
+	frame.Regs[reg1] = DWRule{Reg: reg2, Rule: RuleRegister}
 }
 
 func rememberstate(frame *FrameContext) {
-	frame.prevRegs = frame.regs
+	frame.prevRegs = frame.Regs
 }
 
 func restorestate(frame *FrameContext) {
-	frame.regs = frame.prevRegs
+	frame.Regs = frame.prevRegs
 }
 
 func restoreextended(frame *FrameContext) {
@@ -325,9 +318,9 @@ func restoreextended(frame *FrameContext) {
 
 	oldrule, ok := frame.initialRegs[reg]
 	if ok {
-		frame.regs[reg] = DWRule{offset: oldrule.offset, rule: rule_offset}
+		frame.Regs[reg] = DWRule{Offset: oldrule.Offset, Rule: RuleOffset}
 	} else {
-		frame.regs[reg] = DWRule{rule: rule_undefined}
+		frame.Regs[reg] = DWRule{Rule: RuleUndefined}
 	}
 }
 
@@ -335,32 +328,34 @@ func defcfa(frame *FrameContext) {
 	reg, _ := util.DecodeULEB128(frame.buf)
 	offset, _ := util.DecodeULEB128(frame.buf)
 
-	frame.cfa.register = reg
-	frame.cfa.offset = int64(offset)
+	frame.CFA.Rule = RuleCFA
+	frame.CFA.Reg = reg
+	frame.CFA.Offset = int64(offset)
 }
 
 func defcfaregister(frame *FrameContext) {
 	reg, _ := util.DecodeULEB128(frame.buf)
-	frame.cfa.register = reg
+	frame.CFA.Reg = reg
 }
 
 func defcfaoffset(frame *FrameContext) {
 	offset, _ := util.DecodeULEB128(frame.buf)
-	frame.cfa.offset = int64(offset)
+	frame.CFA.Offset = int64(offset)
 }
 
 func defcfasf(frame *FrameContext) {
 	reg, _ := util.DecodeULEB128(frame.buf)
 	offset, _ := util.DecodeSLEB128(frame.buf)
 
-	frame.cfa.register = reg
-	frame.cfa.offset = offset * frame.dataAlignment
+	frame.CFA.Rule = RuleCFA
+	frame.CFA.Reg = reg
+	frame.CFA.Offset = offset * frame.dataAlignment
 }
 
 func defcfaoffsetsf(frame *FrameContext) {
 	offset, _ := util.DecodeSLEB128(frame.buf)
 	offset *= frame.dataAlignment
-	frame.cfa.offset = offset
+	frame.CFA.Offset = offset
 }
 
 func defcfaexpression(frame *FrameContext) {
@@ -369,8 +364,8 @@ func defcfaexpression(frame *FrameContext) {
 		expr = frame.buf.Next(int(l))
 	)
 
-	frame.cfa.expression = expr
-	frame.cfa.rule = rule_expression
+	frame.CFA.Expression = expr
+	frame.CFA.Rule = RuleExpression
 }
 
 func expression(frame *FrameContext) {
@@ -380,7 +375,7 @@ func expression(frame *FrameContext) {
 		expr   = frame.buf.Next(int(l))
 	)
 
-	frame.regs[reg] = DWRule{rule: rule_expression, expression: expr}
+	frame.Regs[reg] = DWRule{Rule: RuleExpression, Expression: expr}
 }
 
 func offsetextendedsf(frame *FrameContext) {
@@ -389,7 +384,7 @@ func offsetextendedsf(frame *FrameContext) {
 		offset, _ = util.DecodeSLEB128(frame.buf)
 	)
 
-	frame.regs[reg] = DWRule{offset: offset * frame.dataAlignment, rule: rule_offset}
+	frame.Regs[reg] = DWRule{Offset: offset * frame.dataAlignment, Rule: RuleOffset}
 }
 
 func valoffset(frame *FrameContext) {
@@ -398,7 +393,7 @@ func valoffset(frame *FrameContext) {
 		offset, _ = util.DecodeULEB128(frame.buf)
 	)
 
-	frame.regs[reg] = DWRule{offset: int64(offset), rule: rule_valoffset}
+	frame.Regs[reg] = DWRule{Offset: int64(offset), Rule: RuleValOffset}
 }
 
 func valoffsetsf(frame *FrameContext) {
@@ -407,7 +402,7 @@ func valoffsetsf(frame *FrameContext) {
 		offset, _ = util.DecodeSLEB128(frame.buf)
 	)
 
-	frame.regs[reg] = DWRule{offset: offset * frame.dataAlignment, rule: rule_valoffset}
+	frame.Regs[reg] = DWRule{Offset: offset * frame.dataAlignment, Rule: RuleValOffset}
 }
 
 func valexpression(frame *FrameContext) {
@@ -417,7 +412,7 @@ func valexpression(frame *FrameContext) {
 		expr   = frame.buf.Next(int(l))
 	)
 
-	frame.regs[reg] = DWRule{rule: rule_valexpression, expression: expr}
+	frame.Regs[reg] = DWRule{Rule: RuleValExpression, Expression: expr}
 }
 
 func louser(frame *FrameContext) {

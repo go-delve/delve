@@ -860,7 +860,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 	for i := range rawlocs {
 		frame := api.Stackframe{
 			Location:    api.ConvertLocation(rawlocs[i].Call),
-			FrameOffset: rawlocs[i].CFA - int64(rawlocs[i].StackHi),
+			FrameOffset: rawlocs[i].Regs.CFA - int64(rawlocs[i].StackHi),
 		}
 		if rawlocs[i].Err != nil {
 			frame.Err = rawlocs[i].Err.Error()

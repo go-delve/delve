@@ -930,7 +930,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 					if locations[i].Call.Fn != nil {
 						name = locations[i].Call.Fn.Name
 					}
-					t.Logf("\t%s:%d %s\n", locations[i].Call.File, locations[i].Call.Line, name)
+					t.Logf("\t%s:%d %s (%#x)\n", locations[i].Call.File, locations[i].Call.Line, name, locations[i].Current.PC)
 				}
 			}
 		}
@@ -2763,7 +2763,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 				if frame.Current.Fn != nil {
 					name = frame.Current.Fn.Name
 				}
-				t.Logf("\t%s [CFA: %x Ret: %x] at %s:%d", name, frame.CFA, frame.Ret, frame.Current.File, frame.Current.Line)
+				t.Logf("\t%s [CFA: %x Ret: %x] at %s:%d", name, frame.Regs.CFA, frame.Ret, frame.Current.File, frame.Current.Line)
 			}
 
 			if !found {
@@ -2975,6 +2975,9 @@ func TestIssue893(t *testing.T) {
 			return
 		}
 		if _, ok := err.(proc.ThreadBlockedError); ok {
+			return
+		}
+		if _, ok := err.(*proc.NoSourceForPCError); ok {
 			return
 		}
 		assertNoError(err, t, "Next")

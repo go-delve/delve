@@ -17,7 +17,14 @@ const (
 	DW_OP_plus_uconsts   = 0x23
 )
 
-type stackfn func(*bytes.Buffer, []int64, int64) ([]int64, error)
+type stackfn func(byte, *context) error
+
+type context struct {
+	buf   *bytes.Buffer
+	stack []int64
+
+	DwarfRegisters
+}
 
 var oplut = map[byte]stackfn{
 	DW_OP_call_frame_cfa: callframecfa,
@@ -27,58 +34,75 @@ var oplut = map[byte]stackfn{
 	DW_OP_plus_uconsts:   plusuconsts,
 }
 
-func ExecuteStackProgram(cfa int64, instructions []byte) (int64, error) {
-	stack := make([]int64, 0, 3)
-	buf := bytes.NewBuffer(instructions)
+func ExecuteStackProgram(regs DwarfRegisters, instructions []byte) (int64, error) {
+	ctxt := &context{
+		buf:            bytes.NewBuffer(instructions),
+		stack:          make([]int64, 0, 3),
+		DwarfRegisters: regs,
+	}
 
-	for opcode, err := buf.ReadByte(); err == nil; opcode, err = buf.ReadByte() {
+	for {
+		opcode, err := ctxt.buf.ReadByte()
+		if err != nil {
+			break
+		}
 		fn, ok := oplut[opcode]
 		if !ok {
 			return 0, fmt.Errorf("invalid instruction %#v", opcode)
 		}
 
-		stack, err = fn(buf, stack, cfa)
+		err = fn(opcode, ctxt)
 		if err != nil {
 			return 0, err
 		}
 	}
 
-	if len(stack) == 0 {
+	if len(ctxt.stack) == 0 {
 		return 0, errors.New("empty OP stack")
 	}
 
-	return stack[len(stack)-1], nil
+	return ctxt.stack[len(ctxt.stack)-1], nil
 }
 
-func callframecfa(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) {
-	if cfa == 0 {
-		return stack, fmt.Errorf("Could not retrieve CFA for current PC")
+func callframecfa(opcode byte, ctxt *context) error {
+	if ctxt.CFA == 0 {
+		return fmt.Errorf("Could not retrieve call frame CFA for current PC")
 	}
-	return append(stack, int64(cfa)), nil
+	ctxt.stack = append(ctxt.stack, int64(ctxt.CFA))
+	return nil
 }
 
-func addr(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) {
-	return append(stack, int64(binary.LittleEndian.Uint64(buf.Next(8)))), nil
+func addr(opcode byte, ctxt *context) error {
+	ctxt.stack = append(ctxt.stack, int64(binary.LittleEndian.Uint64(ctxt.buf.Next(8))))
+	return nil
 }
 
-func plus(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) {
+func plus(opcode byte, ctxt *context) error {
 	var (
-		slen   = len(stack)
-		digits = stack[slen-2 : slen]
-		st     = stack[:slen-2]
+		slen   = len(ctxt.stack)
+		digits = ctxt.stack[slen-2 : slen]
+		st     = ctxt.stack[:slen-2]
 	)
 
-	return append(st, digits[0]+digits[1]), nil
+	ctxt.stack = append(st, digits[0]+digits[1])
+	return nil
 }
 
-func plusuconsts(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) {
-	slen := len(stack)
-	num, _ := util.DecodeULEB128(buf)
-	stack[slen-1] = stack[slen-1] + int64(num)
-	return stack, nil
+func plusuconsts(opcode byte, ctxt *context) error {
+	slen := len(ctxt.stack)
+	num, _ := util.DecodeULEB128(ctxt.buf)
+	ctxt.stack[slen-1] = ctxt.stack[slen-1] + int64(num)
+	return nil
 }
 
-func consts(buf *bytes.Buffer, stack []int64, cfa int64) ([]int64, error) {
-	num, _ := util.DecodeSLEB128(buf)
-	return append(stack, num), nil
+func consts(opcode byte, ctxt *context) error {
+	num, _ := util.DecodeSLEB128(ctxt.buf)
+	ctxt.stack = append(ctxt.stack, num)
+	return nil
+}
+
+func framebase(opcode byte, ctxt *context) error {
+	num, _ := util.DecodeSLEB128(ctxt.buf)
+	ctxt.stack = append(ctxt.stack, ctxt.FrameBase+num)
+	return nil
 }

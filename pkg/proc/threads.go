@@ -79,6 +79,14 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 	}
 }
 
+type NoSourceForPCError struct {
+	pc uint64
+}
+
+func (err *NoSourceForPCError) Error() string {
+	return fmt.Sprintf("no source for pc %#x", err.pc)
+}
+
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
 // If stepInto is true it will also set breakpoints inside all
@@ -105,7 +113,7 @@ func next(dbp Process, stepInto bool) error {
 	}
 
 	if topframe.Current.Fn == nil {
-		return fmt.Errorf("no source for pc %#x", topframe.Current.PC)
+		return &NoSourceForPCError{topframe.Current.PC}
 	}
 
 	success := false
@@ -133,8 +141,8 @@ func next(dbp Process, stepInto bool) error {
 	}
 
 	sameGCond := SameGoroutineCondition(selg)
-	retFrameCond := andFrameoffCondition(sameGCond, retframe.CFA-int64(retframe.StackHi))
-	sameFrameCond := andFrameoffCondition(sameGCond, topframe.CFA-int64(topframe.StackHi))
+	retFrameCond := andFrameoffCondition(sameGCond, retframe.Regs.CFA-int64(retframe.StackHi))
+	sameFrameCond := andFrameoffCondition(sameGCond, topframe.Regs.CFA-int64(topframe.StackHi))
 	var sameOrRetFrameCond ast.Expr
 	if sameGCond != nil {
 		sameOrRetFrameCond = &ast.BinaryExpr{
@@ -142,8 +150,8 @@ func next(dbp Process, stepInto bool) error {
 			X:  sameGCond,
 			Y: &ast.BinaryExpr{
 				Op: token.LOR,
-				X:  frameoffCondition(topframe.CFA - int64(topframe.StackHi)),
-				Y:  frameoffCondition(retframe.CFA - int64(retframe.StackHi)),
+				X:  frameoffCondition(topframe.Regs.CFA - int64(topframe.StackHi)),
+				Y:  frameoffCondition(retframe.Regs.CFA - int64(retframe.StackHi)),
 			},
 		}
 	}
@@ -375,7 +383,7 @@ func ThreadScope(thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, nil, thread.BinInfo(), 0}, nil
+	return &EvalScope{locations[0].Current.PC, locations[0].Regs.CFA, thread, nil, thread.BinInfo(), 0}, nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on this thread.
@@ -391,7 +399,7 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &EvalScope{locations[0].Current.PC, locations[0].CFA, thread, g.variable, thread.BinInfo(), g.stackhi}, nil
+	return &EvalScope{locations[0].Current.PC, locations[0].Regs.CFA, thread, g.variable, thread.BinInfo(), g.stackhi}, nil
 }
 
 func onRuntimeBreakpoint(thread Thread) bool {
