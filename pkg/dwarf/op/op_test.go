@@ -7,7 +7,7 @@ func TestExecuteStackProgram(t *testing.T) {
 		instructions = []byte{DW_OP_consts, 0x1c, DW_OP_consts, 0x1c, DW_OP_plus}
 		expected     = int64(56)
 	)
-	actual, err := ExecuteStackProgram(0, instructions)
+	actual, err := ExecuteStackProgram(DwarfRegisters{}, instructions)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/derekparker/delve/pkg/dwarf/frame"
+	"github.com/derekparker/delve/pkg/dwarf/op"
 )
 
 // This code is partly adaped from runtime.gentraceback in
@@ -28,8 +29,8 @@ type Stackframe struct {
 	Current Location
 	// Address of the call instruction for the function above on the call stack.
 	Call Location
-	// Start address of the stack frame.
-	CFA int64
+	// Frame registers.
+	Regs op.DwarfRegisters
 	// High address of the stack.
 	StackHi uint64
 	// Return address for this stack frame (as read from the stack frame itself).
@@ -43,11 +44,11 @@ type Stackframe struct {
 // ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
 func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
-	regs, err := thread.Registers(false)
+	regs, err := thread.Registers(true)
 	if err != nil {
 		return nil, err
 	}
-	it := newStackIterator(thread.BinInfo(), thread, regs.PC(), regs.SP(), regs.BP(), 0, nil, -1)
+	it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(regs), 0, nil, -1)
 	return it.stacktrace(depth)
 }
 
@@ -57,13 +58,13 @@ func (g *G) stackIterator() (*stackIterator, error) {
 		return nil, err
 	}
 	if g.Thread != nil {
-		regs, err := g.Thread.Registers(false)
+		regs, err := g.Thread.Registers(true)
 		if err != nil {
 			return nil, err
 		}
-		return newStackIterator(g.variable.bi, g.Thread, regs.PC(), regs.SP(), regs.BP(), g.stackhi, stkbar, g.stkbarPos), nil
+		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(regs), g.stackhi, stkbar, g.stkbarPos), nil
 	}
-	return newStackIterator(g.variable.bi, g.variable.mem, g.PC, g.SP, 0, g.stackhi, stkbar, g.stkbarPos), nil
+	return newStackIterator(g.variable.bi, g.variable.mem, g.variable.bi.Arch.GoroutineToDwarfRegisters(g), g.stackhi, stkbar, g.stkbarPos), nil
 }
 
 // Stacktrace returns the stack trace for a goroutine.
@@ -87,17 +88,21 @@ func (n NullAddrError) Error() string {
 // required to iterate and walk the program
 // stack.
 type stackIterator struct {
-	pc, sp, bp uint64
-	top        bool
-	atend      bool
-	frame      Stackframe
-	bi         *BinaryInfo
-	mem        MemoryReadWriter
-	err        error
+	pc    uint64
+	top   bool
+	atend bool
+	frame Stackframe
+	bi    *BinaryInfo
+	mem   MemoryReadWriter
+	err   error
 
 	stackhi        uint64
 	stackBarrierPC uint64
 	stkbar         []savedLR
+
+	// regs is the register set for the next frame, callFrameRegs is the
+	// register set for the call frame of the next frame.
+	regs, callFrameRegs op.DwarfRegisters
 }
 
 type savedLR struct {
@@ -105,27 +110,27 @@ type savedLR struct {
 	val uint64
 }
 
-func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, pc, sp, bp, stackhi uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
+func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, stkbar []savedLR, stkbarPos int) *stackIterator {
 	stackBarrierFunc := bi.LookupFunc[runtimeStackBarrier] // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
 		stackBarrierPC = stackBarrierFunc.Entry
-		fn := bi.PCToFunc(pc)
+		fn := bi.PCToFunc(regs.PC())
 		if fn != nil && fn.Name == runtimeStackBarrier {
 			// We caught the goroutine as it's executing the stack barrier, we must
 			// determine whether or not g.stackPos has already been incremented or not.
-			if len(stkbar) > 0 && stkbar[stkbarPos].ptr < sp {
+			if len(stkbar) > 0 && stkbar[stkbarPos].ptr < regs.SP() {
 				// runtime.stackBarrier has not incremented stkbarPos.
-			} else if stkbarPos > 0 && stkbar[stkbarPos-1].ptr < sp {
+			} else if stkbarPos > 0 && stkbar[stkbarPos-1].ptr < regs.SP() {
 				// runtime.stackBarrier has incremented stkbarPos.
 				stkbarPos--
 			} else {
-				return &stackIterator{err: fmt.Errorf("failed to unwind through stackBarrier at SP %x", sp)}
+				return &stackIterator{err: fmt.Errorf("failed to unwind through stackBarrier at SP %x", regs.SP())}
 			}
 		}
 		stkbar = stkbar[stkbarPos:]
 	}
-	return &stackIterator{pc: pc, sp: sp, bp: bp, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar}
 }
 
 // Next points the iterator to the next stack frame.
@@ -133,16 +138,8 @@ func (it *stackIterator) Next() bool {
 	if it.err != nil || it.atend {
 		return false
 	}
-	it.frame, it.err = it.frameInfo(it.pc, it.sp, it.bp, it.top)
-	if it.err != nil {
-		if _, nofde := it.err.(*frame.NoFDEForPCError); nofde && !it.top {
-			it.frame = Stackframe{Current: Location{PC: it.pc, File: "?", Line: -1}, Call: Location{PC: it.pc, File: "?", Line: -1}, CFA: 0, Ret: 0}
-			it.atend = true
-			it.err = nil
-			return true
-		}
-		return false
-	}
+	ret, retaddr := it.advanceRegs()
+	it.frame = it.newStackframe(ret, retaddr)
 
 	if it.frame.Ret <= 0 {
 		it.atend = true
@@ -163,16 +160,12 @@ func (it *stackIterator) Next() bool {
 
 	it.top = false
 	it.pc = it.frame.Ret
-	it.sp = uint64(it.frame.CFA)
-	it.bp, _ = readUintRaw(it.mem, uintptr(it.bp), int64(it.bi.Arch.PtrSize()))
+	it.regs = it.callFrameRegs
 	return true
 }
 
 // Frame returns the frame the iterator is pointing at.
 func (it *stackIterator) Frame() Stackframe {
-	if it.err != nil {
-		panic(it.err)
-	}
 	return it.frame
 }
 
@@ -181,42 +174,28 @@ func (it *stackIterator) Err() error {
 	return it.err
 }
 
-func (it *stackIterator) frameInfo(pc, sp, bp uint64, top bool) (Stackframe, error) {
-	fde, err := it.bi.frameEntries.FDEForPC(pc)
-	if _, nofde := err.(*frame.NoFDEForPCError); nofde {
-		if bp == 0 {
-			return Stackframe{}, err
-		}
-		// When no FDE is available attempt to use BP instead
-		retaddr := uintptr(int(bp) + it.bi.Arch.PtrSize())
-		cfa := int64(retaddr) + int64(it.bi.Arch.PtrSize())
-		return it.newStackframe(pc, cfa, retaddr, nil, top)
-	}
-
-	spoffset, retoffset := fde.ReturnAddressOffset(pc)
-	cfa := int64(sp) + spoffset
-
-	retaddr := uintptr(cfa + retoffset)
-	return it.newStackframe(pc, cfa, retaddr, fde, top)
-}
-
-func (it *stackIterator) newStackframe(pc uint64, cfa int64, retaddr uintptr, fde *frame.FrameDescriptionEntry, top bool) (Stackframe, error) {
+func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 	if retaddr == 0 {
-		return Stackframe{}, NullAddrError{}
+		it.err = NullAddrError{}
+		return Stackframe{}
 	}
-	f, l, fn := it.bi.PCToLine(pc)
-	ret, err := readUintRaw(it.mem, retaddr, int64(it.bi.Arch.PtrSize()))
-	if err != nil {
-		it.err = err
+	f, l, fn := it.bi.PCToLine(it.pc)
+	if fn == nil {
+		f = "?"
+		l = -1
 	}
-	r := Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}, CFA: cfa, Ret: ret, addrret: uint64(retaddr), StackHi: it.stackhi}
-	if !top {
-		r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(pc - 1)
+	r := Stackframe{Current: Location{PC: it.pc, File: f, Line: l, Fn: fn}, Regs: it.regs, Ret: ret, addrret: retaddr, StackHi: it.stackhi}
+	if !it.top {
+		r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(it.pc - 1)
+		if r.Call.Fn == nil {
+			r.Call.File = "?"
+			r.Call.Line = -1
+		}
 		r.Call.PC = r.Current.PC
 	} else {
 		r.Call = r.Current
 	}
-	return r, nil
+	return r
 }
 
 func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
@@ -237,4 +216,103 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 		frames = append(frames, Stackframe{Err: err})
 	}
 	return frames, nil
+}
+
+// advanceRegs calculates it.callFrameRegs using it.regs and the frame
+// descriptor entry for the current stack frame.
+// it.regs.CallFrameCFA is updated.
+func (it *stackIterator) advanceRegs() (ret uint64, retaddr uint64) {
+	fde, err := it.bi.frameEntries.FDEForPC(it.pc)
+	var framectx *frame.FrameContext
+	if _, nofde := err.(*frame.NoFDEForPCError); nofde {
+		framectx = it.bi.Arch.FixFrameUnwindContext(nil)
+	} else {
+		framectx = it.bi.Arch.FixFrameUnwindContext(fde.EstablishFrame(it.pc))
+	}
+
+	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
+	if cfareg == nil {
+		it.err = fmt.Errorf("CFA becomes undefined at PC %#x", it.pc)
+		return 0, 0
+	}
+	it.regs.CFA = int64(cfareg.Uint64Val)
+
+	it.callFrameRegs = op.DwarfRegisters{ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum}
+
+	// According to the standard the compiler should be responsible for emitting
+	// rules for the RSP register so that it can then be used to calculate CFA,
+	// however neither Go nor GCC do this.
+	// In the following line we copy GDB's behaviour by assuming this is
+	// implicit.
+	// See also the comment in dwarf2_frame_default_init in
+	// $GDB_SOURCE/dwarf2-frame.c
+	it.callFrameRegs.AddReg(uint64(amd64DwarfSPRegNum), cfareg)
+
+	for i, regRule := range framectx.Regs {
+		reg, err := it.executeFrameRegRule(i, regRule, it.regs.CFA)
+		it.callFrameRegs.AddReg(i, reg)
+		if i == framectx.RetAddrReg {
+			if reg == nil {
+				if err == nil {
+					err = fmt.Errorf("Undefined return address at %#x", it.pc)
+				}
+				it.err = err
+			} else {
+				ret = reg.Uint64Val
+			}
+			retaddr = uint64(it.regs.CFA + regRule.Offset)
+		}
+	}
+
+	return ret, retaddr
+}
+
+func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, cfa int64) (*op.DwarfRegister, error) {
+	switch rule.Rule {
+	default:
+		fallthrough
+	case frame.RuleUndefined:
+		return nil, nil
+	case frame.RuleSameVal:
+		return it.regs.Reg(regnum), nil
+	case frame.RuleOffset:
+		return it.readRegisterAt(regnum, uint64(cfa+rule.Offset))
+	case frame.RuleValOffset:
+		return op.DwarfRegisterFromUint64(uint64(cfa + rule.Offset)), nil
+	case frame.RuleRegister:
+		return it.regs.Reg(rule.Reg), nil
+	case frame.RuleExpression:
+		v, err := op.ExecuteStackProgram(it.regs, rule.Expression)
+		if err != nil {
+			return nil, err
+		}
+		return it.readRegisterAt(regnum, uint64(v))
+	case frame.RuleValExpression:
+		v, err := op.ExecuteStackProgram(it.regs, rule.Expression)
+		if err != nil {
+			return nil, err
+		}
+		return op.DwarfRegisterFromUint64(uint64(v)), nil
+	case frame.RuleArchitectural:
+		return nil, errors.New("architectural frame rules are unsupported")
+	case frame.RuleCFA:
+		if it.regs.Reg(rule.Reg) == nil {
+			return nil, nil
+		}
+		return op.DwarfRegisterFromUint64(uint64(int64(it.regs.Uint64Val(rule.Reg)) + rule.Offset)), nil
+	case frame.RuleRegOffset:
+		if it.regs.Reg(rule.Reg) == nil {
+			return nil, nil
+		}
+		return it.readRegisterAt(regnum, uint64(int64(it.regs.Uint64Val(rule.Reg))+rule.Offset))
+	}
+}
+
+func (it *stackIterator) readRegisterAt(regnum uint64, addr uint64) (*op.DwarfRegister, error) {
+	buf := make([]byte, it.bi.Arch.RegSize(regnum))
+	_, err := it.mem.ReadMemory(buf, uintptr(addr))
+	if err != nil {
+		return nil, err
+	}
+	return op.DwarfRegisterFromBytes(buf), nil
 }

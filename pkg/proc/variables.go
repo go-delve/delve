@@ -130,6 +130,7 @@ type G struct {
 	ID         int    // Goroutine ID
 	PC         uint64 // PC of goroutine when it was parked.
 	SP         uint64 // SP of goroutine when it was parked.
+	BP         uint64 // BP of goroutine when it was parked (go >= 1.7).
 	GoPC       uint64 // PC of 'go' statement that created this goroutine.
 	WaitReason string // Reason for goroutine being parked.
 	Status     uint64
@@ -397,6 +398,10 @@ func (gvar *Variable) parseG() (*G, error) {
 	schedVar := gvar.fieldVariable("sched")
 	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
 	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
+	var bp int64
+	if bpvar := schedVar.fieldVariable("bp"); bpvar != nil && bpvar.Value != nil {
+		bp, _ = constant.Int64Val(bpvar.Value)
+	}
 	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
 	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
 	waitReason := ""
@@ -424,6 +429,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		GoPC:       uint64(gopc),
 		PC:         uint64(pc),
 		SP:         uint64(sp),
+		BP:         uint64(bp),
 		WaitReason: waitReason,
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
@@ -743,7 +749,7 @@ func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry) (*Variable, 
 		return nil, fmt.Errorf("type assertion failed")
 	}
 
-	addr, err := op.ExecuteStackProgram(scope.CFA, instructions)
+	addr, err := op.ExecuteStackProgram(op.DwarfRegisters{CFA: scope.CFA}, instructions)
 	if err != nil {
 		return nil, err
 	}

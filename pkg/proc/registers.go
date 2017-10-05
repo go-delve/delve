@@ -29,26 +29,35 @@ type Registers interface {
 
 type Register struct {
 	Name  string
+	Bytes []byte
 	Value string
 }
 
 // AppendWordReg appends a word (16 bit) register to regs.
 func AppendWordReg(regs []Register, name string, value uint16) []Register {
-	return append(regs, Register{name, fmt.Sprintf("%#04x", value)})
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, value)
+	return append(regs, Register{name, buf.Bytes(), fmt.Sprintf("%#04x", value)})
 }
 
 // AppendDwordReg appends a double word (32 bit) register to regs.
 func AppendDwordReg(regs []Register, name string, value uint32) []Register {
-	return append(regs, Register{name, fmt.Sprintf("%#08x", value)})
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, value)
+	return append(regs, Register{name, buf.Bytes(), fmt.Sprintf("%#08x", value)})
 }
 
 // AppendQwordReg appends a quad word (64 bit) register to regs.
 func AppendQwordReg(regs []Register, name string, value uint64) []Register {
-	return append(regs, Register{name, fmt.Sprintf("%#016x", value)})
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, value)
+	return append(regs, Register{name, buf.Bytes(), fmt.Sprintf("%#016x", value)})
 }
 
 func appendFlagReg(regs []Register, name string, value uint64, descr flagRegisterDescr, size int) []Register {
-	return append(regs, Register{name, descr.Describe(value, size)})
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, value)
+	return append(regs, Register{name, buf.Bytes()[:size], descr.Describe(value, size)})
 }
 
 // AppendEflagReg appends EFLAG register to regs.
@@ -114,7 +123,11 @@ func AppendX87Reg(regs []Register, index int, exponent uint16, mantissa uint64) 
 		f = sign * math.Ldexp(significand, int(exponent-_EXP_BIAS))
 	}
 
-	return append(regs, Register{fmt.Sprintf("ST(%d)", index), fmt.Sprintf("%#04x%016x\t%g", exponent, mantissa, f)})
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, exponent)
+	binary.Write(&buf, binary.LittleEndian, mantissa)
+
+	return append(regs, Register{fmt.Sprintf("ST(%d)", index), buf.Bytes(), fmt.Sprintf("%#04x%016x\t%g", exponent, mantissa, f)})
 }
 
 // AppendSSEReg appends a 256 bit SSE register to regs.
@@ -151,7 +164,7 @@ func AppendSSEReg(regs []Register, name string, xmm []byte) []Register {
 	}
 	fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
 
-	return append(regs, Register{name, out.String()})
+	return append(regs, Register{name, xmm, out.String()})
 }
 
 var UnknownRegisterError = errors.New("unknown register")
