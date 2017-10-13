@@ -1686,7 +1686,7 @@ func TestIssue384(t *testing.T) {
 	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		// go 1.10 emits DW_AT_decl_line and we won't be able to evaluate 'st'
 		// which is declared after line 13.
-		return
+		t.Skip("can not evaluate not-yet-declared variables with go 1.10")
 	}
 
 	protest.AllowRecording(t)
@@ -2140,7 +2140,7 @@ func TestStepReturnAndPanic(t *testing.T) {
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver.Major > 0 && ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		testseq("defercall", contStep, []nextTest{
 			{17, 5},
 			{5, 6},
@@ -2184,7 +2184,7 @@ func TestStepIgnorePrivateRuntime(t *testing.T) {
 	// (such as runtime.convT2E in this case)
 	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major > 0 && ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		testseq("teststepprog", contStep, []nextTest{
 			{21, 13},
 			{13, 14},
@@ -2192,6 +2192,12 @@ func TestStepIgnorePrivateRuntime(t *testing.T) {
 			{15, 14},
 			{14, 17},
 			{17, 22}}, "", t)
+	} else if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		testseq("teststepprog", contStep, []nextTest{
+			{21, 13},
+			{13, 14},
+			{14, 15},
+			{15, 22}}, "", t)
 	} else {
 		testseq("teststepprog", contStep, []nextTest{
 			{21, 13},
@@ -2933,7 +2939,7 @@ func TestIssue877(t *testing.T) {
 func TestIssue893(t *testing.T) {
 	// Test what happens when next is called immediately after launching the
 	// executable, acceptable behaviors are: (a) no error, (b) no source at PC
-	// error.
+	// error, (c) program runs to completion
 	protest.AllowRecording(t)
 	withTestProcess("increment", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Next(p)
@@ -2947,6 +2953,9 @@ func TestIssue893(t *testing.T) {
 			return
 		}
 		if _, ok := err.(*proc.NoSourceForPCError); ok {
+			return
+		}
+		if _, ok := err.(proc.ProcessExitedError); ok {
 			return
 		}
 		assertNoError(err, t, "Next")

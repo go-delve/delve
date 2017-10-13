@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/test"
 )
@@ -175,7 +176,7 @@ func TestCore(t *testing.T) {
 			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
 		}
 		for _, frame := range stack {
-			if strings.Contains(frame.Current.Fn.Name, "panic") {
+			if frame.Current.Fn != nil && strings.Contains(frame.Current.Fn.Name, "panic") {
 				panicking = g
 				panickingStack = stack
 			}
@@ -218,6 +219,12 @@ func TestCoreFpRegisters(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return
 	}
+	// in go1.10 the crash is executed on a different thread and registers are
+	// no longer available in the core dump.
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		t.Skip("not supported in go1.10 and later")
+	}
+
 	p := withCoreFile(t, "fputest/", "panic")
 
 	gs, err := proc.GoroutinesInfo(p)

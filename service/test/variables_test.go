@@ -965,7 +965,7 @@ func TestConstants(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		// Not supported on 1.9 or earlier
-		return
+		t.Skip("constants added in go 1.10")
 	}
 	withTestProcess("consts", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue")

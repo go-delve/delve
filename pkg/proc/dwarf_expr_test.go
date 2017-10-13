@@ -177,7 +177,7 @@ func TestDwarfExprComposite(t *testing.T) {
 	scope := dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases)
 
 	thevar, err := scope.EvalExpression("s", normalLoadConfig)
-	assertNoError(err, t, fmt.Sprintf("EvalExpression(s)", "s"))
+	assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", "s"))
 	if thevar.Unreadable != nil {
 		t.Errorf("variable \"s\" unreadable: %v", thevar.Unreadable)
 	} else {
