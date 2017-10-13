@@ -182,11 +182,6 @@ func (it *stackIterator) Next() bool {
 	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
 
-	if it.frame.Ret <= 0 {
-		it.atend = true
-		return true
-	}
-
 	if it.stkbar != nil && it.frame.Ret == it.stackBarrierPC && it.frame.addrret == it.stkbar[0].ptr {
 		// Skip stack barrier frames
 		it.frame.Ret = it.stkbar[0].val
@@ -194,6 +189,11 @@ func (it *stackIterator) Next() bool {
 	}
 
 	if it.switchStack() {
+		return true
+	}
+
+	if it.frame.Ret <= 0 {
+		it.atend = true
 		return true
 	}
 
@@ -221,7 +221,10 @@ func (it *stackIterator) switchStack() bool {
 			return false
 		}
 
-		// switch from system stack to goroutine stack
+		// This function is called by a goroutine to execute a C function and
+		// switches from the goroutine stack to the system stack.
+		// Since we are unwinding the stack from callee to caller we have  switch
+		// from the system stack to the goroutine stack.
 
 		off, _ := readIntRaw(it.mem, uintptr(it.regs.SP()+asmcgocallSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize())) // reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
 		oldsp := it.regs.SP()
@@ -242,7 +245,7 @@ func (it *stackIterator) switchStack() bool {
 		it.top = false
 		return true
 
-	case "runtime.mstart":
+	case "runtime.mstart", "runtime.sigtramp":
 		if it.top || !it.systemstack || it.g == nil {
 			return false
 		}
@@ -255,6 +258,10 @@ func (it *stackIterator) switchStack() bool {
 		// If we find a runtime.mstart frame on the system stack of a goroutine
 		// parked on runtime.systemstack_switch we assume runtime.systemstack was
 		// called and continue tracing from the parked position.
+		//
+		// OS Signals are processed on a special signal handling stack that works
+		// similarly to the system stack, runtime.sigtramp is at the bottom of
+		// this stack.
 
 		if fn := it.bi.PCToFunc(it.g.PC); fn == nil || fn.Name != "runtime.systemstack_switch" {
 			return false

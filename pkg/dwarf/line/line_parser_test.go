@@ -64,56 +64,59 @@ const (
 func testDebugLinePrologueParser(p string, t *testing.T) {
 	data := grabDebugLineSection(p, t)
 	debugLines := ParseAll(data)
-	dbl := debugLines[0]
-	prologue := dbl.Prologue
 
-	if prologue.Version != uint16(2) {
-		t.Fatal("Version not parsed correctly", prologue.Version)
-	}
+	mainFileFound := false
 
-	if prologue.MinInstrLength != uint8(1) {
-		t.Fatal("Minimun Instruction Length not parsed correctly", prologue.MinInstrLength)
-	}
+	for _, dbl := range debugLines {
+		prologue := dbl.Prologue
 
-	if prologue.InitialIsStmt != uint8(1) {
-		t.Fatal("Initial value of 'is_stmt' not parsed correctly", prologue.InitialIsStmt)
-	}
+		if prologue.Version != uint16(2) {
+			t.Fatal("Version not parsed correctly", prologue.Version)
+		}
 
-	if prologue.LineBase != lineBaseGo14 && prologue.LineBase != lineBaseGo18 {
-		// go < 1.8 uses -1
-		// go >= 1.8 uses -4
-		t.Fatal("Line base not parsed correctly", prologue.LineBase)
-	}
+		if prologue.MinInstrLength != uint8(1) {
+			t.Fatal("Minimun Instruction Length not parsed correctly", prologue.MinInstrLength)
+		}
 
-	if prologue.LineRange != lineRangeGo14 && prologue.LineRange != lineRangeGo18 {
-		// go < 1.8 uses 4
-		// go >= 1.8 uses 10
-		t.Fatal("Line Range not parsed correctly", prologue.LineRange)
-	}
+		if prologue.InitialIsStmt != uint8(1) {
+			t.Fatal("Initial value of 'is_stmt' not parsed correctly", prologue.InitialIsStmt)
+		}
 
-	if prologue.OpcodeBase != uint8(10) {
-		t.Fatal("Opcode Base not parsed correctly", prologue.OpcodeBase)
-	}
+		if prologue.LineBase != lineBaseGo14 && prologue.LineBase != lineBaseGo18 {
+			// go < 1.8 uses -1
+			// go >= 1.8 uses -4
+			t.Fatal("Line base not parsed correctly", prologue.LineBase)
+		}
 
-	lengths := []uint8{0, 1, 1, 1, 1, 0, 0, 0, 1}
-	for i, l := range prologue.StdOpLengths {
-		if l != lengths[i] {
-			t.Fatal("Length not parsed correctly", l)
+		if prologue.LineRange != lineRangeGo14 && prologue.LineRange != lineRangeGo18 {
+			// go < 1.8 uses 4
+			// go >= 1.8 uses 10
+			t.Fatal("Line Range not parsed correctly", prologue.LineRange)
+		}
+
+		if prologue.OpcodeBase != uint8(10) {
+			t.Fatal("Opcode Base not parsed correctly", prologue.OpcodeBase)
+		}
+
+		lengths := []uint8{0, 1, 1, 1, 1, 0, 0, 0, 1}
+		for i, l := range prologue.StdOpLengths {
+			if l != lengths[i] {
+				t.Fatal("Length not parsed correctly", l)
+			}
+		}
+
+		if len(dbl.IncludeDirs) != 0 {
+			t.Fatal("Include dirs not parsed correctly")
+		}
+
+		for _, n := range dbl.FileNames {
+			if strings.Contains(n.Path, "/delve/_fixtures/testnextprog.go") {
+				mainFileFound = true
+				break
+			}
 		}
 	}
-
-	if len(dbl.IncludeDirs) != 0 {
-		t.Fatal("Include dirs not parsed correctly")
-	}
-
-	ok := false
-	for _, n := range dbl.FileNames {
-		if strings.Contains(n.Path, "/delve/_fixtures/testnextprog.go") {
-			ok = true
-			break
-		}
-	}
-	if !ok {
+	if !mainFileFound {
 		t.Fatal("File names table not parsed correctly")
 	}
 }
