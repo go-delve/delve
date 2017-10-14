@@ -5,26 +5,38 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
-## [RELEASE TO BE DEFINED] DATE TO BE DEFINED
-
-### Added
-
-- Add FrameOffset field to api.Stackframe (@aarzilli)
-
 ## [1.0.0-rc.2] DATE TO BE DEFINED
 
 ### Added
 
 - Automatically print panic reason for unrecovered panics (@aarzilli)
+- Propagate frame offset to clients (@aarzilli)
+- Added vim-delve plugin to documentation (@sebdah)
+- Floating point register support in core files (@aarzilli)
+- Go 1.9 support, including lexical block support (@aarzilli)
+- Added whatis and config commands (@aarzilli)
+- Add FrameOffset field to api.Stackframe (@aarzilli)
 
 ### Fixed
 
-- Better interoperation with debugserver on macOS (@aarzilli)
+- Better interoperation with debugserver on macOS (@aarzilli / @dlsniper)
 - Fix behavior of next, step and stepout with recursive functions (@aarzilli)
 - Parsing of maps with zero sized values (@aarzilli)
 - Typo in the documentation of `types` command (@custa)
 - Data races in tests (@aarzilli)
 - Fixed SetBreakpoint in native and gdbserial to return the breakpoint if it already exists (@dlsniper)
+- Return breakpoint if it already exists (@dlsniper)
+- Collect breakpoint information on exit from next/stepout/step (@aarzilli)
+- Fixed install instructions (@jacobvanorder)
+- Make headless server quit when the client disconnects (@aarzilli)
+- Store the correct concrete value for interface variables (previously we would always have a pointer type, even when the concrete value was not a pointer) (@aarzilli)
+- Fix interface and slice equality with nil (@aarzilli)
+- Fix file:line location specs when relative paths are in .debug_line (@hyangah)
+- Fix behavior of next/step/stepout in several edge-cases (invalid return addresses, no courrent goroutine, after process exists, inside unknown code, inside assembly files) (@aarzilli)
+- Make sure the debugged executable we generated is deleted after exit (@alexbrainman)
+- Make sure rr trace directories are deleted when we delete the executable and after tests (@aarzilli)
+- Return errors for commands sent after the target process exited instead of panicing (@derekparker)
+- Fixed typo in clear-checkpoint documentation (@iamzhout)
 
 ### Changed
 
@@ -32,6 +44,12 @@ All changes mention the author, unless contributed by me (@derekparker).
 - Better performance of linux native backend (@aarzilli)
 - Collect breakpoints information if necessary after a next, step or stepout command (@aarzilli)
 - Autodereference escaped variables (@aarzilli)
+- Use runtime.tlsg to determine G struct offset (@heschik)
+- Use os.StartProcess to implement Launch on windows (@alexbrainman)
+- Escaped variables are dereferenced instead of being reported as &v (@aarzilli)
+- Report errors when we fail to load the executable on attach (@aarzilli)
+- Distinguish between nil and empty slices and maps both in the API and on the command line interface (@aarzilli)
+- Skip deferred functions on next and stepout (as long as they are not called through a panic) (@aarzilli)
 
 ## [1.0.0-rc.1] 2017-05-05
 
