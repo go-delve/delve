@@ -10,6 +10,8 @@ If you have [HomeBrew](http://brew.sh/) installed, simply run:
 $ brew install go-delve/delve/delve
 ```
 
+**Note: currently the latest version of delve (which brew installs) has issues with Go 1.9, please use the method below instead to install the release from master.**
+
 ## Manual install
 
 Ensure you have a proper compilation toolchain.
