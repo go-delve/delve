@@ -534,7 +534,7 @@ func TestEvalExpression(t *testing.T) {
 		{"*p3", false, "", "", "int", fmt.Errorf("nil pointer dereference")},
 
 		// channels
-		{"ch1", true, "chan int 0/2", "chan int 0/2", "chan int", nil},
+		{"ch1", true, "chan int 4/10", "chan int 4/10", "chan int", nil},
 		{"chnil", true, "chan int nil", "chan int nil", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
 
@@ -626,8 +626,8 @@ func TestEvalExpression(t *testing.T) {
 		{"len(s3)", false, "0", "0", "", nil},
 		{"cap(nilslice)", false, "0", "0", "", nil},
 		{"len(nilslice)", false, "0", "0", "", nil},
-		{"cap(ch1)", false, "2", "2", "", nil},
-		{"len(ch1)", false, "0", "0", "", nil},
+		{"cap(ch1)", false, "10", "10", "", nil},
+		{"len(ch1)", false, "4", "4", "", nil},
 		{"cap(chnil)", false, "0", "0", "", nil},
 		{"len(chnil)", false, "0", "0", "", nil},
 		{"len(m1)", false, "41", "41", "", nil},
@@ -727,6 +727,12 @@ func TestEvalExpression(t *testing.T) {
 		{"string(runeslice)", false, `"tèst"`, `""`, "string", nil},
 		{"[]byte(string(runeslice))", false, `[]uint8 len: 5, cap: 5, [116,195,168,115,116]`, `[]uint8 len: 0, cap: 0, nil`, "[]uint8", nil},
 		{"*(*[5]byte)(uintptr(&byteslice[0]))", false, `[5]uint8 [116,195,168,115,116]`, `[5]uint8 [...]`, "[5]uint8", nil},
+
+		// access to channel field members
+		{"ch1.qcount", false, "4", "4", "uint", nil},
+		{"ch1.dataqsiz", false, "10", "10", "uint", nil},
+		{"ch1.buf", false, `*[10]int [1,4,3,2,0,0,0,0,0,0]`, `(*[10]int)(…`, "*[10]int", nil},
+		{"ch1.buf[0]", false, "1", "1", "int", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())

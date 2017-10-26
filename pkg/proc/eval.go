@@ -647,12 +647,27 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return nil, xev.Unreadable
 	}
 
+	xev = xev.maybeDereference()
+
 	idxev, err := scope.evalAST(node.Index)
 	if err != nil {
 		return nil, err
 	}
 
+	cantindex := fmt.Errorf("expression \"%s\" (%s) does not support indexing", exprToString(node.X), xev.TypeString())
+
 	switch xev.Kind {
+	case reflect.Ptr:
+		if xev == nilVariable {
+			return nil, cantindex
+		}
+		_, isarrptr := xev.RealType.(*godwarf.PtrType).Type.(*godwarf.ArrayType)
+		if !isarrptr {
+			return nil, cantindex
+		}
+		xev = xev.maybeDereference()
+		fallthrough
+
 	case reflect.Slice, reflect.Array, reflect.String:
 		if xev.Base == 0 {
 			return nil, fmt.Errorf("can not index \"%s\"", exprToString(node.X))
@@ -670,8 +685,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		}
 		return xev.mapAccess(idxev)
 	default:
-		return nil, fmt.Errorf("expression \"%s\" (%s) does not support indexing", exprToString(node.X), xev.TypeString())
-
+		return nil, cantindex
 	}
 }
 

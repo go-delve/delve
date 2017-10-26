@@ -198,6 +198,9 @@ func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryIn
 		}
 	case *godwarf.ChanType:
 		v.Kind = reflect.Chan
+		if v.Addr != 0 {
+			v.loadChanInfo()
+		}
 	case *godwarf.MapType:
 		v.Kind = reflect.Map
 	case *godwarf.StringType:
@@ -663,6 +666,11 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	if v.Unreadable != nil {
 		return v.clone(), nil
 	}
+	switch v.Kind {
+	case reflect.Chan:
+		v = v.clone()
+		v.RealType = resolveTypedef(&(v.RealType.(*godwarf.ChanType).TypedefType))
+	}
 	structVar := v.maybeDereference()
 	structVar.Name = v.Name
 	if structVar.Unreadable != nil {
@@ -1007,6 +1015,66 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 	v.stride = v.fieldType.Size()
 	if t, ok := v.fieldType.(*godwarf.PtrType); ok {
 		v.stride = t.ByteSize
+	}
+}
+
+// loadChanInfo loads the buffer size of the channel and changes the type of
+// the buf field from unsafe.Pointer to an array of the correct type.
+func (v *Variable) loadChanInfo() {
+	chanType, ok := v.RealType.(*godwarf.ChanType)
+	if !ok {
+		v.Unreadable = errors.New("bad channel type")
+		return
+	}
+	sv := v.clone()
+	sv.RealType = resolveTypedef(&(chanType.TypedefType))
+	sv = sv.maybeDereference()
+	if sv.Unreadable != nil || sv.Addr == 0 {
+		return
+	}
+	structType, ok := sv.DwarfType.(*godwarf.StructType)
+	if !ok {
+		v.Unreadable = errors.New("bad channel type")
+		return
+	}
+
+	lenAddr, _ := sv.toField(structType.Field[1])
+	lenAddr.loadValue(loadSingleValue)
+	if lenAddr.Unreadable != nil {
+		v.Unreadable = fmt.Errorf("unreadable length: %v", lenAddr.Unreadable)
+		return
+	}
+	chanLen, _ := constant.Uint64Val(lenAddr.Value)
+
+	newStructType := &godwarf.StructType{}
+	*newStructType = *structType
+	newStructType.Field = make([]*godwarf.StructField, len(structType.Field))
+
+	for i := range structType.Field {
+		field := &godwarf.StructField{}
+		*field = *structType.Field[i]
+		if field.Name == "buf" {
+			stride := chanType.ElemType.Common().ByteSize
+			atyp := &godwarf.ArrayType{
+				CommonType: godwarf.CommonType{
+					ReflectKind: reflect.Array,
+					ByteSize:    int64(chanLen) * stride,
+					Name:        fmt.Sprintf("[%d]%s", chanLen, chanType.ElemType.String())},
+				Type:          chanType.ElemType,
+				StrideBitSize: stride * 8,
+				Count:         int64(chanLen)}
+
+			field.Type = pointerTo(atyp, v.bi.Arch)
+		}
+		newStructType.Field[i] = field
+	}
+
+	v.RealType = &godwarf.ChanType{
+		TypedefType: godwarf.TypedefType{
+			CommonType: chanType.TypedefType.CommonType,
+			Type:       pointerTo(newStructType, v.bi.Arch),
+		},
+		ElemType: chanType.ElemType,
 	}
 }
 
