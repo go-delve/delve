@@ -34,7 +34,7 @@ func patchPCRel(pc uint64, inst *x86asm.Inst) {
 	}
 }
 
-func (inst *AsmInstruction) Text(flavour AssemblyFlavour) string {
+func (inst *AsmInstruction) Text(flavour AssemblyFlavour, bi *BinaryInfo) string {
 	if inst.Inst == nil {
 		return "?"
 	}
@@ -43,15 +43,13 @@ func (inst *AsmInstruction) Text(flavour AssemblyFlavour) string {
 
 	switch flavour {
 	case GNUFlavour:
-		text = x86asm.GNUSyntax(x86asm.Inst(*inst.Inst))
+		text = x86asm.GNUSyntax(x86asm.Inst(*inst.Inst), inst.Loc.PC, bi.symLookup)
+	case GoFlavour:
+		text = x86asm.GoSyntax(x86asm.Inst(*inst.Inst), inst.Loc.PC, bi.symLookup)
 	case IntelFlavour:
 		fallthrough
 	default:
-		text = x86asm.IntelSyntax(x86asm.Inst(*inst.Inst))
-	}
-
-	if inst.IsCall() && inst.DestLoc != nil && inst.DestLoc.Fn != nil {
-		text += " " + inst.DestLoc.Fn.Name
+		text = x86asm.IntelSyntax(x86asm.Inst(*inst.Inst), inst.Loc.PC, bi.symLookup)
 	}
 
 	return text

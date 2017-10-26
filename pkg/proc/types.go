@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"debug/dwarf"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/line"
+	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
@@ -169,12 +171,18 @@ func (v compileUnitsByLowpc) Len() int               { return len(v) }
 func (v compileUnitsByLowpc) Less(i int, j int) bool { return v[i].LowPC < v[j].LowPC }
 func (v compileUnitsByLowpc) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
 
+type packageVarsByAddr []packageVar
+
+func (v packageVarsByAddr) Len() int               { return len(v) }
+func (v packageVarsByAddr) Less(i int, j int) bool { return v[i].addr < v[j].addr }
+func (v packageVarsByAddr) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
+
 func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGroup) {
 	if wg != nil {
 		defer wg.Done()
 	}
 	bi.types = make(map[string]dwarf.Offset)
-	bi.packageVars = make(map[string]dwarf.Offset)
+	bi.packageVars = []packageVar{}
 	bi.Functions = []Function{}
 	bi.compileUnits = []*compileUnit{}
 	bi.consts = make(map[dwarf.Offset]*constantType)
@@ -226,7 +234,13 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 				if !cu.isgo {
 					n = "C." + n
 				}
-				bi.packageVars[n] = entry.Offset
+				var addr uint64
+				if loc, ok := entry.Val(dwarf.AttrLocation).([]byte); ok {
+					if len(loc) == bi.Arch.PtrSize()+1 && op.Opcode(loc[0]) == op.DW_OP_addr {
+						addr = binary.LittleEndian.Uint64(loc[1:])
+					}
+				}
+				bi.packageVars = append(bi.packageVars, packageVar{n, entry.Offset, addr})
 			}
 
 		case dwarf.TagConstant:
@@ -271,6 +285,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	}
 	sort.Sort(compileUnitsByLowpc(bi.compileUnits))
 	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
+	sort.Sort(packageVarsByAddr(bi.packageVars))
 
 	bi.LookupFunc = make(map[string]*Function)
 	for i := range bi.Functions {

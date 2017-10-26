@@ -3455,3 +3455,21 @@ func TestIssue1145(t *testing.T) {
 		}
 	})
 }
+
+func TestDisassembleGlobalVars(t *testing.T) {
+	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
+		mainfn := p.BinInfo().LookupFunc["main.main"]
+		text, err := proc.Disassemble(p, nil, mainfn.Entry, mainfn.End)
+		assertNoError(err, t, "Disassemble")
+		found := false
+		for i := range text {
+			if strings.Index(text[i].Text(proc.IntelFlavour, p.BinInfo()), "main.v") > 0 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("could not find main.v reference in disassembly")
+		}
+	})
+}
