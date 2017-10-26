@@ -670,6 +670,11 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	case reflect.Chan:
 		v = v.clone()
 		v.RealType = resolveTypedef(&(v.RealType.(*godwarf.ChanType).TypedefType))
+	case reflect.Interface:
+		v.loadInterface(0, false, LoadConfig{})
+		if len(v.Children) > 0 {
+			v = &v.Children[0]
+		}
 	}
 	structVar := v.maybeDereference()
 	structVar.Name = v.Name

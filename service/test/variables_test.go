@@ -552,6 +552,8 @@ func TestEvalExpression(t *testing.T) {
 		{"err2", true, "error(*main.bstruct) *{a: main.astruct {A: 1, B: 2}}", "error(*main.bstruct) 0x…", "error", nil},
 		{"errnil", true, "error nil", "error nil", "error", nil},
 		{"iface1", true, "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}(*main.astruct) 0x…", "interface {}", nil},
+		{"iface1.A", false, "1", "1", "int", nil},
+		{"iface1.B", false, "2", "2", "int", nil},
 		{"iface2", true, "interface {}(string) \"test\"", "interface {}(string) \"test\"", "interface {}", nil},
 		{"iface3", true, "interface {}(map[string]go/constant.Value) []", "interface {}(map[string]go/constant.Value) []", "interface {}", nil},
 		{"iface4", true, "interface {}([]go/constant.Value) [4]", "interface {}([]go/constant.Value) [...]", "interface {}", nil},
