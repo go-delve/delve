@@ -944,7 +944,7 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 	disass := make(api.AsmInstructions, len(insts))
 
 	for i := range insts {
-		disass[i] = api.ConvertAsmInstruction(insts[i], insts[i].Text(proc.AssemblyFlavour(flavour)))
+		disass[i] = api.ConvertAsmInstruction(insts[i], insts[i].Text(proc.AssemblyFlavour(flavour), d.target.BinInfo()))
 	}
 
 	return disass, nil

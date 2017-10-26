@@ -24,7 +24,7 @@ imports:
 - name: github.com/spf13/pflag
   version: 9e4c21054fa135711121b557932b1887f2405d92
 - name: golang.org/x/arch
-  version: 58ea1a195b1a354bcd572b7ef6bbbd264dc63732
+  version: 077ac972c2e48fdb75168a5ba36a387f0c72d8aa
   subpackages:
   - x86/x86asm
 - name: golang.org/x/sys

@@ -653,10 +653,10 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 }
 
 func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
-	for n, off := range scope.BinInfo.packageVars {
-		if n == name || strings.HasSuffix(n, "/"+name) {
+	for _, pkgvar := range scope.BinInfo.packageVars {
+		if pkgvar.name == name || strings.HasSuffix(pkgvar.name, "/"+name) {
 			reader := scope.DwarfReader()
-			reader.Seek(off)
+			reader.Seek(pkgvar.offset)
 			entry, err := reader.Next()
 			if err != nil {
 				return nil, err

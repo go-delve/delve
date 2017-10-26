@@ -38,10 +38,10 @@ type BinaryInfo struct {
 	loclist       loclistReader
 	compileUnits  []*compileUnit
 	types         map[string]dwarf.Offset
-	packageVars   map[string]dwarf.Offset
+	packageVars   []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
 	gStructOffset uint64
 
-	// Functions is a list of all DW_TAG_subprogram entries in debug_info.
+	// Functions is a list of all DW_TAG_subprogram entries in debug_info, sorted by entry point
 	Functions []Function
 	// Sources is a list of all source files found in debug_line.
 	Sources []string
@@ -147,6 +147,15 @@ type constantValue struct {
 	fullName  string
 	value     int64
 	singleBit bool
+}
+
+// packageVar represents a package-level variable (or a C global variable).
+// If a global variable does not have an address (for example it's stored in
+// a register, or non-contiguously) addr will be 0.
+type packageVar struct {
+	name   string
+	offset dwarf.Offset
+	addr   uint64
 }
 
 type loclistReader struct {
