@@ -72,6 +72,7 @@ type compileUnit struct {
 	Name          string              // univocal name for non-go compile units
 	lineInfo      *line.DebugLineInfo // debug_line segment associated with this compile unit
 	LowPC, HighPC uint64
+	optimized     bool // this compile unit is optimized
 }
 
 // Function describes a function in the target program.
@@ -124,6 +125,11 @@ func (fn *Function) BaseName() string {
 		return fn.Name[i+1:]
 	}
 	return fn.Name
+}
+
+// Optimized returns true if the function was optimized by the compiler.
+func (fn *Function) Optimized() bool {
+	return fn.cu.optimized
 }
 
 type constantsMap map[dwarf.Offset]*constantType

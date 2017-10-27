@@ -148,6 +148,8 @@ type Function struct {
 	Value  uint64 `json:"value"`
 	Type   byte   `json:"type"`
 	GoType uint64 `json:"goType"`
+	// Optimized is true if the function was optimized
+	Optimized bool `json:"optimized"`
 }
 
 // VariableFlags is the type of the Flags field of Variable.
