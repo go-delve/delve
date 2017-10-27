@@ -23,6 +23,8 @@ import (
 	"github.com/derekparker/delve/service/debugger"
 )
 
+const optimizedFunctionWarning = "Warning: debugging optimized function"
+
 type cmdPrefix int
 
 const (
@@ -1353,6 +1355,9 @@ func printcontextThread(t *Term, th *api.Thread) {
 
 	if th.Breakpoint == nil {
 		fmt.Printf("> %s() %s:%d (PC: %#v)\n", fn.Name, ShortenFilePath(th.File), th.Line, th.PC)
+		if th.Function != nil && th.Function.Optimized {
+			fmt.Println(optimizedFunctionWarning)
+		}
 		return
 	}
 
@@ -1390,6 +1395,9 @@ func printcontextThread(t *Term, th *api.Thread) {
 			th.Line,
 			th.Breakpoint.TotalHitCount,
 			th.PC)
+	}
+	if th.Function != nil && th.Function.Optimized {
+		fmt.Println(optimizedFunctionWarning)
 	}
 
 	if th.BreakpointInfo != nil {

@@ -204,6 +204,10 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 			if lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]))
 			}
+			if producer, _ := entry.Val(dwarf.AttrProducer).(string); cu.isgo && producer != "" {
+				semicolon := strings.Index(producer, ";")
+				cu.optimized = semicolon < 0 || !strings.Contains(producer[semicolon:], "-N") || !strings.Contains(producer[semicolon:], "-l")
+			}
 			bi.compileUnits = append(bi.compileUnits, cu)
 
 		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
