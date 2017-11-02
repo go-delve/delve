@@ -9,7 +9,6 @@ go:
   - tip
   - 1.9.x
   - 1.8.x
-  - 1.7.x
 
 matrix:
   allow_failures:
