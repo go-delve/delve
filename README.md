@@ -15,3 +15,19 @@ The Github issue tracker is for **bugs** only. Please use the [developer mailing
 - [Contributing](CONTRIBUTING.md)
 
 Delve is a debugger for the Go programming language. The goal of the project is to provide a simple, full featured debugging tool for Go. Delve should be easy to invoke and easy to use. Chances are if you're using a debugger, things aren't going your way. With that in mind, Delve should stay out of your way as much as possible.
+
+### Quickstart
+
+The example sequence of commands shows you how to set a breakpoint on `main.main`, continue to the breakpoint, list the source code at the breakpoint, and then proceed through the program one line at a time.
+
+```
+$ dlv exec ./my-program -- arguments --for my --program
+(dlv) break main.main
+(dlv) c
+(dlv) list
+(dlv) next
+```
+
+Use `step` to "step in" to a function.
+
+For more details, see the [Documentation](Documentation).
