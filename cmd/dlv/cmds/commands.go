@@ -544,27 +544,38 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	return status
 }
 
+func optflags(args []string) []string {
+	// after go1.9 building with -gcflags='-N -l' and -a simultaneously works.
+	// after go1.10 specifying -a is unnecessary because of the new caching strategy, but we should pass -gcflags=all=-N -l to have it applied to all packages
+	// see https://github.com/golang/go/commit/5993251c015dfa1e905bdf44bdb41572387edf90
+
+	ver, _ := goversion.Installed()
+	switch {
+	case ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}):
+		args = append(args, "-gcflags", "all=-N -l")
+	case ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}):
+		args = append(args, "-gcflags", "-N -l", "-a")
+	default:
+		args = append(args, "-gcflags", "-N -l")
+	}
+	return args
+}
+
 func gobuild(debugname, pkg string) error {
-	args := []string{"-gcflags", "-N -l", "-o", debugname}
+	args := []string{"-o", debugname}
+	args = optflags(args)
 	if BuildFlags != "" {
 		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
-	}
-	if ver, _ := goversion.Installed(); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
-		// after go1.9 building with -gcflags='-N -l' and -a simultaneously works
-		args = append(args, "-a")
 	}
 	args = append(args, pkg)
 	return gocommand("build", args...)
 }
 
 func gotestbuild(debugname, pkg string) error {
-	args := []string{"-gcflags", "-N -l", "-c", "-o", debugname}
+	args := []string{ "-c", "-o", debugname}
+	args = optflags(args)
 	if BuildFlags != "" {
 		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
-	}
-	if ver, _ := goversion.Installed(); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
-		// after go1.9 building with -gcflags='-N -l' and -a simultaneously works
-		args = append(args, "-a")
 	}
 	args = append(args, pkg)
 	return gocommand("test", args...)
