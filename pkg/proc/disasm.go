@@ -27,7 +27,7 @@ func Disassemble(dbp Process, g *G, startPC, endPC uint64) ([]AsmInstruction, er
 	if g == nil {
 		ct := dbp.CurrentThread()
 		regs, _ := ct.Registers(false)
-		return disassemble(ct, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC)
+		return disassemble(ct, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC, false)
 	}
 
 	var regs Registers
@@ -37,10 +37,10 @@ func Disassemble(dbp Process, g *G, startPC, endPC uint64) ([]AsmInstruction, er
 		regs, _ = g.Thread.Registers(false)
 	}
 
-	return disassemble(mem, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC)
+	return disassemble(mem, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC, false)
 }
 
-func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startPC, endPC uint64) ([]AsmInstruction, error) {
+func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startPC, endPC uint64, singleInstr bool) ([]AsmInstruction, error) {
 	mem := make([]byte, int(endPC-startPC))
 	_, err := memrw.ReadMemory(mem, uintptr(startPC))
 	if err != nil {
@@ -76,6 +76,9 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *Breakpoint
 			r = append(r, AsmInstruction{Loc: loc, Bytes: mem[:1], Breakpoint: atbp, Inst: nil})
 			pc++
 			mem = mem[1:]
+		}
+		if singleInstr {
+			break
 		}
 	}
 	return r, nil
