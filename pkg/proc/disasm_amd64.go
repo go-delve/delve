@@ -144,7 +144,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 	var mem MemoryReadWriter = p.CurrentThread()
 	breakpoints := p.Breakpoints()
 	bi := p.BinInfo()
-	text, err := disassemble(mem, nil, breakpoints, bi, fn.Entry, fn.End)
+	text, err := disassemble(mem, nil, breakpoints, bi, fn.Entry, fn.End, false)
 	if err != nil {
 		return fn.Entry, err
 	}

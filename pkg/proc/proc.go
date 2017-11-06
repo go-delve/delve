@@ -136,7 +136,7 @@ func Continue(dbp Process) error {
 					return err
 				}
 				pc := regs.PC()
-				text, err := disassemble(curthread, regs, dbp.Breakpoints(), dbp.BinInfo(), pc, pc+maxInstructionLength)
+				text, err := disassemble(curthread, regs, dbp.Breakpoints(), dbp.BinInfo(), pc, pc+maxInstructionLength, true)
 				if err != nil {
 					return err
 				}

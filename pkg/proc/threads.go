@@ -131,7 +131,7 @@ func next(dbp Process, stepInto bool) error {
 		}
 	}
 
-	text, err := disassemble(thread, regs, dbp.Breakpoints(), dbp.BinInfo(), topframe.Current.Fn.Entry, topframe.Current.Fn.End)
+	text, err := disassemble(thread, regs, dbp.Breakpoints(), dbp.BinInfo(), topframe.Current.Fn.Entry, topframe.Current.Fn.End, false)
 	if err != nil && stepInto {
 		return err
 	}
