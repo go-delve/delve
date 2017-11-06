@@ -3,6 +3,7 @@ package test
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"sync"
 	"testing"
 )
+
+var EnableRace = flag.Bool("racetarget", false, "Enables race detector on inferior process")
 
 // Fixture is a test binary.
 type Fixture struct {
@@ -72,6 +75,9 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 		buildFlags = append(buildFlags, "-ldflags=-s")
 	}
 	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile)
+	if *EnableRace {
+		buildFlags = append(buildFlags, "-race")
+	}
 	if path != "" {
 		buildFlags = append(buildFlags, name+".go")
 	}
