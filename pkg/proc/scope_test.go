@@ -258,8 +258,7 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 func (check *scopeCheck) checkVar(v *proc.Variable, t *testing.T) {
 	var varCheck *varCheck
 	for i := range check.varChecks {
-		varCheck = &check.varChecks[i]
-		if !varCheck.ok && (varCheck.name == v.Name) {
+		if !check.varChecks[i].ok && (check.varChecks[i].name == v.Name) {
 			varCheck = &check.varChecks[i]
 			break
 		}
@@ -267,6 +266,7 @@ func (check *scopeCheck) checkVar(v *proc.Variable, t *testing.T) {
 
 	if varCheck == nil {
 		t.Errorf("%d: unexpected variable %s", check.line, v.Name)
+		return
 	}
 
 	varCheck.check(check.line, v, t, "FunctionArguments+LocalVariables")
