@@ -370,9 +370,14 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	for _, th := range dbp.threads {
 		if th.CurrentBreakpoint == nil {
-			err := th.SetCurrentBreakpoint()
-			if err != nil {
-				return err
+			if err := th.SetCurrentBreakpoint(); err != nil {
+				if err == sys.ESRCH {
+					// This thread quit between the point where we received the breakpoint and
+					// the stop signal.
+					delete(dbp.threads, th.ID)
+				} else {
+					return err
+				}
 			}
 		}
 	}
