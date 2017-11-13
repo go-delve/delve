@@ -79,8 +79,8 @@ func uintExprCheck(t *testing.T, scope *proc.EvalScope, expr string, tgt uint64)
 	}
 }
 
-func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegisters, bi *proc.BinaryInfo, testCases map[string]uint16) *proc.EvalScope {
-	scope := &proc.EvalScope{PC: 0x40100, Regs: regs, Mem: mem, Gvar: nil, BinInfo: bi}
+func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegisters, bi *proc.BinaryInfo, testCases map[string]uint16, fn *proc.Function) *proc.EvalScope {
+	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: fn}, Regs: regs, Mem: mem, Gvar: nil, BinInfo: bi}
 	for name, value := range testCases {
 		uintExprCheck(t, scope, name, uint64(value))
 	}
@@ -116,12 +116,14 @@ func TestDwarfExprRegisters(t *testing.T) {
 
 	bi := fakeBinaryInfo(t, dwb)
 
+	mainfn := bi.LookupFunc["main.main"]
+
 	mem := newFakeMemory(defaultCFA, uint64(0), uint64(testCases["b"]), uint16(testCases["pair.v"]))
 	regs := core.Registers{LinuxCoreRegisters: &core.LinuxCoreRegisters{}}
 	regs.Rax = uint64(testCases["a"])
 	regs.Rdx = uint64(testCases["c"])
 
-	dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases)
+	dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases, mainfn)
 }
 
 func TestDwarfExprComposite(t *testing.T) {
@@ -169,6 +171,8 @@ func TestDwarfExprComposite(t *testing.T) {
 
 	bi := fakeBinaryInfo(t, dwb)
 
+	mainfn := bi.LookupFunc["main.main"]
+
 	mem := newFakeMemory(defaultCFA, uint64(0), uint64(0), uint16(testCases["pair.v"]), []byte(stringVal))
 	var regs core.Registers
 	regs.LinuxCoreRegisters = &core.LinuxCoreRegisters{}
@@ -177,7 +181,7 @@ func TestDwarfExprComposite(t *testing.T) {
 	regs.Rcx = uint64(testCases["pair.k"])
 	regs.Rbx = uint64(testCases["n"])
 
-	scope := dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases)
+	scope := dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases, mainfn)
 
 	thevar, err := scope.EvalExpression("s", normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", "s"))
@@ -207,10 +211,12 @@ func TestDwarfExprLoclist(t *testing.T) {
 
 	bi := fakeBinaryInfo(t, dwb)
 
+	mainfn := bi.LookupFunc["main.main"]
+
 	mem := newFakeMemory(defaultCFA, uint16(before), uint16(after))
 	regs := core.Registers{LinuxCoreRegisters: &core.LinuxCoreRegisters{}}
 
-	scope := &proc.EvalScope{PC: 0x40100, Regs: dwarfRegisters(&regs), Mem: mem, Gvar: nil, BinInfo: bi}
+	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: dwarfRegisters(&regs), Mem: mem, Gvar: nil, BinInfo: bi}
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800

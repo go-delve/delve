@@ -92,27 +92,7 @@ func TestScope(t *testing.T) {
 				t.Errorf("unknown stop position %s:%d %#x", bp.File, bp.Line, bp.Addr)
 			}
 
-			scope, err := proc.GoroutineScope(p.CurrentThread())
-			assertNoError(err, t, "GoroutineScope()")
-
-			args, err := scope.FunctionArguments(normalLoadConfig)
-			assertNoError(err, t, "FunctionArguments()")
-			locals, err := scope.LocalVariables(normalLoadConfig)
-			assertNoError(err, t, "LocalVariables()")
-
-			for _, arg := range args {
-				scopeCheck.checkVar(arg, t)
-			}
-
-			for _, local := range locals {
-				scopeCheck.checkVar(local, t)
-			}
-
-			for i := range scopeCheck.varChecks {
-				if !scopeCheck.varChecks[i].ok {
-					t.Errorf("%d: variable %s not found", scopeCheck.line, scopeCheck.varChecks[i].name)
-				}
-			}
+			scope, _ := scopeCheck.checkLocalsAndArgs(p, t)
 
 			var prev *varCheck
 			for i := range scopeCheck.varChecks {
@@ -127,7 +107,7 @@ func TestScope(t *testing.T) {
 			}
 
 			scopeCheck.ok = true
-			_, err = p.ClearBreakpoint(bp.Addr)
+			_, err := p.ClearBreakpoint(bp.Addr)
 			assertNoError(err, t, "ClearBreakpoint")
 		}
 	})
@@ -252,6 +232,35 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 
 		}
 	}
+}
+
+func (scopeCheck *scopeCheck) checkLocalsAndArgs(p proc.Process, t *testing.T) (*proc.EvalScope, bool) {
+	scope, err := proc.GoroutineScope(p.CurrentThread())
+	assertNoError(err, t, "GoroutineScope()")
+
+	ok := true
+
+	args, err := scope.FunctionArguments(normalLoadConfig)
+	assertNoError(err, t, "FunctionArguments()")
+	locals, err := scope.LocalVariables(normalLoadConfig)
+	assertNoError(err, t, "LocalVariables()")
+
+	for _, arg := range args {
+		scopeCheck.checkVar(arg, t)
+	}
+
+	for _, local := range locals {
+		scopeCheck.checkVar(local, t)
+	}
+
+	for i := range scopeCheck.varChecks {
+		if !scopeCheck.varChecks[i].ok {
+			t.Errorf("%d: variable %s not found", scopeCheck.line, scopeCheck.varChecks[i].name)
+			ok = false
+		}
+	}
+
+	return scope, ok
 }
 
 func (check *scopeCheck) checkVar(v *proc.Variable, t *testing.T) {

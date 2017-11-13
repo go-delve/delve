@@ -296,6 +296,17 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *Func
 	return
 }
 
+// AllPCsForFileLine returns all PC addresses for the given filename:lineno.
+func (bi *BinaryInfo) AllPCsForFileLine(filename string, lineno int) []uint64 {
+	r := make([]uint64, 0, 1)
+	for _, cu := range bi.compileUnits {
+		if cu.lineInfo.Lookup[filename] != nil {
+			r = append(r, cu.lineInfo.AllPCsForFileLine(filename, lineno)...)
+		}
+	}
+	return r
+}
+
 // PCToFunc returns the function containing the given PC address
 func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 	i := sort.Search(len(bi.Functions), func(i int) bool {

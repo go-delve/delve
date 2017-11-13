@@ -365,3 +365,82 @@ func LoadAbstractOrigin(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.O
 
 	return compositeEntry(r), entry.Offset
 }
+
+// InlineStackReader provides a way to read the stack of inlined calls at a
+// specified PC address.
+type InlineStackReader struct {
+	dwarf  *dwarf.Data
+	reader *dwarf.Reader
+	entry  *dwarf.Entry
+	depth  int
+	pc     uint64
+	err    error
+}
+
+// InlineStack returns an InlineStackReader for the specified function and
+// PC address.
+// If pc is 0 then all inlined calls will be returned.
+func InlineStack(dwarf *dwarf.Data, fnoff dwarf.Offset, pc uint64) *InlineStackReader {
+	reader := dwarf.Reader()
+	reader.Seek(fnoff)
+	return &InlineStackReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, pc: pc}
+}
+
+// Next reads next inlined call in the stack, returns false if there aren't any.
+func (irdr *InlineStackReader) Next() bool {
+	if irdr.err != nil {
+		return false
+	}
+
+	for {
+		irdr.entry, irdr.err = irdr.reader.Next()
+		if irdr.entry == nil || irdr.err != nil {
+			return false
+		}
+
+		switch irdr.entry.Tag {
+		case 0:
+			irdr.depth--
+			if irdr.depth == 0 {
+				return false
+			}
+
+		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram, dwarf.TagInlinedSubroutine:
+			var recur bool
+			if irdr.pc != 0 {
+				recur, irdr.err = entryRangesContains(irdr.dwarf, irdr.entry, irdr.pc)
+			} else {
+				recur = true
+			}
+			if recur {
+				irdr.depth++
+				if irdr.entry.Tag == dwarf.TagInlinedSubroutine {
+					return true
+				}
+			} else {
+				if irdr.depth == 0 {
+					return false
+				}
+				irdr.reader.SkipChildren()
+			}
+
+		default:
+			irdr.reader.SkipChildren()
+		}
+	}
+}
+
+// Entry returns the DIE for the current inlined call.
+func (irdr *InlineStackReader) Entry() *dwarf.Entry {
+	return irdr.entry
+}
+
+// Err returns an error, if any was encountered.
+func (irdr *InlineStackReader) Err() error {
+	return irdr.err
+}
+
+// SkipChildren skips all children of the current inlined call.
+func (irdr *InlineStackReader) SkipChildren() {
+	irdr.reader.SkipChildren()
+}

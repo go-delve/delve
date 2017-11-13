@@ -156,13 +156,15 @@ type G struct {
 // EvalScope is the scope for variable evaluation. Contains the thread,
 // current location (PC), and canonical frame address.
 type EvalScope struct {
-	PC      uint64 // Current instruction of the evaluation frame
+	Location
 	Regs    op.DwarfRegisters
 	Mem     MemoryReadWriter // Target's memory
 	Gvar    *Variable
 	BinInfo *BinaryInfo
 
 	frameOffset int64
+
+	aordr *dwarf.Reader // extra reader to load DW_AT_abstract_origin entries, do not initialize
 }
 
 // IsNilErr is returned when a variable is nil.
@@ -175,7 +177,7 @@ func (err *IsNilErr) Error() string {
 }
 
 func globalScope(bi *BinaryInfo, mem MemoryReadWriter) *EvalScope {
-	return &EvalScope{PC: 0, Regs: op.DwarfRegisters{}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
+	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
 }
 
 func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
@@ -1873,16 +1875,13 @@ func (v *variablesByDepth) Swap(i int, j int) {
 
 // Fetches all variables of a specific type in the current function scope
 func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg *LoadConfig) ([]*Variable, error) {
-	fn := scope.BinInfo.PCToFunc(scope.PC)
-	if fn == nil {
+	if scope.Fn == nil {
 		return nil, errors.New("unable to find function context")
 	}
 
-	_, line, _ := scope.BinInfo.PCToLine(scope.PC)
-
 	var vars []*Variable
 	var depths []int
-	varReader := reader.Variables(scope.BinInfo.dwarf, fn.offset, scope.PC, line, tag == dwarf.TagVariable)
+	varReader := reader.Variables(scope.BinInfo.dwarf, scope.Fn.offset, scope.PC, scope.Line, tag == dwarf.TagVariable)
 	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()

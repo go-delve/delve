@@ -119,7 +119,6 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64)
 			if sm.valid {
 				pcs = append(pcs, sm.address)
 			}
-			line := sm.line
 			// Keep going until we're on a different line. We only care about
 			// when a line comes back around (i.e. for loop) so get to next line,
 			// and try to find the line we care about again.
@@ -127,7 +126,7 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64)
 				if err := sm.next(); err != nil {
 					break
 				}
-				if line < sm.line {
+				if l != sm.line {
 					break
 				}
 			}

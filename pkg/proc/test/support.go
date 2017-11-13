@@ -48,6 +48,7 @@ type BuildFlags uint32
 const (
 	LinkStrip BuildFlags = 1 << iota
 	EnableCGOOptimization
+	EnableInlining
 )
 
 func BuildFixture(name string, flags BuildFlags) Fixture {
@@ -81,7 +82,11 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&LinkStrip != 0 {
 		buildFlags = append(buildFlags, "-ldflags=-s")
 	}
-	buildFlags = append(buildFlags, "-gcflags=-N -l", "-o", tmpfile)
+	gcflags := "-gcflags=-N -l"
+	if flags&EnableInlining != 0 {
+		gcflags = "-gcflags=-N"
+	}
+	buildFlags = append(buildFlags, gcflags, "-o", tmpfile)
 	if *EnableRace {
 		buildFlags = append(buildFlags, "-race")
 	}
