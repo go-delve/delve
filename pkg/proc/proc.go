@@ -72,7 +72,7 @@ func Next(dbp Process) (err error) {
 		return fmt.Errorf("next while nexting")
 	}
 
-	if err = next(dbp, false); err != nil {
+	if err = next(dbp, false, false); err != nil {
 		dbp.ClearInternalBreakpoints()
 		return
 	}
@@ -226,7 +226,7 @@ func Step(dbp Process) (err error) {
 		return fmt.Errorf("next while nexting")
 	}
 
-	if err = next(dbp, true); err != nil {
+	if err = next(dbp, true, false); err != nil {
 		switch err.(type) {
 		case ThreadBlockedError: // Noop
 		default:
@@ -293,6 +293,22 @@ func StepOut(dbp Process) error {
 		return err
 	}
 
+	success := false
+	defer func() {
+		if !success {
+			dbp.ClearInternalBreakpoints()
+		}
+	}()
+
+	if topframe.Inlined {
+		if err := next(dbp, false, true); err != nil {
+			return err
+		}
+
+		success = true
+		return Continue(dbp)
+	}
+
 	sameGCond := SameGoroutineCondition(selg)
 	retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
 
@@ -310,15 +326,10 @@ func StepOut(dbp Process) error {
 		}
 	}
 
-	if topframe.Ret == 0 && deferpc == 0 {
-		return errors.New("nothing to stepout to")
-	}
-
 	if deferpc != 0 && deferpc != topframe.Current.PC {
 		bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
 		if err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
-				dbp.ClearInternalBreakpoints()
 				return err
 			}
 		}
@@ -330,11 +341,14 @@ func StepOut(dbp Process) error {
 		}
 	}
 
+	if topframe.Ret == 0 && deferpc == 0 {
+		return errors.New("nothing to stepout to")
+	}
+
 	if topframe.Ret != 0 {
 		_, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond)
 		if err != nil {
 			if _, isexists := err.(BreakpointExistsError); !isexists {
-				dbp.ClearInternalBreakpoints()
 				return err
 			}
 		}
@@ -344,6 +358,7 @@ func StepOut(dbp Process) error {
 		curthread.SetCurrentBreakpoint()
 	}
 
+	success = true
 	return Continue(dbp)
 }
 
@@ -499,6 +514,7 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frame Stackfram
 	if g != nil {
 		gvar = g.variable
 	}
-	s := &EvalScope{PC: frame.Call.PC, Regs: frame.Regs, Mem: thread, Gvar: gvar, BinInfo: bi, frameOffset: frame.FrameOffset()}
+	s := &EvalScope{Location: frame.Call, Regs: frame.Regs, Mem: thread, Gvar: gvar, BinInfo: bi, frameOffset: frame.FrameOffset()}
+	s.PC = frame.lastpc
 	return s
 }

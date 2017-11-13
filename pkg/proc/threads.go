@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
+	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
 // Thread represents a thread.
@@ -100,7 +101,17 @@ func (err *NoSourceForPCError) Error() string {
 // - a breakpoint on the return address of the function, with a condition
 //   checking that we move to the previous stack frame and stay on the same
 //   goroutine.
-func next(dbp Process, stepInto bool) error {
+//
+// The breakpoint on the return address is *not* set if the current frame is
+// an inlined call. For inlined calls topframe.Current.Fn is the function
+// where the inlining happened and the second set of breakpoints will also
+// cover the "return address".
+//
+// If inlinedStepOut is true this function implements the StepOut operation
+// for an inlined function call. Everything works the same as normal except
+// when removing instructions belonging to inlined calls we also remove all
+// instructions belonging to the current inlined call.
+func next(dbp Process, stepInto, inlinedStepOut bool) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 	topframe, retframe, err := topframe(selg, curthread)
@@ -110,6 +121,11 @@ func next(dbp Process, stepInto bool) error {
 
 	if topframe.Current.Fn == nil {
 		return &NoSourceForPCError{topframe.Current.PC}
+	}
+
+	// sanity check
+	if inlinedStepOut && !topframe.Inlined {
+		panic("next called with inlinedStepOut but topframe was not inlined")
 	}
 
 	success := false
@@ -141,14 +157,18 @@ func next(dbp Process, stepInto bool) error {
 	sameFrameCond := andFrameoffCondition(sameGCond, topframe.FrameOffset())
 	var sameOrRetFrameCond ast.Expr
 	if sameGCond != nil {
-		sameOrRetFrameCond = &ast.BinaryExpr{
-			Op: token.LAND,
-			X:  sameGCond,
-			Y: &ast.BinaryExpr{
-				Op: token.LOR,
-				X:  frameoffCondition(topframe.FrameOffset()),
-				Y:  frameoffCondition(retframe.FrameOffset()),
-			},
+		if topframe.Inlined {
+			sameOrRetFrameCond = sameFrameCond
+		} else {
+			sameOrRetFrameCond = &ast.BinaryExpr{
+				Op: token.LAND,
+				X:  sameGCond,
+				Y: &ast.BinaryExpr{
+					Op: token.LOR,
+					X:  frameoffCondition(topframe.FrameOffset()),
+					Y:  frameoffCondition(retframe.FrameOffset()),
+				},
+			}
 		}
 	}
 
@@ -216,6 +236,18 @@ func next(dbp Process, stepInto bool) error {
 		return err
 	}
 
+	if !stepInto {
+		// Removing any PC range belonging to an inlined call
+		frame := topframe
+		if inlinedStepOut {
+			frame = retframe
+		}
+		pcs, err = removeInlinedCalls(dbp, pcs, frame)
+		if err != nil {
+			return err
+		}
+	}
+
 	if !csource {
 		var covered bool
 		for i := range pcs {
@@ -233,7 +265,6 @@ func next(dbp Process, stepInto bool) error {
 		}
 	}
 
-	// Add a breakpoint on the return address for the current frame
 	for _, pc := range pcs {
 		if _, err := dbp.SetBreakpoint(pc, NextBreakpoint, sameFrameCond); err != nil {
 			if _, ok := err.(BreakpointExistsError); !ok {
@@ -243,18 +274,24 @@ func next(dbp Process, stepInto bool) error {
 		}
 
 	}
-	if bp, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond); err != nil {
-		if _, isexists := err.(BreakpointExistsError); isexists {
-			if bp.Kind == NextBreakpoint {
-				// If the return address shares the same address with one of the lines
-				// of the function (because we are stepping through a recursive
-				// function) then the corresponding breakpoint should be active both on
-				// this frame and on the return frame.
-				bp.Cond = sameOrRetFrameCond
+	if !topframe.Inlined {
+		// Add a breakpoint on the return address for the current frame.
+		// For inlined functions there is no need to do this, the set of PCs
+		// returned by the AllPCsBetween call above already cover all instructions
+		// of the containing function.
+		if bp, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond); err != nil {
+			if _, isexists := err.(BreakpointExistsError); isexists {
+				if bp.Kind == NextBreakpoint {
+					// If the return address shares the same address with one of the lines
+					// of the function (because we are stepping through a recursive
+					// function) then the corresponding breakpoint should be active both on
+					// this frame and on the return frame.
+					bp.Cond = sameOrRetFrameCond
+				}
 			}
+			// Return address could be wrong, if we are unable to set a breakpoint
+			// there it's ok.
 		}
-		// Return address could be wrong, if we are unable to set a breakpoint
-		// there it's ok.
 	}
 
 	if bp := curthread.Breakpoint(); bp.Breakpoint == nil {
@@ -262,6 +299,39 @@ func next(dbp Process, stepInto bool) error {
 	}
 	success = true
 	return nil
+}
+
+// Removes instructions belonging to inlined calls of topframe from pcs.
+// If includeCurrentFn is true it will also remove all instructions
+// belonging to the current function.
+func removeInlinedCalls(dbp Process, pcs []uint64, topframe Stackframe) ([]uint64, error) {
+	bi := dbp.BinInfo()
+	irdr := reader.InlineStack(bi.dwarf, topframe.Call.Fn.offset, 0)
+	for irdr.Next() {
+		e := irdr.Entry()
+		if e.Offset == topframe.Call.Fn.offset {
+			continue
+		}
+		ranges, err := bi.dwarf.Ranges(e)
+		if err != nil {
+			return pcs, err
+		}
+		for _, rng := range ranges {
+			pcs = removePCsBetween(pcs, rng[0], rng[1])
+		}
+		irdr.SkipChildren()
+	}
+	return pcs, irdr.Err()
+}
+
+func removePCsBetween(pcs []uint64, start, end uint64) []uint64 {
+	out := pcs[:0]
+	for _, pc := range pcs {
+		if pc < start || pc >= end {
+			out = append(out, pc)
+		}
+	}
+	return out
 }
 
 func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) error {

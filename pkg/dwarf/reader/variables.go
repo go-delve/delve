@@ -47,10 +47,10 @@ func (vrdr *VariableReader) Next() bool {
 				return false
 			}
 
-		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram:
+		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram, dwarf.TagInlinedSubroutine:
 			recur := true
 			if vrdr.onlyVisible {
-				recur, vrdr.err = vrdr.entryRangesContains()
+				recur, vrdr.err = entryRangesContains(vrdr.dwarf, vrdr.entry, vrdr.pc)
 				if vrdr.err != nil {
 					return false
 				}
@@ -77,13 +77,13 @@ func (vrdr *VariableReader) Next() bool {
 	}
 }
 
-func (vrdr *VariableReader) entryRangesContains() (bool, error) {
-	rngs, err := vrdr.dwarf.Ranges(vrdr.entry)
+func entryRangesContains(dwarf *dwarf.Data, entry *dwarf.Entry, pc uint64) (bool, error) {
+	rngs, err := dwarf.Ranges(entry)
 	if err != nil {
 		return false, err
 	}
 	for _, rng := range rngs {
-		if vrdr.pc >= rng[0] && vrdr.pc < rng[1] {
+		if pc >= rng[0] && pc < rng[1] {
 			return true, nil
 		}
 	}

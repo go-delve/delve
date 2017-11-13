@@ -8,17 +8,30 @@ import (
 
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 	"github.com/derekparker/delve/pkg/dwarf/op"
+	"github.com/derekparker/delve/pkg/dwarf/reader"
 )
 
 // This code is partly adapted from runtime.gentraceback in
 // $GOROOT/src/runtime/traceback.go
 
 // Stackframe represents a frame in a system stack.
+//
+// Each stack frame has two locations Current and Call.
+//
+// For the topmost stackframe Current and Call are the same location.
+//
+// For stackframes after the first Current is the location corresponding to
+// the return address and Call is the location of the CALL instruction that
+// was last executed on the frame. Note however that Call.PC is always equal
+// to Current.PC, because finding the correct value for Call.PC would
+// require disassembling each function in the stacktrace.
+//
+// For synthetic stackframes generated for inlined function calls Current.Fn
+// is the function containing the inlining and Call.Fn in the inlined
+// function.
 type Stackframe struct {
-	// Address the function above this one on the call stack will return to.
-	Current Location
-	// Address of the call instruction for the function above on the call stack.
-	Call Location
+	Current, Call Location
+
 	// Frame registers.
 	Regs op.DwarfRegisters
 	// High address of the stack.
@@ -31,6 +44,19 @@ type Stackframe struct {
 	Err error
 	// SystemStack is true if this frame belongs to a system stack.
 	SystemStack bool
+	// Inlined is true if this frame is actually an inlined call.
+	Inlined bool
+
+	// lastpc is a memory address guaranteed to belong to the last instruction
+	// executed in this stack frame.
+	// For the topmost stack frame this will be the same as Current.PC and
+	// Call.PC, for other stack frames it will usually be Current.PC-1, but
+	// could be different when inlined calls are involved in the stacktrace.
+	// Note that this address isn't guaranteed to belong to the start of an
+	// instruction and, for this reason, should not be propagated outside of
+	// pkg/proc.
+	// Use this value to determine active lexical scopes for the stackframe.
+	lastpc uint64
 }
 
 // FrameOffset returns the address of the stack frame, absolute for system
@@ -123,6 +149,8 @@ type stackIterator struct {
 
 	g           *G     // the goroutine being stacktraced, nil if we are stacktracing a goroutine-less thread
 	g0_sched_sp uint64 // value of g0.sched.sp (see comments around its use)
+
+	dwarfReader *dwarf.Reader
 }
 
 type savedLR struct {
@@ -162,7 +190,7 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegiste
 			}
 		}
 	}
-	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp, dwarfReader: bi.dwarf.Reader()}
 }
 
 // Next points the iterator to the next stack frame.
@@ -305,9 +333,8 @@ func (it *stackIterator) Err() error {
 // frameBase calculates the frame base pseudo-register for DWARF for fn and
 // the current frame.
 func (it *stackIterator) frameBase(fn *Function) int64 {
-	rdr := it.bi.dwarf.Reader()
-	rdr.Seek(fn.offset)
-	e, err := rdr.Next()
+	it.dwarfReader.Seek(fn.offset)
+	e, err := it.dwarfReader.Next()
 	if err != nil {
 		return 0
 	}
@@ -327,7 +354,7 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 	} else {
 		it.regs.FrameBase = it.frameBase(fn)
 	}
-	r := Stackframe{Current: Location{PC: it.pc, File: f, Line: l, Fn: fn}, Regs: it.regs, Ret: ret, addrret: retaddr, stackHi: it.stackhi, SystemStack: it.systemstack}
+	r := Stackframe{Current: Location{PC: it.pc, File: f, Line: l, Fn: fn}, Regs: it.regs, Ret: ret, addrret: retaddr, stackHi: it.stackhi, SystemStack: it.systemstack, lastpc: it.pc}
 	if !it.top {
 		fnname := ""
 		if r.Current.Fn != nil {
@@ -339,6 +366,7 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 			// instruction to look for at pc - 1
 			r.Call = r.Current
 		default:
+			r.lastpc = it.pc - 1
 			r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(it.pc - 1)
 			if r.Call.Fn == nil {
 				r.Call.File = "?"
@@ -358,7 +386,7 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 	}
 	frames := make([]Stackframe, 0, depth+1)
 	for it.Next() {
-		frames = append(frames, it.Frame())
+		frames = it.appendInlineCalls(frames, it.Frame())
 		if len(frames) >= depth+1 {
 			break
 		}
@@ -370,6 +398,60 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 		frames = append(frames, Stackframe{Err: err})
 	}
 	return frames, nil
+}
+
+func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe) []Stackframe {
+	if frame.Call.Fn == nil {
+		return append(frames, frame)
+	}
+	if frame.Call.Fn.cu.lineInfo == nil {
+		return append(frames, frame)
+	}
+
+	callpc := frame.Call.PC
+	if len(frames) > 0 {
+		callpc--
+	}
+
+	irdr := reader.InlineStack(it.bi.dwarf, frame.Call.Fn.offset, callpc)
+	for irdr.Next() {
+		entry, offset := reader.LoadAbstractOrigin(irdr.Entry(), it.dwarfReader)
+
+		fnname, okname := entry.Val(dwarf.AttrName).(string)
+		fileidx, okfileidx := entry.Val(dwarf.AttrCallFile).(int64)
+		line, okline := entry.Val(dwarf.AttrCallLine).(int64)
+
+		if !okname || !okfileidx || !okline {
+			break
+		}
+		if fileidx-1 < 0 || fileidx-1 >= int64(len(frame.Current.Fn.cu.lineInfo.FileNames)) {
+			break
+		}
+
+		inlfn := &Function{Name: fnname, Entry: frame.Call.Fn.Entry, End: frame.Call.Fn.End, offset: offset, cu: frame.Call.Fn.cu}
+		frames = append(frames, Stackframe{
+			Current: frame.Current,
+			Call: Location{
+				frame.Call.PC,
+				frame.Call.File,
+				frame.Call.Line,
+				inlfn,
+			},
+			Regs:        frame.Regs,
+			stackHi:     frame.stackHi,
+			Ret:         frame.Ret,
+			addrret:     frame.addrret,
+			Err:         frame.Err,
+			SystemStack: frame.SystemStack,
+			Inlined:     true,
+			lastpc:      frame.lastpc,
+		})
+
+		frame.Call.File = frame.Current.Fn.cu.lineInfo.FileNames[fileidx-1].Path
+		frame.Call.Line = int(line)
+	}
+
+	return append(frames, frame)
 }
 
 // advanceRegs calculates it.callFrameRegs using it.regs and the frame

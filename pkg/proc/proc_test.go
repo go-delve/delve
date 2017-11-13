@@ -3473,3 +3473,191 @@ func TestDisassembleGlobalVars(t *testing.T) {
 		}
 	})
 }
+
+func checkFrame(frame proc.Stackframe, fnname, file string, line int, inlined bool) error {
+	if frame.Call.Fn == nil || frame.Call.Fn.Name != fnname {
+		return fmt.Errorf("wrong function name: %s", fnname)
+	}
+	if frame.Call.File != file || frame.Call.Line != line {
+		return fmt.Errorf("wrong file:line %s:%d", frame.Call.File, frame.Call.Line)
+	}
+	if frame.Inlined != inlined {
+		if inlined {
+			return fmt.Errorf("not inlined")
+		} else {
+			return fmt.Errorf("inlined")
+		}
+	}
+	return nil
+}
+
+func TestInlinedStacktraceAndVariables(t *testing.T) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+
+	firstCallCheck := &scopeCheck{
+		line: 7,
+		ok:   false,
+		varChecks: []varCheck{
+			varCheck{
+				name:   "a",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 3,
+			},
+			varCheck{
+				name:   "z",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 9,
+			},
+		},
+	}
+
+	secondCallCheck := &scopeCheck{
+		line: 7,
+		ok:   false,
+		varChecks: []varCheck{
+			varCheck{
+				name:   "a",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 4,
+			},
+			varCheck{
+				name:   "z",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 16,
+			},
+		},
+	}
+
+	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p proc.Process, fixture protest.Fixture) {
+		pcs := p.BinInfo().AllPCsForFileLine(fixture.Source, 7)
+		if len(pcs) < 2 {
+			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 6, len(pcs), pcs)
+		}
+		for _, pc := range pcs {
+			_, err := p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
+		}
+
+		// first inlined call
+		assertNoError(proc.Continue(p), t, "Continue")
+		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 20)
+		assertNoError(err, t, "ThreadStacktrace")
+		t.Logf("Stacktrace:\n")
+		for i := range frames {
+			t.Logf("\t%s at %s:%d\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line)
+		}
+
+		if err := checkFrame(frames[0], "main.inlineThis", fixture.Source, 7, true); err != nil {
+			t.Fatalf("Wrong frame 0: %v", err)
+		}
+		if err := checkFrame(frames[1], "main.main", fixture.Source, 18, false); err != nil {
+			t.Fatalf("Wrong frame 1: %v", err)
+		}
+
+		if avar, _ := constant.Int64Val(evalVariable(p, t, "a").Value); avar != 3 {
+			t.Fatalf("value of 'a' variable is not 3 (%d)", avar)
+		}
+		if zvar, _ := constant.Int64Val(evalVariable(p, t, "z").Value); zvar != 9 {
+			t.Fatalf("value of 'z' variable is not 9 (%d)", zvar)
+		}
+
+		if _, ok := firstCallCheck.checkLocalsAndArgs(p, t); !ok {
+			t.Fatalf("exiting for past errors")
+		}
+
+		// second inlined call
+		assertNoError(proc.Continue(p), t, "Continue")
+		frames, err = proc.ThreadStacktrace(p.CurrentThread(), 20)
+		assertNoError(err, t, "ThreadStacktrace (2)")
+		t.Logf("Stacktrace 2:\n")
+		for i := range frames {
+			t.Logf("\t%s at %s:%d\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line)
+		}
+
+		if err := checkFrame(frames[0], "main.inlineThis", fixture.Source, 7, true); err != nil {
+			t.Fatalf("Wrong frame 0: %v", err)
+		}
+		if err := checkFrame(frames[1], "main.main", fixture.Source, 19, false); err != nil {
+			t.Fatalf("Wrong frame 1: %v", err)
+		}
+
+		if avar, _ := constant.Int64Val(evalVariable(p, t, "a").Value); avar != 4 {
+			t.Fatalf("value of 'a' variable is not 3 (%d)", avar)
+		}
+		if zvar, _ := constant.Int64Val(evalVariable(p, t, "z").Value); zvar != 16 {
+			t.Fatalf("value of 'z' variable is not 9 (%d)", zvar)
+		}
+		if bvar, err := evalVariableOrError(p, "b"); err == nil {
+			t.Fatalf("expected error evaluating 'b', but it succeeded instead: %v", bvar)
+		}
+
+		if _, ok := secondCallCheck.checkLocalsAndArgs(p, t); !ok {
+			t.Fatalf("exiting for past errors")
+		}
+	})
+}
+
+func TestInlineStep(t *testing.T) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	testseq2Args(".", []string{}, protest.EnableInlining, t, "testinline", "", []seqTest{
+		{contContinue, 18},
+		{contStep, 6},
+		{contStep, 7},
+		{contStep, 18},
+		{contStep, 19},
+	})
+}
+
+func TestInlineNext(t *testing.T) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	testseq2Args(".", []string{}, protest.EnableInlining, t, "testinline", "", []seqTest{
+		{contContinue, 18},
+		{contStep, 6},
+		{contNext, 7},
+		{contNext, 18},
+		{contNext, 19},
+	})
+}
+
+func TestInlineStepOver(t *testing.T) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	testseq2Args(".", []string{}, protest.EnableInlining, t, "testinline", "", []seqTest{
+		{contContinue, 18},
+		{contNext, 18},
+		{contNext, 19},
+		{contNext, 19},
+		{contNext, 20},
+	})
+}
+
+func TestInlineStepOut(t *testing.T) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	testseq2Args(".", []string{}, protest.EnableInlining, t, "testinline", "", []seqTest{
+		{contContinue, 18},
+		{contStep, 6},
+		{contStepout, 18},
+	})
+}
