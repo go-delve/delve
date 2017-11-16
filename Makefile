@@ -21,9 +21,11 @@ ALL_PACKAGES=$(shell go list ./... | grep -v /vendor/ | grep -v /scripts)
 # unable to execute.
 # See https://github.com/golang/go/issues/11887#issuecomment-126117692.
 ifeq "$(UNAME)" "Darwin"
-	TEST_FLAGS=-exec=$(shell pwd)/scripts/testsign
+	TEST_FLAGS=-count 1 -exec=$(shell pwd)/scripts/testsign
 	export PROCTEST=lldb
 	DARWIN="true"
+else
+	TEST_FLAGS=-count 1
 endif
 
 # If we're on OSX make sure the proper CERT env var is set.
@@ -58,7 +60,7 @@ endif
 test: check-cert
 ifeq "$(TRAVIS)" "true"
 ifdef DARWIN
-	sudo -E go test -p 1 -v $(ALL_PACKAGES)
+	sudo -E go test -p 1 -count 1 -v $(ALL_PACKAGES)
 else
 	go test -p 1 $(TEST_FLAGS) $(BUILD_FLAGS) $(ALL_PACKAGES)
 endif
