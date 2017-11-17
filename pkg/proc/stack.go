@@ -100,9 +100,8 @@ type stackIterator struct {
 	stackBarrierPC uint64
 	stkbar         []savedLR
 
-	// regs is the register set for the next frame, callFrameRegs is the
-	// register set for the call frame of the next frame.
-	regs, callFrameRegs op.DwarfRegisters
+	// regs is the register set for the current frame
+	regs op.DwarfRegisters
 }
 
 type savedLR struct {
@@ -138,7 +137,7 @@ func (it *stackIterator) Next() bool {
 	if it.err != nil || it.atend {
 		return false
 	}
-	ret, retaddr := it.advanceRegs()
+	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
 
 	if it.frame.Ret <= 0 {
@@ -160,7 +159,7 @@ func (it *stackIterator) Next() bool {
 
 	it.top = false
 	it.pc = it.frame.Ret
-	it.regs = it.callFrameRegs
+	it.regs = callFrameRegs
 	return true
 }
 
@@ -221,7 +220,7 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 // advanceRegs calculates it.callFrameRegs using it.regs and the frame
 // descriptor entry for the current stack frame.
 // it.regs.CallFrameCFA is updated.
-func (it *stackIterator) advanceRegs() (ret uint64, retaddr uint64) {
+func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64) {
 	fde, err := it.bi.frameEntries.FDEForPC(it.pc)
 	var framectx *frame.FrameContext
 	if _, nofde := err.(*frame.NoFDEForPCError); nofde {
@@ -233,11 +232,11 @@ func (it *stackIterator) advanceRegs() (ret uint64, retaddr uint64) {
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {
 		it.err = fmt.Errorf("CFA becomes undefined at PC %#x", it.pc)
-		return 0, 0
+		return op.DwarfRegisters{}, 0, 0
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
 
-	it.callFrameRegs = op.DwarfRegisters{ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum}
+	callFrameRegs = op.DwarfRegisters{ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum}
 
 	// According to the standard the compiler should be responsible for emitting
 	// rules for the RSP register so that it can then be used to calculate CFA,
@@ -246,11 +245,11 @@ func (it *stackIterator) advanceRegs() (ret uint64, retaddr uint64) {
 	// implicit.
 	// See also the comment in dwarf2_frame_default_init in
 	// $GDB_SOURCE/dwarf2-frame.c
-	it.callFrameRegs.AddReg(uint64(amd64DwarfSPRegNum), cfareg)
+	callFrameRegs.AddReg(uint64(amd64DwarfSPRegNum), cfareg)
 
 	for i, regRule := range framectx.Regs {
 		reg, err := it.executeFrameRegRule(i, regRule, it.regs.CFA)
-		it.callFrameRegs.AddReg(i, reg)
+		callFrameRegs.AddReg(i, reg)
 		if i == framectx.RetAddrReg {
 			if reg == nil {
 				if err == nil {
@@ -264,7 +263,7 @@ func (it *stackIterator) advanceRegs() (ret uint64, retaddr uint64) {
 		}
 	}
 
-	return ret, retaddr
+	return callFrameRegs, ret, retaddr
 }
 
 func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, cfa int64) (*op.DwarfRegister, error) {
