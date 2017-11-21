@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"bytes"
 	"debug/dwarf"
 	"debug/elf"
 	"debug/macho"
@@ -341,26 +342,34 @@ func (bi *BinaryInfo) loclistInit(data []byte) {
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry *dwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, error) {
+func (bi *BinaryInfo) Location(entry *dwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
 	a := entry.Val(attr)
 	if a == nil {
-		return 0, nil, fmt.Errorf("no location attribute %s", attr)
+		return 0, nil, "", fmt.Errorf("no location attribute %s", attr)
 	}
 	if instr, ok := a.([]byte); ok {
-		return op.ExecuteStackProgram(regs, instr)
+		var descr bytes.Buffer
+		fmt.Fprintf(&descr, "[block] ")
+		op.PrettyPrint(&descr, instr)
+		addr, pieces, err := op.ExecuteStackProgram(regs, instr)
+		return addr, pieces, descr.String(), err
 	}
 	off, ok := a.(int64)
 	if !ok {
-		return 0, nil, fmt.Errorf("could not interpret location attribute %s", attr)
+		return 0, nil, "", fmt.Errorf("could not interpret location attribute %s", attr)
 	}
 	if bi.loclist.data == nil {
-		return 0, nil, fmt.Errorf("could not find loclist entry at %#x for address %#x (no debug_loc section found)", off, pc)
+		return 0, nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x (no debug_loc section found)", off, pc)
 	}
 	instr := bi.loclistEntry(off, pc)
 	if instr == nil {
-		return 0, nil, fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
+		return 0, nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
 	}
-	return op.ExecuteStackProgram(regs, instr)
+	var descr bytes.Buffer
+	fmt.Fprintf(&descr, "[%#x:%#x] ", off, pc)
+	op.PrettyPrint(&descr, instr)
+	addr, pieces, err := op.ExecuteStackProgram(regs, instr)
+	return addr, pieces, descr.String(), err
 }
 
 // loclistEntry returns the loclist entry in the loclist starting at off,

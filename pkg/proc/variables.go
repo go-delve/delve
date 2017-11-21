@@ -95,6 +95,8 @@ type Variable struct {
 
 	loaded     bool
 	Unreadable error
+
+	LocationExpr string // location expression
 }
 
 type LoadConfig struct {
@@ -777,7 +779,7 @@ func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry) (*Variable, 
 		return nil, err
 	}
 
-	addr, pieces, err := scope.BinInfo.Location(entry, dwarf.AttrLocation, scope.PC, scope.Regs)
+	addr, pieces, descr, err := scope.BinInfo.Location(entry, dwarf.AttrLocation, scope.PC, scope.Regs)
 	mem := scope.Mem
 	if pieces != nil {
 		addr = fakeAddress
@@ -785,6 +787,7 @@ func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry) (*Variable, 
 	}
 
 	v := scope.newVariable(n, uintptr(addr), t, mem)
+	v.LocationExpr = descr
 	if err != nil {
 		v.Unreadable = err
 	}
