@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/derekparker/delve/pkg/dwarf/util"
 )
@@ -71,6 +72,56 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte) (int64, []Pie
 	}
 
 	return ctxt.stack[len(ctxt.stack)-1], nil, nil
+}
+
+// PrettyPrint prints instructions to out.
+func PrettyPrint(out io.Writer, instructions []byte) {
+	in := bytes.NewBuffer(instructions)
+
+	for {
+		opcode, err := in.ReadByte()
+		if err != nil {
+			break
+		}
+		if name, hasname := opcodeName[Opcode(opcode)]; hasname {
+			io.WriteString(out, name)
+			out.Write([]byte{' '})
+		} else {
+			fmt.Fprintf(out, "%#x ", opcode)
+		}
+		for _, arg := range opcodeArgs[Opcode(opcode)] {
+			switch arg {
+			case 's':
+				n, _ := util.DecodeSLEB128(in)
+				fmt.Fprintf(out, "%#x ", n)
+			case 'u':
+				n, _ := util.DecodeULEB128(in)
+				fmt.Fprintf(out, "%#x ", n)
+			case '1':
+				var x uint8
+				binary.Read(in, binary.LittleEndian, &x)
+				fmt.Fprintf(out, "%#x ", x)
+			case '2':
+				var x uint16
+				binary.Read(in, binary.LittleEndian, &x)
+				fmt.Fprintf(out, "%#x ", x)
+			case '4':
+				var x uint32
+				binary.Read(in, binary.LittleEndian, &x)
+				fmt.Fprintf(out, "%#x ", x)
+			case '8':
+				var x uint64
+				binary.Read(in, binary.LittleEndian, &x)
+				fmt.Fprintf(out, "%#x ", x)
+			case 'B':
+				sz, _ := util.DecodeULEB128(in)
+				data := make([]byte, sz)
+				sz2, _ := in.Read(data)
+				data = data[:sz2]
+				fmt.Fprintf(out, "%d [%x] ", sz, data)
+			}
+		}
+	}
 }
 
 func callframecfa(opcode Opcode, ctxt *context) error {

@@ -332,7 +332,7 @@ func (it *stackIterator) frameBase(fn *Function) int64 {
 	if err != nil {
 		return 0
 	}
-	fb, _, _ := it.bi.Location(e, dwarf.AttrFrameBase, it.pc, it.regs)
+	fb, _, _, _ := it.bi.Location(e, dwarf.AttrFrameBase, it.pc, it.regs)
 	return fb
 }
 

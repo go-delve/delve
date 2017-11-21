@@ -39,6 +39,10 @@ type Config struct {
 	// MaxArrayValues is the maximum number of array items that the commands
 	// print, locals, args and vars should read (in verbose mode).
 	MaxArrayValues *int `yaml:"max-array-values,omitempty"`
+
+	// If ShowLocationExpr is true whatis will print the DWARF location
+	// expression for its argument.
+	ShowLocationExpr bool `yaml:"show-location-expr"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -139,6 +143,15 @@ aliases:
 # commands.
 substitute-path:
   # - {from: path, to: path}
+  
+# Maximum number of elements loaded from an array.
+# max-array-values: 64
+
+# Maximum loaded string length.
+# max-string-len: 64
+
+# Uncomment the following line to make the whatis command also print the DWARF location expression of its argument.
+# show-location-expr: true
 `)
 	return err
 }

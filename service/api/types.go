@@ -213,6 +213,9 @@ type Variable struct {
 
 	// Unreadable addresses will have this field set
 	Unreadable string `json:"unreadable"`
+
+	// LocationExpr describes the location expression of this variable's address
+	LocationExpr string
 }
 
 // LoadConfig describes how to load values from target's memory

@@ -981,6 +981,9 @@ func whatisCommand(t *Term, ctx callContext, args string) error {
 	if val.Kind == reflect.Interface && len(val.Children) > 0 {
 		fmt.Printf("Concrete type: %s\n", val.Children[0].Type)
 	}
+	if t.conf.ShowLocationExpr && val.LocationExpr != "" {
+		fmt.Printf("location: %s\n", val.LocationExpr)
+	}
 	return nil
 }
 
