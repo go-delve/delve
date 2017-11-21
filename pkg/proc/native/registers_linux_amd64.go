@@ -1,6 +1,8 @@
 package native
 
 import (
+	"fmt"
+
 	"golang.org/x/arch/x86/x86asm"
 	sys "golang.org/x/sys/unix"
 
@@ -285,5 +287,8 @@ func (thread *Thread) fpRegisters() (regs []proc.Register, err error) {
 	var fpregs proc.LinuxX86Xstate
 	thread.dbp.execPtraceFunc(func() { fpregs, err = PtraceGetRegset(thread.ID) })
 	regs = fpregs.Decode()
+	if err != nil {
+		err = fmt.Errorf("could not get floating point registers: %v", err.Error())
+	}
 	return
 }
