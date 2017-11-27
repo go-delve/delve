@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/derekparker/delve/pkg/config"
@@ -271,11 +270,7 @@ https://github.com/mozilla/rr
 
 func debugCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname := cmd.Flag("output").Value.String()
-		if !strings.HasPrefix(debugname, "/") {
-			debugname = "./" + debugname
-		}
-		debugname, err := filepath.Abs(debugname)
+		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
@@ -292,7 +287,12 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
-		defer os.Remove(debugname)
+		defer func() {
+			err := os.Remove(debugname)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", debugname, err)
+			}
+		}()
 		processArgs := append([]string{debugname}, targetArgs...)
 		return execute(0, processArgs, conf, "", executingGeneratedFile)
 	}()
@@ -301,11 +301,8 @@ func debugCmd(cmd *cobra.Command, args []string) {
 
 func traceCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname := cmd.Flag("output").Value.String()
-		if !strings.HasPrefix(debugname, "/") {
-			debugname = "./" + debugname
-		}
-		debugname, err := filepath.Abs(debugname)
+
+		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
@@ -381,11 +378,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 func testCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname := cmd.Flag("output").Value.String()
-		if !strings.HasPrefix(debugname, "/") {
-			debugname = "./" + debugname
-		}
-		debugname, err := filepath.Abs(debugname)
+		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
