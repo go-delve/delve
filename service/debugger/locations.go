@@ -397,6 +397,9 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
+	if loc.Offset == 0 {
+		return []api.Location{{PC: scope.PC}}, nil
+	}
 	file, line, fn := d.target.BinInfo().PCToLine(scope.PC)
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
