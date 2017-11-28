@@ -148,30 +148,43 @@ func ConvertVar(v *proc.Variable) *Variable {
 		r.Children = make([]Variable, 2)
 		r.Len = 2
 
-		real, _ := constant.Float64Val(constant.Real(v.Value))
-		imag, _ := constant.Float64Val(constant.Imag(v.Value))
-
 		r.Children[0].Name = "real"
 		r.Children[0].Kind = reflect.Float32
-		r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 32)
 
 		r.Children[1].Name = "imaginary"
 		r.Children[1].Kind = reflect.Float32
-		r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 32)
+
+		if v.Value != nil {
+			real, _ := constant.Float64Val(constant.Real(v.Value))
+			r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 32)
+
+			imag, _ := constant.Float64Val(constant.Imag(v.Value))
+			r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 32)
+		} else {
+			r.Children[0].Value = "nil"
+			r.Children[1].Value = "nil"
+		}
+
 	case reflect.Complex128:
 		r.Children = make([]Variable, 2)
 		r.Len = 2
 
-		real, _ := constant.Float64Val(constant.Real(v.Value))
-		imag, _ := constant.Float64Val(constant.Imag(v.Value))
-
 		r.Children[0].Name = "real"
 		r.Children[0].Kind = reflect.Float64
-		r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 64)
 
 		r.Children[1].Name = "imaginary"
 		r.Children[1].Kind = reflect.Float64
-		r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 64)
+
+		if v.Value != nil {
+			real, _ := constant.Float64Val(constant.Real(v.Value))
+			r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 64)
+
+			imag, _ := constant.Float64Val(constant.Imag(v.Value))
+			r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 64)
+		} else {
+			r.Children[0].Value = "nil"
+			r.Children[1].Value = "nil"
+		}
 
 	default:
 		r.Children = make([]Variable, len(v.Children))
