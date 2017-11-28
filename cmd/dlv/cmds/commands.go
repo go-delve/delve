@@ -268,6 +268,14 @@ https://github.com/mozilla/rr
 	return RootCommand
 }
 
+// Remove the file at path and issue a warning to stderr if this fails.
+func remove(path string) {
+	err := os.Remove(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)
+	}
+}
+
 func debugCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
 		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
@@ -287,12 +295,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
-		defer func() {
-			err := os.Remove(debugname)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", debugname, err)
-			}
-		}()
+		defer remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
 		return execute(0, processArgs, conf, "", executingGeneratedFile)
 	}()
@@ -325,7 +328,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			if err := gobuild(debugname, pkg); err != nil {
 				return 1
 			}
-			defer os.Remove(debugname)
+			defer remove(debugname)
 
 			processArgs = append([]string{debugname}, targetArgs...)
 		}
@@ -394,7 +397,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			return 1
 		}
-		defer os.Remove(debugname)
+		defer remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
 
 		return execute(0, processArgs, conf, "", executingGeneratedTest)
