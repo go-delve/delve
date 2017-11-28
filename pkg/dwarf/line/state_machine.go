@@ -236,6 +236,9 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 			break
 		}
 	}
+	if sm.valid {
+		return sm.file, sm.line, true
+	}
 	return "", 0, false
 }
 
