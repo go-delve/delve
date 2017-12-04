@@ -3355,3 +3355,22 @@ func TestIssue1034(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1008(t *testing.T) {
+	// The external linker on macOS inserts "end of sequence" extended opcodes
+	// in debug_line. which we should support correctly.
+	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.main")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		loc, err := p.CurrentThread().Location()
+		assertNoError(err, t, "CurrentThread().Location()")
+		t.Logf("location %v\n", loc)
+		if !strings.HasSuffix(loc.File, "/main.go") {
+			t.Errorf("unexpected location %s:%d\n", loc.File, loc.Line)
+		}
+		if loc.Line > 31 {
+			t.Errorf("unexpected location %s:%d (file only has 30 lines)\n", loc.File, loc.Line)
+		}
+	})
+}
