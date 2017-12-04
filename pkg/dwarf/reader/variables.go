@@ -55,7 +55,7 @@ func (vrdr *VariableReader) Next() bool {
 				}
 			}
 
-			if recur {
+			if recur && vrdr.entry.Children {
 				vrdr.depth++
 			} else {
 				if vrdr.depth == 0 {

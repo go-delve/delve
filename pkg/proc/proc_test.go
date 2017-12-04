@@ -3337,3 +3337,21 @@ func TestSystemstackStacktrace(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1034(t *testing.T) {
+	// The external linker on macOS produces an abbrev for DW_TAG_subprogram
+	// without the "has children" flag, we should support this.
+	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.main")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		frames, err := p.SelectedGoroutine().Stacktrace(10)
+		assertNoError(err, t, "Stacktrace")
+		scope := proc.FrameToScope(p, frames[2])
+		args, _ := scope.FunctionArguments(normalLoadConfig)
+		assertNoError(err, t, "FunctionArguments()")
+		if len(args) > 0 {
+			t.Fatalf("wrong number of arguments for frame %v (%d)", frames[2], len(args))
+		}
+	})
+}
