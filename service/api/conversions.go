@@ -111,9 +111,10 @@ func convertFloatValue(v *proc.Variable, sz int) string {
 	return strconv.FormatFloat(f, 'f', -1, sz)
 }
 
-// ConvertVar converts from proc.Variable to api.Variable.
-func ConvertVar(v *proc.Variable) *Variable {
-	r := Variable{
+// ConvertOneVar converts from proc.Variable to api.Variable, but unlike
+// ConvertVar it does not recursively converts the children of the variable.
+func ConvertOneVar(v *proc.Variable) (r *Variable, hasChildren bool) {
+	r = &Variable{
 		Addr:     v.Addr,
 		OnlyAddr: v.OnlyAddr,
 		Name:     v.Name,
@@ -142,6 +143,10 @@ func ConvertVar(v *proc.Variable) *Variable {
 			r.Value = convertFloatValue(v, 64)
 		case reflect.String, reflect.Func:
 			r.Value = constant.StringVal(v.Value)
+		case reflect.Struct:
+			if v.Value != nil {
+				r.Value = constant.StringVal(v.Value)
+			}
 		default:
 			r.Value = v.ConstDescr()
 			if r.Value == "" {
@@ -194,14 +199,23 @@ func ConvertVar(v *proc.Variable) *Variable {
 		}
 
 	default:
+		hasChildren = true
+	}
+
+	return r, hasChildren
+}
+
+// ConvertVar converts from proc.Variable to api.Variable.
+func ConvertVar(v *proc.Variable) *Variable {
+	r, hasChildren := ConvertOneVar(v)
+	if hasChildren {
 		r.Children = make([]Variable, len(v.Children))
 
 		for i := range v.Children {
 			r.Children[i] = *ConvertVar(&v.Children[i])
 		}
 	}
-
-	return &r
+	return r
 }
 
 // ConvertFunction converts from gosym.Func to

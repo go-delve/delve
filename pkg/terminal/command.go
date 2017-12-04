@@ -194,6 +194,16 @@ Called with more arguments it will execute a command on the specified goroutine.
 	[goroutine <n>] [frame <m>] print <expression>
 
 See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md for a description of supported expressions.`},
+		{aliases: []string{"printf"}, cmdFn: printfVar, helpMsg: `Evaluate an expression, allowing the user to specify formatting options.
+		
+	[goroutine <n>] [frame <m>] printf [-x] [-o] [-n] <expression>
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
+
+See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md for a description of supported expressions.`},
 		{aliases: []string{"whatis"}, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
 
 	whatis <expression>`},
@@ -219,19 +229,34 @@ If regex is specified only the functions matching it will be returned.`},
 If regex is specified only the types matching it will be returned.`},
 		{aliases: []string{"args"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: args, helpMsg: `Print function arguments.
 
-	[goroutine <n>] [frame <m>] args [-v] [<regex>]
+	[goroutine <n>] [frame <m>] args [-v] [-x] [-o] [-n]  [<regex>]
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
 
 If regex is specified only function arguments with a name matching it will be returned. If -v is specified more information about each function argument will be shown.`},
 		{aliases: []string{"locals"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: locals, helpMsg: `Print local variables.
 
-	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
+	[goroutine <n>] [frame <m>] locals [-v] [-x] [-o] [-n]  [<regex>]
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
 
 The name of variables that are shadowed in the current scope will be shown in parenthesis.
 
 If regex is specified only local variables with a name matching it will be returned. If -v is specified more information about each local variable will be shown.`},
 		{aliases: []string{"vars"}, cmdFn: vars, helpMsg: `Print package variables.
 
-	vars [-v] [<regex>]
+	vars [-v] [-x] [-o] [-n] [<regex>]
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
 
 If regex is specified only package variables with a name matching it will be returned. If -v is specified more information about each package variable will be shown.`},
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: `Print contents of CPU registers.
@@ -1235,7 +1260,20 @@ func printVar(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
-	fmt.Println(val.MultilineString(""))
+	fmt.Println(val.MultilineString("", api.PrettyPrintSpecialTypes))
+	return nil
+}
+
+func printfVar(t *Term, ctx callContext, args string) error {
+	expr, prettyPrintFlags, _ := parseVarArguments(args, t)
+	if expr == "" {
+		return fmt.Errorf("not enough arguments")
+	}
+	val, err := t.client.EvalVariable(ctx.Scope, expr, t.loadConfig())
+	if err != nil {
+		return err
+	}
+	fmt.Println(val.MultilineString("", prettyPrintFlags))
 	return nil
 }
 
@@ -1279,7 +1317,7 @@ func setVar(t *Term, ctx callContext, args string) error {
 	return t.client.SetVariable(ctx.Scope, lexpr, rexpr)
 }
 
-func printFilteredVariables(varType string, vars []api.Variable, filter string, cfg api.LoadConfig) error {
+func printFilteredVariables(varType string, vars []api.Variable, filter string, cfg api.LoadConfig, flags api.PrettyPrintFlags) error {
 	reg, err := regexp.Compile(filter)
 	if err != nil {
 		return err
@@ -1293,9 +1331,9 @@ func printFilteredVariables(varType string, vars []api.Variable, filter string, 
 				name = "(" + name + ")"
 			}
 			if cfg == ShortLoadConfig {
-				fmt.Printf("%s = %s\n", name, v.SinglelineString())
+				fmt.Printf("%s = %s\n", name, v.SinglelineString(flags))
 			} else {
-				fmt.Printf("%s = %s\n", name, v.MultilineString(""))
+				fmt.Printf("%s = %s\n", name, v.MultilineString("", flags))
 			}
 		}
 	}
@@ -1328,19 +1366,41 @@ func types(t *Term, ctx callContext, args string) error {
 	return printSortedStrings(t.client.ListTypes(args))
 }
 
-func parseVarArguments(args string, t *Term) (filter string, cfg api.LoadConfig) {
-	if v := strings.SplitN(args, " ", 2); len(v) >= 1 && v[0] == "-v" {
-		if len(v) == 2 {
-			return v[1], t.loadConfig()
-		} else {
-			return "", t.loadConfig()
+func parseVarArguments(args string, t *Term) (filter string, prettyPrintFlags api.PrettyPrintFlags, cfg api.LoadConfig) {
+	cfg = ShortLoadConfig
+	prettyPrintFlags = api.PrettyPrintSpecialTypes
+	for {
+		v := strings.SplitN(args, " ", 2)
+		if len(v) < 1 {
+			return "", prettyPrintFlags, cfg
 		}
+		switch v[0] {
+		case "-v":
+			cfg = t.loadConfig()
+		case "-x":
+			prettyPrintFlags |= api.PrettyPrintHexadecimal
+		case "-o":
+			prettyPrintFlags |= api.PrettyPrintOctal
+		case "-n":
+			prettyPrintFlags &= ^api.PrettyPrintSpecialTypes
+		case "--":
+			if len(v) == 2 {
+				return v[1], prettyPrintFlags, cfg
+			} else {
+				return "", prettyPrintFlags, cfg
+			}
+		default:
+			return args, prettyPrintFlags, cfg
+		}
+		if len(v) < 2 {
+			return "", prettyPrintFlags, cfg
+		}
+		args = v[1]
 	}
-	return args, ShortLoadConfig
 }
 
 func args(t *Term, ctx callContext, args string) error {
-	filter, cfg := parseVarArguments(args, t)
+	filter, prettyPrintFlags, cfg := parseVarArguments(args, t)
 	if ctx.Prefix == onPrefix {
 		if filter != "" {
 			return fmt.Errorf("filter not supported on breakpoint")
@@ -1352,11 +1412,11 @@ func args(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	return printFilteredVariables("args", vars, filter, cfg)
+	return printFilteredVariables("args", vars, filter, cfg, prettyPrintFlags)
 }
 
 func locals(t *Term, ctx callContext, args string) error {
-	filter, cfg := parseVarArguments(args, t)
+	filter, prettyPrintFlags, cfg := parseVarArguments(args, t)
 	if ctx.Prefix == onPrefix {
 		if filter != "" {
 			return fmt.Errorf("filter not supported on breakpoint")
@@ -1368,16 +1428,16 @@ func locals(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	return printFilteredVariables("locals", locals, filter, cfg)
+	return printFilteredVariables("locals", locals, filter, cfg, prettyPrintFlags)
 }
 
 func vars(t *Term, ctx callContext, args string) error {
-	filter, cfg := parseVarArguments(args, t)
+	filter, prettyPrintFlags, cfg := parseVarArguments(args, t)
 	vars, err := t.client.ListPackageVariables(filter, cfg)
 	if err != nil {
 		return err
 	}
-	return printFilteredVariables("vars", vars, filter, cfg)
+	return printFilteredVariables("vars", vars, filter, cfg, prettyPrintFlags)
 }
 
 func regs(t *Term, ctx callContext, args string) error {
@@ -1632,10 +1692,10 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 		}
 
 		for j := range stack[i].Arguments {
-			fmt.Printf("%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString())
+			fmt.Printf("%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString(0))
 		}
 		for j := range stack[i].Locals {
-			fmt.Printf("%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString())
+			fmt.Printf("%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString(0))
 		}
 
 		if extranl {
@@ -1706,7 +1766,7 @@ func printReturnValues(th *api.Thread) {
 	}
 	fmt.Println("Values returned:")
 	for _, v := range th.ReturnValues {
-		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", 0))
 	}
 	fmt.Println()
 }
@@ -1730,7 +1790,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			// Filter them out here instead, so during trace operations
 			// they are not printed as an argument.
 			if (ar.Flags & api.VariableArgument) != 0 {
-				arg = append(arg, ar.SinglelineString())
+				arg = append(arg, ar.SinglelineString(0))
 			}
 		}
 		args = strings.Join(arg, ", ")
@@ -1777,20 +1837,20 @@ func printcontextThread(t *Term, th *api.Thread) {
 		}
 
 		for _, v := range bpi.Variables {
-			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", 0))
 		}
 
 		for _, v := range bpi.Locals {
 			if *bp.LoadLocals == LongLoadConfig {
-				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", 0))
 			} else {
-				fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
+				fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString(0))
 			}
 		}
 
 		if bp.LoadArgs != nil && *bp.LoadArgs == LongLoadConfig {
 			for _, v := range bpi.Arguments {
-				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", 0))
 			}
 		}
 

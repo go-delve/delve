@@ -29,6 +29,7 @@ Command | Description
 [next](#next) | Step over to next source line.
 [on](#on) | Executes a command when a breakpoint is hit.
 [print](#print) | Evaluate an expression.
+[printf](#printf) | Evaluate an expression, allowing the user to specify formatting options.
 [regs](#regs) | Print contents of CPU registers.
 [restart](#restart) | Restart process from a checkpoint or event.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
@@ -50,7 +51,12 @@ Command | Description
 ## args
 Print function arguments.
 
-	[goroutine <n>] [frame <m>] args [-v] [<regex>]
+	[goroutine <n>] [frame <m>] args [-v] [-x] [-o] [-n]  [<regex>]
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
 
 If regex is specified only function arguments with a name matching it will be returned. If -v is specified more information about each function argument will be shown.
 
@@ -278,7 +284,12 @@ Aliases: ls l
 ## locals
 Print local variables.
 
-	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
+	[goroutine <n>] [frame <m>] locals [-v] [-x] [-o] [-n]  [<regex>]
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
 
 The name of variables that are shadowed in the current scope will be shown in parenthesis.
 
@@ -306,6 +317,19 @@ Evaluate an expression.
 See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
 
 Aliases: p
+
+## printf
+Evaluate an expression, allowing the user to specify formatting options.
+		
+	[goroutine <n>] [frame <m>] printf [-x] [-o] [-n] <expression>
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
+
+See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
+
 
 ## regs
 Print contents of CPU registers.
@@ -417,7 +441,12 @@ Move the current frame up by <m>. The second form runs the command on the given 
 ## vars
 Print package variables.
 
-	vars [-v] [<regex>]
+	vars [-v] [-x] [-o] [-n] [<regex>]
+	
+	-v	more information about each package variable will be shown
+	-x	print numbers in hexadecimal
+	-o	print numbers in octal
+	-n	disables pretty printing of some built in types
 
 If regex is specified only package variables with a name matching it will be returned. If -v is specified more information about each package variable will be shown.
 

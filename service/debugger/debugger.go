@@ -321,7 +321,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		th := api.ConvertThread(thread)
 
 		if retLoadCfg != nil {
-			th.ReturnValues = convertVars(thread.Common().ReturnValues(*retLoadCfg))
+			th.ReturnValues = d.convertVars(thread.Common().ReturnValues(*retLoadCfg))
 		}
 
 		state.Threads = append(state.Threads, th)
@@ -700,17 +700,17 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			if err != nil {
 				bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
 			} else {
-				bpi.Variables[i] = *api.ConvertVar(v)
+				bpi.Variables[i] = *FormatAndConvertVar(v, d.target.BinInfo().Arch)
 			}
 		}
 		if bp.LoadArgs != nil {
 			if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {
-				bpi.Arguments = convertVars(vars)
+				bpi.Arguments = d.convertVars(vars)
 			}
 		}
 		if bp.LoadLocals != nil {
 			if locals, err := s.LocalVariables(*api.LoadConfigToProc(bp.LoadLocals)); err == nil {
-				bpi.Locals = convertVars(locals)
+				bpi.Locals = d.convertVars(locals)
 			}
 		}
 	}
@@ -811,7 +811,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 	}
 	for _, v := range pv {
 		if regex.Match([]byte(v.Name)) {
-			vars = append(vars, *api.ConvertVar(v))
+			vars = append(vars, *FormatAndConvertVar(v, d.target.BinInfo().Arch))
 		}
 	}
 	return vars, err
@@ -833,13 +833,13 @@ func (d *Debugger) Registers(threadID int, floatingPoint bool) (api.Registers, e
 	return api.ConvertRegisters(regs.Slice(floatingPoint)), err
 }
 
-func convertVars(pv []*proc.Variable) []api.Variable {
+func (d *Debugger) convertVars(pv []*proc.Variable) []api.Variable {
 	if pv == nil {
 		return nil
 	}
 	vars := make([]api.Variable, 0, len(pv))
 	for _, v := range pv {
-		vars = append(vars, *api.ConvertVar(v))
+		vars = append(vars, *FormatAndConvertVar(v, d.target.BinInfo().Arch))
 	}
 	return vars
 }
@@ -857,7 +857,7 @@ func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]a
 	if err != nil {
 		return nil, err
 	}
-	return convertVars(pv), err
+	return d.convertVars(pv), err
 }
 
 // FunctionArguments returns the arguments to the current function.
@@ -873,7 +873,7 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) (
 	if err != nil {
 		return nil, err
 	}
-	return convertVars(pv), nil
+	return d.convertVars(pv), nil
 }
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
@@ -890,7 +890,7 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg p
 	if err != nil {
 		return nil, err
 	}
-	return api.ConvertVar(v), err
+	return FormatAndConvertVar(v, d.target.BinInfo().Arch), err
 }
 
 // SetVariableInScope will set the value of the variable represented by
@@ -980,8 +980,8 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 				return nil, err
 			}
 
-			frame.Locals = convertVars(locals)
-			frame.Arguments = convertVars(arguments)
+			frame.Locals = d.convertVars(locals)
+			frame.Arguments = d.convertVars(arguments)
 		}
 		locations = append(locations, frame)
 	}

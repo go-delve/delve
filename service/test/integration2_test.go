@@ -758,7 +758,7 @@ func TestClientServer_EvalVariable(t *testing.T) {
 		var1, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "a1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
 
-		t.Logf("var1: %s", var1.SinglelineString())
+		t.Logf("var1: %s", var1.SinglelineString(0))
 
 		if var1.Value != "foofoofoofoofoofoo" {
 			t.Fatalf("Wrong variable value: %s", var1.Value)
@@ -1071,7 +1071,7 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 		nvar, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "n", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 
-		if nvar.SinglelineString() != "7" {
+		if nvar.SinglelineString(0) != "7" {
 			t.Fatalf("Stopped on wrong goroutine %s\n", nvar.Value)
 		}
 	})
@@ -1183,7 +1183,7 @@ func TestIssue406(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 		v, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
-		vs := v.MultilineString("")
+		vs := v.MultilineString("", 0)
 		t.Logf("cfgtree formats to: %s\n", vs)
 	})
 }

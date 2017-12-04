@@ -863,3 +863,26 @@ func TestIssue1493(t *testing.T) {
 		}
 	})
 }
+
+func TestPrintf(t *testing.T) {
+	ver, _ := goversion.Parse(runtime.Version())
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+		if out := term.MustExec("printf -x i1"); out != "0x1\n" {
+			t.Fatalf("bad hexadecimal output: %q", out)
+		}
+		if out := term.MustExec("goroutine 1 printf -x i1"); out != "0x1\n" {
+			t.Fatalf("bad hexadecimal output (with scope prefix): %q", out)
+		}
+		if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+			// time.Time structure changed in 1.9, delve only provides pretty
+			// formatting for time.Time in 1.9 or later.
+			if out := term.MustExec("p tim1"); out != "time.Time(1977-05-25T18:00:00Z)\n" {
+				t.Fatalf("bad time formatting: %q", out)
+			}
+		}
+		if out := term.MustExec("printf -n tim1"); out == "time.Time(1977-05-25T18:00:00Z)\n" {
+			t.Fatalf("bad time formatting (with special formatting disabled): %q", out)
+		}
+	})
+}
