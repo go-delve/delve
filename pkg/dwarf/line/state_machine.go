@@ -272,6 +272,14 @@ func (sm *StateMachine) next() error {
 	if sm.valid {
 		sm.lastAddress, sm.lastFile, sm.lastLine = sm.address, sm.file, sm.line
 	}
+	if sm.endSeq {
+		sm.endSeq = false
+		sm.file = sm.dbl.FileNames[0].Path
+		sm.line = 1
+		sm.column = 0
+		sm.isStmt = false
+		sm.basicBlock = false
+	}
 	b, err := sm.buf.ReadByte()
 	if err != nil {
 		return err
