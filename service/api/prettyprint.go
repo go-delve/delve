@@ -74,6 +74,12 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 	case reflect.Struct:
 		v.writeStructTo(buf, newlines, includeType, indent)
 	case reflect.Interface:
+		if v.Addr == 0 {
+			// an escaped interface variable that points to nil, this shouldn't
+			// happen in normal code but can happen if the variable is out of scope.
+			fmt.Fprintf(buf, "nil")
+			return
+		}
 		if includeType {
 			if v.Children[0].Kind == reflect.Invalid {
 				fmt.Fprintf(buf, "%s ", v.Type)
