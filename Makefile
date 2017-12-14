@@ -1,6 +1,6 @@
 .DEFAULT_GOAL=test
 UNAME=$(shell uname)
-PREFIX=github.com/derekparker/delve
+PREFIX=$(shell echo "${PWD}" | sed -e "s?${GOPATH}/src/??" )
 GOVERSION=$(shell go version)
 BUILD_SHA=$(shell git rev-parse HEAD)
 LLDB_SERVER=$(shell which lldb-server)
@@ -40,7 +40,7 @@ endif
 endif
 
 build: check-cert
-	go build $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
+	go build $(BUILD_FLAGS) $(PREFIX)/cmd/dlv
 ifdef DARWIN
 ifdef CERT
 	codesign -s "$(CERT)"  ./dlv
@@ -48,7 +48,7 @@ endif
 endif
 
 install: check-cert
-	go install $(BUILD_FLAGS) github.com/derekparker/delve/cmd/dlv
+	go install $(BUILD_FLAGS) $(PREFIX)/cmd/dlv
 ifdef DARWIN
 ifneq "$(GOBIN)" ""
 	codesign -s "$(CERT)"  $(GOBIN)/dlv
