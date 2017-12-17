@@ -1,6 +1,7 @@
 .DEFAULT_GOAL=test
 UNAME=$(shell uname)
 PREFIX=github.com/derekparker/delve
+GOPATH=$(shell go env GOPATH)
 GOVERSION=$(shell go version)
 BUILD_SHA=$(shell git rev-parse HEAD)
 LLDB_SERVER=$(shell which lldb-server)
