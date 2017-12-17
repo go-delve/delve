@@ -156,7 +156,12 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 
 	_, err = os.Stat(debugbin)
 	if err == nil {
-		t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
+		if strings.ToLower(os.Getenv("APPVEYOR")) != "true" {
+			// Sometimes delve on Appveyor can't remove the built binary before
+			// exiting and gets an "Access is denied" error when trying.
+			// See: https://ci.appveyor.com/project/derekparker/delve/build/1527
+			t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
+		}
 		return
 	}
 	if !os.IsNotExist(err) {
