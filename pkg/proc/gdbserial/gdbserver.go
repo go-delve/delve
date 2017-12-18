@@ -577,7 +577,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 	var err error
 continueLoop:
 	for {
-		tu.done = false
+		tu.Reset()
 		threadID, sig, err = p.conn.resume(sig, &tu)
 		if err != nil {
 			if _, exited := err.(proc.ProcessExitedError); exited {
@@ -979,6 +979,11 @@ type threadUpdater struct {
 	p    *Process
 	seen map[int]bool
 	done bool
+}
+
+func (tu *threadUpdater) Reset() {
+	tu.done = false
+	tu.seen = nil
 }
 
 func (tu *threadUpdater) Add(threads []string) error {
