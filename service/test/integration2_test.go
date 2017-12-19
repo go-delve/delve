@@ -1387,3 +1387,32 @@ func TestClientServer_collectBreakpointInfoError(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 	})
 }
+
+func TestClientServerConsistentExit(t *testing.T) {
+	protest.AllowRecording(t)
+	// This test is useful because it ensures that Next and Continue operations both
+	// exit with the same exit status and details when the target application terminates.
+	// Other program execution API calls should also behave in the same way.
+	// An error should be pressent in state.Err.
+	withTestClient2("pr1055", t, func(c service.Client) {
+		fp := testProgPath(t, "pr1055")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 12})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
+		}
+		state, err = c.Next()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if !state.Exited {
+			t.Fatal("Process state is not exited")
+		}
+		if state.ExitStatus != 2 {
+			t.Fatalf("Process exit status is not 2, got: %v", state.ExitStatus)
+		}
+	})
+}
