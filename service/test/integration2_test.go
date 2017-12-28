@@ -175,7 +175,7 @@ func TestRestart_attachPid(t *testing.T) {
 		APIVersion: 2,
 		Backend:    testBackend,
 	}, false)
-	if err := server.Restart(); err == nil {
+	if err := server.Restart(nil); err == nil {
 		t.Fatal("expected error on restart after attaching to pid but got none")
 	}
 }

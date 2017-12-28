@@ -21,7 +21,7 @@ type Client interface {
 	// Restarts program.
 	Restart() ([]api.DiscardedBreakpoint, error)
 	// Restarts program from the specified position.
-	RestartFrom(pos string) ([]api.DiscardedBreakpoint, error)
+	RestartFrom(pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error)
 
 	// GetState returns the current debugger state.
 	GetState() (*api.DebuggerState, error)

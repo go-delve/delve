@@ -14,10 +14,10 @@ import (
 
 // Client is a RPC service.Client.
 type RPCClient struct {
-	addr       string
-	client     *rpc.Client
-	haltMu     sync.Mutex
-	haltReq    bool
+	addr    string
+	client  *rpc.Client
+	haltMu  sync.Mutex
+	haltReq bool
 }
 
 var unsupportedApiError = errors.New("unsupported")

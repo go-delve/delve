@@ -572,7 +572,7 @@ func gobuild(debugname, pkg string) error {
 }
 
 func gotestbuild(debugname, pkg string) error {
-	args := []string{ "-c", "-o", debugname}
+	args := []string{"-c", "-o", debugname}
 	args = optflags(args)
 	if BuildFlags != "" {
 		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)

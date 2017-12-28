@@ -587,7 +587,35 @@ func TestCheckpoints(t *testing.T) {
 		term.MustExec("checkpoints")
 		listIsAt(t, term, "next", 17, -1, -1)
 		listIsAt(t, term, "next", 18, -1, -1)
-		listIsAt(t, term, "restart c1", 16, -1, -1)
+		listIsAt(t, term, "restart -c c1", 16, -1, -1)
+	})
+}
+
+func TestRestart(t *testing.T) {
+	withTestTerminal("restartargs", t, func(term *FakeTerminal) {
+		term.MustExec("break main.printArgs")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", []") {
+			t.Fatalf("wrong args: %q", out)
+		}
+		// Reset the arg list
+		term.MustExec("restart -args hello")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", [\"hello\"]") {
+			t.Fatalf("wrong args: %q ", out)
+		}
+		// Restart w/o arg should retain the current args.
+		term.MustExec("restart")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", [\"hello\"]") {
+			t.Fatalf("wrong args: %q ", out)
+		}
+		// Empty arg list
+		term.MustExec("restart -args")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", []") {
+			t.Fatalf("wrong args: %q ", out)
+		}
 	})
 }
 

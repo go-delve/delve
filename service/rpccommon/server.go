@@ -89,7 +89,7 @@ func (s *ServerImpl) Stop(kill bool) error {
 }
 
 // Restart restarts the debugger.
-func (s *ServerImpl) Restart() error {
+func (s *ServerImpl) Restart(args []string) error {
 	if s.config.AttachPid != 0 {
 		return errors.New("cannot restart process Delve did not create")
 	}
@@ -111,12 +111,12 @@ func (s *ServerImpl) Run() error {
 
 	// Create and start the debugger
 	if s.debugger, err = debugger.New(&debugger.Config{
-		ProcessArgs: s.config.ProcessArgs,
-		AttachPid:   s.config.AttachPid,
-		WorkingDir:  s.config.WorkingDir,
-		CoreFile:    s.config.CoreFile,
-		Backend:     s.config.Backend,
-	}); err != nil {
+		AttachPid:  s.config.AttachPid,
+		WorkingDir: s.config.WorkingDir,
+		CoreFile:   s.config.CoreFile,
+		Backend:    s.config.Backend,
+	},
+		s.config.ProcessArgs); err != nil {
 		return err
 	}
 
