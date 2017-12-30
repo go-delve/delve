@@ -5,7 +5,7 @@ Please use the following steps to build and install Delve on Linux.
 There are two ways to install on Linux. First is the standard `go get` method:
 
 ```
-go get github.com/derekparker/delve/cmd/dlv
+go get -u github.com/derekparker/delve/cmd/dlv
 ```
 
 Alternatively, you can clone the repo and run:
