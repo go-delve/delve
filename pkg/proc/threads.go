@@ -354,15 +354,15 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 //
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
-func GetG(thread Thread) (g *G, err error) {
+func GetG(thread Thread) (*G, error) {
 	gaddr, err := getGVariable(thread)
 	if err != nil {
 		return nil, err
 	}
 
-	g, err = gaddr.parseG()
+	g, err := gaddr.parseG()
 	if err != nil {
-		return
+		return nil, err
 	}
 	if g.ID == 0 {
 		// The runtime uses a special goroutine with ID == 0 to mark that the
@@ -372,10 +372,13 @@ func GetG(thread Thread) (g *G, err error) {
 		// For our purposes it's better if we always return the real goroutine
 		// since the rest of the code assumes the goroutine ID is univocal.
 		// The real 'current goroutine' is stored in g0.m.curg
-		curgvar, _ := g.variable.fieldVariable("m").structMember("curg")
+		curgvar, err := g.variable.fieldVariable("m").structMember("curg")
+		if err != nil {
+			return nil, err
+		}
 		g, err = curgvar.parseG()
 		if err != nil {
-			return
+			return nil, err
 		}
 		g.SystemStack = true
 	}
@@ -383,7 +386,7 @@ func GetG(thread Thread) (g *G, err error) {
 	if loc, err := thread.Location(); err == nil {
 		g.CurrentLoc = *loc
 	}
-	return
+	return g, nil
 }
 
 // ThreadScope returns an EvalScope for this thread.
