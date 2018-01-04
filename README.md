@@ -11,7 +11,7 @@ The Github issue tracker is for **bugs** only. Please use the [developer mailing
 ### About Delve
 
 - [Installation](Documentation/installation)
-- [Getting Started](Documentation/cli/getting_started)
+- [Getting Started](Documentation/cli/getting_started.md)
 - [Documentation](Documentation)
 - [Contributing](CONTRIBUTING.md)
 
