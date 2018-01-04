@@ -587,7 +587,7 @@ func TestCheckpoints(t *testing.T) {
 		term.MustExec("checkpoints")
 		listIsAt(t, term, "next", 17, -1, -1)
 		listIsAt(t, term, "next", 18, -1, -1)
-		listIsAt(t, term, "restart -c c1", 16, -1, -1)
+		listIsAt(t, term, "restart c1", 16, -1, -1)
 	})
 }
 

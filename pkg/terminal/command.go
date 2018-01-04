@@ -5,7 +5,6 @@ package terminal
 import (
 	"bufio"
 	"errors"
-	"flag"
 	"fmt"
 	"go/parser"
 	"go/scanner"
@@ -105,11 +104,16 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: `Restart process.
 
-  restart [-c checkpoint] [-args newargv...]
+  restart
+  restart checkpoint
+  restart newargv...
+  restart -args
 
-  -c restarts the process from the given checkpoint.
-  -args replaces the process argv[1...] with newargv.
-     -args is ignored if -c flag is set.
+  The first form restarts the process with the same commandline args or the checkpoint.
+  The second form is used to restarts the recorded program from the given checkpoint.
+  The third form restarts the program. If newargv... is nonempty, it is used as the
+  commandline args of the new process. The fourth form restarts the program with
+  empty commoandline args.
 `},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, allowedPrefixes: scopePrefix, cmdFn: step, helpMsg: "Single step through program."},
@@ -291,7 +295,7 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 			if v.match("restart") {
 				v.helpMsg = `Restart process from a checkpoint or event.
 
-	restart -c [event number or checkpoint id]`
+  restart [event number or checkpoint id]`
 			}
 		}
 	}
@@ -662,36 +666,45 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 		prefix, formatLocation(g.GoStatementLoc))
 }
 
-func parseArgs(args string, flags *flag.FlagSet) error {
+func parseArgs(args string) ([]string, error) {
 	if args == "" {
-		return nil
+		return nil, nil
 	}
 	v, err := argv.Argv([]rune(args), argv.ParseEnv(os.Environ()),
 		func(s []rune, _ map[string]string) ([]rune, error) {
 			return nil, fmt.Errorf("Backtick not supported in '%s'", string(s))
 		})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(v) != 1 {
-		return fmt.Errorf("Illegal commandline '%s'", args)
+		return nil, fmt.Errorf("Illegal commandline '%s'", args)
 	}
-	return flags.Parse(v[0])
+	return v[0], nil
 }
 
 func restart(t *Term, ctx callContext, args string) error {
-	var restartPos string
-	var resetArgs bool
-	flags := flag.NewFlagSet("restart", flag.ContinueOnError)
-	flags.StringVar(&restartPos, "c", "", "Restart position")
-	flags.BoolVar(&resetArgs, "args", false, "Restart the process with new args")
-	if err := parseArgs(args, flags); err != nil {
+	v, err := parseArgs(args)
+	if err != nil {
 		return err
 	}
-	if !resetArgs && flags.NArg() > 0 {
-		return fmt.Errorf("restart: unused arguments '%v' (use -args to reset process args)", flags.Args())
+	var restartPos string
+	var resetArgs bool
+	if t.client.Recorded() {
+		if len(v) > 1 {
+			return fmt.Errorf("restart: illegal position '%v'", v)
+		}
+		if len(v) == 1 {
+			restartPos = v[0]
+			v = nil
+		}
+	} else if len(v) > 0 {
+		resetArgs = true
+		if v[0] == "-args" {
+			v = v[1:]
+		}
 	}
-	discarded, err := t.client.RestartFrom(restartPos, resetArgs, flags.Args())
+	discarded, err := t.client.RestartFrom(restartPos, resetArgs, v)
 	if err != nil {
 		return err
 	}
