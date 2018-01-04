@@ -4,6 +4,7 @@ import (
 	"debug/dwarf"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/derekparker/delve/pkg/dwarf/frame"
 	"github.com/derekparker/delve/pkg/dwarf/op"
@@ -245,34 +246,6 @@ func (it *stackIterator) switchStack() bool {
 		it.top = false
 		return true
 
-	case "runtime.mstart", "runtime.sigtramp":
-		if it.top || !it.systemstack || it.g == nil {
-			return false
-		}
-
-		// Calls to runtime.systemstack will switch to the systemstack then:
-		// 1. alter the goroutine stack so that it looks like systemstack_switch
-		//    was called
-		// 2. alter the system stack so that it looks like the bottom-most frame
-		//    belongs to runtime.mstart
-		// If we find a runtime.mstart frame on the system stack of a goroutine
-		// parked on runtime.systemstack_switch we assume runtime.systemstack was
-		// called and continue tracing from the parked position.
-		//
-		// OS Signals are processed on a special signal handling stack that works
-		// similarly to the system stack, runtime.sigtramp is at the bottom of
-		// this stack.
-
-		if fn := it.bi.PCToFunc(it.g.PC); fn == nil || fn.Name != "runtime.systemstack_switch" {
-			return false
-		}
-		it.systemstack = false
-		it.pc = it.g.PC
-		it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
-		it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
-		it.top = false
-		return true
-
 	case "runtime.cgocallback_gofunc":
 		// For a detailed description of how this works read the long comment at
 		// the start of $GOROOT/src/runtime/cgocall.go and the source code of
@@ -309,6 +282,22 @@ func (it *stackIterator) switchStack() bool {
 		return true
 
 	default:
+		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") {
+			// The runtime switches to the system stack in multiple places.
+			// This usually happens through a call to runtime.systemstack but there
+			// are functions that switch to the system stack manually (for example
+			// runtime.morestack).
+			// Since we are only interested in printing the system stack for cgo
+			// calls we switch directly to the goroutine stack if we detect that the
+			// function at the top of the stack is a runtime function.
+			it.systemstack = false
+			it.top = false
+			it.pc = it.g.PC
+			it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
+			it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
+			return true
+		}
+
 		return false
 	}
 }

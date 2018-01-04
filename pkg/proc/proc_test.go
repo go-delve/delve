@@ -3348,7 +3348,32 @@ func TestSystemstackStacktrace(t *testing.T) {
 		frames, err := g.Stacktrace(100)
 		assertNoError(err, t, "stacktrace")
 		logStacktrace(t, frames)
-		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "!runtime.systemstack", "runtime.startpanic", "main.main"}, frames)
+		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "runtime.startpanic", "main.main"}, frames)
+		if m == nil {
+			t.Fatal("see previous loglines")
+		}
+	})
+}
+
+func TestSystemstackOnRuntimeNewstack(t *testing.T) {
+	// The bug being tested here manifests as follows:
+	// - set a breakpoint somewhere or interrupt the program with Ctrl-C
+	// - try to look at stacktraces of other goroutines
+	// If one of the other goroutines is resizing its own stack the stack
+	// command won't work for it.
+	withTestProcess("binarytrees", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.main")
+		assertNoError(err, t, "setFunctionBreakpoint(main.main)")
+		assertNoError(proc.Continue(p), t, "first continue")
+		_, err = setFunctionBreakpoint(p, "runtime.newstack")
+		assertNoError(err, t, "setFunctionBreakpoint(runtime.newstack)")
+		assertNoError(proc.Continue(p), t, "second continue")
+		g, err := proc.GetG(p.CurrentThread())
+		assertNoError(err, t, "GetG")
+		frames, err := g.Stacktrace(100)
+		assertNoError(err, t, "stacktrace")
+		logStacktrace(t, frames)
+		m := stacktraceCheck(t, []string{"!runtime.newstack", "main.main"}, frames)
 		if m == nil {
 			t.Fatal("see previous loglines")
 		}
