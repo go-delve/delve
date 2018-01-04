@@ -1389,7 +1389,6 @@ func TestClientServer_collectBreakpointInfoError(t *testing.T) {
 }
 
 func TestClientServerConsistentExit(t *testing.T) {
-	protest.AllowRecording(t)
 	// This test is useful because it ensures that Next and Continue operations both
 	// exit with the same exit status and details when the target application terminates.
 	// Other program execution API calls should also behave in the same way.
