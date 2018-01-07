@@ -599,7 +599,7 @@ func TestRestart(t *testing.T) {
 			t.Fatalf("wrong args: %q", out)
 		}
 		// Reset the arg list
-		term.MustExec("restart -args hello")
+		term.MustExec("restart hello")
 		term.MustExec("continue")
 		if out := term.MustExec("print main.args"); !strings.Contains(out, ", [\"hello\"]") {
 			t.Fatalf("wrong args: %q ", out)
@@ -611,7 +611,7 @@ func TestRestart(t *testing.T) {
 			t.Fatalf("wrong args: %q ", out)
 		}
 		// Empty arg list
-		term.MustExec("restart -args")
+		term.MustExec("restart -noargs")
 		term.MustExec("continue")
 		if out := term.MustExec("print main.args"); !strings.Contains(out, ", []") {
 			t.Fatalf("wrong args: %q ", out)

@@ -30,7 +30,7 @@ import (
 type Debugger struct {
 	config *Config
 	// arguments to launch a new process.
-	args []string
+	processArgs []string
 	// TODO(DO NOT MERGE WITHOUT) rename to targetMutex
 	processMutex sync.Mutex
 	target       proc.Process
@@ -56,12 +56,12 @@ type Config struct {
 	Backend string
 }
 
-// New creates a new Debugger. Args specify the commandline arguments for the
+// New creates a new Debugger. ProcessArgs specify the commandline arguments for the
 // new process.
-func New(config *Config, args []string) (*Debugger, error) {
+func New(config *Config, processArgs []string) (*Debugger, error) {
 	d := &Debugger{
-		config: config,
-		args:   args,
+		config:      config,
+		processArgs: processArgs,
 	}
 
 	// Create the process by either attaching or launching.
@@ -69,8 +69,8 @@ func New(config *Config, args []string) (*Debugger, error) {
 	case d.config.AttachPid > 0:
 		log.Printf("attaching to pid %d", d.config.AttachPid)
 		path := ""
-		if len(d.args) > 0 {
-			path = d.args[0]
+		if len(d.processArgs) > 0 {
+			path = d.processArgs[0]
 		}
 		p, err := d.Attach(d.config.AttachPid, path)
 		if err != nil {
@@ -86,8 +86,8 @@ func New(config *Config, args []string) (*Debugger, error) {
 			log.Printf("opening trace %s", d.config.CoreFile)
 			p, err = gdbserial.Replay(d.config.CoreFile, false)
 		default:
-			log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.args[0])
-			p, err = core.OpenCore(d.config.CoreFile, d.args[0])
+			log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
+			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0])
 		}
 		if err != nil {
 			return nil, err
@@ -95,8 +95,8 @@ func New(config *Config, args []string) (*Debugger, error) {
 		d.target = p
 
 	default:
-		log.Printf("launching process with args: %v", d.args)
-		p, err := d.Launch(d.args, d.config.WorkingDir)
+		log.Printf("launching process with args: %v", d.processArgs)
+		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
 			if err != proc.NotExecutableErr && err != proc.UnsupportedLinuxArchErr && err != proc.UnsupportedWindowsArchErr && err != proc.UnsupportedDarwinArchErr {
 				err = fmt.Errorf("could not launch process: %s", err)
@@ -204,9 +204,9 @@ func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.
 		return nil, err
 	}
 	if resetArgs {
-		d.args = append([]string{d.args[0]}, newArgs...)
+		d.processArgs = append([]string{d.processArgs[0]}, newArgs...)
 	}
-	p, err := d.Launch(d.args, d.config.WorkingDir)
+	p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 	if err != nil {
 		return nil, fmt.Errorf("could not launch process: %s", err)
 	}

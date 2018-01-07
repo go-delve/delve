@@ -104,16 +104,12 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: `Restart process.
 
-  restart
-  restart checkpoint
-  restart newargv...
-  restart -args
+  restart [checkpoint]
+  restart [-noargs] newargv...
 
-  The first form restarts the process with the same commandline args or the checkpoint.
-  The second form is used to restarts the recorded program from the given checkpoint.
-  The third form restarts the program. If newargv... is nonempty, it is used as the
-  commandline args of the new process. The fourth form restarts the program with
-  empty commoandline args.
+  For recorded processes restarts from the start or from the specified
+  checkpoint.  For normal processes restarts the process, optionally changing
+  the arguments.  With -noargs, the process starts with an empty commandline.
 `},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, allowedPrefixes: scopePrefix, cmdFn: step, helpMsg: "Single step through program."},
@@ -700,8 +696,11 @@ func restart(t *Term, ctx callContext, args string) error {
 		}
 	} else if len(v) > 0 {
 		resetArgs = true
-		if v[0] == "-args" {
-			v = v[1:]
+		if v[0] == "-noargs" {
+			if len(v) > 1 {
+				return fmt.Errorf("restart: -noargs does not take any arg")
+			}
+			v = nil
 		}
 	}
 	discarded, err := t.client.RestartFrom(restartPos, resetArgs, v)
