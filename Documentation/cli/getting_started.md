@@ -36,7 +36,7 @@ very beginning of the program's initialization. To get to someplace more useful
 you're going to want to set a breakpoint or two and continue execution to that
 point.
 
-For example, to continue execution to your programs `main` function:
+For example, to continue execution to your program's `main` function:
 
 ```
 $ dlv debug github.com/me/foo/cmd/foo
