@@ -3365,11 +3365,21 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 		_, err := setFunctionBreakpoint(p, "main.main")
 		assertNoError(err, t, "setFunctionBreakpoint(main.main)")
 		assertNoError(proc.Continue(p), t, "first continue")
-		_, err = setFunctionBreakpoint(p, "runtime.newstack")
-		assertNoError(err, t, "setFunctionBreakpoint(runtime.newstack)")
-		assertNoError(proc.Continue(p), t, "second continue")
+
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG")
+		mainGoroutineID := g.ID
+
+		_, err = setFunctionBreakpoint(p, "runtime.newstack")
+		assertNoError(err, t, "setFunctionBreakpoint(runtime.newstack)")
+		for {
+			assertNoError(proc.Continue(p), t, "second continue")
+			g, err = proc.GetG(p.CurrentThread())
+			assertNoError(err, t, "GetG")
+			if g.ID == mainGoroutineID {
+				break
+			}
+		}
 		frames, err := g.Stacktrace(100)
 		assertNoError(err, t, "stacktrace")
 		logStacktrace(t, frames)
