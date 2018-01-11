@@ -976,3 +976,28 @@ func TestConstants(t *testing.T) {
 		}
 	})
 }
+
+func setFunctionBreakpoint(p proc.Process, fname string) (*proc.Breakpoint, error) {
+	addr, err := proc.FindFunctionLocation(p, fname, true, 0)
+	if err != nil {
+		return nil, err
+	}
+	return p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
+}
+
+func TestIssue1075(t *testing.T) {
+	withTestProcess("clientdo", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "net/http.(*Client).Do")
+		assertNoError(err, t, "setFunctionBreakpoint")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		for i := 0; i < 10; i++ {
+			scope, err := proc.GoroutineScope(p.CurrentThread())
+			assertNoError(err, t, fmt.Sprintf("GoroutineScope (%d)", i))
+			vars, err := scope.LocalVariables(pnormalLoadConfig)
+			assertNoError(err, t, fmt.Sprintf("LocalVariables (%d)", i))
+			for _, v := range vars {
+				api.ConvertVar(v).SinglelineString()
+			}
+		}
+	})
+}
