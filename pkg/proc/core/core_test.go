@@ -243,7 +243,7 @@ func TestCoreFpRegisters(t *testing.T) {
 			if frames[i].Current.Fn == nil {
 				continue
 			}
-			if frames[i].Current.Fn.Name == "runtime.crash" {
+			if frames[i].Current.Fn.Name == "main.main" {
 				regs, err = thread.Registers(true)
 				if err != nil {
 					t.Fatalf("Could not get registers for thread %x, %v", thread.ThreadID(), err)
