@@ -62,6 +62,12 @@ type RestartIn struct {
 	// Position to restart from, if it starts with 'c' it's a checkpoint ID,
 	// otherwise it's an event number. Only valid for recorded targets.
 	Position string
+
+	// ResetArgs tell whether NewArgs should take effect.
+	ResetArgs bool
+	// NewArgs are arguments to launch a new process.  They replace only the
+	// argv[1] and later. Argv[0] cannot be changed.
+	NewArgs []string
 }
 
 type RestartOut struct {
@@ -74,7 +80,7 @@ func (s *RPCServer) Restart(arg RestartIn, out *RestartOut) error {
 		return errors.New("cannot restart process Delve did not create")
 	}
 	var err error
-	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Position)
+	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Position, arg.ResetArgs, arg.NewArgs)
 	return err
 }
 

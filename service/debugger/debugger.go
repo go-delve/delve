@@ -29,6 +29,8 @@ import (
 // lower lever packages such as proc.
 type Debugger struct {
 	config *Config
+	// arguments to launch a new process.
+	processArgs []string
 	// TODO(DO NOT MERGE WITHOUT) rename to targetMutex
 	processMutex sync.Mutex
 	target       proc.Process
@@ -40,8 +42,6 @@ type Debugger struct {
 // provided, a new process will be launched. Otherwise, the debugger will try
 // to attach to an existing process with AttachPid.
 type Config struct {
-	// ProcessArgs are the arguments to launch a new process.
-	ProcessArgs []string
 	// WorkingDir is working directory of the new process. This field is used
 	// only when launching a new process.
 	WorkingDir string
@@ -56,10 +56,12 @@ type Config struct {
 	Backend string
 }
 
-// New creates a new Debugger.
-func New(config *Config) (*Debugger, error) {
+// New creates a new Debugger. ProcessArgs specify the commandline arguments for the
+// new process.
+func New(config *Config, processArgs []string) (*Debugger, error) {
 	d := &Debugger{
-		config: config,
+		config:      config,
+		processArgs: processArgs,
 	}
 
 	// Create the process by either attaching or launching.
@@ -67,8 +69,8 @@ func New(config *Config) (*Debugger, error) {
 	case d.config.AttachPid > 0:
 		log.Printf("attaching to pid %d", d.config.AttachPid)
 		path := ""
-		if len(d.config.ProcessArgs) > 0 {
-			path = d.config.ProcessArgs[0]
+		if len(d.processArgs) > 0 {
+			path = d.processArgs[0]
 		}
 		p, err := d.Attach(d.config.AttachPid, path)
 		if err != nil {
@@ -84,8 +86,8 @@ func New(config *Config) (*Debugger, error) {
 			log.Printf("opening trace %s", d.config.CoreFile)
 			p, err = gdbserial.Replay(d.config.CoreFile, false)
 		default:
-			log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.config.ProcessArgs[0])
-			p, err = core.OpenCore(d.config.CoreFile, d.config.ProcessArgs[0])
+			log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
+			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0])
 		}
 		if err != nil {
 			return nil, err
@@ -93,8 +95,8 @@ func New(config *Config) (*Debugger, error) {
 		d.target = p
 
 	default:
-		log.Printf("launching process with args: %v", d.config.ProcessArgs)
-		p, err := d.Launch(d.config.ProcessArgs, d.config.WorkingDir)
+		log.Printf("launching process with args: %v", d.processArgs)
+		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
 			if err != proc.NotExecutableErr && err != proc.UnsupportedLinuxArchErr && err != proc.UnsupportedWindowsArchErr && err != proc.UnsupportedDarwinArchErr {
 				err = fmt.Errorf("could not launch process: %s", err)
@@ -179,8 +181,8 @@ func (d *Debugger) detach(kill bool) error {
 // and then exec'ing it again.
 // If the target process is a recording it will restart it from the given
 // position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
-// event number.
-func (d *Debugger) Restart(pos string) ([]api.DiscardedBreakpoint, error) {
+// event number. If resetArgs is true, newArgs will replace the process args.
+func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -201,7 +203,10 @@ func (d *Debugger) Restart(pos string) ([]api.DiscardedBreakpoint, error) {
 	if err := d.detach(true); err != nil {
 		return nil, err
 	}
-	p, err := d.Launch(d.config.ProcessArgs, d.config.WorkingDir)
+	if resetArgs {
+		d.processArgs = append([]string{d.processArgs[0]}, newArgs...)
+	}
+	p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 	if err != nil {
 		return nil, fmt.Errorf("could not launch process: %s", err)
 	}

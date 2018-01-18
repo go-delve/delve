@@ -591,6 +591,34 @@ func TestCheckpoints(t *testing.T) {
 	})
 }
 
+func TestRestart(t *testing.T) {
+	withTestTerminal("restartargs", t, func(term *FakeTerminal) {
+		term.MustExec("break main.printArgs")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", []") {
+			t.Fatalf("wrong args: %q", out)
+		}
+		// Reset the arg list
+		term.MustExec("restart hello")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", [\"hello\"]") {
+			t.Fatalf("wrong args: %q ", out)
+		}
+		// Restart w/o arg should retain the current args.
+		term.MustExec("restart")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", [\"hello\"]") {
+			t.Fatalf("wrong args: %q ", out)
+		}
+		// Empty arg list
+		term.MustExec("restart -noargs")
+		term.MustExec("continue")
+		if out := term.MustExec("print main.args"); !strings.Contains(out, ", []") {
+			t.Fatalf("wrong args: %q ", out)
+		}
+	})
+}
+
 func TestIssue827(t *testing.T) {
 	// switching goroutines when the current thread isn't running any goroutine
 	// causes nil pointer dereference.

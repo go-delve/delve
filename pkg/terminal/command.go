@@ -18,6 +18,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/cosiner/argv"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
@@ -85,7 +86,7 @@ func DebugCommands(client service.Client) *Commands {
 		{aliases: []string{"help", "h"}, cmdFn: c.help, helpMsg: `Prints the help message.
 
 	help [command]
-	
+
 Type "help" followed by the name of a command for more information about it.`},
 		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: `Sets a breakpoint.
 
@@ -97,11 +98,19 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: `Set tracepoint.
 
 	trace [name] <linespec>
-	
+
 A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See $GOPATH/src/github.com/derekparker/delve/Documentation/cli/locspec.md for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"`},
-		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: "Restart process."},
+		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: `Restart process.
+
+  restart [checkpoint]
+  restart [-noargs] newargv...
+
+  For recorded processes restarts from the start or from the specified
+  checkpoint.  For normal processes restarts the process, optionally changing
+  the arguments.  With -noargs, the process starts with an empty commandline.
+`},
 		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, allowedPrefixes: scopePrefix, cmdFn: step, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: scopePrefix, cmdFn: stepInstruction, helpMsg: "Single step a single cpu instruction."},
@@ -117,7 +126,7 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: `Deletes multiple breakpoints.
 
 	clearall [<linespec>]
-	
+
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.`},
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: `List program goroutines.
 
@@ -128,7 +137,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-u	displays location of topmost stackframe in user code
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
-	
+
 If no flag is specified the default is -u.`},
 		{aliases: []string{"goroutine"}, allowedPrefixes: onPrefix | scopePrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
 
@@ -146,7 +155,7 @@ Called with more arguments it will execute a command on the specified goroutine.
 
 See $GOPATH/src/github.com/derekparker/delve/Documentation/cli/expr.md for a description of supported expressions.`},
 		{aliases: []string{"whatis"}, allowedPrefixes: scopePrefix, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
-		
+
 		whatis <expression>.`},
 		{aliases: []string{"set"}, allowedPrefixes: scopePrefix, cmdFn: setVar, helpMsg: `Changes the value of a variable.
 
@@ -188,7 +197,7 @@ If regex is specified only package variables with a name matching it will be ret
 		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: `Print contents of CPU registers.
 
 	regs [-a]
-	
+
 Argument -a shows more registers.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
 		{aliases: []string{"list", "ls"}, allowedPrefixes: scopePrefix, cmdFn: listCommand, helpMsg: `Show source code.
@@ -199,7 +208,7 @@ Show source around current point or provided linespec.`},
 		{aliases: []string{"stack", "bt"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
 	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-g] [-s] [-offsets]
-	
+
 	-full		every stackframe is decorated with the value of its local variables and arguments.
 	-offsets	prints frame offset of each frame
 `},
@@ -214,23 +223,23 @@ Show source around current point or provided linespec.`},
 	[goroutine <n>] [frame <m>] disassemble [-a <start> <end>] [-l <locspec>]
 
 If no argument is specified the function being executed in the selected stack frame will be executed.
-	
+
 	-a <start> <end>	disassembles the specified address range
 	-l <locspec>		disassembles the specified function`},
 		{aliases: []string{"on"}, cmdFn: c.onCmd, helpMsg: `Executes a command when a breakpoint is hit.
 
 	on <breakpoint name or id> <command>.
-	
+
 Supported commands: print, stack and goroutine)`},
 		{aliases: []string{"condition", "cond"}, cmdFn: conditionCmd, helpMsg: `Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
-	
+
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
 		{aliases: []string{"config"}, cmdFn: configureCmd, helpMsg: `Changes configuration parameters.
-		
+
 	config -list
-	
+
 Show all configuration parameters.
 
 	config -save
@@ -238,17 +247,17 @@ Show all configuration parameters.
 Saves the configuration file to disk, overwriting the current configuration file.
 
 	config <parameter> <value>
-	
+
 Changes the value of a configuration parameter.
 
 	config subistitute-path <from> <to>
 	config subistitute-path <from>
-	
+
 Adds or removes a path subistitution rule.
 
 	config alias <command> <alias>
 	config alias <alias>
-	
+
 Defines <alias> as an alias to <command> or removes an alias.`},
 	}
 
@@ -262,7 +271,7 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 			aliases: []string{"check", "checkpoint"},
 			cmdFn:   checkpoint,
 			helpMsg: `Creates a checkpoint at the current position.
-			
+
 	checkpoint [where]`,
 		})
 		c.cmds = append(c.cmds, command{
@@ -274,15 +283,15 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 			aliases: []string{"clear-checkpoint", "clearcheck"},
 			cmdFn:   clearCheckpoint,
 			helpMsg: `Deletes checkpoint.
-			
+
 	clear-checkpoint <id>`,
 		})
 		for i := range c.cmds {
 			v := &c.cmds[i]
 			if v.match("restart") {
 				v.helpMsg = `Restart process from a checkpoint or event.
-	
-	restart [event number or checkpoint id]`
+
+  restart [event number or checkpoint id]`
 			}
 		}
 	}
@@ -653,8 +662,48 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 		prefix, formatLocation(g.GoStatementLoc))
 }
 
+func parseArgs(args string) ([]string, error) {
+	if args == "" {
+		return nil, nil
+	}
+	v, err := argv.Argv([]rune(args), argv.ParseEnv(os.Environ()),
+		func(s []rune, _ map[string]string) ([]rune, error) {
+			return nil, fmt.Errorf("Backtick not supported in '%s'", string(s))
+		})
+	if err != nil {
+		return nil, err
+	}
+	if len(v) != 1 {
+		return nil, fmt.Errorf("Illegal commandline '%s'", args)
+	}
+	return v[0], nil
+}
+
 func restart(t *Term, ctx callContext, args string) error {
-	discarded, err := t.client.RestartFrom(args)
+	v, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	var restartPos string
+	var resetArgs bool
+	if t.client.Recorded() {
+		if len(v) > 1 {
+			return fmt.Errorf("restart: illegal position '%v'", v)
+		}
+		if len(v) == 1 {
+			restartPos = v[0]
+			v = nil
+		}
+	} else if len(v) > 0 {
+		resetArgs = true
+		if v[0] == "-noargs" {
+			if len(v) > 1 {
+				return fmt.Errorf("restart: -noargs does not take any arg")
+			}
+			v = nil
+		}
+	}
+	discarded, err := t.client.RestartFrom(restartPos, resetArgs, v)
 	if err != nil {
 		return err
 	}
