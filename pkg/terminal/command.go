@@ -200,7 +200,7 @@ If regex is specified only package variables with a name matching it will be ret
 
 Argument -a shows more registers.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
-		{aliases: []string{"list", "ls"}, allowedPrefixes: scopePrefix, cmdFn: listCommand, helpMsg: `Show source code.
+		{aliases: []string{"list", "ls", "l"}, allowedPrefixes: scopePrefix, cmdFn: listCommand, helpMsg: `Show source code.
 
 	[goroutine <n>] [frame <m>] list [<linespec>]
 
