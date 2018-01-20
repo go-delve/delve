@@ -360,12 +360,6 @@ func (scope *EvalScope) PtrSize() int {
 	return scope.BinInfo.Arch.PtrSize()
 }
 
-// ChanRecvBlocked returns whether the goroutine is blocked on
-// a channel read operation.
-func (g *G) ChanRecvBlocked() bool {
-	return (g.Thread == nil) && (g.WaitReason == chanRecv)
-}
-
 // NoGError returned when a G could not be found
 // for a specific thread.
 type NoGError struct {

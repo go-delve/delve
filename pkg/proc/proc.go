@@ -220,7 +220,7 @@ func Step(dbp Process) (err error) {
 
 	if err = next(dbp, true); err != nil {
 		switch err.(type) {
-		case ThreadBlockedError, NoReturnAddr: // Noop
+		case ThreadBlockedError: // Noop
 		default:
 			dbp.ClearInternalBreakpoints()
 			return

@@ -676,7 +676,7 @@ func returnAddress(thread proc.Thread) (uint64, error) {
 		return 0, err
 	}
 	if len(locations) < 2 {
-		return 0, proc.NoReturnAddr{locations[0].Current.Fn.BaseName()}
+		return 0, fmt.Errorf("no return address for function: %s", locations[0].Current.Fn.BaseName())
 	}
 	return locations[1].Current.PC, nil
 }

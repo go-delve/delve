@@ -13,16 +13,6 @@ import (
 // This code is partly adaped from runtime.gentraceback in
 // $GOROOT/src/runtime/traceback.go
 
-// NoReturnAddr is returned when return address
-// could not be found during stack trace.
-type NoReturnAddr struct {
-	Fn string
-}
-
-func (nra NoReturnAddr) Error() string {
-	return fmt.Sprintf("could not find return address for %s", nra.Fn)
-}
-
 // Stackframe represents a frame in a system stack.
 type Stackframe struct {
 	// Address the function above this one on the call stack will return to.
