@@ -30,8 +30,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 		// isn't shadowed is a variable that escapes to the heap and figures in
 		// debug_info as '&a'. Evaluating 'a' should yield the escaped variable.
 
-		avar, err := evalVariable(p, "a")
-		assertNoError(err, t, "EvalVariable(a)")
+		avar := evalVariable(p, t, "a")
 		if aval, _ := constant.Int64Val(avar.Value); aval != 3 {
 			t.Errorf("wrong value for variable a: %d", aval)
 		}

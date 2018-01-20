@@ -48,11 +48,11 @@ func TestMain(m *testing.M) {
 }
 
 func withTestProcess(name string, t testing.TB, fn func(p proc.Process, fixture protest.Fixture)) {
-	withTestProcessArgs(name, t, ".", []string{}, fn)
+	withTestProcessArgs(name, t, ".", []string{}, 0, fn)
 }
 
-func withTestProcessArgs(name string, t testing.TB, wd string, args []string, fn func(p proc.Process, fixture protest.Fixture)) {
-	fixture := protest.BuildFixture(name, 0)
+func withTestProcessArgs(name string, t testing.TB, wd string, args []string, buildFlags protest.BuildFlags, fn func(p proc.Process, fixture protest.Fixture)) {
+	fixture := protest.BuildFixture(name, buildFlags)
 	var p proc.Process
 	var err error
 	var tracedir string
@@ -120,6 +120,15 @@ func currentPC(p proc.Process, t *testing.T) uint64 {
 func currentLineNumber(p proc.Process, t *testing.T) (string, int) {
 	pc := currentPC(p, t)
 	f, l, _ := p.BinInfo().PCToLine(pc)
+	return f, l
+}
+
+func assertLineNumber(p proc.Process, t *testing.T, lineno int, descr string) (string, int) {
+	f, l := currentLineNumber(p, t)
+	if l != lineno {
+		_, callerFile, callerLine, _ := runtime.Caller(1)
+		t.Fatalf("%s expected line :%d got %s:%d\n\tat %s:%d", descr, lineno, f, l, callerFile, callerLine)
+	}
 	return f, l
 }
 
@@ -343,52 +352,100 @@ func countBreakpoints(p proc.Process) int {
 type contFunc int
 
 const (
-	contNext contFunc = iota
+	contContinue contFunc = iota
+	contNext
 	contStep
+	contStepout
 )
 
+type seqTest struct {
+	cf  contFunc
+	pos int
+}
+
 func testseq(program string, contFunc contFunc, testcases []nextTest, initialLocation string, t *testing.T) {
+	seqTestcases := make([]seqTest, len(testcases)+1)
+	seqTestcases[0] = seqTest{contContinue, testcases[0].begin}
+	for i := range testcases {
+		if i > 0 {
+			if testcases[i-1].end != testcases[i].begin {
+				panic(fmt.Errorf("begin/end mismatch at index %d", i))
+			}
+		}
+		seqTestcases[i+1] = seqTest{contFunc, testcases[i].end}
+	}
+	testseq2(t, program, initialLocation, seqTestcases)
+}
+
+const traceTestseq2 = false
+
+func testseq2(t *testing.T, program string, initialLocation string, testcases []seqTest) {
+	testseq2Args(".", []string{}, 0, t, program, initialLocation, testcases)
+}
+
+func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *testing.T, program string, initialLocation string, testcases []seqTest) {
 	protest.AllowRecording(t)
-	withTestProcess(program, t, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcessArgs(program, t, wd, args, buildFlags, func(p proc.Process, fixture protest.Fixture) {
 		var bp *proc.Breakpoint
 		var err error
 		if initialLocation != "" {
 			bp, err = setFunctionBreakpoint(p, initialLocation)
-		} else {
+		} else if testcases[0].cf == contContinue {
 			var pc uint64
-			pc, err = proc.FindFileLocation(p, fixture.Source, testcases[0].begin)
+			pc, err = proc.FindFileLocation(p, fixture.Source, testcases[0].pos)
 			assertNoError(err, t, "FindFileLocation()")
 			bp, err = p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+		} else {
+			panic("testseq2 can not set initial breakpoint")
+		}
+		if traceTestseq2 {
+			t.Logf("initial breakpoint %v", bp)
 		}
 		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(proc.Continue(p), t, "Continue()")
-		p.ClearBreakpoint(bp.Addr)
 		regs, err := p.CurrentThread().Registers(false)
 		assertNoError(err, t, "Registers")
-		if testBackend != "rr" {
-			assertNoError(regs.SetPC(p.CurrentThread(), bp.Addr), t, "SetPC")
-		}
 
 		f, ln := currentLineNumber(p, t)
-		for _, tc := range testcases {
-			regs, _ := p.CurrentThread().Registers(false)
-			pc := regs.PC()
-			if ln != tc.begin {
-				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
-			}
-
-			switch contFunc {
+		for i, tc := range testcases {
+			switch tc.cf {
 			case contNext:
+				if traceTestseq2 {
+					t.Log("next")
+				}
 				assertNoError(proc.Next(p), t, "Next() returned an error")
 			case contStep:
+				if traceTestseq2 {
+					t.Log("step")
+				}
 				assertNoError(proc.Step(p), t, "Step() returned an error")
+			case contStepout:
+				if traceTestseq2 {
+					t.Log("stepout")
+				}
+				assertNoError(proc.StepOut(p), t, "StepOut() returned an error")
+			case contContinue:
+				if traceTestseq2 {
+					t.Log("continue")
+				}
+				assertNoError(proc.Continue(p), t, "Continue() returned an error")
+				if i == 0 {
+					if traceTestseq2 {
+						t.Log("clearing initial breakpoint")
+					}
+					_, err := p.ClearBreakpoint(bp.Addr)
+					assertNoError(err, t, "ClearBreakpoint() returned an error")
+				}
 			}
 
 			f, ln = currentLineNumber(p, t)
 			regs, _ = p.CurrentThread().Registers(false)
-			pc = regs.PC()
-			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x)", tc.end, filepath.Base(f), ln, pc)
+			pc := regs.PC()
+
+			if traceTestseq2 {
+				t.Logf("at %#x %s:%d", pc, f, ln)
+			}
+			if ln != tc.pos {
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", tc.pos, filepath.Base(f), ln, pc, i)
 			}
 		}
 
@@ -457,9 +514,8 @@ func TestNextConcurrent(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint")
 		assertNoError(proc.Continue(p), t, "Continue")
 		f, ln := currentLineNumber(p, t)
-		initV, err := evalVariable(p, "n")
+		initV := evalVariable(p, t, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
-		assertNoError(err, t, "EvalVariable")
 		_, err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 		for _, tc := range testcases {
@@ -472,12 +528,8 @@ func TestNextConcurrent(t *testing.T) {
 				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
 			}
 			assertNoError(proc.Next(p), t, "Next() returned an error")
-			f, ln = currentLineNumber(p, t)
-			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
-			}
-			v, err := evalVariable(p, "n")
-			assertNoError(err, t, "EvalVariable")
+			f, ln = assertLineNumber(p, t, tc.end, "Program did not continue to the expected location")
+			v := evalVariable(p, t, "n")
 			vval, _ := constant.Int64Val(v.Value)
 			if vval != initVval {
 				t.Fatal("Did not end up on same goroutine")
@@ -499,9 +551,8 @@ func TestNextConcurrentVariant2(t *testing.T) {
 		assertNoError(err, t, "SetBreakpoint")
 		assertNoError(proc.Continue(p), t, "Continue")
 		f, ln := currentLineNumber(p, t)
-		initV, err := evalVariable(p, "n")
+		initV := evalVariable(p, t, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
-		assertNoError(err, t, "EvalVariable")
 		for _, tc := range testcases {
 			t.Logf("test case %v", tc)
 			g, err := proc.GetG(p.CurrentThread())
@@ -515,11 +566,10 @@ func TestNextConcurrentVariant2(t *testing.T) {
 			assertNoError(proc.Next(p), t, "Next() returned an error")
 			var vval int64
 			for {
-				v, err := evalVariable(p, "n")
+				v := evalVariable(p, t, "n")
 				for _, thread := range p.ThreadList() {
 					proc.GetG(thread)
 				}
-				assertNoError(err, t, "EvalVariable")
 				vval, _ = constant.Int64Val(v.Value)
 				if bpstate := p.CurrentThread().Breakpoint(); bpstate.Breakpoint == nil {
 					if vval != initVval {
@@ -533,10 +583,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 					assertNoError(proc.Continue(p), t, "Continue 2")
 				}
 			}
-			f, ln = currentLineNumber(p, t)
-			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
-			}
+			f, ln = assertLineNumber(p, t, tc.end, "Program did not continue to the expected location")
 		}
 	})
 }
@@ -602,10 +649,7 @@ func TestNextNetHTTP(t *testing.T) {
 
 			assertNoError(proc.Next(p), t, "Next() returned an error")
 
-			f, ln = currentLineNumber(p, t)
-			if ln != tc.end {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d", tc.end, filepath.Base(f), ln)
-			}
+			f, ln = assertLineNumber(p, t, tc.end, "Program did not continue to correct next location")
 		}
 	})
 }
@@ -1029,18 +1073,7 @@ func TestContinueMulti(t *testing.T) {
 }
 
 func TestBreakpointOnFunctionEntry(t *testing.T) {
-	protest.AllowRecording(t)
-	withTestProcess("testprog", t, func(p proc.Process, fixture protest.Fixture) {
-		addr, err := proc.FindFunctionLocation(p, "main.main", false, 0)
-		assertNoError(err, t, "FindFunctionLocation()")
-		_, err = p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
-		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(proc.Continue(p), t, "Continue()")
-		_, ln := currentLineNumber(p, t)
-		if ln != 17 {
-			t.Fatalf("Wrong line number: %d (expected: 17)\n", ln)
-		}
-	})
+	testseq2(t, "testprog", "main.main", []seqTest{{contContinue, 17}})
 }
 
 func TestProcessReceivesSIGCHLD(t *testing.T) {
@@ -1078,7 +1111,7 @@ func findFirstNonRuntimeFrame(p proc.Process) (proc.Stackframe, error) {
 	return proc.Stackframe{}, fmt.Errorf("non-runtime frame not found")
 }
 
-func evalVariable(p proc.Process, symbol string) (*proc.Variable, error) {
+func evalVariableOrError(p proc.Process, symbol string) (*proc.Variable, error) {
 	var scope *proc.EvalScope
 	var err error
 
@@ -1096,6 +1129,16 @@ func evalVariable(p proc.Process, symbol string) (*proc.Variable, error) {
 		return nil, err
 	}
 	return scope.EvalVariable(symbol, normalLoadConfig)
+}
+
+func evalVariable(p proc.Process, t testing.TB, symbol string) *proc.Variable {
+	v, err := evalVariableOrError(p, symbol)
+	if err != nil {
+		_, file, line, _ := runtime.Caller(1)
+		fname := filepath.Base(file)
+		t.Fatalf("%s:%d: EvalVariable(%q): %v", fname, line, symbol, err)
+	}
+	return v
 }
 
 func setVariable(p proc.Process, symbol, value string) error {
@@ -1147,8 +1190,7 @@ func TestVariableEvaluation(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			v, err := evalVariable(p, tc.name)
-			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", tc.name))
+			v := evalVariable(p, t, tc.name)
 
 			if v.Kind != tc.st {
 				t.Fatalf("%s simple type: expected: %s got: %s", tc.name, tc.st, v.Kind.String())
@@ -1265,8 +1307,7 @@ func TestPointerSetting(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 
 		pval := func(n int64) {
-			variable, err := evalVariable(p, "p1")
-			assertNoError(err, t, "EvalVariable()")
+			variable := evalVariable(p, t, "p1")
 			c0val, _ := constant.Int64Val(variable.Children[0].Value)
 			if c0val != n {
 				t.Fatalf("Wrong value of p1, *%d expected *%d", c0val, n)
@@ -1294,20 +1335,16 @@ func TestVariableFunctionScoping(t *testing.T) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
-		_, err = evalVariable(p, "a1")
-		assertNoError(err, t, "Unable to find variable a1")
-
-		_, err = evalVariable(p, "a2")
-		assertNoError(err, t, "Unable to find variable a1")
+		evalVariable(p, t, "a1")
+		evalVariable(p, t, "a2")
 
 		// Move scopes, a1 exists here by a2 does not
 		err = proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
 
-		_, err = evalVariable(p, "a1")
-		assertNoError(err, t, "Unable to find variable a1")
+		evalVariable(p, t, "a1")
 
-		_, err = evalVariable(p, "a2")
+		_, err = evalVariableOrError(p, "a2")
 		if err == nil {
 			t.Fatalf("Can eval out of scope variable a2")
 		}
@@ -1318,8 +1355,7 @@ func TestRecursiveStructure(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		v, err := evalVariable(p, "aas")
-		assertNoError(err, t, "EvalVariable()")
+		v := evalVariable(p, t, "aas")
 		t.Logf("v: %v\n", v)
 	})
 }
@@ -1329,8 +1365,7 @@ func TestIssue316(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		_, err := evalVariable(p, "iface5")
-		assertNoError(err, t, "EvalVariable()")
+		evalVariable(p, t, "iface5")
 	})
 }
 
@@ -1339,12 +1374,10 @@ func TestIssue325(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		iface2fn1v, err := evalVariable(p, "iface2fn1")
-		assertNoError(err, t, "EvalVariable()")
+		iface2fn1v := evalVariable(p, t, "iface2fn1")
 		t.Logf("iface2fn1: %v\n", iface2fn1v)
 
-		iface2fn2v, err := evalVariable(p, "iface2fn2")
-		assertNoError(err, t, "EvalVariable()")
+		iface2fn2v := evalVariable(p, t, "iface2fn2")
 		t.Logf("iface2fn2: %v\n", iface2fn2v)
 	})
 }
@@ -1390,8 +1423,7 @@ func BenchmarkArray(b *testing.B) {
 	withTestProcess("testvariables2", b, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
-			_, err := evalVariable(p, "bencharr")
-			assertNoError(err, b, "EvalVariable()")
+			evalVariable(p, b, "bencharr")
 		}
 	})
 }
@@ -1467,8 +1499,7 @@ func BenchmarkArrayPointer(b *testing.B) {
 	withTestProcess("testvariables2", b, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
-			_, err := evalVariable(p, "bencharr")
-			assertNoError(err, b, "EvalVariable()")
+			evalVariable(p, b, "bencharr")
 		}
 	})
 }
@@ -1482,8 +1513,7 @@ func BenchmarkMap(b *testing.B) {
 	withTestProcess("testvariables2", b, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
-			_, err := evalVariable(p, "m1")
-			assertNoError(err, b, "EvalVariable()")
+			evalVariable(p, b, "m1")
 		}
 	})
 }
@@ -1553,8 +1583,7 @@ func TestPointerLoops(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		for _, expr := range []string{"mapinf", "ptrinf", "sliceinf"} {
 			t.Logf("requesting %s", expr)
-			v, err := evalVariable(p, expr)
-			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", expr))
+			v := evalVariable(p, t, expr)
 			t.Logf("%s: %v\n", expr, v)
 		}
 	})
@@ -1588,8 +1617,7 @@ func TestCondBreakpoint(t *testing.T) {
 
 		assertNoError(proc.Continue(p), t, "Continue()")
 
-		nvar, err := evalVariable(p, "n")
-		assertNoError(err, t, "EvalVariable()")
+		nvar := evalVariable(p, t, "n")
 
 		n, _ := constant.Int64Val(nvar.Value)
 		if n != 7 {
@@ -1632,8 +1660,7 @@ func TestCondBreakpointError(t *testing.T) {
 				t.Fatalf("Unexpected error on second Continue(): %v", err)
 			}
 		} else {
-			nvar, err := evalVariable(p, "n")
-			assertNoError(err, t, "EvalVariable()")
+			nvar := evalVariable(p, t, "n")
 
 			n, _ := constant.Int64Val(nvar.Value)
 			if n != 7 {
@@ -1648,8 +1675,7 @@ func TestIssue356(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
-		mmvar, err := evalVariable(p, "mainMenu")
-		assertNoError(err, t, "EvalVariable()")
+		mmvar := evalVariable(p, t, "mainMenu")
 		if mmvar.Kind != reflect.Slice {
 			t.Fatalf("Wrong kind for mainMenu: %v\n", mmvar.Kind)
 		}
@@ -1696,8 +1722,7 @@ func TestIssue384(t *testing.T) {
 		_, err = p.SetBreakpoint(start, proc.UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(proc.Continue(p), t, "Continue()")
-		_, err = evalVariable(p, "st")
-		assertNoError(err, t, "EvalVariable()")
+		evalVariable(p, t, "st")
 	})
 }
 
@@ -1876,18 +1901,18 @@ func TestCmdLineArgs(t *testing.T) {
 	}
 
 	// make sure multiple arguments (including one with spaces) are passed to the binary correctly
-	withTestProcessArgs("testargs", t, ".", []string{"test"}, expectSuccess)
-	withTestProcessArgs("testargs", t, ".", []string{"-test"}, expectPanic)
-	withTestProcessArgs("testargs", t, ".", []string{"test", "pass flag"}, expectSuccess)
+	withTestProcessArgs("testargs", t, ".", []string{"test"}, 0, expectSuccess)
+	withTestProcessArgs("testargs", t, ".", []string{"-test"}, 0, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test", "pass flag"}, 0, expectSuccess)
 	// check that arguments with spaces are *only* passed correctly when correctly called
-	withTestProcessArgs("testargs", t, ".", []string{"test pass", "flag"}, expectPanic)
-	withTestProcessArgs("testargs", t, ".", []string{"test", "pass", "flag"}, expectPanic)
-	withTestProcessArgs("testargs", t, ".", []string{"test pass flag"}, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test pass", "flag"}, 0, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test", "pass", "flag"}, 0, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test pass flag"}, 0, expectPanic)
 	// and that invalid cases (wrong arguments or no arguments) panic
 	withTestProcess("testargs", t, expectPanic)
-	withTestProcessArgs("testargs", t, ".", []string{"invalid"}, expectPanic)
-	withTestProcessArgs("testargs", t, ".", []string{"test", "invalid"}, expectPanic)
-	withTestProcessArgs("testargs", t, ".", []string{"invalid", "pass flag"}, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"invalid"}, 0, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"test", "invalid"}, 0, expectPanic)
+	withTestProcessArgs("testargs", t, ".", []string{"invalid", "pass flag"}, 0, expectPanic)
 }
 
 func TestIssue462(t *testing.T) {
@@ -2216,33 +2241,12 @@ func TestIssue561(t *testing.T) {
 		setFileBreakpoint(p, t, fixture, 10)
 		assertNoError(proc.Continue(p), t, "Continue()")
 		assertNoError(proc.Step(p), t, "Step()")
-		_, ln := currentLineNumber(p, t)
-		if ln != 5 {
-			t.Fatalf("wrong line number after Step, expected 5 got %d", ln)
-		}
+		assertLineNumber(p, t, 5, "wrong line number after Step,")
 	})
 }
 
 func TestStepOut(t *testing.T) {
-	protest.AllowRecording(t)
-	withTestProcess("testnextprog", t, func(p proc.Process, fixture protest.Fixture) {
-		bp, err := setFunctionBreakpoint(p, "main.helloworld")
-		assertNoError(err, t, "SetBreakpoint()")
-		assertNoError(proc.Continue(p), t, "Continue()")
-		p.ClearBreakpoint(bp.Addr)
-
-		f, lno := currentLineNumber(p, t)
-		if lno != 13 {
-			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 13)
-		}
-
-		assertNoError(proc.StepOut(p), t, "StepOut()")
-
-		f, lno = currentLineNumber(p, t)
-		if lno != 35 {
-			t.Fatalf("wrong line number %s:%d, expected %d", f, lno, 35)
-		}
-	})
+	testseq2(t, "testnextprog", "main.helloworld", []seqTest{{contContinue, 13}, {contStepout, 35}})
 }
 
 func TestStepConcurrentDirect(t *testing.T) {
@@ -2348,8 +2352,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 
 			gid := p.SelectedGoroutine().ID
 
-			kvar, err := evalVariable(p, "k")
-			assertNoError(err, t, "EvalVariable()")
+			kvar := evalVariable(p, t, "k")
 			k, _ := constant.Int64Val(kvar.Value)
 
 			if oldk, ok := kvals[gid]; ok {
@@ -2371,10 +2374,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 				t.Fatalf("Step switched goroutines (wanted: %d got: %d)", gid, p.SelectedGoroutine().ID)
 			}
 
-			f, ln = currentLineNumber(p, t)
-			if ln != 13 {
-				t.Fatalf("Step did not step into function call (13): %s:%d", f, ln)
-			}
+			f, ln = assertLineNumber(p, t, 13, "Step did not step into function call")
 
 			count++
 			if count > 50 {
@@ -2400,10 +2400,7 @@ func TestStepOutDefer(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 
-		f, lno := currentLineNumber(p, t)
-		if lno != 9 {
-			t.Fatalf("worng line number %s:%d, expected %d", f, lno, 5)
-		}
+		assertLineNumber(p, t, 9, "wrong line number")
 
 		assertNoError(proc.StepOut(p), t, "StepOut()")
 
@@ -2418,19 +2415,9 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 	// StepOut should not step into a deferred function if it is called
 	// directly, only if it is called through a panic.
 	// Here we test the case where the function is called by a deferreturn
-	protest.AllowRecording(t)
-	withTestProcess("defercall", t, func(p proc.Process, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture, 11)
-		assertNoError(proc.Continue(p), t, "Continue()")
-		p.ClearBreakpoint(bp.Addr)
-
-		assertNoError(proc.StepOut(p), t, "StepOut()")
-
-		f, ln := currentLineNumber(p, t)
-		if ln != 28 {
-			t.Fatalf("wrong line number, expected %d got %s:%d", 28, f, ln)
-		}
-	})
+	testseq2(t, "defercall", "", []seqTest{
+		{contContinue, 11},
+		{contStepout, 28}})
 }
 
 const maxInstructionLength uint64 = 15
@@ -2470,10 +2457,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 
 		assertNoError(proc.Step(p), t, "Step()")
 
-		f, ln := currentLineNumber(p, t)
-		if ln != 5 {
-			t.Fatalf("Step continued to wrong line, expected 5 was %s:%d", f, ln)
-		}
+		assertLineNumber(p, t, 5, "Step continued to wrong line,")
 	})
 }
 
@@ -2512,19 +2496,9 @@ func TestStepOutPanicAndDirectCall(t *testing.T) {
 	// StepOut should not step into a deferred function if it is called
 	// directly, only if it is called through a panic.
 	// Here we test the case where the function is called by a panic
-	protest.AllowRecording(t)
-	withTestProcess("defercall", t, func(p proc.Process, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture, 17)
-		assertNoError(proc.Continue(p), t, "Continue()")
-		p.ClearBreakpoint(bp.Addr)
-
-		assertNoError(proc.StepOut(p), t, "StepOut()")
-
-		f, ln := currentLineNumber(p, t)
-		if ln != 5 {
-			t.Fatalf("wrong line number, expected %d got %s:%d", 5, f, ln)
-		}
-	})
+	testseq2(t, "defercall", "", []seqTest{
+		{contContinue, 17},
+		{contStepout, 5}})
 }
 
 func TestWorkDir(t *testing.T) {
@@ -2534,13 +2508,12 @@ func TestWorkDir(t *testing.T) {
 		wd = "/private/tmp"
 	}
 	protest.AllowRecording(t)
-	withTestProcessArgs("workdir", t, wd, []string{}, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcessArgs("workdir", t, wd, []string{}, 0, func(p proc.Process, fixture protest.Fixture) {
 		addr, _, err := p.BinInfo().LineToPC(fixture.Source, 14)
 		assertNoError(err, t, "LineToPC")
 		p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
 		proc.Continue(p)
-		v, err := evalVariable(p, "pwd")
-		assertNoError(err, t, "EvalVariable")
+		v := evalVariable(p, t, "pwd")
 		str := constant.StringVal(v.Value)
 		if wd != str {
 			t.Fatalf("Expected %s got %s\n", wd, str)
@@ -2562,8 +2535,7 @@ func TestNegativeIntEvaluation(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		for _, tc := range testcases {
-			v, err := evalVariable(p, tc.name)
-			assertNoError(err, t, "EvalVariable()")
+			v := evalVariable(p, t, tc.name)
 			if typ := v.RealType.String(); typ != tc.typ {
 				t.Fatalf("Wrong type for variable %q: %q (expected: %q)", tc.name, typ, tc.typ)
 			}
@@ -2598,10 +2570,7 @@ func TestIssue664(t *testing.T) {
 		setFileBreakpoint(p, t, fixture, 4)
 		assertNoError(proc.Continue(p), t, "Continue()")
 		assertNoError(proc.Next(p), t, "Next()")
-		f, ln := currentLineNumber(p, t)
-		if ln != 5 {
-			t.Fatalf("Did not continue to line 5: %s:%d", f, ln)
-		}
+		assertLineNumber(p, t, 5, "Did not continue to correct location,")
 	})
 }
 
@@ -2684,8 +2653,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 					continue
 				}
 
-				goidVar, err := evalVariable(p, "gp.goid")
-				assertNoError(err, t, "evalVariable")
+				goidVar := evalVariable(p, t, "gp.goid")
 				goid, _ := constant.Int64Val(goidVar.Value)
 
 				if g := getg(int(goid), gs); g != nil {
@@ -2802,11 +2770,7 @@ func TestAttachDetach(t *testing.T) {
 	}()
 
 	assertNoError(proc.Continue(p), t, "Continue")
-
-	f, ln := currentLineNumber(p, t)
-	if ln != 11 {
-		t.Fatalf("Expected line :11 got %s:%d", f, ln)
-	}
+	assertLineNumber(p, t, 11, "Did not continue to correct location,")
 
 	assertNoError(p.Detach(false), t, "Detach")
 
@@ -2825,8 +2789,7 @@ func TestVarSum(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		sumvar, err := evalVariable(p, "s1[0] + s1[1]")
-		assertNoError(err, t, "EvalVariable")
+		sumvar := evalVariable(p, t, "s1[0] + s1[1]")
 		sumvarstr := constant.StringVal(sumvar.Value)
 		if sumvarstr != "onetwo" {
 			t.Fatalf("s1[0] + s1[1] == %q (expected \"onetwo\")", sumvarstr)
@@ -2841,10 +2804,8 @@ func TestPackageWithPathVar(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		_, err := evalVariable(p, "pkg.SomeVar")
-		assertNoError(err, t, "EvalVariable(pkg.SomeVar)")
-		_, err = evalVariable(p, "pkg.SomeVar.X")
-		assertNoError(err, t, "EvalVariable(pkg.SomeVar.X)")
+		evalVariable(p, t, "pkg.SomeVar")
+		evalVariable(p, t, "pkg.SomeVar.X")
 	})
 }
 
@@ -2853,8 +2814,7 @@ func TestEnvironment(t *testing.T) {
 	os.Setenv("SOMEVAR", "bah")
 	withTestProcess("testenv", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		v, err := evalVariable(p, "x")
-		assertNoError(err, t, "EvalVariable()")
+		v := evalVariable(p, t, "x")
 		vv := constant.StringVal(v.Value)
 		t.Logf("v = %q", vv)
 		if vv != "bah" {
@@ -2864,8 +2824,7 @@ func TestEnvironment(t *testing.T) {
 }
 
 func getFrameOff(p proc.Process, t *testing.T) int64 {
-	frameoffvar, err := evalVariable(p, "runtime.frameoff")
-	assertNoError(err, t, "EvalVariable(runtime.frameoff)")
+	frameoffvar := evalVariable(p, t, "runtime.frameoff")
 	frameoff, _ := constant.Int64Val(frameoffvar.Value)
 	return frameoff
 }
@@ -2895,20 +2854,11 @@ func TestRecursiveNext(t *testing.T) {
 		if frameoff0 == frameoff1 {
 			t.Fatalf("did not step into function?")
 		}
-		_, ln := currentLineNumber(p, t)
-		if ln != 6 {
-			t.Fatalf("program did not continue to expected location %d", ln)
-		}
+		assertLineNumber(p, t, 6, "program did not continue to expected location,")
 		assertNoError(proc.Next(p), t, "Next 4")
-		_, ln = currentLineNumber(p, t)
-		if ln != 7 {
-			t.Fatalf("program did not continue to expected location %d", ln)
-		}
+		assertLineNumber(p, t, 7, "program did not continue to expected location,")
 		assertNoError(proc.StepOut(p), t, "StepOut")
-		_, ln = currentLineNumber(p, t)
-		if ln != 11 {
-			t.Fatalf("program did not continue to expected location %d", ln)
-		}
+		assertLineNumber(p, t, 11, "program did not continue to expected location,")
 		frameoff2 := getFrameOff(p, t)
 		if frameoff0 != frameoff2 {
 			t.Fatalf("frame offset mismatch %x != %x", frameoff0, frameoff2)
@@ -2926,8 +2876,7 @@ func TestIssue877(t *testing.T) {
 	os.Setenv("DYLD_LIBRARY_PATH", envval)
 	withTestProcess("issue877", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		v, err := evalVariable(p, "dyldenv")
-		assertNoError(err, t, "EvalVariable()")
+		v := evalVariable(p, t, "dyldenv")
 		vv := constant.StringVal(v.Value)
 		t.Logf("v = %q", vv)
 		if vv != envval {
@@ -3132,10 +3081,7 @@ func TestIssue844(t *testing.T) {
 		}
 		assertNoError(proc.Continue(p), t, "Continue")
 		assertNoError(proc.Next(p), t, "Next")
-		f, l := currentLineNumber(p, t)
-		if l != 10 {
-			t.Fatalf("continued to wrong location %s:%d (expected 10)", f, l)
-		}
+		assertLineNumber(p, t, 10, "continued to wrong location,")
 	})
 }
 
