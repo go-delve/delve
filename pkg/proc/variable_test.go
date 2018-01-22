@@ -32,7 +32,7 @@ func TestGoroutineCreationLocation(t *testing.T) {
 				if filepath.Base(createdLocation.File) != "goroutinestackprog.go" {
 					t.Fatalf("goroutine creation file incorrect: %s", filepath.Base(createdLocation.File))
 				}
-				if createdLocation.Line != 20 {
+				if createdLocation.Line != 23 {
 					t.Fatalf("goroutine creation line incorrect: %v", createdLocation.Line)
 				}
 			}
