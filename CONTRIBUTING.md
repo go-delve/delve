@@ -59,3 +59,7 @@ The first line is the subject and should be no longer than 70 characters, the
 second line is always blank, and other lines should be wrapped at 80 characters.
 This allows the message to be easier to read on GitHub as well as in various
 git tools.
+
+## Contributing documentation
+
+The documentation is part of the repository and thus follows the same guidelines as the code, but there are also special considerations as the style of the writing and the format used.
