@@ -145,6 +145,7 @@ func (s *ServerImpl) Run() error {
 	suitableMethods(s.s2, s.methodMaps[1], s.log)
 	suitableMethods(rpcServer, s.methodMaps[1], s.log)
 
+	// Server main gorotuine
 	go func() {
 		defer s.listener.Close()
 		for {
@@ -158,7 +159,10 @@ func (s *ServerImpl) Run() error {
 					panic(err)
 				}
 			}
+
+			// Launch a goroutine to handle new requests for the debugger
 			go s.serveJSONCodec(c)
+
 			if !s.config.AcceptMulti {
 				break
 			}

@@ -571,6 +571,9 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	return status
 }
 
+// optflags returns a string with the flags necessary for
+// `go build` to disable optimizations and inlining.
+// See: https://golang.org/cmd/compile/#hdr-Command_Line
 func optflags(args []string) []string {
 	// after go1.9 building with -gcflags='-N -l' and -a simultaneously works.
 	// after go1.10 specifying -a is unnecessary because of the new caching strategy, but we should pass -gcflags=all=-N -l to have it applied to all packages
@@ -588,6 +591,8 @@ func optflags(args []string) []string {
 	return args
 }
 
+// gobuild runs the `go build` command to build a binary (named `debugname`)
+// for debugging from the package `pkg`.
 func gobuild(debugname, pkg string) error {
 	args := []string{"-o", debugname}
 	args = optflags(args)
