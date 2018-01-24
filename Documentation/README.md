@@ -3,7 +3,7 @@
 Documentation for the project will reside in this directory.
 
 - [Installation](installation)
-- [Getting Started](getting_started.md)
+- [Getting Started](getting_started)
 - [Usage](usage)
 - [Command Line Interface](cli)
 - [API](api)
