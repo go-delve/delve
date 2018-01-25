@@ -294,6 +294,9 @@ func StepOut(dbp Process) error {
 			deferPCEntry := selg.DeferPC()
 			if deferPCEntry != 0 {
 				_, _, deferfn := dbp.BinInfo().PCToLine(deferPCEntry)
+				if deferfn == nil {
+					return errors.New("unable to find function")
+				}
 				deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
 				if err != nil {
 					return err
