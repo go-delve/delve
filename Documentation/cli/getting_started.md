@@ -27,7 +27,8 @@ For example given this project layout:
 
 If you are in the directory `github.com/me/foo/cmd/foo` you can simple run `dlv debug`
 from the command line. From anywhere else, say the project root, you can simply
-provide the package: `dlv debug github.com/me/foo/cmd/foo`.
+provide the package: `dlv debug github.com/me/foo/cmd/foo`. To pass flags to your program 
+separate them with `--`: `dlv debug github.com/me/foo/cmd/foo -- -arg1 value`.
 
 Invoking that command will cause Delve to compile the program in a way most
 suitable for debugging, then it will execute and attach to the program and begin
