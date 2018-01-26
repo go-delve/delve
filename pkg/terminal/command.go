@@ -783,11 +783,18 @@ func scopePrefixSwitch(t *Term, ctx callContext) error {
 	return nil
 }
 
+func exitedToError(state *api.DebuggerState, err error) (*api.DebuggerState, error) {
+	if err == nil && state.Exited {
+		return nil, fmt.Errorf("Process has exited with status %d", state.ExitStatus)
+	}
+	return state, err
+}
+
 func step(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
-	state, err := t.client.Step()
+	state, err := exitedToError(t.client.Step())
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -800,7 +807,7 @@ func stepInstruction(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
-	state, err := t.client.StepInstruction()
+	state, err := exitedToError(t.client.StepInstruction())
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -814,7 +821,7 @@ func next(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
-	state, err := t.client.Next()
+	state, err := exitedToError(t.client.Next())
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -827,7 +834,7 @@ func stepout(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
-	state, err := t.client.StepOut()
+	state, err := exitedToError(t.client.StepOut())
 	if err != nil {
 		printfileNoState(t)
 		return err
