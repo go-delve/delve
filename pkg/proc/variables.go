@@ -1897,13 +1897,19 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg *LoadConfig) ([]*Varia
 		sort.Stable(&variablesByDepth{vars, depths})
 	}
 
-	// prefetch the whole chunk of memory relative to these variables
+	// Prefetch the whole chunk of memory relative to these variables.
+	// Variables that are not stored contiguously in memory (i.e. the ones that
+	// read from a compositeMemory) will be ignored.
 
 	minaddr := vars[0].Addr
 	var maxaddr uintptr
 	var size int64
 
 	for _, v := range vars {
+		if _, extloc := v.mem.(*compositeMemory); extloc {
+			continue
+		}
+
 		if v.Addr < minaddr {
 			minaddr = v.Addr
 		}
@@ -1923,7 +1929,9 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg *LoadConfig) ([]*Varia
 		mem := cacheMemory(vars[0].mem, minaddr, int(maxaddr-minaddr))
 
 		for _, v := range vars {
-			v.mem = mem
+			if _, extloc := v.mem.(*compositeMemory); !extloc {
+				v.mem = mem
+			}
 		}
 	}
 

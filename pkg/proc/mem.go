@@ -80,6 +80,13 @@ func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter 
 // including client code) assumes that addr == 0 is nil
 const fakeAddress = 0xbeef0000
 
+// compositeMemory represents a chunk of memory that is stored in CPU
+// registers or non-contiguously.
+//
+// When optimizations are enabled the compiler will store some variables
+// into registers and sometimes it will also store structs non-contiguously
+// with some fields stored into CPU registers and other fields stored in
+// memory.
 type compositeMemory struct {
 	realmem MemoryReadWriter
 	regs    op.DwarfRegisters
