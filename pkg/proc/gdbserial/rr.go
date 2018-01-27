@@ -68,7 +68,7 @@ func Replay(tracedir string, quiet bool) (*Process, error) {
 	init := <-initch
 	if init.err != nil {
 		rrcmd.Process.Kill()
-		return nil, err
+		return nil, init.err
 	}
 
 	p := New(rrcmd.Process)
@@ -142,7 +142,7 @@ func rrParseGdbCommand(line string) rrInit {
 			arg := fields[i+1]
 
 			if !strings.HasPrefix(arg, targetCmd) {
-				return rrInit{err: &ErrMalformedRRGdbCommand{line, "contents of -ex argument unexpected"}}
+				continue
 			}
 
 			port = arg[len(targetCmd):]
