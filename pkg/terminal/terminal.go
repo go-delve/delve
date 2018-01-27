@@ -187,7 +187,7 @@ func (t *Term) substitutePath(path string) string {
 }
 
 func crossPlatformPath(path string) string {
-	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" {
 		return strings.ToLower(path)
 	}
 	return path
