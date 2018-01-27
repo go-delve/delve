@@ -38,8 +38,9 @@ func platformCases() []tCase {
 		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/path/file.go", "/TmP/path/file.go"},
 	}
 	casesDarwin := []tCase{
-		// Should be case-insensitive
-		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/PaTh/file.go", "/new/path2/file.go"},
+		// Can be either case-sensitive or case-insensitive depending on
+		// filesystem settings, we always treat it as case-sensitive.
+		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/PaTh/file.go", "/TmP/PaTh/file.go"},
 	}
 	casesWindows := []tCase{
 		// Should not depend on separator at the end of rule path
