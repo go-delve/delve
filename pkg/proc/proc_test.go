@@ -3410,3 +3410,45 @@ func TestIssue1137(t *testing.T) {
 		assertNoError(v2.Unreadable, t, "iface2 unreadable")
 	})
 }
+
+func TestIssue1101(t *testing.T) {
+	// If a breakpoint is hit close to process death on a thread that isn't the
+	// group leader the process could die while we are trying to stop it.
+	//
+	// This can be easily reproduced by having the goroutine that's executing
+	// main.main (which will almost always run on the thread group leader) wait
+	// for a second goroutine before exiting, then setting a breakpoint on the
+	// second goroutine and stepping through it (see TestIssue1101 in
+	// proc_test.go).
+	//
+	// When stepping over the return instruction of main.f the deferred
+	// wg.Done() call will be executed which will cause the main goroutine to
+	// resume and proceed to exit. Both the temporary breakpoint on wg.Done and
+	// the temporary breakpoint on the return address of main.f will be in
+	// close proximity to main.main calling os.Exit() and causing the death of
+	// the thread group leader.
+
+	withTestProcess("issue1101", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.f")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		assertNoError(proc.Next(p), t, "Next() 1")
+		assertNoError(proc.Next(p), t, "Next() 2")
+		lastCmd := "Next() 3"
+		exitErr := proc.Next(p)
+		if exitErr == nil {
+			lastCmd = "final Continue()"
+			exitErr = proc.Continue(p)
+		}
+		if pexit, exited := exitErr.(proc.ProcessExitedError); exited {
+			if pexit.Status != 2 && testBackend != "lldb" {
+				// looks like there's a bug with debugserver on macOS that sometimes
+				// will report exit status 0 instead of the proper exit status.
+				t.Fatalf("process exited status %d (expected 2)", pexit.Status)
+			}
+		} else {
+			assertNoError(exitErr, t, lastCmd)
+			t.Fatalf("process did not exit after %s", lastCmd)
+		}
+	})
+}

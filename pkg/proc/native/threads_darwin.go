@@ -27,6 +27,20 @@ type OSSpecificDetails struct {
 // be continued.
 var ErrContinueThread = fmt.Errorf("could not continue thread")
 
+// Halt stops this thread from executing.
+func (thread *Thread) Halt() (err error) {
+	defer func() {
+		if err == nil {
+			thread.running = false
+		}
+	}()
+	if thread.Stopped() {
+		return
+	}
+	err = thread.halt()
+	return
+}
+
 func (t *Thread) halt() (err error) {
 	kret := C.thread_suspend(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {

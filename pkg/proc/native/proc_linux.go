@@ -230,9 +230,19 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			if err != nil {
 				if err == sys.ESRCH {
 					// thread died while we were adding it
+					delete(dbp.threads, int(cloned))
 					continue
 				}
 				return nil, err
+			}
+			dbp.haltMu.Lock()
+			halt := dbp.halt
+			dbp.haltMu.Unlock()
+			if halt {
+				dbp.halt = false
+				th.running = false
+				dbp.threads[int(wpid)].running = false
+				return nil, nil
 			}
 			if err = th.Continue(); err != nil {
 				if err == sys.ESRCH {
@@ -256,7 +266,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		dbp.haltMu.Lock()
 		halt := dbp.halt
 		dbp.haltMu.Unlock()
-		if status.StopSignal() == sys.SIGTRAP && halt {
+		if halt && (status.StopSignal() == sys.SIGTRAP || status.StopSignal() == sys.SIGSTOP) {
 			th.running = false
 			dbp.halt = false
 			return th, nil
@@ -368,16 +378,28 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 }
 
 func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
+	// wait for all threads to stop
+	for {
+		allstopped := true
+		for _, th := range dbp.threads {
+			if th.running {
+				allstopped = false
+				break
+			}
+		}
+		if allstopped {
+			break
+		}
+		dbp.halt = true
+		_, err := dbp.trapWait(-1)
+		if err != nil {
+			return err
+		}
+	}
 	for _, th := range dbp.threads {
 		if th.CurrentBreakpoint.Breakpoint == nil {
 			if err := th.SetCurrentBreakpoint(); err != nil {
-				if err == sys.ESRCH {
-					// This thread quit between the point where we received the breakpoint and
-					// the stop signal.
-					delete(dbp.threads, th.ID)
-				} else {
-					return err
-				}
+				return err
 			}
 		}
 	}
