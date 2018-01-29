@@ -120,22 +120,6 @@ func (thread *Thread) Stopped() bool {
 	return thread.stopped()
 }
 
-// Halt stops this thread from executing. Actual
-// implementation is OS dependant. Look in OS
-// thread file.
-func (thread *Thread) Halt() (err error) {
-	defer func() {
-		if err == nil {
-			thread.running = false
-		}
-	}()
-	if thread.Stopped() {
-		return
-	}
-	err = thread.halt()
-	return
-}
-
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
 func (thread *Thread) SetCurrentBreakpoint() error {
