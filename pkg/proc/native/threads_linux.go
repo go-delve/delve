@@ -16,15 +16,19 @@ type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
+// Halt stops this thread from executing.
+func (thread *Thread) Halt() (err error) {
+	if thread.Stopped() {
+		return
+	}
+	err = thread.halt()
+	return
+}
+
 func (t *Thread) halt() (err error) {
 	err = sys.Tgkill(t.dbp.pid, t.ID, sys.SIGSTOP)
 	if err != nil {
 		err = fmt.Errorf("halt err %s on thread %d", err, t.ID)
-		return
-	}
-	_, _, err = t.dbp.waitFast(t.ID)
-	if err != nil {
-		err = fmt.Errorf("wait err %s on thread %d", err, t.ID)
 		return
 	}
 	return
