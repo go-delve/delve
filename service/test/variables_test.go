@@ -978,7 +978,7 @@ func TestConstants(t *testing.T) {
 }
 
 func setFunctionBreakpoint(p proc.Process, fname string) (*proc.Breakpoint, error) {
-	addr, err := proc.FindFunctionLocation(p, fname, true, 0)
+	addr, err := proc.FindFunctionLocation(p, fname, true, false, 0)
 	if err != nil {
 		return nil, err
 	}

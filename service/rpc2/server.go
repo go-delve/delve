@@ -395,11 +395,11 @@ type ListFunctionArgsOut struct {
 
 // ListFunctionArgs lists all arguments to the current function
 func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionArgsOut) error {
-	vars, err := s.debugger.FunctionArguments(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
+	args, err := s.debugger.FunctionArguments(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
-	out.Args = vars
+	out.Args = args
 	return nil
 }
 

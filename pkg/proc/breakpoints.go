@@ -16,6 +16,7 @@ type Breakpoint struct {
 	FunctionName string
 	File         string
 	Line         int
+	AtReturn     bool
 
 	Addr         uint64 // Address breakpoint is set for.
 	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
@@ -30,14 +31,15 @@ type Breakpoint struct {
 	Kind BreakpointKind
 
 	// Breakpoint information
-	Tracepoint    bool     // Tracepoint flag
-	Goroutine     bool     // Retrieve goroutine information
-	Stacktrace    int      // Number of stack frames to retrieve
-	Variables     []string // Variables to evaluate
-	LoadArgs      *LoadConfig
-	LoadLocals    *LoadConfig
-	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
-	TotalHitCount uint64         // Number of times a breakpoint has been reached
+	Tracepoint     bool     // Tracepoint flag
+	Goroutine      bool     // Retrieve goroutine information
+	Stacktrace     int      // Number of stack frames to retrieve
+	Variables      []string // Variables to evaluate
+	LoadArgs       *LoadConfig
+	LoadReturnVals *LoadConfig
+	LoadLocals     *LoadConfig
+	HitCount       map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
+	TotalHitCount  uint64         // Number of times a breakpoint has been reached
 
 	// DeferReturns: when kind == NextDeferBreakpoint this breakpoint
 	// will also check if the caller is runtime.gopanic or if the return

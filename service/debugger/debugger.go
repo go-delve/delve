@@ -313,10 +313,12 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		}
 		addr, err = proc.FindFileLocation(d.target, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		if requestedBp.Line >= 0 {
-			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, false, requestedBp.Line)
+		if requestedBp.AtReturn {
+			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, false, true, 0)
+		} else if requestedBp.Line >= 0 {
+			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, false, false, requestedBp.Line)
 		} else {
-			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, true, 0)
+			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, true, false, 0)
 		}
 	default:
 		addr = requestedBp.Addr
@@ -366,6 +368,7 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.Stacktrace = requested.Stacktrace
 	bp.Variables = requested.Variables
 	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
+	bp.LoadReturnVals = api.LoadConfigToProc(requested.LoadReturnVals)
 	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	bp.Cond = nil
 	if requested.Cond != "" {
@@ -588,7 +591,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			return fmt.Errorf("could not find thread %d", state.Threads[i].ID)
 		}
 
-		if len(bp.Variables) == 0 && bp.LoadArgs == nil && bp.LoadLocals == nil {
+		if len(bp.Variables) == 0 && bp.LoadArgs == nil && bp.LoadLocals == nil && bp.LoadReturnVals == nil {
 			// don't try to create goroutine scope if there is nothing to load
 			continue
 		}
@@ -612,6 +615,11 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		if bp.LoadArgs != nil {
 			if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {
 				bpi.Arguments = convertVars(vars)
+			}
+		}
+		if bp.LoadReturnVals != nil {
+			if vars, err := s.FunctionReturnVals(*api.LoadConfigToProc(bp.LoadReturnVals)); err == nil {
+				bpi.Returns = convertVars(vars)
 			}
 		}
 		if bp.LoadLocals != nil {
@@ -771,11 +779,11 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) (
 	if err != nil {
 		return nil, err
 	}
-	pv, err := s.FunctionArguments(cfg)
+	args, err := s.FunctionArguments(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return convertVars(pv), nil
+	return convertVars(args), nil
 }
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'

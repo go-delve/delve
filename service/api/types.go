@@ -48,6 +48,8 @@ type Breakpoint struct {
 	File string `json:"file"`
 	// Line is a line in File for the breakpoint.
 	Line int `json:"line"`
+	// AtReturn tells whether to set the breakpoint at the funcion return address.
+	AtReturn bool `json:"atReturn"`
 	// FunctionName is the name of the function at the current breakpoint, and
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
@@ -65,6 +67,8 @@ type Breakpoint struct {
 	Variables []string `json:"variables,omitempty"`
 	// LoadArgs requests loading function arguments when the breakpoint is hit
 	LoadArgs *LoadConfig
+	// LoadReturnVals requests loading function return values when the breakpoint is hit
+	LoadReturnVals *LoadConfig
 	// LoadLocals requests loading function locals when the breakpoint is hit
 	LoadLocals *LoadConfig
 	// number of times a breakpoint has been reached in a certain goroutine
@@ -265,6 +269,7 @@ type BreakpointInfo struct {
 	Goroutine  *Goroutine   `json:"goroutine,omitempty"`
 	Variables  []Variable   `json:"variables,omitempty"`
 	Arguments  []Variable   `json:"arguments,omitempty"`
+	Returns    []Variable   `json:"returns,omitempty"`
 	Locals     []Variable   `json:"locals,omitempty"`
 }
 

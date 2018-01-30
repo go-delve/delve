@@ -169,7 +169,7 @@ func TestExitAfterContinue(t *testing.T) {
 }
 
 func setFunctionBreakpoint(p proc.Process, fname string) (*proc.Breakpoint, error) {
-	addr, err := proc.FindFunctionLocation(p, fname, true, 0)
+	addr, err := proc.FindFunctionLocation(p, fname, true, false, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func TestHalt(t *testing.T) {
 func TestStep(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testprog", t, func(p proc.Process, fixture protest.Fixture) {
-		helloworldaddr, err := proc.FindFunctionLocation(p, "main.helloworld", false, 0)
+		helloworldaddr, err := proc.FindFunctionLocation(p, "main.helloworld", false, false, 0)
 		assertNoError(err, t, "FindFunctionLocation")
 
 		_, err = p.SetBreakpoint(helloworldaddr, proc.UserBreakpoint, nil)
@@ -257,7 +257,7 @@ func TestStep(t *testing.T) {
 func TestBreakpoint(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testprog", t, func(p proc.Process, fixture protest.Fixture) {
-		helloworldaddr, err := proc.FindFunctionLocation(p, "main.helloworld", false, 0)
+		helloworldaddr, err := proc.FindFunctionLocation(p, "main.helloworld", false, false, 0)
 		assertNoError(err, t, "FindFunctionLocation")
 
 		bp, err := p.SetBreakpoint(helloworldaddr, proc.UserBreakpoint, nil)
@@ -282,7 +282,7 @@ func TestBreakpoint(t *testing.T) {
 func TestBreakpointInSeparateGoRoutine(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testthreads", t, func(p proc.Process, fixture protest.Fixture) {
-		fnentry, err := proc.FindFunctionLocation(p, "main.anotherthread", false, 0)
+		fnentry, err := proc.FindFunctionLocation(p, "main.anotherthread", false, false, 0)
 		assertNoError(err, t, "FindFunctionLocation")
 
 		_, err = p.SetBreakpoint(fnentry, proc.UserBreakpoint, nil)
@@ -312,7 +312,7 @@ func TestBreakpointWithNonExistantFunction(t *testing.T) {
 
 func TestClearBreakpointBreakpoint(t *testing.T) {
 	withTestProcess("testprog", t, func(p proc.Process, fixture protest.Fixture) {
-		fnentry, err := proc.FindFunctionLocation(p, "main.sleepytime", false, 0)
+		fnentry, err := proc.FindFunctionLocation(p, "main.sleepytime", false, false, 0)
 		assertNoError(err, t, "FindFunctionLocation")
 		bp, err := p.SetBreakpoint(fnentry, proc.UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
@@ -710,7 +710,7 @@ func TestFindReturnAddressTopOfStackFn(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testreturnaddress", t, func(p proc.Process, fixture protest.Fixture) {
 		fnName := "runtime.rt0_go"
-		fnentry, err := proc.FindFunctionLocation(p, fnName, false, 0)
+		fnentry, err := proc.FindFunctionLocation(p, fnName, false, false, 0)
 		assertNoError(err, t, "FindFunctionLocation")
 		if _, err := p.SetBreakpoint(fnentry, proc.UserBreakpoint, nil); err != nil {
 			t.Fatal(err)
@@ -732,7 +732,7 @@ func TestSwitchThread(t *testing.T) {
 		if err == nil {
 			t.Fatal("Expected error for invalid thread id")
 		}
-		pc, err := proc.FindFunctionLocation(p, "main.main", true, 0)
+		pc, err := proc.FindFunctionLocation(p, "main.main", true, false, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -778,7 +778,7 @@ func TestCGONext(t *testing.T) {
 
 	protest.AllowRecording(t)
 	withTestProcess("cgotest", t, func(p proc.Process, fixture protest.Fixture) {
-		pc, err := proc.FindFunctionLocation(p, "main.main", true, 0)
+		pc, err := proc.FindFunctionLocation(p, "main.main", true, false, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1764,9 +1764,9 @@ func TestIssue332_Part2(t *testing.T) {
 		regs, err := p.CurrentThread().Registers(false)
 		assertNoError(err, t, "Registers()")
 		pc := regs.PC()
-		pcAfterPrologue, err := proc.FindFunctionLocation(p, "main.changeMe", true, -1)
+		pcAfterPrologue, err := proc.FindFunctionLocation(p, "main.changeMe", true, false, -1)
 		assertNoError(err, t, "FindFunctionLocation()")
-		pcEntry, err := proc.FindFunctionLocation(p, "main.changeMe", false, 0)
+		pcEntry, err := proc.FindFunctionLocation(p, "main.changeMe", false, false, 0)
 		if err != nil {
 			t.Fatalf("got error while finding function location: %v", err)
 		}
@@ -1789,7 +1789,7 @@ func TestIssue332_Part2(t *testing.T) {
 
 func TestIssue396(t *testing.T) {
 	withTestProcess("callme", t, func(p proc.Process, fixture protest.Fixture) {
-		_, err := proc.FindFunctionLocation(p, "main.init", true, -1)
+		_, err := proc.FindFunctionLocation(p, "main.init", true, false, -1)
 		assertNoError(err, t, "FindFunctionLocation()")
 	})
 }
@@ -2083,7 +2083,7 @@ func TestIssue573(t *testing.T) {
 	// of the function and the internal breakpoint set by StepInto may be missed.
 	protest.AllowRecording(t)
 	withTestProcess("issue573", t, func(p proc.Process, fixture protest.Fixture) {
-		fentry, _ := proc.FindFunctionLocation(p, "main.foo", false, 0)
+		fentry, _ := proc.FindFunctionLocation(p, "main.foo", false, false, 0)
 		_, err := p.SetBreakpoint(fentry, proc.UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint()")
 		assertNoError(proc.Continue(p), t, "Continue()")
@@ -2095,9 +2095,9 @@ func TestIssue573(t *testing.T) {
 
 func TestTestvariables2Prologue(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
-		addrEntry, err := proc.FindFunctionLocation(p, "main.main", false, 0)
+		addrEntry, err := proc.FindFunctionLocation(p, "main.main", false, false, 0)
 		assertNoError(err, t, "FindFunctionLocation - entrypoint")
-		addrPrologue, err := proc.FindFunctionLocation(p, "main.main", true, 0)
+		addrPrologue, err := proc.FindFunctionLocation(p, "main.main", true, false, 0)
 		assertNoError(err, t, "FindFunctionLocation - postprologue")
 		if addrEntry == addrPrologue {
 			t.Fatalf("Prologue detection failed on testvariables2.go/main.main")

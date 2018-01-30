@@ -304,7 +304,6 @@ func debugCmd(cmd *cobra.Command, args []string) {
 
 func traceCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-
 		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -360,7 +359,25 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		for i := range funcs {
-			_, err = client.CreateBreakpoint(&api.Breakpoint{FunctionName: funcs[i], Tracepoint: true, Line: -1, Stacktrace: traceStackDepth, LoadArgs: &terminal.ShortLoadConfig})
+			// Create breakpoint at function entry.
+			_, err = client.CreateBreakpoint(&api.Breakpoint{
+				FunctionName: funcs[i],
+				Tracepoint:   true,
+				Line:         -1,
+				Stacktrace:   traceStackDepth,
+				LoadArgs:     &terminal.ShortLoadConfig,
+			})
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			// Create breakpoint at function exit.
+			_, err = client.CreateBreakpoint(&api.Breakpoint{
+				FunctionName:   funcs[i],
+				Tracepoint:     true,
+				AtReturn:       true,
+				LoadReturnVals: &terminal.ShortLoadConfig,
+			})
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
