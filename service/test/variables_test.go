@@ -78,7 +78,7 @@ func evalVariable(p proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Var
 		var frame proc.Stackframe
 		frame, err = findFirstNonRuntimeFrame(p)
 		if err == nil {
-			scope = proc.FrameToScope(p, frame)
+			scope = proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frame)
 		}
 	} else {
 		scope, err = proc.GoroutineScope(p.CurrentThread())
@@ -405,7 +405,7 @@ func TestLocalVariables(t *testing.T) {
 				var frame proc.Stackframe
 				frame, err = findFirstNonRuntimeFrame(p)
 				if err == nil {
-					scope = proc.FrameToScope(p, frame)
+					scope = proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frame)
 				}
 			} else {
 				scope, err = proc.GoroutineScope(p.CurrentThread())

@@ -174,6 +174,10 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
+func globalScope(bi *BinaryInfo, mem MemoryReadWriter) *EvalScope {
+	return &EvalScope{PC: 0, Regs: op.DwarfRegisters{}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
+}
+
 func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
 	return newVariable(name, addr, dwarfType, scope.BinInfo, mem)
 }
@@ -749,14 +753,16 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func (scope *EvalScope) extractVarInfoFromEntry(entry *dwarf.Entry) (*Variable, error) {
-	if entry == nil {
+func (scope *EvalScope) extractVarInfoFromEntry(varEntry *dwarf.Entry) (*Variable, error) {
+	if varEntry == nil {
 		return nil, fmt.Errorf("invalid entry")
 	}
 
-	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
-		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
+	if varEntry.Tag != dwarf.TagFormalParameter && varEntry.Tag != dwarf.TagVariable {
+		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", varEntry.Tag.String())
 	}
+
+	entry, _ := reader.LoadAbstractOrigin(varEntry, scope.BinInfo.dwarfReader)
 
 	n, ok := entry.Val(dwarf.AttrName).(string)
 	if !ok {
