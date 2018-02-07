@@ -87,7 +87,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 		task := C.get_task_for_pid(C.int(dbp.pid))
 		// The task_for_pid call races with the fork call. This can
 		// result in the parent task being returned instead of the child.
-                if task != dbp.os.task {
+		if task != dbp.os.task {
 			err = dbp.updateThreadListForTask(task)
 			if err == nil {
 				break
