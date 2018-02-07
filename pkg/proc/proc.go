@@ -87,9 +87,9 @@ func Continue(dbp Process) error {
 	if dbp.Exited() {
 		return &ProcessExitedError{Pid: dbp.Pid()}
 	}
-	dbp.ManualStopRequested()
+	dbp.CheckAndClearManualStopRequest()
 	for {
-		if dbp.ManualStopRequested() {
+		if dbp.CheckAndClearManualStopRequest() {
 			return nil
 		}
 		trapthread, err := dbp.ContinueOnce()
