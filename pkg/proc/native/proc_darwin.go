@@ -84,12 +84,17 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	// trapWait to wait until the child process calls execve.
 
 	for {
-		err = dbp.updateThreadListForTask(C.get_task_for_pid(C.int(dbp.pid)))
-		if err == nil {
-			break
-		}
-		if err != couldNotGetThreadCount && err != couldNotGetThreadList {
-			return nil, err
+		task := C.get_task_for_pid(C.int(dbp.pid))
+		// The task_for_pid call races with the fork call. This can
+		// result in the parent task being returned instead of the child.
+                if task != dbp.os.task {
+			err = dbp.updateThreadListForTask(task)
+			if err == nil {
+				break
+			}
+			if err != couldNotGetThreadCount && err != couldNotGetThreadList {
+				return nil, err
+			}
 		}
 	}
 
