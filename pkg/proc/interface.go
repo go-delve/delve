@@ -87,9 +87,9 @@ type ProcessManipulation interface {
 	SwitchThread(int) error
 	SwitchGoroutine(int) error
 	RequestManualStop() error
-	// ManualStopRequested returns true the first time it's called after a call
-	// to RequestManualStop.
-	ManualStopRequested() bool
+	// CheckAndClearManualStopRequest returns true the first time it's called
+	// after a call to RequestManualStop.
+	CheckAndClearManualStopRequest() bool
 	Halt() error
 	Kill() error
 	Detach(bool) error

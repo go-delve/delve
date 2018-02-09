@@ -717,7 +717,7 @@ func (p *Process) RequestManualStop() error {
 	return p.conn.sendCtrlC()
 }
 
-func (p *Process) ManualStopRequested() bool {
+func (p *Process) CheckAndClearManualStopRequest() bool {
 	p.conn.manualStopMutex.Lock()
 	msr := p.manualStopRequested
 	p.manualStopRequested = false

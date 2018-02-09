@@ -183,7 +183,7 @@ func (dbp *Process) RequestManualStop() error {
 	return dbp.requestManualStop()
 }
 
-func (dbp *Process) ManualStopRequested() bool {
+func (dbp *Process) CheckAndClearManualStopRequest() bool {
 	dbp.haltMu.Lock()
 	msr := dbp.manualStopRequested
 	dbp.manualStopRequested = false

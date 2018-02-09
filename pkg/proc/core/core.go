@@ -282,7 +282,7 @@ func (p *Process) RequestManualStop() error {
 	return nil
 }
 
-func (p *Process) ManualStopRequested() bool {
+func (p *Process) CheckAndClearManualStopRequest() bool {
 	return false
 }
 
