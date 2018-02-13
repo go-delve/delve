@@ -90,7 +90,6 @@ type ProcessManipulation interface {
 	// CheckAndClearManualStopRequest returns true the first time it's called
 	// after a call to RequestManualStop.
 	CheckAndClearManualStopRequest() bool
-	Halt() error
 	Detach(bool) error
 }
 

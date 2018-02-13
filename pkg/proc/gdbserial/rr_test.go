@@ -26,7 +26,6 @@ func withTestRecording(name string, t testing.TB, fn func(p *gdbserial.Process, 
 	t.Logf("replaying %q", tracedir)
 
 	defer func() {
-		p.Halt()
 		p.Detach(true)
 		if tracedir != "" {
 			protest.SafeRemoveAll(tracedir)

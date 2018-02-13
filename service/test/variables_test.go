@@ -128,7 +128,6 @@ func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture 
 	}
 
 	defer func() {
-		p.Halt()
 		p.Detach(true)
 		if tracedir != "" {
 			protest.SafeRemoveAll(tracedir)

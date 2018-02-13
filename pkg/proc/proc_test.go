@@ -75,7 +75,6 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 	}
 
 	defer func() {
-		p.Halt()
 		p.Detach(true)
 		if tracedir != "" {
 			protest.SafeRemoveAll(tracedir)

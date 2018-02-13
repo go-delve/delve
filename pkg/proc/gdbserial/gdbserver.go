@@ -737,14 +737,6 @@ func (p *Process) getCtrlC() bool {
 	return p.ctrlC
 }
 
-func (p *Process) Halt() error {
-	if p.exited {
-		return nil
-	}
-	p.setCtrlC(true)
-	return p.conn.sendCtrlC()
-}
-
 func (p *Process) Detach(kill bool) error {
 	if kill && !p.exited {
 		err := p.conn.kill()
