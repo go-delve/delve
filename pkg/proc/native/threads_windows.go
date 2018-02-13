@@ -18,30 +18,6 @@ type OSSpecificDetails struct {
 	hThread syscall.Handle
 }
 
-// Halt stops this thread from executing.
-func (thread *Thread) Halt() (err error) {
-	defer func() {
-		if err == nil {
-			thread.running = false
-		}
-	}()
-	if thread.Stopped() {
-		return
-	}
-	err = thread.halt()
-	return
-}
-
-func (t *Thread) halt() (err error) {
-	// Ignore the request to halt. On Windows, all threads are halted
-	// on return from WaitForDebugEvent.
-	return nil
-
-	// TODO - This may not be correct in all usages of dbp.Halt.  There
-	// are some callers who use dbp.Halt() to stop the process when it is not
-	// already broken on a debug event.
-}
-
 func (t *Thread) singleStep() error {
 	context := newCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
@@ -140,9 +116,9 @@ func (t *Thread) Blocked() bool {
 	}
 }
 
-func (t *Thread) stopped() bool {
-	// TODO: We are assuming that threads are always stopped
-	// during command execution.
+// Stopped returns whether the thread is stopped at the operating system
+// level. On windows this always returns true.
+func (t *Thread) Stopped() bool {
 	return true
 }
 

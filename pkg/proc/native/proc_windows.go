@@ -2,7 +2,6 @@ package native
 
 import (
 	"debug/pe"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -174,9 +173,6 @@ func Attach(pid int) (*Process, error) {
 func (dbp *Process) kill() error {
 	if dbp.exited {
 		return nil
-	}
-	if !dbp.threads[dbp.pid].Stopped() {
-		return errors.New("process must be stopped in order to kill it")
 	}
 
 	p, err := os.FindProcess(dbp.pid)
@@ -393,7 +389,40 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	return 0, nil, fmt.Errorf("not implemented: wait")
 }
 
-func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
+func (dbp *Process) exitGuard(err error) error {
+	return err
+}
+
+func (dbp *Process) resume() error {
+	for _, thread := range dbp.threads {
+		if thread.CurrentBreakpoint.Breakpoint != nil {
+			if err := thread.StepInstruction(); err != nil {
+				return err
+			}
+			thread.CurrentBreakpoint.Clear()
+		}
+	}
+
+	for _, thread := range dbp.threads {
+		thread.running = true
+		_, err := _ResumeThread(thread.os.hThread)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// stop stops all running threads threads and sets breakpoints
+func (dbp *Process) stop(trapthread *Thread) (err error) {
+	if dbp.exited {
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
+	}
+	for _, th := range dbp.threads {
+		th.running = false
+	}
+
 	// While the debug event that stopped the target was being propagated
 	// other target threads could generate other debug events.
 	// After this function we need to know about all the threads
@@ -404,7 +433,7 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 	// call to _ContinueDebugEvent will resume execution of some of the
 	// target threads.
 
-	err := trapthread.SetCurrentBreakpoint()
+	err = trapthread.SetCurrentBreakpoint()
 	if err != nil {
 		return err
 	}
@@ -433,31 +462,6 @@ func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
 			break
 		}
 		err = dbp.threads[tid].SetCurrentBreakpoint()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (dbp *Process) exitGuard(err error) error {
-	return err
-}
-
-func (dbp *Process) resume() error {
-	for _, thread := range dbp.threads {
-		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
-				return err
-			}
-			thread.CurrentBreakpoint.Clear()
-		}
-	}
-
-	for _, thread := range dbp.threads {
-		thread.running = true
-		_, err := _ResumeThread(thread.os.hThread)
 		if err != nil {
 			return err
 		}

@@ -111,12 +111,7 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := dbp.Halt(); err != nil {
-		return nil, dbp.exitGuard(err)
-	}
-
-	_, err = dbp.waitForStop()
-	if err != nil {
+	if err := dbp.stop(nil); err != nil {
 		return nil, err
 	}
 
@@ -384,23 +379,6 @@ func (dbp *Process) waitForStop() ([]int, error) {
 	}
 }
 
-func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	ports, err := dbp.waitForStop()
-	if err != nil {
-		return err
-	}
-	trapthread.SetCurrentBreakpoint()
-	for _, port := range ports {
-		if th, ok := dbp.threads[port]; ok {
-			err := th.SetCurrentBreakpoint()
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
 	wg.Done()
 }
@@ -441,6 +419,39 @@ func (dbp *Process) resume() error {
 	for _, thread := range dbp.threads {
 		if err := thread.resume(); err != nil {
 			return dbp.exitGuard(err)
+		}
+	}
+	return nil
+}
+
+// stop stops all running threads threads and sets breakpoints
+func (dbp *Process) stop(trapthread *Thread) (err error) {
+	if dbp.exited {
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
+	}
+	for _, th := range dbp.threads {
+		if !th.Stopped() {
+			if err := th.halt(); err != nil {
+				return dbp.exitGuard(err)
+			}
+		}
+		th.running = false
+	}
+
+	ports, err := dbp.waitForStop()
+	if err != nil {
+		return err
+	}
+	if !dbp.os.initialized {
+		return nil
+	}
+	trapthread.SetCurrentBreakpoint()
+	for _, port := range ports {
+		if th, ok := dbp.threads[port]; ok {
+			err := th.SetCurrentBreakpoint()
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
