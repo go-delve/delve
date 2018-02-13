@@ -969,20 +969,6 @@ func TestKill(t *testing.T) {
 		return
 	}
 	withTestProcess("testprog", t, func(p proc.Process, fixture protest.Fixture) {
-		if err := p.Kill(); err != nil {
-			t.Fatal(err)
-		}
-		if !p.Exited() {
-			t.Fatal("expected process to have exited")
-		}
-		if runtime.GOOS == "linux" {
-			_, err := os.Open(fmt.Sprintf("/proc/%d/", p.Pid()))
-			if err == nil {
-				t.Fatal("process has not exited", p.Pid())
-			}
-		}
-	})
-	withTestProcess("testprog", t, func(p proc.Process, fixture protest.Fixture) {
 		if err := p.Detach(true); err != nil {
 			t.Fatal(err)
 		}
@@ -2086,8 +2072,7 @@ func TestUnsupportedArch(t *testing.T) {
 	case proc.UnsupportedLinuxArchErr, proc.UnsupportedWindowsArchErr, proc.UnsupportedDarwinArchErr:
 		// all good
 	case nil:
-		p.Halt()
-		p.Kill()
+		p.Detach(true)
 		t.Fatal("Launch is expected to fail, but succeeded")
 	default:
 		t.Fatal(err)

@@ -306,10 +306,6 @@ func (p *Process) Halt() error {
 	return nil
 }
 
-func (p *Process) Kill() error {
-	return nil
-}
-
 func (p *Process) Pid() int {
 	return p.core.Pid
 }

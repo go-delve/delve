@@ -98,8 +98,8 @@ func Attach(pid int) (*Process, error) {
 	return dbp, nil
 }
 
-// Kill kills the target process.
-func (dbp *Process) Kill() (err error) {
+// kill kills the target process.
+func (dbp *Process) kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
