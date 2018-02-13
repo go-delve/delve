@@ -1119,7 +1119,7 @@ func evalVariableOrError(p proc.Process, symbol string) (*proc.Variable, error) 
 		var frame proc.Stackframe
 		frame, err = findFirstNonRuntimeFrame(p)
 		if err == nil {
-			scope = proc.FrameToScope(p, frame)
+			scope = proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frame)
 		}
 	} else {
 		scope, err = proc.GoroutineScope(p.CurrentThread())
@@ -2931,7 +2931,7 @@ func TestIssue871(t *testing.T) {
 			var frame proc.Stackframe
 			frame, err = findFirstNonRuntimeFrame(p)
 			if err == nil {
-				scope = proc.FrameToScope(p, frame)
+				scope = proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frame)
 			}
 		} else {
 			scope, err = proc.GoroutineScope(p.CurrentThread())
@@ -3345,7 +3345,7 @@ func TestIssue1034(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		frames, err := p.SelectedGoroutine().Stacktrace(10)
 		assertNoError(err, t, "Stacktrace")
-		scope := proc.FrameToScope(p, frames[2])
+		scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frames[2])
 		args, _ := scope.FunctionArguments(normalLoadConfig)
 		assertNoError(err, t, "FunctionArguments()")
 		if len(args) > 0 {

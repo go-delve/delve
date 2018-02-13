@@ -3,8 +3,6 @@ package proc
 import (
 	"go/constant"
 	"unsafe"
-
-	"github.com/derekparker/delve/pkg/dwarf/op"
 )
 
 // delve counterpart to runtime.moduledata
@@ -15,7 +13,7 @@ type moduleData struct {
 
 func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) (err error) {
 	bi.loadModuleDataOnce.Do(func() {
-		scope := &EvalScope{0, op.DwarfRegisters{}, mem, nil, bi, 0}
+		scope := globalScope(bi, mem)
 		var md *Variable
 		md, err = scope.findGlobal("runtime.firstmoduledata")
 		if err != nil {
@@ -121,7 +119,7 @@ func resolveNameOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem MemoryRea
 }
 
 func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem MemoryReadWriter) (*Variable, error) {
-	scope := &EvalScope{0, op.DwarfRegisters{}, mem, nil, bi, 0}
+	scope := globalScope(bi, mem)
 	reflectOffs, err := scope.findGlobal("runtime.reflectOffs")
 	if err != nil {
 		return nil, err

@@ -59,6 +59,8 @@ type BinaryInfo struct {
 
 	loadErrMu sync.Mutex
 	loadErr   error
+
+	dwarfReader *dwarf.Reader
 }
 
 var UnsupportedLinuxArchErr = errors.New("unsupported architecture - only linux/amd64 is supported")
@@ -342,7 +344,7 @@ func (bi *BinaryInfo) loclistInit(data []byte) {
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry *dwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
+func (bi *BinaryInfo) Location(entry reader.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
 	a := entry.Val(attr)
 	if a == nil {
 		return 0, nil, "", fmt.Errorf("no location attribute %s", attr)
@@ -424,6 +426,8 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 	if err != nil {
 		return err
 	}
+
+	bi.dwarfReader = bi.dwarf.Reader()
 
 	debugLineBytes, err := getDebugLineInfoElf(elfFile)
 	if err != nil {
@@ -534,6 +538,8 @@ func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
 	if err != nil {
 		return err
 	}
+
+	bi.dwarfReader = bi.dwarf.Reader()
 
 	debugLineBytes, err := getDebugLineInfoPE(peFile)
 	if err != nil {
@@ -700,6 +706,8 @@ func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error
 	if err != nil {
 		return err
 	}
+
+	bi.dwarfReader = bi.dwarf.Reader()
 
 	debugLineBytes, err := getDebugLineInfoMacho(exe)
 	if err != nil {

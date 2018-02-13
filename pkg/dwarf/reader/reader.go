@@ -319,3 +319,49 @@ func (reader *Reader) NextCompileUnit() (*dwarf.Entry, error) {
 
 	return nil, nil
 }
+
+// Entry represents a debug_info entry.
+// When calling Val, if the entry does not have the specified attribute, the
+// entry specified by DW_AT_abstract_origin will be searched recursively.
+type Entry interface {
+	Val(dwarf.Attr) interface{}
+}
+
+type compositeEntry []*dwarf.Entry
+
+func (ce compositeEntry) Val(attr dwarf.Attr) interface{} {
+	for _, e := range ce {
+		if r := e.Val(attr); r != nil {
+			return r
+		}
+	}
+	return nil
+}
+
+// LoadAbstractOrigin loads the entry corresponding to the
+// DW_AT_abstract_origin of entry and returns a combination of entry and its
+// abstract origin.
+func LoadAbstractOrigin(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.Offset) {
+	ao, ok := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+	if !ok {
+		return entry, entry.Offset
+	}
+
+	r := []*dwarf.Entry{entry}
+
+	for {
+		aordr.Seek(ao)
+		e, _ := aordr.Next()
+		if e == nil {
+			break
+		}
+		r = append(r, e)
+
+		ao, ok = e.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+		if !ok {
+			break
+		}
+	}
+
+	return compositeEntry(r), entry.Offset
+}
