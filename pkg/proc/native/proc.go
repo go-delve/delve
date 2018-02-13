@@ -79,7 +79,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		return nil
 	}
 	if kill && dbp.childProcess {
-		err := dbp.Kill()
+		err := dbp.kill()
 		if err != nil {
 			return err
 		}

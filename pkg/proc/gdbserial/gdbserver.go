@@ -745,24 +745,14 @@ func (p *Process) Halt() error {
 	return p.conn.sendCtrlC()
 }
 
-func (p *Process) Kill() error {
-	if p.exited {
-		return nil
-	}
-	err := p.conn.kill()
-	if _, exited := err.(proc.ProcessExitedError); exited {
-		p.exited = true
-		return nil
-	}
-	return err
-}
-
 func (p *Process) Detach(kill bool) error {
-	if kill {
-		if err := p.Kill(); err != nil {
+	if kill && !p.exited {
+		err := p.conn.kill()
+		if err != nil {
 			if _, exited := err.(proc.ProcessExitedError); !exited {
 				return err
 			}
+			p.exited = true
 		}
 	}
 	if !p.exited {

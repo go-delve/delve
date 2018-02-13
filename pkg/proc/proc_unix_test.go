@@ -46,7 +46,7 @@ func TestIssue419(t *testing.T) {
 			if p.Pid() <= 0 {
 				// if we don't stop the inferior the test will never finish
 				p.RequestManualStop()
-				err := p.Kill()
+				err := p.Detach(true)
 				errChan <- errIssue419{pid: p.Pid(), err: err}
 				return
 			}
@@ -57,7 +57,7 @@ func TestIssue419(t *testing.T) {
 		errChan <- proc.Continue(p)
 	})
 
-	for i :=0; i<2; i++ {
+	for i := 0; i < 2; i++ {
 		err := <-errChan
 
 		if v, ok := err.(errIssue419); ok {

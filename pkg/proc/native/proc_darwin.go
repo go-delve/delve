@@ -166,7 +166,7 @@ func Attach(pid int) (*Process, error) {
 }
 
 // Kill kills the process.
-func (dbp *Process) Kill() (err error) {
+func (dbp *Process) kill() (err error) {
 	if dbp.exited {
 		return nil
 	}

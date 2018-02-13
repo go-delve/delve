@@ -91,7 +91,6 @@ type ProcessManipulation interface {
 	// after a call to RequestManualStop.
 	CheckAndClearManualStopRequest() bool
 	Halt() error
-	Kill() error
 	Detach(bool) error
 }
 
