@@ -377,35 +377,6 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	}
 }
 
-func (dbp *Process) setCurrentBreakpoints(trapthread *Thread) error {
-	// wait for all threads to stop
-	for {
-		allstopped := true
-		for _, th := range dbp.threads {
-			if th.running {
-				allstopped = false
-				break
-			}
-		}
-		if allstopped {
-			break
-		}
-		dbp.halt = true
-		_, err := dbp.trapWait(-1)
-		if err != nil {
-			return err
-		}
-	}
-	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil {
-			if err := th.SetCurrentBreakpoint(); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (dbp *Process) exitGuard(err error) error {
 	if err != sys.ESRCH {
 		return err
@@ -432,6 +403,49 @@ func (dbp *Process) resume() error {
 	for _, thread := range dbp.threads {
 		if err := thread.resume(); err != nil && err != sys.ESRCH {
 			return err
+		}
+	}
+	return nil
+}
+
+// stop stops all running threads threads and sets breakpoints
+func (dbp *Process) stop(trapthread *Thread) (err error) {
+	if dbp.exited {
+		return &proc.ProcessExitedError{Pid: dbp.Pid()}
+	}
+	for _, th := range dbp.threads {
+		if !th.Stopped() {
+			if err := th.halt(); err != nil {
+				return dbp.exitGuard(err)
+			}
+		}
+	}
+
+	// wait for all threads to stop
+	for {
+		allstopped := true
+		for _, th := range dbp.threads {
+			if th.running {
+				allstopped = false
+				break
+			}
+		}
+		if allstopped {
+			break
+		}
+		dbp.halt = true
+		_, err := dbp.trapWait(-1)
+		if err != nil {
+			return err
+		}
+	}
+
+	// set breakpoints on all threads
+	for _, th := range dbp.threads {
+		if th.CurrentBreakpoint.Breakpoint == nil {
+			if err := th.SetCurrentBreakpoint(); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

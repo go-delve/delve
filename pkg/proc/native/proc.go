@@ -246,10 +246,7 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := dbp.Halt(); err != nil {
-		return nil, dbp.exitGuard(err)
-	}
-	if err := dbp.setCurrentBreakpoints(trapthread); err != nil {
+	if err := dbp.stop(trapthread); err != nil {
 		return nil, err
 	}
 	return trapthread, err
@@ -321,19 +318,6 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 		return dbp.SwitchThread(g.Thread.ThreadID())
 	}
 	dbp.selectedGoroutine = g
-	return nil
-}
-
-// Halt stops all threads.
-func (dbp *Process) Halt() (err error) {
-	if dbp.exited {
-		return &proc.ProcessExitedError{Pid: dbp.Pid()}
-	}
-	for _, th := range dbp.threads {
-		if err := th.Halt(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

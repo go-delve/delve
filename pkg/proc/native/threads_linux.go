@@ -16,15 +16,6 @@ type OSSpecificDetails struct {
 	registers sys.PtraceRegs
 }
 
-// Halt stops this thread from executing.
-func (thread *Thread) Halt() (err error) {
-	if thread.Stopped() {
-		return
-	}
-	err = thread.halt()
-	return
-}
-
 func (t *Thread) halt() (err error) {
 	err = sys.Tgkill(t.dbp.pid, t.ID, sys.SIGSTOP)
 	if err != nil {
@@ -34,7 +25,9 @@ func (t *Thread) halt() (err error) {
 	return
 }
 
-func (t *Thread) stopped() bool {
+// Stopped returns whether the thread is stopped at
+// the operating system level.
+func (t *Thread) Stopped() bool {
 	state := status(t.ID, t.dbp.os.comm)
 	return state == StatusTraceStop || state == StatusTraceStopT
 }

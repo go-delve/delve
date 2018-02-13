@@ -113,13 +113,6 @@ func (thread *Thread) SetPC(pc uint64) error {
 	return regs.SetPC(thread, pc)
 }
 
-// Stopped returns whether the thread is stopped at
-// the operating system level. Actual implementation
-// is OS dependant, look in OS thread file.
-func (thread *Thread) Stopped() bool {
-	return thread.stopped()
-}
-
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
 func (thread *Thread) SetCurrentBreakpoint() error {
