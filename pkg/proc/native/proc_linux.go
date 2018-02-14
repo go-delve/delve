@@ -240,8 +240,8 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			dbp.haltMu.Unlock()
 			if halt {
 				dbp.halt = false
-				th.running = false
-				dbp.threads[int(wpid)].running = false
+				th.os.running = false
+				dbp.threads[int(wpid)].os.running = false
 				return nil, nil
 			}
 			if err = th.Continue(); err != nil {
@@ -267,12 +267,12 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		halt := dbp.halt
 		dbp.haltMu.Unlock()
 		if halt && (status.StopSignal() == sys.SIGTRAP || status.StopSignal() == sys.SIGSTOP) {
-			th.running = false
+			th.os.running = false
 			dbp.halt = false
 			return th, nil
 		}
 		if status.StopSignal() == sys.SIGTRAP {
-			th.running = false
+			th.os.running = false
 			return th, nil
 		}
 		if th != nil {
@@ -425,7 +425,7 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	for {
 		allstopped := true
 		for _, th := range dbp.threads {
-			if th.running {
+			if th.os.running {
 				allstopped = false
 				break
 			}
