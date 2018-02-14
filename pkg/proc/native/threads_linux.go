@@ -17,10 +17,10 @@ type OSSpecificDetails struct {
 	running   bool
 }
 
-func (t *Thread) halt() (err error) {
+func (t *Thread) stop() (err error) {
 	err = sys.Tgkill(t.dbp.pid, t.ID, sys.SIGSTOP)
 	if err != nil {
-		err = fmt.Errorf("halt err %s on thread %d", err, t.ID)
+		err = fmt.Errorf("stop err %s on thread %d", err, t.ID)
 		return
 	}
 	return

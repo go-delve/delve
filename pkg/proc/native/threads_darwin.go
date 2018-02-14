@@ -27,7 +27,7 @@ type OSSpecificDetails struct {
 // be continued.
 var ErrContinueThread = fmt.Errorf("could not continue thread")
 
-func (t *Thread) halt() (err error) {
+func (t *Thread) stop() (err error) {
 	kret := C.thread_suspend(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
 		errStr := C.GoString(C.mach_error_string(C.mach_error_t(kret)))

@@ -25,6 +25,7 @@ type OSProcessDetails struct {
 	exceptionPort    C.mach_port_t // mach port for receiving mach exceptions.
 	notificationPort C.mach_port_t // mach port for dead name notification (process exit).
 	initialized      bool
+	halt             bool
 
 	// the main port we use, will return messages from both the
 	// exception and notification ports.
@@ -191,6 +192,7 @@ func (dbp *Process) requestManualStop() (err error) {
 		thread        = C.mach_port_t(dbp.currentThread.os.threadAct)
 		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
 	)
+	dbp.os.halt = true
 	kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not raise mach exception")
@@ -306,9 +308,9 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
 
 		case C.MACH_RCV_INTERRUPTED:
-			dbp.haltMu.Lock()
-			halt := dbp.halt
-			dbp.haltMu.Unlock()
+			dbp.stopMu.Lock()
+			halt := dbp.os.halt
+			dbp.stopMu.Unlock()
 			if !halt {
 				// Call trapWait again, it seems
 				// MACH_RCV_INTERRUPTED is emitted before
@@ -337,11 +339,11 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 		dbp.updateThreadList()
 		th, ok := dbp.threads[int(port)]
 		if !ok {
-			dbp.haltMu.Lock()
-			halt := dbp.halt
-			dbp.haltMu.Unlock()
+			dbp.stopMu.Lock()
+			halt := dbp.os.halt
+			dbp.stopMu.Unlock()
 			if halt {
-				dbp.halt = false
+				dbp.os.halt = false
 				return th, nil
 			}
 			if dbp.firstStart || th.singleStepping {
@@ -424,14 +426,14 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
-// stop stops all running threads threads and sets breakpoints
+// stop stops all running threads and sets breakpoints
 func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
 		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
 	for _, th := range dbp.threads {
 		if !th.Stopped() {
-			if err := th.halt(); err != nil {
+			if err := th.stop(); err != nil {
 				return dbp.exitGuard(err)
 			}
 		}
