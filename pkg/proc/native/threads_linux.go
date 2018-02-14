@@ -14,6 +14,7 @@ type WaitStatus sys.WaitStatus
 // process details.
 type OSSpecificDetails struct {
 	registers sys.PtraceRegs
+	running   bool
 }
 
 func (t *Thread) halt() (err error) {
@@ -37,7 +38,7 @@ func (t *Thread) resume() error {
 }
 
 func (t *Thread) resumeWithSig(sig int) (err error) {
-	t.running = true
+	t.os.running = true
 	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
 	return
 }

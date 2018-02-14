@@ -18,7 +18,6 @@ type Thread struct {
 
 	dbp            *Process
 	singleStepping bool
-	running        bool
 	os             *OSSpecificDetails
 }
 
@@ -49,11 +48,9 @@ func (thread *Thread) Continue() error {
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
 func (thread *Thread) StepInstruction() (err error) {
-	thread.running = true
 	thread.singleStepping = true
 	defer func() {
 		thread.singleStepping = false
-		thread.running = false
 	}()
 	pc, err := thread.PC()
 	if err != nil {

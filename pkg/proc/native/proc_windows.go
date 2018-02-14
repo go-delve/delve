@@ -404,7 +404,6 @@ func (dbp *Process) resume() error {
 	}
 
 	for _, thread := range dbp.threads {
-		thread.running = true
 		_, err := _ResumeThread(thread.os.hThread)
 		if err != nil {
 			return err
@@ -418,9 +417,6 @@ func (dbp *Process) resume() error {
 func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
 		return &proc.ProcessExitedError{Pid: dbp.Pid()}
-	}
-	for _, th := range dbp.threads {
-		th.running = false
 	}
 
 	// While the debug event that stopped the target was being propagated
@@ -439,7 +435,6 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	}
 
 	for _, thread := range dbp.threads {
-		thread.running = false
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
 			return err

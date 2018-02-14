@@ -435,7 +435,6 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 				return dbp.exitGuard(err)
 			}
 		}
-		th.running = false
 	}
 
 	ports, err := dbp.waitForStop()

@@ -69,7 +69,6 @@ func (t *Thread) singleStep() error {
 }
 
 func (t *Thread) resume() error {
-	t.running = true
 	// TODO(dp) set flag for ptrace stops
 	var err error
 	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.pid, 0) })
