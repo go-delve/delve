@@ -194,6 +194,10 @@ func findExecutable(path string, pid int) string {
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
+	return dbp.trapWaitInternal(pid, false)
+}
+
+func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 	for {
 		wpid, status, err := dbp.wait(pid, 0)
 		if err != nil {
@@ -235,11 +239,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				}
 				return nil, err
 			}
-			dbp.haltMu.Lock()
-			halt := dbp.halt
-			dbp.haltMu.Unlock()
 			if halt {
-				dbp.halt = false
 				th.os.running = false
 				dbp.threads[int(wpid)].os.running = false
 				return nil, nil
@@ -263,15 +263,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 			// Sometimes we get an unknown thread, ignore it?
 			continue
 		}
-		dbp.haltMu.Lock()
-		halt := dbp.halt
-		dbp.haltMu.Unlock()
-		if halt && (status.StopSignal() == sys.SIGTRAP || status.StopSignal() == sys.SIGSTOP) {
-			th.os.running = false
-			dbp.halt = false
-			return th, nil
-		}
-		if status.StopSignal() == sys.SIGTRAP {
+		if (halt && status.StopSignal() == sys.SIGSTOP) || (status.StopSignal() == sys.SIGTRAP) {
 			th.os.running = false
 			return th, nil
 		}
@@ -382,7 +374,7 @@ func (dbp *Process) exitGuard(err error) error {
 		return err
 	}
 	if status(dbp.pid, dbp.os.comm) == StatusZombie {
-		_, err := dbp.trapWait(-1)
+		_, err := dbp.trapWaitInternal(-1, false)
 		return err
 	}
 
@@ -415,7 +407,7 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	}
 	for _, th := range dbp.threads {
 		if !th.Stopped() {
-			if err := th.halt(); err != nil {
+			if err := th.stop(); err != nil {
 				return dbp.exitGuard(err)
 			}
 		}
@@ -433,8 +425,7 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		if allstopped {
 			break
 		}
-		dbp.halt = true
-		_, err := dbp.trapWait(-1)
+		_, err := dbp.trapWaitInternal(-1, true)
 		if err != nil {
 			return err
 		}

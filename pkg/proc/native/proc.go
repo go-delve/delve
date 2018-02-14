@@ -32,8 +32,7 @@ type Process struct {
 	allGCache           []*proc.G
 	os                  *OSProcessDetails
 	firstStart          bool
-	haltMu              sync.Mutex
-	halt                bool
+	stopMu              sync.Mutex
 	resumeChan          chan<- struct{}
 	exited              bool
 	ptraceChan          chan func()
@@ -176,18 +175,17 @@ func (dbp *Process) RequestManualStop() error {
 	if dbp.exited {
 		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
-	dbp.haltMu.Lock()
-	defer dbp.haltMu.Unlock()
+	dbp.stopMu.Lock()
+	defer dbp.stopMu.Unlock()
 	dbp.manualStopRequested = true
-	dbp.halt = true
 	return dbp.requestManualStop()
 }
 
 func (dbp *Process) CheckAndClearManualStopRequest() bool {
-	dbp.haltMu.Lock()
+	dbp.stopMu.Lock()
 	msr := dbp.manualStopRequested
 	dbp.manualStopRequested = false
-	dbp.haltMu.Unlock()
+	dbp.stopMu.Unlock()
 	return msr
 }
 
