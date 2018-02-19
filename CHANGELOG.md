@@ -5,6 +5,45 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [1.0.0] 2018-02-19
+
+### Added
+
+- Print DWARF location expression with `whatis` (@aarzilli)
+- Use `DW_AT_producer` to warn about optimized code (@aarzilli)
+- Use constants to describe variable value (@aarzilli)
+- Use `DW_AT_decl_line` to determine variable visibility (@aarzilli)
+- `-offsets` flag for `stack` command (@aarzilli)
+- Support CGO stacktraces (@aarzilli)
+- Disable optimizations in C compiler (@aarzilli)
+- `--output` flag to configure output binary (@Carpetsmoker)
+- Support `DW_OP_piece`, `DW_OP_regX`, `DW_OP_fbreg` (@aarzilli)
+- Support `DW_LNE_define_file` (@aarzilli)
+- Support more type casts (@aarzilli)
+
+### Fixed
+
+- Disable file path case normalization on OSX (@aarzilli)
+- Support Mozilla RR 5.1.0 (@aarzilli)
+- Terminal no longer crashes when process exits during `next` (@aarzilli)
+- Fix TestCoreFPRegisters on Go 1.9 (@aarzilli)
+- Avoid scanning system stack if it's not executing CGO (@aarzilli)
+- Locspec "+0" should always evaluate to the current PC (@aarzilli)
+- Handle `DW_LNE_end_of_sequence` correctly (@aarzilli)
+- Top level interface variables may have 0 address (@aarzilli)
+- Handle `DW_TAG_subprogram` with a nochildren abbrev (@aarzilli)
+- StepBreakpoint handling (@aarzilli)
+
+### Changed
+
+- Documentation improvements (@grahamking)
+- Removed limitation of exit notifications (@dlsniper)
+- Use `go env GOPATH` for install path
+- Disable test caching (@aarzilli)
+- Disable `-a` and use `all=` for Go 1.10 building (@aarzilli)
+- Automatically deref interfaces on member access (@aarzilli)
+- Replace all uses of `gosymtab/gopclntab` with `.debug_line` section (@aarzilli)
+
 ## [1.0.0-rc.2] 2017-10-16
 
 ### Added
