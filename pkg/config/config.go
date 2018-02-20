@@ -60,8 +60,11 @@ func LoadConfig() *Config {
 
 	f, err := os.Open(fullConfigFile)
 	if err != nil {
-		createDefaultConfig(fullConfigFile)
-		return nil
+		f, err = createDefaultConfig(fullConfigFile)
+		if err != nil {
+			fmt.Printf("Error creating default config file: %v", err)
+			return nil
+		}
 	}
 	defer func() {
 		err := f.Close()
@@ -107,22 +110,16 @@ func SaveConfig(conf *Config) error {
 	return err
 }
 
-func createDefaultConfig(path string) {
+func createDefaultConfig(path string) (*os.File, error) {
 	f, err := os.Create(path)
 	if err != nil {
-		fmt.Printf("Unable to create config file: %v.", err)
-		return
+		return nil, fmt.Errorf("Unable to create config file: %v.", err)
 	}
-	defer func() {
-		err := f.Close()
-		if err != nil {
-			fmt.Printf("Closing config file failed: %v.", err)
-		}
-	}()
 	err = writeDefaultConfig(f)
 	if err != nil {
-		fmt.Printf("Unable to write default configuration: %v.", err)
+		return nil, fmt.Errorf("Unable to write default configuration: %v.", err)
 	}
+	return f, nil
 }
 
 func writeDefaultConfig(f *os.File) error {
