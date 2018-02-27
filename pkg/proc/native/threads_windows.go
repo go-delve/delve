@@ -18,6 +18,20 @@ type OSSpecificDetails struct {
 	hThread syscall.Handle
 }
 
+// Halt stops this thread from executing.
+func (thread *Thread) Halt() (err error) {
+	defer func() {
+		if err == nil {
+			thread.running = false
+		}
+	}()
+	if thread.Stopped() {
+		return
+	}
+	err = thread.halt()
+	return
+}
+
 func (t *Thread) halt() (err error) {
 	// Ignore the request to halt. On Windows, all threads are halted
 	// on return from WaitForDebugEvent.
