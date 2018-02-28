@@ -526,7 +526,14 @@ func (g *G) UserCurrent() Location {
 // Go returns the location of the 'go' statement
 // that spawned this goroutine.
 func (g *G) Go() Location {
-	f, l, fn := g.variable.bi.PCToLine(g.GoPC)
+	pc := g.GoPC
+	fn := g.variable.bi.PCToFunc(pc)
+	// Backup to CALL instruction.
+	// Mimics runtime/traceback.go:677.
+	if g.GoPC > fn.Entry {
+		pc -= 1
+	}
+	f, l, fn := g.variable.bi.PCToLine(pc)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
 }
 
