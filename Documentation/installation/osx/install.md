@@ -2,14 +2,6 @@
 
 Please use the following steps to build and install Delve on OSX.
 
-## Via Homebrew
-
-If you have [HomeBrew](http://brew.sh/) installed, simply run:
-
-```
-$ brew install go-delve/delve/delve
-```
-
 ## Manual install
 
 Ensure you have a proper compilation toolchain.
