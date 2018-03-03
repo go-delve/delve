@@ -435,6 +435,12 @@ func nameOfNamedRuntimeType(_type *Variable, kind, tflag int64) (typename string
 			if err != nil {
 				return "", err
 			}
+			if slash := strings.LastIndex(pkgPath, "/"); slash >= 0 {
+				fixedName := strings.Replace(pkgPath[slash+1:], ".", "%2e", -1)
+				if fixedName != pkgPath[slash+1:] {
+					pkgPath = pkgPath[:slash+1] + fixedName
+				}
+			}
 			typename = pkgPath + "." + typename
 		}
 	}
