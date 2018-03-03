@@ -3400,3 +3400,13 @@ func TestDeclLine(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1137(t *testing.T) {
+	withTestProcess("dotpackagesiface", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		v := evalVariable(p, t, "iface")
+		assertNoError(v.Unreadable, t, "iface unreadable")
+		v2 := evalVariable(p, t, "iface2")
+		assertNoError(v2.Unreadable, t, "iface2 unreadable")
+	})
+}
