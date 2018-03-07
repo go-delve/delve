@@ -3436,3 +3436,22 @@ func TestIssue1101(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1145(t *testing.T) {
+	withTestProcess("issue1145", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 12)
+		assertNoError(proc.Continue(p), t, "Continue()")
+		resumeChan := make(chan struct{}, 1)
+		p.ResumeNotify(resumeChan)
+		go func() {
+			<-resumeChan
+			time.Sleep(100 * time.Millisecond)
+			p.RequestManualStop()
+		}()
+
+		assertNoError(proc.Next(p), t, "Next()")
+		if p.Breakpoints().HasInternalBreakpoints() {
+			t.Fatal("has internal breakpoints after manual stop request")
+		}
+	})
+}

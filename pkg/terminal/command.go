@@ -750,6 +750,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 		return nil
 	}
 	for {
+		fmt.Printf("\tbreakpoint hit during %s, continuing...\n", op)
 		stateChan := t.client.Continue()
 		var state *api.DebuggerState
 		for state = range stateChan {
@@ -763,7 +764,6 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 			return nil
 		}
-		fmt.Printf("\tbreakpoint hit during %s, continuing...\n", op)
 	}
 }
 
