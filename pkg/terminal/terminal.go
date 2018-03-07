@@ -76,7 +76,7 @@ func (t *Term) Run() (int, error) {
 	signal.Notify(ch, syscall.SIGINT)
 	go func() {
 		for range ch {
-			fmt.Printf("received SIGINT, stopping process (will not forward signal)")
+			fmt.Printf("received SIGINT, stopping process (will not forward signal)\n")
 			_, err := t.client.Halt()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v", err)

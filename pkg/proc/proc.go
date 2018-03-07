@@ -88,8 +88,16 @@ func Continue(dbp Process) error {
 		return &ProcessExitedError{Pid: dbp.Pid()}
 	}
 	dbp.CheckAndClearManualStopRequest()
+	defer func() {
+		// Make sure we clear internal breakpoints if we simultaneously receive a
+		// manual stop request and hit a breakpoint.
+		if dbp.CheckAndClearManualStopRequest() {
+			dbp.ClearInternalBreakpoints()
+		}
+	}()
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
+			dbp.ClearInternalBreakpoints()
 			return nil
 		}
 		trapthread, err := dbp.ContinueOnce()
