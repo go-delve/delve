@@ -18,6 +18,14 @@ import (
 	"github.com/derekparker/delve/pkg/proc/test"
 )
 
+func assertNoError(err error, t testing.TB, s string) {
+	if err != nil {
+		_, file, line, _ := runtime.Caller(1)
+		fname := filepath.Base(file)
+		t.Fatalf("failed assertion at %s:%d: %s - %s\n", fname, line, s, err)
+	}
+}
+
 func TestSplicedReader(t *testing.T) {
 	data := []byte{}
 	data2 := []byte{}
@@ -296,4 +304,41 @@ func TestCoreFpRegisters(t *testing.T) {
 			t.Fatalf("register %s not found: %v", regtest.name, regs)
 		}
 	}
+}
+
+func TestCoreWithEmptyString(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return
+	}
+	p := withCoreFile(t, "coreemptystring", "")
+
+	gs, err := proc.GoroutinesInfo(p)
+	assertNoError(err, t, "GoroutinesInfo")
+
+	var mainFrame *proc.Stackframe
+mainSearch:
+	for _, g := range gs {
+		stack, err := g.Stacktrace(10)
+		assertNoError(err, t, "Stacktrace()")
+		for _, frame := range stack {
+			if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.main" {
+				mainFrame = &frame
+				break mainSearch
+			}
+		}
+	}
+
+	if mainFrame == nil {
+		t.Fatal("could not find main.main frame")
+	}
+
+	scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame)
+	v1, err := scope.EvalVariable("t", proc.LoadConfig{true, 1, 64, 64, -1})
+	assertNoError(err, t, "EvalVariable(t)")
+	assertNoError(v1.Unreadable, t, "unreadable variable 't'")
+	t.Logf("t = %#v\n", v1)
+	v2, err := scope.EvalVariable("s", proc.LoadConfig{true, 1, 64, 64, -1})
+	assertNoError(err, t, "EvalVariable(s)")
+	assertNoError(v2.Unreadable, t, "unreadable variable 's'")
+	t.Logf("s = %#v\n", v2)
 }

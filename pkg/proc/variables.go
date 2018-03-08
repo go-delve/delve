@@ -992,6 +992,10 @@ func readStringInfo(mem MemoryReadWriter, arch Arch, addr uintptr) (uintptr, int
 }
 
 func readStringValue(mem MemoryReadWriter, addr uintptr, strlen int64, cfg LoadConfig) (string, error) {
+	if strlen == 0 {
+		return "", nil
+	}
+
 	count := strlen
 	if count > int64(cfg.MaxStringLen) {
 		count = int64(cfg.MaxStringLen)
