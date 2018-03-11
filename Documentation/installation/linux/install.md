@@ -8,9 +8,11 @@ There are two ways to install on Linux. First is the standard `go get` method:
 go get -u github.com/derekparker/delve/cmd/dlv
 ```
 
-Alternatively, you can clone the repo and run:
+Alternatively make sure $GOPATH is set (e.g. as `~/.go`) and:
 
 ```
+$ git clone https://github.com/derekparker/delve.git $GOPATH/src/github.com/derekparker/delve
+$ cd $GOPATH/src/github.com/derekparker/delve
 $ make install
 ```
 
