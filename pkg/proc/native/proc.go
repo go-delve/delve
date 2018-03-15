@@ -252,7 +252,7 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 
 // StepInstruction will continue the current thread for exactly
 // one instruction. This method affects only the thread
-// asssociated with the selected goroutine. All other
+// associated with the selected goroutine. All other
 // threads will remain stopped.
 func (dbp *Process) StepInstruction() (err error) {
 	thread := dbp.currentThread
