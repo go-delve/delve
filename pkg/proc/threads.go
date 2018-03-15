@@ -425,7 +425,7 @@ func onRuntimeBreakpoint(thread Thread) bool {
 	return loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint"
 }
 
-// onNextGorutine returns true if this thread is on the goroutine requested by the current 'next' command
+// onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
 func onNextGoroutine(thread Thread, breakpoints *BreakpointMap) (bool, error) {
 	var bp *Breakpoint
 	for i := range breakpoints.M {
