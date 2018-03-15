@@ -257,7 +257,7 @@ func (reader *Reader) InstructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	return append([]byte{}, instructions...), nil
 }
 
-// NextMememberVariable moves the reader to the next debug entry that describes a member variable and returns the entry.
+// NextMemberVariable moves the reader to the next debug entry that describes a member variable and returns the entry.
 func (reader *Reader) NextMemberVariable() (*dwarf.Entry, error) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
