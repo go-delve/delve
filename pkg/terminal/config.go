@@ -105,7 +105,7 @@ func configureSet(t *Term, args string) error {
 	}
 
 	if field.Kind() == reflect.Slice && field.Type().Elem().Name() == "SubstitutePathRule" {
-		return configureSetSubstituePath(t, rest)
+		return configureSetSubstitutePath(t, rest)
 	}
 
 	simpleArg := func(typ reflect.Type) (reflect.Value, error) {
@@ -140,7 +140,7 @@ func configureSet(t *Term, args string) error {
 	return nil
 }
 
-func configureSetSubstituePath(t *Term, rest string) error {
+func configureSetSubstitutePath(t *Term, rest string) error {
 	argv := config.SplitQuotedFields(rest, '"')
 	switch len(argv) {
 	case 1: // delete substitute-path rule
