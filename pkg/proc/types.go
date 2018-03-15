@@ -789,7 +789,7 @@ func typeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, error) {
 	return constructTypeForKind(kind, bi)
 }
 
-// constructTypeForKind synthesizes a *dwarf.StrucType for the specified kind.
+// constructTypeForKind synthesizes a *dwarf.StructType for the specified kind.
 // This is necessary because on go1.8 and previous the specialized types of
 // runtime._type were not exported.
 func constructTypeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, error) {
