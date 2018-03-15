@@ -71,7 +71,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 - Store the correct concrete value for interface variables (previously we would always have a pointer type, even when the concrete value was not a pointer) (@aarzilli)
 - Fix interface and slice equality with nil (@aarzilli)
 - Fix file:line location specs when relative paths are in .debug_line (@hyangah)
-- Fix behavior of next/step/stepout in several edge-cases (invalid return addresses, no courrent goroutine, after process exists, inside unknown code, inside assembly files) (@aarzilli)
+- Fix behavior of next/step/stepout in several edge-cases (invalid return addresses, no current goroutine, after process exists, inside unknown code, inside assembly files) (@aarzilli)
 - Make sure the debugged executable we generated is deleted after exit (@alexbrainman)
 - Make sure rr trace directories are deleted when we delete the executable and after tests (@aarzilli)
 - Return errors for commands sent after the target process exited instead of panicing (@derekparker)
