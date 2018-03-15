@@ -10,7 +10,7 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/op"
 )
 
-// This code is partly adaped from runtime.gentraceback in
+// This code is partly adapted from runtime.gentraceback in
 // $GOROOT/src/runtime/traceback.go
 
 // Stackframe represents a frame in a system stack.
