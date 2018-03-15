@@ -1003,7 +1003,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	}
 }
 
-// Comapres xv to yv using operator op
+// Compares xv to yv using operator op
 // Both xv and yv must be loaded and have a compatible type (as determined by negotiateType)
 func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 	switch xv.Kind {
