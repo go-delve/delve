@@ -25,7 +25,7 @@ type context struct {
 	DwarfRegisters
 }
 
-// Piece is a piece of memory stored either at an addres or in a register.
+// Piece is a piece of memory stored either at an address or in a register.
 type Piece struct {
 	Size       int
 	Addr       int64
