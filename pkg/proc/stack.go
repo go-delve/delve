@@ -27,7 +27,7 @@ type Stackframe struct {
 	Ret uint64
 	// Address to the memory location containing the return address
 	addrret uint64
-	// Err is set if an error occoured during stacktrace
+	// Err is set if an error occurred during stacktrace
 	Err error
 	// SystemStack is true if this frame belongs to a system stack.
 	SystemStack bool
