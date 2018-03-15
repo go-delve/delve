@@ -75,7 +75,7 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 		}
 
 		if prologue.MinInstrLength != uint8(1) {
-			t.Fatal("Minimun Instruction Length not parsed correctly", prologue.MinInstrLength)
+			t.Fatal("Minimum Instruction Length not parsed correctly", prologue.MinInstrLength)
 		}
 
 		if prologue.InitialIsStmt != uint8(1) {
