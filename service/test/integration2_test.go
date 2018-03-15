@@ -1392,7 +1392,7 @@ func TestClientServerConsistentExit(t *testing.T) {
 	// This test is useful because it ensures that Next and Continue operations both
 	// exit with the same exit status and details when the target application terminates.
 	// Other program execution API calls should also behave in the same way.
-	// An error should be pressent in state.Err.
+	// An error should be present in state.Err.
 	withTestClient2("pr1055", t, func(c service.Client) {
 		fp := testProgPath(t, "pr1055")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 12})
