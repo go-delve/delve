@@ -106,7 +106,7 @@ type Thread struct {
 	// Breakpoint this thread is stopped at
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// Informations requested by the current breakpoint
-	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
+	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitempty"`
 }
 
 type Location struct {
