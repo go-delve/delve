@@ -21,6 +21,6 @@ func main() {
 	if len(os.Args) < 2 || os.Args[1] != "panic" {
 		runtime.Breakpoint()
 	} else {
-		panic("booom!")
+		panic("boom!")
 	}
 }
