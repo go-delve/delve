@@ -23,7 +23,7 @@ const defaultCFA = 0xc420051d00
 
 func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) *proc.BinaryInfo {
 	abbrev, aranges, frame, info, line, pubnames, ranges, str, loc, err := dwb.Build()
-	assertNoError(err, t, "dwarbuilder.Build")
+	assertNoError(err, t, "dwarfbuilder.Build")
 	dwdata, err := dwarf.New(abbrev, aranges, frame, info, line, pubnames, ranges, str)
 	assertNoError(err, t, "creating dwarf")
 
