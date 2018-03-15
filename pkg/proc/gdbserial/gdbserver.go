@@ -54,7 +54,7 @@
 // event is reported, if any other event happens "simultaneously" they are
 // suppressed by the stub and the debugger can query for them using
 // qThreadStopInfo. This is much easier for us to implement and the
-// implementation gracefully degrates to the case where qThreadStopInfo is
+// implementation gracefully degrades to the case where qThreadStopInfo is
 // unavailable but the inferior is run in single threaded mode.
 //
 // Therefore the following code will assume lldb-server-like behavior.
