@@ -135,7 +135,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 ### Changed
 
 - Optimized 'trace' functionality (@aarzilli)
-- Internal refactoring to support mutliple backends, core dumps, and more (@aarzilli) [Still ongoing]
+- Internal refactoring to support multiple backends, core dumps, and more (@aarzilli) [Still ongoing]
 - Improve stacktraces (@aarzilli)
 - Improved documentation for passing flags to debugged process (@njason)
 
