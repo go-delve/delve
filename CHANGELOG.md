@@ -167,7 +167,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 
 - Pretty printing: type of elements of interface slices are printed.
 - Improvements in internal operation of "step" command.
-- Allow quouting in build flags argument.
+- Allow quoting in build flags argument.
 - "h" as alias for "help" command. (@stmuk)
 
 ### Fixed
