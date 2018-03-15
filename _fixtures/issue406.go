@@ -55,7 +55,7 @@ func (b Blacklist) String() (result string) {
 	return result
 }
 
-// ToBool converts a string ("true" or "false") to it's boolean equivalent
+// ToBool converts a string ("true" or "false") to its boolean equivalent
 func ToBool(s string) (b bool) {
 	if len(s) == 0 {
 		log.Fatal("ERROR: variable empty, cannot convert to boolean")
