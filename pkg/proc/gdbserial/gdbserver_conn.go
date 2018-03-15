@@ -1148,7 +1148,7 @@ func wiredecode(in, buf []byte) (newbuf, msg []byte) {
 			}
 		case '#': // end of packet
 			return buf, buf[start:]
-		case '*': // runlenght encoding marker
+		case '*': // runlength encoding marker
 			if i+1 >= len(in) || i == 0 {
 				buf = append(buf, ch)
 			} else {
