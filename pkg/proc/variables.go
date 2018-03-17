@@ -666,7 +666,7 @@ func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
 	}
 	for offset, ctyp := range scope.BinInfo.consts {
 		for _, cval := range ctyp.values {
-			if cval.fullName == name {
+			if cval.fullName == name || strings.HasSuffix(cval.fullName, "/"+name) {
 				t, err := scope.Type(offset)
 				if err != nil {
 					return nil, err
