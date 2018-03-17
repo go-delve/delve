@@ -960,6 +960,7 @@ func TestConstants(t *testing.T) {
 		{"bitZero", true, "1", "", "main.BitFieldType", nil},
 		{"bitOne", true, "2", "", "main.BitFieldType", nil},
 		{"constTwo", true, "2", "", "main.ConstType", nil},
+		{"pkg.SomeConst", true, "2", "", "int", nil},
 	}
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {

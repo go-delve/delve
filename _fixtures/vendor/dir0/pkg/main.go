@@ -13,3 +13,7 @@ func (s *SomeType) AnotherMethod(x int) int {
 }
 
 var SomeVar SomeType
+
+const (
+	SomeConst int = 2
+)

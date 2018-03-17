@@ -1,6 +1,7 @@
 package main
 
 import (
+	"dir0/pkg"
 	"fmt"
 	"runtime"
 )
@@ -32,5 +33,6 @@ func main() {
 	e := ConstType(10)
 	f := BitFieldType(0)
 	runtime.Breakpoint()
-	fmt.Println(a, b, c, d, e, f)
+	pkg.SomeVar.AnotherMethod(2)
+	fmt.Println(a, b, c, d, e, f, pkg.SomeConst)
 }
