@@ -276,8 +276,8 @@ func TestCoreFpRegisters(t *testing.T) {
 		// Unlike TestClientServer_FpRegisters in service/test/integration2_test
 		// we can not test the value of XMM0, it probably has been reused by
 		// something between the panic and the time we get the core dump.
-		{"XMM1", "0x3ff66666666666663ff4cccccccccccd"},
-		{"XMM2", "0x3fe666663fd9999a3fcccccd3fc00000"},
+		{"XMM9", "0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM10", "0x3fe666663fd9999a3fcccccd3fc00000"},
 		{"XMM3", "0x3ff199999999999a3ff3333333333333"},
 		{"XMM4", "0x3ff4cccccccccccd3ff6666666666666"},
 		{"XMM5", "0x3fcccccd3fc000003fe666663fd9999a"},
