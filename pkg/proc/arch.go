@@ -35,6 +35,11 @@ type AMD64 struct {
 	// a bad frame descriptor which needs to be fixed to generate good stack
 	// traces.
 	crosscall2fn *Function
+
+	// sigreturnfn is the DIE of runtime.sigreturn, the return trampoline for
+	// the signal handler. See comment in FixFrameUnwindContext for a
+	// description of why this is needed.
+	sigreturnfn *Function
 }
 
 const (
@@ -53,7 +58,7 @@ func AMD64Arch(goos string) *AMD64 {
 		breakInstruction:        breakInstr,
 		breakInstructionLen:     len(breakInstr),
 		hardwareBreakpointUsage: make([]bool, 4),
-		goos: goos,
+		goos:                    goos,
 	}
 }
 
@@ -90,12 +95,29 @@ const (
 // FixFrameUnwindContext adds default architecture rules to fctxt or returns
 // the default frame unwind context if fctxt is nil.
 func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
-	if fctxt == nil {
+	if a.sigreturnfn == nil {
+		a.sigreturnfn = bi.LookupFunc["runtime.sigreturn"]
+	}
+
+	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
+		//if true {
 		// When there's no frame descriptor entry use BP (the frame pointer) instead
 		// - return register is [bp + a.PtrSize()] (i.e. [cfa-a.PtrSize()])
 		// - cfa is bp + a.PtrSize()*2
 		// - bp is [bp] (i.e. [cfa-a.PtrSize()*2])
 		// - sp is cfa
+
+		// When the signal handler runs it will move the execution to the signal
+		// handling stack (installed using the sigaltstack system call).
+		// This isn't a proper stack switch: the pointer to g in TLS will still
+		// refer to whatever g was executing on that thread before the signal was
+		// received.
+		// Since go did not execute a stack switch the previous value of sp, pc
+		// and bp is not saved inside g.sched, as it normally would.
+		// The only way to recover is to either read sp/pc from the signal context
+		// parameter (the ucontext_t* parameter) or to unconditionally follow the
+		// frame pointer when we get to runtime.sigreturn (which is what we do
+		// here).
 
 		return &frame.FrameContext{
 			RetAddrReg: amd64DwarfIPRegNum,

@@ -332,6 +332,8 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, foreground bool) 
 
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
+	proc.CreateUnrecoveredPanicBreakpoint(p, p.writeBreakpoint, &p.breakpoints)
+
 	panicpc, err := proc.FindFunctionLocation(p, "runtime.startpanic", true, 0)
 	if err == nil {
 		bp, err := p.breakpoints.SetWithID(-1, panicpc, p.writeBreakpoint)

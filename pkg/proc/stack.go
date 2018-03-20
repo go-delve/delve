@@ -366,13 +366,22 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 			// instruction to look for at pc - 1
 			r.Call = r.Current
 		default:
-			r.lastpc = it.pc - 1
-			r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(it.pc - 1)
-			if r.Call.Fn == nil {
-				r.Call.File = "?"
-				r.Call.Line = -1
+			if r.Current.Fn != nil && it.pc == r.Current.Fn.Entry {
+				// if the return address is the entry point of the function that
+				// contains it then this is some kind of fake return frame (for example
+				// runtime.sigreturn) that didn't actually call the current frame,
+				// attempting to get the location of the CALL instruction would just
+				// obfuscate what's going on, since there is no CALL instruction.
+				r.Call = r.Current
+			} else {
+				r.lastpc = it.pc - 1
+				r.Call.File, r.Call.Line, r.Call.Fn = it.bi.PCToLine(it.pc - 1)
+				if r.Call.Fn == nil {
+					r.Call.File = "?"
+					r.Call.Line = -1
+				}
+				r.Call.PC = r.Current.PC
 			}
-			r.Call.PC = r.Current.PC
 		}
 	} else {
 		r.Call = r.Current

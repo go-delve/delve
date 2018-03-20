@@ -39,6 +39,14 @@ func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
 	return pc, nil
 }
 
+type FunctionNotFoundError struct {
+	FuncName string
+}
+
+func (err *FunctionNotFoundError) Error() string {
+	return fmt.Sprintf("Could not find function %s\n", err.FuncName)
+}
+
 // FindFunctionLocation finds address of a function's line
 // If firstLine == true is passed FindFunctionLocation will attempt to find the first line of the function
 // If lineOffset is passed FindFunctionLocation will return the address of that line
@@ -49,7 +57,7 @@ func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset
 	bi := p.BinInfo()
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
-		return 0, fmt.Errorf("Could not find function %s\n", funcName)
+		return 0, &FunctionNotFoundError{funcName}
 	}
 
 	if firstLine {
@@ -539,4 +547,21 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, Gvar: gvar, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
 	s.PC = frames[0].lastpc
 	return s
+}
+
+// CreateUnrecoverablePanicBreakpoint creates the unrecoverable-panic breakpoint.
+// This function is meant to be called by implementations of the Process interface.
+func CreateUnrecoveredPanicBreakpoint(p Process, writeBreakpoint writeBreakpointFn, breakpoints *BreakpointMap) {
+	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
+	if _, isFnNotFound := err.(*FunctionNotFoundError); isFnNotFound {
+		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", true, 0)
+	}
+	if err == nil {
+		bp, err := breakpoints.SetWithID(-1, panicpc, writeBreakpoint)
+		if err == nil {
+			bp.Name = UnrecoveredPanic
+			bp.Variables = []string{"runtime.curg._panic.arg"}
+		}
+	}
+
 }
