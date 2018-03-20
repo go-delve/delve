@@ -150,3 +150,14 @@ func Installed() (GoVersion, bool) {
 
 	return Parse(s[len(goVersionPrefix):])
 }
+
+// VersionAfterOrEqual checks that version (as returned by runtime.Version()
+// or go version) is major.minor or a later version, or a development
+// version.
+func VersionAfterOrEqual(version string, major, minor int) bool {
+	ver, _ := Parse(version)
+	if ver.IsDevel() {
+		return true
+	}
+	return ver.AfterOrEqual(GoVersion{major, minor, -1, 0, 0, ""})
+}
