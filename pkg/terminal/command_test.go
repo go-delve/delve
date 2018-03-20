@@ -454,7 +454,7 @@ func TestOnPrefixLocals(t *testing.T) {
 	})
 }
 
-func countOccourences(s string, needle string) int {
+func countOccurrences(s string, needle string) int {
 	count := 0
 	for {
 		idx := strings.Index(s, needle)
@@ -475,7 +475,7 @@ func TestIssue387(t *testing.T) {
 		term.MustExec("break dostuff")
 		for {
 			outstr, err := term.Exec("continue")
-			breakpointHitCount += countOccourences(outstr, "issue387.go:8")
+			breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
 			t.Log(outstr)
 			if err != nil {
 				if !strings.Contains(err.Error(), "exited") {
@@ -488,9 +488,9 @@ func TestIssue387(t *testing.T) {
 
 			for {
 				outstr = term.MustExec("next")
-				breakpointHitCount += countOccourences(outstr, "issue387.go:8")
+				breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
 				t.Log(outstr)
-				if countOccourences(outstr, fmt.Sprintf("issue387.go:%d", pos)) == 0 {
+				if countOccurrences(outstr, fmt.Sprintf("issue387.go:%d", pos)) == 0 {
 					t.Fatalf("did not continue to expected position %d", pos)
 				}
 				pos++

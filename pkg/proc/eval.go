@@ -1003,7 +1003,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	}
 }
 
-// Comapres xv to yv using operator op
+// Compares xv to yv using operator op
 // Both xv and yv must be loaded and have a compatible type (as determined by negotiateType)
 func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 	switch xv.Kind {
@@ -1060,7 +1060,7 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 			return false, nil
 		}
 		if int64(len(xv.Children)) != xv.Len || int64(len(yv.Children)) != yv.Len {
-			return false, fmt.Errorf("sturcture too deep for comparison")
+			return false, fmt.Errorf("structure too deep for comparison")
 		}
 		eql, err = equalChildren(xv, yv, false)
 	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:

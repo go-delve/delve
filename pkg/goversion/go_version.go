@@ -22,7 +22,7 @@ var (
 	GoVer18Beta = GoVersion{1, 8, -1, 0, 0, ""}
 )
 
-// Parse parses a go verison string
+// Parse parses a go version string
 func Parse(ver string) (GoVersion, bool) {
 	var r GoVersion
 	var err1, err2, err3 error
@@ -135,7 +135,7 @@ func (v *GoVersion) IsDevel() bool {
 
 const goVersionPrefix = "go version "
 
-// Installed runs "go verison" and parses the output
+// Installed runs "go version" and parses the output
 func Installed() (GoVersion, bool) {
 	out, err := exec.Command("go", "version").CombinedOutput()
 	if err != nil {

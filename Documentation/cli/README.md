@@ -122,10 +122,10 @@ Saves the configuration file to disk, overwriting the current configuration file
 	
 Changes the value of a configuration parameter.
 
-	config subistitute-path <from> <to>
-	config subistitute-path <from>
+	config substitute-path <from> <to>
+	config substitute-path <from>
 	
-Adds or removes a path subistitution rule.
+Adds or removes a path substitution rule.
 
 	config alias <command> <alias>
 	config alias <alias>

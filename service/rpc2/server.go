@@ -573,7 +573,7 @@ type DisassembleOut struct {
 //
 // If both StartPC and EndPC are non-zero the specified range will be disassembled, otherwise the function containing StartPC will be disassembled.
 //
-// Scope is used to mark the instruction the specified gorutine is stopped at.
+// Scope is used to mark the instruction the specified goroutine is stopped at.
 //
 // Disassemble will also try to calculate the destination address of an absolute indirect CALL if it happens to be the instruction the selected goroutine is stopped at.
 func (c *RPCServer) Disassemble(arg DisassembleIn, out *DisassembleOut) error {

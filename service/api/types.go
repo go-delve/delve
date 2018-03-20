@@ -106,7 +106,7 @@ type Thread struct {
 	// Breakpoint this thread is stopped at
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// Informations requested by the current breakpoint
-	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitrempty"`
+	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitempty"`
 }
 
 type Location struct {
@@ -201,7 +201,7 @@ type Variable struct {
 	// Array and slice elements, member fields of structs, key/value pairs of maps, value of complex numbers
 	// The Name field in this slice will always be the empty string except for structs (when it will be the field name) and for complex numbers (when it will be "real" and "imaginary")
 	// For maps each map entry will have to items in this slice, even numbered items will represent map keys and odd numbered items will represent their values
-	// This field's length is capped at proc.maxArrayValues for slices and arrays and 2*proc.maxArrayValues for maps, in the circumnstances where the cap takes effect len(Children) != Len
+	// This field's length is capped at proc.maxArrayValues for slices and arrays and 2*proc.maxArrayValues for maps, in the circumstances where the cap takes effect len(Children) != Len
 	// The other length cap applied to this field is related to maximum recursion depth, when the maximum recursion depth is reached this field is left empty, contrary to the previous one this cap also applies to structs (otherwise structs will always have all their member fields returned)
 	Children []Variable `json:"children"`
 

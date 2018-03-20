@@ -71,7 +71,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 - Store the correct concrete value for interface variables (previously we would always have a pointer type, even when the concrete value was not a pointer) (@aarzilli)
 - Fix interface and slice equality with nil (@aarzilli)
 - Fix file:line location specs when relative paths are in .debug_line (@hyangah)
-- Fix behavior of next/step/stepout in several edge-cases (invalid return addresses, no courrent goroutine, after process exists, inside unknown code, inside assembly files) (@aarzilli)
+- Fix behavior of next/step/stepout in several edge-cases (invalid return addresses, no current goroutine, after process exists, inside unknown code, inside assembly files) (@aarzilli)
 - Make sure the debugged executable we generated is deleted after exit (@alexbrainman)
 - Make sure rr trace directories are deleted when we delete the executable and after tests (@aarzilli)
 - Return errors for commands sent after the target process exited instead of panicing (@derekparker)
@@ -135,7 +135,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 ### Changed
 
 - Optimized 'trace' functionality (@aarzilli)
-- Internal refactoring to support mutliple backends, core dumps, and more (@aarzilli) [Still ongoing]
+- Internal refactoring to support multiple backends, core dumps, and more (@aarzilli) [Still ongoing]
 - Improve stacktraces (@aarzilli)
 - Improved documentation for passing flags to debugged process (@njason)
 
@@ -167,7 +167,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 
 - Pretty printing: type of elements of interface slices are printed.
 - Improvements in internal operation of "step" command.
-- Allow quouting in build flags argument.
+- Allow quoting in build flags argument.
 - "h" as alias for "help" command. (@stmuk)
 
 ### Fixed
@@ -292,7 +292,7 @@ All changes mention the author, unless contributed by me (@derekparker).
 
 - Deprecate 'run' subcommand in favor of 'debug'. The 'run' subcommand now simply prints a warning, instructing the user to use the 'debug' command instead.
 - All 'info' subcommands have been promoted to the top level. You can now simply run 'funcs', or 'sources' instead of 'info funcs', etc...
-- Any command taking a location expression (i.e. break/trace/list) now support an updated linespec implementation. This allows you to describe the location you would like a breakpoint (etc..) set at in a more convienant way (@aarzilli).
+- Any command taking a location expression (i.e. break/trace/list) now support an updated linespec implementation. This allows you to describe the location you would like a breakpoint (etc..) set at in a more convenient way (@aarzilli).
 
 ### Fixed
 

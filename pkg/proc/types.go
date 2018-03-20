@@ -694,7 +694,7 @@ func nameOfStructRuntimeType(_type *Variable, kind, tflag int64) (string, error)
 			case "offsetAnon":
 				// The offsetAnon field of runtime.structfield combines the offset of
 				// the struct field from the base address of the struct with a flag
-				// determining whether the field is anonimous (i.e. an embedded struct).
+				// determining whether the field is anonymous (i.e. an embedded struct).
 				//
 				//  offsetAnon = (offset<<1) | (anonFlag)
 				//
@@ -789,7 +789,7 @@ func typeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, error) {
 	return constructTypeForKind(kind, bi)
 }
 
-// constructTypeForKind synthesizes a *dwarf.StrucType for the specified kind.
+// constructTypeForKind synthesizes a *dwarf.StructType for the specified kind.
 // This is necessary because on go1.8 and previous the specialized types of
 // runtime._type were not exported.
 func constructTypeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, error) {

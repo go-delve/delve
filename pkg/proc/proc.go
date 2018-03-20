@@ -27,7 +27,7 @@ func (pe ProcessExitedError) Error() string {
 }
 
 // FindFileLocation returns the PC for a given file:line.
-// Assumes that `file` is normailzed to lower case and '/' on Windows.
+// Assumes that `file` is normalized to lower case and '/' on Windows.
 func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
 	pc, fn, err := p.BinInfo().LineToPC(fileName, lineno)
 	if err != nil {

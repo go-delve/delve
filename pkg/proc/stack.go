@@ -10,7 +10,7 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/op"
 )
 
-// This code is partly adaped from runtime.gentraceback in
+// This code is partly adapted from runtime.gentraceback in
 // $GOROOT/src/runtime/traceback.go
 
 // Stackframe represents a frame in a system stack.
@@ -27,7 +27,7 @@ type Stackframe struct {
 	Ret uint64
 	// Address to the memory location containing the return address
 	addrret uint64
-	// Err is set if an error occoured during stacktrace
+	// Err is set if an error occurred during stacktrace
 	Err error
 	// SystemStack is true if this frame belongs to a system stack.
 	SystemStack bool

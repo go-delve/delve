@@ -153,9 +153,9 @@ func (t *Term) Println(prefix, str string) {
 	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
 }
 
-// Substitues directory to source file.
+// Substitutes directory to source file.
 //
-// Ensures that only directory is substitued, for example:
+// Ensures that only directory is substituted, for example:
 // substitute from `/dir/subdir`, substitute to `/new`
 // for file path `/dir/subdir/file` will return file path `/new/file`.
 // for file path `/dir/subdir-2/file` substitution will not be applied.

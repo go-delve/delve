@@ -36,7 +36,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 		}
 
 		if avar.Flags&proc.VariableEscaped == 0 {
-			t.Errorf("variale a isn't escaped to the heap")
+			t.Errorf("variable a isn't escaped to the heap")
 		}
 	})
 }

@@ -279,7 +279,7 @@ func TestBreakpoint(t *testing.T) {
 	})
 }
 
-func TestBreakpointInSeperateGoRoutine(t *testing.T) {
+func TestBreakpointInSeparateGoRoutine(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testthreads", t, func(p proc.Process, fixture protest.Fixture) {
 		fnentry, err := proc.FindFunctionLocation(p, "main.anotherthread", false, 0)

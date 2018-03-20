@@ -210,7 +210,7 @@ func ConvertFunction(fn *proc.Function) *Function {
 	}
 
 	// fn here used to be a *gosym.Func, the fields Type and GoType below
-	// corresponded to the omonymous field of gosym.Func. Since the contents of
+	// corresponded to the homonymous field of gosym.Func. Since the contents of
 	// those fields is not documented their value was replaced with 0 when
 	// gosym.Func was replaced by debug_info entries.
 	return &Function{
