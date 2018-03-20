@@ -184,11 +184,17 @@ func TestCore(t *testing.T) {
 	var panicking *proc.G
 	var panickingStack []proc.Stackframe
 	for _, g := range gs {
+		t.Logf("Goroutine %d", g.ID)
 		stack, err := g.Stacktrace(10)
 		if err != nil {
 			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
 		}
 		for _, frame := range stack {
+			fnname := ""
+			if frame.Call.Fn != nil {
+				fnname = frame.Call.Fn.Name
+			}
+			t.Logf("\tframe %s:%d in %s %#x (systemstack: %v)", frame.Call.File, frame.Call.Line, fnname, frame.Call.PC, frame.SystemStack)
 			if frame.Current.Fn != nil && strings.Contains(frame.Current.Fn.Name, "panic") {
 				panicking = g
 				panickingStack = stack

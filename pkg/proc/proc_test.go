@@ -2588,9 +2588,21 @@ func TestNextInDeferReturn(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("defercall", t, func(p proc.Process, fixture protest.Fixture) {
 		_, err := setFunctionBreakpoint(p, "runtime.deferreturn")
-		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(err, t, "setFunctionBreakpoint(runtime.deferreturn)")
 		assertNoError(proc.Continue(p), t, "First Continue()")
+
+		// Set a breakpoint on the deferred function so that the following loop
+		// can not step out of the runtime.deferreturn and all the way to the
+		// point where the target program panics.
+		_, err = setFunctionBreakpoint(p, "main.sampleFunction")
+		assertNoError(err, t, "setFunctionBreakpoint(main.sampleFunction)")
 		for i := 0; i < 20; i++ {
+			loc, err := p.CurrentThread().Location()
+			assertNoError(err, t, "CurrentThread().Location()")
+			t.Logf("at %#x %s:%d", loc.PC, loc.File, loc.Line)
+			if loc.Fn != nil && loc.Fn.Name == "main.sampleFunction" {
+				break
+			}
 			assertNoError(proc.Next(p), t, fmt.Sprintf("Next() %d", i))
 		}
 	})
@@ -3282,7 +3294,7 @@ func TestSystemstackStacktrace(t *testing.T) {
 		frames, err := g.Stacktrace(100)
 		assertNoError(err, t, "stacktrace")
 		logStacktrace(t, frames)
-		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "runtime.startpanic", "main.main"}, frames)
+		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "runtime.gopanic", "main.main"}, frames)
 		if m == nil {
 			t.Fatal("see previous loglines")
 		}
