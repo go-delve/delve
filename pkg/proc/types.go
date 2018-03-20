@@ -694,7 +694,7 @@ func nameOfStructRuntimeType(_type *Variable, kind, tflag int64) (string, error)
 			case "offsetAnon":
 				// The offsetAnon field of runtime.structfield combines the offset of
 				// the struct field from the base address of the struct with a flag
-				// determining whether the field is anonimous (i.e. an embedded struct).
+				// determining whether the field is anonymous (i.e. an embedded struct).
 				//
 				//  offsetAnon = (offset<<1) | (anonFlag)
 				//
