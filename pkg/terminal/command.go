@@ -73,10 +73,10 @@ func (c command) match(cmdstr string) bool {
 
 // Commands represents the commands for Delve terminal process.
 type Commands struct {
-	cmds    []command
-	lastCmd cmdfunc
-	client  service.Client
-	Frame   int // Current frame as set by frame/up/down commands.
+	cmds         []command
+	lastCmd      cmdfunc
+	client       service.Client
+	frame int // Current frame as set by frame/up/down commands.
 }
 
 var (
@@ -226,7 +226,7 @@ Show source around current point or provided linespec.`},
 `},
 		{aliases: []string{"frame"},
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
-				return c.frame(t, ctx, arg, frameSet)
+				return c.frameCommand(t, ctx, arg, frameSet)
 			},
 			helpMsg: `Set the current frame, or execute command on a different frame.
 
@@ -237,7 +237,7 @@ The first form sets frame used by subsequent commands such as "print" or "set".
 The second form runs the command on the given frame.`},
 		{aliases: []string{"up"},
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
-				return c.frame(t, ctx, arg, frameUp)
+				return c.frameCommand(t, ctx, arg, frameUp)
 			},
 			helpMsg: `Move the current frame up.
 
@@ -247,7 +247,7 @@ The second form runs the command on the given frame.`},
 Move the current frame up by <m>. The second form runs the command on the given frame.`},
 		{aliases: []string{"down"},
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
-				return c.frame(t, ctx, arg, frameDown)
+				return c.frameCommand(t, ctx, arg, frameDown)
 			},
 			helpMsg: `Move the current frame down.
 
@@ -389,7 +389,7 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 }
 
 func (c *Commands) Call(cmdstr string, t *Term) error {
-	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: c.Frame}}
+	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: c.frame}}
 	return c.CallWithContext(cmdstr, t, ctx)
 }
 
@@ -600,7 +600,7 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 		if err != nil {
 			return err
 		}
-		c.Frame = 0
+		c.frame = 0
 		fmt.Printf("Switched from %d to %d (thread %d)\n", selectedGID(oldState), gid, newState.CurrentThread.ID)
 		return nil
 	}
@@ -614,7 +614,7 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 }
 
 // Handle "frame", "up", "down" commands.
-func (c *Commands) frame(t *Term, ctx callContext, argstr string, direction frameDirection) error {
+func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, direction frameDirection) error {
 	frame := 1
 	arg := ""
 	if len(argstr) == 0 {
@@ -633,9 +633,9 @@ func (c *Commands) frame(t *Term, ctx callContext, argstr string, direction fram
 	}
 	switch direction {
 	case frameUp:
-		frame = c.Frame + frame
+		frame = c.frame + frame
 	case frameDown:
-		frame = c.Frame - frame
+		frame = c.frame - frame
 	}
 	if len(arg) > 0 {
 		ctx.Scope.Frame = frame
@@ -651,7 +651,7 @@ func (c *Commands) frame(t *Term, ctx callContext, argstr string, direction fram
 	if frame >= len(stack) {
 		return fmt.Errorf("Invalid frame %d", frame)
 	}
-	c.Frame = frame
+	c.frame = frame
 	state, err := t.client.GetState()
 	if err != nil {
 		return err
@@ -800,7 +800,7 @@ func printfileNoState(t *Term) {
 }
 
 func (c *Commands) cont(t *Term, ctx callContext, args string) error {
-	c.Frame = 0
+	c.frame = 0
 	stateChan := t.client.Continue()
 	var state *api.DebuggerState
 	for state = range stateChan {
@@ -858,7 +858,7 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
-	c.Frame = 0
+	c.frame = 0
 	state, err := exitedToError(t.client.Step())
 	if err != nil {
 		printfileNoState(t)
@@ -873,7 +873,7 @@ func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error 
 		return err
 	}
 	state, err := exitedToError(t.client.StepInstruction())
-	c.Frame = 0
+	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -888,7 +888,7 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	state, err := exitedToError(t.client.Next())
-	c.Frame = 0
+	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -902,7 +902,7 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	state, err := exitedToError(t.client.StepOut())
-	c.Frame = 0
+	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
