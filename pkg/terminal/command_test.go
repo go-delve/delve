@@ -343,10 +343,6 @@ func TestScopePrefix(t *testing.T) {
 		term.MustExec("c")
 
 		term.AssertExecError("frame", "not enough arguments")
-		term.AssertExecError("frame 1", "not enough arguments")
-		term.AssertExecError("frame 1 goroutines", "command not available")
-		term.AssertExecError("frame 1 goroutine", "no command passed to goroutine")
-		term.AssertExecError(fmt.Sprintf("frame 1 goroutine %d", curgid), "no command passed to goroutine")
 		term.AssertExecError(fmt.Sprintf("goroutine %d frame 10 locals", curgid), fmt.Sprintf("Frame 10 does not exist in goroutine %d", curgid))
 		term.AssertExecError("goroutine 9000 locals", "Unknown goroutine 9000")
 
@@ -356,6 +352,26 @@ func TestScopePrefix(t *testing.T) {
 		term.AssertExec("frame 3 print n", "1\n")
 		term.AssertExec("frame 4 print n", "0\n")
 		term.AssertExecError("frame 5 print n", "could not find symbol value for n")
+
+		term.MustExec("frame 2")
+		term.AssertExec("print n", "2\n")
+		term.MustExec("frame 4")
+		term.AssertExec("print n", "0\n")
+		term.MustExec("down")
+		term.AssertExec("print n", "1\n")
+		term.MustExec("down 2")
+		term.AssertExec("print n", "3\n")
+		term.AssertExecError("down 2", "Invalid frame -1")
+		term.AssertExec("print n", "3\n")
+		term.MustExec("up 2")
+		term.AssertExec("print n", "1\n")
+		term.AssertExecError("up 100", "Invalid frame 103")
+		term.AssertExec("print n", "1\n")
+
+		term.MustExec("step")
+		term.AssertExecError("print n", "could not find symbol value for n")
+		term.MustExec("frame 2")
+		term.AssertExec("print n", "2\n")
 	})
 }
 

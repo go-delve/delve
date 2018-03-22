@@ -29,9 +29,8 @@ const optimizedFunctionWarning = "Warning: debugging optimized function"
 type cmdPrefix int
 
 const (
-	noPrefix    = cmdPrefix(0)
-	scopePrefix = cmdPrefix(1 << iota)
-	onPrefix
+	noPrefix = cmdPrefix(0)
+	onPrefix = cmdPrefix(1 << iota)
 )
 
 type callContext struct {
@@ -39,6 +38,18 @@ type callContext struct {
 	Scope      api.EvalScope
 	Breakpoint *api.Breakpoint
 }
+
+func (ctx *callContext) scoped() bool {
+	return ctx.Scope.GoroutineID >= 0 || ctx.Scope.Frame > 0
+}
+
+type frameDirection int
+
+const (
+	frameSet frameDirection = iota
+	frameUp
+	frameDown
+)
 
 type cmdfunc func(t *Term, ctx callContext, args string) error
 
@@ -62,9 +73,10 @@ func (c command) match(cmdstr string) bool {
 
 // Commands represents the commands for Delve terminal process.
 type Commands struct {
-	cmds    []command
-	lastCmd cmdfunc
-	client  service.Client
+	cmds         []command
+	lastCmd      cmdfunc
+	client       service.Client
+	frame int // Current frame as set by frame/up/down commands.
 }
 
 var (
@@ -111,11 +123,11 @@ See also: "help on", "help cond" and "help clear"`},
   checkpoint.  For normal processes restarts the process, optionally changing
   the arguments.  With -noargs, the process starts with an empty commandline.
 `},
-		{aliases: []string{"continue", "c"}, cmdFn: cont, helpMsg: "Run until breakpoint or program termination."},
-		{aliases: []string{"step", "s"}, allowedPrefixes: scopePrefix, cmdFn: step, helpMsg: "Single step through program."},
-		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: scopePrefix, cmdFn: stepInstruction, helpMsg: "Single step a single cpu instruction."},
-		{aliases: []string{"next", "n"}, allowedPrefixes: scopePrefix, cmdFn: next, helpMsg: "Step over to next source line."},
-		{aliases: []string{"stepout"}, allowedPrefixes: scopePrefix, cmdFn: stepout, helpMsg: "Step out of the current function."},
+		{aliases: []string{"continue", "c"}, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
+		{aliases: []string{"step", "s"}, cmdFn: c.step, helpMsg: "Single step through program."},
+		{aliases: []string{"step-instruction", "si"}, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
+		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: "Step over to next source line."},
+		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: `Switch to the specified thread.
 
@@ -139,7 +151,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-g	displays location of go instruction that created the goroutine
 
 If no flag is specified the default is -u.`},
-		{aliases: []string{"goroutine"}, allowedPrefixes: onPrefix | scopePrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
+		{aliases: []string{"goroutine"}, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
 
 	goroutine
 	goroutine <id>
@@ -149,15 +161,15 @@ Called without arguments it will show information about the current goroutine.
 Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
-		{aliases: []string{"print", "p"}, allowedPrefixes: onPrefix | scopePrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
+		{aliases: []string{"print", "p"}, allowedPrefixes: onPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print <expression>
 
 See $GOPATH/src/github.com/derekparker/delve/Documentation/cli/expr.md for a description of supported expressions.`},
-		{aliases: []string{"whatis"}, allowedPrefixes: scopePrefix, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
+		{aliases: []string{"whatis"}, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
 
 		whatis <expression>.`},
-		{aliases: []string{"set"}, allowedPrefixes: scopePrefix, cmdFn: setVar, helpMsg: `Changes the value of a variable.
+		{aliases: []string{"set"}, cmdFn: setVar, helpMsg: `Changes the value of a variable.
 
 	[goroutine <n>] [frame <m>] set <variable> = <value>
 
@@ -177,12 +189,12 @@ If regex is specified only the functions matching it will be returned.`},
 	types [<regex>]
 
 If regex is specified only the types matching it will be returned.`},
-		{aliases: []string{"args"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: args, helpMsg: `Print function arguments.
+		{aliases: []string{"args"}, allowedPrefixes: onPrefix, cmdFn: args, helpMsg: `Print function arguments.
 
 	[goroutine <n>] [frame <m>] args [-v] [<regex>]
 
 If regex is specified only function arguments with a name matching it will be returned. If -v is specified more information about each function argument will be shown.`},
-		{aliases: []string{"locals"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: locals, helpMsg: `Print local variables.
+		{aliases: []string{"locals"}, allowedPrefixes: onPrefix, cmdFn: locals, helpMsg: `Print local variables.
 
 	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
 
@@ -200,25 +212,53 @@ If regex is specified only package variables with a name matching it will be ret
 
 Argument -a shows more registers.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
-		{aliases: []string{"list", "ls", "l"}, allowedPrefixes: scopePrefix, cmdFn: listCommand, helpMsg: `Show source code.
+		{aliases: []string{"list", "ls", "l"}, cmdFn: listCommand, helpMsg: `Show source code.
 
 	[goroutine <n>] [frame <m>] list [<linespec>]
 
 Show source around current point or provided linespec.`},
-		{aliases: []string{"stack", "bt"}, allowedPrefixes: scopePrefix | onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
+		{aliases: []string{"stack", "bt"}, allowedPrefixes: onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
 	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-g] [-s] [-offsets]
 
 	-full		every stackframe is decorated with the value of its local variables and arguments.
 	-offsets	prints frame offset of each frame
 `},
-		{aliases: []string{"frame"}, allowedPrefixes: scopePrefix, cmdFn: c.frame, helpMsg: `Executes command on a different frame.
+		{aliases: []string{"frame"},
+			cmdFn: func(t *Term, ctx callContext, arg string) error {
+				return c.frameCommand(t, ctx, arg, frameSet)
+			},
+			helpMsg: `Set the current frame, or execute command on a different frame.
 
-	frame <frame index> <command>.`},
+  frame <m>
+  frame <m> <command>
+
+The first form sets frame used by subsequent commands such as "print" or "set".
+The second form runs the command on the given frame.`},
+		{aliases: []string{"up"},
+			cmdFn: func(t *Term, ctx callContext, arg string) error {
+				return c.frameCommand(t, ctx, arg, frameUp)
+			},
+			helpMsg: `Move the current frame up.
+
+  up [<m>]
+  up [<m>] <command>
+
+Move the current frame up by <m>. The second form runs the command on the given frame.`},
+		{aliases: []string{"down"},
+			cmdFn: func(t *Term, ctx callContext, arg string) error {
+				return c.frameCommand(t, ctx, arg, frameDown)
+			},
+			helpMsg: `Move the current frame down.
+
+  down [<m>]
+  down [<m>] <command>
+
+Move the current frame down by <m>. The second form runs the command on the given frame.`},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: `Executes a file containing a list of delve commands
 
 	source <path>`},
-		{aliases: []string{"disassemble", "disass"}, allowedPrefixes: scopePrefix, cmdFn: disassCommand, helpMsg: `Disassembler.
+		{aliases: []string{"disassemble", "disass"}, cmdFn: disassCommand, helpMsg: `Disassembler.
 
 	[goroutine <n>] [frame <m>] disassemble [-a <start> <end>] [-l <locspec>]
 
@@ -349,7 +389,7 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 }
 
 func (c *Commands) Call(cmdstr string, t *Term) error {
-	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: 0}}
+	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: c.frame}}
 	return c.CallWithContext(cmdstr, t, ctx)
 }
 
@@ -544,9 +584,6 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 	}
 
 	if len(args) == 1 {
-		if ctx.Prefix == scopePrefix {
-			return errors.New("no command passed to goroutine")
-		}
 		if args[0] == "" {
 			return printscope(t)
 		}
@@ -563,13 +600,12 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 		if err != nil {
 			return err
 		}
-
+		c.frame = 0
 		fmt.Printf("Switched from %d to %d (thread %d)\n", selectedGID(oldState), gid, newState.CurrentThread.ID)
 		return nil
 	}
 
 	var err error
-	ctx.Prefix = scopePrefix
 	ctx.Scope.GoroutineID, err = strconv.Atoi(args[0])
 	if err != nil {
 		return err
@@ -577,21 +613,54 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 	return c.CallWithContext(args[1], t, ctx)
 }
 
-func (c *Commands) frame(t *Term, ctx callContext, args string) error {
-	v := strings.SplitN(args, " ", 2)
-
-	switch len(v) {
-	case 0, 1:
-		return errors.New("not enough arguments")
+// Handle "frame", "up", "down" commands.
+func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, direction frameDirection) error {
+	frame := 1
+	arg := ""
+	if len(argstr) == 0 {
+		if direction == frameSet {
+			return errors.New("not enough arguments")
+		}
+	} else {
+		args := strings.SplitN(argstr, " ", 2)
+		var err error
+		if frame, err = strconv.Atoi(args[0]); err != nil {
+			return err
+		}
+		if len(args) > 1 {
+			arg = args[1]
+		}
 	}
-
-	var err error
-	ctx.Prefix = scopePrefix
-	ctx.Scope.Frame, err = strconv.Atoi(v[0])
+	switch direction {
+	case frameUp:
+		frame = c.frame + frame
+	case frameDown:
+		frame = c.frame - frame
+	}
+	if len(arg) > 0 {
+		ctx.Scope.Frame = frame
+		return c.CallWithContext(arg, t, ctx)
+	}
+	if frame < 0 {
+		return fmt.Errorf("Invalid frame %d", frame)
+	}
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, frame, nil)
 	if err != nil {
 		return err
 	}
-	return c.CallWithContext(v[1], t, ctx)
+	if frame >= len(stack) {
+		return fmt.Errorf("Invalid frame %d", frame)
+	}
+	c.frame = frame
+	state, err := t.client.GetState()
+	if err != nil {
+		return err
+	}
+	printcontext(t, state)
+	th := stack[frame]
+	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, ShortenFilePath(th.File), th.Line, th.PC)
+	printfile(t, th.File, th.Line, true)
+	return nil
 }
 
 func printscope(t *Term) error {
@@ -730,7 +799,8 @@ func printfileNoState(t *Term) {
 	}
 }
 
-func cont(t *Term, ctx callContext, args string) error {
+func (c *Commands) cont(t *Term, ctx callContext, args string) error {
+	c.frame = 0
 	stateChan := t.client.Continue()
 	var state *api.DebuggerState
 	for state = range stateChan {
@@ -768,12 +838,6 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 }
 
 func scopePrefixSwitch(t *Term, ctx callContext) error {
-	if ctx.Prefix != scopePrefix {
-		return nil
-	}
-	if ctx.Scope.Frame != 0 {
-		return errors.New("frame prefix not accepted")
-	}
 	if ctx.Scope.GoroutineID > 0 {
 		_, err := t.client.SwitchGoroutine(ctx.Scope.GoroutineID)
 		if err != nil {
@@ -790,10 +854,11 @@ func exitedToError(state *api.DebuggerState, err error) (*api.DebuggerState, err
 	return state, err
 }
 
-func step(t *Term, ctx callContext, args string) error {
+func (c *Commands) step(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
+	c.frame = 0
 	state, err := exitedToError(t.client.Step())
 	if err != nil {
 		printfileNoState(t)
@@ -803,11 +868,12 @@ func step(t *Term, ctx callContext, args string) error {
 	return continueUntilCompleteNext(t, state, "step")
 }
 
-func stepInstruction(t *Term, ctx callContext, args string) error {
+func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
 	state, err := exitedToError(t.client.StepInstruction())
+	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -817,11 +883,12 @@ func stepInstruction(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func next(t *Term, ctx callContext, args string) error {
+func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
 	state, err := exitedToError(t.client.Next())
+	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -830,11 +897,12 @@ func next(t *Term, ctx callContext, args string) error {
 	return continueUntilCompleteNext(t, state, "next")
 }
 
-func stepout(t *Term, ctx callContext, args string) error {
+func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
 	state, err := exitedToError(t.client.StepOut())
+	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -949,7 +1017,7 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
+func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) error {
 	args := strings.SplitN(argstr, " ", 2)
 
 	requestedBp := &api.Breakpoint{}
@@ -969,7 +1037,7 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
+	locs, err := t.client.FindLocation(ctx.Scope, locspec)
 	if err != nil {
 		if requestedBp.Name == "" {
 			return err
@@ -977,7 +1045,7 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 		requestedBp.Name = ""
 		locspec = argstr
 		var err2 error
-		locs, err2 = t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, locspec)
+		locs, err2 = t.client.FindLocation(ctx.Scope, locspec)
 		if err2 != nil {
 			return err
 		}
@@ -996,11 +1064,11 @@ func setBreakpoint(t *Term, tracepoint bool, argstr string) error {
 }
 
 func breakpoint(t *Term, ctx callContext, args string) error {
-	return setBreakpoint(t, false, args)
+	return setBreakpoint(t, ctx, false, args)
 }
 
 func tracepoint(t *Term, ctx callContext, args string) error {
-	return setBreakpoint(t, true, args)
+	return setBreakpoint(t, ctx, true, args)
 }
 
 func printVar(t *Term, ctx callContext, args string) error {
@@ -1228,7 +1296,7 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 
 func listCommand(t *Term, ctx callContext, args string) error {
 	switch {
-	case len(args) == 0 && ctx.Prefix != scopePrefix:
+	case len(args) == 0 && !ctx.scoped():
 		state, err := t.client.GetState()
 		if err != nil {
 			return err
@@ -1236,7 +1304,7 @@ func listCommand(t *Term, ctx callContext, args string) error {
 		printcontext(t, state)
 		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 
-	case len(args) == 0 && ctx.Prefix == scopePrefix:
+	case len(args) == 0 && ctx.scoped():
 		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, nil)
 		if err != nil {
 			return err

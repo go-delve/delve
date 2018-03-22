@@ -896,7 +896,7 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 }
 
 func TestStacktraceGoroutine(t *testing.T) {
-	mainStack := []loc{{13, "main.stacktraceme"}, {26, "main.main"}}
+	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
 	agoroutineStacks := [][]loc{
 		{{8, "main.agoroutine"}},
 		{{9, "main.agoroutine"}},

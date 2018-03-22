@@ -9,7 +9,10 @@ func agoroutine(started chan<- struct{}, done chan<- struct{}, i int) {
 	done <- struct{}{}
 }
 
+var dummy int
+
 func stacktraceme() {
+	dummy++
 	return
 }
 
