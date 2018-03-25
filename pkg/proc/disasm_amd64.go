@@ -136,9 +136,12 @@ func init() {
 	}
 }
 
-// FirstPCAfterPrologue returns the address of the first instruction after the prologue for function fn
-// If sameline is set FirstPCAfterPrologue will always return an address associated with the same line as fn.Entry
-func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error) {
+// firstPCAfterPrologueDisassembly returns the address of the first
+// instruction after the prologue for function fn by disassembling fn and
+// matching the instructions against known split-stack prologue patterns.
+// If sameline is set firstPCAfterPrologueDisassembly will always return an
+// address associated with the same line as fn.Entry
+func firstPCAfterPrologueDisassembly(p Process, fn *Function, sameline bool) (uint64, error) {
 	var mem MemoryReadWriter = p.CurrentThread()
 	breakpoints := p.Breakpoints()
 	bi := p.BinInfo()

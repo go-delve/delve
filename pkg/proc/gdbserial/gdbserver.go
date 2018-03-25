@@ -983,6 +983,9 @@ func (p *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []b
 }
 
 func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
+	if p.exited {
+		return nil, &proc.ProcessExitedError{Pid: p.conn.pid}
+	}
 	return p.breakpoints.Set(addr, kind, cond, p.writeBreakpoint)
 }
 

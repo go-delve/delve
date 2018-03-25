@@ -209,7 +209,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 		if selg != nil {
 			deferPCEntry := selg.DeferPC()
 			if deferPCEntry != 0 {
-				_, _, deferfn := dbp.BinInfo().PCToLine(deferPCEntry)
+				deferfn := dbp.BinInfo().PCToFunc(deferPCEntry)
 				var err error
 				deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
 				if err != nil {
@@ -231,7 +231,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 	}
 
 	// Add breakpoints on all the lines in the current function
-	pcs, err := topframe.Current.Fn.cu.lineInfo.AllPCsBetween(topframe.Current.Fn.Entry, topframe.Current.Fn.End-1)
+	pcs, err := topframe.Current.Fn.cu.lineInfo.AllPCsBetween(topframe.Current.Fn.Entry, topframe.Current.Fn.End-1, topframe.Current.File, topframe.Current.Line)
 	if err != nil {
 		return err
 	}

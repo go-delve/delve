@@ -93,6 +93,7 @@ func New(docCall bool) *cobra.Command {
 	debugger	Log debugger commands
 	gdbwire		Log connection to gdbserial backend
 	lldbout		Copy output from debugserver/lldb to standard output
+	debuglineerr	Log recoverable errors reading .debug_line
 Defaults to "debugger" when logging is enabled with --log.`)
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")

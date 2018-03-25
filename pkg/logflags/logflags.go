@@ -8,6 +8,8 @@ import (
 var debugger = false
 var gdbWire = false
 var lldbServerOutput = false
+var suppressedErrors = false
+var debugLineErrors = false
 
 // GdbWire returns true if the gdbserial package should log all the packets
 // exchanged with the stub.
@@ -24,6 +26,12 @@ func Debugger() bool {
 // redirected to standard output instead of suppressed.
 func LLDBServerOutput() bool {
 	return lldbServerOutput
+}
+
+// DebugLineErrors returns true if pkg/dwarf/line should log its recoverable
+// errors.
+func DebugLineErrors() bool {
+	return debugLineErrors
 }
 
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
@@ -48,6 +56,8 @@ func Setup(log bool, logstr string) error {
 			gdbWire = true
 		case "lldbout":
 			lldbServerOutput = true
+		case "debuglineerr":
+			debugLineErrors = true
 		}
 	}
 	return nil

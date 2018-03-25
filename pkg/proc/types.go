@@ -21,6 +21,7 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/line"
 	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"github.com/derekparker/delve/pkg/logflags"
 )
 
 // The kind field in runtime._type is a reflect.Kind value plus
@@ -217,6 +218,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 			lineInfoOffset, _ := entry.Val(dwarf.AttrStmtList).(int64)
 			if lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]))
+				cu.lineInfo.LogSuppressedErrors(logflags.DebugLineErrors())
 			}
 			if producer, _ := entry.Val(dwarf.AttrProducer).(string); cu.isgo && producer != "" {
 				semicolon := strings.Index(producer, ";")

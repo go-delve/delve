@@ -4,7 +4,7 @@ import "fmt"
 
 func inlineThis(a int) int {
 	z := a * a
-	return z + a/a
+	return z + a
 }
 
 func initialize(a, b *int) {
