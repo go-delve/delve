@@ -55,10 +55,14 @@ func grabDebugLineSection(p string, t *testing.T) []byte {
 }
 
 const (
-	lineBaseGo14  int8  = -1
-	lineBaseGo18  int8  = -4
-	lineRangeGo14 uint8 = 4
-	lineRangeGo18 uint8 = 10
+	lineBaseGo14    int8   = -1
+	lineBaseGo18    int8   = -4
+	lineRangeGo14   uint8  = 4
+	lineRangeGo18   uint8  = 10
+	versionGo14     uint16 = 2
+	versionGo111    uint16 = 3
+	opcodeBaseGo14  uint8  = 10
+	opcodeBaseGo111 uint8  = 11
 )
 
 func testDebugLinePrologueParser(p string, t *testing.T) {
@@ -70,7 +74,7 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 	for _, dbl := range debugLines {
 		prologue := dbl.Prologue
 
-		if prologue.Version != uint16(2) {
+		if prologue.Version != versionGo14 && prologue.Version != versionGo111 {
 			t.Fatal("Version not parsed correctly", prologue.Version)
 		}
 
@@ -94,11 +98,11 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 			t.Fatal("Line Range not parsed correctly", prologue.LineRange)
 		}
 
-		if prologue.OpcodeBase != uint8(10) {
+		if prologue.OpcodeBase != opcodeBaseGo14 && prologue.OpcodeBase != opcodeBaseGo111 {
 			t.Fatal("Opcode Base not parsed correctly", prologue.OpcodeBase)
 		}
 
-		lengths := []uint8{0, 1, 1, 1, 1, 0, 0, 0, 1}
+		lengths := []uint8{0, 1, 1, 1, 1, 0, 0, 0, 1, 0}
 		for i, l := range prologue.StdOpLengths {
 			if l != lengths[i] {
 				t.Fatal("Length not parsed correctly", l)

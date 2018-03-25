@@ -897,6 +897,9 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 
 func TestStacktraceGoroutine(t *testing.T) {
 	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+		mainStack[0].line = 15
+	}
 	agoroutineStacks := [][]loc{
 		{{8, "main.agoroutine"}},
 		{{9, "main.agoroutine"}},
@@ -3618,6 +3621,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 6, len(pcs), pcs)
 		}
 		for _, pc := range pcs {
+			t.Logf("setting breakpoint at %#x\n", pc)
 			_, err := p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
 			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
 		}
@@ -3628,7 +3632,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		assertNoError(err, t, "ThreadStacktrace")
 		t.Logf("Stacktrace:\n")
 		for i := range frames {
-			t.Logf("\t%s at %s:%d\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line)
+			t.Logf("\t%s at %s:%d (%#x)\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line, frames[i].Current.PC)
 		}
 
 		if err := checkFrame(frames[0], "main.inlineThis", fixture.Source, 7, true); err != nil {
@@ -3655,7 +3659,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		assertNoError(err, t, "ThreadStacktrace (2)")
 		t.Logf("Stacktrace 2:\n")
 		for i := range frames {
-			t.Logf("\t%s at %s:%d\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line)
+			t.Logf("\t%s at %s:%d (%#x)\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line, frames[i].Current.PC)
 		}
 
 		if err := checkFrame(frames[0], "main.inlineThis", fixture.Source, 7, true); err != nil {
@@ -3716,8 +3720,6 @@ func TestInlineStepOver(t *testing.T) {
 	}
 	testseq2Args(".", []string{}, protest.EnableInlining, t, "testinline", "", []seqTest{
 		{contContinue, 18},
-		{contNext, 18},
-		{contNext, 19},
 		{contNext, 19},
 		{contNext, 20},
 	})

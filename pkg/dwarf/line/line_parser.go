@@ -32,6 +32,9 @@ type DebugLineInfo struct {
 
 	// lastMachineCache[pc] is a state machine stopped at an address after pc
 	lastMachineCache map[uint64]*StateMachine
+
+	// logSuppressedErrors enables logging of otherwise suppressed errors
+	logSuppressedErrors bool
 }
 
 type FileEntry struct {
@@ -142,4 +145,9 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	}
 
 	return entry
+}
+
+// LogSuppressedErrors enables or disables logging of suppressed errors
+func (dbl *DebugLineInfo) LogSuppressedErrors(v bool) {
+	dbl.logSuppressedErrors = v
 }

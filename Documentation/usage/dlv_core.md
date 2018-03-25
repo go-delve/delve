@@ -35,6 +35,7 @@ dlv core <executable> <core>
 	debugger	Log debugger commands
 	gdbwire		Log connection to gdbserial backend
 	lldbout		Copy output from debugserver/lldb to standard output
+	debuglineerr	Log recoverable errors reading .debug_line
 Defaults to "debugger" when logging is enabled with --log.
       --wd string            Working directory for running the program. (default ".")
 ```
