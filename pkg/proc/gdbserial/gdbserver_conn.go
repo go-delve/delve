@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
 )
 
@@ -632,7 +633,7 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 		}
 		sp.sig = uint8(sig)
 
-		if logGdbWire && logGdbWireFullStopPacket {
+		if logflags.GdbWire() && gdbWireFullStopPacket {
 			fmt.Fprintf(os.Stderr, "full stop packet: %s\n", string(resp))
 		}
 
@@ -704,7 +705,7 @@ const ctrlC = 0x03 // the ASCII character for ^C
 
 // executes a ctrl-C on the line
 func (conn *gdbConn) sendCtrlC() error {
-	if logGdbWire {
+	if logflags.GdbWire() {
 		fmt.Println("<- interrupt")
 	}
 	_, err := conn.conn.Write([]byte{ctrlC})
@@ -991,9 +992,9 @@ func (conn *gdbConn) send(cmd []byte) error {
 
 	attempt := 0
 	for {
-		if logGdbWire {
-			if len(cmd) > logGdbWireMaxLen {
-				fmt.Printf("<- %s...\n", string(cmd[:logGdbWireMaxLen]))
+		if logflags.GdbWire() {
+			if len(cmd) > gdbWireMaxLen {
+				fmt.Printf("<- %s...\n", string(cmd[:gdbWireMaxLen]))
 			} else {
 				fmt.Printf("<- %s\n", string(cmd))
 			}
@@ -1032,15 +1033,15 @@ func (conn *gdbConn) recv(cmd []byte, context string, binary bool) (resp []byte,
 		if err != nil {
 			return nil, err
 		}
-		if logGdbWire {
+		if logflags.GdbWire() {
 			out := resp
 			partial := false
 			if idx := bytes.Index(out, []byte{'\n'}); idx >= 0 {
 				out = resp[:idx]
 				partial = true
 			}
-			if len(out) > logGdbWireMaxLen {
-				out = out[:logGdbWireMaxLen]
+			if len(out) > gdbWireMaxLen {
+				out = out[:gdbWireMaxLen]
 				partial = true
 			}
 			if !partial {
@@ -1097,7 +1098,7 @@ func (conn *gdbConn) readack() bool {
 	if err != nil {
 		return false
 	}
-	if logGdbWire {
+	if logflags.GdbWire() {
 		fmt.Printf("-> %s\n", string(b))
 	}
 	return b == '+'
@@ -1109,7 +1110,7 @@ func (conn *gdbConn) sendack(c byte) {
 		panic(fmt.Errorf("sendack(%c)", c))
 	}
 	conn.conn.Write([]byte{c})
-	if logGdbWire {
+	if logflags.GdbWire() {
 		fmt.Printf("<- %s\n", string(c))
 	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/derekparker/delve/pkg/config"
 	"github.com/derekparker/delve/pkg/goversion"
+	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/terminal"
 	"github.com/derekparker/delve/pkg/version"
 	"github.com/derekparker/delve/service"
@@ -25,7 +26,7 @@ import (
 
 var (
 	// Log is whether to log debug statements.
-	Log bool
+	Log string
 	// Headless is whether to run without terminal.
 	Headless bool
 	// APIVersion is the requested API version while running headless
@@ -85,7 +86,11 @@ func New(docCall bool) *cobra.Command {
 	}
 
 	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
-	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
+	RootCommand.PersistentFlags().StringVarP(&Log, "log", "", "false", `Comma separated list of components that should produce debug output, possible values:
+	debugger	Log debugger commands
+	gdbwire		Log connection to gdbserial backend
+	lldbout		Copy output from debugserver/lldb to standard output
+`)
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
 	RootCommand.PersistentFlags().IntVar(&APIVersion, "api-version", 1, "Selects API version when headless.")
@@ -304,6 +309,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 
 func traceCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
+		logflags.Setup(Log)
 
 		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
 		if err != nil {
@@ -348,7 +354,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			APIVersion:  2,
 			WorkingDir:  WorkingDir,
 			Backend:     Backend,
-		}, Log)
+		}, logflags.Debugger())
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -455,6 +461,8 @@ const (
 )
 
 func execute(attachPid int, processArgs []string, conf *config.Config, coreFile string, kind executeKind) int {
+	logflags.Setup(Log)
+
 	// Make a TCP listener
 	listener, err := net.Listen("tcp", Addr)
 	if err != nil {
@@ -488,7 +496,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			CoreFile:    coreFile,
 
 			DisconnectChan: disconnectChan,
-		}, Log)
+		}, logflags.Debugger())
 	default:
 		fmt.Printf("Unknown API version: %d\n", APIVersion)
 		return 1
