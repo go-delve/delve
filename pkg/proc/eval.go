@@ -1015,6 +1015,14 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		return constantCompare(op, xv.Value, yv.Value)
 	case reflect.String:
+		if xv.Len != yv.Len {
+			switch op {
+			case token.EQL:
+				return false, nil
+			case token.NEQ:
+				return true, nil
+			}
+		}
 		if int64(len(constant.StringVal(xv.Value))) != xv.Len || int64(len(constant.StringVal(yv.Value))) != yv.Len {
 			return false, fmt.Errorf("string too long for comparison")
 		}
