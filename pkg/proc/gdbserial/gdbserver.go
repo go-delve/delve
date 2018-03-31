@@ -79,14 +79,13 @@ import (
 
 	"golang.org/x/arch/x86/x86asm"
 
+	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
 )
 
 const (
-	logGdbWire               = false
-	logGdbWireFullStopPacket = false
-	showLldbServerOutput     = false
-	logGdbWireMaxLen         = 120
+	gdbWireFullStopPacket = false
+	gdbWireMaxLen         = 120
 
 	maxTransmitAttempts    = 3    // number of retransmission attempts on failed checksum
 	initialInputBufferSize = 2048 // size of the input buffer for gdbConn
@@ -424,7 +423,7 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		proc = exec.Command("lldb-server", args...)
 	}
 
-	if showLldbServerOutput || logGdbWire {
+	if logflags.LLDBServerOutput() || logflags.GdbWire() {
 		proc.Stdout = os.Stdout
 		proc.Stderr = os.Stderr
 	}
