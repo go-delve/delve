@@ -163,7 +163,9 @@ func Attach(pid int) (*Process, error) {
 	}
 	dbp, err := newDebugProcess(New(pid), exepath)
 	if err != nil {
-		dbp.Detach(false)
+		if dbp != nil {
+			dbp.Detach(false)
+		}
 		return nil, err
 	}
 	return dbp, nil
