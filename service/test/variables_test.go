@@ -615,6 +615,7 @@ func TestEvalExpression(t *testing.T) {
 		{"c1.pb.a != *(c1.sa[0])", false, "false", "false", "", nil},
 		{"c1.pb.a == *(c1.sa[1])", false, "false", "false", "", nil},
 		{"c1.pb.a != *(c1.sa[1])", false, "true", "true", "", nil},
+		{`longstr == "not this"`, false, "false", "false", "", nil},
 
 		// builtins
 		{"cap(parr)", false, "4", "4", "", nil},
