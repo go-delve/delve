@@ -237,6 +237,18 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 		return err
 	}
 
+	if verbuf, err := p.conn.exec([]byte("$qGDBServerVersion"), "init"); err == nil {
+		for _, v := range strings.Split(string(verbuf), ";") {
+			if strings.HasPrefix(v, "version:") {
+				if v[len("version:"):] == "902" {
+					// Workaround for https://bugs.llvm.org/show_bug.cgi?id=36968, 'g' command crashes a version of debugserver on some systems (?)
+					p.gcmdok = false
+					break
+				}
+			}
+		}
+	}
+
 	if path == "" {
 		// If we are attaching to a running process and the user didn't specify
 		// the executable file manually we must ask the stub for it.
