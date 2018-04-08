@@ -128,6 +128,9 @@ func Continue(dbp Process) error {
 					}
 					loc, err := curthread.Location()
 					if err != nil || loc.Fn == nil || (loc.Fn.Name != "runtime.breakpoint" && loc.Fn.Name != "runtime.Breakpoint") {
+						if g := dbp.SelectedGoroutine(); g != nil {
+							g.CurrentLoc = *loc
+						}
 						break
 					}
 				}

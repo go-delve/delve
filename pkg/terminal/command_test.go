@@ -748,3 +748,38 @@ func TestIssue1090(t *testing.T) {
 		}
 	})
 }
+
+func TestPrintContextParkedGoroutine(t *testing.T) {
+	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
+		term.MustExec("break stacktraceme")
+		term.MustExec("continue")
+
+		// pick a goroutine that isn't running on a thread
+		gid := ""
+		gout := strings.Split(term.MustExec("goroutines"), "\n")
+		t.Logf("goroutines -> %q", gout)
+		for _, gline := range gout {
+			if !strings.Contains(gline, "thread ") && strings.Contains(gline, "agoroutine") {
+				if dash := strings.Index(gline, " - "); dash > 0 {
+					gid = gline[len("  Goroutine "):dash]
+					break
+				}
+			}
+		}
+
+		t.Logf("picked %q", gid)
+		term.MustExec(fmt.Sprintf("goroutine %s", gid))
+
+		frameout := strings.Split(term.MustExec("frame 0"), "\n")
+		t.Logf("frame 0 -> %q", frameout)
+		if strings.Contains(frameout[0], "stacktraceme") {
+			t.Fatal("bad output for `frame 0` command on a parked goorutine")
+		}
+
+		listout := strings.Split(term.MustExec("list"), "\n")
+		t.Logf("list -> %q", listout)
+		if strings.Contains(listout[0], "stacktraceme") {
+			t.Fatal("bad output for list command on a parked goroutine")
+		}
+	})
+}
