@@ -73,10 +73,10 @@ func (c command) match(cmdstr string) bool {
 
 // Commands represents the commands for Delve terminal process.
 type Commands struct {
-	cmds         []command
-	lastCmd      cmdfunc
-	client       service.Client
-	frame int // Current frame as set by frame/up/down commands.
+	cmds    []command
+	lastCmd cmdfunc
+	client  service.Client
+	frame   int // Current frame as set by frame/up/down commands.
 }
 
 var (
@@ -1302,6 +1302,9 @@ func listCommand(t *Term, ctx callContext, args string) error {
 			return err
 		}
 		printcontext(t, state)
+		if state.SelectedGoroutine != nil {
+			return printfile(t, state.SelectedGoroutine.CurrentLoc.File, state.SelectedGoroutine.CurrentLoc.Line, true)
+		}
 		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 
 	case len(args) == 0 && ctx.scoped():
@@ -1462,13 +1465,30 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 		fmt.Println("No current thread available")
 		return nil
 	}
-	if len(state.CurrentThread.File) == 0 {
+
+	var th *api.Thread
+	if state.SelectedGoroutine == nil {
+		th = state.CurrentThread
+	} else {
+		for i := range state.Threads {
+			if state.Threads[i].ID == state.SelectedGoroutine.ThreadID {
+				th = state.Threads[i]
+				break
+			}
+		}
+		if th == nil {
+			printcontextLocation(state.SelectedGoroutine.CurrentLoc)
+			return nil
+		}
+	}
+
+	if th.File == "" {
 		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
 		t.Println("=>", "no source available")
 		return nil
 	}
 
-	printcontextThread(t, state.CurrentThread)
+	printcontextThread(t, th)
 
 	if state.When != "" {
 		fmt.Println(state.When)
@@ -1477,14 +1497,19 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 	return nil
 }
 
+func printcontextLocation(loc api.Location) {
+	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name, ShortenFilePath(loc.File), loc.Line, loc.PC)
+	if loc.Function != nil && loc.Function.Optimized {
+		fmt.Println(optimizedFunctionWarning)
+	}
+	return
+}
+
 func printcontextThread(t *Term, th *api.Thread) {
 	fn := th.Function
 
 	if th.Breakpoint == nil {
-		fmt.Printf("> %s() %s:%d (PC: %#v)\n", fn.Name, ShortenFilePath(th.File), th.Line, th.PC)
-		if th.Function != nil && th.Function.Optimized {
-			fmt.Println(optimizedFunctionWarning)
-		}
+		printcontextLocation(api.Location{PC: th.PC, File: th.File, Line: th.Line, Function: th.Function})
 		return
 	}
 
@@ -1561,6 +1586,9 @@ func printcontextThread(t *Term, th *api.Thread) {
 }
 
 func printfile(t *Term, filename string, line int, showArrow bool) error {
+	if filename == "" {
+		return nil
+	}
 	file, err := os.Open(t.substitutePath(filename))
 	if err != nil {
 		return err
