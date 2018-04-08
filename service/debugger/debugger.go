@@ -113,13 +113,13 @@ func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error)
 	case "native":
 		return native.Launch(processArgs, wd)
 	case "lldb":
-		return gdbserial.LLDBLaunch(processArgs, wd)
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd))
 	case "rr":
 		p, _, err := gdbserial.RecordAndReplay(processArgs, wd, false)
 		return p, err
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return gdbserial.LLDBLaunch(processArgs, wd)
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd))
 		}
 		return native.Launch(processArgs, wd)
 	default:
@@ -137,15 +137,28 @@ func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
 	case "native":
 		return native.Attach(pid)
 	case "lldb":
-		return gdbserial.LLDBAttach(pid, path)
+		return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path))
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return gdbserial.LLDBAttach(pid, path)
+			return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path))
 		}
 		return native.Attach(pid)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
+}
+
+var macOSBackendUnavailableErr = errors.New("debugserver or lldb-server not found: install XCode's command line tools or lldb-server")
+
+func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error) {
+	if runtime.GOOS != "darwin" {
+		return p, err
+	}
+	if _, isUnavailable := err.(*gdbserial.ErrBackendUnavailable); !isUnavailable {
+		return p, err
+	}
+
+	return p, macOSBackendUnavailableErr
 }
 
 // ProcessPid returns the PID of the process

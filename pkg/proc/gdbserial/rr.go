@@ -15,6 +15,10 @@ import (
 // Record uses rr to record the execution of the specified program and
 // returns the trace directory's path.
 func Record(cmd []string, wd string, quiet bool) (tracedir string, err error) {
+	if _, err := exec.LookPath("rr"); err != nil {
+		return "", &ErrBackendUnavailable{}
+	}
+
 	rfd, wfd, err := os.Pipe()
 	if err != nil {
 		return "", err
@@ -49,6 +53,10 @@ func Record(cmd []string, wd string, quiet bool) (tracedir string, err error) {
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
 func Replay(tracedir string, quiet bool) (*Process, error) {
+	if _, err := exec.LookPath("rr"); err != nil {
+		return nil, &ErrBackendUnavailable{}
+	}
+
 	rrcmd := exec.Command("rr", "replay", "--dbgport=0", tracedir)
 	rrcmd.Stdout = os.Stdout
 	stderr, err := rrcmd.StderrPipe()

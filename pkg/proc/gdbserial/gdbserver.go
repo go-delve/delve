@@ -135,6 +135,14 @@ type Thread struct {
 	setbp             bool // thread was stopped because of a breakpoint
 }
 
+// ErrBackendUnavailable is returned when the stub program can not be found.
+type ErrBackendUnavailable struct {
+}
+
+func (err *ErrBackendUnavailable) Error() string {
+	return "backend unavailable"
+}
+
 // gdbRegisters represents the current value of the registers of a thread.
 // The storage space for all the registers is allocated as a single memory
 // block in buf, the value field inside an individual gdbRegister will be a
@@ -392,6 +400,9 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 
 		proc = exec.Command(debugserverExecutable, args...)
 	} else {
+		if _, err := exec.LookPath("lldb-server"); err != nil {
+			return nil, &ErrBackendUnavailable{}
+		}
 		port = unusedPort()
 		args := make([]string, 0, len(cmd)+3)
 		args = append(args, "gdbserver")
@@ -452,6 +463,9 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 		}
 		proc = exec.Command(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
+		if _, err := exec.LookPath("lldb-server"); err != nil {
+			return nil, &ErrBackendUnavailable{}
+		}
 		port = unusedPort()
 		proc = exec.Command("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
 	}
