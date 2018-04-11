@@ -1496,13 +1496,23 @@ func printcontextThread(t *Term, th *api.Thread) {
 		}
 		args = strings.Join(arg, ", ")
 	}
+	retVals := ""
+	if th.BreakpointInfo != nil && th.Breakpoint.LoadReturnVals != nil && *th.Breakpoint.LoadReturnVals == ShortLoadConfig {
+		var retValVars []string
+		for _, ar := range th.BreakpointInfo.Returns {
+			retValVars = append(retValVars, ar.SinglelineString())
+		}
+		retVals = strings.Join(retValVars, ", ")
+	}
 
 	bpname := ""
 	if th.Breakpoint.Name != "" {
 		bpname = fmt.Sprintf("[%s] ", th.Breakpoint.Name)
 	}
 
-	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
+	if len(retVals) > 0 {
+		fmt.Printf("==> (%s)\n", retVals)
+	} else if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
 		fmt.Printf("> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
 			bpname,
 			fn.Name,

@@ -333,7 +333,7 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
-	panicpc, err := proc.FindFunctionLocation(p, "runtime.startpanic", true, 0)
+	panicpc, err := proc.FindFunctionLocation(p, "runtime.startpanic", true, false, 0)
 	if err == nil {
 		bp, err := p.breakpoints.SetWithID(-1, panicpc, p.writeBreakpoint)
 		if err == nil {

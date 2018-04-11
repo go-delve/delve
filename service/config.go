@@ -34,4 +34,7 @@ type Config struct {
 
 	// DisconnectChan will be closed by the server when the client disconnects
 	DisconnectChan chan<- struct{}
+
+	// TraceMode tells the debugger whether to discard target stdout / stderr.
+	TraceMode bool
 }

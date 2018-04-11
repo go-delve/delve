@@ -97,6 +97,9 @@ type Variable struct {
 	Unreadable error
 
 	LocationExpr string // location expression
+
+	// whether var is a function return value
+	functionReturn bool
 }
 
 type LoadConfig struct {
@@ -619,7 +622,32 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
-	return scope.variablesByTag(dwarf.TagFormalParameter, &cfg)
+	vars, err := scope.variablesByTag(dwarf.TagFormalParameter, &cfg)
+	if err != nil {
+		return nil, err
+	}
+	args := make([]*Variable, 0, len(vars))
+	for _, v := range vars {
+		if !v.functionReturn {
+			args = append(args, v)
+		}
+	}
+	return args, nil
+}
+
+// FunctionReturnVals returns the name, value, and type of all current function return values.
+func (scope *EvalScope) FunctionReturnVals(cfg LoadConfig) ([]*Variable, error) {
+	vars, err := scope.variablesByTag(dwarf.TagFormalParameter, &cfg)
+	if err != nil {
+		return nil, err
+	}
+	rets := make([]*Variable, 0, len(vars))
+	for _, v := range vars {
+		if v.functionReturn {
+			rets = append(rets, v)
+		}
+	}
+	return rets, nil
 }
 
 // PackageVariables returns the name, value, and type of all package variables in the application.
@@ -800,6 +828,15 @@ func (scope *EvalScope) extractVarInfoFromEntry(varEntry *dwarf.Entry) (*Variabl
 	if err != nil {
 		v.Unreadable = err
 	}
+
+	// Check if this variable is a function return value.
+	if varEntry.Tag == dwarf.TagFormalParameter {
+		attrVarParam, ok := entry.Val(dwarf.AttrVarParam).(bool)
+		if ok {
+			v.functionReturn = attrVarParam
+		}
+	}
+
 	return v, nil
 }
 

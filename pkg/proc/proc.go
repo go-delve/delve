@@ -45,7 +45,7 @@ func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
 // Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
 // Note that setting breakpoints at that address will cause surprising behavior:
 // https://github.com/derekparker/delve/issues/170
-func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset int) (uint64, error) {
+func FindFunctionLocation(p Process, funcName string, firstLine bool, end bool, lineOffset int) (uint64, error) {
 	bi := p.BinInfo()
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
@@ -54,6 +54,8 @@ func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset
 
 	if firstLine {
 		return FirstPCAfterPrologue(p, origfn, false)
+	} else if end {
+		return origfn.End - 32, nil
 	} else if lineOffset > 0 {
 		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
 		breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)

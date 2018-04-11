@@ -16,19 +16,21 @@ import (
 // an api.Breakpoint.
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
-		Name:          bp.Name,
-		ID:            bp.ID,
-		FunctionName:  bp.FunctionName,
-		File:          bp.File,
-		Line:          bp.Line,
-		Addr:          bp.Addr,
-		Tracepoint:    bp.Tracepoint,
-		Stacktrace:    bp.Stacktrace,
-		Goroutine:     bp.Goroutine,
-		Variables:     bp.Variables,
-		LoadArgs:      LoadConfigFromProc(bp.LoadArgs),
-		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
-		TotalHitCount: bp.TotalHitCount,
+		Name:           bp.Name,
+		ID:             bp.ID,
+		FunctionName:   bp.FunctionName,
+		File:           bp.File,
+		Line:           bp.Line,
+		AtReturn:       bp.AtReturn,
+		Addr:           bp.Addr,
+		Tracepoint:     bp.Tracepoint,
+		Stacktrace:     bp.Stacktrace,
+		Goroutine:      bp.Goroutine,
+		Variables:      bp.Variables,
+		LoadArgs:       LoadConfigFromProc(bp.LoadArgs),
+		LoadReturnVals: LoadConfigFromProc(bp.LoadReturnVals),
+		LoadLocals:     LoadConfigFromProc(bp.LoadLocals),
+		TotalHitCount:  bp.TotalHitCount,
 	}
 
 	b.HitCount = map[string]uint64{}

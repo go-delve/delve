@@ -349,7 +349,7 @@ func initializeDebugProcess(dbp *Process, path string) (*Process, error) {
 	// the offset of g struct inside TLS
 	dbp.selectedGoroutine, _ = proc.GetG(dbp.currentThread)
 
-	panicpc, err := proc.FindFunctionLocation(dbp, "runtime.startpanic", true, 0)
+	panicpc, err := proc.FindFunctionLocation(dbp, "runtime.startpanic", true, false, 0)
 	if err == nil {
 		bp, err := dbp.breakpoints.SetWithID(-1, panicpc, dbp.writeBreakpoint)
 		if err == nil {
