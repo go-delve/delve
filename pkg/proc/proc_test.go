@@ -1226,6 +1226,8 @@ func TestFrameEvaluation(t *testing.T) {
 		assertNoError(err, t, "setFunctionBreakpoint")
 		assertNoError(proc.Continue(p), t, "Continue()")
 
+		t.Logf("stopped on thread %d, goroutine: %#v", p.CurrentThread().ThreadID(), p.SelectedGoroutine())
+
 		// Testing evaluation on goroutines
 		gs, err := proc.GoroutinesInfo(p)
 		assertNoError(err, t, "GoroutinesInfo")
@@ -1237,6 +1239,8 @@ func TestFrameEvaluation(t *testing.T) {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
 			}
+			t.Logf("Goroutine %d", g.ID)
+			logStacktrace(t, frames)
 			for i := range frames {
 				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
 					frame = i
