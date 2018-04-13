@@ -931,19 +931,28 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
+	xv.loadValue(loadFullValue)
+	if xv.Unreadable != nil {
+		return nil, xv.Unreadable
+	}
+
+	// short circuits logical operators
+	switch node.Op {
+	case token.LAND:
+		if !constant.BoolVal(xv.Value) {
+			return newConstant(xv.Value, xv.mem), nil
+		}
+	case token.LOR:
+		if constant.BoolVal(xv.Value) {
+			return newConstant(xv.Value, xv.mem), nil
+		}
+	}
 
 	yv, err := scope.evalAST(node.Y)
 	if err != nil {
 		return nil, err
 	}
-
-	xv.loadValue(loadFullValue)
 	yv.loadValue(loadFullValue)
-
-	if xv.Unreadable != nil {
-		return nil, xv.Unreadable
-	}
-
 	if yv.Unreadable != nil {
 		return nil, yv.Unreadable
 	}

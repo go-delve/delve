@@ -735,6 +735,10 @@ func TestEvalExpression(t *testing.T) {
 		{"ch1.dataqsiz", false, "10", "10", "uint", nil},
 		{"ch1.buf", false, `*[10]int [1,4,3,2,0,0,0,0,0,0]`, `(*[10]int)(…`, "*[10]int", nil},
 		{"ch1.buf[0]", false, "1", "1", "int", nil},
+
+		// shortcircuited logical operators
+		{"nilstruct != nil && nilstruct.A == 1", false, "false", "false", "", nil},
+		{"nilstruct == nil || nilstruct.A == 1", false, "true", "true", "", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
