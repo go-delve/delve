@@ -881,7 +881,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 		}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
-			scope := proc.FrameToScope(d.target.BinInfo(), d.target.CurrentThread(), nil, rawlocs[i])
+			scope := proc.FrameToScope(d.target.BinInfo(), d.target.CurrentThread(), nil, rawlocs[i:]...)
 			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {
 				return nil, err

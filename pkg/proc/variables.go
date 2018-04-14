@@ -30,6 +30,8 @@ const (
 
 	hashTophashEmpty = 0 // used by map reading code, indicates an empty bucket
 	hashMinTopHash   = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated
+
+	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 )
 
 type FloatSpecial uint8
@@ -1911,44 +1913,6 @@ func (scope *EvalScope) variablesByTag(tag dwarf.Tag, cfg *LoadConfig) ([]*Varia
 
 	if hasScopes {
 		sort.Stable(&variablesByDepth{vars, depths})
-	}
-
-	// Prefetch the whole chunk of memory relative to these variables.
-	// Variables that are not stored contiguously in memory (i.e. the ones that
-	// read from a compositeMemory) will be ignored.
-
-	minaddr := vars[0].Addr
-	var maxaddr uintptr
-	var size int64
-
-	for _, v := range vars {
-		if _, extloc := v.mem.(*compositeMemory); extloc {
-			continue
-		}
-
-		if v.Addr < minaddr {
-			minaddr = v.Addr
-		}
-
-		size += v.DwarfType.Size()
-
-		if end := v.Addr + uintptr(v.DwarfType.Size()); end > maxaddr {
-			maxaddr = end
-		}
-	}
-
-	// check that we aren't trying to cache too much memory: we shouldn't
-	// exceed the real size of the variables by more than the number of
-	// variables times the size of an architecture pointer (to allow for memory
-	// alignment).
-	if int64(maxaddr-minaddr)-size <= int64(len(vars))*int64(scope.PtrSize()) {
-		mem := cacheMemory(vars[0].mem, minaddr, int(maxaddr-minaddr))
-
-		for _, v := range vars {
-			if _, extloc := v.mem.(*compositeMemory); !extloc {
-				v.mem = mem
-			}
-		}
 	}
 
 	lvn := map[string]*Variable{} // lvn[n] is the last variable we saw named n
