@@ -21,6 +21,7 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/line"
 	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"github.com/derekparker/delve/pkg/goversion"
 )
 
 type BinaryInfo struct {
@@ -75,7 +76,8 @@ type compileUnit struct {
 	Name          string              // univocal name for non-go compile units
 	lineInfo      *line.DebugLineInfo // debug_line segment associated with this compile unit
 	LowPC, HighPC uint64
-	optimized     bool // this compile unit is optimized
+	optimized     bool   // this compile unit is optimized
+	producer      string // producer attribute
 }
 
 type partialUnitConstant struct {
@@ -365,7 +367,7 @@ func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes, debugLin
 
 	bi.loclistInit(debugLocBytes)
 
-	bi.loadDebugInfoMaps(debugLineBytes, nil)
+	bi.loadDebugInfoMaps(debugLineBytes, nil, nil)
 }
 
 func (bi *BinaryInfo) loclistInit(data []byte) {
@@ -440,6 +442,15 @@ func (bi *BinaryInfo) findCompileUnit(pc uint64) *compileUnit {
 	return nil
 }
 
+func (bi *BinaryInfo) Producer() string {
+	for _, cu := range bi.compileUnits {
+		if cu.isgo && cu.producer != "" {
+			return cu.producer
+		}
+	}
+	return ""
+}
+
 // ELF ///////////////////////////////////////////////////////////////
 
 func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
@@ -470,7 +481,7 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 
 	wg.Add(3)
 	go bi.parseDebugFrameElf(elfFile, wg)
-	go bi.loadDebugInfoMaps(debugLineBytes, wg)
+	go bi.loadDebugInfoMaps(debugLineBytes, wg, nil)
 	go bi.setGStructOffsetElf(elfFile, wg)
 	return nil
 }
@@ -582,7 +593,7 @@ func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
 
 	wg.Add(2)
 	go bi.parseDebugFramePE(peFile, wg)
-	go bi.loadDebugInfoMaps(debugLineBytes, wg)
+	go bi.loadDebugInfoMaps(debugLineBytes, wg, nil)
 
 	// Use ArbitraryUserPointer (0x28) as pointer to pointer
 	// to G struct per:
@@ -750,9 +761,20 @@ func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error
 
 	wg.Add(2)
 	go bi.parseDebugFrameMacho(exe, wg)
-	go bi.loadDebugInfoMaps(debugLineBytes, wg)
-	bi.gStructOffset = 0x8a0
+	go bi.loadDebugInfoMaps(debugLineBytes, wg, bi.setGStructOffsetMacho)
 	return nil
+}
+
+func (bi *BinaryInfo) setGStructOffsetMacho() {
+	// In go1.11 it's 0x30, before 0x8a0, see:
+	// https://github.com/golang/go/issues/23617
+	// and go commit b3a854c733257c5249c3435ffcee194f8439676a
+	producer := bi.Producer()
+	if producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 11) {
+		bi.gStructOffset = 0x30
+		return
+	}
+	bi.gStructOffset = 0x8a0
 }
 
 func (bi *BinaryInfo) parseDebugFrameMacho(exe *macho.File, wg *sync.WaitGroup) {
