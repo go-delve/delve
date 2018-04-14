@@ -511,7 +511,11 @@ func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
 	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame]), nil
 }
 
-// FrameToScope returns a new EvalScope for this frame
+// FrameToScope returns a new EvalScope for frames[0].
+// If frames has at least two elements all memory between
+// frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
+// Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
+// will be cached.
 func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frame Stackframe) *EvalScope {
 	var gvar *Variable
 	if g != nil {
