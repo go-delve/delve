@@ -161,3 +161,18 @@ func VersionAfterOrEqual(version string, major, minor int) bool {
 	}
 	return ver.AfterOrEqual(GoVersion{major, minor, -1, 0, 0, ""})
 }
+
+const producerVersionPrefix = "Go cmd/compile "
+
+// ProducerAfterOrEqual checks that the DW_AT_producer version is
+// major.minor or a later version, or a development version.
+func ProducerAfterOrEqual(producer string, major, minor int) bool {
+	if strings.HasPrefix(producer, producerVersionPrefix) {
+		producer = producer[len(producerVersionPrefix):]
+	}
+	ver, _ := Parse(producer)
+	if ver.IsDevel() {
+		return true
+	}
+	return ver.AfterOrEqual(GoVersion{major, minor, -1, 0, 0, ""})
+}
