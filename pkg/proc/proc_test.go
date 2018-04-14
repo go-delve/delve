@@ -3333,7 +3333,7 @@ func TestIssue1034(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		frames, err := p.SelectedGoroutine().Stacktrace(10)
 		assertNoError(err, t, "Stacktrace")
-		scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frames[2])
+		scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
 		assertNoError(err, t, "FunctionArguments()")
 		if len(args) > 0 {

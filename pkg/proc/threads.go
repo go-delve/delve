@@ -461,19 +461,19 @@ func GetG(thread Thread) (*G, error) {
 
 // ThreadScope returns an EvalScope for this thread.
 func ThreadScope(thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 0)
+	locations, err := ThreadStacktrace(thread, 1)
 	if err != nil {
 		return nil, err
 	}
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return FrameToScope(thread.BinInfo(), thread, nil, locations[0]), nil
+	return FrameToScope(thread.BinInfo(), thread, nil, locations...), nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on this thread.
 func GoroutineScope(thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 0)
+	locations, err := ThreadStacktrace(thread, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -484,7 +484,7 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return FrameToScope(thread.BinInfo(), thread, g, locations[0]), nil
+	return FrameToScope(thread.BinInfo(), thread, g, locations...), nil
 }
 
 func onRuntimeBreakpoint(thread Thread) bool {
