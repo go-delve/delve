@@ -2,7 +2,6 @@ package proc
 
 import (
 	"bytes"
-	"debug/dwarf"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -564,22 +563,13 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return nilVariable, nil
 	}
 
-	vars, err := scope.variablesByTag(dwarf.TagVariable, nil)
+	vars, err := scope.Locals()
 	if err != nil {
 		return nil, err
 	}
 	for i := range vars {
 		if vars[i].Name == node.Name && vars[i].Flags&VariableShadowed == 0 {
 			return vars[i], nil
-		}
-	}
-	args, err := scope.variablesByTag(dwarf.TagFormalParameter, nil)
-	if err != nil {
-		return nil, err
-	}
-	for i := range args {
-		if args[i].Name == node.Name {
-			return args[i], nil
 		}
 	}
 
