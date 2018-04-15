@@ -170,6 +170,12 @@ const (
 
 	// VariableConstant means this variable is a constant value
 	VariableConstant
+
+	// VariableArgument means this variable is a function argument
+	VariableArgument
+
+	// VariableReturnArgument means this variable is a function return value
+	VariableReturnArgument
 )
 
 // Variable describes a variable.

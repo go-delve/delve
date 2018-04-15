@@ -524,7 +524,7 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
-	// Remember that the stack grows from downward in memory.
+	// Remember that the stack grows downward in memory.
 	minaddr := frames[0].Regs.SP()
 	var maxaddr uint64
 	if len(frames) > 1 && frames[0].SystemStack == frames[1].SystemStack {
