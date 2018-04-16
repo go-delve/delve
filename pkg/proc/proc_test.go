@@ -59,9 +59,9 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), wd)
+		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false)
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd)
+		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false)
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
@@ -2036,7 +2036,7 @@ func TestIssue509(t *testing.T) {
 	cmd.Dir = nomaindir
 	assertNoError(cmd.Run(), t, "go build")
 	exepath := filepath.Join(nomaindir, "debug")
-	_, err := native.Launch([]string{exepath}, ".")
+	_, err := native.Launch([]string{exepath}, ".", false)
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
@@ -2070,7 +2070,7 @@ func TestUnsupportedArch(t *testing.T) {
 	}
 	defer os.Remove(outfile)
 
-	p, err := native.Launch([]string{outfile}, ".")
+	p, err := native.Launch([]string{outfile}, ".", false)
 	switch err {
 	case proc.UnsupportedLinuxArchErr, proc.UnsupportedWindowsArchErr, proc.UnsupportedDarwinArchErr:
 		// all good

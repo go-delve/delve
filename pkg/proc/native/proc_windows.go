@@ -36,7 +36,7 @@ func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err

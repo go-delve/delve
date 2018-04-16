@@ -191,7 +191,7 @@ func New(process *os.Process) *Process {
 }
 
 // Listen waits for a connection from the stub.
-func (p *Process) Listen(listener net.Listener, path string, pid int) error {
+func (p *Process) Listen(listener net.Listener, path string, pid int, foreground bool) error {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -205,7 +205,7 @@ func (p *Process) Listen(listener net.Listener, path string, pid int) error {
 		if conn == nil {
 			return errors.New("could not connect")
 		}
-		return p.Connect(conn, path, pid)
+		return p.Connect(conn, path, pid, foreground)
 	case status := <-p.waitChan:
 		listener.Close()
 		return fmt.Errorf("stub exited while waiting for connection: %v", status)
@@ -217,7 +217,7 @@ func (p *Process) Dial(addr string, path string, pid int) error {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
-			return p.Connect(conn, path, pid)
+			return p.Connect(conn, path, pid, false)
 		}
 		select {
 		case status := <-p.waitChan:
@@ -234,7 +234,7 @@ func (p *Process) Dial(addr string, path string, pid int) error {
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *Process) Connect(conn net.Conn, path string, pid int) error {
+func (p *Process) Connect(conn net.Conn, path string, pid int, foreground bool) error {
 	p.conn.conn = conn
 
 	p.conn.pid = pid
@@ -341,6 +341,14 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 		}
 	}
 
+	if foreground {
+		// Moves process group of the target to foreground. Here we use the PID of
+		// the debugserver instance because we already asked Go to put it into a
+		// new process group (Setpgid) and debugserver does not spawn the target
+		// into a different process group.
+		moveToForeground(p.process.Pid)
+	}
+
 	return nil
 }
 
@@ -380,7 +388,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string) (*Process, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 	switch runtime.GOOS {
 	case "windows":
 		return nil, ErrUnsupportedOS
@@ -404,6 +412,9 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		ldEnvVars := getLdEnvVars()
 		args := make([]string, 0, len(cmd)+4+len(ldEnvVars))
 		args = append(args, ldEnvVars...)
+		if foreground {
+			args = append(args, "--stdio-path", "/dev/tty")
+		}
 		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--")
 		args = append(args, cmd...)
 
@@ -423,9 +434,12 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 		proc = exec.Command("lldb-server", args...)
 	}
 
-	if logflags.LLDBServerOutput() || logflags.GdbWire() {
+	if logflags.LLDBServerOutput() || logflags.GdbWire() || foreground {
 		proc.Stdout = os.Stdout
 		proc.Stderr = os.Stderr
+	}
+	if foreground {
+		proc.Stdin = os.Stdin
 	}
 	if wd != "" {
 		proc.Dir = wd
@@ -442,7 +456,7 @@ func LLDBLaunch(cmd []string, wd string) (*Process, error) {
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
-		err = p.Listen(listener, cmd[0], 0)
+		err = p.Listen(listener, cmd[0], 0, p.conn.isDebugserver && foreground)
 	} else {
 		err = p.Dial(port, cmd[0], 0)
 	}
@@ -495,7 +509,7 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
-		err = p.Listen(listener, path, pid)
+		err = p.Listen(listener, path, pid, false)
 	} else {
 		err = p.Dial(port, path, pid)
 	}

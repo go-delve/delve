@@ -54,6 +54,9 @@ type Config struct {
 	CoreFile string
 	// Backend specifies the debugger backend.
 	Backend string
+
+	// Foreground lets target process access stdin.
+	Foreground bool
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -111,17 +114,17 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error) {
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd)
+		return native.Launch(processArgs, wd, d.config.Foreground)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground))
 	case "rr":
 		p, _, err := gdbserial.RecordAndReplay(processArgs, wd, false)
 		return p, err
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground))
 		}
-		return native.Launch(processArgs, wd)
+		return native.Launch(processArgs, wd, d.config.Foreground)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
