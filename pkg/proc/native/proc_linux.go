@@ -14,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
@@ -43,7 +44,7 @@ type OSProcessDetails struct {
 // Launch creates and begins debugging a new process. First entry in
 // `cmd` is the program to run, and then rest are the arguments
 // to be supplied to that process. `wd` is working directory of the program.
-func Launch(cmd []string, wd string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	var (
 		process *exec.Cmd
 		err     error
@@ -59,6 +60,9 @@ func Launch(cmd []string, wd string) (*Process, error) {
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
 		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true}
+		if foreground {
+			process.Stdin = os.Stdin
+		}
 		if wd != "" {
 			process.Dir = wd
 		}
@@ -72,6 +76,10 @@ func Launch(cmd []string, wd string) (*Process, error) {
 	_, _, err = dbp.wait(process.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
+	}
+	if foreground {
+		// Sets target process as the controlling process for our tty, equivalent to tcsetpgrp
+		syscall.Syscall(syscall.SYS_IOCTL, uintptr(0), uintptr(syscall.TIOCSPGRP), uintptr(unsafe.Pointer(&dbp.pid)))
 	}
 	return initializeDebugProcess(dbp, process.Path)
 }

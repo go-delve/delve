@@ -505,6 +505,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			WorkingDir:  WorkingDir,
 			Backend:     Backend,
 			CoreFile:    coreFile,
+			Foreground:  Headless,
 
 			DisconnectChan: disconnectChan,
 		}, logflags.Debugger())

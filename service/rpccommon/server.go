@@ -115,6 +115,7 @@ func (s *ServerImpl) Run() error {
 		WorkingDir: s.config.WorkingDir,
 		CoreFile:   s.config.CoreFile,
 		Backend:    s.config.Backend,
+		Foreground: s.config.Foreground,
 	},
 		s.config.ProcessArgs); err != nil {
 		return err
