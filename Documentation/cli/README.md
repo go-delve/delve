@@ -14,8 +14,9 @@ Command | Description
 [config](#config) | Changes configuration parameters.
 [continue](#continue) | Run until breakpoint or program termination.
 [disassemble](#disassemble) | Disassembler.
+[down](#down) | Move the current frame down.
 [exit](#exit) | Exit the debugger.
-[frame](#frame) | Executes command on a different frame.
+[frame](#frame) | Set the current frame, or execute command on a different frame.
 [funcs](#funcs) | Print list of functions.
 [goroutine](#goroutine) | Shows or changes current goroutine
 [goroutines](#goroutines) | List program goroutines.
@@ -39,6 +40,7 @@ Command | Description
 [threads](#threads) | Print out info for every traced thread.
 [trace](#trace) | Set tracepoint.
 [types](#types) | Print list of types
+[up](#up) | Move the current frame up.
 [vars](#vars) | Print package variables.
 [whatis](#whatis) | Prints type of an expression.
 
@@ -68,7 +70,7 @@ Aliases: bp
 
 ## check
 Creates a checkpoint at the current position.
-			
+
 	checkpoint [where]
 
 Aliases: checkpoint
@@ -85,7 +87,7 @@ Deletes breakpoint.
 
 ## clear-checkpoint
 Deletes checkpoint.
-			
+
 	clear-checkpoint <id>
 
 Aliases: clearcheck
@@ -94,7 +96,7 @@ Aliases: clearcheck
 Deletes multiple breakpoints.
 
 	clearall [<linespec>]
-	
+
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.
 
 
@@ -102,16 +104,16 @@ If called with the linespec argument it will delete all the breakpoints matching
 Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
-	
+
 Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.
 
 Aliases: cond
 
 ## config
 Changes configuration parameters.
-		
+
 	config -list
-	
+
 Show all configuration parameters.
 
 	config -save
@@ -119,17 +121,17 @@ Show all configuration parameters.
 Saves the configuration file to disk, overwriting the current configuration file.
 
 	config <parameter> <value>
-	
+
 Changes the value of a configuration parameter.
 
 	config substitute-path <from> <to>
 	config substitute-path <from>
-	
+
 Adds or removes a path substitution rule.
 
 	config alias <command> <alias>
 	config alias <alias>
-	
+
 Defines <alias> as an alias to <command> or removes an alias.
 
 
@@ -144,11 +146,20 @@ Disassembler.
 	[goroutine <n>] [frame <m>] disassemble [-a <start> <end>] [-l <locspec>]
 
 If no argument is specified the function being executed in the selected stack frame will be executed.
-	
+
 	-a <start> <end>	disassembles the specified address range
 	-l <locspec>		disassembles the specified function
 
 Aliases: disass
+
+## down
+Move the current frame down.
+
+  down [<m>]
+  down [<m>] <command>
+
+Move the current frame down by <m>. The second form runs the command on the given frame.
+
 
 ## exit
 Exit the debugger.
@@ -156,9 +167,13 @@ Exit the debugger.
 Aliases: quit q
 
 ## frame
-Executes command on a different frame.
+Set the current frame, or execute command on a different frame.
 
-	frame <frame index> <command>.
+  frame <m>
+  frame <m> <command>
+
+The first form sets frame used by subsequent commands such as "print" or "set".
+The second form runs the command on the given frame.
 
 
 ## funcs
@@ -191,7 +206,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-u	displays location of topmost stackframe in user code
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
-	
+
 If no flag is specified the default is -u.
 
 
@@ -199,7 +214,7 @@ If no flag is specified the default is -u.
 Prints the help message.
 
 	help [command]
-	
+
 Type "help" followed by the name of a command for more information about it.
 
 Aliases: h
@@ -211,7 +226,7 @@ Show source code.
 
 Show source around current point or provided linespec.
 
-Aliases: ls
+Aliases: ls l
 
 ## locals
 Print local variables.
@@ -232,7 +247,7 @@ Aliases: n
 Executes a command when a breakpoint is hit.
 
 	on <breakpoint name or id> <command>.
-	
+
 Supported commands: print, stack and goroutine)
 
 
@@ -249,14 +264,14 @@ Aliases: p
 Print contents of CPU registers.
 
 	regs [-a]
-	
+
 Argument -a shows more registers.
 
 
 ## restart
 Restart process from a checkpoint or event.
-	
-	restart [event number or checkpoint id]
+
+  restart [event number or checkpoint id]
 
 Aliases: r
 
@@ -291,7 +306,7 @@ If regex is specified only the source files matching it will be returned.
 Print stack trace.
 
 	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-g] [-s] [-offsets]
-	
+
 	-full		every stackframe is decorated with the value of its local variables and arguments.
 	-offsets	prints frame offset of each frame
 
@@ -327,7 +342,7 @@ Print out info for every traced thread.
 Set tracepoint.
 
 	trace [name] <linespec>
-	
+
 A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See [Documentation/cli/locspec.md](//github.com/derekparker/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"
@@ -342,6 +357,15 @@ Print list of types
 If regex is specified only the types matching it will be returned.
 
 
+## up
+Move the current frame up.
+
+  up [<m>]
+  up [<m>] <command>
+
+Move the current frame up by <m>. The second form runs the command on the given frame.
+
+
 ## vars
 Print package variables.
 
@@ -352,7 +376,7 @@ If regex is specified only package variables with a name matching it will be ret
 
 ## whatis
 Prints type of an expression.
-		
+
 		whatis <expression>.
 
 
