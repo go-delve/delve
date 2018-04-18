@@ -25,6 +25,7 @@ const (
 	AttrGoKey           dwarf.Attr = 0x2901
 	AttrGoElem          dwarf.Attr = 0x2902
 	AttrGoEmbeddedField dwarf.Attr = 0x2903
+	AttrGoRuntimeType   dwarf.Attr = 0x2904
 )
 
 // Basic type encodings -- the value for AttrEncoding in a TagBaseType Entry.

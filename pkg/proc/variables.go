@@ -1649,8 +1649,7 @@ func mapEvacuated(b *Variable) bool {
 }
 
 func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig) {
-	var _type, typestring, data *Variable
-	var typ godwarf.Type
+	var _type, data *Variable
 	var err error
 	isnil := false
 
@@ -1679,8 +1678,6 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	// and sets the go17 flag when the 'string' field can not be found
 	// but the str field was found
 
-	go17 := false
-
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
 	ityp := resolveTypedef(&v.RealType.(*godwarf.InterfaceType).TypedefType).(*godwarf.StructType)
@@ -1697,24 +1694,12 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 					return
 				}
-				typestring, err = _type.structMember("_string")
-				if err == nil {
-					typestring = typestring.maybeDereference()
-				} else {
-					go17 = true
-				}
 			}
 		case "_type": // for runtime.eface
 			_type, _ = v.toField(f)
 			_type = _type.maybeDereference()
 			isnil = _type.Addr == 0
 			if !isnil {
-				typestring, err = _type.structMember("_string")
-				if err == nil {
-					typestring = typestring.maybeDereference()
-				} else {
-					go17 = true
-				}
 			}
 		case "data":
 			data, _ = v.toField(f)
@@ -1736,49 +1721,10 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		return
 	}
 
-	var kind int64
-
-	if go17 {
-		// No 'string' field use 'str' and 'runtime.firstmoduledata' to
-		// find out what the concrete type is
-		_type = _type.maybeDereference()
-
-		var typename string
-		typename, kind, err = nameOfRuntimeType(_type)
-		if err != nil {
-			v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
-			return
-		}
-
-		typ, err = v.bi.findType(typename)
-		if err != nil {
-			v.Unreadable = fmt.Errorf("interface type %q not found for %#x: %v", typename, data.Addr, err)
-			return
-		}
-	} else {
-		if typestring == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
-			v.Unreadable = fmt.Errorf("invalid interface type")
-			return
-		}
-		typestring.loadValue(LoadConfig{false, 0, 512, 0, 0})
-		if typestring.Unreadable != nil {
-			v.Unreadable = fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
-			return
-		}
-
-		typename := constant.StringVal(typestring.Value)
-
-		t, err := parser.ParseExpr(typename)
-		if err != nil {
-			v.Unreadable = fmt.Errorf("invalid interface type, unparsable data type: %v", err)
-			return
-		}
-
-		typ, err = v.bi.findTypeExpr(t)
-		if err != nil {
-			v.Unreadable = fmt.Errorf("interface type %q not found for %#x: %v", typename, data.Addr, err)
-			return
-		}
+	typ, kind, err := runtimeTypeToDIE(_type, data.Addr)
+	if err != nil {
+		v.Unreadable = err
+		return
 	}
 
 	deref := false

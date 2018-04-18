@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/parser"
 	"go/token"
 	"path/filepath"
 	"reflect"
@@ -187,6 +188,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	bi.Functions = []Function{}
 	bi.compileUnits = []*compileUnit{}
 	bi.consts = make(map[dwarf.Offset]*constantType)
+	bi.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 	reader := bi.DwarfReader()
 	var cu *compileUnit = nil
 	var pu *partialUnit = nil
@@ -308,6 +310,9 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 						bi.types[name] = entry.Offset
 					}
 				}
+			}
+			if off, ok := entry.Val(godwarf.AttrGoRuntimeType).(uint64); ok {
+				bi.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
 			}
 			reader.SkipChildren()
 
@@ -456,6 +461,93 @@ func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 	default:
 		// nothing to do
 	}
+}
+
+// runtimeTypeToDIE returns the DIE corresponding to the runtime._type.
+// This is done in three different ways depending on the version of go.
+// * Before go1.7 the type name is retrieved directly from the runtime._type
+//   and looked up in debug_info
+// * After go1.7 the runtime._type struct is read recursively to reconstruct
+//   the name of the type, and then the type's name is used to look up
+//   debug_info
+// * After go1.11 the runtimeTypeToDIE map is used to look up the address of
+//   the type and map it drectly to a DIE.
+func runtimeTypeToDIE(_type *Variable, dataAddr uintptr) (typ godwarf.Type, kind int64, err error) {
+	var go17 bool
+	var typestring *Variable
+
+	bi := _type.bi
+
+	// Determine if we are in go1.7 or later
+	typestring, err = _type.structMember("_string")
+	if err == nil {
+		typestring = typestring.maybeDereference()
+	} else {
+		err = nil
+		go17 = true
+	}
+
+	if !go17 {
+		// pre-go1.7 compatibility
+		if typestring == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
+			return nil, 0, fmt.Errorf("invalid interface type")
+		}
+		typestring.loadValue(LoadConfig{false, 0, 512, 0, 0})
+		if typestring.Unreadable != nil {
+			return nil, 0, fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
+		}
+
+		typename := constant.StringVal(typestring.Value)
+
+		t, err := parser.ParseExpr(typename)
+		if err != nil {
+			return nil, 0, fmt.Errorf("invalid interface type, unparsable data type: %v", err)
+		}
+
+		typ, err := bi.findTypeExpr(t)
+		if err != nil {
+			return nil, 0, fmt.Errorf("interface type %q not found for %#x: %v", typename, dataAddr, err)
+		}
+
+		return typ, 0, nil
+	}
+
+	_type = _type.maybeDereference()
+
+	// go 1.11 implementation: use extended attribute in debug_info
+
+	md, err := findModuleDataForType(bi, _type.Addr, _type.mem)
+	if err != nil {
+		return nil, 0, fmt.Errorf("error loading module data: %v", err)
+	}
+	if md != nil {
+		if rtdie, ok := bi.runtimeTypeToDIE[uint64(_type.Addr-md.types)]; ok {
+			typ, err := godwarf.ReadType(bi.dwarf, rtdie.offset, bi.typeCache)
+			if err != nil {
+				return nil, 0, fmt.Errorf("invalid interface type: %v", err)
+			}
+			if rtdie.kind == -1 {
+				if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
+					rtdie.kind, _ = constant.Int64Val(kindField.Value)
+				}
+			}
+			return typ, rtdie.kind, nil
+		}
+	}
+
+	// go1.7 to go1.10 implementation: convert runtime._type structs to type names
+
+	typename, kind, err := nameOfRuntimeType(_type)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid interface type: %v", err)
+	}
+
+	typ, err = bi.findType(typename)
+	if err != nil {
+		return nil, 0, fmt.Errorf("interface type %q not found for %#x: %v", typename, dataAddr, err)
+	}
+
+	return typ, kind, nil
 }
 
 type nameOfRuntimeTypeEntry struct {

@@ -55,6 +55,12 @@ type BinaryInfo struct {
 	moduleData         []moduleData
 	nameOfRuntimeType  map[uintptr]nameOfRuntimeTypeEntry
 
+	// runtimeTypeToDIE maps between the offset of a runtime._type in
+	// runtime.moduledata.types and the offset of the DIE in debug_info. This
+	// map is filled by using the extended attribute godwarf.AttrGoRuntimeType
+	// which was added in go 1.11.
+	runtimeTypeToDIE map[uint64]runtimeTypeDIE
+
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
 
@@ -227,6 +233,11 @@ func (rdr *loclistReader) Next(e *loclistEntry) bool {
 type loclistEntry struct {
 	lowpc, highpc uint64
 	instr         []byte
+}
+
+type runtimeTypeDIE struct {
+	offset dwarf.Offset
+	kind   int64
 }
 
 func (e *loclistEntry) BaseAddressSelection() bool {
