@@ -270,6 +270,8 @@ https://github.com/mozilla/rr
 		RootCommand.AddCommand(replayCommand)
 	}
 
+	RootCommand.DisableAutoGenTag = true
+
 	return RootCommand
 }
 
