@@ -37,11 +37,12 @@ dlv test [package]
       --headless             Run debug server only, in headless mode.
       --init string          Init file, executed by the terminal client.
   -l, --listen string        Debugging server listen address. (default "localhost:0")
-      --log string           Comma separated list of components that should produce debug output, possible values:
+      --log                  Enable debugging server logging.
+      --log-output string    Comma separated list of components that should produce debug output, possible values:
 	debugger	Log debugger commands
 	gdbwire		Log connection to gdbserial backend
 	lldbout		Copy output from debugserver/lldb to standard output
- (default "false")
+Defaults to "debugger" when logging is enabled with --log.
       --wd string            Working directory for running the program. (default ".")
 ```
 

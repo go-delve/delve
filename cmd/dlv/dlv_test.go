@@ -210,7 +210,7 @@ func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte
 	saved := slurpFile(t, os.ExpandEnv(fmt.Sprintf("$GOPATH/src/github.com/derekparker/delve/%s", filename)))
 
 	if len(saved) != len(generated) {
-		t.Fatalf("%s: needs to be regenerated run scripts/gen-cli-docs.go", filename)
+		t.Fatalf("%s: needs to be regenerated; run %s", filename, gencommand)
 	}
 
 	for i := range saved {
