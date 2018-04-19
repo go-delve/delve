@@ -1,6 +1,9 @@
 package logflags
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 var debugger = false
 var gdbWire = false
@@ -23,11 +26,18 @@ func LLDBServerOutput() bool {
 	return lldbServerOutput
 }
 
+var errLogstrWithoutLog = errors.New("--log-output specified without --log")
+
 // Setup sets debugger flags based on the contents of logstr.
-func Setup(logstr string) {
-	if logstr == "true" || logstr == "" {
-		debugger = true
-		return
+func Setup(log bool, logstr string) error {
+	if !log {
+		if logstr != "" {
+			return errLogstrWithoutLog
+		}
+		return nil
+	}
+	if logstr == "" {
+		logstr = "debugger"
 	}
 	v := strings.Split(logstr, ",")
 	for _, logcmd := range v {
@@ -40,4 +50,5 @@ func Setup(logstr string) {
 			lldbServerOutput = true
 		}
 	}
+	return nil
 }
