@@ -149,7 +149,7 @@ func loadName(bi *BinaryInfo, addr uintptr, mem MemoryReadWriter) (name, tag str
 		return "", "", 0, err
 	}
 
-	namelen := uint16(namedata[1]<<8) | uint16(namedata[2])
+	namelen := uint16(namedata[1])<<8 | uint16(namedata[2])
 
 	rawstr := make([]byte, int(namelen))
 	_, err = mem.ReadMemory(rawstr, off)
@@ -167,7 +167,7 @@ func loadName(bi *BinaryInfo, addr uintptr, mem MemoryReadWriter) (name, tag str
 		if err != nil {
 			return "", "", 0, err
 		}
-		taglen := uint16(taglendata[0]<<8) | uint16(taglendata[1])
+		taglen := uint16(taglendata[0])<<8 | uint16(taglendata[1])
 
 		rawstr := make([]byte, int(taglen))
 		_, err = mem.ReadMemory(rawstr, off)
