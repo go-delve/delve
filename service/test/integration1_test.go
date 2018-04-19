@@ -623,7 +623,7 @@ func Test1ClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
 
 		// Fully qualified path
-		path := protest.Fixtures["locationsUpperCase"].Source
+		path := protest.Fixtures[protest.FixtureKey{"locationsUpperCase", 0}].Source
 		findLocationHelper(t, c, path+":6", false, 1, 0)
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: path, Line: 6})
 		if err != nil {

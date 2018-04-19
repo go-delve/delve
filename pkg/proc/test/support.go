@@ -28,8 +28,13 @@ type Fixture struct {
 	Source string
 }
 
-// Fixtures is a map of Fixture.Name to Fixture.
-var Fixtures map[string]Fixture = make(map[string]Fixture)
+type FixtureKey struct {
+	Name  string
+	Flags BuildFlags
+}
+
+// Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
+var Fixtures map[FixtureKey]Fixture = make(map[FixtureKey]Fixture)
 
 func FindFixturesDir() string {
 	parent := ".."
@@ -52,7 +57,8 @@ const (
 )
 
 func BuildFixture(name string, flags BuildFlags) Fixture {
-	if f, ok := Fixtures[name]; ok && flags == 0 {
+	fk := FixtureKey{name, flags}
+	if f, ok := Fixtures[fk]; ok {
 		return f
 	}
 
@@ -109,12 +115,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	fixture := Fixture{Name: name, Path: tmpfile, Source: source}
 
-	if flags != 0 {
-		return fixture
-	}
-
-	Fixtures[name] = fixture
-	return Fixtures[name]
+	Fixtures[fk] = fixture
+	return Fixtures[fk]
 }
 
 // RunTestsWithFixtures will pre-compile test fixtures before running test
