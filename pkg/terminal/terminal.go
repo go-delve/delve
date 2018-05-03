@@ -247,10 +247,10 @@ func (t *Term) handleExit() (int, error) {
 func (t *Term) loadConfig() api.LoadConfig {
 	r := api.LoadConfig{true, 1, 64, 64, -1}
 
-	if t.conf.MaxStringLen != nil {
+	if t.conf != nil && t.conf.MaxStringLen != nil {
 		r.MaxStringLen = *t.conf.MaxStringLen
 	}
-	if t.conf.MaxArrayValues != nil {
+	if t.conf != nil && t.conf.MaxArrayValues != nil {
 		r.MaxArrayValues = *t.conf.MaxArrayValues
 	}
 
