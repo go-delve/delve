@@ -322,7 +322,7 @@ func LinuxX86XstateRead(xstateargs []byte, readLegacy bool, regset *LinuxX86Xsta
 	if readLegacy {
 		rdr := bytes.NewReader(xstateargs[:_XSAVE_HEADER_START])
 		if err := binary.Read(rdr, binary.LittleEndian, &regset.PtraceFpRegs); err != nil {
-			return err
+			return fmt.Errorf("error reading legacy area: %v", err)
 		}
 	}
 	xsaveheader := xstateargs[_XSAVE_HEADER_START : _XSAVE_HEADER_START+_XSAVE_HEADER_LEN]

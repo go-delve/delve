@@ -1,6 +1,7 @@
 package native
 
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 
@@ -72,6 +73,7 @@ func PtraceGetRegset(tid int) (regset proc.LinuxX86Xstate, err error) {
 			// ignore ENODEV, it just means this CPU or kernel doesn't support XSTATE, see https://github.com/derekparker/delve/issues/1022
 			err = nil
 		}
+		err = fmt.Errorf("error calling GETREGSET %v", err)
 		return
 	} else {
 		err = nil
