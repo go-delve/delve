@@ -558,6 +558,9 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.Continue:
 		d.log.Debug("continuing")
 		err = proc.Continue(d.target)
+	case api.Call:
+		d.log.Debugf("function call %s", command.Expr)
+		err = proc.CallFunction(d.target, command.Expr, api.LoadConfigToProc(command.ReturnInfoLoadConfig))
 	case api.Rewind:
 		d.log.Debug("rewinding")
 		if err := d.target.Direction(proc.Backward); err != nil {
@@ -618,7 +621,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 	}
 
 	for i := range state.Threads {
-		if state.Threads[i].Breakpoint == nil {
+		if state.Threads[i].Breakpoint == nil || state.Threads[i].BreakpointInfo != nil {
 			continue
 		}
 

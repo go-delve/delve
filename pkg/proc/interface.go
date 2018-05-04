@@ -109,7 +109,13 @@ type BreakpointManipulation interface {
 // CommonProcess contains fields used by this package, common to all
 // implementations of the Process interface.
 type CommonProcess struct {
-	allGCache []*G
+	allGCache     []*G
+	fncallState   functionCallState
+	fncallEnabled bool
+}
+
+func NewCommonProcess(fncallEnabled bool) CommonProcess {
+	return CommonProcess{fncallEnabled: fncallEnabled}
 }
 
 // ClearAllGCache clears the cached contents of the cache for runtime.allgs.

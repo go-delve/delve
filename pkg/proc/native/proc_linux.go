@@ -54,6 +54,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 		return nil, proc.NotExecutableErr
 	}
 	dbp := New(0)
+	dbp.common = proc.NewCommonProcess(true)
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
@@ -87,6 +88,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*Process, error) {
 	dbp := New(pid)
+	dbp.common = proc.NewCommonProcess(true)
 
 	var err error
 	dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })

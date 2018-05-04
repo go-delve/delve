@@ -474,6 +474,11 @@ func (bi *BinaryInfo) Producer() string {
 	return ""
 }
 
+// Type returns the Dwarf type entry at `offset`.
+func (bi *BinaryInfo) Type(offset dwarf.Offset) (godwarf.Type, error) {
+	return godwarf.ReadType(bi.dwarf, offset, bi.typeCache)
+}
+
 // ELF ///////////////////////////////////////////////////////////////
 
 // This error is used in openSeparateDebugInfo to signal there's no

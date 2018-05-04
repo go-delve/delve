@@ -275,6 +275,8 @@ type DebuggerCommand struct {
 	// When ReturnInfoLoadConfig is not nil it will be used to load the value
 	// of any return variables.
 	ReturnInfoLoadConfig *LoadConfig
+	// Expr is the expression argument for a Call command
+	Expr string `json:"expr,omitempty"`
 }
 
 // Informations about the current breakpoint
@@ -310,6 +312,8 @@ const (
 	SwitchGoroutine = "switchGoroutine"
 	// Halt suspends the process.
 	Halt = "halt"
+	// Call resumes process execution injecting a function call.
+	Call = "call"
 )
 
 type AssemblyFlavour int

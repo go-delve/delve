@@ -113,6 +113,12 @@ func (c *RPCClient) Step() (*api.DebuggerState, error) {
 	return state, err
 }
 
+func (c *RPCClient) Call(expr string) (*api.DebuggerState, error) {
+	state := new(api.DebuggerState)
+	err := c.call("Command", &api.DebuggerCommand{Name: api.Call, Expr: expr}, state)
+	return state, err
+}
+
 func (c *RPCClient) StepInstruction() (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
 	err := c.call("Command", &api.DebuggerCommand{Name: api.StepInstruction}, state)
