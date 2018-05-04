@@ -128,6 +128,24 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"step-instruction", "si"}, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
 		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: "Step over to next source line."},
 		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
+		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
+	
+Current limitations:
+- can only call package-level functions, no function pointers nor methods.
+- only things that have an address can be used as arguments (no literal
+  constants or results of evaluating some expressions).
+- only pointers to stack-allocated objects can be passed as argument.
+- no automatic type conversions are supported, including automatically
+  converting to an interface type.
+- functions can only be called on running goroutines that are not
+  executing the runtime.
+- the current goroutine needs to have at least 256 bytes of free space on
+  the stack.
+- functions can only be called when the goroutine is stopped at a safe
+  point.
+- calling a function will resume execution of all goroutines.
+- only supported on linux's native backend.
+`},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: `Switch to the specified thread.
 
@@ -934,6 +952,20 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 	}
 	printcontext(t, state)
 	return continueUntilCompleteNext(t, state, "stepout")
+}
+
+func (c *Commands) call(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
+	state, err := exitedToError(t.client.Call(args))
+	c.frame = 0
+	if err != nil {
+		printfileNoState(t)
+		return err
+	}
+	printcontext(t, state)
+	return continueUntilCompleteNext(t, state, "call")
 }
 
 func clear(t *Term, ctx callContext, args string) error {

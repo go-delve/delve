@@ -4,6 +4,7 @@ package native
 // #include "proc_darwin.h"
 import "C"
 import (
+	"errors"
 	"fmt"
 	"unsafe"
 
@@ -143,4 +144,8 @@ func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 		return 0, fmt.Errorf("could not read memory")
 	}
 	return len(buf), nil
+}
+
+func (t *Thread) restoreRegisters(sr *savedRegisters) error {
+	return errors.New("not implemented")
 }

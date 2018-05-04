@@ -12,6 +12,7 @@ var gdbWire = false
 var lldbServerOutput = false
 var debugLineErrors = false
 var rpc = false
+var fnCall = false
 
 // GdbWire returns true if the gdbserial package should log all the packets
 // exchanged with the stub.
@@ -39,6 +40,11 @@ func DebugLineErrors() bool {
 // RPC returns true if rpc messages should be logged.
 func RPC() bool {
 	return rpc
+}
+
+// FnCall returns true if the function call protocol should be logged.
+func FnCall() bool {
+	return fnCall
 }
 
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
@@ -69,6 +75,8 @@ func Setup(logFlag bool, logstr string) error {
 			debugLineErrors = true
 		case "rpc":
 			rpc = true
+		case "fncall":
+			fnCall = true
 		}
 	}
 	return nil

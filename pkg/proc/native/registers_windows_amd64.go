@@ -131,8 +131,7 @@ func (r *Regs) GAddr() (uint64, bool) {
 }
 
 // SetPC sets the RIP register to the value specified by `pc`.
-func (r *Regs) SetPC(t proc.Thread, pc uint64) error {
-	thread := t.(*Thread)
+func (thread *Thread) SetPC(pc uint64) error {
 	context := newCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
@@ -142,6 +141,21 @@ func (r *Regs) SetPC(t proc.Thread, pc uint64) error {
 	}
 
 	context.Rip = pc
+
+	return _SetThreadContext(thread.os.hThread, context)
+}
+
+// SetSP sets the RSP register to the value specified by `sp`.
+func (thread *Thread) SetSP(sp uint64) error {
+	context := newCONTEXT()
+	context.ContextFlags = _CONTEXT_ALL
+
+	err := _GetThreadContext(thread.os.hThread, context)
+	if err != nil {
+		return err
+	}
+
+	context.Rsp = sp
 
 	return _SetThreadContext(thread.os.hThread, context)
 }
@@ -350,10 +364,10 @@ func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 	return regs, nil
 }
 
-func (thread *Thread) saveRegisters() (proc.Registers, error) {
-	return nil, fmt.Errorf("not implemented: saveRegisters")
+type savedRegisters struct {
 }
 
-func (thread *Thread) restoreRegisters() error {
-	return fmt.Errorf("not implemented: restoreRegisters")
+func (r *Regs) Save() proc.SavedRegisters {
+	//TODO(aarzilli): implement this to support function calls
+	return nil
 }

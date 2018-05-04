@@ -17,6 +17,7 @@ import (
 	protest "github.com/derekparker/delve/pkg/proc/test"
 
 	"github.com/derekparker/delve/pkg/goversion"
+	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/rpc2"
@@ -28,6 +29,8 @@ var testBackend string
 
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
+	var logOutput string
+	flag.StringVar(&logOutput, "log-output", "", "configures log output")
 	flag.Parse()
 	if testBackend == "" {
 		testBackend = os.Getenv("PROCTEST")
@@ -35,6 +38,7 @@ func TestMain(m *testing.M) {
 			testBackend = "native"
 		}
 	}
+	logflags.Setup(logOutput != "", logOutput)
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
@@ -1494,4 +1498,124 @@ func TestAcceptMulticlient(t *testing.T) {
 	}
 	client2.Detach(true)
 	<-serverDone
+}
+
+func mustHaveDebugCalls(t *testing.T, c service.Client) {
+	locs, err := c.FindLocation(api.EvalScope{-1, 0}, "runtime.debugCallV1")
+	if len(locs) == 0 || err != nil {
+		t.Skip("function calls not supported on this version of go")
+	}
+}
+
+func TestClientServerFunctionCall(t *testing.T) {
+	if runtime.GOOS != "linux" || testBackend != "native" {
+		t.Skip("unsupported")
+	}
+	withTestClient2("fncall", t, func(c service.Client) {
+		mustHaveDebugCalls(t, c)
+		c.SetReturnValuesLoadConfig(&normalLoadConfig)
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+		beforeCallFn := state.CurrentThread.Function.Name
+		state, err := c.Call("call1(one, two)")
+		assertNoError(err, t, "Call()")
+		t.Logf("returned to %q", state.CurrentThread.Function.Name)
+		if state.CurrentThread.Function.Name != beforeCallFn {
+			t.Fatalf("did not return to the calling function %q %q", beforeCallFn, state.CurrentThread.Function.Name)
+		}
+		if state.CurrentThread.ReturnValues == nil {
+			t.Fatal("no return values on return from call")
+		}
+		t.Logf("Return values %v", state.CurrentThread.ReturnValues)
+		if len(state.CurrentThread.ReturnValues) != 1 {
+			t.Fatal("not enough return values")
+		}
+		if state.CurrentThread.ReturnValues[0].Value != "3" {
+			t.Fatalf("wrong return value %s", state.CurrentThread.ReturnValues[0].Value)
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Fatalf("expected process to exit after call %v", state.CurrentThread)
+		}
+	})
+}
+
+func TestClientServerFunctionCallBadPos(t *testing.T) {
+	if runtime.GOOS != "linux" || testBackend != "native" {
+		t.Skip("unsupported")
+	}
+	withTestClient2("fncall", t, func(c service.Client) {
+		mustHaveDebugCalls(t, c)
+		loc, err := c.FindLocation(api.EvalScope{-1, 0}, "fmt/print.go:649")
+		assertNoError(err, t, "could not find location")
+
+		_, err = c.CreateBreakpoint(&api.Breakpoint{File: loc[0].File, Line: loc[0].Line})
+		assertNoError(err, t, "CreateBreakpoin")
+
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+
+		state = <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+
+		state, err = c.Call("main.call1(main.zero, main.zero)")
+		if err == nil || err.Error() != "call not at safe point" {
+			t.Fatalf("wrong error or no error: %v", err)
+		}
+	})
+}
+
+func TestClientServerFunctionCallPanic(t *testing.T) {
+	if runtime.GOOS != "linux" || testBackend != "native" {
+		t.Skip("unsupported")
+	}
+	withTestClient2("fncall", t, func(c service.Client) {
+		mustHaveDebugCalls(t, c)
+		c.SetReturnValuesLoadConfig(&normalLoadConfig)
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+		state, err := c.Call("callpanic()")
+		assertNoError(err, t, "Call()")
+		t.Logf("at: %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		if state.CurrentThread.ReturnValues == nil {
+			t.Fatal("no return values on return from call")
+		}
+		t.Logf("Return values %v", state.CurrentThread.ReturnValues)
+		if len(state.CurrentThread.ReturnValues) != 1 {
+			t.Fatal("not enough return values")
+		}
+		if state.CurrentThread.ReturnValues[0].Name != "~panic" {
+			t.Fatal("not a panic")
+		}
+		if state.CurrentThread.ReturnValues[0].Children[0].Value != "callpanic panicked" {
+			t.Fatalf("wrong panic value %s", state.CurrentThread.ReturnValues[0].Children[0].Value)
+		}
+	})
+}
+
+func TestClientServerFunctionCallStacktrace(t *testing.T) {
+	if runtime.GOOS != "linux" || testBackend != "native" {
+		t.Skip("unsupported")
+	}
+	withTestClient2("fncall", t, func(c service.Client) {
+		mustHaveDebugCalls(t, c)
+		c.SetReturnValuesLoadConfig(&api.LoadConfig{false, 0, 2048, 0, 0})
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+		state, err := c.Call("callstacktrace()")
+		assertNoError(err, t, "Call()")
+		t.Logf("at: %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		if state.CurrentThread.ReturnValues == nil {
+			t.Fatal("no return values on return from call")
+		}
+		if len(state.CurrentThread.ReturnValues) != 1 || state.CurrentThread.ReturnValues[0].Kind != reflect.String {
+			t.Fatal("not enough return values")
+		}
+		st := state.CurrentThread.ReturnValues[0].Value
+		t.Logf("Returned stacktrace:\n%s", st)
+
+		if !strings.Contains(st, "main.callstacktrace") || !strings.Contains(st, "main.main") || !strings.Contains(st, "runtime.main") {
+			t.Fatal("bad stacktrace returned")
+		}
+	})
 }

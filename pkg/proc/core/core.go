@@ -239,6 +239,10 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return r, nil
 }
 
+func (t *Thread) RestoreRegisters(proc.SavedRegisters) error {
+	return errors.New("not supported")
+}
+
 func (t *Thread) Arch() proc.Arch {
 	return t.p.bi.Arch
 }
@@ -261,6 +265,14 @@ func (t *Thread) SetCurrentBreakpoint() error {
 
 func (t *Thread) Common() *proc.CommonThread {
 	return &t.common
+}
+
+func (t *Thread) SetPC(uint64) error {
+	return errors.New("not supported")
+}
+
+func (t *Thread) SetSP(uint64) error {
+	return errors.New("not supported")
 }
 
 func (p *Process) Breakpoints() *proc.BreakpointMap {
@@ -408,4 +420,8 @@ func (r *Registers) Slice() []proc.Register {
 	}
 	out = append(out, r.fpregs...)
 	return out
+}
+
+func (r *Registers) Save() proc.SavedRegisters {
+	return r
 }

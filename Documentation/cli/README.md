@@ -5,6 +5,7 @@ Command | Description
 [args](#args) | Print function arguments.
 [break](#break) | Sets a breakpoint.
 [breakpoints](#breakpoints) | Print out info for active breakpoints.
+[call](#call) | Resumes process, injecting a function call (EXPERIMENTAL!!!)
 [check](#check) | Creates a checkpoint at the current position.
 [checkpoints](#checkpoints) | Print out info for existing checkpoints.
 [clear](#clear) | Deletes breakpoint.
@@ -67,6 +68,27 @@ Aliases: b
 Print out info for active breakpoints.
 
 Aliases: bp
+
+## call
+Resumes process, injecting a function call (EXPERIMENTAL!!!)
+	
+Current limitations:
+- can only call package-level functions, no function pointers nor methods.
+- only things that have an address can be used as arguments (no literal
+  constants or results of evaluating some expressions).
+- only pointers to stack-allocated objects can be passed as argument.
+- no automatic type conversions are supported, including automatically
+  converting to an interface type.
+- functions can only be called on running goroutines that are not
+  executing the runtime.
+- the current goroutine needs to have at least 256 bytes of free space on
+  the stack.
+- functions can only be called when the goroutine is stopped at a safe
+  point.
+- calling a function will resume execution of all goroutines.
+- only supported on linux's native backend.
+
+
 
 ## check
 Creates a checkpoint at the current position.

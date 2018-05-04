@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -386,8 +385,6 @@ func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
 		return nil
 	}
 
-	bi := thread.BinInfo()
-
 	g, err := GetG(thread)
 	if err != nil {
 		return returnInfoError("could not get g", err, thread)
@@ -408,22 +405,12 @@ func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
 		return nil
 	}
 
-	// Alter the eval scope so that it looks like we are at the entry point of
-	// the function we just returned from.
-	// This involves changing the location (PC, function...) as well as
-	// anything related to the stack pointer (SP, CFA, FrameBase).
-	scope.PC = rbpi.fn.Entry
-	scope.Fn = rbpi.fn
-	scope.File, scope.Line, _ = bi.PCToLine(rbpi.fn.Entry)
-	scope.Regs.CFA = rbpi.frameOffset + int64(g.stackhi)
-	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(rbpi.spOffset + int64(g.stackhi))
-
-	bi.dwarfReader.Seek(rbpi.fn.offset)
-	e, err := bi.dwarfReader.Next()
+	oldFrameOffset := rbpi.frameOffset + int64(g.stackhi)
+	oldSP := uint64(rbpi.spOffset + int64(g.stackhi))
+	err = fakeFunctionEntryScope(scope, rbpi.fn, oldFrameOffset, oldSP)
 	if err != nil {
 		return returnInfoError("could not read function entry", err, thread)
 	}
-	scope.Regs.FrameBase, _, _, _ = bi.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
 
 	vars, err := scope.Locals()
 	if err != nil {

@@ -23,6 +23,8 @@ type Thread interface {
 	Breakpoint() BreakpointState
 	ThreadID() int
 	Registers(floatingPoint bool) (Registers, error)
+	// RestoreRegisters restores saved registers
+	RestoreRegisters(SavedRegisters) error
 	Arch() Arch
 	BinInfo() *BinaryInfo
 	StepInstruction() error
@@ -32,6 +34,9 @@ type Thread interface {
 	SetCurrentBreakpoint() error
 	// Common returns the CommonThread structure for this thread
 	Common() *CommonThread
+
+	SetPC(uint64) error
+	SetSP(uint64) error
 }
 
 // Location represents the location of a thread.
@@ -502,14 +507,6 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 		return nil, err
 	}
 	return FrameToScope(thread.BinInfo(), thread, g, locations...), nil
-}
-
-func onRuntimeBreakpoint(thread Thread) bool {
-	loc, err := thread.Location()
-	if err != nil {
-		return false
-	}
-	return loc.Fn != nil && loc.Fn.Name == "runtime.breakpoint"
 }
 
 // onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command

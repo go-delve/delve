@@ -23,14 +23,18 @@ type Registers interface {
 	// GAddr returns the address of the G variable if it is known, 0 and false otherwise
 	GAddr() (uint64, bool)
 	Get(int) (uint64, error)
-	SetPC(Thread, uint64) error
 	Slice() []Register
+	// Save saves a copy of this object that will survive restarts
+	Save() SavedRegisters
 }
 
 type Register struct {
 	Name  string
 	Bytes []byte
 	Value string
+}
+
+type SavedRegisters interface {
 }
 
 // AppendWordReg appends a word (16 bit) register to regs.
@@ -266,7 +270,8 @@ type PtraceFpRegs struct {
 // Manual, Volume 1: Basic Architecture.
 type LinuxX86Xstate struct {
 	PtraceFpRegs
-	AvxState bool // contains AVX state
+	Xsave    []byte // raw xsave area
+	AvxState bool   // contains AVX state
 	YmmSpace [256]byte
 }
 

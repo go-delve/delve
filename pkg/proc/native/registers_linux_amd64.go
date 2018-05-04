@@ -11,8 +11,9 @@ import (
 
 // Regs is a wrapper for sys.PtraceRegs.
 type Regs struct {
-	regs   *sys.PtraceRegs
-	fpregs []proc.Register
+	regs     *sys.PtraceRegs
+	fpregs   []proc.Register
+	fpregset *proc.LinuxX86Xstate
 }
 
 func (r *Regs) Slice() []proc.Register {
@@ -90,9 +91,26 @@ func (r *Regs) GAddr() (uint64, bool) {
 }
 
 // SetPC sets RIP to the value specified by 'pc'.
-func (r *Regs) SetPC(t proc.Thread, pc uint64) (err error) {
-	thread := t.(*Thread)
+func (thread *Thread) SetPC(pc uint64) error {
+	ir, err := registers(thread, false)
+	if err != nil {
+		return err
+	}
+	r := ir.(*Regs)
 	r.regs.SetPC(pc)
+	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })
+	return err
+}
+
+// SetSP sets RSP to the value specified by 'sp'
+func (thread *Thread) SetSP(sp uint64) (err error) {
+	var ir proc.Registers
+	ir, err = registers(thread, false)
+	if err != nil {
+		return err
+	}
+	r := ir.(*Regs)
+	r.regs.Rsp = sp
 	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })
 	return
 }
@@ -263,9 +281,11 @@ func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Regs{&regs, nil}
+	r := &Regs{&regs, nil, nil}
 	if floatingPoint {
-		r.fpregs, err = thread.fpRegisters()
+		var fpregset proc.LinuxX86Xstate
+		r.fpregs, fpregset, err = thread.fpRegisters()
+		r.fpregset = &fpregset
 		if err != nil {
 			return nil, err
 		}
@@ -283,12 +303,23 @@ const (
 	_XSAVE_SSE_REGION_LEN        = 416
 )
 
-func (thread *Thread) fpRegisters() (regs []proc.Register, err error) {
-	var fpregs proc.LinuxX86Xstate
+func (thread *Thread) fpRegisters() (regs []proc.Register, fpregs proc.LinuxX86Xstate, err error) {
 	thread.dbp.execPtraceFunc(func() { fpregs, err = PtraceGetRegset(thread.ID) })
 	regs = fpregs.Decode()
 	if err != nil {
 		err = fmt.Errorf("could not get floating point registers: %v", err.Error())
 	}
 	return
+}
+
+type savedRegisters struct {
+	regs   sys.PtraceRegs
+	fpregs proc.LinuxX86Xstate
+}
+
+func (r *Regs) Save() proc.SavedRegisters {
+	savedRegs := &savedRegisters{}
+	savedRegs.regs = *r.regs
+	savedRegs.fpregs = *r.fpregset
+	return savedRegs
 }

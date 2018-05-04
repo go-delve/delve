@@ -77,6 +77,7 @@ func PtraceGetRegset(tid int) (regset proc.LinuxX86Xstate, err error) {
 		err = nil
 	}
 
-	err = proc.LinuxX86XstateRead(xstateargs[:iov.Len], false, &regset)
+	regset.Xsave = xstateargs[:iov.Len]
+	err = proc.LinuxX86XstateRead(regset.Xsave, false, &regset)
 	return regset, err
 }

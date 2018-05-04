@@ -1197,6 +1197,11 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return &t.regs, nil
 }
 
+func (t *Thread) RestoreRegisters(regs proc.SavedRegisters) error {
+	//TODO(aarzilli): implement
+	return errors.New("not implemented")
+}
+
 func (t *Thread) Arch() proc.Arch {
 	return t.p.bi.Arch
 }
@@ -1279,25 +1284,29 @@ func (p *Process) loadGInstr() []byte {
 	return buf.Bytes()
 }
 
+func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo) {
+	regs.regs = make(map[string]gdbRegister)
+	regs.regsInfo = regsInfo
+
+	regsz := 0
+	for _, reginfo := range regsInfo {
+		if endoff := reginfo.Offset + (reginfo.Bitsize / 8); endoff > regsz {
+			regsz = endoff
+		}
+	}
+	regs.buf = make([]byte, regsz)
+	for _, reginfo := range regsInfo {
+		regs.regs[reginfo.Name] = gdbRegister{regnum: reginfo.Regnum, value: regs.buf[reginfo.Offset : reginfo.Offset+reginfo.Bitsize/8]}
+	}
+}
+
 // reloadRegisters loads the current value of the thread's registers.
 // It will also load the address of the thread's G.
 // Loading the address of G can be done in one of two ways reloadGAlloc, if
 // the stub can allocate memory, or reloadGAtPC, if the stub can't.
 func (t *Thread) reloadRegisters() error {
 	if t.regs.regs == nil {
-		t.regs.regs = make(map[string]gdbRegister)
-		t.regs.regsInfo = t.p.conn.regsInfo
-
-		regsz := 0
-		for _, reginfo := range t.p.conn.regsInfo {
-			if endoff := reginfo.Offset + (reginfo.Bitsize / 8); endoff > regsz {
-				regsz = endoff
-			}
-		}
-		t.regs.buf = make([]byte, regsz)
-		for _, reginfo := range t.p.conn.regsInfo {
-			t.regs.regs[reginfo.Name] = gdbRegister{regnum: reginfo.Regnum, value: t.regs.buf[reginfo.Offset : reginfo.Offset+reginfo.Bitsize/8]}
-		}
+		t.regs.init(t.p.conn.regsInfo)
 	}
 
 	if t.p.gcmdok {
@@ -1503,7 +1512,7 @@ func (thread *Thread) SetCurrentBreakpoint() error {
 	pc := regs.PC()
 	if bp, ok := thread.p.FindBreakpoint(pc); ok {
 		if thread.regs.PC() != bp.Addr {
-			if err := thread.regs.SetPC(thread, bp.Addr); err != nil {
+			if err := thread.SetPC(bp.Addr); err != nil {
 				return err
 			}
 		}
@@ -1528,6 +1537,9 @@ func (regs *gdbRegisters) setPC(value uint64) {
 
 func (regs *gdbRegisters) SP() uint64 {
 	return binary.LittleEndian.Uint64(regs.regs[regnameSP].value)
+}
+func (regs *gdbRegisters) setSP(value uint64) {
+	binary.LittleEndian.PutUint64(regs.regs[regnameSP].value, value)
 }
 
 func (regs *gdbRegisters) BP() uint64 {
@@ -1715,13 +1727,21 @@ func (regs *gdbRegisters) Get(n int) (uint64, error) {
 	return 0, proc.UnknownRegisterError
 }
 
-func (regs *gdbRegisters) SetPC(thread proc.Thread, pc uint64) error {
-	regs.setPC(pc)
-	t := thread.(*Thread)
+func (t *Thread) SetPC(pc uint64) error {
+	t.regs.setPC(pc)
 	if t.p.gcmdok {
 		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
 	}
-	reg := regs.regs[regnamePC]
+	reg := t.regs.regs[regnamePC]
+	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
+}
+
+func (t *Thread) SetSP(sp uint64) error {
+	t.regs.setSP(sp)
+	if t.p.gcmdok {
+		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
+	}
+	reg := t.regs.regs[regnameSP]
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 
@@ -1765,4 +1785,11 @@ func (regs *gdbRegisters) Slice() []proc.Register {
 		}
 	}
 	return r
+}
+
+func (regs *gdbRegisters) Save() proc.SavedRegisters {
+	savedRegs := &gdbRegisters{}
+	savedRegs.init(regs.regsInfo)
+	copy(savedRegs.buf, regs.buf)
+	return savedRegs
 }

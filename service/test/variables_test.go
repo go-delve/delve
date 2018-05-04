@@ -739,6 +739,9 @@ func TestEvalExpression(t *testing.T) {
 		// shortcircuited logical operators
 		{"nilstruct != nil && nilstruct.A == 1", false, "false", "false", "", nil},
 		{"nilstruct == nil || nilstruct.A == 1", false, "true", "true", "", nil},
+
+		{"afunc", true, `main.afunc`, `main.afunc`, `func()`, nil},
+		{"main.afunc2", true, `main.afunc2`, `main.afunc2`, `func()`, nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())

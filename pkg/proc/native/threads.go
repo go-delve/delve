@@ -1,6 +1,7 @@
 package native
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/derekparker/delve/pkg/proc"
@@ -106,15 +107,6 @@ func (thread *Thread) Common() *proc.CommonThread {
 	return &thread.common
 }
 
-// SetPC sets the PC for this thread.
-func (thread *Thread) SetPC(pc uint64) error {
-	regs, err := thread.Registers(false)
-	if err != nil {
-		return err
-	}
-	return regs.SetPC(thread, pc)
-}
-
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
 func (thread *Thread) SetCurrentBreakpoint() error {
@@ -157,6 +149,14 @@ func (thread *Thread) ClearBreakpoint(bp *proc.Breakpoint) error {
 // Registers obtains register values from the debugged process.
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return registers(t, floatingPoint)
+}
+
+func (t *Thread) RestoreRegisters(savedRegs proc.SavedRegisters) error {
+	sr, ok := savedRegs.(*savedRegisters)
+	if !ok {
+		return errors.New("unknown saved register set")
+	}
+	return t.restoreRegisters(sr)
 }
 
 func (t *Thread) PC() (uint64, error) {

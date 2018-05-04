@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 var NotExecutableErr = errors.New("not an executable file")
@@ -135,26 +136,45 @@ func Continue(dbp Process) error {
 
 		switch {
 		case curbp.Breakpoint == nil:
-			// runtime.Breakpoint or manual stop
-			if recorded, _ := dbp.Recorded(); onRuntimeBreakpoint(curthread) && !recorded {
+			// runtime.Breakpoint, manual stop or debugCallV1-related stop
+			recorded, _ := dbp.Recorded()
+			if recorded {
+				return conditionErrors(threads)
+			}
+
+			loc, err := curthread.Location()
+			if err != nil || loc.Fn == nil {
+				return conditionErrors(threads)
+			}
+
+			switch {
+			case loc.Fn.Name == "runtime.breakpoint":
 				// Single-step current thread until we exit runtime.breakpoint and
 				// runtime.Breakpoint.
 				// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
 				// to the compiler requires 4 steps.
-				for {
-					if err = curthread.StepInstruction(); err != nil {
-						return err
-					}
-					loc, err := curthread.Location()
-					if err != nil || loc.Fn == nil || (loc.Fn.Name != "runtime.breakpoint" && loc.Fn.Name != "runtime.Breakpoint") {
-						if g := dbp.SelectedGoroutine(); g != nil {
-							g.CurrentLoc = *loc
-						}
-						break
-					}
+				if err := stepInstructionOut(dbp, curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
+					return err
 				}
+				return conditionErrors(threads)
+			case strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) || strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2):
+				fncall := &dbp.Common().fncallState
+				if !fncall.inProgress {
+					return conditionErrors(threads)
+				}
+				fncall.step(dbp)
+				// only stop execution if the function call finished
+				if fncall.finished {
+					fncall.inProgress = false
+					if fncall.err != nil {
+						return fncall.err
+					}
+					curthread.Common().returnValues = fncall.returnValues()
+					return conditionErrors(threads)
+				}
+			default:
+				return conditionErrors(threads)
 			}
-			return conditionErrors(threads)
 		case curbp.Active && curbp.Internal:
 			if curbp.Kind == StepBreakpoint {
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints
@@ -239,6 +259,25 @@ func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
 	return dbp.SwitchThread(trapthread.ThreadID())
 }
 
+// stepInstructionOut repeatedly calls StepInstruction until the current
+// function is neither fnname1 or fnname2.
+// This function is used to step out of runtime.Breakpoint as well as
+// runtime.debugCallV1.
+func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) error {
+	for {
+		if err := curthread.StepInstruction(); err != nil {
+			return err
+		}
+		loc, err := curthread.Location()
+		if err != nil || loc.Fn == nil || (loc.Fn.Name != fnname1 && loc.Fn.Name != fnname2) {
+			if g := dbp.SelectedGoroutine(); g != nil {
+				g.CurrentLoc = *loc
+			}
+			return nil
+		}
+	}
+}
+
 // Step will continue until another source line is reached.
 // Will step into functions.
 func Step(dbp Process) (err error) {
@@ -308,6 +347,10 @@ func StepOut(dbp Process) error {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
+	if dbp.Breakpoints().HasInternalBreakpoints() {
+		return fmt.Errorf("next while nexting")
+	}
+
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 
