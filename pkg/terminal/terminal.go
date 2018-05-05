@@ -42,6 +42,10 @@ func New(client service.Client, conf *config.Config) *Term {
 		cmds.Merge(conf.Aliases)
 	}
 
+	if conf == nil {
+		conf = &config.Config{}
+	}
+
 	var w io.Writer
 
 	dumb := strings.ToLower(os.Getenv("TERM")) == "dumb"
