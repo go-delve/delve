@@ -313,17 +313,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 	switch {
 	case len(requestedBp.File) > 0:
-		fileName := requestedBp.File
-		if runtime.GOOS == "windows" {
-			// Accept fileName which is case-insensitive and slash-insensitive match
-			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
-			for _, symFile := range d.target.BinInfo().Sources {
-				if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
-					fileName = symFile
-					break
-				}
-			}
-		}
+		fileName := d.processFilename(requestedBp.File)
 		addr, err = proc.FindFileLocation(d.target, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
 		if requestedBp.Line >= 0 {
@@ -352,6 +342,49 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	createdBp = api.ConvertBreakpoint(bp)
 	log.Printf("created breakpoint: %#v", createdBp)
 	return createdBp, nil
+}
+
+// SetExecutionPoint will jump the execution point.
+func (d *Debugger) SetExecutionPoint(requestedExecPoint *api.ExecutionPoint) error {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+
+	if len(requestedExecPoint.File) > 0 {
+		fileName := d.processFilename(requestedExecPoint.File)
+		var err error
+		requestedExecPoint.Addr, err = proc.FindFileLocation(d.target, fileName, requestedExecPoint.Line)
+		if err != nil {
+			return err
+		}
+	}
+
+	currentThread := d.target.CurrentThread()
+	registers, err := currentThread.Registers(false)
+	if err != nil {
+		return err
+	}
+
+	if err := registers.SetPC(currentThread, requestedExecPoint.Addr); err != nil {
+		return err
+	}
+	log.Printf("execution point jumped: %#v", *requestedExecPoint)
+	return nil
+}
+
+func (d *Debugger) processFilename(fileName string) string {
+	if runtime.GOOS != "windows" {
+		return fileName
+	}
+
+	// Accept fileName which is case-insensitive and slash-insensitive match
+	fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
+	for _, symFile := range d.target.BinInfo().Sources {
+		if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
+			fileName = symFile
+			break
+		}
+	}
+	return fileName
 }
 
 func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {

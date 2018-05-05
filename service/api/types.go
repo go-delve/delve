@@ -73,6 +73,16 @@ type Breakpoint struct {
 	TotalHitCount uint64 `json:"totalHitCount"`
 }
 
+// ExecutionPoint addresses a location at which process execution will jump to.
+type ExecutionPoint struct {
+	// Addr is the address of the breakpoint.
+	Addr uint64 `json:"addr"`
+	// File is the source file for the breakpoint.
+	File string `json:"file"`
+	// Line is a line in File for the breakpoint.
+	Line int `json:"line"`
+}
+
 func ValidBreakpointName(name string) error {
 	if _, err := strconv.Atoi(name); err == nil {
 		return errors.New("breakpoint name can not be a number")

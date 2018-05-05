@@ -128,6 +128,11 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"step-instruction", "si"}, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
 		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: "Step over to next source line."},
 		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
+		{aliases: []string{"jump", "j"}, cmdFn: executionPoint, helpMsg: `Jump execution to a new location. This will NOT execute the lines that are skipped.
+
+	break <linespec>
+
+See $GOPATH/src/github.com/derekparker/delve/Documentation/cli/locspec.md for the syntax of linespec. This works only with filenames and line numbers, or address numbers.`},
 		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
 		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: `Switch to the specified thread.
 
@@ -1063,8 +1068,47 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 	return nil
 }
 
+func setExecutionPoint(t *Term, ctx callContext, argstr string) error {
+	args := strings.SplitN(argstr, " ", 2)
+
+	requestedEp := &api.ExecutionPoint{}
+	locspec := ""
+	if len(args) != 1 {
+		return fmt.Errorf("address required")
+	} else {
+		locspec = argstr
+	}
+
+	locs, err := t.client.FindLocation(ctx.Scope, locspec)
+	if err != nil {
+		locspec = argstr
+		var err2 error
+		locs, err2 = t.client.FindLocation(ctx.Scope, locspec)
+		if err2 != nil {
+			return err
+		}
+	}
+	for _, loc := range locs {
+		requestedEp.Addr = loc.PC
+
+		err := t.client.SetExecutionPoint(requestedEp)
+		if err != nil {
+			return err
+		}
+
+		requestedEp.File = loc.File
+		requestedEp.Line = loc.Line
+		fmt.Printf("execution point jumped to %v\n", formatExecutionPointLocation(requestedEp))
+	}
+	return nil
+}
+
 func breakpoint(t *Term, ctx callContext, args string) error {
 	return setBreakpoint(t, ctx, false, args)
+}
+
+func executionPoint(t *Term, ctx callContext, args string) error {
+	return setExecutionPoint(t, ctx, args)
 }
 
 func tracepoint(t *Term, ctx callContext, args string) error {
@@ -1810,4 +1854,9 @@ func formatBreakpointLocation(bp *api.Breakpoint) string {
 		return fmt.Sprintf("%#v for %s() %s:%d", bp.Addr, bp.FunctionName, p, bp.Line)
 	}
 	return fmt.Sprintf("%#v for %s:%d", bp.Addr, p, bp.Line)
+}
+
+func formatExecutionPointLocation(ep *api.ExecutionPoint) string {
+	p := ShortenFilePath(ep.File)
+	return fmt.Sprintf("%#v for %s:%d", ep.Addr, p, ep.Line)
 }

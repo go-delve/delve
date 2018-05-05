@@ -181,6 +181,11 @@ func (c *RPCClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoin
 	return &out.Breakpoint, err
 }
 
+func (c *RPCClient) SetExecutionPoint(executionPoint *api.ExecutionPoint) error {
+	out := SetExecutionPointOut{}
+	return c.call("SetExecutionPoint", SetExecutionPointIn{*executionPoint}, &out)
+}
+
 func (c *RPCClient) ListBreakpoints() ([]*api.Breakpoint, error) {
 	var out ListBreakpointsOut
 	err := c.call("ListBreakpoints", ListBreakpointsIn{}, &out)

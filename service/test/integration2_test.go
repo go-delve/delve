@@ -246,6 +246,36 @@ func TestClientServer_stepout(t *testing.T) {
 	})
 }
 
+func TestClientServer_setExecutionPoint(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestClient2("testsetexecpoint", t, func(c service.Client) {
+		fp := testProgPath(t, "testsetexecpoint")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.demo1", Line: -1})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		stateBefore := <-c.Continue()
+		if stateBefore.Err != nil {
+			t.Fatalf("Unexpected error: %v", stateBefore.Err)
+		}
+
+		err = c.SetExecutionPoint(&api.ExecutionPoint{File: fp, Line:10})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		stateAfter, err := c.GetState()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if before, after := stateBefore.CurrentThread.PC, stateAfter.CurrentThread.PC; before == after {
+			t.Errorf("Expected %#v to be different than %#v", before, after)
+		}
+	})
+}
+
 func testnext2(testcases []nextTest, initialLocation string, t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {

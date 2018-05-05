@@ -52,6 +52,8 @@ type Client interface {
 	GetBreakpointByName(name string) (*api.Breakpoint, error)
 	// CreateBreakpoint creates a new breakpoint.
 	CreateBreakpoint(*api.Breakpoint) (*api.Breakpoint, error)
+	// SetExecutionPoint will jump the execution point.
+	SetExecutionPoint(*api.ExecutionPoint) error
 	// ListBreakpoints gets all breakpoints.
 	ListBreakpoints() ([]*api.Breakpoint, error)
 	// ClearBreakpoint deletes a breakpoint by ID.

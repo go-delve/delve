@@ -214,6 +214,17 @@ func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpoi
 	return nil
 }
 
+type SetExecutionPointIn struct {
+	ExecutionPoint api.ExecutionPoint
+}
+
+type SetExecutionPointOut struct{}
+
+// SetExecutionPoint will jump the execution point.
+func (s *RPCServer) SetExecutionPoint(arg SetExecutionPointIn, out *SetExecutionPointOut) error {
+	return s.debugger.SetExecutionPoint(&arg.ExecutionPoint)
+}
+
 type ClearBreakpointIn struct {
 	Id   int
 	Name string
