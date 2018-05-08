@@ -423,7 +423,13 @@ func (gvar *Variable) parseG() (*G, error) {
 	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
 	waitReason := ""
 	if wrvar := gvar.fieldVariable("waitreason"); wrvar.Value != nil {
-		waitReason = constant.StringVal(wrvar.Value)
+		switch wrvar.Kind {
+		case reflect.String:
+			waitReason = constant.StringVal(wrvar.Value)
+		case reflect.Uint:
+			waitReason = wrvar.ConstDescr()
+		}
+
 	}
 	var stackhi uint64
 	if stackVar := gvar.fieldVariable("stack"); stackVar != nil {
