@@ -535,11 +535,12 @@ func (g *G) UserCurrent() Location {
 // that spawned this goroutine.
 func (g *G) Go() Location {
 	pc := g.GoPC
-	fn := g.variable.bi.PCToFunc(pc)
-	// Backup to CALL instruction.
-	// Mimics runtime/traceback.go:677.
-	if g.GoPC > fn.Entry {
-		pc -= 1
+	if fn := g.variable.bi.PCToFunc(pc); fn != nil {
+		// Backup to CALL instruction.
+		// Mimics runtime/traceback.go:677.
+		if g.GoPC > fn.Entry {
+			pc -= 1
+		}
 	}
 	f, l, fn := g.variable.bi.PCToLine(pc)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
