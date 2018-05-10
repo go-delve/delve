@@ -147,7 +147,7 @@ type Process struct {
 	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G
-	allGCache         []*proc.G
+	common            proc.CommonProcess
 }
 
 type Thread struct {
@@ -298,8 +298,8 @@ func (p *Process) Exited() bool {
 	return false
 }
 
-func (p *Process) AllGCache() *[]*proc.G {
-	return &p.allGCache
+func (p *Process) Common() *proc.CommonProcess {
+	return &p.common
 }
 
 func (p *Process) Pid() int {

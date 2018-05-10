@@ -121,7 +121,7 @@ type Process struct {
 	process  *os.Process
 	waitChan chan *os.ProcessState
 
-	allGCache []*proc.G
+	common proc.CommonProcess
 }
 
 // Thread is a thread.
@@ -584,8 +584,8 @@ func (p *Process) CurrentThread() proc.Thread {
 	return p.currentThread
 }
 
-func (p *Process) AllGCache() *[]*proc.G {
-	return &p.allGCache
+func (p *Process) Common() *proc.CommonProcess {
+	return &p.common
 }
 
 func (p *Process) SelectedGoroutine() *proc.G {
@@ -615,7 +615,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 		}
 	}
 
-	p.allGCache = nil
+	p.common.ClearAllGCache()
 	for _, th := range p.threads {
 		th.clearBreakpointState()
 	}
@@ -710,7 +710,7 @@ func (p *Process) StepInstruction() error {
 		}
 		thread = p.selectedGoroutine.Thread.(*Thread)
 	}
-	p.allGCache = nil
+	p.common.ClearAllGCache()
 	if p.exited {
 		return &proc.ProcessExitedError{Pid: p.conn.pid}
 	}
@@ -819,7 +819,7 @@ func (p *Process) Restart(pos string) error {
 
 	p.exited = false
 
-	p.allGCache = nil
+	p.common.ClearAllGCache()
 	for _, th := range p.threads {
 		th.clearBreakpointState()
 	}

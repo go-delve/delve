@@ -373,22 +373,14 @@ func StepOut(dbp Process) error {
 	return Continue(dbp)
 }
 
-// If the argument of GoroutinesInfo implements AllGCache GoroutinesInfo
-// will use the pointer returned by AllGCache as a cache.
-type AllGCache interface {
-	AllGCache() *[]*G
-}
-
 // GoroutinesInfo returns an array of G structures representing the information
 // Delve cares about from the internal runtime G structure.
 func GoroutinesInfo(dbp Process) ([]*G, error) {
 	if dbp.Exited() {
 		return nil, &ProcessExitedError{Pid: dbp.Pid()}
 	}
-	if dbp, ok := dbp.(AllGCache); ok {
-		if allGCache := dbp.AllGCache(); *allGCache != nil {
-			return *allGCache, nil
-		}
+	if dbp.Common().allGCache != nil {
+		return dbp.Common().allGCache, nil
 	}
 
 	var (
@@ -458,10 +450,7 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 			allg = append(allg, g)
 		}
 	}
-	if dbp, ok := dbp.(AllGCache); ok {
-		allGCache := dbp.AllGCache()
-		*allGCache = allg
-	}
+	dbp.Common().allGCache = allg
 
 	return allg, nil
 }

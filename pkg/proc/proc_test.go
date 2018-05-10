@@ -1515,10 +1515,7 @@ func BenchmarkGoroutinesInfo(b *testing.B) {
 	withTestProcess("testvariables2", b, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
-			if p, ok := p.(proc.AllGCache); ok {
-				allgcache := p.AllGCache()
-				*allgcache = nil
-			}
+			p.Common().ClearAllGCache()
 			_, err := proc.GoroutinesInfo(p)
 			assertNoError(err, b, "GoroutinesInfo")
 		}
