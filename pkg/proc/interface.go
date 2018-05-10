@@ -62,6 +62,8 @@ type Info interface {
 	ResumeNotify(chan<- struct{})
 	Exited() bool
 	BinInfo() *BinaryInfo
+	// Common returns a struct with fields common to all backends
+	Common() *CommonProcess
 
 	ThreadInfo
 	GoroutineInfo
@@ -99,4 +101,12 @@ type BreakpointManipulation interface {
 	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
 	ClearBreakpoint(addr uint64) (*Breakpoint, error)
 	ClearInternalBreakpoints() error
+}
+
+type CommonProcess struct {
+	allGCache []*G
+}
+
+func (p *CommonProcess) ClearAllGCache() {
+	p.allGCache = nil
 }

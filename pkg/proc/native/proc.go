@@ -29,7 +29,7 @@ type Process struct {
 	// Normally selectedGoroutine is currentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	selectedGoroutine *proc.G
 
-	allGCache           []*proc.G
+	common              proc.CommonProcess
 	os                  *OSProcessDetails
 	firstStart          bool
 	stopMu              sync.Mutex
@@ -230,7 +230,7 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 		return nil, err
 	}
 
-	dbp.allGCache = nil
+	dbp.common.ClearAllGCache()
 	for _, th := range dbp.threads {
 		th.CurrentBreakpoint.Clear()
 	}
@@ -266,7 +266,7 @@ func (dbp *Process) StepInstruction() (err error) {
 		}
 		thread = dbp.selectedGoroutine.Thread.(*Thread)
 	}
-	dbp.allGCache = nil
+	dbp.common.ClearAllGCache()
 	if dbp.exited {
 		return &proc.ProcessExitedError{Pid: dbp.Pid()}
 	}
@@ -397,6 +397,6 @@ func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
 	return err
 }
 
-func (dbp *Process) AllGCache() *[]*proc.G {
-	return &dbp.allGCache
+func (dbp *Process) Common() *proc.CommonProcess {
+	return &dbp.common
 }
