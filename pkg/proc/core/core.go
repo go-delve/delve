@@ -154,6 +154,7 @@ type Thread struct {
 	th     *LinuxPrStatus
 	fpregs []proc.Register
 	p      *Process
+	common proc.CommonThread
 }
 
 var ErrWriteCore = errors.New("can not to core process")
@@ -256,6 +257,10 @@ func (t *Thread) Blocked() bool {
 
 func (t *Thread) SetCurrentBreakpoint() error {
 	return nil
+}
+
+func (t *Thread) Common() *proc.CommonThread {
+	return &t.common
 }
 
 func (p *Process) Breakpoints() *proc.BreakpointMap {

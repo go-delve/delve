@@ -19,6 +19,7 @@ type Thread struct {
 	dbp            *Process
 	singleStepping bool
 	os             *OSSpecificDetails
+	common         proc.CommonThread
 }
 
 // Continue the execution of this thread.
@@ -99,6 +100,10 @@ func (thread *Thread) Arch() proc.Arch {
 
 func (thread *Thread) BinInfo() *proc.BinaryInfo {
 	return &thread.dbp.bi
+}
+
+func (thread *Thread) Common() *proc.CommonThread {
+	return &thread.common
 }
 
 // SetPC sets the PC for this thread.

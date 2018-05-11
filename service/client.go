@@ -127,4 +127,7 @@ type Client interface {
 	ListCheckpoints() ([]api.Checkpoint, error)
 	// ClearCheckpoint removes a checkpoint
 	ClearCheckpoint(id int) error
+
+	// SetReturnValuesLoadConfig sets the load configuration for return values.
+	SetReturnValuesLoadConfig(*api.LoadConfig)
 }

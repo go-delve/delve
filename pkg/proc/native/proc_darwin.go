@@ -103,7 +103,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 		return nil, err
 	}
 
-	dbp.allGCache = nil
+	dbp.common.ClearAllGCache()
 	for _, th := range dbp.threads {
 		th.CurrentBreakpoint.Clear()
 	}

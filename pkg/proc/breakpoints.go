@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -53,6 +54,10 @@ type Breakpoint struct {
 	Cond ast.Expr
 	// internalCond is the same as Cond but used for the condition of internal breakpoints
 	internalCond ast.Expr
+
+	// ReturnInfo describes how to collect return variables when this
+	// breakpoint is hit as a return breakpoint.
+	returnInfo *returnBreakpointInfo
 }
 
 // Breakpoint Kind determines the behavior of delve when the
@@ -100,6 +105,13 @@ type InvalidAddressError struct {
 
 func (iae InvalidAddressError) Error() string {
 	return fmt.Sprintf("Invalid address %#v\n", iae.Address)
+}
+
+type returnBreakpointInfo struct {
+	retFrameCond ast.Expr
+	fn           *Function
+	frameOffset  int64
+	spOffset     int64
 }
 
 // CheckCondition evaluates bp's condition on thread.
@@ -302,6 +314,7 @@ func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakp
 	for addr, bp := range bpmap.M {
 		bp.Kind = bp.Kind & UserBreakpoint
 		bp.internalCond = nil
+		bp.returnInfo = nil
 		if bp.Kind != 0 {
 			continue
 		}
@@ -353,4 +366,83 @@ func (bpstate *BreakpointState) String() string {
 		s += " internal"
 	}
 	return s
+}
+
+func configureReturnBreakpoint(bi *BinaryInfo, bp *Breakpoint, topframe *Stackframe, retFrameCond ast.Expr) {
+	if topframe.Current.Fn == nil {
+		return
+	}
+	bp.returnInfo = &returnBreakpointInfo{
+		retFrameCond: retFrameCond,
+		fn:           topframe.Current.Fn,
+		frameOffset:  topframe.FrameOffset(),
+		spOffset:     topframe.FrameOffset() - int64(bi.Arch.PtrSize()), // must be the value that SP had at the entry point of the function
+	}
+}
+
+func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
+	if rbpi == nil {
+		return nil
+	}
+
+	bi := thread.BinInfo()
+
+	g, err := GetG(thread)
+	if err != nil {
+		return returnInfoError("could not get g", err, thread)
+	}
+	scope, err := GoroutineScope(thread)
+	if err != nil {
+		return returnInfoError("could not get scope", err, thread)
+	}
+	v, err := scope.evalAST(rbpi.retFrameCond)
+	if err != nil || v.Unreadable != nil || v.Kind != reflect.Bool {
+		// This condition was evaluated as part of the breakpoint condition
+		// evaluation, if the errors happen they will be reported as part of the
+		// condition errors.
+		return nil
+	}
+	if !constant.BoolVal(v.Value) {
+		// Breakpoint not hit as a return breakpoint.
+		return nil
+	}
+
+	// Alter the eval scope so that it looks like we are at the entry point of
+	// the function we just returned from.
+	// This involves changing the location (PC, function...) as well as
+	// anything related to the stack pointer (SP, CFA, FrameBase).
+	scope.PC = rbpi.fn.Entry
+	scope.Fn = rbpi.fn
+	scope.File, scope.Line, _ = bi.PCToLine(rbpi.fn.Entry)
+	scope.Regs.CFA = rbpi.frameOffset + int64(g.stackhi)
+	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(rbpi.spOffset + int64(g.stackhi))
+
+	bi.dwarfReader.Seek(rbpi.fn.offset)
+	e, err := bi.dwarfReader.Next()
+	if err != nil {
+		return returnInfoError("could not read function entry", err, thread)
+	}
+	scope.Regs.FrameBase, _, _, _ = bi.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
+
+	vars, err := scope.Locals()
+	if err != nil {
+		return returnInfoError("could not evaluate return variables", err, thread)
+	}
+	vars = filterVariables(vars, func(v *Variable) bool {
+		return (v.Flags & VariableReturnArgument) != 0
+	})
+
+	// Go saves the return variables in the opposite order that the user
+	// specifies them so here we reverse the slice to make it easier to
+	// understand.
+	for i := 0; i < len(vars)/2; i++ {
+		vars[i], vars[len(vars)-i-1] = vars[len(vars)-i-1], vars[i]
+	}
+	return vars
+}
+
+func returnInfoError(descr string, err error, mem MemoryReadWriter) []*Variable {
+	v := newConstant(constant.MakeString(fmt.Sprintf("%s: %v", descr, err.Error())), mem)
+	v.Name = "return value read error"
+	return []*Variable{v}
 }

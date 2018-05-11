@@ -255,10 +255,10 @@ func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.
 func (d *Debugger) State() (*api.DebuggerState, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
-	return d.state()
+	return d.state(nil)
 }
 
-func (d *Debugger) state() (*api.DebuggerState, error) {
+func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error) {
 	if d.target.Exited() {
 		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
 	}
@@ -279,6 +279,11 @@ func (d *Debugger) state() (*api.DebuggerState, error) {
 
 	for _, thread := range d.target.ThreadList() {
 		th := api.ConvertThread(thread)
+
+		if retLoadCfg != nil {
+			th.ReturnValues = convertVars(thread.Common().ReturnValues(*retLoadCfg))
+		}
+
 		state.Threads = append(state.Threads, th)
 		if thread.ThreadID() == d.target.CurrentThread().ThreadID() {
 			state.CurrentThread = th
@@ -556,7 +561,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		}
 		return nil, err
 	}
-	state, stateErr := d.state()
+	state, stateErr := d.state(api.LoadConfigToProc(command.ReturnInfoLoadConfig))
 	if stateErr != nil {
 		return state, stateErr
 	}
@@ -755,6 +760,9 @@ func (d *Debugger) Registers(threadID int, floatingPoint bool) (api.Registers, e
 }
 
 func convertVars(pv []*proc.Variable) []api.Variable {
+	if pv == nil {
+		return nil
+	}
 	vars := make([]api.Variable, 0, len(pv))
 	for _, v := range pv {
 		vars = append(vars, *api.ConvertVar(v))

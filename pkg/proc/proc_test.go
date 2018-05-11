@@ -3807,3 +3807,40 @@ func TestMapLoadConfigWithReslice(t *testing.T) {
 		}
 	})
 }
+
+func TestStepOutReturn(t *testing.T) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		t.Skip("return variables aren't marked on 1.9 or earlier")
+	}
+	withTestProcess("stepoutret", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.stepout")
+		assertNoError(err, t, "SetBreakpoint")
+		assertNoError(proc.Continue(p), t, "Continue")
+		assertNoError(proc.StepOut(p), t, "StepOut")
+		ret := p.CurrentThread().Common().ReturnValues(normalLoadConfig)
+		if len(ret) != 2 {
+			t.Fatalf("wrong number of return values %v", ret)
+		}
+
+		if ret[0].Name != "str" {
+			t.Fatalf("(str) bad return value name %s", ret[0].Name)
+		}
+		if ret[0].Kind != reflect.String {
+			t.Fatalf("(str) bad return value kind %v", ret[0].Kind)
+		}
+		if s := constant.StringVal(ret[0].Value); s != "return 47" {
+			t.Fatalf("(str) bad return value %q", s)
+		}
+
+		if ret[1].Name != "num" {
+			t.Fatalf("(num) bad return value name %s", ret[1].Name)
+		}
+		if ret[1].Kind != reflect.Int {
+			t.Fatalf("(num) bad return value kind %v", ret[1].Kind)
+		}
+		if n, _ := constant.Int64Val(ret[1].Value); n != 48 {
+			t.Fatalf("(num) bad return value %d", n)
+		}
+	})
+}

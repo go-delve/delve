@@ -9,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/derekparker/delve/pkg/config"
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/pkg/proc/test"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
@@ -780,6 +782,22 @@ func TestPrintContextParkedGoroutine(t *testing.T) {
 		t.Logf("list -> %q", listout)
 		if strings.Contains(listout[0], "stacktraceme") {
 			t.Fatal("bad output for list command on a parked goroutine")
+		}
+	})
+}
+
+func TestStepOutReturn(t *testing.T) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		t.Skip("return variables aren't marked on 1.9 or earlier")
+	}
+	withTestTerminal("stepoutret", t, func(term *FakeTerminal) {
+		term.MustExec("break main.stepout")
+		term.MustExec("continue")
+		out := term.MustExec("stepout")
+		t.Logf("output: %q", out)
+		if !strings.Contains(out, "num: ") || !strings.Contains(out, "str: ") {
+			t.Fatal("could not find parameter")
 		}
 	})
 }

@@ -30,6 +30,8 @@ type Thread interface {
 	Blocked() bool
 	// SetCurrentBreakpoint updates the current breakpoint of this thread
 	SetCurrentBreakpoint() error
+	// Common returns the CommonThread structure for this thread
+	Common() *CommonThread
 }
 
 // Location represents the location of a thread.
@@ -48,6 +50,17 @@ type ThreadBlockedError struct{}
 
 func (tbe ThreadBlockedError) Error() string {
 	return ""
+}
+
+// CommonThread contains fields used by this package, common to all
+// implementations of the Thread interface.
+type CommonThread struct {
+	returnValues []*Variable
+}
+
+func (t *CommonThread) ReturnValues(cfg LoadConfig) []*Variable {
+	loadValues(t.returnValues, cfg)
+	return t.returnValues
 }
 
 // topframe returns the two topmost frames of g, or thread if g is nil.
@@ -279,7 +292,8 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 		// For inlined functions there is no need to do this, the set of PCs
 		// returned by the AllPCsBetween call above already cover all instructions
 		// of the containing function.
-		if bp, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond); err != nil {
+		bp, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond)
+		if err != nil {
 			if _, isexists := err.(BreakpointExistsError); isexists {
 				if bp.Kind == NextBreakpoint {
 					// If the return address shares the same address with one of the lines
@@ -291,6 +305,9 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 			}
 			// Return address could be wrong, if we are unable to set a breakpoint
 			// there it's ok.
+		}
+		if bp != nil {
+			configureReturnBreakpoint(dbp.BinInfo(), bp, &topframe, retFrameCond)
 		}
 	}
 

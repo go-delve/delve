@@ -55,6 +55,10 @@ func New(client service.Client, conf *config.Config) *Term {
 		w = getColorableWriter()
 	}
 
+	if client != nil {
+		client.SetReturnValuesLoadConfig(&LongLoadConfig)
+	}
+
 	return &Term{
 		client: client,
 		conf:   conf,

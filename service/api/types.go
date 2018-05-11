@@ -107,6 +107,9 @@ type Thread struct {
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
 	// Informations requested by the current breakpoint
 	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitempty"`
+
+	// ReturnValues contains the return values of the function we just stepped out of
+	ReturnValues []Variable
 }
 
 type Location struct {
@@ -263,6 +266,9 @@ type DebuggerCommand struct {
 	// GoroutineID is used to specify which thread to use with the SwitchGoroutine
 	// command.
 	GoroutineID int `json:"goroutineID,omitempty"`
+	// When ReturnInfoLoadConfig is not nil it will be used to load the value
+	// of any return variables.
+	ReturnInfoLoadConfig *LoadConfig
 }
 
 // Informations about the current breakpoint

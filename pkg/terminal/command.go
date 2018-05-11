@@ -1518,11 +1518,23 @@ func printcontextLocation(loc api.Location) {
 	return
 }
 
+func printReturnValues(th *api.Thread) {
+	if th.ReturnValues == nil {
+		return
+	}
+	fmt.Println("Values returned:")
+	for _, v := range th.ReturnValues {
+		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+	}
+	fmt.Println()
+}
+
 func printcontextThread(t *Term, th *api.Thread) {
 	fn := th.Function
 
 	if th.Breakpoint == nil {
 		printcontextLocation(api.Location{PC: th.PC, File: th.File, Line: th.Line, Function: th.Function})
+		printReturnValues(th)
 		return
 	}
 
@@ -1564,6 +1576,8 @@ func printcontextThread(t *Term, th *api.Thread) {
 	if th.Function != nil && th.Function.Optimized {
 		fmt.Println(optimizedFunctionWarning)
 	}
+
+	printReturnValues(th)
 
 	if th.BreakpointInfo != nil {
 		bp := th.Breakpoint
