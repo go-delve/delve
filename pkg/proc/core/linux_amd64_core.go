@@ -277,7 +277,7 @@ func readCore(corePath, exePath string) (*Core, error) {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
 			t := note.Desc.(*LinuxPrStatus)
-			lastThread = &Thread{t, nil, nil}
+			lastThread = &Thread{t, nil, nil, proc.CommonThread{}}
 			core.Threads[int(t.Pid)] = lastThread
 		case NT_X86_XSTATE:
 			if lastThread != nil {

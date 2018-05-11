@@ -95,6 +95,9 @@ func Continue(dbp Process) error {
 	if dbp.Exited() {
 		return &ProcessExitedError{Pid: dbp.Pid()}
 	}
+	for _, thread := range dbp.ThreadList() {
+		thread.Common().returnValues = nil
+	}
 	dbp.CheckAndClearManualStopRequest()
 	defer func() {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
@@ -166,6 +169,7 @@ func Continue(dbp Process) error {
 					return err
 				}
 			} else {
+				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(curthread)
 				if err := dbp.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
@@ -357,11 +361,14 @@ func StepOut(dbp Process) error {
 	}
 
 	if topframe.Ret != 0 {
-		_, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond)
+		bp, err := dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond)
 		if err != nil {
 			if _, isexists := err.(BreakpointExistsError); !isexists {
 				return err
 			}
+		}
+		if bp != nil {
+			configureReturnBreakpoint(dbp.BinInfo(), bp, &topframe, retFrameCond)
 		}
 	}
 

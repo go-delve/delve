@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -1412,6 +1413,47 @@ func TestClientServerConsistentExit(t *testing.T) {
 		}
 		if state.ExitStatus != 2 {
 			t.Fatalf("Process exit status is not 2, got: %v", state.ExitStatus)
+		}
+	})
+}
+
+func TestClientServer_StepOutReturn(t *testing.T) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		t.Skip("return variables aren't marked on 1.9 or earlier")
+	}
+	withTestClient2("stepoutret", t, func(c service.Client) {
+		c.SetReturnValuesLoadConfig(&normalLoadConfig)
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stepout", Line: -1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		stateBefore := <-c.Continue()
+		assertNoError(stateBefore.Err, t, "Continue()")
+		stateAfter, err := c.StepOut()
+		assertNoError(err, t, "StepOut")
+		ret := stateAfter.CurrentThread.ReturnValues
+
+		if len(ret) != 2 {
+			t.Fatalf("wrong number of return values %v", ret)
+		}
+
+		if ret[0].Name != "str" {
+			t.Fatalf("(str) bad return value name %s", ret[0].Name)
+		}
+		if ret[0].Kind != reflect.String {
+			t.Fatalf("(str) bad return value kind %v", ret[0].Kind)
+		}
+		if ret[0].Value != "return 47" {
+			t.Fatalf("(str) bad return value %q", ret[0].Value)
+		}
+
+		if ret[1].Name != "num" {
+			t.Fatalf("(num) bad return value name %s", ret[1].Name)
+		}
+		if ret[1].Kind != reflect.Int {
+			t.Fatalf("(num) bad return value kind %v", ret[1].Kind)
+		}
+		if ret[1].Value != "48" {
+			t.Fatalf("(num) bad return value %s", ret[1].Value)
 		}
 	})
 }

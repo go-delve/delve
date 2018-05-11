@@ -103,10 +103,13 @@ type BreakpointManipulation interface {
 	ClearInternalBreakpoints() error
 }
 
+// CommonProcess contains fields used by this package, common to all
+// implementations of the Process interface.
 type CommonProcess struct {
 	allGCache []*G
 }
 
+// ClearAllGCache clears the cached contents of the cache for runtime.allgs.
 func (p *CommonProcess) ClearAllGCache() {
 	p.allGCache = nil
 }

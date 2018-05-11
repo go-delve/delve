@@ -132,6 +132,7 @@ type Thread struct {
 	CurrentBreakpoint proc.BreakpointState
 	p                 *Process
 	setbp             bool // thread was stopped because of a breakpoint
+	common            proc.CommonThread
 }
 
 // ErrBackendUnavailable is returned when the stub program can not be found.
@@ -1187,6 +1188,10 @@ func (t *Thread) Arch() proc.Arch {
 
 func (t *Thread) BinInfo() *proc.BinaryInfo {
 	return &t.p.bi
+}
+
+func (t *Thread) Common() *proc.CommonThread {
+	return &t.common
 }
 
 func (t *Thread) stepInstruction(tu *threadUpdater) error {
