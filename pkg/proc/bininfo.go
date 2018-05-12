@@ -286,10 +286,9 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *Func
 		if cu.lineInfo.Lookup[filename] != nil {
 			pc = cu.lineInfo.LineToPC(filename, lineno)
 			fn = bi.PCToFunc(pc)
-			if fn == nil {
-				err = fmt.Errorf("no code at %s:%d", filename, lineno)
+			if fn != nil {
+				return
 			}
-			return
 		}
 	}
 	err = fmt.Errorf("could not find %s:%d", filename, lineno)
