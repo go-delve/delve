@@ -188,12 +188,18 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	bi.consts = make(map[dwarf.Offset]*constantType)
 	reader := bi.DwarfReader()
 	var cu *compileUnit = nil
+	var pu *partialUnit = nil
+	var partialUnits = make(map[dwarf.Offset]*partialUnit)
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			break
 		}
 		switch entry.Tag {
 		case dwarf.TagCompileUnit:
+			if pu != nil {
+				partialUnits[pu.entry.Offset] = pu
+				pu = nil
+			}
 			cu = &compileUnit{}
 			cu.entry = entry
 			if lang, _ := entry.Val(dwarf.AttrLanguage).(int64); lang == dwarfGoLanguage {
@@ -218,29 +224,101 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 			}
 			bi.compileUnits = append(bi.compileUnits, cu)
 
+		case dwarf.TagPartialUnit:
+			if pu != nil {
+				partialUnits[pu.entry.Offset] = pu
+				pu = nil
+			}
+			pu = &partialUnit{}
+			pu.entry = entry
+			pu.types = make(map[string]dwarf.Offset)
+
+		case dwarf.TagImportedUnit:
+			if unit, exists := partialUnits[entry.Val(dwarf.AttrImport).(dwarf.Offset)]; exists {
+				for name, offset := range unit.types {
+					if pu != nil {
+						pu.types[name] = offset
+					} else {
+						if !cu.isgo {
+							name = "C." + name
+						}
+						bi.types[name] = offset
+					}
+				}
+
+				for _, pVar := range unit.variables {
+					if pu != nil {
+						pu.variables = append(pu.variables, pVar)
+					} else {
+						if !cu.isgo {
+							pVar.name = "C." + pVar.name
+						}
+						bi.packageVars = append(bi.packageVars, pVar)
+					}
+				}
+
+				for _, pCt := range unit.constants {
+					if pu != nil {
+						pu.constants = append(pu.constants, pCt)
+					} else {
+						if !cu.isgo {
+							pCt.name = "C." + pCt.name
+						}
+						ct := bi.consts[pCt.typ]
+						if ct == nil {
+							ct = &constantType{}
+							bi.consts[pCt.typ] = ct
+						}
+						ct.values = append(ct.values, constantValue{name: pCt.name, fullName: pCt.name, value: pCt.value})
+					}
+				}
+
+				for _, pFunc := range unit.functions {
+					if pu != nil {
+						pu.functions = append(pu.functions, pFunc)
+					} else {
+						if !cu.isgo {
+							pFunc.Name = "C." + pFunc.Name
+						}
+						pFunc.cu = cu
+						bi.Functions = append(bi.Functions, pFunc)
+					}
+				}
+			}
+
 		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
 			if name, ok := entry.Val(dwarf.AttrName).(string); ok {
-				if !cu.isgo {
-					name = "C." + name
-				}
-				if _, exists := bi.types[name]; !exists {
-					bi.types[name] = entry.Offset
+				if pu != nil {
+					if _, exists := pu.types[name]; !exists {
+						pu.types[name] = entry.Offset
+					}
+				} else {
+					if !cu.isgo {
+						name = "C." + name
+					}
+					if _, exists := bi.types[name]; !exists {
+						bi.types[name] = entry.Offset
+					}
 				}
 			}
 			reader.SkipChildren()
 
 		case dwarf.TagVariable:
 			if n, ok := entry.Val(dwarf.AttrName).(string); ok {
-				if !cu.isgo {
-					n = "C." + n
-				}
 				var addr uint64
 				if loc, ok := entry.Val(dwarf.AttrLocation).([]byte); ok {
 					if len(loc) == bi.Arch.PtrSize()+1 && op.Opcode(loc[0]) == op.DW_OP_addr {
 						addr = binary.LittleEndian.Uint64(loc[1:])
 					}
 				}
-				bi.packageVars = append(bi.packageVars, packageVar{n, entry.Offset, addr})
+				if pu != nil {
+					pu.variables = append(pu.variables, packageVar{n, entry.Offset, addr})
+				} else {
+					if !cu.isgo {
+						n = "C." + n
+					}
+					bi.packageVars = append(bi.packageVars, packageVar{n, entry.Offset, addr})
+				}
 			}
 
 		case dwarf.TagConstant:
@@ -248,15 +326,19 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 			typ, okType := entry.Val(dwarf.AttrType).(dwarf.Offset)
 			val, okVal := entry.Val(dwarf.AttrConstValue).(int64)
 			if okName && okType && okVal {
-				if !cu.isgo {
-					name = "C." + name
+				if pu != nil {
+					pu.constants = append(pu.constants, partialUnitConstant{name: name, typ: typ, value: val})
+				} else {
+					if !cu.isgo {
+						name = "C." + name
+					}
+					ct := bi.consts[typ]
+					if ct == nil {
+						ct = &constantType{}
+						bi.consts[typ] = ct
+					}
+					ct.values = append(ct.values, constantValue{name: name, fullName: name, value: val})
 				}
-				ct := bi.consts[typ]
-				if ct == nil {
-					ct = &constantType{}
-					bi.consts[typ] = ct
-				}
-				ct.values = append(ct.values, constantValue{name: name, fullName: name, value: val})
 			}
 
 		case dwarf.TagSubprogram:
@@ -269,15 +351,24 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 			}
 			name, ok2 := entry.Val(dwarf.AttrName).(string)
 			if ok1 && ok2 {
-				if !cu.isgo {
-					name = "C." + name
+				if pu != nil {
+					pu.functions = append(pu.functions, Function{
+						Name:  name,
+						Entry: lowpc, End: highpc,
+						offset: entry.Offset,
+						cu:     &compileUnit{},
+					})
+				} else {
+					if !cu.isgo {
+						name = "C." + name
+					}
+					bi.Functions = append(bi.Functions, Function{
+						Name:  name,
+						Entry: lowpc, End: highpc,
+						offset: entry.Offset,
+						cu:     cu,
+					})
 				}
-				bi.Functions = append(bi.Functions, Function{
-					Name:  name,
-					Entry: lowpc, End: highpc,
-					offset: entry.Offset,
-					cu:     cu,
-				})
 			}
 			reader.SkipChildren()
 
