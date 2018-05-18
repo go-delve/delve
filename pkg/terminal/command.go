@@ -142,13 +142,14 @@ See also: "help on", "help cond" and "help clear"`},
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.`},
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: `List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)]
+	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location) ] [ -t (stack trace)]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
 	-u	displays location of topmost stackframe in user code
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
+	-t	displyes stack trace of goroutine
 
 If no flag is specified the default is -u.`},
 		{aliases: []string{"goroutine"}, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
@@ -525,22 +526,27 @@ func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 func goroutines(t *Term, ctx callContext, argstr string) error {
 	args := strings.Split(argstr, " ")
 	var fgl = fglUserCurrent
+	printStack := false
 
 	switch len(args) {
 	case 0:
 		// nothing to do
-	case 1:
-		switch args[0] {
-		case "-u":
-			fgl = fglUserCurrent
-		case "-r":
-			fgl = fglRuntimeCurrent
-		case "-g":
-			fgl = fglGo
-		case "":
-			// nothing to do
-		default:
-			return fmt.Errorf("wrong argument: '%s'", args[0])
+	case 1, 2:
+		for _, arg := range args {
+			switch arg {
+			case "-u":
+				fgl = fglUserCurrent
+			case "-r":
+				fgl = fglRuntimeCurrent
+			case "-g":
+				fgl = fglGo
+			case "-t":
+				printStack = true
+			case "":
+				// nothing to do
+			default:
+				return fmt.Errorf("wrong argument: '%s'", arg)
+			}
 		}
 	default:
 		return fmt.Errorf("too many arguments")
@@ -561,6 +567,11 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 			prefix = "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
+		if printStack == true {
+			if _, err := t.client.SwitchGoroutine(g.ID); err == nil {
+				stackCommand(t, ctx, "")
+			}
+		}
 	}
 	return nil
 }
