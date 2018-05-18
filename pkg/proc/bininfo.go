@@ -78,6 +78,20 @@ type compileUnit struct {
 	optimized     bool // this compile unit is optimized
 }
 
+type partialUnitConstant struct {
+	name  string
+	typ   dwarf.Offset
+	value int64
+}
+
+type partialUnit struct {
+	entry       *dwarf.Entry
+	types       map[string]dwarf.Offset
+	variables   []packageVar
+	constants   []partialUnitConstant
+	functions   []Function
+}
+
 // Function describes a function in the target program.
 type Function struct {
 	Name       string
