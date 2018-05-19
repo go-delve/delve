@@ -526,7 +526,7 @@ func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 func goroutines(t *Term, ctx callContext, argstr string) error {
 	args := strings.Split(argstr, " ")
 	var fgl = fglUserCurrent
-	printStack := false
+	bPrintStack := false
 
 	switch len(args) {
 	case 0:
@@ -541,7 +541,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 			case "-g":
 				fgl = fglGo
 			case "-t":
-				printStack = true
+				bPrintStack = true
 			case "":
 				// nothing to do
 			default:
@@ -567,10 +567,12 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 			prefix = "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
-		if printStack == true {
-			if _, err := t.client.SwitchGoroutine(g.ID); err == nil {
-				stackCommand(t, ctx, "")
+		if bPrintStack {
+			stack, err := t.client.Stacktrace(g.ID, 10, nil)
+			if err != nil {
+				return err
 			}
+			printStack(stack, "\t", false)
 		}
 	}
 	return nil
