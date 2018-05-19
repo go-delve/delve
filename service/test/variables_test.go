@@ -112,9 +112,9 @@ func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture 
 	var tracedir string
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{fixture.Path}, ".")
+		p, err = native.Launch([]string{fixture.Path}, ".", false)
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".")
+		p, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".", false)
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")

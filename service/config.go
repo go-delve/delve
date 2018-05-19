@@ -32,6 +32,9 @@ type Config struct {
 	// Selects server backend.
 	Backend string
 
+	// Foreground lets target process access stdin.
+	Foreground bool
+
 	// DisconnectChan will be closed by the server when the client disconnects
 	DisconnectChan chan<- struct{}
 }
