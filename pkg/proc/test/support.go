@@ -54,6 +54,7 @@ const (
 	LinkStrip BuildFlags = 1 << iota
 	EnableCGOOptimization
 	EnableInlining
+	EnableDWZCompression
 )
 
 func BuildFixture(name string, flags BuildFlags) Fixture {
@@ -108,6 +109,15 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 		fmt.Printf("Error compiling %s: %s\n", path, err)
 		fmt.Printf("%s\n", string(out))
 		os.Exit(1)
+	}
+
+	if flags&EnableDWZCompression != 0 {
+		cmd := exec.Command("dwz", tmpfile)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			fmt.Printf("Error running dwz on %s: %s\n", tmpfile, err)
+			fmt.Printf("%s\n", string(out))
+			os.Exit(1)
+		}
 	}
 
 	source, _ := filepath.Abs(path)
