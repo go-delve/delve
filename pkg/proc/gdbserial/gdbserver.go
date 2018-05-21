@@ -399,6 +399,17 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 		}
 	}
 
+	if foreground {
+		// Disable foregrounding if we can't open /dev/tty or debugserver will
+		// crash. See issue #1215.
+		tty, err := os.Open("/dev/tty")
+		if err != nil {
+			foreground = false
+		} else {
+			tty.Close()
+		}
+	}
+
 	isDebugserver := false
 
 	var listener net.Listener
