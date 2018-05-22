@@ -206,7 +206,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-u	displays location of topmost stackframe in user code
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
-	-t	displyes stack trace of goroutine
+	-t	displays stack trace of goroutine
 
 If no flag is specified the default is -u.
 
