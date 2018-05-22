@@ -3697,3 +3697,20 @@ func TestIssue951(t *testing.T) {
 		}
 	})
 }
+	
+func TestDWZCompression(t *testing.T) {
+	// If dwz is not available in the system, skip this test
+	if _, err := exec.LookPath("dwz"); err != nil {
+		t.Skip("dwz not installed")
+	}
+
+	withTestProcessArgs("dwzcompression", t, ".", []string{}, protest.EnableDWZCompression, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "C.fortytwo")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(proc.Continue(p), t, "first Continue()")
+		val := evalVariable(p, t, "stdin")
+		if val.RealType == nil {
+			t.Errorf("Can't find type for \"stdin\" global variable")
+		}
+	})
+}
