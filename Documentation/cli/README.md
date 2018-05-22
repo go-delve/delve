@@ -199,13 +199,14 @@ Called with more arguments it will execute a command on the specified goroutine.
 ## goroutines
 List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)]
+	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location) ] [ -t (stack trace)]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
 	-u	displays location of topmost stackframe in user code
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
+	-t	displays stack trace of goroutine
 
 If no flag is specified the default is -u.
 
