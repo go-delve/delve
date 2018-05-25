@@ -3697,7 +3697,7 @@ func TestIssue951(t *testing.T) {
 		}
 	})
 }
-	
+
 func TestDWZCompression(t *testing.T) {
 	// If dwz is not available in the system, skip this test
 	if _, err := exec.LookPath("dwz"); err != nil {
@@ -3711,6 +3711,31 @@ func TestDWZCompression(t *testing.T) {
 		val := evalVariable(p, t, "stdin")
 		if val.RealType == nil {
 			t.Errorf("Can't find type for \"stdin\" global variable")
+		}
+	})
+}
+
+func TestMapLoadConfigWithReslice(t *testing.T) {
+	// Check that load configuration is respected for resliced maps.
+	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
+		zolotovLoadCfg := proc.LoadConfig{FollowPointers: true, MaxStructFields: -1, MaxVariableRecurse: 3, MaxStringLen: 10, MaxArrayValues: 10}
+		assertNoError(proc.Continue(p), t, "First Continue()")
+		scope, err := proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+		m1, err := scope.EvalExpression("m1", zolotovLoadCfg)
+		assertNoError(err, t, "EvalVariable")
+		t.Logf("m1 returned children %d (%d)", len(m1.Children)/2, m1.Len)
+
+		expr := fmt.Sprintf("(*(*%q)(%d))[10:]", m1.DwarfType.String(), m1.Addr)
+		t.Logf("expr %q\n", expr)
+
+		m1cont, err := scope.EvalExpression(expr, zolotovLoadCfg)
+		assertNoError(err, t, "EvalVariable")
+
+		t.Logf("m1cont returned children %d", len(m1cont.Children)/2)
+
+		if len(m1cont.Children) != 20 {
+			t.Fatalf("wrong number of children returned %d\n", len(m1cont.Children)/2)
 		}
 	})
 }
