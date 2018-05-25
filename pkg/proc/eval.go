@@ -726,9 +726,9 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 			return nil, fmt.Errorf("second slice argument must be empty for maps")
 		}
 		xev.mapSkip += int(low)
-		xev.loadValue(loadFullValue)
-		if xev.Unreadable != nil {
-			return nil, xev.Unreadable
+		xev.mapIterator() // reads map length
+		if int64(xev.mapSkip) >= xev.Len {
+			return nil, fmt.Errorf("map index out of bounds")
 		}
 		return xev, nil
 	default:
