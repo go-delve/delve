@@ -59,28 +59,22 @@ func goPath(name string) string {
 func TestBuild(t *testing.T) {
 	const listenAddr = "localhost:40573"
 	var err error
-	makedir := filepath.Join(goPath("GOPATH"), "src", "github.com", "derekparker", "delve")
-	for _, makeProgram := range []string{"make", "mingw32-make"} {
-		var out []byte
-		cmd := exec.Command(makeProgram, "build")
-		cmd.Dir = makedir
-		out, err = cmd.CombinedOutput()
-		if err == nil {
-			break
-		} else {
-			t.Logf("makefile error %s (%s): %v", makeProgram, makedir, err)
-			t.Logf("output %s", string(out))
-		}
+
+	cmd := exec.Command("go", "run", "scripts/make.go", "build")
+	cmd.Dir = filepath.Join(goPath("GOPATH"), "src", "github.com", "derekparker", "delve")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
 	}
-	assertNoError(err, t, "make")
-	dlvbin := filepath.Join(makedir, "dlv")
+
+	dlvbin := filepath.Join(cmd.Dir, "dlv")
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
+	cmd = exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
 	cmd.Dir = buildtestdir
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
