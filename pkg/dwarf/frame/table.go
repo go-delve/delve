@@ -277,7 +277,7 @@ func setloc(frame *FrameContext) {
 	var loc uint64
 	binary.Read(frame.buf, frame.order, &loc)
 
-	frame.loc = loc
+	frame.loc = loc + frame.cie.staticBase
 }
 
 func offsetextended(frame *FrameContext) {

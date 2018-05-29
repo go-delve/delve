@@ -33,6 +33,8 @@ type BinaryInfo struct {
 	closer         io.Closer
 	sepDebugCloser io.Closer
 
+	staticBase uint64
+
 	// Maps package names to package paths, needed to lookup types inside DWARF info
 	packageMap map[string]string
 
@@ -82,11 +84,14 @@ var ErrUnsupportedWindowsArch = errors.New("unsupported architecture of windows/
 // ErrUnsupportedDarwinArch is returned when attempting to debug a binary compiled for an unsupported architecture.
 var ErrUnsupportedDarwinArch = errors.New("unsupported architecture - only darwin/amd64 is supported")
 
+var ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
+
 const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
 
 type compileUnit struct {
-	Name          string // univocal name for non-go compile units
-	LowPC, HighPC uint64
+	Name   string // univocal name for non-go compile units
+	LowPC  uint64
+	Ranges [][2]uint64
 
 	entry              *dwarf.Entry        // debug_info entry describing this compile unit
 	isgo               bool                // true if this is the go compile unit
@@ -288,7 +293,7 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 // LoadBinaryInfo will load and store the information from the binary at 'path'.
 // It is expected this will be called in parallel with other initialization steps
 // so a sync.WaitGroup must be provided.
-func (bi *BinaryInfo) LoadBinaryInfo(path string, wg *sync.WaitGroup) error {
+func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	fi, err := os.Stat(path)
 	if err == nil {
 		bi.lastModified = fi.ModTime()
@@ -296,13 +301,14 @@ func (bi *BinaryInfo) LoadBinaryInfo(path string, wg *sync.WaitGroup) error {
 
 	switch bi.GOOS {
 	case "linux":
-		return bi.LoadBinaryInfoElf(path, wg)
+		return bi.LoadBinaryInfoElf(path, entryPoint, wg)
 	case "windows":
-		return bi.LoadBinaryInfoPE(path, wg)
+		return bi.LoadBinaryInfoPE(path, entryPoint, wg)
 	case "darwin":
-		return bi.LoadBinaryInfoMacho(path, wg)
+		return bi.LoadBinaryInfoMacho(path, entryPoint, wg)
 	}
 	return errors.New("unsupported operating system")
+	return nil
 }
 
 // GStructOffset returns the offset of the G
@@ -423,7 +429,7 @@ func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes, debugLin
 	bi.dwarf = dwdata
 
 	if debugFrameBytes != nil {
-		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes))
+		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), bi.staticBase)
 	}
 
 	bi.loclistInit(debugLocBytes)
@@ -503,8 +509,10 @@ func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 // findCompileUnit returns the compile unit containing address pc.
 func (bi *BinaryInfo) findCompileUnit(pc uint64) *compileUnit {
 	for _, cu := range bi.compileUnits {
-		if pc >= cu.LowPC && pc < cu.HighPC {
-			return cu
+		for _, rng := range cu.Ranges {
+			if pc >= rng[0] && pc < rng[1] {
+				return cu
+			}
 		}
 	}
 	return nil
@@ -598,7 +606,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File) (*os.File, *elf.File,
 }
 
 // LoadBinaryInfoElf specifically loads information from an ELF binary.
-func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
+func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
 		return err
@@ -611,7 +619,17 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 	if elfFile.Machine != elf.EM_X86_64 {
 		return ErrUnsupportedLinuxArch
 	}
+
+	if entryPoint != 0 {
+		bi.staticBase = entryPoint - elfFile.Entry
+	} else {
+		if elfFile.Type == elf.ET_DYN {
+			return ErrCouldNotDetermineRelocation
+		}
+	}
+
 	dwarfFile := elfFile
+
 	bi.dwarf, err = elfFile.DWARF()
 	if err != nil {
 		var sepFile *os.File
@@ -660,7 +678,7 @@ func (bi *BinaryInfo) parseDebugFrameElf(exe *elf.File, wg *sync.WaitGroup) {
 		return
 	}
 
-	bi.frameEntries = frame.Parse(debugFrameData, frame.DwarfEndian(debugInfoData))
+	bi.frameEntries = frame.Parse(debugFrameData, frame.DwarfEndian(debugInfoData), bi.staticBase)
 }
 
 func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
@@ -703,8 +721,10 @@ func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
 
 // PE ////////////////////////////////////////////////////////////////
 
+const _IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
+
 // LoadBinaryInfoPE specifically loads information from a PE binary.
-func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
+func (bi *BinaryInfo) LoadBinaryInfoPE(path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	peFile, closer, err := openExecutablePathPE(path)
 	if err != nil {
 		return err
@@ -716,6 +736,16 @@ func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
 	bi.dwarf, err = peFile.DWARF()
 	if err != nil {
 		return err
+	}
+
+	//TODO(aarzilli): actually test this when Go supports PIE buildmode on Windows.
+	opth := peFile.OptionalHeader.(*pe.OptionalHeader64)
+	if entryPoint != 0 {
+		bi.staticBase = entryPoint - opth.ImageBase
+	} else {
+		if opth.DllCharacteristics&_IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE != 0 {
+			return ErrCouldNotDetermineRelocation
+		}
 	}
 
 	bi.dwarfReader = bi.dwarf.Reader()
@@ -766,7 +796,7 @@ func (bi *BinaryInfo) parseDebugFramePE(exe *pe.File, wg *sync.WaitGroup) {
 		return
 	}
 
-	bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes))
+	bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), bi.staticBase)
 }
 
 // Borrowed from https://golang.org/src/cmd/internal/objfile/pe.go
@@ -789,7 +819,7 @@ func findPESymbol(f *pe.File, name string) (*pe.Symbol, error) {
 // MACH-O ////////////////////////////////////////////////////////////
 
 // LoadBinaryInfoMacho specifically loads information from a Mach-O binary.
-func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error {
+func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	exe, err := macho.Open(path)
 	if err != nil {
 		return err
@@ -844,5 +874,5 @@ func (bi *BinaryInfo) parseDebugFrameMacho(exe *macho.File, wg *sync.WaitGroup) 
 		return
 	}
 
-	bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes))
+	bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), bi.staticBase)
 }

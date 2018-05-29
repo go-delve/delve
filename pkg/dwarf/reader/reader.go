@@ -34,7 +34,7 @@ func (reader *Reader) SeekToEntry(entry *dwarf.Entry) error {
 
 // SeekToFunctionEntry moves the reader to the function that includes the
 // specified program counter.
-func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
+func (reader *Reader) SeekToFunction(pc RelAddr) (*dwarf.Entry, error) {
 	reader.Seek(0)
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
@@ -55,7 +55,7 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 			continue
 		}
 
-		if lowpc <= pc && highpc > pc {
+		if lowpc <= uint64(pc) && highpc > uint64(pc) {
 			return entry, nil
 		}
 	}
@@ -64,7 +64,7 @@ func (reader *Reader) SeekToFunction(pc uint64) (*dwarf.Entry, error) {
 }
 
 // Returns the address for the named entry.
-func (reader *Reader) AddrFor(name string) (uint64, error) {
+func (reader *Reader) AddrFor(name string, staticBase uint64) (uint64, error) {
 	entry, err := reader.FindEntryNamed(name, false)
 	if err != nil {
 		return 0, err
@@ -73,7 +73,7 @@ func (reader *Reader) AddrFor(name string) (uint64, error) {
 	if !ok {
 		return 0, fmt.Errorf("type assertion failed")
 	}
-	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{}, instructions)
+	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions)
 	if err != nil {
 		return 0, err
 	}
@@ -380,10 +380,10 @@ type InlineStackReader struct {
 // InlineStack returns an InlineStackReader for the specified function and
 // PC address.
 // If pc is 0 then all inlined calls will be returned.
-func InlineStack(dwarf *dwarf.Data, fnoff dwarf.Offset, pc uint64) *InlineStackReader {
+func InlineStack(dwarf *dwarf.Data, fnoff dwarf.Offset, pc RelAddr) *InlineStackReader {
 	reader := dwarf.Reader()
 	reader.Seek(fnoff)
-	return &InlineStackReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, pc: pc}
+	return &InlineStackReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, pc: uint64(pc)}
 }
 
 // Next reads next inlined call in the stack, returns false if there aren't any.

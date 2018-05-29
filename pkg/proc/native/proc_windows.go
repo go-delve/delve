@@ -20,6 +20,7 @@ import (
 type OSProcessDetails struct {
 	hProcess    syscall.Handle
 	breakThread int
+	entryPoint  uint64
 }
 
 func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
@@ -271,6 +272,7 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 					return 0, 0, err
 				}
 			}
+			dbp.os.entryPoint = uint64(debugInfo.BaseOfImage)
 			dbp.os.hProcess = debugInfo.Process
 			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false, flags&waitSuspendNewThreads != 0)
 			if err != nil {
@@ -478,6 +480,10 @@ func (dbp *Process) detach(kill bool) error {
 		}
 	}
 	return _DebugActiveProcessStop(uint32(dbp.pid))
+}
+
+func (dbp *Process) entryPoint() (uint64, error) {
+	return dbp.os.entryPoint, nil
 }
 
 func killProcess(pid int) error {

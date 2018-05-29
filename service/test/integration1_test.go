@@ -21,6 +21,12 @@ import (
 )
 
 func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
+	withTestClient1Extended(name, t, func(c *rpc1.RPCClient, fixture protest.Fixture) {
+		fn(c)
+	})
+}
+
+func withTestClient1Extended(name string, t *testing.T, fn func(c *rpc1.RPCClient, fixture protest.Fixture)) {
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
@@ -29,9 +35,14 @@ func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
 	defer listener.Close()
+	var buildFlags protest.BuildFlags
+	if buildMode == "pie" {
+		buildFlags = protest.BuildModePIE
+	}
+	fixture := protest.BuildFixture(name, buildFlags)
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
-		ProcessArgs: []string{protest.BuildFixture(name, 0).Path},
+		ProcessArgs: []string{fixture.Path},
 		Backend:     testBackend,
 	})
 	if err := server.Run(); err != nil {
@@ -42,7 +53,7 @@ func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
 		client.Detach(true)
 	}()
 
-	fn(client)
+	fn(client, fixture)
 }
 
 func Test1RunWithInvalidPath(t *testing.T) {
@@ -618,25 +629,24 @@ func Test1ClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 
-	withTestClient1("locationsUpperCase", t, func(c *rpc1.RPCClient) {
+	withTestClient1Extended("locationsUpperCase", t, func(c *rpc1.RPCClient, fixture protest.Fixture) {
 		// Upper case
 		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
 
 		// Fully qualified path
-		path := protest.Fixtures[protest.FixtureKey{"locationsUpperCase", 0}].Source
-		findLocationHelper(t, c, path+":6", false, 1, 0)
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: path, Line: 6})
+		findLocationHelper(t, c, fixture.Source+":6", false, 1, 0)
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: fixture.Source, Line: 6})
 		if err != nil {
-			t.Fatalf("Could not set breakpoint in %s: %v\n", path, err)
+			t.Fatalf("Could not set breakpoint in %s: %v\n", fixture.Source, err)
 		}
 		c.ClearBreakpoint(bp.ID)
 
 		//  Allow `/` or `\` on Windows
 		if runtime.GOOS == "windows" {
-			findLocationHelper(t, c, filepath.FromSlash(path)+":6", false, 1, 0)
-			bp, err = c.CreateBreakpoint(&api.Breakpoint{File: filepath.FromSlash(path), Line: 6})
+			findLocationHelper(t, c, filepath.FromSlash(fixture.Source)+":6", false, 1, 0)
+			bp, err = c.CreateBreakpoint(&api.Breakpoint{File: filepath.FromSlash(fixture.Source), Line: 6})
 			if err != nil {
-				t.Fatalf("Could not set breakpoint in %s: %v\n", filepath.FromSlash(path), err)
+				t.Fatalf("Could not set breakpoint in %s: %v\n", filepath.FromSlash(fixture.Source), err)
 			}
 			c.ClearBreakpoint(bp.ID)
 		}
@@ -648,10 +658,10 @@ func Test1ClientServer_FindLocations(t *testing.T) {
 			shouldWrongCaseBeError = false
 			numExpectedMatches = 1
 		}
-		findLocationHelper(t, c, strings.ToLower(path)+":6", shouldWrongCaseBeError, numExpectedMatches, 0)
-		bp, err = c.CreateBreakpoint(&api.Breakpoint{File: strings.ToLower(path), Line: 6})
+		findLocationHelper(t, c, strings.ToLower(fixture.Source)+":6", shouldWrongCaseBeError, numExpectedMatches, 0)
+		bp, err = c.CreateBreakpoint(&api.Breakpoint{File: strings.ToLower(fixture.Source), Line: 6})
 		if (err == nil) == shouldWrongCaseBeError {
-			t.Fatalf("Could not set breakpoint in %s: %v\n", strings.ToLower(path), err)
+			t.Fatalf("Could not set breakpoint in %s: %v\n", strings.ToLower(fixture.Source), err)
 		}
 		c.ClearBreakpoint(bp.ID)
 	})

@@ -105,7 +105,7 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte) *StateMachine {
 	for op := range standardopcodes {
 		opcodes[op] = standardopcodes[op]
 	}
-	sm := &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1, buf: bytes.NewBuffer(instructions), opcodes: opcodes, isStmt: dbl.Prologue.InitialIsStmt == uint8(1)}
+	sm := &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1, buf: bytes.NewBuffer(instructions), opcodes: opcodes, isStmt: dbl.Prologue.InitialIsStmt == uint8(1), address: dbl.staticBase}
 	return sm
 }
 
@@ -433,7 +433,7 @@ func setaddress(sm *StateMachine, buf *bytes.Buffer) {
 
 	binary.Read(buf, binary.LittleEndian, &addr)
 
-	sm.address = addr
+	sm.address = addr + sm.dbl.staticBase
 }
 
 func definefile(sm *StateMachine, buf *bytes.Buffer) {

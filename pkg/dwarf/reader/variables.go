@@ -6,6 +6,14 @@ import (
 	"debug/dwarf"
 )
 
+// RelAddr is an address relative to the static base. For normal executables
+// this is just a normal memory address, for PIE it's a relative address.
+type RelAddr uint64
+
+func ToRelAddr(addr uint64, staticBase uint64) RelAddr {
+	return RelAddr(addr - staticBase)
+}
+
 // VariableReader provides a way of reading the local variables and formal
 // parameters of a function that are visible at the specified PC address.
 type VariableReader struct {
@@ -22,10 +30,10 @@ type VariableReader struct {
 // Variables returns a VariableReader for the function or lexical block at off.
 // If onlyVisible is true only variables visible at pc will be returned by
 // the VariableReader.
-func Variables(dwarf *dwarf.Data, off dwarf.Offset, pc uint64, line int, onlyVisible bool) *VariableReader {
+func Variables(dwarf *dwarf.Data, off dwarf.Offset, pc RelAddr, line int, onlyVisible bool) *VariableReader {
 	reader := dwarf.Reader()
 	reader.Seek(off)
-	return &VariableReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, onlyVisible: onlyVisible, pc: pc, line: line, err: nil}
+	return &VariableReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, onlyVisible: onlyVisible, pc: uint64(pc), line: line, err: nil}
 }
 
 // Next reads the next variable entry, returns false if there aren't any.

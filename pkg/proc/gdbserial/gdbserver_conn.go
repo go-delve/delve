@@ -357,7 +357,7 @@ func (conn *gdbConn) readRegisterInfo() (err error) {
 }
 
 func (conn *gdbConn) readAnnex(annex string) ([]gdbRegisterInfo, error) {
-	tgtbuf, err := conn.qXfer("features", annex)
+	tgtbuf, err := conn.qXfer("features", annex, false)
 	if err != nil {
 		return nil, err
 	}
@@ -377,19 +377,28 @@ func (conn *gdbConn) readAnnex(annex string) ([]gdbRegisterInfo, error) {
 }
 
 func (conn *gdbConn) readExecFile() (string, error) {
-	outbuf, err := conn.qXfer("exec-file", "")
+	outbuf, err := conn.qXfer("exec-file", "", true)
 	if err != nil {
 		return "", err
 	}
 	return string(outbuf), nil
 }
 
+func (conn *gdbConn) readAuxv() ([]byte, error) {
+	return conn.qXfer("auxv", "", true)
+}
+
 // qXfer executes a 'qXfer' read with the specified kind (i.e. feature,
 // exec-file, etc...) and annex.
-func (conn *gdbConn) qXfer(kind, annex string) ([]byte, error) {
+func (conn *gdbConn) qXfer(kind, annex string, binary bool) ([]byte, error) {
 	out := []byte{}
 	for {
-		buf, err := conn.exec([]byte(fmt.Sprintf("$qXfer:%s:read:%s:%x,fff", kind, annex, len(out))), "target features transfer")
+		cmd := []byte(fmt.Sprintf("$qXfer:%s:read:%s:%x,fff", kind, annex, len(out)))
+		err := conn.send(cmd)
+		if err != nil {
+			return nil, err
+		}
+		buf, err := conn.recv(cmd, "target features transfer", binary)
 		if err != nil {
 			return nil, err
 		}

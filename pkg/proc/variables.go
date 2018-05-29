@@ -193,7 +193,7 @@ func (err *IsNilErr) Error() string {
 }
 
 func globalScope(bi *BinaryInfo, mem MemoryReadWriter) *EvalScope {
-	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
+	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: bi.staticBase}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
 }
 
 func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
@@ -319,9 +319,12 @@ func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryIn
 
 func resolveTypedef(typ godwarf.Type) godwarf.Type {
 	for {
-		if tt, ok := typ.(*godwarf.TypedefType); ok {
+		switch tt := typ.(type) {
+		case *godwarf.TypedefType:
 			typ = tt.Type
-		} else {
+		case *godwarf.QualType:
+			typ = tt.Type
+		default:
 			return typ
 		}
 	}
@@ -2046,7 +2049,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 
 	var vars []*Variable
 	var depths []int
-	varReader := reader.Variables(scope.BinInfo.dwarf, scope.Fn.offset, scope.PC, scope.Line, true)
+	varReader := reader.Variables(scope.BinInfo.dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.BinInfo.staticBase), scope.Line, true)
 	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()

@@ -13,6 +13,8 @@ import (
 type parsefunc func(*parseContext) parsefunc
 
 type parseContext struct {
+	staticBase uint64
+
 	buf     *bytes.Buffer
 	entries FrameDescriptionEntries
 	common  *CommonInformationEntry
@@ -23,10 +25,10 @@ type parseContext struct {
 // Parse takes in data (a byte slice) and returns a slice of
 // commonInformationEntry structures. Each commonInformationEntry
 // has a slice of frameDescriptionEntry structures.
-func Parse(data []byte, order binary.ByteOrder) FrameDescriptionEntries {
+func Parse(data []byte, order binary.ByteOrder, staticBase uint64) FrameDescriptionEntries {
 	var (
 		buf  = bytes.NewBuffer(data)
-		pctx = &parseContext{buf: buf, entries: NewFrameIndex()}
+		pctx = &parseContext{buf: buf, entries: NewFrameIndex(), staticBase: staticBase}
 	)
 
 	for fn := parselength; buf.Len() != 0; {
@@ -57,7 +59,7 @@ func parselength(ctx *parseContext) parsefunc {
 	ctx.length -= 4 // take off the length of the CIE id / CIE pointer.
 
 	if cieEntry(data) {
-		ctx.common = &CommonInformationEntry{Length: ctx.length}
+		ctx.common = &CommonInformationEntry{Length: ctx.length, staticBase: ctx.staticBase}
 		return parseCIE
 	}
 
@@ -68,8 +70,8 @@ func parselength(ctx *parseContext) parsefunc {
 func parseFDE(ctx *parseContext) parsefunc {
 	r := ctx.buf.Next(int(ctx.length))
 
-	ctx.frame.begin = binary.LittleEndian.Uint64(r[:8])
-	ctx.frame.end = binary.LittleEndian.Uint64(r[8:16])
+	ctx.frame.begin = binary.LittleEndian.Uint64(r[:8]) + ctx.staticBase
+	ctx.frame.size = binary.LittleEndian.Uint64(r[8:16])
 
 	// Insert into the tree after setting address range begin
 	// otherwise compares won't work.

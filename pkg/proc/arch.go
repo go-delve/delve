@@ -17,7 +17,7 @@ type Arch interface {
 	DerefTLS() bool
 	FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext
 	RegSize(uint64) int
-	RegistersToDwarfRegisters(Registers) op.DwarfRegisters
+	RegistersToDwarfRegisters(regs Registers, staticBase uint64) op.DwarfRegisters
 	GoroutineToDwarfRegisters(*G) op.DwarfRegisters
 }
 
@@ -270,7 +270,7 @@ func maxAmd64DwarfRegister() int {
 
 // RegistersToDwarfRegisters converts hardware registers to the format used
 // by the DWARF expression interpreter.
-func (a *AMD64) RegistersToDwarfRegisters(regs Registers) op.DwarfRegisters {
+func (a *AMD64) RegistersToDwarfRegisters(regs Registers, staticBase uint64) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, maxAmd64DwarfRegister()+1)
 
 	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(regs.PC())
@@ -292,7 +292,7 @@ func (a *AMD64) RegistersToDwarfRegisters(regs Registers) op.DwarfRegisters {
 		}
 	}
 
-	return op.DwarfRegisters{Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
+	return op.DwarfRegisters{StaticBase: staticBase, Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
 }
 
 // GoroutineToDwarfRegisters extract the saved DWARF registers from a parked
@@ -302,5 +302,5 @@ func (a *AMD64) GoroutineToDwarfRegisters(g *G) op.DwarfRegisters {
 	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(g.PC)
 	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(g.SP)
 	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(g.BP)
-	return op.DwarfRegisters{Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
+	return op.DwarfRegisters{StaticBase: g.variable.bi.staticBase, Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
 }

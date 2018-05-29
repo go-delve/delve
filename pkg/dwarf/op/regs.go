@@ -6,6 +6,8 @@ import (
 )
 
 type DwarfRegisters struct {
+	StaticBase uint64
+
 	CFA       int64
 	FrameBase int64
 	ObjBase   int64

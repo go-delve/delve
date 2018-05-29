@@ -349,17 +349,17 @@ func removeInlinedCalls(dbp Process, pcs []uint64, topframe Stackframe) ([]uint6
 			return pcs, err
 		}
 		for _, rng := range ranges {
-			pcs = removePCsBetween(pcs, rng[0], rng[1])
+			pcs = removePCsBetween(pcs, rng[0], rng[1], bi.staticBase)
 		}
 		irdr.SkipChildren()
 	}
 	return pcs, irdr.Err()
 }
 
-func removePCsBetween(pcs []uint64, start, end uint64) []uint64 {
+func removePCsBetween(pcs []uint64, start, end, staticBase uint64) []uint64 {
 	out := pcs[:0]
 	for _, pc := range pcs {
-		if pc < start || pc >= end {
+		if pc < start+staticBase || pc >= end+staticBase {
 			out = append(out, pc)
 		}
 	}
