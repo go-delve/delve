@@ -16,7 +16,7 @@ import (
 const DelveMainPackagePath = "github.com/derekparker/delve/cmd/dlv"
 
 var Verbose bool
-var TestSet, TestRegex, TestBackend string
+var TestSet, TestRegex, TestBackend, TestBuildMode string
 
 func NewMakeCommands() *cobra.Command {
 	RootCommand := &cobra.Command{
@@ -62,10 +62,13 @@ func NewMakeCommands() *cobra.Command {
 Use the flags -s, -r and -b to specify which tests to run. Specifying nothing is equivalent to:
 
 	go run scripts/make.go test -s all -b default
-	go run scripts/make.go test -s basic -b lldb
-	go run scripts/make.go test -s basic -b rr
-
-with lldb and rr tests only run if the relevant programs are installed.`,
+	go run scripts/make.go test -s basic -b lldb    # if lldb-server is installed
+	go run scripts/make.go test -s basic -b rr      # if rr is installed
+	
+	go run scripts/make.go test -s basic -m pie     # only on linux
+	go run scripts/make.go test -s core -m pie      # only on linux
+	go run scripts/make.go test -s 
+`,
 		Run: testCmd,
 	}
 	test.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Verbose tests")
@@ -81,6 +84,11 @@ with lldb and rr tests only run if the relevant programs are installed.`,
 	lldb		lldb backend
 	rr		rr backend
 
+This option can only be specified if testset is basic or a single package.`)
+	test.PersistentFlags().StringVarP(&TestBuildMode, "test-build-mode", "m", "", `Runs tests compiling with the specified build mode, one of either:
+	normal		normal buildmode (default)
+	pie		PIE buildmode
+	
 This option can only be specified if testset is basic or a single package.`)
 
 	RootCommand.AddCommand(test)
@@ -253,21 +261,30 @@ func testCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	if TestSet == "" && TestBackend == "" {
+	if TestSet == "" && TestBackend == "" && TestBuildMode == "" {
 		if TestRegex != "" {
 			fmt.Printf("Can not use --test-run without --test-set\n")
 			os.Exit(1)
 		}
 
 		fmt.Println("Testing default backend")
-		testCmdIntl("all", "", "default")
+		testCmdIntl("all", "", "default", "normal")
 		if inpath("lldb-server") {
 			fmt.Println("\nTesting LLDB backend")
-			testCmdIntl("basic", "", "lldb")
+			testCmdIntl("basic", "", "lldb", "normal")
 		}
 		if inpath("rr") {
 			fmt.Println("\nTesting RR backend")
-			testCmdIntl("basic", "", "rr")
+			testCmdIntl("basic", "", "rr", "normal")
+		}
+		if runtime.GOOS == "linux" {
+			fmt.Println("\nTesting PIE buildmode, default backend")
+			testCmdIntl("basic", "", "default", "pie")
+			testCmdIntl("core", "", "default", "pie")
+		}
+		if runtime.GOOS == "linux" && inpath("rr") {
+			fmt.Println("\nTesting PIE buildmode, RR backend")
+			testCmdIntl("basic", "", "rr", "pie")
 		}
 		return
 	}
@@ -280,10 +297,14 @@ func testCmd(cmd *cobra.Command, args []string) {
 		TestBackend = "default"
 	}
 
-	testCmdIntl(TestSet, TestRegex, TestBackend)
+	if TestBuildMode == "" {
+		TestBuildMode = "normal"
+	}
+
+	testCmdIntl(TestSet, TestRegex, TestBackend, TestBuildMode)
 }
 
-func testCmdIntl(testSet, testRegex, testBackend string) {
+func testCmdIntl(testSet, testRegex, testBackend, testBuildMode string) {
 	testPackages := testSetToPackages(testSet)
 	if len(testPackages) == 0 {
 		fmt.Printf("Unknown test set %q\n", testSet)
@@ -304,12 +325,21 @@ func testCmdIntl(testSet, testRegex, testBackend string) {
 		backendFlag = "-backend=" + testBackend
 	}
 
+	buildModeFlag := ""
+	if testBuildMode != "" && testBuildMode != "normal" {
+		if testSet != "basic" && len(testPackages) != 1 {
+			fmt.Printf("Can not use test-buildmode with test set %q\n", testSet)
+			os.Exit(1)
+		}
+		buildModeFlag = "-test-buildmode=" + testBuildMode
+	}
+
 	if len(testPackages) > 3 {
-		execute("go", "test", testFlags(), buildFlags(), testPackages, backendFlag)
+		executeq("go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
 	} else if testRegex != "" {
-		execute("go", "test", testFlags(), buildFlags(), testPackages, "-run="+testRegex, backendFlag)
+		execute("go", "test", testFlags(), buildFlags(), testPackages, "-run="+testRegex, backendFlag, buildModeFlag)
 	} else {
-		execute("go", "test", testFlags(), buildFlags(), testPackages, backendFlag)
+		execute("go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
 	}
 }
 
@@ -332,6 +362,13 @@ func testSetToPackages(testSet string) []string {
 		}
 		return nil
 	}
+}
+
+func defaultBackend() string {
+	if runtime.GOOS == "darwin" {
+		return "lldb"
+	}
+	return "native"
 }
 
 func inpath(exe string) bool {

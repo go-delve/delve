@@ -11,6 +11,7 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/linutil"
 )
 
 // Copied from golang.org/x/sys/unix.PtraceRegs since it's not available on
@@ -57,6 +58,9 @@ const NT_FILE elf.NType = 0x46494c45 // "FILE".
 
 // NT_X86_XSTATE is other registers, including AVX and such.
 const NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAVE area.
+
+// NT_AUXV is the note type for notes containing a copy of the Auxv array
+const NT_AUXV elf.NType = 0x6
 
 // PC returns the value of RIP.
 func (r *LinuxCoreRegisters) PC() uint64 {
@@ -273,7 +277,7 @@ func readCore(corePath, exePath string) (*Core, error) {
 	if coreFile.Type != elf.ET_CORE {
 		return nil, fmt.Errorf("%v is not a core file", coreFile)
 	}
-	if exeELF.Type != elf.ET_EXEC {
+	if exeELF.Type != elf.ET_EXEC && exeELF.Type != elf.ET_DYN {
 		return nil, fmt.Errorf("%v is not an exe file", exeELF)
 	}
 
@@ -282,10 +286,12 @@ func readCore(corePath, exePath string) (*Core, error) {
 		return nil, err
 	}
 	memory := buildMemory(coreFile, exeELF, exe, notes)
+	entryPoint := findEntryPoint(notes)
 
 	core := &Core{
 		MemoryReader: memory,
 		Threads:      map[int]*Thread{},
+		entryPoint:   entryPoint,
 	}
 
 	var lastThread *Thread
@@ -311,6 +317,8 @@ type Core struct {
 	proc.MemoryReader
 	Threads map[int]*Thread
 	Pid     int
+
+	entryPoint uint64
 }
 
 // Note is a note from the PT_NOTE prog.
@@ -401,7 +409,7 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 		for i := 0; i < int(data.Count); i++ {
 			entry := &LinuxNTFileEntry{}
 			if err := binary.Read(descReader, binary.LittleEndian, entry); err != nil {
-				return nil, fmt.Errorf("reading NT_PRPSINFO entry %v: %v", i, err)
+				return nil, fmt.Errorf("reading NT_FILE entry %v: %v", i, err)
 			}
 			data.entries = append(data.entries, entry)
 		}
@@ -412,6 +420,8 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 			return nil, err
 		}
 		note.Desc = &fpregs
+	case NT_AUXV:
+		note.Desc = desc
 	}
 	if err := skipPadding(r, 4); err != nil {
 		return nil, fmt.Errorf("aligning after desc: %v", err)
@@ -469,6 +479,15 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*Note) proc.Me
 		}
 	}
 	return memory
+}
+
+func findEntryPoint(notes []*Note) uint64 {
+	for _, note := range notes {
+		if note.Type == NT_AUXV {
+			return linutil.EntryPointFromAuxvAMD64(note.Desc.([]byte))
+		}
+	}
+	return 0
 }
 
 // LinuxPrPsInfo has various structures from the ELF spec and the Linux kernel.

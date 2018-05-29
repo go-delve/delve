@@ -19,6 +19,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/linutil"
 	"github.com/mattn/go-isatty"
 )
 
@@ -476,6 +477,15 @@ func (dbp *Process) detach(kill bool) error {
 		sys.Kill(dbp.pid, sys.SIGCONT)
 	}
 	return nil
+}
+
+func (dbp *Process) entryPoint() (uint64, error) {
+	auxvbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
+	if err != nil {
+		return 0, fmt.Errorf("could not read auxiliary vector: %v", err)
+	}
+
+	return linutil.EntryPointFromAuxvAMD64(auxvbuf), nil
 }
 
 func killProcess(pid int) error {

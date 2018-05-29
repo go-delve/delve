@@ -82,6 +82,7 @@ import (
 
 	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/linutil"
 	"github.com/mattn/go-isatty"
 	"github.com/sirupsen/logrus"
 )
@@ -302,8 +303,16 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 		}
 	}
 
+	var entryPoint uint64
+	if auxv, err := p.conn.readAuxv(); err == nil {
+		// If we can't read the auxiliary vector it just means it's not supported
+		// by the OS or by the stub. If we are debugging a PIE and the entry point
+		// is needed proc.LoadBinaryInfo will complain about it.
+		entryPoint = linutil.EntryPointFromAuxvAMD64(auxv)
+	}
+
 	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(path, &wg)
+	err = p.bi.LoadBinaryInfo(path, entryPoint, &wg)
 	wg.Wait()
 	if err == nil {
 		err = p.bi.LoadError()

@@ -40,6 +40,9 @@ type FixtureKey struct {
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
 var Fixtures = make(map[FixtureKey]Fixture)
 
+// PathsToRemove is a list of files and directories to remove after running all the tests
+var PathsToRemove []string
+
 // FindFixturesDir will search for the directory holding all test fixtures
 // beginning with the current directory and searching up 10 directories.
 func FindFixturesDir() string {
@@ -68,6 +71,7 @@ const (
 	EnableOptimization
 	// EnableDWZCompression will enable DWZ compression of DWARF sections.
 	EnableDWZCompression
+	BuildModePIE
 )
 
 // BuildFixture will compile the fixture 'name' using the provided build flags.
@@ -118,6 +122,9 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if *EnableRace {
 		buildFlags = append(buildFlags, "-race")
 	}
+	if flags&BuildModePIE != 0 {
+		buildFlags = append(buildFlags, "-buildmode=pie")
+	}
 	if path != "" {
 		buildFlags = append(buildFlags, name+".go")
 	}
@@ -162,6 +169,18 @@ func RunTestsWithFixtures(m *testing.M) int {
 	// Remove the fixtures.
 	for _, f := range Fixtures {
 		os.Remove(f.Path)
+	}
+
+	for _, p := range PathsToRemove {
+		fi, err := os.Stat(p)
+		if err != nil {
+			panic(err)
+		}
+		if fi.IsDir() {
+			SafeRemoveAll(p)
+		} else {
+			os.Remove(p)
+		}
 	}
 	return status
 }

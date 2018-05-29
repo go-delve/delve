@@ -100,7 +100,7 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 		if err != nil {
 			return nil, err
 		}
-		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(regs), 0, nil, -1, nil)
+		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(regs, thread.BinInfo().staticBase), 0, nil, -1, nil)
 		return it.stacktrace(depth)
 	}
 	return g.Stacktrace(depth, false)
@@ -117,7 +117,7 @@ func (g *G) stackIterator() (*stackIterator, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(regs), g.stackhi, stkbar, g.stkbarPos, g), nil
+		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(regs, g.variable.bi.staticBase), g.stackhi, stkbar, g.stkbarPos, g), nil
 	}
 	return newStackIterator(g.variable.bi, g.variable.mem, g.variable.bi.Arch.GoroutineToDwarfRegisters(g), g.stackhi, stkbar, g.stkbarPos, g), nil
 }
@@ -442,7 +442,7 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		callpc--
 	}
 
-	irdr := reader.InlineStack(it.bi.dwarf, frame.Call.Fn.offset, callpc)
+	irdr := reader.InlineStack(it.bi.dwarf, frame.Call.Fn.offset, reader.ToRelAddr(callpc, it.bi.staticBase))
 	for irdr.Next() {
 		entry, offset := reader.LoadAbstractOrigin(irdr.Entry(), it.dwarfReader)
 
@@ -498,11 +498,11 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {
 		it.err = fmt.Errorf("CFA becomes undefined at PC %#x", it.pc)
-		return op.DwarfRegisters{}, 0, 0
+		return op.DwarfRegisters{StaticBase: it.bi.staticBase}, 0, 0
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
 
-	callFrameRegs = op.DwarfRegisters{ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum}
+	callFrameRegs = op.DwarfRegisters{StaticBase: it.bi.staticBase, ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum}
 
 	// According to the standard the compiler should be responsible for emitting
 	// rules for the RSP register so that it can then be used to calculate CFA,

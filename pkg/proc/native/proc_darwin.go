@@ -463,3 +463,8 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 func (dbp *Process) detach(kill bool) error {
 	return PtraceDetach(dbp.pid, 0)
 }
+
+func (dbp *Process) entryPoint() (uint64, error) {
+	//TODO(aarzilli): implement this
+	return 0, nil
+}

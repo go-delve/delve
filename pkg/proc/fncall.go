@@ -297,7 +297,7 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
 	const CFA = 0x1000
-	vrdr := reader.Variables(bi.dwarf, fn.offset, fn.Entry, int(^uint(0)>>1), false)
+	vrdr := reader.Variables(bi.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, bi.staticBase), int(^uint(0)>>1), false)
 
 	// typechecks arguments, calculates argument frame size
 	for vrdr.Next() {

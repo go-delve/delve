@@ -8,24 +8,46 @@ import (
 )
 
 func TestFDEForPC(t *testing.T) {
-	fde1 := &FrameDescriptionEntry{begin: 0, end: 49}
-	fde2 := &FrameDescriptionEntry{begin: 50, end: 99}
-	fde3 := &FrameDescriptionEntry{begin: 100, end: 200}
-	fde4 := &FrameDescriptionEntry{begin: 201, end: 245}
-
 	frames := NewFrameIndex()
-	frames = append(frames, fde1)
-	frames = append(frames, fde2)
-	frames = append(frames, fde3)
-	frames = append(frames, fde4)
+	frames = append(frames,
+		&FrameDescriptionEntry{begin: 10, size: 40},
+		&FrameDescriptionEntry{begin: 50, size: 50},
+		&FrameDescriptionEntry{begin: 100, size: 100},
+		&FrameDescriptionEntry{begin: 300, size: 10})
 
-	node, err := frames.FDEForPC(35)
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, test := range []struct {
+		pc  uint64
+		fde *FrameDescriptionEntry
+	}{
+		{0, nil},
+		{9, nil},
+		{10, frames[0]},
+		{35, frames[0]},
+		{49, frames[0]},
+		{50, frames[1]},
+		{75, frames[1]},
+		{100, frames[2]},
+		{199, frames[2]},
+		{200, nil},
+		{299, nil},
+		{300, frames[3]},
+		{309, frames[3]},
+		{310, nil},
+		{400, nil}} {
 
-	if node != fde1 {
-		t.Fatal("Got incorrect fde")
+		out, err := frames.FDEForPC(test.pc)
+		if test.fde != nil {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out != test.fde {
+				t.Errorf("[pc = %#x] got incorrect fde\noutput:\t%#v\nexpected:\t%#v", test.pc, out, test.fde)
+			}
+		} else {
+			if err == nil {
+				t.Errorf("[pc = %#x] expected error got fde %#v", test.pc, out)
+			}
+		}
 	}
 }
 
@@ -40,7 +62,7 @@ func BenchmarkFDEForPC(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	fdes := Parse(data, binary.BigEndian)
+	fdes := Parse(data, binary.BigEndian, 0)
 
 	for i := 0; i < b.N; i++ {
 		// bench worst case, exhaustive search

@@ -235,9 +235,13 @@ outer:
 			if compdir != "" {
 				cu.Name = filepath.Join(compdir, cu.Name)
 			}
-			if ranges, _ := bi.dwarf.Ranges(entry); len(ranges) == 1 {
-				cu.LowPC = ranges[0][0]
-				cu.HighPC = ranges[0][1]
+			cu.Ranges, _ = bi.dwarf.Ranges(entry)
+			for i := range cu.Ranges {
+				cu.Ranges[i][0] += bi.staticBase
+				cu.Ranges[i][1] += bi.staticBase
+			}
+			if len(cu.Ranges) >= 1 {
+				cu.LowPC = cu.Ranges[0][0]
 			}
 			lineInfoOffset, _ := entry.Val(dwarf.AttrStmtList).(int64)
 			if lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
@@ -249,7 +253,7 @@ outer:
 						logger.Printf(fmt, args)
 					}
 				}
-				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), logfn)
+				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), logfn, bi.staticBase)
 			}
 			cu.producer, _ = entry.Val(dwarf.AttrProducer).(string)
 			if cu.isgo && cu.producer != "" {
@@ -352,12 +356,12 @@ outer:
 					}
 				}
 				if pu != nil {
-					pu.variables = append(pu.variables, packageVar{n, entry.Offset, addr})
+					pu.variables = append(pu.variables, packageVar{n, entry.Offset, addr + bi.staticBase})
 				} else {
 					if !cu.isgo {
 						n = "C." + n
 					}
-					bi.packageVars = append(bi.packageVars, packageVar{n, entry.Offset, addr})
+					bi.packageVars = append(bi.packageVars, packageVar{n, entry.Offset, addr + bi.staticBase})
 				}
 			}
 
@@ -390,8 +394,8 @@ outer:
 			}
 			if ranges, _ := bi.dwarf.Ranges(entry); len(ranges) == 1 {
 				ok1 = true
-				lowpc = ranges[0][0]
-				highpc = ranges[0][1]
+				lowpc = ranges[0][0] + bi.staticBase
+				highpc = ranges[0][1] + bi.staticBase
 			}
 			name, ok2 := entry.Val(dwarf.AttrName).(string)
 			var fn Function
@@ -443,8 +447,8 @@ outer:
 							callfile := cu.lineInfo.FileNames[callfileidx-1].Path
 							cu.concreteInlinedFns = append(cu.concreteInlinedFns, inlinedFn{
 								Name:     name,
-								LowPC:    lowpc,
-								HighPC:   highpc,
+								LowPC:    lowpc + bi.staticBase,
+								HighPC:   highpc + bi.staticBase,
 								CallFile: callfile,
 								CallLine: callline,
 								Parent:   &fn,
@@ -540,7 +544,7 @@ func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 func (bi *BinaryInfo) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.Reader) {
 	if off, ok := entry.Val(godwarf.AttrGoRuntimeType).(uint64); ok {
 		if _, ok := bi.runtimeTypeToDIE[off]; !ok {
-			bi.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
+			bi.runtimeTypeToDIE[off+bi.staticBase] = runtimeTypeDIE{entry.Offset, -1}
 		}
 	}
 }

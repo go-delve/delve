@@ -191,7 +191,7 @@ func OpenCore(corePath, exePath string) (*Process, error) {
 	}
 
 	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(exePath, &wg)
+	err = p.bi.LoadBinaryInfo(exePath, core.entryPoint, &wg)
 	wg.Wait()
 	if err == nil {
 		err = p.bi.LoadError()

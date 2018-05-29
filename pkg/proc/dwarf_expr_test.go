@@ -90,7 +90,7 @@ func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegist
 
 func dwarfRegisters(regs *core.Registers) op.DwarfRegisters {
 	a := proc.AMD64Arch("linux")
-	dwarfRegs := a.RegistersToDwarfRegisters(regs)
+	dwarfRegs := a.RegistersToDwarfRegisters(regs, 0)
 	dwarfRegs.CFA = defaultCFA
 	dwarfRegs.FrameBase = defaultCFA
 	return dwarfRegs

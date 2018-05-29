@@ -75,6 +75,10 @@ func (dbp *Process) detach(kill bool) error {
 	panic(ErrNativeBackendDisabled)
 }
 
+func (dbp *Process) entryPoint() (uint64, error) {
+	panic(ErrNativeBackendDisabled)
+}
+
 // Blocked returns true if the thread is blocked
 func (t *Thread) Blocked() bool {
 	panic(ErrNativeBackendDisabled)

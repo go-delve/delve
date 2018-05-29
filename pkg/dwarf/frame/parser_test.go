@@ -25,6 +25,6 @@ func BenchmarkParse(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		frame.Parse(data, binary.BigEndian)
+		frame.Parse(data, binary.BigEndian, 0)
 	}
 }

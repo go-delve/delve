@@ -194,9 +194,14 @@ func (dbp *Process) LoadInformation(path string) error {
 
 	path = findExecutable(path, dbp.pid)
 
+	entryPoint, err := dbp.entryPoint()
+	if err != nil {
+		return err
+	}
+
 	wg.Add(1)
 	go dbp.loadProcessInformation(&wg)
-	err := dbp.bi.LoadBinaryInfo(path, &wg)
+	err = dbp.bi.LoadBinaryInfo(path, entryPoint, &wg)
 	wg.Wait()
 	if err == nil {
 		err = dbp.bi.LoadError()

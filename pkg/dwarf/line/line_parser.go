@@ -34,6 +34,9 @@ type DebugLineInfo struct {
 
 	// lastMachineCache[pc] is a state machine stopped at an address after pc
 	lastMachineCache map[uint64]*StateMachine
+	
+	// staticBase is the address at which the executable is loaded, 0 for non-PIEs
+	staticBase uint64
 }
 
 type FileEntry struct {
@@ -46,7 +49,7 @@ type FileEntry struct {
 type DebugLines []*DebugLineInfo
 
 // ParseAll parses all debug_line segments found in data
-func ParseAll(data []byte, logfn func(string, ...interface{})) DebugLines {
+func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64) DebugLines {
 	var (
 		lines = make(DebugLines, 0)
 		buf   = bytes.NewBuffer(data)
@@ -54,7 +57,7 @@ func ParseAll(data []byte, logfn func(string, ...interface{})) DebugLines {
 
 	// We have to parse multiple file name tables here.
 	for buf.Len() > 0 {
-		lines = append(lines, Parse("", buf, logfn))
+		lines = append(lines, Parse("", buf, logfn, staticBase))
 	}
 
 	return lines
@@ -62,9 +65,10 @@ func ParseAll(data []byte, logfn func(string, ...interface{})) DebugLines {
 
 // Parse parses a single debug_line segment from buf. Compdir is the
 // DW_AT_comp_dir attribute of the associated compile unit.
-func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{})) *DebugLineInfo {
+func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
 	dbl.Logf = logfn
+	dbl.staticBase = staticBase
 	dbl.Lookup = make(map[string]*FileEntry)
 	if compdir != "" {
 		dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)

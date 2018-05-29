@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/constant"
 	"io/ioutil"
@@ -19,7 +20,14 @@ import (
 	"github.com/derekparker/delve/pkg/proc/test"
 )
 
+var buildMode string
+
 func TestMain(m *testing.M) {
+	flag.StringVar(&buildMode, "test-buildmode", "", "selects build mode")
+	if buildMode != "" && buildMode != "pie" {
+		fmt.Fprintf(os.Stderr, "unknown build mode %q", buildMode)
+		os.Exit(1)
+	}
 	os.Exit(test.RunTestsWithFixtures(m))
 }
 
@@ -146,7 +154,12 @@ func withCoreFile(t *testing.T, name, args string) *Process {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fix := test.BuildFixture(name, 0)
+	test.PathsToRemove = append(test.PathsToRemove, tempDir)
+	var buildFlags test.BuildFlags
+	if buildMode == "pie" {
+		buildFlags = test.BuildModePIE
+	}
+	fix := test.BuildFixture(name, buildFlags)
 	bashCmd := fmt.Sprintf("cd %v && ulimit -c unlimited && GOTRACEBACK=crash %v %s", tempDir, fix.Path, args)
 	exec.Command("bash", "-c", bashCmd).Run()
 	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
@@ -161,11 +174,12 @@ func withCoreFile(t *testing.T, name, args string) *Process {
 
 	p, err := OpenCore(corePath, fix.Path)
 	if err != nil {
+		t.Errorf("ReadCore(%q) failed: %v", corePath, err)
 		pat, err := ioutil.ReadFile("/proc/sys/kernel/core_pattern")
 		t.Errorf("read core_pattern: %q, %v", pat, err)
 		apport, err := ioutil.ReadFile("/var/log/apport.log")
 		t.Errorf("read apport log: %q, %v", apport, err)
-		t.Fatalf("ReadCore() failed: %v", err)
+		t.Fatalf("previous errors")
 	}
 	return p
 }
@@ -209,7 +223,7 @@ func TestCore(t *testing.T) {
 	// Walk backward, because the current function seems to be main.main
 	// in the actual call to panic().
 	for i := len(panickingStack) - 1; i >= 0; i-- {
-		if panickingStack[i].Current.Fn.Name == "main.main" {
+		if panickingStack[i].Current.Fn != nil && panickingStack[i].Current.Fn.Name == "main.main" {
 			mainFrame = &panickingStack[i]
 		}
 	}
