@@ -2,6 +2,7 @@ package gdbserial_test
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -11,6 +12,10 @@ import (
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
 	protest "github.com/derekparker/delve/pkg/proc/test"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(protest.RunTestsWithFixtures(m))
+}
 
 func withTestRecording(name string, t testing.TB, fn func(p *gdbserial.Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name, 0)

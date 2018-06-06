@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 			testBackend = "native"
 		}
 	}
-	os.Exit(m.Run())
+	os.Exit(test.RunTestsWithFixtures(m))
 }
 
 type FakeTerminal struct {
