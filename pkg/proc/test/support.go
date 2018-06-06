@@ -18,6 +18,8 @@ import (
 
 var EnableRace = flag.Bool("racetarget", false, "Enables race detector on inferior process")
 
+var runningWithFixtures bool
+
 // Fixture is a test binary.
 type Fixture struct {
 	// Name is the short name of the fixture.
@@ -58,6 +60,9 @@ const (
 )
 
 func BuildFixture(name string, flags BuildFlags) Fixture {
+	if !runningWithFixtures {
+		panic("RunTestsWithFixtures not called")
+	}
 	fk := FixtureKey{name, flags}
 	if f, ok := Fixtures[fk]; ok {
 		return f
@@ -132,6 +137,10 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 // RunTestsWithFixtures will pre-compile test fixtures before running test
 // methods. Test binaries are deleted before exiting.
 func RunTestsWithFixtures(m *testing.M) int {
+	runningWithFixtures = true
+	defer func() {
+		runningWithFixtures = false
+	}()
 	status := m.Run()
 
 	// Remove the fixtures.

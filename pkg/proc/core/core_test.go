@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/constant"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -17,6 +18,10 @@ import (
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/test"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(test.RunTestsWithFixtures(m))
+}
 
 func assertNoError(err error, t testing.TB, s string) {
 	if err != nil {
