@@ -1224,6 +1224,8 @@ func (t *Thread) Blocked() bool {
 		return true
 	case "runtime.mach_semaphore_wait", "runtime.mach_semaphore_timedwait":
 		return true
+	default:
+		return strings.HasPrefix(fn.Name, "syscall.Syscall") || strings.HasPrefix(fn.Name, "syscall.RawSyscall")
 	}
 	return false
 }
