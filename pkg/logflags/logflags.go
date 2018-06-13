@@ -2,14 +2,16 @@ package logflags
 
 import (
 	"errors"
+	"io/ioutil"
+	"log"
 	"strings"
 )
 
 var debugger = false
 var gdbWire = false
 var lldbServerOutput = false
-var suppressedErrors = false
 var debugLineErrors = false
+var rpc = false
 
 // GdbWire returns true if the gdbserial package should log all the packets
 // exchanged with the stub.
@@ -34,11 +36,18 @@ func DebugLineErrors() bool {
 	return debugLineErrors
 }
 
+// RPC returns true if rpc messages should be logged.
+func RPC() bool {
+	return rpc
+}
+
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
 
 // Setup sets debugger flags based on the contents of logstr.
-func Setup(log bool, logstr string) error {
-	if !log {
+func Setup(logFlag bool, logstr string) error {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	if !logFlag {
+		log.SetOutput(ioutil.Discard)
 		if logstr != "" {
 			return errLogstrWithoutLog
 		}
@@ -58,6 +67,8 @@ func Setup(log bool, logstr string) error {
 			lldbServerOutput = true
 		case "debuglineerr":
 			debugLineErrors = true
+		case "rpc":
+			rpc = true
 		}
 	}
 	return nil

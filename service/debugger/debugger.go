@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/core"
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
@@ -70,7 +71,9 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 	// Create the process by either attaching or launching.
 	switch {
 	case d.config.AttachPid > 0:
-		log.Printf("attaching to pid %d", d.config.AttachPid)
+		if logflags.Debugger() {
+			log.Printf("attaching to pid %d", d.config.AttachPid)
+		}
 		path := ""
 		if len(d.processArgs) > 0 {
 			path = d.processArgs[0]
@@ -86,10 +89,14 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		var err error
 		switch d.config.Backend {
 		case "rr":
-			log.Printf("opening trace %s", d.config.CoreFile)
+			if logflags.Debugger() {
+				log.Printf("opening trace %s", d.config.CoreFile)
+			}
 			p, err = gdbserial.Replay(d.config.CoreFile, false)
 		default:
-			log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
+			if logflags.Debugger() {
+				log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
+			}
 			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0])
 		}
 		if err != nil {
@@ -98,7 +105,9 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		d.target = p
 
 	default:
-		log.Printf("launching process with args: %v", d.processArgs)
+		if logflags.Debugger() {
+			log.Printf("launching process with args: %v", d.processArgs)
+		}
 		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
 			if err != proc.NotExecutableErr && err != proc.UnsupportedLinuxArchErr && err != proc.UnsupportedWindowsArchErr && err != proc.UnsupportedDarwinArchErr {
@@ -358,7 +367,9 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		return nil, err
 	}
 	createdBp = api.ConvertBreakpoint(bp)
-	log.Printf("created breakpoint: %#v", createdBp)
+	if logflags.Debugger() {
+		log.Printf("created breakpoint: %#v", createdBp)
+	}
 	return createdBp, nil
 }
 
@@ -406,7 +417,9 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 		return nil, fmt.Errorf("Can't clear breakpoint @%x: %s", requestedBp.Addr, err)
 	}
 	clearedBp = api.ConvertBreakpoint(bp)
-	log.Printf("cleared breakpoint: %#v", clearedBp)
+	if logflags.Debugger() {
+		log.Printf("cleared breakpoint: %#v", clearedBp)
+	}
 	return clearedBp, err
 }
 
@@ -504,7 +517,9 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	if command.Name == api.Halt {
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
-		log.Print("halting")
+		if logflags.Debugger() {
+			log.Print("halting")
+		}
 		err = d.target.RequestManualStop()
 	}
 
@@ -515,10 +530,14 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 
 	switch command.Name {
 	case api.Continue:
-		log.Print("continuing")
+		if logflags.Debugger() {
+			log.Print("continuing")
+		}
 		err = proc.Continue(d.target)
 	case api.Rewind:
-		log.Print("rewinding")
+		if logflags.Debugger() {
+			log.Print("rewinding")
+		}
 		if err := d.target.Direction(proc.Backward); err != nil {
 			return nil, err
 		}
@@ -527,23 +546,35 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		}()
 		err = proc.Continue(d.target)
 	case api.Next:
-		log.Print("nexting")
+		if logflags.Debugger() {
+			log.Print("nexting")
+		}
 		err = proc.Next(d.target)
 	case api.Step:
-		log.Print("stepping")
+		if logflags.Debugger() {
+			log.Print("stepping")
+		}
 		err = proc.Step(d.target)
 	case api.StepInstruction:
-		log.Print("single stepping")
+		if logflags.Debugger() {
+			log.Print("single stepping")
+		}
 		err = d.target.StepInstruction()
 	case api.StepOut:
-		log.Print("step out")
+		if logflags.Debugger() {
+			log.Print("step out")
+		}
 		err = proc.StepOut(d.target)
 	case api.SwitchThread:
-		log.Printf("switching to thread %d", command.ThreadID)
+		if logflags.Debugger() {
+			log.Printf("switching to thread %d", command.ThreadID)
+		}
 		err = d.target.SwitchThread(command.ThreadID)
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
-		log.Printf("switching to goroutine %d", command.GoroutineID)
+		if logflags.Debugger() {
+			log.Printf("switching to goroutine %d", command.GoroutineID)
+		}
 		err = d.target.SwitchGoroutine(command.GoroutineID)
 		withBreakpointInfo = false
 	case api.Halt:
