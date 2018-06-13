@@ -37,6 +37,7 @@ Pass flags to the program you are debugging using `--`, for example:
 	gdbwire		Log connection to gdbserial backend
 	lldbout		Copy output from debugserver/lldb to standard output
 	debuglineerr	Log recoverable errors reading .debug_line
+	rpc		Log all RPC messages
 Defaults to "debugger" when logging is enabled with --log.
       --wd string            Working directory for running the program. (default ".")
 ```

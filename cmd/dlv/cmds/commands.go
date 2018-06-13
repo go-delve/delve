@@ -94,6 +94,7 @@ func New(docCall bool) *cobra.Command {
 	gdbwire		Log connection to gdbserial backend
 	lldbout		Copy output from debugserver/lldb to standard output
 	debuglineerr	Log recoverable errors reading .debug_line
+	rpc		Log all RPC messages
 Defaults to "debugger" when logging is enabled with --log.`)
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
@@ -363,7 +364,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			APIVersion:  2,
 			WorkingDir:  WorkingDir,
 			Backend:     Backend,
-		}, logflags.Debugger())
+		}, logflags.RPC())
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -509,7 +510,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			Foreground:  Headless,
 
 			DisconnectChan: disconnectChan,
-		}, logflags.Debugger())
+		}, logflags.RPC())
 	default:
 		fmt.Printf("Unknown API version: %d\n", APIVersion)
 		return 1
