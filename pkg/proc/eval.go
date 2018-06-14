@@ -11,6 +11,7 @@ import (
 	"go/printer"
 	"go/token"
 	"reflect"
+	"strconv"
 
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
@@ -185,6 +186,15 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 				return newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem), nil
 			} else if v, err := scope.findGlobal(maybePkg.Name + "." + node.Sel.Name); err == nil {
 				return v, nil
+			}
+		}
+		// try to accept "package/path".varname syntax for package variables
+		if maybePkg, ok := node.X.(*ast.BasicLit); ok && maybePkg.Kind == token.STRING {
+			pkgpath, err := strconv.Unquote(maybePkg.Value)
+			if err == nil {
+				if v, err := scope.findGlobal(pkgpath + "." + node.Sel.Name); err == nil {
+					return v, nil
+				}
 			}
 		}
 		// if it's not a package variable then it must be a struct member access

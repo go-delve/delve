@@ -1,5 +1,7 @@
 package pkg
 
+var A = 0
+
 type SomeType struct {
 	X float64
 }
