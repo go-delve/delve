@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"io/ioutil"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -16,12 +16,14 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/version"
 	"github.com/derekparker/delve/service"
 	"github.com/derekparker/delve/service/api"
 	"github.com/derekparker/delve/service/debugger"
 	"github.com/derekparker/delve/service/rpc1"
 	"github.com/derekparker/delve/service/rpc2"
+	"github.com/sirupsen/logrus"
 )
 
 // ServerImpl implements a JSON-RPC server that can switch between two
@@ -41,7 +43,7 @@ type ServerImpl struct {
 	s2 *rpc2.RPCServer
 	// maps of served methods, one for each supported API.
 	methodMaps []map[string]*methodType
-	log        bool
+	log        *logrus.Entry
 }
 
 type RPCCallback struct {
@@ -65,17 +67,24 @@ type methodType struct {
 }
 
 // NewServer creates a new RPCServer.
-func NewServer(config *service.Config, logEnabled bool) *ServerImpl {
+func NewServer(config *service.Config) *ServerImpl {
+	logger := logrus.New().WithFields(logrus.Fields{"layer": "rpc"})
+	logger.Level = logrus.DebugLevel
+	if !logflags.RPC() {
+		logger.Logger.Out = ioutil.Discard
+	}
 	if config.APIVersion < 2 {
-		if logEnabled {
-			log.Printf("Using API v1")
-		}
+		logger.Info("Using API v1")
+	}
+	if config.Foreground {
+		// Print listener address
+		logger.Infof("API server listening at: %s", config.Listener.Addr())
 	}
 	return &ServerImpl{
 		config:   config,
 		listener: config.Listener,
 		stopChan: make(chan struct{}),
-		log:      logEnabled,
+		log:      logger,
 	}
 }
 
@@ -183,14 +192,12 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 // two signatures:
 //  func (rcvr ReceiverType) Method(in InputType, out *ReplyType) error
 //  func (rcvr ReceiverType) Method(in InputType, cb service.RPCCallback)
-func suitableMethods(rcvr interface{}, methods map[string]*methodType, logEnabled bool) {
+func suitableMethods(rcvr interface{}, methods map[string]*methodType, log *logrus.Entry) {
 	typ := reflect.TypeOf(rcvr)
 	rcvrv := reflect.ValueOf(rcvr)
 	sname := reflect.Indirect(rcvrv).Type().Name()
 	if sname == "" {
-		if logEnabled {
-			log.Printf("rpc.Register: no service name for type %s", typ)
-		}
+		log.Debugf("rpc.Register: no service name for type %s", typ)
 		return
 	}
 	for m := 0; m < typ.NumMethod(); m++ {
@@ -203,17 +210,13 @@ func suitableMethods(rcvr interface{}, methods map[string]*methodType, logEnable
 		}
 		// Method needs three ins: (receive, *args, *reply) or (receiver, *args, *RPCCallback)
 		if mtype.NumIn() != 3 {
-			if logEnabled {
-				log.Println("method", mname, "has wrong number of ins:", mtype.NumIn())
-			}
+			log.Warn("method", mname, "has wrong number of ins:", mtype.NumIn())
 			continue
 		}
 		// First arg need not be a pointer.
 		argType := mtype.In(1)
 		if !isExportedOrBuiltinType(argType) {
-			if logEnabled {
-				log.Println(mname, "argument type not exported:", argType)
-			}
+			log.Warn(mname, "argument type not exported:", argType)
 			continue
 		}
 
@@ -223,39 +226,29 @@ func suitableMethods(rcvr interface{}, methods map[string]*methodType, logEnable
 		if synchronous {
 			// Second arg must be a pointer.
 			if replyType.Kind() != reflect.Ptr {
-				if logEnabled {
-					log.Println("method", mname, "reply type not a pointer:", replyType)
-				}
+				log.Warn("method", mname, "reply type not a pointer:", replyType)
 				continue
 			}
 			// Reply type must be exported.
 			if !isExportedOrBuiltinType(replyType) {
-				if logEnabled {
-					log.Println("method", mname, "reply type not exported:", replyType)
-				}
+				log.Warn("method", mname, "reply type not exported:", replyType)
 				continue
 			}
 
 			// Method needs one out.
 			if mtype.NumOut() != 1 {
-				if logEnabled {
-					log.Println("method", mname, "has wrong number of outs:", mtype.NumOut())
-				}
+				log.Warn("method", mname, "has wrong number of outs:", mtype.NumOut())
 				continue
 			}
 			// The return type of the method must be error.
 			if returnType := mtype.Out(0); returnType != typeOfError {
-				if logEnabled {
-					log.Println("method", mname, "returns", returnType.String(), "not error")
-				}
+				log.Warn("method", mname, "returns", returnType.String(), "not error")
 				continue
 			}
 		} else {
 			// Method needs zero outs.
 			if mtype.NumOut() != 0 {
-				if logEnabled {
-					log.Println("method", mname, "has wrong number of outs:", mtype.NumOut())
-				}
+				log.Warn("method", mname, "has wrong number of outs:", mtype.NumOut())
 				continue
 			}
 		}
@@ -273,18 +266,14 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 		err := codec.ReadRequestHeader(&req)
 		if err != nil {
 			if err != io.EOF {
-				if s.log {
-					log.Println("rpc:", err)
-				}
+				s.log.Error("rpc:", err)
 			}
 			break
 		}
 
 		mtype, ok := s.methodMaps[s.config.APIVersion-1][req.ServiceMethod]
 		if !ok {
-			if s.log {
-				log.Printf("rpc: can't find method %s", req.ServiceMethod)
-			}
+			s.log.Errorf("rpc: can't find method %s", req.ServiceMethod)
 			continue
 		}
 
@@ -307,9 +296,9 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 		}
 
 		if mtype.Synchronous {
-			if s.log {
+			if logflags.RPC() {
 				argvbytes, _ := json.Marshal(argv.Interface())
-				log.Printf("-> %s(%T%s)\n", req.ServiceMethod, argv.Interface(), argvbytes)
+				s.log.Debugf("-> %s(%T%s)\n", req.ServiceMethod, argv.Interface(), argvbytes)
 			}
 			replyv = reflect.New(mtype.ReplyType.Elem())
 			function := mtype.method.Func
@@ -330,15 +319,15 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 				errmsg = errInter.(error).Error()
 			}
 			resp = rpc.Response{}
-			if s.log {
+			if logflags.RPC() {
 				replyvbytes, _ := json.Marshal(replyv.Interface())
-				log.Printf("<- %T%s error: %q\n", replyv.Interface(), replyvbytes, errmsg)
+				s.log.Debugf("<- %T%s error: %q\n", replyv.Interface(), replyvbytes, errmsg)
 			}
 			s.sendResponse(sending, &req, &resp, replyv.Interface(), codec, errmsg)
 		} else {
-			if s.log {
+			if logflags.RPC() {
 				argvbytes, _ := json.Marshal(argv.Interface())
-				log.Printf("(async %d) -> %s(%T%s)\n", req.Seq, req.ServiceMethod, argv.Interface(), argvbytes)
+				s.log.Debugf("(async %d) -> %s(%T%s)\n", req.Seq, req.ServiceMethod, argv.Interface(), argvbytes)
 			}
 			function := mtype.method.Func
 			ctl := &RPCCallback{s, sending, codec, req}
@@ -374,9 +363,7 @@ func (s *ServerImpl) sendResponse(sending *sync.Mutex, req *rpc.Request, resp *r
 	defer sending.Unlock()
 	err := codec.WriteResponse(resp, reply)
 	if err != nil {
-		if s.log {
-			log.Println("rpc: writing response:", err)
-		}
+		s.log.Error("writing response:", err)
 	}
 }
 
@@ -386,9 +373,9 @@ func (cb *RPCCallback) Return(out interface{}, err error) {
 		errmsg = err.Error()
 	}
 	var resp rpc.Response
-	if cb.s.log {
+	if logflags.RPC() {
 		outbytes, _ := json.Marshal(out)
-		log.Printf("(async %d) <- %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
+		cb.s.log.Debugf("(async %d) <- %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
 	}
 	cb.s.sendResponse(cb.sending, &cb.req, &resp, out, cb.codec, errmsg)
 }

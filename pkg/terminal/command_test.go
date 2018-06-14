@@ -109,7 +109,7 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 		Listener:    listener,
 		ProcessArgs: []string{test.BuildFixture(name, 0).Path},
 		Backend:     testBackend,
-	}, false)
+	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}

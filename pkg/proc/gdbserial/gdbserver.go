@@ -68,6 +68,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -81,6 +82,7 @@ import (
 
 	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -166,11 +168,17 @@ type gdbRegister struct {
 // Detach.
 // Use Listen, Dial or Connect to complete connection.
 func New(process *os.Process) *Process {
+	logger := logrus.New().WithFields(logrus.Fields{"layer": "gdbconn"})
+	logger.Level = logrus.DebugLevel
+	if !logflags.GdbWire() {
+		logger.Logger.Out = ioutil.Discard
+	}
 	p := &Process{
 		conn: gdbConn{
 			maxTransmitAttempts: maxTransmitAttempts,
 			inbuf:               make([]byte, 0, initialInputBufferSize),
 			direction:           proc.Forward,
+			log:                 logger,
 		},
 		threads:        make(map[int]*Thread),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
