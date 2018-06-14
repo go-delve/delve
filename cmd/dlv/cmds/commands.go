@@ -364,7 +364,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			APIVersion:  2,
 			WorkingDir:  WorkingDir,
 			Backend:     Backend,
-		}, logflags.RPC())
+		})
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -510,7 +510,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			Foreground:  Headless,
 
 			DisconnectChan: disconnectChan,
-		}, logflags.RPC())
+		})
 	default:
 		fmt.Printf("Unknown API version: %d\n", APIVersion)
 		return 1
@@ -535,8 +535,6 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 
 	var status int
 	if Headless {
-		// Print listener address
-		fmt.Printf("API server listening at: %s\n", listener.Addr())
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT)
 		select {

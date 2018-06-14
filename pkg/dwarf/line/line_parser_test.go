@@ -67,7 +67,7 @@ const (
 
 func testDebugLinePrologueParser(p string, t *testing.T) {
 	data := grabDebugLineSection(p, t)
-	debugLines := ParseAll(data)
+	debugLines := ParseAll(data, nil)
 
 	mainFileFound := false
 
@@ -164,7 +164,7 @@ func BenchmarkLineParser(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = ParseAll(data)
+		_ = ParseAll(data, nil)
 	}
 }
 
@@ -179,7 +179,7 @@ func loadBenchmarkData(tb testing.TB) DebugLines {
 		tb.Fatal("Could not read test data", err)
 	}
 
-	return ParseAll(data)
+	return ParseAll(data, nil)
 }
 
 func BenchmarkStateMachine(b *testing.B) {

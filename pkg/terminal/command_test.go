@@ -113,7 +113,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 		Listener:    listener,
 		ProcessArgs: []string{test.BuildFixture(name, buildFlags).Path},
 		Backend:     testBackend,
-	}, false)
+	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}

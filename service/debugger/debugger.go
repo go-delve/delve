@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go/parser"
-	"log"
+	"io/ioutil"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -18,6 +18,7 @@ import (
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
 	"github.com/derekparker/delve/pkg/proc/native"
 	"github.com/derekparker/delve/service/api"
+	"github.com/sirupsen/logrus"
 )
 
 // Debugger service.
@@ -35,6 +36,7 @@ type Debugger struct {
 	// TODO(DO NOT MERGE WITHOUT) rename to targetMutex
 	processMutex sync.Mutex
 	target       proc.Process
+	log          *logrus.Entry
 }
 
 // Config provides the configuration to start a Debugger.
@@ -63,17 +65,21 @@ type Config struct {
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
 // new process.
 func New(config *Config, processArgs []string) (*Debugger, error) {
+	logger := logrus.New().WithFields(logrus.Fields{"layer": "debugger"})
+	logger.Level = logrus.DebugLevel
+	if !logflags.Debugger() {
+		logger.Logger.Out = ioutil.Discard
+	}
 	d := &Debugger{
 		config:      config,
 		processArgs: processArgs,
+		log:         logger,
 	}
 
 	// Create the process by either attaching or launching.
 	switch {
 	case d.config.AttachPid > 0:
-		if logflags.Debugger() {
-			log.Printf("attaching to pid %d", d.config.AttachPid)
-		}
+		d.log.Infof("attaching to pid %d", d.config.AttachPid)
 		path := ""
 		if len(d.processArgs) > 0 {
 			path = d.processArgs[0]
@@ -89,14 +95,10 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		var err error
 		switch d.config.Backend {
 		case "rr":
-			if logflags.Debugger() {
-				log.Printf("opening trace %s", d.config.CoreFile)
-			}
+			d.log.Infof("opening trace %s", d.config.CoreFile)
 			p, err = gdbserial.Replay(d.config.CoreFile, false)
 		default:
-			if logflags.Debugger() {
-				log.Printf("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
-			}
+			d.log.Infof("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
 			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0])
 		}
 		if err != nil {
@@ -105,9 +107,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		d.target = p
 
 	default:
-		if logflags.Debugger() {
-			log.Printf("launching process with args: %v", d.processArgs)
-		}
+		d.log.Infof("launching process with args: %v", d.processArgs)
 		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
 			if err != proc.NotExecutableErr && err != proc.UnsupportedLinuxArchErr && err != proc.UnsupportedWindowsArchErr && err != proc.UnsupportedDarwinArchErr {
@@ -367,9 +367,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		return nil, err
 	}
 	createdBp = api.ConvertBreakpoint(bp)
-	if logflags.Debugger() {
-		log.Printf("created breakpoint: %#v", createdBp)
-	}
+	d.log.Infof("created breakpoint: %#v", createdBp)
 	return createdBp, nil
 }
 
@@ -417,9 +415,7 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 		return nil, fmt.Errorf("Can't clear breakpoint @%x: %s", requestedBp.Addr, err)
 	}
 	clearedBp = api.ConvertBreakpoint(bp)
-	if logflags.Debugger() {
-		log.Printf("cleared breakpoint: %#v", clearedBp)
-	}
+	d.log.Infof("cleared breakpoint: %#v", clearedBp)
 	return clearedBp, err
 }
 
@@ -517,9 +513,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	if command.Name == api.Halt {
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
-		if logflags.Debugger() {
-			log.Print("halting")
-		}
+		d.log.Debug("halting")
 		err = d.target.RequestManualStop()
 	}
 
@@ -530,14 +524,10 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 
 	switch command.Name {
 	case api.Continue:
-		if logflags.Debugger() {
-			log.Print("continuing")
-		}
+		d.log.Debug("continuing")
 		err = proc.Continue(d.target)
 	case api.Rewind:
-		if logflags.Debugger() {
-			log.Print("rewinding")
-		}
+		d.log.Debug("rewinding")
 		if err := d.target.Direction(proc.Backward); err != nil {
 			return nil, err
 		}
@@ -546,35 +536,23 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		}()
 		err = proc.Continue(d.target)
 	case api.Next:
-		if logflags.Debugger() {
-			log.Print("nexting")
-		}
+		d.log.Debug("nexting")
 		err = proc.Next(d.target)
 	case api.Step:
-		if logflags.Debugger() {
-			log.Print("stepping")
-		}
+		d.log.Debug("stepping")
 		err = proc.Step(d.target)
 	case api.StepInstruction:
-		if logflags.Debugger() {
-			log.Print("single stepping")
-		}
+		d.log.Debug("single stepping")
 		err = d.target.StepInstruction()
 	case api.StepOut:
-		if logflags.Debugger() {
-			log.Print("step out")
-		}
+		d.log.Debug("step out")
 		err = proc.StepOut(d.target)
 	case api.SwitchThread:
-		if logflags.Debugger() {
-			log.Printf("switching to thread %d", command.ThreadID)
-		}
+		d.log.Debugf("switching to thread %d", command.ThreadID)
 		err = d.target.SwitchThread(command.ThreadID)
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
-		if logflags.Debugger() {
-			log.Printf("switching to goroutine %d", command.GoroutineID)
-		}
+		d.log.Debugf("switching to goroutine %d", command.GoroutineID)
 		err = d.target.SwitchGoroutine(command.GoroutineID)
 		withBreakpointInfo = false
 	case api.Halt:

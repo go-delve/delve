@@ -80,13 +80,13 @@ func TestBuild(t *testing.T) {
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend)
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
 	cmd.Dir = buildtestdir
-	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stdout pipe")
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
 	cmd.Start()
 
-	scan := bufio.NewScanner(stdout)
+	scan := bufio.NewScanner(stderr)
 	// wait for the debugger to start
 	scan.Scan()
 	go func() {

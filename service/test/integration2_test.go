@@ -51,7 +51,7 @@ func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 		Listener:    listener,
 		ProcessArgs: []string{protest.BuildFixture(name, 0).Path},
 		Backend:     testBackend,
-	}, false)
+	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestRunWithInvalidPath(t *testing.T) {
 		ProcessArgs: []string{"invalid_path"},
 		APIVersion:  2,
 		Backend:     testBackend,
-	}, false)
+	})
 	if err := server.Run(); err == nil {
 		t.Fatal("Expected Run to return error for invalid program path")
 	}
@@ -175,7 +175,7 @@ func TestRestart_attachPid(t *testing.T) {
 		AttachPid:  999,
 		APIVersion: 2,
 		Backend:    testBackend,
-	}, false)
+	})
 	if err := server.Restart(); err == nil {
 		t.Fatal("expected error on restart after attaching to pid but got none")
 	}

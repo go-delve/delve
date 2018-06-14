@@ -33,7 +33,7 @@ func withTestClient1(name string, t *testing.T, fn func(c *rpc1.RPCClient)) {
 		Listener:    listener,
 		ProcessArgs: []string{protest.BuildFixture(name, 0).Path},
 		Backend:     testBackend,
-	}, false)
+	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func Test1RunWithInvalidPath(t *testing.T) {
 		Listener:    listener,
 		ProcessArgs: []string{"invalid_path"},
 		Backend:     testBackend,
-	}, false)
+	})
 	if err := server.Run(); err == nil {
 		t.Fatal("Expected Run to return error for invalid program path")
 	}
@@ -150,7 +150,7 @@ func Test1Restart_attachPid(t *testing.T) {
 		Listener:  nil,
 		AttachPid: 999,
 		Backend:   testBackend,
-	}, false)
+	})
 	if err := server.Restart(); err == nil {
 		t.Fatal("expected error on restart after attaching to pid but got none")
 	}
