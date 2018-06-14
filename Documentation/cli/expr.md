@@ -81,3 +81,12 @@ To use a field of a struct contained inside an interface variable use a type ass
 (dlv) p iface1.(*main.astruct).B
 2
 ```
+
+# Specifying package paths
+
+Packages with the same name can be disambiguated by using the full package path. For example, if the application imports two packages, `some/package` and `some/other/package`, both defining a variable `A`, the two variables can be accessed using this syntax:
+
+```
+(dlv) p "some/package".A
+(dlv) p "some/other/package".A
+```

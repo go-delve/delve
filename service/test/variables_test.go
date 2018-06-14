@@ -920,6 +920,9 @@ func TestPackageRenames(t *testing.T) {
 		{"astruct", true, `interface {}(*struct { A github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; B github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType }) *{A: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, B: github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 3}}`, "", "interface {}", nil},
 		{"astruct2", true, `interface {}(*struct { github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType; X int }) *{SomeType: github.com/derekparker/delve/_fixtures/vendor/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
 		{"iface2iface", true, `interface {}(*interface { AMethod(int) int; AnotherMethod(int) int }) **github.com/derekparker/delve/_fixtures/vendor/dir0/pkg.SomeType {X: 4}`, "", "interface {}", nil},
+
+		{`"dir0/pkg".A`, false, "0", "", "int", nil},
+		{`"dir1/pkg".A`, false, "1", "", "int", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())

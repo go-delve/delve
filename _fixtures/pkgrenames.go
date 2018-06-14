@@ -51,5 +51,5 @@ func main() {
 	m := t.Method(0)
 	fmt.Println(m.Type.In(0))
 	fmt.Println(m.Type.String())
-	fmt.Println(badexpr, req, amap, amap2, dir0someType, dir1someType, amap3, anarray, achan, aslice, afunc, astruct, astruct2, iface2iface, iface3, pkg.SomeVar)
+	fmt.Println(badexpr, req, amap, amap2, dir0someType, dir1someType, amap3, anarray, achan, aslice, afunc, astruct, astruct2, iface2iface, iface3, pkg.SomeVar, pkg.A, dir1pkg.A)
 }
