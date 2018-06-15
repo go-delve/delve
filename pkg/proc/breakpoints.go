@@ -79,6 +79,9 @@ const (
 	// Continue will set a new breakpoint (of NextBreakpoint kind) on the
 	// destination of CALL, delete this breakpoint and then continue again
 	StepBreakpoint
+	// TraceReturnBreakpoint is an internal breakpoint set to get the return
+	// values of a traced function.
+	TraceReturnBreakpoint
 )
 
 func (bp *Breakpoint) String() string {
@@ -372,6 +375,7 @@ func configureReturnBreakpoint(bi *BinaryInfo, bp *Breakpoint, topframe *Stackfr
 	if topframe.Current.Fn == nil {
 		return
 	}
+	bp.Name = fmt.Sprintf("[return values] %d", bp.ID)
 	bp.returnInfo = &returnBreakpointInfo{
 		retFrameCond: retFrameCond,
 		fn:           topframe.Current.Fn,

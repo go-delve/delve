@@ -1553,25 +1553,41 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
-		fmt.Printf("> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
-			bpname,
-			fn.Name,
-			args,
-			ShortenFilePath(th.File),
-			th.Line,
-			th.GoroutineID,
-			hitCount,
-			th.Breakpoint.TotalHitCount,
-			th.PC)
+		shouldprint := true
+		if th.Breakpoint.Tracepoint {
+			if th.ReturnValues != nil {
+				shouldprint = false
+			}
+		}
+		if shouldprint {
+			fmt.Printf("> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
+				bpname,
+				fn.Name,
+				args,
+				ShortenFilePath(th.File),
+				th.Line,
+				th.GoroutineID,
+				hitCount,
+				th.Breakpoint.TotalHitCount,
+				th.PC)
+		}
 	} else {
-		fmt.Printf("> %s%s(%s) %s:%d (hits total:%d) (PC: %#v)\n",
-			bpname,
-			fn.Name,
-			args,
-			ShortenFilePath(th.File),
-			th.Line,
-			th.Breakpoint.TotalHitCount,
-			th.PC)
+		shouldprint := true
+		if th.Breakpoint.Tracepoint {
+			if th.ReturnValues != nil {
+				shouldprint = false
+			}
+		}
+		if shouldprint {
+			fmt.Printf("> %s%s(%s) %s:%d (hits total:%d) (PC: %#v)\n",
+				bpname,
+				fn.Name,
+				args,
+				ShortenFilePath(th.File),
+				th.Line,
+				th.Breakpoint.TotalHitCount,
+				th.PC)
+		}
 	}
 	if th.Function != nil && th.Function.Optimized {
 		fmt.Println(optimizedFunctionWarning)

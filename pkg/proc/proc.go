@@ -147,6 +147,39 @@ func Continue(dbp Process) error {
 				}
 			}
 			return conditionErrors(threads)
+		case curbp.Active && curbp.Tracepoint:
+			if curbp.returnInfo != nil {
+				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(curthread)
+				return conditionErrors(threads)
+			}
+			// We have hit a function entry breakpoint, set a
+			// breakpoint at the return address and load return
+			// values.
+			selg := dbp.SelectedGoroutine()
+			topframe, retframe, err := topframe(selg, curthread)
+			if err != nil {
+				return err
+			}
+
+			if topframe.Inlined {
+				if err := next(dbp, false, true); err != nil {
+					return err
+				}
+				return Continue(dbp)
+			}
+
+			sameGCond := SameGoroutineCondition(selg)
+			retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
+			bp, err := dbp.SetBreakpoint(topframe.Ret, UserBreakpoint, retFrameCond)
+			if err != nil {
+				if _, isexists := err.(BreakpointExistsError); !isexists {
+					return err
+				}
+			} else {
+				bp.Tracepoint = true
+				configureReturnBreakpoint(dbp.BinInfo(), bp, &topframe, retFrameCond)
+			}
+			return conditionErrors(threads)
 		case curbp.Active && curbp.Internal:
 			if curbp.Kind == StepBreakpoint {
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	protest "github.com/derekparker/delve/pkg/proc/test"
+	"github.com/derekparker/delve/pkg/terminal"
 
 	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/service"
@@ -97,6 +98,11 @@ func Test1Restart_breakpointPreservation(t *testing.T) {
 		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
 			t.Fatalf("Wrong breakpoint: %#v\n", state.CurrentThread.Breakpoint)
 		}
+		// Trace return breakpoint.
+		state = <-stateCh
+		if !state.CurrentThread.Breakpoint.Tracepoint {
+			t.Fatalf("Wrong breakpoint: %#v\n", state.CurrentThread.Breakpoint)
+		}
 		state = <-stateCh
 		if !state.Exited {
 			t.Fatal("Did not exit after first tracepoint")
@@ -108,6 +114,11 @@ func Test1Restart_breakpointPreservation(t *testing.T) {
 		state = <-stateCh
 		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
 			t.Fatalf("Wrong breakpoint (after restart): %#v\n", state.CurrentThread.Breakpoint)
+		}
+		// Trace return breakpoint.
+		state = <-stateCh
+		if !state.CurrentThread.Breakpoint.Tracepoint {
+			t.Fatalf("Wrong breakpoint: %#v\n", state.CurrentThread.Breakpoint)
 		}
 		state = <-stateCh
 		if !state.Exited {
@@ -460,10 +471,10 @@ func Test1ClientServer_infoArgs(t *testing.T) {
 	})
 }
 
-func Test1ClientServer_traceContinue(t *testing.T) {
+func Test1ClientServer_traceCmd(t *testing.T) {
 	withTestClient1("integrationprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "integrationprog")
-		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 15, Tracepoint: true, Goroutine: true, Stacktrace: 5, Variables: []string{"i"}})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{Name: "testtracepoint", File: fp, Line: 8, Tracepoint: true, LoadArgs: &terminal.ShortLoadConfig})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v\n", err)
 		}
@@ -471,6 +482,37 @@ func Test1ClientServer_traceContinue(t *testing.T) {
 		contChan := c.Continue()
 		for state := range contChan {
 			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
+				curbp := state.CurrentThread.Breakpoint
+				bpi := state.CurrentThread.BreakpointInfo
+				if curbp.Name == "testtracepoint" {
+					if len(bpi.Arguments) != 1 {
+						t.Fatalf("wrong number of arguments returned, expected 1 got %d", len(bpi.Arguments))
+					}
+					if bpi.Arguments[0].Value != strconv.Itoa(count) {
+						t.Fatal("wrong argument returned", bpi.Arguments[0].Value, count)
+					}
+					count++
+				}
+			}
+		}
+
+		if count != 3 {
+			t.Fatal("wrong number of breakpoints hit")
+		}
+	})
+}
+
+func Test1ClientServer_traceContinue(t *testing.T) {
+	withTestClient1("integrationprog", t, func(c *rpc1.RPCClient) {
+		fp := testProgPath(t, "integrationprog")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{Name: "testtracepoint", File: fp, Line: 15, Tracepoint: true, Goroutine: true, Stacktrace: 5, Variables: []string{"i"}})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+		count := 0
+		contChan := c.Continue()
+		for state := range contChan {
+			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil && state.CurrentThread.Breakpoint.Name == "testtracepoint" {
 				count++
 
 				t.Logf("%v", state)
@@ -547,7 +589,6 @@ func Test1ClientServer_traceContinue2(t *testing.T) {
 			if state.Err != nil {
 				t.Fatalf("Unexpected error during continue: %v\n", state.Err)
 			}
-
 		}
 
 		if countMain != 1 {
