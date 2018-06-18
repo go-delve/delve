@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/pkg/profile"
 )
 
@@ -34,24 +35,23 @@ func grabDebugLineSection(p string, t *testing.T) []byte {
 
 	ef, err := elf.NewFile(f)
 	if err == nil {
-		data, _ := ef.Section(".debug_line").Data()
+		data, _ := godwarf.GetDebugSectionElf(ef, "line")
 		return data
 	}
 
 	pf, err := pe.NewFile(f)
 	if err == nil {
-		sec := pf.Section(".debug_line")
-		data, _ := sec.Data()
-		if 0 < sec.VirtualSize && sec.VirtualSize < sec.Size {
-			return data[:sec.VirtualSize]
-		}
+		data, _ := godwarf.GetDebugSectionPE(pf, "line")
 		return data
 	}
 
-	mf, _ := macho.NewFile(f)
-	data, _ := mf.Section("__debug_line").Data()
+	mf, err := macho.NewFile(f)
+	if err == nil {
+		data, _ := godwarf.GetDebugSectionMacho(mf, "line")
+		return data
+	}
 
-	return data
+	return nil
 }
 
 const (

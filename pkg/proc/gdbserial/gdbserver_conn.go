@@ -637,7 +637,7 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 		sp.sig = uint8(sig)
 
 		if logflags.GdbWire() && gdbWireFullStopPacket {
-			conn.log.Debug("full stop packet: %s\n", string(resp))
+			conn.log.Debugf("full stop packet: %s\n", string(resp))
 		}
 
 		buf := resp[3:]
