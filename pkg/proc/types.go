@@ -22,6 +22,7 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/line"
 	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/pkg/logflags"
 )
 
@@ -223,10 +224,10 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 				cu.lineInfo.LogSuppressedErrors(logflags.DebugLineErrors())
 			}
 			cu.producer, _ = entry.Val(dwarf.AttrProducer).(string)
-			if cu.isgo {
+			if cu.isgo && cu.producer != "" {
 				semicolon := strings.Index(cu.producer, ";")
 				if semicolon < 0 {
-					cu.optimized = true
+					cu.optimized = goversion.ProducerAfterOrEqual(cu.producer, 1, 10)
 				} else {
 					cu.optimized = !strings.Contains(cu.producer[semicolon:], "-N") || !strings.Contains(cu.producer[semicolon:], "-l")
 					cu.producer = cu.producer[:semicolon]

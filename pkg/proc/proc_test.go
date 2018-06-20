@@ -3844,3 +3844,21 @@ func TestStepOutReturn(t *testing.T) {
 		}
 	})
 }
+
+func TestOptimizationCheck(t *testing.T) {
+	withTestProcess("continuetestprog", t, func(p proc.Process, fixture protest.Fixture) {
+		fn := p.BinInfo().LookupFunc["main.main"]
+		if fn.Optimized() {
+			t.Fatalf("main.main is optimized")
+		}
+	})
+
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 10) {
+		withTestProcessArgs("continuetestprog", t, ".", []string{}, protest.EnableOptimization|protest.EnableInlining, func(p proc.Process, fixture protest.Fixture) {
+			fn := p.BinInfo().LookupFunc["main.main"]
+			if !fn.Optimized() {
+				t.Fatalf("main.main is not optimized")
+			}
+		})
+	}
+}

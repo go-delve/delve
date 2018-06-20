@@ -96,6 +96,10 @@ func (ft *FakeTerminal) AssertExecError(cmdstr, tgterr string) {
 }
 
 func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
+	withTestTerminalBuildFlags(name, t, 0, fn)
+}
+
+func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.BuildFlags, fn func(*FakeTerminal)) {
 	if testBackend == "rr" {
 		test.MustHaveRecordingAllowed(t)
 	}
@@ -107,7 +111,7 @@ func withTestTerminal(name string, t testing.TB, fn func(*FakeTerminal)) {
 	defer listener.Close()
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
-		ProcessArgs: []string{test.BuildFixture(name, 0).Path},
+		ProcessArgs: []string{test.BuildFixture(name, buildFlags).Path},
 		Backend:     testBackend,
 	}, false)
 	if err := server.Run(); err != nil {
@@ -800,4 +804,26 @@ func TestStepOutReturn(t *testing.T) {
 			t.Fatal("could not find parameter")
 		}
 	})
+}
+
+func TestOptimizationCheck(t *testing.T) {
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		out := term.MustExec("continue")
+		t.Logf("output %q", out)
+		if strings.Contains(out, optimizedFunctionWarning) {
+			t.Fatal("optimized function warning")
+		}
+	})
+
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 10) {
+		withTestTerminalBuildFlags("continuetestprog", t, test.EnableOptimization|test.EnableInlining, func(term *FakeTerminal) {
+			term.MustExec("break main.main")
+			out := term.MustExec("continue")
+			t.Logf("output %q", out)
+			if !strings.Contains(out, optimizedFunctionWarning) {
+				t.Fatal("optimized function warning missing")
+			}
+		})
+	}
 }
