@@ -7,6 +7,7 @@ import (
 	"debug/macho"
 	"debug/pe"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -27,8 +28,9 @@ import (
 type BinaryInfo struct {
 	lastModified time.Time // Time the executable of this process was last modified
 
-	GOOS   string
-	closer io.Closer
+	GOOS           string
+	closer         io.Closer
+	sepDebugCloser io.Closer
 
 	// Maps package names to package paths, needed to lookup types inside DWARF info
 	packageMap map[string]string
@@ -244,6 +246,12 @@ func (e *loclistEntry) BaseAddressSelection() bool {
 	return e.lowpc == ^uint64(0)
 }
 
+type buildIdHeader struct {
+	Namesz uint32
+	Descsz uint32
+	Type   uint32
+}
+
 func NewBinaryInfo(goos, goarch string) BinaryInfo {
 	r := BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), typeCache: make(map[dwarf.Offset]godwarf.Type)}
 
@@ -349,6 +357,9 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 }
 
 func (bi *BinaryInfo) Close() error {
+	if bi.sepDebugCloser != nil {
+		bi.sepDebugCloser.Close()
+	}
 	return bi.closer.Close()
 }
 
@@ -370,6 +381,7 @@ func (c *nilCloser) Close() error { return nil }
 // This is used for debugging BinaryInfo, you should use LoadBinary instead.
 func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes, debugLineBytes, debugLocBytes []byte) {
 	bi.closer = (*nilCloser)(nil)
+	bi.sepDebugCloser = (*nilCloser)(nil)
 	bi.dwarf = dwdata
 
 	if debugFrameBytes != nil {
@@ -464,6 +476,67 @@ func (bi *BinaryInfo) Producer() string {
 
 // ELF ///////////////////////////////////////////////////////////////
 
+// This error is used in openSeparateDebugInfo to signal there's no
+// build-id note on the binary, so LoadBinaryInfoElf will return
+// the error message coming from elfFile.DWARF() instead.
+type NoBuildIdNoteError struct{}
+
+func (e *NoBuildIdNoteError) Error() string {
+	return "can't find build-id note on binary"
+}
+
+// openSeparateDebugInfo searches for a file containing the separate
+// debug info for the binary using the "build ID" method as described
+// in GDB's documentation [1], and if found returns two handles, one
+// for the bare file, and another for its corresponding elf.File.
+// [1] https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
+func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File) (*os.File, *elf.File, error) {
+	buildid := exe.Section(".note.gnu.build-id")
+	if buildid == nil {
+		return nil, nil, &NoBuildIdNoteError{}
+	}
+
+	br := buildid.Open()
+	bh := new(buildIdHeader)
+	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
+		return nil, nil, errors.New("can't read build-id header: " + err.Error())
+	}
+
+	name := make([]byte, bh.Namesz)
+	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
+		return nil, nil, errors.New("can't read build-id name: " + err.Error())
+	}
+
+	if strings.TrimSpace(string(name)) != "GNU\x00" {
+		return nil, nil, errors.New("invalid build-id signature")
+	}
+
+	descBinary := make([]byte, bh.Descsz)
+	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
+		return nil, nil, errors.New("can't read build-id desc: " + err.Error())
+	}
+	desc := hex.EncodeToString(descBinary)
+
+	debugPath := fmt.Sprintf("/usr/lib/debug/.build-id/%s/%s.debug", desc[:2], desc[2:])
+	sepFile, err := os.OpenFile(debugPath, 0, os.ModePerm)
+	if err != nil {
+		return nil, nil, errors.New("can't open separate debug file: " + err.Error())
+	}
+
+	elfFile, err := elf.NewFile(sepFile)
+	if err != nil {
+		sepFile.Close()
+		return nil, nil, errors.New(fmt.Sprintf("can't open separate debug file %q: %v", debugPath, err.Error()))
+	}
+
+	if elfFile.Machine != elf.EM_X86_64 {
+		sepFile.Close()
+		return nil, nil, errors.New(fmt.Sprintf("can't open separate debug file %q: %v", debugPath, UnsupportedLinuxArchErr.Error()))
+	}
+
+	return sepFile, elfFile, nil
+}
+
 func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
@@ -477,23 +550,37 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 	if elfFile.Machine != elf.EM_X86_64 {
 		return UnsupportedLinuxArchErr
 	}
+	dwarfFile := elfFile
 	bi.dwarf, err = elfFile.DWARF()
 	if err != nil {
-		return err
+		var sepFile *os.File
+		var serr error
+		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(elfFile)
+		if serr != nil {
+			if _, ok := serr.(*NoBuildIdNoteError); ok {
+				return err
+			}
+			return serr
+		}
+		bi.sepDebugCloser = sepFile
+		bi.dwarf, err = dwarfFile.DWARF()
+		if err != nil {
+			return err
+		}
 	}
 
 	bi.dwarfReader = bi.dwarf.Reader()
 
-	debugLineBytes, err := getDebugLineInfoElf(elfFile)
+	debugLineBytes, err := getDebugLineInfoElf(dwarfFile)
 	if err != nil {
 		return err
 	}
-	bi.loclistInit(getDebugLocElf(elfFile))
+	bi.loclistInit(getDebugLocElf(dwarfFile))
 
 	wg.Add(3)
-	go bi.parseDebugFrameElf(elfFile, wg)
+	go bi.parseDebugFrameElf(dwarfFile, wg)
 	go bi.loadDebugInfoMaps(debugLineBytes, wg, nil)
-	go bi.setGStructOffsetElf(elfFile, wg)
+	go bi.setGStructOffsetElf(dwarfFile, wg)
 	return nil
 }
 
