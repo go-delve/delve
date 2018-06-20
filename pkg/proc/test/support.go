@@ -56,6 +56,7 @@ const (
 	LinkStrip BuildFlags = 1 << iota
 	EnableCGOOptimization
 	EnableInlining
+	EnableOptimization
 	EnableDWZCompression
 )
 
@@ -94,10 +95,14 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&LinkStrip != 0 {
 		buildFlags = append(buildFlags, "-ldflags=-s")
 	}
-	gcflags := "-gcflags=-N -l"
-	if flags&EnableInlining != 0 {
-		gcflags = "-gcflags=-N"
+	gcflagsv := []string{}
+	if flags&EnableInlining == 0 {
+		gcflagsv = append(gcflagsv, "-l")
 	}
+	if flags&EnableOptimization == 0 {
+		gcflagsv = append(gcflagsv, "-N")
+	}
+	gcflags := "-gcflags=" + strings.Join(gcflagsv, " ")
 	buildFlags = append(buildFlags, gcflags, "-o", tmpfile)
 	if *EnableRace {
 		buildFlags = append(buildFlags, "-race")
