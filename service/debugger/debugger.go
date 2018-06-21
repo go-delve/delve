@@ -37,6 +37,9 @@ type Debugger struct {
 	processMutex sync.Mutex
 	target       proc.Process
 	log          *logrus.Entry
+
+	running      bool
+	runningMutex sync.Mutex
 }
 
 // Config provides the configuration to start a Debugger.
@@ -219,7 +222,7 @@ func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.
 		return nil, proc.NotRecordedErr
 	}
 
-	if !d.target.Exited() {
+	if valid, _ := d.target.Valid(); valid {
 		// Ensure the process is in a PTRACE_STOP.
 		if err := stopProcess(d.ProcessPid()); err != nil {
 			return nil, err
@@ -261,15 +264,19 @@ func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.
 }
 
 // State returns the current state of the debugger.
-func (d *Debugger) State() (*api.DebuggerState, error) {
+func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
+	if d.isRunning() && nowait {
+		return &api.DebuggerState{Running: true}, nil
+	}
+
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 	return d.state(nil)
 }
 
 func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error) {
-	if d.target.Exited() {
-		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
 	}
 
 	var (
@@ -281,9 +288,14 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		goroutine = api.ConvertGoroutine(d.target.SelectedGoroutine())
 	}
 
+	exited := false
+	if _, err := d.target.Valid(); err != nil {
+		_, exited = err.(*proc.ProcessExitedError)
+	}
+
 	state = &api.DebuggerState{
 		SelectedGoroutine: goroutine,
-		Exited:            d.target.Exited(),
+		Exited:            exited,
 	}
 
 	for _, thread := range d.target.ThreadList() {
@@ -478,8 +490,8 @@ func (d *Debugger) Threads() ([]*api.Thread, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	if d.target.Exited() {
-		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
 	}
 
 	threads := []*api.Thread{}
@@ -494,8 +506,8 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	if d.target.Exited() {
-		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
 	}
 
 	for _, th := range d.target.ThreadList() {
@@ -504,6 +516,18 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 		}
 	}
 	return nil, nil
+}
+
+func (d *Debugger) setRunning(running bool) {
+	d.runningMutex.Lock()
+	d.running = running
+	d.runningMutex.Unlock()
+}
+
+func (d *Debugger) isRunning() bool {
+	d.runningMutex.Lock()
+	defer d.runningMutex.Unlock()
+	return d.running
 }
 
 // Command handles commands which control the debugger lifecycle
@@ -521,6 +545,9 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
+
+	d.setRunning(true)
+	defer d.setRunning(false)
 
 	switch command.Name {
 	case api.Continue:
@@ -864,8 +891,8 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]a
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	if d.target.Exited() {
-		return nil, proc.ProcessExitedError{Pid: d.ProcessPid()}
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
 	}
 
 	var rawlocs []proc.Stackframe
@@ -925,8 +952,8 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	if d.target.Exited() {
-		return nil, &proc.ProcessExitedError{Pid: d.target.Pid()}
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
 	}
 
 	loc, err := parseLocationSpec(locStr)
@@ -952,8 +979,8 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	if d.target.Exited() {
-		return nil, &proc.ProcessExitedError{Pid: d.target.Pid()}
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
 	}
 
 	if endPC == 0 {

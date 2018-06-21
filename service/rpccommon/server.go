@@ -89,11 +89,12 @@ func NewServer(config *service.Config) *ServerImpl {
 }
 
 // Stop stops the JSON-RPC server.
-func (s *ServerImpl) Stop(kill bool) error {
+func (s *ServerImpl) Stop() error {
 	if s.config.AcceptMulti {
 		close(s.stopChan)
 		s.listener.Close()
 	}
+	kill := s.config.AttachPid == 0
 	return s.debugger.Detach(kill)
 }
 
@@ -257,6 +258,12 @@ func suitableMethods(rcvr interface{}, methods map[string]*methodType, log *logr
 }
 
 func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
+	defer func() {
+		if !s.config.AcceptMulti && s.config.DisconnectChan != nil {
+			close(s.config.DisconnectChan)
+		}
+	}()
+
 	sending := new(sync.Mutex)
 	codec := jsonrpc.NewServerCodec(conn)
 	var req rpc.Request
@@ -342,9 +349,6 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 		}
 	}
 	codec.Close()
-	if !s.config.AcceptMulti && s.config.DisconnectChan != nil {
-		close(s.config.DisconnectChan)
-	}
 }
 
 // A value sent as a placeholder for the server's response value when the server

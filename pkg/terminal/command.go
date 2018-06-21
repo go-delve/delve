@@ -212,7 +212,11 @@ If regex is specified only package variables with a name matching it will be ret
 	regs [-a]
 
 Argument -a shows more registers.`},
-		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: "Exit the debugger."},
+		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: `Exit the debugger.
+		
+	exit [-c]
+	
+When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.`},
 		{aliases: []string{"list", "ls", "l"}, cmdFn: listCommand, helpMsg: `Show source code.
 
 	[goroutine <n>] [frame <m>] list [<linespec>]
@@ -1669,6 +1673,12 @@ func (ere ExitRequestError) Error() string {
 }
 
 func exitCommand(t *Term, ctx callContext, args string) error {
+	if args == "-c" {
+		if !t.client.IsMulticlient() {
+			return errors.New("not connected to an --accept-multiclient server")
+		}
+		t.quitContinue = true
+	}
 	return ExitRequestError{}
 }
 

@@ -299,8 +299,8 @@ func (p *Process) Detach(bool) error {
 	return nil
 }
 
-func (p *Process) Exited() bool {
-	return false
+func (p *Process) Valid() (bool, error) {
+	return true, nil
 }
 
 func (p *Process) Common() *proc.CommonProcess {

@@ -34,11 +34,12 @@ type Process struct {
 	firstStart          bool
 	stopMu              sync.Mutex
 	resumeChan          chan<- struct{}
-	exited              bool
 	ptraceChan          chan func()
 	ptraceDoneChan      chan interface{}
 	childProcess        bool // this process was launched, not attached to
 	manualStopRequested bool
+
+	exited, detached bool
 }
 
 // New returns an initialized Process struct. Before returning,
@@ -105,14 +106,19 @@ func (dbp *Process) Detach(kill bool) (err error) {
 			err = killProcess(dbp.pid)
 		}
 	})
-	dbp.bi.Close()
+	dbp.detached = true
+	dbp.postExit()
 	return
 }
 
-// Exited returns whether the debugged
-// process has exited.
-func (dbp *Process) Exited() bool {
-	return dbp.exited
+func (dbp *Process) Valid() (bool, error) {
+	if dbp.detached {
+		return false, &proc.ProcessDetachedError{}
+	}
+	if dbp.exited {
+		return false, &proc.ProcessExitedError{Pid: dbp.Pid()}
+	}
+	return true, nil
 }
 
 func (dbp *Process) ResumeNotify(ch chan<- struct{}) {

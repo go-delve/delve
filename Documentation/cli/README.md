@@ -163,6 +163,10 @@ Move the current frame down by <m>. The second form runs the command on the give
 
 ## exit
 Exit the debugger.
+		
+	exit [-c]
+	
+When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.
 
 Aliases: quit q
 

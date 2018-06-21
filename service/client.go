@@ -25,6 +25,8 @@ type Client interface {
 
 	// GetState returns the current debugger state.
 	GetState() (*api.DebuggerState, error)
+	// GetStateNonBlocking returns the current debugger state, returning immediately if the target is already running.
+	GetStateNonBlocking() (*api.DebuggerState, error)
 
 	// Continue resumes process execution.
 	Continue() <-chan *api.DebuggerState
@@ -130,4 +132,11 @@ type Client interface {
 
 	// SetReturnValuesLoadConfig sets the load configuration for return values.
 	SetReturnValuesLoadConfig(*api.LoadConfig)
+
+	// IsMulticlien returns true if the headless instance is multiclient.
+	IsMulticlient() bool
+
+	// Disconnect closes the connection to the server without sending a Detach request first.
+	// If cont is true a continue command will be sent instead.
+	Disconnect(cont bool) error
 }

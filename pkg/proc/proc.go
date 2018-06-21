@@ -26,6 +26,14 @@ func (pe ProcessExitedError) Error() string {
 	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
 }
 
+// ProcessDetachedError indicates that we detached from the target process.
+type ProcessDetachedError struct {
+}
+
+func (pe ProcessDetachedError) Error() string {
+	return "detached from the process"
+}
+
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normalized to lower case and '/' on Windows.
 func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
@@ -73,8 +81,8 @@ func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset
 
 // Next continues execution until the next source line.
 func Next(dbp Process) (err error) {
-	if dbp.Exited() {
-		return &ProcessExitedError{Pid: dbp.Pid()}
+	if _, err := dbp.Valid(); err != nil {
+		return err
 	}
 	if dbp.Breakpoints().HasInternalBreakpoints() {
 		return fmt.Errorf("next while nexting")
@@ -92,8 +100,8 @@ func Next(dbp Process) (err error) {
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
 func Continue(dbp Process) error {
-	if dbp.Exited() {
-		return &ProcessExitedError{Pid: dbp.Pid()}
+	if _, err := dbp.Valid(); err != nil {
+		return err
 	}
 	for _, thread := range dbp.ThreadList() {
 		thread.Common().returnValues = nil
@@ -234,8 +242,8 @@ func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
 // Step will continue until another source line is reached.
 // Will step into functions.
 func Step(dbp Process) (err error) {
-	if dbp.Exited() {
-		return &ProcessExitedError{Pid: dbp.Pid()}
+	if _, err := dbp.Valid(); err != nil {
+		return err
 	}
 	if dbp.Breakpoints().HasInternalBreakpoints() {
 		return fmt.Errorf("next while nexting")
@@ -297,8 +305,8 @@ func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
 func StepOut(dbp Process) error {
-	if dbp.Exited() {
-		return &ProcessExitedError{Pid: dbp.Pid()}
+	if _, err := dbp.Valid(); err != nil {
+		return err
 	}
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
@@ -383,8 +391,8 @@ func StepOut(dbp Process) error {
 // GoroutinesInfo returns an array of G structures representing the information
 // Delve cares about from the internal runtime G structure.
 func GoroutinesInfo(dbp Process) ([]*G, error) {
-	if dbp.Exited() {
-		return nil, &ProcessExitedError{Pid: dbp.Pid()}
+	if _, err := dbp.Valid(); err != nil {
+		return nil, err
 	}
 	if dbp.Common().allGCache != nil {
 		return dbp.Common().allGCache, nil
@@ -484,8 +492,8 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
-	if dbp.Exited() {
-		return nil, &ProcessExitedError{Pid: dbp.Pid()}
+	if _, err := dbp.Valid(); err != nil {
+		return nil, err
 	}
 	ct := dbp.CurrentThread()
 	g, err := FindGoroutine(dbp, gid)

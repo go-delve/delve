@@ -69,6 +69,12 @@ func (c *RPCClient) GetState() (*api.DebuggerState, error) {
 	return out.State, err
 }
 
+func (c *RPCClient) GetStateNonBlocking() (*api.DebuggerState, error) {
+	var out StateOut
+	err := c.call("State", StateIn{NonBlocking: true}, &out)
+	return out.State, err
+}
+
 func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 	return c.continueDir(api.Continue)
 }
@@ -352,6 +358,20 @@ func (c *RPCClient) ClearCheckpoint(id int) error {
 
 func (c *RPCClient) SetReturnValuesLoadConfig(cfg *api.LoadConfig) {
 	c.retValLoadCfg = cfg
+}
+
+func (c *RPCClient) IsMulticlient() bool {
+	var out IsMulticlientOut
+	c.call("IsMulticlient", IsMulticlientIn{}, &out)
+	return out.IsMulticlient
+}
+
+func (c *RPCClient) Disconnect(cont bool) error {
+	if cont {
+		out := new(CommandOut)
+		c.client.Go("RPCServer.Command", &api.DebuggerCommand{Name: api.Continue, ReturnInfoLoadConfig: c.retValLoadCfg}, &out, nil)
+	}
+	return c.client.Close()
 }
 
 func (c *RPCClient) call(method string, args, reply interface{}) error {
