@@ -911,12 +911,16 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 	return continueUntilCompleteNext(t, state, "step")
 }
 
+var notOnFrameZeroErr = errors.New("not on topmost frame")
+
 func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
+	if c.frame != 0 {
+		return notOnFrameZeroErr
+	}
 	state, err := exitedToError(t.client.StepInstruction())
-	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -930,8 +934,10 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
+	if c.frame != 0 {
+		return notOnFrameZeroErr
+	}
 	state, err := exitedToError(t.client.Next())
-	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
@@ -944,8 +950,10 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
+	if c.frame != 0 {
+		return notOnFrameZeroErr
+	}
 	state, err := exitedToError(t.client.StepOut())
-	c.frame = 0
 	if err != nil {
 		printfileNoState(t)
 		return err
