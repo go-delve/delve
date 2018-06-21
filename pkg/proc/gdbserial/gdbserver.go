@@ -107,8 +107,8 @@ type Process struct {
 	currentThread     *Thread
 	selectedGoroutine *proc.G
 
-	exited bool
-	ctrlC  bool // ctrl-c was sent to stop inferior
+	exited, detached bool
+	ctrlC            bool // ctrl-c was sent to stop inferior
 
 	manualStopRequested bool
 
@@ -568,8 +568,14 @@ func (p *Process) Pid() int {
 	return int(p.conn.pid)
 }
 
-func (p *Process) Exited() bool {
-	return p.exited
+func (p *Process) Valid() (bool, error) {
+	if p.detached {
+		return false, &proc.ProcessDetachedError{}
+	}
+	if p.exited {
+		return false, &proc.ProcessExitedError{Pid: p.Pid()}
+	}
+	return true, nil
 }
 
 func (p *Process) ResumeNotify(ch chan<- struct{}) {
@@ -818,6 +824,7 @@ func (p *Process) Detach(kill bool) error {
 		<-p.waitChan
 		p.process = nil
 	}
+	p.detached = true
 	return p.bi.Close()
 }
 

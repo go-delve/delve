@@ -974,7 +974,7 @@ func TestKill(t *testing.T) {
 		if err := p.Detach(true); err != nil {
 			t.Fatal(err)
 		}
-		if !p.Exited() {
+		if valid, _ := p.Valid(); valid {
 			t.Fatal("expected process to have exited")
 		}
 		if runtime.GOOS == "linux" {
@@ -1036,7 +1036,7 @@ func TestContinueMulti(t *testing.T) {
 		sayhiCount := 0
 		for {
 			err := proc.Continue(p)
-			if p.Exited() {
+			if valid, _ := p.Valid(); !valid {
 				break
 			}
 			assertNoError(err, t, "Continue()")

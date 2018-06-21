@@ -1457,3 +1457,41 @@ func TestClientServer_StepOutReturn(t *testing.T) {
 		}
 	})
 }
+
+func TestAcceptMulticlient(t *testing.T) {
+	if testBackend == "rr" {
+		t.Skip("recording not allowed for TestAcceptMulticlient")
+	}
+	listener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("couldn't start listener: %s\n", err)
+	}
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		defer listener.Close()
+		disconnectChan := make(chan struct{})
+		server := rpccommon.NewServer(&service.Config{
+			Listener:       listener,
+			ProcessArgs:    []string{protest.BuildFixture("testvariables2", 0).Path},
+			Backend:        testBackend,
+			AcceptMulti:    true,
+			DisconnectChan: disconnectChan,
+		})
+		if err := server.Run(); err != nil {
+			t.Fatal(err)
+		}
+		<-disconnectChan
+		server.Stop()
+	}()
+	client1 := rpc2.NewClient(listener.Addr().String())
+	client1.Disconnect(false)
+
+	client2 := rpc2.NewClient(listener.Addr().String())
+	state := <-client2.Continue()
+	if state.CurrentThread.Function.Name != "main.main" {
+		t.Fatalf("bad state after continue: %v\n", state)
+	}
+	client2.Detach(true)
+	<-serverDone
+}

@@ -488,9 +488,16 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		fmt.Fprint(os.Stderr, "Warning: init file ignored\n")
 	}
 
+	if !Headless && AcceptMulti {
+		fmt.Fprint(os.Stderr, "Warning accept-multi: ignored\n")
+		// AcceptMulti won't work in normal (non-headless) mode because we always
+		// call server.Stop after the terminal client exits.
+		AcceptMulti = false
+	}
+
 	var server interface {
 		Run() error
-		Stop(bool) error
+		Stop() error
 	}
 
 	disconnectChan := make(chan struct{})
@@ -541,7 +548,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		case <-ch:
 		case <-disconnectChan:
 		}
-		err = server.Stop(true)
+		err = server.Stop()
 	} else {
 		// Create and start a terminal
 		client := rpc2.NewClient(listener.Addr().String())

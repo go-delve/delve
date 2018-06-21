@@ -55,7 +55,12 @@ type DetachOut struct {
 
 // Detach detaches the debugger, optionally killing the process.
 func (s *RPCServer) Detach(arg DetachIn, out *DetachOut) error {
-	return s.debugger.Detach(arg.Kill)
+	err := s.debugger.Detach(arg.Kill)
+	if s.config.DisconnectChan != nil {
+		close(s.config.DisconnectChan)
+		s.config.DisconnectChan = nil
+	}
+	return err
 }
 
 type RestartIn struct {
@@ -85,6 +90,8 @@ func (s *RPCServer) Restart(arg RestartIn, out *RestartOut) error {
 }
 
 type StateIn struct {
+	// If NonBlocking is true State will return immediately even if the target process is running.
+	NonBlocking bool
 }
 
 type StateOut struct {
@@ -93,7 +100,7 @@ type StateOut struct {
 
 // State returns the current debugger state.
 func (s *RPCServer) State(arg StateIn, out *StateOut) error {
-	st, err := s.debugger.State()
+	st, err := s.debugger.State(arg.NonBlocking)
 	if err != nil {
 		return err
 	}
@@ -317,7 +324,7 @@ type ListPackageVarsOut struct {
 
 // ListPackageVars lists all package variables in the context of the current thread.
 func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsOut) error {
-	state, err := s.debugger.State()
+	state, err := s.debugger.State(false)
 	if err != nil {
 		return err
 	}
@@ -348,7 +355,7 @@ type ListRegistersOut struct {
 // ListRegisters lists registers and their values.
 func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) error {
 	if arg.ThreadID == 0 {
-		state, err := s.debugger.State()
+		state, err := s.debugger.State(false)
 		if err != nil {
 			return err
 		}
@@ -631,4 +638,19 @@ type ClearCheckpointOut struct {
 
 func (s *RPCServer) ClearCheckpoint(arg ClearCheckpointIn, out *ClearCheckpointOut) error {
 	return s.debugger.ClearCheckpoint(arg.ID)
+}
+
+type IsMulticlientIn struct {
+}
+
+type IsMulticlientOut struct {
+	// IsMulticlient returns true if the headless instance was started with --accept-multiclient
+	IsMulticlient bool
+}
+
+func (s *RPCServer) IsMulticlient(arg IsMulticlientIn, out *IsMulticlientOut) error {
+	*out = IsMulticlientOut{
+		IsMulticlient: s.config.AcceptMulti,
+	}
+	return nil
 }

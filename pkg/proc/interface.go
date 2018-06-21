@@ -60,7 +60,10 @@ type Info interface {
 	// ResumeNotify specifies a channel that will be closed the next time
 	// ContinueOnce finishes resuming the target.
 	ResumeNotify(chan<- struct{})
-	Exited() bool
+	// Valid returns true if this Process can be used. When it returns false it
+	// also returns an error describing why the Process is invalid (either
+	// ProcessExitedError or ProcessDetachedError).
+	Valid() (bool, error)
 	BinInfo() *BinaryInfo
 	// Common returns a struct with fields common to all backends
 	Common() *CommonProcess
