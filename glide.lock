@@ -1,8 +1,10 @@
-hash: beaa7cd84d35e37baec9623e57131364978c86209bcd4d7204d200975be50ae3
-updated: 2017-05-29T15:52:21.585055276+02:00
+hash: baaa9efd6720c470cdfecea8de054833ad0ff020f42efba7309fb81c8b56597a
+updated: 2018-06-14T11:38:05.009082242-07:00
 imports:
+- name: github.com/cosiner/argv
+  version: 13bacc38a0a5e0eba18b6f03cbb15dc5d4243b04
 - name: github.com/cpuguy83/go-md2man
-  version: bcc0a711c5e6bbe72c7cb13d81c7109b45267fd2
+  version: 20f5889cbdc3c73dbd2862796665e7c465ade7d1
   subpackages:
   - md2man
 - name: github.com/inconshreveable/mousetrap
@@ -10,13 +12,15 @@ imports:
 - name: github.com/mattn/go-colorable
   version: ded68f7a9561c023e790de24279db7ebf473ea80
 - name: github.com/mattn/go-isatty
-  version: fc9e8d8ef48496124e79ae0df75490096eccf6fe
+  version: 0360b2af4f38e8d38c7fce2a9f4e702702d73a39
 - name: github.com/peterh/liner
   version: 88609521dc4b6c858fd4c98b628147da928ce4ac
 - name: github.com/pkg/profile
   version: 06b906832ed0e32302a942b63b6c5f8359034d26
 - name: github.com/russross/blackfriday
-  version: 0ba0f2b6ed7c475a92e4df8641825cb7a11d1fa3
+  version: 11635eb403ff09dbc3a6b5a007ab5ab09151c229
+- name: github.com/sirupsen/logrus
+  version: ea8897e79973357ba785ac2533559a6297e83c44
 - name: github.com/spf13/cobra
   version: b6cb3958937245a12d4d7728be080a6c758f4136
   subpackages:
@@ -27,8 +31,13 @@ imports:
   version: 077ac972c2e48fdb75168a5ba36a387f0c72d8aa
   subpackages:
   - x86/x86asm
+- name: golang.org/x/crypto
+  version: fd5f17ee729917fcb39f16421460212d917a0813
+  subpackages:
+  - ssh
+  - ssh/terminal
 - name: golang.org/x/sys
-  version: f3918c30c5c2cb527c0b071a27c35120a6c0719a
+  version: 8883426083c04a2627e6e59d84d5f6fb63d16c91
   subpackages:
   - unix
   - windows
