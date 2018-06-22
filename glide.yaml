@@ -21,9 +21,17 @@ import:
   subpackages:
   - x86/x86asm
 - package: golang.org/x/sys
-  version: f3918c30c5c2cb527c0b071a27c35120a6c0719a
+  version: 8883426083c04a2627e6e59d84d5f6fb63d16c91
   subpackages:
   - unix
   - windows
+- package: golang.org/x/crypto
+  version: fd5f17ee729917fcb39f16421460212d917a0813
+  subpackages:
+  - ssh
 - package: gopkg.in/yaml.v2
   version: cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b
+- package: github.com/cpuguy83/go-md2man
+  version: v1.0.8
+  subpackages:
+  - md2man
