@@ -78,7 +78,7 @@ func NewServer(config *service.Config) *ServerImpl {
 	}
 	if config.Foreground {
 		// Print listener address
-		logger.Infof("API server listening at: %s", config.Listener.Addr())
+		fmt.Printf("API server listening at: %s\n", config.Listener.Addr())
 	}
 	return &ServerImpl{
 		config:   config,
