@@ -103,6 +103,7 @@ type Variable struct {
 	Unreadable error
 
 	LocationExpr string // location expression
+	DeclLine     int64  // line number of this variable's declaration
 }
 
 type LoadConfig struct {
@@ -836,6 +837,7 @@ func (scope *EvalScope) extractVarInfoFromEntry(varEntry *dwarf.Entry) (*Variabl
 
 	v := scope.newVariable(n, uintptr(addr), t, mem)
 	v.LocationExpr = descr
+	v.DeclLine, _ = entry.Val(dwarf.AttrDeclLine).(int64)
 	if err != nil {
 		v.Unreadable = err
 	}

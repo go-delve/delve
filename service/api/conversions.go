@@ -123,6 +123,7 @@ func ConvertVar(v *proc.Variable) *Variable {
 		Base:     v.Base,
 
 		LocationExpr: v.LocationExpr,
+		DeclLine:     v.DeclLine,
 	}
 
 	r.Type = prettyTypeName(v.DwarfType)
