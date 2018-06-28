@@ -11,8 +11,17 @@ The Github issue tracker is for **bugs** only. Please use the [developer mailing
 ### About Delve
 
 - [Installation](Documentation/installation)
+  - [Linux](Documentation/installation/linux/install.md)
+  - [macOS](Documentation/installation/osx/install.md)
+  - [Windows](Documentation/installation/windows/install.md)
 - [Getting Started](Documentation/cli/getting_started.md)
 - [Documentation](Documentation)
+  - [Command line options](Documentation/usage/dlv.md)
+  - [Command line client](Documentation/cli/README.md)
+  - [Plugins and GUIs](Documentation/EditorIntegration.md)
 - [Contributing](CONTRIBUTING.md)
+  - [Internal Documentation](Documentation/internal)
+  - [API documentation](Documentation/api)
+  - [How to write a Delve client](Documentation/api/ClientHowto.md)
 
 Delve is a debugger for the Go programming language. The goal of the project is to provide a simple, full featured debugging tool for Go. Delve should be easy to invoke and easy to use. Chances are if you're using a debugger, things aren't going your way. With that in mind, Delve should stay out of your way as much as possible.
