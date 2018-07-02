@@ -69,7 +69,7 @@ type methodType struct {
 // NewServer creates a new RPCServer.
 func NewServer(config *service.Config) *ServerImpl {
 	logger := logrus.New().WithFields(logrus.Fields{"layer": "rpc"})
-	logger.Level = logrus.DebugLevel
+	logger.Logger.Level = logrus.DebugLevel
 	if !logflags.RPC() {
 		logger.Logger.Out = ioutil.Discard
 	}
@@ -305,7 +305,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 		if mtype.Synchronous {
 			if logflags.RPC() {
 				argvbytes, _ := json.Marshal(argv.Interface())
-				s.log.Debugf("-> %s(%T%s)\n", req.ServiceMethod, argv.Interface(), argvbytes)
+				s.log.Debugf("<- %s(%T%s)", req.ServiceMethod, argv.Interface(), argvbytes)
 			}
 			replyv = reflect.New(mtype.ReplyType.Elem())
 			function := mtype.method.Func
@@ -328,13 +328,13 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 			resp = rpc.Response{}
 			if logflags.RPC() {
 				replyvbytes, _ := json.Marshal(replyv.Interface())
-				s.log.Debugf("<- %T%s error: %q\n", replyv.Interface(), replyvbytes, errmsg)
+				s.log.Debugf("-> %T%s error: %q", replyv.Interface(), replyvbytes, errmsg)
 			}
 			s.sendResponse(sending, &req, &resp, replyv.Interface(), codec, errmsg)
 		} else {
 			if logflags.RPC() {
 				argvbytes, _ := json.Marshal(argv.Interface())
-				s.log.Debugf("(async %d) -> %s(%T%s)\n", req.Seq, req.ServiceMethod, argv.Interface(), argvbytes)
+				s.log.Debugf("(async %d) <- %s(%T%s)", req.Seq, req.ServiceMethod, argv.Interface(), argvbytes)
 			}
 			function := mtype.method.Func
 			ctl := &RPCCallback{s, sending, codec, req}
@@ -379,7 +379,7 @@ func (cb *RPCCallback) Return(out interface{}, err error) {
 	var resp rpc.Response
 	if logflags.RPC() {
 		outbytes, _ := json.Marshal(out)
-		cb.s.log.Debugf("(async %d) <- %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
+		cb.s.log.Debugf("(async %d) -> %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
 	}
 	cb.s.sendResponse(cb.sending, &cb.req, &resp, out, cb.codec, errmsg)
 }

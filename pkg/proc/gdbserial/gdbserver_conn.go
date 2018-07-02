@@ -637,7 +637,7 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 		sp.sig = uint8(sig)
 
 		if logflags.GdbWire() && gdbWireFullStopPacket {
-			conn.log.Debugf("full stop packet: %s\n", string(resp))
+			conn.log.Debugf("full stop packet: %s", string(resp))
 		}
 
 		buf := resp[3:]
@@ -995,9 +995,9 @@ func (conn *gdbConn) send(cmd []byte) error {
 	for {
 		if logflags.GdbWire() {
 			if len(cmd) > gdbWireMaxLen {
-				conn.log.Debugf("<- %s...\n", string(cmd[:gdbWireMaxLen]))
+				conn.log.Debugf("<- %s...", string(cmd[:gdbWireMaxLen]))
 			} else {
-				conn.log.Debugf("<- %s\n", string(cmd))
+				conn.log.Debugf("<- %s", string(cmd))
 			}
 		}
 		_, err := conn.conn.Write(cmd)
@@ -1046,9 +1046,9 @@ func (conn *gdbConn) recv(cmd []byte, context string, binary bool) (resp []byte,
 				partial = true
 			}
 			if !partial {
-				conn.log.Debugf("-> %s%s\n", string(resp), string(conn.inbuf[:2]))
+				conn.log.Debugf("-> %s%s", string(resp), string(conn.inbuf[:2]))
 			} else {
-				conn.log.Debugf("-> %s...\n", string(out))
+				conn.log.Debugf("-> %s...", string(out))
 			}
 		}
 
@@ -1099,7 +1099,7 @@ func (conn *gdbConn) readack() bool {
 	if err != nil {
 		return false
 	}
-	conn.log.Debugf("-> %s\n", string(b))
+	conn.log.Debugf("-> %s", string(b))
 	return b == '+'
 }
 
@@ -1109,7 +1109,7 @@ func (conn *gdbConn) sendack(c byte) {
 		panic(fmt.Errorf("sendack(%c)", c))
 	}
 	conn.conn.Write([]byte{c})
-	conn.log.Debugf("<- %s\n", string(c))
+	conn.log.Debugf("<- %s", string(c))
 }
 
 // escapeXor is the value mandated by the specification to escape characters

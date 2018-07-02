@@ -69,7 +69,7 @@ type Config struct {
 // new process.
 func New(config *Config, processArgs []string) (*Debugger, error) {
 	logger := logrus.New().WithFields(logrus.Fields{"layer": "debugger"})
-	logger.Level = logrus.DebugLevel
+	logger.Logger.Level = logrus.DebugLevel
 	if !logflags.Debugger() {
 		logger.Logger.Out = ioutil.Discard
 	}

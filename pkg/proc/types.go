@@ -224,7 +224,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 				var logfn func(string, ...interface{})
 				if logflags.DebugLineErrors() {
 					logger := logrus.New().WithFields(logrus.Fields{"layer": "dwarf-line"})
-					logger.Level = logrus.DebugLevel
+					logger.Logger.Level = logrus.DebugLevel
 					logfn = func(fmt string, args ...interface{}) {
 						logger.Printf(fmt, args)
 					}
