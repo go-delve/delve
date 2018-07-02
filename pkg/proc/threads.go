@@ -49,7 +49,7 @@ type Location struct {
 type ThreadBlockedError struct{}
 
 func (tbe ThreadBlockedError) Error() string {
-	return ""
+	return "thread blocked"
 }
 
 // CommonThread contains fields used by this package, common to all
