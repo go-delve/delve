@@ -169,7 +169,7 @@ type gdbRegister struct {
 // Use Listen, Dial or Connect to complete connection.
 func New(process *os.Process) *Process {
 	logger := logrus.New().WithFields(logrus.Fields{"layer": "gdbconn"})
-	logger.Level = logrus.DebugLevel
+	logger.Logger.Level = logrus.DebugLevel
 	if !logflags.GdbWire() {
 		logger.Logger.Out = ioutil.Discard
 	}
