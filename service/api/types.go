@@ -256,6 +256,8 @@ type Goroutine struct {
 	UserCurrentLoc Location `json:"userCurrentLoc"`
 	// Location of the go instruction that started this goroutine
 	GoStatementLoc Location `json:"goStatementLoc"`
+	// Location of the starting function
+	StartLoc Location `json:"startLoc"`
 	// ID of the associated thread for running goroutines
 	ThreadID int `json:"threadID"`
 }

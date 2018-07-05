@@ -142,13 +142,14 @@ See also: "help on", "help cond" and "help clear"`},
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.`},
 		{aliases: []string{"goroutines"}, cmdFn: goroutines, helpMsg: `List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location) ] [ -t (stack trace)]
+	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [ -t (stack trace)]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
 	-u	displays location of topmost stackframe in user code
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
+	-s	displays location of the start function
 	-t	displays stack trace of goroutine
 
 If no flag is specified the default is -u.`},
@@ -544,6 +545,8 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 				fgl = fglRuntimeCurrent
 			case "-g":
 				fgl = fglGo
+			case "-s":
+				fgl = fglStart
 			case "-t":
 				bPrintStack = true
 			case "":
@@ -706,6 +709,7 @@ const (
 	fglRuntimeCurrent = formatGoroutineLoc(iota)
 	fglUserCurrent
 	fglGo
+	fglStart
 )
 
 func formatLocation(loc api.Location) string {
@@ -732,6 +736,9 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 	case fglGo:
 		locname = "Go"
 		loc = g.GoStatementLoc
+	case fglStart:
+		locname = "Start"
+		loc = g.StartLoc
 	}
 	thread := ""
 	if g.ThreadID != 0 {
@@ -741,11 +748,12 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 }
 
 func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
-	fmt.Fprintf(w, "%sGoroutine %d:\n%s\tRuntime: %s\n%s\tUser: %s\n%s\tGo: %s\n",
+	fmt.Fprintf(w, "%sGoroutine %d:\n%s\tRuntime: %s\n%s\tUser: %s\n%s\tGo: %s\n%s\tStart: %s\n",
 		prefix, g.ID,
 		prefix, formatLocation(g.CurrentLoc),
 		prefix, formatLocation(g.UserCurrentLoc),
-		prefix, formatLocation(g.GoStatementLoc))
+		prefix, formatLocation(g.GoStatementLoc),
+		prefix, formatLocation(g.StartLoc))
 }
 
 func parseArgs(args string) ([]string, error) {

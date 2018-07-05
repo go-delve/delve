@@ -143,6 +143,7 @@ type G struct {
 	SP         uint64 // SP of goroutine when it was parked.
 	BP         uint64 // BP of goroutine when it was parked (go >= 1.7).
 	GoPC       uint64 // PC of 'go' statement that created this goroutine.
+	StartPC    uint64 // PC of the first function run on this goroutine.
 	WaitReason string // Reason for goroutine being parked.
 	Status     uint64
 	stkbarVar  *Variable // stkbar field of g struct
@@ -422,6 +423,7 @@ func (gvar *Variable) parseG() (*G, error) {
 	}
 	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
 	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
+	startpc, _ := constant.Int64Val(gvar.fieldVariable("startpc").Value)
 	waitReason := ""
 	if wrvar := gvar.fieldVariable("waitreason"); wrvar.Value != nil {
 		switch wrvar.Kind {
@@ -451,6 +453,7 @@ func (gvar *Variable) parseG() (*G, error) {
 	g := &G{
 		ID:         int(id),
 		GoPC:       uint64(gopc),
+		StartPC:    uint64(startpc),
 		PC:         uint64(pc),
 		SP:         uint64(sp),
 		BP:         uint64(bp),
@@ -551,6 +554,12 @@ func (g *G) Go() Location {
 	}
 	f, l, fn := g.variable.bi.PCToLine(pc)
 	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
+}
+
+// StartLoc returns the starting location of the goroutine.
+func (g *G) StartLoc() Location {
+	f, l, fn := g.variable.bi.PCToLine(g.StartPC)
+	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
 }
 
 // Returns the list of saved return addresses used by stack barriers
