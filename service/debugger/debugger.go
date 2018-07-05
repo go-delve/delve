@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/parser"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/derekparker/delve/pkg/goversion"
 	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/core"
@@ -89,6 +91,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		}
 		p, err := d.Attach(d.config.AttachPid, path)
 		if err != nil {
+			err = go11DecodeErrorCheck(err)
 			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
 		d.target = p
@@ -105,6 +108,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0])
 		}
 		if err != nil {
+			err = go11DecodeErrorCheck(err)
 			return nil, err
 		}
 		d.target = p
@@ -114,6 +118,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
 			if err != proc.NotExecutableErr && err != proc.UnsupportedLinuxArchErr && err != proc.UnsupportedWindowsArchErr && err != proc.UnsupportedDarwinArchErr {
+				err = go11DecodeErrorCheck(err)
 				err = fmt.Errorf("could not launch process: %s", err)
 			}
 			return nil, err
@@ -1041,4 +1046,17 @@ func (d *Debugger) ClearCheckpoint(id int) error {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 	return d.target.ClearCheckpoint(id)
+}
+
+func go11DecodeErrorCheck(err error) error {
+	if _, isdecodeerr := err.(dwarf.DecodeError); !isdecodeerr {
+		return err
+	}
+
+	gover, ok := goversion.Installed()
+	if !ok || !gover.AfterOrEqual(goversion.GoVersion{1, 11, -1, 0, 0, ""}) || goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+		return err
+	}
+
+	return fmt.Errorf("executables built by Go 1.11 or later need Delve built by Go 1.11 or later")
 }
