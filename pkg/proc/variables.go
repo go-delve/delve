@@ -489,29 +489,18 @@ func (v *Variable) fieldVariable(name string) *Variable {
 	return nil
 }
 
-// PC of entry to top-most deferred function.
-func (g *G) DeferPC() uint64 {
+// Defer returns the top-most defer of the goroutine.
+func (g *G) Defer() *Defer {
 	if g.variable.Unreadable != nil {
-		return 0
+		return nil
 	}
-	d := g.variable.fieldVariable("_defer").maybeDereference()
-	if d.Addr == 0 {
-		return 0
+	dvar := g.variable.fieldVariable("_defer").maybeDereference()
+	if dvar.Addr == 0 {
+		return nil
 	}
-	d.loadValue(LoadConfig{false, 1, 64, 0, -1})
-	if d.Unreadable != nil {
-		return 0
-	}
-	fnvar := d.fieldVariable("fn").maybeDereference()
-	if fnvar.Addr == 0 {
-		return 0
-	}
-	fnvar.loadValue(LoadConfig{false, 1, 64, 0, -1})
-	if fnvar.Unreadable != nil {
-		return 0
-	}
-	deferPC, _ := constant.Int64Val(fnvar.fieldVariable("fn").Value)
-	return uint64(deferPC)
+	d := &Defer{variable: dvar}
+	d.load()
+	return d
 }
 
 // From $GOROOT/src/runtime/traceback.go:597

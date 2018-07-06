@@ -14,7 +14,7 @@ func DisasmPrint(dv api.AsmInstructions, out io.Writer) {
 	bw := bufio.NewWriter(out)
 	defer bw.Flush()
 	if len(dv) > 0 && dv[0].Loc.Function != nil {
-		fmt.Fprintf(bw, "TEXT %s(SB) %s\n", dv[0].Loc.Function.Name, dv[0].Loc.File)
+		fmt.Fprintf(bw, "TEXT %s(SB) %s\n", dv[0].Loc.Function.Name(), dv[0].Loc.File)
 	}
 	tw := tabwriter.NewWriter(bw, 1, 8, 1, '\t', 0)
 	defer tw.Flush()

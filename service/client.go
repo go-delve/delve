@@ -98,7 +98,7 @@ type Client interface {
 	ListGoroutines() ([]*api.Goroutine, error)
 
 	// Returns stacktrace
-	Stacktrace(int, int, *api.LoadConfig) ([]api.Stackframe, error)
+	Stacktrace(goroutineID int, depth int, readDefers bool, cfg *api.LoadConfig) ([]api.Stackframe, error)
 
 	// Returns whether we attached to a running process or not
 	AttachedToExistingProcess() bool

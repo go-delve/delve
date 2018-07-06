@@ -798,13 +798,13 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 		assertNoError(err, t, "GoroutinesInfo()")
 		found := make([]bool, 10)
 		for _, g := range gs {
-			frames, err := c.Stacktrace(g.ID, 10, &normalLoadConfig)
+			frames, err := c.Stacktrace(g.ID, 10, false, &normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
 			for i, frame := range frames {
 				if frame.Function == nil {
 					continue
 				}
-				if frame.Function.Name != "main.agoroutine" {
+				if frame.Function.Name() != "main.agoroutine" {
 					continue
 				}
 				t.Logf("frame %d: %v", i, frame)
@@ -832,7 +832,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		frames, err := c.Stacktrace(-1, 10, &normalLoadConfig)
+		frames, err := c.Stacktrace(-1, 10, false, &normalLoadConfig)
 		assertNoError(err, t, "Stacktrace")
 
 		cur := 3
@@ -911,7 +911,7 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListRegisters()")
 		_, err = c.ListGoroutines()
 		assertError(err, t, "ListGoroutines()")
-		_, err = c.Stacktrace(gid, 10, &normalLoadConfig)
+		_, err = c.Stacktrace(gid, 10, false, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 		_, err = c.FindLocation(api.EvalScope{gid, 0}, "+1")
 		assertError(err, t, "FindLocation()")
@@ -964,7 +964,7 @@ func TestDisasm(t *testing.T) {
 		// look for static call to afunction() on line 29
 		found := false
 		for i := range d3 {
-			if d3[i].Loc.Line == 29 && strings.HasPrefix(d3[i].Text, "call") && d3[i].DestLoc != nil && d3[i].DestLoc.Function != nil && d3[i].DestLoc.Function.Name == "main.afunction" {
+			if d3[i].Loc.Line == 29 && strings.HasPrefix(d3[i].Text, "call") && d3[i].DestLoc != nil && d3[i].DestLoc.Function != nil && d3[i].DestLoc.Function.Name() == "main.afunction" {
 				found = true
 				break
 			}
@@ -1014,7 +1014,7 @@ func TestDisasm(t *testing.T) {
 				if curinstr.DestLoc == nil || curinstr.DestLoc.Function == nil {
 					t.Fatalf("Call instruction does not have destination: %v", curinstr)
 				}
-				if curinstr.DestLoc.Function.Name != "main.afunction" {
+				if curinstr.DestLoc.Function.Name() != "main.afunction" {
 					t.Fatalf("Call instruction destination not main.afunction: %v", curinstr)
 				}
 				break
@@ -1034,7 +1034,7 @@ func TestNegativeStackDepthBug(t *testing.T) {
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
-		_, err = c.Stacktrace(-1, -2, &normalLoadConfig)
+		_, err = c.Stacktrace(-1, -2, false, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 	})
 }
@@ -1493,7 +1493,7 @@ func TestAcceptMulticlient(t *testing.T) {
 
 	client2 := rpc2.NewClient(listener.Addr().String())
 	state := <-client2.Continue()
-	if state.CurrentThread.Function.Name != "main.main" {
+	if state.CurrentThread.Function.Name() != "main.main" {
 		t.Fatalf("bad state after continue: %v\n", state)
 	}
 	client2.Detach(true)
@@ -1516,12 +1516,12 @@ func TestClientServerFunctionCall(t *testing.T) {
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
-		beforeCallFn := state.CurrentThread.Function.Name
+		beforeCallFn := state.CurrentThread.Function.Name()
 		state, err := c.Call("call1(one, two)")
 		assertNoError(err, t, "Call()")
-		t.Logf("returned to %q", state.CurrentThread.Function.Name)
-		if state.CurrentThread.Function.Name != beforeCallFn {
-			t.Fatalf("did not return to the calling function %q %q", beforeCallFn, state.CurrentThread.Function.Name)
+		t.Logf("returned to %q", state.CurrentThread.Function.Name())
+		if state.CurrentThread.Function.Name() != beforeCallFn {
+			t.Fatalf("did not return to the calling function %q %q", beforeCallFn, state.CurrentThread.Function.Name())
 		}
 		if state.CurrentThread.ReturnValues == nil {
 			t.Fatal("no return values on return from call")

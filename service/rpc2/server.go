@@ -152,10 +152,11 @@ func (s *RPCServer) GetBreakpoint(arg GetBreakpointIn, out *GetBreakpointOut) er
 }
 
 type StacktraceIn struct {
-	Id    int
-	Depth int
-	Full  bool
-	Cfg   *api.LoadConfig
+	Id     int
+	Depth  int
+	Full   bool
+	Defers bool // read deferred functions
+	Cfg    *api.LoadConfig
 }
 
 type StacktraceOut struct {
@@ -171,7 +172,7 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	if cfg == nil && arg.Full {
 		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
 	}
-	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, api.LoadConfigToProc(cfg))
+	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Defers, api.LoadConfigToProc(cfg))
 	if err != nil {
 		return err
 	}

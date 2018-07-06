@@ -920,7 +920,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		mainCount := 0
 
 		for i, g := range gs {
-			locations, err := g.Stacktrace(40)
+			locations, err := g.Stacktrace(40, false)
 			if err != nil {
 				// On windows we do not have frame information for goroutines doing system calls.
 				t.Logf("Could not retrieve goroutine stack for goid=%d: %v", g.ID, err)
@@ -1237,13 +1237,13 @@ func TestFrameEvaluation(t *testing.T) {
 		found := make([]bool, 10)
 		for _, g := range gs {
 			frame := -1
-			frames, err := g.Stacktrace(10)
+			frames, err := g.Stacktrace(10, false)
 			if err != nil {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
 			}
 			t.Logf("Goroutine %d", g.ID)
-			logStacktrace(t, frames)
+			logStacktrace(t, p.BinInfo(), frames)
 			for i := range frames {
 				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
 					frame = i
@@ -1957,7 +1957,7 @@ func TestNextParked(t *testing.T) {
 				if g.Thread != nil {
 					continue
 				}
-				frames, _ := g.Stacktrace(5)
+				frames, _ := g.Stacktrace(5, false)
 				for _, frame := range frames {
 					// line 11 is the line where wg.Done is called
 					if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.sayhi" && frame.Current.Line < 11 {
@@ -2010,7 +2010,7 @@ func TestStepParked(t *testing.T) {
 		}
 
 		t.Logf("Parked g is: %v\n", parkedg)
-		frames, _ := parkedg.Stacktrace(20)
+		frames, _ := parkedg.Stacktrace(20, false)
 		for _, frame := range frames {
 			name := ""
 			if frame.Call.Fn != nil {
@@ -2714,7 +2714,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 				goid, _ := constant.Int64Val(goidVar.Value)
 
 				if g := getg(int(goid), gs); g != nil {
-					stack, err := g.Stacktrace(50)
+					stack, err := g.Stacktrace(50, false)
 					assertNoError(err, t, fmt.Sprintf("Stacktrace(goroutine = %d)", goid))
 					for _, frame := range stack {
 						if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.bottomUpTree" {
@@ -2740,7 +2740,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 		for _, goid := range stackBarrierGoids {
 			g := getg(goid, gs)
 
-			stack, err := g.Stacktrace(200)
+			stack, err := g.Stacktrace(200, false)
 			assertNoError(err, t, "Stacktrace()")
 
 			// Check that either main.main or main.main.func1 appear in the
@@ -3142,7 +3142,7 @@ func TestIssue844(t *testing.T) {
 	})
 }
 
-func logStacktrace(t *testing.T, frames []proc.Stackframe) {
+func logStacktrace(t *testing.T, bi *proc.BinaryInfo, frames []proc.Stackframe) {
 	for j := range frames {
 		name := "?"
 		if frames[j].Current.Fn != nil {
@@ -3150,6 +3150,23 @@ func logStacktrace(t *testing.T, frames []proc.Stackframe) {
 		}
 
 		t.Logf("\t%#x %#x %#x %s at %s:%d\n", frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
+		if frames[j].TopmostDefer != nil {
+			f, l, fn := bi.PCToLine(frames[j].TopmostDefer.DeferredPC)
+			fnname := ""
+			if fn != nil {
+				fnname = fn.Name
+			}
+			t.Logf("\t\ttopmost defer: %#x %s at %s:%d\n", frames[j].TopmostDefer.DeferredPC, fnname, f, l)
+		}
+		for deferIdx, _defer := range frames[j].Defers {
+			f, l, fn := bi.PCToLine(_defer.DeferredPC)
+			fnname := ""
+			if fn != nil {
+				fnname = fn.Name
+			}
+			t.Logf("\t\t%d defer: %#x %s at %s:%d\n", deferIdx, _defer.DeferredPC, fnname, f, l)
+
+		}
 	}
 }
 
@@ -3260,11 +3277,11 @@ func TestCgoStacktrace(t *testing.T) {
 				}
 			}
 
-			frames, err := g.Stacktrace(100)
+			frames, err := g.Stacktrace(100, false)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
 
 			t.Logf("iteration step %d", itidx)
-			logStacktrace(t, frames)
+			logStacktrace(t, p.BinInfo(), frames)
 
 			m := stacktraceCheck(t, tc, frames)
 			mismatch := (m == nil)
@@ -3301,7 +3318,7 @@ func TestCgoStacktrace(t *testing.T) {
 					if frames[j].Current.File != threadFrames[j].Current.File || frames[j].Current.Line != threadFrames[j].Current.Line {
 						t.Logf("stack mismatch between goroutine stacktrace and thread stacktrace")
 						t.Logf("thread stacktrace:")
-						logStacktrace(t, threadFrames)
+						logStacktrace(t, p.BinInfo(), threadFrames)
 						mismatch = true
 						break
 					}
@@ -3348,9 +3365,9 @@ func TestSystemstackStacktrace(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "second continue")
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG")
-		frames, err := g.Stacktrace(100)
+		frames, err := g.Stacktrace(100, false)
 		assertNoError(err, t, "stacktrace")
-		logStacktrace(t, frames)
+		logStacktrace(t, p.BinInfo(), frames)
 		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "runtime.gopanic", "main.main"}, frames)
 		if m == nil {
 			t.Fatal("see previous loglines")
@@ -3383,9 +3400,9 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 				break
 			}
 		}
-		frames, err := g.Stacktrace(100)
+		frames, err := g.Stacktrace(100, false)
 		assertNoError(err, t, "stacktrace")
-		logStacktrace(t, frames)
+		logStacktrace(t, p.BinInfo(), frames)
 		m := stacktraceCheck(t, []string{"!runtime.newstack", "main.main"}, frames)
 		if m == nil {
 			t.Fatal("see previous loglines")
@@ -3400,7 +3417,7 @@ func TestIssue1034(t *testing.T) {
 		_, err := setFunctionBreakpoint(p, "main.main")
 		assertNoError(err, t, "setFunctionBreakpoint()")
 		assertNoError(proc.Continue(p), t, "Continue()")
-		frames, err := p.SelectedGoroutine().Stacktrace(10)
+		frames, err := p.SelectedGoroutine().Stacktrace(10, false)
 		assertNoError(err, t, "Stacktrace")
 		scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
@@ -3871,5 +3888,64 @@ func TestIssue1264(t *testing.T) {
 		bp.Cond = &ast.Ident{Name: "equalsTwo"}
 		assertNoError(proc.Continue(p), t, "Continue()")
 		assertLineNumber(p, t, 8, "after continue")
+	})
+}
+
+func TestReadDefer(t *testing.T) {
+	withTestProcess("deferstack", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue")
+		frames, err := p.SelectedGoroutine().Stacktrace(10, true)
+		assertNoError(err, t, "Stacktrace")
+
+		logStacktrace(t, p.BinInfo(), frames)
+
+		examples := []struct {
+			frameIdx     int
+			topmostDefer string
+			defers       []string
+		}{
+			// main.call3 (defers nothing, topmost defer main.f2)
+			{0, "main.f2", []string{}},
+
+			// main.call2 (defers main.f2, main.f3, topmost defer main.f2)
+			{1, "main.f2", []string{"main.f2", "main.f3"}},
+
+			// main.call1 (defers main.f1, main.f2, topmost defer main.f1)
+			{2, "main.f1", []string{"main.f1", "main.f2"}},
+
+			// main.main (defers nothing)
+			{3, "", []string{}}}
+
+		defercheck := func(d *proc.Defer, deferName, tgt string, frameIdx int) {
+			if d == nil {
+				t.Fatalf("expected %q as %s of frame %d, got nothing", tgt, deferName, frameIdx)
+			}
+			if d.Unreadable != nil {
+				t.Fatalf("expected %q as %s of frame %d, got unreadable defer: %v", tgt, deferName, frameIdx, d.Unreadable)
+			}
+			_, _, dfn := p.BinInfo().PCToLine(d.DeferredPC)
+			if dfn == nil {
+				t.Fatalf("expected %q as %s of frame %d, got %#x", tgt, deferName, frameIdx, d.DeferredPC)
+			}
+			if dfn.Name != tgt {
+				t.Fatalf("expected %q as %s of frame %d, got %q", tgt, deferName, frameIdx, dfn.Name)
+			}
+		}
+
+		for _, example := range examples {
+			frame := &frames[example.frameIdx]
+
+			if example.topmostDefer != "" {
+				defercheck(frame.TopmostDefer, "topmost defer", example.topmostDefer, example.frameIdx)
+			}
+
+			if len(example.defers) != len(frames[example.frameIdx].Defers) {
+				t.Fatalf("expected %d defers for %d, got %v", len(example.defers), example.frameIdx, frame.Defers)
+			}
+
+			for deferIdx := range example.defers {
+				defercheck(frame.Defers[deferIdx], fmt.Sprintf("defer %d", deferIdx), example.defers[deferIdx], example.frameIdx)
+			}
+		}
 	})
 }

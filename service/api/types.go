@@ -129,7 +129,16 @@ type Stackframe struct {
 	FrameOffset        int64
 	FramePointerOffset int64
 
+	Defers []Defer
+
 	Err string
+}
+
+type Defer struct {
+	DeferredLoc Location // deferred function
+	DeferLoc    Location // location of the defer statement
+	SP          uint64   // value of SP when the function was deferred
+	Unreadable  string
 }
 
 func (frame *Stackframe) Var(name string) *Variable {
@@ -149,12 +158,19 @@ func (frame *Stackframe) Var(name string) *Variable {
 // Function represents thread-scoped function information.
 type Function struct {
 	// Name is the function name.
-	Name   string `json:"name"`
+	Name_  string `json:"name"`
 	Value  uint64 `json:"value"`
 	Type   byte   `json:"type"`
 	GoType uint64 `json:"goType"`
 	// Optimized is true if the function was optimized
 	Optimized bool `json:"optimized"`
+}
+
+func (fn *Function) Name() string {
+	if fn == nil {
+		return "???"
+	}
+	return fn.Name_
 }
 
 // VariableFlags is the type of the Flags field of Variable.

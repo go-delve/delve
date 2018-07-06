@@ -316,7 +316,7 @@ func (ale AmbiguousLocationError) Error() string {
 	var candidates []string
 	if ale.CandidatesLocation != nil {
 		for i := range ale.CandidatesLocation {
-			candidates = append(candidates, ale.CandidatesLocation[i].Function.Name)
+			candidates = append(candidates, ale.CandidatesLocation[i].Function.Name())
 		}
 
 	} else {
