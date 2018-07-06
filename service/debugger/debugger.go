@@ -895,7 +895,7 @@ func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.
-func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
+func (d *Debugger) Stacktrace(goroutineID, depth int, readDefers bool, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -913,7 +913,7 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, cfg *proc.LoadConfig) ([]a
 	if g == nil {
 		rawlocs, err = proc.ThreadStacktrace(d.target.CurrentThread(), depth)
 	} else {
-		rawlocs, err = g.Stacktrace(depth)
+		rawlocs, err = g.Stacktrace(depth, readDefers)
 	}
 	if err != nil {
 		return nil, err
@@ -930,6 +930,8 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 
 			FrameOffset:        rawlocs[i].FrameOffset(),
 			FramePointerOffset: rawlocs[i].FramePointerOffset(),
+
+			Defers: d.convertDefers(rawlocs[i].Defers),
 		}
 		if rawlocs[i].Err != nil {
 			frame.Err = rawlocs[i].Err.Error()
@@ -953,6 +955,36 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 	}
 
 	return locations, nil
+}
+
+func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
+	r := make([]api.Defer, len(defers))
+	for i := range defers {
+		ddf, ddl, ddfn := d.target.BinInfo().PCToLine(defers[i].DeferredPC)
+		drf, drl, drfn := d.target.BinInfo().PCToLine(defers[i].DeferPC)
+
+		r[i] = api.Defer{
+			DeferredLoc: api.ConvertLocation(proc.Location{
+				PC:   defers[i].DeferredPC,
+				File: ddf,
+				Line: ddl,
+				Fn:   ddfn,
+			}),
+			DeferLoc: api.ConvertLocation(proc.Location{
+				PC:   defers[i].DeferPC,
+				File: drf,
+				Line: drl,
+				Fn:   drfn,
+			}),
+			SP: defers[i].SP,
+		}
+
+		if defers[i].Unreadable != nil {
+			r[i].Unreadable = defers[i].Unreadable.Error()
+		}
+	}
+
+	return r
 }
 
 // FindLocation will find the location specified by 'locStr'.

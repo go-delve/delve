@@ -215,7 +215,7 @@ func ConvertFunction(fn *proc.Function) *Function {
 	// those fields is not documented their value was replaced with 0 when
 	// gosym.Func was replaced by debug_info entries.
 	return &Function{
-		Name:      fn.Name,
+		Name_:     fn.Name,
 		Type:      0,
 		Value:     fn.Entry,
 		GoType:    0,

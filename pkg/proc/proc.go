@@ -380,14 +380,11 @@ func StepOut(dbp Process) error {
 
 	var deferpc uint64 = 0
 	if filepath.Ext(topframe.Current.File) == ".go" {
-		if selg != nil {
-			deferPCEntry := selg.DeferPC()
-			if deferPCEntry != 0 {
-				deferfn := dbp.BinInfo().PCToFunc(deferPCEntry)
-				deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
-				if err != nil {
-					return err
-				}
+		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
+			deferfn := dbp.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
+			deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -554,7 +551,7 @@ func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
 		thread = g.Thread
 	}
 
-	locs, err := g.Stacktrace(frame + 1)
+	locs, err := g.Stacktrace(frame+1, false)
 	if err != nil {
 		return nil, err
 	}

@@ -79,7 +79,7 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 		}
 		frames, err = ThreadStacktrace(thread, 1)
 	} else {
-		frames, err = g.Stacktrace(1)
+		frames, err = g.Stacktrace(1, true)
 	}
 	if err != nil {
 		return Stackframe{}, Stackframe{}, err
@@ -224,15 +224,12 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 
 		// Set breakpoint on the most recently deferred function (if any)
 		var deferpc uint64 = 0
-		if selg != nil {
-			deferPCEntry := selg.DeferPC()
-			if deferPCEntry != 0 {
-				deferfn := dbp.BinInfo().PCToFunc(deferPCEntry)
-				var err error
-				deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
-				if err != nil {
-					return err
-				}
+		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
+			deferfn := dbp.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
+			var err error
+			deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
+			if err != nil {
+				return err
 			}
 		}
 		if deferpc != 0 && deferpc != topframe.Current.PC {

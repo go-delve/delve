@@ -503,7 +503,7 @@ func threads(t *Term, ctx callContext, args string) error {
 		if th.Function != nil {
 			fmt.Printf("%sThread %d at %#v %s:%d %s\n",
 				prefix, th.ID, th.PC, ShortenFilePath(th.File),
-				th.Line, th.Function.Name)
+				th.Line, th.Function.Name())
 		} else {
 			fmt.Printf("%sThread %s\n", prefix, formatThread(th))
 		}
@@ -593,7 +593,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
 		if bPrintStack {
-			stack, err := t.client.Stacktrace(g.ID, 10, nil)
+			stack, err := t.client.Stacktrace(g.ID, 10, false, nil)
 			if err != nil {
 				return err
 			}
@@ -682,7 +682,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	if frame < 0 {
 		return fmt.Errorf("Invalid frame %d", frame)
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, frame, nil)
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, frame, false, nil)
 	if err != nil {
 		return err
 	}
@@ -731,11 +731,7 @@ const (
 )
 
 func formatLocation(loc api.Location) string {
-	fname := ""
-	if loc.Function != nil {
-		fname = loc.Function.Name
-	}
-	return fmt.Sprintf("%s:%d %s (%#v)", ShortenFilePath(loc.File), loc.Line, fname, loc.PC)
+	return fmt.Sprintf("%s:%d %s (%#v)", ShortenFilePath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
 }
 
 func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
@@ -1320,7 +1316,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if sa.full {
 		cfg = &ShortLoadConfig
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, sa.depth, cfg)
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, sa.depth, sa.readDefers, cfg)
 	if err != nil {
 		return err
 	}
@@ -1329,9 +1325,10 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 }
 
 type stackArgs struct {
-	depth   int
-	full    bool
-	offsets bool
+	depth      int
+	full       bool
+	offsets    bool
+	readDefers bool
 }
 
 func parseStackArgs(argstr string) (stackArgs, error) {
@@ -1347,6 +1344,8 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 				r.full = true
 			case "-offsets":
 				r.offsets = true
+			case "-defer":
+				r.readDefers = true
 			default:
 				n, err := strconv.Atoi(args[i])
 				if err != nil {
@@ -1373,7 +1372,7 @@ func listCommand(t *Term, ctx callContext, args string) error {
 		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 
 	case len(args) == 0 && ctx.scoped():
-		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, nil)
+		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, false, nil)
 		if err != nil {
 			return err
 		}
@@ -1487,6 +1486,15 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 	if len(stack) == 0 {
 		return
 	}
+
+	extranl := offsets
+	for i := range stack {
+		if extranl {
+			break
+		}
+		extranl = extranl || (len(stack[i].Defers) > 0) || (len(stack[i].Arguments) > 0) || (len(stack[i].Locals) > 0)
+	}
+
 	d := digits(len(stack) - 1)
 	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
 	s := ind + strings.Repeat(" ", d+2+len(ind))
@@ -1496,15 +1504,23 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 			fmt.Printf("%serror: %s\n", s, stack[i].Err)
 			continue
 		}
-		name := "(nil)"
-		if stack[i].Function != nil {
-			name = stack[i].Function.Name
-		}
-		fmt.Printf(fmtstr, ind, i, stack[i].PC, name)
+		fmt.Printf(fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
 		fmt.Printf("%sat %s:%d\n", s, ShortenFilePath(stack[i].File), stack[i].Line)
 
 		if offsets {
 			fmt.Printf("%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
+		}
+
+		for j, d := range stack[i].Defers {
+			deferHeader := fmt.Sprintf("%s    defer %d: ", s, j)
+			s2 := strings.Repeat(" ", len(deferHeader))
+			if d.Unreadable != "" {
+				fmt.Printf("%s(unreadable defer: %s)\n", deferHeader, d.Unreadable)
+				continue
+			}
+			fmt.Printf("%s%#016x in %s\n", deferHeader, d.DeferredLoc.PC, d.DeferredLoc.Function.Name())
+			fmt.Printf("%sat %s:%d\n", s2, d.DeferredLoc.File, d.DeferredLoc.Line)
+			fmt.Printf("%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), d.DeferLoc.File, d.DeferLoc.Line)
 		}
 
 		for j := range stack[i].Arguments {
@@ -1512,6 +1528,10 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 		}
 		for j := range stack[i].Locals {
 			fmt.Printf("%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString())
+		}
+
+		if extranl {
+			fmt.Println()
 		}
 	}
 }
@@ -1563,7 +1583,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 }
 
 func printcontextLocation(loc api.Location) {
-	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name, ShortenFilePath(loc.File), loc.Line, loc.PC)
+	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), ShortenFilePath(loc.File), loc.Line, loc.PC)
 	if loc.Function != nil && loc.Function.Optimized {
 		fmt.Println(optimizedFunctionWarning)
 	}
@@ -1607,7 +1627,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
 		fmt.Printf("> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
 			bpname,
-			fn.Name,
+			fn.Name(),
 			args,
 			ShortenFilePath(th.File),
 			th.Line,
@@ -1618,7 +1638,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	} else {
 		fmt.Printf("> %s%s(%s) %s:%d (hits total:%d) (PC: %#v)\n",
 			bpname,
-			fn.Name,
+			fn.Name(),
 			args,
 			ShortenFilePath(th.File),
 			th.Line,
@@ -1829,11 +1849,7 @@ func checkpoint(t *Term, ctx callContext, args string) error {
 		if state.SelectedGoroutine != nil {
 			loc = state.SelectedGoroutine.CurrentLoc
 		}
-		fname := "???"
-		if loc.Function != nil {
-			fname = loc.Function.Name
-		}
-		args = fmt.Sprintf("%s() %s:%d (%#x)", fname, loc.File, loc.Line, loc.PC)
+		args = fmt.Sprintf("%s() %s:%d (%#x)", loc.Function.Name(), loc.File, loc.Line, loc.PC)
 	}
 
 	cpid, err := t.client.Checkpoint(args)

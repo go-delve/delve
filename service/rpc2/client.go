@@ -295,9 +295,9 @@ func (c *RPCClient) ListGoroutines() ([]*api.Goroutine, error) {
 	return out.Goroutines, err
 }
 
-func (c *RPCClient) Stacktrace(goroutineId, depth int, cfg *api.LoadConfig) ([]api.Stackframe, error) {
+func (c *RPCClient) Stacktrace(goroutineId, depth int, readDefers bool, cfg *api.LoadConfig) ([]api.Stackframe, error) {
 	var out StacktraceOut
-	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, false, cfg}, &out)
+	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, false, readDefers, cfg}, &out)
 	return out.Locations, err
 }
 
