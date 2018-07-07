@@ -646,7 +646,7 @@ func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
 		return nil, err
 	}
 	vars = filterVariables(vars, func(v *Variable) bool {
-		return (v.Flags & (VariableArgument | VariableReturnArgument)) != 0
+		return (v.Flags & VariableArgument) != 0
 	})
 	loadValues(vars, cfg)
 	return vars, nil
