@@ -181,11 +181,12 @@ func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("error evaluating expression: %v", err)
 	}
-	if v.Unreadable != nil {
-		return true, fmt.Errorf("condition expression unreadable: %v", v.Unreadable)
-	}
 	if v.Kind != reflect.Bool {
 		return true, errors.New("condition expression not boolean")
+	}
+	v.loadValue(loadFullValue)
+	if v.Unreadable != nil {
+		return true, fmt.Errorf("condition expression unreadable: %v", v.Unreadable)
 	}
 	return constant.BoolVal(v.Value), nil
 }

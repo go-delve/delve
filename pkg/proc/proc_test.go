@@ -3862,3 +3862,14 @@ func TestOptimizationCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestIssue1264(t *testing.T) {
+	// It should be possible to set a breakpoint condition that consists only
+	// of evaluating a single boolean variable.
+	withTestProcess("issue1264", t, func(p proc.Process, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture, 8)
+		bp.Cond = &ast.Ident{Name: "equalsTwo"}
+		assertNoError(proc.Continue(p), t, "Continue()")
+		assertLineNumber(p, t, 8, "after continue")
+	})
+}
