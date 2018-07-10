@@ -32,6 +32,7 @@ type cmdPrefix int
 const (
 	noPrefix = cmdPrefix(0)
 	onPrefix = cmdPrefix(1 << iota)
+	deferredPrefix
 )
 
 type callContext struct {
@@ -186,7 +187,7 @@ Called without arguments it will show information about the current goroutine.
 Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
 		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
-		{aliases: []string{"print", "p"}, allowedPrefixes: onPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
+		{aliases: []string{"print", "p"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print <expression>
 
@@ -214,12 +215,12 @@ If regex is specified only the functions matching it will be returned.`},
 	types [<regex>]
 
 If regex is specified only the types matching it will be returned.`},
-		{aliases: []string{"args"}, allowedPrefixes: onPrefix, cmdFn: args, helpMsg: `Print function arguments.
+		{aliases: []string{"args"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: args, helpMsg: `Print function arguments.
 
 	[goroutine <n>] [frame <m>] args [-v] [<regex>]
 
 If regex is specified only function arguments with a name matching it will be returned. If -v is specified more information about each function argument will be shown.`},
-		{aliases: []string{"locals"}, allowedPrefixes: onPrefix, cmdFn: locals, helpMsg: `Print local variables.
+		{aliases: []string{"locals"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: locals, helpMsg: `Print local variables.
 
 	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
 
@@ -248,10 +249,11 @@ When connected to a headless instance started with the --accept-multiclient, pas
 Show source around current point or provided linespec.`},
 		{aliases: []string{"stack", "bt"}, allowedPrefixes: onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
-	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-g] [-s] [-offsets]
+	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer]
 
 	-full		every stackframe is decorated with the value of its local variables and arguments.
-	-offsets	prints frame offset of each frame
+	-offsets	prints frame offset of each frame.
+	-defer		prints deferred function call stack for each frame.
 `},
 		{aliases: []string{"frame"},
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
@@ -259,8 +261,8 @@ Show source around current point or provided linespec.`},
 			},
 			helpMsg: `Set the current frame, or execute command on a different frame.
 
-  frame <m>
-  frame <m> <command>
+	frame <m>
+	frame <m> <command>
 
 The first form sets frame used by subsequent commands such as "print" or "set".
 The second form runs the command on the given frame.`},
@@ -270,8 +272,8 @@ The second form runs the command on the given frame.`},
 			},
 			helpMsg: `Move the current frame up.
 
-  up [<m>]
-  up [<m>] <command>
+	up [<m>]
+	up [<m>] <command>
 
 Move the current frame up by <m>. The second form runs the command on the given frame.`},
 		{aliases: []string{"down"},
@@ -280,10 +282,15 @@ Move the current frame up by <m>. The second form runs the command on the given 
 			},
 			helpMsg: `Move the current frame down.
 
-  down [<m>]
-  down [<m>] <command>
+	down [<m>]
+	down [<m>] <command>
 
 Move the current frame down by <m>. The second form runs the command on the given frame.`},
+		{aliases: []string{"deferred"}, cmdFn: c.deferredCommand, helpMsg: `Executes command in the context of a deferred call.
+
+	deferred <n> <command>
+
+Executes the specified command (print, args, locals) in the context of the n-th deferred call in the current frame.`},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: `Executes a file containing a list of delve commands
 
 	source <path>`},
@@ -426,7 +433,7 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 
 // Call takes a command to execute.
 func (c *Commands) Call(cmdstr string, t *Term) error {
-	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: c.frame}}
+	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: c.frame, DeferredCall: 0}}
 	return c.CallWithContext(cmdstr, t, ctx)
 }
 
@@ -712,6 +719,22 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, ShortenFilePath(th.File), th.Line, th.PC)
 	printfile(t, th.File, th.Line, true)
 	return nil
+}
+
+func (c *Commands) deferredCommand(t *Term, ctx callContext, argstr string) error {
+	ctx.Prefix = deferredPrefix
+
+	space := strings.Index(argstr, " ")
+
+	var err error
+	ctx.Scope.DeferredCall, err = strconv.Atoi(argstr[:space])
+	if err != nil {
+		return err
+	}
+	if ctx.Scope.DeferredCall <= 0 {
+		return errors.New("argument of deferred must be a number greater than 0 (use 'stack -defer' to see the list of deferred calls)")
+	}
+	return c.CallWithContext(argstr[space:], t, ctx)
 }
 
 func printscope(t *Term) error {
@@ -1565,7 +1588,7 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 		}
 
 		for j, d := range stack[i].Defers {
-			deferHeader := fmt.Sprintf("%s    defer %d: ", s, j)
+			deferHeader := fmt.Sprintf("%s    defer %d: ", s, j+1)
 			s2 := strings.Repeat(" ", len(deferHeader))
 			if d.Unreadable != "" {
 				fmt.Printf("%s(unreadable defer: %s)\n", deferHeader, d.Unreadable)

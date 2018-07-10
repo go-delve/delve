@@ -76,7 +76,7 @@ type LocationFinder interface {
 }
 
 func findLocationHelper(t *testing.T, c LocationFinder, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
-	locs, err := c.FindLocation(api.EvalScope{-1, 0}, loc)
+	locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, loc)
 	t.Logf("FindLocation(\"%s\") → %v\n", loc, locs)
 
 	if shouldErr {

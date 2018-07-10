@@ -484,7 +484,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
-		locals, err := c.ListLocalVariables(api.EvalScope{-1, 0}, normalLoadConfig)
+		locals, err := c.ListLocalVariables(api.EvalScope{-1, 0, 0}, normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -513,7 +513,7 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if len(regs) == 0 {
 			t.Fatal("Expected string showing registers values, got empty string")
 		}
-		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0}, normalLoadConfig)
+		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0, 0}, normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -755,7 +755,7 @@ func TestClientServer_EvalVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "a1", normalLoadConfig)
+		var1, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "a1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
 
 		t.Logf("var1: %s", var1.SinglelineString())
@@ -774,9 +774,9 @@ func TestClientServer_SetVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		assertNoError(c.SetVariable(api.EvalScope{-1, 0}, "a2", "8"), t, "SetVariable()")
+		assertNoError(c.SetVariable(api.EvalScope{-1, 0, 0}, "a2", "8"), t, "SetVariable()")
 
-		a2, err := c.EvalVariable(api.EvalScope{-1, 0}, "a2", normalLoadConfig)
+		a2, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "a2", normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Could not evaluate variable: %v", err)
 		}
@@ -909,10 +909,10 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListThreads()")
 		_, err = c.GetThread(tid)
 		assertError(err, t, "GetThread()")
-		assertError(c.SetVariable(api.EvalScope{gid, 0}, "a", "10"), t, "SetVariable()")
-		_, err = c.ListLocalVariables(api.EvalScope{gid, 0}, normalLoadConfig)
+		assertError(c.SetVariable(api.EvalScope{gid, 0, 0}, "a", "10"), t, "SetVariable()")
+		_, err = c.ListLocalVariables(api.EvalScope{gid, 0, 0}, normalLoadConfig)
 		assertError(err, t, "ListLocalVariables()")
-		_, err = c.ListFunctionArgs(api.EvalScope{gid, 0}, normalLoadConfig)
+		_, err = c.ListFunctionArgs(api.EvalScope{gid, 0, 0}, normalLoadConfig)
 		assertError(err, t, "ListFunctionArgs()")
 		_, err = c.ListRegisters(0, false)
 		assertError(err, t, "ListRegisters()")
@@ -920,9 +920,9 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListGoroutines()")
 		_, err = c.Stacktrace(gid, 10, false, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
-		_, err = c.FindLocation(api.EvalScope{gid, 0}, "+1")
+		_, err = c.FindLocation(api.EvalScope{gid, 0, 0}, "+1")
 		assertError(err, t, "FindLocation()")
-		_, err = c.DisassemblePC(api.EvalScope{-1, 0}, 0x40100, api.IntelFlavour)
+		_, err = c.DisassemblePC(api.EvalScope{-1, 0, 0}, 0x40100, api.IntelFlavour)
 		assertError(err, t, "DisassemblePC()")
 	})
 }
@@ -937,12 +937,12 @@ func TestDisasm(t *testing.T) {
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
 
-		locs, err := c.FindLocation(api.EvalScope{-1, 0}, "main.main")
+		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "main.main")
 		assertNoError(err, t, "FindLocation()")
 		if len(locs) != 1 {
 			t.Fatalf("wrong number of locations for main.main: %d", len(locs))
 		}
-		d1, err := c.DisassemblePC(api.EvalScope{-1, 0}, locs[0].PC, api.IntelFlavour)
+		d1, err := c.DisassemblePC(api.EvalScope{-1, 0, 0}, locs[0].PC, api.IntelFlavour)
 		assertNoError(err, t, "DisassemblePC()")
 		if len(d1) < 2 {
 			t.Fatalf("wrong size of disassembly: %d", len(d1))
@@ -950,7 +950,7 @@ func TestDisasm(t *testing.T) {
 
 		pcstart := d1[0].Loc.PC
 		pcend := d1[len(d1)-1].Loc.PC + uint64(len(d1[len(d1)-1].Bytes))
-		d2, err := c.DisassembleRange(api.EvalScope{-1, 0}, pcstart, pcend, api.IntelFlavour)
+		d2, err := c.DisassembleRange(api.EvalScope{-1, 0, 0}, pcstart, pcend, api.IntelFlavour)
 		assertNoError(err, t, "DisassembleRange()")
 
 		if len(d1) != len(d2) {
@@ -959,7 +959,7 @@ func TestDisasm(t *testing.T) {
 			t.Fatal("mismatched length between disassemble pc and disassemble range")
 		}
 
-		d3, err := c.DisassemblePC(api.EvalScope{-1, 0}, state.CurrentThread.PC, api.IntelFlavour)
+		d3, err := c.DisassemblePC(api.EvalScope{-1, 0, 0}, state.CurrentThread.PC, api.IntelFlavour)
 		assertNoError(err, t, "DisassemblePC() - second call")
 
 		if len(d1) != len(d3) {
@@ -1003,7 +1003,7 @@ func TestDisasm(t *testing.T) {
 			state, err := c.StepInstruction()
 			assertNoError(err, t, fmt.Sprintf("StepInstruction() %d", count))
 
-			d3, err = c.DisassemblePC(api.EvalScope{-1, 0}, state.CurrentThread.PC, api.IntelFlavour)
+			d3, err = c.DisassemblePC(api.EvalScope{-1, 0, 0}, state.CurrentThread.PC, api.IntelFlavour)
 			assertNoError(err, t, fmt.Sprintf("StepInstruction() %d", count))
 
 			curinstr := getCurinstr(d3)
@@ -1068,7 +1068,7 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
-		nvar, err := c.EvalVariable(api.EvalScope{-1, 0}, "n", normalLoadConfig)
+		nvar, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "n", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 
 		if nvar.SinglelineString() != "7" {
@@ -1174,14 +1174,14 @@ func TestTypesCommand(t *testing.T) {
 func TestIssue406(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("issue406", t, func(c service.Client) {
-		locs, err := c.FindLocation(api.EvalScope{-1, 0}, "issue406.go:146")
+		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "issue406.go:146")
 		assertNoError(err, t, "FindLocation()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{Addr: locs[0].PC})
 		assertNoError(err, t, "CreateBreakpoint()")
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
-		v, err := c.EvalVariable(api.EvalScope{-1, 0}, "cfgtree", normalLoadConfig)
+		v, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		vs := v.MultilineString("")
 		t.Logf("cfgtree formats to: %s\n", vs)
@@ -1193,7 +1193,7 @@ func TestEvalExprName(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
-		var1, err := c.EvalVariable(api.EvalScope{-1, 0}, "i1+1", normalLoadConfig)
+		var1, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "i1+1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
 
 		const name = "i1+1"
@@ -1511,7 +1511,7 @@ func TestAcceptMulticlient(t *testing.T) {
 }
 
 func mustHaveDebugCalls(t *testing.T, c service.Client) {
-	locs, err := c.FindLocation(api.EvalScope{-1, 0}, "runtime.debugCallV1")
+	locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "runtime.debugCallV1")
 	if len(locs) == 0 || err != nil {
 		t.Skip("function calls not supported on this version of go")
 	}
@@ -1552,7 +1552,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
-		loc, err := c.FindLocation(api.EvalScope{-1, 0}, "fmt/print.go:649")
+		loc, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "fmt/print.go:649")
 		assertNoError(err, t, "could not find location")
 
 		_, err = c.CreateBreakpoint(&api.Breakpoint{File: loc[0].File, Line: loc[0].Line})

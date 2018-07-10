@@ -594,6 +594,7 @@ type Defer struct {
 	DeferPC    uint64 // PC address of instruction that added this defer
 	SP         uint64 // Value of SP register when this function was deferred (this field gets adjusted when the stack is moved to match the new stack space)
 	link       *Defer // Next deferred function
+	argSz      int64
 
 	variable   *Variable
 	Unreadable error
@@ -660,6 +661,7 @@ func (d *Defer) load() {
 
 	d.DeferPC, _ = constant.Uint64Val(d.variable.fieldVariable("pc").Value)
 	d.SP, _ = constant.Uint64Val(d.variable.fieldVariable("sp").Value)
+	d.argSz, _ = constant.Int64Val(d.variable.fieldVariable("siz").Value)
 
 	linkvar := d.variable.fieldVariable("link").maybeDereference()
 	if linkvar.Addr != 0 {
@@ -684,4 +686,41 @@ func (d *Defer) Next() *Defer {
 		d.link.Unreadable = errSPDecreased
 	}
 	return d.link
+}
+
+// EvalScope returns an EvalScope relative to the argument frame of this deferred call.
+// The argument frame of a deferred call is stored in memory immediately
+// after the deferred header.
+func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
+	scope, err := GoroutineScope(thread)
+	if err != nil {
+		return nil, fmt.Errorf("could not get scope: %v", err)
+	}
+
+	bi := thread.BinInfo()
+	scope.PC = d.DeferredPC
+	scope.File, scope.Line, scope.Fn = bi.PCToLine(d.DeferredPC)
+
+	if scope.Fn == nil {
+		return nil, fmt.Errorf("could not find function at %#x", d.DeferredPC)
+	}
+
+	// The arguments are stored immediately after the defer header struct, i.e.
+	// addr+sizeof(_defer). Since CFA in go is always the address of the first
+	// argument, that's what we use for the value of CFA.
+	// For SP we use CFA minus the size of one pointer because that would be
+	// the space occupied by pushing the return address on the stack during the
+	// CALL.
+	scope.Regs.CFA = (int64(d.variable.Addr) + d.variable.RealType.Common().ByteSize)
+	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(scope.Regs.CFA - int64(bi.Arch.PtrSize()))
+
+	bi.dwarfReader.Seek(scope.Fn.offset)
+	e, err := bi.dwarfReader.Next()
+	if err != nil {
+		return nil, fmt.Errorf("could not read DWARF function entry: %v", err)
+	}
+	scope.Regs.FrameBase, _, _, _ = bi.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
+	scope.Mem = cacheMemory(scope.Mem, uintptr(scope.Regs.CFA), int(d.argSz))
+
+	return scope, nil
 }
