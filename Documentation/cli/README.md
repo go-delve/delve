@@ -14,6 +14,7 @@ Command | Description
 [condition](#condition) | Set breakpoint condition.
 [config](#config) | Changes configuration parameters.
 [continue](#continue) | Run until breakpoint or program termination.
+[deferred](#deferred) | Executes command in the context of a deferred call.
 [disassemble](#disassemble) | Disassembler.
 [down](#down) | Move the current frame down.
 [edit](#edit) | Open where you are in $DELVE_EDITOR or $EDITOR
@@ -160,6 +161,14 @@ Defines <alias> as an alias to <command> or removes an alias.
 Run until breakpoint or program termination.
 
 Aliases: c
+
+## deferred
+Executes command in the context of a deferred call.
+
+	deferred <n> <command>
+
+Executes the specified command (print, args, locals) in the context of the n-th deferred call in the current frame.
+
 
 ## disassemble
 Disassembler.
@@ -341,10 +350,11 @@ If regex is specified only the source files matching it will be returned.
 ## stack
 Print stack trace.
 
-	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-g] [-s] [-offsets]
+	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer]
 
 	-full		every stackframe is decorated with the value of its local variables and arguments.
-	-offsets	prints frame offset of each frame
+	-offsets	prints frame offset of each frame.
+	-defer		prints deferred function call stack for each frame.
 
 
 Aliases: bt

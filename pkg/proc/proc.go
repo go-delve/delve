@@ -544,7 +544,8 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
-func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
+// If deferCall is > 0 the eval scope will be relative to the specified deferred call.
+func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, err
 	}
@@ -564,13 +565,26 @@ func ConvertEvalScope(dbp Process, gid, frame int) (*EvalScope, error) {
 		thread = g.Thread
 	}
 
-	locs, err := g.Stacktrace(frame+1, false)
+	locs, err := g.Stacktrace(frame+1, deferCall > 0)
 	if err != nil {
 		return nil, err
 	}
 
 	if frame >= len(locs) {
 		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+	}
+
+	if deferCall > 0 {
+		if deferCall-1 >= len(locs[frame].Defers) {
+			return nil, fmt.Errorf("Frame %d only has %d deferred calls", frame, len(locs[frame].Defers))
+		}
+
+		d := locs[frame].Defers[deferCall-1]
+		if d.Unreadable != nil {
+			return nil, d.Unreadable
+		}
+
+		return d.EvalScope(ct)
 	}
 
 	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame:]...), nil

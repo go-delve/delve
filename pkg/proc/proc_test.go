@@ -1263,7 +1263,7 @@ func TestFrameEvaluation(t *testing.T) {
 				continue
 			}
 
-			scope, err := proc.ConvertEvalScope(p, g.ID, frame)
+			scope, err := proc.ConvertEvalScope(p, g.ID, frame, 0)
 			assertNoError(err, t, "ConvertEvalScope()")
 			t.Logf("scope = %v", scope)
 			v, err := scope.EvalVariable("i", normalLoadConfig)
@@ -1288,7 +1288,7 @@ func TestFrameEvaluation(t *testing.T) {
 		assertNoError(err, t, "GetG()")
 
 		for i := 0; i <= 3; i++ {
-			scope, err := proc.ConvertEvalScope(p, g.ID, i+1)
+			scope, err := proc.ConvertEvalScope(p, g.ID, i+1, 0)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
 			v, err := scope.EvalVariable("n", normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
@@ -4039,5 +4039,48 @@ func TestNextUnknownInstr(t *testing.T) {
 		assertNoError(err, t, "setFunctionBreakpoint()")
 		assertNoError(proc.Continue(p), t, "Continue()")
 		assertNoError(proc.Next(p), t, "Next()")
+	})
+}
+
+func TestReadDeferArgs(t *testing.T) {
+	var tests = []struct {
+		frame, deferCall int
+		a, b             int64
+	}{
+		{1, 1, 42, 61},
+		{2, 2, 1, -1},
+	}
+
+	withTestProcess("deferstack", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+
+		for _, test := range tests {
+			scope, err := proc.ConvertEvalScope(p, -1, test.frame, test.deferCall)
+			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope(-1, %d, %d)", test.frame, test.deferCall))
+
+			if scope.Fn.Name != "main.f2" {
+				t.Fatalf("expected function \"main.f2\" got %q", scope.Fn.Name)
+			}
+
+			avar, err := scope.EvalVariable("a", normalLoadConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bvar, err := scope.EvalVariable("b", normalLoadConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			a, _ := constant.Int64Val(avar.Value)
+			b, _ := constant.Int64Val(bvar.Value)
+
+			if a != test.a {
+				t.Errorf("value of argument 'a' at frame %d, deferred call %d: %d (expected %d)", test.frame, test.deferCall, a, test.a)
+			}
+
+			if b != test.b {
+				t.Errorf("value of argument 'b' at frame %d, deferred call %d: %d (expected %d)", test.frame, test.deferCall, b, test.b)
+			}
+		}
 	})
 }

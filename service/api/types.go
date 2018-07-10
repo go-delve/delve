@@ -324,8 +324,9 @@ type BreakpointInfo struct {
 // EvalScope is the scope a command should
 // be evaluated in. Describes the goroutine and frame number.
 type EvalScope struct {
-	GoroutineID int
-	Frame       int
+	GoroutineID  int
+	Frame        int
+	DeferredCall int // when DeferredCall is n > 0 this eval scope is relative to the n-th deferred call in the current frame
 }
 
 const (
