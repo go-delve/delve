@@ -264,10 +264,7 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 		return 0
 	}
 
-	var (
-		foundFile bool
-		sm        = newStateMachine(lineInfo, lineInfo.Instructions)
-	)
+	sm := newStateMachine(lineInfo, lineInfo.Instructions)
 
 	// if no instruction marked is_stmt is found fallback to the first
 	// instruction assigned to the filename:line.
@@ -280,17 +277,11 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 			}
 			break
 		}
-		if foundFile && sm.file != filename {
-			break
-		}
-		if sm.line == lineno && sm.file == filename {
-			foundFile = true
-			if sm.valid {
-				if sm.isStmt {
-					return sm.address
-				} else if fallbackPC == 0 {
-					fallbackPC = sm.address
-				}
+		if sm.line == lineno && sm.file == filename && sm.valid {
+			if sm.isStmt {
+				return sm.address
+			} else if fallbackPC == 0 {
+				fallbackPC = sm.address
 			}
 		}
 	}

@@ -640,7 +640,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		// breakpoint with file:line and with the function name always result on
 		// the same instruction being selected.
 		entryFile, entryLine := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
-		if pc, _, err := p.BinInfo().LineToPC(entryFile, entryLine); err == nil {
+		if pc, _, err := p.BinInfo().LineToPC(entryFile, entryLine); err == nil && pc >= fn.Entry && pc < fn.End {
 			return pc, nil
 		}
 	}
