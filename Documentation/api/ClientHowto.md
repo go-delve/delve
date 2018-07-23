@@ -259,7 +259,7 @@ non-shadowed variables.
 
 ## Gracefully ending the debug session
 
-To ensure that delve cleans up after itself by deleting the `debug` or `debug.test` binary it creates 
+To ensure that Delve cleans up after itself by deleting the `debug` or `debug.test` binary it creates 
 and killing any processes spawned by the program being debugged, the `Detach` command needs to be called.
 In case you are disconnecting a running program, ensure to halt the program before trying to detach.
 
