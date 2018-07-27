@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -14,11 +15,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/mattn/go-isatty"
 )
 
 // Process statuses
@@ -53,6 +54,13 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
 		return nil, proc.NotExecutableErr
 	}
+
+	if !isatty.IsTerminal(os.Stdin.Fd()) {
+		// exec.(*Process).Start will fail if we try to send a process to
+		// foreground but we are not attached to a terminal.
+		foreground = false
+	}
+
 	dbp := New(0)
 	dbp.common = proc.NewCommonProcess(true)
 	dbp.execPtraceFunc(func() {
@@ -60,8 +68,9 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 		process.Args = cmd
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
-		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true}
+		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true, Foreground: foreground}
 		if foreground {
+			signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
 			process.Stdin = os.Stdin
 		}
 		if wd != "" {
@@ -77,10 +86,6 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	_, _, err = dbp.wait(process.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
-	}
-	if foreground {
-		// Sets target process as the controlling process for our tty, equivalent to tcsetpgrp
-		syscall.Syscall(syscall.SYS_IOCTL, uintptr(0), uintptr(syscall.TIOCSPGRP), uintptr(unsafe.Pointer(&dbp.pid)))
 	}
 	return initializeDebugProcess(dbp, process.Path)
 }

@@ -64,7 +64,7 @@ func Replay(tracedir string, quiet bool) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	rrcmd.SysProcAttr = backgroundSysProcAttr()
+	rrcmd.SysProcAttr = sysProcAttr(false)
 
 	initch := make(chan rrInit)
 	go rrStderrParser(stderr, initch, quiet)

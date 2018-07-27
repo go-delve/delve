@@ -82,6 +82,7 @@ import (
 
 	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/mattn/go-isatty"
 	"github.com/sirupsen/logrus"
 )
 
@@ -200,7 +201,7 @@ func New(process *os.Process) *Process {
 }
 
 // Listen waits for a connection from the stub.
-func (p *Process) Listen(listener net.Listener, path string, pid int, foreground bool) error {
+func (p *Process) Listen(listener net.Listener, path string, pid int) error {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -214,7 +215,7 @@ func (p *Process) Listen(listener net.Listener, path string, pid int, foreground
 		if conn == nil {
 			return errors.New("could not connect")
 		}
-		return p.Connect(conn, path, pid, foreground)
+		return p.Connect(conn, path, pid)
 	case status := <-p.waitChan:
 		listener.Close()
 		return fmt.Errorf("stub exited while waiting for connection: %v", status)
@@ -226,7 +227,7 @@ func (p *Process) Dial(addr string, path string, pid int) error {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
-			return p.Connect(conn, path, pid, false)
+			return p.Connect(conn, path, pid)
 		}
 		select {
 		case status := <-p.waitChan:
@@ -243,7 +244,7 @@ func (p *Process) Dial(addr string, path string, pid int) error {
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *Process) Connect(conn net.Conn, path string, pid int, foreground bool) error {
+func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 	p.conn.conn = conn
 
 	p.conn.pid = pid
@@ -352,14 +353,6 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, foreground bool) 
 		}
 	}
 
-	if foreground {
-		// Moves process group of the target to foreground. Here we use the PID of
-		// the debugserver instance because we already asked Go to put it into a
-		// new process group (Setpgid) and debugserver does not spawn the target
-		// into a different process group.
-		moveToForeground(p.process.Pid)
-	}
-
 	return nil
 }
 
@@ -413,11 +406,8 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 	if foreground {
 		// Disable foregrounding if we can't open /dev/tty or debugserver will
 		// crash. See issue #1215.
-		tty, err := os.Open("/dev/tty")
-		if err != nil {
+		if !isatty.IsTerminal(os.Stdin.Fd()) {
 			foreground = false
-		} else {
-			tty.Close()
 		}
 	}
 
@@ -461,13 +451,14 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 		proc.Stderr = os.Stderr
 	}
 	if foreground {
+		foregroundSignalsIgnore()
 		proc.Stdin = os.Stdin
 	}
 	if wd != "" {
 		proc.Dir = wd
 	}
 
-	proc.SysProcAttr = backgroundSysProcAttr()
+	proc.SysProcAttr = sysProcAttr(foreground)
 
 	err := proc.Start()
 	if err != nil {
@@ -478,7 +469,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
-		err = p.Listen(listener, cmd[0], 0, p.conn.isDebugserver && foreground)
+		err = p.Listen(listener, cmd[0], 0)
 	} else {
 		err = p.Dial(port, cmd[0], 0)
 	}
@@ -520,7 +511,7 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 	proc.Stdout = os.Stdout
 	proc.Stderr = os.Stderr
 
-	proc.SysProcAttr = backgroundSysProcAttr()
+	proc.SysProcAttr = sysProcAttr(false)
 
 	err := proc.Start()
 	if err != nil {
@@ -531,7 +522,7 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
-		err = p.Listen(listener, path, pid, false)
+		err = p.Listen(listener, path, pid)
 	} else {
 		err = p.Dial(port, path, pid)
 	}
