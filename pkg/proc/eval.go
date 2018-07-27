@@ -1160,10 +1160,18 @@ func (v *Variable) asUint() (uint64, error) {
 	return n, nil
 }
 
+type typeConvErr struct {
+	srcType, dstType godwarf.Type
+}
+
+func (err *typeConvErr) Error() string {
+	return fmt.Sprintf("can not convert value of type %s to %s", err.srcType.String(), err.dstType.String())
+}
+
 func (v *Variable) isType(typ godwarf.Type, kind reflect.Kind) error {
 	if v.DwarfType != nil {
 		if typ != nil && typ.String() != v.RealType.String() {
-			return fmt.Errorf("can not convert value of type %s to %s", v.DwarfType.String(), typ.String())
+			return &typeConvErr{v.DwarfType, typ}
 		}
 		return nil
 	}

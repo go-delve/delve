@@ -216,6 +216,54 @@ func TestVariableEvaluation(t *testing.T) {
 	})
 }
 
+func TestSetVariable(t *testing.T) {
+	var testcases = []struct {
+		name     string
+		typ      string // type of <name>
+		startVal string // original value of <name>
+		expr     string
+		finalVal string // new value of <name> after executing <name> = <expr>
+	}{
+		{"b.ptr", "*main.A", "*main.A {val: 1337}", "nil", "*main.A nil"},
+		{"m2", "map[int]*main.astruct", "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "nil", "map[int]*main.astruct nil"},
+		{"fn1", "main.functype", "main.afunc", "nil", "nil"},
+		{"ch1", "chan int", "chan int 4/10", "nil", "chan int nil"},
+		{"s2", "[]main.astruct", "[]main.astruct len: 8, cap: 8, [{A: 1, B: 2},{A: 3, B: 4},{A: 5, B: 6},{A: 7, B: 8},{A: 9, B: 10},{A: 11, B: 12},{A: 13, B: 14},{A: 15, B: 16}]", "nil", "[]main.astruct len: 0, cap: 0, nil"},
+		{"err1", "error", "error(*main.astruct) *{A: 1, B: 2}", "nil", "error nil"},
+		{"s1[0]", "string", `"one"`, `""`, `""`},
+		{"as1", "main.astruct", "main.astruct {A: 1, B: 1}", `m1["Malone"]`, "main.astruct {A: 2, B: 3}"},
+
+		{"iface1", "interface {}", "interface {}(*main.astruct) *{A: 1, B: 2}", "nil", "interface {} nil"},
+		{"iface1", "interface {}", "interface {} nil", "iface2", "interface {}(string) \"test\""},
+		{"iface1", "interface {}", "interface {}(string) \"test\"", "parr", "interface {}(*[4]int) *[0,1,2,3]"},
+
+		{"s3", "[]int", `[]int len: 0, cap: 6, []`, "s4[2:5]", "[]int len: 3, cap: 3, [3,4,5]"},
+		{"s3", "[]int", "[]int len: 3, cap: 3, [3,4,5]", "arr1[:]", "[]int len: 4, cap: 4, [0,1,2,3]"},
+	}
+
+	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+
+		for _, tc := range testcases {
+			if tc.name == "iface1" && tc.expr == "parr" {
+				if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+					// conversion pointer -> eface not supported prior to Go 1.11
+					continue
+				}
+			}
+			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			assertNoError(err, t, "EvalVariable()")
+			assertVariable(t, variable, varTest{tc.name, true, tc.startVal, "", tc.typ, nil})
+
+			assertNoError(setVariable(p, tc.name, tc.expr), t, "SetVariable()")
+
+			variable, err = evalVariable(p, tc.name, pnormalLoadConfig)
+			assertNoError(err, t, "EvalVariable()")
+			assertVariable(t, variable, varTest{tc.name, true, tc.finalVal, "", tc.typ, nil})
+		}
+	})
+}
+
 func TestVariableEvaluationShort(t *testing.T) {
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},

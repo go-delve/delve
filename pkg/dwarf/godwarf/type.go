@@ -849,6 +849,9 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 				b = t.Type.Size()
 			case *PtrType:
 				b = int64(addressSize)
+			case *FuncType:
+				// on Go < 1.10 function types do not have a DW_AT_byte_size attribute.
+				b = int64(addressSize)
 			}
 		}
 		typ.Common().ByteSize = b
