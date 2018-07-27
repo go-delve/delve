@@ -16,6 +16,7 @@ Command | Description
 [continue](#continue) | Run until breakpoint or program termination.
 [disassemble](#disassemble) | Disassembler.
 [down](#down) | Move the current frame down.
+[edit](#edit) | Open where you are in $DELVE_EDITOR or $EDITOR
 [exit](#exit) | Exit the debugger.
 [frame](#frame) | Set the current frame, or execute command on a different frame.
 [funcs](#funcs) | Print list of functions.
@@ -182,6 +183,11 @@ Move the current frame down.
 
 Move the current frame down by <m>. The second form runs the command on the given frame.
 
+
+## edit
+Open where you are in $DELVE_EDITOR or $EDITOR
+
+Aliases: ed
 
 ## exit
 Exit the debugger.

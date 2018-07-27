@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"reflect"
 	"regexp"
 	"sort"
@@ -323,6 +324,8 @@ Adds or removes a path substitution rule.
 	config alias <alias>
 
 Defines <alias> as an alias to <command> or removes an alias.`},
+
+		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -1130,6 +1133,53 @@ func breakpoint(t *Term, ctx callContext, args string) error {
 
 func tracepoint(t *Term, ctx callContext, args string) error {
 	return setBreakpoint(t, ctx, true, args)
+}
+
+func getLocation(t *Term, ctx callContext) (*api.Location, error) {
+	if ctx.scoped() {
+		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, false, nil)
+		if err != nil {
+			return nil, err
+		}
+		if ctx.Scope.Frame >= len(locs) {
+			return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", ctx.Scope.Frame, ctx.Scope.GoroutineID)
+		}
+		return &locs[ctx.Scope.Frame].Location, nil
+	} else {
+		state, err := t.client.GetState()
+		if err != nil {
+			return nil, err
+		}
+		if state.SelectedGoroutine != nil {
+			return &state.SelectedGoroutine.CurrentLoc, nil
+		} else {
+			thread := state.CurrentThread
+			loc := api.Location {
+				PC: thread.PC,
+				File: thread.File,
+				Line: thread.Line,
+				Function: thread.Function,
+			}
+			return &loc, nil
+		}
+	}
+}
+
+func edit(t *Term, ctx callContext, args string) error {
+	loc, err := getLocation(t, ctx)
+	if err != nil { return err }
+
+	var editor string
+	if editor = os.Getenv("DELVE_EDITOR"); editor == "" {
+		if editor = os.Getenv("EDITOR"); editor == "" {
+			return fmt.Errorf("Neither DELVE_EDITOR or EDITOR is set")
+		}
+	}
+
+	editArgs := []string{fmt.Sprintf("+%d", loc.Line), loc.File}
+
+	cmd := exec.Command(editor, editArgs...)
+	return cmd.Run()
 }
 
 func printVar(t *Term, ctx callContext, args string) error {
