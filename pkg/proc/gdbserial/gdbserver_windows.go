@@ -2,10 +2,9 @@ package gdbserial
 
 import "syscall"
 
-func backgroundSysProcAttr() *syscall.SysProcAttr {
+func sysProcAttr(foreground bool) *syscall.SysProcAttr {
 	return nil
 }
 
-func moveToForeground(pid int) {
-	panic("lldb backend not supported on windows")
+func foregroundSignalsIgnore() {
 }
