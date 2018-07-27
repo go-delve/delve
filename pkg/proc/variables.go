@@ -611,17 +611,7 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 		return err
 	}
 
-	yv.loadValue(loadSingleValue)
-
-	if err := yv.isType(xv.RealType, xv.Kind); err != nil {
-		return err
-	}
-
-	if yv.Unreadable != nil {
-		return fmt.Errorf("Expression \"%s\" is unreadable: %v", value, yv.Unreadable)
-	}
-
-	return xv.setValue(yv)
+	return xv.setValue(yv, value)
 }
 
 // LocalVariables returns all local variables from the current function scope.
@@ -998,33 +988,109 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 	}
 }
 
-func (v *Variable) setValue(y *Variable) error {
-	var err error
-	switch v.Kind {
-	case reflect.Float32, reflect.Float64:
-		f, _ := constant.Float64Val(y.Value)
-		err = v.writeFloatRaw(f, v.RealType.Size())
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		n, _ := constant.Int64Val(y.Value)
-		err = v.writeUint(uint64(n), v.RealType.Size())
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		n, _ := constant.Uint64Val(y.Value)
-		err = v.writeUint(n, v.RealType.Size())
-	case reflect.Bool:
-		err = v.writeBool(constant.BoolVal(y.Value))
-	case reflect.Complex64, reflect.Complex128:
-		real, _ := constant.Float64Val(constant.Real(y.Value))
-		imag, _ := constant.Float64Val(constant.Imag(y.Value))
-		err = v.writeComplex(real, imag, v.RealType.Size())
-	default:
-		if t, isptr := v.RealType.(*godwarf.PtrType); isptr {
-			err = v.writeUint(uint64(y.Children[0].Addr), int64(t.ByteSize))
-		} else {
-			return fmt.Errorf("can not set variables of type %s (not implemented)", v.Kind.String())
-		}
+// setValue writes the value of srcv to dstv.
+// * If srcv is a numerical literal constant and srcv is of a compatible type
+//   the necessary type conversion is performed.
+// * If srcv is nil and dstv is of a nil'able type then dstv is nilled.
+// * If srcv is the empty string and dstv is a string then dstv is set to the
+//   empty string.
+// * If dstv is an "interface {}" and srcv is either an interface (possibly
+//   non-empty) or a pointer shaped type (map, channel, pointer or struct
+//   containing a single pointer field) the type conversion to "interface {}"
+//   is performed.
+// * If srcv and dstv have the same type and are both addressable then the
+//   contents of srcv are copied byte-by-byte into dstv
+func (dstv *Variable) setValue(srcv *Variable, srcExpr string) error {
+	srcv.loadValue(loadSingleValue)
+
+	typerr := srcv.isType(dstv.RealType, dstv.Kind)
+	if _, isTypeConvErr := typerr.(*typeConvErr); isTypeConvErr {
+		// attempt iface -> eface and ptr-shaped -> eface conversions.
+		return convertToEface(srcv, dstv)
+	}
+	if typerr != nil {
+		return typerr
 	}
 
-	return err
+	if srcv.Unreadable != nil {
+		return fmt.Errorf("Expression \"%s\" is unreadable: %v", srcExpr, srcv.Unreadable)
+	}
+
+	// Numerical types
+	switch dstv.Kind {
+	case reflect.Float32, reflect.Float64:
+		f, _ := constant.Float64Val(srcv.Value)
+		return dstv.writeFloatRaw(f, dstv.RealType.Size())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n, _ := constant.Int64Val(srcv.Value)
+		return dstv.writeUint(uint64(n), dstv.RealType.Size())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		n, _ := constant.Uint64Val(srcv.Value)
+		return dstv.writeUint(n, dstv.RealType.Size())
+	case reflect.Bool:
+		return dstv.writeBool(constant.BoolVal(srcv.Value))
+	case reflect.Complex64, reflect.Complex128:
+		real, _ := constant.Float64Val(constant.Real(srcv.Value))
+		imag, _ := constant.Float64Val(constant.Imag(srcv.Value))
+		return dstv.writeComplex(real, imag, dstv.RealType.Size())
+	}
+
+	// nilling nillable variables
+	if srcv == nilVariable {
+		return dstv.writeZero()
+	}
+
+	// set a string to ""
+	if srcv.Kind == reflect.String && srcv.Len == 0 {
+		return dstv.writeZero()
+	}
+
+	// slice assignment (this is not handled by the writeCopy below so that
+	// results of a reslice operation can be used here).
+	if srcv.Kind == reflect.Slice {
+		return dstv.writeSlice(srcv.Len, srcv.Cap, srcv.Base)
+	}
+
+	// allow any integer to be converted to any pointer
+	if t, isptr := dstv.RealType.(*godwarf.PtrType); isptr {
+		return dstv.writeUint(uint64(srcv.Children[0].Addr), int64(t.ByteSize))
+	}
+
+	// byte-by-byte copying for everything else, but the source must be addressable
+	if srcv.Addr != 0 {
+		return dstv.writeCopy(srcv)
+	}
+
+	return fmt.Errorf("can not set variables of type %s (not implemented)", dstv.Kind.String())
+}
+
+// convertToEface converts srcv into an "interface {}" and writes it to
+// dstv.
+// Dstv must be a variable of type "inteface {}" and srcv must either by an
+// interface or a pointer shaped variable (map, channel, pointer or struct
+// containing a single pointer)
+func convertToEface(srcv, dstv *Variable) error {
+	if dstv.RealType.String() != "interface {}" {
+		return &typeConvErr{srcv.DwarfType, dstv.RealType}
+	}
+	if _, isiface := srcv.RealType.(*godwarf.InterfaceType); isiface {
+		// iface -> eface conversion
+		_type, data, _ := srcv.readInterface()
+		if srcv.Unreadable != nil {
+			return srcv.Unreadable
+		}
+		_type = _type.maybeDereference()
+		dstv.writeEmptyInterface(uint64(_type.Addr), data)
+		return nil
+	}
+	typeAddr, typeKind, runtimeTypeFound, err := dwarfToRuntimeType(srcv.bi, srcv.mem, srcv.RealType)
+	if err != nil {
+		return err
+	}
+	if !runtimeTypeFound || typeKind&kindDirectIface == 0 {
+		return &typeConvErr{srcv.DwarfType, dstv.RealType}
+	}
+	return dstv.writeEmptyInterface(typeAddr, srcv)
 }
 
 func readStringInfo(mem MemoryReadWriter, arch Arch, addr uintptr) (uintptr, int64, error) {
@@ -1078,13 +1144,19 @@ func readStringValue(mem MemoryReadWriter, addr uintptr, strlen int64, cfg LoadC
 	return retstr, nil
 }
 
+const (
+	sliceArrayFieldName = "array"
+	sliceLenFieldName   = "len"
+	sliceCapFieldName   = "cap"
+)
+
 func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 	v.mem = cacheMemory(v.mem, v.Addr, int(t.Size()))
 
 	var err error
 	for _, f := range t.Field {
 		switch f.Name {
-		case "array":
+		case sliceArrayFieldName:
 			var base uint64
 			base, err = readUintRaw(v.mem, uintptr(int64(v.Addr)+f.ByteOffset), f.Type.Size())
 			if err == nil {
@@ -1097,14 +1169,14 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 				}
 				v.fieldType = ptrType.Type
 			}
-		case "len":
+		case sliceLenFieldName:
 			lstrAddr, _ := v.toField(f)
 			lstrAddr.loadValue(loadSingleValue)
 			err = lstrAddr.Unreadable
 			if err == nil {
 				v.Len, _ = constant.Int64Val(lstrAddr.Value)
 			}
-		case "cap":
+		case sliceCapFieldName:
 			cstrAddr, _ := v.toField(f)
 			cstrAddr.loadValue(loadSingleValue)
 			err = cstrAddr.Unreadable
@@ -1363,6 +1435,56 @@ func (v *Variable) writeBool(value bool) error {
 	val := []byte{0}
 	val[0] = *(*byte)(unsafe.Pointer(&value))
 	_, err := v.mem.WriteMemory(v.Addr, val)
+	return err
+}
+
+func (v *Variable) writeZero() error {
+	val := make([]byte, v.RealType.Size())
+	_, err := v.mem.WriteMemory(v.Addr, val)
+	return err
+}
+
+// writeInterface writes the empty interface of type typeAddr and data as the data field.
+func (v *Variable) writeEmptyInterface(typeAddr uint64, data *Variable) error {
+	dstType, dstData, _ := v.readInterface()
+	if v.Unreadable != nil {
+		return v.Unreadable
+	}
+	dstType.writeUint(typeAddr, dstType.RealType.Size())
+	dstData.writeCopy(data)
+	return nil
+}
+
+func (v *Variable) writeSlice(len, cap int64, base uintptr) error {
+	for _, f := range v.RealType.(*godwarf.SliceType).Field {
+		switch f.Name {
+		case sliceArrayFieldName:
+			arrv, _ := v.toField(f)
+			if err := arrv.writeUint(uint64(base), arrv.RealType.Size()); err != nil {
+				return err
+			}
+		case sliceLenFieldName:
+			lenv, _ := v.toField(f)
+			if err := lenv.writeUint(uint64(len), lenv.RealType.Size()); err != nil {
+				return err
+			}
+		case sliceCapFieldName:
+			capv, _ := v.toField(f)
+			if err := capv.writeUint(uint64(cap), capv.RealType.Size()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (dstv *Variable) writeCopy(srcv *Variable) error {
+	buf := make([]byte, srcv.RealType.Size())
+	_, err := srcv.mem.ReadMemory(buf, srcv.Addr)
+	if err != nil {
+		return err
+	}
+	_, err = dstv.mem.WriteMemory(dstv.Addr, buf)
 	return err
 }
 
@@ -1674,11 +1796,7 @@ func mapEvacuated(b *Variable) bool {
 	return true
 }
 
-func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig) {
-	var _type, data *Variable
-	var err error
-	isnil := false
-
+func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 	// An interface variable is implemented either by a runtime.iface
 	// struct or a runtime.eface struct. The difference being that empty
 	// interfaces (i.e. "interface {}") are represented by runtime.eface
@@ -1694,15 +1812,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	//
 	// In either case the _type field is a pointer to a runtime._type struct.
 	//
-	// Before go1.7 _type used to have a field named 'string' containing
-	// the name of the type. Since go1.7 the field has been replaced by a
-	// str field that contains an offset in the module data, the concrete
-	// type must be calculated using the str address along with the value
-	// of v.tab._type (v._type for empty interfaces).
-	//
-	// The following code works for both runtime.iface and runtime.eface
-	// and sets the go17 flag when the 'string' field can not be found
-	// but the str field was found
+	// The following code works for both runtime.iface and runtime.eface.
 
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
@@ -1715,6 +1825,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 			tab = tab.maybeDereference()
 			isnil = tab.Addr == 0
 			if !isnil {
+				var err error
 				_type, err = tab.structMember("_type")
 				if err != nil {
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
@@ -1723,14 +1834,16 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 			}
 		case "_type": // for runtime.eface
 			_type, _ = v.toField(f)
-			_type = _type.maybeDereference()
-			isnil = _type.Addr == 0
-			if !isnil {
-			}
+			isnil = _type.maybeDereference().Addr == 0
 		case "data":
 			data, _ = v.toField(f)
 		}
 	}
+	return
+}
+
+func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig) {
+	_type, data, isnil := v.readInterface()
 
 	if isnil {
 		// interface to nil

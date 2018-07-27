@@ -1221,3 +1221,36 @@ func constructTypeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, erro
 		return nil, nil
 	}
 }
+
+func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) (typeAddr uint64, typeKind uint64, found bool, err error) {
+	rdr := bi.DwarfReader()
+	rdr.Seek(typ.Common().Offset)
+	e, err := rdr.Next()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	off, ok := e.Val(godwarf.AttrGoRuntimeType).(uint64)
+	if !ok {
+		return 0, 0, false, nil
+	}
+
+	if err := loadModuleData(bi, mem); err != nil {
+		return 0, 0, false, err
+	}
+
+	//TODO(aarzilli): when we support plugins this should be the plugin
+	//corresponding to the shared object containing entry 'e'.
+	typeAddr = uint64(bi.moduleData[0].types) + off
+
+	rtyp, err := bi.findType("runtime._type")
+	if err != nil {
+		return 0, 0, false, err
+	}
+	_type := newVariable("", uintptr(typeAddr), rtyp, bi, mem)
+	kindv := _type.loadFieldNamed("kind")
+	if kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
+		return 0, 0, false, fmt.Errorf("unreadable interface type: %v", kindv.Unreadable)
+	}
+	typeKind, _ = constant.Uint64Val(kindv.Value)
+	return typeAddr, typeKind, true, nil
+}
