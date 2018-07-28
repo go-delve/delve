@@ -1508,9 +1508,7 @@ func mustHaveDebugCalls(t *testing.T, c service.Client) {
 }
 
 func TestClientServerFunctionCall(t *testing.T) {
-	if runtime.GOOS != "linux" || testBackend != "native" {
-		t.Skip("unsupported")
-	}
+	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
@@ -1541,9 +1539,7 @@ func TestClientServerFunctionCall(t *testing.T) {
 }
 
 func TestClientServerFunctionCallBadPos(t *testing.T) {
-	if runtime.GOOS != "linux" || testBackend != "native" {
-		t.Skip("unsupported")
-	}
+	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
 		loc, err := c.FindLocation(api.EvalScope{-1, 0}, "fmt/print.go:649")
@@ -1566,9 +1562,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 }
 
 func TestClientServerFunctionCallPanic(t *testing.T) {
-	if runtime.GOOS != "linux" || testBackend != "native" {
-		t.Skip("unsupported")
-	}
+	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
@@ -1594,9 +1588,7 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 }
 
 func TestClientServerFunctionCallStacktrace(t *testing.T) {
-	if runtime.GOOS != "linux" || testBackend != "native" {
-		t.Skip("unsupported")
-	}
+	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&api.LoadConfig{false, 0, 2048, 0, 0})

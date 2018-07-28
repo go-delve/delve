@@ -260,9 +260,9 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 			return nil, err
 		}
 		typ = resolveTypedef(typ)
-		locprog, ok := entry.Val(dwarf.AttrLocation).([]byte)
-		if !ok {
-			return nil, fmt.Errorf("unsupported location expression for argument %s", argname)
+		locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
+		if err != nil {
+			return nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
 		}
 		off, _, err := op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
 		if err != nil {
@@ -295,37 +295,23 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 
 	// constructs arguments frame
 	argmem = make([]byte, argFrameSize)
+	argmemWriter := &bufferMemoryReadWriter{argmem}
 	for i := range formalArgs {
 		formalArg := &formalArgs[i]
 		actualArg := actualArgs[i]
-
-		if actualArg.Addr == 0 {
-			//TODO(aarzilli): at least some of this needs to be supported
-			return nil, ErrNoAddrUnsupported
-		}
-
-		if actualArg.RealType != formalArg.typ {
-			return nil, fmt.Errorf("cannot use %s (type %s) as type %s in argument to %s", actualArg.Name, actualArg.DwarfType.String(), formalArg.typ.String(), fn.Name)
-		}
 
 		//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
 		if err := escapeCheck(actualArg, formalArg.name, g); err != nil {
 			return nil, fmt.Errorf("can not pass %s to %s: %v", actualArg.Name, formalArg.name, err)
 		}
 
-		//TODO(aarzilli): automatic type conversions
-		//TODO(aarzilli): automatic wrapping in interfaces?
+		//TODO(aarzilli): autmoatic wrapping in interfaces for cases not handled
+		// by convertToEface.
 
-		buf := make([]byte, actualArg.RealType.Size())
-		sz, err := actualArg.mem.ReadMemory(buf, actualArg.Addr)
-		if err != nil {
-			return nil, fmt.Errorf("could not read argument %s: %v", actualArg.Name, err)
+		formalArgVar := newVariable(formalArg.name, uintptr(formalArg.off+fakeAddress), formalArg.typ, bi, argmemWriter)
+		if err := formalArgVar.setValue(actualArg, actualArg.Name); err != nil {
+			return nil, err
 		}
-		if int64(sz) != actualArg.RealType.Size() {
-			return nil, fmt.Errorf("short read for argument %s: %d != %d %x", actualArg.Name, sz, actualArg.RealType.Size(), buf)
-		}
-
-		copy(argmem[formalArg.off:], buf)
 	}
 
 	return argmem, nil
