@@ -421,38 +421,45 @@ func (bi *BinaryInfo) loclistInit(data []byte) {
 	bi.loclist.ptrSz = bi.Arch.PtrSize()
 }
 
-// Location returns the location described by attribute attr of entry.
-// This will either be an int64 address or a slice of Pieces for locations
-// that don't correspond to a single memory address (registers, composite
-// locations).
-func (bi *BinaryInfo) Location(entry reader.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
+func (bi *BinaryInfo) locationExpr(entry reader.Entry, attr dwarf.Attr, pc uint64) ([]byte, string, error) {
 	a := entry.Val(attr)
 	if a == nil {
-		return 0, nil, "", fmt.Errorf("no location attribute %s", attr)
+		return nil, "", fmt.Errorf("no location attribute %s", attr)
 	}
 	if instr, ok := a.([]byte); ok {
 		var descr bytes.Buffer
 		fmt.Fprintf(&descr, "[block] ")
 		op.PrettyPrint(&descr, instr)
-		addr, pieces, err := op.ExecuteStackProgram(regs, instr)
-		return addr, pieces, descr.String(), err
+		return instr, descr.String(), nil
 	}
 	off, ok := a.(int64)
 	if !ok {
-		return 0, nil, "", fmt.Errorf("could not interpret location attribute %s", attr)
+		return nil, "", fmt.Errorf("could not interpret location attribute %s", attr)
 	}
 	if bi.loclist.data == nil {
-		return 0, nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x (no debug_loc section found)", off, pc)
+		return nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x (no debug_loc section found)", off, pc)
 	}
 	instr := bi.loclistEntry(off, pc)
 	if instr == nil {
-		return 0, nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
+		return nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
 	}
 	var descr bytes.Buffer
 	fmt.Fprintf(&descr, "[%#x:%#x] ", off, pc)
 	op.PrettyPrint(&descr, instr)
+	return instr, descr.String(), nil
+}
+
+// Location returns the location described by attribute attr of entry.
+// This will either be an int64 address or a slice of Pieces for locations
+// that don't correspond to a single memory address (registers, composite
+// locations).
+func (bi *BinaryInfo) Location(entry reader.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
+	instr, descr, err := bi.locationExpr(entry, attr, pc)
+	if err != nil {
+		return 0, nil, "", err
+	}
 	addr, pieces, err := op.ExecuteStackProgram(regs, instr)
-	return addr, pieces, descr.String(), err
+	return addr, pieces, descr, err
 }
 
 // loclistEntry returns the loclist entry in the loclist starting at off,

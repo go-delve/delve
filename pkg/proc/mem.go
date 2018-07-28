@@ -136,3 +136,18 @@ func DereferenceMemory(mem MemoryReadWriter) MemoryReadWriter {
 	}
 	return mem
 }
+
+// bufferMemoryReadWriter is dummy a MemoryReadWriter backed by a []byte.
+type bufferMemoryReadWriter struct {
+	buf []byte
+}
+
+func (mem *bufferMemoryReadWriter) ReadMemory(buf []byte, addr uintptr) (n int, err error) {
+	copy(buf, mem.buf[addr-fakeAddress:][:len(buf)])
+	return len(buf), nil
+}
+
+func (mem *bufferMemoryReadWriter) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+	copy(mem.buf[addr-fakeAddress:], data)
+	return len(data), nil
+}

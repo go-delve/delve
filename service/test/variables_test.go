@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"sort"
@@ -1056,6 +1057,73 @@ func TestIssue1075(t *testing.T) {
 			assertNoError(err, t, fmt.Sprintf("LocalVariables (%d)", i))
 			for _, v := range vars {
 				api.ConvertVar(v).SinglelineString()
+			}
+		}
+	})
+}
+
+func TestCallFunction(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+
+	var testcases = []struct {
+		expr string   // call expression to evaluate
+		outs []string // list of return parameters in this format: <param name>:<param type>:<param value>
+		err  error    // if not nil should return an error
+	}{
+		{"call1(one, two)", []string{":int:3"}, nil},
+		{"call1(one+two, 4)", []string{":int:7"}, nil},
+		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil},
+		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil},
+		{`stringsJoin(stringslice, ",")`, nil, errors.New("can not set variables of type string (not implemented)")},
+		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
+		{`stringsJoin(s1, comma)`, nil, errors.New("could not find symbol value for s1")},
+		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
+	}
+
+	withTestProcess("fncall", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", true, 0)
+		if err != nil {
+			t.Skip("function calls not supported on this version of go")
+		}
+		assertNoError(proc.Continue(p), t, "Continue()")
+		for _, tc := range testcases {
+			err := proc.CallFunction(p, tc.expr, &pnormalLoadConfig)
+			if tc.err != nil {
+				if err == nil {
+					t.Fatalf("call %q: expected error %q, got no error", tc.expr, tc.err.Error())
+				}
+				if tc.err.Error() != err.Error() {
+					t.Fatalf("call %q: expected error %q, got %q", tc.expr, tc.err.Error(), err.Error())
+				}
+				continue
+			}
+
+			if err != nil {
+				t.Fatalf("call %q: error %q", tc.expr, err.Error())
+			}
+
+			retvals := p.CurrentThread().Common().ReturnValues(pnormalLoadConfig)
+
+			if len(retvals) != len(tc.outs) {
+				t.Fatalf("call %q: wrong number of return parameters", tc.expr)
+			}
+
+			for i := range retvals {
+				outfields := strings.SplitN(tc.outs[i], ":", 3)
+				tgtName, tgtType, tgtValue := outfields[0], outfields[1], outfields[2]
+
+				if tgtName != "" && tgtName != retvals[i].Name {
+					t.Fatalf("call %q output parameter %d: expected name %q, got %q", tc.expr, i, tgtName, retvals[i].Name)
+				}
+
+				cv := api.ConvertVar(retvals[i])
+
+				if cv.Type != tgtType {
+					t.Fatalf("call %q, output parameter %d: expected type %q, got %q", tc.expr, i, tgtType, cv.Type)
+				}
+				if cvs := cv.SinglelineString(); cvs != tgtValue {
+					t.Fatalf("call %q, output parameter %d: expected value %q, got %q", tc.expr, i, tgtValue, cvs)
+				}
 			}
 		}
 	})
