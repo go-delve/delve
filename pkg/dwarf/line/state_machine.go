@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/derekparker/delve/pkg/dwarf/util"
 )
@@ -33,8 +34,6 @@ type StateMachine struct {
 	// value of the state machine should be appended to the matrix representing
 	// the compilation unit)
 	valid bool
-
-	lastOpcodeKind opcodeKind
 
 	started bool
 
@@ -272,7 +271,7 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 
 	for {
 		if err := sm.next(); err != nil {
-			if lineInfo.Logf != nil {
+			if lineInfo.Logf != nil && err != io.EOF {
 				lineInfo.Logf("LineToPC error: %v", err)
 			}
 			break
@@ -313,38 +312,37 @@ func (sm *StateMachine) next() error {
 	sm.started = true
 	if sm.valid {
 		sm.lastAddress, sm.lastFile, sm.lastLine = sm.address, sm.file, sm.line
+
+		// valid is set by either a special opcode or a DW_LNS_copy, in both cases
+		// we need to reset basic_block, prologue_end and epilogue_begin
+		sm.basicBlock = false
+		sm.prologueEnd = false
+		sm.epilogueBegin = false
 	}
 	if sm.endSeq {
 		sm.endSeq = false
 		sm.file = sm.dbl.FileNames[0].Path
 		sm.line = 1
 		sm.column = 0
-		sm.isStmt = false
+		sm.isStmt = sm.dbl.Prologue.InitialIsStmt == uint8(1)
 		sm.basicBlock = false
-	}
-	if sm.lastOpcodeKind == specialOpcode {
-		sm.basicBlock = false
-		sm.prologueEnd = false
-		sm.epilogueBegin = false
 	}
 	b, err := sm.buf.ReadByte()
 	if err != nil {
 		return err
 	}
-	if int(b) < len(sm.opcodes) {
-		if b == 0 {
-			sm.lastOpcodeKind = extendedOpcode
+	if b < sm.dbl.Prologue.OpcodeBase {
+		if int(b) < len(sm.opcodes) {
+			sm.valid = false
+			sm.opcodes[b](sm, sm.buf)
 		} else {
-			sm.lastOpcodeKind = standardOpcode
-		}
-		sm.valid = false
-		sm.opcodes[b](sm, sm.buf)
-	} else if b < sm.dbl.Prologue.OpcodeBase {
-		// unimplemented standard opcode, read the number of arguments specified
-		// in the prologue and do nothing with them
-		opnum := sm.dbl.Prologue.StdOpLengths[b-1]
-		for i := 0; i < int(opnum); i++ {
-			util.DecodeSLEB128(sm.buf)
+			// unimplemented standard opcode, read the number of arguments specified
+			// in the prologue and do nothing with them
+			opnum := sm.dbl.Prologue.StdOpLengths[b-1]
+			for i := 0; i < int(opnum); i++ {
+				util.DecodeSLEB128(sm.buf)
+			}
+			fmt.Printf("unknown opcode\n")
 		}
 	} else {
 		execSpecialOpcode(sm, b)
@@ -361,8 +359,6 @@ func execSpecialOpcode(sm *StateMachine, instr byte) {
 	sm.lastDelta = int(sm.dbl.Prologue.LineBase + int8(decoded%sm.dbl.Prologue.LineRange))
 	sm.line += sm.lastDelta
 	sm.address += uint64(decoded/sm.dbl.Prologue.LineRange) * uint64(sm.dbl.Prologue.MinInstrLength)
-	sm.basicBlock = false
-	sm.lastOpcodeKind = specialOpcode
 	sm.valid = true
 }
 
@@ -375,7 +371,6 @@ func execExtendedOpcode(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func copyfn(sm *StateMachine, buf *bytes.Buffer) {
-	sm.basicBlock = false
 	sm.valid = true
 }
 
