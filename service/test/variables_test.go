@@ -791,6 +791,11 @@ func TestEvalExpression(t *testing.T) {
 
 		{"afunc", true, `main.afunc`, `main.afunc`, `func()`, nil},
 		{"main.afunc2", true, `main.afunc2`, `main.afunc2`, `func()`, nil},
+
+		{"s2[0].Error", false, "main.(*astruct).Error", "main.(*astruct).Error", "func() string", nil},
+		{"s2[0].NonPointerRecieverMethod", false, "main.astruct.NonPointerRecieverMethod", "main.astruct.NonPointerRecieverMethod", "func()", nil},
+		{"as2.Error", false, "main.(*astruct).Error", "main.(*astruct).Error", "func() string", nil},
+		{"as2.NonPointerRecieverMethod", false, "main.astruct.NonPointerRecieverMethod", "main.astruct.NonPointerRecieverMethod", "func()", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -808,6 +813,10 @@ func TestEvalExpression(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
+				// this type of eval is unsupported with the current version of Go.
+				continue
+			}
 			if tc.err == nil {
 				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
 				assertVariable(t, variable, tc)
