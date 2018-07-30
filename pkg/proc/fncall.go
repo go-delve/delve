@@ -236,51 +236,18 @@ func funcCallEvalExpr(p Process, expr string) (fn *Function, argvars []*Variable
 }
 
 type funcCallArg struct {
-	name string
-	typ  godwarf.Type
-	off  int64
+	name  string
+	typ   godwarf.Type
+	off   int64
+	isret bool
 }
 
 // funcCallArgFrame checks type and pointer escaping for the arguments and
 // returns the argument frame.
 func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo) (argmem []byte, err error) {
-	const CFA = 0x1000
-	vrdr := reader.Variables(bi.dwarf, fn.offset, fn.Entry, int(^uint(0)>>1), false)
-	formalArgs := []funcCallArg{}
-
-	// typechecks arguments, calculates argument frame size
-	argFrameSize := int64(0)
-	for vrdr.Next() {
-		e := vrdr.Entry()
-		if e.Tag != dwarf.TagFormalParameter {
-			continue
-		}
-		entry, argname, typ, err := readVarEntry(e, bi)
-		if err != nil {
-			return nil, err
-		}
-		typ = resolveTypedef(typ)
-		locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
-		if err != nil {
-			return nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
-		}
-		off, _, err := op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
-		if err != nil {
-			return nil, fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
-		}
-
-		off -= CFA
-
-		if e := off + typ.Size(); e > argFrameSize {
-			argFrameSize = e
-		}
-
-		if isret, _ := entry.Val(dwarf.AttrVarParam).(bool); !isret {
-			formalArgs = append(formalArgs, funcCallArg{name: argname, typ: typ, off: off})
-		}
-	}
-	if err := vrdr.Err(); err != nil {
-		return nil, fmt.Errorf("DWARF read error: %v", err)
+	argFrameSize, formalArgs, err := funcCallArgs(fn, bi, false)
+	if err != nil {
+		return nil, err
 	}
 	if len(actualArgs) > len(formalArgs) {
 		return nil, ErrTooManyArguments
@@ -288,10 +255,6 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 	if len(actualArgs) < len(formalArgs) {
 		return nil, ErrNotEnoughArguments
 	}
-
-	sort.Slice(formalArgs, func(i, j int) bool {
-		return formalArgs[i].off < formalArgs[j].off
-	})
 
 	// constructs arguments frame
 	argmem = make([]byte, argFrameSize)
@@ -315,6 +278,51 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 	}
 
 	return argmem, nil
+}
+
+func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
+	const CFA = 0x1000
+	vrdr := reader.Variables(bi.dwarf, fn.offset, fn.Entry, int(^uint(0)>>1), false)
+
+	// typechecks arguments, calculates argument frame size
+	for vrdr.Next() {
+		e := vrdr.Entry()
+		if e.Tag != dwarf.TagFormalParameter {
+			continue
+		}
+		entry, argname, typ, err := readVarEntry(e, bi)
+		if err != nil {
+			return 0, nil, err
+		}
+		typ = resolveTypedef(typ)
+		locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
+		if err != nil {
+			return 0, nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
+		}
+		off, _, err := op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
+		if err != nil {
+			return 0, nil, fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
+		}
+
+		off -= CFA
+
+		if e := off + typ.Size(); e > argFrameSize {
+			argFrameSize = e
+		}
+
+		if isret, _ := entry.Val(dwarf.AttrVarParam).(bool); !isret || includeRet {
+			formalArgs = append(formalArgs, funcCallArg{name: argname, typ: typ, off: off, isret: isret})
+		}
+	}
+	if err := vrdr.Err(); err != nil {
+		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
+	}
+
+	sort.Slice(formalArgs, func(i, j int) bool {
+		return formalArgs[i].off < formalArgs[j].off
+	})
+
+	return argFrameSize, formalArgs, nil
 }
 
 func escapeCheck(v *Variable, name string, g *G) error {

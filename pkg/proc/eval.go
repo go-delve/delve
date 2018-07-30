@@ -12,9 +12,11 @@ import (
 	"go/token"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"github.com/derekparker/delve/pkg/goversion"
 )
 
 var OperationOnSpecialFloatError = errors.New("operations on non-finite floats not implemented")
@@ -599,6 +601,13 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 	if err != nil {
 		return nil, err
 	}
+	rv, err := xv.findMethod(node.Sel.Name)
+	if err != nil {
+		return nil, err
+	}
+	if rv != nil {
+		return rv, nil
+	}
 	return xv.structMember(node.Sel.Name)
 }
 
@@ -782,14 +791,18 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, fmt.Errorf("can not take address of \"%s\"", exprToString(node.X))
 	}
 
-	xev.OnlyAddr = true
+	return xev.pointerToVariable(), nil
+}
 
-	typename := "*" + xev.DwarfType.Common().Name
-	rv := scope.newVariable("", 0, &godwarf.PtrType{CommonType: godwarf.CommonType{ByteSize: int64(scope.BinInfo.Arch.PtrSize()), Name: typename}, Type: xev.DwarfType}, scope.Mem)
-	rv.Children = []Variable{*xev}
+func (v *Variable) pointerToVariable() *Variable {
+	v.OnlyAddr = true
+
+	typename := "*" + v.DwarfType.Common().Name
+	rv := v.newVariable("", 0, &godwarf.PtrType{CommonType: godwarf.CommonType{ByteSize: int64(v.bi.Arch.PtrSize()), Name: typename}, Type: v.DwarfType}, v.mem)
+	rv.Children = []Variable{*v}
 	rv.loaded = true
 
-	return rv, nil
+	return rv
 }
 
 func constantUnaryOp(op token.Token, y constant.Value) (r constant.Value, err error) {
@@ -1304,6 +1317,77 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	return r, nil
 }
 
+// findMethod finds method mname in the type of variable v
+func (v *Variable) findMethod(mname string) (*Variable, error) {
+	if _, isiface := v.RealType.(*godwarf.InterfaceType); isiface {
+		v.loadInterface(0, false, loadFullValue)
+		if v.Unreadable != nil {
+			return nil, v.Unreadable
+		}
+		return v.Children[0].findMethod(mname)
+	}
+
+	typ := v.DwarfType
+	ptyp, isptr := typ.(*godwarf.PtrType)
+	if isptr {
+		typ = ptyp.Type
+	}
+
+	if _, istypedef := typ.(*godwarf.TypedefType); !istypedef {
+		return nil, nil
+	}
+
+	typePath := typ.Common().Name
+	dot := strings.LastIndex(typePath, ".")
+	if dot < 0 {
+		// probably just a C type
+		return nil, nil
+	}
+
+	pkg := typePath[:dot]
+	receiver := typePath[dot+1:]
+
+	if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; ok {
+		r, err := functionToVariable(fn, v.bi, v.mem)
+		if err != nil {
+			return nil, err
+		}
+		if isptr {
+			r.Children = append(r.Children, *(v.maybeDereference()))
+		} else {
+			r.Children = append(r.Children, *v)
+		}
+		return r, nil
+	}
+
+	if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.(*%s).%s", pkg, receiver, mname)]; ok {
+		r, err := functionToVariable(fn, v.bi, v.mem)
+		if err != nil {
+			return nil, err
+		}
+		if isptr {
+			r.Children = append(r.Children, *v)
+		} else {
+			r.Children = append(r.Children, *(v.pointerToVariable()))
+		}
+		return r, nil
+	}
+
+	return nil, nil
+}
+
+func functionToVariable(fn *Function, bi *BinaryInfo, mem MemoryReadWriter) (*Variable, error) {
+	typ, err := fn.fakeType(bi, true)
+	if err != nil {
+		return nil, err
+	}
+	v := newVariable(fn.Name, 0, typ, bi, mem)
+	v.Value = constant.MakeString(fn.Name)
+	v.loaded = true
+	v.Base = uintptr(fn.Entry)
+	return v, nil
+}
+
 func fakeSliceType(fieldType godwarf.Type) godwarf.Type {
 	return &godwarf.SliceType{
 		StructType: godwarf.StructType{
@@ -1317,4 +1401,62 @@ func fakeSliceType(fieldType godwarf.Type) godwarf.Type {
 		},
 		ElemType: fieldType,
 	}
+}
+
+var errMethodEvalUnsupported = errors.New("evaluating methods not supported on this version of Go")
+
+func (fn *Function) fakeType(bi *BinaryInfo, removeReceiver bool) (*godwarf.FuncType, error) {
+	if producer := bi.Producer(); producer == "" || !goversion.ProducerAfterOrEqual(producer, 1, 10) {
+		// versions of Go prior to 1.10 do not distinguish between parameters and
+		// return values, therefore we can't use a subprogram DIE to derive a
+		// function type.
+		return nil, errMethodEvalUnsupported
+	}
+	_, formalArgs, err := funcCallArgs(fn, bi, true)
+	if err != nil {
+		return nil, err
+	}
+
+	if removeReceiver {
+		formalArgs = formalArgs[1:]
+	}
+
+	args := make([]string, 0, len(formalArgs))
+	rets := make([]string, 0, len(formalArgs))
+
+	for _, formalArg := range formalArgs {
+		var s string
+		if strings.HasPrefix(formalArg.name, "~") {
+			s = formalArg.typ.String()
+		} else {
+			s = fmt.Sprintf("%s %s", formalArg.name, formalArg.typ.String())
+		}
+		if formalArg.isret {
+			rets = append(rets, s)
+		} else {
+			args = append(args, s)
+		}
+	}
+
+	argstr := strings.Join(args, ", ")
+	var retstr string
+	switch len(rets) {
+	case 0:
+		retstr = ""
+	case 1:
+		retstr = " " + rets[0]
+	default:
+		retstr = " (" + strings.Join(rets, ", ") + ")"
+	}
+	return &godwarf.FuncType{
+		CommonType: godwarf.CommonType{
+			Name:        "func(" + argstr + ")" + retstr,
+			ReflectKind: reflect.Func,
+		},
+		//TODO(aarzilli): at the moment we aren't using the ParamType and
+		// ReturnType fields of FuncType anywhere (when this is returned to the
+		// client it's first converted to a string and the function calling code
+		// reads the subroutine entry because it needs to know the stack offsets).
+		// If we start using them they should be filled here.
+	}, nil
 }
