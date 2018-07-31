@@ -207,7 +207,6 @@ func funcCallEvalExpr(p Process, expr string) (fn *Function, argvars []*Variable
 		return nil, nil, ErrNotACallExpr
 	}
 
-	//TODO(aarzilli): must evaluate <var>.<method> and treat them appropriately
 	fnvar, err := scope.evalAST(callexpr.Fun)
 	if err != nil {
 		return nil, nil, err
@@ -223,13 +222,18 @@ func funcCallEvalExpr(p Process, expr string) (fn *Function, argvars []*Variable
 		return nil, nil, ErrNotAGoFunction
 	}
 
-	argvars = make([]*Variable, len(callexpr.Args))
+	argvars = make([]*Variable, 0, len(callexpr.Args)+1)
+	if len(fnvar.Children) > 0 {
+		// receiver argument
+		argvars = append(argvars, &fnvar.Children[0])
+	}
 	for i := range callexpr.Args {
-		argvars[i], err = scope.evalAST(callexpr.Args[i])
+		argvar, err := scope.evalAST(callexpr.Args[i])
 		if err != nil {
 			return nil, nil, err
 		}
-		argvars[i].Name = exprToString(callexpr.Args[i])
+		argvar.Name = exprToString(callexpr.Args[i])
+		argvars = append(argvars, argvar)
 	}
 
 	return fn, argvars, nil

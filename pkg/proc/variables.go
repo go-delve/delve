@@ -733,6 +733,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	if v.Unreadable != nil {
 		return v.clone(), nil
 	}
+	vname := v.Name
 	switch v.Kind {
 	case reflect.Chan:
 		v = v.clone()
@@ -789,12 +790,12 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 				return embeddedField, nil
 			}
 		}
-		return nil, fmt.Errorf("%s has no member %s", v.Name, memberName)
+		return nil, fmt.Errorf("%s has no member %s", vname, memberName)
 	default:
 		if v.Name == "" {
 			return nil, fmt.Errorf("type %s is not a struct", structVar.TypeString())
 		}
-		return nil, fmt.Errorf("%s (type %s) is not a struct", v.Name, structVar.TypeString())
+		return nil, fmt.Errorf("%s (type %s) is not a struct", vname, structVar.TypeString())
 	}
 }
 

@@ -1087,6 +1087,28 @@ func TestCallFunction(t *testing.T) {
 		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
 		{`stringsJoin(s1, comma)`, nil, errors.New("could not find symbol value for s1")},
 		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
+
+		// The following set of calls was constructed using https://docs.google.com/document/d/1bMwCey-gmqZVTpRax-ESeVuZGmjwbocYs1iHplK-cjo/pub as a reference
+
+		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil},   // direct call of a method with value receiver / on a value
+		{`a.PRcvr(2)`, []string{`:string:"2 - 3 = -1"`}, nil},  // direct call of a method with pointer receiver / on a value
+		{`pa.VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil},  // direct call of a method with value receiver / on a pointer
+		{`pa.PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil}, // direct call of a method with pointer receiver / on a pointer
+
+		{`vable_pa.VRcvr(6)`, []string{`:string:"6 + 6 = 12"`}, nil}, // indirect call of method on interface / containing value with value method
+		{`pable_pa.PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil},  // indirect call of method on interface / containing pointer with value method
+		{`vable_a.VRcvr(5)`, []string{`:string:"5 + 3 = 8"`}, nil},   // indirect call of method on interface / containing pointer with pointer method
+
+		{`pa.nonexistent()`, nil, errors.New("pa has no member nonexistent")},
+		{`a.nonexistent()`, nil, errors.New("a has no member nonexistent")},
+		{`vable_pa.nonexistent()`, nil, errors.New("vable_pa has no member nonexistent")},
+		{`vable_a.nonexistent()`, nil, errors.New("vable_a has no member nonexistent")},
+		{`pable_pa.nonexistent()`, nil, errors.New("pable_pa has no member nonexistent")},
+
+		//TODO(aarzilli): indirect call of func value / set to top-level func
+		//TODO(aarzilli): indirect call of func value / set to func literal
+		//TODO(aarzilli): indirect call of func value / set to value method
+		//TODO(aarzilli): indirect call of func value / set to pointer method
 	}
 
 	withTestProcess("fncall", t, func(p proc.Process, fixture protest.Fixture) {
