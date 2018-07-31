@@ -192,6 +192,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	bi.consts = make(map[dwarf.Offset]*constantType)
 	bi.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 	reader := bi.DwarfReader()
+	ardr := bi.DwarfReader()
 	var cu *compileUnit = nil
 	var pu *partialUnit = nil
 	var partialUnits = make(map[dwarf.Offset]*partialUnit)
@@ -322,9 +323,7 @@ outer:
 					}
 				}
 			}
-			if off, ok := entry.Val(godwarf.AttrGoRuntimeType).(uint64); ok {
-				bi.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
-			}
+			bi.registerRuntimeTypeToDIE(entry, ardr)
 			reader.SkipChildren()
 
 		case dwarf.TagVariable:
@@ -513,6 +512,37 @@ func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 		bi.expandPackagesInType(e.X)
 	default:
 		// nothing to do
+	}
+}
+
+func (bi *BinaryInfo) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.Reader) {
+	if off, ok := entry.Val(godwarf.AttrGoRuntimeType).(uint64); ok {
+		if _, ok := bi.runtimeTypeToDIE[off]; !ok {
+			bi.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
+		}
+		return
+	}
+
+	if entry.Tag != dwarf.TagTypedef {
+		return
+	}
+
+	// For named structs the compiler will emit a TagStructType entry and a
+	// TagTypedef entry. The AttrGoRuntimeType is set on the TagStructType
+	// entry but we prefer to use the typedef instead, to make interface
+	// values consistent with other variables.
+
+	rtypOff, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
+	if !ok {
+		return
+	}
+	ardr.Seek(rtypOff)
+	rentry, _ := ardr.Next()
+	if rentry == nil {
+		return
+	}
+	if off, ok := rentry.Val(godwarf.AttrGoRuntimeType).(uint64); ok {
+		bi.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
 	}
 }
 
