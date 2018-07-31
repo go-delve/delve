@@ -37,6 +37,7 @@ type Thread interface {
 
 	SetPC(uint64) error
 	SetSP(uint64) error
+	SetDX(uint64) error
 }
 
 // Location represents the location of a thread.

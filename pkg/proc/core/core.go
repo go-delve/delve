@@ -275,6 +275,10 @@ func (t *Thread) SetSP(uint64) error {
 	return errors.New("not supported")
 }
 
+func (t *Thread) SetDX(uint64) error {
+	return errors.New("not supported")
+}
+
 func (p *Process) Breakpoints() *proc.BreakpointMap {
 	return &p.breakpoints
 }

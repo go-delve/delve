@@ -65,6 +65,8 @@ type functionCallState struct {
 	err error
 	// fn is the function that is being called
 	fn *Function
+	// closureAddr is the address of the closure being called
+	closureAddr uint64
 	// argmem contains the argument frame of this function call
 	argmem []byte
 	// retvars contains the return variables after the function call terminates without panic'ing
@@ -118,7 +120,7 @@ func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
 		return ErrFuncCallUnsupportedBackend
 	}
 
-	fn, argvars, err := funcCallEvalExpr(p, expr)
+	fn, closureAddr, argvars, err := funcCallEvalExpr(p, expr)
 	if err != nil {
 		return err
 	}
@@ -140,6 +142,7 @@ func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
 	fncall.savedRegs = regs.Save()
 	fncall.expr = expr
 	fncall.fn = fn
+	fncall.closureAddr = closureAddr
 	fncall.argmem = argmem
 	fncall.retLoadCfg = retLoadCfg
 
@@ -191,35 +194,42 @@ func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) erro
 
 // funcCallEvalExpr evaluates expr, which must be a function call, returns
 // the function being called and its arguments.
-func funcCallEvalExpr(p Process, expr string) (fn *Function, argvars []*Variable, err error) {
+func funcCallEvalExpr(p Process, expr string) (fn *Function, closureAddr uint64, argvars []*Variable, err error) {
 	bi := p.BinInfo()
 	scope, err := GoroutineScope(p.CurrentThread())
 	if err != nil {
-		return nil, nil, err
+		return nil, 0, nil, err
 	}
 
 	t, err := parser.ParseExpr(expr)
 	if err != nil {
-		return nil, nil, err
+		return nil, 0, nil, err
 	}
 	callexpr, iscall := t.(*ast.CallExpr)
 	if !iscall {
-		return nil, nil, ErrNotACallExpr
+		return nil, 0, nil, ErrNotACallExpr
 	}
 
 	fnvar, err := scope.evalAST(callexpr.Fun)
 	if err != nil {
-		return nil, nil, err
+		return nil, 0, nil, err
 	}
 	if fnvar.Kind != reflect.Func {
-		return nil, nil, fmt.Errorf("expression %q is not a function", exprToString(callexpr.Fun))
+		return nil, 0, nil, fmt.Errorf("expression %q is not a function", exprToString(callexpr.Fun))
+	}
+	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0})
+	if fnvar.Unreadable != nil {
+		return nil, 0, nil, fnvar.Unreadable
+	}
+	if fnvar.Base == 0 {
+		return nil, 0, nil, errors.New("nil pointer dereference")
 	}
 	fn = bi.PCToFunc(uint64(fnvar.Base))
 	if fn == nil {
-		return nil, nil, fmt.Errorf("could not find DIE for function %q", exprToString(callexpr.Fun))
+		return nil, 0, nil, fmt.Errorf("could not find DIE for function %q", exprToString(callexpr.Fun))
 	}
 	if !fn.cu.isgo {
-		return nil, nil, ErrNotAGoFunction
+		return nil, 0, nil, ErrNotAGoFunction
 	}
 
 	argvars = make([]*Variable, 0, len(callexpr.Args)+1)
@@ -230,13 +240,13 @@ func funcCallEvalExpr(p Process, expr string) (fn *Function, argvars []*Variable
 	for i := range callexpr.Args {
 		argvar, err := scope.evalAST(callexpr.Args[i])
 		if err != nil {
-			return nil, nil, err
+			return nil, 0, nil, err
 		}
 		argvar.Name = exprToString(callexpr.Args[i])
 		argvars = append(argvars, argvar)
 	}
 
-	return fn, argvars, nil
+	return fn, fnvar.funcvalAddr(), argvars, nil
 }
 
 type funcCallArg struct {
@@ -357,7 +367,9 @@ func escapeCheck(v *Variable, name string, g *G) error {
 			}
 		}
 	case reflect.Func:
-		//TODO(aarzilli): check closure argument?
+		if err := escapeCheckPointer(uintptr(v.funcvalAddr()), name, g); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -365,7 +377,7 @@ func escapeCheck(v *Variable, name string, g *G) error {
 
 func escapeCheckPointer(addr uintptr, name string, g *G) error {
 	if uint64(addr) >= g.stacklo && uint64(addr) < g.stackhi {
-		return fmt.Errorf("stack object passed to escaping pointer %s", name)
+		return fmt.Errorf("stack object passed to escaping pointer: %s", name)
 	}
 	return nil
 }
@@ -425,7 +437,11 @@ func (fncall *functionCallState) step(p Process) {
 		if n != len(fncall.argmem) {
 			fncall.err = fmt.Errorf("short argument write: %d %d", n, len(fncall.argmem))
 		}
-		//TODO(aarzilli): if fncall.fn is a function closure CX needs to be set here
+		if fncall.closureAddr != 0 {
+			// When calling a function pointer we must set the DX register to the
+			// address of the function pointer itself.
+			thread.SetDX(fncall.closureAddr)
+		}
 		callOP(bi, thread, regs, fncall.fn.Entry)
 
 	case debugCallAXRestoreRegisters:

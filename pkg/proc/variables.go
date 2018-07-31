@@ -1490,22 +1490,19 @@ func (dstv *Variable) writeCopy(srcv *Variable) error {
 }
 
 func (v *Variable) readFunctionPtr() {
-	val := make([]byte, v.bi.Arch.PtrSize())
-	_, err := v.mem.ReadMemory(val, v.Addr)
-	if err != nil {
-		v.Unreadable = err
+	// dereference pointer to find function pc
+	fnaddr := v.funcvalAddr()
+	if v.Unreadable != nil {
 		return
 	}
-
-	// dereference pointer to find function pc
-	fnaddr := uintptr(binary.LittleEndian.Uint64(val))
 	if fnaddr == 0 {
 		v.Base = 0
 		v.Value = constant.MakeString("")
 		return
 	}
 
-	_, err = v.mem.ReadMemory(val, fnaddr)
+	val := make([]byte, v.bi.Arch.PtrSize())
+	_, err := v.mem.ReadMemory(val, uintptr(fnaddr))
 	if err != nil {
 		v.Unreadable = err
 		return
@@ -1519,6 +1516,17 @@ func (v *Variable) readFunctionPtr() {
 	}
 
 	v.Value = constant.MakeString(fn.Name)
+}
+
+// funcvalAddr reads the address of the funcval contained in a function variable.
+func (v *Variable) funcvalAddr() uint64 {
+	val := make([]byte, v.bi.Arch.PtrSize())
+	_, err := v.mem.ReadMemory(val, v.Addr)
+	if err != nil {
+		v.Unreadable = err
+		return 0
+	}
+	return binary.LittleEndian.Uint64(val)
 }
 
 func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {

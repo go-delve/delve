@@ -57,6 +57,14 @@ type VRcvrable interface {
 
 var zero = 0
 
+func makeclos(pa *astruct) func(int) string {
+	i := 0
+	return func(x int) string {
+		i++
+		return fmt.Sprintf("%d + %d + %d = %d", i, pa.X, x, i+pa.X+x)
+	}
+}
+
 func main() {
 	one, two := 1, 2
 	intslice := []int{1, 2, 3}
@@ -69,7 +77,14 @@ func main() {
 	var vable_pa VRcvrable = pa
 	var pable_pa PRcvrable = pa
 
+	fn2clos := makeclos(pa)
+	fn2glob := call1
+	fn2valmeth := pa.VRcvr
+	fn2ptrmeth := pa.PRcvr
+	var fn2nil func()
+
 	runtime.Breakpoint()
 	call1(one, two)
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa)
+	fn2clos(2)
+	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil)
 }
