@@ -160,6 +160,20 @@ func (thread *Thread) SetSP(sp uint64) error {
 	return _SetThreadContext(thread.os.hThread, context)
 }
 
+func (thread *Thread) SetDX(dx uint64) error {
+	context := newCONTEXT()
+	context.ContextFlags = _CONTEXT_ALL
+
+	err := _GetThreadContext(thread.os.hThread, context)
+	if err != nil {
+		return err
+	}
+
+	context.Rdx = dx
+
+	return _SetThreadContext(thread.os.hThread, context)
+}
+
 func (r *Regs) Get(n int) (uint64, error) {
 	reg := x86asm.Reg(n)
 	const (

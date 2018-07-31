@@ -1105,10 +1105,13 @@ func TestCallFunction(t *testing.T) {
 		{`vable_a.nonexistent()`, nil, errors.New("vable_a has no member nonexistent")},
 		{`pable_pa.nonexistent()`, nil, errors.New("pable_pa has no member nonexistent")},
 
-		//TODO(aarzilli): indirect call of func value / set to top-level func
-		//TODO(aarzilli): indirect call of func value / set to func literal
-		//TODO(aarzilli): indirect call of func value / set to value method
-		//TODO(aarzilli): indirect call of func value / set to pointer method
+		{`fn2glob(10, 20)`, []string{":int:30"}, nil},               // indirect call of func value / set to top-level func
+		{`fn2clos(11)`, []string{`:string:"1 + 6 + 11 = 18"`}, nil}, // indirect call of func value / set to func literal
+		{`fn2clos(12)`, []string{`:string:"2 + 6 + 12 = 20"`}, nil},
+		{`fn2valmeth(13)`, []string{`:string:"13 + 6 = 19"`}, nil}, // indirect call of func value / set to value method
+		{`fn2ptrmeth(14)`, []string{`:string:"14 - 6 = 8"`}, nil},  // indirect call of func value / set to pointer method
+
+		{"fn2nil()", nil, errors.New("nil pointer dereference")},
 	}
 
 	withTestProcess("fncall", t, func(p proc.Process, fixture protest.Fixture) {
@@ -1133,7 +1136,17 @@ func TestCallFunction(t *testing.T) {
 				t.Fatalf("call %q: error %q", tc.expr, err.Error())
 			}
 
-			retvals := p.CurrentThread().Common().ReturnValues(pnormalLoadConfig)
+			retvalsVar := p.CurrentThread().Common().ReturnValues(pnormalLoadConfig)
+			retvals := make([]*api.Variable, len(retvalsVar))
+
+			for i := range retvals {
+				retvals[i] = api.ConvertVar(retvalsVar[i])
+			}
+
+			t.Logf("call %q", tc.expr)
+			for i := range retvals {
+				t.Logf("\t%s = %s", retvals[i].Name, retvals[i].SinglelineString())
+			}
 
 			if len(retvals) != len(tc.outs) {
 				t.Fatalf("call %q: wrong number of return parameters", tc.expr)
@@ -1147,12 +1160,10 @@ func TestCallFunction(t *testing.T) {
 					t.Fatalf("call %q output parameter %d: expected name %q, got %q", tc.expr, i, tgtName, retvals[i].Name)
 				}
 
-				cv := api.ConvertVar(retvals[i])
-
-				if cv.Type != tgtType {
-					t.Fatalf("call %q, output parameter %d: expected type %q, got %q", tc.expr, i, tgtType, cv.Type)
+				if retvals[i].Type != tgtType {
+					t.Fatalf("call %q, output parameter %d: expected type %q, got %q", tc.expr, i, tgtType, retvals[i].Type)
 				}
-				if cvs := cv.SinglelineString(); cvs != tgtValue {
+				if cvs := retvals[i].SinglelineString(); cvs != tgtValue {
 					t.Fatalf("call %q, output parameter %d: expected value %q, got %q", tc.expr, i, tgtValue, cvs)
 				}
 			}

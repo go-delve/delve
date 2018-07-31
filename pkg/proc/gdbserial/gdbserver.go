@@ -1533,6 +1533,10 @@ func (regs *gdbRegisters) setSP(value uint64) {
 	binary.LittleEndian.PutUint64(regs.regs[regnameSP].value, value)
 }
 
+func (regs *gdbRegisters) setDX(value uint64) {
+	binary.LittleEndian.PutUint64(regs.regs[regnameDX].value, value)
+}
+
 func (regs *gdbRegisters) BP() uint64 {
 	return binary.LittleEndian.Uint64(regs.regs[regnameBP].value)
 }
@@ -1733,6 +1737,15 @@ func (t *Thread) SetSP(sp uint64) error {
 		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
 	}
 	reg := t.regs.regs[regnameSP]
+	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
+}
+
+func (t *Thread) SetDX(dx uint64) error {
+	t.regs.setDX(dx)
+	if t.p.gcmdok {
+		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
+	}
+	reg := t.regs.regs[regnameDX]
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 

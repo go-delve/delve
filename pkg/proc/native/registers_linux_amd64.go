@@ -115,6 +115,18 @@ func (thread *Thread) SetSP(sp uint64) (err error) {
 	return
 }
 
+func (thread *Thread) SetDX(dx uint64) (err error) {
+	var ir proc.Registers
+	ir, err = registers(thread, false)
+	if err != nil {
+		return err
+	}
+	r := ir.(*Regs)
+	r.regs.Rdx = dx
+	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, r.regs) })
+	return
+}
+
 func (r *Regs) Get(n int) (uint64, error) {
 	reg := x86asm.Reg(n)
 	const (
