@@ -132,12 +132,8 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
 	
 Current limitations:
-- can only call package-level functions, no function pointers nor methods.
-- only things that have an address can be used as arguments (no literal
-  constants or results of evaluating some expressions).
 - only pointers to stack-allocated objects can be passed as argument.
-- no automatic type conversions are supported, including automatically
-  converting to an interface type.
+- only some automatic type conversions are supported.
 - functions can only be called on running goroutines that are not
   executing the runtime.
 - the current goroutine needs to have at least 256 bytes of free space on
@@ -1154,10 +1150,10 @@ func getLocation(t *Term, ctx callContext) (*api.Location, error) {
 			return &state.SelectedGoroutine.CurrentLoc, nil
 		} else {
 			thread := state.CurrentThread
-			loc := api.Location {
-				PC: thread.PC,
-				File: thread.File,
-				Line: thread.Line,
+			loc := api.Location{
+				PC:       thread.PC,
+				File:     thread.File,
+				Line:     thread.Line,
 				Function: thread.Function,
 			}
 			return &loc, nil
@@ -1167,7 +1163,9 @@ func getLocation(t *Term, ctx callContext) (*api.Location, error) {
 
 func edit(t *Term, ctx callContext, args string) error {
 	loc, err := getLocation(t, ctx)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	var editor string
 	if editor = os.Getenv("DELVE_EDITOR"); editor == "" {
