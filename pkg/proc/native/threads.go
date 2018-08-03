@@ -1,7 +1,6 @@
 package native
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/derekparker/delve/pkg/proc"
@@ -151,12 +150,8 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return registers(t, floatingPoint)
 }
 
-func (t *Thread) RestoreRegisters(savedRegs proc.SavedRegisters) error {
-	sr, ok := savedRegs.(*savedRegisters)
-	if !ok {
-		return errors.New("unknown saved register set")
-	}
-	return t.restoreRegisters(sr)
+func (t *Thread) RestoreRegisters(savedRegs proc.Registers) error {
+	return t.restoreRegisters(savedRegs)
 }
 
 func (t *Thread) PC() (uint64, error) {

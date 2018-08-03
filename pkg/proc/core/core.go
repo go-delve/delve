@@ -239,7 +239,7 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return r, nil
 }
 
-func (t *Thread) RestoreRegisters(proc.SavedRegisters) error {
+func (t *Thread) RestoreRegisters(proc.Registers) error {
 	return errors.New("not supported")
 }
 
@@ -426,6 +426,6 @@ func (r *Registers) Slice() []proc.Register {
 	return out
 }
 
-func (r *Registers) Save() proc.SavedRegisters {
+func (r *Registers) Copy() proc.Registers {
 	return r
 }

@@ -82,20 +82,22 @@ func (t *Thread) Blocked() bool {
 	return false
 }
 
-func (t *Thread) restoreRegisters(sr *savedRegisters) error {
+func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
+	sr := savedRegs.(*Regs)
+
 	var restoreRegistersErr error
 	t.dbp.execPtraceFunc(func() {
-		restoreRegistersErr = sys.PtraceSetRegs(t.ID, &sr.regs)
+		restoreRegistersErr = sys.PtraceSetRegs(t.ID, sr.regs)
 		if restoreRegistersErr != nil {
 			return
 		}
-		if sr.fpregs.Xsave != nil {
-			iov := sys.Iovec{Base: &sr.fpregs.Xsave[0], Len: uint64(len(sr.fpregs.Xsave))}
+		if sr.fpregset.Xsave != nil {
+			iov := sys.Iovec{Base: &sr.fpregset.Xsave[0], Len: uint64(len(sr.fpregset.Xsave))}
 			_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGSET, uintptr(t.ID), _NT_X86_XSTATE, uintptr(unsafe.Pointer(&iov)), 0, 0)
 			return
 		}
 
-		_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETFPREGS, uintptr(t.ID), uintptr(0), uintptr(unsafe.Pointer(&sr.fpregs.PtraceFpRegs)), 0, 0)
+		_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETFPREGS, uintptr(t.ID), uintptr(0), uintptr(unsafe.Pointer(&sr.fpregset.PtraceFpRegs)), 0, 0)
 		return
 	})
 	if restoreRegistersErr == syscall.Errno(0) {
