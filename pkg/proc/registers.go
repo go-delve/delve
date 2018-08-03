@@ -24,17 +24,15 @@ type Registers interface {
 	GAddr() (uint64, bool)
 	Get(int) (uint64, error)
 	Slice() []Register
-	// Save saves a copy of this object that will survive restarts
-	Save() SavedRegisters
+	// Copy returns a copy of this registers that is guaranteed not to change
+	// when the registers of the associated thread change.
+	Copy() Registers
 }
 
 type Register struct {
 	Name  string
 	Bytes []byte
 	Value string
-}
-
-type SavedRegisters interface {
 }
 
 // AppendWordReg appends a word (16 bit) register to regs.

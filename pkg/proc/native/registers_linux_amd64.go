@@ -324,14 +324,6 @@ func (thread *Thread) fpRegisters() (regs []proc.Register, fpregs proc.LinuxX86X
 	return
 }
 
-type savedRegisters struct {
-	regs   sys.PtraceRegs
-	fpregs proc.LinuxX86Xstate
-}
-
-func (r *Regs) Save() proc.SavedRegisters {
-	savedRegs := &savedRegisters{}
-	savedRegs.regs = *r.regs
-	savedRegs.fpregs = *r.fpregset
-	return savedRegs
+func (r *Regs) Copy() proc.Registers {
+	return r
 }

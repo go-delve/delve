@@ -866,6 +866,10 @@ func writeAsciiBytes(w io.Writer, data []byte) {
 
 // executes 'M' (write memory) command
 func (conn *gdbConn) writeMemory(addr uintptr, data []byte) (written int, err error) {
+	if len(data) == 0 {
+		// LLDB can't parse requests for 0-length writes and hangs if we emit them
+		return 0, nil
+	}
 	conn.outbuf.Reset()
 	//TODO(aarzilli): do not send packets larger than conn.PacketSize
 	fmt.Fprintf(&conn.outbuf, "$M%x,%x:", addr, len(data))

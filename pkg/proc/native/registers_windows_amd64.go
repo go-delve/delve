@@ -378,10 +378,7 @@ func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 	return regs, nil
 }
 
-type savedRegisters struct {
-}
-
-func (r *Regs) Save() proc.SavedRegisters {
+func (r *Regs) Copy() proc.Registers {
 	//TODO(aarzilli): implement this to support function calls
 	return nil
 }

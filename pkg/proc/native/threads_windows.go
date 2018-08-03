@@ -150,6 +150,6 @@ func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	return int(count), err
 }
 
-func (t *Thread) restoreRegisters(sr *savedRegisters) error {
+func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
 	return errors.New("not implemented")
 }

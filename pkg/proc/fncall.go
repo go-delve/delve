@@ -58,7 +58,7 @@ type functionCallState struct {
 	// finished is true if the function call terminated
 	finished bool
 	// savedRegs contains the saved registers
-	savedRegs SavedRegisters
+	savedRegs Registers
 	// expr contains an expression describing the current function call
 	expr string
 	// err contains a saved error
@@ -112,6 +112,7 @@ func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
 	if err != nil {
 		return err
 	}
+	regs = regs.Copy()
 	if regs.SP()-256 <= g.stacklo {
 		return ErrNotEnoughStack
 	}
@@ -139,7 +140,7 @@ func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
 	}
 
 	fncall.inProgress = true
-	fncall.savedRegs = regs.Save()
+	fncall.savedRegs = regs
 	fncall.expr = expr
 	fncall.fn = fn
 	fncall.closureAddr = closureAddr
@@ -155,7 +156,7 @@ func fncallLog(fmtstr string, args ...interface{}) {
 	if !logflags.FnCall() {
 		return
 	}
-	logrus.WithFields(logrus.Fields{"layer": "proc", "kind": "fncall"}).Debugf(fmtstr, args...)
+	logrus.WithFields(logrus.Fields{"layer": "proc", "kind": "fncall"}).Infof(fmtstr, args...)
 }
 
 // writePointer writes val as an architecture pointer at addr in mem.
@@ -401,6 +402,7 @@ func (fncall *functionCallState) step(p Process) {
 		fncall.inProgress = false
 		return
 	}
+	regs = regs.Copy()
 
 	rax, _ := regs.Get(int(x86asm.RAX))
 

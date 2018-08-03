@@ -187,6 +187,7 @@ func New(process *os.Process) *Process {
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
+		common:         proc.NewCommonProcess(true),
 	}
 
 	if process != nil {
@@ -1188,9 +1189,8 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return &t.regs, nil
 }
 
-func (t *Thread) RestoreRegisters(regs proc.SavedRegisters) error {
-	gdbregs := regs.(*gdbRegisters)
-	t.regs = *gdbregs
+func (t *Thread) RestoreRegisters(savedRegs proc.Registers) error {
+	copy(t.regs.buf, savedRegs.(*gdbRegisters).buf)
 	return t.writeRegisters()
 }
 
@@ -1804,7 +1804,7 @@ func (regs *gdbRegisters) Slice() []proc.Register {
 	return r
 }
 
-func (regs *gdbRegisters) Save() proc.SavedRegisters {
+func (regs *gdbRegisters) Copy() proc.Registers {
 	savedRegs := &gdbRegisters{}
 	savedRegs.init(regs.regsInfo)
 	copy(savedRegs.buf, regs.buf)
