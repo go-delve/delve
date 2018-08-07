@@ -79,13 +79,15 @@ var UnsupportedDarwinArchErr = errors.New("unsupported architecture - only darwi
 const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
 
 type compileUnit struct {
-	entry         *dwarf.Entry        // debug_info entry describing this compile unit
-	isgo          bool                // true if this is the go compile unit
-	Name          string              // univocal name for non-go compile units
-	lineInfo      *line.DebugLineInfo // debug_line segment associated with this compile unit
+	Name          string // univocal name for non-go compile units
 	LowPC, HighPC uint64
-	optimized     bool   // this compile unit is optimized
-	producer      string // producer attribute
+
+	entry              *dwarf.Entry        // debug_info entry describing this compile unit
+	isgo               bool                // true if this is the go compile unit
+	lineInfo           *line.DebugLineInfo // debug_line segment associated with this compile unit
+	concreteInlinedFns []inlinedFn         // list of concrete inlined functions within this compile unit
+	optimized          bool                // this compile unit is optimized
+	producer           string              // producer attribute
 }
 
 type partialUnitConstant struct {
@@ -100,6 +102,16 @@ type partialUnit struct {
 	variables []packageVar
 	constants []partialUnitConstant
 	functions []Function
+}
+
+// inlinedFn represents a concrete inlined function, e.g.
+// an entry for the generated code of an inlined function.
+type inlinedFn struct {
+	Name          string    // Name of the function that was inlined
+	LowPC, HighPC uint64    // Address range of the generated inlined instructions
+	CallFile      string    // File of the call site of the inlined function
+	CallLine      int64     // Line of the call site of the inlined function
+	Parent        *Function // The function that contains this inlined function
 }
 
 // Function describes a function in the target program.
@@ -320,6 +332,17 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *Func
 	for _, cu := range bi.compileUnits {
 		if cu.lineInfo.Lookup[filename] != nil {
 			pc = cu.lineInfo.LineToPC(filename, lineno)
+			if pc == 0 {
+				// Check to see if this file:line belongs to the call site
+				// of an inlined function.
+				for _, ifn := range cu.concreteInlinedFns {
+					if strings.Contains(ifn.CallFile, filename) && ifn.CallLine == int64(lineno) {
+						pc = ifn.LowPC
+						fn = ifn.Parent
+						return
+					}
+				}
+			}
 			fn = bi.PCToFunc(pc)
 			if fn != nil {
 				return

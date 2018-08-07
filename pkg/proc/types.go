@@ -195,6 +195,8 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	var cu *compileUnit = nil
 	var pu *partialUnit = nil
 	var partialUnits = make(map[dwarf.Offset]*partialUnit)
+	abstractOriginNameTable := make(map[dwarf.Offset]string)
+outer:
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			break
@@ -365,35 +367,77 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 
 		case dwarf.TagSubprogram:
 			ok1 := false
+			inlined := false
 			var lowpc, highpc uint64
+			if inval, ok := entry.Val(dwarf.AttrInline).(int64); ok {
+				inlined = inval == 1
+			}
 			if ranges, _ := bi.dwarf.Ranges(entry); len(ranges) == 1 {
 				ok1 = true
 				lowpc = ranges[0][0]
 				highpc = ranges[0][1]
 			}
 			name, ok2 := entry.Val(dwarf.AttrName).(string)
-			if ok1 && ok2 {
+			var fn Function
+			if (ok1 == !inlined) && ok2 {
+				if inlined {
+					abstractOriginNameTable[entry.Offset] = name
+				}
 				if pu != nil {
-					pu.functions = append(pu.functions, Function{
+					fn = Function{
 						Name:  name,
 						Entry: lowpc, End: highpc,
 						offset: entry.Offset,
 						cu:     &compileUnit{},
-					})
+					}
+					pu.functions = append(pu.functions, fn)
 				} else {
 					if !cu.isgo {
 						name = "C." + name
 					}
-					bi.Functions = append(bi.Functions, Function{
+					fn = Function{
 						Name:  name,
 						Entry: lowpc, End: highpc,
 						offset: entry.Offset,
 						cu:     cu,
-					})
+					}
+					bi.Functions = append(bi.Functions, fn)
 				}
 			}
-			reader.SkipChildren()
-
+			if entry.Children {
+				for {
+					entry, err = reader.Next()
+					if err != nil {
+						break outer
+					}
+					if entry.Tag == 0 {
+						break
+					}
+					if entry.Tag == dwarf.TagInlinedSubroutine {
+						originOffset := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+						name := abstractOriginNameTable[originOffset]
+						if ranges, _ := bi.dwarf.Ranges(entry); len(ranges) == 1 {
+							ok1 = true
+							lowpc = ranges[0][0]
+							highpc = ranges[0][1]
+						}
+						callfileidx, ok1 := entry.Val(dwarf.AttrCallFile).(int64)
+						callline, ok2 := entry.Val(dwarf.AttrCallLine).(int64)
+						if ok1 && ok2 {
+							callfile := cu.lineInfo.FileNames[callfileidx-1].Path
+							cu.concreteInlinedFns = append(cu.concreteInlinedFns, inlinedFn{
+								Name:     name,
+								LowPC:    lowpc,
+								HighPC:   highpc,
+								CallFile: callfile,
+								CallLine: callline,
+								Parent:   &fn,
+							})
+						}
+					}
+					reader.SkipChildren()
+				}
+			}
 		}
 	}
 	sort.Sort(compileUnitsByLowpc(bi.compileUnits))
