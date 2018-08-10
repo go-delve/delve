@@ -1353,7 +1353,7 @@ type stackArgs struct {
 
 func parseStackArgs(argstr string) (stackArgs, error) {
 	r := stackArgs{
-		depth: 10,
+		depth: 50,
 		full:  false,
 	}
 	if argstr != "" {
