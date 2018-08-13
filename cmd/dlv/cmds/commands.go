@@ -441,7 +441,7 @@ func connectCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
 		os.Exit(1)
 	}
-	os.Exit(connect(addr, conf))
+	os.Exit(connect(addr, conf, executingOther))
 }
 
 func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
@@ -451,10 +451,18 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 	return args, []string{}
 }
 
-func connect(addr string, conf *config.Config) int {
+func connect(addr string, conf *config.Config, kind executeKind) int {
 	// Create and start a terminal - attach to running instance
 	client := rpc2.NewClient(addr)
+	if client.Recorded() && (kind == executingGeneratedFile || kind == executingGeneratedTest) {
+		// When using the rr backend remove the trace directory if we built the
+		// executable
+		if tracedir, err := client.TraceDirectory(); err == nil {
+			defer SafeRemoveAll(tracedir)
+		}
+	}
 	term := terminal.New(client, conf)
+	term.InitFile = InitFile
 	status, err := term.Run()
 	if err != nil {
 		fmt.Println(err)
@@ -550,26 +558,14 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		case <-disconnectChan:
 		}
 		err = server.Stop()
-	} else {
-		// Create and start a terminal
-		client := rpc2.NewClient(listener.Addr().String())
-		if client.Recorded() && (kind == executingGeneratedFile || kind == executingGeneratedTest) {
-			// When using the rr backend remove the trace directory if we built the
-			// executable
-			if tracedir, err := client.TraceDirectory(); err == nil {
-				defer SafeRemoveAll(tracedir)
-			}
+		if err != nil {
+			fmt.Println(err)
 		}
-		term := terminal.New(client, conf)
-		term.InitFile = InitFile
-		status, err = term.Run()
+
+		return status
 	}
 
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	return status
+	return connect(listener.Addr().String(), conf, kind)
 }
 
 func optflags(args []string) []string {
