@@ -1266,7 +1266,7 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 		}
 		if first {
 			first = false
-			if err := idx.isType(key.DwarfType, key.Kind); err != nil {
+			if err := idx.isType(key.RealType, key.Kind); err != nil {
 				return nil, err
 			}
 		}
