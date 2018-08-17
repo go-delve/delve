@@ -88,6 +88,8 @@ type compileUnit struct {
 	concreteInlinedFns []inlinedFn         // list of concrete inlined functions within this compile unit
 	optimized          bool                // this compile unit is optimized
 	producer           string              // producer attribute
+
+	startOffset, endOffset dwarf.Offset // interval of offsets contained in this compile unit
 }
 
 type partialUnitConstant struct {
@@ -489,6 +491,15 @@ func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 func (bi *BinaryInfo) findCompileUnit(pc uint64) *compileUnit {
 	for _, cu := range bi.compileUnits {
 		if pc >= cu.LowPC && pc < cu.HighPC {
+			return cu
+		}
+	}
+	return nil
+}
+
+func (bi *BinaryInfo) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
+	for _, cu := range bi.compileUnits {
+		if off >= cu.startOffset && off < cu.endOffset {
 			return cu
 		}
 	}

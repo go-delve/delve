@@ -1112,6 +1112,8 @@ func TestCallFunction(t *testing.T) {
 		{`fn2ptrmeth(14)`, []string{`:string:"14 - 6 = 8"`}, nil},  // indirect call of func value / set to pointer method
 
 		{"fn2nil()", nil, errors.New("nil pointer dereference")},
+
+		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil},
 	}
 
 	withTestProcess("fncall", t, func(p proc.Process, fixture protest.Fixture) {

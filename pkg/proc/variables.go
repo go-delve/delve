@@ -202,6 +202,31 @@ func (v *Variable) newVariable(name string, addr uintptr, dwarfType godwarf.Type
 }
 
 func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryInfo, mem MemoryReadWriter) *Variable {
+	if styp, isstruct := dwarfType.(*godwarf.StructType); isstruct && !strings.Contains(styp.Name, "<") && !strings.Contains(styp.Name, "{") {
+		// For named structs the compiler will emit a DW_TAG_structure_type entry
+		// and a DW_TAG_typedef entry.
+		//
+		// Normally variables refer to the typedef entry but sometimes global
+		// variables will refer to the struct entry incorrectly.
+		// Also the runtime type offset resolution (runtimeTypeToDIE) will return
+		// the struct entry directly.
+		//
+		// In both cases we prefer to have a typedef type for consistency's sake.
+		//
+		// So we wrap all struct types into a fake typedef type except for:
+		// a. types not defined by go
+		// b. anonymous struct types (they contain the '{' character)
+		// c. Go internal struct types used to describe maps (they contain the '<'
+		// character).
+		cu := bi.findCompileUnitForOffset(dwarfType.Common().Offset)
+		if cu != nil && cu.isgo {
+			dwarfType = &godwarf.TypedefType{
+				CommonType: *(dwarfType.Common()),
+				Type:       dwarfType,
+			}
+		}
+	}
+
 	v := &Variable{
 		Name:      name,
 		Addr:      addr,

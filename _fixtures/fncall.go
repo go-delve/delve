@@ -65,6 +65,8 @@ func makeclos(pa *astruct) func(int) string {
 	}
 }
 
+var ga astruct
+
 func main() {
 	one, two := 1, 2
 	intslice := []int{1, 2, 3}
@@ -86,5 +88,5 @@ func main() {
 	runtime.Breakpoint()
 	call1(one, two)
 	fn2clos(2)
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil)
+	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga)
 }

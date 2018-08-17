@@ -197,19 +197,26 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	var pu *partialUnit = nil
 	var partialUnits = make(map[dwarf.Offset]*partialUnit)
 	abstractOriginNameTable := make(map[dwarf.Offset]string)
+	var lastOffset dwarf.Offset
+
 outer:
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			break
 		}
+		lastOffset = entry.Offset
 		switch entry.Tag {
 		case dwarf.TagCompileUnit:
 			if pu != nil {
 				partialUnits[pu.entry.Offset] = pu
 				pu = nil
 			}
+			if cu != nil {
+				cu.endOffset = entry.Offset
+			}
 			cu = &compileUnit{}
 			cu.entry = entry
+			cu.startOffset = entry.Offset
 			if lang, _ := entry.Val(dwarf.AttrLanguage).(int64); lang == dwarfGoLanguage {
 				cu.isgo = true
 			}
@@ -439,6 +446,11 @@ outer:
 			}
 		}
 	}
+
+	if cu != nil {
+		cu.endOffset = lastOffset + 1
+	}
+
 	sort.Sort(compileUnitsByLowpc(bi.compileUnits))
 	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
 	sort.Sort(packageVarsByAddr(bi.packageVars))
@@ -520,29 +532,6 @@ func (bi *BinaryInfo) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.
 		if _, ok := bi.runtimeTypeToDIE[off]; !ok {
 			bi.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
 		}
-		return
-	}
-
-	if entry.Tag != dwarf.TagTypedef {
-		return
-	}
-
-	// For named structs the compiler will emit a TagStructType entry and a
-	// TagTypedef entry. The AttrGoRuntimeType is set on the TagStructType
-	// entry but we prefer to use the typedef instead, to make interface
-	// values consistent with other variables.
-
-	rtypOff, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
-	if !ok {
-		return
-	}
-	ardr.Seek(rtypOff)
-	rentry, _ := ardr.Next()
-	if rentry == nil {
-		return
-	}
-	if off, ok := rentry.Val(godwarf.AttrGoRuntimeType).(uint64); ok {
-		bi.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
 	}
 }
 
