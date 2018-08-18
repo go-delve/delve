@@ -17,7 +17,7 @@ func attachErrorMessage(pid int, err error) error {
 			bs, err := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
 			if err == nil && len(bs) >= 1 && bs[0] != '0' {
 				// Yama documentation: https://www.kernel.org/doc/Documentation/security/Yama.txt
-				return fmt.Errorf("Could not attach to pid %d: set /proc/sys/kernel/yama/ptrace_scope to 0", pid)
+				return fmt.Errorf("Could not attach to pid %d: this could be caused by a kernel security setting, try writing \"0\" to /proc/sys/kernel/yama/ptrace_scope", pid)
 			}
 			fi, err := os.Stat(fmt.Sprintf("/proc/%d", pid))
 			if err != nil {
