@@ -932,6 +932,8 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 			FramePointerOffset: rawlocs[i].FramePointerOffset(),
 
 			Defers: d.convertDefers(rawlocs[i].Defers),
+
+			Bottom: rawlocs[i].Bottom,
 		}
 		if rawlocs[i].Err != nil {
 			frame.Err = rawlocs[i].Err.Error()
