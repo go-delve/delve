@@ -131,6 +131,8 @@ type Stackframe struct {
 
 	Defers []Defer
 
+	Bottom bool `json:"Bottom,omitempty"` // Bottom is true if this is the bottom frame of the stack
+
 	Err string
 }
 

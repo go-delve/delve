@@ -172,11 +172,11 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	if cfg == nil && arg.Full {
 		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
 	}
-	locs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Defers, api.LoadConfigToProc(cfg))
+	var err error
+	out.Locations, err = s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Defers, api.LoadConfigToProc(cfg))
 	if err != nil {
 		return err
 	}
-	out.Locations = locs
 	return nil
 }
 

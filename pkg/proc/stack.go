@@ -47,6 +47,8 @@ type Stackframe struct {
 	SystemStack bool
 	// Inlined is true if this frame is actually an inlined call.
 	Inlined bool
+	// Bottom is true if this is the bottom of the stack
+	Bottom bool
 
 	// lastpc is a memory address guaranteed to belong to the last instruction
 	// executed in this stack frame.
@@ -339,6 +341,7 @@ func (it *stackIterator) switchStack() bool {
 
 // Frame returns the frame the iterator is pointing at.
 func (it *stackIterator) Frame() Stackframe {
+	it.frame.Bottom = it.atend
 	return it.frame
 }
 

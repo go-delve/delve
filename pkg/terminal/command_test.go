@@ -224,7 +224,7 @@ func TestExecuteFile(t *testing.T) {
 
 func TestIssue354(t *testing.T) {
 	printStack([]api.Stackframe{}, "", false)
-	printStack([]api.Stackframe{{api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil}, nil, nil, 0, 0, nil, ""}}, "", false)
+	printStack([]api.Stackframe{{api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil}, nil, nil, 0, 0, nil, true, ""}}, "", false)
 }
 
 func TestIssue411(t *testing.T) {
@@ -826,4 +826,21 @@ func TestOptimizationCheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTruncateStacktrace(t *testing.T) {
+	withTestTerminal("stacktraceprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.stacktraceme")
+		term.MustExec("continue")
+		out1 := term.MustExec("stack")
+		t.Logf("untruncated output %q", out1)
+		if strings.Contains(out1, stacktraceTruncatedMessage) {
+			t.Fatalf("stacktrace was truncated")
+		}
+		out2 := term.MustExec("stack 1")
+		t.Logf("truncated output %q", out2)
+		if !strings.Contains(out2, stacktraceTruncatedMessage) {
+			t.Fatalf("stacktrace was not truncated")
+		}
+	})
 }

@@ -1530,6 +1530,8 @@ func digits(n int) int {
 	return int(math.Floor(math.Log10(float64(n)))) + 1
 }
 
+const stacktraceTruncatedMessage = "(truncated)"
+
 func printStack(stack []api.Stackframe, ind string, offsets bool) {
 	if len(stack) == 0 {
 		return
@@ -1581,6 +1583,10 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 		if extranl {
 			fmt.Println()
 		}
+	}
+
+	if len(stack) > 0 && !stack[len(stack)-1].Bottom {
+		fmt.Printf("%s"+stacktraceTruncatedMessage+"\n", ind)
 	}
 }
 
