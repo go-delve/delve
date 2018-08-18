@@ -81,7 +81,7 @@ type functionCallState struct {
 // CallFunction starts a debugger injected function call on the current thread of p.
 // See runtime.debugCallV1 in $GOROOT/src/runtime/asm_amd64.s for a
 // description of the protocol.
-func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
+func CallFunction(p Process, expr string, retLoadCfg *LoadConfig, checkEscape bool) error {
 	bi := p.BinInfo()
 	if !p.Common().fncallEnabled {
 		return errFuncCallUnsupportedBackend
@@ -126,7 +126,7 @@ func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
 		return err
 	}
 
-	argmem, err := funcCallArgFrame(fn, argvars, g, bi)
+	argmem, err := funcCallArgFrame(fn, argvars, g, bi, checkEscape)
 	if err != nil {
 		return err
 	}
@@ -259,7 +259,7 @@ type funcCallArg struct {
 
 // funcCallArgFrame checks type and pointer escaping for the arguments and
 // returns the argument frame.
-func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo) (argmem []byte, err error) {
+func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo, checkEscape bool) (argmem []byte, err error) {
 	argFrameSize, formalArgs, err := funcCallArgs(fn, bi, false)
 	if err != nil {
 		return nil, err
@@ -278,9 +278,11 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 		formalArg := &formalArgs[i]
 		actualArg := actualArgs[i]
 
-		//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
-		if err := escapeCheck(actualArg, formalArg.name, g); err != nil {
-			return nil, fmt.Errorf("can not pass %s to %s: %v", actualArg.Name, formalArg.name, err)
+		if checkEscape {
+			//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
+			if err := escapeCheck(actualArg, formalArg.name, g); err != nil {
+				return nil, fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fn.Name, err)
+			}
 		}
 
 		//TODO(aarzilli): autmoatic wrapping in interfaces for cases not handled
@@ -343,7 +345,13 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 func escapeCheck(v *Variable, name string, g *G) error {
 	switch v.Kind {
 	case reflect.Ptr:
-		w := v.maybeDereference()
+		var w *Variable
+		if len(v.Children) == 1 {
+			// this branch is here to support pointers constructed with typecasts from ints or the '&' operator
+			w = &v.Children[0]
+		} else {
+			w = v.maybeDereference()
+		}
 		return escapeCheckPointer(w.Addr, name, g)
 	case reflect.Chan, reflect.String, reflect.Slice:
 		return escapeCheckPointer(v.Base, name, g)

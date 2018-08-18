@@ -1198,7 +1198,7 @@ func (err *typeConvErr) Error() string {
 
 func (v *Variable) isType(typ godwarf.Type, kind reflect.Kind) error {
 	if v.DwarfType != nil {
-		if typ != nil && typ.String() != v.RealType.String() {
+		if typ == nil || !sameType(typ, v.RealType) {
 			return &typeConvErr{v.DwarfType, typ}
 		}
 		return nil
@@ -1253,6 +1253,34 @@ func (v *Variable) isType(typ godwarf.Type, kind reflect.Kind) error {
 	}
 
 	return nil
+}
+
+func sameType(t1, t2 godwarf.Type) bool {
+	// Because of a bug in the go linker a type that refers to another type
+	// (for example a pointer type) will usually use the typedef but rarely use
+	// the non-typedef entry directly.
+	// For types that we read directly from go this is fine because it's
+	// consistent, however we also synthesize some types ourselves
+	// (specifically pointers and slices) and we always use a reference through
+	// a typedef.
+	t1 = resolveTypedef(t1)
+	t2 = resolveTypedef(t2)
+
+	if tt1, isptr1 := t1.(*godwarf.PtrType); isptr1 {
+		tt2, isptr2 := t2.(*godwarf.PtrType)
+		if !isptr2 {
+			return false
+		}
+		return sameType(tt1.Type, tt2.Type)
+	}
+	if tt1, isslice1 := t1.(*godwarf.SliceType); isslice1 {
+		tt2, isslice2 := t2.(*godwarf.SliceType)
+		if !isslice2 {
+			return false
+		}
+		return sameType(tt1.ElemType, tt2.ElemType)
+	}
+	return t1.String() == t2.String()
 }
 
 func (v *Variable) sliceAccess(idx int) (*Variable, error) {

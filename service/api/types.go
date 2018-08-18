@@ -308,6 +308,8 @@ type DebuggerCommand struct {
 	ReturnInfoLoadConfig *LoadConfig
 	// Expr is the expression argument for a Call command
 	Expr string `json:"expr,omitempty"`
+	// UnsafeCall disabled parameter escape checking for function calls
+	UnsafeCall bool `json:"unsafeCall,omitempty"`
 }
 
 // BreakpointInfo contains informations about the current breakpoint

@@ -1098,7 +1098,8 @@ func TestCallFunction(t *testing.T) {
 
 		// The following set of calls was constructed using https://docs.google.com/document/d/1bMwCey-gmqZVTpRax-ESeVuZGmjwbocYs1iHplK-cjo/pub as a reference
 
-		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil},   // direct call of a method with value receiver / on a value
+		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil}, // direct call of a method with value receiver / on a value
+
 		{`a.PRcvr(2)`, []string{`:string:"2 - 3 = -1"`}, nil},  // direct call of a method with pointer receiver / on a value
 		{`pa.VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil},  // direct call of a method with value receiver / on a pointer
 		{`pa.PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil}, // direct call of a method with pointer receiver / on a pointer
@@ -1122,7 +1123,13 @@ func TestCallFunction(t *testing.T) {
 		{"fn2nil()", nil, errors.New("nil pointer dereference")},
 
 		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil},
+
+		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2")},
+
+		{"-unsafe escapeArg(&a2)", nil, nil}, // LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
 	}
+
+	const unsafePrefix = "-unsafe "
 
 	withTestProcess("fncall", t, func(p proc.Process, fixture protest.Fixture) {
 		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", true, 0)
@@ -1131,8 +1138,16 @@ func TestCallFunction(t *testing.T) {
 		}
 		assertNoError(proc.Continue(p), t, "Continue()")
 		for _, tc := range testcases {
-			err := proc.CallFunction(p, tc.expr, &pnormalLoadConfig)
+			expr := tc.expr
+			checkEscape := true
+			if strings.HasPrefix(expr, unsafePrefix) {
+				expr = expr[len(unsafePrefix):]
+				checkEscape = false
+			}
+			t.Logf("call %q", tc.expr)
+			err := proc.CallFunction(p, expr, &pnormalLoadConfig, checkEscape)
 			if tc.err != nil {
+
 				if err == nil {
 					t.Fatalf("call %q: expected error %q, got no error", tc.expr, tc.err.Error())
 				}
@@ -1153,7 +1168,6 @@ func TestCallFunction(t *testing.T) {
 				retvals[i] = api.ConvertVar(retvalsVar[i])
 			}
 
-			t.Logf("call %q", tc.expr)
 			for i := range retvals {
 				t.Logf("\t%s = %s", retvals[i].Name, retvals[i].SinglelineString())
 			}
