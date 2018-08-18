@@ -125,12 +125,12 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: `Restart process.
 
-  restart [checkpoint]
-  restart [-noargs] newargv...
+	restart [checkpoint]
+	restart [-noargs] newargv...
 
-  For recorded processes restarts from the start or from the specified
-  checkpoint.  For normal processes restarts the process, optionally changing
-  the arguments.  With -noargs, the process starts with an empty commandline.
+For recorded processes restarts from the start or from the specified
+checkpoint.  For normal processes restarts the process, optionally changing
+the arguments.  With -noargs, the process starts with an empty commandline.
 `},
 		{aliases: []string{"continue", "c"}, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, cmdFn: c.step, helpMsg: "Single step through program."},
@@ -138,6 +138,8 @@ See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: "Step over to next source line."},
 		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
+	
+	call [-unsafe] <function call expression>
 	
 Current limitations:
 - only pointers to stack-allocated objects can be passed as argument.
@@ -259,8 +261,8 @@ Show source around current point or provided linespec.`},
 			},
 			helpMsg: `Set the current frame, or execute command on a different frame.
 
-  frame <m>
-  frame <m> <command>
+	frame <m>
+	frame <m> <command>
 
 The first form sets frame used by subsequent commands such as "print" or "set".
 The second form runs the command on the given frame.`},
@@ -270,8 +272,8 @@ The second form runs the command on the given frame.`},
 			},
 			helpMsg: `Move the current frame up.
 
-  up [<m>]
-  up [<m>] <command>
+	up [<m>]
+	up [<m>] <command>
 
 Move the current frame up by <m>. The second form runs the command on the given frame.`},
 		{aliases: []string{"down"},
@@ -280,8 +282,8 @@ Move the current frame up by <m>. The second form runs the command on the given 
 			},
 			helpMsg: `Move the current frame down.
 
-  down [<m>]
-  down [<m>] <command>
+	down [<m>]
+	down [<m>] <command>
 
 Move the current frame down by <m>. The second form runs the command on the given frame.`},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: `Executes a file containing a list of delve commands
@@ -980,7 +982,13 @@ func (c *Commands) call(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
-	state, err := exitedToError(t.client.Call(args))
+	const unsafePrefix = "-unsafe "
+	unsafe := false
+	if strings.HasPrefix(args, unsafePrefix) {
+		unsafe = true
+		args = args[len(unsafePrefix):]
+	}
+	state, err := exitedToError(t.client.Call(args, unsafe))
 	c.frame = 0
 	if err != nil {
 		printcontextNoState(t)

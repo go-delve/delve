@@ -39,6 +39,10 @@ type astruct struct {
 	X int
 }
 
+type a2struct struct {
+	Y int
+}
+
 func (a astruct) VRcvr(x int) string {
 	return fmt.Sprintf("%d + %d = %d", x, a.X, x+a.X)
 }
@@ -66,6 +70,11 @@ func makeclos(pa *astruct) func(int) string {
 }
 
 var ga astruct
+var globalPA2 *a2struct
+
+func escapeArg(pa2 *a2struct) {
+	globalPA2 = pa2
+}
 
 func main() {
 	one, two := 1, 2
@@ -74,6 +83,7 @@ func main() {
 	comma := ","
 	a := astruct{X: 3}
 	pa := &astruct{X: 6}
+	a2 := a2struct{Y: 7}
 
 	var vable_a VRcvrable = a
 	var vable_pa VRcvrable = pa
@@ -88,5 +98,5 @@ func main() {
 	runtime.Breakpoint()
 	call1(one, two)
 	fn2clos(2)
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga)
+	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2)
 }

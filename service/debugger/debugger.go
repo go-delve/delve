@@ -565,7 +565,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = proc.Continue(d.target)
 	case api.Call:
 		d.log.Debugf("function call %s", command.Expr)
-		err = proc.CallFunction(d.target, command.Expr, api.LoadConfigToProc(command.ReturnInfoLoadConfig))
+		err = proc.CallFunction(d.target, command.Expr, api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall)
 	case api.Rewind:
 		d.log.Debug("rewinding")
 		if err := d.target.Direction(proc.Backward); err != nil {

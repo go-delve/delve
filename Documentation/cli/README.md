@@ -73,6 +73,8 @@ Aliases: bp
 ## call
 Resumes process, injecting a function call (EXPERIMENTAL!!!)
 	
+	call [-unsafe] <function call expression>
+	
 Current limitations:
 - only pointers to stack-allocated objects can be passed as argument.
 - only some automatic type conversions are supported.
@@ -174,8 +176,8 @@ Aliases: disass
 ## down
 Move the current frame down.
 
-  down [<m>]
-  down [<m>] <command>
+	down [<m>]
+	down [<m>] <command>
 
 Move the current frame down by <m>. The second form runs the command on the given frame.
 
@@ -201,8 +203,8 @@ Aliases: quit q
 ## frame
 Set the current frame, or execute command on a different frame.
 
-  frame <m>
-  frame <m> <command>
+	frame <m>
+	frame <m> <command>
 
 The first form sets frame used by subsequent commands such as "print" or "set".
 The second form runs the command on the given frame.
@@ -394,8 +396,8 @@ If regex is specified only the types matching it will be returned.
 ## up
 Move the current frame up.
 
-  up [<m>]
-  up [<m>] <command>
+	up [<m>]
+	up [<m>] <command>
 
 Move the current frame up by <m>. The second form runs the command on the given frame.
 

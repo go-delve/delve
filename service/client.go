@@ -39,7 +39,7 @@ type Client interface {
 	// StepOut continues to the return address of the current function
 	StepOut() (*api.DebuggerState, error)
 	// Call resumes process execution while making a function call.
-	Call(expr string) (*api.DebuggerState, error)
+	Call(expr string, unsafe bool) (*api.DebuggerState, error)
 
 	// SingleStep will step a single cpu instruction.
 	StepInstruction() (*api.DebuggerState, error)
