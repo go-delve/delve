@@ -536,6 +536,8 @@ func (d *Debugger) isRunning() bool {
 }
 
 // Command handles commands which control the debugger lifecycle
+// It allows for a single place to detect process death and update
+// state of the process back to the client.
 func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, error) {
 	var err error
 
