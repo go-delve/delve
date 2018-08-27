@@ -56,6 +56,9 @@ func (inst *AsmInstruction) Text(flavour AssemblyFlavour, bi *BinaryInfo) string
 }
 
 func (inst *AsmInstruction) IsCall() bool {
+	if inst.Inst == nil {
+		return false
+	}
 	return inst.Inst.Op == x86asm.CALL || inst.Inst.Op == x86asm.LCALL
 }
 

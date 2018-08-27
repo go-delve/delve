@@ -3996,3 +3996,15 @@ func TestReadDefer(t *testing.T) {
 		}
 	})
 }
+
+func TestNextUnknownInstr(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 10) {
+		t.Skip("versions of Go before 1.10 can't assemble the instruction VPUNPCKLWD")
+	}
+	withTestProcess("nodisasm/", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.asmFunc")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		assertNoError(proc.Next(p), t, "Next()")
+	})
+}
