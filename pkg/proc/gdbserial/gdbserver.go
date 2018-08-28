@@ -1189,8 +1189,9 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 }
 
 func (t *Thread) RestoreRegisters(regs proc.SavedRegisters) error {
-	//TODO(aarzilli): implement
-	return errors.New("not implemented")
+	gdbregs := regs.(*gdbRegisters)
+	t.regs = *gdbregs
+	return t.writeRegisters()
 }
 
 func (t *Thread) Arch() proc.Arch {
@@ -1339,6 +1340,18 @@ func (t *Thread) writeSomeRegisters(regNames ...string) error {
 	}
 	for _, regName := range regNames {
 		if err := t.p.conn.writeRegister(t.strID, t.regs.regs[regName].regnum, t.regs.regs[regName].value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *Thread) writeRegisters() error {
+	if t.p.gcmdok {
+		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
+	}
+	for _, r := range t.regs.regs {
+		if err := t.p.conn.writeRegister(t.strID, r.regnum, r.value); err != nil {
 			return err
 		}
 	}
