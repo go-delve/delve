@@ -250,7 +250,7 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
 		t.Skip("this version of Go does not support function calls")
 	}
-	if runtime.GOOS != "linux" || testBackend != "native" {
+	if runtime.GOOS == "windows" {
 		t.Skip("this backend does not support function calls")
 	}
 }
