@@ -57,6 +57,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 
 	var p *os.Process
 	dbp := New(0)
+	dbp.common = proc.NewCommonProcess(true)
 	dbp.execPtraceFunc(func() {
 		attr := &os.ProcAttr{
 			Dir:   wd,

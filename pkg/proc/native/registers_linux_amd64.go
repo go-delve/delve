@@ -325,5 +325,16 @@ func (thread *Thread) fpRegisters() (regs []proc.Register, fpregs proc.LinuxX86X
 }
 
 func (r *Regs) Copy() proc.Registers {
-	return r
+	var rr Regs
+	rr.regs = &sys.PtraceRegs{}
+	rr.fpregset = &proc.LinuxX86Xstate{}
+	*(rr.regs) = *(r.regs)
+	if r.fpregset != nil {
+		*(rr.fpregset) = *(r.fpregset)
+	}
+	if r.fpregs != nil {
+		rr.fpregs = make([]proc.Register, len(r.fpregs))
+		copy(rr.fpregs, r.fpregs)
+	}
+	return &rr
 }
