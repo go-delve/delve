@@ -24,7 +24,7 @@ type Registers interface {
 	GAddr() (uint64, bool)
 	Get(int) (uint64, error)
 	Slice() []Register
-	// Copy returns a copy of this registers that is guaranteed not to change
+	// Copy returns a copy of the registers that is guaranteed not to change
 	// when the registers of the associated thread change.
 	Copy() Registers
 }

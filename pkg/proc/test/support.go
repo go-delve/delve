@@ -251,18 +251,7 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip("this version of Go does not support function calls")
 	}
 
-	const unsupported = "this backend does not support function calls"
-
-	if testBackend == "rr" {
-		t.Skip(unsupported)
-	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		if testBackend == "native" {
-			t.Skip(unsupported)
-		}
-	case "windows":
-		t.Skip(unsupported)
+	if testBackend == "rr" || (runtime.GOOS == "darwin" && testBackend == "native") {
+		t.Skip("this backend does not support function calls")
 	}
 }

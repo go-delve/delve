@@ -33,6 +33,7 @@ type Regs struct {
 	fs      uint64
 	gs      uint64
 	tls     uint64
+	context *_CONTEXT
 	fltSave *_XMM_SAVE_AREA32
 }
 
@@ -374,11 +375,16 @@ func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 	if floatingPoint {
 		regs.fltSave = &context.FltSave
 	}
+	regs.context = context
 
 	return regs, nil
 }
 
 func (r *Regs) Copy() proc.Registers {
-	//TODO(aarzilli): implement this to support function calls
-	return nil
+	var rr Regs
+	rr = *r
+	rr.context = newCONTEXT()
+	*(rr.context) = *(r.context)
+	rr.fltSave = &rr.context.FltSave
+	return &rr
 }
