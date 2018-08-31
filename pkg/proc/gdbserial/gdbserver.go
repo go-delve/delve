@@ -96,12 +96,14 @@ const (
 
 const heartbeatInterval = 10 * time.Second
 
+// ErrDirChange is returned when trying to change execution direction
+// while there are still internal breakpoints set.
 var ErrDirChange = errors.New("direction change with internal breakpoints")
 
 // Process implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
 type Process struct {
-	bi   proc.BinaryInfo
+	bi   *proc.BinaryInfo
 	conn gdbConn
 
 	threads           map[int]*Thread
@@ -374,7 +376,8 @@ func unusedPort() string {
 
 const debugserverExecutable = "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
 
-var ErrUnsupportedOS = errors.New("lldb backend not supported on windows")
+// ErrUnsupportedOS is returned when trying to use the lldb backend on Windows.
+var ErrUnsupportedOS = errors.New("lldb backend not supported on Windows")
 
 func getLdEnvVars() []string {
 	var result []string
@@ -400,7 +403,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 	default:
 		// check that the argument to Launch is an executable file
 		if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-			return nil, proc.NotExecutableErr
+			return nil, proc.ErrNotExecutable
 		}
 	}
 
@@ -548,37 +551,47 @@ func (p *Process) loadProcessInfo(pid int) (int, string, error) {
 	return pid, pi["name"], nil
 }
 
+// BinInfo returns information on the binary.
 func (p *Process) BinInfo() *proc.BinaryInfo {
-	return &p.bi
+	return p.bi
 }
 
+// Recorded returns whether or not we are debugging
+// a recorded "traced" program.
 func (p *Process) Recorded() (bool, string) {
 	return p.tracedir != "", p.tracedir
 }
 
+// Pid returns the process ID.
 func (p *Process) Pid() int {
 	return int(p.conn.pid)
 }
 
+// Valid returns true if we are not detached
+// and the process has not exited.
 func (p *Process) Valid() (bool, error) {
 	if p.detached {
 		return false, &proc.ProcessDetachedError{}
 	}
 	if p.exited {
-		return false, &proc.ProcessExitedError{Pid: p.Pid()}
+		return false, &proc.ErrProcessExited{Pid: p.Pid()}
 	}
 	return true, nil
 }
 
+// ResumeNotify specifies a channel that will be closed the next time
+// ContinueOnce finishes resuming the target.
 func (p *Process) ResumeNotify(ch chan<- struct{}) {
 	p.conn.resumeChan = ch
 }
 
+// FindThread returns the thread with the given ID.
 func (p *Process) FindThread(threadID int) (proc.Thread, bool) {
 	thread, ok := p.threads[threadID]
 	return thread, ok
 }
 
+// ThreadList returns all threads in the process.
 func (p *Process) ThreadList() []proc.Thread {
 	r := make([]proc.Thread, 0, len(p.threads))
 	for _, thread := range p.threads {
@@ -587,14 +600,18 @@ func (p *Process) ThreadList() []proc.Thread {
 	return r
 }
 
+// CurrentThread returns the current active
+// selected thread.
 func (p *Process) CurrentThread() proc.Thread {
 	return p.currentThread
 }
 
+// Common returns common information across Process implementations.
 func (p *Process) Common() *proc.CommonProcess {
 	return &p.common
 }
 
+// SelectedGoroutine returns the current actuve selected goroutine.
 func (p *Process) SelectedGoroutine() *proc.G {
 	return p.selectedGoroutine
 }
@@ -606,9 +623,11 @@ const (
 	stopSignal       = 0x13
 )
 
+// ContinueOnce will continue execution of the process until
+// a breakpoint is hit or signal is received.
 func (p *Process) ContinueOnce() (proc.Thread, error) {
 	if p.exited {
-		return nil, &proc.ProcessExitedError{Pid: p.conn.pid}
+		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 
 	if p.conn.direction == proc.Forward {
@@ -639,7 +658,7 @@ continueLoop:
 		tu.Reset()
 		threadID, sig, err = p.conn.resume(sig, &tu)
 		if err != nil {
-			if _, exited := err.(proc.ProcessExitedError); exited {
+			if _, exited := err.(proc.ErrProcessExited); exited {
 				p.exited = true
 			}
 			return nil, err
@@ -706,6 +725,7 @@ continueLoop:
 	return nil, fmt.Errorf("could not find thread %s", threadID)
 }
 
+// StepInstruction will step exactly one CPU instruction.
 func (p *Process) StepInstruction() error {
 	thread := p.currentThread
 	if p.selectedGoroutine != nil {
@@ -719,7 +739,7 @@ func (p *Process) StepInstruction() error {
 	}
 	p.common.ClearAllGCache()
 	if p.exited {
-		return &proc.ProcessExitedError{Pid: p.conn.pid}
+		return &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 	thread.clearBreakpointState()
 	err := thread.StepInstruction()
@@ -736,9 +756,10 @@ func (p *Process) StepInstruction() error {
 	return nil
 }
 
+// SwitchThread will change the internal selected thread.
 func (p *Process) SwitchThread(tid int) error {
 	if p.exited {
-		return proc.ProcessExitedError{Pid: p.conn.pid}
+		return proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 	if th, ok := p.threads[tid]; ok {
 		p.currentThread = th
@@ -748,6 +769,7 @@ func (p *Process) SwitchThread(tid int) error {
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
+// SwitchGoroutine will change the internal selected goroutine.
 func (p *Process) SwitchGoroutine(gid int) error {
 	g, err := proc.FindGoroutine(p, gid)
 	if err != nil {
@@ -764,6 +786,8 @@ func (p *Process) SwitchGoroutine(gid int) error {
 	return nil
 }
 
+// RequestManualStop will attempt to stop the process
+// without a breakpoint or signal having been recieved.
 func (p *Process) RequestManualStop() error {
 	p.conn.manualStopMutex.Lock()
 	p.manualStopRequested = true
@@ -776,6 +800,8 @@ func (p *Process) RequestManualStop() error {
 	return p.conn.sendCtrlC()
 }
 
+// CheckAndClearManualStopRequest will check for a manual
+// stop and then clear that state.
 func (p *Process) CheckAndClearManualStopRequest() bool {
 	p.conn.manualStopMutex.Lock()
 	msr := p.manualStopRequested
@@ -796,11 +822,13 @@ func (p *Process) getCtrlC() bool {
 	return p.ctrlC
 }
 
+// Detach will detach from the target process,
+// if 'kill' is true it will also kill the process.
 func (p *Process) Detach(kill bool) error {
 	if kill && !p.exited {
 		err := p.conn.kill()
 		if err != nil {
-			if _, exited := err.(proc.ProcessExitedError); !exited {
+			if _, exited := err.(proc.ErrProcessExited); !exited {
 				return err
 			}
 			p.exited = true
@@ -820,9 +848,10 @@ func (p *Process) Detach(kill bool) error {
 	return p.bi.Close()
 }
 
+// Restart will restart the process from the given position.
 func (p *Process) Restart(pos string) error {
 	if p.tracedir == "" {
-		return proc.NotRecordedErr
+		return proc.ErrNotRecorded
 	}
 
 	p.exited = false
@@ -859,9 +888,11 @@ func (p *Process) Restart(pos string) error {
 	return p.setCurrentBreakpoints()
 }
 
+// When executes the 'when' command for the Mozilla RR backend.
+// This command will return rr's internal event number.
 func (p *Process) When() (string, error) {
 	if p.tracedir == "" {
-		return "", proc.NotRecordedErr
+		return "", proc.ErrNotRecorded
 	}
 	event, err := p.conn.qRRCmd("when")
 	if err != nil {
@@ -874,9 +905,10 @@ const (
 	checkpointPrefix = "Checkpoint "
 )
 
+// Checkpoint creates a checkpoint from which you can restart the program.
 func (p *Process) Checkpoint(where string) (int, error) {
 	if p.tracedir == "" {
-		return -1, proc.NotRecordedErr
+		return -1, proc.ErrNotRecorded
 	}
 	resp, err := p.conn.qRRCmd("checkpoint", where)
 	if err != nil {
@@ -901,9 +933,10 @@ func (p *Process) Checkpoint(where string) (int, error) {
 	return cpid, nil
 }
 
+// Checkpoints returns a list of all checkpoints set.
 func (p *Process) Checkpoints() ([]proc.Checkpoint, error) {
 	if p.tracedir == "" {
-		return nil, proc.NotRecordedErr
+		return nil, proc.ErrNotRecorded
 	}
 	resp, err := p.conn.qRRCmd("info checkpoints")
 	if err != nil {
@@ -930,9 +963,10 @@ func (p *Process) Checkpoints() ([]proc.Checkpoint, error) {
 
 const deleteCheckpointPrefix = "Deleted checkpoint "
 
+// ClearCheckpoint clears the checkpoint for the given ID.
 func (p *Process) ClearCheckpoint(id int) error {
 	if p.tracedir == "" {
-		return proc.NotRecordedErr
+		return proc.ErrNotRecorded
 	}
 	resp, err := p.conn.qRRCmd("delete checkpoint", strconv.Itoa(id))
 	if err != nil {
@@ -944,12 +978,13 @@ func (p *Process) ClearCheckpoint(id int) error {
 	return nil
 }
 
+// Direction sets whether to run the program forwards or in reverse execution.
 func (p *Process) Direction(dir proc.Direction) error {
 	if p.tracedir == "" {
-		return proc.NotRecordedErr
+		return proc.ErrNotRecorded
 	}
 	if p.conn.conn == nil {
-		return proc.ProcessExitedError{Pid: p.conn.pid}
+		return proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 	if p.conn.direction == dir {
 		return nil
@@ -961,10 +996,12 @@ func (p *Process) Direction(dir proc.Direction) error {
 	return nil
 }
 
+// Breakpoints returns the list of breakpoints currently set.
 func (p *Process) Breakpoints() *proc.BreakpointMap {
 	return &p.breakpoints
 }
 
+// FindBreakpoint returns the breakpoint at the given address.
 func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
 	if bp, ok := p.breakpoints.M[pc-uint64(p.bi.Arch.BreakpointSize())]; ok {
@@ -990,22 +1027,25 @@ func (p *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []b
 	return f, l, fn, nil, nil
 }
 
+// SetBreakpoint creates a new breakpoint.
 func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
 	if p.exited {
-		return nil, &proc.ProcessExitedError{Pid: p.conn.pid}
+		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 	return p.breakpoints.Set(addr, kind, cond, p.writeBreakpoint)
 }
 
+// ClearBreakpoint clears a breakpoint at the given address.
 func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	if p.exited {
-		return nil, &proc.ProcessExitedError{Pid: p.conn.pid}
+		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 	return p.breakpoints.Clear(addr, func(bp *proc.Breakpoint) error {
 		return p.conn.clearBreakpoint(bp.Addr)
 	})
 }
 
+// ClearInternalBreakpoints clear all internal use breakpoints like those set by 'next'.
 func (p *Process) ClearInternalBreakpoints() error {
 	return p.breakpoints.ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
 		if err := p.conn.clearBreakpoint(bp.Addr); err != nil {
@@ -1155,6 +1195,7 @@ func (p *Process) setCurrentBreakpoints() error {
 	return nil
 }
 
+// ReadMemory will read into 'data' memory at the address provided.
 func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	err = t.p.conn.readMemory(data, addr)
 	if err != nil {
@@ -1163,10 +1204,12 @@ func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	return len(data), nil
 }
 
+// WriteMemory will write into the memory at 'addr' the data provided.
 func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
 	return t.p.conn.writeMemory(addr, data)
 }
 
+// Location returns the current location of this thread.
 func (t *Thread) Location() (*proc.Location, error) {
 	regs, err := t.Registers(false)
 	if err != nil {
@@ -1177,31 +1220,38 @@ func (t *Thread) Location() (*proc.Location, error) {
 	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
+// Breakpoint returns the current active breakpoint for this thread.
 func (t *Thread) Breakpoint() proc.BreakpointState {
 	return t.CurrentBreakpoint
 }
 
+// ThreadID returns this threads ID.
 func (t *Thread) ThreadID() int {
 	return t.ID
 }
 
+// Registers returns the CPU registers for this thread.
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return &t.regs, nil
 }
 
+// RestoreRegisters will set the CPU registers the value of those provided.
 func (t *Thread) RestoreRegisters(savedRegs proc.Registers) error {
 	copy(t.regs.buf, savedRegs.(*gdbRegisters).buf)
 	return t.writeRegisters()
 }
 
+// Arch will return the CPU architecture for the target.
 func (t *Thread) Arch() proc.Arch {
 	return t.p.bi.Arch
 }
 
+// BinInfo will return information on the binary being debugged.
 func (t *Thread) BinInfo() *proc.BinaryInfo {
-	return &t.p.bi
+	return t.p.bi
 }
 
+// Common returns common information across Process implementations.
 func (t *Thread) Common() *proc.CommonThread {
 	return &t.common
 }
@@ -1219,6 +1269,7 @@ func (t *Thread) stepInstruction(tu *threadUpdater) error {
 	return err
 }
 
+// StepInstruction will step exactly 1 CPU instruction.
 func (t *Thread) StepInstruction() error {
 	if err := t.stepInstruction(&threadUpdater{p: t.p}); err != nil {
 		return err
@@ -1226,6 +1277,7 @@ func (t *Thread) StepInstruction() error {
 	return t.reloadRegisters()
 }
 
+// Blocked returns true if the thread is blocked in runtime or kernel code.
 func (t *Thread) Blocked() bool {
 	regs, err := t.Registers(false)
 	if err != nil {
@@ -1507,6 +1559,7 @@ func (t *Thread) clearBreakpointState() {
 	t.CurrentBreakpoint.Clear()
 }
 
+// SetCurrentBreakpoint will find and set the threads current breakpoint.
 func (thread *Thread) SetCurrentBreakpoint() error {
 	thread.clearBreakpointState()
 	regs, err := thread.Registers(false)
@@ -1732,9 +1785,10 @@ func (regs *gdbRegisters) Get(n int) (uint64, error) {
 		return regs.byName("r15"), nil
 	}
 
-	return 0, proc.UnknownRegisterError
+	return 0, proc.ErrUnknownRegister
 }
 
+// SetPC will set the value of the PC register to the given value.
 func (t *Thread) SetPC(pc uint64) error {
 	t.regs.setPC(pc)
 	if t.p.gcmdok {
@@ -1744,6 +1798,7 @@ func (t *Thread) SetPC(pc uint64) error {
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 
+// SetSP will set the value of the SP register to the given value.
 func (t *Thread) SetSP(sp uint64) error {
 	t.regs.setSP(sp)
 	if t.p.gcmdok {
@@ -1753,6 +1808,7 @@ func (t *Thread) SetSP(sp uint64) error {
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 
+// SetDX will set the value of the DX register to the given value.
 func (t *Thread) SetDX(dx uint64) error {
 	t.regs.setDX(dx)
 	if t.p.gcmdok {

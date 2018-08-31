@@ -34,16 +34,20 @@ const (
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 )
 
-type FloatSpecial uint8
+type floatSpecial uint8
 
 const (
-	FloatIsNormal FloatSpecial = iota
+	// FloatIsNormal means the value is a normal float.
+	FloatIsNormal floatSpecial = iota
+	// FloatIsNaN means the float is a special NaN value.
 	FloatIsNaN
+	// FloatIsPosInf means the float is a special positive inifitiy value.
 	FloatIsPosInf
+	// FloatIsNegInf means the float is a special negative infinity value.
 	FloatIsNegInf
 )
 
-type VariableFlags uint16
+type variableFlags uint16
 
 const (
 	// VariableEscaped is set for local variables that escaped to the heap
@@ -52,7 +56,7 @@ const (
 	// that may outlive the stack frame are allocated on the heap instead and
 	// only the address is recorded on the stack. These variables will be
 	// marked with this flag.
-	VariableEscaped VariableFlags = (1 << iota)
+	VariableEscaped variableFlags = (1 << iota)
 	// VariableShadowed is set for local variables that are shadowed by a
 	// variable with the same name in another scope
 	VariableShadowed
@@ -79,12 +83,12 @@ type Variable struct {
 	bi        *BinaryInfo
 
 	Value        constant.Value
-	FloatSpecial FloatSpecial
+	FloatSpecial floatSpecial
 
 	Len int64
 	Cap int64
 
-	Flags VariableFlags
+	Flags variableFlags
 
 	// Base address of arrays, Base address of the backing array for slices (0 for nil slices)
 	// Base address of the backing byte array for strings
@@ -106,6 +110,7 @@ type Variable struct {
 	DeclLine     int64  // line number of this variable's declaration
 }
 
+// LoadConfig controls how variables are loaded from the targets memory.
 type LoadConfig struct {
 	// FollowPointers requests pointers to be automatically dereferenced.
 	FollowPointers bool
@@ -405,13 +410,13 @@ func (ng NoGError) Error() string {
 	return fmt.Sprintf("no G executing on thread %d", ng.tid)
 }
 
-func (gvar *Variable) parseG() (*G, error) {
-	mem := gvar.mem
-	gaddr := uint64(gvar.Addr)
-	_, deref := gvar.RealType.(*godwarf.PtrType)
+func (v *Variable) parseG() (*G, error) {
+	mem := v.mem
+	gaddr := uint64(v.Addr)
+	_, deref := v.RealType.(*godwarf.PtrType)
 
 	if deref {
-		gaddrbytes := make([]byte, gvar.bi.Arch.PtrSize())
+		gaddrbytes := make([]byte, v.bi.Arch.PtrSize())
 		_, err := mem.ReadMemory(gaddrbytes, uintptr(gaddr))
 		if err != nil {
 			return nil, fmt.Errorf("error derefing *G %s", err)
@@ -426,27 +431,27 @@ func (gvar *Variable) parseG() (*G, error) {
 		return nil, NoGError{tid: id}
 	}
 	for {
-		if _, isptr := gvar.RealType.(*godwarf.PtrType); !isptr {
+		if _, isptr := v.RealType.(*godwarf.PtrType); !isptr {
 			break
 		}
-		gvar = gvar.maybeDereference()
+		v = v.maybeDereference()
 	}
-	gvar.loadValue(LoadConfig{false, 2, 64, 0, -1})
-	if gvar.Unreadable != nil {
-		return nil, gvar.Unreadable
+	v.loadValue(LoadConfig{false, 2, 64, 0, -1})
+	if v.Unreadable != nil {
+		return nil, v.Unreadable
 	}
-	schedVar := gvar.fieldVariable("sched")
+	schedVar := v.fieldVariable("sched")
 	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
 	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
 	var bp int64
 	if bpvar := schedVar.fieldVariable("bp"); bpvar != nil && bpvar.Value != nil {
 		bp, _ = constant.Int64Val(bpvar.Value)
 	}
-	id, _ := constant.Int64Val(gvar.fieldVariable("goid").Value)
-	gopc, _ := constant.Int64Val(gvar.fieldVariable("gopc").Value)
-	startpc, _ := constant.Int64Val(gvar.fieldVariable("startpc").Value)
+	id, _ := constant.Int64Val(v.fieldVariable("goid").Value)
+	gopc, _ := constant.Int64Val(v.fieldVariable("gopc").Value)
+	startpc, _ := constant.Int64Val(v.fieldVariable("startpc").Value)
 	waitReason := ""
-	if wrvar := gvar.fieldVariable("waitreason"); wrvar.Value != nil {
+	if wrvar := v.fieldVariable("waitreason"); wrvar.Value != nil {
 		switch wrvar.Kind {
 		case reflect.String:
 			waitReason = constant.StringVal(wrvar.Value)
@@ -456,7 +461,7 @@ func (gvar *Variable) parseG() (*G, error) {
 
 	}
 	var stackhi, stacklo uint64
-	if stackVar := gvar.fieldVariable("stack"); stackVar != nil {
+	if stackVar := v.fieldVariable("stack"); stackVar != nil {
 		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
 			stackhi, _ = constant.Uint64Val(stackhiVar.Value)
 		}
@@ -465,15 +470,15 @@ func (gvar *Variable) parseG() (*G, error) {
 		}
 	}
 
-	stkbarVar, _ := gvar.structMember("stkbar")
-	stkbarVarPosFld := gvar.fieldVariable("stkbarPos")
+	stkbarVar, _ := v.structMember("stkbar")
+	stkbarVarPosFld := v.fieldVariable("stkbarPos")
 	var stkbarPos int64
 	if stkbarVarPosFld != nil { // stack barriers were removed in Go 1.9
 		stkbarPos, _ = constant.Int64Val(stkbarVarPosFld.Value)
 	}
 
-	status, _ := constant.Int64Val(gvar.fieldVariable("atomicstatus").Value)
-	f, l, fn := gvar.bi.PCToLine(uint64(pc))
+	status, _ := constant.Int64Val(v.fieldVariable("atomicstatus").Value)
+	f, l, fn := v.bi.PCToLine(uint64(pc))
 	g := &G{
 		ID:         int(id),
 		GoPC:       uint64(gopc),
@@ -484,7 +489,7 @@ func (gvar *Variable) parseG() (*G, error) {
 		WaitReason: waitReason,
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
-		variable:   gvar,
+		variable:   v,
 		stkbarVar:  stkbarVar,
 		stkbarPos:  int(stkbarPos),
 		stackhi:    stackhi,
@@ -563,7 +568,7 @@ func (g *G) Go() Location {
 		// Backup to CALL instruction.
 		// Mimics runtime/traceback.go:677.
 		if g.GoPC > fn.Entry {
-			pc -= 1
+			pc--
 		}
 	}
 	f, l, fn := g.variable.bi.PCToLine(pc)
@@ -583,7 +588,7 @@ func (g *G) stkbar() ([]savedLR, error) {
 	}
 	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3})
 	if g.stkbarVar.Unreadable != nil {
-		return nil, fmt.Errorf("unreadable stkbar: %v\n", g.stkbarVar.Unreadable)
+		return nil, fmt.Errorf("unreadable stkbar: %v", g.stkbarVar.Unreadable)
 	}
 	r := make([]savedLR, len(g.stkbarVar.Children))
 	for i, child := range g.stkbarVar.Children {
@@ -1026,13 +1031,13 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 //   is performed.
 // * If srcv and dstv have the same type and are both addressable then the
 //   contents of srcv are copied byte-by-byte into dstv
-func (dstv *Variable) setValue(srcv *Variable, srcExpr string) error {
+func (v *Variable) setValue(srcv *Variable, srcExpr string) error {
 	srcv.loadValue(loadSingleValue)
 
-	typerr := srcv.isType(dstv.RealType, dstv.Kind)
+	typerr := srcv.isType(v.RealType, v.Kind)
 	if _, isTypeConvErr := typerr.(*typeConvErr); isTypeConvErr {
 		// attempt iface -> eface and ptr-shaped -> eface conversions.
-		return convertToEface(srcv, dstv)
+		return convertToEface(srcv, v)
 	}
 	if typerr != nil {
 		return typerr
@@ -1043,51 +1048,51 @@ func (dstv *Variable) setValue(srcv *Variable, srcExpr string) error {
 	}
 
 	// Numerical types
-	switch dstv.Kind {
+	switch v.Kind {
 	case reflect.Float32, reflect.Float64:
 		f, _ := constant.Float64Val(srcv.Value)
-		return dstv.writeFloatRaw(f, dstv.RealType.Size())
+		return v.writeFloatRaw(f, v.RealType.Size())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		n, _ := constant.Int64Val(srcv.Value)
-		return dstv.writeUint(uint64(n), dstv.RealType.Size())
+		return v.writeUint(uint64(n), v.RealType.Size())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		n, _ := constant.Uint64Val(srcv.Value)
-		return dstv.writeUint(n, dstv.RealType.Size())
+		return v.writeUint(n, v.RealType.Size())
 	case reflect.Bool:
-		return dstv.writeBool(constant.BoolVal(srcv.Value))
+		return v.writeBool(constant.BoolVal(srcv.Value))
 	case reflect.Complex64, reflect.Complex128:
 		real, _ := constant.Float64Val(constant.Real(srcv.Value))
 		imag, _ := constant.Float64Val(constant.Imag(srcv.Value))
-		return dstv.writeComplex(real, imag, dstv.RealType.Size())
+		return v.writeComplex(real, imag, v.RealType.Size())
 	}
 
 	// nilling nillable variables
 	if srcv == nilVariable {
-		return dstv.writeZero()
+		return v.writeZero()
 	}
 
 	// set a string to ""
 	if srcv.Kind == reflect.String && srcv.Len == 0 {
-		return dstv.writeZero()
+		return v.writeZero()
 	}
 
 	// slice assignment (this is not handled by the writeCopy below so that
 	// results of a reslice operation can be used here).
 	if srcv.Kind == reflect.Slice {
-		return dstv.writeSlice(srcv.Len, srcv.Cap, srcv.Base)
+		return v.writeSlice(srcv.Len, srcv.Cap, srcv.Base)
 	}
 
 	// allow any integer to be converted to any pointer
-	if t, isptr := dstv.RealType.(*godwarf.PtrType); isptr {
-		return dstv.writeUint(uint64(srcv.Children[0].Addr), int64(t.ByteSize))
+	if t, isptr := v.RealType.(*godwarf.PtrType); isptr {
+		return v.writeUint(uint64(srcv.Children[0].Addr), int64(t.ByteSize))
 	}
 
 	// byte-by-byte copying for everything else, but the source must be addressable
 	if srcv.Addr != 0 {
-		return dstv.writeCopy(srcv)
+		return v.writeCopy(srcv)
 	}
 
-	return fmt.Errorf("can not set variables of type %s (not implemented)", dstv.Kind.String())
+	return fmt.Errorf("can not set variables of type %s (not implemented)", v.Kind.String())
 }
 
 // convertToEface converts srcv into an "interface {}" and writes it to
@@ -1504,13 +1509,13 @@ func (v *Variable) writeSlice(len, cap int64, base uintptr) error {
 	return nil
 }
 
-func (dstv *Variable) writeCopy(srcv *Variable) error {
+func (v *Variable) writeCopy(srcv *Variable) error {
 	buf := make([]byte, srcv.RealType.Size())
 	_, err := srcv.mem.ReadMemory(buf, srcv.Addr)
 	if err != nil {
 		return err
 	}
-	_, err = dstv.mem.WriteMemory(dstv.Addr, buf)
+	_, err = v.mem.WriteMemory(v.Addr, buf)
 	return err
 }
 
@@ -1656,16 +1661,16 @@ func (v *Variable) mapIterator() *mapIterator {
 	}
 
 	if it.buckets.Kind != reflect.Struct || it.oldbuckets.Kind != reflect.Struct {
-		v.Unreadable = mapBucketsNotStructErr
+		v.Unreadable = errMapBucketsNotStruct
 		return nil
 	}
 
 	return it
 }
 
-var mapBucketContentsNotArrayErr = errors.New("malformed map type: keys, values or tophash of a bucket is not an array")
-var mapBucketContentsInconsistentLenErr = errors.New("malformed map type: inconsistent array length in bucket")
-var mapBucketsNotStructErr = errors.New("malformed map type: buckets, oldbuckets or overflow field not a struct")
+var errMapBucketContentsNotArray = errors.New("malformed map type: keys, values or tophash of a bucket is not an array")
+var errMapBucketContentsInconsistentLen = errors.New("malformed map type: inconsistent array length in bucket")
+var errMapBucketsNotStruct = errors.New("malformed map type: buckets, oldbuckets or overflow field not a struct")
 
 func (it *mapIterator) nextBucket() bool {
 	if it.overflow != nil && it.overflow.Addr > 0 {
@@ -1755,24 +1760,24 @@ func (it *mapIterator) nextBucket() bool {
 	}
 
 	if it.tophashes.Kind != reflect.Array || it.keys.Kind != reflect.Array || it.values.Kind != reflect.Array {
-		it.v.Unreadable = mapBucketContentsNotArrayErr
+		it.v.Unreadable = errMapBucketContentsNotArray
 		return false
 	}
 
 	if it.tophashes.Len != it.keys.Len {
-		it.v.Unreadable = mapBucketContentsInconsistentLenErr
+		it.v.Unreadable = errMapBucketContentsInconsistentLen
 		return false
 	}
 
 	if it.values.fieldType.Size() > 0 && it.tophashes.Len != it.values.Len {
 		// if the type of the value is zero-sized (i.e. struct{}) then the values
 		// array's length is zero.
-		it.v.Unreadable = mapBucketContentsInconsistentLenErr
+		it.v.Unreadable = errMapBucketContentsInconsistentLen
 		return false
 	}
 
 	if it.overflow.Kind != reflect.Struct {
-		it.v.Unreadable = mapBucketsNotStructErr
+		it.v.Unreadable = errMapBucketsNotStruct
 		return false
 	}
 
@@ -2031,7 +2036,7 @@ func (v *variablesByDepth) Swap(i int, j int) {
 	v.vars[i], v.vars[j] = v.vars[j], v.vars[i]
 }
 
-// Fetches all variables of a specific type in the current function scope
+// Locals fetches all variables of a specific type in the current function scope.
 func (scope *EvalScope) Locals() ([]*Variable, error) {
 	if scope.Fn == nil {
 		return nil, errors.New("unable to find function context")

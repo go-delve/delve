@@ -533,7 +533,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	}
 
 	if err := server.Run(); err != nil {
-		if err == api.NotExecutableErr {
+		if err == api.ErrNotExecutable {
 			switch kind {
 			case executingGeneratedFile:
 				fmt.Fprintln(os.Stderr, "Can not debug non-main package")

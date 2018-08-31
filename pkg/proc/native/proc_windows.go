@@ -51,7 +51,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 
 	_, closer, err := openExecutablePathPE(argv0Go)
 	if err != nil {
-		return nil, proc.NotExecutableErr
+		return nil, proc.ErrNotExecutable
 	}
 	closer.Close()
 
@@ -96,7 +96,7 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 	}
 	if tid == 0 {
 		dbp.postExit()
-		return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: exitCode}
+		return nil, proc.ErrProcessExited{Pid: dbp.pid, Status: exitCode}
 	}
 	// Suspend all threads so that the call to _ContinueDebugEvent will
 	// not resume the target.
@@ -378,7 +378,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	}
 	if tid == 0 {
 		dbp.postExit()
-		return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: exitCode}
+		return nil, proc.ErrProcessExited{Pid: dbp.pid, Status: exitCode}
 	}
 	th := dbp.threads[tid]
 	return th, nil
@@ -419,7 +419,7 @@ func (dbp *Process) resume() error {
 // stop stops all running threads threads and sets breakpoints
 func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
-		return &proc.ProcessExitedError{Pid: dbp.Pid()}
+		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	// While the debug event that stopped the target was being propagated

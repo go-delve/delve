@@ -66,7 +66,7 @@ var dwarfToName = map[int]string{
 	66: "SW",
 }
 
-// getDwarfRegister maps between DWARF register numbers and architecture
+// GetDwarfRegister maps between DWARF register numbers and architecture
 // registers.
 // The mapping is specified in the System V ABI AMD64 Architecture Processor
 // Supplement page 57, figure 3.36

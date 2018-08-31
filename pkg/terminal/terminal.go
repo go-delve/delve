@@ -47,7 +47,7 @@ type Term struct {
 func New(client service.Client, conf *config.Config) *Term {
 	if client != nil && client.IsMulticlient() {
 		state, _ := client.GetStateNonBlocking()
-		// The error return of GetState will usually be the ProcessExitedError,
+		// The error return of GetState will usually be the ErrProcessExited,
 		// which we don't care about. If there are other errors they will show up
 		// later, here we are only concerned about stopping a running target so
 		// that we can initialize our connection.

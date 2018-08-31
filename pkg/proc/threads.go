@@ -58,11 +58,11 @@ type Location struct {
 	Fn   *Function
 }
 
-// ThreadBlockedError is returned when the thread
+// ErrThreadBlocked is returned when the thread
 // is blocked in the scheduler.
-type ThreadBlockedError struct{}
+type ErrThreadBlocked struct{}
 
-func (tbe ThreadBlockedError) Error() string {
+func (tbe ErrThreadBlocked) Error() string {
 	return "thread blocked"
 }
 
@@ -72,6 +72,8 @@ type CommonThread struct {
 	returnValues []*Variable
 }
 
+// ReturnValues reads the return values from the function executing on
+// this thread using the provided LoadConfig.
 func (t *CommonThread) ReturnValues(cfg LoadConfig) []*Variable {
 	loadValues(t.returnValues, cfg)
 	return t.returnValues
@@ -84,7 +86,7 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 
 	if g == nil {
 		if thread.Blocked() {
-			return Stackframe{}, Stackframe{}, ThreadBlockedError{}
+			return Stackframe{}, Stackframe{}, ErrThreadBlocked{}
 		}
 		frames, err = ThreadStacktrace(thread, 1)
 	} else {
@@ -103,12 +105,14 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 	}
 }
 
-type NoSourceForPCError struct {
+// ErrNoSourceForPC is returned when the given address
+// does not correspond with a source file location.
+type ErrNoSourceForPC struct {
 	pc uint64
 }
 
-func (err *NoSourceForPCError) Error() string {
-	return fmt.Sprintf("no source for pc %#x", err.pc)
+func (err *ErrNoSourceForPC) Error() string {
+	return fmt.Sprintf("no source for PC %#x", err.pc)
 }
 
 // Set breakpoints at every line, and the return address. Also look for
@@ -147,7 +151,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 	}
 
 	if topframe.Current.Fn == nil {
-		return &NoSourceForPCError{topframe.Current.PC}
+		return &ErrNoSourceForPC{topframe.Current.PC}
 	}
 
 	// sanity check
@@ -232,7 +236,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 		}
 
 		// Set breakpoint on the most recently deferred function (if any)
-		var deferpc uint64 = 0
+		var deferpc uint64
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := dbp.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
 			var err error
@@ -430,7 +434,15 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 	name := ""
 
 	if deref {
-		typ = &godwarf.PtrType{godwarf.CommonType{int64(thread.Arch().PtrSize()), "", reflect.Ptr, 0}, typ}
+		typ = &godwarf.PtrType{
+			CommonType: godwarf.CommonType{
+				ByteSize:    int64(thread.Arch().PtrSize()),
+				Name:        "",
+				ReflectKind: reflect.Ptr,
+				Offset:      0,
+			},
+			Type: typ,
+		}
 	} else {
 		name = "runtime.curg"
 	}

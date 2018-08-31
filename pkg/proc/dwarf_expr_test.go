@@ -30,7 +30,7 @@ func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) *proc.BinaryInfo {
 	bi := proc.NewBinaryInfo("linux", "amd64")
 	bi.LoadFromData(dwdata, frame, line, loc)
 
-	return &bi
+	return bi
 }
 
 // fakeMemory implements proc.MemoryReadWriter by reading from a byte slice.

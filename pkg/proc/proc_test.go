@@ -135,7 +135,7 @@ func TestExit(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("continuetestprog", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
-		pe, ok := err.(proc.ProcessExitedError)
+		pe, ok := err.(proc.ErrProcessExited)
 		if !ok {
 			t.Fatalf("Continue() returned unexpected error type %s", err)
 		}
@@ -155,7 +155,7 @@ func TestExitAfterContinue(t *testing.T) {
 		assertNoError(err, t, "setFunctionBreakpoint()")
 		assertNoError(proc.Continue(p), t, "First Continue()")
 		err = proc.Continue(p)
-		pe, ok := err.(proc.ProcessExitedError)
+		pe, ok := err.(proc.ErrProcessExited)
 		if !ok {
 			t.Fatalf("Continue() returned unexpected error type %s", pe)
 		}
@@ -1068,7 +1068,7 @@ func TestProcessReceivesSIGCHLD(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("sigchldprog", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
-		_, ok := err.(proc.ProcessExitedError)
+		_, ok := err.(proc.ErrProcessExited)
 		if !ok {
 			t.Fatalf("Continue() returned unexpected error type %v", err)
 		}
@@ -1384,7 +1384,7 @@ func TestBreakpointCounts(t *testing.T) {
 
 		for {
 			if err := proc.Continue(p); err != nil {
-				if _, exited := err.(proc.ProcessExitedError); exited {
+				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}
 				assertNoError(err, t, "Continue()")
@@ -1436,7 +1436,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 
 		for {
 			if err := proc.Continue(p); err != nil {
-				if _, exited := err.(proc.ProcessExitedError); exited {
+				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}
 				assertNoError(err, t, "Continue()")
@@ -1536,7 +1536,7 @@ func TestIssue262(t *testing.T) {
 		if err == nil {
 			t.Fatalf("No error on second continue")
 		}
-		_, exited := err.(proc.ProcessExitedError)
+		_, exited := err.(proc.ErrProcessExited)
 		if !exited {
 			t.Fatalf("Process did not exit after second continue: %v", err)
 		}
@@ -1645,7 +1645,7 @@ func TestCondBreakpointError(t *testing.T) {
 
 		err = proc.Continue(p)
 		if err != nil {
-			if _, exited := err.(proc.ProcessExitedError); !exited {
+			if _, exited := err.(proc.ErrProcessExited); !exited {
 				t.Fatalf("Unexpected error on second Continue(): %v", err)
 			}
 		} else {
@@ -1785,7 +1785,7 @@ func TestIssue332_Part2(t *testing.T) {
 		assertNoError(proc.Next(p), t, "second Next()")
 		assertNoError(proc.Next(p), t, "third Next()")
 		err = proc.Continue(p)
-		if _, exited := err.(proc.ProcessExitedError); !exited {
+		if _, exited := err.(proc.ErrProcessExited); !exited {
 			assertNoError(err, t, "final Continue()")
 		}
 	})
@@ -1810,7 +1810,7 @@ func TestIssue414(t *testing.T) {
 		for {
 			err := proc.Step(p)
 			if err != nil {
-				if _, exited := err.(proc.ProcessExitedError); exited {
+				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}
 			}
@@ -1871,7 +1871,7 @@ func TestCmdLineArgs(t *testing.T) {
 		if bp.Breakpoint != nil && bp.Name == proc.UnrecoveredPanic {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", bp)
 		}
-		exit, exited := err.(proc.ProcessExitedError)
+		exit, exited := err.(proc.ErrProcessExited)
 		if !exited {
 			t.Fatalf("Process did not exit: %v", err)
 		} else {
@@ -1940,7 +1940,7 @@ func TestNextParked(t *testing.T) {
 		var parkedg *proc.G
 		for parkedg == nil {
 			err := proc.Continue(p)
-			if _, exited := err.(proc.ProcessExitedError); exited {
+			if _, exited := err.(proc.ErrProcessExited); exited {
 				t.Log("could not find parked goroutine")
 				return
 			}
@@ -1992,7 +1992,7 @@ func TestStepParked(t *testing.T) {
 	LookForParkedG:
 		for {
 			err := proc.Continue(p)
-			if _, exited := err.(proc.ProcessExitedError); exited {
+			if _, exited := err.(proc.ErrProcessExited); exited {
 				t.Log("could not find parked goroutine")
 				return
 			}
@@ -2040,8 +2040,8 @@ func TestIssue509(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
-	if err != proc.NotExecutableErr {
-		t.Fatalf("expected error \"%v\" got \"%v\"", proc.NotExecutableErr, err)
+	if err != proc.ErrNotExecutable {
+		t.Fatalf("expected error \"%v\" got \"%v\"", proc.ErrNotExecutable, err)
 	}
 	os.Remove(exepath)
 }
@@ -2072,7 +2072,7 @@ func TestUnsupportedArch(t *testing.T) {
 
 	p, err := native.Launch([]string{outfile}, ".", false)
 	switch err {
-	case proc.UnsupportedLinuxArchErr, proc.UnsupportedWindowsArchErr, proc.UnsupportedDarwinArchErr:
+	case proc.ErrUnsupportedLinuxArch, proc.ErrUnsupportedWindowsArch, proc.ErrUnsupportedDarwinArch:
 		// all good
 	case nil:
 		p.Detach(true)
@@ -2370,7 +2370,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 		count := 0
 		for {
 			err := proc.Continue(p)
-			_, exited := err.(proc.ProcessExitedError)
+			_, exited := err.(proc.ErrProcessExited)
 			if exited {
 				break
 			}
@@ -2698,7 +2698,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 		stackBarrierGoids := []int{}
 		for len(stackBarrierGoids) == 0 {
 			err := proc.Continue(p)
-			if _, exited := err.(proc.ProcessExitedError); exited {
+			if _, exited := err.(proc.ErrProcessExited); exited {
 				t.Logf("Could not run test")
 				return
 			}
@@ -2957,16 +2957,16 @@ func TestIssue893(t *testing.T) {
 		if err == nil {
 			return
 		}
-		if _, ok := err.(*frame.NoFDEForPCError); ok {
+		if _, ok := err.(*frame.ErrNoFDEForPC); ok {
 			return
 		}
-		if _, ok := err.(proc.ThreadBlockedError); ok {
+		if _, ok := err.(proc.ErrThreadBlocked); ok {
 			return
 		}
-		if _, ok := err.(*proc.NoSourceForPCError); ok {
+		if _, ok := err.(*proc.ErrNoSourceForPC); ok {
 			return
 		}
-		if _, ok := err.(proc.ProcessExitedError); ok {
+		if _, ok := err.(proc.ErrProcessExited); ok {
 			return
 		}
 		assertNoError(err, t, "Next")
@@ -3519,7 +3519,7 @@ func TestIssue1101(t *testing.T) {
 			lastCmd = "final Continue()"
 			exitErr = proc.Continue(p)
 		}
-		if pexit, exited := exitErr.(proc.ProcessExitedError); exited {
+		if pexit, exited := exitErr.(proc.ErrProcessExited); exited {
 			if pexit.Status != 2 && testBackend != "lldb" {
 				// looks like there's a bug with debugserver on macOS that sometimes
 				// will report exit status 0 instead of the proper exit status.

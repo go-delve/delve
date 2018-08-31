@@ -65,7 +65,7 @@ func TestIssue419(t *testing.T) {
 			continue
 		}
 
-		if _, exited := err.(proc.ProcessExitedError); !exited {
+		if _, exited := err.(proc.ErrProcessExited); !exited {
 			t.Fatalf("Unexpected error after Continue(): %v\n", err)
 		}
 	}

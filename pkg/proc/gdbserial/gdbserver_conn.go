@@ -426,7 +426,7 @@ func (conn *gdbConn) kill() error {
 		// kill. This is not an error.
 		conn.conn.Close()
 		conn.conn = nil
-		return proc.ProcessExitedError{Pid: conn.pid}
+		return proc.ErrProcessExited{Pid: conn.pid}
 	}
 	if err != nil {
 		return err
@@ -684,7 +684,7 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 			semicolon = len(resp)
 		}
 		status, _ := strconv.ParseUint(string(resp[1:semicolon]), 16, 8)
-		return false, stopPacket{}, proc.ProcessExitedError{Pid: conn.pid, Status: int(status)}
+		return false, stopPacket{}, proc.ErrProcessExited{Pid: conn.pid, Status: int(status)}
 
 	case 'N':
 		// we were singlestepping the thread and the thread exited

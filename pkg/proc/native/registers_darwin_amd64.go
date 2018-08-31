@@ -284,7 +284,7 @@ func (r *Regs) Get(n int) (uint64, error) {
 		return r.r15, nil
 	}
 
-	return 0, proc.UnknownRegisterError
+	return 0, proc.ErrUnknownRegister
 }
 
 func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {

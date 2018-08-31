@@ -29,6 +29,7 @@ type Registers interface {
 	Copy() Registers
 }
 
+// Register represents a CPU register.
 type Register struct {
 	Name  string
 	Bytes []byte
@@ -169,7 +170,9 @@ func AppendSSEReg(regs []Register, name string, xmm []byte) []Register {
 	return append(regs, Register{name, xmm, out.String()})
 }
 
-var UnknownRegisterError = errors.New("unknown register")
+// ErrUnknownRegister is returned when the value of an unknown
+// register is requested.
+var ErrUnknownRegister = errors.New("unknown register")
 
 type flagRegisterDescr []flagDescr
 type flagDescr struct {
@@ -248,7 +251,7 @@ func (descr flagRegisterDescr) Describe(reg uint64, bitsize int) string {
 	return fmt.Sprintf("%#0*x\t[%s]", bitsize/4, reg, strings.Join(r, " "))
 }
 
-// tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
+// PtraceFpRegs tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
 type PtraceFpRegs struct {
 	Cwd      uint16
 	Swd      uint16

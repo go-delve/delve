@@ -80,7 +80,7 @@ func (a *AMD64) BreakpointSize() int {
 	return a.breakInstructionLen
 }
 
-// If DerefTLS returns true the value of regs.TLS()+GStructOffset() is a
+// DerefTLS returns true if the value of regs.TLS()+GStructOffset() is a
 // pointer to the G struct
 func (a *AMD64) DerefTLS() bool {
 	return a.goos == "windows"

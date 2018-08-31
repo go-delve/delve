@@ -16,6 +16,7 @@ import (
 	"github.com/derekparker/delve/pkg/goversion"
 )
 
+// EnableRace allows to configure whether the race detector is enabled on target process.
 var EnableRace = flag.Bool("racetarget", false, "Enables race detector on inferior process")
 
 var runningWithFixtures bool
@@ -30,14 +31,17 @@ type Fixture struct {
 	Source string
 }
 
+// FixtureKey holds the name and builds flags used for a test fixture.
 type FixtureKey struct {
 	Name  string
 	Flags BuildFlags
 }
 
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
-var Fixtures map[FixtureKey]Fixture = make(map[FixtureKey]Fixture)
+var Fixtures = make(map[FixtureKey]Fixture)
 
+// FindFixturesDir will search for the directory holding all test fixtures
+// beginning with the current directory and searching up 10 directories.
 func FindFixturesDir() string {
 	parent := ".."
 	fixturesDir := "_fixtures"
@@ -50,16 +54,23 @@ func FindFixturesDir() string {
 	return fixturesDir
 }
 
+// BuildFlags used to build fixture.
 type BuildFlags uint32
 
 const (
+	// LinkStrip enables '-ldflas="-s"'.
 	LinkStrip BuildFlags = 1 << iota
+	// EnableCGOOptimization will build CGO code with optimizations.
 	EnableCGOOptimization
+	// EnableInlining will build a binary with inline optimizations turned on.
 	EnableInlining
+	// EnableOptimization will build a binary with default optimizations.
 	EnableOptimization
+	// EnableDWZCompression will enable DWZ compression of DWARF sections.
 	EnableDWZCompression
 )
 
+// BuildFixture will compile the fixture 'name' using the provided build flags.
 func BuildFixture(name string, flags BuildFlags) Fixture {
 	if !runningWithFixtures {
 		panic("RunTestsWithFixtures not called")

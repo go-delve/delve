@@ -52,7 +52,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	)
 	// check that the argument to Launch is an executable file
 	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, proc.NotExecutableErr
+		return nil, proc.ErrNotExecutable
 	}
 
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
@@ -228,7 +228,7 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 		if status.Exited() {
 			if wpid == dbp.pid {
 				dbp.postExit()
-				return nil, proc.ProcessExitedError{Pid: wpid, Status: status.ExitStatus()}
+				return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
 			}
 			delete(dbp.threads, wpid)
 			continue
@@ -286,7 +286,7 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 			// TODO(dp) alert user about unexpected signals here.
 			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
 				if err == sys.ESRCH {
-					return nil, proc.ProcessExitedError{Pid: dbp.pid}
+					return nil, proc.ErrProcessExited{Pid: dbp.pid}
 				}
 				return nil, err
 			}
@@ -418,7 +418,7 @@ func (dbp *Process) resume() error {
 // stop stops all running threads threads and sets breakpoints
 func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
-		return &proc.ProcessExitedError{Pid: dbp.Pid()}
+		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	for _, th := range dbp.threads {
 		if !th.Stopped() {

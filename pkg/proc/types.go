@@ -65,7 +65,15 @@ func (bi *BinaryInfo) findType(name string) (godwarf.Type, error) {
 }
 
 func pointerTo(typ godwarf.Type, arch Arch) godwarf.Type {
-	return &godwarf.PtrType{godwarf.CommonType{int64(arch.PtrSize()), "*" + typ.Common().Name, reflect.Ptr, 0}, typ}
+	return &godwarf.PtrType{
+		CommonType: godwarf.CommonType{
+			ByteSize:    int64(arch.PtrSize()),
+			Name:        "*" + typ.Common().Name,
+			ReflectKind: reflect.Ptr,
+			Offset:      0,
+		},
+		Type: typ,
+	}
 }
 
 func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (godwarf.Type, error) {
@@ -185,6 +193,12 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	if wg != nil {
 		defer wg.Done()
 	}
+
+	var cu *compileUnit
+	var pu *partialUnit
+	var partialUnits = make(map[dwarf.Offset]*partialUnit)
+	var lastOffset dwarf.Offset
+
 	bi.types = make(map[string]dwarf.Offset)
 	bi.packageVars = []packageVar{}
 	bi.Functions = []Function{}
@@ -193,11 +207,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(debugLineBytes []byte, wg *sync.WaitGrou
 	bi.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 	reader := bi.DwarfReader()
 	ardr := bi.DwarfReader()
-	var cu *compileUnit = nil
-	var pu *partialUnit = nil
-	var partialUnits = make(map[dwarf.Offset]*partialUnit)
 	abstractOriginNameTable := make(map[dwarf.Offset]string)
-	var lastOffset dwarf.Offset
 
 outer:
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
@@ -649,14 +659,10 @@ func nameOfRuntimeType(_type *Variable) (typename string, kind int64, err error)
 	if tflag&tflagNamed != 0 {
 		typename, err = nameOfNamedRuntimeType(_type, kind, tflag)
 		return typename, kind, err
-	} else {
-		typename, err = nameOfUnnamedRuntimeType(_type, kind, tflag)
-		return typename, kind, err
 	}
 
-	_type.bi.nameOfRuntimeType[_type.Addr] = nameOfRuntimeTypeEntry{typename, kind}
-
-	return typename, kind, nil
+	typename, err = nameOfUnnamedRuntimeType(_type, kind, tflag)
+	return typename, kind, err
 }
 
 // The layout of a runtime._type struct is as follows:
@@ -878,9 +884,8 @@ func nameOfInterfaceRuntimeType(_type *Variable, kind, tflag int64) (string, err
 	if len(methods.Children) == 0 {
 		buf.WriteString("}")
 		return buf.String(), nil
-	} else {
-		buf.WriteString(" ")
 	}
+	buf.WriteString(" ")
 
 	for i, im := range methods.Children {
 		var methodname, methodtype string
@@ -940,9 +945,8 @@ func nameOfStructRuntimeType(_type *Variable, kind, tflag int64) (string, error)
 	if len(fields.Children) == 0 {
 		buf.WriteString("}")
 		return buf.String(), nil
-	} else {
-		buf.WriteString(" ")
 	}
+	buf.WriteString(" ")
 
 	for i, field := range fields.Children {
 		var fieldname, fieldtypename string
@@ -1086,11 +1090,16 @@ func constructTypeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, erro
 		return nil, err
 	}
 
-	uint32typ := &godwarf.UintType{godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 4, Name: "uint32"}}}
-	uint16typ := &godwarf.UintType{godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 2, Name: "uint16"}}}
+	uint32typ := &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 4, Name: "uint32"}}}
+	uint16typ := &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 2, Name: "uint16"}}}
 
 	newStructType := func(name string, sz uintptr) *godwarf.StructType {
-		return &godwarf.StructType{godwarf.CommonType{Name: name, ByteSize: int64(sz)}, name, "struct", nil, false}
+		return &godwarf.StructType{
+			CommonType: godwarf.CommonType{Name: name, ByteSize: int64(sz)},
+			StructName: name,
+			Kind:       "struct",
+			Field:      nil, Incomplete: false,
+		}
 	}
 
 	appendField := func(typ *godwarf.StructType, name string, fieldtype godwarf.Type, off uintptr) {

@@ -50,7 +50,7 @@ func (t *Thread) singleStep() error {
 		}
 		if tid == 0 {
 			t.dbp.postExit()
-			return proc.ProcessExitedError{Pid: t.dbp.pid, Status: exitCode}
+			return proc.ErrProcessExited{Pid: t.dbp.pid, Status: exitCode}
 		}
 
 		if t.dbp.os.breakThread == t.ID {
@@ -123,7 +123,7 @@ func (t *Thread) Stopped() bool {
 
 func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	if t.dbp.exited {
-		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return 0, nil
@@ -140,7 +140,7 @@ var ErrShortRead = errors.New("short read")
 
 func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	if t.dbp.exited {
-		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(buf) == 0 {
 		return 0, nil
