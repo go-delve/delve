@@ -80,7 +80,7 @@ func TestScope(t *testing.T) {
 
 		for {
 			if err := proc.Continue(p); err != nil {
-				if _, exited := err.(proc.ProcessExitedError); exited {
+				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}
 				assertNoError(err, t, "Continue()")

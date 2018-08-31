@@ -117,7 +117,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		d.log.Infof("launching process with args: %v", d.processArgs)
 		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
-			if err != proc.NotExecutableErr && err != proc.UnsupportedLinuxArchErr && err != proc.UnsupportedWindowsArchErr && err != proc.UnsupportedDarwinArchErr {
+			if err != proc.ErrNotExecutable && err != proc.ErrUnsupportedLinuxArch && err != proc.ErrUnsupportedWindowsArch && err != proc.ErrUnsupportedDarwinArch {
 				err = go11DecodeErrorCheck(err)
 				err = fmt.Errorf("could not launch process: %s", err)
 			}
@@ -128,6 +128,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 	return d, nil
 }
 
+// Launch will start a process with the given args and working directory.
 func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error) {
 	switch d.config.Backend {
 	case "native":
@@ -152,6 +153,7 @@ func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error)
 // the target's executable.
 var ErrNoAttachPath = errors.New("must specify executable path on macOS")
 
+// Attach will attach to the process specified by 'pid'.
 func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
 	switch d.config.Backend {
 	case "native":
@@ -168,7 +170,7 @@ func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
 	}
 }
 
-var macOSBackendUnavailableErr = errors.New("debugserver or lldb-server not found: install XCode's command line tools or lldb-server")
+var errMacOSBackendUnavailable = errors.New("debugserver or lldb-server not found: install XCode's command line tools or lldb-server")
 
 func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error) {
 	if runtime.GOOS != "darwin" {
@@ -178,7 +180,7 @@ func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error)
 		return p, err
 	}
 
-	return p, macOSBackendUnavailableErr
+	return p, errMacOSBackendUnavailable
 }
 
 // ProcessPid returns the PID of the process
@@ -224,7 +226,7 @@ func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.
 	}
 
 	if pos != "" {
-		return nil, proc.NotRecordedErr
+		return nil, proc.ErrNotRecorded
 	}
 
 	if valid, _ := d.target.Valid(); valid {
@@ -252,7 +254,7 @@ func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.
 			var err error
 			oldBp.Addr, err = proc.FindFileLocation(p, oldBp.File, oldBp.Line)
 			if err != nil {
-				discarded = append(discarded, api.DiscardedBreakpoint{oldBp, err.Error()})
+				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
 				continue
 			}
 		}
@@ -295,7 +297,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 
 	exited := false
 	if _, err := d.target.Valid(); err != nil {
-		_, exited = err.(*proc.ProcessExitedError)
+		_, exited = err.(*proc.ErrProcessExited)
 	}
 
 	state = &api.DebuggerState{
@@ -388,6 +390,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	return createdBp, nil
 }
 
+// AmendBreakpoint will update the breakpoint with the matching ID.
 func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
@@ -402,6 +405,8 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	return copyBreakpointInfo(original, amend)
 }
 
+// CancelNext will clear internal breakpoints, thus cancelling the 'next',
+// 'step' or 'stepout' operation.
 func (d *Debugger) CancelNext() error {
 	return d.target.ClearInternalBreakpoints()
 }
@@ -596,7 +601,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	}
 
 	if err != nil {
-		if exitedErr, exited := err.(proc.ProcessExitedError); command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && exited {
+		if exitedErr, exited := err.(proc.ErrProcessExited); command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && exited {
 			state := &api.DebuggerState{}
 			state.Exited = true
 			state.ExitStatus = exitedErr.Status
@@ -667,7 +672,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			bpi.Variables = make([]api.Variable, len(bp.Variables))
 		}
 		for i := range bp.Variables {
-			v, err := s.EvalVariable(bp.Variables[i], proc.LoadConfig{true, 1, 64, 64, -1})
+			v, err := s.EvalVariable(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
 			if err != nil {
 				bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
 			} else {
@@ -716,6 +721,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	return regexFilterFuncs(filter, d.target.BinInfo().Functions)
 }
 
+// Types returns all type information in the binary.
 func (d *Debugger) Types(filter string) ([]string, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
@@ -1059,12 +1065,14 @@ func (d *Debugger) Recorded() (recorded bool, tracedir string) {
 	return d.target.Recorded()
 }
 
+// Checkpoint will set a checkpoint specified by the locspec.
 func (d *Debugger) Checkpoint(where string) (int, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 	return d.target.Checkpoint(where)
 }
 
+// Checkpoints will return a list of checkpoints.
 func (d *Debugger) Checkpoints() ([]api.Checkpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
@@ -1079,6 +1087,7 @@ func (d *Debugger) Checkpoints() ([]api.Checkpoint, error) {
 	return r, nil
 }
 
+// ClearCheckpoint will clear the checkpoint of the given ID.
 func (d *Debugger) ClearCheckpoint(id int) error {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()

@@ -39,7 +39,7 @@ type OSProcessDetails struct {
 func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	// check that the argument to Launch is an executable file
 	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, proc.NotExecutableErr
+		return nil, proc.ErrNotExecutable
 	}
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
@@ -305,7 +305,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 				return nil, err
 			}
 			dbp.postExit()
-			return nil, proc.ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
+			return nil, proc.ErrProcessExited{Pid: dbp.pid, Status: status.ExitStatus()}
 
 		case C.MACH_RCV_INTERRUPTED:
 			dbp.stopMu.Lock()
@@ -402,7 +402,7 @@ func (dbp *Process) exitGuard(err error) error {
 	_, status, werr := dbp.wait(dbp.pid, sys.WNOHANG)
 	if werr == nil && status.Exited() {
 		dbp.postExit()
-		return proc.ProcessExitedError{Pid: dbp.pid, Status: status.ExitStatus()}
+		return proc.ErrProcessExited{Pid: dbp.pid, Status: status.ExitStatus()}
 	}
 	return err
 }
@@ -429,7 +429,7 @@ func (dbp *Process) resume() error {
 // stop stops all running threads and sets breakpoints
 func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
-		return &proc.ProcessExitedError{Pid: dbp.Pid()}
+		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	for _, th := range dbp.threads {
 		if !th.Stopped() {

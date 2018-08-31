@@ -11,7 +11,9 @@ import (
 	"github.com/derekparker/delve/pkg/proc"
 )
 
-var NotExecutableErr = proc.NotExecutableErr
+// ErrNotExecutable is an error returned when trying
+// to debug a non-executable file.
+var ErrNotExecutable = proc.ErrNotExecutable
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
@@ -75,6 +77,10 @@ type Breakpoint struct {
 	TotalHitCount uint64 `json:"totalHitCount"`
 }
 
+// ValidBreakpointName returns an error if
+// the name to be chosen for a breakpoint is invalid.
+// The name can not be just a number, and must contain a series
+// of letters or numbers.
 func ValidBreakpointName(name string) error {
 	if _, err := strconv.Atoi(name); err == nil {
 		return errors.New("breakpoint name can not be a number")
@@ -114,6 +120,7 @@ type Thread struct {
 	ReturnValues []Variable
 }
 
+// Location holds program location information.
 type Location struct {
 	PC       uint64    `json:"pc"`
 	File     string    `json:"file"`
@@ -121,6 +128,7 @@ type Location struct {
 	Function *Function `json:"function,omitempty"`
 }
 
+// Stackframe describes one frame in a stack trace.
 type Stackframe struct {
 	Location
 	Locals    []Variable
@@ -136,6 +144,7 @@ type Stackframe struct {
 	Err string
 }
 
+// Defer describes a deferred function.
 type Defer struct {
 	DeferredLoc Location // deferred function
 	DeferLoc    Location // location of the defer statement
@@ -143,6 +152,8 @@ type Defer struct {
 	Unreadable  string
 }
 
+// Var will return the variable described by 'name' within
+// this stack frame.
 func (frame *Stackframe) Var(name string) *Variable {
 	for i := range frame.Locals {
 		if frame.Locals[i].Name == name {
@@ -168,6 +179,7 @@ type Function struct {
 	Optimized bool `json:"optimized"`
 }
 
+// Name will return the function name.
 func (fn *Function) Name() string {
 	if fn == nil {
 		return "???"
@@ -297,7 +309,7 @@ type DebuggerCommand struct {
 	Expr string `json:"expr,omitempty"`
 }
 
-// Informations about the current breakpoint
+// BreakpointInfo contains informations about the current breakpoint
 type BreakpointInfo struct {
 	Stacktrace []Stackframe `json:"stacktrace,omitempty"`
 	Goroutine  *Goroutine   `json:"goroutine,omitempty"`
@@ -306,6 +318,8 @@ type BreakpointInfo struct {
 	Locals     []Variable   `json:"locals,omitempty"`
 }
 
+// EvalScope is the scope a command should
+// be evaluated in. Describes the goroutine and frame number.
 type EvalScope struct {
 	GoroutineID int
 	Frame       int
@@ -320,7 +334,7 @@ const (
 	Step = "step"
 	// StepOut continues to the return address of the current function
 	StepOut = "stepOut"
-	// SingleStep continues for exactly 1 cpu instruction.
+	// StepInstruction continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
@@ -334,10 +348,14 @@ const (
 	Call = "call"
 )
 
+// AssemblyFlavour describes the output
+// of disassembled code.
 type AssemblyFlavour int
 
 const (
-	GNUFlavour   = AssemblyFlavour(proc.GNUFlavour)
+	// GNUFlavour will disassemble using GNU assembly syntax.
+	GNUFlavour = AssemblyFlavour(proc.GNUFlavour)
+	// IntelFlavour will disassemble using Intel assembly syntax.
 	IntelFlavour = AssemblyFlavour(proc.IntelFlavour)
 )
 
@@ -357,28 +375,35 @@ type AsmInstruction struct {
 	AtPC bool
 }
 
+// AsmInstructions is a slice of single instructions.
 type AsmInstructions []AsmInstruction
 
+// GetVersionIn is the argument for GetVersion.
 type GetVersionIn struct {
 }
 
+// GetVersionOut is the result of GetVersion.
 type GetVersionOut struct {
 	DelveVersion string
 	APIVersion   int
 }
 
+// SetAPIVersionIn is the input for SetAPIVersion.
 type SetAPIVersionIn struct {
 	APIVersion int
 }
 
+// SetAPIVersionOut is the output for SetAPIVersion.
 type SetAPIVersionOut struct {
 }
 
+// Register holds information on a CPU register.
 type Register struct {
 	Name  string
 	Value string
 }
 
+// Registers is a list of CPU registers.
 type Registers []Register
 
 func (regs Registers) String() string {
@@ -396,11 +421,15 @@ func (regs Registers) String() string {
 	return buf.String()
 }
 
+// DiscardedBreakpoint is a breakpoint that is not
+// reinstated during a restart.
 type DiscardedBreakpoint struct {
 	Breakpoint *Breakpoint
 	Reason     string
 }
 
+// Checkpoint is a point in the program that
+// can be returned to in certain execution modes.
 type Checkpoint struct {
 	ID    int
 	When  string

@@ -11,19 +11,25 @@ import (
 	"strings"
 )
 
-var NotExecutableErr = errors.New("not an executable file")
-var NotRecordedErr = errors.New("not a recording")
+// ErrNotExecutable is returned after attempting to execute a non-executable file
+// to begin a debug session.
+var ErrNotExecutable = errors.New("not an executable file")
 
+// ErrNotRecorded is returned when an action is requested that is
+// only possible on recorded (traced) programs.
+var ErrNotRecorded = errors.New("not a recording")
+
+// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
 const UnrecoveredPanic = "unrecovered-panic"
 
-// ProcessExitedError indicates that the process has exited and contains both
+// ErrProcessExited indicates that the process has exited and contains both
 // process id and exit status.
-type ProcessExitedError struct {
+type ErrProcessExited struct {
 	Pid    int
 	Status int
 }
 
-func (pe ProcessExitedError) Error() string {
+func (pe ErrProcessExited) Error() string {
 	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
 }
 
@@ -48,11 +54,13 @@ func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
 	return pc, nil
 }
 
-type FunctionNotFoundError struct {
+// ErrFunctionNotFound is returned when failing to find the
+// function named 'FuncName' within the binary.
+type ErrFunctionNotFound struct {
 	FuncName string
 }
 
-func (err *FunctionNotFoundError) Error() string {
+func (err *ErrFunctionNotFound) Error() string {
 	return fmt.Sprintf("Could not find function %s\n", err.FuncName)
 }
 
@@ -66,7 +74,7 @@ func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset
 	bi := p.BinInfo()
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
-		return 0, &FunctionNotFoundError{funcName}
+		return 0, &ErrFunctionNotFound{funcName}
 	}
 
 	if firstLine {
@@ -290,7 +298,7 @@ func Step(dbp Process) (err error) {
 
 	if err = next(dbp, true, false); err != nil {
 		switch err.(type) {
-		case ThreadBlockedError: // Noop
+		case ErrThreadBlocked: // Noop
 		default:
 			dbp.ClearInternalBreakpoints()
 			return
@@ -378,7 +386,7 @@ func StepOut(dbp Process) error {
 	sameGCond := SameGoroutineCondition(selg)
 	retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
 
-	var deferpc uint64 = 0
+	var deferpc uint64
 	if filepath.Ext(topframe.Current.File) == ".go" {
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := dbp.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
@@ -593,11 +601,11 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 	return s
 }
 
-// CreateUnrecoverablePanicBreakpoint creates the unrecoverable-panic breakpoint.
+// CreateUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
 // This function is meant to be called by implementations of the Process interface.
 func CreateUnrecoveredPanicBreakpoint(p Process, writeBreakpoint writeBreakpointFn, breakpoints *BreakpointMap) {
 	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
-	if _, isFnNotFound := err.(*FunctionNotFoundError); isFnNotFound {
+	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
 		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", true, 0)
 	}
 	if err == nil {
@@ -619,11 +627,10 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 	if ok {
 		if !sameline {
 			return pc, nil
-		} else {
-			_, entryLine := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
-			if entryLine == line {
-				return pc, nil
-			}
+		}
+		_, entryLine := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+		if entryLine == line {
+			return pc, nil
 		}
 	}
 

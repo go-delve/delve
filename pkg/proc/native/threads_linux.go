@@ -61,7 +61,7 @@ func (t *Thread) singleStep() (err error) {
 			if status != nil {
 				rs = status.ExitStatus()
 			}
-			return proc.ProcessExitedError{Pid: t.dbp.pid, Status: rs}
+			return proc.ErrProcessExited{Pid: t.dbp.pid, Status: rs}
 		}
 		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
 			return nil
@@ -108,7 +108,7 @@ func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
 
 func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
 	if t.dbp.exited {
-		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return
@@ -119,7 +119,7 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error)
 
 func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	if t.dbp.exited {
-		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return

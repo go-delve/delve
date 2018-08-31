@@ -250,6 +250,7 @@ func ConvertLocation(loc proc.Location) Location {
 	}
 }
 
+// ConvertAsmInstruction converts from proc.AsmInstruction to api.AsmInstruction.
 func ConvertAsmInstruction(inst proc.AsmInstruction, text string) AsmInstruction {
 	var destloc *Location
 	if inst.DestLoc != nil {
@@ -266,6 +267,7 @@ func ConvertAsmInstruction(inst proc.AsmInstruction, text string) AsmInstruction
 	}
 }
 
+// LoadConfigToProc converts an api.LoadConfig to proc.LoadConfig.
 func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
 	if cfg == nil {
 		return nil
@@ -279,6 +281,7 @@ func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
 	}
 }
 
+// LoadConfigFromProc converts a proc.LoadConfig to api.LoadConfig.
 func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 	if cfg == nil {
 		return nil
@@ -292,6 +295,7 @@ func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 	}
 }
 
+// ConvertRegisters converts proc.Register to api.Register for a slice.
 func ConvertRegisters(in []proc.Register) (out []Register) {
 	out = make([]Register, len(in))
 	for i := range in {
@@ -300,6 +304,7 @@ func ConvertRegisters(in []proc.Register) (out []Register) {
 	return
 }
 
+// ConvertCheckpoint converts proc.Chekcpoint to api.Checkpoint.
 func ConvertCheckpoint(in proc.Checkpoint) (out Checkpoint) {
 	return Checkpoint(in)
 }

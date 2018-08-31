@@ -52,33 +52,47 @@ type LinuxCoreTimeval struct {
 	Usec int64
 }
 
-const NT_FILE elf.NType = 0x46494c45  // "FILE".
+// NT_FILE is file mapping information, e.g. program text mappings. Desc is a LinuxNTFile.
+const NT_FILE elf.NType = 0x46494c45 // "FILE".
+
+// NT_X86_XSTATE is other registers, including AVX and such.
 const NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAVE area.
 
+// PC returns the value of RIP.
 func (r *LinuxCoreRegisters) PC() uint64 {
 	return r.Rip
 }
 
+// SP returns the value of RSP.
 func (r *LinuxCoreRegisters) SP() uint64 {
 	return r.Rsp
 }
 
+// BP returns the value of RBP.
 func (r *LinuxCoreRegisters) BP() uint64 {
 	return r.Rbp
 }
 
+// CX returns the value of RCX.
 func (r *LinuxCoreRegisters) CX() uint64 {
 	return r.Rcx
 }
 
+// TLS returns the location of the thread local storate,
+// which will be the value of Fs_base.
 func (r *LinuxCoreRegisters) TLS() uint64 {
 	return r.Fs_base
 }
 
+// GAddr returns the address of the G struct. Always returns 0
+// and false for core files.
 func (r *LinuxCoreRegisters) GAddr() (uint64, bool) {
 	return 0, false
 }
 
+// Get returns the value of the register requested via the
+// register number, returning an error if that register
+// could not be found.
 func (r *LinuxCoreRegisters) Get(n int) (uint64, error) {
 	reg := x86asm.Reg(n)
 	const (
@@ -233,7 +247,7 @@ func (r *LinuxCoreRegisters) Get(n int) (uint64, error) {
 		return r.R15, nil
 	}
 
-	return 0, proc.UnknownRegisterError
+	return 0, proc.ErrUnknownRegister
 }
 
 // readCore reads a core file from corePath corresponding to the executable at
@@ -292,6 +306,7 @@ func readCore(corePath, exePath string) (*Core, error) {
 	return core, nil
 }
 
+// Core represents a core file.
 type Core struct {
 	proc.MemoryReader
 	Threads map[int]*Thread
@@ -456,7 +471,7 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*Note) proc.Me
 	return memory
 }
 
-// Various structures from the ELF spec and the Linux kernel.
+// LinuxPrPsInfo has various structures from the ELF spec and the Linux kernel.
 // AMD64 specific primarily because of unix.PtraceRegs, but also
 // because some of the fields are word sized.
 // See http://lxr.free-electrons.com/source/include/uapi/linux/elfcore.h
@@ -473,6 +488,7 @@ type LinuxPrPsInfo struct {
 	Args                 [80]uint8
 }
 
+// LinuxPrStatus is a copy of the prstatus kernel struct.
 type LinuxPrStatus struct {
 	Siginfo                      LinuxSiginfo
 	Cursig                       uint16
@@ -485,29 +501,35 @@ type LinuxPrStatus struct {
 	Fpvalid                      int32
 }
 
+// LinuxSiginfo is a copy of the
+// siginfo kernel struct.
 type LinuxSiginfo struct {
 	Signo int32
 	Code  int32
 	Errno int32
 }
 
+// LinuxNTFile contains information on mapped files.
 type LinuxNTFile struct {
 	LinuxNTFileHdr
 	entries []*LinuxNTFileEntry
 }
 
+// LinuxNTFileHdr is a header struct for NTFile.
 type LinuxNTFileHdr struct {
 	Count    uint64
 	PageSize uint64
 }
 
+// LinuxNTFileEntry is an entry of an NT_FILE note.
 type LinuxNTFileEntry struct {
 	Start   uint64
 	End     uint64
 	FileOfs uint64
 }
 
-// ELF Notes header. Same size on 64 and 32-bit machines.
+// ELFNotesHdr is the ELF Notes header.
+// Same size on 64 and 32-bit machines.
 type ELFNotesHdr struct {
 	Namesz uint32
 	Descsz uint32

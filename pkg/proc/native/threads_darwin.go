@@ -110,7 +110,7 @@ func (t *Thread) Stopped() bool {
 
 func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	if t.dbp.exited {
-		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return 0, nil
@@ -128,7 +128,7 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 
 func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	if t.dbp.exited {
-		return 0, proc.ProcessExitedError{Pid: t.dbp.pid}
+		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(buf) == 0 {
 		return 0, nil

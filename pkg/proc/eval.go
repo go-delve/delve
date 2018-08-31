@@ -19,7 +19,7 @@ import (
 	"github.com/derekparker/delve/pkg/goversion"
 )
 
-var OperationOnSpecialFloatError = errors.New("operations on non-finite floats not implemented")
+var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not implemented")
 
 // EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
@@ -853,7 +853,7 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, xv.Unreadable
 	}
 	if xv.FloatSpecial != 0 {
-		return nil, OperationOnSpecialFloatError
+		return nil, errOperationOnSpecialFloat
 	}
 	if xv.Value == nil {
 		return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
@@ -971,7 +971,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	}
 
 	if xv.FloatSpecial != 0 || yv.FloatSpecial != 0 {
-		return nil, OperationOnSpecialFloatError
+		return nil, errOperationOnSpecialFloat
 	}
 
 	typ, err := negotiateType(node.Op, xv, yv)

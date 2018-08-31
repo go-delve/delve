@@ -81,10 +81,18 @@ type Commands struct {
 }
 
 var (
-	LongLoadConfig  = api.LoadConfig{true, 1, 64, 64, -1}
+	// LongLoadConfig loads more information:
+	// * Follows pointers
+	// * Loads more array values
+	// * Does not limit struct fields
+	LongLoadConfig = api.LoadConfig{true, 1, 64, 64, -1}
+	// ShortLoadConfig loads less information, not following pointers
+	// and limiting struct fields loaded to 3.
 	ShortLoadConfig = api.LoadConfig{false, 0, 64, 0, 3}
 )
 
+// ByFirstAlias will sort by the first
+// alias of a command.
 type ByFirstAlias []command
 
 func (a ByFirstAlias) Len() int           { return len(a) }
@@ -401,6 +409,7 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 	return noCmdAvailable
 }
 
+// CallWithContext takes a command and a context that command should be executed in.
 func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) error {
 	vals := strings.SplitN(strings.TrimSpace(cmdstr), " ", 2)
 	cmdname := vals[0]
@@ -411,6 +420,7 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 	return c.Find(cmdname, ctx.Prefix)(t, ctx, args)
 }
 
+// Call takes a command to execute.
 func (c *Commands) Call(cmdstr string, t *Term) error {
 	ctx := callContext{Prefix: noPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: c.frame}}
 	return c.CallWithContext(cmdstr, t, ctx)

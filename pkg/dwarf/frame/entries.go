@@ -56,11 +56,11 @@ func NewFrameIndex() FrameDescriptionEntries {
 	return make(FrameDescriptionEntries, 0, 1000)
 }
 
-type NoFDEForPCError struct {
+type ErrNoFDEForPC struct {
 	PC uint64
 }
 
-func (err *NoFDEForPCError) Error() string {
+func (err *ErrNoFDEForPC) Error() string {
 	return fmt.Sprintf("could not find FDE for PC %#v", err.PC)
 }
 
@@ -76,7 +76,7 @@ func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry,
 		return true
 	})
 	if idx == len(fdes) {
-		return nil, &NoFDEForPCError{pc}
+		return nil, &ErrNoFDEForPC{pc}
 	}
 	return fdes[idx], nil
 }

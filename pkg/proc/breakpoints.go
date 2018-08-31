@@ -59,7 +59,7 @@ type Breakpoint struct {
 	returnInfo *returnBreakpointInfo
 }
 
-// Breakpoint Kind determines the behavior of delve when the
+// BreakpointKind determines the behavior of delve when the
 // breakpoint is reached.
 type BreakpointKind uint16
 
@@ -350,6 +350,7 @@ type BreakpointState struct {
 	CondError error
 }
 
+// Clear zeros the struct.
 func (bpstate *BreakpointState) Clear() {
 	bpstate.Breakpoint = nil
 	bpstate.Active = false

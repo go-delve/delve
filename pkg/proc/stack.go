@@ -489,7 +489,7 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64) {
 	fde, err := it.bi.frameEntries.FDEForPC(it.pc)
 	var framectx *frame.FrameContext
-	if _, nofde := err.(*frame.NoFDEForPCError); nofde {
+	if _, nofde := err.(*frame.ErrNoFDEForPC); nofde {
 		framectx = it.bi.Arch.FixFrameUnwindContext(nil, it.pc, it.bi)
 	} else {
 		framectx = it.bi.Arch.FixFrameUnwindContext(fde.EstablishFrame(it.pc), it.pc, it.bi)
@@ -573,10 +573,9 @@ func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, c
 		}
 		if curReg.Uint64Val <= uint64(cfa) {
 			return it.readRegisterAt(regnum, curReg.Uint64Val)
-		} else {
-			newReg := *curReg
-			return &newReg, nil
 		}
+		newReg := *curReg
+		return &newReg, nil
 	}
 }
 
@@ -668,12 +667,12 @@ func (d *Defer) load() {
 	}
 }
 
-// spDecreasedErr is used when (*Defer).Next detects a corrupted linked
+// errSPDecreased is used when (*Defer).Next detects a corrupted linked
 // list, specifically when after followin a link pointer the value of SP
 // decreases rather than increasing or staying the same (the defer list is a
 // FIFO list, nodes further down the list have been added by function calls
 // further down the call stack and therefore the SP should always increase).
-var spDecreasedErr = errors.New("corrupted defer list: SP decreased")
+var errSPDecreased = errors.New("corrupted defer list: SP decreased")
 
 // Next returns the next defer in the linked list
 func (d *Defer) Next() *Defer {
@@ -682,7 +681,7 @@ func (d *Defer) Next() *Defer {
 	}
 	d.link.load()
 	if d.link.SP < d.SP {
-		d.link.Unreadable = spDecreasedErr
+		d.link.Unreadable = errSPDecreased
 	}
 	return d.link
 }

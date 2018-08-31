@@ -281,7 +281,7 @@ func (r *Regs) Get(n int) (uint64, error) {
 		return r.regs.R15, nil
 	}
 
-	return 0, proc.UnknownRegisterError
+	return 0, proc.ErrUnknownRegister
 }
 
 func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
@@ -324,6 +324,8 @@ func (thread *Thread) fpRegisters() (regs []proc.Register, fpregs proc.LinuxX86X
 	return
 }
 
+// Copy returns a copy of these registers that is
+// guarenteed not to change.
 func (r *Regs) Copy() proc.Registers {
 	var rr Regs
 	rr.regs = &sys.PtraceRegs{}

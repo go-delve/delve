@@ -2,20 +2,25 @@ package proc
 
 import "sort"
 
+// AsmInstruction represents one assembly instruction.
 type AsmInstruction struct {
 	Loc        Location
 	DestLoc    *Location
 	Bytes      []byte
 	Breakpoint bool
 	AtPC       bool
-	Inst       *ArchInst
+	Inst       *archInst
 }
 
+// AssemblyFlavour is the assembly syntax to display.
 type AssemblyFlavour int
 
 const (
+	// GNUFlavour will display GNU assembly syntax.
 	GNUFlavour = AssemblyFlavour(iota)
+	// IntelFlavour will display Intel assembly syntax.
 	IntelFlavour
+	// GoFlavour will display Go assembly syntax.
 	GoFlavour
 )
 

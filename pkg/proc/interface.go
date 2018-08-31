@@ -40,10 +40,13 @@ type RecordingManipulation interface {
 	ClearCheckpoint(id int) error
 }
 
+// Direction is the direction of execution for the target process.
 type Direction int8
 
 const (
-	Forward  Direction = 0
+	// Forward direction executes the target normally.
+	Forward Direction = 0
+	// Backward direction executes the target in reverse.
 	Backward Direction = 1
 )
 
@@ -62,7 +65,7 @@ type Info interface {
 	ResumeNotify(chan<- struct{})
 	// Valid returns true if this Process can be used. When it returns false it
 	// also returns an error describing why the Process is invalid (either
-	// ProcessExitedError or ProcessDetachedError).
+	// ErrProcessExited or ProcessDetachedError).
 	Valid() (bool, error)
 	BinInfo() *BinaryInfo
 	// Common returns a struct with fields common to all backends
@@ -114,6 +117,8 @@ type CommonProcess struct {
 	fncallEnabled bool
 }
 
+// NewCommonProcess returns a struct with fields common across
+// all process implementations.
 func NewCommonProcess(fncallEnabled bool) CommonProcess {
 	return CommonProcess{fncallEnabled: fncallEnabled}
 }

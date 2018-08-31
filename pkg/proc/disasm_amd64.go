@@ -8,19 +8,19 @@ import (
 
 var maxInstructionLength uint64 = 15
 
-type ArchInst x86asm.Inst
+type archInst x86asm.Inst
 
-func asmDecode(mem []byte, pc uint64) (*ArchInst, error) {
+func asmDecode(mem []byte, pc uint64) (*archInst, error) {
 	inst, err := x86asm.Decode(mem, 64)
 	if err != nil {
 		return nil, err
 	}
 	patchPCRel(pc, &inst)
-	r := ArchInst(inst)
+	r := archInst(inst)
 	return &r, nil
 }
 
-func (inst *ArchInst) Size() int {
+func (inst *archInst) Size() int {
 	return inst.Len
 }
 
@@ -34,6 +34,8 @@ func patchPCRel(pc uint64, inst *x86asm.Inst) {
 	}
 }
 
+// Text will return the assembly instructions in human readable format according to
+// the flavour specified.
 func (inst *AsmInstruction) Text(flavour AssemblyFlavour, bi *BinaryInfo) string {
 	if inst.Inst == nil {
 		return "?"
@@ -55,6 +57,7 @@ func (inst *AsmInstruction) Text(flavour AssemblyFlavour, bi *BinaryInfo) string
 	return text
 }
 
+// IsCall returns true if the instruction is a CALL or LCALL instruction.
 func (inst *AsmInstruction) IsCall() bool {
 	if inst.Inst == nil {
 		return false
@@ -62,7 +65,7 @@ func (inst *AsmInstruction) IsCall() bool {
 	return inst.Inst.Op == x86asm.CALL || inst.Inst.Op == x86asm.LCALL
 }
 
-func resolveCallArg(inst *ArchInst, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
+func resolveCallArg(inst *archInst, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	if inst.Op != x86asm.CALL && inst.Op != x86asm.LCALL {
 		return nil
 	}

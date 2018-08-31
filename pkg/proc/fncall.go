@@ -39,17 +39,17 @@ const (
 )
 
 var (
-	ErrFuncCallUnsupported        = errors.New("function calls not supported by this version of Go")
-	ErrFuncCallUnsupportedBackend = errors.New("backend does not support function calls")
-	ErrFuncCallInProgress         = errors.New("cannot call function while another function call is already in progress")
-	ErrNotACallExpr               = errors.New("not a function call")
-	ErrNoGoroutine                = errors.New("no goroutine selected")
-	ErrGoroutineNotRunning        = errors.New("selected goroutine not running")
-	ErrNotEnoughStack             = errors.New("not enough stack space")
-	ErrTooManyArguments           = errors.New("too many arguments")
-	ErrNotEnoughArguments         = errors.New("not enough arguments")
-	ErrNoAddrUnsupported          = errors.New("arguments to a function call must have an address")
-	ErrNotAGoFunction             = errors.New("not a Go function")
+	errFuncCallUnsupported        = errors.New("function calls not supported by this version of Go")
+	errFuncCallUnsupportedBackend = errors.New("backend does not support function calls")
+	errFuncCallInProgress         = errors.New("cannot call function while another function call is already in progress")
+	errNotACallExpr               = errors.New("not a function call")
+	errNoGoroutine                = errors.New("no goroutine selected")
+	errGoroutineNotRunning        = errors.New("selected goroutine not running")
+	errNotEnoughStack             = errors.New("not enough stack space")
+	errTooManyArguments           = errors.New("too many arguments")
+	errNotEnoughArguments         = errors.New("not enough arguments")
+	errNoAddrUnsupported          = errors.New("arguments to a function call must have an address")
+	errNotAGoFunction             = errors.New("not a Go function")
 )
 
 type functionCallState struct {
@@ -84,27 +84,27 @@ type functionCallState struct {
 func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
 	bi := p.BinInfo()
 	if !p.Common().fncallEnabled {
-		return ErrFuncCallUnsupportedBackend
+		return errFuncCallUnsupportedBackend
 	}
 	fncall := &p.Common().fncallState
 	if fncall.inProgress {
-		return ErrFuncCallInProgress
+		return errFuncCallInProgress
 	}
 
 	*fncall = functionCallState{}
 
 	dbgcallfn := bi.LookupFunc[debugCallFunctionName]
 	if dbgcallfn == nil {
-		return ErrFuncCallUnsupported
+		return errFuncCallUnsupported
 	}
 
 	// check that the selected goroutine is running
 	g := p.SelectedGoroutine()
 	if g == nil {
-		return ErrNoGoroutine
+		return errNoGoroutine
 	}
 	if g.Status != Grunning || g.Thread == nil {
-		return ErrGoroutineNotRunning
+		return errGoroutineNotRunning
 	}
 
 	// check that there are at least 256 bytes free on the stack
@@ -114,11 +114,11 @@ func CallFunction(p Process, expr string, retLoadCfg *LoadConfig) error {
 	}
 	regs = regs.Copy()
 	if regs.SP()-256 <= g.stacklo {
-		return ErrNotEnoughStack
+		return errNotEnoughStack
 	}
 	_, err = regs.Get(int(x86asm.RAX))
 	if err != nil {
-		return ErrFuncCallUnsupportedBackend
+		return errFuncCallUnsupportedBackend
 	}
 
 	fn, closureAddr, argvars, err := funcCallEvalExpr(p, expr)
@@ -208,7 +208,7 @@ func funcCallEvalExpr(p Process, expr string) (fn *Function, closureAddr uint64,
 	}
 	callexpr, iscall := t.(*ast.CallExpr)
 	if !iscall {
-		return nil, 0, nil, ErrNotACallExpr
+		return nil, 0, nil, errNotACallExpr
 	}
 
 	fnvar, err := scope.evalAST(callexpr.Fun)
@@ -230,7 +230,7 @@ func funcCallEvalExpr(p Process, expr string) (fn *Function, closureAddr uint64,
 		return nil, 0, nil, fmt.Errorf("could not find DIE for function %q", exprToString(callexpr.Fun))
 	}
 	if !fn.cu.isgo {
-		return nil, 0, nil, ErrNotAGoFunction
+		return nil, 0, nil, errNotAGoFunction
 	}
 
 	argvars = make([]*Variable, 0, len(callexpr.Args)+1)
@@ -265,10 +265,10 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 		return nil, err
 	}
 	if len(actualArgs) > len(formalArgs) {
-		return nil, ErrTooManyArguments
+		return nil, errTooManyArguments
 	}
 	if len(actualArgs) < len(formalArgs) {
-		return nil, ErrNotEnoughArguments
+		return nil, errNotEnoughArguments
 	}
 
 	// constructs arguments frame

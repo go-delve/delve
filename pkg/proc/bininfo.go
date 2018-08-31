@@ -25,6 +25,7 @@ import (
 	"github.com/derekparker/delve/pkg/goversion"
 )
 
+// BinaryInfo holds information on the binary being executed.
 type BinaryInfo struct {
 	lastModified time.Time // Time the executable of this process was last modified
 
@@ -72,9 +73,14 @@ type BinaryInfo struct {
 	dwarfReader *dwarf.Reader
 }
 
-var UnsupportedLinuxArchErr = errors.New("unsupported architecture - only linux/amd64 is supported")
-var UnsupportedWindowsArchErr = errors.New("unsupported architecture of windows/386 - only windows/amd64 is supported")
-var UnsupportedDarwinArchErr = errors.New("unsupported architecture - only darwin/amd64 is supported")
+// ErrUnsupportedLinuxArch is returned when attempting to debug a binary compiled for an unsupported architecture.
+var ErrUnsupportedLinuxArch = errors.New("unsupported architecture - only linux/amd64 is supported")
+
+// ErrUnsupportedWindowsArch is returned when attempting to debug a binary compiled for an unsupported architecture.
+var ErrUnsupportedWindowsArch = errors.New("unsupported architecture of windows/386 - only windows/amd64 is supported")
+
+// ErrUnsupportedDarwinArch is returned when attempting to debug a binary compiled for an unsupported architecture.
+var ErrUnsupportedDarwinArch = errors.New("unsupported architecture - only darwin/amd64 is supported")
 
 const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
 
@@ -260,16 +266,17 @@ func (e *loclistEntry) BaseAddressSelection() bool {
 	return e.lowpc == ^uint64(0)
 }
 
-type buildIdHeader struct {
+type buildIDHeader struct {
 	Namesz uint32
 	Descsz uint32
 	Type   uint32
 }
 
-func NewBinaryInfo(goos, goarch string) BinaryInfo {
-	r := BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), typeCache: make(map[dwarf.Offset]godwarf.Type)}
+// NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
+func NewBinaryInfo(goos, goarch string) *BinaryInfo {
+	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), typeCache: make(map[dwarf.Offset]godwarf.Type)}
 
-	// TODO: find better way to determine proc arch (perhaps use executable file info)
+	// TODO: find better way to determine proc arch (perhaps use executable file info).
 	switch goarch {
 	case "amd64":
 		r.Arch = AMD64Arch(goos)
@@ -278,19 +285,22 @@ func NewBinaryInfo(goos, goarch string) BinaryInfo {
 	return r
 }
 
-func (bininfo *BinaryInfo) LoadBinaryInfo(path string, wg *sync.WaitGroup) error {
+// LoadBinaryInfo will load and store the information from the binary at 'path'.
+// It is expected this will be called in parallel with other initialization steps
+// so a sync.WaitGroup must be provided.
+func (bi *BinaryInfo) LoadBinaryInfo(path string, wg *sync.WaitGroup) error {
 	fi, err := os.Stat(path)
 	if err == nil {
-		bininfo.lastModified = fi.ModTime()
+		bi.lastModified = fi.ModTime()
 	}
 
-	switch bininfo.GOOS {
+	switch bi.GOOS {
 	case "linux":
-		return bininfo.LoadBinaryInfoElf(path, wg)
+		return bi.LoadBinaryInfoElf(path, wg)
 	case "windows":
-		return bininfo.LoadBinaryInfoPE(path, wg)
+		return bi.LoadBinaryInfoPE(path, wg)
 	case "darwin":
-		return bininfo.LoadBinaryInfoMacho(path, wg)
+		return bi.LoadBinaryInfoMacho(path, wg)
 	}
 	return errors.New("unsupported operating system")
 }
@@ -301,6 +311,7 @@ func (bi *BinaryInfo) GStructOffset() uint64 {
 	return bi.gStructOffset
 }
 
+// LastModified returns the last modified time of the binary.
 func (bi *BinaryInfo) LastModified() time.Time {
 	return bi.lastModified
 }
@@ -381,6 +392,7 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 	return nil
 }
 
+// Close closes all internal readers.
 func (bi *BinaryInfo) Close() error {
 	if bi.sepDebugCloser != nil {
 		bi.sepDebugCloser.Close()
@@ -394,6 +406,7 @@ func (bi *BinaryInfo) setLoadError(fmtstr string, args ...interface{}) {
 	bi.loadErrMu.Unlock()
 }
 
+// LoadError returns any internal load error.
 func (bi *BinaryInfo) LoadError() error {
 	return bi.loadErr
 }
@@ -506,6 +519,7 @@ func (bi *BinaryInfo) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
 	return nil
 }
 
+// Producer returns the value of DW_AT_producer.
 func (bi *BinaryInfo) Producer() string {
 	for _, cu := range bi.compileUnits {
 		if cu.isgo && cu.producer != "" {
@@ -522,12 +536,12 @@ func (bi *BinaryInfo) Type(offset dwarf.Offset) (godwarf.Type, error) {
 
 // ELF ///////////////////////////////////////////////////////////////
 
-// This error is used in openSeparateDebugInfo to signal there's no
+// ErrNoBuildIDNote is used in openSeparateDebugInfo to signal there's no
 // build-id note on the binary, so LoadBinaryInfoElf will return
 // the error message coming from elfFile.DWARF() instead.
-type NoBuildIdNoteError struct{}
+type ErrNoBuildIDNote struct{}
 
-func (e *NoBuildIdNoteError) Error() string {
+func (e *ErrNoBuildIDNote) Error() string {
 	return "can't find build-id note on binary"
 }
 
@@ -539,11 +553,11 @@ func (e *NoBuildIdNoteError) Error() string {
 func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File) (*os.File, *elf.File, error) {
 	buildid := exe.Section(".note.gnu.build-id")
 	if buildid == nil {
-		return nil, nil, &NoBuildIdNoteError{}
+		return nil, nil, &ErrNoBuildIDNote{}
 	}
 
 	br := buildid.Open()
-	bh := new(buildIdHeader)
+	bh := new(buildIDHeader)
 	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
 		return nil, nil, errors.New("can't read build-id header: " + err.Error())
 	}
@@ -572,17 +586,18 @@ func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File) (*os.File, *elf.File,
 	elfFile, err := elf.NewFile(sepFile)
 	if err != nil {
 		sepFile.Close()
-		return nil, nil, errors.New(fmt.Sprintf("can't open separate debug file %q: %v", debugPath, err.Error()))
+		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugPath, err.Error())
 	}
 
 	if elfFile.Machine != elf.EM_X86_64 {
 		sepFile.Close()
-		return nil, nil, errors.New(fmt.Sprintf("can't open separate debug file %q: %v", debugPath, UnsupportedLinuxArchErr.Error()))
+		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugPath, ErrUnsupportedLinuxArch.Error())
 	}
 
 	return sepFile, elfFile, nil
 }
 
+// LoadBinaryInfoElf specifically loads information from an ELF binary.
 func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
@@ -594,7 +609,7 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 		return err
 	}
 	if elfFile.Machine != elf.EM_X86_64 {
-		return UnsupportedLinuxArchErr
+		return ErrUnsupportedLinuxArch
 	}
 	dwarfFile := elfFile
 	bi.dwarf, err = elfFile.DWARF()
@@ -603,7 +618,7 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, wg *sync.WaitGroup) error {
 		var serr error
 		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(elfFile)
 		if serr != nil {
-			if _, ok := serr.(*NoBuildIdNoteError); ok {
+			if _, ok := serr.(*ErrNoBuildIDNote); ok {
 				return err
 			}
 			return serr
@@ -688,6 +703,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
 
 // PE ////////////////////////////////////////////////////////////////
 
+// LoadBinaryInfoPE specifically loads information from a PE binary.
 func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
 	peFile, closer, err := openExecutablePathPE(path)
 	if err != nil {
@@ -695,7 +711,7 @@ func (bi *BinaryInfo) LoadBinaryInfoPE(path string, wg *sync.WaitGroup) error {
 	}
 	bi.closer = closer
 	if peFile.Machine != pe.IMAGE_FILE_MACHINE_AMD64 {
-		return UnsupportedWindowsArchErr
+		return ErrUnsupportedWindowsArch
 	}
 	bi.dwarf, err = peFile.DWARF()
 	if err != nil {
@@ -772,6 +788,7 @@ func findPESymbol(f *pe.File, name string) (*pe.Symbol, error) {
 
 // MACH-O ////////////////////////////////////////////////////////////
 
+// LoadBinaryInfoMacho specifically loads information from a Mach-O binary.
 func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error {
 	exe, err := macho.Open(path)
 	if err != nil {
@@ -779,7 +796,7 @@ func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, wg *sync.WaitGroup) error
 	}
 	bi.closer = exe
 	if exe.Cpu != macho.CpuAmd64 {
-		return UnsupportedDarwinArchErr
+		return ErrUnsupportedDarwinArch
 	}
 	bi.dwarf, err = exe.DWARF()
 	if err != nil {

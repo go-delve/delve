@@ -17,6 +17,9 @@ type MemoryReader interface {
 	ReadMemory(buf []byte, addr uintptr) (n int, err error)
 }
 
+// MemoryReadWriter is an interface for reading or writing to
+// the targets memory. This allows us to read from the actual
+// target memory or possibly a cache.
 type MemoryReadWriter interface {
 	MemoryReader
 	WriteMemory(addr uintptr, data []byte) (written int, err error)
