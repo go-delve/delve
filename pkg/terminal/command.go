@@ -321,7 +321,11 @@ Adds or removes a path substitution rule.
 
 Defines <alias> as an alias to <command> or removes an alias.`},
 
-		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR`},
+		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR
+
+	edit [locspec]
+	
+If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -1131,38 +1135,8 @@ func tracepoint(t *Term, ctx callContext, args string) error {
 	return setBreakpoint(t, ctx, true, args)
 }
 
-func getLocation(t *Term, ctx callContext) (*api.Location, error) {
-	if ctx.scoped() {
-		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, false, nil)
-		if err != nil {
-			return nil, err
-		}
-		if ctx.Scope.Frame >= len(locs) {
-			return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", ctx.Scope.Frame, ctx.Scope.GoroutineID)
-		}
-		return &locs[ctx.Scope.Frame].Location, nil
-	} else {
-		state, err := t.client.GetState()
-		if err != nil {
-			return nil, err
-		}
-		if state.SelectedGoroutine != nil {
-			return &state.SelectedGoroutine.CurrentLoc, nil
-		} else {
-			thread := state.CurrentThread
-			loc := api.Location{
-				PC:       thread.PC,
-				File:     thread.File,
-				Line:     thread.Line,
-				Function: thread.Function,
-			}
-			return &loc, nil
-		}
-	}
-}
-
 func edit(t *Term, ctx callContext, args string) error {
-	loc, err := getLocation(t, ctx)
+	file, lineno, _, err := getLocation(t, ctx, args, false)
 	if err != nil {
 		return err
 	}
@@ -1174,9 +1148,7 @@ func edit(t *Term, ctx callContext, args string) error {
 		}
 	}
 
-	editArgs := []string{fmt.Sprintf("+%d", loc.Line), loc.File}
-
-	cmd := exec.Command(editor, editArgs...)
+	cmd := exec.Command(editor, fmt.Sprintf("+%d", lineno), file)
 	return cmd.Run()
 }
 
@@ -1406,53 +1378,69 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 	return r, nil
 }
 
-func listCommand(t *Term, ctx callContext, args string) error {
+// getLocation returns the current location or the locations specified by the argument.
+// getLocation is used to process the argument of list and edit commands.
+func getLocation(t *Term, ctx callContext, args string, showContext bool) (file string, lineno int, showarrow bool, err error) {
 	switch {
 	case len(args) == 0 && !ctx.scoped():
 		state, err := t.client.GetState()
 		if err != nil {
-			return err
+			return "", 0, false, err
 		}
-		printcontext(t, state)
+		if showContext {
+			printcontext(t, state)
+		}
 		if state.SelectedGoroutine != nil {
-			return printfile(t, state.SelectedGoroutine.CurrentLoc.File, state.SelectedGoroutine.CurrentLoc.Line, true)
+			return state.SelectedGoroutine.CurrentLoc.File, state.SelectedGoroutine.CurrentLoc.Line, true, nil
 		}
-		return printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+		return state.CurrentThread.File, state.CurrentThread.Line, true, nil
 
 	case len(args) == 0 && ctx.scoped():
 		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, false, nil)
 		if err != nil {
-			return err
+			return "", 0, false, err
 		}
 		if ctx.Scope.Frame >= len(locs) {
-			return fmt.Errorf("Frame %d does not exist in goroutine %d", ctx.Scope.Frame, ctx.Scope.GoroutineID)
+			return "", 0, false, fmt.Errorf("Frame %d does not exist in goroutine %d", ctx.Scope.Frame, ctx.Scope.GoroutineID)
 		}
 		loc := locs[ctx.Scope.Frame]
 		gid := ctx.Scope.GoroutineID
 		if gid < 0 {
 			state, err := t.client.GetState()
 			if err != nil {
-				return err
+				return "", 0, false, err
 			}
 			if state.SelectedGoroutine != nil {
 				gid = state.SelectedGoroutine.ID
 			}
 		}
-		fmt.Printf("Goroutine %d frame %d at %s:%d (PC: %#x)\n", gid, ctx.Scope.Frame, loc.File, loc.Line, loc.PC)
-		return printfile(t, loc.File, loc.Line, true)
+		if showContext {
+			fmt.Printf("Goroutine %d frame %d at %s:%d (PC: %#x)\n", gid, ctx.Scope.Frame, loc.File, loc.Line, loc.PC)
+		}
+		return loc.File, loc.Line, true, nil
 
 	default:
 		locs, err := t.client.FindLocation(ctx.Scope, args)
 		if err != nil {
-			return err
+			return "", 0, false, err
 		}
 		if len(locs) > 1 {
-			return debugger.AmbiguousLocationError{Location: args, CandidatesLocation: locs}
+			return "", 0, false, debugger.AmbiguousLocationError{Location: args, CandidatesLocation: locs}
 		}
 		loc := locs[0]
-		fmt.Printf("Showing %s:%d (PC: %#x)\n", loc.File, loc.Line, loc.PC)
-		return printfile(t, loc.File, loc.Line, false)
+		if showContext {
+			fmt.Printf("Showing %s:%d (PC: %#x)\n", loc.File, loc.Line, loc.PC)
+		}
+		return loc.File, loc.Line, false, nil
 	}
+}
+
+func listCommand(t *Term, ctx callContext, args string) error {
+	file, lineno, showarrow, err := getLocation(t, ctx, args, true)
+	if err != nil {
+		return err
+	}
+	return printfile(t, file, lineno, showarrow)
 }
 
 func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
