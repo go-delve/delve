@@ -848,10 +848,12 @@ func restart(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func printfileNoState(t *Term) {
-	if state, _ := t.client.GetState(); state != nil && state.CurrentThread != nil {
-		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+func printcontextNoState(t *Term) {
+	state, _ := t.client.GetState()
+	if state == nil || state.CurrentThread == nil {
+		return
 	}
+	printcontext(t, state)
 }
 
 func (c *Commands) cont(t *Term, ctx callContext, args string) error {
@@ -860,7 +862,7 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 	var state *api.DebuggerState
 	for state = range stateChan {
 		if state.Err != nil {
-			printfileNoState(t)
+			printcontextNoState(t)
 			return state.Err
 		}
 		printcontext(t, state)
@@ -880,7 +882,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) err
 		var state *api.DebuggerState
 		for state = range stateChan {
 			if state.Err != nil {
-				printfileNoState(t)
+				printcontextNoState(t)
 				return state.Err
 			}
 			printcontext(t, state)
@@ -916,7 +918,7 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 	c.frame = 0
 	state, err := exitedToError(t.client.Step())
 	if err != nil {
-		printfileNoState(t)
+		printcontextNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -934,7 +936,7 @@ func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error 
 	}
 	state, err := exitedToError(t.client.StepInstruction())
 	if err != nil {
-		printfileNoState(t)
+		printcontextNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -951,7 +953,7 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	}
 	state, err := exitedToError(t.client.Next())
 	if err != nil {
-		printfileNoState(t)
+		printcontextNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -967,7 +969,7 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 	}
 	state, err := exitedToError(t.client.StepOut())
 	if err != nil {
-		printfileNoState(t)
+		printcontextNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -981,7 +983,7 @@ func (c *Commands) call(t *Term, ctx callContext, args string) error {
 	state, err := exitedToError(t.client.Call(args))
 	c.frame = 0
 	if err != nil {
-		printfileNoState(t)
+		printcontextNoState(t)
 		return err
 	}
 	printcontext(t, state)
@@ -1591,7 +1593,7 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 	}
 }
 
-func printcontext(t *Term, state *api.DebuggerState) error {
+func printcontext(t *Term, state *api.DebuggerState) {
 	for i := range state.Threads {
 		if (state.CurrentThread != nil) && (state.Threads[i].ID == state.CurrentThread.ID) {
 			continue
@@ -1603,7 +1605,7 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 
 	if state.CurrentThread == nil {
 		fmt.Println("No current thread available")
-		return nil
+		return
 	}
 
 	var th *api.Thread
@@ -1618,14 +1620,14 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 		}
 		if th == nil {
 			printcontextLocation(state.SelectedGoroutine.CurrentLoc)
-			return nil
+			return
 		}
 	}
 
 	if th.File == "" {
 		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
 		t.Println("=>", "no source available")
-		return nil
+		return
 	}
 
 	printcontextThread(t, th)
@@ -1633,8 +1635,6 @@ func printcontext(t *Term, state *api.DebuggerState) error {
 	if state.When != "" {
 		fmt.Println(state.When)
 	}
-
-	return nil
 }
 
 func printcontextLocation(loc api.Location) {
