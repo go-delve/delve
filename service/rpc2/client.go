@@ -3,6 +3,7 @@ package rpc2
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"time"
@@ -13,7 +14,6 @@ import (
 
 // Client is a RPC service.Client.
 type RPCClient struct {
-	addr   string
 	client *rpc.Client
 
 	retValLoadCfg *api.LoadConfig
@@ -28,9 +28,18 @@ func NewClient(addr string) *RPCClient {
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
-	c := &RPCClient{addr: addr, client: client}
+	return newFromRPCClient(client)
+}
+
+func newFromRPCClient(client *rpc.Client) *RPCClient {
+	c := &RPCClient{client: client}
 	c.call("SetApiVersion", api.SetAPIVersionIn{2}, &api.SetAPIVersionOut{})
 	return c
+}
+
+// NewClientFromConn creates a new RPCClient from the given connection.
+func NewClientFromConn(conn net.Conn) *RPCClient {
+	return newFromRPCClient(jsonrpc.NewClient(conn))
 }
 
 func (c *RPCClient) ProcessPid() int {

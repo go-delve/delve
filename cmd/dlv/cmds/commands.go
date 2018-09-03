@@ -317,6 +317,13 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 
+		if Headless {
+			fmt.Fprintf(os.Stderr, "Warning: headless mode not supported with trace\n")
+		}
+		if AcceptMulti {
+			fmt.Fprintf(os.Stderr, "Warning: accept multiclient mode not supported with trace")
+		}
+
 		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -343,12 +350,9 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 			processArgs = append([]string{debugname}, targetArgs...)
 		}
-		// Make a TCP listener
-		listener, err := net.Listen("tcp", Addr)
-		if err != nil {
-			fmt.Printf("couldn't start listener: %s\n", err)
-			return 1
-		}
+
+		// Make a local in-memory connection that client and server use to communicate
+		listener, clientConn := service.ListenerPipe()
 		defer listener.Close()
 
 		// Create and start a debug server
@@ -364,7 +368,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		client := rpc2.NewClient(listener.Addr().String())
+		client := rpc2.NewClientFromConn(clientConn)
 		funcs, err := client.ListFunctions(regexp)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -430,7 +434,7 @@ func connectCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
 		os.Exit(1)
 	}
-	os.Exit(connect(addr, conf, executingOther))
+	os.Exit(connect(addr, nil, conf, executingOther))
 }
 
 func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
@@ -440,9 +444,14 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 	return args, []string{}
 }
 
-func connect(addr string, conf *config.Config, kind executeKind) int {
+func connect(addr string, clientConn net.Conn, conf *config.Config, kind executeKind) int {
 	// Create and start a terminal - attach to running instance
-	client := rpc2.NewClient(addr)
+	var client *rpc2.RPCClient
+	if clientConn != nil {
+		client = rpc2.NewClientFromConn(clientConn)
+	} else {
+		client = rpc2.NewClient(addr)
+	}
 	if client.Recorded() && (kind == executingGeneratedFile || kind == executingGeneratedTest) {
 		// When using the rr backend remove the trace directory if we built the
 		// executable
@@ -474,14 +483,6 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		return 1
 	}
 
-	// Make a TCP listener
-	listener, err := net.Listen("tcp", Addr)
-	if err != nil {
-		fmt.Printf("couldn't start listener: %s\n", err)
-		return 1
-	}
-	defer listener.Close()
-
 	if Headless && (InitFile != "") {
 		fmt.Fprint(os.Stderr, "Warning: init file ignored\n")
 	}
@@ -492,6 +493,22 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		// call server.Stop after the terminal client exits.
 		AcceptMulti = false
 	}
+
+	var listener net.Listener
+	var clientConn net.Conn
+	var err error
+
+	// Make a TCP listener
+	if Headless {
+		listener, err = net.Listen("tcp", Addr)
+	} else {
+		listener, clientConn = service.ListenerPipe()
+	}
+	if err != nil {
+		fmt.Printf("couldn't start listener: %s\n", err)
+		return 1
+	}
+	defer listener.Close()
 
 	var server interface {
 		Run() error
@@ -554,7 +571,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		return status
 	}
 
-	return connect(listener.Addr().String(), conf, kind)
+	return connect(listener.Addr().String(), clientConn, conf, kind)
 }
 
 func optflags(args []string) []string {
