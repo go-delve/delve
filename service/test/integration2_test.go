@@ -41,11 +41,7 @@ func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
-	listener, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("couldn't start listener: %s\n", err)
-	}
-	defer listener.Close()
+	listener, clientConn := service.ListenerPipe()
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{protest.BuildFixture(name, 0).Path},
@@ -54,7 +50,7 @@ func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}
-	client := rpc2.NewClient(listener.Addr().String())
+	client := rpc2.NewClientFromConn(clientConn)
 	defer func() {
 		dir, _ := client.TraceDirectory()
 		client.Detach(true)
