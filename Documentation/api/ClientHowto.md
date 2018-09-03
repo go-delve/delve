@@ -200,6 +200,7 @@ the user of this:
 
 * For strings, arrays, slices *and structs* the load is incomplete if: `Variable.Len > len(Variable.Children)`. This can happen to structs even if LoadConfig.MaxStructFields is -1 when MaxVariableRecurse is reached.
 * For maps the load is incomplete if: `Variable.Len > len(Variable.Children) / 2`
+* For interfaces the load is incomplete if the only children has the onlyAddr attribute set to true.
 
 ### Loading more of a Variable
 
