@@ -297,13 +297,8 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 
-		var pkg string
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-
-		if len(dlvArgs) > 0 {
-			pkg = args[0]
-		}
-		err = gobuild(debugname, pkg)
+		err = gobuild(debugname, dlvArgs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
@@ -334,15 +329,14 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 
 		if traceAttachPid == 0 {
-			var pkg string
-			switch len(dlvArgs) {
-			case 1:
+			var dlvArgsLen = len(dlvArgs)
+			if dlvArgsLen == 1 {
 				regexp = args[0]
-			case 2:
-				pkg = args[0]
-				regexp = args[1]
+			} else if dlvArgsLen >= 2 {
+				regexp = dlvArgs[dlvArgsLen-1]
+				dlvArgs = dlvArgs[:dlvArgsLen-1]
 			}
-			if err := gobuild(debugname, pkg); err != nil {
+			if err := gobuild(debugname, dlvArgs); err != nil {
 				return 1
 			}
 			defer remove(debugname)
@@ -404,13 +398,8 @@ func testCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 
-		var pkg string
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-
-		if len(dlvArgs) > 0 {
-			pkg = args[0]
-		}
-		err = gotestbuild(debugname, pkg)
+		err = gotestbuild(debugname, dlvArgs)
 		if err != nil {
 			return 1
 		}
@@ -585,23 +574,23 @@ func optflags(args []string) []string {
 	return args
 }
 
-func gobuild(debugname, pkg string) error {
+func gobuild(debugname string, pkgs []string) error {
 	args := []string{"-o", debugname}
 	args = optflags(args)
 	if BuildFlags != "" {
 		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
 	}
-	args = append(args, pkg)
+	args = append(args, pkgs...)
 	return gocommand("build", args...)
 }
 
-func gotestbuild(debugname, pkg string) error {
+func gotestbuild(debugname string, pkgs []string) error {
 	args := []string{"-c", "-o", debugname}
 	args = optflags(args)
 	if BuildFlags != "" {
 		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
 	}
-	args = append(args, pkg)
+	args = append(args, pkgs...)
 	return gocommand("test", args...)
 }
 
