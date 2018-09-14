@@ -113,37 +113,47 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 		return v, nil
 
 	case "string":
-		if argv.Kind != reflect.Slice {
-			return nil, nil
-		}
-		switch elemType := argv.RealType.(*godwarf.SliceType).ElemType.(type) {
-		case *godwarf.UintType:
-			if elemType.Name != "uint8" && elemType.Name != "byte" {
-				return nil, nil
-			}
-			bytes := make([]byte, len(argv.Children))
-			for i := range argv.Children {
-				n, _ := constant.Int64Val(argv.Children[i].Value)
-				bytes[i] = byte(n)
-			}
-			v.Value = constant.MakeString(string(bytes))
+		switch argv.Kind {
+		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uintptr:
+			b, _ := constant.Int64Val(argv.Value)
+			s := string(b)
+			v.Value = constant.MakeString(s)
+			v.Len = int64(len(s))
+			return v, nil
 
-		case *godwarf.IntType:
-			if elemType.Name != "int32" && elemType.Name != "rune" {
+		case reflect.Slice:
+			switch elemType := argv.RealType.(*godwarf.SliceType).ElemType.(type) {
+			case *godwarf.UintType:
+				if elemType.Name != "uint8" && elemType.Name != "byte" {
+					return nil, nil
+				}
+				bytes := make([]byte, len(argv.Children))
+				for i := range argv.Children {
+					n, _ := constant.Int64Val(argv.Children[i].Value)
+					bytes[i] = byte(n)
+				}
+				v.Value = constant.MakeString(string(bytes))
+
+			case *godwarf.IntType:
+				if elemType.Name != "int32" && elemType.Name != "rune" {
+					return nil, nil
+				}
+				runes := make([]rune, len(argv.Children))
+				for i := range argv.Children {
+					n, _ := constant.Int64Val(argv.Children[i].Value)
+					runes[i] = rune(n)
+				}
+				v.Value = constant.MakeString(string(runes))
+
+			default:
 				return nil, nil
 			}
-			runes := make([]rune, len(argv.Children))
-			for i := range argv.Children {
-				n, _ := constant.Int64Val(argv.Children[i].Value)
-				runes[i] = rune(n)
-			}
-			v.Value = constant.MakeString(string(runes))
+			v.Len = int64(len(constant.StringVal(v.Value)))
+			return v, nil
 
 		default:
 			return nil, nil
 		}
-		v.Len = int64(len(constant.StringVal(v.Value)))
-		return v, nil
 	}
 
 	return nil, nil
