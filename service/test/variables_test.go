@@ -748,6 +748,8 @@ func TestEvalExpression(t *testing.T) {
 		{"uint8(i5)", false, "253", "253", "uint8", nil},
 		{"int8(i5)", false, "-3", "-3", "int8", nil},
 		{"int8(i6)", false, "12", "12", "int8", nil},
+		{"string(byteslice[0])", false, `"t"`, `"t"`, "string", nil},
+		{"string(runeslice[0])", false, `"t"`, `"t"`, "string", nil},
 
 		// misc
 		{"i1", true, "1", "1", "int", nil},
