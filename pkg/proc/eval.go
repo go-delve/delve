@@ -630,12 +630,17 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 	if xv.Children[0].Addr == 0 {
 		return nil, fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), exprToString(node.Type))
 	}
-	typ, err := scope.BinInfo.findTypeExpr(node.Type)
-	if err != nil {
-		return nil, err
-	}
-	if xv.Children[0].DwarfType.Common().Name != typ.Common().Name {
-		return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.Common().Name, xv.Children[0].TypeString(), typ.Common().Name)
+	// Accept .(data) as a type assertion that always succeeds, so that users
+	// can access the data field of an interface without actually having to
+	// type the concrete type.
+	if idtyp, isident := node.Type.(*ast.Ident); !isident || idtyp.Name != "data" {
+		typ, err := scope.BinInfo.findTypeExpr(node.Type)
+		if err != nil {
+			return nil, err
+		}
+		if xv.Children[0].DwarfType.Common().Name != typ.Common().Name {
+			return nil, fmt.Errorf("interface conversion: %s is %s, not %s", xv.DwarfType.Common().Name, xv.Children[0].TypeString(), typ.Common().Name)
+		}
 	}
 	// loadInterface will set OnlyAddr for the data member since here we are
 	// passing false to loadData, however returning the variable with OnlyAddr
