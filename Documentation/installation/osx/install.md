@@ -18,7 +18,7 @@ $ go get -u github.com/derekparker/delve/cmd/dlv
 
 With this method you will not be able to use delve's native backend.
 
-Alternatively, you can clone the repo into `$GOPATH/github.com/derekparker/delve` and run:
+Alternatively, you can clone the repo into `$GOPATH/src/github.com/derekparker/delve` and run:
 
 ```
 $ make install
