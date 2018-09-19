@@ -228,7 +228,7 @@ func TestClientServer_step(t *testing.T) {
 		}
 
 		if before, after := stateBefore.CurrentThread.PC, stateAfter.CurrentThread.PC; before >= after {
-			t.Errorf("Expected %#v to be greater than %#v", before, after)
+			t.Fatalf("Expected %#v to be greater than %#v", after, before)
 		}
 	})
 }
