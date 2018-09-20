@@ -160,15 +160,20 @@ type Thread struct {
 	common proc.CommonThread
 }
 
-// ErrWriteCore is returned when attempting to write to the core
-// process memory.
-var ErrWriteCore = errors.New("can not write to core process")
+var (
+	// ErrWriteCore is returned when attempting to write to the core
+	// process memory.
+	ErrWriteCore = errors.New("can not write to core process")
 
-// ErrShortRead is returned on a short read.
-var ErrShortRead = errors.New("short read")
+	// ErrShortRead is returned on a short read.
+	ErrShortRead = errors.New("short read")
 
-// ErrContinueCore is returned when trying to continue execution of a core process.
-var ErrContinueCore = errors.New("can not continue execution of core process")
+	// ErrContinueCore is returned when trying to continue execution of a core process.
+	ErrContinueCore = errors.New("can not continue execution of core process")
+
+	// ErrChangeRegisterCore is returned when trying to change register values for core files.
+	ErrChangeRegisterCore = errors.New("can not change register values of core process")
+)
 
 // OpenCore will open the core file and return a Process struct.
 func OpenCore(corePath, exePath string) (*Process, error) {
@@ -278,7 +283,7 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 // RestoreRegisters will only return an error for core files,
 // you cannot change register values for core files.
 func (t *Thread) RestoreRegisters(proc.Registers) error {
-	return errors.New("not supported")
+	return ErrChangeRegisterCore
 }
 
 // Arch returns the architecture the target is built for and executing on.
@@ -318,19 +323,19 @@ func (t *Thread) Common() *proc.CommonThread {
 // SetPC will always return an error, you cannot
 // change register values when debugging core files.
 func (t *Thread) SetPC(uint64) error {
-	return errors.New("not supported")
+	return ErrChangeRegisterCore
 }
 
 // SetSP will always return an error, you cannot
 // change register values when debugging core files.
 func (t *Thread) SetSP(uint64) error {
-	return errors.New("not supported")
+	return ErrChangeRegisterCore
 }
 
 // SetDX will always return an error, you cannot
 // change register values when debugging core files.
 func (t *Thread) SetDX(uint64) error {
-	return errors.New("not supported")
+	return ErrChangeRegisterCore
 }
 
 // Breakpoints will return all breakpoints for the process.
