@@ -193,7 +193,7 @@ Called with more arguments it will execute a command on the specified goroutine.
 See $GOPATH/src/github.com/derekparker/delve/Documentation/cli/expr.md for a description of supported expressions.`},
 		{aliases: []string{"whatis"}, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
 
-		whatis <expression>.`},
+	whatis <expression>`},
 		{aliases: []string{"set"}, cmdFn: setVar, helpMsg: `Changes the value of a variable.
 
 	[goroutine <n>] [frame <m>] set <variable> = <value>
