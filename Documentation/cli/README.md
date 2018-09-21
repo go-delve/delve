@@ -260,7 +260,7 @@ Show source code.
 
 Show source around current point or provided linespec.
 
-Aliases: ls l
+Aliases: ls
 
 ## locals
 Print local variables.
@@ -411,6 +411,6 @@ If regex is specified only package variables with a name matching it will be ret
 ## whatis
 Prints type of an expression.
 
-		whatis <expression>.
+	whatis <expression>
 
 
