@@ -25,6 +25,9 @@ The following editor plugins for delve are available:
 **VisualStudio Code**
 * [Go for Visual Studio Code](https://github.com/Microsoft/vscode-go)
 
+**Sublime**
+* [Go Debugger for Sublime](https://github.com/dishmaev/GoDebug)
+
 ## Alternative UIs
 
 The following alternative UIs for delve are available:
