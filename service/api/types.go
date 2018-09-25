@@ -289,7 +289,8 @@ type Goroutine struct {
 	// Location of the starting function
 	StartLoc Location `json:"startLoc"`
 	// ID of the associated thread for running goroutines
-	ThreadID int `json:"threadID"`
+	ThreadID   int    `json:"threadID"`
+	Unreadable string `json:"unreadable"`
 }
 
 // DebuggerCommand is a command which changes the debugger's execution state.

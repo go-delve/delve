@@ -751,6 +751,9 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 	if g == nil {
 		return "<nil>"
 	}
+	if g.Unreadable != "" {
+		return fmt.Sprintf("(unreadable %s)", g.Unreadable)
+	}
 	var locname string
 	var loc api.Location
 	switch fgl {
