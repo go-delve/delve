@@ -180,7 +180,7 @@ func installedExecutablePath() string {
 		return filepath.Join(gobin, "dlv")
 	}
 	gopath := strings.Split(getoutput("go", "env", "GOPATH"), ":")
-	return filepath.Join(gopath[0], "dlv")
+	return filepath.Join(strings.TrimSpace(gopath[0]), "bin", "dlv")
 }
 
 func buildFlags() []string {
