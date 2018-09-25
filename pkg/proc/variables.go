@@ -165,6 +165,8 @@ type G struct {
 	Thread Thread
 
 	variable *Variable
+
+	Unreadable error // could not read the G struct
 }
 
 // EvalScope is the scope for variable evaluation. Contains the thread,

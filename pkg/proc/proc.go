@@ -493,11 +493,13 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 	for i := uint64(0); i < allglen; i++ {
 		gvar, err := newGVariable(dbp.CurrentThread(), uintptr(allgptr+(i*uint64(dbp.BinInfo().Arch.PtrSize()))), true)
 		if err != nil {
-			return nil, err
+			allg = append(allg, &G{Unreadable: err})
+			continue
 		}
 		g, err := gvar.parseG()
 		if err != nil {
-			return nil, err
+			allg = append(allg, &G{Unreadable: err})
+			continue
 		}
 		if thg, allocated := threadg[g.ID]; allocated {
 			loc, err := thg.Thread.Location()
@@ -531,6 +533,9 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 	}
 	for i := range gs {
 		if gs[i].ID == gid {
+			if gs[i].Unreadable != nil {
+				return nil, gs[i].Unreadable
+			}
 			return gs[i], nil
 		}
 	}
