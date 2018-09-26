@@ -118,7 +118,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	bpstate := BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
 	if bp.Cond == nil && bp.internalCond == nil {
 		bpstate.Active = true
-		bpstate.Internal = bp.Kind != UserBreakpoint
+		bpstate.Internal = bp.IsInternal()
 		return bpstate
 	}
 	nextDeferOk := true
@@ -138,7 +138,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 			nextDeferOk = ispanic || isdeferreturn
 		}
 	}
-	if bp.Kind != UserBreakpoint {
+	if bp.IsInternal() {
 		// Check internalCondition if this is also an internal breakpoint
 		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.internalCond)
 		bpstate.Active = bpstate.Active && nextDeferOk
@@ -147,7 +147,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 			return bpstate
 		}
 	}
-	if bp.Kind&UserBreakpoint != 0 {
+	if bp.IsUser() {
 		// Check normal condition if this is also a user breakpoint
 		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.Cond)
 	}
@@ -231,7 +231,7 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 		// We can overlap one internal breakpoint with one user breakpoint, we
 		// need to support this otherwise a conditional breakpoint can mask a
 		// breakpoint set by next or step.
-		if (kind != UserBreakpoint && bp.Kind != UserBreakpoint) || (kind == UserBreakpoint && bp.Kind&UserBreakpoint != 0) {
+		if (kind != UserBreakpoint && bp.Kind != UserBreakpoint) || (kind == UserBreakpoint && bp.IsUser()) {
 			return bp, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
 		}
 		bp.Kind |= kind
@@ -330,7 +330,7 @@ func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakp
 // breakpoint set.
 func (bpmap *BreakpointMap) HasInternalBreakpoints() bool {
 	for _, bp := range bpmap.M {
-		if bp.Kind != UserBreakpoint {
+		if bp.IsInternal() {
 			return true
 		}
 	}
