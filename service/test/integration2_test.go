@@ -32,12 +32,7 @@ func TestMain(m *testing.M) {
 	var logOutput string
 	flag.StringVar(&logOutput, "log-output", "", "configures log output")
 	flag.Parse()
-	if testBackend == "" {
-		testBackend = os.Getenv("PROCTEST")
-		if testBackend == "" {
-			testBackend = "native"
-		}
-	}
+	protest.DefaultTestBackend(&testBackend)
 	logflags.Setup(logOutput != "", logOutput)
 	os.Exit(protest.RunTestsWithFixtures(m))
 }

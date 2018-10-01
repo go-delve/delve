@@ -266,3 +266,20 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip("this backend does not support function calls")
 	}
 }
+
+// DefaultTestBackend changes the value of testBackend to be the default
+// test backend for the OS, if testBackend isn't already set.
+func DefaultTestBackend(testBackend *string) {
+	if *testBackend != "" {
+		return
+	}
+	*testBackend = os.Getenv("PROCTEST")
+	if *testBackend != "" {
+		return
+	}
+	if runtime.GOOS == "darwin" {
+		*testBackend = "lldb"
+	} else {
+		*testBackend = "native"
+	}
+}

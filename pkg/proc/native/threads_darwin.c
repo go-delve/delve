@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 #include "threads_darwin.h"
 
 int

@@ -38,12 +38,7 @@ func init() {
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
 	flag.Parse()
-	if testBackend == "" {
-		testBackend = os.Getenv("PROCTEST")
-		if testBackend == "" {
-			testBackend = "native"
-		}
-	}
+	protest.DefaultTestBackend(&testBackend)
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
@@ -2036,14 +2031,23 @@ func TestIssue509(t *testing.T) {
 	cmd.Dir = nomaindir
 	assertNoError(cmd.Run(), t, "go build")
 	exepath := filepath.Join(nomaindir, "debug")
-	_, err := native.Launch([]string{exepath}, ".", false)
+	defer os.Remove(exepath)
+	var err error
+
+	switch testBackend {
+	case "native":
+		_, err = native.Launch([]string{exepath}, ".", false)
+	case "lldb":
+		_, err = gdbserial.LLDBLaunch([]string{exepath}, ".", false)
+	default:
+		t.Skip("test not valid for this backend")
+	}
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
 	if err != proc.ErrNotExecutable {
 		t.Fatalf("expected error \"%v\" got \"%v\"", proc.ErrNotExecutable, err)
 	}
-	os.Remove(exepath)
 }
 
 func TestUnsupportedArch(t *testing.T) {
@@ -2070,7 +2074,17 @@ func TestUnsupportedArch(t *testing.T) {
 	}
 	defer os.Remove(outfile)
 
-	p, err := native.Launch([]string{outfile}, ".", false)
+	var p proc.Process
+
+	switch testBackend {
+	case "native":
+		p, err = native.Launch([]string{outfile}, ".", false)
+	case "lldb":
+		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", false)
+	default:
+		t.Skip("test not valid for this backend")
+	}
+
 	switch err {
 	case proc.ErrUnsupportedLinuxArch, proc.ErrUnsupportedWindowsArch, proc.ErrUnsupportedDarwinArch:
 		// all good

@@ -29,12 +29,7 @@ var testBackend string
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
 	flag.Parse()
-	if testBackend == "" {
-		testBackend = os.Getenv("PROCTEST")
-		if testBackend == "" {
-			testBackend = "native"
-		}
-	}
+	test.DefaultTestBackend(&testBackend)
 	os.Exit(test.RunTestsWithFixtures(m))
 }
 

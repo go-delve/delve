@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 #include "exec_darwin.h"
 #include "stdio.h"
 

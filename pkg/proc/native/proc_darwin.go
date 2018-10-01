@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 package native
 
 // #include "proc_darwin.h"
