@@ -34,9 +34,9 @@ func NewMakeCommands() *cobra.Command {
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
-			checkCertCmd(nil, nil)
-			execute("go", "build", buildFlags(), DelveMainPackagePath)
-			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" {
+			tagFlag := prepareMacnative()
+			execute("go", "build", tagFlag, buildFlags(), DelveMainPackagePath)
+			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
 				codesign("./dlv")
 			}
 		},
@@ -46,9 +46,9 @@ func NewMakeCommands() *cobra.Command {
 		Use:   "install",
 		Short: "Installs delve",
 		Run: func(cmd *cobra.Command, args []string) {
-			checkCertCmd(nil, nil)
-			execute("go", "install", buildFlags(), DelveMainPackagePath)
-			if runtime.GOOS == "darwin" {
+			tagFlag := prepareMacnative()
+			execute("go", "install", tagFlag, buildFlags(), DelveMainPackagePath)
+			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
 				codesign(installedExecutablePath())
 			}
 		},
@@ -183,6 +183,33 @@ func installedExecutablePath() string {
 	return filepath.Join(strings.TrimSpace(gopath[0]), "bin", "dlv")
 }
 
+// canMacnative returns true if we can build the native backend for macOS,
+// i.e. cgo enabled and the legacy SDK headers:
+// https://forums.developer.apple.com/thread/104296
+func canMacnative() bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	if strings.TrimSpace(getoutput("go", "env", "CGO_ENABLED")) != "1" {
+		return false
+	}
+	_, err := os.Stat("/usr/include/sys/types.h")
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+// prepareMacnative checks if we can build the native backend for macOS and
+// if we can checks the certificate and then returns the -tags flag.
+func prepareMacnative() string {
+	if !canMacnative() {
+		return ""
+	}
+	checkCertCmd(nil, nil)
+	return "-tags=macnative"
+}
+
 func buildFlags() []string {
 	buildSHA, err := exec.Command("git", "rev-parse", "HEAD").CombinedOutput()
 	if err != nil {
@@ -214,6 +241,13 @@ func testCmd(cmd *cobra.Command, args []string) {
 	checkCertCmd(nil, nil)
 
 	if os.Getenv("TRAVIS") == "true" && runtime.GOOS == "darwin" {
+		fmt.Println("Building with native backend")
+		execute("go", "build", "-tags=macnative", buildFlags(), DelveMainPackagePath)
+
+		fmt.Println("\nBuilding without native backend")
+		execute("go", "build", buildFlags(), DelveMainPackagePath)
+
+		fmt.Println("\nTesting")
 		os.Setenv("PROCTEST", "lldb")
 		executeq("sudo", "-E", "go", "test", testFlags(), allPackages())
 		return

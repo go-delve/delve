@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 #include "proc_darwin.h"
 
 static const unsigned char info_plist[]

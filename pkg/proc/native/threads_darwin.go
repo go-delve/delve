@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 package native
 
 // #include "threads_darwin.h"

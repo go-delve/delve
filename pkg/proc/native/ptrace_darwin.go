@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 package native
 
 import sys "golang.org/x/sys/unix"

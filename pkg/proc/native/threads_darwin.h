@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 #include <stdlib.h>
 #include <sys/types.h>
 #include <mach/mach.h>

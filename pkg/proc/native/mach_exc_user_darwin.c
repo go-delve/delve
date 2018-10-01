@@ -1,3 +1,5 @@
+//+build darwin,macnative
+
 /*
  * IDENTIFICATION:
  * stub generated Sat Feb 21 18:10:52 2015
