@@ -343,6 +343,7 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 	edit [locspec]
 	
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
+		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -1578,6 +1579,18 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 
 	DisasmPrint(disasm, os.Stdout)
 
+	return nil
+}
+
+func libraries(t *Term, ctx callContext, args string) error {
+	libs, err := t.client.ListDynamicLibraries()
+	if err != nil {
+		return err
+	}
+	d := digits(len(libs))
+	for i := range libs {
+		fmt.Printf("%"+strconv.Itoa(d)+"d. %s\n", i, libs[i].Path)
+	}
 	return nil
 }
 

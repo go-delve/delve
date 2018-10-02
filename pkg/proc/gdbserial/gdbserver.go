@@ -702,6 +702,12 @@ continueLoop:
 		return nil, err
 	}
 
+	if p.BinInfo().GOOS == "linux" {
+		if err := linutil.ElfUpdateSharedObjects(p); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := p.setCurrentBreakpoints(); err != nil {
 		return nil, err
 	}

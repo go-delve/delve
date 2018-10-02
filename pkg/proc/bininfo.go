@@ -26,7 +26,8 @@ import (
 	"github.com/go-delve/delve/pkg/goversion"
 )
 
-// BinaryInfo holds information on the binary being executed.
+// BinaryInfo holds information on the binaries being executed (this
+// includes both the executable and also any loaded libraries).
 type BinaryInfo struct {
 	// Path on disk of the binary being executed.
 	Path string
@@ -42,6 +43,12 @@ type BinaryInfo struct {
 	Sources []string
 	// LookupFunc maps function names to a description of the function.
 	LookupFunc map[string]*Function
+
+	// Images is a list of loaded shared libraries (also known as
+	// shared objects on linux or DLLs on windws).
+	Images []*Image
+
+	ElfDynamicSection ElfDynamicSection
 
 	lastModified time.Time // Time the executable of this process was last modified
 
@@ -289,6 +296,12 @@ type buildIDHeader struct {
 	Type   uint32
 }
 
+// ElfDynamicSection describes the .dynamic section of an ELF executable.
+type ElfDynamicSection struct {
+	Addr uint64 // relocated address of where the .dynamic section is mapped in memory
+	Size uint64 // size of the .dynamic section of the executable
+}
+
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
 func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), typeCache: make(map[dwarf.Offset]godwarf.Type)}
@@ -410,6 +423,26 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 		}
 	}
 	return nil
+}
+
+// Image represents a loaded library file (shared object on linux, DLL on windows).
+type Image struct {
+	Path string
+	addr uint64
+}
+
+// AddImage adds the specified image to bi.
+func (bi *BinaryInfo) AddImage(path string, addr uint64) {
+	if !strings.HasPrefix(path, "/") {
+		return
+	}
+	for _, image := range bi.Images {
+		if image.Path == path && image.addr == addr {
+			return
+		}
+	}
+	//TODO(aarzilli): actually load informations about the image here
+	bi.Images = append(bi.Images, &Image{Path: path, addr: addr})
 }
 
 // Close closes all internal readers.
@@ -669,6 +702,11 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, debugInf
 		if elfFile.Type == elf.ET_DYN {
 			return ErrCouldNotDetermineRelocation
 		}
+	}
+
+	if dynsec := elfFile.Section(".dynamic"); dynsec != nil {
+		bi.ElfDynamicSection.Addr = dynsec.Addr + bi.staticBase
+		bi.ElfDynamicSection.Size = dynsec.Size
 	}
 
 	dwarfFile := elfFile

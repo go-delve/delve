@@ -4214,3 +4214,40 @@ func TestDeadlockBreakpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestListImages(t *testing.T) {
+	pluginFixtures := protest.WithPlugins(t, "plugin1/", "plugin2/")
+
+	withTestProcessArgs("plugintest", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, 0, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "first continue")
+		plugin1Found := false
+		t.Logf("Libraries before:")
+		for _, image := range p.BinInfo().Images {
+			t.Logf("\t%#v", image)
+			if image.Path == pluginFixtures[0].Path {
+				plugin1Found = true
+			}
+		}
+		if !plugin1Found {
+			t.Fatalf("Could not find plugin1")
+		}
+		assertNoError(proc.Continue(p), t, "second continue")
+		plugin1Found, plugin2Found := false, false
+		t.Logf("Libraries after:")
+		for _, image := range p.BinInfo().Images {
+			t.Logf("\t%#v", image)
+			switch image.Path {
+			case pluginFixtures[0].Path:
+				plugin1Found = true
+			case pluginFixtures[1].Path:
+				plugin2Found = true
+			}
+		}
+		if !plugin1Found {
+			t.Fatalf("Could not find plugin1")
+		}
+		if !plugin2Found {
+			t.Fatalf("Could not find plugin2")
+		}
+	})
+}

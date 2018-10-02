@@ -395,6 +395,12 @@ func (c *RPCClient) Disconnect(cont bool) error {
 	return c.client.Close()
 }
 
+func (c *RPCClient) ListDynamicLibraries() ([]api.Image, error) {
+	var out ListDynamicLibrariesOut
+	c.call("ListDynamicLibraries", ListDynamicLibrariesIn{}, &out)
+	return out.List, nil
+}
+
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }

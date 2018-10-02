@@ -442,3 +442,8 @@ type Checkpoint struct {
 	When  string
 	Where string
 }
+
+// Image represents a loaded shared object (go plugin or shared library)
+type Image struct {
+	Path string
+}

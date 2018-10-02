@@ -138,6 +138,9 @@ type Client interface {
 	// IsMulticlien returns true if the headless instance is multiclient.
 	IsMulticlient() bool
 
+	// ListDynamicLibraries returns a list of loaded dynamic libraries.
+	ListDynamicLibraries() ([]api.Image, error)
+
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error

@@ -24,6 +24,7 @@ Command | Description
 [goroutine](#goroutine) | Shows or changes current goroutine
 [goroutines](#goroutines) | List program goroutines.
 [help](#help) | Prints the help message.
+[libraries](#libraries) | List loaded dynamic libraries
 [list](#list) | Show source code.
 [locals](#locals) | Print local variables.
 [next](#next) | Step over to next source line.
@@ -265,6 +266,10 @@ Prints the help message.
 Type "help" followed by the name of a command for more information about it.
 
 Aliases: h
+
+## libraries
+List loaded dynamic libraries
+
 
 ## list
 Show source code.
