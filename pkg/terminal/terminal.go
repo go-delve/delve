@@ -19,9 +19,15 @@ import (
 )
 
 const (
-	historyFile             string = ".dbg_history"
-	terminalBlueEscapeCode  string = "\033[34m"
-	terminalResetEscapeCode string = "\033[0m"
+	historyFile                    string = ".dbg_history"
+	terminalBlueEscapeCode         string = "\033[34m"
+	terminalBrightYellowEscapeCode string = "\033[93m"
+	terminalResetEscapeCode        string = "\033[0m"
+)
+
+var (
+	// Controlled by config 'source-list-line-bright' pref
+	terminalHighlightColor = terminalBlueEscapeCode
 )
 
 // Term represents the terminal running dlv.
@@ -158,6 +164,10 @@ func (t *Term) Run() (int, error) {
 		return
 	})
 
+	if t.conf.SrcListLineColor {
+		terminalHighlightColor = terminalBrightYellowEscapeCode
+	}
+
 	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
 	if err != nil {
 		fmt.Printf("Unable to load history file: %v.", err)
@@ -217,7 +227,7 @@ func (t *Term) Run() (int, error) {
 // Println prints a line to the terminal.
 func (t *Term) Println(prefix, str string) {
 	if !t.dumb {
-		prefix = fmt.Sprintf("%s%s%s", terminalBlueEscapeCode, prefix, terminalResetEscapeCode)
+		prefix = fmt.Sprintf("%s%s%s", terminalHighlightColor, prefix, terminalResetEscapeCode)
 	}
 	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
 }

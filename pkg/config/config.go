@@ -43,6 +43,10 @@ type Config struct {
 	// If ShowLocationExpr is true whatis will print the DWARF location
 	// expression for its argument.
 	ShowLocationExpr bool `yaml:"show-location-expr"`
+	
+	// Source list line-number preference: dark (default, blue) or
+	// light (bright yellow)
+	SrcListLineColor bool `yaml:"source-list-line-bright"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -128,6 +132,10 @@ func writeDefaultConfig(f *os.File) error {
 
 # This is the default configuration file. Available options are provided, but disabled.
 # Delete the leading hash mark to enable an item.
+
+# Uncomment the following line to make line numbers in (list) command show bright yellow
+# rather than dark blue.. much better for old eyes in a black terminal.
+# source-list-line-bright: true
 
 # Provided aliases will be added to the default aliases for a given command.
 aliases:
