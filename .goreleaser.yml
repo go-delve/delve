@@ -1,0 +1,51 @@
+---
+project_name: delve
+
+release:
+  github:
+    owner: derekparker
+    name: delve
+
+builds:
+- binary: delve
+  goos:
+  - darwin
+  - windows
+  - linux
+  goarch:
+  - amd64
+  - 386
+  env:
+  - CGO_ENABLED=1
+  main: ./cmd/dlv/
+
+archive:
+  format: tar.gz
+  wrap_in_directory: true
+  format_overrides:
+  - goos: windows
+    format: zip
+  name_template: '{{ .Binary }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+  files:
+  - LICENSE
+  - README.md
+
+snapshot:
+  name_template: SNAPSHOT-{{ .Commit }}
+
+checksum:
+  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+    - '^dev:'
+    - 'README'
+    - Merge pull request
+    - Merge branch
+
+git:
+  short_hash: true
