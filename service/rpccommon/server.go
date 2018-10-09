@@ -92,7 +92,6 @@ func NewServer(config *service.Config) *ServerImpl {
 func (s *ServerImpl) Stop() error {
 	if s.config.AcceptMulti {
 		close(s.stopChan)
-		s.listener.Close()
 	}
 	kill := s.config.AttachPid == 0
 	return s.debugger.Detach(kill)
@@ -146,7 +145,6 @@ func (s *ServerImpl) Run() error {
 	suitableMethods(rpcServer, s.methodMaps[1], s.log)
 
 	go func() {
-		defer s.listener.Close()
 		for {
 			c, err := s.listener.Accept()
 			if err != nil {
