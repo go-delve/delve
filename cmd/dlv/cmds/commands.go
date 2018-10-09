@@ -510,10 +510,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	}
 	defer listener.Close()
 
-	var server interface {
-		Run() error
-		Stop() error
-	}
+	var server service.Server
 
 	disconnectChan := make(chan struct{})
 

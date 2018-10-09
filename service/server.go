@@ -4,5 +4,5 @@ package service
 // to connect to.
 type Server interface {
 	Run() error
-	Stop(bool) error
+	Stop() error
 }
