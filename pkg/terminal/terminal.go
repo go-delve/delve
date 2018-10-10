@@ -19,9 +19,28 @@ import (
 )
 
 const (
-	historyFile             string = ".dbg_history"
-	terminalBlueEscapeCode  string = "\033[34m"
-	terminalResetEscapeCode string = "\033[0m"
+	historyFile                 string = ".dbg_history"
+	terminalHighlightEscapeCode string = "\033[%2dm"
+	terminalResetEscapeCode     string = "\033[0m"
+)
+
+const (
+	ansiBlack     = 30
+	ansiRed       = 31
+	ansiGreen     = 32
+	ansiYellow    = 33
+	ansiBlue      = 34
+	ansiMagenta   = 35
+	ansiCyan      = 36
+	ansiWhite     = 37
+	ansiBrBlack   = 90
+	ansiBrRed     = 91
+	ansiBrGreen   = 92
+	ansiBrYellow  = 93
+	ansiBrBlue    = 94
+	ansiBrMagenta = 95
+	ansiBrCyan    = 96
+	ansiBrWhite   = 97
 )
 
 // Term represents the terminal running dlv.
@@ -79,6 +98,13 @@ func New(client service.Client, conf *config.Config) *Term {
 
 	if client != nil {
 		client.SetReturnValuesLoadConfig(&LongLoadConfig)
+	}
+
+	if (conf.SourceListLineColor > ansiWhite &&
+		conf.SourceListLineColor < ansiBrBlack) ||
+		conf.SourceListLineColor < ansiBlack ||
+		conf.SourceListLineColor > ansiBrWhite {
+		conf.SourceListLineColor = ansiBlue
 	}
 
 	return &Term{
@@ -217,7 +243,8 @@ func (t *Term) Run() (int, error) {
 // Println prints a line to the terminal.
 func (t *Term) Println(prefix, str string) {
 	if !t.dumb {
-		prefix = fmt.Sprintf("%s%s%s", terminalBlueEscapeCode, prefix, terminalResetEscapeCode)
+		terminalColorEscapeCode := fmt.Sprintf(terminalHighlightEscapeCode, t.conf.SourceListLineColor)
+		prefix = fmt.Sprintf("%s%s%s", terminalColorEscapeCode, prefix, terminalResetEscapeCode)
 	}
 	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
 }
