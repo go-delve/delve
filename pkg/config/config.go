@@ -43,6 +43,10 @@ type Config struct {
 	// If ShowLocationExpr is true whatis will print the DWARF location
 	// expression for its argument.
 	ShowLocationExpr bool `yaml:"show-location-expr"`
+	
+	// Source list line-number color (3/4 bit color codes as defined
+	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors)
+	SourceListLineColor int `yaml:"source-list-line-color"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -128,6 +132,11 @@ func writeDefaultConfig(f *os.File) error {
 
 # This is the default configuration file. Available options are provided, but disabled.
 # Delete the leading hash mark to enable an item.
+
+# Uncomment the following line and set your preferred ANSI foreground color
+# for source line numbers in the (list) command (if unset, default is 34,
+# dark blue) See https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
+# source-list-line-color: 34
 
 # Provided aliases will be added to the default aliases for a given command.
 aliases:
