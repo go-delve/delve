@@ -784,6 +784,9 @@ func TestEvalExpression(t *testing.T) {
 		{"string(runeslice)", false, `"tèst"`, `""`, "string", nil},
 		{"[]byte(string(runeslice))", false, `[]uint8 len: 5, cap: 5, [116,195,168,115,116]`, `[]uint8 len: 0, cap: 0, nil`, "[]uint8", nil},
 		{"*(*[5]byte)(uintptr(&byteslice[0]))", false, `[5]uint8 [116,195,168,115,116]`, `[5]uint8 [...]`, "[5]uint8", nil},
+		{"string(bytearray)", false, `"tèst"`, `""`, "string", nil},
+		{"string(runearray)", false, `"tèst"`, `""`, "string", nil},
+		{"string(str1)", false, `"01234567890"`, `"01234567890"`, "string", nil},
 
 		// access to channel field members
 		{"ch1.qcount", false, "4", "4", "uint", nil},

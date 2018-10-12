@@ -114,15 +114,25 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 
 	case "string":
 		switch argv.Kind {
+		case reflect.String:
+			s := constant.StringVal(argv.Value)
+			v.Value = constant.MakeString(s)
+			v.Len = int64(len(s))
+			return v, nil
 		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uintptr:
 			b, _ := constant.Int64Val(argv.Value)
 			s := string(b)
 			v.Value = constant.MakeString(s)
 			v.Len = int64(len(s))
 			return v, nil
-
-		case reflect.Slice:
-			switch elemType := argv.RealType.(*godwarf.SliceType).ElemType.(type) {
+		case reflect.Slice, reflect.Array:
+			var elem godwarf.Type
+			if argv.Kind == reflect.Slice {
+				elem = argv.RealType.(*godwarf.SliceType).ElemType
+			} else {
+				elem = argv.RealType.(*godwarf.ArrayType).Type
+			}
+			switch elemType := elem.(type) {
 			case *godwarf.UintType:
 				if elemType.Name != "uint8" && elemType.Name != "byte" {
 					return nil, nil
