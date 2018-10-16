@@ -11,6 +11,8 @@ The core command will open the specified core file and the associated
 executable and let you examine the state of the process when the
 core dump was taken.
 
+Currently supports linux/amd64 core files and windows/amd64 minidumps.
+
 ```
 dlv core <executable> <core>
 ```
@@ -38,6 +40,7 @@ dlv core <executable> <core>
 	debuglineerr	Log recoverable errors reading .debug_line
 	rpc		Log all RPC messages
 	fncall		Log function call protocol
+	minidump	Log minidump loading
 Defaults to "debugger" when logging is enabled with --log.
       --wd string            Working directory for running the program. (default ".")
 ```

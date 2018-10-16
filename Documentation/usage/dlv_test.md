@@ -45,6 +45,7 @@ dlv test [package]
 	debuglineerr	Log recoverable errors reading .debug_line
 	rpc		Log all RPC messages
 	fncall		Log function call protocol
+	minidump	Log minidump loading
 Defaults to "debugger" when logging is enabled with --log.
       --wd string            Working directory for running the program. (default ".")
 ```

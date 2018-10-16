@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/linutil"
@@ -28,6 +29,8 @@ const NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAV
 // NT_AUXV is the note type for notes containing a copy of the Auxv array
 const NT_AUXV elf.NType = 0x6
 
+const elfErrorBadMagicNumber = "bad magic number"
+
 // readLinuxAMD64Core reads a core file from corePath corresponding to the executable at
 // exePath. For details on the Linux ELF core format, see:
 // http://www.gabriel.urdhr.fr/2015/05/29/core-file/,
@@ -37,6 +40,10 @@ const NT_AUXV elf.NType = 0x6
 func readLinuxAMD64Core(corePath, exePath string) (*Process, error) {
 	coreFile, err := elf.Open(corePath)
 	if err != nil {
+		if _, isfmterr := err.(*elf.FormatError); isfmterr && (strings.Contains(err.Error(), elfErrorBadMagicNumber) || strings.Contains(err.Error(), " at offset 0x0: too short")) {
+			// Go >=1.11 and <1.11 produce different errors when reading a non-elf file.
+			return nil, ErrUnrecognizedFormat
+		}
 		return nil, err
 	}
 	exe, err := os.Open(exePath)
