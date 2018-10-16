@@ -4084,3 +4084,20 @@ func TestReadDeferArgs(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1374(t *testing.T) {
+	// Continue did not work when stopped at a breakpoint immediately after calling CallFunction.
+	protest.MustSupportFunctionCalls(t, testBackend)
+	withTestProcess("issue1374", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 7)
+		assertNoError(proc.Continue(p), t, "First Continue")
+		assertLineNumber(p, t, 7, "Did not continue to correct location (first continue),")
+		assertNoError(proc.CallFunction(p, "getNum()", &normalLoadConfig, true), t, "Call")
+		err := proc.Continue(p)
+		if _, isexited := err.(proc.ErrProcessExited); !isexited {
+			regs, _ := p.CurrentThread().Registers(false)
+			f, l, _ := p.BinInfo().PCToLine(regs.PC())
+			t.Fatalf("expected process exited error got %v at %s:%d", err, f, l)
+		}
+	})
+}
