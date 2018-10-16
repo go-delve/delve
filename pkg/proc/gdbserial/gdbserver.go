@@ -697,6 +697,14 @@ continueLoop:
 		// process so we must stop here.
 		case 0x91, 0x92, 0x93, 0x94, 0x95, 0x96: /* TARGET_EXC_BAD_ACCESS */
 			break continueLoop
+
+		// Signal 0 is returned by rr when it reaches the start of the process
+		// in backward continue mode.
+		case 0:
+			if p.conn.direction == proc.Backward {
+				break continueLoop
+			}
+
 		default:
 			// any other signal is always propagated to inferior
 		}

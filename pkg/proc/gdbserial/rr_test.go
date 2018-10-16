@@ -1,6 +1,7 @@
 package gdbserial_test
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,12 +9,17 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/gdbserial"
 	protest "github.com/derekparker/delve/pkg/proc/test"
 )
 
 func TestMain(m *testing.M) {
+	var logConf string
+	flag.StringVar(&logConf, "log", "", "configures logging")
+	flag.Parse()
+	logflags.Setup(logConf != "", logConf)
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
@@ -249,5 +255,18 @@ func TestCheckpoints(t *testing.T) {
 		if len(checkpoints) != 0 {
 			t.Fatalf("wrong number of checkpoints %v (zero expected)", checkpoints)
 		}
+	})
+}
+
+func TestIssue1376(t *testing.T) {
+	// Backward Continue should terminate when it encounters the start of the process.
+	protest.AllowRecording(t)
+	withTestRecording("continuetestprog", t, func(p *gdbserial.Process, fixture protest.Fixture) {
+		bp := setFunctionBreakpoint(p, t, "main.main")
+		assertNoError(proc.Continue(p), t, "Continue (forward)")
+		_, err := p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint")
+		assertNoError(p.Direction(proc.Backward), t, "Switching to backward direction")
+		assertNoError(proc.Continue(p), t, "Continue (backward)")
 	})
 }
