@@ -93,7 +93,9 @@ Current limitations:
 ## check
 Creates a checkpoint at the current position.
 
-	checkpoint [where]
+	checkpoint [note]
+
+The "note" is arbitrary text that can be used to identify the checkpoint, if it is not specified it defaults to the current filename:line position.
 
 Aliases: checkpoint
 
