@@ -405,13 +405,13 @@ func (scope *EvalScope) PtrSize() int {
 	return scope.BinInfo.Arch.PtrSize()
 }
 
-// NoGError returned when a G could not be found
+// ErrNoGoroutine returned when a G could not be found
 // for a specific thread.
-type NoGError struct {
+type ErrNoGoroutine struct {
 	tid int
 }
 
-func (ng NoGError) Error() string {
+func (ng ErrNoGoroutine) Error() string {
 	return fmt.Sprintf("no G executing on thread %d", ng.tid)
 }
 
@@ -433,7 +433,7 @@ func (v *Variable) parseG() (*G, error) {
 		if thread, ok := mem.(Thread); ok {
 			id = thread.ThreadID()
 		}
-		return nil, NoGError{tid: id}
+		return nil, ErrNoGoroutine{tid: id}
 	}
 	for {
 		if _, isptr := v.RealType.(*godwarf.PtrType); !isptr {

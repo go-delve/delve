@@ -65,6 +65,14 @@ func (inst *AsmInstruction) IsCall() bool {
 	return inst.Inst.Op == x86asm.CALL || inst.Inst.Op == x86asm.LCALL
 }
 
+// IsRet returns true if the instruction is a RET or LRET instruction.
+func (inst *AsmInstruction) IsRet() bool {
+	if inst.Inst == nil {
+		return false
+	}
+	return inst.Inst.Op == x86asm.RET || inst.Inst.Op == x86asm.LRET
+}
+
 func resolveCallArg(inst *archInst, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	if inst.Op != x86asm.CALL && inst.Op != x86asm.LCALL {
 		return nil

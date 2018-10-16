@@ -195,6 +195,14 @@ func (d *Debugger) LastModified() time.Time {
 	return d.target.BinInfo().LastModified()
 }
 
+// FunctionReturnLocations returns all return locations
+// for the given function. See the documentation for the
+// function of the same name within the `proc` package for
+// more information.
+func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
+	return proc.FunctionReturnLocations(d.target, fnName)
+}
+
 // Detach detaches from the target process.
 // If `kill` is true we will kill the process after
 // detaching.
@@ -348,6 +356,8 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	}
 
 	switch {
+	case requestedBp.TraceReturn:
+		addr = requestedBp.Addr
 	case len(requestedBp.File) > 0:
 		fileName := requestedBp.File
 		if runtime.GOOS == "windows" {
@@ -414,6 +424,7 @@ func (d *Debugger) CancelNext() error {
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
 	bp.Name = requested.Name
 	bp.Tracepoint = requested.Tracepoint
+	bp.TraceReturn = requested.TraceReturn
 	bp.Goroutine = requested.Goroutine
 	bp.Stacktrace = requested.Stacktrace
 	bp.Variables = requested.Variables
@@ -616,6 +627,15 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	}
 	if withBreakpointInfo {
 		err = d.collectBreakpointInformation(state)
+	}
+	for _, th := range state.Threads {
+		if th.Breakpoint != nil && th.Breakpoint.TraceReturn {
+			for _, v := range th.BreakpointInfo.Arguments {
+				if (v.Flags & api.VariableReturnArgument) != 0 {
+					th.ReturnValues = append(th.ReturnValues, v)
+				}
+			}
+		}
 	}
 	return state, err
 }
