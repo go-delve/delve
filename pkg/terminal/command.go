@@ -356,7 +356,9 @@ If locspec is omitted edit will open the current source file in the editor, othe
 			cmdFn:   checkpoint,
 			helpMsg: `Creates a checkpoint at the current position.
 
-	checkpoint [where]`,
+	checkpoint [note]
+
+The "note" is arbitrary text that can be used to identify the checkpoint, if it is not specified it defaults to the current filename:line position.`,
 		})
 		c.cmds = append(c.cmds, command{
 			aliases: []string{"checkpoints"},
@@ -1954,7 +1956,7 @@ func checkpoints(t *Term, ctx callContext, args string) error {
 	}
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 4, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tWhen\tWhere")
+	fmt.Fprintln(w, "ID\tWhen\tNote")
 	for _, cp := range cps {
 		fmt.Fprintf(w, "c%d\t%s\t%s\n", cp.ID, cp.When, cp.Where)
 	}
