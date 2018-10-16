@@ -98,6 +98,7 @@ func New(docCall bool) *cobra.Command {
 	debuglineerr	Log recoverable errors reading .debug_line
 	rpc		Log all RPC messages
 	fncall		Log function call protocol
+	minidump	Log minidump loading
 Defaults to "debugger" when logging is enabled with --log.`)
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
@@ -236,7 +237,9 @@ to know what functions your process is executing.`,
 
 The core command will open the specified core file and the associated
 executable and let you examine the state of the process when the
-core dump was taken.`,
+core dump was taken.
+
+Currently supports linux/amd64 core files and windows/amd64 minidumps.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return errors.New("you must provide a core file and an executable")

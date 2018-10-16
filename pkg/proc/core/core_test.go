@@ -367,3 +367,88 @@ mainSearch:
 	assertNoError(v2.Unreadable, t, "unreadable variable 's'")
 	t.Logf("s = %#v\n", v2)
 }
+
+func TestMinidump(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("minidumps can only be produced on windows")
+	}
+	var buildFlags test.BuildFlags
+	if buildMode == "pie" {
+		buildFlags = test.BuildModePIE
+	}
+	fix := test.BuildFixture("sleep", buildFlags)
+	mdmpPath := procdump(t, fix.Path)
+
+	p, err := OpenCore(mdmpPath, fix.Path, []string{})
+	if err != nil {
+		t.Fatalf("OpenCore: %v", err)
+	}
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	if err != nil || len(gs) == 0 {
+		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
+	}
+	t.Logf("%d goroutines", len(gs))
+	foundMain, foundTime := false, false
+	for _, g := range gs {
+		stack, err := g.Stacktrace(10, false)
+		if err != nil {
+			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
+		}
+		t.Logf("goroutine %d", g.ID)
+		for _, frame := range stack {
+			name := "?"
+			if frame.Current.Fn != nil {
+				name = frame.Current.Fn.Name
+			}
+			t.Logf("\t%s:%d in %s %#x", frame.Current.File, frame.Current.Line, name, frame.Current.PC)
+			if frame.Current.Fn == nil {
+				continue
+			}
+			switch frame.Current.Fn.Name {
+			case "main.main":
+				foundMain = true
+			case "time.Sleep":
+				foundTime = true
+			}
+		}
+		if foundMain != foundTime {
+			t.Errorf("found main.main but no time.Sleep (or viceversa) %v %v", foundMain, foundTime)
+		}
+	}
+	if !foundMain {
+		t.Fatalf("could not find main goroutine")
+	}
+}
+
+func procdump(t *testing.T, exePath string) string {
+	exeDir := filepath.Dir(exePath)
+	cmd := exec.Command("procdump64", "-accepteula", "-ma", "-n", "1", "-s", "3", "-x", exeDir, exePath, "quit")
+	out, err := cmd.CombinedOutput() // procdump exits with non-zero status on success, so we have to ignore the error here
+	if !strings.Contains(string(out), "Dump count reached.") {
+		t.Fatalf("possible error running procdump64, output: %q, error: %v", string(out), err)
+	}
+
+	dh, err := os.Open(exeDir)
+	if err != nil {
+		t.Fatalf("could not open executable file directory %q: %v", exeDir, err)
+	}
+	defer dh.Close()
+	fis, err := dh.Readdir(-1)
+	if err != nil {
+		t.Fatalf("could not read executable file directory %q: %v", exeDir, err)
+	}
+	t.Logf("looking for dump file")
+	exeName := filepath.Base(exePath)
+	for _, fi := range fis {
+		name := fi.Name()
+		t.Logf("\t%s", name)
+		if strings.HasPrefix(name, exeName) && strings.HasSuffix(name, ".dmp") {
+			mdmpPath := filepath.Join(exeDir, name)
+			test.PathsToRemove = append(test.PathsToRemove, mdmpPath)
+			return mdmpPath
+		}
+	}
+
+	t.Fatalf("could not find dump file")
+	return ""
+}
