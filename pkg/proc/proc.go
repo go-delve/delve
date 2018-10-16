@@ -281,7 +281,7 @@ func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) 
 			if g := dbp.SelectedGoroutine(); g != nil {
 				g.CurrentLoc = *loc
 			}
-			return nil
+			return curthread.SetCurrentBreakpoint()
 		}
 	}
 }
