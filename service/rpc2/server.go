@@ -655,3 +655,33 @@ func (s *RPCServer) IsMulticlient(arg IsMulticlientIn, out *IsMulticlientOut) er
 	}
 	return nil
 }
+
+// FunctionReturnLocationsIn holds arguments for the
+// FunctionReturnLocationsRPC call. It holds the name of
+// the function for which all return locations should be
+// given.
+type FunctionReturnLocationsIn struct {
+	// FnName is the name of the function for which all
+	// return locations should be given.
+	FnName string
+}
+
+// FunctionReturnLocationsOut holds the result of the FunctionReturnLocations
+// RPC call. It provides the list of addresses that the given function returns,
+// for example with a `RET` instruction or `CALL runtime.deferreturn`.
+type FunctionReturnLocationsOut struct {
+	// Addrs is the list of all locations where the given function returns.
+	Addrs []uint64
+}
+
+// FunctionReturnLocations is the implements the client call of the same name. Look at client documentation for more information.
+func (s *RPCServer) FunctionReturnLocations(in FunctionReturnLocationsIn, out *FunctionReturnLocationsOut) error {
+	addrs, err := s.debugger.FunctionReturnLocations(in.FnName)
+	if err != nil {
+		return err
+	}
+	*out = FunctionReturnLocationsOut{
+		Addrs: addrs,
+	}
+	return nil
+}

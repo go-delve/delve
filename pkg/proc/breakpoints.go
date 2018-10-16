@@ -30,7 +30,8 @@ type Breakpoint struct {
 	Kind BreakpointKind
 
 	// Breakpoint information
-	Tracepoint    bool     // Tracepoint flag
+	Tracepoint    bool // Tracepoint flag
+	TraceReturn   bool
 	Goroutine     bool     // Retrieve goroutine information
 	Stacktrace    int      // Number of stack frames to retrieve
 	Variables     []string // Variables to evaluate
@@ -45,7 +46,7 @@ type Breakpoint struct {
 	// Next uses NextDeferBreakpoints for the breakpoint it sets on the
 	// deferred function, DeferReturns is populated with the
 	// addresses of calls to runtime.deferreturn in the current
-	// function. This insures that the breakpoint on the deferred
+	// function. This ensures that the breakpoint on the deferred
 	// function only triggers on panic or on the defer call to
 	// the function, not when the function is called directly
 	DeferReturns []uint64

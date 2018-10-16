@@ -1702,7 +1702,14 @@ func printcontextThread(t *Term, th *api.Thread) {
 	if th.BreakpointInfo != nil && th.Breakpoint.LoadArgs != nil && *th.Breakpoint.LoadArgs == ShortLoadConfig {
 		var arg []string
 		for _, ar := range th.BreakpointInfo.Arguments {
-			arg = append(arg, ar.SinglelineString())
+			// For AI compatibility return values are included in the
+			// argument list. This is a relic of the dark ages when the
+			// Go debug information did not distinguish between the two.
+			// Filter them out here instead, so during trace operations
+			// they are not printed as an argument.
+			if (ar.Flags & api.VariableArgument) != 0 {
+				arg = append(arg, ar.SinglelineString())
+			}
 		}
 		args = strings.Join(arg, ", ")
 	}

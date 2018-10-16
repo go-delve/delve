@@ -23,6 +23,7 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		Line:          bp.Line,
 		Addr:          bp.Addr,
 		Tracepoint:    bp.Tracepoint,
+		TraceReturn:   bp.TraceReturn,
 		Stacktrace:    bp.Stacktrace,
 		Goroutine:     bp.Goroutine,
 		Variables:     bp.Variables,

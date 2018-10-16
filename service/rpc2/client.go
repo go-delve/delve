@@ -117,7 +117,7 @@ func (c *RPCClient) continueDir(cmd string) <-chan *api.DebuggerState {
 			for i := range state.Threads {
 				if state.Threads[i].Breakpoint != nil {
 					isbreakpoint = true
-					istracepoint = istracepoint && state.Threads[i].Breakpoint.Tracepoint
+					istracepoint = istracepoint && (state.Threads[i].Breakpoint.Tracepoint || state.Threads[i].Breakpoint.TraceReturn)
 				}
 			}
 
@@ -373,6 +373,12 @@ func (c *RPCClient) ClearCheckpoint(id int) error {
 
 func (c *RPCClient) SetReturnValuesLoadConfig(cfg *api.LoadConfig) {
 	c.retValLoadCfg = cfg
+}
+
+func (c *RPCClient) FunctionReturnLocations(fnName string) ([]uint64, error) {
+	var out FunctionReturnLocationsOut
+	err := c.call("FunctionReturnLocations", FunctionReturnLocationsIn{fnName}, &out)
+	return out.Addrs, err
 }
 
 func (c *RPCClient) IsMulticlient() bool {

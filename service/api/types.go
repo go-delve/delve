@@ -59,8 +59,11 @@ type Breakpoint struct {
 	// Breakpoint condition
 	Cond string
 
-	// tracepoint flag
+	// Tracepoint flag, signifying this is a tracepoint.
 	Tracepoint bool `json:"continue"`
+	// TraceReturn flag signifying this is a breakpoint set at a return
+	// statement in a traced function.
+	TraceReturn bool `json:"traceReturn"`
 	// retrieve goroutine information
 	Goroutine bool `json:"goroutine"`
 	// number of stack frames to retrieve
@@ -197,11 +200,11 @@ const (
 	// that may outlive the stack frame are allocated on the heap instead and
 	// only the address is recorded on the stack. These variables will be
 	// marked with this flag.
-	VariableEscaped = VariableFlags(proc.VariableEscaped)
+	VariableEscaped = (1 << iota)
 
 	// VariableShadowed is set for local variables that are shadowed by a
 	// variable with the same name in another scope
-	VariableShadowed = VariableFlags(proc.VariableShadowed)
+	VariableShadowed
 
 	// VariableConstant means this variable is a constant value
 	VariableConstant

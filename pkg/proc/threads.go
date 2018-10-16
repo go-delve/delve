@@ -225,15 +225,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 	}
 
 	if !csource {
-		deferreturns := []uint64{}
-
-		// Find all runtime.deferreturn locations in the function
-		// See documentation of Breakpoint.DeferCond for why this is necessary
-		for _, instr := range text {
-			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && instr.DestLoc.Fn.Name == "runtime.deferreturn" {
-				deferreturns = append(deferreturns, instr.Loc.PC)
-			}
-		}
+		deferreturns := findDeferReturnCalls(text)
 
 		// Set breakpoint on the most recently deferred function (if any)
 		var deferpc uint64
@@ -331,6 +323,20 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 	}
 	success = true
 	return nil
+}
+
+func findDeferReturnCalls(text []AsmInstruction) []uint64 {
+	const deferreturn = "runtime.deferreturn"
+	deferreturns := []uint64{}
+
+	// Find all runtime.deferreturn locations in the function
+	// See documentation of Breakpoint.DeferCond for why this is necessary
+	for _, instr := range text {
+		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && instr.DestLoc.Fn.Name == deferreturn {
+			deferreturns = append(deferreturns, instr.Loc.PC)
+		}
+	}
+	return deferreturns
 }
 
 // Removes instructions belonging to inlined calls of topframe from pcs.
