@@ -16,7 +16,7 @@ import (
 	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/op"
 	"github.com/derekparker/delve/pkg/proc"
-	"github.com/derekparker/delve/pkg/proc/core"
+	"github.com/derekparker/delve/pkg/proc/linutil"
 )
 
 const defaultCFA = 0xc420051d00
@@ -88,7 +88,7 @@ func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegist
 	return scope
 }
 
-func dwarfRegisters(regs *core.Registers) op.DwarfRegisters {
+func dwarfRegisters(regs *linutil.AMD64Registers) op.DwarfRegisters {
 	a := proc.AMD64Arch("linux")
 	dwarfRegs := a.RegistersToDwarfRegisters(regs, 0)
 	dwarfRegs.CFA = defaultCFA
@@ -119,9 +119,9 @@ func TestDwarfExprRegisters(t *testing.T) {
 	mainfn := bi.LookupFunc["main.main"]
 
 	mem := newFakeMemory(defaultCFA, uint64(0), uint64(testCases["b"]), uint16(testCases["pair.v"]))
-	regs := core.Registers{LinuxCoreRegisters: &core.LinuxCoreRegisters{}}
-	regs.Rax = uint64(testCases["a"])
-	regs.Rdx = uint64(testCases["c"])
+	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{}}
+	regs.Regs.Rax = uint64(testCases["a"])
+	regs.Regs.Rdx = uint64(testCases["c"])
 
 	dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases, mainfn)
 }
@@ -174,12 +174,12 @@ func TestDwarfExprComposite(t *testing.T) {
 	mainfn := bi.LookupFunc["main.main"]
 
 	mem := newFakeMemory(defaultCFA, uint64(0), uint64(0), uint16(testCases["pair.v"]), []byte(stringVal))
-	var regs core.Registers
-	regs.LinuxCoreRegisters = &core.LinuxCoreRegisters{}
-	regs.Rax = uint64(len(stringVal))
-	regs.Rdx = defaultCFA + 18
-	regs.Rcx = uint64(testCases["pair.k"])
-	regs.Rbx = uint64(testCases["n"])
+	var regs linutil.AMD64Registers
+	regs.Regs = &linutil.AMD64PtraceRegs{}
+	regs.Regs.Rax = uint64(len(stringVal))
+	regs.Regs.Rdx = defaultCFA + 18
+	regs.Regs.Rcx = uint64(testCases["pair.k"])
+	regs.Regs.Rbx = uint64(testCases["n"])
 
 	scope := dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases, mainfn)
 
@@ -214,7 +214,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 	mainfn := bi.LookupFunc["main.main"]
 
 	mem := newFakeMemory(defaultCFA, uint16(before), uint16(after))
-	regs := core.Registers{LinuxCoreRegisters: &core.LinuxCoreRegisters{}}
+	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{}}
 
 	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: dwarfRegisters(&regs), Mem: mem, Gvar: nil, BinInfo: bi}
 

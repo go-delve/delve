@@ -8,43 +8,9 @@ import (
 	"io"
 	"os"
 
-	"golang.org/x/arch/x86/x86asm"
-
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/linutil"
 )
-
-// Copied from golang.org/x/sys/unix.PtraceRegs since it's not available on
-// all systems.
-type LinuxCoreRegisters struct {
-	R15      uint64
-	R14      uint64
-	R13      uint64
-	R12      uint64
-	Rbp      uint64
-	Rbx      uint64
-	R11      uint64
-	R10      uint64
-	R9       uint64
-	R8       uint64
-	Rax      uint64
-	Rcx      uint64
-	Rdx      uint64
-	Rsi      uint64
-	Rdi      uint64
-	Orig_rax uint64
-	Rip      uint64
-	Cs       uint64
-	Eflags   uint64
-	Rsp      uint64
-	Ss       uint64
-	Fs_base  uint64
-	Gs_base  uint64
-	Ds       uint64
-	Es       uint64
-	Fs       uint64
-	Gs       uint64
-}
 
 // Copied from golang.org/x/sys/unix.Timeval since it's not available on all
 // systems.
@@ -61,198 +27,6 @@ const NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAV
 
 // NT_AUXV is the note type for notes containing a copy of the Auxv array
 const NT_AUXV elf.NType = 0x6
-
-// PC returns the value of RIP.
-func (r *LinuxCoreRegisters) PC() uint64 {
-	return r.Rip
-}
-
-// SP returns the value of RSP.
-func (r *LinuxCoreRegisters) SP() uint64 {
-	return r.Rsp
-}
-
-// BP returns the value of RBP.
-func (r *LinuxCoreRegisters) BP() uint64 {
-	return r.Rbp
-}
-
-// CX returns the value of RCX.
-func (r *LinuxCoreRegisters) CX() uint64 {
-	return r.Rcx
-}
-
-// TLS returns the location of the thread local storate,
-// which will be the value of Fs_base.
-func (r *LinuxCoreRegisters) TLS() uint64 {
-	return r.Fs_base
-}
-
-// GAddr returns the address of the G struct. Always returns 0
-// and false for core files.
-func (r *LinuxCoreRegisters) GAddr() (uint64, bool) {
-	return 0, false
-}
-
-// Get returns the value of the register requested via the
-// register number, returning an error if that register
-// could not be found.
-func (r *LinuxCoreRegisters) Get(n int) (uint64, error) {
-	reg := x86asm.Reg(n)
-	const (
-		mask8  = 0x000f
-		mask16 = 0x00ff
-		mask32 = 0xffff
-	)
-
-	switch reg {
-	// 8-bit
-	case x86asm.AL:
-		return r.Rax & mask8, nil
-	case x86asm.CL:
-		return r.Rcx & mask8, nil
-	case x86asm.DL:
-		return r.Rdx & mask8, nil
-	case x86asm.BL:
-		return r.Rbx & mask8, nil
-	case x86asm.AH:
-		return (r.Rax >> 8) & mask8, nil
-	case x86asm.CH:
-		return (r.Rcx >> 8) & mask8, nil
-	case x86asm.DH:
-		return (r.Rdx >> 8) & mask8, nil
-	case x86asm.BH:
-		return (r.Rbx >> 8) & mask8, nil
-	case x86asm.SPB:
-		return r.Rsp & mask8, nil
-	case x86asm.BPB:
-		return r.Rbp & mask8, nil
-	case x86asm.SIB:
-		return r.Rsi & mask8, nil
-	case x86asm.DIB:
-		return r.Rdi & mask8, nil
-	case x86asm.R8B:
-		return r.R8 & mask8, nil
-	case x86asm.R9B:
-		return r.R9 & mask8, nil
-	case x86asm.R10B:
-		return r.R10 & mask8, nil
-	case x86asm.R11B:
-		return r.R11 & mask8, nil
-	case x86asm.R12B:
-		return r.R12 & mask8, nil
-	case x86asm.R13B:
-		return r.R13 & mask8, nil
-	case x86asm.R14B:
-		return r.R14 & mask8, nil
-	case x86asm.R15B:
-		return r.R15 & mask8, nil
-
-	// 16-bit
-	case x86asm.AX:
-		return r.Rax & mask16, nil
-	case x86asm.CX:
-		return r.Rcx & mask16, nil
-	case x86asm.DX:
-		return r.Rdx & mask16, nil
-	case x86asm.BX:
-		return r.Rbx & mask16, nil
-	case x86asm.SP:
-		return r.Rsp & mask16, nil
-	case x86asm.BP:
-		return r.Rbp & mask16, nil
-	case x86asm.SI:
-		return r.Rsi & mask16, nil
-	case x86asm.DI:
-		return r.Rdi & mask16, nil
-	case x86asm.R8W:
-		return r.R8 & mask16, nil
-	case x86asm.R9W:
-		return r.R9 & mask16, nil
-	case x86asm.R10W:
-		return r.R10 & mask16, nil
-	case x86asm.R11W:
-		return r.R11 & mask16, nil
-	case x86asm.R12W:
-		return r.R12 & mask16, nil
-	case x86asm.R13W:
-		return r.R13 & mask16, nil
-	case x86asm.R14W:
-		return r.R14 & mask16, nil
-	case x86asm.R15W:
-		return r.R15 & mask16, nil
-
-	// 32-bit
-	case x86asm.EAX:
-		return r.Rax & mask32, nil
-	case x86asm.ECX:
-		return r.Rcx & mask32, nil
-	case x86asm.EDX:
-		return r.Rdx & mask32, nil
-	case x86asm.EBX:
-		return r.Rbx & mask32, nil
-	case x86asm.ESP:
-		return r.Rsp & mask32, nil
-	case x86asm.EBP:
-		return r.Rbp & mask32, nil
-	case x86asm.ESI:
-		return r.Rsi & mask32, nil
-	case x86asm.EDI:
-		return r.Rdi & mask32, nil
-	case x86asm.R8L:
-		return r.R8 & mask32, nil
-	case x86asm.R9L:
-		return r.R9 & mask32, nil
-	case x86asm.R10L:
-		return r.R10 & mask32, nil
-	case x86asm.R11L:
-		return r.R11 & mask32, nil
-	case x86asm.R12L:
-		return r.R12 & mask32, nil
-	case x86asm.R13L:
-		return r.R13 & mask32, nil
-	case x86asm.R14L:
-		return r.R14 & mask32, nil
-	case x86asm.R15L:
-		return r.R15 & mask32, nil
-
-	// 64-bit
-	case x86asm.RAX:
-		return r.Rax, nil
-	case x86asm.RCX:
-		return r.Rcx, nil
-	case x86asm.RDX:
-		return r.Rdx, nil
-	case x86asm.RBX:
-		return r.Rbx, nil
-	case x86asm.RSP:
-		return r.Rsp, nil
-	case x86asm.RBP:
-		return r.Rbp, nil
-	case x86asm.RSI:
-		return r.Rsi, nil
-	case x86asm.RDI:
-		return r.Rdi, nil
-	case x86asm.R8:
-		return r.R8, nil
-	case x86asm.R9:
-		return r.R9, nil
-	case x86asm.R10:
-		return r.R10, nil
-	case x86asm.R11:
-		return r.R11, nil
-	case x86asm.R12:
-		return r.R12, nil
-	case x86asm.R13:
-		return r.R13, nil
-	case x86asm.R14:
-		return r.R14, nil
-	case x86asm.R15:
-		return r.R15, nil
-	}
-
-	return 0, proc.ErrUnknownRegister
-}
 
 // readCore reads a core file from corePath corresponding to the executable at
 // exePath. For details on the Linux ELF core format, see:
@@ -299,11 +73,11 @@ func readCore(corePath, exePath string) (*Core, error) {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
 			t := note.Desc.(*LinuxPrStatus)
-			lastThread = &Thread{t, nil, nil, proc.CommonThread{}}
+			lastThread = &Thread{linutil.AMD64Registers{Regs: &t.Reg}, t, nil, proc.CommonThread{}}
 			core.Threads[int(t.Pid)] = lastThread
 		case NT_X86_XSTATE:
 			if lastThread != nil {
-				lastThread.fpregs = note.Desc.(*proc.LinuxX86Xstate).Decode()
+				lastThread.regs.Fpregs = note.Desc.(*linutil.AMD64Xstate).Decode()
 			}
 		case elf.NT_PRPSINFO:
 			core.Pid = int(note.Desc.(*LinuxPrPsInfo).Pid)
@@ -415,8 +189,8 @@ func readNote(r io.ReadSeeker) (*Note, error) {
 		}
 		note.Desc = data
 	case NT_X86_XSTATE:
-		var fpregs proc.LinuxX86Xstate
-		if err := proc.LinuxX86XstateRead(desc, true, &fpregs); err != nil {
+		var fpregs linutil.AMD64Xstate
+		if err := linutil.AMD64XstateRead(desc, true, &fpregs); err != nil {
 			return nil, err
 		}
 		note.Desc = &fpregs
@@ -516,7 +290,7 @@ type LinuxPrStatus struct {
 	Sighold                      uint64
 	Pid, Ppid, Pgrp, Sid         int32
 	Utime, Stime, CUtime, CStime LinuxCoreTimeval
-	Reg                          LinuxCoreRegisters
+	Reg                          linutil.AMD64PtraceRegs
 	Fpvalid                      int32
 }
 

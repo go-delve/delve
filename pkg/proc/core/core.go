@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/linutil"
 )
 
 // A SplicedMemory represents a memory space formed from multiple regions,
@@ -154,8 +155,8 @@ type Process struct {
 
 // Thread represents a thread in the core file being debugged.
 type Thread struct {
+	regs   linutil.AMD64Registers
 	th     *LinuxPrStatus
-	fpregs []proc.Register
 	p      *Process
 	common proc.CommonThread
 }
@@ -273,11 +274,12 @@ func (t *Thread) ThreadID() int {
 
 // Registers returns the current value of the registers for this thread.
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
-	r := &Registers{&t.th.Reg, nil}
+	var r linutil.AMD64Registers
+	r.Regs = t.regs.Regs
 	if floatingPoint {
-		r.fpregs = t.fpregs
+		r.Fpregs = t.regs.Fpregs
 	}
-	return r, nil
+	return &r, nil
 }
 
 // RestoreRegisters will only return an error for core files,
@@ -465,62 +467,4 @@ func (p *Process) ThreadList() []proc.Thread {
 func (p *Process) FindThread(threadID int) (proc.Thread, bool) {
 	t, ok := p.core.Threads[threadID]
 	return t, ok
-}
-
-// Registers represents the CPU registers.
-type Registers struct {
-	*LinuxCoreRegisters
-	fpregs []proc.Register
-}
-
-// Slice will return a slice containing all registers and their values.
-func (r *Registers) Slice() []proc.Register {
-	var regs = []struct {
-		k string
-		v uint64
-	}{
-		{"Rip", r.Rip},
-		{"Rsp", r.Rsp},
-		{"Rax", r.Rax},
-		{"Rbx", r.Rbx},
-		{"Rcx", r.Rcx},
-		{"Rdx", r.Rdx},
-		{"Rdi", r.Rdi},
-		{"Rsi", r.Rsi},
-		{"Rbp", r.Rbp},
-		{"R8", r.R8},
-		{"R9", r.R9},
-		{"R10", r.R10},
-		{"R11", r.R11},
-		{"R12", r.R12},
-		{"R13", r.R13},
-		{"R14", r.R14},
-		{"R15", r.R15},
-		{"Orig_rax", r.Orig_rax},
-		{"Cs", r.Cs},
-		{"Eflags", r.Eflags},
-		{"Ss", r.Ss},
-		{"Fs_base", r.Fs_base},
-		{"Gs_base", r.Gs_base},
-		{"Ds", r.Ds},
-		{"Es", r.Es},
-		{"Fs", r.Fs},
-		{"Gs", r.Gs},
-	}
-	out := make([]proc.Register, 0, len(regs))
-	for _, reg := range regs {
-		if reg.k == "Eflags" {
-			out = proc.AppendEflagReg(out, reg.k, reg.v)
-		} else {
-			out = proc.AppendQwordReg(out, reg.k, reg.v)
-		}
-	}
-	out = append(out, r.fpregs...)
-	return out
-}
-
-// Copy will return a copy of the registers that is guarenteed
-// not to change.
-func (r *Registers) Copy() proc.Registers {
-	return r
 }

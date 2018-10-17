@@ -6,7 +6,7 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
-	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/linutil"
 )
 
 // PtraceAttach executes the sys.PtraceAttach call.
@@ -57,8 +57,8 @@ func PtracePeekUser(tid int, off uintptr) (uintptr, error) {
 // See amd64_linux_fetch_inferior_registers in gdb/amd64-linux-nat.c.html
 // and amd64_supply_xsave in gdb/amd64-tdep.c.html
 // and Section 13.1 (and following) of Intel® 64 and IA-32 Architectures Software Developer’s Manual, Volume 1: Basic Architecture
-func PtraceGetRegset(tid int) (regset proc.LinuxX86Xstate, err error) {
-	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETFPREGS, uintptr(tid), uintptr(0), uintptr(unsafe.Pointer(&regset.PtraceFpRegs)), 0, 0)
+func PtraceGetRegset(tid int) (regset linutil.AMD64Xstate, err error) {
+	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETFPREGS, uintptr(tid), uintptr(0), uintptr(unsafe.Pointer(&regset.AMD64PtraceFpRegs)), 0, 0)
 	if err == syscall.Errno(0) || err == syscall.ENODEV {
 		// ignore ENODEV, it just means this CPU doesn't have X87 registers (??)
 		err = nil
@@ -78,6 +78,6 @@ func PtraceGetRegset(tid int) (regset proc.LinuxX86Xstate, err error) {
 	}
 
 	regset.Xsave = xstateargs[:iov.Len]
-	err = proc.LinuxX86XstateRead(regset.Xsave, false, &regset)
+	err = linutil.AMD64XstateRead(regset.Xsave, false, &regset)
 	return regset, err
 }
