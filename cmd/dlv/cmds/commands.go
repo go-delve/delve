@@ -339,6 +339,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			var dlvArgsLen = len(dlvArgs)
 			if dlvArgsLen == 1 {
 				regexp = args[0]
+				dlvArgs = dlvArgs[0:0]
 			} else if dlvArgsLen >= 2 {
 				regexp = dlvArgs[dlvArgsLen-1]
 				dlvArgs = dlvArgs[:dlvArgsLen-1]
