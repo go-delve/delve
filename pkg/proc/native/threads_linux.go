@@ -8,6 +8,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/linutil"
 )
 
 type WaitStatus sys.WaitStatus
@@ -83,21 +84,21 @@ func (t *Thread) Blocked() bool {
 }
 
 func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
-	sr := savedRegs.(*Regs)
+	sr := savedRegs.(*linutil.AMD64Registers)
 
 	var restoreRegistersErr error
 	t.dbp.execPtraceFunc(func() {
-		restoreRegistersErr = sys.PtraceSetRegs(t.ID, sr.regs)
+		restoreRegistersErr = sys.PtraceSetRegs(t.ID, (*sys.PtraceRegs)(sr.Regs))
 		if restoreRegistersErr != nil {
 			return
 		}
-		if sr.fpregset.Xsave != nil {
-			iov := sys.Iovec{Base: &sr.fpregset.Xsave[0], Len: uint64(len(sr.fpregset.Xsave))}
+		if sr.Fpregset.Xsave != nil {
+			iov := sys.Iovec{Base: &sr.Fpregset.Xsave[0], Len: uint64(len(sr.Fpregset.Xsave))}
 			_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGSET, uintptr(t.ID), _NT_X86_XSTATE, uintptr(unsafe.Pointer(&iov)), 0, 0)
 			return
 		}
 
-		_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETFPREGS, uintptr(t.ID), uintptr(0), uintptr(unsafe.Pointer(&sr.fpregset.PtraceFpRegs)), 0, 0)
+		_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETFPREGS, uintptr(t.ID), uintptr(0), uintptr(unsafe.Pointer(&sr.Fpregset.AMD64PtraceFpRegs)), 0, 0)
 		return
 	})
 	if restoreRegistersErr == syscall.Errno(0) {
