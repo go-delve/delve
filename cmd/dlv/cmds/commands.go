@@ -51,6 +51,8 @@ var (
 	RootCommand *cobra.Command
 
 	traceAttachPid  int
+	traceExecFile   string
+	traceTestBinary bool
 	traceStackDepth int
 
 	conf *config.Config
@@ -221,6 +223,8 @@ to know what functions your process is executing.`,
 		Run: traceCmd,
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
+	traceCommand.Flags().StringVarP(&traceExecFile, "exec", "e", "", "Binary file to exec and trace.")
+	traceCommand.Flags().BoolVarP(&traceTestBinary, "test", "t", false, "Trace a test binary.")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
 	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
 	RootCommand.AddCommand(traceCommand)
@@ -312,7 +316,8 @@ func debugCmd(cmd *cobra.Command, args []string) {
 
 func traceCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		if err := logflags.Setup(Log, LogOutput); err != nil {
+		err := logflags.Setup(Log, LogOutput)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
@@ -324,12 +329,6 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: accept multiclient mode not supported with trace")
 		}
 
-		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-
 		var regexp string
 		var processArgs []string
 
@@ -337,17 +336,39 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 		if traceAttachPid == 0 {
 			var dlvArgsLen = len(dlvArgs)
+
 			if dlvArgsLen == 1 {
 				regexp = args[0]
 				dlvArgs = dlvArgs[0:0]
 			} else if dlvArgsLen >= 2 {
+				if traceExecFile != "" {
+					fmt.Fprintln(os.Stderr, "Cannot specify package when using exec.")
+					return 1
+				}
 				regexp = dlvArgs[dlvArgsLen-1]
 				dlvArgs = dlvArgs[:dlvArgsLen-1]
 			}
-			if err := gobuild(debugname, dlvArgs); err != nil {
-				return 1
+
+			debugname := traceExecFile
+			if traceExecFile == "" {
+				debugname, err = filepath.Abs(cmd.Flag("output").Value.String())
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%v\n", err)
+					return 1
+				}
+				if traceTestBinary {
+					if err := gotestbuild(debugname, dlvArgs); err != nil {
+						fmt.Fprintf(os.Stderr, "%v\n", err)
+						return 1
+					}
+				} else {
+					if err := gobuild(debugname, dlvArgs); err != nil {
+						fmt.Fprintf(os.Stderr, "%v\n", err)
+						return 1
+					}
+				}
+				defer remove(debugname)
 			}
-			defer remove(debugname)
 
 			processArgs = append([]string{debugname}, targetArgs...)
 		}
