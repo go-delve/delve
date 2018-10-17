@@ -19,9 +19,11 @@ dlv trace [package] regexp
 ### Options
 
 ```
+  -e, --exec string     Binary file to exec and trace.
       --output string   Output path for the binary. (default "debug")
   -p, --pid int         Pid to attach to.
   -s, --stack int       Show stack trace with given depth.
+  -t, --test            Trace a test binary.
 ```
 
 ### Options inherited from parent commands
