@@ -28,13 +28,13 @@ const NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAV
 // NT_AUXV is the note type for notes containing a copy of the Auxv array
 const NT_AUXV elf.NType = 0x6
 
-// readCore reads a core file from corePath corresponding to the executable at
+// readLinuxAMD64Core reads a core file from corePath corresponding to the executable at
 // exePath. For details on the Linux ELF core format, see:
 // http://www.gabriel.urdhr.fr/2015/05/29/core-file/,
 // http://uhlo.blogspot.fr/2012/05/brief-look-into-core-dumps.html,
 // elf_core_dump in http://lxr.free-electrons.com/source/fs/binfmt_elf.c,
 // and, if absolutely desperate, readelf.c from the binutils source.
-func readCore(corePath, exePath string) (*Core, error) {
+func readLinuxAMD64Core(corePath, exePath string) (*Process, error) {
 	coreFile, err := elf.Open(corePath)
 	if err != nil {
 		return nil, err
@@ -62,37 +62,51 @@ func readCore(corePath, exePath string) (*Core, error) {
 	memory := buildMemory(coreFile, exeELF, exe, notes)
 	entryPoint := findEntryPoint(notes)
 
-	core := &Core{
-		MemoryReader: memory,
-		Threads:      map[int]*Thread{},
-		entryPoint:   entryPoint,
+	p := &Process{
+		mem:         memory,
+		Threads:     map[int]*Thread{},
+		entryPoint:  entryPoint,
+		bi:          proc.NewBinaryInfo("linux", "amd64"),
+		breakpoints: proc.NewBreakpointMap(),
 	}
 
-	var lastThread *Thread
+	var lastThread *linuxAMD64Thread
 	for _, note := range notes {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
 			t := note.Desc.(*LinuxPrStatus)
-			lastThread = &Thread{linutil.AMD64Registers{Regs: &t.Reg}, t, nil, proc.CommonThread{}}
-			core.Threads[int(t.Pid)] = lastThread
+			lastThread = &linuxAMD64Thread{linutil.AMD64Registers{Regs: &t.Reg}, t}
+			p.Threads[int(t.Pid)] = &Thread{lastThread, p, proc.CommonThread{}}
+			if p.currentThread == nil {
+				p.currentThread = p.Threads[int(t.Pid)]
+			}
 		case NT_X86_XSTATE:
 			if lastThread != nil {
 				lastThread.regs.Fpregs = note.Desc.(*linutil.AMD64Xstate).Decode()
 			}
 		case elf.NT_PRPSINFO:
-			core.Pid = int(note.Desc.(*LinuxPrPsInfo).Pid)
+			p.pid = int(note.Desc.(*LinuxPrPsInfo).Pid)
 		}
 	}
-	return core, nil
+	return p, nil
 }
 
-// Core represents a core file.
-type Core struct {
-	proc.MemoryReader
-	Threads map[int]*Thread
-	Pid     int
+type linuxAMD64Thread struct {
+	regs linutil.AMD64Registers
+	t    *LinuxPrStatus
+}
 
-	entryPoint uint64
+func (t *linuxAMD64Thread) registers(floatingPoint bool) (proc.Registers, error) {
+	var r linutil.AMD64Registers
+	r.Regs = t.regs.Regs
+	if floatingPoint {
+		r.Fpregs = t.regs.Fpregs
+	}
+	return &r, nil
+}
+
+func (t *linuxAMD64Thread) pid() int {
+	return int(t.t.Pid)
 }
 
 // Note is a note from the PT_NOTE prog.
