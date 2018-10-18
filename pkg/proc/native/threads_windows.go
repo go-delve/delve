@@ -7,6 +7,7 @@ import (
 	sys "golang.org/x/sys/windows"
 
 	"github.com/derekparker/delve/pkg/proc"
+	"github.com/derekparker/delve/pkg/proc/winutil"
 )
 
 // WaitStatus is a synonym for the platform-specific WaitStatus
@@ -19,7 +20,7 @@ type OSSpecificDetails struct {
 }
 
 func (t *Thread) singleStep() error {
-	context := newCONTEXT()
+	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
 	// Set the processor TRAP flag
@@ -154,5 +155,5 @@ func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 }
 
 func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
-	return _SetThreadContext(t.os.hThread, savedRegs.(*Regs).context)
+	return _SetThreadContext(t.os.hThread, savedRegs.(*winutil.AMD64Registers).Context)
 }
