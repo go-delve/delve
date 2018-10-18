@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/derekparker/delve/pkg/proc"
-	"github.com/derekparker/delve/pkg/proc/linutil"
 )
 
 // A SplicedMemory represents a memory space formed from multiple regions,
@@ -145,8 +144,13 @@ func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error)
 
 // Process represents a core file.
 type Process struct {
+	mem     proc.MemoryReader
+	Threads map[int]*Thread
+	pid     int
+
+	entryPoint uint64
+
 	bi                *proc.BinaryInfo
-	core              *Core
 	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G
@@ -155,10 +159,14 @@ type Process struct {
 
 // Thread represents a thread in the core file being debugged.
 type Thread struct {
-	regs   linutil.AMD64Registers
-	th     *LinuxPrStatus
+	th     osThread
 	p      *Process
 	common proc.CommonThread
+}
+
+type osThread interface {
+	registers(floatingPoint bool) (proc.Registers, error)
+	pid() int
 }
 
 var (
@@ -178,21 +186,13 @@ var (
 
 // OpenCore will open the core file and return a Process struct.
 func OpenCore(corePath, exePath string) (*Process, error) {
-	core, err := readCore(corePath, exePath)
+	p, err := readLinuxAMD64Core(corePath, exePath)
 	if err != nil {
 		return nil, err
 	}
-	p := &Process{
-		core:        core,
-		breakpoints: proc.NewBreakpointMap(),
-		bi:          proc.NewBinaryInfo("linux", "amd64"),
-	}
-	for _, thread := range core.Threads {
-		thread.p = p
-	}
 
 	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(exePath, core.entryPoint, &wg)
+	err = p.bi.LoadBinaryInfo(exePath, p.entryPoint, &wg)
 	wg.Wait()
 	if err == nil {
 		err = p.bi.LoadError()
@@ -201,10 +201,6 @@ func OpenCore(corePath, exePath string) (*Process, error) {
 		return nil, err
 	}
 
-	for _, th := range p.core.Threads {
-		p.currentThread = th
-		break
-	}
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
 	return p, nil
@@ -240,7 +236,7 @@ func (p *Process) ClearCheckpoint(int) error { return errors.New("checkpoint not
 // read memory into `data`, returning the length read, and returning an error if
 // the length read is shorter than the length of the `data` buffer.
 func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
-	n, err = t.p.core.ReadMemory(data, addr)
+	n, err = t.p.mem.ReadMemory(data, addr)
 	if err == nil && n != len(data) {
 		err = ErrShortRead
 	}
@@ -256,8 +252,13 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 // Location returns the location of this thread based on
 // the value of the instruction pointer register.
 func (t *Thread) Location() (*proc.Location, error) {
-	f, l, fn := t.p.bi.PCToLine(t.th.Reg.Rip)
-	return &proc.Location{PC: t.th.Reg.Rip, File: f, Line: l, Fn: fn}, nil
+	regs, err := t.th.registers(false)
+	if err != nil {
+		return nil, err
+	}
+	pc := regs.PC()
+	f, l, fn := t.p.bi.PCToLine(pc)
+	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
 // Breakpoint returns the current breakpoint this thread is stopped at.
@@ -269,17 +270,12 @@ func (t *Thread) Breakpoint() proc.BreakpointState {
 
 // ThreadID returns the ID for this thread.
 func (t *Thread) ThreadID() int {
-	return int(t.th.Pid)
+	return int(t.th.pid())
 }
 
 // Registers returns the current value of the registers for this thread.
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
-	var r linutil.AMD64Registers
-	r.Regs = t.regs.Regs
-	if floatingPoint {
-		r.Fpregs = t.regs.Fpregs
-	}
-	return &r, nil
+	return t.th.registers(floatingPoint)
 }
 
 // RestoreRegisters will only return an error for core files,
@@ -408,7 +404,7 @@ func (p *Process) Common() *proc.CommonProcess {
 
 // Pid returns the process ID of this process.
 func (p *Process) Pid() int {
-	return p.core.Pid
+	return p.pid
 }
 
 // ResumeNotify is a no-op on core files as we cannot
@@ -446,7 +442,7 @@ func (p *Process) SwitchGoroutine(gid int) error {
 
 // SwitchThread will change the selected and active thread.
 func (p *Process) SwitchThread(tid int) error {
-	if th, ok := p.core.Threads[tid]; ok {
+	if th, ok := p.Threads[tid]; ok {
 		p.currentThread = th
 		p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 		return nil
@@ -456,8 +452,8 @@ func (p *Process) SwitchThread(tid int) error {
 
 // ThreadList will return a list of all threads currently in the process.
 func (p *Process) ThreadList() []proc.Thread {
-	r := make([]proc.Thread, 0, len(p.core.Threads))
-	for _, v := range p.core.Threads {
+	r := make([]proc.Thread, 0, len(p.Threads))
+	for _, v := range p.Threads {
 		r = append(r, v)
 	}
 	return r
@@ -465,6 +461,6 @@ func (p *Process) ThreadList() []proc.Thread {
 
 // FindThread will return the thread with the corresponding thread ID.
 func (p *Process) FindThread(threadID int) (proc.Thread, bool) {
-	t, ok := p.core.Threads[threadID]
+	t, ok := p.Threads[threadID]
 	return t, ok
 }
