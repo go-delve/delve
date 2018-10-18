@@ -105,22 +105,33 @@ This option can only be specified if testset is basic or a single package.`)
 	return RootCommand
 }
 
-func checkCertCmd(cmd *cobra.Command, args []string) {
+func checkCert() bool {
 	// If we're on OSX make sure the proper CERT env var is set.
 	if os.Getenv("TRAVIS") == "true" || runtime.GOOS != "darwin" || os.Getenv("CERT") != "" {
-		return
+		return true
 	}
 
 	x := exec.Command("scripts/gencert.sh")
+	x.Stdout = os.Stdout
+	x.Stderr = os.Stderr
+	x.Env = os.Environ()
 	err := x.Run()
 	if x.ProcessState != nil && !x.ProcessState.Success() {
 		fmt.Printf("An error occurred when generating and installing a new certificate\n")
-		os.Exit(1)
+		return false
 	}
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("An error occoured when generating and installing a new certificate: %v\n", err)
+		return false
 	}
 	os.Setenv("CERT", "dlv-cert")
+	return true
+}
+
+func checkCertCmd(cmd *cobra.Command, args []string) {
+	if !checkCert() {
+		os.Exit(1)
+	}
 }
 
 func strflatten(v []interface{}) []string {
@@ -214,7 +225,9 @@ func prepareMacnative() string {
 	if !canMacnative() {
 		return ""
 	}
-	checkCertCmd(nil, nil)
+	if !checkCert() {
+		return ""
+	}
 	return "-tags=macnative"
 }
 
