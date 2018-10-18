@@ -21,6 +21,6 @@ Only do this if you have a valid reason to use the native backend.
 1. Run `xcode-select --install`
 2. On macOS 10.14 manually install the legacy include headers by running `/Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg`
 3. Clone the repo into `$GOPATH/src/github.com/derekparker/delve`
-4. Run `make install` in that directory
+4. Run `make install` in that directory (on some versions of macOS this requires being root, the first time you run it, to install a new certificate)
 
 The makefile will take care of creating and installing a self-signed certificate automatically.
