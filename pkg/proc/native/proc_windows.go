@@ -245,6 +245,8 @@ const (
 	waitDontHandleExceptions
 )
 
+const _MS_VC_EXCEPTION = 0x406D1388 // part of VisualC protocol to set thread names
+
 func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, exitCode int, err error) {
 	var debugEvent _DEBUG_EVENT
 	shouldExit := false
@@ -346,6 +348,10 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 			case _EXCEPTION_SINGLE_STEP:
 				dbp.os.breakThread = tid
 				return tid, 0, nil
+			case _MS_VC_EXCEPTION:
+				// This exception is sent to set the thread name in VisualC, we should
+				// mask it or it might crash the program.
+				continueStatus = _DBG_CONTINUE
 			default:
 				continueStatus = _DBG_EXCEPTION_NOT_HANDLED
 			}
