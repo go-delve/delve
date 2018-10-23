@@ -10,7 +10,7 @@ Execute a precompiled binary and begin a debug session.
 This command will cause Delve to exec the binary and immediately attach to it to
 begin a new debug session. Please note that if the binary was not compiled with
 optimizations disabled, it may be difficult to properly debug it. Please
-consider compiling debugging binaries with -gcflags="-N -l".
+consider compiling debugging binaries with ```-gcflags="-N -l"``` if you are using a go version below 1.10 or use```-gcflags="all=-N -l"``` for go 1.10 or above.
 
 ```
 dlv exec <path/to/binary>
