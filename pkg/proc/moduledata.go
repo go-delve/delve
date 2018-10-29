@@ -88,7 +88,7 @@ func resolveTypeOff(bi *BinaryInfo, typeAddr uintptr, off uintptr, mem MemoryRea
 		if err != nil {
 			return nil, err
 		}
-		v.loadValue(LoadConfig{false, 1, 0, 0, -1})
+		v.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
 		addr, _ := constant.Int64Val(v.Value)
 		return v.newVariable(v.Name, uintptr(addr), rtyp, mem), nil
 	}

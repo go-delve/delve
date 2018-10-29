@@ -17,8 +17,8 @@ import (
 	protest "github.com/derekparker/delve/pkg/proc/test"
 )
 
-var pnormalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1}
-var pshortLoadConfig = proc.LoadConfig{false, 0, 64, 0, 3}
+var pnormalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
+var pshortLoadConfig = proc.LoadConfig{false, 0, 64, 0, 3, 0}
 
 type varTest struct {
 	name         string

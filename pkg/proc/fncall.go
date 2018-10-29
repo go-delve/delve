@@ -218,7 +218,7 @@ func funcCallEvalExpr(p Process, expr string) (fn *Function, closureAddr uint64,
 	if fnvar.Kind != reflect.Func {
 		return nil, 0, nil, fmt.Errorf("expression %q is not a function", exprToString(callexpr.Fun))
 	}
-	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0})
+	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0, 0})
 	if fnvar.Unreadable != nil {
 		return nil, 0, nil, fnvar.Unreadable
 	}
