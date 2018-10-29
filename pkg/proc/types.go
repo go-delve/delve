@@ -578,7 +578,7 @@ func runtimeTypeToDIE(_type *Variable, dataAddr uintptr) (typ godwarf.Type, kind
 		if typestring == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
 			return nil, 0, fmt.Errorf("invalid interface type")
 		}
-		typestring.loadValue(LoadConfig{false, 0, 512, 0, 0})
+		typestring.loadValue(LoadConfig{false, 0, 512, 0, 0, 0})
 		if typestring.Unreadable != nil {
 			return nil, 0, fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
 		}
@@ -880,7 +880,7 @@ func nameOfInterfaceRuntimeType(_type *Variable, kind, tflag int64) (string, err
 	buf.WriteString("interface {")
 
 	methods, _ := _type.structMember(interfacetypeFieldMhdr)
-	methods.loadArrayValues(0, LoadConfig{false, 1, 0, 4096, -1})
+	methods.loadArrayValues(0, LoadConfig{false, 1, 0, 4096, -1, 0})
 	if methods.Unreadable != nil {
 		return "", nil
 	}
@@ -941,7 +941,7 @@ func nameOfStructRuntimeType(_type *Variable, kind, tflag int64) (string, error)
 	buf.WriteString("struct {")
 
 	fields, _ := _type.structMember("fields")
-	fields.loadArrayValues(0, LoadConfig{false, 2, 0, 4096, -1})
+	fields.loadArrayValues(0, LoadConfig{false, 2, 0, 4096, -1, 0})
 	if fields.Unreadable != nil {
 		return "", fields.Unreadable
 	}

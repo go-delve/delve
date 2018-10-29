@@ -358,11 +358,11 @@ mainSearch:
 	}
 
 	scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame)
-	v1, err := scope.EvalVariable("t", proc.LoadConfig{true, 1, 64, 64, -1})
+	v1, err := scope.EvalVariable("t", proc.LoadConfig{true, 1, 64, 64, -1, 0})
 	assertNoError(err, t, "EvalVariable(t)")
 	assertNoError(v1.Unreadable, t, "unreadable variable 't'")
 	t.Logf("t = %#v\n", v1)
-	v2, err := scope.EvalVariable("s", proc.LoadConfig{true, 1, 64, 64, -1})
+	v2, err := scope.EvalVariable("s", proc.LoadConfig{true, 1, 64, 64, -1, 0})
 	assertNoError(err, t, "EvalVariable(s)")
 	assertNoError(v2.Unreadable, t, "unreadable variable 's'")
 	t.Logf("s = %#v\n", v2)

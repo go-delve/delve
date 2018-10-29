@@ -32,6 +32,8 @@ const (
 	hashMinTopHash   = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated
 
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
+
+	maxMapBucketsFactor = 100 // Maximum numbers of map buckets to read for every requested map entry when loading variables through (*EvalScope).LocalVariables and (*EvalScope).FunctionArguments.
 )
 
 type floatSpecial uint8
@@ -122,10 +124,39 @@ type LoadConfig struct {
 	MaxArrayValues int
 	// MaxStructFields is the maximum number of fields read from a struct, -1 will read all fields.
 	MaxStructFields int
+
+	// MaxMapBuckets is the maximum number of map buckets to read before giving up.
+	// A value of 0 will read as many buckets as necessary until the entire map
+	// is read or MaxArrayValues is reached.
+	//
+	// Loading a map is an operation that issues O(num_buckets) operations.
+	// Normally the number of buckets is proportional to the number of elements
+	// in the map, since the runtime tries to keep the load factor of maps
+	// between 40% and 80%.
+	//
+	// It is possible, however, to create very sparse maps either by:
+	// a) adding lots of entries to a map and then deleting most of them, or
+	// b) using the make(mapType, N) expression with a very large N
+	//
+	// When this happens delve will have to scan many empty buckets to find the
+	// few entries in the map.
+	// MaxMapBuckets can be set to avoid annoying slowdowns␣while reading
+	// very sparse maps.
+	//
+	// Since there is no good way for a user of delve to specify the value of
+	// MaxMapBuckets, this field is not actually exposed through the API.
+	// Instead (*EvalScope).LocalVariables and  (*EvalScope).FunctionArguments
+	// set this field automatically to MaxArrayValues * maxMapBucketsFactor.
+	// Every other invocation uses the default value of 0, obtaining the old behavior.
+	// In practice this means that debuggers using the ListLocalVars or
+	// ListFunctionArgs API will not experience a massive slowdown when a very
+	// sparse map is in scope, but evaluating a single variable will still work
+	// correctly, even if the variable in question is a very sparse map.
+	MaxMapBuckets int
 }
 
-var loadSingleValue = LoadConfig{false, 0, 64, 0, 0}
-var loadFullValue = LoadConfig{true, 1, 64, 64, -1}
+var loadSingleValue = LoadConfig{false, 0, 64, 0, 0, 0}
+var loadFullValue = LoadConfig{true, 1, 64, 64, -1, 0}
 
 // G status, from: src/runtime/runtime2.go
 const (
@@ -441,7 +472,7 @@ func (v *Variable) parseG() (*G, error) {
 		}
 		v = v.maybeDereference()
 	}
-	v.loadValue(LoadConfig{false, 2, 64, 0, -1})
+	v.loadValue(LoadConfig{false, 2, 64, 0, -1, 0})
 	if v.Unreadable != nil {
 		return nil, v.Unreadable
 	}
@@ -591,7 +622,7 @@ func (g *G) stkbar() ([]savedLR, error) {
 	if g.stkbarVar == nil { // stack barriers were removed in Go 1.9
 		return nil, nil
 	}
-	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3})
+	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3, 0})
 	if g.stkbarVar.Unreadable != nil {
 		return nil, fmt.Errorf("unreadable stkbar: %v", g.stkbarVar.Unreadable)
 	}
@@ -658,6 +689,7 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 	vars = filterVariables(vars, func(v *Variable) bool {
 		return (v.Flags & (VariableArgument | VariableReturnArgument)) == 0
 	})
+	cfg.MaxMapBuckets = maxMapBucketsFactor * cfg.MaxArrayValues
 	loadValues(vars, cfg)
 	return vars, nil
 }
@@ -671,6 +703,7 @@ func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
 	vars = filterVariables(vars, func(v *Variable) bool {
 		return (v.Flags & (VariableArgument | VariableReturnArgument)) != 0
 	})
+	cfg.MaxMapBuckets = maxMapBucketsFactor * cfg.MaxArrayValues
 	loadValues(vars, cfg)
 	return vars, nil
 }
@@ -1569,6 +1602,11 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 	if it == nil {
 		return
 	}
+	it.maxNumBuckets = uint64(cfg.MaxMapBuckets)
+
+	if v.Len == 0 || int64(v.mapSkip) >= v.Len || cfg.MaxArrayValues == 0 {
+		return
+	}
 
 	for skip := 0; skip < v.mapSkip; skip++ {
 		if ok := it.next(); !ok {
@@ -1580,9 +1618,6 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 	count := 0
 	errcount := 0
 	for it.next() {
-		if count >= cfg.MaxArrayValues {
-			break
-		}
 		key := it.key()
 		var val *Variable
 		if it.values.fieldType.Size() > 0 {
@@ -1601,6 +1636,9 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 		if errcount > maxErrCount {
 			break
 		}
+		if count >= cfg.MaxArrayValues || int64(count) >= v.Len {
+			break
+		}
 	}
 }
 
@@ -1617,6 +1655,8 @@ type mapIterator struct {
 	keys      *Variable
 	values    *Variable
 	overflow  *Variable
+
+	maxNumBuckets uint64 // maximum number of buckets to scan
 
 	idx int64
 }
@@ -1682,6 +1722,10 @@ func (it *mapIterator) nextBucket() bool {
 		it.b = it.overflow
 	} else {
 		it.b = nil
+
+		if it.maxNumBuckets > 0 && it.bidx >= it.maxNumBuckets {
+			return false
+		}
 
 		for it.bidx < it.numbuckets {
 			it.b = it.buckets.clone()

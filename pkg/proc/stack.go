@@ -645,7 +645,7 @@ func (g *G) readDefers(frames []Stackframe) {
 }
 
 func (d *Defer) load() {
-	d.variable.loadValue(LoadConfig{false, 1, 0, 0, -1})
+	d.variable.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
 	if d.variable.Unreadable != nil {
 		d.Unreadable = d.variable.Unreadable
 		return

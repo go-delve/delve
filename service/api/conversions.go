@@ -283,6 +283,7 @@ func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
 		cfg.MaxStringLen,
 		cfg.MaxArrayValues,
 		cfg.MaxStructFields,
+		0, // MaxMapBuckets is set internally by pkg/proc, read its documentation for an explanation.
 	}
 }
 

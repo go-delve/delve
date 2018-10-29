@@ -28,7 +28,7 @@ import (
 	protest "github.com/derekparker/delve/pkg/proc/test"
 )
 
-var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1}
+var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
 var testBackend, buildMode string
 
 func init() {
@@ -2656,7 +2656,7 @@ func BenchmarkTrace(b *testing.B) {
 			assertNoError(proc.Continue(p), b, "Continue()")
 			s, err := proc.GoroutineScope(p.CurrentThread())
 			assertNoError(err, b, "Scope()")
-			_, err = s.FunctionArguments(proc.LoadConfig{false, 0, 64, 0, 3})
+			_, err = s.FunctionArguments(proc.LoadConfig{false, 0, 64, 0, 3, 0})
 			assertNoError(err, b, "FunctionArguments()")
 		}
 		b.StopTimer()
