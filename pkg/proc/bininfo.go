@@ -27,25 +27,11 @@ import (
 
 // BinaryInfo holds information on the binary being executed.
 type BinaryInfo struct {
-	lastModified time.Time // Time the executable of this process was last modified
+	// Architecture of this binary.
+	Arch Arch
 
-	GOOS           string
-	closer         io.Closer
-	sepDebugCloser io.Closer
-
-	staticBase uint64
-
-	// Maps package names to package paths, needed to lookup types inside DWARF info
-	packageMap map[string]string
-
-	Arch          Arch
-	dwarf         *dwarf.Data
-	frameEntries  frame.FrameDescriptionEntries
-	loclist       loclistReader
-	compileUnits  []*compileUnit
-	types         map[string]dwarf.Offset
-	packageVars   []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
-	gStructOffset uint64
+	// GOOS operating system this binary is executing on.
+	GOOS string
 
 	// Functions is a list of all DW_TAG_subprogram entries in debug_info, sorted by entry point
 	Functions []Function
@@ -54,7 +40,26 @@ type BinaryInfo struct {
 	// LookupFunc maps function names to a description of the function.
 	LookupFunc map[string]*Function
 
-	typeCache map[dwarf.Offset]godwarf.Type
+	lastModified time.Time // Time the executable of this process was last modified
+
+	closer         io.Closer
+	sepDebugCloser io.Closer
+
+	staticBase uint64
+
+	// Maps package names to package paths, needed to lookup types inside DWARF info
+	packageMap map[string]string
+
+	dwarf        *dwarf.Data
+	dwarfReader  *dwarf.Reader
+	frameEntries frame.FrameDescriptionEntries
+	loclist      loclistReader
+	compileUnits []*compileUnit
+	types        map[string]dwarf.Offset
+	packageVars  []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
+	typeCache    map[dwarf.Offset]godwarf.Type
+
+	gStructOffset uint64
 
 	loadModuleDataOnce sync.Once
 	moduleData         []moduleData
@@ -71,8 +76,6 @@ type BinaryInfo struct {
 
 	loadErrMu sync.Mutex
 	loadErr   error
-
-	dwarfReader *dwarf.Reader
 }
 
 // ErrUnsupportedLinuxArch is returned when attempting to debug a binary compiled for an unsupported architecture.
