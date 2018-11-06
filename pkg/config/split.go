@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-// Like strings.Fields but ignores spaces inside areas surrounded
+// SplitQuotedFields is like strings.Fields but ignores spaces inside areas surrounded
 // by the specified quote character.
 // To specify a single quote use backslash to escape it: '\''
 func SplitQuotedFields(in string, quote rune) []string {
