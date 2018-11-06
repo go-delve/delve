@@ -15,7 +15,7 @@ const (
 	configFile string = "config.yml"
 )
 
-// Describes a rule for substitution of path to source code file.
+// SubstitutePathRule describes a rule for substitution of path to source code file.
 type SubstitutePathRule struct {
 	// Directory path will be substituted if it matches `From`.
 	From string
@@ -23,7 +23,7 @@ type SubstitutePathRule struct {
 	To string
 }
 
-// Slice of source code path substitution rules.
+// SubstitutePathRules is a slice of source code path substitution rules.
 type SubstitutePathRules []SubstitutePathRule
 
 // Config defines all configuration options available to be set through the config file.
@@ -93,6 +93,8 @@ func LoadConfig() *Config {
 	return &c
 }
 
+// SaveConfig will marshal and save the config struct
+// to disk.
 func SaveConfig(conf *Config) error {
 	fullConfigFile, err := GetConfigFilePath(configFile)
 	if err != nil {
@@ -117,11 +119,11 @@ func SaveConfig(conf *Config) error {
 func createDefaultConfig(path string) (*os.File, error) {
 	f, err := os.Create(path)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create config file: %v.", err)
+		return nil, fmt.Errorf("unable to create config file: %v", err)
 	}
 	err = writeDefaultConfig(f)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to write default configuration: %v.", err)
+		return nil, fmt.Errorf("unable to write default configuration: %v", err)
 	}
 	return f, nil
 }
