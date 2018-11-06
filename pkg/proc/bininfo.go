@@ -87,14 +87,16 @@ var ErrUnsupportedWindowsArch = errors.New("unsupported architecture of windows/
 // ErrUnsupportedDarwinArch is returned when attempting to debug a binary compiled for an unsupported architecture.
 var ErrUnsupportedDarwinArch = errors.New("unsupported architecture - only darwin/amd64 is supported")
 
+// ErrCouldNotDetermineRelocation is an error returned when Delve could not determine the base address of a
+// position independant executable.
 var ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
 
 const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
 
 type compileUnit struct {
-	Name   string // univocal name for non-go compile units
-	LowPC  uint64
-	Ranges [][2]uint64
+	name   string // univocal name for non-go compile units
+	lowPC  uint64
+	ranges [][2]uint64
 
 	entry              *dwarf.Entry        // debug_info entry describing this compile unit
 	isgo               bool                // true if this is the go compile unit
@@ -491,7 +493,7 @@ func (bi *BinaryInfo) Location(entry reader.Entry, attr dwarf.Attr, pc uint64, r
 func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 	var base uint64
 	if cu := bi.findCompileUnit(pc); cu != nil {
-		base = cu.LowPC
+		base = cu.lowPC
 	}
 
 	bi.loclist.Seek(int(off))
@@ -512,7 +514,7 @@ func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 // findCompileUnit returns the compile unit containing address pc.
 func (bi *BinaryInfo) findCompileUnit(pc uint64) *compileUnit {
 	for _, cu := range bi.compileUnits {
-		for _, rng := range cu.Ranges {
+		for _, rng := range cu.ranges {
 			if pc >= rng[0] && pc < rng[1] {
 				return cu
 			}
