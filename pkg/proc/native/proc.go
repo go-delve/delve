@@ -189,7 +189,7 @@ func (dbp *Process) Breakpoints() *proc.BreakpointMap {
 // * Dwarf .debug_frame section
 // * Dwarf .debug_line section
 // * Go symbol table.
-func (dbp *Process) LoadInformation(path string) error {
+func (dbp *Process) LoadInformation(path string, debugInfoDirs []string) error {
 	var wg sync.WaitGroup
 
 	path = findExecutable(path, dbp.pid)
@@ -201,7 +201,7 @@ func (dbp *Process) LoadInformation(path string) error {
 
 	wg.Add(1)
 	go dbp.loadProcessInformation(&wg)
-	err = dbp.bi.LoadBinaryInfo(path, entryPoint, &wg)
+	err = dbp.bi.LoadBinaryInfo(path, entryPoint, debugInfoDirs, &wg)
 	wg.Wait()
 	if err == nil {
 		err = dbp.bi.LoadError()
@@ -380,8 +380,8 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 }
 
 // Returns a new Process struct.
-func initializeDebugProcess(dbp *Process, path string) (*Process, error) {
-	err := dbp.LoadInformation(path)
+func initializeDebugProcess(dbp *Process, path string, debugInfoDirs []string) (*Process, error) {
+	err := dbp.LoadInformation(path, debugInfoDirs)
 	if err != nil {
 		return dbp, err
 	}

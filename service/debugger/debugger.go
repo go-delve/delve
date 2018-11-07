@@ -65,6 +65,10 @@ type Config struct {
 
 	// Foreground lets target process access stdin.
 	Foreground bool
+
+	// DebugInfoDirectories is the list of directories to look for
+	// when resolving external debug info files.
+	DebugInfoDirectories []string
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -102,10 +106,10 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		switch d.config.Backend {
 		case "rr":
 			d.log.Infof("opening trace %s", d.config.CoreFile)
-			p, err = gdbserial.Replay(d.config.CoreFile, false)
+			p, err = gdbserial.Replay(d.config.CoreFile, false, d.config.DebugInfoDirectories)
 		default:
 			d.log.Infof("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
-			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0])
+			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0], d.config.DebugInfoDirectories)
 		}
 		if err != nil {
 			err = go11DecodeErrorCheck(err)
@@ -132,17 +136,17 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error) {
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd, d.config.Foreground)
+		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories))
 	case "rr":
-		p, _, err := gdbserial.RecordAndReplay(processArgs, wd, false)
+		p, _, err := gdbserial.RecordAndReplay(processArgs, wd, false, d.config.DebugInfoDirectories)
 		return p, err
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories))
 		}
-		return native.Launch(processArgs, wd, d.config.Foreground)
+		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
@@ -157,14 +161,14 @@ var ErrNoAttachPath = errors.New("must specify executable path on macOS")
 func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
 	switch d.config.Backend {
 	case "native":
-		return native.Attach(pid)
+		return native.Attach(pid, d.config.DebugInfoDirectories)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path))
+		return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, d.config.DebugInfoDirectories))
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path))
+			return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, d.config.DebugInfoDirectories))
 		}
-		return native.Attach(pid)
+		return native.Attach(pid, d.config.DebugInfoDirectories)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}

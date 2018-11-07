@@ -66,13 +66,13 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false)
+		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false, []string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false)
+		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false, []string{})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true)
+		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{})
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
@@ -2048,9 +2048,9 @@ func TestIssue509(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		_, err = native.Launch([]string{exepath}, ".", false)
+		_, err = native.Launch([]string{exepath}, ".", false, []string{})
 	case "lldb":
-		_, err = gdbserial.LLDBLaunch([]string{exepath}, ".", false)
+		_, err = gdbserial.LLDBLaunch([]string{exepath}, ".", false, []string{})
 	default:
 		t.Skip("test not valid for this backend")
 	}
@@ -2090,9 +2090,9 @@ func TestUnsupportedArch(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{outfile}, ".", false)
+		p, err = native.Launch([]string{outfile}, ".", false, []string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", false)
+		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", false, []string{})
 	default:
 		t.Skip("test not valid for this backend")
 	}
@@ -2839,13 +2839,13 @@ func TestAttachDetach(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(cmd.Process.Pid)
+		p, err = native.Attach(cmd.Process.Pid, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
 			path = fixture.Path
 		}
-		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path)
+		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path, []string{})
 	default:
 		err = fmt.Errorf("unknown backend %q", testBackend)
 	}
@@ -3141,13 +3141,13 @@ func TestAttachStripped(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(cmd.Process.Pid)
+		p, err = native.Attach(cmd.Process.Pid, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
 			path = fixture.Path
 		}
-		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path)
+		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path, []string{})
 	default:
 		t.Fatalf("unknown backend %q", testBackend)
 	}

@@ -563,15 +563,16 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	switch APIVersion {
 	case 1, 2:
 		server = rpccommon.NewServer(&service.Config{
-			Listener:    listener,
-			ProcessArgs: processArgs,
-			AttachPid:   attachPid,
-			AcceptMulti: AcceptMulti,
-			APIVersion:  APIVersion,
-			WorkingDir:  WorkingDir,
-			Backend:     Backend,
-			CoreFile:    coreFile,
-			Foreground:  Headless,
+			Listener:             listener,
+			ProcessArgs:          processArgs,
+			AttachPid:            attachPid,
+			AcceptMulti:          AcceptMulti,
+			APIVersion:           APIVersion,
+			WorkingDir:           WorkingDir,
+			Backend:              Backend,
+			CoreFile:             coreFile,
+			Foreground:           Headless,
+			DebugInfoDirectories: conf.DebugInfoDirectories,
 
 			DisconnectChan: disconnectChan,
 		})

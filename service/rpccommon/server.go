@@ -121,11 +121,12 @@ func (s *ServerImpl) Run() error {
 
 	// Create and start the debugger
 	if s.debugger, err = debugger.New(&debugger.Config{
-		AttachPid:  s.config.AttachPid,
-		WorkingDir: s.config.WorkingDir,
-		CoreFile:   s.config.CoreFile,
-		Backend:    s.config.Backend,
-		Foreground: s.config.Foreground,
+		AttachPid:            s.config.AttachPid,
+		WorkingDir:           s.config.WorkingDir,
+		CoreFile:             s.config.CoreFile,
+		Backend:              s.config.Backend,
+		Foreground:           s.config.Foreground,
+		DebugInfoDirectories: s.config.DebugInfoDirectories,
 	},
 		s.config.ProcessArgs); err != nil {
 		return err

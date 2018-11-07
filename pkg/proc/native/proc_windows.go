@@ -37,7 +37,7 @@ func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 		return nil, err
 	}
 
-	return initializeDebugProcess(dbp, exepath)
+	return initializeDebugProcess(dbp, exepath, []string{})
 }
 
 // findExePath searches for process pid, and returns its executable path.
@@ -153,7 +153,7 @@ func findExePath(pid int) (string, error) {
 }
 
 // Attach to an existing process with the given PID.
-func Attach(pid int) (*Process, error) {
+func Attach(pid int, _ []string) (*Process, error) {
 	// TODO: Probably should have SeDebugPrivilege before starting here.
 	err := _DebugActiveProcess(uint32(pid))
 	if err != nil {
