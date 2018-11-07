@@ -205,7 +205,7 @@ func New(process *os.Process) *Process {
 }
 
 // Listen waits for a connection from the stub.
-func (p *Process) Listen(listener net.Listener, path string, pid int) error {
+func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string) error {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -219,7 +219,7 @@ func (p *Process) Listen(listener net.Listener, path string, pid int) error {
 		if conn == nil {
 			return errors.New("could not connect")
 		}
-		return p.Connect(conn, path, pid)
+		return p.Connect(conn, path, pid, debugInfoDirs)
 	case status := <-p.waitChan:
 		listener.Close()
 		return fmt.Errorf("stub exited while waiting for connection: %v", status)
@@ -227,11 +227,11 @@ func (p *Process) Listen(listener net.Listener, path string, pid int) error {
 }
 
 // Dial attempts to connect to the stub.
-func (p *Process) Dial(addr string, path string, pid int) error {
+func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string) error {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
-			return p.Connect(conn, path, pid)
+			return p.Connect(conn, path, pid, debugInfoDirs)
 		}
 		select {
 		case status := <-p.waitChan:
@@ -248,7 +248,7 @@ func (p *Process) Dial(addr string, path string, pid int) error {
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *Process) Connect(conn net.Conn, path string, pid int) error {
+func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string) error {
 	p.conn.conn = conn
 
 	p.conn.pid = pid
@@ -312,7 +312,7 @@ func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 	}
 
 	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(path, entryPoint, &wg)
+	err = p.bi.LoadBinaryInfo(path, entryPoint, debugInfoDirs, &wg)
 	wg.Wait()
 	if err == nil {
 		err = p.bi.LoadError()
@@ -405,7 +405,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*Process, error) {
 	switch runtime.GOOS {
 	case "windows":
 		return nil, ErrUnsupportedOS
@@ -482,9 +482,9 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
-		err = p.Listen(listener, cmd[0], 0)
+		err = p.Listen(listener, cmd[0], 0, debugInfoDirs)
 	} else {
-		err = p.Dial(port, cmd[0], 0)
+		err = p.Dial(port, cmd[0], 0, debugInfoDirs)
 	}
 	if err != nil {
 		return nil, err
@@ -497,13 +497,13 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 // Path is path to the target's executable, path only needs to be specified
 // for some stubs that do not provide an automated way of determining it
 // (for example debugserver).
-func LLDBAttach(pid int, path string) (*Process, error) {
+func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
 
 	isDebugserver := false
-	var proc *exec.Cmd
+	var process *exec.Cmd
 	var listener net.Listener
 	var port string
 	if _, err := os.Stat(debugserverExecutable); err == nil {
@@ -512,32 +512,32 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 		if err != nil {
 			return nil, err
 		}
-		proc = exec.Command(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
+		process = exec.Command(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
 		}
 		port = unusedPort()
-		proc = exec.Command("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
+		process = exec.Command("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
 	}
 
-	proc.Stdout = os.Stdout
-	proc.Stderr = os.Stderr
+	process.Stdout = os.Stdout
+	process.Stderr = os.Stderr
 
-	proc.SysProcAttr = sysProcAttr(false)
+	process.SysProcAttr = sysProcAttr(false)
 
-	err := proc.Start()
+	err := process.Start()
 	if err != nil {
 		return nil, err
 	}
 
-	p := New(proc.Process)
+	p := New(process.Process)
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
-		err = p.Listen(listener, path, pid)
+		err = p.Listen(listener, path, pid, debugInfoDirs)
 	} else {
-		err = p.Dial(port, path, pid)
+		err = p.Dial(port, path, pid, debugInfoDirs)
 	}
 	if err != nil {
 		return nil, err

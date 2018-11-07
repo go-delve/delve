@@ -30,7 +30,7 @@ func withTestRecording(name string, t testing.TB, fn func(p *gdbserial.Process, 
 		t.Skip("test skipped, rr not found")
 	}
 	t.Log("recording")
-	p, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true)
+	p, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, []string{})
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}

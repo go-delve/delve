@@ -29,6 +29,10 @@ type Config struct {
 	// CoreFile specifies the path to the core dump to open.
 	CoreFile string
 
+	// DebugInfoDirectories is the list of directories to look for
+	// when resolving external debug info files.
+	DebugInfoDirectories []string
+
 	// Selects server backend.
 	Backend string
 

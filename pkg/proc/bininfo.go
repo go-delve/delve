@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -27,6 +28,8 @@ import (
 
 // BinaryInfo holds information on the binary being executed.
 type BinaryInfo struct {
+	// Path on disk of the binary being executed.
+	Path string
 	// Architecture of this binary.
 	Arch Arch
 
@@ -90,6 +93,9 @@ var ErrUnsupportedDarwinArch = errors.New("unsupported architecture - only darwi
 // ErrCouldNotDetermineRelocation is an error returned when Delve could not determine the base address of a
 // position independant executable.
 var ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
+
+// ErrNoDebugInfoFound is returned when Delve cannot find the external debug information file.
+var ErrNoDebugInfoFound = errors.New("could not find external debug info file")
 
 const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
 
@@ -298,22 +304,22 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 // LoadBinaryInfo will load and store the information from the binary at 'path'.
 // It is expected this will be called in parallel with other initialization steps
 // so a sync.WaitGroup must be provided.
-func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, wg *sync.WaitGroup) error {
+func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDirs []string, wg *sync.WaitGroup) error {
 	fi, err := os.Stat(path)
 	if err == nil {
 		bi.lastModified = fi.ModTime()
 	}
 
+	bi.Path = path
 	switch bi.GOOS {
 	case "linux":
-		return bi.LoadBinaryInfoElf(path, entryPoint, wg)
+		return bi.LoadBinaryInfoElf(path, entryPoint, debugInfoDirs, wg)
 	case "windows":
 		return bi.LoadBinaryInfoPE(path, entryPoint, wg)
 	case "darwin":
 		return bi.LoadBinaryInfoMacho(path, entryPoint, wg)
 	}
 	return errors.New("unsupported operating system")
-	return nil
 }
 
 // GStructOffset returns the offset of the G
@@ -563,35 +569,32 @@ func (e *ErrNoBuildIDNote) Error() string {
 // in GDB's documentation [1], and if found returns two handles, one
 // for the bare file, and another for its corresponding elf.File.
 // [1] https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
-func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File) (*os.File, *elf.File, error) {
-	buildid := exe.Section(".note.gnu.build-id")
-	if buildid == nil {
-		return nil, nil, &ErrNoBuildIDNote{}
+//
+// Alternatively, if the debug file cannot be found be the build-id, Delve
+// will look in directories specified by the debug-info-directories config value.
+func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
+	var debugFilePath string
+	for _, dir := range debugInfoDirectories {
+		var potentialDebugFilePath string
+		if strings.Contains(dir, "build-id") {
+			desc1, desc2, err := parseBuildID(exe)
+			if err != nil {
+				continue
+			}
+			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
+		} else {
+			potentialDebugFilePath = fmt.Sprintf("%s/%s.debug", dir, filepath.Base(bi.Path))
+		}
+		_, err := os.Stat(potentialDebugFilePath)
+		if err == nil {
+			debugFilePath = potentialDebugFilePath
+			break
+		}
 	}
-
-	br := buildid.Open()
-	bh := new(buildIDHeader)
-	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
-		return nil, nil, errors.New("can't read build-id header: " + err.Error())
+	if debugFilePath == "" {
+		return nil, nil, ErrNoDebugInfoFound
 	}
-
-	name := make([]byte, bh.Namesz)
-	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
-		return nil, nil, errors.New("can't read build-id name: " + err.Error())
-	}
-
-	if strings.TrimSpace(string(name)) != "GNU\x00" {
-		return nil, nil, errors.New("invalid build-id signature")
-	}
-
-	descBinary := make([]byte, bh.Descsz)
-	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
-		return nil, nil, errors.New("can't read build-id desc: " + err.Error())
-	}
-	desc := hex.EncodeToString(descBinary)
-
-	debugPath := fmt.Sprintf("/usr/lib/debug/.build-id/%s/%s.debug", desc[:2], desc[2:])
-	sepFile, err := os.OpenFile(debugPath, 0, os.ModePerm)
+	sepFile, err := os.OpenFile(debugFilePath, 0, os.ModePerm)
 	if err != nil {
 		return nil, nil, errors.New("can't open separate debug file: " + err.Error())
 	}
@@ -599,19 +602,48 @@ func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File) (*os.File, *elf.File,
 	elfFile, err := elf.NewFile(sepFile)
 	if err != nil {
 		sepFile.Close()
-		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugPath, err.Error())
+		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugFilePath, err.Error())
 	}
 
 	if elfFile.Machine != elf.EM_X86_64 {
 		sepFile.Close()
-		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugPath, ErrUnsupportedLinuxArch.Error())
+		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugFilePath, ErrUnsupportedLinuxArch.Error())
 	}
 
 	return sepFile, elfFile, nil
 }
 
+func parseBuildID(exe *elf.File) (string, string, error) {
+	buildid := exe.Section(".note.gnu.build-id")
+	if buildid == nil {
+		return "", "", &ErrNoBuildIDNote{}
+	}
+
+	br := buildid.Open()
+	bh := new(buildIDHeader)
+	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
+		return "", "", errors.New("can't read build-id header: " + err.Error())
+	}
+
+	name := make([]byte, bh.Namesz)
+	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
+		return "", "", errors.New("can't read build-id name: " + err.Error())
+	}
+
+	if strings.TrimSpace(string(name)) != "GNU\x00" {
+		return "", "", errors.New("invalid build-id signature")
+	}
+
+	descBinary := make([]byte, bh.Descsz)
+	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
+		return "", "", errors.New("can't read build-id desc: " + err.Error())
+	}
+	desc := hex.EncodeToString(descBinary)
+	return desc[:2], desc[2:], nil
+}
+
 // LoadBinaryInfoElf specifically loads information from an ELF binary.
-func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, wg *sync.WaitGroup) error {
+func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, debugInfoDirectories []string, wg *sync.WaitGroup) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
 		return err
@@ -639,7 +671,7 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, wg *sync
 	if err != nil {
 		var sepFile *os.File
 		var serr error
-		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(elfFile)
+		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(elfFile, debugInfoDirectories)
 		if serr != nil {
 			if _, ok := serr.(*ErrNoBuildIDNote); ok {
 				return err

@@ -185,14 +185,16 @@ var (
 )
 
 // OpenCore will open the core file and return a Process struct.
-func OpenCore(corePath, exePath string) (*Process, error) {
+// If the DWARF information cannot be found in the binary, Delve will look
+// for external debug files in the directories passed in.
+func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error) {
 	p, err := readLinuxAMD64Core(corePath, exePath)
 	if err != nil {
 		return nil, err
 	}
 
 	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(exePath, p.entryPoint, &wg)
+	err = p.bi.LoadBinaryInfo(exePath, p.entryPoint, debugInfoDirs, &wg)
 	wg.Wait()
 	if err == nil {
 		err = p.bi.LoadError()

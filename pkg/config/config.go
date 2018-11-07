@@ -43,10 +43,14 @@ type Config struct {
 	// If ShowLocationExpr is true whatis will print the DWARF location
 	// expression for its argument.
 	ShowLocationExpr bool `yaml:"show-location-expr"`
-	
+
 	// Source list line-number color (3/4 bit color codes as defined
 	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors)
 	SourceListLineColor int `yaml:"source-list-line-color"`
+
+	// DebugFileDirectories is the list of directories Delve will use
+	// in order to resolve external debug info files.
+	DebugInfoDirectories []string `yaml:"debug-info-directories"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -160,6 +164,9 @@ substitute-path:
 
 # Uncomment the following line to make the whatis command also print the DWARF location expression of its argument.
 # show-location-expr: true
+
+# List of directories to use when searching for separate debug info files.
+debug-info-directories: ["/usr/lib/debug/.build-id"]
 `)
 	return err
 }
