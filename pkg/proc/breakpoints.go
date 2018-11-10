@@ -425,12 +425,6 @@ func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
 		return (v.Flags & VariableReturnArgument) != 0
 	})
 
-	// Go saves the return variables in the opposite order that the user
-	// specifies them so here we reverse the slice to make it easier to
-	// understand.
-	for i := 0; i < len(vars)/2; i++ {
-		vars[i], vars[len(vars)-i-1] = vars[len(vars)-i-1], vars[i]
-	}
 	return vars
 }
 
