@@ -3920,23 +3920,39 @@ func TestStepOutReturn(t *testing.T) {
 			t.Fatalf("wrong number of return values %v", ret)
 		}
 
-		if ret[0].Name != "str" {
-			t.Fatalf("(str) bad return value name %s", ret[0].Name)
+		stridx := 0
+		numidx := 1
+
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
+			// in 1.11 and earlier the order of return values in DWARF is
+			// unspecified, in 1.11 and later it follows the order of definition
+			// specified by the user
+			for i := range ret {
+				if ret[i].Name == "str" {
+					stridx = i
+					numidx = 1 - i
+					break
+				}
+			}
 		}
-		if ret[0].Kind != reflect.String {
-			t.Fatalf("(str) bad return value kind %v", ret[0].Kind)
+
+		if ret[stridx].Name != "str" {
+			t.Fatalf("(str) bad return value name %s", ret[stridx].Name)
 		}
-		if s := constant.StringVal(ret[0].Value); s != "return 47" {
+		if ret[stridx].Kind != reflect.String {
+			t.Fatalf("(str) bad return value kind %v", ret[stridx].Kind)
+		}
+		if s := constant.StringVal(ret[stridx].Value); s != "return 47" {
 			t.Fatalf("(str) bad return value %q", s)
 		}
 
-		if ret[1].Name != "num" {
-			t.Fatalf("(num) bad return value name %s", ret[1].Name)
+		if ret[numidx].Name != "num" {
+			t.Fatalf("(num) bad return value name %s", ret[numidx].Name)
 		}
-		if ret[1].Kind != reflect.Int {
-			t.Fatalf("(num) bad return value kind %v", ret[1].Kind)
+		if ret[numidx].Kind != reflect.Int {
+			t.Fatalf("(num) bad return value kind %v", ret[numidx].Kind)
 		}
-		if n, _ := constant.Int64Val(ret[1].Value); n != 48 {
+		if n, _ := constant.Int64Val(ret[numidx].Value); n != 48 {
 			t.Fatalf("(num) bad return value %d", n)
 		}
 	})
