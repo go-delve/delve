@@ -58,11 +58,13 @@ func PostInitializationSetup(p Process, path string, debugInfoDirs []string, wri
 	}
 
 	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, debugInfoDirs)
-	if err == nil {
-		err = p.BinInfo().LoadError()
-	}
 	if err != nil {
 		return err
+	}
+	for _, image := range p.BinInfo().Images {
+		if image.loadErr != nil {
+			return image.loadErr
+		}
 	}
 
 	g, _ := GetG(p.CurrentThread())
@@ -515,10 +517,12 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		}
 	}
 
+	exeimage := dbp.BinInfo().Images[0] // Image corresponding to the executable file
+
 	var (
 		threadg = map[int]*G{}
 		allg    []*G
-		rdr     = dbp.BinInfo().DwarfReader()
+		rdr     = exeimage.DwarfReader()
 	)
 
 	threads := dbp.ThreadList()
@@ -532,7 +536,7 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		}
 	}
 
-	addr, err := rdr.AddrFor("runtime.allglen", dbp.BinInfo().staticBase)
+	addr, err := rdr.AddrFor("runtime.allglen", exeimage.StaticBase)
 	if err != nil {
 		return nil, -1, err
 	}
@@ -544,10 +548,10 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 	allglen := binary.LittleEndian.Uint64(allglenBytes)
 
 	rdr.Seek(0)
-	allgentryaddr, err := rdr.AddrFor("runtime.allgs", dbp.BinInfo().staticBase)
+	allgentryaddr, err := rdr.AddrFor("runtime.allgs", exeimage.StaticBase)
 	if err != nil {
 		// try old name (pre Go 1.6)
-		allgentryaddr, err = rdr.AddrFor("runtime.allg", dbp.BinInfo().staticBase)
+		allgentryaddr, err = rdr.AddrFor("runtime.allg", exeimage.StaticBase)
 		if err != nil {
 			return nil, -1, err
 		}

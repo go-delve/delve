@@ -75,3 +75,12 @@ func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry,
 	}
 	return fdes[idx], nil
 }
+
+// Append appends otherFDEs to fdes and returns the result.
+func (fdes FrameDescriptionEntries) Append(otherFDEs FrameDescriptionEntries) FrameDescriptionEntries {
+	r := append(fdes, otherFDEs...)
+	sort.Slice(r, func(i, j int) bool {
+		return r[i].Begin() < r[j].Begin()
+	})
+	return r
+}

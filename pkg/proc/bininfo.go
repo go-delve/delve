@@ -29,13 +29,13 @@ import (
 // BinaryInfo holds information on the binaries being executed (this
 // includes both the executable and also any loaded libraries).
 type BinaryInfo struct {
-	// Path on disk of the binary being executed.
-	Path string
 	// Architecture of this binary.
 	Arch Arch
 
 	// GOOS operating system this binary is executing on.
 	GOOS string
+
+	debugInfoDirectories []string
 
 	// Functions is a list of all DW_TAG_subprogram entries in debug_info, sorted by entry point
 	Functions []Function
@@ -60,32 +60,25 @@ type BinaryInfo struct {
 	// Maps package names to package paths, needed to lookup types inside DWARF info
 	packageMap map[string]string
 
-	dwarf        *dwarf.Data
-	dwarfReader  *dwarf.Reader
 	frameEntries frame.FrameDescriptionEntries
-	loclist      loclistReader
 	compileUnits []*compileUnit
-	types        map[string]dwarf.Offset
+	types        map[string]dwarfRef
 	packageVars  []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
-	typeCache    map[dwarf.Offset]godwarf.Type
 
 	gStructOffset uint64
 
-	loadModuleDataOnce sync.Once
-	moduleData         []moduleData
-	nameOfRuntimeType  map[uintptr]nameOfRuntimeTypeEntry
-
-	// runtimeTypeToDIE maps between the offset of a runtime._type in
-	// runtime.moduledata.types and the offset of the DIE in debug_info. This
-	// map is filled by using the extended attribute godwarf.AttrGoRuntimeType
-	// which was added in go 1.11.
-	runtimeTypeToDIE map[uint64]runtimeTypeDIE
+	// nameOfRuntimeType maps an address of a runtime._type struct to its
+	// decoded name. Used with versions of Go <= 1.10 to figure out the DIE of
+	// the concrete type of interfaces.
+	nameOfRuntimeType map[uintptr]nameOfRuntimeTypeEntry
 
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
 
 	loadErrMu sync.Mutex
 	loadErr   error
+
+	initialized bool
 }
 
 // ErrUnsupportedLinuxArch is returned when attempting to debug a binary compiled for an unsupported architecture.
@@ -120,6 +113,14 @@ type compileUnit struct {
 	producer           string              // producer attribute
 
 	startOffset, endOffset dwarf.Offset // interval of offsets contained in this compile unit
+
+	image *Image // parent image of this compilation unit.
+}
+
+// dwarfRef is a reference to a Debug Info Entry inside a shared object.
+type dwarfRef struct {
+	imageIndex int
+	offset     dwarf.Offset
 }
 
 type partialUnitConstant struct {
@@ -203,7 +204,7 @@ func (fn *Function) Optimized() bool {
 	return fn.cu.optimized
 }
 
-type constantsMap map[dwarf.Offset]*constantType
+type constantsMap map[dwarfRef]*constantType
 
 type constantType struct {
 	initialized bool
@@ -222,6 +223,7 @@ type constantValue struct {
 // a register, or non-contiguously) addr will be 0.
 type packageVar struct {
 	name   string
+	cu     *compileUnit
 	offset dwarf.Offset
 	addr   uint64
 }
@@ -304,7 +306,7 @@ type ElfDynamicSection struct {
 
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
 func NewBinaryInfo(goos, goarch string) *BinaryInfo {
-	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), typeCache: make(map[dwarf.Offset]godwarf.Type)}
+	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry)}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info).
 	switch goarch {
@@ -316,24 +318,28 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 }
 
 // LoadBinaryInfo will load and store the information from the binary at 'path'.
-// It is expected this will be called in parallel with other initialization steps
-// so a sync.WaitGroup must be provided.
 func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDirs []string) error {
 	fi, err := os.Stat(path)
 	if err == nil {
 		bi.lastModified = fi.ModTime()
 	}
 
+	bi.debugInfoDirectories = debugInfoDirs
+
+	return bi.AddImage(path, entryPoint)
+}
+
+func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	bi.Path = path
+
 	switch bi.GOOS {
 	case "linux":
-		return bi.LoadBinaryInfoElf(path, entryPoint, debugInfoDirs, &wg)
+		return loadBinaryInfoElf(bi, image, path, entryPoint, &wg)
 	case "windows":
-		return bi.LoadBinaryInfoPE(path, entryPoint, &wg)
+		return loadBinaryInfoPE(bi, image, path, entryPoint, &wg)
 	case "darwin":
-		return bi.LoadBinaryInfoMacho(path, entryPoint, &wg)
+		return loadBinaryInfoMacho(bi, image, path, entryPoint, &wg)
 	}
 	return errors.New("unsupported operating system")
 }
@@ -350,8 +356,8 @@ func (bi *BinaryInfo) LastModified() time.Time {
 }
 
 // DwarfReader returns a reader for the dwarf data
-func (bi *BinaryInfo) DwarfReader() *reader.Reader {
-	return reader.New(bi.dwarf)
+func (so *Image) DwarfReader() *reader.Reader {
+	return reader.New(so.dwarf)
 }
 
 // Types returns list of types present in the debugged program.
@@ -425,71 +431,168 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 	return nil
 }
 
-// Image represents a loaded library file (shared object on linux, DLL on windows).
-type Image struct {
-	Path string
-	addr uint64
+// pcToImage returns the image containing the given PC address.
+func (bi *BinaryInfo) pcToImage(pc uint64) *Image {
+	fn := bi.PCToFunc(pc)
+	return bi.funcToImage(fn)
 }
 
-// AddImage adds the specified image to bi.
-func (bi *BinaryInfo) AddImage(path string, addr uint64) {
-	if !strings.HasPrefix(path, "/") {
-		return
+// Image represents a loaded library file (shared object on linux, DLL on windows).
+type Image struct {
+	Path       string
+	StaticBase uint64
+	addr       uint64
+
+	index int // index of this object in BinaryInfo.SharedObjects
+
+	closer         io.Closer
+	sepDebugCloser io.Closer
+
+	dwarf       *dwarf.Data
+	dwarfReader *dwarf.Reader
+	loclist     loclistReader
+
+	typeCache map[dwarf.Offset]godwarf.Type
+
+	// runtimeTypeToDIE maps between the offset of a runtime._type in
+	// runtime.moduledata.types and the offset of the DIE in debug_info. This
+	// map is filled by using the extended attribute godwarf.AttrGoRuntimeType
+	// which was added in go 1.11.
+	runtimeTypeToDIE map[uint64]runtimeTypeDIE
+
+	loadErrMu sync.Mutex
+	loadErr   error
+}
+
+// AddImage adds the specified image to bi, loading data asynchronously.
+// Addr is the relocated entry point for the executable and staticBase (i.e.
+// the relocation offset) for all other images.
+// The first image added must be the executable file.
+func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
+	// Check if the image is already present.
+	if len(bi.Images) > 0 && !strings.HasPrefix(path, "/") {
+		return nil
 	}
 	for _, image := range bi.Images {
 		if image.Path == path && image.addr == addr {
-			return
+			return nil
 		}
 	}
-	//TODO(aarzilli): actually load informations about the image here
-	bi.Images = append(bi.Images, &Image{Path: path, addr: addr})
+
+	// Actually add the image.
+	image := &Image{Path: path, addr: addr, typeCache: make(map[dwarf.Offset]godwarf.Type)}
+	// add Image regardless of error so that we don't attempt to re-add it every time we stop
+	image.index = len(bi.Images)
+	bi.Images = append(bi.Images, image)
+	err := loadBinaryInfo(bi, image, path, addr)
+	if err != nil {
+		bi.Images[len(bi.Images)-1].loadErr = err
+	}
+	return err
 }
 
-// Close closes all internal readers.
-func (bi *BinaryInfo) Close() error {
-	if bi.sepDebugCloser != nil {
-		bi.sepDebugCloser.Close()
-	}
-	if bi.closer != nil {
-		return bi.closer.Close()
+// moduleDataToImage finds the image corresponding to the given module data object.
+func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
+	return bi.funcToImage(bi.PCToFunc(uint64(md.text)))
+}
+
+// imageToModuleData finds the module data in mds corresponding to the given image.
+func (bi *BinaryInfo) imageToModuleData(image *Image, mds []moduleData) *moduleData {
+	for _, md := range mds {
+		im2 := bi.moduleDataToImage(&md)
+		if im2.index == image.index {
+			return &md
+		}
 	}
 	return nil
 }
 
-func (bi *BinaryInfo) setLoadError(fmtstr string, args ...interface{}) {
-	bi.loadErrMu.Lock()
-	bi.loadErr = fmt.Errorf(fmtstr, args...)
-	bi.loadErrMu.Unlock()
+// typeToImage returns the image containing the give type.
+func (bi *BinaryInfo) typeToImage(typ godwarf.Type) *Image {
+	return bi.Images[typ.Common().Index]
 }
 
-// LoadError returns any internal load error.
-func (bi *BinaryInfo) LoadError() error {
-	return bi.loadErr
+var errBinaryInfoClose = errors.New("multiple errors closing executable files")
+
+// Close closes all internal readers.
+func (bi *BinaryInfo) Close() error {
+	var errs []error
+	for _, image := range bi.Images {
+		if err := image.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	switch len(errs) {
+	case 0:
+		return nil
+	case 1:
+		return errs[0]
+	default:
+		return errBinaryInfoClose
+	}
+}
+
+func (image *Image) Close() error {
+	var err1, err2 error
+	if image.sepDebugCloser != nil {
+		err := image.sepDebugCloser.Close()
+		if err != nil {
+			err1 = fmt.Errorf("closing shared object %q (split dwarf): %v", image.Path, err)
+		}
+	}
+	if image.closer != nil {
+		err := image.closer.Close()
+		if err != nil {
+			err2 = fmt.Errorf("closing shared object %q: %v", image.Path, err)
+		}
+	}
+	if err1 != nil && err2 != nil {
+		return errBinaryInfoClose
+	}
+	if err1 != nil {
+		return err1
+	}
+	return err2
+}
+
+func (image *Image) setLoadError(fmtstr string, args ...interface{}) {
+	image.loadErrMu.Lock()
+	image.loadErr = fmt.Errorf(fmtstr, args...)
+	image.loadErrMu.Unlock()
+}
+
+// LoadError returns any error incurred while loading this image.
+func (image *Image) LoadError() error {
+	return image.loadErr
 }
 
 type nilCloser struct{}
 
 func (c *nilCloser) Close() error { return nil }
 
-// LoadFromData creates a new BinaryInfo object using the specified data.
+// LoadImageFromData creates a new Image, using the specified data, and adds it to bi.
 // This is used for debugging BinaryInfo, you should use LoadBinary instead.
-func (bi *BinaryInfo) LoadFromData(dwdata *dwarf.Data, debugFrameBytes, debugLineBytes, debugLocBytes []byte) {
-	bi.closer = (*nilCloser)(nil)
-	bi.sepDebugCloser = (*nilCloser)(nil)
-	bi.dwarf = dwdata
+func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, debugLineBytes, debugLocBytes []byte) {
+	image := &Image{}
+	image.closer = (*nilCloser)(nil)
+	image.sepDebugCloser = (*nilCloser)(nil)
+	image.dwarf = dwdata
+	image.typeCache = make(map[dwarf.Offset]godwarf.Type)
 
 	if debugFrameBytes != nil {
-		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), bi.staticBase)
+		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0)
 	}
 
-	bi.loclistInit(debugLocBytes)
+	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
 
-	bi.loadDebugInfoMaps(debugLineBytes, nil, nil)
+	bi.loadDebugInfoMaps(image, debugLineBytes, nil, nil)
+
+	bi.Images = append(bi.Images, image)
 }
 
-func (bi *BinaryInfo) loclistInit(data []byte) {
-	bi.loclist.data = data
-	bi.loclist.ptrSz = bi.Arch.PtrSize()
+func (image *Image) loclistInit(data []byte, ptrSz int) {
+	image.loclist.data = data
+	image.loclist.ptrSz = ptrSz
 }
 
 func (bi *BinaryInfo) locationExpr(entry reader.Entry, attr dwarf.Attr, pc uint64) ([]byte, string, error) {
@@ -506,9 +609,6 @@ func (bi *BinaryInfo) locationExpr(entry reader.Entry, attr dwarf.Attr, pc uint6
 	off, ok := a.(int64)
 	if !ok {
 		return nil, "", fmt.Errorf("could not interpret location attribute %s", attr)
-	}
-	if bi.loclist.data == nil {
-		return nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x (no debug_loc section found)", off, pc)
 	}
 	instr := bi.loclistEntry(off, pc)
 	if instr == nil {
@@ -537,13 +637,18 @@ func (bi *BinaryInfo) Location(entry reader.Entry, attr dwarf.Attr, pc uint64, r
 // for address pc.
 func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 	var base uint64
+	image := bi.Images[0]
 	if cu := bi.findCompileUnit(pc); cu != nil {
 		base = cu.lowPC
+		image = cu.image
+	}
+	if image == nil || image.loclist.data == nil {
+		return nil
 	}
 
-	bi.loclist.Seek(int(off))
+	image.loclist.Seek(int(off))
 	var e loclistEntry
-	for bi.loclist.Next(&e) {
+	for image.loclist.Next(&e) {
 		if e.BaseAddressSelection() {
 			base = e.highpc
 			continue
@@ -588,8 +693,17 @@ func (bi *BinaryInfo) Producer() string {
 }
 
 // Type returns the Dwarf type entry at `offset`.
-func (bi *BinaryInfo) Type(offset dwarf.Offset) (godwarf.Type, error) {
-	return godwarf.ReadType(bi.dwarf, offset, bi.typeCache)
+func (image *Image) Type(offset dwarf.Offset) (godwarf.Type, error) {
+	return godwarf.ReadType(image.dwarf, image.index, offset, image.typeCache)
+}
+
+// funcToImage returns the Image containing function fn, or the
+// executable file as a fallback.
+func (bi *BinaryInfo) funcToImage(fn *Function) *Image {
+	if fn == nil {
+		return bi.Images[0]
+	}
+	return fn.cu.image
 }
 
 // ELF ///////////////////////////////////////////////////////////////
@@ -611,7 +725,7 @@ func (e *ErrNoBuildIDNote) Error() string {
 //
 // Alternatively, if the debug file cannot be found be the build-id, Delve
 // will look in directories specified by the debug-info-directories config value.
-func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
+func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
 	var debugFilePath string
 	for _, dir := range debugInfoDirectories {
 		var potentialDebugFilePath string
@@ -622,7 +736,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(exe *elf.File, debugInfoDirectories 
 			}
 			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
 		} else {
-			potentialDebugFilePath = fmt.Sprintf("%s/%s.debug", dir, filepath.Base(bi.Path))
+			potentialDebugFilePath = fmt.Sprintf("%s/%s.debug", dir, filepath.Base(image.Path))
 		}
 		_, err := os.Stat(potentialDebugFilePath)
 		if err == nil {
@@ -681,13 +795,13 @@ func parseBuildID(exe *elf.File) (string, string, error) {
 	return desc[:2], desc[2:], nil
 }
 
-// LoadBinaryInfoElf specifically loads information from an ELF binary.
-func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, debugInfoDirectories []string, wg *sync.WaitGroup) error {
+// loadBinaryInfoElf specifically loads information from an ELF binary.
+func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, wg *sync.WaitGroup) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
 		return err
 	}
-	bi.closer = exe
+	image.closer = exe
 	elfFile, err := elf.NewFile(exe)
 	if err != nil {
 		return err
@@ -696,70 +810,80 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, debugInf
 		return ErrUnsupportedLinuxArch
 	}
 
-	if entryPoint != 0 {
-		bi.staticBase = entryPoint - elfFile.Entry
-	} else {
-		if elfFile.Type == elf.ET_DYN {
+	if image.index == 0 {
+		// adding executable file:
+		// - addr is entryPoint therefore staticBase needs to be calculated by
+		//   subtracting the entry point specified in the executable file from addr.
+		// - memory address of the .dynamic section needs to be recorded in
+		//   BinaryInfo so that we can find loaded libraries.
+		if addr != 0 {
+			image.StaticBase = addr - elfFile.Entry
+		} else if elfFile.Type == elf.ET_DYN {
 			return ErrCouldNotDetermineRelocation
 		}
-	}
-
-	if dynsec := elfFile.Section(".dynamic"); dynsec != nil {
-		bi.ElfDynamicSection.Addr = dynsec.Addr + bi.staticBase
-		bi.ElfDynamicSection.Size = dynsec.Size
+		if dynsec := elfFile.Section(".dynamic"); dynsec != nil {
+			bi.ElfDynamicSection.Addr = dynsec.Addr + image.StaticBase
+			bi.ElfDynamicSection.Size = dynsec.Size
+		}
+	} else {
+		image.StaticBase = addr
 	}
 
 	dwarfFile := elfFile
 
-	bi.dwarf, err = elfFile.DWARF()
+	image.dwarf, err = elfFile.DWARF()
 	if err != nil {
 		var sepFile *os.File
 		var serr error
-		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(elfFile, debugInfoDirectories)
+		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.debugInfoDirectories)
 		if serr != nil {
 			return serr
 		}
-		bi.sepDebugCloser = sepFile
-		bi.dwarf, err = dwarfFile.DWARF()
+		image.sepDebugCloser = sepFile
+		image.dwarf, err = dwarfFile.DWARF()
 		if err != nil {
 			return err
 		}
 	}
 
-	bi.dwarfReader = bi.dwarf.Reader()
+	image.dwarfReader = image.dwarf.Reader()
 
 	debugLineBytes, err := godwarf.GetDebugSectionElf(dwarfFile, "line")
 	if err != nil {
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "loc")
-	bi.loclistInit(debugLocBytes)
+	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
 
-	wg.Add(3)
-	go bi.parseDebugFrameElf(dwarfFile, wg)
-	go bi.loadDebugInfoMaps(debugLineBytes, wg, nil)
-	go bi.setGStructOffsetElf(dwarfFile, wg)
+	wg.Add(2)
+	go bi.parseDebugFrameElf(image, dwarfFile, wg)
+	go bi.loadDebugInfoMaps(image, debugLineBytes, wg, nil)
+	if image.index == 0 {
+		// determine g struct offset only when loading the executable file
+		wg.Add(1)
+		go bi.setGStructOffsetElf(image, dwarfFile, wg)
+	}
 	return nil
 }
 
-func (bi *BinaryInfo) parseDebugFrameElf(exe *elf.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFrameElf(image *Image, exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameData, err := godwarf.GetDebugSectionElf(exe, "frame")
 	if err != nil {
-		bi.setLoadError("could not get .debug_frame section: %v", err)
+		image.setLoadError("could not get .debug_frame section: %v", err)
 		return
 	}
 	debugInfoData, err := godwarf.GetDebugSectionElf(exe, "info")
 	if err != nil {
-		bi.setLoadError("could not get .debug_info section: %v", err)
+		image.setLoadError("could not get .debug_info section: %v", err)
 		return
 	}
 
-	bi.frameEntries = frame.Parse(debugFrameData, frame.DwarfEndian(debugInfoData), bi.staticBase)
+	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameData, frame.DwarfEndian(debugInfoData), image.StaticBase))
 }
 
-func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	// This is a bit arcane. Essentially:
@@ -770,7 +894,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
 	//   offset in libc's TLS block.
 	symbols, err := exe.Symbols()
 	if err != nil {
-		bi.setLoadError("could not parse ELF symbols: %v", err)
+		image.setLoadError("could not parse ELF symbols: %v", err)
 		return
 	}
 	var tlsg *elf.Symbol
@@ -808,17 +932,17 @@ func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
 
 const _IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
 
-// LoadBinaryInfoPE specifically loads information from a PE binary.
-func (bi *BinaryInfo) LoadBinaryInfoPE(path string, entryPoint uint64, wg *sync.WaitGroup) error {
+// loadBinaryInfoPE specifically loads information from a PE binary.
+func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	peFile, closer, err := openExecutablePathPE(path)
 	if err != nil {
 		return err
 	}
-	bi.closer = closer
+	image.closer = closer
 	if peFile.Machine != pe.IMAGE_FILE_MACHINE_AMD64 {
 		return ErrUnsupportedWindowsArch
 	}
-	bi.dwarf, err = peFile.DWARF()
+	image.dwarf, err = peFile.DWARF()
 	if err != nil {
 		return err
 	}
@@ -826,25 +950,25 @@ func (bi *BinaryInfo) LoadBinaryInfoPE(path string, entryPoint uint64, wg *sync.
 	//TODO(aarzilli): actually test this when Go supports PIE buildmode on Windows.
 	opth := peFile.OptionalHeader.(*pe.OptionalHeader64)
 	if entryPoint != 0 {
-		bi.staticBase = entryPoint - opth.ImageBase
+		image.StaticBase = entryPoint - opth.ImageBase
 	} else {
 		if opth.DllCharacteristics&_IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE != 0 {
 			return ErrCouldNotDetermineRelocation
 		}
 	}
 
-	bi.dwarfReader = bi.dwarf.Reader()
+	image.dwarfReader = image.dwarf.Reader()
 
 	debugLineBytes, err := godwarf.GetDebugSectionPE(peFile, "line")
 	if err != nil {
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionPE(peFile, "loc")
-	bi.loclistInit(debugLocBytes)
+	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
 
 	wg.Add(2)
-	go bi.parseDebugFramePE(peFile, wg)
-	go bi.loadDebugInfoMaps(debugLineBytes, wg, nil)
+	go bi.parseDebugFramePE(image, peFile, wg)
+	go bi.loadDebugInfoMaps(image, debugLineBytes, wg, nil)
 
 	// Use ArbitraryUserPointer (0x28) as pointer to pointer
 	// to G struct per:
@@ -867,21 +991,21 @@ func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
 	return peFile, f, nil
 }
 
-func (bi *BinaryInfo) parseDebugFramePE(exe *pe.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFramePE(image *Image, exe *pe.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameBytes, err := godwarf.GetDebugSectionPE(exe, "frame")
 	if err != nil {
-		bi.setLoadError("could not get .debug_frame section: %v", err)
+		image.setLoadError("could not get .debug_frame section: %v", err)
 		return
 	}
 	debugInfoBytes, err := godwarf.GetDebugSectionPE(exe, "info")
 	if err != nil {
-		bi.setLoadError("could not get .debug_info section: %v", err)
+		image.setLoadError("could not get .debug_info section: %v", err)
 		return
 	}
 
-	bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), bi.staticBase)
+	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), image.StaticBase))
 }
 
 // Borrowed from https://golang.org/src/cmd/internal/objfile/pe.go
@@ -903,33 +1027,33 @@ func findPESymbol(f *pe.File, name string) (*pe.Symbol, error) {
 
 // MACH-O ////////////////////////////////////////////////////////////
 
-// LoadBinaryInfoMacho specifically loads information from a Mach-O binary.
-func (bi *BinaryInfo) LoadBinaryInfoMacho(path string, entryPoint uint64, wg *sync.WaitGroup) error {
+// loadBinaryInfoMacho specifically loads information from a Mach-O binary.
+func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	exe, err := macho.Open(path)
 	if err != nil {
 		return err
 	}
-	bi.closer = exe
+	image.closer = exe
 	if exe.Cpu != macho.CpuAmd64 {
 		return ErrUnsupportedDarwinArch
 	}
-	bi.dwarf, err = exe.DWARF()
+	image.dwarf, err = exe.DWARF()
 	if err != nil {
 		return err
 	}
 
-	bi.dwarfReader = bi.dwarf.Reader()
+	image.dwarfReader = image.dwarf.Reader()
 
 	debugLineBytes, err := godwarf.GetDebugSectionMacho(exe, "line")
 	if err != nil {
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionMacho(exe, "loc")
-	bi.loclistInit(debugLocBytes)
+	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
 
 	wg.Add(2)
-	go bi.parseDebugFrameMacho(exe, wg)
-	go bi.loadDebugInfoMaps(debugLineBytes, wg, bi.setGStructOffsetMacho)
+	go bi.parseDebugFrameMacho(image, exe, wg)
+	go bi.loadDebugInfoMaps(image, debugLineBytes, wg, bi.setGStructOffsetMacho)
 	return nil
 }
 
@@ -945,19 +1069,19 @@ func (bi *BinaryInfo) setGStructOffsetMacho() {
 	bi.gStructOffset = 0x8a0
 }
 
-func (bi *BinaryInfo) parseDebugFrameMacho(exe *macho.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameBytes, err := godwarf.GetDebugSectionMacho(exe, "frame")
 	if err != nil {
-		bi.setLoadError("could not get __debug_frame section: %v", err)
+		image.setLoadError("could not get __debug_frame section: %v", err)
 		return
 	}
 	debugInfoBytes, err := godwarf.GetDebugSectionMacho(exe, "info")
 	if err != nil {
-		bi.setLoadError("could not get .debug_info section: %v", err)
+		image.setLoadError("could not get .debug_info section: %v", err)
 		return
 	}
 
-	bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), bi.staticBase)
+	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), image.StaticBase))
 }

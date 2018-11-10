@@ -1636,7 +1636,7 @@ func libraries(t *Term, ctx callContext, args string) error {
 	}
 	d := digits(len(libs))
 	for i := range libs {
-		fmt.Printf("%"+strconv.Itoa(d)+"d. %s\n", i, libs[i].Path)
+		fmt.Printf("%"+strconv.Itoa(d)+"d. %#x %s\n", i, libs[i].Address, libs[i].Path)
 	}
 	return nil
 }

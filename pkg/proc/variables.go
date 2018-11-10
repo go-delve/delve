@@ -232,8 +232,8 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
-func globalScope(bi *BinaryInfo, mem MemoryReadWriter) *EvalScope {
-	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: bi.staticBase}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
+func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
+	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
 }
 
 func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
@@ -434,10 +434,23 @@ func (v *Variable) toField(field *godwarf.StructField) (*Variable, error) {
 	return v.newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.mem), nil
 }
 
+// image returns the image containing the current function.
+func (scope *EvalScope) image() *Image {
+	return scope.BinInfo.funcToImage(scope.Fn)
+}
+
+// globalFor returns a global scope for 'image' with the register values of 'scope'.
+func (scope *EvalScope) globalFor(image *Image) *EvalScope {
+	r := *scope
+	r.Regs.StaticBase = image.StaticBase
+	r.Fn = &Function{cu: &compileUnit{image: image}}
+	return &r
+}
+
 // DwarfReader returns the DwarfReader containing the
 // Dwarf information for the target process.
 func (scope *EvalScope) DwarfReader() *reader.Reader {
-	return scope.BinInfo.DwarfReader()
+	return scope.image().DwarfReader()
 }
 
 // PtrSize returns the size of a pointer.
@@ -630,7 +643,7 @@ var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
 func (g *G) Ancestors(n int) ([]Ancestor, error) {
-	scope := globalScope(g.Thread.BinInfo(), g.Thread)
+	scope := globalScope(g.Thread.BinInfo(), g.Thread.BinInfo().Images[0], g.Thread)
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)
@@ -820,30 +833,35 @@ func filterVariables(vars []*Variable, pred func(v *Variable) bool) []*Variable 
 // PackageVariables returns the name, value, and type of all package variables in the application.
 func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 	var vars []*Variable
-	reader := scope.DwarfReader()
-
-	var utypoff dwarf.Offset
-	utypentry, err := reader.SeekToTypeNamed("<unspecified>")
-	if err == nil {
-		utypoff = utypentry.Offset
-	}
-
-	for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
-		if err != nil {
-			return nil, err
-		}
-
-		if typoff, ok := entry.Val(dwarf.AttrType).(dwarf.Offset); !ok || typoff == utypoff {
+	for _, image := range scope.BinInfo.Images {
+		if image.loadErr != nil {
 			continue
 		}
+		reader := reader.New(image.dwarf)
 
-		// Ignore errors trying to extract values
-		val, err := scope.extractVarInfoFromEntry(entry)
-		if err != nil {
-			continue
+		var utypoff dwarf.Offset
+		utypentry, err := reader.SeekToTypeNamed("<unspecified>")
+		if err == nil {
+			utypoff = utypentry.Offset
 		}
-		val.loadValue(cfg)
-		vars = append(vars, val)
+
+		for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
+			if err != nil {
+				return nil, err
+			}
+
+			if typoff, ok := entry.Val(dwarf.AttrType).(dwarf.Offset); !ok || typoff == utypoff {
+				continue
+			}
+
+			// Ignore errors trying to extract values
+			val, err := scope.globalFor(image).extractVarInfoFromEntry(entry)
+			if err != nil {
+				continue
+			}
+			val.loadValue(cfg)
+			vars = append(vars, val)
+		}
 	}
 
 	return vars, nil
@@ -852,33 +870,33 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
 	for _, pkgvar := range scope.BinInfo.packageVars {
 		if pkgvar.name == name || strings.HasSuffix(pkgvar.name, "/"+name) {
-			reader := scope.DwarfReader()
+			reader := pkgvar.cu.image.dwarfReader
 			reader.Seek(pkgvar.offset)
 			entry, err := reader.Next()
 			if err != nil {
 				return nil, err
 			}
-			return scope.extractVarInfoFromEntry(entry)
+			return scope.globalFor(pkgvar.cu.image).extractVarInfoFromEntry(entry)
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {
 		if fn.Name == name || strings.HasSuffix(fn.Name, "/"+name) {
 			//TODO(aarzilli): convert function entry into a function type?
-			r := scope.newVariable(fn.Name, uintptr(fn.Entry), &godwarf.FuncType{}, scope.Mem)
+			r := scope.globalFor(fn.cu.image).newVariable(fn.Name, uintptr(fn.Entry), &godwarf.FuncType{}, scope.Mem)
 			r.Value = constant.MakeString(fn.Name)
 			r.Base = uintptr(fn.Entry)
 			r.loaded = true
 			return r, nil
 		}
 	}
-	for offset, ctyp := range scope.BinInfo.consts {
+	for dwref, ctyp := range scope.BinInfo.consts {
 		for _, cval := range ctyp.values {
 			if cval.fullName == name || strings.HasSuffix(cval.fullName, "/"+name) {
-				t, err := scope.BinInfo.Type(offset)
+				t, err := scope.BinInfo.Images[dwref.imageIndex].Type(dwref.offset)
 				if err != nil {
 					return nil, err
 				}
-				v := scope.newVariable(name, 0x0, t, scope.Mem)
+				v := scope.globalFor(scope.BinInfo.Images[0]).newVariable(name, 0x0, t, scope.Mem)
 				switch v.Kind {
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 					v.Value = constant.MakeInt64(cval.value)
@@ -966,8 +984,8 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	}
 }
 
-func readVarEntry(varEntry *dwarf.Entry, bi *BinaryInfo) (entry reader.Entry, name string, typ godwarf.Type, err error) {
-	entry, _ = reader.LoadAbstractOrigin(varEntry, bi.dwarfReader)
+func readVarEntry(varEntry *dwarf.Entry, image *Image) (entry reader.Entry, name string, typ godwarf.Type, err error) {
+	entry, _ = reader.LoadAbstractOrigin(varEntry, image.dwarfReader)
 
 	name, ok := entry.Val(dwarf.AttrName).(string)
 	if !ok {
@@ -979,7 +997,7 @@ func readVarEntry(varEntry *dwarf.Entry, bi *BinaryInfo) (entry reader.Entry, na
 		return nil, "", nil, fmt.Errorf("malformed variable DIE (offset)")
 	}
 
-	typ, err = bi.Type(offset)
+	typ, err = image.Type(offset)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -998,7 +1016,7 @@ func (scope *EvalScope) extractVarInfoFromEntry(varEntry *dwarf.Entry) (*Variabl
 		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", varEntry.Tag.String())
 	}
 
-	entry, n, t, err := readVarEntry(varEntry, scope.BinInfo)
+	entry, n, t, err := readVarEntry(varEntry, scope.image())
 	if err != nil {
 		return nil, err
 	}
@@ -2139,7 +2157,7 @@ func popcnt(x uint64) int {
 }
 
 func (cm constantsMap) Get(typ godwarf.Type) *constantType {
-	ctyp := cm[typ.Common().Offset]
+	ctyp := cm[dwarfRef{typ.Common().Index, typ.Common().Offset}]
 	if ctyp == nil {
 		return nil
 	}
@@ -2211,7 +2229,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 
 	var vars []*Variable
 	var depths []int
-	varReader := reader.Variables(scope.BinInfo.dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.BinInfo.staticBase), scope.Line, true)
+	varReader := reader.Variables(scope.image().dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true)
 	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()

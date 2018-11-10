@@ -72,20 +72,19 @@ func findFirstNonRuntimeFrame(p proc.Process) (proc.Stackframe, error) {
 	return proc.Stackframe{}, fmt.Errorf("non-runtime frame not found")
 }
 
-func evalVariable(p proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
-	var scope *proc.EvalScope
-	var err error
-
-	if testBackend == "rr" {
-		var frame proc.Stackframe
-		frame, err = findFirstNonRuntimeFrame(p)
-		if err == nil {
-			scope = proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frame)
-		}
-	} else {
-		scope, err = proc.GoroutineScope(p.CurrentThread())
+func evalScope(p proc.Process) (*proc.EvalScope, error) {
+	if testBackend != "rr" {
+		return proc.GoroutineScope(p.CurrentThread())
 	}
+	frame, err := findFirstNonRuntimeFrame(p)
+	if err != nil {
+		return nil, err
+	}
+	return proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frame), nil
+}
 
+func evalVariable(p proc.Process, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
+	scope, err := evalScope(p)
 	if err != nil {
 		return nil, err
 	}
@@ -108,9 +107,12 @@ func setVariable(p proc.Process, symbol, value string) error {
 }
 
 func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture protest.Fixture)) {
-	var buildFlags protest.BuildFlags
+	withTestProcessArgs(name, t, ".", []string{}, 0, fn)
+}
+
+func withTestProcessArgs(name string, t *testing.T, wd string, args []string, buildFlags protest.BuildFlags, fn func(p proc.Process, fixture protest.Fixture)) {
 	if buildMode == "pie" {
-		buildFlags = protest.BuildModePIE
+		buildFlags |= protest.BuildModePIE
 	}
 	fixture := protest.BuildFixture(name, buildFlags)
 	var p proc.Process
@@ -118,13 +120,13 @@ func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture 
 	var tracedir string
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{fixture.Path}, ".", false, []string{})
+		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false, []string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".", false, []string{})
+		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false, []string{})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, []string{})
+		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{})
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatalf("unknown backend %q", testBackend)
@@ -1238,5 +1240,101 @@ func TestIssue1531(t *testing.T) {
 		cmmv := api.ConvertVar(mmv)
 		t.Logf("mm = %s", cmmv.SinglelineString())
 		hasKeys(mmv, "r", "t", "v")
+	})
+}
+
+func setFileLineBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *proc.Breakpoint {
+	addr, err := proc.FindFileLocation(p, path, lineno)
+	if err != nil {
+		t.Fatalf("FindFileLocation: %v", err)
+	}
+	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
+	if err != nil {
+		t.Fatalf("SetBreakpoint: %v", err)
+	}
+	return bp
+}
+
+func currentLocation(p proc.Process, t *testing.T) (pc uint64, f string, ln int, fn *proc.Function) {
+	regs, err := p.CurrentThread().Registers(false)
+	if err != nil {
+		t.Fatalf("Registers error: %v", err)
+	}
+	f, l, fn := p.BinInfo().PCToLine(regs.PC())
+	t.Logf("at %#x %s:%d %v", regs.PC(), f, l, fn)
+	return regs.PC(), f, l, fn
+}
+
+func assertCurrentLocationFunction(p proc.Process, t *testing.T, fnname string) {
+	_, _, _, fn := currentLocation(p, t)
+	if fn == nil {
+		t.Fatalf("Not in a function")
+	}
+	if fn.Name != fnname {
+		t.Fatalf("Wrong function %s %s", fn.Name, fnname)
+	}
+}
+
+func TestPluginVariables(t *testing.T) {
+	pluginFixtures := protest.WithPlugins(t, "plugin1/", "plugin2/")
+
+	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, 0, func(p proc.Process, fixture protest.Fixture) {
+		setFileLineBreakpoint(p, t, fixture.Source, 41)
+		assertNoError(proc.Continue(p), t, "Continue 1")
+
+		bp, err := setFunctionBreakpoint(p, "github.com/go-delve/delve/_fixtures/plugin2.TypesTest")
+		assertNoError(err, t, "SetBreakpoint(TypesTest)")
+		t.Logf("bp.Addr = %#x", bp.Addr)
+		_, err = setFunctionBreakpoint(p, "github.com/go-delve/delve/_fixtures/plugin2.aIsNotNil")
+		assertNoError(err, t, "SetBreakpoint(aIsNotNil)")
+
+		for _, image := range p.BinInfo().Images {
+			t.Logf("%#x %s\n", image.StaticBase, image.Path)
+		}
+
+		assertNoError(proc.Continue(p), t, "Continue 2")
+
+		// test that PackageVariables returns variables from the executable and plugins
+		scope, err := evalScope(p)
+		assertNoError(err, t, "evalScope")
+		allvars, err := scope.PackageVariables(pnormalLoadConfig)
+		assertNoError(err, t, "PackageVariables")
+		var plugin2AFound, mainExeGlobalFound bool
+		for _, v := range allvars {
+			switch v.Name {
+			case "github.com/go-delve/delve/_fixtures/plugin2.A":
+				plugin2AFound = true
+			case "main.ExeGlobal":
+				mainExeGlobalFound = true
+			}
+		}
+		if !plugin2AFound {
+			t.Fatalf("variable plugin2.A not found in the output of PackageVariables")
+		}
+		if !mainExeGlobalFound {
+			t.Fatalf("variable main.ExeGlobal not found in the output of PackageVariables")
+		}
+
+		// read interface variable, inside plugin code, with a concrete type defined in the executable
+		vs, err := evalVariable(p, "s", pnormalLoadConfig)
+		assertNoError(err, t, "Eval(s)")
+		assertVariable(t, vs, varTest{"s", true, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.Something(*main.asomething) *{n: 2}`, ``, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.Something`, nil})
+
+		// test that the concrete type -> interface{} conversion works across plugins (mostly tests proc.dwarfToRuntimeType)
+		assertNoError(setVariable(p, "plugin2.A", "main.ExeGlobal"), t, "setVariable(plugin2.A = main.ExeGlobal)")
+		assertNoError(proc.Continue(p), t, "Continue 3")
+		assertCurrentLocationFunction(p, t, "github.com/go-delve/delve/_fixtures/plugin2.aIsNotNil")
+		vstr, err := evalVariable(p, "str", pnormalLoadConfig)
+		assertNoError(err, t, "Eval(str)")
+		assertVariable(t, vstr, varTest{"str", true, `"success"`, ``, `string`, nil})
+
+		assertNoError(proc.StepOut(p), t, "StepOut")
+		assertNoError(proc.StepOut(p), t, "StepOut")
+		assertNoError(proc.Next(p), t, "Next")
+
+		// read interface variable, inside executable code, with a concrete type defined in a plugin
+		vb, err := evalVariable(p, "b", pnormalLoadConfig)
+		assertNoError(err, t, "Eval(b)")
+		assertVariable(t, vb, varTest{"b", true, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.SomethingElse(*github.com/go-delve/delve/_fixtures/plugin2.asomethingelse) *{x: 1, y: 4}`, ``, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.SomethingElse`, nil})
 	})
 }

@@ -318,5 +318,5 @@ func ConvertCheckpoint(in proc.Checkpoint) (out Checkpoint) {
 }
 
 func ConvertImage(image *proc.Image) Image {
-	return Image{Path: image.Path}
+	return Image{Path: image.Path, Address: image.StaticBase}
 }

@@ -343,19 +343,20 @@ func findDeferReturnCalls(text []AsmInstruction) []uint64 {
 // If includeCurrentFn is true it will also remove all instructions
 // belonging to the current function.
 func removeInlinedCalls(dbp Process, pcs []uint64, topframe Stackframe) ([]uint64, error) {
-	bi := dbp.BinInfo()
-	irdr := reader.InlineStack(bi.dwarf, topframe.Call.Fn.offset, 0)
+	image := topframe.Call.Fn.cu.image
+	dwarf := image.dwarf
+	irdr := reader.InlineStack(dwarf, topframe.Call.Fn.offset, 0)
 	for irdr.Next() {
 		e := irdr.Entry()
 		if e.Offset == topframe.Call.Fn.offset {
 			continue
 		}
-		ranges, err := bi.dwarf.Ranges(e)
+		ranges, err := dwarf.Ranges(e)
 		if err != nil {
 			return pcs, err
 		}
 		for _, rng := range ranges {
-			pcs = removePCsBetween(pcs, rng[0], rng[1], bi.staticBase)
+			pcs = removePCsBetween(pcs, rng[0], rng[1], image.StaticBase)
 		}
 		irdr.SkipChildren()
 	}
