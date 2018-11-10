@@ -1566,6 +1566,9 @@ func TestClientServerFunctionCall(t *testing.T) {
 
 func TestClientServerFunctionCallBadPos(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
+		t.Skip("this is a safe point for Go 1.12")
+	}
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
 		loc, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "fmt/print.go:649")
