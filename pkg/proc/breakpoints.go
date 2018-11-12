@@ -221,13 +221,16 @@ func (bpmap *BreakpointMap) ResetBreakpointIDCounter() {
 	bpmap.breakpointIDCounter = 0
 }
 
-type writeBreakpointFn func(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
+// WriteBreakpointFn is a type that represents a function to be used for
+// writting breakpoings into the target.
+type WriteBreakpointFn func(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
+
 type clearBreakpointFn func(*Breakpoint) error
 
 // Set creates a breakpoint at addr calling writeBreakpoint. Do not call this
 // function, call proc.Process.SetBreakpoint instead, this function exists
 // to implement proc.Process.SetBreakpoint.
-func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr, writeBreakpoint writeBreakpointFn) (*Breakpoint, error) {
+func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr, writeBreakpoint WriteBreakpointFn) (*Breakpoint, error) {
 	if bp, ok := bpmap.M[addr]; ok {
 		// We can overlap one internal breakpoint with one user breakpoint, we
 		// need to support this otherwise a conditional breakpoint can mask a
@@ -275,7 +278,7 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 }
 
 // SetWithID creates a breakpoint at addr, with the specified ID.
-func (bpmap *BreakpointMap) SetWithID(id int, addr uint64, writeBreakpoint writeBreakpointFn) (*Breakpoint, error) {
+func (bpmap *BreakpointMap) SetWithID(id int, addr uint64, writeBreakpoint WriteBreakpointFn) (*Breakpoint, error) {
 	bp, err := bpmap.Set(addr, UserBreakpoint, nil, writeBreakpoint)
 	if err == nil {
 		bp.ID = id

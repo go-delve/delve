@@ -68,6 +68,7 @@ type Info interface {
 	// ErrProcessExited or ProcessDetachedError).
 	Valid() (bool, error)
 	BinInfo() *BinaryInfo
+	EntryPoint() (uint64, error)
 	// Common returns a struct with fields common to all backends
 	Common() *CommonProcess
 
@@ -86,6 +87,7 @@ type ThreadInfo interface {
 // GoroutineInfo is an interface for getting information on running goroutines.
 type GoroutineInfo interface {
 	SelectedGoroutine() *G
+	SetSelectedGoroutine(*G)
 }
 
 // ProcessManipulation is an interface for changing the execution state of a process.

@@ -75,7 +75,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/arch/x86/x86asm"
@@ -83,7 +82,7 @@ import (
 	"github.com/derekparker/delve/pkg/logflags"
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/linutil"
-	"github.com/mattn/go-isatty"
+	isatty "github.com/mattn/go-isatty"
 	"github.com/sirupsen/logrus"
 )
 
@@ -130,7 +129,7 @@ type Process struct {
 	common proc.CommonProcess
 }
 
-// Thread is a thread.
+// Thread represents an operating system thread.
 type Thread struct {
 	ID                int
 	strID             string
@@ -142,8 +141,7 @@ type Thread struct {
 }
 
 // ErrBackendUnavailable is returned when the stub program can not be found.
-type ErrBackendUnavailable struct {
-}
+type ErrBackendUnavailable struct{}
 
 func (err *ErrBackendUnavailable) Error() string {
 	return "backend unavailable"
@@ -250,7 +248,6 @@ func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string
 // and Connect will be unable to function without knowing them.
 func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string) error {
 	p.conn.conn = conn
-
 	p.conn.pid = pid
 	err := p.conn.handshake()
 	if err != nil {
@@ -270,55 +267,7 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []s
 		}
 	}
 
-	if path == "" {
-		// If we are attaching to a running process and the user didn't specify
-		// the executable file manually we must ask the stub for it.
-		// We support both qXfer:exec-file:read:: (the gdb way) and calling
-		// qProcessInfo (the lldb way).
-		// Unfortunately debugserver on macOS supports neither.
-		path, err = p.conn.readExecFile()
-		if err != nil {
-			if isProtocolErrorUnsupported(err) {
-				_, path, err = p.loadProcessInfo(pid)
-				if err != nil {
-					conn.Close()
-					return err
-				}
-			} else {
-				conn.Close()
-				return fmt.Errorf("could not determine executable path: %v", err)
-			}
-		}
-	}
-
-	if path == "" {
-		// try using jGetLoadedDynamicLibrariesInfos which is the only way to do
-		// this supported on debugserver (but only on macOS >= 12.10)
-		images, _ := p.conn.getLoadedDynamicLibraries()
-		for _, image := range images {
-			if image.MachHeader.FileType == macho.TypeExec {
-				path = image.Pathname
-				break
-			}
-		}
-	}
-
-	var entryPoint uint64
-	if auxv, err := p.conn.readAuxv(); err == nil {
-		// If we can't read the auxiliary vector it just means it's not supported
-		// by the OS or by the stub. If we are debugging a PIE and the entry point
-		// is needed proc.LoadBinaryInfo will complain about it.
-		entryPoint = linutil.EntryPointFromAuxvAMD64(auxv)
-	}
-
-	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(path, entryPoint, debugInfoDirs, &wg)
-	wg.Wait()
-	if err == nil {
-		err = p.bi.LoadError()
-	}
-	if err != nil {
-		conn.Close()
+	if err := p.initialize(path, debugInfoDirs); err != nil {
 		return err
 	}
 
@@ -335,36 +284,6 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []s
 			p.loadGInstrAddr = addr
 		}
 	}
-
-	err = p.updateThreadList(&threadUpdater{p: p})
-	if err != nil {
-		conn.Close()
-		p.bi.Close()
-		return err
-	}
-
-	if p.conn.pid <= 0 {
-		p.conn.pid, _, err = p.loadProcessInfo(0)
-		if err != nil && !isProtocolErrorUnsupported(err) {
-			conn.Close()
-			p.bi.Close()
-			return err
-		}
-	}
-
-	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
-
-	proc.CreateUnrecoveredPanicBreakpoint(p, p.writeBreakpoint, &p.breakpoints)
-
-	panicpc, err := proc.FindFunctionLocation(p, "runtime.startpanic", true, 0)
-	if err == nil {
-		bp, err := p.breakpoints.SetWithID(-1, panicpc, p.writeBreakpoint)
-		if err == nil {
-			bp.Name = proc.UnrecoveredPanic
-			bp.Variables = []string{"runtime.curg._panic.arg"}
-		}
-	}
-
 	return nil
 }
 
@@ -523,7 +442,6 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) 
 
 	process.Stdout = os.Stdout
 	process.Stderr = os.Stderr
-
 	process.SysProcAttr = sysProcAttr(false)
 
 	err := process.Start()
@@ -545,10 +463,80 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) 
 	return p, nil
 }
 
-// loadProcessInfo uses qProcessInfo to load the inferior's PID and
+// EntryPoint will return the process entry point address, useful for
+// debugging PIEs.
+func (p *Process) EntryPoint() (uint64, error) {
+	var entryPoint uint64
+	if auxv, err := p.conn.readAuxv(); err == nil {
+		// If we can't read the auxiliary vector it just means it's not supported
+		// by the OS or by the stub. If we are debugging a PIE and the entry point
+		// is needed proc.LoadBinaryInfo will complain about it.
+		entryPoint = linutil.EntryPointFromAuxvAMD64(auxv)
+	}
+	return entryPoint, nil
+}
+
+// initialize uses qProcessInfo to load the inferior's PID and
 // executable path. This command is not supported by all stubs and not all
 // stubs will report both the PID and executable path.
-func (p *Process) loadProcessInfo(pid int) (int, string, error) {
+func (p *Process) initialize(path string, debugInfoDirs []string) error {
+	var err error
+	if path == "" {
+		// If we are attaching to a running process and the user didn't specify
+		// the executable file manually we must ask the stub for it.
+		// We support both qXfer:exec-file:read:: (the gdb way) and calling
+		// qProcessInfo (the lldb way).
+		// Unfortunately debugserver on macOS supports neither.
+		path, err = p.conn.readExecFile()
+		if err != nil {
+			if isProtocolErrorUnsupported(err) {
+				_, path, err = queryProcessInfo(p, p.Pid())
+				if err != nil {
+					p.conn.conn.Close()
+					return err
+				}
+			} else {
+				p.conn.conn.Close()
+				return fmt.Errorf("could not determine executable path: %v", err)
+			}
+		}
+	}
+
+	if path == "" {
+		// try using jGetLoadedDynamicLibrariesInfos which is the only way to do
+		// this supported on debugserver (but only on macOS >= 12.10)
+		images, _ := p.conn.getLoadedDynamicLibraries()
+		for _, image := range images {
+			if image.MachHeader.FileType == macho.TypeExec {
+				path = image.Pathname
+				break
+			}
+		}
+	}
+
+	err = p.updateThreadList(&threadUpdater{p: p})
+	if err != nil {
+		p.conn.conn.Close()
+		p.bi.Close()
+		return err
+	}
+
+	if p.conn.pid <= 0 {
+		p.conn.pid, _, err = queryProcessInfo(p, 0)
+		if err != nil && !isProtocolErrorUnsupported(err) {
+			p.conn.conn.Close()
+			p.bi.Close()
+			return err
+		}
+	}
+	if err = proc.PostInitializationSetup(p, path, debugInfoDirs, p.writeBreakpoint); err != nil {
+		p.conn.conn.Close()
+		return err
+	}
+	return nil
+}
+
+func queryProcessInfo(p *Process, pid int) (int, string, error) {
 	pi, err := p.conn.queryProcessInfo(pid)
 	if err != nil {
 		return 0, "", err
@@ -659,7 +647,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 
 	// resume all threads
 	var threadID string
-	var sig uint8 = 0
+	var sig uint8
 	var tu = threadUpdater{p: p}
 	var err error
 continueLoop:
@@ -720,7 +708,7 @@ continueLoop:
 
 	for _, thread := range p.threads {
 		if thread.strID == threadID {
-			var err error = nil
+			var err error
 			switch sig {
 			case 0x91:
 				err = errors.New("bad access")
@@ -740,6 +728,13 @@ continueLoop:
 	}
 
 	return nil, fmt.Errorf("could not find thread %s", threadID)
+}
+
+// SetSelectedGoroutine will set internally the goroutine that should be
+// the default for any command executed, the goroutine being actively
+// followed.
+func (p *Process) SetSelectedGoroutine(g *proc.G) {
+	p.selectedGoroutine = g
 }
 
 // StepInstruction will step exactly one CPU instruction.
@@ -1318,7 +1313,6 @@ func (t *Thread) Blocked() bool {
 	default:
 		return strings.HasPrefix(fn.Name, "syscall.Syscall") || strings.HasPrefix(fn.Name, "syscall.RawSyscall")
 	}
-	return false
 }
 
 // loadGInstr returns the correct MOV instruction for the current
@@ -1577,25 +1571,25 @@ func (t *Thread) clearBreakpointState() {
 }
 
 // SetCurrentBreakpoint will find and set the threads current breakpoint.
-func (thread *Thread) SetCurrentBreakpoint() error {
-	thread.clearBreakpointState()
-	regs, err := thread.Registers(false)
+func (t *Thread) SetCurrentBreakpoint() error {
+	t.clearBreakpointState()
+	regs, err := t.Registers(false)
 	if err != nil {
 		return err
 	}
 	pc := regs.PC()
-	if bp, ok := thread.p.FindBreakpoint(pc); ok {
-		if thread.regs.PC() != bp.Addr {
-			if err := thread.SetPC(bp.Addr); err != nil {
+	if bp, ok := t.p.FindBreakpoint(pc); ok {
+		if t.regs.PC() != bp.Addr {
+			if err := t.SetPC(bp.Addr); err != nil {
 				return err
 			}
 		}
-		thread.CurrentBreakpoint = bp.CheckCondition(thread)
-		if thread.CurrentBreakpoint.Breakpoint != nil && thread.CurrentBreakpoint.Active {
-			if g, err := proc.GetG(thread); err == nil {
-				thread.CurrentBreakpoint.HitCount[g.ID]++
+		t.CurrentBreakpoint = bp.CheckCondition(t)
+		if t.CurrentBreakpoint.Breakpoint != nil && t.CurrentBreakpoint.Active {
+			if g, err := proc.GetG(t); err == nil {
+				t.CurrentBreakpoint.HitCount[g.ID]++
 			}
-			thread.CurrentBreakpoint.TotalHitCount++
+			t.CurrentBreakpoint.TotalHitCount++
 		}
 	}
 	return nil

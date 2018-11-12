@@ -12,7 +12,8 @@ import (
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	bi  *proc.BinaryInfo
+	bi *proc.BinaryInfo
+
 	pid int // Process Pid
 
 	// Breakpoint table, holds information on breakpoints.
@@ -184,32 +185,6 @@ func (dbp *Process) Breakpoints() *proc.BreakpointMap {
 	return &dbp.breakpoints
 }
 
-// LoadInformation finds the executable and then uses it
-// to parse the following information:
-// * Dwarf .debug_frame section
-// * Dwarf .debug_line section
-// * Go symbol table.
-func (dbp *Process) LoadInformation(path string, debugInfoDirs []string) error {
-	var wg sync.WaitGroup
-
-	path = findExecutable(path, dbp.pid)
-
-	entryPoint, err := dbp.entryPoint()
-	if err != nil {
-		return err
-	}
-
-	wg.Add(1)
-	go dbp.loadProcessInformation(&wg)
-	err = dbp.bi.LoadBinaryInfo(path, entryPoint, debugInfoDirs, &wg)
-	wg.Wait()
-	if err == nil {
-		err = dbp.bi.LoadError()
-	}
-
-	return err
-}
-
 // RequestManualStop sets the `halt` flag and
 // sends SIGSTOP to all threads.
 func (dbp *Process) RequestManualStop() error {
@@ -379,26 +354,23 @@ func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	return nil, false
 }
 
-// Returns a new Process struct.
-func initializeDebugProcess(dbp *Process, path string, debugInfoDirs []string) (*Process, error) {
-	err := dbp.LoadInformation(path, debugInfoDirs)
-	if err != nil {
-		return dbp, err
+// initialize will ensure that all relevant information is loaded
+// so the process is ready to be debugged.
+func (dbp *Process) initialize(path string, debugInfoDirs []string) error {
+	if err := initialize(dbp); err != nil {
+		return err
 	}
-
 	if err := dbp.updateThreadList(); err != nil {
-		return dbp, err
+		return err
 	}
+	return proc.PostInitializationSetup(dbp, path, debugInfoDirs, dbp.writeBreakpoint)
+}
 
-	// selectedGoroutine can not be set correctly by the call to updateThreadList
-	// because without calling SetGStructOffset we can not read the G struct of currentThread
-	// but without calling updateThreadList we can not examine memory to determine
-	// the offset of g struct inside TLS
-	dbp.selectedGoroutine, _ = proc.GetG(dbp.currentThread)
-
-	proc.CreateUnrecoveredPanicBreakpoint(dbp, dbp.writeBreakpoint, &dbp.breakpoints)
-
-	return dbp, nil
+// SetSelectedGoroutine will set internally the goroutine that should be
+// the default for any command executed, the goroutine being actively
+// followed.
+func (dbp *Process) SetSelectedGoroutine(g *proc.G) {
+	dbp.selectedGoroutine = g
 }
 
 // ClearInternalBreakpoints will clear all non-user set breakpoints. These

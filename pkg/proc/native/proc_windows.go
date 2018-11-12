@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"unsafe"
 
@@ -77,11 +76,14 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 	dbp.pid = p.Pid
 	dbp.childProcess = true
 
-	return newDebugProcess(dbp, argv0Go)
+	if err = dbp.initialize(argv0Go, []string{}); err != nil {
+		dbp.Detach(true)
+		return nil, err
+	}
+	return dbp, nil
 }
 
-// newDebugProcess prepares process pid for debugging.
-func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
+func initialize(dbp *Process) error {
 	// It should not actually be possible for the
 	// call to waitForDebugEvent to fail, since Windows
 	// will always fire a CREATE_PROCESS_DEBUG_EVENT event
@@ -93,29 +95,25 @@ func newDebugProcess(dbp *Process, exepath string) (*Process, error) {
 		tid, exitCode, err = dbp.waitForDebugEvent(waitBlocking)
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if tid == 0 {
 		dbp.postExit()
-		return nil, proc.ErrProcessExited{Pid: dbp.pid, Status: exitCode}
+		return proc.ErrProcessExited{Pid: dbp.pid, Status: exitCode}
 	}
 	// Suspend all threads so that the call to _ContinueDebugEvent will
 	// not resume the target.
 	for _, thread := range dbp.threads {
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	dbp.execPtraceFunc(func() {
 		err = _ContinueDebugEvent(uint32(dbp.pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return initializeDebugProcess(dbp, exepath, []string{})
+	return err
 }
 
 // findExePath searches for process pid, and returns its executable path.
@@ -163,11 +161,9 @@ func Attach(pid int, _ []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbp, err := newDebugProcess(New(pid), exepath)
-	if err != nil {
-		if dbp != nil {
-			dbp.Detach(false)
-		}
+	dbp := New(pid)
+	if err = dbp.initialize(exepath, []string{}); err != nil {
+		dbp.Detach(true)
 		return nil, err
 	}
 	return dbp, nil
@@ -392,10 +388,6 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	return th, nil
 }
 
-func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
-	wg.Done()
-}
-
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	return 0, nil, fmt.Errorf("not implemented: wait")
 }
@@ -488,7 +480,7 @@ func (dbp *Process) detach(kill bool) error {
 	return _DebugActiveProcessStop(uint32(dbp.pid))
 }
 
-func (dbp *Process) entryPoint() (uint64, error) {
+func (dbp *Process) EntryPoint() (uint64, error) {
 	return dbp.os.entryPoint, nil
 }
 

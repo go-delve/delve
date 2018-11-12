@@ -30,6 +30,9 @@ func TestMain(m *testing.M) {
 		testBackend = os.Getenv("PROCTEST")
 		if testBackend == "" {
 			testBackend = "native"
+			if runtime.GOOS == "darwin" {
+				testBackend = "lldb"
+			}
 		}
 	}
 	os.Exit(m.Run())
@@ -83,8 +86,10 @@ func TestBuild(t *testing.T) {
 	scan := bufio.NewScanner(stderr)
 	// wait for the debugger to start
 	scan.Scan()
+	t.Log(scan.Text())
 	go func() {
 		for scan.Scan() {
+			t.Log(scan.Text())
 			// keep pipe empty
 		}
 	}()
