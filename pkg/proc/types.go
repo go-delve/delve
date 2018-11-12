@@ -398,6 +398,13 @@ outer:
 				highpc = ranges[0][1] + bi.staticBase
 			}
 			name, ok2 := entry.Val(dwarf.AttrName).(string)
+			if !ok2 {
+				originOffset, hasAbstractOrigin := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+				if hasAbstractOrigin {
+					name, ok2 = abstractOriginNameTable[originOffset]
+				}
+			}
+
 			var fn Function
 			if (ok1 == !inlined) && ok2 {
 				if inlined {
