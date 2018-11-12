@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -20,7 +19,8 @@ import (
 
 	"github.com/derekparker/delve/pkg/proc"
 	"github.com/derekparker/delve/pkg/proc/linutil"
-	"github.com/mattn/go-isatty"
+
+	isatty "github.com/mattn/go-isatty"
 )
 
 // Process statuses
@@ -90,7 +90,10 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	return initializeDebugProcess(dbp, process.Path, debugInfoDirs)
+	if err = dbp.initialize(cmd[0], debugInfoDirs); err != nil {
+		return nil, err
+	}
+	return dbp, nil
 }
 
 // Attach to an existing process with the given PID. Once attached, if
@@ -110,12 +113,39 @@ func Attach(pid int, debugInfoDirs []string) (*Process, error) {
 		return nil, err
 	}
 
-	dbp, err = initializeDebugProcess(dbp, "", debugInfoDirs)
+	err = dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
 	if err != nil {
 		dbp.Detach(false)
 		return nil, err
 	}
 	return dbp, nil
+}
+
+func initialize(dbp *Process) error {
+	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
+	if err == nil {
+		// removes newline character
+		comm = bytes.TrimSuffix(comm, []byte("\n"))
+	}
+
+	if comm == nil || len(comm) <= 0 {
+		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
+		if err != nil {
+			return fmt.Errorf("could not read proc stat: %v", err)
+		}
+		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.pid)
+		rexp, err := regexp.Compile(expr)
+		if err != nil {
+			return fmt.Errorf("regexp compile error: %v", err)
+		}
+		match := rexp.FindSubmatch(stat)
+		if match == nil {
+			return fmt.Errorf("no match found using regexp '%s' in /proc/%d/stat", expr, dbp.pid)
+		}
+		comm = match[1]
+	}
+	dbp.os.comm = strings.Replace(string(comm), "%", "%%", -1)
+	return nil
 }
 
 // kill kills the target process.
@@ -299,35 +329,7 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 	}
 }
 
-func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
-	if err == nil {
-		// removes newline character
-		comm = bytes.TrimSuffix(comm, []byte("\n"))
-	}
-
-	if comm == nil || len(comm) <= 0 {
-		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
-		if err != nil {
-			fmt.Printf("Could not read proc stat: %v\n", err)
-			os.Exit(1)
-		}
-		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.pid)
-		rexp, err := regexp.Compile(expr)
-		if err != nil {
-			fmt.Printf("Regexp compile error: %v\n", err)
-			os.Exit(1)
-		}
-		match := rexp.FindSubmatch(stat)
-		if match == nil {
-			fmt.Printf("No match found using regexp '%s' in /proc/%d/stat\n", expr, dbp.pid)
-			os.Exit(1)
-		}
-		comm = match[1]
-	}
-	dbp.os.comm = strings.Replace(string(comm), "%", "%%", -1)
+func (dbp *Process) loadProcessInformation() {
 }
 
 func status(pid int, comm string) rune {
@@ -483,7 +485,9 @@ func (dbp *Process) detach(kill bool) error {
 	return nil
 }
 
-func (dbp *Process) entryPoint() (uint64, error) {
+// EntryPoint will return the process entry point address, useful for
+// debugging PIEs.
+func (dbp *Process) EntryPoint() (uint64, error) {
 	auxvbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
 	if err != nil {
 		return 0, fmt.Errorf("could not read auxiliary vector: %v", err)

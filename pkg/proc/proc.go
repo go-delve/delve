@@ -41,6 +41,38 @@ func (pe ProcessDetachedError) Error() string {
 	return "detached from the process"
 }
 
+// PostInitializationSetup handles all of the initialization procedures
+// that must happen after Delve creates or attaches to a process.
+func PostInitializationSetup(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn) error {
+	entryPoint, err := p.EntryPoint()
+	if err != nil {
+		return err
+	}
+
+	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, debugInfoDirs)
+	if err == nil {
+		err = p.BinInfo().LoadError()
+	}
+	if err != nil {
+		return err
+	}
+
+	g, _ := GetG(p.CurrentThread())
+	p.SetSelectedGoroutine(g)
+
+	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
+
+	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
+	if err == nil {
+		bp, err := p.Breakpoints().SetWithID(-1, panicpc, writeBreakpoint)
+		if err == nil {
+			bp.Name = UnrecoveredPanic
+			bp.Variables = []string{"runtime.curg._panic.arg"}
+		}
+	}
+	return nil
+}
+
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normalized to lower case and '/' on Windows.
 func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
@@ -648,15 +680,15 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 	return s
 }
 
-// CreateUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
+// createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
 // This function is meant to be called by implementations of the Process interface.
-func CreateUnrecoveredPanicBreakpoint(p Process, writeBreakpoint writeBreakpointFn, breakpoints *BreakpointMap) {
+func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
 	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
 	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
 		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", true, 0)
 	}
 	if err == nil {
-		bp, err := breakpoints.SetWithID(-1, panicpc, writeBreakpoint)
+		bp, err := p.Breakpoints().SetWithID(-1, panicpc, writeBreakpoint)
 		if err == nil {
 			bp.Name = UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}

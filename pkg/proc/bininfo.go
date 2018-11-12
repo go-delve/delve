@@ -304,20 +304,22 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 // LoadBinaryInfo will load and store the information from the binary at 'path'.
 // It is expected this will be called in parallel with other initialization steps
 // so a sync.WaitGroup must be provided.
-func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDirs []string, wg *sync.WaitGroup) error {
+func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDirs []string) error {
 	fi, err := os.Stat(path)
 	if err == nil {
 		bi.lastModified = fi.ModTime()
 	}
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	bi.Path = path
 	switch bi.GOOS {
 	case "linux":
-		return bi.LoadBinaryInfoElf(path, entryPoint, debugInfoDirs, wg)
+		return bi.LoadBinaryInfoElf(path, entryPoint, debugInfoDirs, &wg)
 	case "windows":
-		return bi.LoadBinaryInfoPE(path, entryPoint, wg)
+		return bi.LoadBinaryInfoPE(path, entryPoint, &wg)
 	case "darwin":
-		return bi.LoadBinaryInfoMacho(path, entryPoint, wg)
+		return bi.LoadBinaryInfoMacho(path, entryPoint, &wg)
 	}
 	return errors.New("unsupported operating system")
 }

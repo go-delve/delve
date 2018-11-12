@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"unsafe"
 
 	sys "golang.org/x/sys/unix"
@@ -119,7 +118,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 	}
 
 	dbp.os.initialized = true
-	dbp, err = initializeDebugProcess(dbp, argv0Go, []string{})
+	err = dbp.initialize(argv0Go, []string{})
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +154,7 @@ func Attach(pid int, _ []string) (*Process, error) {
 		return nil, err
 	}
 
-	dbp, err = initializeDebugProcess(dbp, "", []string{})
+	err = dbp.initialize("", []string{})
 	if err != nil {
 		dbp.Detach(false)
 		return nil, err
@@ -383,10 +382,6 @@ func (dbp *Process) waitForStop() ([]int, error) {
 	}
 }
 
-func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
-	wg.Done()
-}
-
 func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var status sys.WaitStatus
 	wpid, err := sys.Wait4(pid, &status, options, nil)
@@ -464,7 +459,9 @@ func (dbp *Process) detach(kill bool) error {
 	return PtraceDetach(dbp.pid, 0)
 }
 
-func (dbp *Process) entryPoint() (uint64, error) {
+func (dbp *Process) EntryPoint() (uint64, error) {
 	//TODO(aarzilli): implement this
 	return 0, nil
 }
+
+func initialize(dbp *Process) error { return nil }

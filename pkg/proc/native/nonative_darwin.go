@@ -75,7 +75,9 @@ func (dbp *Process) detach(kill bool) error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) entryPoint() (uint64, error) {
+// EntryPoint returns the entry point for the process,
+// useful for PIEs.
+func (dbp *Process) EntryPoint() (uint64, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
@@ -85,17 +87,17 @@ func (t *Thread) Blocked() bool {
 }
 
 // SetPC sets the value of the PC register.
-func (thread *Thread) SetPC(pc uint64) error {
+func (t *Thread) SetPC(pc uint64) error {
 	panic(ErrNativeBackendDisabled)
 }
 
 // SetSP sets the value of the SP register.
-func (thread *Thread) SetSP(sp uint64) error {
+func (t *Thread) SetSP(sp uint64) error {
 	panic(ErrNativeBackendDisabled)
 }
 
 // SetDX sets the value of the DX register.
-func (thread *Thread) SetDX(dx uint64) error {
+func (t *Thread) SetDX(dx uint64) error {
 	panic(ErrNativeBackendDisabled)
 }
 
@@ -126,3 +128,5 @@ func (t *Thread) restoreRegisters(sr proc.Registers) error {
 func (t *Thread) Stopped() bool {
 	panic(ErrNativeBackendDisabled)
 }
+
+func initialize(dbp *Process) error { return nil }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"go/ast"
 	"io"
-	"sync"
 
 	"github.com/derekparker/delve/pkg/proc"
 )
@@ -193,24 +192,40 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error
 		return nil, err
 	}
 
-	var wg sync.WaitGroup
-	err = p.bi.LoadBinaryInfo(exePath, p.entryPoint, debugInfoDirs, &wg)
-	wg.Wait()
-	if err == nil {
-		err = p.bi.LoadError()
-	}
-	if err != nil {
+	if err := p.initialize(exePath, debugInfoDirs); err != nil {
 		return nil, err
 	}
 
-	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
-
 	return p, nil
+}
+
+// initialize for core files doesn't do much
+// aside from call the post initialization setup.
+func (p *Process) initialize(path string, debugInfoDirs []string) error {
+	return proc.PostInitializationSetup(p, path, debugInfoDirs, p.writeBreakpoint)
 }
 
 // BinInfo will return the binary info.
 func (p *Process) BinInfo() *proc.BinaryInfo {
 	return p.bi
+}
+
+// SetSelectedGoroutine will set internally the goroutine that should be
+// the default for any command executed, the goroutine being actively
+// followed.
+func (p *Process) SetSelectedGoroutine(g *proc.G) {
+	p.selectedGoroutine = g
+}
+
+// EntryPoint will return the entry point address for this core file.
+func (p *Process) EntryPoint() (uint64, error) {
+	return p.entryPoint, nil
+}
+
+// writeBreakpoint is a noop function since you
+// cannot write breakpoints into core files.
+func (p *Process) writeBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
+	return "", 0, nil, nil, errors.New("cannot write a breakpoint to a core file")
 }
 
 // Recorded returns whether this is a live or recorded process. Always returns true for core files.
