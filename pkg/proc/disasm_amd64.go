@@ -118,7 +118,7 @@ func resolveCallArg(inst *archInst, currentGoroutine bool, regs Registers, mem M
 
 	file, line, fn := bininfo.PCToLine(pc)
 	if fn == nil {
-		return nil
+		return &Location{PC: pc}
 	}
 	return &Location{PC: pc, File: file, Line: line, Fn: fn}
 }

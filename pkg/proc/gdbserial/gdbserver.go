@@ -1028,9 +1028,6 @@ func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 
 func (p *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := p.bi.PCToLine(uint64(addr))
-	if fn == nil {
-		return "", 0, nil, nil, proc.InvalidAddressError{Address: addr}
-	}
 
 	if err := p.conn.setBreakpoint(addr); err != nil {
 		return "", 0, nil, nil, err
