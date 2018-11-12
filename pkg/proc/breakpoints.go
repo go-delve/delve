@@ -252,8 +252,13 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 		return nil, err
 	}
 
+	fnName := ""
+	if fn != nil {
+		fnName = fn.Name
+	}
+
 	newBreakpoint := &Breakpoint{
-		FunctionName: fn.Name,
+		FunctionName: fnName,
 		File:         f,
 		Line:         l,
 		Addr:         addr,

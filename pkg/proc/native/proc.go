@@ -211,9 +211,6 @@ func (dbp *Process) CheckAndClearManualStopRequest() bool {
 
 func (dbp *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := dbp.bi.PCToLine(uint64(addr))
-	if fn == nil {
-		return "", 0, nil, nil, proc.InvalidAddressError{Address: addr}
-	}
 
 	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
 	_, err := dbp.currentThread.ReadMemory(originalData, uintptr(addr))

@@ -379,21 +379,16 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 
 	instr := text[0]
 
-	if instr.DestLoc == nil || instr.DestLoc.Fn == nil {
+	if instr.DestLoc == nil {
+		// Call destination couldn't be resolved because this was not the
+		// current instruction, therefore the step-into breakpoint can not be set.
 		return nil
 	}
 
 	fn := instr.DestLoc.Fn
 
-	// Ensure PC and Entry match, otherwise StepInto is likely to set
-	// its breakpoint before DestLoc.PC and hence run too far ahead.
-	// Calls to runtime.duffzero and duffcopy have this problem.
-	if fn.Entry != instr.DestLoc.PC {
-		return nil
-	}
-
 	// Skip unexported runtime functions
-	if strings.HasPrefix(fn.Name, "runtime.") && !isExportedRuntime(fn.Name) {
+	if fn != nil && strings.HasPrefix(fn.Name, "runtime.") && !isExportedRuntime(fn.Name) {
 		return nil
 	}
 
@@ -401,8 +396,19 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 	// or entire packages from being stepped into with 'step'
 	// those extra checks should be done here.
 
+	pc := instr.DestLoc.PC
+
+	// We want to skip the function prologue but we should only do it if the
+	// destination address of the CALL instruction is the entry point of the
+	// function.
+	// Calls to runtime.duffzero and duffcopy inserted by the compiler can
+	// sometimes point inside the body of those functions, well after the
+	// prologue.
+	if fn != nil && fn.Entry == instr.DestLoc.PC {
+		pc, _ = FirstPCAfterPrologue(dbp, fn, false)
+	}
+
 	// Set a breakpoint after the function's prologue
-	pc, _ := FirstPCAfterPrologue(dbp, fn, false)
 	if _, err := dbp.SetBreakpoint(pc, NextBreakpoint, cond); err != nil {
 		if _, ok := err.(BreakpointExistsError); !ok {
 			return err
