@@ -43,17 +43,19 @@ func assertNoError(err error, t testing.TB, s string) {
 	}
 }
 
-func goPath(name string) string {
-	if val := os.Getenv(name); val != "" {
-		// Use first GOPATH entry if there are multiple.
-		return filepath.SplitList(val)[0]
+func projectRoot() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
 	}
-
-	val, err := exec.Command("go", "env", name).Output()
+	if strings.Contains(wd, os.Getenv("GOPATH")) {
+		return filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "derekparker", "delve")
+	}
+	val, err := exec.Command("go", "list", "-m", "-f", "{{ .Dir }}").Output()
 	if err != nil {
 		panic(err) // the Go tool was tested to work earlier
 	}
-	return filepath.SplitList(strings.TrimSpace(string(val)))[0]
+	return strings.TrimSuffix(string(val), "\n")
 }
 
 func TestBuild(t *testing.T) {
@@ -61,7 +63,7 @@ func TestBuild(t *testing.T) {
 	var err error
 
 	cmd := exec.Command("go", "run", "scripts/make.go", "build")
-	cmd.Dir = filepath.Join(goPath("GOPATH"), "src", "github.com", "derekparker", "delve")
+	cmd.Dir = projectRoot()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
@@ -201,7 +203,7 @@ func TestOutput(t *testing.T) {
 }
 
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
-	saved := slurpFile(t, os.ExpandEnv(fmt.Sprintf("$GOPATH/src/github.com/derekparker/delve/%s", filename)))
+	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
 
 	if len(saved) != len(generated) {
 		t.Fatalf("%s: needs to be regenerated; run %s", filename, gencommand)
