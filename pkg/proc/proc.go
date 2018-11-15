@@ -62,14 +62,6 @@ func PostInitializationSetup(p Process, path string, debugInfoDirs []string, wri
 
 	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
 
-	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
-	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(-1, panicpc, writeBreakpoint)
-		if err == nil {
-			bp.Name = UnrecoveredPanic
-			bp.Variables = []string{"runtime.curg._panic.arg"}
-		}
-	}
 	return nil
 }
 
