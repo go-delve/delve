@@ -570,6 +570,27 @@ func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
+// The number of goroutines we're going to request on each RPC call
+const goroutineBatchSize = 10000
+
+func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, bPrintStack bool, state *api.DebuggerState) error {
+	for _, g := range gs {
+		prefix := "  "
+		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
+			prefix = "* "
+		}
+		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
+		if bPrintStack {
+			stack, err := t.client.Stacktrace(g.ID, 10, false, nil)
+			if err != nil {
+				return err
+			}
+			printStack(stack, "\t", false)
+		}
+	}
+	return nil
+}
+
 func goroutines(t *Term, ctx callContext, argstr string) error {
 	args := strings.Split(argstr, " ")
 	var fgl = fglUserCurrent
@@ -604,26 +625,24 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 	if err != nil {
 		return err
 	}
-	gs, err := t.client.ListGoroutines()
-	if err != nil {
-		return err
-	}
-	sort.Sort(byGoroutineID(gs))
-	fmt.Printf("[%d goroutines]\n", len(gs))
-	for _, g := range gs {
-		prefix := "  "
-		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
-			prefix = "* "
+	var (
+		start = 0
+		gslen = 0
+		gs    []*api.Goroutine
+	)
+	for start >= 0 {
+		gs, start, err = t.client.ListGoroutines(start, goroutineBatchSize)
+		if err != nil {
+			return err
 		}
-		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
-		if bPrintStack {
-			stack, err := t.client.Stacktrace(g.ID, 10, false, nil)
-			if err != nil {
-				return err
-			}
-			printStack(stack, "\t", false)
+		sort.Sort(byGoroutineID(gs))
+		err = printGoroutines(t, gs, fgl, bPrintStack, state)
+		if err != nil {
+			return err
 		}
+		gslen += len(gs)
 	}
+	fmt.Printf("[%d goroutines]\n", gslen)
 	return nil
 }
 

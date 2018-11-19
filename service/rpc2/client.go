@@ -298,10 +298,10 @@ func (c *RPCClient) ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([
 	return out.Args, err
 }
 
-func (c *RPCClient) ListGoroutines() ([]*api.Goroutine, error) {
+func (c *RPCClient) ListGoroutines(start, count int) ([]*api.Goroutine, int, error) {
 	var out ListGoroutinesOut
-	err := c.call("ListGoroutines", ListGoroutinesIn{}, &out)
-	return out.Goroutines, err
+	err := c.call("ListGoroutines", ListGoroutinesIn{start, count}, &out)
+	return out.Goroutines, out.Nextg, err
 }
 
 func (c *RPCClient) Stacktrace(goroutineId, depth int, readDefers bool, cfg *api.LoadConfig) ([]api.Stackframe, error) {

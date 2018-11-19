@@ -190,7 +190,7 @@ func TestCore(t *testing.T) {
 	}
 	p := withCoreFile(t, "panic", "")
 
-	gs, err := proc.GoroutinesInfo(p)
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}
@@ -260,7 +260,7 @@ func TestCoreFpRegisters(t *testing.T) {
 
 	p := withCoreFile(t, "fputest/", "panic")
 
-	gs, err := proc.GoroutinesInfo(p)
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}
@@ -337,7 +337,7 @@ func TestCoreWithEmptyString(t *testing.T) {
 	}
 	p := withCoreFile(t, "coreemptystring", "")
 
-	gs, err := proc.GoroutinesInfo(p)
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	assertNoError(err, t, "GoroutinesInfo")
 
 	var mainFrame *proc.Stackframe

@@ -508,19 +508,23 @@ func (s *RPCServer) ListTypes(arg ListTypesIn, out *ListTypesOut) error {
 }
 
 type ListGoroutinesIn struct {
+	Start int
+	Count int
 }
 
 type ListGoroutinesOut struct {
 	Goroutines []*api.Goroutine
+	Nextg      int
 }
 
 // ListGoroutines lists all goroutines.
 func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut) error {
-	gs, err := s.debugger.Goroutines()
+	gs, nextg, err := s.debugger.Goroutines(arg.Start, arg.Count)
 	if err != nil {
 		return err
 	}
 	out.Goroutines = gs
+	out.Nextg = nextg
 	return nil
 }
 
