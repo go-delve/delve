@@ -95,7 +95,7 @@ type Client interface {
 	ListRegisters(threadID int, includeFp bool) (api.Registers, error)
 
 	// ListGoroutines lists all goroutines.
-	ListGoroutines() ([]*api.Goroutine, error)
+	ListGoroutines(start, count int) ([]*api.Goroutine, int, error)
 
 	// Returns stacktrace
 	Stacktrace(goroutineID int, depth int, readDefers bool, cfg *api.LoadConfig) ([]api.Stackframe, error)

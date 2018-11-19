@@ -907,19 +907,19 @@ func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string)
 }
 
 // Goroutines will return a list of goroutines in the target process.
-func (d *Debugger) Goroutines() ([]*api.Goroutine, error) {
+func (d *Debugger) Goroutines(start, count int) ([]*api.Goroutine, int, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
 	goroutines := []*api.Goroutine{}
-	gs, err := proc.GoroutinesInfo(d.target)
+	gs, nextg, err := proc.GoroutinesInfo(d.target, start, count)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	for _, g := range gs {
 		goroutines = append(goroutines, api.ConvertGoroutine(g))
 	}
-	return goroutines, err
+	return goroutines, nextg, err
 }
 
 // Stacktrace returns a list of Stackframes for the given goroutine. The

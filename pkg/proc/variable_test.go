@@ -15,7 +15,7 @@ func TestGoroutineCreationLocation(t *testing.T) {
 		assertNoError(err, t, "BreakByLocation()")
 		assertNoError(proc.Continue(p), t, "Continue()")
 
-		gs, err := proc.GoroutinesInfo(p)
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
 
 		for _, g := range gs {

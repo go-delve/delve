@@ -283,7 +283,7 @@ func (s *RPCServer) ListTypes(filter string, types *[]string) error {
 }
 
 func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine) error {
-	gs, err := s.debugger.Goroutines()
+	gs, _, err := s.debugger.Goroutines(0, 0)
 	if err != nil {
 		return err
 	}

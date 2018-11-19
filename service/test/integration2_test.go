@@ -801,7 +801,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		gs, err := c.ListGoroutines()
+		gs, _, err := c.ListGoroutines(0, 0)
 		assertNoError(err, t, "GoroutinesInfo()")
 		found := make([]bool, 10)
 		for _, g := range gs {
@@ -916,7 +916,7 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListFunctionArgs()")
 		_, err = c.ListRegisters(0, false)
 		assertError(err, t, "ListRegisters()")
-		_, err = c.ListGoroutines()
+		_, _, err = c.ListGoroutines(0, 0)
 		assertError(err, t, "ListGoroutines()")
 		_, err = c.Stacktrace(gid, 10, false, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")

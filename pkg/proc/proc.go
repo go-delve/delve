@@ -464,14 +464,22 @@ func StepOut(dbp Process) error {
 	return Continue(dbp)
 }
 
-// GoroutinesInfo returns an array of G structures representing the information
-// Delve cares about from the internal runtime G structure.
-func GoroutinesInfo(dbp Process) ([]*G, error) {
+// GoroutinesInfo searches for goroutines starting at index 'start', and
+// returns an array of up to 'count' (or all found elements, if 'count' is 0)
+// G structures representing the information Delve care about from the internal
+// runtime G structure.
+// GoroutinesInfo also returns the next index to be used as 'start' argument
+// while scanning for all available goroutines, or -1 if there was an error
+// or if the index already reached the last possible value.
+func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 	if _, err := dbp.Valid(); err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 	if dbp.Common().allGCache != nil {
-		return dbp.Common().allGCache, nil
+		// We can't use the cached array to fulfill a subrange request
+		if start == 0 && (count == 0 || count >= len(dbp.Common().allGCache)) {
+			return dbp.Common().allGCache, -1, nil
+		}
 	}
 
 	var (
@@ -493,12 +501,12 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 
 	addr, err := rdr.AddrFor("runtime.allglen", dbp.BinInfo().staticBase)
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 	allglenBytes := make([]byte, 8)
 	_, err = dbp.CurrentThread().ReadMemory(allglenBytes, uintptr(addr))
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 	allglen := binary.LittleEndian.Uint64(allglenBytes)
 
@@ -508,17 +516,20 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 		// try old name (pre Go 1.6)
 		allgentryaddr, err = rdr.AddrFor("runtime.allg", dbp.BinInfo().staticBase)
 		if err != nil {
-			return nil, err
+			return nil, -1, err
 		}
 	}
 	faddr := make([]byte, dbp.BinInfo().Arch.PtrSize())
 	_, err = dbp.CurrentThread().ReadMemory(faddr, uintptr(allgentryaddr))
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 	allgptr := binary.LittleEndian.Uint64(faddr)
 
-	for i := uint64(0); i < allglen; i++ {
+	for i := uint64(start); i < allglen; i++ {
+		if count != 0 && len(allg) >= count {
+			return allg, int(i), nil
+		}
 		gvar, err := newGVariable(dbp.CurrentThread(), uintptr(allgptr+(i*uint64(dbp.BinInfo().Arch.PtrSize()))), true)
 		if err != nil {
 			allg = append(allg, &G{Unreadable: err})
@@ -532,7 +543,7 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 		if thg, allocated := threadg[g.ID]; allocated {
 			loc, err := thg.Thread.Location()
 			if err != nil {
-				return nil, err
+				return nil, -1, err
 			}
 			g.Thread = thg.Thread
 			// Prefer actual thread location information.
@@ -545,7 +556,7 @@ func GoroutinesInfo(dbp Process) ([]*G, error) {
 	}
 	dbp.Common().allGCache = allg
 
-	return allg, nil
+	return allg, -1, nil
 }
 
 // FindGoroutine returns a G struct representing the goroutine
@@ -555,7 +566,7 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 		return dbp.SelectedGoroutine(), nil
 	}
 
-	gs, err := GoroutinesInfo(dbp)
+	gs, _, err := GoroutinesInfo(dbp, 0, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -920,7 +920,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 
 		assertNoError(proc.Continue(p), t, "Continue()")
 
-		gs, err := proc.GoroutinesInfo(p)
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
 
 		agoroutineCount := 0
@@ -1239,7 +1239,7 @@ func TestFrameEvaluation(t *testing.T) {
 		t.Logf("stopped on thread %d, goroutine: %#v", p.CurrentThread().ThreadID(), p.SelectedGoroutine())
 
 		// Testing evaluation on goroutines
-		gs, err := proc.GoroutinesInfo(p)
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
 		found := make([]bool, 10)
 		for _, g := range gs {
@@ -1523,7 +1523,7 @@ func BenchmarkGoroutinesInfo(b *testing.B) {
 		assertNoError(proc.Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			p.Common().ClearAllGCache()
-			_, err := proc.GoroutinesInfo(p)
+			_, _, err := proc.GoroutinesInfo(p, 0, 0)
 			assertNoError(err, b, "GoroutinesInfo")
 		}
 	})
@@ -1953,7 +1953,7 @@ func TestNextParked(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			gs, err := proc.GoroutinesInfo(p)
+			gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 			assertNoError(err, t, "GoroutinesInfo()")
 
 			// Search for a parked goroutine that we know for sure will have to be
@@ -2005,7 +2005,7 @@ func TestStepParked(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			gs, err := proc.GoroutinesInfo(p)
+			gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 			assertNoError(err, t, "GoroutinesInfo()")
 
 			for _, g := range gs {
@@ -2729,7 +2729,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 				return
 			}
 			assertNoError(err, t, "Continue()")
-			gs, err := proc.GoroutinesInfo(p)
+			gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 			assertNoError(err, t, "GoroutinesInfo()")
 			for _, th := range p.ThreadList() {
 				if bp := th.Breakpoint(); bp.Breakpoint == nil {
@@ -2760,7 +2760,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 
 		assertNoError(proc.StepOut(p), t, "StepOut()")
 
-		gs, err := proc.GoroutinesInfo(p)
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 		assertNoError(err, t, "GoroutinesInfo()")
 
 		for _, goid := range stackBarrierGoids {
