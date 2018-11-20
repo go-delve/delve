@@ -74,7 +74,7 @@ func (c *RPCClient) RestartFrom(pos string, resetArgs bool, newArgs []string) ([
 
 func (c *RPCClient) GetState() (*api.DebuggerState, error) {
 	var out StateOut
-	err := c.call("State", StateIn{}, &out)
+	err := c.call("State", StateIn{NonBlocking: false}, &out)
 	return out.State, err
 }
 
@@ -144,13 +144,13 @@ func (c *RPCClient) Step() (*api.DebuggerState, error) {
 
 func (c *RPCClient) StepOut() (*api.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", &api.DebuggerCommand{Name: api.StepOut, ReturnInfoLoadConfig: c.retValLoadCfg}, &out)
+	err := c.call("Command", api.DebuggerCommand{Name: api.StepOut, ReturnInfoLoadConfig: c.retValLoadCfg}, &out)
 	return &out.State, err
 }
 
 func (c *RPCClient) Call(expr string, unsafe bool) (*api.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", &api.DebuggerCommand{Name: api.Call, ReturnInfoLoadConfig: c.retValLoadCfg, Expr: expr, UnsafeCall: unsafe}, &out)
+	err := c.call("Command", api.DebuggerCommand{Name: api.Call, ReturnInfoLoadConfig: c.retValLoadCfg, Expr: expr, UnsafeCall: unsafe}, &out)
 	return &out.State, err
 }
 
