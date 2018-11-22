@@ -95,6 +95,10 @@ func LoadConfig() *Config {
 		return nil
 	}
 
+	if len(c.DebugInfoDirectories) == 0 {
+		c.DebugInfoDirectories = []string{"/usr/lib/debug/.build-id"}
+	}
+
 	return &c
 }
 
