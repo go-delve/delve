@@ -5,6 +5,7 @@ import (
 	"debug/dwarf"
 	"encoding/binary"
 
+	"github.com/derekparker/delve/pkg/dwarf/godwarf"
 	"github.com/derekparker/delve/pkg/dwarf/util"
 )
 
@@ -279,6 +280,15 @@ func (b *Builder) AddMember(fieldname string, typ dwarf.Offset, memberLoc []byte
 	r := b.TagOpen(dwarf.TagMember, fieldname)
 	b.Attr(dwarf.AttrType, typ)
 	b.Attr(dwarf.AttrDataMemberLoc, memberLoc)
+	b.TagClose()
+	return r
+}
+
+// AddPointerType adds a new pointer type to debug_info.
+func (b *Builder) AddPointerType(typename string, typ dwarf.Offset) dwarf.Offset {
+	r := b.TagOpen(dwarf.TagPointerType, typename)
+	b.Attr(dwarf.AttrType, typ)
+	b.Attr(godwarf.AttrGoKind, uint8(22))
 	b.TagClose()
 	return r
 }

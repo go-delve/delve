@@ -908,9 +908,10 @@ func (scope *EvalScope) extractVarInfoFromEntry(varEntry *dwarf.Entry) (*Variabl
 	mem := scope.Mem
 	if pieces != nil {
 		addr = fakeAddress
-		mem, err = newCompositeMemory(scope.Mem, scope.Regs, pieces)
-		if mem == nil {
-			mem = scope.Mem
+		var cmem *compositeMemory
+		cmem, err = newCompositeMemory(scope.Mem, scope.Regs, pieces)
+		if cmem != nil {
+			mem = cmem
 		}
 	}
 
