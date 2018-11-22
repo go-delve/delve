@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -129,6 +130,7 @@ func createDefaultConfig(path string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to write default configuration: %v", err)
 	}
+	f.Seek(0, io.SeekStart)
 	return f, nil
 }
 
