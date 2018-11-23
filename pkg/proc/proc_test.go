@@ -3566,8 +3566,8 @@ func TestIssue1101(t *testing.T) {
 }
 
 func TestIssue1145(t *testing.T) {
-	withTestProcess("issue1145", t, func(p proc.Process, fixture protest.Fixture) {
-		setFileBreakpoint(p, t, fixture, 12)
+	withTestProcess("sleep", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 18)
 		assertNoError(proc.Continue(p), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)
 		p.ResumeNotify(resumeChan)

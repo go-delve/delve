@@ -13,6 +13,7 @@ var lldbServerOutput = false
 var debugLineErrors = false
 var rpc = false
 var fnCall = false
+var minidump = false
 
 // GdbWire returns true if the gdbserial package should log all the packets
 // exchanged with the stub.
@@ -47,6 +48,11 @@ func FnCall() bool {
 	return fnCall
 }
 
+// Minidump returns true if the minidump loader should be logged.
+func Minidump() bool {
+	return minidump
+}
+
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
 
 // Setup sets debugger flags based on the contents of logstr.
@@ -77,6 +83,8 @@ func Setup(logFlag bool, logstr string) error {
 			rpc = true
 		case "fncall":
 			fnCall = true
+		case "minidump":
+			minidump = true
 		}
 	}
 	return nil

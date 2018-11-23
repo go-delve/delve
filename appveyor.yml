@@ -13,12 +13,20 @@ install:
               Invoke-WebRequest -UserAgent wget -Uri $url -OutFile $file
               &7z x -oC:\ $file > $null
       }
-  - set PATH=c:\mingw64\bin;%GOPATH%\bin;%PATH%
+      # Install Procdump
+      if (-Not (Test-Path "C:\procdump")) {
+              mkdir c:\procdump
+              Invoke-WebRequest -UserAgent wget -Uri https://download.sysinternals.com/files/Procdump.zip -OutFile C:\procdump\procdump.zip
+              &7z x -oC:\procdump\ C:\procdump\procdump.zip > $null
+      }
+  - set PATH=c:\procdump;c:\mingw64\bin;%GOPATH%\bin;%PATH%
   - echo %PATH%
   - echo %GOPATH%
   - go version
   - go env
-cache: C:\mingw64
+cache:
+  - C:\mingw64
+  - C:\procdump
 build_script:
 - mingw32-make install
 test_script:
