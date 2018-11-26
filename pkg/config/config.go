@@ -182,9 +182,11 @@ func createConfigPath() error {
 
 // GetConfigFilePath gets the full path to the given config file name.
 func GetConfigFilePath(file string) (string, error) {
+
+	userHomeDir := "."
 	usr, err := user.Current()
-	if err != nil {
-		return "", err
+	if err == nil {
+		userHomeDir = usr.HomeDir
 	}
-	return path.Join(usr.HomeDir, configDir, file), nil
+	return path.Join(userHomeDir, configDir, file), nil
 }
