@@ -176,15 +176,30 @@ func (v packageVarsByAddr) Len() int               { return len(v) }
 func (v packageVarsByAddr) Less(i int, j int) bool { return v[i].addr < v[j].addr }
 func (v packageVarsByAddr) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
 
+type loadDebugInfoMapsContext struct {
+	ardr                    *reader.Reader
+	abstractOriginNameTable map[dwarf.Offset]string
+	knownPackageVars        map[string]struct{}
+}
+
+func newLoadDebugInfoMapsContext(bi *BinaryInfo, image *Image) *loadDebugInfoMapsContext {
+	ctxt := &loadDebugInfoMapsContext{}
+
+	ctxt.ardr = image.DwarfReader()
+	ctxt.abstractOriginNameTable = make(map[dwarf.Offset]string)
+
+	ctxt.knownPackageVars = map[string]struct{}{}
+	for _, v := range bi.packageVars {
+		ctxt.knownPackageVars[v.name] = struct{}{}
+	}
+
+	return ctxt
+}
+
 func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg *sync.WaitGroup, cont func()) {
 	if wg != nil {
 		defer wg.Done()
 	}
-
-	var cu *compileUnit
-	var pu *partialUnit
-	var partialUnits = make(map[dwarf.Offset]*partialUnit)
-	var lastOffset dwarf.Offset
 
 	if !bi.initialized {
 		bi.types = make(map[string]dwarfRef)
@@ -194,31 +209,18 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 	}
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 
+	ctxt := newLoadDebugInfoMapsContext(bi, image)
+
 	reader := image.DwarfReader()
-	ardr := image.DwarfReader()
-	abstractOriginNameTable := make(map[dwarf.Offset]string)
 
-	knownPackageVars := map[string]struct{}{}
-	for _, v := range bi.packageVars {
-		knownPackageVars[v.name] = struct{}{}
-	}
-
-outer:
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
+			image.setLoadError("error reading debug_info: %v", err)
 			break
 		}
-		lastOffset = entry.Offset
 		switch entry.Tag {
 		case dwarf.TagCompileUnit:
-			if pu != nil {
-				partialUnits[pu.entry.Offset] = pu
-				pu = nil
-			}
-			if cu != nil {
-				cu.endOffset = entry.Offset
-			}
-			cu = &compileUnit{}
+			cu := &compileUnit{}
 			cu.image = image
 			cu.entry = entry
 			cu.startOffset = entry.Offset
@@ -261,219 +263,15 @@ outer:
 				}
 			}
 			bi.compileUnits = append(bi.compileUnits, cu)
+			cu.endOffset = bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
 
 		case dwarf.TagPartialUnit:
-			if pu != nil {
-				partialUnits[pu.entry.Offset] = pu
-				pu = nil
-			}
-			pu = &partialUnit{}
-			pu.entry = entry
-			pu.types = make(map[string]dwarf.Offset)
-
-		case dwarf.TagImportedUnit:
-			if unit, exists := partialUnits[entry.Val(dwarf.AttrImport).(dwarf.Offset)]; exists {
-				for name, offset := range unit.types {
-					if pu != nil {
-						pu.types[name] = offset
-					} else {
-						if !cu.isgo {
-							name = "C." + name
-						}
-						bi.types[name] = dwarfRef{image.index, offset}
-					}
-				}
-
-				for _, pVar := range unit.variables {
-					if pu != nil {
-						pu.variables = append(pu.variables, pVar)
-					} else {
-						pVar2 := pVar
-						if !cu.isgo {
-							pVar2.name = "C." + pVar2.name
-						}
-						pVar2.cu = cu
-						if _, known := knownPackageVars[pVar2.name]; !known {
-							bi.packageVars = append(bi.packageVars, pVar2)
-						}
-					}
-				}
-
-				for _, pCt := range unit.constants {
-					if pu != nil {
-						pu.constants = append(pu.constants, pCt)
-					} else {
-						if !cu.isgo {
-							pCt.name = "C." + pCt.name
-						}
-						ct := bi.consts[dwarfRef{image.index, pCt.typ}]
-						if ct == nil {
-							ct = &constantType{}
-							bi.consts[dwarfRef{image.index, pCt.typ}] = ct
-						}
-						ct.values = append(ct.values, constantValue{name: pCt.name, fullName: pCt.name, value: pCt.value})
-					}
-				}
-
-				for _, pFunc := range unit.functions {
-					if pu != nil {
-						pu.functions = append(pu.functions, pFunc)
-					} else {
-						if !cu.isgo {
-							pFunc.Name = "C." + pFunc.Name
-						}
-						pFunc.cu = cu
-						bi.Functions = append(bi.Functions, pFunc)
-					}
-				}
-			}
-
-		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
-			if name, ok := entry.Val(dwarf.AttrName).(string); ok {
-				if pu != nil {
-					if _, exists := pu.types[name]; !exists {
-						pu.types[name] = entry.Offset
-					}
-				} else {
-					if !cu.isgo {
-						name = "C." + name
-					}
-					if _, exists := bi.types[name]; !exists {
-						bi.types[name] = dwarfRef{image.index, entry.Offset}
-					}
-				}
-			}
-			if cu != nil && cu.isgo {
-				bi.registerTypeToPackageMap(entry)
-			}
-			image.registerRuntimeTypeToDIE(entry, ardr)
 			reader.SkipChildren()
 
-		case dwarf.TagVariable:
-			if n, ok := entry.Val(dwarf.AttrName).(string); ok {
-				var addr uint64
-				if loc, ok := entry.Val(dwarf.AttrLocation).([]byte); ok {
-					if len(loc) == bi.Arch.PtrSize()+1 && op.Opcode(loc[0]) == op.DW_OP_addr {
-						addr = binary.LittleEndian.Uint64(loc[1:])
-					}
-				}
-				if pu != nil {
-					pu.variables = append(pu.variables, packageVar{n, nil, entry.Offset, addr + image.StaticBase})
-				} else {
-					if !cu.isgo {
-						n = "C." + n
-					}
-					if _, known := knownPackageVars[n]; !known {
-						bi.packageVars = append(bi.packageVars, packageVar{n, cu, entry.Offset, addr + image.StaticBase})
-					}
-				}
-			}
-
-		case dwarf.TagConstant:
-			name, okName := entry.Val(dwarf.AttrName).(string)
-			typ, okType := entry.Val(dwarf.AttrType).(dwarf.Offset)
-			val, okVal := entry.Val(dwarf.AttrConstValue).(int64)
-			if okName && okType && okVal {
-				if pu != nil {
-					pu.constants = append(pu.constants, partialUnitConstant{name: name, typ: typ, value: val})
-				} else {
-					if !cu.isgo {
-						name = "C." + name
-					}
-					ct := bi.consts[dwarfRef{image.index, typ}]
-					if ct == nil {
-						ct = &constantType{}
-						bi.consts[dwarfRef{image.index, typ}] = ct
-					}
-					ct.values = append(ct.values, constantValue{name: name, fullName: name, value: val})
-				}
-			}
-
-		case dwarf.TagSubprogram:
-			ok1 := false
-			inlined := false
-			var lowpc, highpc uint64
-			if inval, ok := entry.Val(dwarf.AttrInline).(int64); ok {
-				inlined = inval == 1
-			}
-			if ranges, _ := image.dwarf.Ranges(entry); len(ranges) == 1 {
-				ok1 = true
-				lowpc = ranges[0][0] + image.StaticBase
-				highpc = ranges[0][1] + image.StaticBase
-			}
-			name, ok2 := entry.Val(dwarf.AttrName).(string)
-			if !ok2 {
-				originOffset, hasAbstractOrigin := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
-				if hasAbstractOrigin {
-					name, ok2 = abstractOriginNameTable[originOffset]
-				}
-			}
-
-			var fn Function
-			if (ok1 == !inlined) && ok2 {
-				if inlined {
-					abstractOriginNameTable[entry.Offset] = name
-				}
-				if pu != nil {
-					fn = Function{
-						Name:  name,
-						Entry: lowpc, End: highpc,
-						offset: entry.Offset,
-						cu:     &compileUnit{},
-					}
-					pu.functions = append(pu.functions, fn)
-				} else {
-					if !cu.isgo {
-						name = "C." + name
-					}
-					fn = Function{
-						Name:  name,
-						Entry: lowpc, End: highpc,
-						offset: entry.Offset,
-						cu:     cu,
-					}
-					bi.Functions = append(bi.Functions, fn)
-				}
-			}
-			if entry.Children {
-				for {
-					entry, err = reader.Next()
-					if err != nil {
-						break outer
-					}
-					if entry.Tag == 0 {
-						break
-					}
-					if entry.Tag == dwarf.TagInlinedSubroutine {
-						originOffset := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
-						name := abstractOriginNameTable[originOffset]
-						if ranges, _ := image.dwarf.Ranges(entry); len(ranges) == 1 {
-							ok1 = true
-							lowpc = ranges[0][0]
-							highpc = ranges[0][1]
-						}
-						callfileidx, ok1 := entry.Val(dwarf.AttrCallFile).(int64)
-						callline, ok2 := entry.Val(dwarf.AttrCallLine).(int64)
-						if ok1 && ok2 {
-							callfile := cu.lineInfo.FileNames[callfileidx-1].Path
-							cu.concreteInlinedFns = append(cu.concreteInlinedFns, inlinedFn{
-								Name:     name,
-								LowPC:    lowpc + image.StaticBase,
-								HighPC:   highpc + image.StaticBase,
-								CallFile: callfile,
-								CallLine: callline,
-								Parent:   &fn,
-							})
-						}
-					}
-					reader.SkipChildren()
-				}
-			}
+		default:
+			// ignore unknown tags
+			reader.SkipChildren()
 		}
-	}
-
-	if cu != nil {
-		cu.endOffset = lastOffset + 1
 	}
 
 	sort.Sort(compileUnitsByLowpc(bi.compileUnits))
@@ -499,6 +297,169 @@ outer:
 	if cont != nil {
 		cont()
 	}
+}
+
+// loadDebugInfoMapsCompileUnit loads entry from a single compile unit.
+func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContext, image *Image, reader *reader.Reader, cu *compileUnit) dwarf.Offset {
+	var lastOffset dwarf.Offset
+	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+		if err != nil {
+			image.setLoadError("error reading debug_info: %v", err)
+			return lastOffset + 1
+		}
+		if entry.Tag != 0 {
+			lastOffset = entry.Offset
+		}
+		switch entry.Tag {
+		case 0:
+			return lastOffset + 1
+		case dwarf.TagImportedUnit:
+			bi.loadDebugInfoMapsImportedUnit(entry, ctxt, image, cu)
+			reader.SkipChildren()
+
+		case dwarf.TagArrayType, dwarf.TagBaseType, dwarf.TagClassType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagConstType, dwarf.TagVolatileType, dwarf.TagRestrictType, dwarf.TagEnumerationType, dwarf.TagPointerType, dwarf.TagSubroutineType, dwarf.TagTypedef, dwarf.TagUnspecifiedType:
+			if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+				if !cu.isgo {
+					name = "C." + name
+				}
+				if _, exists := bi.types[name]; !exists {
+					bi.types[name] = dwarfRef{image.index, entry.Offset}
+				}
+			}
+			if cu != nil && cu.isgo {
+				bi.registerTypeToPackageMap(entry)
+			}
+			image.registerRuntimeTypeToDIE(entry, ctxt.ardr)
+			reader.SkipChildren()
+
+		case dwarf.TagVariable:
+			if n, ok := entry.Val(dwarf.AttrName).(string); ok {
+				var addr uint64
+				if loc, ok := entry.Val(dwarf.AttrLocation).([]byte); ok {
+					if len(loc) == bi.Arch.PtrSize()+1 && op.Opcode(loc[0]) == op.DW_OP_addr {
+						addr = binary.LittleEndian.Uint64(loc[1:])
+					}
+				}
+				if !cu.isgo {
+					n = "C." + n
+				}
+				if _, known := ctxt.knownPackageVars[n]; !known {
+					bi.packageVars = append(bi.packageVars, packageVar{n, cu, entry.Offset, addr + image.StaticBase})
+				}
+			}
+			reader.SkipChildren()
+
+		case dwarf.TagConstant:
+			name, okName := entry.Val(dwarf.AttrName).(string)
+			typ, okType := entry.Val(dwarf.AttrType).(dwarf.Offset)
+			val, okVal := entry.Val(dwarf.AttrConstValue).(int64)
+			if okName && okType && okVal {
+				if !cu.isgo {
+					name = "C." + name
+				}
+				ct := bi.consts[dwarfRef{image.index, typ}]
+				if ct == nil {
+					ct = &constantType{}
+					bi.consts[dwarfRef{image.index, typ}] = ct
+				}
+				ct.values = append(ct.values, constantValue{name: name, fullName: name, value: val})
+			}
+			reader.SkipChildren()
+
+		case dwarf.TagSubprogram:
+			ok1 := false
+			inlined := false
+			var lowpc, highpc uint64
+			if inval, ok := entry.Val(dwarf.AttrInline).(int64); ok {
+				inlined = inval == 1
+			}
+			if ranges, _ := image.dwarf.Ranges(entry); len(ranges) == 1 {
+				ok1 = true
+				lowpc = ranges[0][0] + image.StaticBase
+				highpc = ranges[0][1] + image.StaticBase
+			}
+			name, ok2 := entry.Val(dwarf.AttrName).(string)
+			if !ok2 {
+				originOffset, hasAbstractOrigin := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+				if hasAbstractOrigin {
+					name, ok2 = ctxt.abstractOriginNameTable[originOffset]
+				}
+			}
+
+			var fn Function
+			if (ok1 == !inlined) && ok2 {
+				if inlined {
+					ctxt.abstractOriginNameTable[entry.Offset] = name
+				}
+				if !cu.isgo {
+					name = "C." + name
+				}
+				fn = Function{
+					Name:  name,
+					Entry: lowpc, End: highpc,
+					offset: entry.Offset,
+					cu:     cu,
+				}
+				bi.Functions = append(bi.Functions, fn)
+			}
+			if entry.Children {
+				for {
+					entry, err = reader.Next()
+					if err != nil {
+						image.setLoadError("error reading debug_info: %v", err)
+						return 0
+					}
+					if entry.Tag == 0 {
+						break
+					}
+					if entry.Tag == dwarf.TagInlinedSubroutine {
+						originOffset := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+						name := ctxt.abstractOriginNameTable[originOffset]
+						if ranges, _ := image.dwarf.Ranges(entry); len(ranges) == 1 {
+							ok1 = true
+							lowpc = ranges[0][0]
+							highpc = ranges[0][1]
+						}
+						callfileidx, ok1 := entry.Val(dwarf.AttrCallFile).(int64)
+						callline, ok2 := entry.Val(dwarf.AttrCallLine).(int64)
+						if ok1 && ok2 {
+							callfile := cu.lineInfo.FileNames[callfileidx-1].Path
+							cu.concreteInlinedFns = append(cu.concreteInlinedFns, inlinedFn{
+								Name:     name,
+								LowPC:    lowpc + image.StaticBase,
+								HighPC:   highpc + image.StaticBase,
+								CallFile: callfile,
+								CallLine: callline,
+								Parent:   &fn,
+							})
+						}
+					}
+					reader.SkipChildren()
+				}
+			}
+		}
+	}
+
+	return lastOffset + 1
+}
+
+// loadDebugInfoMapsImportedUnit loads entries into cu from the partial unit
+// referenced in a DW_TAG_imported_unit entry.
+func (bi *BinaryInfo) loadDebugInfoMapsImportedUnit(entry *dwarf.Entry, ctxt *loadDebugInfoMapsContext, image *Image, cu *compileUnit) {
+	off, ok := entry.Val(dwarf.AttrImport).(dwarf.Offset)
+	if !ok {
+		return
+	}
+	reader := image.DwarfReader()
+	reader.Seek(off)
+	imentry, err := reader.Next()
+	if err != nil {
+		return
+	}
+	if imentry.Tag != dwarf.TagPartialUnit {
+		return
+	}
+	bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
 }
 
 func uniq(s []string) []string {

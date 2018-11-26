@@ -123,20 +123,6 @@ type dwarfRef struct {
 	offset     dwarf.Offset
 }
 
-type partialUnitConstant struct {
-	name  string
-	typ   dwarf.Offset
-	value int64
-}
-
-type partialUnit struct {
-	entry     *dwarf.Entry
-	types     map[string]dwarf.Offset
-	variables []packageVar
-	constants []partialUnitConstant
-	functions []Function
-}
-
 // inlinedFn represents a concrete inlined function, e.g.
 // an entry for the generated code of an inlined function.
 type inlinedFn struct {
