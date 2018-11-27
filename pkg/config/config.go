@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -94,6 +95,10 @@ func LoadConfig() *Config {
 		return nil
 	}
 
+	if len(c.DebugInfoDirectories) == 0 {
+		c.DebugInfoDirectories = []string{"/usr/lib/debug/.build-id"}
+	}
+
 	return &c
 }
 
@@ -129,6 +134,7 @@ func createDefaultConfig(path string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to write default configuration: %v", err)
 	}
+	f.Seek(0, io.SeekStart)
 	return f, nil
 }
 
