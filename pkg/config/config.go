@@ -58,12 +58,12 @@ func LoadConfig() *Config {
 	err := createConfigPath()
 	if err != nil {
 		fmt.Printf("Could not create config directory: %v.", err)
-		return nil
+		return &Config{}
 	}
 	fullConfigFile, err := GetConfigFilePath(configFile)
 	if err != nil {
 		fmt.Printf("Unable to get config file path: %v.", err)
-		return nil
+		return &Config{}
 	}
 
 	f, err := os.Open(fullConfigFile)
@@ -71,7 +71,7 @@ func LoadConfig() *Config {
 		f, err = createDefaultConfig(fullConfigFile)
 		if err != nil {
 			fmt.Printf("Error creating default config file: %v", err)
-			return nil
+			return &Config{}
 		}
 	}
 	defer func() {
@@ -84,14 +84,14 @@ func LoadConfig() *Config {
 	data, err := ioutil.ReadAll(f)
 	if err != nil {
 		fmt.Printf("Unable to read config data: %v.", err)
-		return nil
+		return &Config{}
 	}
 
 	var c Config
 	err = yaml.Unmarshal(data, &c)
 	if err != nil {
 		fmt.Printf("Unable to decode config file: %v.", err)
-		return nil
+		return &Config{}
 	}
 
 	return &c
