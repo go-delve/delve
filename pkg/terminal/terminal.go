@@ -264,7 +264,14 @@ func (t *Term) substitutePath(path string) string {
 	if t.conf == nil {
 		return path
 	}
-	separator := string(os.PathSeparator)
+
+	// On windows paths returned from headless server are as c:/dir/dir
+	// though os.PathSeparator is '\\'
+
+	separator := "/"                     //make it default
+	if strings.Index(path, "\\") != -1 { //dependent on the path
+		separator = "\\"
+	}
 	for _, r := range t.conf.SubstitutePath {
 		from := crossPlatformPath(r.From)
 		to := r.To
