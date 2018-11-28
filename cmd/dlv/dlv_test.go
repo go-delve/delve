@@ -52,11 +52,7 @@ func projectRoot() string {
 		panic(err)
 	}
 
-	separatorGOPATH := ":"
-	if runtime.GOOS == "windows" {
-		separatorGOPATH = ";"
-	}
-	gopaths := strings.Split(os.Getenv("GOPATH"), separatorGOPATH)
+	gopaths := strings.FieldsFunc(os.Getenv("GOPATH"), func(r rune) bool { return r == os.PathListSeparator })
 	for _, curpath := range gopaths {
 		// Detects "gopath mode" when GOPATH contains several paths ex. "d:\\dir\\gopath;f:\\dir\\gopath2"
 		if strings.Contains(wd, curpath) {
