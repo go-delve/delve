@@ -59,12 +59,12 @@ func LoadConfig() *Config {
 	err := createConfigPath()
 	if err != nil {
 		fmt.Printf("Could not create config directory: %v.", err)
-		return nil
+		return &Config{}
 	}
 	fullConfigFile, err := GetConfigFilePath(configFile)
 	if err != nil {
 		fmt.Printf("Unable to get config file path: %v.", err)
-		return nil
+		return &Config{}
 	}
 
 	f, err := os.Open(fullConfigFile)
@@ -72,7 +72,7 @@ func LoadConfig() *Config {
 		f, err = createDefaultConfig(fullConfigFile)
 		if err != nil {
 			fmt.Printf("Error creating default config file: %v", err)
-			return nil
+			return &Config{}
 		}
 	}
 	defer func() {
@@ -85,14 +85,14 @@ func LoadConfig() *Config {
 	data, err := ioutil.ReadAll(f)
 	if err != nil {
 		fmt.Printf("Unable to read config data: %v.", err)
-		return nil
+		return &Config{}
 	}
 
 	var c Config
 	err = yaml.Unmarshal(data, &c)
 	if err != nil {
 		fmt.Printf("Unable to decode config file: %v.", err)
-		return nil
+		return &Config{}
 	}
 
 	if len(c.DebugInfoDirectories) == 0 {
@@ -188,9 +188,10 @@ func createConfigPath() error {
 
 // GetConfigFilePath gets the full path to the given config file name.
 func GetConfigFilePath(file string) (string, error) {
+	userHomeDir := "."
 	usr, err := user.Current()
-	if err != nil {
-		return "", err
+	if err == nil {
+		userHomeDir = usr.HomeDir
 	}
-	return path.Join(usr.HomeDir, configDir, file), nil
+	return path.Join(userHomeDir, configDir, file), nil
 }
