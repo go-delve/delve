@@ -590,6 +590,20 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 		return dbp.SelectedGoroutine(), nil
 	}
 
+	if gid == 0 {
+		// goroutine 0 is special, it either means we have no current goroutine
+		// (for example, running C code), or that we are running on a special
+		// stack (system stack, signal handling stack) and we didn't properly
+		// detect.
+		// If the user requested goroutine 0 and we the current thread is running
+		// on a goroutine 0 (or no goroutine at all) return the goroutine running
+		// on the current thread.
+		g, _ := GetG(dbp.CurrentThread())
+		if g == nil || g.ID == 0 {
+			return g, nil
+		}
+	}
+
 	gs, _, err := GoroutinesInfo(dbp, 0, 0)
 	if err != nil {
 		return nil, err
