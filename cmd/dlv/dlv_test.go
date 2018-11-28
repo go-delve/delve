@@ -51,8 +51,17 @@ func projectRoot() string {
 	if err != nil {
 		panic(err)
 	}
-	if strings.Contains(wd, os.Getenv("GOPATH")) {
-		return filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "derekparker", "delve")
+
+	separatorGOPATH := ":"
+	if runtime.GOOS == "windows" {
+		separatorGOPATH = ";"
+	}
+	gopaths := strings.Split(os.Getenv("GOPATH"), separatorGOPATH)
+	for _, curpath := range gopaths {
+		// Detects "gopath mode" when GOPATH contains several paths ex. "d:\\dir\\gopath;f:\\dir\\gopath2"
+		if strings.Contains(wd, curpath) {
+			return filepath.Join(curpath, "src", "github.com", "derekparker", "delve")
+		}
 	}
 	val, err := exec.Command("go", "list", "-m", "-f", "{{ .Dir }}").Output()
 	if err != nil {
