@@ -753,9 +753,12 @@ func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
 			break
 		}
 	}
+	memsz := tls.Memsz
+
+	memsz = (memsz + uint64(bi.Arch.PtrSize()) - 1) & ^uint64(bi.Arch.PtrSize()-1) // align to pointer-sized-boundary
 	// The TLS register points to the end of the TLS block, which is
 	// tls.Memsz long. runtime.tlsg is an offset from the beginning of that block.
-	bi.gStructOffset = ^(tls.Memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
+	bi.gStructOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
 }
 
 // PE ////////////////////////////////////////////////////////////////
