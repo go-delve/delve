@@ -256,3 +256,20 @@ func TestGeneratedDoc(t *testing.T) {
 		checkAutogenDoc(t, docFilename, "scripts/gen-usage-docs.go", slurpFile(t, tempDir+"/"+doc.Name()))
 	}
 }
+
+func TestExitInInit(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+	exitInit := filepath.Join(protest.FindFixturesDir(), "exit.init")
+	cmd := exec.Command(dlvbin, "--init", exitInit, "debug")
+	cmd.Dir = buildtestdir
+	out, err := cmd.CombinedOutput()
+	t.Logf("%q %v\n", string(out), err)
+	// dlv will exit anyway because stdin is not a tty but it will print the
+	// prompt once if the init file didn't call exit successfully.
+	if strings.Contains(string(out), "(dlv)") {
+		t.Fatal("init did not cause dlv to exit")
+	}
+}

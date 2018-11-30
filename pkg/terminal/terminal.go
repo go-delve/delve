@@ -64,20 +64,6 @@ type Term struct {
 
 // New returns a new Term.
 func New(client service.Client, conf *config.Config) *Term {
-	if client != nil && client.IsMulticlient() {
-		state, _ := client.GetStateNonBlocking()
-		// The error return of GetState will usually be the ErrProcessExited,
-		// which we don't care about. If there are other errors they will show up
-		// later, here we are only concerned about stopping a running target so
-		// that we can initialize our connection.
-		if state != nil && state.Running {
-			_, err := client.Halt()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "could not halt: %v", err)
-				return nil
-			}
-		}
-	}
 	cmds := DebugCommands(client)
 	if conf != nil && conf.Aliases != nil {
 		cmds.Merge(conf.Aliases)
@@ -204,6 +190,9 @@ func (t *Term) Run() (int, error) {
 	if t.InitFile != "" {
 		err := t.cmds.executeFile(t, t.InitFile)
 		if err != nil {
+			if _, ok := err.(ExitRequestError); ok {
+				return t.handleExit()
+			}
 			fmt.Fprintf(os.Stderr, "Error executing init file: %s\n", err)
 		}
 	}
