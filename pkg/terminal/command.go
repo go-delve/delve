@@ -1933,6 +1933,9 @@ func (c *Commands) executeFile(t *Term, name string) error {
 		}
 
 		if err := c.Call(line, t); err != nil {
+			if _, isExitRequest := err.(ExitRequestError); isExitRequest {
+				return err
+			}
 			fmt.Printf("%s:%d: %v\n", name, lineno, err)
 		}
 	}

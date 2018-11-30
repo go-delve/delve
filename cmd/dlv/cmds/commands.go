@@ -500,6 +500,20 @@ func connect(addr string, clientConn net.Conn, conf *config.Config, kind execute
 	} else {
 		client = rpc2.NewClient(addr)
 	}
+	if client.IsMulticlient() {
+		state, _ := client.GetStateNonBlocking()
+		// The error return of GetState will usually be the ErrProcessExited,
+		// which we don't care about. If there are other errors they will show up
+		// later, here we are only concerned about stopping a running target so
+		// that we can initialize our connection.
+		if state != nil && state.Running {
+			_, err := client.Halt()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "could not halt: %v", err)
+				return 1
+			}
+		}
+	}
 	if client.Recorded() && (kind == executingGeneratedFile || kind == executingGeneratedTest) {
 		// When using the rr backend remove the trace directory if we built the
 		// executable
