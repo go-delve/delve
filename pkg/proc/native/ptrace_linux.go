@@ -68,8 +68,9 @@ func PtraceGetRegset(tid int) (regset linutil.AMD64Xstate, err error) {
 	iov := sys.Iovec{Base: &xstateargs[0], Len: _X86_XSTATE_MAX_SIZE}
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETREGSET, uintptr(tid), _NT_X86_XSTATE, uintptr(unsafe.Pointer(&iov)), 0, 0)
 	if err != syscall.Errno(0) {
-		if err == syscall.ENODEV {
+		if err == syscall.ENODEV || err == syscall.EIO {
 			// ignore ENODEV, it just means this CPU or kernel doesn't support XSTATE, see https://github.com/derekparker/delve/issues/1022
+			// also ignore EIO, it means that we are running on an old kernel (pre 2.6.34) and PTRACE_GETREGSET is not implemented
 			err = nil
 		}
 		return
