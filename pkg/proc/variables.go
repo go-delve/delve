@@ -932,6 +932,10 @@ func (v *Variable) maybeDereference() *Variable {
 
 	switch t := v.RealType.(type) {
 	case *godwarf.PtrType:
+		if v.Addr == 0 && len(v.Children) == 1 && v.loaded {
+			// fake pointer variable constructed by casting an integer to a pointer type
+			return &v.Children[0]
+		}
 		ptrval, err := readUintRaw(v.mem, uintptr(v.Addr), t.ByteSize)
 		r := v.newVariable("", uintptr(ptrval), t.Type, DereferenceMemory(v.mem))
 		if err != nil {

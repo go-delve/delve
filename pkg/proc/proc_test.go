@@ -4117,3 +4117,21 @@ func TestIssue1374(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1432(t *testing.T) {
+	// Check that taking the address of a struct, casting it into a pointer to
+	// the struct's type and then accessing a member field will still:
+	// - perform auto-dereferencing on struct member access
+	// - yield a Variable that's ultimately assignable (i.e. has an address)
+	withTestProcess("issue1432", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue")
+		svar := evalVariable(p, t, "s")
+		t.Logf("%#x", svar.Addr)
+
+		scope, err := proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope()")
+
+		err = scope.SetVariable(fmt.Sprintf("(*\"main.s\")(%#x).i", svar.Addr), "10")
+		assertNoError(err, t, "SetVariable")
+	})
+}
