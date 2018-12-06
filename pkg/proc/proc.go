@@ -578,7 +578,9 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 			allg = append(allg, g)
 		}
 	}
-	dbp.Common().allGCache = allg
+	if start == 0 {
+		dbp.Common().allGCache = allg
+	}
 
 	return allg, -1, nil
 }

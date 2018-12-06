@@ -4135,3 +4135,32 @@ func TestIssue1432(t *testing.T) {
 		assertNoError(err, t, "SetVariable")
 	})
 }
+
+func TestGoroutinesInfoLimit(t *testing.T) {
+	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 37)
+		assertNoError(proc.Continue(p), t, "Continue()")
+
+		gcount := 0
+		nextg := 0
+		const goroutinesInfoLimit = 10
+		for nextg >= 0 {
+			oldnextg := nextg
+			var gs []*proc.G
+			var err error
+			gs, nextg, err = proc.GoroutinesInfo(p, nextg, goroutinesInfoLimit)
+			assertNoError(err, t, fmt.Sprintf("GoroutinesInfo(%d, %d)", oldnextg, goroutinesInfoLimit))
+			gcount += len(gs)
+			t.Logf("got %d goroutines\n", len(gs))
+		}
+
+		t.Logf("number of goroutines: %d\n", gcount)
+
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+		assertNoError(err, t, "GoroutinesInfo(0, 0)")
+		t.Logf("number of goroutines (full scan): %d\n", gcount)
+		if len(gs) != gcount {
+			t.Fatalf("mismatch in the number of goroutines %d %d\n", gcount, len(gs))
+		}
+	})
+}
