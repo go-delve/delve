@@ -604,20 +604,37 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 		if g == nil || g.ID == 0 {
 			return g, nil
 		}
+		return nil, fmt.Errorf("Unknown goroutine %d", gid)
 	}
 
-	gs, _, err := GoroutinesInfo(dbp, 0, 0)
-	if err != nil {
-		return nil, err
-	}
-	for i := range gs {
-		if gs[i].ID == gid {
-			if gs[i].Unreadable != nil {
-				return nil, gs[i].Unreadable
-			}
-			return gs[i], nil
+	// Calling GoroutinesInfo could be slow if there are many goroutines
+	// running, check if a running goroutine has been requested first.
+	for _, thread := range dbp.ThreadList() {
+		g, _ := GetG(thread)
+		if g != nil && g.ID == gid {
+			return g, nil
 		}
 	}
+
+	const goroutinesInfoLimit = 10
+	nextg := 0
+	for nextg >= 0 {
+		var gs []*G
+		var err error
+		gs, nextg, err = GoroutinesInfo(dbp, nextg, goroutinesInfoLimit)
+		if err != nil {
+			return nil, err
+		}
+		for i := range gs {
+			if gs[i].ID == gid {
+				if gs[i].Unreadable != nil {
+					return nil, gs[i].Unreadable
+				}
+				return gs[i], nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("Unknown goroutine %d", gid)
 }
 
