@@ -518,6 +518,11 @@ type ListGoroutinesOut struct {
 }
 
 // ListGoroutines lists all goroutines.
+// If Count is specified ListGoroutines will return at the first Count
+// goroutines and an index in Nextg, that can be passed as the Start
+// parameter, to get more goroutines from ListGoroutines.
+// Passing a value of Start that wasn't returned by ListGoroutines will skip
+// an undefined number of goroutines.
 func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut) error {
 	gs, nextg, err := s.debugger.Goroutines(arg.Start, arg.Count)
 	if err != nil {
