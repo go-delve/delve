@@ -41,6 +41,20 @@ const (
 	encImaginaryFloat = 0x09
 )
 
+const cyclicalTypeStop = "<cyclical>" // guard value printed for types with a cyclical definition, to avoid inifinite recursion in Type.String
+
+type recCheck map[dwarf.Offset]struct{}
+
+func (recCheck recCheck) acquire(off dwarf.Offset) (release func()) {
+	if _, rec := recCheck[off]; rec {
+		return nil
+	}
+	recCheck[off] = struct{}{}
+	return func() {
+		delete(recCheck, off)
+	}
+}
+
 // A Type conventionally represents a pointer to any of the
 // specific Type structures (CharType, StructType, etc.).
 //TODO: remove this use dwarf.Type
@@ -48,6 +62,9 @@ type Type interface {
 	Common() *CommonType
 	String() string
 	Size() int64
+
+	stringIntl(recCheck) string
+	sizeIntl(recCheck) int64
 }
 
 // A CommonType holds fields common to multiple types.
@@ -62,7 +79,8 @@ type CommonType struct {
 
 func (c *CommonType) Common() *CommonType { return c }
 
-func (c *CommonType) Size() int64 { return c.ByteSize }
+func (c *CommonType) Size() int64             { return c.ByteSize }
+func (c *CommonType) sizeIntl(recCheck) int64 { return c.ByteSize }
 
 // Basic types
 
@@ -75,7 +93,9 @@ type BasicType struct {
 
 func (b *BasicType) Basic() *BasicType { return b }
 
-func (t *BasicType) String() string {
+func (t *BasicType) String() string { return t.stringIntl(nil) }
+
+func (t *BasicType) stringIntl(recCheck) string {
 	if t.Name != "" {
 		return t.Name
 	}
@@ -136,9 +156,27 @@ type QualType struct {
 	Type Type
 }
 
-func (t *QualType) String() string { return t.Qual + " " + t.Type.String() }
+func (t *QualType) String() string { return t.stringIntl(make(recCheck)) }
 
-func (t *QualType) Size() int64 { return t.Type.Size() }
+func (t *QualType) stringIntl(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
+	return t.Qual + " " + t.Type.stringIntl(recCheck)
+}
+
+func (t *QualType) Size() int64 { return t.sizeIntl(make(recCheck)) }
+
+func (t *QualType) sizeIntl(recCheck recCheck) int64 {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return t.CommonType.ByteSize
+	}
+	defer release()
+	return t.Type.sizeIntl(recCheck)
+}
 
 // An ArrayType represents a fixed size array type.
 type ArrayType struct {
@@ -148,18 +186,36 @@ type ArrayType struct {
 	Count         int64 // if == -1, an incomplete array, like char x[].
 }
 
-func (t *ArrayType) String() string {
-	return "[" + strconv.FormatInt(t.Count, 10) + "]" + t.Type.String()
+func (t *ArrayType) String() string { return t.stringIntl(make(recCheck)) }
+
+func (t *ArrayType) stringIntl(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
+	return "[" + strconv.FormatInt(t.Count, 10) + "]" + t.Type.stringIntl(recCheck)
 }
 
-func (t *ArrayType) Size() int64 { return t.Count * t.Type.Size() }
+func (t *ArrayType) Size() int64 { return t.sizeIntl(make(recCheck)) }
+
+func (t *ArrayType) sizeIntl(recCheck recCheck) int64 {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return t.CommonType.ByteSize
+	}
+	defer release()
+	return t.Count * t.Type.sizeIntl(recCheck)
+}
 
 // A VoidType represents the C void type.
 type VoidType struct {
 	CommonType
 }
 
-func (t *VoidType) String() string { return "void" }
+func (t *VoidType) String() string { return t.stringIntl(nil) }
+
+func (t *VoidType) stringIntl(recCheck) string { return "void" }
 
 // A PtrType represents a pointer type.
 type PtrType struct {
@@ -167,7 +223,16 @@ type PtrType struct {
 	Type Type
 }
 
-func (t *PtrType) String() string { return "*" + t.Type.String() }
+func (t *PtrType) String() string { return t.stringIntl(make(recCheck)) }
+
+func (t *PtrType) stringIntl(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
+	return "*" + t.Type.stringIntl(recCheck)
+}
 
 // A StructType represents a struct, union, or C++ class type.
 type StructType struct {
@@ -189,14 +254,21 @@ type StructField struct {
 	Embedded   bool
 }
 
-func (t *StructType) String() string {
+func (t *StructType) String() string { return t.stringIntl(make(recCheck)) }
+
+func (t *StructType) stringIntl(recCheck recCheck) string {
 	if t.StructName != "" {
 		return t.Kind + " " + t.StructName
 	}
-	return t.Defn()
+	return t.Defn(recCheck)
 }
 
-func (t *StructType) Defn() string {
+func (t *StructType) Defn(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
 	s := t.Kind
 	if t.StructName != "" {
 		s += " " + t.StructName
@@ -210,7 +282,7 @@ func (t *StructType) Defn() string {
 		if i > 0 {
 			s += "; "
 		}
-		s += f.Name + " " + f.Type.String()
+		s += f.Name + " " + f.Type.stringIntl(recCheck)
 		s += "@" + strconv.FormatInt(f.ByteOffset, 10)
 		if f.BitSize > 0 {
 			s += " : " + strconv.FormatInt(f.BitSize, 10)
@@ -228,11 +300,18 @@ type SliceType struct {
 	ElemType Type
 }
 
-func (t *SliceType) String() string {
+func (t *SliceType) String() string { return t.stringIntl(make(recCheck)) }
+
+func (t *SliceType) stringIntl(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
 	if t.Name != "" {
 		return t.Name
 	}
-	return "[]" + t.ElemType.String()
+	return "[]" + t.ElemType.stringIntl(recCheck)
 }
 
 // A StringType represents a Go string type. It looks like a StructType, describing
@@ -241,7 +320,9 @@ type StringType struct {
 	StructType
 }
 
-func (t *StringType) String() string {
+func (t *StringType) String() string { return t.stringIntl(nil) }
+
+func (t *StringType) stringIntl(recCheck recCheck) string {
 	if t.Name != "" {
 		return t.Name
 	}
@@ -253,7 +334,9 @@ type InterfaceType struct {
 	TypedefType
 }
 
-func (t *InterfaceType) String() string {
+func (t *InterfaceType) String() string { return t.stringIntl(nil) }
+
+func (t *InterfaceType) stringIntl(recCheck recCheck) string {
 	if t.Name != "" {
 		return t.Name
 	}
@@ -275,7 +358,9 @@ type EnumValue struct {
 	Val  int64
 }
 
-func (t *EnumType) String() string {
+func (t *EnumType) String() string { return t.stringIntl(nil) }
+
+func (t *EnumType) stringIntl(recCheck recCheck) string {
 	s := "enum"
 	if t.EnumName != "" {
 		s += " " + t.EnumName
@@ -298,17 +383,24 @@ type FuncType struct {
 	ParamType  []Type
 }
 
-func (t *FuncType) String() string {
+func (t *FuncType) String() string { return t.stringIntl(make(recCheck)) }
+
+func (t *FuncType) stringIntl(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
 	s := "func("
 	for i, t := range t.ParamType {
 		if i > 0 {
 			s += ", "
 		}
-		s += t.String()
+		s += t.stringIntl(recCheck)
 	}
 	s += ")"
 	if t.ReturnType != nil {
-		s += " " + t.ReturnType.String()
+		s += " " + t.ReturnType.stringIntl(recCheck)
 	}
 	return s
 }
@@ -318,7 +410,9 @@ type DotDotDotType struct {
 	CommonType
 }
 
-func (t *DotDotDotType) String() string { return "..." }
+func (t *DotDotDotType) String() string { return t.stringIntl(nil) }
+
+func (t *DotDotDotType) stringIntl(recCheck recCheck) string { return "..." }
 
 // A TypedefType represents a named type.
 type TypedefType struct {
@@ -326,9 +420,20 @@ type TypedefType struct {
 	Type Type
 }
 
-func (t *TypedefType) String() string { return t.Name }
+func (t *TypedefType) String() string { return t.stringIntl(nil) }
 
-func (t *TypedefType) Size() int64 { return t.Type.Size() }
+func (t *TypedefType) stringIntl(recCheck recCheck) string { return t.Name }
+
+func (t *TypedefType) Size() int64 { return t.sizeIntl(make(recCheck)) }
+
+func (t *TypedefType) sizeIntl(recCheck recCheck) int64 {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return t.CommonType.ByteSize
+	}
+	defer release()
+	return t.Type.sizeIntl(recCheck)
+}
 
 // A MapType represents a Go map type. It looks like a TypedefType, describing
 // the runtime-internal structure, with extra fields.
@@ -338,7 +443,14 @@ type MapType struct {
 	ElemType Type
 }
 
-func (t *MapType) String() string {
+func (t *MapType) String() string { return t.stringIntl(make(recCheck)) }
+
+func (t *MapType) stringIntl(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
 	if t.Name != "" {
 		return t.Name
 	}
@@ -351,7 +463,14 @@ type ChanType struct {
 	ElemType Type
 }
 
-func (t *ChanType) String() string {
+func (t *ChanType) String() string { return t.stringIntl(make(recCheck)) }
+
+func (t *ChanType) stringIntl(recCheck recCheck) string {
+	release := recCheck.acquire(t.CommonType.Offset)
+	if release == nil {
+		return cyclicalTypeStop
+	}
+	defer release()
 	if t.Name != "" {
 		return t.Name
 	}
@@ -586,9 +705,10 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		switch t.ReflectKind {
 		case reflect.Slice:
 			slice := new(SliceType)
+			typ = slice
+			typeCache[off] = slice
 			slice.ElemType = typeOf(e, AttrGoElem)
 			t = &slice.StructType
-			typ = slice
 		case reflect.String:
 			str := new(StringType)
 			t = &str.StructType
@@ -798,19 +918,22 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		switch t.ReflectKind {
 		case reflect.Map:
 			m := new(MapType)
+			typ = m
+			typeCache[off] = typ
 			m.KeyType = typeOf(e, AttrGoKey)
 			m.ElemType = typeOf(e, AttrGoElem)
 			t = &m.TypedefType
-			typ = m
 		case reflect.Chan:
 			c := new(ChanType)
+			typ = c
+			typeCache[off] = typ
 			c.ElemType = typeOf(e, AttrGoElem)
 			t = &c.TypedefType
-			typ = c
 		case reflect.Interface:
 			it := new(InterfaceType)
-			t = &it.TypedefType
 			typ = it
+			typeCache[off] = it
+			t = &it.TypedefType
 		default:
 			typ = t
 		}
