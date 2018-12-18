@@ -5,13 +5,12 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/core/minidump"
 	"github.com/go-delve/delve/pkg/proc/winutil"
-	"github.com/sirupsen/logrus"
 )
 
 func readAMD64Minidump(minidumpPath, exePath string) (*Process, error) {
 	var logfn func(string, ...interface{})
 	if logflags.Minidump() {
-		logfn = logrus.WithFields(logrus.Fields{"layer": "core", "kind": "minidump"}).Infof
+		logfn = logflags.MinidumpLogger().Infof
 	}
 
 	mdmp, err := minidump.Open(minidumpPath, logfn)

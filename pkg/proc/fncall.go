@@ -15,7 +15,6 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/logflags"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/arch/x86/x86asm"
 )
 
@@ -153,10 +152,7 @@ func CallFunction(p Process, expr string, retLoadCfg *LoadConfig, checkEscape bo
 }
 
 func fncallLog(fmtstr string, args ...interface{}) {
-	if !logflags.FnCall() {
-		return
-	}
-	logrus.WithFields(logrus.Fields{"layer": "proc", "kind": "fncall"}).Infof(fmtstr, args...)
+	logflags.FnCallLogger().Infof(fmtstr, args...)
 }
 
 // writePointer writes val as an architecture pointer at addr in mem.

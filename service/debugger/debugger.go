@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"go/parser"
-	"io/ioutil"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -74,11 +73,7 @@ type Config struct {
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
 // new process.
 func New(config *Config, processArgs []string) (*Debugger, error) {
-	logger := logrus.New().WithFields(logrus.Fields{"layer": "debugger"})
-	logger.Logger.Level = logrus.DebugLevel
-	if !logflags.Debugger() {
-		logger.Logger.Out = ioutil.Discard
-	}
+	logger := logflags.DebuggerLogger()
 	d := &Debugger{
 		config:      config,
 		processArgs: processArgs,

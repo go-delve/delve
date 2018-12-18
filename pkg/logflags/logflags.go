@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"log"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 var debugger = false
@@ -15,15 +17,34 @@ var rpc = false
 var fnCall = false
 var minidump = false
 
+func makeLogger(flag bool, fields logrus.Fields) *logrus.Entry {
+	logger := logrus.New().WithFields(fields)
+	logger.Logger.Level = logrus.DebugLevel
+	if !flag {
+		logger.Logger.Level = logrus.PanicLevel
+	}
+	return logger
+}
+
 // GdbWire returns true if the gdbserial package should log all the packets
 // exchanged with the stub.
 func GdbWire() bool {
 	return gdbWire
 }
 
+// GdbWireLogger returns a configured logger for the gdbserial wire protocol.
+func GdbWireLogger() *logrus.Entry {
+	return makeLogger(gdbWire, logrus.Fields{"layer": "gdbconn"})
+}
+
 // Debugger returns true if the debugger package should log.
 func Debugger() bool {
 	return debugger
+}
+
+// DebuggerLogger returns a logger for the debugger package.
+func DebuggerLogger() *logrus.Entry {
+	return makeLogger(debugger, logrus.Fields{"layer": "debugger"})
 }
 
 // LLDBServerOutput returns true if the output of the LLDB server should be
@@ -38,9 +59,14 @@ func DebugLineErrors() bool {
 	return debugLineErrors
 }
 
-// RPC returns true if rpc messages should be logged.
+// RPC returns true if RPC messages should be logged.
 func RPC() bool {
 	return rpc
+}
+
+// RPCLogger returns a logger for RPC messages.
+func RPCLogger() *logrus.Entry {
+	return makeLogger(rpc, logrus.Fields{"layer": "rpc"})
 }
 
 // FnCall returns true if the function call protocol should be logged.
@@ -48,9 +74,17 @@ func FnCall() bool {
 	return fnCall
 }
 
+func FnCallLogger() *logrus.Entry {
+	return makeLogger(fnCall, logrus.Fields{"layer": "proc", "kind": "fncall"})
+}
+
 // Minidump returns true if the minidump loader should be logged.
 func Minidump() bool {
 	return minidump
+}
+
+func MinidumpLogger() *logrus.Entry {
+	return makeLogger(minidump, logrus.Fields{"layer": "core", "kind": "minidump"})
 }
 
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
