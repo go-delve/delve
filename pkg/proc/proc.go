@@ -19,8 +19,16 @@ var ErrNotExecutable = errors.New("not an executable file")
 // only possible on recorded (traced) programs.
 var ErrNotRecorded = errors.New("not a recording")
 
-// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
-const UnrecoveredPanic = "unrecovered-panic"
+const (
+	// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
+	UnrecoveredPanic = "unrecovered-panic"
+
+	// FatalThrow is the name given to the breakpoint triggered when the target process dies because of a fatal runtime error
+	FatalThrow = "runtime-fatal-throw"
+
+	unrecoveredPanicID = -1
+	fatalThrowID       = -2
+)
 
 // ErrProcessExited indicates that the process has exited and contains both
 // process id and exit status.
@@ -61,6 +69,7 @@ func PostInitializationSetup(p Process, path string, debugInfoDirs []string, wri
 	p.SetSelectedGoroutine(g)
 
 	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
+	createFatalThrowBreakpoint(p, writeBreakpoint)
 
 	return nil
 }
@@ -732,13 +741,22 @@ func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpoint
 		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", true, 0)
 	}
 	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(-1, panicpc, writeBreakpoint)
+		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpc, writeBreakpoint)
 		if err == nil {
 			bp.Name = UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}
 		}
 	}
+}
 
+func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
+	fatalpc, err := FindFunctionLocation(p, "runtime.fatalthrow", true, 0)
+	if err == nil {
+		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpc, writeBreakpoint)
+		if err == nil {
+			bp.Name = FatalThrow
+		}
+	}
 }
 
 // FirstPCAfterPrologue returns the address of the first
