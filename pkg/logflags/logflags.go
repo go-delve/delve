@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,9 +24,14 @@ var rpc = false
 var fnCall = false
 var minidump = false
 
+var logOut io.WriteCloser
+
 func makeLogger(flag bool, fields logrus.Fields) *logrus.Entry {
 	logger := logrus.New().WithFields(fields)
 	logger.Logger.Formatter = &textFormatter{}
+	if logOut != nil {
+		logger.Logger.Out = logOut
+	}
 	logger.Logger.Level = logrus.DebugLevel
 	if !flag {
 		logger.Logger.Level = logrus.PanicLevel
@@ -92,10 +100,33 @@ func MinidumpLogger() *logrus.Entry {
 	return makeLogger(minidump, logrus.Fields{"layer": "core", "kind": "minidump"})
 }
 
+// WriteAPIListeningMessage writes the "API server listening" message in headless mode.
+func WriteAPIListeningMessage(addr string) {
+	if logOut != nil {
+		fmt.Fprintf(logOut, "API server listening at: %s\n", addr)
+	} else {
+		fmt.Printf("API server listening at: %s\n", addr)
+	}
+}
+
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
 
 // Setup sets debugger flags based on the contents of logstr.
-func Setup(logFlag bool, logstr string) error {
+// If logDest is not empty logs will be redirected to the file descriptor or
+// file path specified by logDest.
+func Setup(logFlag bool, logstr string, logDest string) error {
+	if logDest != "" {
+		n, err := strconv.Atoi(logDest)
+		if err == nil {
+			logOut = os.NewFile(uintptr(n), "delve-logs")
+		} else {
+			fh, err := os.Create(logDest)
+			if err != nil {
+				return fmt.Errorf("could not create log file: %v", err)
+			}
+			logOut = fh
+		}
+	}
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	if !logFlag {
 		log.SetOutput(ioutil.Discard)
@@ -127,6 +158,13 @@ func Setup(logFlag bool, logstr string) error {
 		}
 	}
 	return nil
+}
+
+// Close closes the logger output.
+func Close() {
+	if logOut != nil {
+		logOut.Close()
+	}
 }
 
 // textFormatter is a simplified version of logrus.TextFormatter that

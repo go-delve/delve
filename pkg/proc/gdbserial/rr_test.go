@@ -19,7 +19,7 @@ func TestMain(m *testing.M) {
 	var logConf string
 	flag.StringVar(&logConf, "log", "", "configures logging")
 	flag.Parse()
-	logflags.Setup(logConf != "", logConf)
+	logflags.Setup(logConf != "", logConf, "")
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
