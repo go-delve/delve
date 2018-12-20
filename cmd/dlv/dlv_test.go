@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-delve/delve/cmd/dlv/cmds"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/rpc2"
@@ -284,7 +283,7 @@ func TestGeneratedDoc(t *testing.T) {
 	// Checks gen-usage-docs.go
 	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
 	assertNoError(err, t, "TempDir")
-	defer cmds.SafeRemoveAll(tempDir)
+	defer protest.SafeRemoveAll(tempDir)
 	cmd := exec.Command("go", "run", "scripts/gen-usage-docs.go", tempDir)
 	cmd.Dir = projectRoot()
 	cmd.Run()

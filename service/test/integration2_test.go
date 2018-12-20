@@ -77,11 +77,7 @@ func withTestClient2Extended(name string, t *testing.T, fn func(c service.Client
 	clientConn, fixture := startServer(name, t)
 	client := rpc2.NewClientFromConn(clientConn)
 	defer func() {
-		dir, _ := client.TraceDirectory()
 		client.Detach(true)
-		if dir != "" {
-			protest.SafeRemoveAll(dir)
-		}
 	}()
 
 	fn(client, fixture)
@@ -1147,17 +1143,22 @@ func TestSkipPrologue2(t *testing.T) {
 func TestIssue419(t *testing.T) {
 	// Calling service/rpc.(*Client).Halt could cause a crash because both Halt and Continue simultaneously
 	// try to read 'runtime.g' and debug/dwarf.Data.Type is not thread safe
+	finish := make(chan struct{})
 	withTestClient2("issue419", t, func(c service.Client) {
 		go func() {
+			defer close(finish)
 			rand.Seed(time.Now().Unix())
 			d := time.Duration(rand.Intn(4) + 1)
 			time.Sleep(d * time.Second)
+			t.Logf("halt")
 			_, err := c.Halt()
 			assertNoError(err, t, "RequestManualStop()")
 		}()
 		statech := c.Continue()
 		state := <-statech
 		assertNoError(state.Err, t, "Continue()")
+		t.Logf("done")
+		<-finish
 	})
 }
 
@@ -1728,5 +1729,56 @@ func TestIssue1703(t *testing.T) {
 		text, err := c.DisassemblePC(api.EvalScope{GoroutineID: -1}, locs[0].PC, api.IntelFlavour)
 		assertNoError(err, t, "DisassemblePC")
 		t.Logf("text: %#v\n", text)
+	})
+}
+
+func TestRerecord(t *testing.T) {
+	protest.AllowRecording(t)
+	if testBackend != "rr" {
+		t.Skip("only valid for recorded targets")
+	}
+	withTestClient2("testrerecord", t, func(c service.Client) {
+		fp := testProgPath(t, "testrerecord")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 10})
+		assertNoError(err, t, "CreateBreakpoin")
+
+		gett := func() int {
+			state := <-c.Continue()
+			if state.Err != nil {
+				t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
+			}
+
+			vart, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "t", normalLoadConfig)
+			assertNoError(err, t, "EvalVariable")
+			if vart.Unreadable != "" {
+				t.Fatalf("Could not read variable 't': %s\n", vart.Unreadable)
+			}
+
+			t.Logf("Value of t is %s\n", vart.Value)
+
+			vartval, err := strconv.Atoi(vart.Value)
+			assertNoError(err, t, "Parsing value of variable t")
+			return vartval
+		}
+
+		t0 := gett()
+
+		_, err = c.RestartFrom(false, "", false, nil)
+		assertNoError(err, t, "First restart")
+		t1 := gett()
+
+		if t0 != t1 {
+			t.Fatalf("Expected same value for t after restarting (without rerecording) %d %d", t0, t1)
+		}
+
+		time.Sleep(2 * time.Second) // make sure that we're not running inside the same second
+
+		_, err = c.RestartFrom(true, "", false, nil)
+		assertNoError(err, t, "Second restart")
+		t2 := gett()
+
+		if t0 == t2 {
+			t.Fatalf("Expected new value for t after restarting (with rerecording) %d %d", t0, t2)
+		}
 	})
 }

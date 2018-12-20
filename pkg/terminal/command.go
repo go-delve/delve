@@ -128,12 +128,18 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: `Restart process.
 
-	restart [checkpoint]
-	restart [-noargs] newargv...
+For recorded targets the command takes the following forms:
 
-For recorded processes restarts from the start or from the specified
-checkpoint.  For normal processes restarts the process, optionally changing
-the arguments.  With -noargs, the process starts with an empty commandline.
+	restart				resets ot the start of the recording
+	restart [checkpoint]		resets the recording to the given checkpoint
+	restart -r [newargv...]		re-records the target process
+	
+For live targets the command takes the following forms:
+
+	restart [newargv...]		restarts the process
+
+If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
+If -noargs is specified instead, the argument vector is cleared.
 `},
 		{aliases: []string{"continue", "c"}, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, cmdFn: c.step, helpMsg: "Single step through program."},
@@ -856,21 +862,51 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 		prefix, formatLocation(g.StartLoc))
 }
 
-func parseArgs(args string) ([]string, error) {
-	if args == "" {
-		return nil, nil
+func restart(t *Term, ctx callContext, args string) error {
+	if t.client.Recorded() {
+		return restartRecorded(t, ctx, args)
 	}
-	v, err := argv.Argv([]rune(args), argv.ParseEnv(os.Environ()),
-		func(s []rune, _ map[string]string) ([]rune, error) {
-			return nil, fmt.Errorf("Backtick not supported in '%s'", string(s))
-		})
+
+	return restartLive(t, ctx, args)
+}
+
+func restartRecorded(t *Term, ctx callContext, args string) error {
+	v := strings.SplitN(args, " ", 2)
+
+	rerecord := false
+	resetArgs := false
+	newArgv := []string{}
+	restartPos := ""
+
+	if len(v) > 0 {
+		if v[0] == "-r" {
+			rerecord = true
+			if len(v) == 2 {
+				var err error
+				resetArgs, newArgv, err = parseNewArgv(v[1])
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			if len(v) > 1 {
+				return fmt.Errorf("too many arguments to restart")
+			}
+			restartPos = v[0]
+		}
+	}
+
+	if err := restartIntl(t, rerecord, restartPos, resetArgs, newArgv); err != nil {
+		return err
+	}
+
+	state, err := t.client.GetState()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if len(v) != 1 {
-		return nil, fmt.Errorf("Illegal commandline '%s'", args)
-	}
-	return v[0], nil
+	printcontext(t, state)
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	return nil
 }
 
 // parseOptionalCount parses an optional count argument.
@@ -882,49 +918,56 @@ func parseOptionalCount(arg string) (int64, error) {
 	return strconv.ParseInt(arg, 0, 64)
 }
 
-func restart(t *Term, ctx callContext, args string) error {
-	v, err := parseArgs(args)
+func restartLive(t *Term, ctx callContext, args string) error {
+	resetArgs, newArgv, err := parseNewArgv(args)
 	if err != nil {
 		return err
 	}
-	var restartPos string
-	var resetArgs bool
-	if t.client.Recorded() {
-		if len(v) > 1 {
-			return fmt.Errorf("restart: illegal position '%v'", v)
-		}
-		if len(v) == 1 {
-			restartPos = v[0]
-			v = nil
-		}
-	} else if len(v) > 0 {
-		resetArgs = true
-		if v[0] == "-noargs" {
-			if len(v) > 1 {
-				return fmt.Errorf("restart: -noargs does not take any arg")
-			}
-			v = nil
-		}
-	}
-	discarded, err := t.client.RestartFrom(restartPos, resetArgs, v)
-	if err != nil {
+
+	if err := restartIntl(t, false, "", resetArgs, newArgv); err != nil {
 		return err
 	}
-	if !t.client.Recorded() {
-		fmt.Println("Process restarted with PID", t.client.ProcessPid())
+
+	fmt.Println("Process restarted with PID", t.client.ProcessPid())
+	return nil
+}
+
+func restartIntl(t *Term, rerecord bool, restartPos string, resetArgs bool, newArgv []string) error {
+	discarded, err := t.client.RestartFrom(rerecord, restartPos, resetArgs, newArgv)
+	if err != nil {
+		return err
 	}
 	for i := range discarded {
 		fmt.Printf("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
 	}
-	if t.client.Recorded() {
-		state, err := t.client.GetState()
-		if err != nil {
-			return err
-		}
-		printcontext(t, state)
-		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
-	}
 	return nil
+}
+
+func parseNewArgv(args string) (resetArgs bool, newArgv []string, err error) {
+	if args == "" {
+		return false, nil, nil
+	}
+	v, err := argv.Argv([]rune(args), argv.ParseEnv(os.Environ()),
+		func(s []rune, _ map[string]string) ([]rune, error) {
+			return nil, fmt.Errorf("Backtick not supported in '%s'", string(s))
+		})
+	if err != nil {
+		return false, nil, err
+	}
+	if len(v) != 1 {
+		return false, nil, fmt.Errorf("Illegal commandline '%s'", args)
+	}
+	w := v[0]
+	if len(w) == 0 {
+		return false, nil, nil
+	}
+	if w[0] == "-noargs" {
+		if len(w) > 1 {
+			return false, nil, fmt.Errorf("Too many arguments to restart")
+		}
+		return true, nil, nil
+	}
+	return true, w, nil
 }
 
 func printcontextNoState(t *Term) {
