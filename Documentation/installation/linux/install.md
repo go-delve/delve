@@ -3,10 +3,10 @@
 Please use the following steps to build and install Delve on Linux.
 
 There are two ways to install on Linux. First is the standard `go get` method:
-
 ```
 go get -u github.com/derekparker/delve/cmd/dlv
 ```
+Note that there's a `go.mod` in Delve codebase. To use install using go modules `GO111MODULE=on` environment variable needs to be set before issuing `go get` while go modules are not turned on by default in the go ditribution.
 
 Alternatively make sure $GOPATH is set (e.g. as `~/.go`) and:
 
