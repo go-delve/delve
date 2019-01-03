@@ -150,6 +150,10 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	source, _ := filepath.Abs(path)
 	source = filepath.ToSlash(source)
+	sympath, err := filepath.EvalSymlinks(source)
+	if err == nil {
+		source = strings.Replace(sympath, "\\", "/", -1)
+	}
 
 	fixture := Fixture{Name: name, Path: tmpfile, Source: source}
 
