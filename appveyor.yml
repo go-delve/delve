@@ -1,6 +1,6 @@
 version: '{build}'
 os: Windows Server 2012 R2
-clone_folder: c:\gopath\src\github.com\derekparker\delve
+clone_folder: c:\gopath\src\github.com\go-delve\delve
 environment:
   GOPATH: C:\gopath
 install:
