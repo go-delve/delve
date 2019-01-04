@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/derekparker/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/op"
 )
 
 type Reader struct {

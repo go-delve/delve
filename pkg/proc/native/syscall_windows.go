@@ -5,7 +5,7 @@ package native
 import (
 	"syscall"
 
-	"github.com/derekparker/delve/pkg/proc/winutil"
+	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
 type _NTSTATUS int32

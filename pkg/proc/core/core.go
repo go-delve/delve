@@ -6,7 +6,7 @@ import (
 	"go/ast"
 	"io"
 
-	"github.com/derekparker/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // A SplicedMemory represents a memory space formed from multiple regions,

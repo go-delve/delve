@@ -5,14 +5,14 @@ Please use the following steps to build and install Delve on Linux.
 There are two ways to install on Linux. First is the standard `go get` method:
 
 ```
-go get -u github.com/derekparker/delve/cmd/dlv
+go get -u github.com/go-delve/delve/cmd/dlv
 ```
 
 Alternatively make sure $GOPATH is set (e.g. as `~/.go`) and:
 
 ```
-$ git clone https://github.com/derekparker/delve.git $GOPATH/src/github.com/derekparker/delve
-$ cd $GOPATH/src/github.com/derekparker/delve
+$ git clone https://github.com/go-delve/delve.git $GOPATH/src/github.com/go-delve/delve
+$ cd $GOPATH/src/github.com/go-delve/delve
 $ make install
 ```
 

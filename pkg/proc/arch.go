@@ -3,8 +3,8 @@ package proc
 import (
 	"encoding/binary"
 
-	"github.com/derekparker/delve/pkg/dwarf/frame"
-	"github.com/derekparker/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/frame"
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"golang.org/x/arch/x86/x86asm"
 )
 

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/derekparker/delve/pkg/proc/native"
-	protest "github.com/derekparker/delve/pkg/proc/test"
+	"github.com/go-delve/delve/pkg/proc/native"
+	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
 func TestLoadingExternalDebugInfo(t *testing.T) {

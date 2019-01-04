@@ -8,8 +8,8 @@ import (
 	"net/rpc/jsonrpc"
 	"time"
 
-	"github.com/derekparker/delve/service"
-	"github.com/derekparker/delve/service/api"
+	"github.com/go-delve/delve/service"
+	"github.com/go-delve/delve/service/api"
 )
 
 // Client is a RPC service.Client.

@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/derekparker/delve/pkg/proc"
-	"github.com/derekparker/delve/pkg/proc/linutil"
+	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
 // Copied from golang.org/x/sys/unix.Timeval since it's not available on all

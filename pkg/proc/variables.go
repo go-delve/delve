@@ -15,9 +15,9 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/derekparker/delve/pkg/dwarf/godwarf"
-	"github.com/derekparker/delve/pkg/dwarf/op"
-	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/reader"
 )
 
 const (

@@ -24,7 +24,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
-	"github.com/derekparker/delve/pkg/proc/winutil"
+	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
 type minidumpBuf struct {

@@ -1,10 +1,10 @@
-![Delve](https://raw.githubusercontent.com/derekparker/delve/master/assets/delve_horizontal.png)
+![Delve](https://raw.githubusercontent.com/go-delve/delve/master/assets/delve_horizontal.png)
 
-[![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/derekparker/delve/master/LICENSE)
-[![GoDoc](https://godoc.org/github.com/derekparker/delve?status.svg)](https://godoc.org/github.com/derekparker/delve)
-[![Build Status](https://travis-ci.org/derekparker/delve.svg?branch=master)](https://travis-ci.org/derekparker/delve)
-[![Build status](https://ci.appveyor.com/api/projects/status/9e9edx1qlp3145j5/branch/master?svg=true)](https://ci.appveyor.com/project/derekparker/delve)
-[![Join the chat at https://gitter.im/derekparker/delve](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/derekparker/delve?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/go-delve/delve/master/LICENSE)
+[![GoDoc](https://godoc.org/github.com/go-delve/delve?status.svg)](https://godoc.org/github.com/go-delve/delve)
+[![Build Status](https://travis-ci.org/go-delve/delve.svg?branch=master)](https://travis-ci.org/go-delve/delve)
+[![Build status](https://ci.appveyor.com/api/projects/status/9e9edx1qlp3145j5/branch/master?svg=true)](https://ci.appveyor.com/project/go-delve/delve)
+[![Join the chat at https://gitter.im/go-delve/delve](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/go-delve/delve?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 The Github issue tracker is for **bugs** only. Please use the [developer mailing list](https://groups.google.com/forum/#!forum/delve-dev) for any feature proposals and discussions.
 

@@ -8,9 +8,9 @@ import (
 	pkg1 "go/ast"
 	pkg2 "net/http"
 
-	"github.com/derekparker/delve/_fixtures/internal/dir0/pkg"
-	"github.com/derekparker/delve/_fixtures/internal/dir0/renamedpackage"
-	dir1pkg "github.com/derekparker/delve/_fixtures/internal/dir1/pkg"
+	"github.com/go-delve/delve/_fixtures/internal/dir0/pkg"
+	"github.com/go-delve/delve/_fixtures/internal/dir0/renamedpackage"
+	dir1pkg "github.com/go-delve/delve/_fixtures/internal/dir1/pkg"
 )
 
 func main() {

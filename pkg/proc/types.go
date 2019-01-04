@@ -18,12 +18,12 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/derekparker/delve/pkg/dwarf/godwarf"
-	"github.com/derekparker/delve/pkg/dwarf/line"
-	"github.com/derekparker/delve/pkg/dwarf/op"
-	"github.com/derekparker/delve/pkg/dwarf/reader"
-	"github.com/derekparker/delve/pkg/goversion"
-	"github.com/derekparker/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
+	"github.com/go-delve/delve/pkg/dwarf/line"
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/sirupsen/logrus"
 )
 
