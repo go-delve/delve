@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	configDir  string = ".dlv"
-	configFile string = "config.yml"
+	configDir       string = "dlv"
+	configDirHidden string = ".dlv"
+	configFile      string = "config.yml"
 )
 
 // SubstitutePathRule describes a rule for substitution of path to source code file.
@@ -188,10 +189,14 @@ func createConfigPath() error {
 
 // GetConfigFilePath gets the full path to the given config file name.
 func GetConfigFilePath(file string) (string, error) {
+	if configPath := os.Getenv("XDG_CONFIG_HOME"); configPath != "" {
+		return path.Join(configPath, configDir, file), nil
+	}
+
 	userHomeDir := "."
 	usr, err := user.Current()
 	if err == nil {
 		userHomeDir = usr.HomeDir
 	}
-	return path.Join(userHomeDir, configDir, file), nil
+	return path.Join(userHomeDir, configDirHidden, file), nil
 }
