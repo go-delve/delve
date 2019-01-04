@@ -60,7 +60,7 @@ Sets a breakpoint.
 
 	break [name] <linespec>
 
-See [Documentation/cli/locspec.md](//github.com/derekparker/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec.
+See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"
 
@@ -303,7 +303,7 @@ Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print <expression>
 
-See [Documentation/cli/expr.md](//github.com/derekparker/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
+See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
 
 Aliases: p
 
@@ -332,7 +332,7 @@ Changes the value of a variable.
 
 	[goroutine <n>] [frame <m>] set <variable> = <value>
 
-See [Documentation/cli/expr.md](//github.com/derekparker/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions. Only numerical variables and pointers can be changed.
+See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions. Only numerical variables and pointers can be changed.
 
 
 ## source
@@ -391,7 +391,7 @@ Set tracepoint.
 
 	trace [name] <linespec>
 
-A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See [Documentation/cli/locspec.md](//github.com/derekparker/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec.
+A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"
 

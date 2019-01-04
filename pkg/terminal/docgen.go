@@ -7,7 +7,7 @@ import (
 )
 
 func replaceDocPath(s string) string {
-	const docpath = "$GOPATH/src/github.com/derekparker/delve/"
+	const docpath = "$GOPATH/src/github.com/go-delve/delve/"
 
 	for {
 		start := strings.Index(s, docpath)
@@ -22,7 +22,7 @@ func replaceDocPath(s string) string {
 		}
 
 		text := s[start+len(docpath) : end]
-		s = s[:start] + fmt.Sprintf("[%s](//github.com/derekparker/delve/tree/master/%s)", text, text) + s[end:]
+		s = s[:start] + fmt.Sprintf("[%s](//github.com/go-delve/delve/tree/master/%s)", text, text) + s[end:]
 	}
 }
 

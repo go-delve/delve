@@ -12,7 +12,7 @@ Delve currently supports two versions of its API. By default a headless instance
 
 # API version 2 documentation
 
-All the methods of the type `service/rpc2.RPCServer` can be called using JSON-RPC, the documentation for these calls is [available on godoc](https://godoc.org/github.com/derekparker/delve/service/rpc2#RPCServer). 
+All the methods of the type `service/rpc2.RPCServer` can be called using JSON-RPC, the documentation for these calls is [available on godoc](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer). 
 
 Note that all exposed methods take one single input parameter (usually called `args`) of a struct type and also return a result of a struct type. Also note that the method name should be prefixed with `RPCServer.` in JSON-RPC.
 

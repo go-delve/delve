@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/arch/x86/x86asm"
 
-	"github.com/derekparker/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // Regs represents CPU registers on an AMD64 processor.

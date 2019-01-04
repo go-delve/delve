@@ -3,8 +3,8 @@ package dwarfbuilder
 import (
 	"bytes"
 
-	"github.com/derekparker/delve/pkg/dwarf/op"
-	"github.com/derekparker/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 // LocEntry represents one entry of debug_loc.

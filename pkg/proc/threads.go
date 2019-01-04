@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/derekparker/delve/pkg/dwarf/godwarf"
-	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
+	"github.com/go-delve/delve/pkg/dwarf/reader"
 )
 
 // Thread represents a thread.

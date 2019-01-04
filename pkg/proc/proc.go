@@ -93,7 +93,7 @@ func (err *ErrFunctionNotFound) Error() string {
 // If lineOffset is passed FindFunctionLocation will return the address of that line
 // Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
 // Note that setting breakpoints at that address will cause surprising behavior:
-// https://github.com/derekparker/delve/issues/170
+// https://github.com/go-delve/delve/issues/170
 func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset int) (uint64, error) {
 	bi := p.BinInfo()
 	origfn := bi.LookupFunc[funcName]

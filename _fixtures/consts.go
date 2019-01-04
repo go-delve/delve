@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/derekparker/delve/_fixtures/internal/dir0/pkg"
+	"github.com/go-delve/delve/_fixtures/internal/dir0/pkg"
 	"runtime"
 )
 

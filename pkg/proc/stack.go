@@ -7,9 +7,9 @@ import (
 	"go/constant"
 	"strings"
 
-	"github.com/derekparker/delve/pkg/dwarf/frame"
-	"github.com/derekparker/delve/pkg/dwarf/op"
-	"github.com/derekparker/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/dwarf/frame"
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/reader"
 )
 
 // This code is partly adapted from runtime.gentraceback in

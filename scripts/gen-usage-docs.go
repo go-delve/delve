@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/derekparker/delve/cmd/dlv/cmds"
+	"github.com/go-delve/delve/cmd/dlv/cmds"
 	"github.com/spf13/cobra/doc"
 )
 

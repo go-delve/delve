@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/derekparker/delve/cmd/dlv/cmds"
-	protest "github.com/derekparker/delve/pkg/proc/test"
-	"github.com/derekparker/delve/pkg/terminal"
-	"github.com/derekparker/delve/service/rpc2"
+	"github.com/go-delve/delve/cmd/dlv/cmds"
+	protest "github.com/go-delve/delve/pkg/proc/test"
+	"github.com/go-delve/delve/pkg/terminal"
+	"github.com/go-delve/delve/service/rpc2"
 	"github.com/spf13/cobra/doc"
 )
 
@@ -56,7 +56,7 @@ func projectRoot() string {
 	for _, curpath := range gopaths {
 		// Detects "gopath mode" when GOPATH contains several paths ex. "d:\\dir\\gopath;f:\\dir\\gopath2"
 		if strings.Contains(wd, curpath) {
-			return filepath.Join(curpath, "src", "github.com", "derekparker", "delve")
+			return filepath.Join(curpath, "src", "github.com", "go-delve", "delve")
 		}
 	}
 	val, err := exec.Command("go", "list", "-m", "-f", "{{ .Dir }}").Output()
@@ -168,7 +168,7 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 		if strings.ToLower(os.Getenv("APPVEYOR")) != "true" {
 			// Sometimes delve on Appveyor can't remove the built binary before
 			// exiting and gets an "Access is denied" error when trying.
-			// See: https://ci.appveyor.com/project/derekparker/delve/build/1527
+			// See: https://ci.appveyor.com/project/go-delve/delve/build/1527
 			t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
 		}
 		return
@@ -187,9 +187,9 @@ func getDlvBin(t *testing.T) (string, string) {
 	}
 
 	dlvbin := filepath.Join(tmpdir, "dlv.exe")
-	out, err := exec.Command("go", "build", "-o", dlvbin, "github.com/derekparker/delve/cmd/dlv").CombinedOutput()
+	out, err := exec.Command("go", "build", "-o", dlvbin, "github.com/go-delve/delve/cmd/dlv").CombinedOutput()
 	if err != nil {
-		t.Fatalf("go build -o %v github.com/derekparker/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
+		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
 	}
 
 	return dlvbin, tmpdir

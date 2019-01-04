@@ -27,7 +27,7 @@ Command line arguments that should be handed to the inferior process should be s
 dlv exec --headless ./somebinary -- these arguments are for the inferior process
 ```
 
-Specifying a static port number, like in the [README](//github.com/derekparker/Delve/tree/master/Documentation/README.md) example, can be done using `--listen=127.0.0.1:portnumber`. 
+Specifying a static port number, like in the [README](//github.com/go-delve/Delve/tree/master/Documentation/README.md) example, can be done using `--listen=127.0.0.1:portnumber`. 
 
 This will, however, cause problems if you actually spawn multiple instances of the debugger. 
 
@@ -37,11 +37,11 @@ It's probably better to let Delve pick a random unused port number on its own. T
 
 Once you have a running headless instance you can connect to it and start sending commands. Delve's protocol is built on top of the [JSON-RPC](http://json-rpc.org) specification.
 
-The methods of a `service/rpc2.RPCServer` are exposed through this connection, to find out which requests you can send see the documentation of RPCServer on [godoc](https://godoc.org/github.com/derekparker/Delve/service/rpc2#RPCServer). 
+The methods of a `service/rpc2.RPCServer` are exposed through this connection, to find out which requests you can send see the documentation of RPCServer on [godoc](https://godoc.org/github.com/go-delve/Delve/service/rpc2#RPCServer). 
 
 ### Example
 
-Let's say you are trying to create a breakpoint. By looking at [godoc](https://godoc.org/github.com/derekparker/Delve/service/rpc2#RPCServer) you'll find that there is a `CreateBreakpoint` method in `RPCServer`.
+Let's say you are trying to create a breakpoint. By looking at [godoc](https://godoc.org/github.com/go-delve/Delve/service/rpc2#RPCServer) you'll find that there is a `CreateBreakpoint` method in `RPCServer`.
 
 This method, like all other methods of RPCServer that you can call through the API, has two arguments: `args` and `out`: `args` contains all the input arguments of `CreateBreakpoint`, while `out` is what `CreateBreakpoint` will return to you.
 
@@ -178,7 +178,7 @@ from a list of all functions you should specify the name of the function in
 the FunctionName field of Breakpoint and set Line to -1. *Do not omit Line,
 do not set Line to 0*.
 
-If you want to support the [same language as dlv's break and trace commands](//github.com/derekparker/Delve/tree/master/Documentation/cli/locspec.md)
+If you want to support the [same language as dlv's break and trace commands](//github.com/go-delve/Delve/tree/master/Documentation/cli/locspec.md)
  you should call RPCServer.FindLocation and
 then use the returned slice of Location objects to create Breakpoints to
 pass to CreateBreakpoint: just fill each Breakpoint.Addr with the
@@ -232,7 +232,7 @@ are interested in the topmost stack frame of the current goroutine (or
 thread) use: `EvalScope{ GoroutineID: -1, Frame: 0 }`.
 
 More information on the expression language interpreted by RPCServer.Eval
-can be found [here](//github.com/derekparker/Delve/tree/master/Documentation/cli/expr.md).
+can be found [here](//github.com/go-delve/Delve/tree/master/Documentation/cli/expr.md).
 
 ### Variable shadowing
 

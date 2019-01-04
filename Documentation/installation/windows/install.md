@@ -3,7 +3,7 @@
 Please use the standard `go get` command to build and install Delve on Windows.
 
 ```
-go get -u github.com/derekparker/delve/cmd/dlv
+go get -u github.com/go-delve/delve/cmd/dlv
 ```
 
 Also, if not already set, you have to add the %GOPATH%\bin directory to your PATH variable.

@@ -5,8 +5,8 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
-	"github.com/derekparker/delve/pkg/proc"
-	"github.com/derekparker/delve/pkg/proc/linutil"
+	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
 // SetPC sets RIP to the value specified by 'pc'.
