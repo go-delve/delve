@@ -5,6 +5,40 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [1.2.0] TO-BE-DETERMINED
+
+### Added
+
+- Go 1.12 support
+- Improved `trace` command to show return values and trace pre-built executables or tests (#1379, #1380, #1381, @derekparker)
+- Windows Minidump support (#1386, #1387, #1402, @aarzilli)
+- Better support for split DWARF symbol files (#1405, #1420, @derekparker, @slp)
+- Function call support on macOS (#1324, @derekparker)
+- `deferred` command to view the arguments of a deferred call (#1285, #1265, @aarzilli)
+- Support for debugging Position Independent Executables (#1358, @aarzilli)
+- Type conversions of byte and rune arrays into strings (#1372, @chainhelen)
+- Configuration option (source-list-line-color) to change the color of line numbers in listings (#1364, @Russtopia)
+- New expression `iface.(data)` to access the concrete value of interface variable `iface`, without having to write a full type assertion (#1340, @aarzilli)
+- Support for specifying multiple source files as arguments for `debug`, `trace` and `test` (#1339, @chainhelen)
+
+### Fixed
+
+- Make `edit` command work with vim and neovim (#1451, @the4thamigo-uk)
+- Support Linux kernels prior to 2.6.34 (i.e. without PTRACE_GETREGSET) (#1435, @aarzilli)
+- Fixed `substitute-path` configuration option on Windows (#1418, @zavla)
+- Better performance for ListGoroutines API call (#1440, #1408, @slp, @aarzilli)
+- Better performance when loading the value of very large sparse maps (#1392, @aarzilli)
+- Other bug fixes (#1377, #1384, #1429, #1434, #1445, @aarzilli)
+
+### Changed
+
+- Changes to where the configuration is stored, conforming to [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html) with fallbacks to the current directory when calls to `user.Current` fail (#1455 @GregorioMartinez, @acshekhara1)
+- Project moved from github.com/derekparker/delve to github.com/go-delve/delve (@derekparker)
+- Switched dependency management to go.mod (@aarzilli, @derekparker, @zavla)
+- New build scripts and support building on macOS without the native backend (@aarzilli, @kevin-cantwell)
+- Tolerate corrupted memory when reading the goroutine list (#1354, @aarzilli)
+- Improved documentation and error messages (@sbromberger, @aarzilli, @derekparker, @chainhelen, @dishmaev, @altimac)
+
 ## [1.1.0] 2018-08-15
 
 ### Added
