@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"path"
+	"runtime"
 
 	"gopkg.in/yaml.v2"
 )
@@ -68,6 +69,32 @@ func LoadConfig() *Config {
 		return &Config{}
 	}
 
+	h, err := hasOldConfig()
+	if err != nil {
+		fmt.Printf("Unable to determine if old config exists: %s", err)
+	}
+
+	if h {
+		userHomeDir := getUserHomeDir()
+		oldLocation := path.Join(userHomeDir, configDirHidden)
+		fmt.Printf("Attempting to move config from: %s/%s to %s\n", oldLocation, configFile, fullConfigFile)
+		if err := moveOldConfig(); err != nil {
+			fmt.Printf("Unable to move old config: %v.\n", err)
+			return &Config{}
+		}
+
+		fmt.Printf("Successfully moved config location\n")
+		fmt.Printf("Attempting to remove old config directory: %s\n", oldLocation)
+
+		if err := os.RemoveAll(oldLocation); err != nil {
+			fmt.Printf("Unable to remove old config location: %s", err)
+			return &Config{}
+		}
+
+		fmt.Printf("Successfully removed old config directory\n")
+
+	}
+
 	f, err := os.Open(fullConfigFile)
 	if err != nil {
 		f, err = createDefaultConfig(fullConfigFile)
@@ -124,6 +151,33 @@ func SaveConfig(conf *Config) error {
 
 	_, err = f.Write(out)
 	return err
+}
+
+// moveOldConfig attempts to move config to new location
+// $HOME/.dlv to $XDG_CONFIG_HOME/dlv
+func moveOldConfig() error {
+	if os.Getenv("XDG_CONFIG_HOME") == "" && runtime.GOOS != "linux" {
+		return nil
+	}
+
+	userHomeDir := getUserHomeDir()
+
+	p := path.Join(userHomeDir, configDirHidden, configFile)
+	file, err := os.Stat(p)
+	if err != nil {
+		return fmt.Errorf("unable to read config file located at: %s", p)
+	}
+
+	newFile, err := GetConfigFilePath(configFile)
+	if err != nil {
+		return fmt.Errorf("unable to read config file located at: %s", err)
+	}
+
+	if err := os.Rename(p, newFile); err != nil {
+		return fmt.Errorf("unable to move %s to %s", file, newFile)
+	}
+
+	return nil
 }
 
 func createDefaultConfig(path string) (*os.File, error) {
@@ -193,10 +247,42 @@ func GetConfigFilePath(file string) (string, error) {
 		return path.Join(configPath, configDir, file), nil
 	}
 
+	userHomeDir := getUserHomeDir()
+
+	if runtime.GOOS == "linux" {
+		return path.Join(userHomeDir, ".config", configDir, file), nil
+	}
+
+	return path.Join(userHomeDir, configDirHidden, file), nil
+}
+
+// Checks if the user has a config at the old location: $HOME/.dlv
+func hasOldConfig() (bool, error) {
+	// If you don't have XDG_CONFIG_HOME set and aren't on Linux you have nothing to move
+	if os.Getenv("XDG_CONFIG_HOME") == "" && runtime.GOOS != "linux" {
+		return false, nil
+	}
+
+	userHomeDir := getUserHomeDir()
+
+	o := path.Join(userHomeDir, configDirHidden, configFile)
+	_, err := os.Stat(o)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
+func getUserHomeDir() string {
 	userHomeDir := "."
 	usr, err := user.Current()
 	if err == nil {
 		userHomeDir = usr.HomeDir
 	}
-	return path.Join(userHomeDir, configDirHidden, file), nil
+
+	return userHomeDir
 }
