@@ -77,22 +77,16 @@ func LoadConfig() *Config {
 	if h {
 		userHomeDir := getUserHomeDir()
 		oldLocation := path.Join(userHomeDir, configDirHidden)
-		fmt.Printf("Attempting to move config from: %s/%s to %s\n", oldLocation, configFile, fullConfigFile)
 		if err := moveOldConfig(); err != nil {
 			fmt.Printf("Unable to move old config: %v.\n", err)
 			return &Config{}
 		}
 
-		fmt.Printf("Successfully moved config location\n")
-		fmt.Printf("Attempting to remove old config directory: %s\n", oldLocation)
-
 		if err := os.RemoveAll(oldLocation); err != nil {
 			fmt.Printf("Unable to remove old config location: %s", err)
 			return &Config{}
 		}
-
-		fmt.Printf("Successfully removed old config directory\n")
-
+		fmt.Printf("Successfully moved config from: %s to: %s\n", oldLocation, fullConfigFile)
 	}
 
 	f, err := os.Open(fullConfigFile)
@@ -176,7 +170,6 @@ func moveOldConfig() error {
 	if err := os.Rename(p, newFile); err != nil {
 		return fmt.Errorf("unable to move %s to %s", file, newFile)
 	}
-
 	return nil
 }
 
@@ -252,7 +245,6 @@ func GetConfigFilePath(file string) (string, error) {
 	if runtime.GOOS == "linux" {
 		return path.Join(userHomeDir, ".config", configDir, file), nil
 	}
-
 	return path.Join(userHomeDir, configDirHidden, file), nil
 }
 
@@ -273,7 +265,6 @@ func hasOldConfig() (bool, error) {
 		}
 		return false, err
 	}
-
 	return true, nil
 }
 
@@ -283,6 +274,5 @@ func getUserHomeDir() string {
 	if err == nil {
 		userHomeDir = usr.HomeDir
 	}
-
 	return userHomeDir
 }
