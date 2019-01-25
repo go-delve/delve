@@ -4164,3 +4164,35 @@ func TestGoroutinesInfoLimit(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1469(t *testing.T) {
+	withTestProcess("issue1469", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture, 13)
+		assertNoError(proc.Continue(p), t, "Continue()")
+
+		gid2thread := make(map[int][]proc.Thread)
+		for _, thread := range p.ThreadList() {
+			g, _ := proc.GetG(thread)
+			if g == nil {
+				continue
+			}
+			gid2thread[g.ID] = append(gid2thread[g.ID], thread)
+		}
+
+		for gid := range gid2thread {
+			if len(gid2thread[gid]) > 1 {
+				t.Logf("too many threads running goroutine %d", gid)
+				for _, thread := range gid2thread[gid] {
+					t.Logf("\tThread %d", thread.ThreadID())
+					frames, err := proc.ThreadStacktrace(thread, 20)
+					if err != nil {
+						t.Logf("\t\tcould not get stacktrace %v", err)
+					}
+					for _, frame := range frames {
+						t.Logf("\t\t%#x at %s:%d (systemstack: %v)", frame.Call.PC, frame.Call.File, frame.Call.Line, frame.SystemStack)
+					}
+				}
+			}
+		}
+	})
+}
