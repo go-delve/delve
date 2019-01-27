@@ -71,19 +71,25 @@ func LoadConfig() *Config {
 
 	h, err := hasOldConfig()
 	if err != nil {
-		fmt.Printf("Unable to determine if old config exists: %s", err)
+		if _, err := fmt.Fprintf(os.Stderr, "Unable to determine if old config exists: %v\n", err); err != nil {
+			fmt.Printf("Unable to write to stderr: %v\n", err)
+		}
 	}
 
 	if h {
 		userHomeDir := getUserHomeDir()
 		oldLocation := path.Join(userHomeDir, configDirHidden)
 		if err := moveOldConfig(); err != nil {
-			fmt.Printf("Unable to move old config: %v.\n", err)
+			if _, err := fmt.Fprintf(os.Stderr, "Unable to move old config: %v\n", err); err != nil {
+				fmt.Printf("Unable to write to stderr: %v\n", err)
+			}
 			return &Config{}
 		}
 
 		if err := os.RemoveAll(oldLocation); err != nil {
-			fmt.Printf("Unable to remove old config location: %s", err)
+			if _, err := fmt.Fprintf(os.Stderr, "Unable to remove old config location: %v\n", err); err != nil {
+				fmt.Printf("Unable to write to stderr: %v\n", err)
+			}
 			return &Config{}
 		}
 		fmt.Printf("Successfully moved config from: %s to: %s\n", oldLocation, fullConfigFile)
