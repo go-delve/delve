@@ -416,7 +416,10 @@ func (bi *BinaryInfo) Close() error {
 	if bi.sepDebugCloser != nil {
 		bi.sepDebugCloser.Close()
 	}
-	return bi.closer.Close()
+	if bi.closer != nil {
+		return bi.closer.Close()
+	}
+	return nil
 }
 
 func (bi *BinaryInfo) setLoadError(fmtstr string, args ...interface{}) {
