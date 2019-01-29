@@ -163,7 +163,7 @@ func moveOldConfig() error {
 	userHomeDir := getUserHomeDir()
 
 	p := path.Join(userHomeDir, configDirHidden, configFile)
-	file, err := os.Stat(p)
+	_, err := os.Stat(p)
 	if err != nil {
 		return fmt.Errorf("unable to read config file located at: %s", p)
 	}
@@ -174,7 +174,7 @@ func moveOldConfig() error {
 	}
 
 	if err := os.Rename(p, newFile); err != nil {
-		return fmt.Errorf("unable to move %s to %s", file, newFile)
+		return fmt.Errorf("unable to move %s to %s", p, newFile)
 	}
 	return nil
 }
