@@ -86,7 +86,7 @@ func LoadConfig() *Config {
 			fmt.Fprintf(os.Stderr, "Unable to remove old config location: %v\n", err)
 			return &Config{}
 		}
-		fmt.Printf("Successfully moved config from: %s to: %s\n", oldLocation, fullConfigFile)
+		fmt.Fprintf(os.Stderr, "Successfully moved config from: %s to: %s\n", oldLocation, fullConfigFile)
 	}
 
 	f, err := os.Open(fullConfigFile)
