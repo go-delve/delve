@@ -69,12 +69,12 @@ func LoadConfig() *Config {
 		return &Config{}
 	}
 
-	h, err := hasOldConfig()
+	hasOldConfig, err := hasOldConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to determine if old config exists: %v\n", err)
 	}
 
-	if h {
+	if hasOldConfig {
 		userHomeDir := getUserHomeDir()
 		oldLocation := path.Join(userHomeDir, configDirHidden)
 		if err := moveOldConfig(); err != nil {
