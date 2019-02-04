@@ -1085,14 +1085,16 @@ func TestIssue1075(t *testing.T) {
 	})
 }
 
+type testCaseCallFunction struct {
+	expr string   // call expression to evaluate
+	outs []string // list of return parameters in this format: <param name>:<param type>:<param value>
+	err  error    // if not nil should return an error
+}
+
 func TestCallFunction(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 
-	var testcases = []struct {
-		expr string   // call expression to evaluate
-		outs []string // list of return parameters in this format: <param name>:<param type>:<param value>
-		err  error    // if not nil should return an error
-	}{
+	var testcases = []testCaseCallFunction{
 		// Basic function call injection tests
 
 		{"call1(one, two)", []string{":int:3"}, nil},
@@ -1139,14 +1141,33 @@ func TestCallFunction(t *testing.T) {
 
 		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil},
 
+		// Nested function calls
+
+		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},
+		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
+		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil},
+		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int")},
+
 		// Escape tests
 
 		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2")},
-
-		{"-unsafe escapeArg(&a2)", nil, nil}, // LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
 	}
 
-	const unsafePrefix = "-unsafe "
+	var testcases113 = []testCaseCallFunction{
+		{`curriedAdd(2)(3)`, []string{`:int:5`}, nil},
+
+		// Method calls on a value returned by a function
+
+		{`getAStruct(3).VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil}, // direct call of a method with value receiver / on a value
+
+		{`getAStruct(3).PRcvr(2)`, nil, errors.New("cannot use getAStruct(3).PRcvr as argument pa in function main.(*astruct).PRcvr: stack object passed to escaping pointer: pa")}, // direct call of a method with pointer receiver / on a value
+		{`getAStructPtr(6).VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil},  // direct call of a method with value receiver / on a pointer
+		{`getAStructPtr(6).PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil}, // direct call of a method with pointer receiver / on a pointer
+
+		{`getVRcvrableFromAStruct(3).VRcvr(6)`, []string{`:string:"6 + 3 = 9"`}, nil},     // indirect call of method on interface / containing value with value method
+		{`getPRcvrableFromAStructPtr(6).PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil},  // indirect call of method on interface / containing pointer with value method
+		{`getVRcvrableFromAStructPtr(6).VRcvr(5)`, []string{`:string:"5 + 6 = 11"`}, nil}, // indirect call of method on interface / containing pointer with pointer method
+	}
 
 	withTestProcess("fncall", t, func(p proc.Process, fixture protest.Fixture) {
 		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", true, 0)
@@ -1155,61 +1176,76 @@ func TestCallFunction(t *testing.T) {
 		}
 		assertNoError(proc.Continue(p), t, "Continue()")
 		for _, tc := range testcases {
-			expr := tc.expr
-			checkEscape := true
-			if strings.HasPrefix(expr, unsafePrefix) {
-				expr = expr[len(unsafePrefix):]
-				checkEscape = false
-			}
-			t.Logf("call %q", tc.expr)
-			err := proc.EvalExpressionWithCalls(p, expr, pnormalLoadConfig, checkEscape)
-			if tc.err != nil {
-				t.Logf("\terr = %v\n", err)
-				if err == nil {
-					t.Fatalf("call %q: expected error %q, got no error", tc.expr, tc.err.Error())
-				}
-				if tc.err.Error() != err.Error() {
-					t.Fatalf("call %q: expected error %q, got %q", tc.expr, tc.err.Error(), err.Error())
-				}
-				continue
-			}
+			testCallFunction(t, p, tc)
+		}
 
-			if err != nil {
-				t.Fatalf("call %q: error %q", tc.expr, err.Error())
-			}
-
-			retvalsVar := p.CurrentThread().Common().ReturnValues(pnormalLoadConfig)
-			retvals := make([]*api.Variable, len(retvalsVar))
-
-			for i := range retvals {
-				retvals[i] = api.ConvertVar(retvalsVar[i])
-			}
-
-			for i := range retvals {
-				t.Logf("\t%s = %s", retvals[i].Name, retvals[i].SinglelineString())
-			}
-
-			if len(retvals) != len(tc.outs) {
-				t.Fatalf("call %q: wrong number of return parameters", tc.expr)
-			}
-
-			for i := range retvals {
-				outfields := strings.SplitN(tc.outs[i], ":", 3)
-				tgtName, tgtType, tgtValue := outfields[0], outfields[1], outfields[2]
-
-				if tgtName != "" && tgtName != retvals[i].Name {
-					t.Fatalf("call %q output parameter %d: expected name %q, got %q", tc.expr, i, tgtName, retvals[i].Name)
-				}
-
-				if retvals[i].Type != tgtType {
-					t.Fatalf("call %q, output parameter %d: expected type %q, got %q", tc.expr, i, tgtType, retvals[i].Type)
-				}
-				if cvs := retvals[i].SinglelineString(); cvs != tgtValue {
-					t.Fatalf("call %q, output parameter %d: expected value %q, got %q", tc.expr, i, tgtValue, cvs)
-				}
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
+			for _, tc := range testcases113 {
+				testCallFunction(t, p, tc)
 			}
 		}
+
+		// LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
+		testCallFunction(t, p, testCaseCallFunction{"-unsafe escapeArg(&a2)", nil, nil})
 	})
+}
+
+func testCallFunction(t *testing.T, p proc.Process, tc testCaseCallFunction) {
+	const unsafePrefix = "-unsafe "
+
+	expr := tc.expr
+	checkEscape := true
+	if strings.HasPrefix(expr, unsafePrefix) {
+		expr = expr[len(unsafePrefix):]
+		checkEscape = false
+	}
+	t.Logf("call %q", tc.expr)
+	err := proc.EvalExpressionWithCalls(p, expr, pnormalLoadConfig, checkEscape)
+	if tc.err != nil {
+		t.Logf("\terr = %v\n", err)
+		if err == nil {
+			t.Fatalf("call %q: expected error %q, got no error", tc.expr, tc.err.Error())
+		}
+		if tc.err.Error() != err.Error() {
+			t.Fatalf("call %q: expected error %q, got %q", tc.expr, tc.err.Error(), err.Error())
+		}
+		return
+	}
+
+	if err != nil {
+		t.Fatalf("call %q: error %q", tc.expr, err.Error())
+	}
+
+	retvalsVar := p.CurrentThread().Common().ReturnValues(pnormalLoadConfig)
+	retvals := make([]*api.Variable, len(retvalsVar))
+
+	for i := range retvals {
+		retvals[i] = api.ConvertVar(retvalsVar[i])
+	}
+
+	for i := range retvals {
+		t.Logf("\t%s = %s", retvals[i].Name, retvals[i].SinglelineString())
+	}
+
+	if len(retvals) != len(tc.outs) {
+		t.Fatalf("call %q: wrong number of return parameters", tc.expr)
+	}
+
+	for i := range retvals {
+		outfields := strings.SplitN(tc.outs[i], ":", 3)
+		tgtName, tgtType, tgtValue := outfields[0], outfields[1], outfields[2]
+
+		if tgtName != "" && tgtName != retvals[i].Name {
+			t.Fatalf("call %q output parameter %d: expected name %q, got %q", tc.expr, i, tgtName, retvals[i].Name)
+		}
+
+		if retvals[i].Type != tgtType {
+			t.Fatalf("call %q, output parameter %d: expected type %q, got %q", tc.expr, i, tgtType, retvals[i].Type)
+		}
+		if cvs := retvals[i].SinglelineString(); cvs != tgtValue {
+			t.Fatalf("call %q, output parameter %d: expected value %q, got %q", tc.expr, i, tgtValue, cvs)
+		}
+	}
 }
 
 func TestIssue1531(t *testing.T) {

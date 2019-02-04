@@ -91,6 +91,32 @@ func onetwothree(n int) []int {
 	return []int{n + 1, n + 2, n + 3}
 }
 
+func curriedAdd(n int) func(int) int {
+	return func(m int) int {
+		return n + m
+	}
+}
+
+func getAStruct(n int) astruct {
+	return astruct{X: n}
+}
+
+func getAStructPtr(n int) *astruct {
+	return &astruct{X: n}
+}
+
+func getVRcvrableFromAStruct(n int) VRcvrable {
+	return astruct{X: n}
+}
+
+func getPRcvrableFromAStructPtr(n int) PRcvrable {
+	return &astruct{X: n}
+}
+
+func getVRcvrableFromAStructPtr(n int) VRcvrable {
+	return &astruct{X: n}
+}
+
 func main() {
 	one, two := 1, 2
 	intslice := []int{1, 2, 3}
@@ -113,5 +139,5 @@ func main() {
 	runtime.Breakpoint()
 	call1(one, two)
 	fn2clos(2)
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree)
+	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr)
 }
