@@ -737,7 +737,7 @@ func TestEvalExpression(t *testing.T) {
 		{"i2 << i3", false, "", "", "int", fmt.Errorf("shift count type int, must be unsigned integer")},
 		{"*(i2 + i3)", false, "", "", "", fmt.Errorf("expression \"(i2 + i3)\" (int) can not be dereferenced")},
 		{"i2.member", false, "", "", "", fmt.Errorf("i2 (type int) is not a struct")},
-		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("no type entry found, use 'types' for a list of valid types")},
+		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("function calls not allowed without using 'call'")},
 		{"*nil", false, "", "", "", fmt.Errorf("nil can not be dereferenced")},
 		{"!nil", false, "", "", "", fmt.Errorf("operator ! can not be applied to \"nil\"")},
 		{"&nil", false, "", "", "", fmt.Errorf("can not take address of \"nil\"")},
@@ -1093,6 +1093,8 @@ func TestCallFunction(t *testing.T) {
 		outs []string // list of return parameters in this format: <param name>:<param type>:<param value>
 		err  error    // if not nil should return an error
 	}{
+		// Basic function call injection tests
+
 		{"call1(one, two)", []string{":int:3"}, nil},
 		{"call1(one+two, 4)", []string{":int:7"}, nil},
 		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil},
@@ -1102,6 +1104,13 @@ func TestCallFunction(t *testing.T) {
 		{`stringsJoin(s1, comma)`, nil, errors.New("could not find symbol value for s1")},
 		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
 
+		// Expression tests
+		{`square(2) + 1`, []string{":int:5"}, nil},
+		{`intcallpanic(1) + 1`, []string{":int:2"}, nil},
+		{`intcallpanic(0) + 1`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
+		{`onetwothree(5)[1] + 2`, []string{":int:9"}, nil},
+
+		// Call types tests (methods, function pointers, etc.)
 		// The following set of calls was constructed using https://docs.google.com/document/d/1bMwCey-gmqZVTpRax-ESeVuZGmjwbocYs1iHplK-cjo/pub as a reference
 
 		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil}, // direct call of a method with value receiver / on a value
@@ -1130,6 +1139,8 @@ func TestCallFunction(t *testing.T) {
 
 		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil},
 
+		// Escape tests
+
 		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2")},
 
 		{"-unsafe escapeArg(&a2)", nil, nil}, // LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
@@ -1151,9 +1162,9 @@ func TestCallFunction(t *testing.T) {
 				checkEscape = false
 			}
 			t.Logf("call %q", tc.expr)
-			err := proc.CallFunction(p, expr, &pnormalLoadConfig, checkEscape)
+			err := proc.EvalExpressionWithCalls(p, expr, pnormalLoadConfig, checkEscape)
 			if tc.err != nil {
-
+				t.Logf("\terr = %v\n", err)
 				if err == nil {
 					t.Fatalf("call %q: expected error %q, got no error", tc.expr, tc.err.Error())
 				}

@@ -1584,6 +1584,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 		state = <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
+		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state, err = c.Call("main.call1(main.zero, main.zero)", false)
 		if err == nil || err.Error() != "call not at safe point" {
 			t.Fatalf("wrong error or no error: %v", err)

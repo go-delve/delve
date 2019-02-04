@@ -23,8 +23,13 @@ var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not
 
 // EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
+	if scope.callCtx != nil {
+		// makes sure that the other goroutine won't wait forever if we make a mistake
+		defer close(scope.callCtx.continueRequest)
+	}
 	t, err := parser.ParseExpr(expr)
 	if err != nil {
+		scope.callCtx.doReturn(nil, err)
 		return nil, err
 	}
 
@@ -33,12 +38,14 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 		ev, err = scope.evalAST(t)
 	}
 	if err != nil {
+		scope.callCtx.doReturn(nil, err)
 		return nil, err
 	}
 	ev.loadValue(cfg)
 	if ev.Name == "" {
 		ev.Name = expr
 	}
+	scope.callCtx.doReturn(ev, nil)
 	return ev, nil
 }
 
@@ -174,20 +181,11 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	case *ast.CallExpr:
 		if len(node.Args) == 1 {
 			v, err := scope.evalTypeCast(node)
-			if err == nil {
-				return v, nil
-			}
-			_, isident := node.Fun.(*ast.Ident)
-			// we don't support function calls at the moment except for a few
-			// builtin functions so just return the type error here if the function
-			// isn't an identifier.
-			// More sophisticated logic will be required when function calls
-			// are implemented.
-			if err != reader.TypeNotFoundErr || !isident {
+			if err == nil || err != reader.TypeNotFoundErr {
 				return v, err
 			}
 		}
-		return scope.evalBuiltinCall(node)
+		return scope.evalFunctionCall(node)
 
 	case *ast.Ident:
 		return scope.evalIdent(node)
@@ -395,7 +393,7 @@ func convertInt(n uint64, signed bool, size int64) uint64 {
 func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
 	fnnode, ok := node.Fun.(*ast.Ident)
 	if !ok {
-		return nil, fmt.Errorf("function calls are not supported")
+		return nil, nil
 	}
 
 	args := make([]*Variable, len(node.Args))
@@ -421,7 +419,7 @@ func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
 		return realBuiltin(args, node.Args)
 	}
 
-	return nil, fmt.Errorf("function calls are not supported")
+	return nil, nil
 }
 
 func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {

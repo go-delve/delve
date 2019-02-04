@@ -4123,7 +4123,7 @@ func TestIssue1374(t *testing.T) {
 		setFileBreakpoint(p, t, fixture, 7)
 		assertNoError(proc.Continue(p), t, "First Continue")
 		assertLineNumber(p, t, 7, "Did not continue to correct location (first continue),")
-		assertNoError(proc.CallFunction(p, "getNum()", &normalLoadConfig, true), t, "Call")
+		assertNoError(proc.EvalExpressionWithCalls(p, "getNum()", normalLoadConfig, true), t, "Call")
 		err := proc.Continue(p)
 		if _, isexited := err.(proc.ErrProcessExited); !isexited {
 			regs, _ := p.CurrentThread().Registers(false)
@@ -4328,7 +4328,7 @@ func TestCallConcurrent(t *testing.T) {
 
 		gid1 := p.SelectedGoroutine().ID
 		t.Logf("starting injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
-		assertNoError(proc.CallFunction(p, "Foo(10, 1)", &normalLoadConfig, false), t, "EvalExpressionWithCalls()")
+		assertNoError(proc.EvalExpressionWithCalls(p, "Foo(10, 1)", normalLoadConfig, false), t, "EvalExpressionWithCalls()")
 
 		returned := testCallConcurrentCheckReturns(p, t, gid1)
 

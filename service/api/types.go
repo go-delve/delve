@@ -311,7 +311,20 @@ type DebuggerCommand struct {
 	ReturnInfoLoadConfig *LoadConfig
 	// Expr is the expression argument for a Call command
 	Expr string `json:"expr,omitempty"`
-	// UnsafeCall disabled parameter escape checking for function calls
+
+	// UnsafeCall disables parameter escape checking for function calls.
+	// Go objects can be allocated on the stack or on the heap. Heap objects
+	// can be used by any goroutine; stack objects can only be used by the
+	// goroutine that owns the stack they are allocated on and can not surivive
+	// the stack frame of allocation.
+	// The Go compiler will use escape analysis to determine whether to
+	// allocate an object on the stack or the heap.
+	// When injecting a function call Delve will check that no address of a
+	// stack allocated object is passed to the called function: this ensures
+	// the rules for stack objects will not be violated.
+	// If you are absolutely sure that the function you are calling will not
+	// violate the rules about stack objects you can disable this safety check
+	// by setting UnsafeCall to true.
 	UnsafeCall bool `json:"unsafeCall,omitempty"`
 }
 
