@@ -117,6 +117,10 @@ func getVRcvrableFromAStructPtr(n int) VRcvrable {
 	return &astruct{X: n}
 }
 
+func noreturncall(n int) {
+	return
+}
+
 func main() {
 	one, two := 1, 2
 	intslice := []int{1, 2, 3}
@@ -125,6 +129,8 @@ func main() {
 	a := astruct{X: 3}
 	pa := &astruct{X: 6}
 	a2 := a2struct{Y: 7}
+	var pa2 *astruct
+	var str string = "old string value"
 
 	var vable_a VRcvrable = a
 	var vable_pa VRcvrable = pa
@@ -139,5 +145,5 @@ func main() {
 	runtime.Breakpoint()
 	call1(one, two)
 	fn2clos(2)
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr)
+	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str)
 }

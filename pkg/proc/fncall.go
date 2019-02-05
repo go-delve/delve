@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/token"
 	"reflect"
 	"sort"
+	"strconv"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"golang.org/x/arch/x86/x86asm"
 )
@@ -55,6 +58,7 @@ var (
 	errNoAddrUnsupported          = errors.New("arguments to a function call must have an address")
 	errNotAGoFunction             = errors.New("not a Go function")
 	errFuncCallNotAllowed         = errors.New("function calls not allowed without using 'call'")
+	errFuncCallNotAllowedStrAlloc = errors.New("literal string can not be allocated because function calls are not allowed without using 'call'")
 )
 
 type functionCallState struct {
@@ -187,6 +191,8 @@ func finishEvalExpressionWithCalls(p Process, contReq continueRequest, ok bool) 
 		} else {
 			err = contReq.err
 		}
+	} else if contReq.ret == nil {
+		p.CurrentThread().Common().returnValues = nil
 	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil {
 		// this is a variable returned by a function call with multiple return values
 		r := make([]*Variable, len(contReq.ret.Children))
@@ -502,7 +508,7 @@ func funcCallCopyOneArg(g *G, scope *EvalScope, fncall *functionCallState, actua
 	// by convertToEface.
 
 	formalArgVar := newVariable(formalArg.name, uintptr(formalArg.off+int64(argFrameAddr)), formalArg.typ, scope.BinInfo, scope.Mem)
-	if err := formalArgVar.setValue(actualArg, actualArg.Name); err != nil {
+	if err := scope.setValue(formalArgVar, actualArg, actualArg.Name); err != nil {
 		return err
 	}
 
@@ -511,7 +517,9 @@ func funcCallCopyOneArg(g *G, scope *EvalScope, fncall *functionCallState, actua
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
 	const CFA = 0x1000
-	vrdr := reader.Variables(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, fn.cu.image.StaticBase), int(^uint(0)>>1), false)
+	vrdr := reader.Variables(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, fn.cu.image.StaticBase), int(^uint(0)>>1), false, true)
+
+	trustArgOrder := bi.Producer() != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
 
 	// typechecks arguments, calculates argument frame size
 	for vrdr.Next() {
@@ -524,16 +532,23 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 			return 0, nil, err
 		}
 		typ = resolveTypedef(typ)
-		locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
-		if err != nil {
-			return 0, nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
-		}
-		off, _, err := op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
-		if err != nil {
-			return 0, nil, fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
-		}
+		var off int64
+		if trustArgOrder && fn.Name == "runtime.mallocgc" {
+			// runtime is always optimized and optimized code sometimes doesn't have
+			// location info for arguments, but we still want to call runtime.mallocgc.
+			off = argFrameSize
+		} else {
+			locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
+			if err != nil {
+				return 0, nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
+			}
+			off, _, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
+			if err != nil {
+				return 0, nil, fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
+			}
 
-		off -= CFA
+			off -= CFA
+		}
 
 		if e := off + typ.Size(); e > argFrameSize {
 			argFrameSize = e
@@ -731,6 +746,14 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		fncall.retvars = filterVariables(fncall.retvars, func(v *Variable) bool {
 			return (v.Flags & VariableReturnArgument) != 0
 		})
+		if fncall.fn.Name == "runtime.mallocgc" && fncall.retvars[0].Unreadable != nil {
+			// return values never have a location for optimized functions and the
+			// runtime is always optimized. However we want to call runtime.mallocgc,
+			// so we fix the address of the return value manually.
+			fncall.retvars[0].Unreadable = nil
+			lastArg := fncall.formalArgs[len(fncall.formalArgs)-1]
+			fncall.retvars[0].Addr = uintptr(retScope.Regs.CFA + lastArg.off + int64(bi.Arch.PtrSize()))
+		}
 
 		loadValues(fncall.retvars, callScope.callCtx.retLoadCfg)
 
@@ -802,4 +825,47 @@ func (fncall *functionCallState) returnValues() []*Variable {
 		return []*Variable{fncall.panicvar}
 	}
 	return fncall.retvars
+}
+
+// allocString allocates spaces for the contents of v if it needs to be allocated
+func (scope *EvalScope) allocString(v *Variable) error {
+	if v.Base != 0 || v.Len == 0 {
+		// already allocated
+		return nil
+	}
+
+	if scope.callCtx == nil {
+		return errFuncCallNotAllowedStrAlloc
+	}
+	savedLoadCfg := scope.callCtx.retLoadCfg
+	scope.callCtx.retLoadCfg = loadFullValue
+	defer func() {
+		scope.callCtx.retLoadCfg = savedLoadCfg
+	}()
+	mallocv, err := scope.evalFunctionCall(&ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: "runtime"},
+			Sel: &ast.Ident{Name: "mallocgc"},
+		},
+		Args: []ast.Expr{
+			&ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(int(v.Len))},
+			&ast.Ident{Name: "nil"},
+			&ast.Ident{Name: "false"},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if mallocv.Unreadable != nil {
+		return mallocv.Unreadable
+	}
+	if mallocv.DwarfType.String() != "*void" {
+		return fmt.Errorf("unexpected return type for mallocgc call: %v", mallocv.DwarfType.String())
+	}
+	if len(mallocv.Children) != 1 {
+		return errors.New("internal error, could not interpret return value of mallocgc call")
+	}
+	v.Base = uintptr(mallocv.Children[0].Addr)
+	_, err = scope.Mem.WriteMemory(v.Base, []byte(constant.StringVal(v.Value)))
+	return err
 }

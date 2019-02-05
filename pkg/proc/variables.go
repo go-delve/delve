@@ -806,7 +806,7 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 		return err
 	}
 
-	return xv.setValue(yv, value)
+	return scope.setValue(xv, yv, value)
 }
 
 // LocalVariables returns all local variables from the current function scope.
@@ -1211,13 +1211,13 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 //   is performed.
 // * If srcv and dstv have the same type and are both addressable then the
 //   contents of srcv are copied byte-by-byte into dstv
-func (v *Variable) setValue(srcv *Variable, srcExpr string) error {
+func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	srcv.loadValue(loadSingleValue)
 
-	typerr := srcv.isType(v.RealType, v.Kind)
+	typerr := srcv.isType(dstv.RealType, dstv.Kind)
 	if _, isTypeConvErr := typerr.(*typeConvErr); isTypeConvErr {
 		// attempt iface -> eface and ptr-shaped -> eface conversions.
-		return convertToEface(srcv, v)
+		return convertToEface(srcv, dstv)
 	}
 	if typerr != nil {
 		return typerr
@@ -1228,51 +1228,53 @@ func (v *Variable) setValue(srcv *Variable, srcExpr string) error {
 	}
 
 	// Numerical types
-	switch v.Kind {
+	switch dstv.Kind {
 	case reflect.Float32, reflect.Float64:
 		f, _ := constant.Float64Val(srcv.Value)
-		return v.writeFloatRaw(f, v.RealType.Size())
+		return dstv.writeFloatRaw(f, dstv.RealType.Size())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		n, _ := constant.Int64Val(srcv.Value)
-		return v.writeUint(uint64(n), v.RealType.Size())
+		return dstv.writeUint(uint64(n), dstv.RealType.Size())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		n, _ := constant.Uint64Val(srcv.Value)
-		return v.writeUint(n, v.RealType.Size())
+		return dstv.writeUint(n, dstv.RealType.Size())
 	case reflect.Bool:
-		return v.writeBool(constant.BoolVal(srcv.Value))
+		return dstv.writeBool(constant.BoolVal(srcv.Value))
 	case reflect.Complex64, reflect.Complex128:
 		real, _ := constant.Float64Val(constant.Real(srcv.Value))
 		imag, _ := constant.Float64Val(constant.Imag(srcv.Value))
-		return v.writeComplex(real, imag, v.RealType.Size())
+		return dstv.writeComplex(real, imag, dstv.RealType.Size())
 	}
 
 	// nilling nillable variables
 	if srcv == nilVariable {
-		return v.writeZero()
+		return dstv.writeZero()
 	}
 
-	// set a string to ""
-	if srcv.Kind == reflect.String && srcv.Len == 0 {
-		return v.writeZero()
+	if srcv.Kind == reflect.String {
+		if err := scope.allocString(srcv); err != nil {
+			return err
+		}
+		return dstv.writeString(uint64(srcv.Len), uint64(srcv.Base))
 	}
 
 	// slice assignment (this is not handled by the writeCopy below so that
 	// results of a reslice operation can be used here).
 	if srcv.Kind == reflect.Slice {
-		return v.writeSlice(srcv.Len, srcv.Cap, srcv.Base)
+		return dstv.writeSlice(srcv.Len, srcv.Cap, srcv.Base)
 	}
 
 	// allow any integer to be converted to any pointer
-	if t, isptr := v.RealType.(*godwarf.PtrType); isptr {
-		return v.writeUint(uint64(srcv.Children[0].Addr), int64(t.ByteSize))
+	if t, isptr := dstv.RealType.(*godwarf.PtrType); isptr {
+		return dstv.writeUint(uint64(srcv.Children[0].Addr), int64(t.ByteSize))
 	}
 
 	// byte-by-byte copying for everything else, but the source must be addressable
 	if srcv.Addr != 0 {
-		return v.writeCopy(srcv)
+		return dstv.writeCopy(srcv)
 	}
 
-	return fmt.Errorf("can not set variables of type %s (not implemented)", v.Kind.String())
+	return fmt.Errorf("can not set variables of type %s (not implemented)", dstv.Kind.String())
 }
 
 // convertToEface converts srcv into an "interface {}" and writes it to
@@ -1686,6 +1688,12 @@ func (v *Variable) writeSlice(len, cap int64, base uintptr) error {
 			}
 		}
 	}
+	return nil
+}
+
+func (v *Variable) writeString(len, base uint64) error {
+	writePointer(v.bi, v.mem, uint64(v.Addr), base)
+	writePointer(v.bi, v.mem, uint64(v.Addr)+uint64(v.bi.Arch.PtrSize()), len)
 	return nil
 }
 
@@ -2246,7 +2254,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 
 	var vars []*Variable
 	var depths []int
-	varReader := reader.Variables(scope.image().dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true)
+	varReader := reader.Variables(scope.image().dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true, false)
 	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()

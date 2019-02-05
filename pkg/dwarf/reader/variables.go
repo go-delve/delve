@@ -17,23 +17,25 @@ func ToRelAddr(addr uint64, staticBase uint64) RelAddr {
 // VariableReader provides a way of reading the local variables and formal
 // parameters of a function that are visible at the specified PC address.
 type VariableReader struct {
-	dwarf       *dwarf.Data
-	reader      *dwarf.Reader
-	entry       *dwarf.Entry
-	depth       int
-	onlyVisible bool
-	pc          uint64
-	line        int
-	err         error
+	dwarf  *dwarf.Data
+	reader *dwarf.Reader
+	entry  *dwarf.Entry
+	depth  int
+	pc     uint64
+	line   int
+	err    error
+
+	onlyVisible            bool
+	skipInlinedSubroutines bool
 }
 
 // Variables returns a VariableReader for the function or lexical block at off.
 // If onlyVisible is true only variables visible at pc will be returned by
 // the VariableReader.
-func Variables(dwarf *dwarf.Data, off dwarf.Offset, pc RelAddr, line int, onlyVisible bool) *VariableReader {
+func Variables(dwarf *dwarf.Data, off dwarf.Offset, pc RelAddr, line int, onlyVisible, skipInlinedSubroutines bool) *VariableReader {
 	reader := dwarf.Reader()
 	reader.Seek(off)
-	return &VariableReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, onlyVisible: onlyVisible, pc: uint64(pc), line: line, err: nil}
+	return &VariableReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, onlyVisible: onlyVisible, skipInlinedSubroutines: skipInlinedSubroutines, pc: uint64(pc), line: line, err: nil}
 }
 
 // Next reads the next variable entry, returns false if there aren't any.
@@ -55,7 +57,14 @@ func (vrdr *VariableReader) Next() bool {
 				return false
 			}
 
-		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram, dwarf.TagInlinedSubroutine:
+		case dwarf.TagInlinedSubroutine:
+			if vrdr.skipInlinedSubroutines {
+				vrdr.reader.SkipChildren()
+				continue
+			}
+			fallthrough
+		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram:
+
 			recur := true
 			if vrdr.onlyVisible {
 				recur, vrdr.err = entryRangesContains(vrdr.dwarf, vrdr.entry, vrdr.pc)

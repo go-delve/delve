@@ -1103,10 +1103,10 @@ func TestCallFunction(t *testing.T) {
 		{"call1(one+two, 4)", []string{":int:7"}, nil},
 		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil},
 		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil},
-		{`stringsJoin(stringslice, ",")`, nil, errors.New("can not set variables of type string (not implemented)")},
 		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
 		{`stringsJoin(s1, comma)`, nil, errors.New("could not find symbol value for s1")},
 		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
+		{`noreturncall(2)`, nil, nil},
 
 		// Expression tests
 		{`square(2) + 1`, []string{":int:5"}, nil},
@@ -1143,16 +1143,25 @@ func TestCallFunction(t *testing.T) {
 
 		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil},
 
-		// Nested function calls
+		// Nested function calls tests
 
 		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},
 		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
 		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil},
 		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int")},
 
+		// Variable setting tests
+		{`pa2 = getAStructPtr(8); pa2`, []string{`pa2:*main.astruct:*main.astruct {X: 8}`}, nil},
+
 		// Escape tests
 
 		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2")},
+	}
+
+	var testcases112 = []testCaseCallFunction{
+		// string allocation requires trusted argument order, which we don't have in Go 1.11
+		{`stringsJoin(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
+		{`str = "a new string"; str`, []string{`str:string:"a new string"`}, nil},
 	}
 
 	var testcases113 = []testCaseCallFunction{
@@ -1181,6 +1190,12 @@ func TestCallFunction(t *testing.T) {
 			testCallFunction(t, p, tc)
 		}
 
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
+			for _, tc := range testcases112 {
+				testCallFunction(t, p, tc)
+			}
+		}
+
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 			for _, tc := range testcases113 {
 				testCallFunction(t, p, tc)
@@ -1195,14 +1210,22 @@ func TestCallFunction(t *testing.T) {
 func testCallFunction(t *testing.T, p proc.Process, tc testCaseCallFunction) {
 	const unsafePrefix = "-unsafe "
 
-	expr := tc.expr
+	var callExpr, varExpr string
+
+	if semicolon := strings.Index(tc.expr, ";"); semicolon >= 0 {
+		callExpr = tc.expr[:semicolon]
+		varExpr = tc.expr[semicolon+1:]
+	} else {
+		callExpr = tc.expr
+	}
+
 	checkEscape := true
-	if strings.HasPrefix(expr, unsafePrefix) {
-		expr = expr[len(unsafePrefix):]
+	if strings.HasPrefix(callExpr, unsafePrefix) {
+		callExpr = callExpr[len(unsafePrefix):]
 		checkEscape = false
 	}
 	t.Logf("call %q", tc.expr)
-	err := proc.EvalExpressionWithCalls(p, expr, pnormalLoadConfig, checkEscape)
+	err := proc.EvalExpressionWithCalls(p, callExpr, pnormalLoadConfig, checkEscape)
 	if tc.err != nil {
 		t.Logf("\terr = %v\n", err)
 		if err == nil {
@@ -1223,6 +1246,14 @@ func testCallFunction(t *testing.T, p proc.Process, tc testCaseCallFunction) {
 
 	for i := range retvals {
 		retvals[i] = api.ConvertVar(retvalsVar[i])
+	}
+
+	if varExpr != "" {
+		scope, err := proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+		v, err := scope.EvalExpression(varExpr, pnormalLoadConfig)
+		assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", varExpr))
+		retvals = append(retvals, api.ConvertVar(v))
 	}
 
 	for i := range retvals {
