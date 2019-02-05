@@ -103,6 +103,9 @@ type Variable struct {
 	stride    int64
 	fieldType godwarf.Type
 
+	// closureAddr is the closure address for function variables (0 for non-closures)
+	closureAddr uint64
+
 	// number of elements to skip when loading a map
 	mapSkip int
 
@@ -1698,18 +1701,18 @@ func (v *Variable) writeCopy(srcv *Variable) error {
 
 func (v *Variable) readFunctionPtr() {
 	// dereference pointer to find function pc
-	fnaddr := v.funcvalAddr()
+	v.closureAddr = v.funcvalAddr()
 	if v.Unreadable != nil {
 		return
 	}
-	if fnaddr == 0 {
+	if v.closureAddr == 0 {
 		v.Base = 0
 		v.Value = constant.MakeString("")
 		return
 	}
 
 	val := make([]byte, v.bi.Arch.PtrSize())
-	_, err := v.mem.ReadMemory(val, uintptr(fnaddr))
+	_, err := v.mem.ReadMemory(val, uintptr(v.closureAddr))
 	if err != nil {
 		v.Unreadable = err
 		return

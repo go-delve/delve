@@ -423,7 +423,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	if !fncall.fn.cu.isgo {
 		return errNotAGoFunction
 	}
-	fncall.closureAddr = fnvar.funcvalAddr()
+	fncall.closureAddr = fnvar.closureAddr
 
 	fncall.argFrameSize, fncall.formalArgs, err = funcCallArgs(fncall.fn, bi, false)
 	if err != nil {
