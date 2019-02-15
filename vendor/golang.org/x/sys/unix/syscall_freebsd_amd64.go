@@ -11,6 +11,16 @@ import (
 	"unsafe"
 )
 
+func PtraceGetFsBase(pid int, fsbase *int64) (err error) {
+	return ptrace(PTRACE_GETFSBASE, pid, uintptr(unsafe.Pointer(fsbase)), 0)
+}
+
+func (r *Reg) PC() int64 { return r.Rip }
+
+func (r *Reg) SetPC(pc int64) { r.Rip = pc }
+
+func (r *Reg) SetDX(dx int64) { r.Rdx = dx }
+
 func setTimespec(sec, nsec int64) Timespec {
 	return Timespec{Sec: sec, Nsec: nsec}
 }

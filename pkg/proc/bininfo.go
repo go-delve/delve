@@ -322,7 +322,7 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 	defer wg.Wait()
 
 	switch bi.GOOS {
-	case "linux":
+	case "linux", "freebsd":
 		return loadBinaryInfoElf(bi, image, path, entryPoint, &wg)
 	case "windows":
 		return loadBinaryInfoPE(bi, image, path, entryPoint, &wg)

@@ -443,7 +443,7 @@ func TestOnPrefix(t *testing.T) {
 			out := strings.Split(outstr, "\n")
 
 			for i := range out {
-				if !strings.HasPrefix(out[i], "\ti: ") {
+				if !strings.HasPrefix(out[i], prefix) {
 					continue
 				}
 				id, err := strconv.Atoi(out[i][len(prefix):])
@@ -496,7 +496,7 @@ func TestOnPrefixLocals(t *testing.T) {
 			out := strings.Split(outstr, "\n")
 
 			for i := range out {
-				if !strings.HasPrefix(out[i], "\ti: ") {
+				if !strings.HasPrefix(out[i], prefix) {
 					continue
 				}
 				id, err := strconv.Atoi(out[i][len(prefix):])
