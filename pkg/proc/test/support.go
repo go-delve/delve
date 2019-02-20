@@ -103,7 +103,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.%s", name, hex.EncodeToString(r)))
 
 	buildFlags := []string{"build"}
-	if ver, _ := goversion.Parse(runtime.Version()); runtime.GOOS == "windows" && ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	var ver goversion.GoVersion
+	if ver, _ = goversion.Parse(runtime.Version()); runtime.GOOS == "windows" && ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
@@ -124,6 +125,11 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	}
 	if flags&BuildModePIE != 0 {
 		buildFlags = append(buildFlags, "-buildmode=pie")
+	}
+	if ver.AfterOrEqual(goversion.GoVersion{1, 11, -1, 0, 0, ""}) {
+		if flags&EnableDWZCompression != 0 {
+			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
+		}
 	}
 	if path != "" {
 		buildFlags = append(buildFlags, name+".go")
