@@ -3,6 +3,7 @@ package debugger
 import (
 	"fmt"
 	"go/constant"
+	"path"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -293,6 +294,10 @@ func (loc *NormalLocationSpec) FileMatch(path string) bool {
 	return partialPathMatch(loc.Base, path)
 }
 
+func tryMatchRelativePathByProc(expr, debugname, file string) bool {
+	return len(expr) > 0 && expr[0] == '.' && file == path.Join(path.Dir(debugname), expr)
+}
+
 func partialPathMatch(expr, path string) bool {
 	if runtime.GOOS == "windows" {
 		// Accept `expr` which is case-insensitive and slash-insensitive match to `path`
@@ -329,7 +334,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	limit := maxFindLocationCandidates
 	var candidateFiles []string
 	for _, file := range d.target.BinInfo().Sources {
-		if loc.FileMatch(file) {
+		if loc.FileMatch(file) || (len(d.processArgs) >= 1 && tryMatchRelativePathByProc(loc.Base, d.processArgs[0], file)) {
 			candidateFiles = append(candidateFiles, file)
 			if len(candidateFiles) >= limit {
 				break
