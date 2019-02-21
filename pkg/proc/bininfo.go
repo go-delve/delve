@@ -94,8 +94,9 @@ var ErrUnsupportedDarwinArch = errors.New("unsupported architecture - only darwi
 // position independant executable.
 var ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
 
-// ErrNoDebugInfoFound is returned when Delve cannot find the external debug information file.
-var ErrNoDebugInfoFound = errors.New("could not find external debug info file")
+// ErrNoDebugInfoFound is returned when Delve cannot open the debug_info
+// section or find an external debug info file.
+var ErrNoDebugInfoFound = errors.New("could not open debug info")
 
 const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
 
@@ -678,9 +679,6 @@ func (bi *BinaryInfo) LoadBinaryInfoElf(path string, entryPoint uint64, debugInf
 		var serr error
 		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(elfFile, debugInfoDirectories)
 		if serr != nil {
-			if _, ok := serr.(*ErrNoBuildIDNote); ok {
-				return err
-			}
 			return serr
 		}
 		bi.sepDebugCloser = sepFile
