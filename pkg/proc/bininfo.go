@@ -754,6 +754,10 @@ func (bi *BinaryInfo) setGStructOffsetElf(exe *elf.File, wg *sync.WaitGroup) {
 			break
 		}
 	}
+	if tls == nil {
+		bi.gStructOffset = ^uint64(8) + 1 // -8
+		return
+	}
 	memsz := tls.Memsz
 
 	memsz = (memsz + uint64(bi.Arch.PtrSize()) - 1) & ^uint64(bi.Arch.PtrSize()-1) // align to pointer-sized-boundary
