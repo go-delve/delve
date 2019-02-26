@@ -477,6 +477,10 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
 func GetG(thread Thread) (*G, error) {
+	if loc, _ := thread.Location(); loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
+		// When threads are executing runtime.clone the value of TLS is unreliable.
+		return nil, nil
+	}
 	gaddr, err := getGVariable(thread)
 	if err != nil {
 		return nil, err

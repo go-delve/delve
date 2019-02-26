@@ -588,22 +588,30 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 // FindGoroutine returns a G struct representing the goroutine
 // specified by `gid`.
 func FindGoroutine(dbp Process, gid int) (*G, error) {
-	if gid == -1 {
-		return dbp.SelectedGoroutine(), nil
+	if selg := dbp.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
+		// Return the currently selected goroutine in the following circumstances:
+		//
+		// 1. if the caller asks for gid == -1 (because that's what a goroutine ID of -1 means in our API).
+		// 2. if gid == selg.ID.
+		//    this serves two purposes: (a) it's an optimizations that allows us
+		//    to avoid reading any other goroutine and, more importantly, (b) we
+		//    could be reading an incorrect value for the goroutine ID of a thread.
+		//    This condition usually happens when a goroutine calls runtime.clone
+		//    and for a short period of time two threads will appear to be running
+		//    the same goroutine.
+		// 3. if the caller asks for gid == 0 and the selected goroutine is
+		//    either 0 or nil.
+		//    Goroutine 0 is special, it either means we have no current goroutine
+		//    (for example, running C code), or that we are running on a speical
+		//    stack (system stack, signal handling stack) and we didn't properly
+		//    detect it.
+		//    Since there could be multiple goroutines '0' running simultaneously
+		//    if the user requests it return the one that's already selected or
+		//    nil if there isn't a selected goroutine.
+		return selg, nil
 	}
 
 	if gid == 0 {
-		// goroutine 0 is special, it either means we have no current goroutine
-		// (for example, running C code), or that we are running on a special
-		// stack (system stack, signal handling stack) and we didn't properly
-		// detect.
-		// If the user requested goroutine 0 and we the current thread is running
-		// on a goroutine 0 (or no goroutine at all) return the goroutine running
-		// on the current thread.
-		g, _ := GetG(dbp.CurrentThread())
-		if g == nil || g.ID == 0 {
-			return g, nil
-		}
 		return nil, fmt.Errorf("Unknown goroutine %d", gid)
 	}
 
