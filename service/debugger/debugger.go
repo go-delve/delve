@@ -830,7 +830,7 @@ func (d *Debugger) Registers(threadID int, floatingPoint bool) (api.Registers, e
 	if err != nil {
 		return nil, err
 	}
-	return api.ConvertRegisters(regs.Slice()), err
+	return api.ConvertRegisters(regs.Slice(floatingPoint)), err
 }
 
 func convertVars(pv []*proc.Variable) []api.Variable {

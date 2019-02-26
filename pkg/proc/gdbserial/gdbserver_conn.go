@@ -227,7 +227,8 @@ type gdbRegisterInfo struct {
 	Name    string `xml:"name,attr"`
 	Bitsize int    `xml:"bitsize,attr"`
 	Offset  int
-	Regnum  int `xml:"regnum,attr"`
+	Regnum  int    `xml:"regnum,attr"`
+	Group   string `xml:"group,attr"`
 }
 
 // readTargetXml reads target.xml file from stub using qXfer:features:read,

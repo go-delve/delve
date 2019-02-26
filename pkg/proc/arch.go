@@ -284,7 +284,7 @@ func (a *AMD64) RegistersToDwarfRegisters(regs Registers, staticBase uint64) op.
 		}
 	}
 
-	for _, reg := range regs.Slice() {
+	for _, reg := range regs.Slice(true) {
 		for dwarfReg, regName := range amd64DwarfToName {
 			if regName == reg.Name {
 				dregs[dwarfReg] = op.DwarfRegisterFromBytes(reg.Bytes)

@@ -79,7 +79,7 @@ func GetDwarfRegister(regs Registers, i int) []byte {
 		return buf.Bytes()
 	}
 	if regname, ok := dwarfToName[i]; ok {
-		regslice := regs.Slice()
+		regslice := regs.Slice(true)
 		for _, reg := range regslice {
 			if reg.Name == regname {
 				return reg.Bytes

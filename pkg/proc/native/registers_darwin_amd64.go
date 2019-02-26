@@ -42,7 +42,7 @@ type Regs struct {
 	fpregs []proc.Register
 }
 
-func (r *Regs) Slice() []proc.Register {
+func (r *Regs) Slice(floatingPoint bool) []proc.Register {
 	var regs = []struct {
 		k string
 		v uint64
@@ -78,7 +78,9 @@ func (r *Regs) Slice() []proc.Register {
 			out = proc.AppendQwordReg(out, reg.k, reg.v)
 		}
 	}
-	out = append(out, r.fpregs...)
+	if floatingPoint {
+		out = append(out, r.fpregs...)
+	}
 	return out
 }
 
