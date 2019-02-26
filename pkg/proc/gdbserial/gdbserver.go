@@ -1826,9 +1826,12 @@ func (t *Thread) SetDX(dx uint64) error {
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 
-func (regs *gdbRegisters) Slice() []proc.Register {
+func (regs *gdbRegisters) Slice(floatingPoint bool) []proc.Register {
 	r := make([]proc.Register, 0, len(regs.regsInfo))
 	for _, reginfo := range regs.regsInfo {
+		if reginfo.Group == "float" && !floatingPoint {
+			continue
+		}
 		switch {
 		case reginfo.Name == "eflags":
 			r = proc.AppendEflagReg(r, reginfo.Name, uint64(binary.LittleEndian.Uint32(regs.regs[reginfo.Name].value)))
@@ -1841,6 +1844,9 @@ func (regs *gdbRegisters) Slice() []proc.Register {
 		case reginfo.Bitsize == 64:
 			r = proc.AppendQwordReg(r, reginfo.Name, binary.LittleEndian.Uint64(regs.regs[reginfo.Name].value))
 		case reginfo.Bitsize == 80:
+			if !floatingPoint {
+				continue
+			}
 			idx := 0
 			for _, stprefix := range []string{"stmm", "st"} {
 				if strings.HasPrefix(reginfo.Name, stprefix) {
@@ -1852,10 +1858,12 @@ func (regs *gdbRegisters) Slice() []proc.Register {
 			r = proc.AppendX87Reg(r, idx, binary.LittleEndian.Uint16(value[8:]), binary.LittleEndian.Uint64(value[:8]))
 
 		case reginfo.Bitsize == 128:
-			r = proc.AppendSSEReg(r, strings.ToUpper(reginfo.Name), regs.regs[reginfo.Name].value)
+			if floatingPoint {
+				r = proc.AppendSSEReg(r, strings.ToUpper(reginfo.Name), regs.regs[reginfo.Name].value)
+			}
 
 		case reginfo.Bitsize == 256:
-			if !strings.HasPrefix(strings.ToLower(reginfo.Name), "ymm") {
+			if !strings.HasPrefix(strings.ToLower(reginfo.Name), "ymm") || !floatingPoint {
 				continue
 			}
 

@@ -74,7 +74,7 @@ func NewAMD64Registers(context *CONTEXT, TebBaseAddress uint64, floatingPoint bo
 }
 
 // Slice returns the registers as a list of (name, value) pairs.
-func (r *AMD64Registers) Slice() []proc.Register {
+func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 	var regs = []struct {
 		k string
 		v uint64
@@ -103,7 +103,7 @@ func (r *AMD64Registers) Slice() []proc.Register {
 		{"TLS", r.tls},
 	}
 	outlen := len(regs)
-	if r.fltSave != nil {
+	if r.fltSave != nil && floatingPoint {
 		outlen += 6 + 8 + 2 + 16
 	}
 	out := make([]proc.Register, 0, outlen)
@@ -114,7 +114,7 @@ func (r *AMD64Registers) Slice() []proc.Register {
 			out = proc.AppendQwordReg(out, reg.k, reg.v)
 		}
 	}
-	if r.fltSave != nil {
+	if r.fltSave != nil && floatingPoint {
 		out = proc.AppendWordReg(out, "CW", r.fltSave.ControlWord)
 		out = proc.AppendWordReg(out, "SW", r.fltSave.StatusWord)
 		out = proc.AppendWordReg(out, "TW", uint16(r.fltSave.TagWord))

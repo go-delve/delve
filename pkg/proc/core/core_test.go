@@ -242,7 +242,7 @@ func TestCore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Couldn't get current thread registers: %v", err)
 	}
-	regslice := regs.Slice()
+	regslice := regs.Slice(true)
 	for _, reg := range regslice {
 		t.Logf("%s = %s", reg.Name, reg.Value)
 	}
@@ -311,13 +311,13 @@ func TestCoreFpRegisters(t *testing.T) {
 		{"XMM8", "0x4059999a404ccccd4059999a404ccccd"},
 	}
 
-	for _, reg := range regs.Slice() {
+	for _, reg := range regs.Slice(true) {
 		t.Logf("%s = %s", reg.Name, reg.Value)
 	}
 
 	for _, regtest := range regtests {
 		found := false
-		for _, reg := range regs.Slice() {
+		for _, reg := range regs.Slice(true) {
 			if reg.Name == regtest.name {
 				found = true
 				if !strings.HasPrefix(reg.Value, regtest.value) {

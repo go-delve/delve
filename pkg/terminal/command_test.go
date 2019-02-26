@@ -847,3 +847,19 @@ func TestTruncateStacktrace(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1493(t *testing.T) {
+	// The 'regs' command without the '-a' option should only return
+	// general purpose registers.
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		r := term.MustExec("regs")
+		nr := len(strings.Split(r, "\n"))
+		t.Logf("regs: %s", r)
+		ra := term.MustExec("regs -a")
+		nra := len(strings.Split(ra, "\n"))
+		t.Logf("regs -a: %s", ra)
+		if nr > nra/2 {
+			t.Fatalf("'regs' returned too many registers (%d) compared to 'regs -a' (%d)", nr, nra)
+		}
+	})
+}

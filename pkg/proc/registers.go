@@ -23,7 +23,7 @@ type Registers interface {
 	// GAddr returns the address of the G variable if it is known, 0 and false otherwise
 	GAddr() (uint64, bool)
 	Get(int) (uint64, error)
-	Slice() []Register
+	Slice(floatingPoint bool) []Register
 	// Copy returns a copy of the registers that is guaranteed not to change
 	// when the registers of the associated thread change.
 	Copy() Registers
