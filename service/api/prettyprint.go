@@ -158,7 +158,7 @@ func (v *Variable) writeArrayTo(buf io.Writer, newlines, includeType bool, inden
 
 func (v *Variable) writeStructTo(buf io.Writer, newlines, includeType bool, indent string) {
 	if int(v.Len) != len(v.Children) && len(v.Children) == 0 {
-		fmt.Fprintf(buf, "(*%s)(0x%x)", v.Type, v.Addr)
+		fmt.Fprintf(buf, "(*%q)(0x%x)", v.Type, v.Addr)
 		return
 	}
 
