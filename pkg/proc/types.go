@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
-	"go/parser"
 	"go/token"
 	"path/filepath"
 	"reflect"
@@ -566,44 +565,7 @@ func (bi *BinaryInfo) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.
 // * After go1.11 the runtimeTypeToDIE map is used to look up the address of
 //   the type and map it drectly to a DIE.
 func runtimeTypeToDIE(_type *Variable, dataAddr uintptr) (typ godwarf.Type, kind int64, err error) {
-	var go17 bool
-	var typestring *Variable
-
 	bi := _type.bi
-
-	// Determine if we are in go1.7 or later
-	typestring, err = _type.structMember("_string")
-	if err == nil {
-		typestring = typestring.maybeDereference()
-	} else {
-		err = nil
-		go17 = true
-	}
-
-	if !go17 {
-		// pre-go1.7 compatibility
-		if typestring == nil || typestring.Addr == 0 || typestring.Kind != reflect.String {
-			return nil, 0, fmt.Errorf("invalid interface type")
-		}
-		typestring.loadValue(LoadConfig{false, 0, 512, 0, 0, 0})
-		if typestring.Unreadable != nil {
-			return nil, 0, fmt.Errorf("invalid interface type: %v", typestring.Unreadable)
-		}
-
-		typename := constant.StringVal(typestring.Value)
-
-		t, err := parser.ParseExpr(typename)
-		if err != nil {
-			return nil, 0, fmt.Errorf("invalid interface type, unparsable data type: %v", err)
-		}
-
-		typ, err := bi.findTypeExpr(t)
-		if err != nil {
-			return nil, 0, fmt.Errorf("interface type %q not found for %#x: %v", typename, dataAddr, err)
-		}
-
-		return typ, 0, nil
-	}
 
 	_type = _type.maybeDereference()
 
