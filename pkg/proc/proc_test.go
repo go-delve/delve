@@ -4196,3 +4196,21 @@ func TestIssue1469(t *testing.T) {
 		}
 	})
 }
+
+func TestDeadlockBreakpoint(t *testing.T) {
+	if buildMode == "pie" {
+		t.Skip("See https://github.com/golang/go/issues/29322")
+	}
+	deadlockBp := proc.FatalThrow
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+		deadlockBp = proc.UnrecoveredPanic
+	}
+	withTestProcess("testdeadlock", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+
+		bp := p.CurrentThread().Breakpoint()
+		if bp.Breakpoint == nil || bp.Name != deadlockBp {
+			t.Fatalf("did not stop at deadlock breakpoint %v", bp)
+		}
+	})
+}
