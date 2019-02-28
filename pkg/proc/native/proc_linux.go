@@ -328,9 +328,6 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 	}
 }
 
-func (dbp *Process) loadProcessInformation() {
-}
-
 func status(pid int, comm string) rune {
 	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {

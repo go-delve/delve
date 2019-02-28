@@ -53,45 +53,29 @@ func (t *Thread) resumeWithSig(sig int) (err error) {
 }
 
 func (t *Thread) singleStep() (err error) {
-	for {
-		t.dbp.execPtraceFunc(func() { err = PtraceSingleStep(t.ID) })
-		if err != nil {
-			return err
-		}
-
-		t.dbp.trapWait(t.dbp.pid)
-		/*_, status, err := t.dbp.waitFast(t.dbp.pid)
-		if err != nil {
-			return err
-		}
-
-		tid, _, _, err := ptraceGetLwpInfo(t.dbp.pid)
-		if err != nil {
-			return err
-		}
-		if (status == nil || status.Exited()) && tid == t.dbp.os.tid {
-			t.dbp.postExit()
-			rs := 0
-			if status != nil {
-				rs = status.ExitStatus()
-			}
-			return proc.ErrProcessExited{Pid: t.dbp.pid, Status: rs}
-		}
-		if tid == t.ID && status.StopSignal() == sys.SIGTRAP {
-			return nil
-		}*/
-		return nil
+	t.dbp.execPtraceFunc(func() { err = PtraceSingleStep(t.ID) })
+	if err != nil {
+		return err
 	}
+	for {
+		th, err := t.dbp.trapWait(t.dbp.pid)
+		if err != nil {
+			return err
+		}
+		if th.ID == t.ID {
+			break
+		}
+		PtraceCont(th.ID, 0)
+	}
+	return nil
 }
 
 func (t *Thread) Blocked() bool {
-	regs, err := t.Registers(false)
+	loc, err := t.Location()
 	if err != nil {
 		return false
 	}
-	pc := regs.PC()
-	fn := t.BinInfo().PCToFunc(pc)
-	if fn != nil && (fn.Name == "runtime.usleep") {
+	if loc.Fn != nil && ((loc.Fn.Name == "runtime.futex") || (loc.Fn.Name == "runtime.usleep") || (loc.Fn.Name == "runtime.clone")) {
 		return true
 	}
 	return false

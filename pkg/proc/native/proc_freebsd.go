@@ -272,9 +272,6 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 	}
 }
 
-func (dbp *Process) loadProcessInformation() {
-}
-
 // Helper function used here and in threads_freebsd.go
 // Return the status code
 func status(pid int) rune {
@@ -345,14 +342,7 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 
 // Used by Detach
 func (dbp *Process) detach(kill bool) error {
-	err := PtraceDetach(dbp.pid, 0)
-	if err != nil {
-		return err
-	}
-	if kill {
-		return nil
-	}
-	return nil
+	return PtraceDetach(dbp.pid, 0)
 }
 
 // Used by PostInitializationSetup

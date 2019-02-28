@@ -58,20 +58,6 @@ func PtraceGetLwpList(pid int) (tids []int32) {
 func ptraceGetLwpInfo(wpid int) (tid int, flags int, si_code int, err error) {
 	var info C.struct_ptrace_lwpinfo
 	_, err = C.ptrace_lwp_info(C.int(wpid), &info)
-
-	/*
-		if (info.pl_flags & sys.PL_FLAG_SI != 0) {
-			 bp_addr := uintptr(info.pl_siginfo.si_addr) - 1
-			if (info.pl_siginfo.si_code == sys.TRAP_BRKPT) {
-				fmt.Printf("****************************************************** BREAKPOINT hit at: %#v (tid: %v)\n", bp_addr, info.pl_lwpid);
-			} else {
-				fmt.Printf("****************************************************** TRAP hit at: %#v (tid: %v)\n", bp_addr, info.pl_lwpid);
-			}
-		}
-		fmt.Printf("\t<------------ptraceGetLwpInfo ret: lwpid: %v, pl_flags: %#v, si_code: %#v, err: %v \n",
-			info.pl_lwpid, int(info.pl_flags), int(info.pl_siginfo.si_code), err)
-	*/
-
 	return int(info.pl_lwpid), int(info.pl_flags), int(info.pl_siginfo.si_code), err
 }
 
