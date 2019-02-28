@@ -50,7 +50,7 @@ type AMD64PtraceRegs struct {
 }
 
 // Slice returns the registers as a list of (name, value) pairs.
-func (r *AMD64Registers) Slice() []proc.Register {
+func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 	var regs64 = []struct {
 		k string
 		v int64
@@ -113,7 +113,9 @@ func (r *AMD64Registers) Slice() []proc.Register {
 	// x86 called this register "Eflags".  amd64 extended it and renamed it
 	// "Rflags", but Linux still uses the old name.
 	out = proc.AppendEflagReg(out, "Rflags", uint64(r.Regs.Rflags))
-	out = append(out, r.Fpregs...)
+	if floatingPoint {
+		out = append(out, r.Fpregs...)
+	}
 	return out
 }
 
