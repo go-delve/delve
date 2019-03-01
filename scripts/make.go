@@ -236,11 +236,17 @@ func buildFlags() []string {
 	if err != nil {
 		log.Fatal(err)
 	}
+	gctrimpath := "-gcflags=all=-trimpath=${PWD}"
+	asmtrimpath := "-asmflags=all=-trimpath=${PWD}"
 	ldFlags := "-X main.Build=" + strings.TrimSpace(string(buildSHA))
 	if runtime.GOOS == "darwin" {
 		ldFlags = "-s " + ldFlags
 	}
-	return []string{fmt.Sprintf("-ldflags=%s", ldFlags)}
+	extldFlags := os.Getenv("LDFLAGS")
+	if extldFlags != "" {
+		ldFlags = ldFlags + fmt.Sprintf(" -extldflags %s", extldFlags)
+	}
+	return []string{gctrimpath, asmtrimpath, fmt.Sprintf("-ldflags='%s'", ldFlags)}
 }
 
 func testFlags() []string {
