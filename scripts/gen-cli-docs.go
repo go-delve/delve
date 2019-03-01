@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	fh, err := os.Create(os.ExpandEnv("$GOPATH/src/github.com/go-delve/delve/Documentation/cli/README.md"))
+	fh, err := os.Create(os.ExpandEnv("./Documentation/cli/README.md"))
 	if err != nil {
 		log.Fatalf("could not create README.md: %v", err)
 	}
