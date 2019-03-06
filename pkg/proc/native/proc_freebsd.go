@@ -135,7 +135,10 @@ func (dbp *Process) kill() (err error) {
 		return errors.New("could not deliver signal " + err.Error())
 	}
 	// If the process is stopped, we must continue it so it can receive the signal
-	PtraceCont(dbp.pid, 0)
+	dbp.execPtraceFunc(func() { err = PtraceCont(dbp.pid, 0) })
+	if err != nil {
+		return err
+	}
 	if _, _, err = dbp.wait(dbp.pid, 0); err != nil {
 		return
 	}
@@ -179,7 +182,8 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 
 // Used by initialize
 func (dbp *Process) updateThreadList() error {
-	tids := PtraceGetLwpList(dbp.pid)
+	var tids []int32
+	dbp.execPtraceFunc(func() { tids = PtraceGetLwpList(dbp.pid) })
 	for _, tid := range tids {
 		if _, err := dbp.addThread(int(tid), false); err != nil {
 			return err
@@ -216,7 +220,9 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 			return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
 		}
 
-		tid, pl_flags, _, err := ptraceGetLwpInfo(wpid)
+		var tid int
+		var pl_flags int
+		dbp.execPtraceFunc(func() { tid, pl_flags, _, err = ptraceGetLwpInfo(wpid) })
 		if err != nil {
 			return nil, fmt.Errorf("ptraceGetLwpInfo err %s %d", err, pid)
 		}
@@ -228,7 +234,10 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 		if status.StopSignal() == sys.SIGTRAP {
 			if pl_flags&sys.PL_FLAG_EXITED != 0 {
 				delete(dbp.threads, tid)
-				PtraceCont(tid, 0)
+				dbp.execPtraceFunc(func() { err = PtraceCont(tid, 0) })
+				if err != nil {
+					return nil, err
+				}
 				continue
 			} else if pl_flags&sys.PL_FLAG_BORN != 0 {
 				th, err = dbp.addThread(int(tid), false)
@@ -319,8 +328,9 @@ func (dbp *Process) resume() error {
 		}
 	}
 	// all threads are resumed
-	PtraceCont(dbp.pid, 0)
-	return nil
+	var err error
+	dbp.execPtraceFunc(func() { err = PtraceCont(dbp.pid, 0) })
+	return err
 }
 
 // Used by ContinueOnce

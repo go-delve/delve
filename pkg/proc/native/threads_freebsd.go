@@ -28,7 +28,10 @@ func (t *Thread) stop() (err error) {
 	}
 	// If the process is stopped, we must continue it so it can receive the
 	// signal
-	PtraceCont(t.dbp.pid, 0)
+	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.pid, 0) })
+	if err != nil {
+		return err
+	}
 	_, _, err = t.dbp.waitFast(t.dbp.pid)
 	if err != nil {
 		err = fmt.Errorf("wait err %s on thread %d", err, t.ID)
@@ -48,7 +51,6 @@ func (t *Thread) resume() error {
 
 func (t *Thread) resumeWithSig(sig int) (err error) {
 	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
-	//t.os.running = true
 	return
 }
 
@@ -65,7 +67,10 @@ func (t *Thread) singleStep() (err error) {
 		if th.ID == t.ID {
 			break
 		}
-		PtraceCont(th.ID, 0)
+		t.dbp.execPtraceFunc(func() { err = PtraceCont(th.ID, 0) })
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

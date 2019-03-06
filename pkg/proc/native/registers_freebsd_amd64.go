@@ -56,7 +56,7 @@ func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 		return nil, err
 	}
 	var fsbase int64
-	err = sys.PtraceGetFsBase(thread.ID, &fsbase)
+	thread.dbp.execPtraceFunc(func() { err = sys.PtraceGetFsBase(thread.ID, &fsbase) })
 	if err != nil {
 		return nil, err
 	}
