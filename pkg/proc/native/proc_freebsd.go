@@ -5,7 +5,6 @@ package native
 // #include "proc_freebsd.h"
 import "C"
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -130,20 +129,15 @@ func (dbp *Process) kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
-
-	if err = sys.Kill(-dbp.pid, sys.SIGKILL); err != nil {
-		return errors.New("could not deliver signal " + err.Error())
-	}
-	// If the process is stopped, we must continue it so it can receive the signal
-	dbp.execPtraceFunc(func() { err = PtraceCont(dbp.pid, 0) })
+	dbp.execPtraceFunc(func() { err = PtraceCont(dbp.pid, int(sys.SIGKILL)) })
 	if err != nil {
 		return err
 	}
 	if _, _, err = dbp.wait(dbp.pid, 0); err != nil {
-		return
+		return err
 	}
 	dbp.postExit()
-	return
+	return nil
 }
 
 // Used by RequestManualStop
@@ -214,7 +208,11 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 		if err != nil {
 			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
-
+		if status.Killed() {
+			// "Killed" status may arrive as a result of a Process.Kill() of some other process in
+			// the system performed by the same tracer (e.g. in the previous test)
+			continue
+		}
 		if status.Exited() {
 			dbp.postExit()
 			return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}

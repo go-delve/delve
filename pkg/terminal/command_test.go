@@ -424,6 +424,9 @@ func TestScopePrefix(t *testing.T) {
 }
 
 func TestOnPrefix(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	const prefix = "\ti: "
 	test.AllowRecording(t)
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
@@ -477,6 +480,9 @@ func TestNoVars(t *testing.T) {
 }
 
 func TestOnPrefixLocals(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	const prefix = "\ti: "
 	test.AllowRecording(t)
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
@@ -532,6 +538,9 @@ func countOccurrences(s string, needle string) int {
 }
 
 func TestIssue387(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	// a breakpoint triggering during a 'next' operation will interrupt it
 	test.AllowRecording(t)
 	withTestTerminal("issue387", t, func(term *FakeTerminal) {

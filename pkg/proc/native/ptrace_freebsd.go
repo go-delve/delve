@@ -25,11 +25,7 @@ func PtraceAttach(pid int) error {
 
 // PtraceDetach calls ptrace(PTRACE_DETACH).
 func PtraceDetach(pid, sig int) error {
-	_, _, err := sys.Syscall6(sys.SYS_PTRACE, sys.PTRACE_DETACH, uintptr(pid), 1, uintptr(sig), 0, 0)
-	if err != syscall.Errno(0) {
-		return err
-	}
-	return nil
+	return sys.PtraceDetach(pid, sig)
 }
 
 // PtraceCont executes ptrace PTRACE_CONT
