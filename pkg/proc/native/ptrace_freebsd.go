@@ -24,8 +24,8 @@ func PtraceAttach(pid int) error {
 }
 
 // PtraceDetach calls ptrace(PTRACE_DETACH).
-func PtraceDetach(pid, sig int) error {
-	return sys.PtraceDetach(pid, sig)
+func PtraceDetach(pid int) error {
+	return sys.PtraceDetach(pid)
 }
 
 // PtraceCont executes ptrace PTRACE_CONT
@@ -48,13 +48,10 @@ func PtraceGetLwpList(pid int) (tids []int32) {
 	return tids[0:n]
 }
 
-// Get the lwpid_t of the thread that caused wpid's process to stop, if any.
-// Return also the full pl_flags variable, which indicates why the process
-// stopped.
-func ptraceGetLwpInfo(wpid int) (tid int, flags int, si_code int, err error) {
-	var info C.struct_ptrace_lwpinfo
-	_, err = C.ptrace_lwp_info(C.int(wpid), &info)
-	return int(info.pl_lwpid), int(info.pl_flags), int(info.pl_siginfo.si_code), err
+// Get info of the thread that caused wpid's process to stop.
+func ptraceGetLwpInfo(wpid int) (info sys.PtraceLwpInfoStruct, err error) {
+	err = sys.PtraceLwpInfo(wpid, uintptr(unsafe.Pointer(&info)))
+	return info, err
 }
 
 func PtraceGetRegset(id int) (regset fbsdutil.AMD64Xstate, err error) {
@@ -73,22 +70,10 @@ func PtraceGetRegset(id int) (regset fbsdutil.AMD64Xstate, err error) {
 
 // id may be a PID or an LWPID
 func ptraceReadData(id int, addr uintptr, data []byte) (n int, err error) {
-	n = len(data)
-	_, err = C.ptrace_read(C.int(id), C.uintptr_t(addr), unsafe.Pointer(&data[0]), C.ssize_t(n))
-	if err == nil {
-		return int(n), err
-	} else {
-		return 0, err
-	}
+	return sys.PtraceIo(sys.PIOD_READ_D, id, addr, data, len(data))
 }
 
 // id may be a PID or an LWPID
 func ptraceWriteData(id int, addr uintptr, data []byte) (n int, err error) {
-	n = len(data)
-	_, err = C.ptrace_write(C.int(id), C.uintptr_t(addr), unsafe.Pointer(&data[0]), C.ssize_t(n))
-	if err == nil {
-		return int(n), err
-	} else {
-		return 0, err
-	}
+	return sys.PtraceIo(sys.PIOD_WRITE_D, id, addr, data, len(data))
 }

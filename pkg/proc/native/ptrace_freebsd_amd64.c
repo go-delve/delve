@@ -71,19 +71,3 @@ unsigned char* ptrace_get_xsave(int tid, size_t *len) {
 		return (NULL);
 	}
 }
-
-int ptrace_lwp_info(int tid, struct ptrace_lwpinfo *info) {
-	return (ptrace(PT_LWPINFO, tid, (caddr_t)info, sizeof(*info)));
-}
-
-int ptrace_read(int tid, uintptr_t addr, void *buf, ssize_t len) {
-    struct ptrace_io_desc ioreq = {PIOD_READ_I, (void *)addr, buf, len};
-    errno = 0;
-    return ptrace(PT_IO, tid, (caddr_t)&ioreq, 0);
-}
-
-int ptrace_write(int tid, uintptr_t addr, void *buf, ssize_t len) {
-    struct ptrace_io_desc ioreq = {PIOD_WRITE_I, (void *)addr, buf, len};
-    errno = 0;
-    return ptrace(PT_IO, tid, (caddr_t)&ioreq, 0);
-}

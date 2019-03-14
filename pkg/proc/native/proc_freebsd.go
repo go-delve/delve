@@ -218,12 +218,13 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 			return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
 		}
 
-		var tid int
-		var pl_flags int
-		dbp.execPtraceFunc(func() { tid, pl_flags, _, err = ptraceGetLwpInfo(wpid) })
+		var info sys.PtraceLwpInfoStruct
+		dbp.execPtraceFunc(func() { info, err = ptraceGetLwpInfo(wpid) })
 		if err != nil {
 			return nil, fmt.Errorf("ptraceGetLwpInfo err %s %d", err, pid)
 		}
+		tid := int(info.Lwpid)
+		pl_flags := int(info.Flags)
 		th, ok := dbp.threads[tid]
 		if ok {
 			th.Status = (*WaitStatus)(status)
@@ -350,7 +351,7 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 
 // Used by Detach
 func (dbp *Process) detach(kill bool) error {
-	return PtraceDetach(dbp.pid, 0)
+	return PtraceDetach(dbp.pid)
 }
 
 // Used by PostInitializationSetup
