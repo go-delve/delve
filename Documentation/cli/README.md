@@ -357,11 +357,13 @@ If regex is specified only the source files matching it will be returned.
 ## stack
 Print stack trace.
 
-	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer]
+	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer] [-a <n>] [-adepth <depth>]
 
 	-full		every stackframe is decorated with the value of its local variables and arguments.
 	-offsets	prints frame offset of each frame.
 	-defer		prints deferred function call stack for each frame.
+	-a <n>		prints stacktrace of n ancestors of the selected goroutine (target process must have tracebackancestors enabled)
+	-adepth <depth>	configures depth of ancestor stacktrace
 
 
 Aliases: bt

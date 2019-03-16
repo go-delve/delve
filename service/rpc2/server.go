@@ -174,10 +174,24 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	}
 	var err error
 	out.Locations, err = s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Defers, api.LoadConfigToProc(cfg))
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
+}
+
+type AncestorsIn struct {
+	GoroutineID  int
+	NumAncestors int
+	Depth        int
+}
+
+type AncestorsOut struct {
+	Ancestors []api.Ancestor
+}
+
+// Ancestors returns the stacktraces for the ancestors of a goroutine.
+func (s *RPCServer) Ancestors(arg AncestorsIn, out *AncestorsOut) error {
+	var err error
+	out.Ancestors, err = s.debugger.Ancestors(arg.GoroutineID, arg.NumAncestors, arg.Depth)
+	return err
 }
 
 type ListBreakpointsIn struct {

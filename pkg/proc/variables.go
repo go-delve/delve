@@ -200,6 +200,12 @@ type G struct {
 	Unreadable error // could not read the G struct
 }
 
+type Ancestor struct {
+	ID         int64 // Goroutine ID
+	Unreadable error
+	pcsVar     *Variable
+}
+
 // EvalScope is the scope for variable evaluation. Contains the thread,
 // current location (PC), and canonical frame address.
 type EvalScope struct {
@@ -615,6 +621,96 @@ func (g *G) Go() Location {
 func (g *G) StartLoc() Location {
 	f, l, fn := g.variable.bi.PCToLine(g.StartPC)
 	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
+}
+
+var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
+
+// Ancestors returns the list of ancestors for g.
+func (g *G) Ancestors(n int) ([]Ancestor, error) {
+	scope := globalScope(g.Thread.BinInfo(), g.Thread)
+	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
+	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
+		tba, _ := constant.Int64Val(tbav.Value)
+		if tba == 0 {
+			return nil, errTracebackAncestorsDisabled
+		}
+	}
+
+	av, err := g.variable.structMember("ancestors")
+	if err != nil {
+		return nil, err
+	}
+	av = av.maybeDereference()
+	av.loadValue(LoadConfig{MaxArrayValues: n, MaxVariableRecurse: 1, MaxStructFields: -1})
+	if av.Unreadable != nil {
+		return nil, err
+	}
+	if av.Addr == 0 {
+		// no ancestors
+		return nil, nil
+	}
+
+	r := make([]Ancestor, len(av.Children))
+
+	for i := range av.Children {
+		if av.Children[i].Unreadable != nil {
+			r[i].Unreadable = av.Children[i].Unreadable
+			continue
+		}
+		goidv := av.Children[i].fieldVariable("goid")
+		if goidv.Unreadable != nil {
+			r[i].Unreadable = goidv.Unreadable
+			continue
+		}
+		r[i].ID, _ = constant.Int64Val(goidv.Value)
+		pcsVar := av.Children[i].fieldVariable("pcs")
+		if pcsVar.Unreadable != nil {
+			r[i].Unreadable = pcsVar.Unreadable
+		}
+		pcsVar.loaded = false
+		pcsVar.Children = pcsVar.Children[:0]
+		r[i].pcsVar = pcsVar
+	}
+
+	return r, nil
+}
+
+// Stack returns the stack trace of ancestor 'a' as saved by the runtime.
+func (a *Ancestor) Stack(n int) ([]Stackframe, error) {
+	if a.Unreadable != nil {
+		return nil, a.Unreadable
+	}
+	pcsVar := a.pcsVar.clone()
+	pcsVar.loadValue(LoadConfig{MaxArrayValues: n})
+	if pcsVar.Unreadable != nil {
+		return nil, pcsVar.Unreadable
+	}
+	r := make([]Stackframe, len(pcsVar.Children))
+	for i := range pcsVar.Children {
+		if pcsVar.Children[i].Unreadable != nil {
+			r[i] = Stackframe{Err: pcsVar.Children[i].Unreadable}
+			continue
+		}
+		if pcsVar.Children[i].Kind != reflect.Uint {
+			return nil, fmt.Errorf("wrong type for pcs item %d: %v", i, pcsVar.Children[i].Kind)
+		}
+		pc, _ := constant.Int64Val(pcsVar.Children[i].Value)
+		fn := a.pcsVar.bi.PCToFunc(uint64(pc))
+		if fn == nil {
+			loc := Location{PC: uint64(pc)}
+			r[i] = Stackframe{Current: loc, Call: loc}
+			continue
+		}
+		pc2 := uint64(pc)
+		if pc2-1 >= fn.Entry {
+			pc2--
+		}
+		f, ln := fn.cu.lineInfo.PCToLine(fn.Entry, pc2)
+		loc := Location{PC: uint64(pc), File: f, Line: ln, Fn: fn}
+		r[i] = Stackframe{Current: loc, Call: loc}
+	}
+	r[len(r)-1].Bottom = pcsVar.Len == int64(len(pcsVar.Children))
+	return r, nil
 }
 
 // Returns the list of saved return addresses used by stack barriers

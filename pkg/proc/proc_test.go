@@ -4251,3 +4251,38 @@ func TestListImages(t *testing.T) {
 		}
 	})
 }
+
+func TestAncestors(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+		t.Skip("not supported on Go <= 1.10")
+	}
+	savedGodebug := os.Getenv("GODEBUG")
+	os.Setenv("GODEBUG", "tracebackancestors=100")
+	defer os.Setenv("GODEBUG", savedGodebug)
+	withTestProcess("testnextprog", t, func(p proc.Process, fixture protest.Fixture) {
+		_, err := setFunctionBreakpoint(p, "main.testgoroutine")
+		assertNoError(err, t, "setFunctionBreakpoint()")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		as, err := p.SelectedGoroutine().Ancestors(1000)
+		assertNoError(err, t, "Ancestors")
+		t.Logf("ancestors: %#v\n", as)
+		if len(as) != 1 {
+			t.Fatalf("expected only one ancestor got %d", len(as))
+		}
+		mainFound := false
+		for i, a := range as {
+			astack, err := a.Stack(100)
+			assertNoError(err, t, fmt.Sprintf("Ancestor %d stack", i))
+			t.Logf("ancestor %d\n", i)
+			logStacktrace(t, p.BinInfo(), astack)
+			for _, frame := range astack {
+				if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.main" {
+					mainFound = true
+				}
+			}
+		}
+		if !mainFound {
+			t.Fatal("could not find main.main function in ancestors")
+		}
+	})
+}
