@@ -251,11 +251,13 @@ When connected to a headless instance started with the --accept-multiclient, pas
 Show source around current point or provided linespec.`},
 		{aliases: []string{"stack", "bt"}, allowedPrefixes: onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
-	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer]
+	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer] [-a <n>] [-adepth <depth>]
 
 	-full		every stackframe is decorated with the value of its local variables and arguments.
 	-offsets	prints frame offset of each frame.
 	-defer		prints deferred function call stack for each frame.
+	-a <n>		prints stacktrace of n ancestors of the selected goroutine (target process must have tracebackancestors enabled)
+	-adepth <depth>	configures depth of ancestor stacktrace
 `},
 		{aliases: []string{"frame"},
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
@@ -1412,6 +1414,20 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printStack(stack, "", sa.offsets)
+	if sa.ancestors > 0 {
+		ancestors, err := t.client.Ancestors(ctx.Scope.GoroutineID, sa.ancestors, sa.ancestorDepth)
+		if err != nil {
+			return err
+		}
+		for _, ancestor := range ancestors {
+			fmt.Printf("Created by Goroutine %d:\n", ancestor.ID)
+			if ancestor.Unreadable != "" {
+				fmt.Printf("\t%s\n", ancestor.Unreadable)
+				continue
+			}
+			printStack(ancestor.Stack, "\t", false)
+		}
+	}
 	return nil
 }
 
@@ -1420,6 +1436,9 @@ type stackArgs struct {
 	full       bool
 	offsets    bool
 	readDefers bool
+
+	ancestors     int
+	ancestorDepth int
 }
 
 func parseStackArgs(argstr string) (stackArgs, error) {
@@ -1429,7 +1448,18 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 	}
 	if argstr != "" {
 		args := strings.Split(argstr, " ")
-		for i := range args {
+		for i := 0; i < len(args); i++ {
+			numarg := func(name string) (int, error) {
+				if i >= len(args) {
+					return 0, fmt.Errorf("expected number after %s", name)
+				}
+				n, err := strconv.Atoi(args[i])
+				if err != nil {
+					return 0, fmt.Errorf("expected number after %s: %v", name, err)
+				}
+				return n, nil
+
+			}
 			switch args[i] {
 			case "-full":
 				r.full = true
@@ -1437,6 +1467,20 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 				r.offsets = true
 			case "-defer":
 				r.readDefers = true
+			case "-a":
+				i++
+				n, err := numarg("-a")
+				if err != nil {
+					return stackArgs{}, err
+				}
+				r.ancestors = n
+			case "-adepth":
+				i++
+				n, err := numarg("-adepth")
+				if err != nil {
+					return stackArgs{}, err
+				}
+				r.ancestorDepth = n
 			default:
 				n, err := strconv.Atoi(args[i])
 				if err != nil {
@@ -1445,6 +1489,9 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 				r.depth = n
 			}
 		}
+	}
+	if r.ancestors > 0 && r.ancestorDepth == 0 {
+		r.ancestorDepth = r.depth
 	}
 	return r, nil
 }

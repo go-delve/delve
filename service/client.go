@@ -100,6 +100,9 @@ type Client interface {
 	// Returns stacktrace
 	Stacktrace(goroutineID int, depth int, readDefers bool, cfg *api.LoadConfig) ([]api.Stackframe, error)
 
+	// Returns ancestor stacktraces
+	Ancestors(goroutineID int, numAncestors int, depth int) ([]api.Ancestor, error)
+
 	// Returns whether we attached to a running process or not
 	AttachedToExistingProcess() bool
 

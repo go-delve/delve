@@ -1640,3 +1640,36 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 		}
 	})
 }
+
+func TestAncestors(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+		t.Skip("not supported on Go <= 1.10")
+	}
+	savedGodebug := os.Getenv("GODEBUG")
+	os.Setenv("GODEBUG", "tracebackancestors=100")
+	defer os.Setenv("GODEBUG", savedGodebug)
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.testgoroutine", Line: -1})
+		assertNoError(err, t, "CreateBreakpoin")
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+		ancestors, err := c.Ancestors(-1, 1000, 1000)
+		assertNoError(err, t, "Ancestors")
+		t.Logf("ancestors: %#v\n", ancestors)
+		if len(ancestors) != 1 {
+			t.Fatalf("expected only one ancestor got %d", len(ancestors))
+		}
+
+		mainFound := false
+		for _, ancestor := range ancestors {
+			for _, frame := range ancestor.Stack {
+				if frame.Function.Name() == "main.main" {
+					mainFound = true
+				}
+			}
+		}
+		if !mainFound {
+			t.Fatal("function main.main not found in any ancestor")
+		}
+	})
+}

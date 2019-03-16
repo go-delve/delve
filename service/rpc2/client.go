@@ -310,6 +310,12 @@ func (c *RPCClient) Stacktrace(goroutineId, depth int, readDefers bool, cfg *api
 	return out.Locations, err
 }
 
+func (c *RPCClient) Ancestors(goroutineID int, numAncestors int, depth int) ([]api.Ancestor, error) {
+	var out AncestorsOut
+	err := c.call("Ancestors", AncestorsIn{goroutineID, numAncestors, depth}, &out)
+	return out.Ancestors, err
+}
+
 func (c *RPCClient) AttachedToExistingProcess() bool {
 	out := new(AttachedToExistingProcessOut)
 	c.call("AttachedToExistingProcess", AttachedToExistingProcessIn{}, out)

@@ -947,6 +947,48 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, readDefers bool, cfg *proc
 	return d.convertStacktrace(rawlocs, cfg)
 }
 
+// Ancestors returns the stacktraces for the ancestors of a goroutine.
+func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancestor, error) {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
+	}
+
+	g, err := proc.FindGoroutine(d.target, goroutineID)
+	if err != nil {
+		return nil, err
+	}
+	if g == nil {
+		return nil, errors.New("no selected goroutine")
+	}
+
+	ancestors, err := g.Ancestors(numAncestors)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make([]api.Ancestor, len(ancestors))
+	for i := range ancestors {
+		r[i].ID = ancestors[i].ID
+		if ancestors[i].Unreadable != nil {
+			r[i].Unreadable = ancestors[i].Unreadable.Error()
+			continue
+		}
+		frames, err := ancestors[i].Stack(depth)
+		if err != nil {
+			r[i].Unreadable = fmt.Sprintf("could not read ancestor stacktrace: %v", err)
+			continue
+		}
+		r[i].Stack, err = d.convertStacktrace(frames, nil)
+		if err != nil {
+			r[i].Unreadable = fmt.Sprintf("could not read ancestor stacktrace: %v", err)
+		}
+	}
+	return r, nil
+}
+
 func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
 	locations := make([]api.Stackframe, 0, len(rawlocs))
 	for i := range rawlocs {
