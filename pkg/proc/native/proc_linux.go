@@ -233,7 +233,7 @@ func (dbp *Process) updateThreadList() error {
 			return err
 		}
 	}
-	return nil
+	return linutil.ElfUpdateSharedObjects(dbp)
 }
 
 func findExecutable(path string, pid int) string {
@@ -451,6 +451,10 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		if err != nil {
 			return err
 		}
+	}
+
+	if err := linutil.ElfUpdateSharedObjects(dbp); err != nil {
+		return err
 	}
 
 	// set breakpoints on all threads

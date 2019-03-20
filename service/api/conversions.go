@@ -314,3 +314,7 @@ func ConvertRegisters(in []proc.Register) (out []Register) {
 func ConvertCheckpoint(in proc.Checkpoint) (out Checkpoint) {
 	return Checkpoint(in)
 }
+
+func ConvertImage(image *proc.Image) Image {
+	return Image{Path: image.Path}
+}

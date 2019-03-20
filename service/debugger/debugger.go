@@ -1118,6 +1118,18 @@ func (d *Debugger) ClearCheckpoint(id int) error {
 	return d.target.ClearCheckpoint(id)
 }
 
+// ListDynamicLibraries returns a list of loaded dynamic libraries.
+func (d *Debugger) ListDynamicLibraries() []api.Image {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+	bi := d.target.BinInfo()
+	r := make([]api.Image, len(bi.Images))
+	for i := range bi.Images {
+		r[i] = api.ConvertImage(bi.Images[i])
+	}
+	return r
+}
+
 func go11DecodeErrorCheck(err error) error {
 	if _, isdecodeerr := err.(dwarf.DecodeError); !isdecodeerr {
 		return err

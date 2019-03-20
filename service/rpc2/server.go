@@ -694,3 +694,17 @@ func (s *RPCServer) FunctionReturnLocations(in FunctionReturnLocationsIn, out *F
 	}
 	return nil
 }
+
+// ListDynamicLibrariesIn holds the arguments of ListDynamicLibraries
+type ListDynamicLibrariesIn struct {
+}
+
+// ListDynamicLibrariesOut holds the return values of ListDynamicLibraries
+type ListDynamicLibrariesOut struct {
+	List []api.Image
+}
+
+func (s *RPCServer) ListDynamicLibraries(in ListDynamicLibrariesIn, out *ListDynamicLibrariesOut) error {
+	out.List = s.debugger.ListDynamicLibraries()
+	return nil
+}
