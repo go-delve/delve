@@ -7,6 +7,7 @@ The following editor plugins for delve are available:
 
 **Emacs**
 * [Emacs plugin](https://github.com/benma/go-dlv.el/)
+* [dap-mode](https://github.com/emacs-lsp/dap-mode#go-1)
 
 **Goland**
 * [JetBrains Goland](https://www.jetbrains.com/go)
