@@ -33,6 +33,8 @@ This will, however, cause problems if you actually spawn multiple instances of t
 
 It's probably better to let Delve pick a random unused port number on its own. To do this do not specify any `--listen` option and read one line of output from dlv's stdout. If the first line emitted by dlv starts with "API server listening at: " then dlv started correctly and the rest of the line specifies the address that Delve is listening at.
 
+The `--log-to-file` and `--log-to-fd` options can be used to redirect the "API server listening at:" message to a file or to a file descriptor. If neither is specified the message will be output to stdout.
+
 ## Controlling the backend
 
 Once you have a running headless instance you can connect to it and start sending commands. Delve's protocol is built on top of the [JSON-RPC](http://json-rpc.org) specification.

@@ -29,6 +29,8 @@ var (
 	Log bool
 	// LogOutput is a comma separated list of components that should produce debug output.
 	LogOutput string
+	// LogDest is the file path or file descriptor where logs should go.
+	LogDest string
 	// Headless is whether to run without terminal.
 	Headless bool
 	// APIVersion is the requested API version while running headless
@@ -90,6 +92,7 @@ func New(docCall bool) *cobra.Command {
 	}
 
 	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
+
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	RootCommand.PersistentFlags().StringVarP(&LogOutput, "log-output", "", "", `Comma separated list of components that should produce debug output, possible values:
 	debugger	Log debugger commands
@@ -100,6 +103,8 @@ func New(docCall bool) *cobra.Command {
 	fncall		Log function call protocol
 	minidump	Log minidump loading
 Defaults to "debugger" when logging is enabled with --log.`)
+	RootCommand.PersistentFlags().StringVarP(&LogDest, "log-dest", "", "", "Writes logs to the specified file or file descriptor. If the argument is a number it will be interpreted as a file descriptor, otherwise as a file path. This option will also redirect the \"API listening\" message in headless mode.")
+
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
 	RootCommand.PersistentFlags().IntVar(&APIVersion, "api-version", 1, "Selects API version when headless.")
@@ -320,7 +325,8 @@ func debugCmd(cmd *cobra.Command, args []string) {
 
 func traceCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		err := logflags.Setup(Log, LogOutput)
+		err := logflags.Setup(Log, LogOutput, LogDest)
+		defer logflags.Close()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
@@ -541,10 +547,11 @@ const (
 )
 
 func execute(attachPid int, processArgs []string, conf *config.Config, coreFile string, kind executeKind) int {
-	if err := logflags.Setup(Log, LogOutput); err != nil {
+	if err := logflags.Setup(Log, LogOutput, LogDest); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return 1
 	}
+	defer logflags.Close()
 
 	if Headless && (InitFile != "") {
 		fmt.Fprint(os.Stderr, "Warning: init file ignored\n")

@@ -68,7 +68,6 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -83,7 +82,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 	isatty "github.com/mattn/go-isatty"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -170,11 +168,7 @@ type gdbRegister struct {
 // Detach.
 // Use Listen, Dial or Connect to complete connection.
 func New(process *os.Process) *Process {
-	logger := logrus.New().WithFields(logrus.Fields{"layer": "gdbconn"})
-	logger.Logger.Level = logrus.DebugLevel
-	if !logflags.GdbWire() {
-		logger.Logger.Out = ioutil.Discard
-	}
+	logger := logflags.GdbWireLogger()
 	p := &Process{
 		conn: gdbConn{
 			maxTransmitAttempts: maxTransmitAttempts,

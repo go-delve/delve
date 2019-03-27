@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "unknown build mode %q", buildMode)
 		os.Exit(1)
 	}
-	logflags.Setup(logOutput != "", logOutput)
+	logflags.Setup(logOutput != "", logOutput, "")
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 

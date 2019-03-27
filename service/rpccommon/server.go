@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -68,17 +67,13 @@ type methodType struct {
 
 // NewServer creates a new RPCServer.
 func NewServer(config *service.Config) *ServerImpl {
-	logger := logrus.New().WithFields(logrus.Fields{"layer": "rpc"})
-	logger.Logger.Level = logrus.DebugLevel
-	if !logflags.RPC() {
-		logger.Logger.Out = ioutil.Discard
-	}
+	logger := logflags.RPCLogger()
 	if config.APIVersion < 2 {
 		logger.Info("Using API v1")
 	}
 	if config.Foreground {
 		// Print listener address
-		fmt.Printf("API server listening at: %s\n", config.Listener.Addr())
+		logflags.WriteAPIListeningMessage(config.Listener.Addr().String())
 	}
 	return &ServerImpl{
 		config:   config,
