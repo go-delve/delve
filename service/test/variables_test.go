@@ -1031,9 +1031,9 @@ func TestPackageRenames(t *testing.T) {
 
 func TestConstants(t *testing.T) {
 	testcases := []varTest{
-		{"a", true, "constTwo", "", "main.ConstType", nil},
-		{"b", true, "constThree", "", "main.ConstType", nil},
-		{"c", true, "bitZero|bitOne", "", "main.BitFieldType", nil},
+		{"a", true, "constTwo (2)", "", "main.ConstType", nil},
+		{"b", true, "constThree (3)", "", "main.ConstType", nil},
+		{"c", true, "bitZero|bitOne (3)", "", "main.BitFieldType", nil},
 		{"d", true, "33", "", "main.BitFieldType", nil},
 		{"e", true, "10", "", "main.ConstType", nil},
 		{"f", true, "0", "", "main.BitFieldType", nil},

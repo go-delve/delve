@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"fmt"
 	"go/constant"
 	"go/printer"
 	"go/token"
@@ -143,8 +144,9 @@ func ConvertVar(v *proc.Variable) *Variable {
 		case reflect.String, reflect.Func:
 			r.Value = constant.StringVal(v.Value)
 		default:
-			r.Value = v.ConstDescr()
-			if r.Value == "" {
+			if cd := v.ConstDescr(); cd != "" {
+				r.Value = fmt.Sprintf("%s (%s)", cd, v.Value.String())
+			} else {
 				r.Value = v.Value.String()
 			}
 		}
