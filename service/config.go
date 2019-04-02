@@ -39,6 +39,11 @@ type Config struct {
 	// Foreground lets target process access stdin.
 	Foreground bool
 
+	// CheckGoVersion is true if the debugger should check the version of Go
+	// used to compile the executable and refuse to work on incompatible
+	// versions.
+	CheckGoVersion bool
+
 	// DisconnectChan will be closed by the server when the client disconnects
 	DisconnectChan chan<- struct{}
 }

@@ -23,6 +23,7 @@ dlv run
 	rr		Uses mozilla rr (https://github.com/mozilla/rr).
  (default "default")
       --build-flags string   Build flags, to be passed to the compiler.
+      --check-go-version     Checks that the version of Go in use is compatible with Delve. (default true)
       --headless             Run debug server only, in headless mode.
       --init string          Init file, executed by the terminal client.
   -l, --listen string        Debugging server listen address. (default "localhost:0")

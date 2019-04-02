@@ -60,9 +60,10 @@ func withTestClient2Extended(name string, t *testing.T, fn func(c service.Client
 	}
 	fixture := protest.BuildFixture(name, buildFlags)
 	server := rpccommon.NewServer(&service.Config{
-		Listener:    listener,
-		ProcessArgs: []string{fixture.Path},
-		Backend:     testBackend,
+		Listener:       listener,
+		ProcessArgs:    []string{fixture.Path},
+		Backend:        testBackend,
+		CheckGoVersion: true,
 	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
