@@ -3,6 +3,7 @@ package service_test
 import (
 	"errors"
 	"fmt"
+	"go/constant"
 	"runtime"
 	"sort"
 	"strings"
@@ -1195,5 +1196,47 @@ func TestCallFunction(t *testing.T) {
 				}
 			}
 		}
+	})
+}
+
+func TestIssue1531(t *testing.T) {
+	// Go 1.12 introduced a change to the map representation where empty cells can be marked with 1 instead of just 0.
+	withTestProcess("issue1531", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+
+		hasKeys := func(mv *proc.Variable, keys ...string) {
+			n := 0
+			for i := 0; i < len(mv.Children); i += 2 {
+				cv := &mv.Children[i]
+				s := constant.StringVal(cv.Value)
+				found := false
+				for j := range keys {
+					if keys[j] == s {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("key %q not allowed", s)
+					return
+				}
+				n++
+			}
+			if n != len(keys) {
+				t.Fatalf("wrong number of keys found")
+			}
+		}
+
+		mv, err := evalVariable(p, "m", pnormalLoadConfig)
+		assertNoError(err, t, "EvalVariable(m)")
+		cmv := api.ConvertVar(mv)
+		t.Logf("m = %s", cmv.SinglelineString())
+		hasKeys(mv, "s", "r", "v")
+
+		mmv, err := evalVariable(p, "mm", pnormalLoadConfig)
+		assertNoError(err, t, "EvalVariable(mm)")
+		cmmv := api.ConvertVar(mmv)
+		t.Logf("mm = %s", cmmv.SinglelineString())
+		hasKeys(mmv, "r", "t", "v")
 	})
 }
