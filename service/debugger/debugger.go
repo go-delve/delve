@@ -598,7 +598,14 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		if command.ReturnInfoLoadConfig == nil {
 			return nil, errors.New("can not call function with nil ReturnInfoLoadConfig")
 		}
-		err = proc.EvalExpressionWithCalls(d.target, command.Expr, *api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall)
+		g := d.target.SelectedGoroutine()
+		if command.GoroutineID > 0 {
+			g, err = proc.FindGoroutine(d.target, command.GoroutineID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		err = proc.EvalExpressionWithCalls(d.target, g, command.Expr, *api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall)
 	case api.Rewind:
 		d.log.Debug("rewinding")
 		if err := d.target.Direction(proc.Backward); err != nil {

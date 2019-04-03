@@ -304,7 +304,7 @@ type DebuggerCommand struct {
 	// command.
 	ThreadID int `json:"threadID,omitempty"`
 	// GoroutineID is used to specify which thread to use with the SwitchGoroutine
-	// command.
+	// and Call commands.
 	GoroutineID int `json:"goroutineID,omitempty"`
 	// When ReturnInfoLoadConfig is not nil it will be used to load the value
 	// of any return variables.

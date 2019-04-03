@@ -117,17 +117,21 @@ type CommonProcess struct {
 	allGCache     []*G
 	fncallEnabled bool
 
+	fncallForG map[int]*callInjection
+}
+
+type callInjection struct {
 	// if continueCompleted is not nil it means we are in the process of
 	// executing an injected function call, see comments throughout
 	// pkg/proc/fncall.go for a description of how this works.
-	continueCompleted chan<- struct{}
+	continueCompleted chan<- *G
 	continueRequest   <-chan continueRequest
 }
 
 // NewCommonProcess returns a struct with fields common across
 // all process implementations.
 func NewCommonProcess(fncallEnabled bool) CommonProcess {
-	return CommonProcess{fncallEnabled: fncallEnabled}
+	return CommonProcess{fncallEnabled: fncallEnabled, fncallForG: make(map[int]*callInjection)}
 }
 
 // ClearAllGCache clears the cached contents of the cache for runtime.allgs.

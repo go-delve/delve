@@ -80,7 +80,7 @@ func uintExprCheck(t *testing.T, scope *proc.EvalScope, expr string, tgt uint64)
 }
 
 func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegisters, bi *proc.BinaryInfo, testCases map[string]uint16, fn *proc.Function) *proc.EvalScope {
-	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: fn}, Regs: regs, Mem: mem, Gvar: nil, BinInfo: bi}
+	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: fn}, Regs: regs, Mem: mem, BinInfo: bi}
 	for name, value := range testCases {
 		uintExprCheck(t, scope, name, uint64(value))
 	}
@@ -213,7 +213,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 	mem := newFakeMemory(defaultCFA, uint16(before), uint16(after))
 	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{}}
 
-	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, Gvar: nil, BinInfo: bi}
+	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, BinInfo: bi}
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800
@@ -247,7 +247,7 @@ func TestIssue1419(t *testing.T) {
 
 	mem := newFakeMemory(defaultCFA)
 
-	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: op.DwarfRegisters{}, Mem: mem, Gvar: nil, BinInfo: bi}
+	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: op.DwarfRegisters{}, Mem: mem, BinInfo: bi}
 
 	va, err := scope.EvalExpression("a", normalLoadConfig)
 	assertNoError(err, t, "EvalExpression(a)")

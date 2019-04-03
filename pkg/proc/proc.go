@@ -8,7 +8,6 @@ import (
 	"go/token"
 	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 // ErrNotExecutable is returned after attempting to execute a non-executable file
@@ -190,6 +189,11 @@ func Continue(dbp Process) error {
 
 		threads := dbp.ThreadList()
 
+		callInjectionDone, err := callInjectionProtocol(dbp, threads)
+		if err != nil {
+			return err
+		}
+
 		if err := pickCurrentThread(dbp, trapthread, threads); err != nil {
 			return err
 		}
@@ -209,6 +213,7 @@ func Continue(dbp Process) error {
 			if err != nil || loc.Fn == nil {
 				return conditionErrors(threads)
 			}
+			g, _ := GetG(curthread)
 
 			switch {
 			case loc.Fn.Name == "runtime.breakpoint":
@@ -220,22 +225,8 @@ func Continue(dbp Process) error {
 					return err
 				}
 				return conditionErrors(threads)
-			case strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) || strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2):
-				continueCompleted := dbp.Common().continueCompleted
-				if continueCompleted == nil {
-					return conditionErrors(threads)
-				}
-				continueCompleted <- struct{}{}
-				contReq, ok := <-dbp.Common().continueRequest
-				if !contReq.cont {
-					// only stop execution if the expression evaluation with calls finished
-					err := finishEvalExpressionWithCalls(dbp, contReq, ok)
-					if err != nil {
-						return err
-					}
-					return conditionErrors(threads)
-				}
-			default:
+			case g == nil || dbp.Common().fncallForG[g.ID] == nil:
+				// a hardcoded breakpoint somewhere else in the code (probably cgo)
 				return conditionErrors(threads)
 			}
 		case curbp.Active && curbp.Internal:
@@ -284,6 +275,11 @@ func Continue(dbp Process) error {
 			return conditionErrors(threads)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
+		}
+		if callInjectionDone {
+			// a call injection was finished, don't let a breakpoint with a failed
+			// condition or a step breakpoint shadow this.
+			return conditionErrors(threads)
 		}
 	}
 }
@@ -334,8 +330,10 @@ func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) 
 		}
 		loc, err := curthread.Location()
 		if err != nil || loc.Fn == nil || (loc.Fn.Name != fnname1 && loc.Fn.Name != fnname2) {
-			if g := dbp.SelectedGoroutine(); g != nil {
-				g.CurrentLoc = *loc
+			g, _ := GetG(curthread)
+			selg := dbp.SelectedGoroutine()
+			if g != nil && selg != nil && g.ID == selg.ID {
+				selg.CurrentLoc = *loc
 			}
 			return curthread.SetCurrentBreakpoint()
 		}
@@ -706,11 +704,6 @@ func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error
 // Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
 // will be cached.
 func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
-	var gvar *Variable
-	if g != nil {
-		gvar = g.variable
-	}
-
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
 	// Remember that the stack grows downward in memory.
@@ -725,7 +718,7 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 		thread = cacheMemory(thread, uintptr(minaddr), int(maxaddr-minaddr))
 	}
 
-	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, Gvar: gvar, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
 	s.PC = frames[0].lastpc
 	return s
 }

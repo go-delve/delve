@@ -1225,7 +1225,7 @@ func testCallFunction(t *testing.T, p proc.Process, tc testCaseCallFunction) {
 		checkEscape = false
 	}
 	t.Logf("call %q", tc.expr)
-	err := proc.EvalExpressionWithCalls(p, callExpr, pnormalLoadConfig, checkEscape)
+	err := proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), callExpr, pnormalLoadConfig, checkEscape)
 	if tc.err != nil {
 		t.Logf("\terr = %v\n", err)
 		if err == nil {

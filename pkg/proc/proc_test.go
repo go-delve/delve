@@ -4118,7 +4118,7 @@ func TestIssue1374(t *testing.T) {
 		setFileBreakpoint(p, t, fixture, 7)
 		assertNoError(proc.Continue(p), t, "First Continue")
 		assertLineNumber(p, t, 7, "Did not continue to correct location (first continue),")
-		assertNoError(proc.EvalExpressionWithCalls(p, "getNum()", normalLoadConfig, true), t, "Call")
+		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "getNum()", normalLoadConfig, true), t, "Call")
 		err := proc.Continue(p)
 		if _, isexited := err.(proc.ErrProcessExited); !isexited {
 			regs, _ := p.CurrentThread().Registers(false)
@@ -4299,18 +4299,33 @@ func TestAncestors(t *testing.T) {
 	})
 }
 
-func testCallConcurrentCheckReturns(p proc.Process, t *testing.T, gid1 int) bool {
+func testCallConcurrentCheckReturns(p proc.Process, t *testing.T, gid1, gid2 int) int {
+	found := 0
 	for _, thread := range p.ThreadList() {
 		g, _ := proc.GetG(thread)
-		if g == nil || g.ID != gid1 {
+		if g == nil || (g.ID != gid1 && g.ID != gid2) {
 			continue
 		}
 		retvals := thread.Common().ReturnValues(normalLoadConfig)
-		if len(retvals) != 0 {
-			return true
+		if len(retvals) == 0 {
+			continue
+		}
+		n, _ := constant.Int64Val(retvals[0].Value)
+		t.Logf("injection on goroutine %d (thread %d) returned %v\n", g.ID, thread.ThreadID(), n)
+		switch g.ID {
+		case gid1:
+			if n != 11 {
+				t.Errorf("wrong return value for goroutine %d", g.ID)
+			}
+			found++
+		case gid2:
+			if n != 12 {
+				t.Errorf("wrong return value for goroutine %d", g.ID)
+			}
+			found++
 		}
 	}
-	return false
+	return found
 }
 
 func TestCallConcurrent(t *testing.T) {
@@ -4318,26 +4333,34 @@ func TestCallConcurrent(t *testing.T) {
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture, 24)
 		assertNoError(proc.Continue(p), t, "Continue()")
-		_, err := p.ClearBreakpoint(bp.Addr)
-		assertNoError(err, t, "ClearBreakpoint() returned an error")
+		//_, err := p.ClearBreakpoint(bp.Addr)
+		//assertNoError(err, t, "ClearBreakpoint() returned an error")
 
 		gid1 := p.SelectedGoroutine().ID
 		t.Logf("starting injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
-		assertNoError(proc.EvalExpressionWithCalls(p, "Foo(10, 1)", normalLoadConfig, false), t, "EvalExpressionWithCalls()")
+		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "Foo(10, 1)", normalLoadConfig, false), t, "EvalExpressionWithCalls()")
 
-		returned := testCallConcurrentCheckReturns(p, t, gid1)
+		returned := testCallConcurrentCheckReturns(p, t, gid1, -1)
 
 		curthread := p.CurrentThread()
-		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.ID != bp.ID || returned {
+		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.ID != bp.ID || returned > 0 {
+			t.Logf("skipping test, the call injection terminated before we hit a breakpoint in a different thread")
 			return
 		}
 
+		_, err := p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint() returned an error")
+
+		gid2 := p.SelectedGoroutine().ID
+		t.Logf("starting second injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
+		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "Foo(10, 2)", normalLoadConfig, false), t, "EvalExpressioniWithCalls")
+
 		for {
-			returned = testCallConcurrentCheckReturns(p, t, gid1)
-			if returned {
+			returned += testCallConcurrentCheckReturns(p, t, gid1, gid2)
+			if returned >= 2 {
 				break
 			}
-			t.Logf("Continuing... %v", returned)
+			t.Logf("Continuing... %d", returned)
 			assertNoError(proc.Continue(p), t, "Continue()")
 		}
 
