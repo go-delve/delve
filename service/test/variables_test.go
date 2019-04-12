@@ -1356,9 +1356,9 @@ func assertCurrentLocationFunction(p proc.Process, t *testing.T, fnname string) 
 }
 
 func TestPluginVariables(t *testing.T) {
-	pluginFixtures := protest.WithPlugins(t, "plugin1/", "plugin2/")
+	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
-	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, 0, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p proc.Process, fixture protest.Fixture) {
 		setFileLineBreakpoint(p, t, fixture.Source, 41)
 		assertNoError(proc.Continue(p), t, "Continue 1")
 

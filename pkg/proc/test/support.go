@@ -75,6 +75,7 @@ const (
 	EnableDWZCompression
 	BuildModePIE
 	BuildModePlugin
+	AllNonOptimized
 )
 
 // BuildFixture will compile the fixture 'name' using the provided build flags.
@@ -121,7 +122,12 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&EnableOptimization == 0 {
 		gcflagsv = append(gcflagsv, "-N")
 	}
-	gcflags := "-gcflags=" + strings.Join(gcflagsv, " ")
+	var gcflags string
+	if flags&AllNonOptimized != 0 {
+		gcflags = "-gcflags=all=" + strings.Join(gcflagsv, " ")
+	} else {
+		gcflags = "-gcflags=" + strings.Join(gcflagsv, " ")
+	}
 	buildFlags = append(buildFlags, gcflags, "-o", tmpfile)
 	if *EnableRace {
 		buildFlags = append(buildFlags, "-race")
@@ -325,7 +331,7 @@ func DefaultTestBackend(testBackend *string) {
 // The test calling WithPlugins will be skipped if the current combination
 // of OS, architecture and version of GO doesn't support plugins or
 // debugging plugins.
-func WithPlugins(t *testing.T, plugins ...string) []Fixture {
+func WithPlugins(t *testing.T, flags BuildFlags, plugins ...string) []Fixture {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
 		t.Skip("versions of Go before 1.12 do not include debug information in packages that import plugin (or they do but it's wrong)")
 	}
@@ -335,7 +341,7 @@ func WithPlugins(t *testing.T, plugins ...string) []Fixture {
 
 	r := make([]Fixture, len(plugins))
 	for i := range plugins {
-		r[i] = BuildFixture(plugins[i], BuildModePlugin)
+		r[i] = BuildFixture(plugins[i], flags|BuildModePlugin)
 	}
 	return r
 }
