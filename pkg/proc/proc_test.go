@@ -4286,3 +4286,52 @@ func TestAncestors(t *testing.T) {
 		}
 	})
 }
+
+func testCallConcurrentCheckReturns(p proc.Process, t *testing.T, gid1 int) bool {
+	for _, thread := range p.ThreadList() {
+		g, _ := proc.GetG(thread)
+		if g == nil || g.ID != gid1 {
+			continue
+		}
+		retvals := thread.Common().ReturnValues(normalLoadConfig)
+		if len(retvals) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCallConcurrent(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture, 24)
+		assertNoError(proc.Continue(p), t, "Continue()")
+		//_, err := p.ClearBreakpoint(bp.Addr)
+		//assertNoError(err, t, "ClearBreakpoint() returned an error")
+
+		gid1 := p.SelectedGoroutine().ID
+		t.Logf("starting injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
+		assertNoError(proc.CallFunction(p, "Foo(10, 1)", &normalLoadConfig, false), t, "EvalExpressionWithCalls()")
+
+		returned := testCallConcurrentCheckReturns(p, t, gid1)
+
+		curthread := p.CurrentThread()
+		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.ID != bp.ID || returned {
+			return
+		}
+
+		_, err := p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint() returned an error")
+
+		for {
+			returned = testCallConcurrentCheckReturns(p, t, gid1)
+			if returned {
+				break
+			}
+			t.Logf("Continuing... %v", returned)
+			assertNoError(proc.Continue(p), t, "Continue()")
+		}
+
+		proc.Continue(p)
+	})
+}
