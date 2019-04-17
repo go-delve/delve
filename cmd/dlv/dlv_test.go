@@ -22,7 +22,6 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/rpc2"
-	"github.com/spf13/cobra/doc"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -240,7 +239,7 @@ func TestContinue(t *testing.T) {
 		t.Log(scan.Text())
 		if scan.Text() == "hello world!" {
 			break
-		} 
+		}
 	}
 
 	// and detach from and kill the headless instance
@@ -286,7 +285,7 @@ func TestGeneratedDoc(t *testing.T) {
 	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
 	assertNoError(err, t, "TempDir")
 	defer cmds.SafeRemoveAll(tempDir)
-	doc.GenMarkdownTree(cmds.New(true), tempDir)
+	exec.Command("go", "run", "scripts/gen-usage-docs.go", tempDir).Run()
 	entries, err := ioutil.ReadDir(tempDir)
 	assertNoError(err, t, "ReadDir")
 	for _, doc := range entries {

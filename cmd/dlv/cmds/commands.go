@@ -101,30 +101,17 @@ func New(docCall bool) *cobra.Command {
 	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "127.0.0.1:0", "Debugging server listen address.")
 
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
-	RootCommand.PersistentFlags().StringVarP(&LogOutput, "log-output", "", "", `Comma separated list of components that should produce debug output, possible values:
-	debugger	Log debugger commands
-	gdbwire		Log connection to gdbserial backend
-	lldbout		Copy output from debugserver/lldb to standard output
-	debuglineerr	Log recoverable errors reading .debug_line
-	rpc		Log all RPC messages
-	fncall		Log function call protocol
-	minidump	Log minidump loading
-Defaults to "debugger" when logging is enabled with --log.`)
-	RootCommand.PersistentFlags().StringVarP(&LogDest, "log-dest", "", "", "Writes logs to the specified file or file descriptor. If the argument is a number it will be interpreted as a file descriptor, otherwise as a file path. This option will also redirect the \"API listening\" message in headless mode.")
+	RootCommand.PersistentFlags().StringVarP(&LogOutput, "log-output", "", "", `Comma separated list of components that should produce debug output (see 'dlv help log')`)
+	RootCommand.PersistentFlags().StringVarP(&LogDest, "log-dest", "", "", "Writes logs to the specified file or file descriptor (see 'dlv help log').")
 
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
-	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections. Note that the server API is not reentrant and clients will have to coordinate.")
+	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections.")
 	RootCommand.PersistentFlags().IntVar(&APIVersion, "api-version", 1, "Selects API version when headless.")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 	RootCommand.PersistentFlags().StringVar(&WorkingDir, "wd", ".", "Working directory for running the program.")
-	RootCommand.PersistentFlags().StringVar(&Backend, "backend", "default", `Backend selection:
-	default		Uses lldb on macOS, native everywhere else.
-	native		Native backend.
-	lldb		Uses lldb-server or debugserver.
-	rr		Uses mozilla rr (https://github.com/mozilla/rr).
-`)
 	RootCommand.PersistentFlags().BoolVarP(&CheckGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
+	RootCommand.PersistentFlags().StringVar(&Backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
@@ -298,6 +285,47 @@ https://github.com/mozilla/rr
 		}
 		RootCommand.AddCommand(replayCommand)
 	}
+
+	RootCommand.AddCommand(&cobra.Command{
+		Use:   "backend",
+		Short: "Help about the --backend flag.",
+		Long: `The --backend flag specifies which backend should be used, possible values
+are:
+
+	default		Uses lldb on macOS, native everywhere else.
+	native		Native backend.
+	lldb		Uses lldb-server or debugserver.
+	rr		Uses mozilla rr (https://github.com/mozilla/rr).
+
+`})
+
+	RootCommand.AddCommand(&cobra.Command{
+		Use:   "log",
+		Short: "Help about logging flags.",
+		Long: `Logging can be enabled by specifying the --log flag and using the
+--log-output flag to select which components should produce logs.
+
+The argument of --log-output must be a comma separated list of component
+names selected from this list:
+
+
+	debugger	Log debugger commands
+	gdbwire		Log connection to gdbserial backend
+	lldbout		Copy output from debugserver/lldb to standard output
+	debuglineerr	Log recoverable errors reading .debug_line
+	rpc		Log all RPC messages
+	fncall		Log function call protocol
+	minidump	Log minidump loading
+
+Additionally --log-dest can be used to specify where the logs should be
+written. 
+If the argument is a number it will be interpreted as a file descriptor,
+otherwise as a file path.
+This option will also redirect the \"API listening\" message in headless
+mode.
+
+`,
+	})
 
 	RootCommand.DisableAutoGenTag = true
 
