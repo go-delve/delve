@@ -1919,8 +1919,8 @@ func (ere ExitRequestError) Error() string {
 
 func exitCommand(t *Term, ctx callContext, args string) error {
 	if args == "-c" {
-		if !t.client.IsMulticlient() {
-			return errors.New("not connected to an --accept-multiclient server")
+		if !t.client.IsMulticlient() && !t.client.AttachedToExistingProcess() {
+			return errors.New("not attached to a process or connected to an --accept-multiclient server")
 		}
 		t.quitContinue = true
 	}
