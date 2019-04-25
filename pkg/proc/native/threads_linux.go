@@ -88,7 +88,19 @@ func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
 
 	var restoreRegistersErr error
 	t.dbp.execPtraceFunc(func() {
-		restoreRegistersErr = sys.PtraceSetRegs(t.ID, (*sys.PtraceRegs)(sr.Regs))
+		oldRegs := (*sys.PtraceRegs)(sr.Regs)
+
+		var currentRegs sys.PtraceRegs
+		restoreRegistersErr = sys.PtraceGetRegs(t.ID, &currentRegs)
+		if restoreRegistersErr != nil {
+			return
+		}
+		// restoreRegisters is only supposed to restore CPU registers, not FS_BASE and GS_BASE
+		oldRegs.Fs_base = currentRegs.Fs_base
+		oldRegs.Gs_base = currentRegs.Gs_base
+
+		restoreRegistersErr = sys.PtraceSetRegs(t.ID, oldRegs)
+
 		if restoreRegistersErr != nil {
 			return
 		}
