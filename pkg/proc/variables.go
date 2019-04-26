@@ -18,6 +18,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 const (
@@ -28,8 +29,10 @@ const (
 	chanRecv = "chan receive"
 	chanSend = "chan send"
 
-	hashTophashEmpty = 0 // used by map reading code, indicates an empty bucket
-	hashMinTopHash   = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated
+	hashTophashEmptyZero = 0 // used by map reading code, indicates an empty cell
+	hashTophashEmptyOne  = 1 // used by map reading code, indicates an empty cell in Go 1.12 and later
+	hashMinTopHashGo111  = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
+	hashMinTopHashGo112  = 5 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.12
 
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 
@@ -1763,6 +1766,9 @@ type mapIterator struct {
 	maxNumBuckets uint64 // maximum number of buckets to scan
 
 	idx int64
+
+	hashTophashEmptyOne uint64 // Go 1.12 and later has two sentinel tophash values for an empty cell, this is the second one (the first one hashTophashEmptyZero, the same as Go 1.11 and earlier)
+	hashMinTopHash      uint64 // minimum value of tophash for a cell that isn't either evacuated or empty
 }
 
 // Code derived from go/src/runtime/hashmap.go
@@ -1814,6 +1820,13 @@ func (v *Variable) mapIterator() *mapIterator {
 		return nil
 	}
 
+	it.hashTophashEmptyOne = hashTophashEmptyZero
+	it.hashMinTopHash = hashMinTopHashGo111
+	if producer := v.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 12) {
+		it.hashTophashEmptyOne = hashTophashEmptyOne
+		it.hashMinTopHash = hashMinTopHashGo112
+	}
+
 	return it
 }
 
@@ -1851,7 +1864,7 @@ func (it *mapIterator) nextBucket() bool {
 			oldb := it.oldbuckets.clone()
 			oldb.Addr += uintptr(uint64(it.oldbuckets.DwarfType.Size()) * oldbidx)
 
-			if mapEvacuated(oldb) {
+			if it.mapEvacuated(oldb) {
 				break
 			}
 
@@ -1953,7 +1966,7 @@ func (it *mapIterator) next() bool {
 			return false
 		}
 		it.idx++
-		if h != hashTophashEmpty {
+		if h != hashTophashEmptyZero && h != it.hashTophashEmptyOne {
 			return true
 		}
 	}
@@ -1969,7 +1982,7 @@ func (it *mapIterator) value() *Variable {
 	return v
 }
 
-func mapEvacuated(b *Variable) bool {
+func (it *mapIterator) mapEvacuated(b *Variable) bool {
 	if b.Addr == 0 {
 		return true
 	}
@@ -1983,7 +1996,8 @@ func mapEvacuated(b *Variable) bool {
 		if err != nil {
 			return true
 		}
-		return tophash0 > hashTophashEmpty && tophash0 < hashMinTopHash
+		//TODO: this needs to be > hashTophashEmptyOne for go >= 1.12
+		return tophash0 > it.hashTophashEmptyOne && tophash0 < it.hashMinTopHash
 	}
 	return true
 }
