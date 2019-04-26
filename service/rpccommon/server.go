@@ -122,6 +122,7 @@ func (s *ServerImpl) Run() error {
 		Backend:              s.config.Backend,
 		Foreground:           s.config.Foreground,
 		DebugInfoDirectories: s.config.DebugInfoDirectories,
+		CheckGoVersion:       s.config.CheckGoVersion,
 	},
 		s.config.ProcessArgs); err != nil {
 		return err

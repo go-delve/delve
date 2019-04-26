@@ -49,6 +49,11 @@ var (
 	// Backend selection
 	Backend string
 
+	// CheckGoVersion is true if the debugger should check the version of Go
+	// used to compile the executable and refuse to work on incompatible
+	// versions.
+	CheckGoVersion bool
+
 	// RootCommand is the root of the command tree.
 	RootCommand *cobra.Command
 
@@ -117,6 +122,7 @@ Defaults to "debugger" when logging is enabled with --log.`)
 	lldb		Uses lldb-server or debugserver.
 	rr		Uses mozilla rr (https://github.com/mozilla/rr).
 `)
+	RootCommand.PersistentFlags().BoolVarP(&CheckGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
@@ -389,12 +395,13 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 		// Create and start a debug server
 		server := rpccommon.NewServer(&service.Config{
-			Listener:    listener,
-			ProcessArgs: processArgs,
-			AttachPid:   traceAttachPid,
-			APIVersion:  2,
-			WorkingDir:  WorkingDir,
-			Backend:     Backend,
+			Listener:       listener,
+			ProcessArgs:    processArgs,
+			AttachPid:      traceAttachPid,
+			APIVersion:     2,
+			WorkingDir:     WorkingDir,
+			Backend:        Backend,
+			CheckGoVersion: CheckGoVersion,
 		})
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -598,6 +605,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			CoreFile:             coreFile,
 			Foreground:           Headless,
 			DebugInfoDirectories: conf.DebugInfoDirectories,
+			CheckGoVersion:       CheckGoVersion,
 
 			DisconnectChan: disconnectChan,
 		})

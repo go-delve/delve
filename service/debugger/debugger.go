@@ -68,6 +68,11 @@ type Config struct {
 	// DebugInfoDirectories is the list of directories to look for
 	// when resolving external debug info files.
 	DebugInfoDirectories []string
+
+	// CheckGoVersion is true if the debugger should check the version of Go
+	// used to compile the executable and refuse to work on incompatible
+	// versions.
+	CheckGoVersion bool
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -111,6 +116,10 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			return nil, err
 		}
 		d.target = p
+		if err := d.checkGoVersion(); err != nil {
+			d.target.Detach(true)
+			return nil, err
+		}
 
 	default:
 		d.log.Infof("launching process with args: %v", d.processArgs)
@@ -123,8 +132,23 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			return nil, err
 		}
 		d.target = p
+		if err := d.checkGoVersion(); err != nil {
+			d.target.Detach(true)
+			return nil, err
+		}
 	}
 	return d, nil
+}
+
+func (d *Debugger) checkGoVersion() error {
+	if !d.config.CheckGoVersion {
+		return nil
+	}
+	producer := d.target.BinInfo().Producer()
+	if producer == "" {
+		return nil
+	}
+	return goversion.Compatible(producer)
 }
 
 // Launch will start a process with the given args and working directory.
