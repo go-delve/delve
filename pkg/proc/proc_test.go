@@ -4306,8 +4306,8 @@ func TestCallConcurrent(t *testing.T) {
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture, 24)
 		assertNoError(proc.Continue(p), t, "Continue()")
-		//_, err := p.ClearBreakpoint(bp.Addr)
-		//assertNoError(err, t, "ClearBreakpoint() returned an error")
+		_, err := p.ClearBreakpoint(bp.Addr)
+		assertNoError(err, t, "ClearBreakpoint() returned an error")
 
 		gid1 := p.SelectedGoroutine().ID
 		t.Logf("starting injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
@@ -4319,9 +4319,6 @@ func TestCallConcurrent(t *testing.T) {
 		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.ID != bp.ID || returned {
 			return
 		}
-
-		_, err := p.ClearBreakpoint(bp.Addr)
-		assertNoError(err, t, "ClearBreakpoint() returned an error")
 
 		for {
 			returned = testCallConcurrentCheckReturns(p, t, gid1)
