@@ -927,8 +927,8 @@ func negotiateType(op token.Token, xv, yv *Variable) (godwarf.Type, error) {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			// ok
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			if yv.DwarfType != nil || constant.Sign(yv.Value) < 0 {
-				return nil, fmt.Errorf("shift count type %s, must be unsigned integer", yv.Kind.String())
+			if constant.Sign(yv.Value) < 0 {
+				return nil, fmt.Errorf("shift count must not be negative")
 			}
 		default:
 			return nil, fmt.Errorf("shift count type %s, must be unsigned integer", yv.Kind.String())
