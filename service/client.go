@@ -119,7 +119,8 @@ type Client interface {
 	// * <line> returns a location for a line in the current file
 	// * *<address> returns the location corresponding to the specified address
 	// NOTE: this function does not actually set breakpoints.
-	FindLocation(scope api.EvalScope, loc string) ([]api.Location, error)
+	// If findInstruction is true FindLocation will only return locations that correspond to instructions.
+	FindLocation(scope api.EvalScope, loc string, findInstruction bool) ([]api.Location, error)
 
 	// Disassemble code between startPC and endPC
 	DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error)

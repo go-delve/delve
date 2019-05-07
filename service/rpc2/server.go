@@ -568,8 +568,9 @@ func (c *RPCServer) AttachedToExistingProcess(arg AttachedToExistingProcessIn, o
 }
 
 type FindLocationIn struct {
-	Scope api.EvalScope
-	Loc   string
+	Scope                     api.EvalScope
+	Loc                       string
+	IncludeNonExecutableLines bool
 }
 
 type FindLocationOut struct {
@@ -591,7 +592,7 @@ type FindLocationOut struct {
 // NOTE: this function does not actually set breakpoints.
 func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {
 	var err error
-	out.Locations, err = c.debugger.FindLocation(arg.Scope, arg.Loc)
+	out.Locations, err = c.debugger.FindLocation(arg.Scope, arg.Loc, arg.IncludeNonExecutableLines)
 	return err
 }
 

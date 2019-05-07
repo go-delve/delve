@@ -580,7 +580,7 @@ func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end 
 
 	t.Logf("%q: %q", listcmd, outstr)
 
-	if !strings.Contains(lines[0], fmt.Sprintf(":%d", cur)) {
+	if cur >= 0 && !strings.Contains(lines[0], fmt.Sprintf(":%d", cur)) {
 		t.Fatalf("Could not find current line number in first output line: %q", lines[0])
 	}
 
@@ -627,6 +627,8 @@ func TestListCmd(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected error requesting 50th frame")
 		}
+		listIsAt(t, term, "list testvariables.go:1", -1, 1, 6)
+		listIsAt(t, term, "list testvariables.go:10000", -1, 0, 0)
 	})
 }
 
