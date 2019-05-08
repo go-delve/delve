@@ -1184,9 +1184,10 @@ func (d *Debugger) ListDynamicLibraries() []api.Image {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 	bi := d.target.BinInfo()
-	r := make([]api.Image, len(bi.Images))
-	for i := range bi.Images {
-		r[i] = api.ConvertImage(bi.Images[i])
+	r := make([]api.Image, 0, len(bi.Images)-1)
+	// skips the first image because it's the executable file
+	for i := range bi.Images[1:] {
+		r = append(r, api.ConvertImage(bi.Images[i]))
 	}
 	return r
 }

@@ -71,6 +71,7 @@ type Type interface {
 // If a field is not known or not applicable for a given type,
 // the zero value is used.
 type CommonType struct {
+	Index       int          // index supplied by caller of ReadType
 	ByteSize    int64        // size of value of this type, in bytes
 	Name        string       // name that can be used to refer to type
 	ReflectKind reflect.Kind // the reflect kind of the type.
@@ -478,8 +479,12 @@ func (t *ChanType) stringIntl(recCheck recCheck) string {
 }
 
 // Type reads the type at off in the DWARF ``info'' section.
-func ReadType(d *dwarf.Data, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
-	return readType(d, "info", d.Reader(), off, typeCache)
+func ReadType(d *dwarf.Data, index int, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
+	typ, err := readType(d, "info", d.Reader(), off, typeCache)
+	if typ != nil {
+		typ.Common().Index = index
+	}
+	return typ, err
 }
 
 func getKind(e *dwarf.Entry) reflect.Kind {

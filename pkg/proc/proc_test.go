@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -184,7 +185,11 @@ func setFunctionBreakpoint(p proc.Process, fname string) (*proc.Breakpoint, erro
 }
 
 func setFileBreakpoint(p proc.Process, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
-	addr, err := proc.FindFileLocation(p, fixture.Source, lineno)
+	return setFileLineBreakpoint(p, t, fixture.Source, lineno)
+}
+
+func setFileLineBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *proc.Breakpoint {
+	addr, err := proc.FindFileLocation(p, path, lineno)
 	if err != nil {
 		t.Fatalf("FindFileLocation: %v", err)
 	}
@@ -366,7 +371,7 @@ const (
 
 type seqTest struct {
 	cf  contFunc
-	pos int
+	pos interface{}
 }
 
 func testseq(program string, contFunc contFunc, testcases []nextTest, initialLocation string, t *testing.T) {
@@ -398,7 +403,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 			bp, err = setFunctionBreakpoint(p, initialLocation)
 		} else if testcases[0].cf == contContinue {
 			var pc uint64
-			pc, err = proc.FindFileLocation(p, fixture.Source, testcases[0].pos)
+			pc, err = proc.FindFileLocation(p, fixture.Source, testcases[0].pos.(int))
 			assertNoError(err, t, "FindFileLocation()")
 			bp, err = p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
 		} else {
@@ -449,9 +454,19 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 
 			if traceTestseq2 {
 				t.Logf("at %#x %s:%d", pc, f, ln)
+				fmt.Printf("at %#x %s:%d", pc, f, ln)
 			}
-			if ln != tc.pos {
-				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", tc.pos, filepath.Base(f), ln, pc, i)
+			switch pos := tc.pos.(type) {
+			case int:
+				if ln != pos {
+					t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
+				}
+			case string:
+				v := strings.Split(pos, ":")
+				tgtln, _ := strconv.Atoi(v[1])
+				if !strings.HasSuffix(f, v[0]) || (ln != tgtln) {
+					t.Fatalf("Program did not continue to correct next location, expected %s was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
+				}
 			}
 		}
 
@@ -4220,10 +4235,11 @@ func TestListImages(t *testing.T) {
 
 	withTestProcessArgs("plugintest", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, 0, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "first continue")
+		f, l := currentLineNumber(p, t)
 		plugin1Found := false
-		t.Logf("Libraries before:")
+		t.Logf("Libraries before %s:%d:", f, l)
 		for _, image := range p.BinInfo().Images {
-			t.Logf("\t%#v", image)
+			t.Logf("\t%#x %q err:%v", image.StaticBase, image.Path, image.LoadError())
 			if image.Path == pluginFixtures[0].Path {
 				plugin1Found = true
 			}
@@ -4232,10 +4248,11 @@ func TestListImages(t *testing.T) {
 			t.Fatalf("Could not find plugin1")
 		}
 		assertNoError(proc.Continue(p), t, "second continue")
+		f, l = currentLineNumber(p, t)
 		plugin1Found, plugin2Found := false, false
-		t.Logf("Libraries after:")
+		t.Logf("Libraries after %s:%d:", f, l)
 		for _, image := range p.BinInfo().Images {
-			t.Logf("\t%#v", image)
+			t.Logf("\t%#x %q err:%v", image.StaticBase, image.Path, image.LoadError())
 			switch image.Path {
 			case pluginFixtures[0].Path:
 				plugin1Found = true
@@ -4331,4 +4348,21 @@ func TestCallConcurrent(t *testing.T) {
 
 		proc.Continue(p)
 	})
+}
+
+func TestPluginStepping(t *testing.T) {
+	pluginFixtures := protest.WithPlugins(t, "plugin1/", "plugin2/")
+
+	testseq2Args(".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, 0, t, "plugintest2", "", []seqTest{
+		{contContinue, 41},
+		{contStep, "plugin1.go:9"},
+		{contStep, "plugin1.go:10"},
+		{contStep, "plugin1.go:11"},
+		{contNext, "plugin1.go:12"},
+		{contNext, "plugintest2.go:41"},
+		{contNext, "plugintest2.go:42"},
+		{contStep, "plugin2.go:22"},
+		{contNext, "plugin2.go:23"},
+		{contNext, "plugin2.go:26"},
+		{contNext, "plugintest2.go:42"}})
 }

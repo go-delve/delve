@@ -295,7 +295,7 @@ func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
 	const CFA = 0x1000
-	vrdr := reader.Variables(bi.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, bi.staticBase), int(^uint(0)>>1), false)
+	vrdr := reader.Variables(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, fn.cu.image.StaticBase), int(^uint(0)>>1), false)
 
 	// typechecks arguments, calculates argument frame size
 	for vrdr.Next() {
@@ -303,7 +303,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		if e.Tag != dwarf.TagFormalParameter {
 			continue
 		}
-		entry, argname, typ, err := readVarEntry(e, bi)
+		entry, argname, typ, err := readVarEntry(e, fn.cu.image)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -548,8 +548,8 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	scope.Regs.CFA = cfa
 	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = sp
 
-	scope.BinInfo.dwarfReader.Seek(fn.offset)
-	e, err := scope.BinInfo.dwarfReader.Next()
+	fn.cu.image.dwarfReader.Seek(fn.offset)
+	e, err := fn.cu.image.dwarfReader.Next()
 	if err != nil {
 		return err
 	}

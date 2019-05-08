@@ -28,7 +28,7 @@ func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) *proc.BinaryInfo {
 	assertNoError(err, t, "creating dwarf")
 
 	bi := proc.NewBinaryInfo("linux", "amd64")
-	bi.LoadFromData(dwdata, frame, line, loc)
+	bi.LoadImageFromData(dwdata, frame, line, loc)
 
 	return bi
 }
@@ -88,9 +88,9 @@ func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegist
 	return scope
 }
 
-func dwarfRegisters(regs *linutil.AMD64Registers) op.DwarfRegisters {
+func dwarfRegisters(bi *proc.BinaryInfo, regs *linutil.AMD64Registers) op.DwarfRegisters {
 	a := proc.AMD64Arch("linux")
-	dwarfRegs := a.RegistersToDwarfRegisters(regs, 0)
+	dwarfRegs := a.RegistersToDwarfRegisters(bi, regs)
 	dwarfRegs.CFA = defaultCFA
 	dwarfRegs.FrameBase = defaultCFA
 	return dwarfRegs
@@ -123,7 +123,7 @@ func TestDwarfExprRegisters(t *testing.T) {
 	regs.Regs.Rax = uint64(testCases["a"])
 	regs.Regs.Rdx = uint64(testCases["c"])
 
-	dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases, mainfn)
+	dwarfExprCheck(t, mem, dwarfRegisters(bi, &regs), bi, testCases, mainfn)
 }
 
 func TestDwarfExprComposite(t *testing.T) {
@@ -178,7 +178,7 @@ func TestDwarfExprComposite(t *testing.T) {
 	regs.Regs.Rcx = uint64(testCases["pair.k"])
 	regs.Regs.Rbx = uint64(testCases["n"])
 
-	scope := dwarfExprCheck(t, mem, dwarfRegisters(&regs), bi, testCases, mainfn)
+	scope := dwarfExprCheck(t, mem, dwarfRegisters(bi, &regs), bi, testCases, mainfn)
 
 	thevar, err := scope.EvalExpression("s", normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", "s"))
@@ -213,7 +213,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 	mem := newFakeMemory(defaultCFA, uint16(before), uint16(after))
 	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{}}
 
-	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: dwarfRegisters(&regs), Mem: mem, Gvar: nil, BinInfo: bi}
+	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, Gvar: nil, BinInfo: bi}
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800

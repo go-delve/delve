@@ -100,7 +100,7 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 		if err != nil {
 			return nil, err
 		}
-		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(regs, thread.BinInfo().staticBase), 0, nil, -1, nil)
+		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(thread.BinInfo(), regs), 0, nil, -1, nil)
 		return it.stacktrace(depth)
 	}
 	return g.Stacktrace(depth, false)
@@ -117,7 +117,7 @@ func (g *G) stackIterator() (*stackIterator, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(regs, g.variable.bi.staticBase), g.stackhi, stkbar, g.stkbarPos, g), nil
+		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(g.variable.bi, regs), g.stackhi, stkbar, g.stkbarPos, g), nil
 	}
 	return newStackIterator(g.variable.bi, g.variable.mem, g.variable.bi.Arch.GoroutineToDwarfRegisters(g), g.stackhi, stkbar, g.stkbarPos, g), nil
 }
@@ -168,8 +168,6 @@ type stackIterator struct {
 
 	g           *G     // the goroutine being stacktraced, nil if we are stacktracing a goroutine-less thread
 	g0_sched_sp uint64 // value of g0.sched.sp (see comments around its use)
-
-	dwarfReader *dwarf.Reader
 }
 
 type savedLR struct {
@@ -209,7 +207,7 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegiste
 			}
 		}
 	}
-	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp, dwarfReader: bi.dwarf.Reader()}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp}
 }
 
 // Next points the iterator to the next stack frame.
@@ -353,8 +351,9 @@ func (it *stackIterator) Err() error {
 // frameBase calculates the frame base pseudo-register for DWARF for fn and
 // the current frame.
 func (it *stackIterator) frameBase(fn *Function) int64 {
-	it.dwarfReader.Seek(fn.offset)
-	e, err := it.dwarfReader.Next()
+	rdr := fn.cu.image.dwarfReader
+	rdr.Seek(fn.offset)
+	e, err := rdr.Next()
 	if err != nil {
 		return 0
 	}
@@ -427,9 +426,11 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		callpc--
 	}
 
-	irdr := reader.InlineStack(it.bi.dwarf, frame.Call.Fn.offset, reader.ToRelAddr(callpc, it.bi.staticBase))
+	image := frame.Call.Fn.cu.image
+
+	irdr := reader.InlineStack(image.dwarf, frame.Call.Fn.offset, reader.ToRelAddr(callpc, image.StaticBase))
 	for irdr.Next() {
-		entry, offset := reader.LoadAbstractOrigin(irdr.Entry(), it.dwarfReader)
+		entry, offset := reader.LoadAbstractOrigin(irdr.Entry(), image.dwarfReader)
 
 		fnname, okname := entry.Val(dwarf.AttrName).(string)
 		fileidx, okfileidx := entry.Val(dwarf.AttrCallFile).(int64)
@@ -483,11 +484,13 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {
 		it.err = fmt.Errorf("CFA becomes undefined at PC %#x", it.pc)
-		return op.DwarfRegisters{StaticBase: it.bi.staticBase}, 0, 0
+		return op.DwarfRegisters{}, 0, 0
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
 
-	callFrameRegs = op.DwarfRegisters{StaticBase: it.bi.staticBase, ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum}
+	callimage := it.bi.pcToImage(it.pc)
+
+	callFrameRegs = op.DwarfRegisters{StaticBase: callimage.StaticBase, ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum}
 
 	// According to the standard the compiler should be responsible for emitting
 	// rules for the RSP register so that it can then be used to calculate CFA,
@@ -699,8 +702,9 @@ func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
 	scope.Regs.CFA = (int64(d.variable.Addr) + d.variable.RealType.Common().ByteSize)
 	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(scope.Regs.CFA - int64(bi.Arch.PtrSize()))
 
-	bi.dwarfReader.Seek(scope.Fn.offset)
-	e, err := bi.dwarfReader.Next()
+	rdr := scope.Fn.cu.image.dwarfReader
+	rdr.Seek(scope.Fn.offset)
+	e, err := rdr.Next()
 	if err != nil {
 		return nil, fmt.Errorf("could not read DWARF function entry: %v", err)
 	}
