@@ -228,18 +228,18 @@ func Continue(dbp Process) error {
 				}
 				return conditionErrors(threads)
 			case strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) || strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2):
-				fncall := &dbp.Common().fncallState
-				if !fncall.inProgress {
+				continueCompleted := dbp.Common().continueCompleted
+				if continueCompleted == nil {
 					return conditionErrors(threads)
 				}
-				fncall.step(dbp)
-				// only stop execution if the function call finished
-				if fncall.finished {
-					fncall.inProgress = false
-					if fncall.err != nil {
-						return fncall.err
+				continueCompleted <- struct{}{}
+				contReq, ok := <-dbp.Common().continueRequest
+				if !contReq.cont {
+					// only stop execution if the expression evaluation with calls finished
+					err := finishEvalExpressionWithCalls(dbp, contReq, ok)
+					if err != nil {
+						return err
 					}
-					curthread.Common().returnValues = fncall.returnValues()
 					return conditionErrors(threads)
 				}
 			default:

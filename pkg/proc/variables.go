@@ -221,6 +221,20 @@ type EvalScope struct {
 	frameOffset int64
 
 	aordr *dwarf.Reader // extra reader to load DW_AT_abstract_origin entries, do not initialize
+
+	// When the following pointer is not nil this EvalScope was created
+	// by CallFunction and the expression evaluation is executing on a
+	// different goroutine from the debugger's main goroutine.
+	// Under this circumstance the expression evaluator can make function
+	// calls by setting up the runtime.debugCallV1 call and then writing a
+	// value to the continueRequest channel.
+	// When a value is written to continueRequest the debugger's main goroutine
+	// will call Continue, when the runtime in the target process sends us a
+	// request in the function call protocol the debugger's main goroutine will
+	// write a value to the continueCompleted channel.
+	// The goroutine executing the expression evaluation shall signal that the
+	// evaluation is complete by closing the continueRequest channel.
+	callCtx *callContext
 }
 
 // IsNilErr is returned when a variable is nil.

@@ -115,8 +115,19 @@ type BreakpointManipulation interface {
 // implementations of the Process interface.
 type CommonProcess struct {
 	allGCache     []*G
-	fncallState   functionCallState
 	fncallEnabled bool
+
+	// if continueCompleted is not nil it means we are in the process of
+	// executing an injected function call, see comments throughout
+	// pkg/proc/fncall.go for a description of how this works.
+	continueCompleted chan<- struct{}
+	continueRequest   <-chan continueRequest
+
+	// callInProgress is true when a function call is being injected in the
+	// target process.
+	// This is only used to prevent nested function calls, it should be removed
+	// when we add support for them.
+	callInProgress bool
 }
 
 // NewCommonProcess returns a struct with fields common across
