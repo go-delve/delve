@@ -971,6 +971,23 @@ func TestIssue426(t *testing.T) {
 	})
 }
 
+func testPackageRenamesHelper(t *testing.T, p proc.Process, testcases []varTest) {
+	for _, tc := range testcases {
+		variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+		if tc.err == nil {
+			assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+			assertVariable(t, variable, tc)
+		} else {
+			if err == nil {
+				t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+			}
+			if tc.err.Error() != err.Error() {
+				t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+			}
+		}
+	}
+}
+
 func TestPackageRenames(t *testing.T) {
 	// Tests that the concrete type of an interface variable is resolved
 	// correctly in a few edge cases, in particular:
@@ -999,41 +1016,43 @@ func TestPackageRenames(t *testing.T) {
 		{"aslice", true, `interface {}([]github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType) [{X: 3},{X: 4}]`, "", "interface {}", nil},
 		{"afunc", true, `interface {}(func(github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType, github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType)) main.main.func1`, "", "interface {}", nil},
 		{"astruct", true, `interface {}(*struct { A github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; B github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType }) *{A: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, B: github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 3}}`, "", "interface {}", nil},
-		{"astruct2", true, `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
 		{"iface2iface", true, `interface {}(*interface { AMethod(int) int; AnotherMethod(int) int }) **github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 4}`, "", "interface {}", nil},
 
 		{`"dir0/pkg".A`, false, "0", "", "int", nil},
 		{`"dir1/pkg".A`, false, "1", "", "int", nil},
 	}
 
-	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
-		// Not supported on 1.6 or earlier
+	testcases1_8 := []varTest{
+		// before 1.9 embedded struct fields have fieldname == type
+		{"astruct2", true, `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
+	}
+
+	testcases1_9 := []varTest{
+		{"astruct2", true, `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
+	}
+
+	testcases1_13 := []varTest{
+		// needs DW_AT_go_package_name attribute added to Go1.13
+		{`dirio.A`, false, `"something"`, "", "string", nil},
+	}
+
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 7) {
 		return
 	}
 
 	protest.AllowRecording(t)
 	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
-		for _, tc := range testcases {
-			if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
-				// before 1.9 embedded struct field have fieldname == type
-				if tc.name == "astruct2" {
-					tc.value = `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`
-				}
-			}
-			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
-			if tc.err == nil {
-				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
-				assertVariable(t, variable, tc)
-			} else {
-				if err == nil {
-					t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
-				}
-				if tc.err.Error() != err.Error() {
-					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
-				}
-			}
+		testPackageRenamesHelper(t, p, testcases)
+
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 9) {
+			testPackageRenamesHelper(t, p, testcases1_9)
+		} else {
+			testPackageRenamesHelper(t, p, testcases1_8)
+		}
+
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
+			testPackageRenamesHelper(t, p, testcases1_13)
 		}
 	})
 }
@@ -1049,7 +1068,7 @@ func TestConstants(t *testing.T) {
 		{"bitZero", true, "1", "", "main.BitFieldType", nil},
 		{"bitOne", true, "2", "", "main.BitFieldType", nil},
 		{"constTwo", true, "2", "", "main.ConstType", nil},
-		{"pkg.SomeConst", true, "2", "", "int", nil},
+		{"pkg.SomeConst", false, "2", "", "int", nil},
 	}
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
