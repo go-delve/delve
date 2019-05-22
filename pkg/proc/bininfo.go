@@ -381,28 +381,30 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 
 // LineToPC converts a file:line into a memory address.
 func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *Function, err error) {
+	fileFound := false
 	for _, cu := range bi.compileUnits {
 		if cu.lineInfo.Lookup[filename] != nil {
-			pc = cu.lineInfo.LineToPC(filename, lineno)
+			fileFound = true
+			pc := cu.lineInfo.LineToPC(filename, lineno)
 			if pc == 0 {
 				// Check to see if this file:line belongs to the call site
 				// of an inlined function.
 				for _, ifn := range cu.concreteInlinedFns {
 					if strings.Contains(ifn.CallFile, filename) && ifn.CallLine == int64(lineno) {
-						pc = ifn.LowPC
-						fn = ifn.Parent
-						return
+						return ifn.LowPC, ifn.Parent, nil
 					}
 				}
 			}
-			fn = bi.PCToFunc(pc)
-			if fn != nil {
-				return
+			if fn := bi.PCToFunc(pc); fn != nil {
+				return pc, fn, nil
 			}
 		}
 	}
-	err = fmt.Errorf("could not find %s:%d", filename, lineno)
-	return
+	if fileFound {
+		return 0, nil, fmt.Errorf("could not find statement at %s:%d, please use a line with a statement", filename, lineno)
+	} else {
+		return 0, nil, fmt.Errorf("could not find file %s", filename)
+	}
 }
 
 // AllPCsForFileLine returns all PC addresses for the given filename:lineno.
