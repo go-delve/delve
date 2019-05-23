@@ -2287,12 +2287,16 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 
 	for i, v := range vars {
 		if name := v.Name; len(name) > 1 && name[0] == '&' {
+			locationExpr := v.LocationExpr
+			declLine := v.DeclLine
 			v = v.maybeDereference()
 			if v.Addr == 0 {
 				v.Unreadable = fmt.Errorf("no address for escaped variable")
 			}
 			v.Name = name[1:]
 			v.Flags |= VariableEscaped
+			v.LocationExpr = locationExpr + " (escaped)"
+			v.DeclLine = declLine
 			vars[i] = v
 		}
 		if hasScopes {
