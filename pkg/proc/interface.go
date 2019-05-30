@@ -122,12 +122,6 @@ type CommonProcess struct {
 	// pkg/proc/fncall.go for a description of how this works.
 	continueCompleted chan<- struct{}
 	continueRequest   <-chan continueRequest
-
-	// callInProgress is true when a function call is being injected in the
-	// target process.
-	// This is only used to prevent nested function calls, it should be removed
-	// when we add support for them.
-	callInProgress bool
 }
 
 // NewCommonProcess returns a struct with fields common across

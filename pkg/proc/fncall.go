@@ -39,6 +39,7 @@ const (
 	debugCallFunctionNamePrefix1 = "debugCall"
 	debugCallFunctionNamePrefix2 = "runtime.debugCall"
 	debugCallFunctionName        = "runtime.debugCallV1"
+	maxArgFrameSize              = 65535
 )
 
 var (
@@ -61,19 +62,26 @@ type functionCallState struct {
 	savedRegs Registers
 	// err contains a saved error
 	err error
+	// expr is the expression being evaluated
+	expr *ast.CallExpr
 	// fn is the function that is being called
 	fn *Function
+	// receiver is the receiver argument for the function
+	receiver *Variable
 	// closureAddr is the address of the closure being called
 	closureAddr uint64
-	// argmem contains the argument frame of this function call
-	argmem []byte
+	// formalArgs are the formal arguments of fn
+	formalArgs []funcCallArg
+	// argFrameSize contains the size of the arguments
+	argFrameSize int64
 	// retvars contains the return variables after the function call terminates without panic'ing
 	retvars []*Variable
-	// retLoadCfg is the load configuration used to load return values
-	retLoadCfg *LoadConfig
 	// panicvar is a variable used to store the value of the panic, if the
 	// called function panics.
 	panicvar *Variable
+	// lateCallFailure is set to true if the function call could not be
+	// completed after we started evaluating the arguments.
+	lateCallFailure bool
 }
 
 type callContext struct {
@@ -220,14 +228,6 @@ func (scope *EvalScope) evalFunctionCall(node *ast.CallExpr) (*Variable, error) 
 	if !p.Common().fncallEnabled {
 		return nil, errFuncCallUnsupportedBackend
 	}
-	if p.Common().callInProgress {
-		return nil, errFuncCallInProgress
-	}
-
-	p.Common().callInProgress = true
-	defer func() {
-		p.Common().callInProgress = false
-	}()
 
 	dbgcallfn := bi.LookupFunc[debugCallFunctionName]
 	if dbgcallfn == nil {
@@ -257,12 +257,12 @@ func (scope *EvalScope) evalFunctionCall(node *ast.CallExpr) (*Variable, error) 
 		return nil, errFuncCallUnsupportedBackend
 	}
 
-	fn, closureAddr, argvars, err := scope.funcCallEvalExpr(node)
-	if err != nil {
-		return nil, err
+	fncall := functionCallState{
+		expr:      node,
+		savedRegs: regs,
 	}
 
-	argmem, err := funcCallArgFrame(fn, argvars, g, bi, scope.callCtx.checkEscape)
+	err = funcCallEvalFuncExpr(scope, &fncall, false)
 	if err != nil {
 		return nil, err
 	}
@@ -271,19 +271,11 @@ func (scope *EvalScope) evalFunctionCall(node *ast.CallExpr) (*Variable, error) 
 		return nil, err
 	}
 	// write the desired argument frame size at SP-(2*pointer_size) (the extra pointer is the saved PC)
-	if err := writePointer(bi, g.Thread, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(len(argmem))); err != nil {
+	if err := writePointer(bi, g.Thread, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
 		return nil, err
 	}
 
-	fncall := functionCallState{
-		savedRegs:   regs,
-		fn:          fn,
-		closureAddr: closureAddr,
-		argmem:      argmem,
-		retLoadCfg:  &scope.callCtx.retLoadCfg,
-	}
-
-	fncallLog("function call initiated %v frame size %d\n", fn, len(argmem))
+	fncallLog("function call initiated %v frame size %d\n", fncall.fn, fncall.argFrameSize)
 
 	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(g.stackhi)
 	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(g.stackhi)
@@ -391,48 +383,69 @@ func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) erro
 	return thread.SetPC(callAddr)
 }
 
-// funcCallEvalExpr evaluates expr, which must be a function call, returns
-// the function being called and its arguments.
-func (scope *EvalScope) funcCallEvalExpr(callexpr *ast.CallExpr) (fn *Function, closureAddr uint64, argvars []*Variable, err error) {
+// funcCallEvalFuncExpr evaluates expr.Fun and returns the function that we're trying to call.
+// If allowCalls is false function calls will be disabled even if scope.callCtx != nil
+func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCalls bool) error {
 	bi := scope.BinInfo
 
-	fnvar, err := scope.evalAST(callexpr.Fun)
-	if err != nil {
-		return nil, 0, nil, err
+	if !allowCalls {
+		callCtx := scope.callCtx
+		scope.callCtx = nil
+		defer func() {
+			scope.callCtx = callCtx
+		}()
+	}
+
+	fnvar, err := scope.evalAST(fncall.expr.Fun)
+	if err == errFuncCallNotAllowed {
+		// we can't determine the frame size because callexpr.Fun can't be
+		// evaluated without enabling function calls, just set up an argument
+		// frame for the maximum possible argument size.
+		fncall.argFrameSize = maxArgFrameSize
+		return nil
+	} else if err != nil {
+		return err
 	}
 	if fnvar.Kind != reflect.Func {
-		return nil, 0, nil, fmt.Errorf("expression %q is not a function", exprToString(callexpr.Fun))
+		return fmt.Errorf("expression %q is not a function", exprToString(fncall.expr.Fun))
 	}
 	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0, 0})
 	if fnvar.Unreadable != nil {
-		return nil, 0, nil, fnvar.Unreadable
+		return fnvar.Unreadable
 	}
 	if fnvar.Base == 0 {
-		return nil, 0, nil, errors.New("nil pointer dereference")
+		return errors.New("nil pointer dereference")
 	}
-	fn = bi.PCToFunc(uint64(fnvar.Base))
-	if fn == nil {
-		return nil, 0, nil, fmt.Errorf("could not find DIE for function %q", exprToString(callexpr.Fun))
+	fncall.fn = bi.PCToFunc(uint64(fnvar.Base))
+	if fncall.fn == nil {
+		return fmt.Errorf("could not find DIE for function %q", exprToString(fncall.expr.Fun))
 	}
-	if !fn.cu.isgo {
-		return nil, 0, nil, errNotAGoFunction
+	if !fncall.fn.cu.isgo {
+		return errNotAGoFunction
+	}
+	fncall.closureAddr = fnvar.closureAddr
+
+	fncall.argFrameSize, fncall.formalArgs, err = funcCallArgs(fncall.fn, bi, false)
+	if err != nil {
+		return err
 	}
 
-	argvars = make([]*Variable, 0, len(callexpr.Args)+1)
+	argnum := len(fncall.expr.Args)
+
 	if len(fnvar.Children) > 0 {
-		// receiver argument
-		argvars = append(argvars, &fnvar.Children[0])
-	}
-	for i := range callexpr.Args {
-		argvar, err := scope.evalAST(callexpr.Args[i])
-		if err != nil {
-			return nil, 0, nil, err
-		}
-		argvar.Name = exprToString(callexpr.Args[i])
-		argvars = append(argvars, argvar)
+		argnum++
+		fncall.receiver = &fnvar.Children[0]
+		fncall.receiver.Name = exprToString(fncall.expr.Fun)
 	}
 
-	return fn, fnvar.funcvalAddr(), argvars, nil
+	if argnum > len(fncall.formalArgs) {
+		return errTooManyArguments
+	}
+	if argnum < len(fncall.formalArgs) {
+		return errNotEnoughArguments
+	}
+
+	return nil
 }
 
 type funcCallArg struct {
@@ -442,44 +455,58 @@ type funcCallArg struct {
 	isret bool
 }
 
-// funcCallArgFrame checks type and pointer escaping for the arguments and
-// returns the argument frame.
-func funcCallArgFrame(fn *Function, actualArgs []*Variable, g *G, bi *BinaryInfo, checkEscape bool) (argmem []byte, err error) {
-	argFrameSize, formalArgs, err := funcCallArgs(fn, bi, false)
-	if err != nil {
-		return nil, err
-	}
-	if len(actualArgs) > len(formalArgs) {
-		return nil, errTooManyArguments
-	}
-	if len(actualArgs) < len(formalArgs) {
-		return nil, errNotEnoughArguments
+// funcCallEvalArgs evaluates the arguments of the function call, copying
+// the into the argument frame starting at argFrameAddr.
+func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, argFrameAddr uint64) error {
+	g := scope.callCtx.p.SelectedGoroutine()
+	if g == nil {
+		// this should never happen
+		return errNoGoroutine
 	}
 
-	// constructs arguments frame
-	argmem = make([]byte, argFrameSize)
-	argmemWriter := &bufferMemoryReadWriter{argmem}
-	for i := range formalArgs {
-		formalArg := &formalArgs[i]
-		actualArg := actualArgs[i]
-
-		if checkEscape {
-			//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
-			if err := escapeCheck(actualArg, formalArg.name, g); err != nil {
-				return nil, fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fn.Name, err)
-			}
+	if fncall.receiver != nil {
+		err := funcCallCopyOneArg(g, scope, fncall, fncall.receiver, &fncall.formalArgs[0], argFrameAddr)
+		if err != nil {
+			return err
 		}
+		fncall.formalArgs = fncall.formalArgs[1:]
+	}
 
-		//TODO(aarzilli): autmoatic wrapping in interfaces for cases not handled
-		// by convertToEface.
+	for i := range fncall.formalArgs {
+		formalArg := &fncall.formalArgs[i]
 
-		formalArgVar := newVariable(formalArg.name, uintptr(formalArg.off+fakeAddress), formalArg.typ, bi, argmemWriter)
-		if err := formalArgVar.setValue(actualArg, actualArg.Name); err != nil {
-			return nil, err
+		actualArg, err := scope.evalAST(fncall.expr.Args[i])
+		if err != nil {
+			return fmt.Errorf("error evaluating %q as argument %s in function %s: %v", exprToString(fncall.expr.Args[i]), formalArg.name, fncall.fn.Name, err)
+		}
+		actualArg.Name = exprToString(fncall.expr.Args[i])
+
+		err = funcCallCopyOneArg(g, scope, fncall, actualArg, formalArg, argFrameAddr)
+		if err != nil {
+			return err
 		}
 	}
 
-	return argmem, nil
+	return nil
+}
+
+func funcCallCopyOneArg(g *G, scope *EvalScope, fncall *functionCallState, actualArg *Variable, formalArg *funcCallArg, argFrameAddr uint64) error {
+	if scope.callCtx.checkEscape {
+		//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
+		if err := escapeCheck(actualArg, formalArg.name, g); err != nil {
+			return fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fncall.fn.Name, err)
+		}
+	}
+
+	//TODO(aarzilli): autmoatic wrapping in interfaces for cases not handled
+	// by convertToEface.
+
+	formalArgVar := newVariable(formalArg.name, uintptr(formalArg.off+int64(argFrameAddr)), formalArg.typ, scope.BinInfo, scope.Mem)
+	if err := formalArgVar.setValue(actualArg, actualArg.Name); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
@@ -585,8 +612,8 @@ const (
 )
 
 // funcCallStep executes one step of the function call injection protocol.
-func funcCallStep(scope *EvalScope, fncall *functionCallState) bool {
-	p := scope.callCtx.p
+func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
+	p := callScope.callCtx.p
 	bi := p.BinInfo()
 
 	thread := p.CurrentThread()
@@ -624,20 +651,45 @@ func funcCallStep(scope *EvalScope, fncall *functionCallState) bool {
 		fncall.err = fmt.Errorf("%v", constant.StringVal(errvar.Value))
 
 	case debugCallAXCompleteCall:
-		// write arguments to the stack, call final function
-		n, err := thread.WriteMemory(uintptr(regs.SP()), fncall.argmem)
-		if err != nil {
-			fncall.err = fmt.Errorf("could not write arguments: %v", err)
+		// evaluate arguments of the target function, copy them into its argument frame and call the function
+		if fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0 {
+			// if we couldn't figure out which function we are calling before
+			// (because the function we are calling is the return value of a call to
+			// another function) now we have to figure it out by recursively
+			// evaluating the function calls.
+			// This also needs to be done if the function call has a receiver
+			// argument or a closure address (because those addresses could be on the stack
+			// and have changed position between the start of the call and now).
+
+			err := funcCallEvalFuncExpr(callScope, fncall, true)
+			if err != nil {
+				fncall.err = err
+				fncall.lateCallFailure = true
+				break
+			}
+			//TODO: double check that function call size isn't too big
 		}
-		if n != len(fncall.argmem) {
-			fncall.err = fmt.Errorf("short argument write: %d %d", n, len(fncall.argmem))
-		}
+
+		// instead of evaluating the arguments we start first by pushing the call
+		// on the stack, this is the opposite of what would happen normally but
+		// it's necessary because otherwise the GC wouldn't be able to deal with
+		// the argument frame.
 		if fncall.closureAddr != 0 {
 			// When calling a function pointer we must set the DX register to the
 			// address of the function pointer itself.
 			thread.SetDX(fncall.closureAddr)
 		}
 		callOP(bi, thread, regs, fncall.fn.Entry)
+
+		err := funcCallEvalArgs(callScope, fncall, regs.SP())
+		if err != nil {
+			// rolling back the call, note: this works because we called regs.Copy() above
+			thread.SetSP(regs.SP())
+			thread.SetPC(regs.PC())
+			fncall.err = err
+			fncall.lateCallFailure = true
+			break
+		}
 
 	case debugCallAXRestoreRegisters:
 		// runtime requests that we restore the registers (all except pc and sp),
@@ -659,19 +711,19 @@ func funcCallStep(scope *EvalScope, fncall *functionCallState) bool {
 
 	case debugCallAXReadReturn:
 		// read return arguments from stack
-		if fncall.retLoadCfg == nil || fncall.panicvar != nil {
+		if fncall.panicvar != nil || fncall.lateCallFailure {
 			break
 		}
-		scope, err := ThreadScope(thread)
+		retScope, err := ThreadScope(thread)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get return values: %v", err)
 			break
 		}
 
 		// pretend we are still inside the function we called
-		fakeFunctionEntryScope(scope, fncall.fn, int64(regs.SP()), regs.SP()-uint64(bi.Arch.PtrSize()))
+		fakeFunctionEntryScope(retScope, fncall.fn, int64(regs.SP()), regs.SP()-uint64(bi.Arch.PtrSize()))
 
-		fncall.retvars, err = scope.Locals()
+		fncall.retvars, err = retScope.Locals()
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get return values: %v", err)
 			break
@@ -680,20 +732,17 @@ func funcCallStep(scope *EvalScope, fncall *functionCallState) bool {
 			return (v.Flags & VariableReturnArgument) != 0
 		})
 
-		loadValues(fncall.retvars, *fncall.retLoadCfg)
+		loadValues(fncall.retvars, callScope.callCtx.retLoadCfg)
 
 	case debugCallAXReadPanic:
 		// read panic value from stack
-		if fncall.retLoadCfg == nil {
-			return false
-		}
-		fncall.panicvar, err = readTopstackVariable(thread, regs, "interface {}", *fncall.retLoadCfg)
+		fncall.panicvar, err = readTopstackVariable(thread, regs, "interface {}", callScope.callCtx.retLoadCfg)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get panic: %v", err)
 			break
 		}
 		fncall.panicvar.Name = "~panic"
-		fncall.panicvar.loadValue(*fncall.retLoadCfg)
+		fncall.panicvar.loadValue(callScope.callCtx.retLoadCfg)
 		if fncall.panicvar.Unreadable != nil {
 			fncall.err = fmt.Errorf("could not get panic: %v", fncall.panicvar.Unreadable)
 			break
