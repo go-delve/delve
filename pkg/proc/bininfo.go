@@ -45,7 +45,7 @@ type BinaryInfo struct {
 	LookupFunc map[string]*Function
 
 	// Images is a list of loaded shared libraries (also known as
-	// shared objects on linux or DLLs on windws).
+	// shared objects on linux or DLLs on windows).
 	Images []*Image
 
 	ElfDynamicSection ElfDynamicSection
