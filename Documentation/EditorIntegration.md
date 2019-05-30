@@ -13,7 +13,7 @@ The following editor plugins for delve are available:
 * [JetBrains Goland](https://www.jetbrains.com/go)
 
 **IntelliJ IDEA**
-* [Golang Plugin for IntelliJ IDEA](https://github.com/go-lang-plugin-org/go-lang-idea-plugin)
+* [Golang Plugin for IntelliJ IDEA](https://plugins.jetbrains.com/plugin/9568-go)
 
 **LiteIDE**
 * [LiteIDE](https://github.com/visualfc/liteide)
