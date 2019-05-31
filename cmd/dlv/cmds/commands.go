@@ -171,7 +171,7 @@ package name and Delve will compile that package instead, and begin a new debug
 session.`,
 		Run: debugCmd,
 	}
-	debugCommand.Flags().String("output", "debug", "Output path for the binary.")
+	debugCommand.Flags().String("output", "./__debug_bin", "Output path for the binary.")
 	RootCommand.AddCommand(debugCommand)
 
 	// 'exec' subcommand.

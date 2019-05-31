@@ -123,7 +123,7 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 
 	c := []string{dlvbin, "debug"}
-	debugbin := filepath.Join(buildtestdir, "debug")
+	debugbin := filepath.Join(buildtestdir, "__debug_bin")
 	if output != "" {
 		c = append(c, "--output", output)
 		if filepath.IsAbs(output) {

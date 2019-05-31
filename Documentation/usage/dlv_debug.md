@@ -19,7 +19,7 @@ dlv debug [package]
 ### Options
 
 ```
-      --output string   Output path for the binary. (default "debug")
+      --output string   Output path for the binary. (default "./__debug_bin")
 ```
 
 ### Options inherited from parent commands
