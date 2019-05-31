@@ -241,7 +241,7 @@ Called without arguments it will show information about the current goroutine.
 Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.
 
-Aliases: go
+Aliases: gr
 
 ## goroutines
 List program goroutines.
@@ -258,7 +258,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 
 If no flag is specified the default is -u.
 
-Aliases: gos
+Aliases: grs
 
 ## help
 Prints the help message.

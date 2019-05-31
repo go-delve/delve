@@ -166,7 +166,7 @@ Current limitations:
 	clearall [<linespec>]
 
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.`},
-		{aliases: []string{"goroutines", "gos"}, cmdFn: goroutines, helpMsg: `List program goroutines.
+		{aliases: []string{"goroutines", "grs"}, cmdFn: goroutines, helpMsg: `List program goroutines.
 
 	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [ -t (stack trace)]
 
@@ -179,7 +179,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-t	displays stack trace of goroutine
 
 If no flag is specified the default is -u.`},
-		{aliases: []string{"goroutine", "go"}, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
+		{aliases: []string{"goroutine", "gr"}, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
 
 	goroutine
 	goroutine <id>
