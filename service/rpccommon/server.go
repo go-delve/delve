@@ -278,6 +278,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 		mtype, ok := s.methodMaps[s.config.APIVersion-1][req.ServiceMethod]
 		if !ok {
 			s.log.Errorf("rpc: can't find method %s", req.ServiceMethod)
+			s.sendResponse(sending, &req, &rpc.Response{}, nil, codec, fmt.Sprintf("unknown method: %s", req.ServiceMethod))
 			continue
 		}
 
