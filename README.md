@@ -19,6 +19,7 @@ The GitHub issue tracker is for **bugs** only. Please use the [developer mailing
   - [Command line options](Documentation/usage/dlv.md)
   - [Command line client](Documentation/cli/README.md)
   - [Plugins and GUIs](Documentation/EditorIntegration.md)
+  - [Frequently Asked Questions](Documentation/faq.md)
 - [Contributing](CONTRIBUTING.md)
   - [Internal Documentation](Documentation/internal)
   - [API documentation](Documentation/api)
