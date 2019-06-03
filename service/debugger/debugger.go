@@ -991,7 +991,7 @@ func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancest
 		return nil, errors.New("no selected goroutine")
 	}
 
-	ancestors, err := g.Ancestors(numAncestors)
+	ancestors, err := proc.Ancestors(d.target, g, numAncestors)
 	if err != nil {
 		return nil, err
 	}

@@ -4280,7 +4280,7 @@ func TestAncestors(t *testing.T) {
 		_, err := setFunctionBreakpoint(p, "main.testgoroutine")
 		assertNoError(err, t, "setFunctionBreakpoint()")
 		assertNoError(proc.Continue(p), t, "Continue()")
-		as, err := p.SelectedGoroutine().Ancestors(1000)
+		as, err := proc.Ancestors(p, p.SelectedGoroutine(), 1000)
 		assertNoError(err, t, "Ancestors")
 		t.Logf("ancestors: %#v\n", as)
 		if len(as) != 1 {

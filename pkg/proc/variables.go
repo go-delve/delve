@@ -659,8 +659,8 @@ func (g *G) StartLoc() Location {
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
-func (g *G) Ancestors(n int) ([]Ancestor, error) {
-	scope := globalScope(g.Thread.BinInfo(), g.Thread.BinInfo().Images[0], g.Thread)
+func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
+	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.CurrentThread())
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)
