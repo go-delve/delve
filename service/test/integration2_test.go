@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -48,7 +50,7 @@ func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
 	})
 }
 
-func withTestClient2Extended(name string, t *testing.T, fn func(c service.Client, fixture protest.Fixture)) {
+func startServer(name string, t *testing.T) (clientConn net.Conn, fixture protest.Fixture) {
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
@@ -58,7 +60,7 @@ func withTestClient2Extended(name string, t *testing.T, fn func(c service.Client
 	if buildMode == "pie" {
 		buildFlags = protest.BuildModePIE
 	}
-	fixture := protest.BuildFixture(name, buildFlags)
+	fixture = protest.BuildFixture(name, buildFlags)
 	server := rpccommon.NewServer(&service.Config{
 		Listener:       listener,
 		ProcessArgs:    []string{fixture.Path},
@@ -68,6 +70,11 @@ func withTestClient2Extended(name string, t *testing.T, fn func(c service.Client
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}
+	return clientConn, fixture
+}
+
+func withTestClient2Extended(name string, t *testing.T, fn func(c service.Client, fixture protest.Fixture)) {
+	clientConn, fixture := startServer(name, t)
 	client := rpc2.NewClientFromConn(clientConn)
 	defer func() {
 		dir, _ := client.TraceDirectory()
@@ -1674,4 +1681,31 @@ func TestAncestors(t *testing.T) {
 			t.Fatal("function main.main not found in any ancestor")
 		}
 	})
+}
+
+type brokenRPCClient struct {
+	client *rpc.Client
+}
+
+func (c *brokenRPCClient) Detach(kill bool) error {
+	defer c.client.Close()
+	out := new(rpc2.DetachOut)
+	return c.call("Detach", rpc2.DetachIn{kill}, out)
+}
+
+func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
+	return c.client.Call("RPCServer."+method, args, reply)
+}
+
+func TestUnknownMethodCall(t *testing.T) {
+	clientConn, _ := startServer("continuetestprog", t)
+	client := &brokenRPCClient{jsonrpc.NewClient(clientConn)}
+	client.call("SetApiVersion", api.SetAPIVersionIn{2}, &api.SetAPIVersionOut{})
+	defer client.Detach(true)
+	var out int
+	err := client.call("NonexistentRPCCall", nil, &out)
+	assertError(err, t, "call()")
+	if !strings.HasPrefix(err.Error(), "unknown method: ") {
+		t.Errorf("wrong error message: %v", err)
+	}
 }
