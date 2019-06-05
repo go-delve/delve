@@ -21,7 +21,7 @@ import (
 
 const defaultCFA = 0xc420051d00
 
-func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) *proc.BinaryInfo {
+func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) (*proc.BinaryInfo, *dwarf.Data) {
 	abbrev, aranges, frame, info, line, pubnames, ranges, str, loc, err := dwb.Build()
 	assertNoError(err, t, "dwarfbuilder.Build")
 	dwdata, err := dwarf.New(abbrev, aranges, frame, info, line, pubnames, ranges, str)
@@ -30,7 +30,7 @@ func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) *proc.BinaryInfo {
 	bi := proc.NewBinaryInfo("linux", "amd64")
 	bi.LoadImageFromData(dwdata, frame, line, loc)
 
-	return bi
+	return bi, dwdata
 }
 
 // fakeMemory implements proc.MemoryReadWriter by reading from a byte slice.
@@ -114,7 +114,7 @@ func TestDwarfExprRegisters(t *testing.T) {
 	dwb.AddVariable("c", uint16off, dwarfbuilder.LocationBlock(op.DW_OP_regx, int(1)))
 	dwb.TagClose()
 
-	bi := fakeBinaryInfo(t, dwb)
+	bi, _ := fakeBinaryInfo(t, dwb)
 
 	mainfn := bi.LookupFunc["main.main"]
 
@@ -166,7 +166,7 @@ func TestDwarfExprComposite(t *testing.T) {
 	dwb.AddVariable("n", intoff, dwarfbuilder.LocationBlock(op.DW_OP_reg3))
 	dwb.TagClose()
 
-	bi := fakeBinaryInfo(t, dwb)
+	bi, _ := fakeBinaryInfo(t, dwb)
 
 	mainfn := bi.LookupFunc["main.main"]
 
@@ -206,7 +206,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 	})
 	dwb.TagClose()
 
-	bi := fakeBinaryInfo(t, dwb)
+	bi, _ := fakeBinaryInfo(t, dwb)
 
 	mainfn := bi.LookupFunc["main.main"]
 
@@ -241,7 +241,7 @@ func TestIssue1419(t *testing.T) {
 	dwb.AddVariable("a", sliceoff, dwarfbuilder.LocationBlock(op.DW_OP_reg2, op.DW_OP_piece, uint(8), op.DW_OP_reg2, op.DW_OP_piece, uint(8), op.DW_OP_reg2, op.DW_OP_piece, uint(8)))
 	dwb.TagClose()
 
-	bi := fakeBinaryInfo(t, dwb)
+	bi, _ := fakeBinaryInfo(t, dwb)
 
 	mainfn := bi.LookupFunc["main.main"]
 
@@ -259,4 +259,36 @@ func TestIssue1419(t *testing.T) {
 	if va.Unreadable.Error() != "could not read 8 bytes from register 2 (size: 0)" {
 		t.Fatalf("wrong unreadable reason for variable 'a': %v", va.Unreadable)
 	}
+}
+
+func TestLocationCovers(t *testing.T) {
+	const before = 0x1234
+	const after = 0x4321
+
+	dwb := dwarfbuilder.New()
+
+	uint16off := dwb.AddBaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
+
+	dwb.AddCompileUnit("main", 0x0)
+	dwb.AddSubprogram("main.main", 0x40100, 0x41000)
+	aOff := dwb.AddVariable("a", uint16off, []dwarfbuilder.LocEntry{
+		{0x40100, 0x40700, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa)},
+		{0x40700, 0x41000, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa, op.DW_OP_consts, int(2), op.DW_OP_plus)},
+	})
+	dwb.TagClose()
+	dwb.TagClose()
+
+	bi, dwdata := fakeBinaryInfo(t, dwb)
+
+	dwrdr := dwdata.Reader()
+	dwrdr.Seek(aOff)
+	aEntry, err := dwrdr.Next()
+	assertNoError(err, t, "reading 'a' entry")
+	ranges, err := bi.LocationCovers(aEntry, dwarf.AttrLocation)
+	assertNoError(err, t, "LocationCovers")
+	t.Logf("%x", ranges)
+	if fmt.Sprintf("%x", ranges) != "[[40100 40700] [40700 41000]]" {
+		t.Error("wrong value returned by LocationCover")
+	}
+
 }
