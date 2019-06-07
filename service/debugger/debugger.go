@@ -395,11 +395,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		}
 		addr, err = proc.FindFileLocation(d.target, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		if requestedBp.Line >= 0 {
-			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, false, requestedBp.Line)
-		} else {
-			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, true, 0)
-		}
+		addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, requestedBp.Line)
 	default:
 		addr = requestedBp.Addr
 	}

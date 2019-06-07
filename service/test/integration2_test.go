@@ -1085,6 +1085,12 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 	})
 }
 
+func clientEvalVariable(t *testing.T, c service.Client, expr string) *api.Variable {
+	v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, expr, normalLoadConfig)
+	assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", expr))
+	return v
+}
+
 func TestSkipPrologue(t *testing.T) {
 	withTestClient2("locationsprog2", t, func(c service.Client) {
 		<-c.Continue()
@@ -1093,7 +1099,7 @@ func TestSkipPrologue(t *testing.T) {
 		findLocationHelper(t, c, "*fn1", false, 1, afunction)
 		findLocationHelper(t, c, "locationsprog2.go:8", false, 1, afunction)
 
-		afunction0 := findLocationHelper(t, c, "main.afunction:0", false, 1, 0)[0]
+		afunction0 := uint64(clientEvalVariable(t, c, "main.afunction").Addr)
 
 		if afunction == afunction0 {
 			t.Fatal("Skip prologue failed")
@@ -1104,21 +1110,21 @@ func TestSkipPrologue(t *testing.T) {
 func TestSkipPrologue2(t *testing.T) {
 	withTestClient2("callme", t, func(c service.Client) {
 		callme := findLocationHelper(t, c, "main.callme", false, 1, 0)[0]
-		callmeZ := findLocationHelper(t, c, "main.callme:0", false, 1, 0)[0]
+		callmeZ := uint64(clientEvalVariable(t, c, "main.callme").Addr)
 		findLocationHelper(t, c, "callme.go:5", false, 1, callme)
 		if callme == callmeZ {
 			t.Fatal("Skip prologue failed")
 		}
 
 		callme2 := findLocationHelper(t, c, "main.callme2", false, 1, 0)[0]
-		callme2Z := findLocationHelper(t, c, "main.callme2:0", false, 1, 0)[0]
+		callme2Z := uint64(clientEvalVariable(t, c, "main.callme2").Addr)
 		findLocationHelper(t, c, "callme.go:12", false, 1, callme2)
 		if callme2 == callme2Z {
 			t.Fatal("Skip prologue failed")
 		}
 
 		callme3 := findLocationHelper(t, c, "main.callme3", false, 1, 0)[0]
-		callme3Z := findLocationHelper(t, c, "main.callme3:0", false, 1, 0)[0]
+		callme3Z := uint64(clientEvalVariable(t, c, "main.callme3").Addr)
 		ver, _ := goversion.Parse(runtime.Version())
 		if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVer18Beta) {
 			findLocationHelper(t, c, "callme.go:19", false, 1, callme3)

@@ -222,9 +222,7 @@ type CreateBreakpointOut struct {
 //
 // - If arg.Breakpoint.FunctionName is not an empty string
 // the breakpoint will be created on the specified function:line
-// location. Note that setting a breakpoint on a function's entry point
-// (line == 0) can have surprising consequences, it is advisable to
-// use line = -1 instead which will skip the prologue.
+// location.
 //
 // - Otherwise the value specified by arg.Breakpoint.Addr will be used.
 func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpointOut) error {

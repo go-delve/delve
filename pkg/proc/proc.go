@@ -100,27 +100,20 @@ func (err *ErrFunctionNotFound) Error() string {
 }
 
 // FindFunctionLocation finds address of a function's line
-// If firstLine == true is passed FindFunctionLocation will attempt to find the first line of the function
 // If lineOffset is passed FindFunctionLocation will return the address of that line
-// Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
-// Note that setting breakpoints at that address will cause surprising behavior:
-// https://github.com/go-delve/delve/issues/170
-func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset int) (uint64, error) {
+func FindFunctionLocation(p Process, funcName string, lineOffset int) (uint64, error) {
 	bi := p.BinInfo()
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
 		return 0, &ErrFunctionNotFound{funcName}
 	}
 
-	if firstLine {
+	if lineOffset <= 0 {
 		return FirstPCAfterPrologue(p, origfn, false)
-	} else if lineOffset > 0 {
-		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
-		breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)
-		return breakAddr, err
 	}
-
-	return origfn.Entry, nil
+	filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
+	breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)
+	return breakAddr, err
 }
 
 // FunctionReturnLocations will return a list of addresses corresponding
@@ -740,9 +733,9 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 // createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
 // This function is meant to be called by implementations of the Process interface.
 func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
+	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", 0)
 	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
-		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", true, 0)
+		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
 		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpc, writeBreakpoint)
@@ -754,7 +747,7 @@ func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpoint
 }
 
 func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	fatalpc, err := FindFunctionLocation(p, "runtime.fatalthrow", true, 0)
+	fatalpc, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
 	if err == nil {
 		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpc, writeBreakpoint)
 		if err == nil {

@@ -177,8 +177,7 @@ as valid.
 
 If you want to let your users specify a breakpoint on a function selected
 from a list of all functions you should specify the name of the function in
-the FunctionName field of Breakpoint and set Line to -1. *Do not omit Line,
-do not set Line to 0*.
+the FunctionName field of Breakpoint.
 
 If you want to support the [same language as dlv's break and trace commands](//github.com/go-delve/Delve/tree/master/Documentation/cli/locspec.md)
  you should call RPCServer.FindLocation and

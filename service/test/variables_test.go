@@ -1063,7 +1063,7 @@ func TestConstants(t *testing.T) {
 }
 
 func setFunctionBreakpoint(p proc.Process, fname string) (*proc.Breakpoint, error) {
-	addr, err := proc.FindFunctionLocation(p, fname, true, 0)
+	addr, err := proc.FindFunctionLocation(p, fname, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1181,7 +1181,7 @@ func TestCallFunction(t *testing.T) {
 	}
 
 	withTestProcess("fncall", t, func(p proc.Process, fixture protest.Fixture) {
-		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", true, 0)
+		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", 0)
 		if err != nil {
 			t.Skip("function calls not supported on this version of go")
 		}
