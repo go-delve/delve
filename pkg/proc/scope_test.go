@@ -73,7 +73,7 @@ func TestScope(t *testing.T) {
 
 	withTestProcess("scopetest", t, func(p proc.Process, fixture protest.Fixture) {
 		for i := range scopeChecks {
-			setFileBreakpoint(p, t, fixture, scopeChecks[i].line)
+			setFileBreakpoint(p, t, fixture.Source, scopeChecks[i].line)
 		}
 
 		t.Logf("%d breakpoints set", len(scopeChecks))

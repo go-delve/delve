@@ -36,8 +36,7 @@ func TestIssue419(t *testing.T) {
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
 	withTestProcess("issue419", t, func(p proc.Process, fixture protest.Fixture) {
 		defer close(errChan)
-		_, err := setFunctionBreakpoint(p, "main.main")
-		assertNoError(err, t, "SetBreakpoint()")
+		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(proc.Continue(p), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)
 		go func() {
