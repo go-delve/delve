@@ -810,6 +810,8 @@ func TestEvalExpression(t *testing.T) {
 		{"as2.NonPointerRecieverMethod", false, "main.astruct.NonPointerRecieverMethod", "main.astruct.NonPointerRecieverMethod", "func()", nil},
 
 		{`iface2map.(data)`, false, "…", "…", "map[string]interface {}", nil},
+
+		{"issue1578", false, "main.Block {cache: *main.Cache nil}", "main.Block {cache: *main.Cache nil}", "main.Block", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
