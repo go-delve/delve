@@ -263,7 +263,9 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 				}
 			}
 			bi.compileUnits = append(bi.compileUnits, cu)
-			cu.endOffset = bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
+			if entry.Children {
+				cu.endOffset = bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
+			}
 
 		case dwarf.TagPartialUnit:
 			reader.SkipChildren()
