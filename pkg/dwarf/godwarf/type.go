@@ -433,6 +433,9 @@ func (t *TypedefType) sizeIntl(recCheck recCheck) int64 {
 		return t.CommonType.ByteSize
 	}
 	defer release()
+	if t.Type == nil {
+		return 0
+	}
 	return t.Type.sizeIntl(recCheck)
 }
 
