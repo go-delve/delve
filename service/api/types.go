@@ -126,11 +126,16 @@ type Thread struct {
 }
 
 // Location holds program location information.
+// In most cases a Location object will represent a physical location, with
+// a single PC address held in the PC field.
+// FindLocations however returns logical locations that can either have
+// multiple PC addresses each (due to inlining) or no PC address at all.
 type Location struct {
 	PC       uint64    `json:"pc"`
 	File     string    `json:"file"`
 	Line     int       `json:"line"`
 	Function *Function `json:"function,omitempty"`
+	PCs      []uint64  `json:"pcs,omitempty"`
 }
 
 // Stackframe describes one frame in a stack trace.

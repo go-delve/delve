@@ -446,6 +446,8 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		addrs, err = proc.FindFileLocation(d.target, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
 		addrs, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, requestedBp.Line)
+	case len(requestedBp.Addrs) > 0:
+		addrs = requestedBp.Addrs
 	default:
 		addrs = []uint64{requestedBp.Addr}
 	}

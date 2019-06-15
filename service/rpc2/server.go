@@ -231,6 +231,9 @@ type CreateBreakpointOut struct {
 // the breakpoint will be created on the specified function:line
 // location.
 //
+// - If arg.Breakpoint.Addrs is filled it will create a logical breakpoint
+// corresponding to all specified addresses.
+//
 // - Otherwise the value specified by arg.Breakpoint.Addr will be used.
 func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpointOut) error {
 	createdbp, err := s.debugger.CreateBreakpoint(&arg.Breakpoint)
@@ -577,7 +580,7 @@ type FindLocationOut struct {
 	Locations []api.Location
 }
 
-// FindLocation returns concrete location information described by a location expression
+// FindLocation returns concrete location information described by a location expression.
 //
 //  loc ::= <filename>:<line> | <function>[:<line>] | /<regex>/ | (+|-)<offset> | <line> | *<address>
 //  * <filename> can be the full path of a file or just a suffix
