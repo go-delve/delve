@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/parser"
 	"go/printer"
+	"go/scanner"
 	"go/token"
 	"reflect"
 	"strconv"
@@ -28,6 +29,13 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 		defer close(scope.callCtx.continueRequest)
 	}
 	t, err := parser.ParseExpr(expr)
+	if eqOff, isAs := isAssignment(err); scope.callCtx != nil && isAs {
+		lexpr := expr[:eqOff]
+		rexpr := expr[eqOff+1:]
+		err := scope.SetVariable(lexpr, rexpr)
+		scope.callCtx.doReturn(nil, err)
+		return nil, err
+	}
 	if err != nil {
 		scope.callCtx.doReturn(nil, err)
 		return nil, err
@@ -47,6 +55,14 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 	}
 	scope.callCtx.doReturn(ev, nil)
 	return ev, nil
+}
+
+func isAssignment(err error) (int, bool) {
+	el, isScannerErr := err.(scanner.ErrorList)
+	if isScannerErr && el[0].Msg == "expected '==', found '='" {
+		return el[0].Pos.Offset, true
+	}
+	return 0, false
 }
 
 // evalToplevelTypeCast implements certain type casts that we only support
