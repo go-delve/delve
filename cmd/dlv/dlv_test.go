@@ -218,6 +218,25 @@ func TestOutput(t *testing.T) {
 	}
 }
 
+// TestContinue verifies that the debugged executable starts immediate with --continue
+func TestContinue(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+	cmd := exec.Command(dlvbin, "debug", "--continue")
+	cmd.Dir = buildtestdir
+	out, _ := cmd.CombinedOutput()
+	const hello = "hello world!"
+	if !strings.Contains(string(out), hello) {
+		t.Errorf("stdout %q should contain %q", out, hello)
+	}
+	const exitStatus = "has exited with status 0"
+	if !strings.Contains(string(out), exitStatus) {
+		t.Errorf("stdout %q should contain %q", out, exitStatus)
+	}
+}
+
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
 	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
 
