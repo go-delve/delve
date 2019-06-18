@@ -33,6 +33,8 @@ var (
 	LogDest string
 	// Headless is whether to run without terminal.
 	Headless bool
+	// ContinueOnStart is whether to continue the process on startup
+	ContinueOnStart bool
 	// APIVersion is the requested API version while running headless
 	APIVersion int
 	// AcceptMulti allows multiple clients to connect to the same server
@@ -142,6 +144,7 @@ option to let the process continue or kill it.
 		},
 		Run: attachCmd,
 	}
+	attachCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process after attach.")
 	RootCommand.AddCommand(attachCommand)
 
 	// 'connect' subcommand.
@@ -172,6 +175,7 @@ session.`,
 		Run: debugCmd,
 	}
 	debugCommand.Flags().String("output", "./__debug_bin", "Output path for the binary.")
+	debugCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
 	RootCommand.AddCommand(debugCommand)
 
 	// 'exec' subcommand.
@@ -195,6 +199,7 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 			os.Exit(execute(0, args, conf, "", executingExistingFile))
 		},
 	}
+	execCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
 	RootCommand.AddCommand(execCommand)
 
 	// Deprecated 'run' subcommand.
@@ -221,6 +226,7 @@ that package instead.`,
 		Run: testCmd,
 	}
 	testCommand.Flags().String("output", "debug.test", "Output path for the binary.")
+	testCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
 	RootCommand.AddCommand(testCommand)
 
 	// 'trace' subcommand.
@@ -240,6 +246,7 @@ to know what functions your process is executing.`,
 	traceCommand.Flags().BoolVarP(&traceTestBinary, "test", "t", false, "Trace a test binary.")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
 	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
+	traceCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the traced process on start.")
 	RootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
@@ -606,6 +613,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			Foreground:           Headless,
 			DebugInfoDirectories: conf.DebugInfoDirectories,
 			CheckGoVersion:       CheckGoVersion,
+			ContinueOnStart:      ContinueOnStart,
 
 			DisconnectChan: disconnectChan,
 		})

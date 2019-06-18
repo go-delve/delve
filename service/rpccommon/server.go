@@ -123,6 +123,7 @@ func (s *ServerImpl) Run() error {
 		Foreground:           s.config.Foreground,
 		DebugInfoDirectories: s.config.DebugInfoDirectories,
 		CheckGoVersion:       s.config.CheckGoVersion,
+		ContinueOnStart:      s.config.ContinueOnStart,
 	},
 		s.config.ProcessArgs); err != nil {
 		return err
