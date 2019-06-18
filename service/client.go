@@ -147,4 +147,7 @@ type Client interface {
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error
+
+	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
+	CallAPI(method string, args, reply interface{}) error
 }

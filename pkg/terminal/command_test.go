@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -29,12 +30,15 @@ var testBackend, buildMode string
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
 	flag.StringVar(&buildMode, "test-buildmode", "", "selects build mode")
+	var logConf string
+	flag.StringVar(&logConf, "log", "", "configures logging")
 	flag.Parse()
 	test.DefaultTestBackend(&testBackend)
 	if buildMode != "" && buildMode != "pie" {
 		fmt.Fprintf(os.Stderr, "unknown build mode %q", buildMode)
 		os.Exit(1)
 	}
+	logflags.Setup(logConf != "", logConf, "")
 	os.Exit(test.RunTestsWithFixtures(m))
 }
 
@@ -70,10 +74,45 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 	return
 }
 
+func (ft *FakeTerminal) ExecStarlark(starlarkProgram string) (outstr string, err error) {
+	outfh, err := ioutil.TempFile("", "cmdtestout")
+	if err != nil {
+		ft.t.Fatalf("could not create temporary file: %v", err)
+	}
+
+	stdout, stderr, termstdout := os.Stdout, os.Stderr, ft.Term.stdout
+	os.Stdout, os.Stderr, ft.Term.stdout = outfh, outfh, outfh
+	defer func() {
+		os.Stdout, os.Stderr, ft.Term.stdout = stdout, stderr, termstdout
+		outfh.Close()
+		outbs, err1 := ioutil.ReadFile(outfh.Name())
+		if err1 != nil {
+			ft.t.Fatalf("could not read temporary output file: %v", err)
+		}
+		outstr = string(outbs)
+		if logCommandOutput {
+			ft.t.Logf("command %q -> %q", starlarkProgram, outstr)
+		}
+		os.Remove(outfh.Name())
+	}()
+	_, err = ft.Term.starlarkEnv.Execute("<stdin>", starlarkProgram, "main", nil)
+	return
+}
+
 func (ft *FakeTerminal) MustExec(cmdstr string) string {
 	outstr, err := ft.Exec(cmdstr)
 	if err != nil {
+		ft.t.Errorf("output of %q: %q", cmdstr, outstr)
 		ft.t.Fatalf("Error executing <%s>: %v", cmdstr, err)
+	}
+	return outstr
+}
+
+func (ft *FakeTerminal) MustExecStarlark(starlarkProgram string) string {
+	outstr, err := ft.ExecStarlark(starlarkProgram)
+	if err != nil {
+		ft.t.Errorf("output of %q: %q", starlarkProgram, outstr)
+		ft.t.Fatalf("Error executing <%s>: %v", starlarkProgram, err)
 	}
 	return outstr
 }
@@ -862,4 +901,8 @@ func TestIssue1493(t *testing.T) {
 			t.Fatalf("'regs' returned too many registers (%d) compared to 'regs -a' (%d)", nr, nra)
 		}
 	})
+}
+
+func findStarFile(name string) string {
+	return filepath.Join(test.FindFixturesDir(), name+".star")
 }

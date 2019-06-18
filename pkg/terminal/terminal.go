@@ -8,12 +8,12 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-
 	"syscall"
 
 	"github.com/peterh/liner"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/go-delve/delve/pkg/terminal/starbind"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 )
@@ -54,6 +54,8 @@ type Term struct {
 	stdout   io.Writer
 	InitFile string
 
+	starlarkEnv *starbind.Env
+
 	// quitContinue is set to true by exitCommand to signal that the process
 	// should be resumed before quitting.
 	quitContinue bool
@@ -93,7 +95,7 @@ func New(client service.Client, conf *config.Config) *Term {
 		conf.SourceListLineColor = ansiBlue
 	}
 
-	return &Term{
+	t := &Term{
 		client: client,
 		conf:   conf,
 		prompt: "(dlv) ",
@@ -102,6 +104,9 @@ func New(client service.Client, conf *config.Config) *Term {
 		dumb:   dumb,
 		stdout: w,
 	}
+
+	t.starlarkEnv = starbind.New(starlarkContext{t})
+	return t
 }
 
 // Close returns the terminal to its previous mode.
@@ -111,6 +116,7 @@ func (t *Term) Close() {
 
 func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 	for range ch {
+		t.starlarkEnv.Cancel()
 		if multiClient {
 			answer, err := t.line.Prompt("Would you like to [s]top the target or [q]uit this client, leaving the target running [s/q]? ")
 			if err != nil {

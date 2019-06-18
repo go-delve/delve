@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -297,7 +298,11 @@ Move the current frame down by <m>. The second form runs the command on the give
 Executes the specified command (print, args, locals) in the context of the n-th deferred call in the current frame.`},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: `Executes a file containing a list of delve commands
 
-	source <path>`},
+	source <path>
+	
+If path ends with the .star extension it will be interpreted as a starlark script. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/starlark.md for the syntax.
+
+If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
 		{aliases: []string{"disassemble", "disass"}, cmdFn: disassCommand, helpMsg: `Disassembler.
 
 	[goroutine <n>] [frame <m>] disassemble [-a <start> <end>] [-l <locspec>]
@@ -1564,6 +1569,15 @@ func listCommand(t *Term, ctx callContext, args string) error {
 func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("wrong number of arguments: source <filename>")
+	}
+
+	if filepath.Ext(args) == ".star" {
+		_, err := t.starlarkEnv.Execute(args, nil, "main", nil)
+		return err
+	}
+
+	if args == "-" {
+		return t.starlarkEnv.REPL()
 	}
 
 	return c.executeFile(t, args)
