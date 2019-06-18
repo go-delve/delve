@@ -17,6 +17,12 @@ or later, -gcflags="-N -l" on earlier versions of Go.
 dlv exec <path/to/binary>
 ```
 
+### Options
+
+```
+      --continue   Continue the debugged process on start.
+```
+
 ### Options inherited from parent commands
 
 ```

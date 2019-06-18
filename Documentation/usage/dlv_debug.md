@@ -19,6 +19,7 @@ dlv debug [package]
 ### Options
 
 ```
+      --continue        Continue the debugged process on start.
       --output string   Output path for the binary. (default "./__debug_bin")
 ```
 
