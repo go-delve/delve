@@ -143,6 +143,9 @@ func (b *Builder) Attr(attr dwarf.Attr, val interface{}) {
 	case uint16:
 		tag.form = append(tag.form, DW_FORM_data2)
 		binary.Write(&b.info, binary.LittleEndian, x)
+	case uint64:
+		tag.form = append(tag.form, DW_FORM_data8)
+		binary.Write(&b.info, binary.LittleEndian, x)
 	case Address:
 		tag.form = append(tag.form, DW_FORM_addr)
 		binary.Write(&b.info, binary.LittleEndian, x)
@@ -230,6 +233,12 @@ func (b *Builder) makeAbbrevTable() []byte {
 	}
 
 	return abbrev.Bytes()
+}
+
+func (b *Builder) AddCompileUnit(name string, lowPC uint64) dwarf.Offset {
+	r := b.TagOpen(dwarf.TagCompileUnit, name)
+	b.Attr(dwarf.AttrLowpc, lowPC)
+	return r
 }
 
 // AddSubprogram adds a subprogram declaration to debug_info, must call

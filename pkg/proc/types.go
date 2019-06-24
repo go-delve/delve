@@ -164,11 +164,11 @@ func (v functionsDebugInfoByEntry) Len() int           { return len(v) }
 func (v functionsDebugInfoByEntry) Less(i, j int) bool { return v[i].Entry < v[j].Entry }
 func (v functionsDebugInfoByEntry) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 
-type compileUnitsByLowpc []*compileUnit
+type compileUnitsByOffset []*compileUnit
 
-func (v compileUnitsByLowpc) Len() int               { return len(v) }
-func (v compileUnitsByLowpc) Less(i int, j int) bool { return v[i].lowPC < v[j].lowPC }
-func (v compileUnitsByLowpc) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
+func (v compileUnitsByOffset) Len() int               { return len(v) }
+func (v compileUnitsByOffset) Less(i int, j int) bool { return v[i].offset < v[j].offset }
+func (v compileUnitsByOffset) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
 
 type packageVarsByAddr []packageVar
 
@@ -223,7 +223,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 			cu := &compileUnit{}
 			cu.image = image
 			cu.entry = entry
-			cu.startOffset = entry.Offset
+			cu.offset = entry.Offset
 			if lang, _ := entry.Val(dwarf.AttrLanguage).(int64); lang == dwarfGoLanguage {
 				cu.isgo = true
 			}
@@ -264,7 +264,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 			}
 			bi.compileUnits = append(bi.compileUnits, cu)
 			if entry.Children {
-				cu.endOffset = bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
+				bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
 			}
 
 		case dwarf.TagPartialUnit:
@@ -276,7 +276,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 		}
 	}
 
-	sort.Sort(compileUnitsByLowpc(bi.compileUnits))
+	sort.Sort(compileUnitsByOffset(bi.compileUnits))
 	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
 	sort.Sort(packageVarsByAddr(bi.packageVars))
 
@@ -302,19 +302,15 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 }
 
 // loadDebugInfoMapsCompileUnit loads entry from a single compile unit.
-func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContext, image *Image, reader *reader.Reader, cu *compileUnit) dwarf.Offset {
-	var lastOffset dwarf.Offset
+func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContext, image *Image, reader *reader.Reader, cu *compileUnit) {
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			image.setLoadError("error reading debug_info: %v", err)
-			return lastOffset + 1
-		}
-		if entry.Tag != 0 {
-			lastOffset = entry.Offset
+			return
 		}
 		switch entry.Tag {
 		case 0:
-			return lastOffset + 1
+			return
 		case dwarf.TagImportedUnit:
 			bi.loadDebugInfoMapsImportedUnit(entry, ctxt, image, cu)
 			reader.SkipChildren()
@@ -409,7 +405,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 					entry, err = reader.Next()
 					if err != nil {
 						image.setLoadError("error reading debug_info: %v", err)
-						return 0
+						return
 					}
 					if entry.Tag == 0 {
 						break
@@ -441,8 +437,6 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 			}
 		}
 	}
-
-	return lastOffset + 1
 }
 
 // loadDebugInfoMapsImportedUnit loads entries into cu from the partial unit
