@@ -70,10 +70,10 @@ func PtraceGetRegset(id int) (regset fbsdutil.AMD64Xstate, err error) {
 
 // id may be a PID or an LWPID
 func ptraceReadData(id int, addr uintptr, data []byte) (n int, err error) {
-	return sys.PtraceIo(sys.PIOD_READ_D, id, addr, data, len(data))
+	return sys.PtraceIO(sys.PIOD_READ_D, id, addr, data, len(data))
 }
 
 // id may be a PID or an LWPID
 func ptraceWriteData(id int, addr uintptr, data []byte) (n int, err error) {
-	return sys.PtraceIo(sys.PIOD_WRITE_D, id, addr, data, len(data))
+	return sys.PtraceIO(sys.PIOD_WRITE_D, id, addr, data, len(data))
 }
