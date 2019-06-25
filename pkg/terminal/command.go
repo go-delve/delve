@@ -2057,7 +2057,7 @@ func checkpoints(t *Term, ctx callContext, args string) error {
 }
 
 func clearCheckpoint(t *Term, ctx callContext, args string) error {
-	if len(args) < 0 {
+	if len(args) == 0 {
 		return errors.New("not enough arguments to clear-checkpoint")
 	}
 	if args[0] != 'c' {
