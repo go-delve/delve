@@ -968,7 +968,7 @@ func (p *Process) Checkpoints() ([]proc.Checkpoint, error) {
 		if err != nil {
 			return nil, fmt.Errorf("can not parse \"info checkpoints\" output line %q: %v", line, err)
 		}
-		r = append(r, proc.Checkpoint{cpid, fields[1], fields[2]})
+		r = append(r, proc.Checkpoint{ID: cpid, When: fields[1], Where: fields[2]})
 	}
 	return r, nil
 }
