@@ -43,6 +43,8 @@ type Client interface {
 
 	// SingleStep will step a single cpu instruction.
 	StepInstruction() (*api.DebuggerState, error)
+	// ReverseSingleStep will reverse step a single cpu instruction.
+	ReverseStepInstruction() (*api.DebuggerState, error)
 	// SwitchThread switches the current thread context.
 	SwitchThread(threadID int) (*api.DebuggerState, error)
 	// SwitchGoroutine switches the current goroutine (and the current thread as well)

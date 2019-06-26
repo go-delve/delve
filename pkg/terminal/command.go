@@ -375,6 +375,11 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 
 	clear-checkpoint <id>`,
 		})
+		c.cmds = append(c.cmds, command{
+			aliases: []string{"reverse-stepi", "rsi"},
+			cmdFn:	c.reverseStepInstruction,
+			helpMsg: "Reverse single step a single cpu instruction.",
+		})
 		for i := range c.cmds {
 			v := &c.cmds[i]
 			if v.match("restart") {
@@ -984,6 +989,26 @@ func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error 
 		return notOnFrameZeroErr
 	}
 	state, err := exitedToError(t.client.StepInstruction())
+	if err != nil {
+		printcontextNoState(t)
+		return err
+	}
+	printcontext(t, state)
+	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	return nil
+}
+
+func (c *Commands) reverseStepInstruction(t *Term, ctx callContext, args string) error {
+	if len(args) > 0 {
+		return errors.New("too many arguments to reverse-stepi")
+	}
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
+	if c.frame != 0 {
+		return notOnFrameZeroErr
+	}
+	state, err := exitedToError(t.client.ReverseStepInstruction())
 	if err != nil {
 		printcontextNoState(t)
 		return err
