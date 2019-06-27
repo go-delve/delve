@@ -377,8 +377,13 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 		})
 		c.cmds = append(c.cmds, command{
 			aliases: []string{"reverse-stepi", "rsi"},
-			cmdFn:	c.reverseStepInstruction,
+			cmdFn:   c.reverseStepInstruction,
 			helpMsg: "Reverse single step a single cpu instruction.",
+		})
+		c.cmds = append(c.cmds, command{
+			aliases: []string{"reverse-next", "rn"},
+			cmdFn:   c.reverseNext,
+			helpMsg: "Reverse step over to previous source line.",
 		})
 		for i := range c.cmds {
 			v := &c.cmds[i]
@@ -1032,6 +1037,22 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	}
 	printcontext(t, state)
 	return continueUntilCompleteNext(t, state, "next")
+}
+
+func (c *Commands) reverseNext(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
+	if c.frame != 0 {
+		return notOnFrameZeroErr
+	}
+	state, err := exitedToError(t.client.ReverseNext())
+	if err != nil {
+		printcontextNoState(t)
+		return err
+	}
+	printcontext(t, state)
+	return continueUntilCompleteNext(t, state, "reverseNext")
 }
 
 func (c *Commands) stepout(t *Term, ctx callContext, args string) error {

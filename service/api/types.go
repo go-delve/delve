@@ -360,6 +360,8 @@ const (
 	ReverseStepInstruction = "reverseStepInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
+	// Reverse next continues to the previous source line, not entering function calls.
+	ReverseNext = "reverseNext"
 	// SwitchThread switches the debugger's current thread context.
 	SwitchThread = "switchThread"
 	// SwitchGoroutine switches the debugger's current thread context to the thread running the specified goroutine

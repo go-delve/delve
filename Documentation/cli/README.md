@@ -32,6 +32,7 @@ Command | Description
 [print](#print) | Evaluate an expression.
 [regs](#regs) | Print contents of CPU registers.
 [restart](#restart) | Restart process from a checkpoint or event.
+[reverse-next](#reverse-next) | Reverse step over to previous source line.
 [reverse-stepi](#reverse-stepi) | Reverse single step a single cpu instruction.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
 [set](#set) | Changes the value of a variable.
@@ -329,6 +330,11 @@ Restart process from a checkpoint or event.
   restart [event number or checkpoint id]
 
 Aliases: r
+
+## reverse-next
+Reverse step over to previous source line.
+
+Aliases: rn
 
 ## reverse-stepi
 Reverse single step a single cpu instruction.

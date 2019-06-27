@@ -107,6 +107,12 @@ func (c *RPCClient) Next() (*api.DebuggerState, error) {
 	return state, err
 }
 
+func (c *RPCClient) ReverseNext() (*api.DebuggerState, error) {
+	state := new(api.DebuggerState)
+	err := c.call("Command", &api.DebuggerCommand{Name: api.ReverseNext}, state)
+	return state, err
+}
+
 func (c *RPCClient) Step() (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
 	err := c.call("Command", &api.DebuggerCommand{Name: api.Step}, state)

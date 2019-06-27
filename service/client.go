@@ -34,6 +34,8 @@ type Client interface {
 	Rewind() <-chan *api.DebuggerState
 	// Next continues to the next source line, not entering function calls.
 	Next() (*api.DebuggerState, error)
+	// Reverse next continues to the previous source line, not entering function calls.
+	ReverseNext() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
 	Step() (*api.DebuggerState, error)
 	// StepOut continues to the return address of the current function
