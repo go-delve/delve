@@ -1156,6 +1156,10 @@ func TestCallFunction(t *testing.T) {
 		// Escape tests
 
 		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2")},
+
+		// Issue 1577
+		{"1+2", []string{`::3`}, nil},
+		{`"de"+"mo"`, []string{`::"demo"`}, nil},
 	}
 
 	var testcases112 = []testCaseCallFunction{

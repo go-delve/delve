@@ -197,7 +197,7 @@ func finishEvalExpressionWithCalls(p Process, g *G, contReq continueRequest, ok 
 		}
 	} else if contReq.ret == nil {
 		g.Thread.Common().returnValues = nil
-	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil {
+	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil && contReq.ret.Kind == reflect.Invalid {
 		// this is a variable returned by a function call with multiple return values
 		r := make([]*Variable, len(contReq.ret.Children))
 		for i := range contReq.ret.Children {
