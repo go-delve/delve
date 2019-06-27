@@ -376,6 +376,11 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 	clear-checkpoint <id>`,
 		})
 		c.cmds = append(c.cmds, command{
+			aliases: []string{"reverse-step", "rs"},
+			cmdFn:   c.reverseStep,
+			helpMsg: "Reverse single step through the program.",
+		})
+		c.cmds = append(c.cmds, command{
 			aliases: []string{"reverse-stepi", "rsi"},
 			cmdFn:   c.reverseStepInstruction,
 			helpMsg: "Reverse single step a single cpu instruction.",
@@ -982,6 +987,20 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 	}
 	printcontext(t, state)
 	return continueUntilCompleteNext(t, state, "step")
+}
+
+func (c *Commands) reverseStep(t *Term, ctx callContext, args string) error {
+	if err := scopePrefixSwitch(t, ctx); err != nil {
+		return err
+	}
+	c.frame = 0
+	state, err := exitedToError(t.client.ReverseStep())
+	if err != nil {
+		printcontextNoState(t)
+		return err
+	}
+	printcontext(t, state)
+	return continueUntilCompleteNext(t, state, "reverseStep")
 }
 
 var notOnFrameZeroErr = errors.New("not on topmost frame")

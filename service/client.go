@@ -38,6 +38,8 @@ type Client interface {
 	ReverseNext() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
 	Step() (*api.DebuggerState, error)
+	// Reverse step continues to the previous source line, entering function calls.
+	ReverseStep() (*api.DebuggerState, error)
 	// StepOut continues to the return address of the current function
 	StepOut() (*api.DebuggerState, error)
 	// Call resumes process execution while making a function call.

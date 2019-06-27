@@ -623,6 +623,15 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	case api.Step:
 		d.log.Debug("stepping")
 		err = proc.Step(d.target)
+	case api.ReverseStep:
+		d.log.Debug("reverse stepping")
+		if err := d.target.Direction(proc.Backward); err != nil {
+			return nil, err
+		}
+		defer func() {
+			d.target.Direction(proc.Forward)
+		}()
+		err = proc.Step(d.target)
 	case api.StepInstruction:
 		d.log.Debug("single stepping")
 		err = d.target.StepInstruction()

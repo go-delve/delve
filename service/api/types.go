@@ -352,6 +352,8 @@ const (
 	Rewind = "rewind"
 	// Step continues to next source line, entering function calls.
 	Step = "step"
+	// Reverse step continues to previous source line, entering function calls.
+	ReverseStep = "reverseStep"
 	// StepOut continues to the return address of the current function
 	StepOut = "stepOut"
 	// StepInstruction continues for exactly 1 cpu instruction.
