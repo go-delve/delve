@@ -80,6 +80,11 @@ type BinaryInfo struct {
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
 
+	// inlinedCallLines maps a file:line pair, corresponding to the header line
+	// of a function to a list of PC addresses where an inlined call to that
+	// function starts.
+	inlinedCallLines map[fileLine][]uint64
+
 	logger *logrus.Entry
 }
 
@@ -107,16 +112,20 @@ type compileUnit struct {
 	lowPC  uint64
 	ranges [][2]uint64
 
-	entry              *dwarf.Entry        // debug_info entry describing this compile unit
-	isgo               bool                // true if this is the go compile unit
-	lineInfo           *line.DebugLineInfo // debug_line segment associated with this compile unit
-	concreteInlinedFns []inlinedFn         // list of concrete inlined functions within this compile unit
-	optimized          bool                // this compile unit is optimized
-	producer           string              // producer attribute
+	entry     *dwarf.Entry        // debug_info entry describing this compile unit
+	isgo      bool                // true if this is the go compile unit
+	lineInfo  *line.DebugLineInfo // debug_line segment associated with this compile unit
+	optimized bool                // this compile unit is optimized
+	producer  string              // producer attribute
 
 	offset dwarf.Offset // offset of the entry describing the compile unit
 
 	image *Image // parent image of this compilation unit.
+}
+
+type fileLine struct {
+	file string
+	line int
 }
 
 // dwarfRef is a reference to a Debug Info Entry inside a shared object.
@@ -125,14 +134,10 @@ type dwarfRef struct {
 	offset     dwarf.Offset
 }
 
-// inlinedFn represents a concrete inlined function, e.g.
-// an entry for the generated code of an inlined function.
-type inlinedFn struct {
-	Name          string    // Name of the function that was inlined
-	LowPC, HighPC uint64    // Address range of the generated inlined instructions
-	CallFile      string    // File of the call site of the inlined function
-	CallLine      int64     // Line of the call site of the inlined function
-	Parent        *Function // The function that contains this inlined function
+// InlinedCall represents a concrete inlined call to a function.
+type InlinedCall struct {
+	cu            *compileUnit
+	LowPC, HighPC uint64 // Address range of the generated inlined instructions
 }
 
 // Function describes a function in the target program.
@@ -141,6 +146,9 @@ type Function struct {
 	Entry, End uint64 // same as DW_AT_lowpc and DW_AT_highpc
 	offset     dwarf.Offset
 	cu         *compileUnit
+
+	// InlinedCalls lists all inlined calls to this function
+	InlinedCalls []InlinedCall
 }
 
 // PackageName returns the package part of the symbol name,
@@ -389,39 +397,64 @@ func (err *ErrCouldNotFindLine) Error() string {
 	return fmt.Sprintf("could not find file %s", err.filename)
 }
 
-// LineToPC converts a file:line into a memory address.
-func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *Function, err error) {
+// LineToPC converts a file:line into a list of matching memory addresses,
+// corresponding to the first instruction matching the specified file:line
+// in the containing function and all its inlined calls.
+func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pcs []uint64, err error) {
 	fileFound := false
+	var pc uint64
 	for _, cu := range bi.compileUnits {
-		if cu.lineInfo.Lookup[filename] != nil {
-			fileFound = true
-			pc := cu.lineInfo.LineToPC(filename, lineno)
-			if pc == 0 {
-				// Check to see if this file:line belongs to the call site
-				// of an inlined function.
-				for _, ifn := range cu.concreteInlinedFns {
-					if strings.Contains(ifn.CallFile, filename) && ifn.CallLine == int64(lineno) {
-						return ifn.LowPC, ifn.Parent, nil
-					}
-				}
-			}
-			if fn := bi.PCToFunc(pc); fn != nil {
-				return pc, fn, nil
-			}
+		if cu.lineInfo.Lookup[filename] == nil {
+			continue
+		}
+		fileFound = true
+		pc = cu.lineInfo.LineToPC(filename, lineno)
+		if pc != 0 {
+			break
 		}
 	}
-	return 0, nil, &ErrCouldNotFindLine{fileFound, filename, lineno}
+
+	if pc == 0 {
+		// Check if the line contained a call to a function that was inlined, in
+		// that case it's possible for the line itself to not appear in debug_line
+		// at all, but it will still be in debug_info as the call site for an
+		// inlined subroutine entry.
+		if pcs := bi.inlinedCallLines[fileLine{filename, lineno}]; len(pcs) != 0 {
+			return pcs, nil
+		}
+		return nil, &ErrCouldNotFindLine{fileFound, filename, lineno}
+	}
+	// The code above will find the first occurence of an instruction
+	// corresponding to filename:line. If the function corresponding to that
+	// instruction has been inlined we don't just want to return the first
+	// occurence (which could be either the concrete version of the function or
+	// one of the inlinings) but instead:
+	// - the first instruction corresponding to filename:line in the concrete
+	//   version of the function
+	// - the first instruction corresponding to filename:line in each inlined
+	//   instance of the function.
+	fn := bi.PCToInlineFunc(pc)
+	if fn == nil {
+		return []uint64{pc}, nil
+	}
+	pcs = make([]uint64, 0, len(fn.InlinedCalls)+1)
+	pcs = appendLineToPCIn(pcs, filename, lineno, fn.cu, fn, fn.Entry, fn.End)
+	for _, call := range fn.InlinedCalls {
+		pcs = appendLineToPCIn(pcs, filename, lineno, call.cu, bi.PCToFunc(call.LowPC), call.LowPC, call.HighPC)
+	}
+	return pcs, nil
 }
 
-// AllPCsForFileLine returns all PC addresses for the given filename:lineno.
-func (bi *BinaryInfo) AllPCsForFileLine(filename string, lineno int) []uint64 {
-	r := make([]uint64, 0, 1)
-	for _, cu := range bi.compileUnits {
-		if cu.lineInfo.Lookup[filename] != nil {
-			r = append(r, cu.lineInfo.AllPCsForFileLine(filename, lineno)...)
-		}
+func appendLineToPCIn(pcs []uint64, filename string, lineno int, cu *compileUnit, containingFn *Function, lowPC, highPC uint64) []uint64 {
+	var entry uint64
+	if containingFn != nil {
+		entry = containingFn.Entry
 	}
-	return r
+	pc := cu.lineInfo.LineToPCIn(filename, lineno, entry, lowPC, highPC)
+	if pc != 0 {
+		return append(pcs, pc)
+	}
+	return pcs
 }
 
 // AllPCsForFileLines returns a map providing all PC addresses for filename and each line in linenos
@@ -438,7 +471,8 @@ func (bi *BinaryInfo) AllPCsForFileLines(filename string, linenos []int) map[int
 	return r
 }
 
-// PCToFunc returns the function containing the given PC address
+// PCToFunc returns the concrete function containing the given PC address.
+// If the PC address belongs to an inlined call it will return the containing function.
 func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 	i := sort.Search(len(bi.Functions), func(i int) bool {
 		fn := bi.Functions[i]
@@ -451,6 +485,29 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 		}
 	}
 	return nil
+}
+
+// PCToInlineFunc returns the function containing the given PC address.
+// If the PC address belongs to an inlined call it will return the inlined function.
+func (bi *BinaryInfo) PCToInlineFunc(pc uint64) *Function {
+	fn := bi.PCToFunc(pc)
+	irdr := reader.InlineStack(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(pc, fn.cu.image.StaticBase))
+	var inlineFnEntry *dwarf.Entry
+	for irdr.Next() {
+		inlineFnEntry = irdr.Entry()
+	}
+
+	if inlineFnEntry == nil {
+		return fn
+	}
+
+	e, _ := reader.LoadAbstractOrigin(inlineFnEntry, fn.cu.image.dwarfReader)
+	fnname, okname := e.Val(dwarf.AttrName).(string)
+	if !okname {
+		return fn
+	}
+
+	return bi.LookupFunc[fnname]
 }
 
 // PCToImage returns the image containing the given PC address.
@@ -1281,6 +1338,10 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 	if bi.packageMap == nil {
 		bi.packageMap = make(map[string]string)
 	}
+	if bi.inlinedCallLines == nil {
+		bi.inlinedCallLines = make(map[fileLine][]uint64)
+	}
+
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 
 	ctxt := newLoadDebugInfoMapsContext(bi, image)
@@ -1440,7 +1501,6 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 
 		case dwarf.TagSubprogram:
 			inlined := false
-
 			if inval, ok := entry.Val(dwarf.AttrInline).(int64); ok {
 				inlined = inval == 1
 			}
@@ -1496,11 +1556,11 @@ func (bi *BinaryInfo) addAbstractSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 	}
 
 	if entry.Children {
-		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu, &fn)
+		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
 	}
 
 	bi.Functions = append(bi.Functions, fn)
-	ctxt.abstractOriginNameTable[entry.Offset] = name
+	ctxt.abstractOriginTable[entry.Offset] = len(bi.Functions) - 1
 }
 
 // addConcreteInlinedSubprogram adds the concrete entry of a subprogram that was also inlined.
@@ -1514,7 +1574,7 @@ func (bi *BinaryInfo) addConcreteInlinedSubprogram(entry *dwarf.Entry, originOff
 		return
 	}
 
-	name, ok := ctxt.abstractOriginNameTable[originOffset]
+	originIdx, ok := ctxt.abstractOriginTable[originOffset]
 	if !ok {
 		bi.logger.Errorf("Error reading debug_info: could not find abstract origin of concrete inlined subprogram at %#x (origin offset %#x)", entry.Offset, originOffset)
 		if entry.Children {
@@ -1523,21 +1583,18 @@ func (bi *BinaryInfo) addConcreteInlinedSubprogram(entry *dwarf.Entry, originOff
 		return
 	}
 
-	fn := Function{
-		Name:  name,
-		Entry: lowpc, End: highpc,
-		offset: entry.Offset,
-		cu:     cu,
-	}
-	bi.Functions = append(bi.Functions, fn)
+	fn := &bi.Functions[originIdx]
+	fn.offset = entry.Offset
+	fn.Entry = lowpc
+	fn.End = highpc
 
 	if entry.Children {
-		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu, &fn)
+		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
 	}
 }
 
 // addConcreteSubprogram adds a concrete subprogram (a normal subprogram
-// that doesn't have abstract or inlined entries).
+// that doesn't have abstract or inlined entries)
 func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit) {
 	lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
 	if !ok {
@@ -1567,7 +1624,7 @@ func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 	bi.Functions = append(bi.Functions, fn)
 
 	if entry.Children {
-		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu, &fn)
+		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
 	}
 }
 
@@ -1592,7 +1649,7 @@ func subprogramEntryRange(entry *dwarf.Entry, image *Image) (lowpc, highpc uint6
 	return lowpc, highpc, ok
 }
 
-func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit, parentFn *Function) {
+func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit) {
 	for {
 		entry, err := reader.Next()
 		if err != nil {
@@ -1610,12 +1667,13 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 				continue
 			}
 
-			name, ok := ctxt.abstractOriginNameTable[originOffset]
+			originIdx, ok := ctxt.abstractOriginTable[originOffset]
 			if !ok {
 				bi.logger.Errorf("Error reading debug_info: could not find abstract origin (%#x) of inlined call at %#x", originOffset, entry.Offset)
 				reader.SkipChildren()
 				continue
 			}
+			fn := &bi.Functions[originIdx]
 
 			lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
 			if !ok {
@@ -1643,14 +1701,14 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 			}
 			callfile := cu.lineInfo.FileNames[callfileidx-1].Path
 
-			cu.concreteInlinedFns = append(cu.concreteInlinedFns, inlinedFn{
-				Name:     name,
-				LowPC:    lowpc,
-				HighPC:   highpc,
-				CallFile: callfile,
-				CallLine: callline,
-				Parent:   parentFn,
+			fn.InlinedCalls = append(fn.InlinedCalls, InlinedCall{
+				cu:     cu,
+				LowPC:  lowpc,
+				HighPC: highpc,
 			})
+
+			fl := fileLine{callfile, int(callline)}
+			bi.inlinedCallLines[fl] = append(bi.inlinedCallLines[fl], lowpc)
 		}
 		reader.SkipChildren()
 	}

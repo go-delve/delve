@@ -112,33 +112,6 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte) *StateMachine {
 	return sm
 }
 
-// Returns all PCs for a given file/line. Useful for loops where the 'for' line
-// could be split amongst 2 PCs.
-func (lineInfo *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64) {
-	if lineInfo == nil {
-		return nil
-	}
-
-	var (
-		lastAddr uint64
-		sm       = newStateMachine(lineInfo, lineInfo.Instructions)
-	)
-
-	for {
-		if err := sm.next(); err != nil {
-			if lineInfo.Logf != nil {
-				lineInfo.Logf("AllPCsForFileLine error: %v", err)
-			}
-			break
-		}
-		if sm.line == l && sm.file == f && sm.address != lastAddr && sm.isStmt && sm.valid {
-			pcs = append(pcs, sm.address)
-			lastAddr = sm.address
-		}
-	}
-	return
-}
-
 // AllPCsForFileLines Adds all PCs for a given file and set (domain of map) of lines
 // to the map value corresponding to each line.
 func (lineInfo *DebugLineInfo) AllPCsForFileLines(f string, m map[int][]uint64) {
@@ -237,6 +210,13 @@ func (lineInfo *DebugLineInfo) PCToLine(basePC, pc uint64) (string, int) {
 		panic(fmt.Errorf("basePC after pc %#x %#x", basePC, pc))
 	}
 
+	sm := lineInfo.stateMachineFor(basePC, pc)
+
+	file, line, _ := sm.PCToLine(pc)
+	return file, line
+}
+
+func (lineInfo *DebugLineInfo) stateMachineFor(basePC, pc uint64) *StateMachine {
 	var sm *StateMachine
 	if basePC == 0 {
 		sm = newStateMachine(lineInfo, lineInfo.Instructions)
@@ -246,14 +226,12 @@ func (lineInfo *DebugLineInfo) PCToLine(basePC, pc uint64) (string, int) {
 		// machine stopped at the entry point of the function.
 		// As a last resort start from the start of the debug_line section.
 		sm = lineInfo.lastMachineCache[basePC]
-		if sm == nil || sm.lastAddress > pc {
+		if sm == nil || sm.lastAddress >= pc {
 			sm = lineInfo.stateMachineForEntry(basePC)
 			lineInfo.lastMachineCache[basePC] = sm
 		}
 	}
-
-	file, line, _ := sm.PCToLine(pc)
-	return file, line
+	return sm
 }
 
 func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
@@ -320,6 +298,42 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 	return fallbackPC
 }
 
+// LineToPCIn returns the first PC for filename:lineno in the interval [startPC, endPC).
+// This function is used to find the instruction corresponding to
+// filename:lineno for a function that has been inlined.
+// basePC will be used for caching, it's normally the entry point for the
+// function containing pc.
+func (lineInfo *DebugLineInfo) LineToPCIn(filename string, lineno int, basePC, startPC, endPC uint64) uint64 {
+	if lineInfo == nil {
+		return 0
+	}
+	if basePC > startPC {
+		panic(fmt.Errorf("basePC after startPC %#x %#x", basePC, startPC))
+	}
+
+	sm := lineInfo.stateMachineFor(basePC, startPC)
+
+	for {
+		if sm.valid && sm.started {
+			if sm.address >= endPC {
+				return 0
+			}
+			if sm.line == lineno && sm.file == filename && sm.address >= startPC && sm.isStmt {
+				return sm.address
+			}
+		}
+		if err := sm.next(); err != nil {
+			if lineInfo.Logf != nil && err != io.EOF {
+				lineInfo.Logf("LineToPC error: %v", err)
+			}
+			break
+		}
+
+	}
+
+	return 0
+}
+
 // PrologueEndPC returns the first PC address marked as prologue_end in the half open interval [start, end)
 func (lineInfo *DebugLineInfo) PrologueEndPC(start, end uint64) (pc uint64, file string, line int, ok bool) {
 	if lineInfo == nil {
@@ -339,6 +353,33 @@ func (lineInfo *DebugLineInfo) PrologueEndPC(start, end uint64) (pc uint64, file
 		if err := sm.next(); err != nil {
 			if lineInfo.Logf != nil {
 				lineInfo.Logf("PrologueEnd error: %v", err)
+			}
+			return 0, "", 0, false
+		}
+	}
+}
+
+// FirstStmtForLine looks in the half open interval [start, end) for the
+// first PC address marked as stmt for the line at address 'start'.
+func (lineInfo *DebugLineInfo) FirstStmtForLine(start, end uint64) (pc uint64, file string, line int, ok bool) {
+	first := true
+	sm := lineInfo.stateMachineForEntry(start)
+	for {
+		if sm.valid {
+			if sm.address >= end {
+				return 0, "", 0, false
+			}
+			if first {
+				first = false
+				file, line = sm.file, sm.line
+			}
+			if sm.isStmt && sm.file == file && sm.line == line {
+				return sm.address, sm.file, sm.line, true
+			}
+		}
+		if err := sm.next(); err != nil {
+			if lineInfo.Logf != nil {
+				lineInfo.Logf("StmtAfter error: %v", err)
 			}
 			return 0, "", 0, false
 		}

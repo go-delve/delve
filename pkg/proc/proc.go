@@ -77,15 +77,21 @@ func PostInitializationSetup(p Process, path string, debugInfoDirs []string, wri
 
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normalized to lower case and '/' on Windows.
-func FindFileLocation(p Process, fileName string, lineno int) (uint64, error) {
-	pc, fn, err := p.BinInfo().LineToPC(fileName, lineno)
+func FindFileLocation(p Process, fileName string, lineno int) ([]uint64, error) {
+	pcs, err := p.BinInfo().LineToPC(fileName, lineno)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	if fn.Entry == pc {
-		pc, _ = FirstPCAfterPrologue(p, fn, true)
+	var fn *Function
+	for i := range pcs {
+		if fn == nil || pcs[i] < fn.Entry || pcs[i] >= fn.End {
+			fn = p.BinInfo().PCToFunc(pcs[i])
+		}
+		if fn != nil && fn.Entry == pcs[i] {
+			pcs[i], _ = FirstPCAfterPrologue(p, fn, true)
+		}
 	}
-	return pc, nil
+	return pcs, nil
 }
 
 // ErrFunctionNotFound is returned when failing to find the
@@ -100,19 +106,34 @@ func (err *ErrFunctionNotFound) Error() string {
 
 // FindFunctionLocation finds address of a function's line
 // If lineOffset is passed FindFunctionLocation will return the address of that line
-func FindFunctionLocation(p Process, funcName string, lineOffset int) (uint64, error) {
+func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64, error) {
 	bi := p.BinInfo()
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
-		return 0, &ErrFunctionNotFound{funcName}
+		return nil, &ErrFunctionNotFound{funcName}
 	}
 
 	if lineOffset <= 0 {
-		return FirstPCAfterPrologue(p, origfn, false)
+		r := make([]uint64, 0, len(origfn.InlinedCalls)+1)
+		if origfn.Entry > 0 {
+			// add concrete implementation of the function
+			pc, err := FirstPCAfterPrologue(p, origfn, false)
+			if err != nil {
+				return nil, err
+			}
+			r = append(r, pc)
+		}
+		// add inlined calls to the function
+		for _, call := range origfn.InlinedCalls {
+			r = append(r, call.LowPC)
+		}
+		if len(r) == 0 {
+			return nil, &ErrFunctionNotFound{funcName}
+		}
+		return r, nil
 	}
 	filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
-	breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)
-	return breakAddr, err
+	return bi.LineToPC(filename, lineno+lineOffset)
 }
 
 // Next continues execution until the next source line.
@@ -704,12 +725,12 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 // createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
 // This function is meant to be called by implementations of the Process interface.
 func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", 0)
+	panicpcs, err := FindFunctionLocation(p, "runtime.startpanic", 0)
 	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
-		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
+		panicpcs, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpc, writeBreakpoint)
+		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpcs[0], writeBreakpoint)
 		if err == nil {
 			bp.Name = UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}
@@ -718,9 +739,9 @@ func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpoint
 }
 
 func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	fatalpc, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
+	fatalpcs, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
 	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpc, writeBreakpoint)
+		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpcs[0], writeBreakpoint)
 		if err == nil {
 			bp.Name = FatalThrow
 		}
@@ -752,9 +773,8 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		// Look for the first instruction with the stmt flag set, so that setting a
 		// breakpoint with file:line and with the function name always result on
 		// the same instruction being selected.
-		entryFile, entryLine := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
-		if pc, _, err := p.BinInfo().LineToPC(entryFile, entryLine); err == nil && pc >= fn.Entry && pc < fn.End {
-			return pc, nil
+		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmtForLine(fn.Entry, fn.End); ok {
+			return pc2, nil
 		}
 	}
 

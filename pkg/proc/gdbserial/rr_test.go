@@ -52,10 +52,20 @@ func assertNoError(err error, t testing.TB, s string) {
 }
 
 func setFunctionBreakpoint(p proc.Process, t *testing.T, fname string) *proc.Breakpoint {
-	addr, err := proc.FindFunctionLocation(p, fname, 0)
-	assertNoError(err, t, fmt.Sprintf("FindFunctionLocation(%s)", fname))
-	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
-	assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x) function %s", addr, fname))
+	_, f, l, _ := runtime.Caller(1)
+	f = filepath.Base(f)
+
+	addrs, err := proc.FindFunctionLocation(p, fname, 0)
+	if err != nil {
+		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
+	}
+	if len(addrs) != 1 {
+		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
+	}
+	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	if err != nil {
+		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
+	}
 	return bp
 }
 
@@ -109,18 +119,28 @@ func TestRestartDuringStop(t *testing.T) {
 	})
 }
 
-func setFileBreakpoint(p proc.Process, t *testing.T, file string, line int) *proc.Breakpoint {
-	addr, _, err := p.BinInfo().LineToPC(file, line)
-	assertNoError(err, t, "LineToPC")
-	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
-	assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x) - %s:%d", addr, file, line))
+func setFileBreakpoint(p proc.Process, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
+	_, f, l, _ := runtime.Caller(1)
+	f = filepath.Base(f)
+
+	addrs, err := proc.FindFileLocation(p, fixture.Source, lineno)
+	if err != nil {
+		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, fixture.Source, lineno, err)
+	}
+	if len(addrs) != 1 {
+		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, fixture.Source, lineno, addrs)
+	}
+	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	if err != nil {
+		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
+	}
 	return bp
 }
 
 func TestReverseBreakpointCounts(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestRecording("bpcountstest", t, func(p *gdbserial.Process, fixture protest.Fixture) {
-		endbp := setFileBreakpoint(p, t, fixture.Source, 28)
+		endbp := setFileBreakpoint(p, t, fixture, 28)
 		assertNoError(proc.Continue(p), t, "Continue()")
 		loc, _ := p.CurrentThread().Location()
 		if loc.PC != endbp.Addr {
@@ -129,8 +149,8 @@ func TestReverseBreakpointCounts(t *testing.T) {
 
 		p.ClearBreakpoint(endbp.Addr)
 		assertNoError(p.Direction(proc.Backward), t, "Switching to backward direction")
-		bp := setFileBreakpoint(p, t, fixture.Source, 12)
-		startbp := setFileBreakpoint(p, t, fixture.Source, 20)
+		bp := setFileBreakpoint(p, t, fixture, 12)
+		startbp := setFileBreakpoint(p, t, fixture, 20)
 
 	countLoop:
 		for {

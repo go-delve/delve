@@ -8,7 +8,7 @@ import (
 	"reflect"
 )
 
-// Breakpoint represents a breakpoint. Stores information on the break
+// Breakpoint represents a physical breakpoint. Stores information on the break
 // point including the byte of data that originally was stored at that
 // address.
 type Breakpoint struct {
@@ -20,7 +20,7 @@ type Breakpoint struct {
 	Addr         uint64 // Address breakpoint is set for.
 	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
 	Name         string // User defined name of the breakpoint
-	ID           int    // Monotonically increasing ID.
+	LogicalID    int    // ID of the logical breakpoint that owns this physical breakpoint
 
 	// Kind describes whether this is an internal breakpoint (for next'ing or
 	// stepping).
@@ -82,7 +82,7 @@ const (
 )
 
 func (bp *Breakpoint) String() string {
-	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.ID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
+	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.LogicalID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
 }
 
 // BreakpointExistsError is returned when trying to set a breakpoint at
@@ -269,11 +269,11 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 
 	if kind != UserBreakpoint {
 		bpmap.internalBreakpointIDCounter++
-		newBreakpoint.ID = bpmap.internalBreakpointIDCounter
+		newBreakpoint.LogicalID = bpmap.internalBreakpointIDCounter
 		newBreakpoint.internalCond = cond
 	} else {
 		bpmap.breakpointIDCounter++
-		newBreakpoint.ID = bpmap.breakpointIDCounter
+		newBreakpoint.LogicalID = bpmap.breakpointIDCounter
 		newBreakpoint.Cond = cond
 	}
 
@@ -282,11 +282,11 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 	return newBreakpoint, nil
 }
 
-// SetWithID creates a breakpoint at addr, with the specified ID.
+// SetWithID creates a breakpoint at addr, with the specified logical ID.
 func (bpmap *BreakpointMap) SetWithID(id int, addr uint64, writeBreakpoint WriteBreakpointFn) (*Breakpoint, error) {
 	bp, err := bpmap.Set(addr, UserBreakpoint, nil, writeBreakpoint)
 	if err == nil {
-		bp.ID = id
+		bp.LogicalID = id
 		bpmap.breakpointIDCounter--
 	}
 	return bp, err
