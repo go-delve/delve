@@ -3629,6 +3629,27 @@ func checkFrame(frame proc.Stackframe, fnname, file string, line int, inlined bo
 	return nil
 }
 
+func TestAllPCsForFileLines(t *testing.T) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p proc.Process, fixture protest.Fixture) {
+		l2pcs := p.BinInfo().AllPCsForFileLines(fixture.Source, []int{7, 20})
+		if len(l2pcs) != 2 {
+			t.Fatalf("expected two map entries for %s:{%d,%d} (got %d: %v)", fixture.Source, 7, 20, len(l2pcs), l2pcs)
+		}
+		pcs := l2pcs[20]
+		if len(pcs) < 1 {
+			t.Fatalf("expected at least one location for %s:%d (got %d: %#x)", fixture.Source, 20, len(pcs), pcs)
+		}
+		pcs = l2pcs[7]
+		if len(pcs) < 2 {
+			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
+		}
+	})
+}
+
 func TestInlinedStacktraceAndVariables(t *testing.T) {
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
@@ -3680,7 +3701,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p proc.Process, fixture protest.Fixture) {
 		pcs := p.BinInfo().AllPCsForFileLine(fixture.Source, 7)
 		if len(pcs) < 2 {
-			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 6, len(pcs), pcs)
+			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
 		}
 		for _, pc := range pcs {
 			t.Logf("setting breakpoint at %#x\n", pc)

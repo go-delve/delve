@@ -406,6 +406,20 @@ func (bi *BinaryInfo) AllPCsForFileLine(filename string, lineno int) []uint64 {
 	return r
 }
 
+// AllPCsForFileLines returns a map providing all PC addresses for filename and each line in linenos
+func (bi *BinaryInfo) AllPCsForFileLines(filename string, linenos []int) map[int][]uint64 {
+	r := make(map[int][]uint64)
+	for _, line := range linenos {
+		r[line] = make([]uint64, 0, 1)
+	}
+	for _, cu := range bi.compileUnits {
+		if cu.lineInfo.Lookup[filename] != nil {
+			cu.lineInfo.AllPCsForFileLines(filename, r)
+		}
+	}
+	return r
+}
+
 // PCToFunc returns the function containing the given PC address
 func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 	i := sort.Search(len(bi.Functions), func(i int) bool {
