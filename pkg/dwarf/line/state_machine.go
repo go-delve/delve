@@ -136,6 +136,36 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLine(f string, l int) (pcs []uint64)
 	return
 }
 
+// AllPCsForFileLines Adds all PCs for a given file and set (domain of map) of lines
+// to the map value corresponding to each line.
+func (lineInfo *DebugLineInfo) AllPCsForFileLines(f string, m map[int][]uint64) {
+	if lineInfo == nil {
+		return
+	}
+
+	var (
+		lastAddr uint64
+		sm       = newStateMachine(lineInfo, lineInfo.Instructions)
+	)
+
+	for {
+		if err := sm.next(); err != nil {
+			if lineInfo.Logf != nil {
+				lineInfo.Logf("AllPCsForFileLine error: %v", err)
+			}
+			break
+		}
+		if sm.address != lastAddr && sm.isStmt && sm.valid && sm.file == f {
+			if pcs, ok := m[sm.line]; ok {
+				pcs = append(pcs, sm.address)
+				m[sm.line] = pcs
+				lastAddr = sm.address
+			}
+		}
+	}
+	return
+}
+
 var NoSourceError = errors.New("no source available")
 
 // AllPCsBetween returns all PC addresses between begin and end (including both begin and end) that have the is_stmt flag set and do not belong to excludeFile:excludeLine
