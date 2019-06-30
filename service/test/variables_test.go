@@ -733,8 +733,7 @@ func TestEvalExpression(t *testing.T) {
 		{"i2 + p1", false, "", "", "", fmt.Errorf("mismatched types \"int\" and \"*int\"")},
 		{"i2 + f1", false, "", "", "", fmt.Errorf("mismatched types \"int\" and \"float64\"")},
 		{"i2 << f1", false, "", "", "", fmt.Errorf("shift count type float64, must be unsigned integer")},
-		{"i2 << -1", false, "", "", "", fmt.Errorf("shift count type int, must be unsigned integer")},
-		{"i2 << i3", false, "", "", "int", fmt.Errorf("shift count type int, must be unsigned integer")},
+		{"i2 << -1", false, "", "", "", fmt.Errorf("shift count must not be negative")},
 		{"*(i2 + i3)", false, "", "", "", fmt.Errorf("expression \"(i2 + i3)\" (int) can not be dereferenced")},
 		{"i2.member", false, "", "", "", fmt.Errorf("i2 (type int) is not a struct")},
 		{"fmt.Println(\"hello\")", false, "", "", "", fmt.Errorf("function calls not allowed without using 'call'")},
@@ -1356,9 +1355,9 @@ func assertCurrentLocationFunction(p proc.Process, t *testing.T, fnname string) 
 }
 
 func TestPluginVariables(t *testing.T) {
-	pluginFixtures := protest.WithPlugins(t, "plugin1/", "plugin2/")
+	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
-	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, 0, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p proc.Process, fixture protest.Fixture) {
 		setFileLineBreakpoint(p, t, fixture.Source, 41)
 		assertNoError(proc.Continue(p), t, "Continue 1")
 
