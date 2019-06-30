@@ -1555,7 +1555,7 @@ func TestClientServerFunctionCall(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 		beforeCallFn := state.CurrentThread.Function.Name()
-		state, err := c.Call("call1(one, two)", false)
+		state, err := c.Call(-1, "call1(one, two)", false)
 		assertNoError(err, t, "Call()")
 		t.Logf("returned to %q", state.CurrentThread.Function.Name())
 		if state.CurrentThread.Function.Name() != beforeCallFn {
@@ -1598,7 +1598,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
-		state, err = c.Call("main.call1(main.zero, main.zero)", false)
+		state, err = c.Call(-1, "main.call1(main.zero, main.zero)", false)
 		if err == nil || err.Error() != "call not at safe point" {
 			t.Fatalf("wrong error or no error: %v", err)
 		}
@@ -1612,7 +1612,7 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
-		state, err := c.Call("callpanic()", false)
+		state, err := c.Call(-1, "callpanic()", false)
 		assertNoError(err, t, "Call()")
 		t.Logf("at: %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
 		if state.CurrentThread.ReturnValues == nil {
@@ -1638,7 +1638,7 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 		c.SetReturnValuesLoadConfig(&api.LoadConfig{false, 0, 2048, 0, 0})
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
-		state, err := c.Call("callstacktrace()", false)
+		state, err := c.Call(-1, "callstacktrace()", false)
 		assertNoError(err, t, "Call()")
 		t.Logf("at: %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
 		if state.CurrentThread.ReturnValues == nil {

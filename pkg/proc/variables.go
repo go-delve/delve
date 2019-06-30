@@ -218,7 +218,7 @@ type EvalScope struct {
 	Location
 	Regs    op.DwarfRegisters
 	Mem     MemoryReadWriter // Target's memory
-	Gvar    *Variable
+	g       *G
 	BinInfo *BinaryInfo
 
 	frameOffset int64
@@ -250,7 +250,7 @@ func (err *IsNilErr) Error() string {
 }
 
 func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
-	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, Gvar: nil, BinInfo: bi, frameOffset: 0}
+	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, frameOffset: 0}
 }
 
 func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {

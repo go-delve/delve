@@ -214,10 +214,10 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 		// try to interpret the selector as a package variable
 		if maybePkg, ok := node.X.(*ast.Ident); ok {
 			if maybePkg.Name == "runtime" && node.Sel.Name == "curg" {
-				if scope.Gvar == nil {
+				if scope.g == nil {
 					return nilVariable, nil
 				}
-				return scope.Gvar.clone(), nil
+				return scope.g.variable.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
 				return newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem), nil
 			} else if v, err := scope.findGlobal(maybePkg.Name + "." + node.Sel.Name); err == nil {

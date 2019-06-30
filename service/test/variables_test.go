@@ -1155,6 +1155,10 @@ func TestCallFunction(t *testing.T) {
 		// Escape tests
 
 		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2")},
+
+		// Issue 1577
+		{"1+2", []string{`::3`}, nil},
+		{`"de"+"mo"`, []string{`::"demo"`}, nil},
 	}
 
 	var testcases112 = []testCaseCallFunction{
@@ -1224,7 +1228,7 @@ func testCallFunction(t *testing.T, p proc.Process, tc testCaseCallFunction) {
 		checkEscape = false
 	}
 	t.Logf("call %q", tc.expr)
-	err := proc.EvalExpressionWithCalls(p, callExpr, pnormalLoadConfig, checkEscape)
+	err := proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), callExpr, pnormalLoadConfig, checkEscape)
 	if tc.err != nil {
 		t.Logf("\terr = %v\n", err)
 		if err == nil {

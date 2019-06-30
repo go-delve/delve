@@ -1035,7 +1035,7 @@ func (c *Commands) call(t *Term, ctx callContext, args string) error {
 		unsafe = true
 		args = args[len(unsafePrefix):]
 	}
-	state, err := exitedToError(t.client.Call(args, unsafe))
+	state, err := exitedToError(t.client.Call(ctx.Scope.GoroutineID, args, unsafe))
 	c.frame = 0
 	if err != nil {
 		printcontextNoState(t)
