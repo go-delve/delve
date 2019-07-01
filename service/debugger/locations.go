@@ -72,7 +72,7 @@ func parseLocationSpec(locStr string) (LocationSpec, error) {
 	case '/':
 		if rest[len(rest)-1] == '/' {
 			rx, rest := readRegex(rest[1:])
-			if len(rest) < 0 {
+			if len(rest) == 0 {
 				return nil, malformed("non-terminated regular expression")
 			}
 			if len(rest) > 1 {
