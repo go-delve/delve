@@ -247,8 +247,7 @@ func TestGeneratedDoc(t *testing.T) {
 	var generatedBuf bytes.Buffer
 	commands := terminal.DebugCommands(nil)
 	commands.WriteMarkdown(&generatedBuf)
-	cliDocFilename := "Documentation/cli/README.md"
-	checkAutogenDoc(t, cliDocFilename, "scripts/gen-cli-docs.go", generatedBuf.Bytes())
+	checkAutogenDoc(t, "Documentation/cli/README.md", "scripts/gen-cli-docs.go", generatedBuf.Bytes())
 
 	// Checks gen-usage-docs.go
 	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
@@ -261,6 +260,21 @@ func TestGeneratedDoc(t *testing.T) {
 		docFilename := "Documentation/usage/" + doc.Name()
 		checkAutogenDoc(t, docFilename, "scripts/gen-usage-docs.go", slurpFile(t, tempDir+"/"+doc.Name()))
 	}
+
+	runScript := func(args ...string) []byte {
+		a := []string{"run"}
+		a = append(a, args...)
+		cmd := exec.Command("go", a...)
+		cmd.Dir = projectRoot()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("could not run script %v: %v (output: %q)", args, err, string(out))
+		}
+		return out
+	}
+
+	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("scripts/gen-starlark-bindings.go", "go", "-"))
+	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("scripts/gen-starlark-bindings.go", "doc/dummy", "Documentation/cli/starlark.md"))
 }
 
 func TestExitInInit(t *testing.T) {

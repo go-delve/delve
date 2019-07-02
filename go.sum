@@ -1,3 +1,5 @@
+github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e h1:fY5BOSpyZCqRo5OhCuC+XN+r/bBCmeuuJtjz+bCNIf8=
+github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5 h1:rIXlvz2IWiupMFlC45cZCXZFvKX/ExBcSLrDy2G0Lp8=
 github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5/go.mod h1:p/NrK5tF6ICIly4qwEDsf6VDirFiWWz0FenfYBwJaKQ=
 github.com/cpuguy83/go-md2man v1.0.8 h1:DwoNytLphI8hzS2Af4D0dfaEaiSq2bN05mEm4R6vf8M=
@@ -20,6 +22,16 @@ github.com/spf13/cobra v0.0.0-20170417170307-b6cb39589372 h1:eRfW1vRS4th8IX2iQey
 github.com/spf13/cobra v0.0.0-20170417170307-b6cb39589372/go.mod h1:1l0Ry5zgKvJasoi3XT1TypsSe7PqH0Sj9dhYf7v3XqQ=
 github.com/spf13/pflag v0.0.0-20170417173400-9e4c21054fa1 h1:7bozMfSdo41n2NOc0GsVTTVUiA+Ncaj6pXNpm4UHKys=
 github.com/spf13/pflag v0.0.0-20170417173400-9e4c21054fa1/go.mod h1:DYY7MBk1bdzusC3SYhjObp+wFpr4gzcvqqNjLnInEg4=
+go.starlark.net v0.0.0-20181108041844-f4938bde4080 h1:PynO3TmUXWWlWQ1FHArWPoFcoQR3oCaMm0l+d6rbjeo=
+go.starlark.net v0.0.0-20181108041844-f4938bde4080/go.mod h1:c1/X6cHgvdXj6pUlmWKMkuqRnW4K8x2vwt6JAaaircg=
+go.starlark.net v0.0.0-20181213015430-66ac3a2d309f h1:8Fs2MRAY3gcipeW5YuV7PR0PYZ30uyRurWJSON4km/I=
+go.starlark.net v0.0.0-20181213015430-66ac3a2d309f/go.mod h1:c1/X6cHgvdXj6pUlmWKMkuqRnW4K8x2vwt6JAaaircg=
+go.starlark.net v0.0.0-20181213164318-58464401628a h1:zSGIMfylaSMaCEjwVKLMO8Hb/YXDHik8Z+j6Yb1/MJc=
+go.starlark.net v0.0.0-20181213164318-58464401628a/go.mod h1:c1/X6cHgvdXj6pUlmWKMkuqRnW4K8x2vwt6JAaaircg=
+go.starlark.net v0.0.0-20190106165729-93b8d146431e h1:iAWNmlXeb8B9A+QSPlujsxdd5paZFxRA2RSGQE8qvJ4=
+go.starlark.net v0.0.0-20190106165729-93b8d146431e/go.mod h1:c1/X6cHgvdXj6pUlmWKMkuqRnW4K8x2vwt6JAaaircg=
+go.starlark.net v0.0.0-20190225160109-1174b2613e82 h1:vAHCTDREx7LqPeWqNeTvCKWcURJztP3wBKnF2Q0sW7Q=
+go.starlark.net v0.0.0-20190225160109-1174b2613e82/go.mod h1:c1/X6cHgvdXj6pUlmWKMkuqRnW4K8x2vwt6JAaaircg=
 golang.org/x/arch v0.0.0-20171004143515-077ac972c2e4 h1:TP7YcWHbnFq4v8/3wM2JwgM0SRRtsYJ7Z6Oj0arz2bs=
 golang.org/x/arch v0.0.0-20171004143515-077ac972c2e4/go.mod h1:cYlCBUl1MsqxdiKgmc4uh7TxZfWSFLOGSRR090WDxt8=
 golang.org/x/crypto v0.0.0-20180614174826-fd5f17ee7299 h1:zxP+xTjjk4kD+M5IFPweL7/4851FUhYkzbDqbzkN1JE=

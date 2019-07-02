@@ -346,6 +346,10 @@ See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Document
 Executes a file containing a list of delve commands
 
 	source <path>
+	
+If path ends with the .star extension it will be interpreted as a starlark script. See [Documentation/cli/starlark.md](//github.com/go-delve/delve/tree/master/Documentation/cli/starlark.md) for the syntax.
+
+If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.
 
 
 ## sources
