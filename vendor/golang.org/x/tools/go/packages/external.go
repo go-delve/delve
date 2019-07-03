@@ -16,17 +16,7 @@ import (
 	"strings"
 )
 
-// Driver
-type driverRequest struct {
-	Command    string            `json:"command"`
-	Mode       LoadMode          `json:"mode"`
-	Env        []string          `json:"env"`
-	BuildFlags []string          `json:"build_flags"`
-	Tests      bool              `json:"tests"`
-	Overlay    map[string][]byte `json:"overlay"`
-}
-
-// findExternalDriver returns the file path of a tool that supplies
+// findExternalTool returns the file path of a tool that supplies
 // the build system package structure, or "" if not found."
 // If GOPACKAGESDRIVER is set in the environment findExternalTool returns its
 // value, otherwise it searches for a binary named gopackagesdriver on the PATH.
@@ -49,22 +39,21 @@ func findExternalDriver(cfg *Config) driver {
 		}
 	}
 	return func(cfg *Config, words ...string) (*driverResponse, error) {
-		req, err := json.Marshal(driverRequest{
-			Mode:       cfg.Mode,
-			Env:        cfg.Env,
-			BuildFlags: cfg.BuildFlags,
-			Tests:      cfg.Tests,
-			Overlay:    cfg.Overlay,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to encode message to driver tool: %v", err)
-		}
-
 		buf := new(bytes.Buffer)
-		cmd := exec.CommandContext(cfg.Context, tool, words...)
-		cmd.Dir = cfg.Dir
+		fullargs := []string{
+			"list",
+			fmt.Sprintf("-test=%t", cfg.Tests),
+			fmt.Sprintf("-export=%t", usesExportData(cfg)),
+			fmt.Sprintf("-deps=%t", cfg.Mode >= LoadImports),
+		}
+		for _, f := range cfg.BuildFlags {
+			fullargs = append(fullargs, fmt.Sprintf("-buildflag=%v", f))
+		}
+		fullargs = append(fullargs, "--")
+		fullargs = append(fullargs, words...)
+		cmd := exec.CommandContext(cfg.Context, tool, fullargs...)
 		cmd.Env = cfg.Env
-		cmd.Stdin = bytes.NewReader(req)
+		cmd.Dir = cfg.Dir
 		cmd.Stdout = buf
 		cmd.Stderr = new(bytes.Buffer)
 		if err := cmd.Run(); err != nil {

@@ -65,8 +65,6 @@ b:
   d: [3, 4]
 `
 
-// Note: struct fields must be public in order for unmarshal to
-// correctly populate the data.
 type T struct {
         A string
         B struct {

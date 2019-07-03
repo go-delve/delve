@@ -126,7 +126,7 @@ func BImportData(fset *token.FileSet, imports map[string]*types.Package, data []
 	// --- generic export data ---
 
 	// populate typList with predeclared "known" types
-	p.typList = append(p.typList, predeclared()...)
+	p.typList = append(p.typList, predeclared...)
 
 	// read package data
 	pkg = p.pkg()
@@ -976,58 +976,50 @@ const (
 	aliasTag
 )
 
-var predecl []types.Type // initialized lazily
+var predeclared = []types.Type{
+	// basic types
+	types.Typ[types.Bool],
+	types.Typ[types.Int],
+	types.Typ[types.Int8],
+	types.Typ[types.Int16],
+	types.Typ[types.Int32],
+	types.Typ[types.Int64],
+	types.Typ[types.Uint],
+	types.Typ[types.Uint8],
+	types.Typ[types.Uint16],
+	types.Typ[types.Uint32],
+	types.Typ[types.Uint64],
+	types.Typ[types.Uintptr],
+	types.Typ[types.Float32],
+	types.Typ[types.Float64],
+	types.Typ[types.Complex64],
+	types.Typ[types.Complex128],
+	types.Typ[types.String],
 
-func predeclared() []types.Type {
-	if predecl == nil {
-		// initialize lazily to be sure that all
-		// elements have been initialized before
-		predecl = []types.Type{ // basic types
-			types.Typ[types.Bool],
-			types.Typ[types.Int],
-			types.Typ[types.Int8],
-			types.Typ[types.Int16],
-			types.Typ[types.Int32],
-			types.Typ[types.Int64],
-			types.Typ[types.Uint],
-			types.Typ[types.Uint8],
-			types.Typ[types.Uint16],
-			types.Typ[types.Uint32],
-			types.Typ[types.Uint64],
-			types.Typ[types.Uintptr],
-			types.Typ[types.Float32],
-			types.Typ[types.Float64],
-			types.Typ[types.Complex64],
-			types.Typ[types.Complex128],
-			types.Typ[types.String],
+	// basic type aliases
+	types.Universe.Lookup("byte").Type(),
+	types.Universe.Lookup("rune").Type(),
 
-			// basic type aliases
-			types.Universe.Lookup("byte").Type(),
-			types.Universe.Lookup("rune").Type(),
+	// error
+	types.Universe.Lookup("error").Type(),
 
-			// error
-			types.Universe.Lookup("error").Type(),
+	// untyped types
+	types.Typ[types.UntypedBool],
+	types.Typ[types.UntypedInt],
+	types.Typ[types.UntypedRune],
+	types.Typ[types.UntypedFloat],
+	types.Typ[types.UntypedComplex],
+	types.Typ[types.UntypedString],
+	types.Typ[types.UntypedNil],
 
-			// untyped types
-			types.Typ[types.UntypedBool],
-			types.Typ[types.UntypedInt],
-			types.Typ[types.UntypedRune],
-			types.Typ[types.UntypedFloat],
-			types.Typ[types.UntypedComplex],
-			types.Typ[types.UntypedString],
-			types.Typ[types.UntypedNil],
+	// package unsafe
+	types.Typ[types.UnsafePointer],
 
-			// package unsafe
-			types.Typ[types.UnsafePointer],
+	// invalid type
+	types.Typ[types.Invalid], // only appears in packages with errors
 
-			// invalid type
-			types.Typ[types.Invalid], // only appears in packages with errors
-
-			// used internally by gc; never used by this package or in .a files
-			anyType{},
-		}
-	}
-	return predecl
+	// used internally by gc; never used by this package or in .a files
+	anyType{},
 }
 
 type anyType struct{}

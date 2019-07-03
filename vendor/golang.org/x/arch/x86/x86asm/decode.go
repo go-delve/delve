@@ -203,9 +203,7 @@ func instPrefix(b byte, mode int) (Inst, error) {
 // For now we use instPrefix but perhaps later we will return
 // a specific error here.
 func truncated(src []byte, mode int) (Inst, error) {
-	if len(src) == 0 {
-		return Inst{}, ErrTruncated
-	}
+	//	return Inst{}, len(src), ErrTruncated
 	return instPrefix(src[0], mode) // too long
 }
 
@@ -408,7 +406,7 @@ ReadPrefixes:
 
 		//Group 5 - Vex encoding
 		case 0xC5:
-			if pos == 0 && pos+1 < len(src) && (mode == 64 || (mode == 32 && src[pos+1]&0xc0 == 0xc0)) {
+			if pos == 0 && (mode == 64 || (mode == 32 && pos+1 < len(src) && src[pos+1]&0xc0 == 0xc0)) {
 				vex = p
 				vexIndex = pos
 				inst.Prefix[pos] = p
@@ -420,7 +418,7 @@ ReadPrefixes:
 				break ReadPrefixes
 			}
 		case 0xC4:
-			if pos == 0 && pos+2 < len(src) && (mode == 64 || (mode == 32 && src[pos+1]&0xc0 == 0xc0)) {
+			if pos == 0 && (mode == 64 || (mode == 32 && pos+2 < len(src) && src[pos+1]&0xc0 == 0xc0)) {
 				vex = p
 				vexIndex = pos
 				inst.Prefix[pos] = p

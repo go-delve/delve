@@ -9,7 +9,6 @@ package yaml
 import (
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"strings"
 	"sync"
@@ -78,65 +77,8 @@ type Marshaler interface {
 // supported tag options.
 //
 func Unmarshal(in []byte, out interface{}) (err error) {
-	return unmarshal(in, out, false)
-}
-
-// UnmarshalStrict is like Unmarshal except that any fields that are found
-// in the data that do not have corresponding struct members, or mapping
-// keys that are duplicates, will result in
-// an error.
-func UnmarshalStrict(in []byte, out interface{}) (err error) {
-	return unmarshal(in, out, true)
-}
-
-// A Decorder reads and decodes YAML values from an input stream.
-type Decoder struct {
-	strict bool
-	parser *parser
-}
-
-// NewDecoder returns a new decoder that reads from r.
-//
-// The decoder introduces its own buffering and may read
-// data from r beyond the YAML values requested.
-func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{
-		parser: newParserFromReader(r),
-	}
-}
-
-// SetStrict sets whether strict decoding behaviour is enabled when
-// decoding items in the data (see UnmarshalStrict). By default, decoding is not strict.
-func (dec *Decoder) SetStrict(strict bool) {
-	dec.strict = strict
-}
-
-// Decode reads the next YAML-encoded value from its input
-// and stores it in the value pointed to by v.
-//
-// See the documentation for Unmarshal for details about the
-// conversion of YAML into a Go value.
-func (dec *Decoder) Decode(v interface{}) (err error) {
-	d := newDecoder(dec.strict)
 	defer handleErr(&err)
-	node := dec.parser.parse()
-	if node == nil {
-		return io.EOF
-	}
-	out := reflect.ValueOf(v)
-	if out.Kind() == reflect.Ptr && !out.IsNil() {
-		out = out.Elem()
-	}
-	d.unmarshal(node, out)
-	if len(d.terrors) > 0 {
-		return &TypeError{d.terrors}
-	}
-	return nil
-}
-
-func unmarshal(in []byte, out interface{}, strict bool) (err error) {
-	defer handleErr(&err)
-	d := newDecoder(strict)
+	d := newDecoder()
 	p := newParser(in)
 	defer p.destroy()
 	node := p.parse()
@@ -157,8 +99,8 @@ func unmarshal(in []byte, out interface{}, strict bool) (err error) {
 // of the generated document will reflect the structure of the value itself.
 // Maps and pointers (to struct, string, int, etc) are accepted as the in value.
 //
-// Struct fields are only marshalled if they are exported (have an upper case
-// first letter), and are marshalled using the field name lowercased as the
+// Struct fields are only unmarshalled if they are exported (have an upper case
+// first letter), and are unmarshalled using the field name lowercased as the
 // default key. Custom keys may be defined via the "yaml" name in the field
 // tag: the content preceding the first comma is used as the key, and the
 // following comma-separated options are used to tweak the marshalling process.
@@ -172,10 +114,7 @@ func unmarshal(in []byte, out interface{}, strict bool) (err error) {
 //
 //     omitempty    Only include the field if it's not set to the zero
 //                  value for the type or to empty slices or maps.
-//                  Zero valued structs will be omitted if all their public
-//                  fields are zero, unless they implement an IsZero
-//                  method (see the IsZeroer interface type), in which
-//                  case the field will be included if that method returns true.
+//                  Does not apply to zero valued structs.
 //
 //     flow         Marshal using a flow style (useful for structs,
 //                  sequences and maps).
@@ -190,7 +129,7 @@ func unmarshal(in []byte, out interface{}, strict bool) (err error) {
 // For example:
 //
 //     type T struct {
-//         F int `yaml:"a,omitempty"`
+//         F int "a,omitempty"
 //         B int
 //     }
 //     yaml.Marshal(&T{B: 2}) // Returns "b: 2\n"
@@ -200,45 +139,10 @@ func Marshal(in interface{}) (out []byte, err error) {
 	defer handleErr(&err)
 	e := newEncoder()
 	defer e.destroy()
-	e.marshalDoc("", reflect.ValueOf(in))
+	e.marshal("", reflect.ValueOf(in))
 	e.finish()
 	out = e.out
 	return
-}
-
-// An Encoder writes YAML values to an output stream.
-type Encoder struct {
-	encoder *encoder
-}
-
-// NewEncoder returns a new encoder that writes to w.
-// The Encoder should be closed after use to flush all data
-// to w.
-func NewEncoder(w io.Writer) *Encoder {
-	return &Encoder{
-		encoder: newEncoderWithWriter(w),
-	}
-}
-
-// Encode writes the YAML encoding of v to the stream.
-// If multiple items are encoded to the stream, the
-// second and subsequent document will be preceded
-// with a "---" document separator, but the first will not.
-//
-// See the documentation for Marshal for details about the conversion of Go
-// values to YAML.
-func (e *Encoder) Encode(v interface{}) (err error) {
-	defer handleErr(&err)
-	e.encoder.marshalDoc("", reflect.ValueOf(v))
-	return nil
-}
-
-// Close closes the encoder by writing any remaining data.
-// It does not write a stream terminating string "...".
-func (e *Encoder) Close() (err error) {
-	defer handleErr(&err)
-	e.encoder.finish()
-	return nil
 }
 
 func handleErr(err *error) {
@@ -296,9 +200,6 @@ type fieldInfo struct {
 	Num       int
 	OmitEmpty bool
 	Flow      bool
-	// Id holds the unique field identifier, so we can cheaply
-	// check for field duplicates without maintaining an extra map.
-	Id int
 
 	// Inline holds the field index if the field is part of an inlined struct.
 	Inline []int
@@ -378,7 +279,6 @@ func getStructInfo(st reflect.Type) (*structInfo, error) {
 					} else {
 						finfo.Inline = append([]int{i}, finfo.Inline...)
 					}
-					finfo.Id = len(fieldsList)
 					fieldsMap[finfo.Key] = finfo
 					fieldsList = append(fieldsList, finfo)
 				}
@@ -400,16 +300,11 @@ func getStructInfo(st reflect.Type) (*structInfo, error) {
 			return nil, errors.New(msg)
 		}
 
-		info.Id = len(fieldsList)
 		fieldsList = append(fieldsList, info)
 		fieldsMap[info.Key] = info
 	}
 
-	sinfo = &structInfo{
-		FieldsMap:  fieldsMap,
-		FieldsList: fieldsList,
-		InlineMap:  inlineMap,
-	}
+	sinfo = &structInfo{fieldsMap, fieldsList, inlineMap}
 
 	fieldMapMutex.Lock()
 	structMap[st] = sinfo
@@ -417,23 +312,8 @@ func getStructInfo(st reflect.Type) (*structInfo, error) {
 	return sinfo, nil
 }
 
-// IsZeroer is used to check whether an object is zero to
-// determine whether it should be omitted when marshaling
-// with the omitempty flag. One notable implementation
-// is time.Time.
-type IsZeroer interface {
-	IsZero() bool
-}
-
 func isZero(v reflect.Value) bool {
-	kind := v.Kind()
-	if z, ok := v.Interface().(IsZeroer); ok {
-		if (kind == reflect.Ptr || kind == reflect.Interface) && v.IsNil() {
-			return true
-		}
-		return z.IsZero()
-	}
-	switch kind {
+	switch v.Kind() {
 	case reflect.String:
 		return len(v.String()) == 0
 	case reflect.Interface, reflect.Ptr:

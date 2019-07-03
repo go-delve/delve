@@ -6,11 +6,11 @@
 package unix
 
 const (
-	SizeofPtr      = 0x8
-	SizeofShort    = 0x2
-	SizeofInt      = 0x4
-	SizeofLong     = 0x8
-	SizeofLongLong = 0x8
+	sizeofPtr      = 0x8
+	sizeofShort    = 0x2
+	sizeofInt      = 0x4
+	sizeofLong     = 0x8
+	sizeofLongLong = 0x8
 )
 
 type (
@@ -57,50 +57,40 @@ type Rlimit struct {
 type _Gid_t uint32
 
 const (
-	_statfsVersion = 0x20140518
-	_dirblksiz     = 0x400
+	S_IFMT   = 0xf000
+	S_IFIFO  = 0x1000
+	S_IFCHR  = 0x2000
+	S_IFDIR  = 0x4000
+	S_IFBLK  = 0x6000
+	S_IFREG  = 0x8000
+	S_IFLNK  = 0xa000
+	S_IFSOCK = 0xc000
+	S_ISUID  = 0x800
+	S_ISGID  = 0x400
+	S_ISVTX  = 0x200
+	S_IRUSR  = 0x100
+	S_IWUSR  = 0x80
+	S_IXUSR  = 0x40
 )
 
 type Stat_t struct {
-	Dev     uint64
-	Ino     uint64
-	Nlink   uint64
-	Mode    uint16
-	_0      int16
-	Uid     uint32
-	Gid     uint32
-	_1      int32
-	Rdev    uint64
-	Atim    Timespec
-	Mtim    Timespec
-	Ctim    Timespec
-	Btim    Timespec
-	Size    int64
-	Blocks  int64
-	Blksize int32
-	Flags   uint32
-	Gen     uint64
-	Spare   [10]uint64
-}
-
-type stat_freebsd11_t struct {
-	Dev     uint32
-	Ino     uint32
-	Mode    uint16
-	Nlink   uint16
-	Uid     uint32
-	Gid     uint32
-	Rdev    uint32
-	Atim    Timespec
-	Mtim    Timespec
-	Ctim    Timespec
-	Size    int64
-	Blocks  int64
-	Blksize int32
-	Flags   uint32
-	Gen     uint32
-	Lspare  int32
-	Btim    Timespec
+	Dev           uint64
+	Ino           uint64
+	Mode          uint16
+	Nlink         uint64
+	Uid           uint32
+	Gid           uint32
+	Rdev          uint64
+	Atimespec     Timespec
+	Mtimespec     Timespec
+	Ctimespec     Timespec
+	Size          int64
+	Blocks        int64
+	Blksize       int32
+	Flags         uint32
+	Gen           uint32
+	Lspare        int32
+	Birthtimespec Timespec
 }
 
 type Statfs_t struct {
@@ -128,31 +118,6 @@ type Statfs_t struct {
 	Mntonname   [1024]int8
 }
 
-type statfs_freebsd11_t struct {
-	Version     uint32
-	Type        uint32
-	Flags       uint64
-	Bsize       uint64
-	Iosize      uint64
-	Blocks      uint64
-	Bfree       uint64
-	Bavail      int64
-	Files       uint64
-	Ffree       int64
-	Syncwrites  uint64
-	Asyncwrites uint64
-	Syncreads   uint64
-	Asyncreads  uint64
-	Spare       [10]uint64
-	Namemax     uint32
-	Owner       uint32
-	Fsid        Fsid
-	Charspare   [80]int8
-	Fstypename  [16]int8
-	Mntfromname [88]int8
-	Mntonname   [88]int8
-}
-
 type Flock_t struct {
 	Start  int64
 	Len    int64
@@ -171,14 +136,6 @@ type Dirent struct {
 	Pad0   uint8
 	Namlen uint16
 	Pad1   uint16
-	Name   [256]int8
-}
-
-type dirent_freebsd11 struct {
-	Fileno uint32
-	Reclen uint16
-	Type   uint8
-	Namlen uint8
 	Name   [256]int8
 }
 
@@ -275,10 +232,8 @@ type IPv6Mreq struct {
 type Msghdr struct {
 	Name       *byte
 	Namelen    uint32
-	_          [4]byte
 	Iov        *Iovec
 	Iovlen     int32
-	_          [4]byte
 	Control    *byte
 	Controllen uint32
 	Flags      int32
@@ -385,7 +340,7 @@ type __Siginfo struct {
 }
 
 type Sigset_t struct {
-	Val [4]uint32
+	_ [4]uint32
 }
 
 type Reg struct {
@@ -428,7 +383,7 @@ type PtraceIoDesc struct {
 	Op   int32
 	Offs *byte
 	Addr *byte
-	Len  uint
+	Len  uint64
 }
 
 type Kevent_t struct {
@@ -438,10 +393,11 @@ type Kevent_t struct {
 	Fflags uint32
 	Data   int64
 	Udata  *byte
+	Ext    [4]uint64
 }
 
 type FdSet struct {
-	Bits [16]uint64
+	_ [16]uint64
 }
 
 const (
@@ -463,7 +419,7 @@ type ifMsghdr struct {
 	Addrs   int32
 	Flags   int32
 	Index   uint16
-	_       [2]byte
+	_       uint16
 	Data    ifData
 }
 
@@ -474,7 +430,6 @@ type IfMsghdr struct {
 	Addrs   int32
 	Flags   int32
 	Index   uint16
-	_       [2]byte
 	Data    IfData
 }
 
@@ -541,7 +496,7 @@ type IfaMsghdr struct {
 	Addrs   int32
 	Flags   int32
 	Index   uint16
-	_       [2]byte
+	_       uint16
 	Metric  int32
 }
 
@@ -552,7 +507,7 @@ type IfmaMsghdr struct {
 	Addrs   int32
 	Flags   int32
 	Index   uint16
-	_       [2]byte
+	_       uint16
 }
 
 type IfAnnounceMsghdr struct {
@@ -569,7 +524,7 @@ type RtMsghdr struct {
 	Version uint8
 	Type    uint8
 	Index   uint16
-	_       [2]byte
+	_       uint16
 	Flags   int32
 	Addrs   int32
 	Pid     int32
@@ -623,7 +578,6 @@ type BpfZbuf struct {
 
 type BpfProgram struct {
 	Len   uint32
-	_     [4]byte
 	Insns *BpfInsn
 }
 
