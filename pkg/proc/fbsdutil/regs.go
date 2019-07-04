@@ -1,11 +1,10 @@
 package fbsdutil
 
 import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
-	"github.com/go-delve/delve/pkg/proc"
 	"golang.org/x/arch/x86/x86asm"
+
+	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
 // AMD64Registers implements the proc.Registers interface for the native/freebsd
@@ -153,9 +152,9 @@ func (r *AMD64Registers) GAddr() (uint64, bool) {
 func (r *AMD64Registers) Get(n int) (uint64, error) {
 	reg := x86asm.Reg(n)
 	const (
-		mask8  = 0x000f
-		mask16 = 0x00ff
-		mask32 = 0xffff
+		mask8  = 0x000000ff
+		mask16 = 0x0000ffff
+		mask32 = 0xffffffff
 	)
 
 	switch reg {
@@ -323,94 +322,12 @@ func (r *AMD64Registers) Copy() proc.Registers {
 	return &rr
 }
 
-// AMD64PtraceFpRegs
-// fits into fpreg from sys/x86/include/reg.h in FreeBSD
-type AMD64PtraceFpRegs struct {
-	Cwd      uint16
-	Swd      uint16
-	Ftw      uint16
-	Fop      uint16
-	Rip      uint64
-	Rdp      uint64
-	Mxcsr    uint32
-	MxcrMask uint32
-	StSpace  [32]uint32
-	XmmSpace [256]byte
-	Padding  [24]uint32
-}
-
-// AMD64Xstate represents amd64 XSAVE area. See Section 13.1 (and
-// following) of Intel® 64 and IA-32 Architectures Software Developer’s
-// Manual, Volume 1: Basic Architecture.
-type AMD64Xstate struct {
-	AMD64PtraceFpRegs
-	Xsave    []byte // raw xsave area
-	AvxState bool   // contains AVX state
-	YmmSpace [256]byte
-}
-
-// Decode decodes an XSAVE area to a list of name/value pairs of registers.
-func (xsave *AMD64Xstate) Decode() (regs []proc.Register) {
-	// x87 registers
-	regs = proc.AppendWordReg(regs, "CW", xsave.Cwd)
-	regs = proc.AppendWordReg(regs, "SW", xsave.Swd)
-	regs = proc.AppendWordReg(regs, "TW", xsave.Ftw)
-	regs = proc.AppendWordReg(regs, "FOP", xsave.Fop)
-	regs = proc.AppendQwordReg(regs, "FIP", xsave.Rip)
-	regs = proc.AppendQwordReg(regs, "FDP", xsave.Rdp)
-
-	for i := 0; i < len(xsave.StSpace); i += 4 {
-		regs = proc.AppendX87Reg(regs, i/4, uint16(xsave.StSpace[i+2]), uint64(xsave.StSpace[i+1])<<32|uint64(xsave.StSpace[i]))
-	}
-
-	// SSE registers
-	regs = proc.AppendMxcsrReg(regs, "MXCSR", uint64(xsave.Mxcsr))
-	regs = proc.AppendDwordReg(regs, "MXCSR_MASK", xsave.MxcrMask)
-
-	for i := 0; i < len(xsave.XmmSpace); i += 16 {
-		regs = proc.AppendSSEReg(regs, fmt.Sprintf("XMM%d", i/16), xsave.XmmSpace[i:i+16])
-		if xsave.AvxState {
-			regs = proc.AppendSSEReg(regs, fmt.Sprintf("YMM%d", i/16), xsave.YmmSpace[i:i+16])
-		}
-	}
-
-	return
-}
-
-const (
-	_XSAVE_HEADER_START          = 512
-	_XSAVE_HEADER_LEN            = 64
-	_XSAVE_EXTENDED_REGION_START = 576
-	_XSAVE_SSE_REGION_LEN        = 416
-)
+type AMD64Xstate linutil.AMD64Xstate
 
 func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate) error {
-	if _XSAVE_HEADER_START+_XSAVE_HEADER_LEN >= len(xstateargs) {
-		return nil
-	}
-	if readLegacy {
-		rdr := bytes.NewReader(xstateargs[:_XSAVE_HEADER_START])
-		if err := binary.Read(rdr, binary.LittleEndian, &regset.AMD64PtraceFpRegs); err != nil {
-			return err
-		}
-	}
-	xsaveheader := xstateargs[_XSAVE_HEADER_START : _XSAVE_HEADER_START+_XSAVE_HEADER_LEN]
-	xstate_bv := binary.LittleEndian.Uint64(xsaveheader[0:8])
-	xcomp_bv := binary.LittleEndian.Uint64(xsaveheader[8:16])
+	return linutil.AMD64XstateRead(xstateargs, readLegacy, (*linutil.AMD64Xstate)(regset))
+}
 
-	if xcomp_bv&(1<<63) != 0 {
-		// compact format not supported
-		return nil
-	}
-
-	if xstate_bv&(1<<2) == 0 {
-		// AVX state not present
-		return nil
-	}
-
-	avxstate := xstateargs[_XSAVE_EXTENDED_REGION_START:]
-	regset.AvxState = true
-	copy(regset.YmmSpace[:], avxstate[:len(regset.YmmSpace)])
-
-	return nil
+func (xsave *AMD64Xstate) Decode() (regs []proc.Register) {
+	return (*linutil.AMD64Xstate).Decode((*linutil.AMD64Xstate)(xsave))
 }

@@ -155,7 +155,6 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 	var err error
 	dbp.execPtraceFunc(func() { err = sys.PtraceLwpEvents(dbp.pid, 1) })
 	if err == syscall.ESRCH {
-		// XXX why do we wait here?
 		if _, _, err = dbp.waitFast(dbp.pid); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding process: %d %s", dbp.pid, err)
 		}

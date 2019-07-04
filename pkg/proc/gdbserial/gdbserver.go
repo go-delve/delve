@@ -1318,18 +1318,12 @@ func (t *Thread) Blocked() bool {
 func (p *Process) loadGInstr() []byte {
 	var op []byte
 	switch p.bi.GOOS {
-	case "windows":
+	case "windows", "darwin", "freebsd":
 		// mov rcx, QWORD PTR gs:{uint32(off)}
 		op = []byte{0x65, 0x48, 0x8b, 0x0c, 0x25}
 	case "linux":
 		// mov rcx,QWORD PTR fs:{uint32(off)}
 		op = []byte{0x64, 0x48, 0x8B, 0x0C, 0x25}
-	case "darwin":
-		// mov rcx,QWORD PTR gs:{uint32(off)}
-		op = []byte{0x65, 0x48, 0x8B, 0x0C, 0x25}
-	case "freebsd":
-		// mov rcx,QWORD PTR gs:{uint32(off)}
-		op = []byte{0x65, 0x48, 0x8B, 0x0C, 0x25}
 	default:
 		panic("unsupported operating system attempting to find Goroutine on Thread")
 	}

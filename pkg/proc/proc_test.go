@@ -4382,6 +4382,9 @@ func testCallConcurrentCheckReturns(p proc.Process, t *testing.T, gid1, gid2 int
 }
 
 func TestCallConcurrent(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture, 24)
