@@ -84,10 +84,6 @@ func New(client service.Client, conf *config.Config) *Term {
 		w = getColorableWriter()
 	}
 
-	if client != nil {
-		client.SetReturnValuesLoadConfig(&LongLoadConfig)
-	}
-
 	if (conf.SourceListLineColor > ansiWhite &&
 		conf.SourceListLineColor < ansiBrBlack) ||
 		conf.SourceListLineColor < ansiBlack ||
@@ -103,6 +99,11 @@ func New(client service.Client, conf *config.Config) *Term {
 		cmds:   cmds,
 		dumb:   dumb,
 		stdout: w,
+	}
+
+	if client != nil {
+		lcfg := t.loadConfig()
+		client.SetReturnValuesLoadConfig(&lcfg)
 	}
 
 	t.starlarkEnv = starbind.New(starlarkContext{t})
