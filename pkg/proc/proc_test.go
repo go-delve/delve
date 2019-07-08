@@ -4410,3 +4410,11 @@ func TestPluginStepping(t *testing.T) {
 		{contNext, "plugin2.go:26"},
 		{contNext, "plugintest2.go:42"}})
 }
+
+func TestIssue1601(t *testing.T) {
+	//Tests that recursive types involving C qualifiers and typedefs are parsed correctly
+	withTestProcess("issue1601", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue")
+		evalVariable(p, t, "C.globalq")
+	})
+}
