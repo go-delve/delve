@@ -289,7 +289,7 @@ func decorateError(thread *starlark.Thread, err error) error {
 	if err == nil {
 		return nil
 	}
-	pos := thread.Caller().Position()
+	pos := thread.CallFrame(1).Pos
 	if pos.Col > 0 {
 		return fmt.Errorf("%s:%d:%d: %v", pos.Filename(), pos.Line, pos.Col, err)
 	}
