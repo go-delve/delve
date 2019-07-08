@@ -8,14 +8,18 @@
 //   - an stack of active iterators.
 //   - an array of local variables.
 //     The number of local variables and their indices are computed by the resolver.
+//     Locals (possibly including parameters) that are shared with nested functions
+//     are 'cells': their locals array slot will contain a value of type 'cell',
+//     an indirect value in a box that is explicitly read/updated by instructions.
 //   - an array of free variables, for nested functions.
-//     As with locals, these are computed by the resolver.
+//     Free variables are a subset of the ancestors' cell variables.
+//     As with locals and cells, these are computed by the resolver.
 //   - an array of global variables, shared among all functions in the same module.
 //     All elements are initially nil.
 //   - two maps of predeclared and universal identifiers.
 //
-// A line number table maps each program counter value to a source position;
-// these source positions do not currently record column information.
+// Each function has a line number table that maps each program counter
+// offset to a source position, including the column number.
 //
 // Operands, logically uint32s, are encoded using little-endian 7-bit
 // varints, the top bit indicating that more bytes follow.
@@ -29,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 
 	"go.starlark.net/resolve"
 	"go.starlark.net/syntax"
@@ -37,7 +42,7 @@ import (
 const debug = false // TODO(adonovan): use a bitmap of options; and regexp to match files
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 7
+const Version = 10
 
 type Opcode uint8
 
@@ -90,18 +95,20 @@ const (
 	FALSE     // - FALSE False
 	MANDATORY // - MANDATORY Mandatory	     [sentinel value for required kwonly args]
 
-	ITERPUSH    //       iterable ITERPUSH -     [pushes the iterator stack]
-	ITERPOP     //              - ITERPOP -      [pops the iterator stack]
-	NOT         //          value NOT bool
-	RETURN      //          value RETURN -
-	SETINDEX    //        a i new SETINDEX -
-	INDEX       //            a i INDEX elem
-	SETDICT     // dict key value SETDICT -
+	ITERPUSH    //       iterable ITERPUSH    -  [pushes the iterator stack]
+	ITERPOP     //              - ITERPOP     -    [pops the iterator stack]
+	NOT         //          value NOT         bool
+	RETURN      //          value RETURN      -
+	SETINDEX    //        a i new SETINDEX    -
+	INDEX       //            a i INDEX       elem
+	SETDICT     // dict key value SETDICT     -
 	SETDICTUNIQ // dict key value SETDICTUNIQ -
-	APPEND      //      list elem APPEND -
-	SLICE       //   x lo hi step SLICE slice
+	APPEND      //      list elem APPEND      -
+	SLICE       //   x lo hi step SLICE       slice
 	INPLACE_ADD //            x y INPLACE_ADD z      where z is x+y or x.extend(y)
-	MAKEDICT    //              - MAKEDICT dict
+	MAKEDICT    //              - MAKEDICT    dict
+	SETCELL     //     value cell SETCELL     -
+	CELL        //           cell CELL        value
 
 	// --- opcodes with an argument must go below this line ---
 
@@ -114,12 +121,12 @@ const (
 	CONSTANT    //                 - CONSTANT<constant>  value
 	MAKETUPLE   //         x1 ... xn MAKETUPLE<n>        tuple
 	MAKELIST    //         x1 ... xn MAKELIST<n>         list
-	MAKEFUNC    // defaults freevars MAKEFUNC<func>      fn
+	MAKEFUNC    // defaults+freevars MAKEFUNC<func>      fn
 	LOAD        //   from1 ... fromN module LOAD<n>      v1 ... vN
 	SETLOCAL    //             value SETLOCAL<local>     -
 	SETGLOBAL   //             value SETGLOBAL<global>   -
 	LOCAL       //                 - LOCAL<local>        value
-	FREE        //                 - FREE<freevar>       value
+	FREE        //                 - FREE<freevar>       cell
 	GLOBAL      //                 - GLOBAL<global>      value
 	PREDECLARED //                 - PREDECLARED<name>   value
 	UNIVERSAL   //                 - UNIVERSAL<name>     value
@@ -147,6 +154,7 @@ var opcodeNames = [...]string{
 	CALL_KW:     "call_kw ",
 	CALL_VAR:    "call_var",
 	CALL_VAR_KW: "call_var_kw",
+	CELL:        "cell",
 	CIRCUMFLEX:  "circumflex",
 	CJMP:        "cjmp",
 	CONSTANT:    "constant",
@@ -188,6 +196,7 @@ var opcodeNames = [...]string{
 	POP:         "pop",
 	PREDECLARED: "predeclared",
 	RETURN:      "return",
+	SETCELL:     "setcell",
 	SETDICT:     "setdict",
 	SETDICTUNIQ: "setdictuniq",
 	SETFIELD:    "setfield",
@@ -218,6 +227,7 @@ var stackEffect = [...]int8{
 	CALL_KW:     variableStackEffect,
 	CALL_VAR:    variableStackEffect,
 	CALL_VAR_KW: variableStackEffect,
+	CELL:        0,
 	CIRCUMFLEX:  -1,
 	CJMP:        -1,
 	CONSTANT:    +1,
@@ -243,7 +253,7 @@ var stackEffect = [...]int8{
 	LT:          -1,
 	LTLT:        -1,
 	MAKEDICT:    +1,
-	MAKEFUNC:    -1,
+	MAKEFUNC:    0,
 	MAKELIST:    variableStackEffect,
 	MAKETUPLE:   variableStackEffect,
 	MANDATORY:   +1,
@@ -258,6 +268,7 @@ var stackEffect = [...]int8{
 	POP:         -1,
 	PREDECLARED: +1,
 	RETURN:      -1,
+	SETCELL:     -2,
 	SETDICT:     -3,
 	SETDICTUNIQ: -3,
 	SETFIELD:    -2,
@@ -286,20 +297,20 @@ func (op Opcode) String() string {
 
 // A Program is a Starlark file in executable form.
 //
-// Programs are serialized by the gobProgram function,
+// Programs are serialized by the Program.Encode method,
 // which must be updated whenever this declaration is changed.
 type Program struct {
-	Loads     []Ident       // name (really, string) and position of each load stmt
+	Loads     []Binding     // name (really, string) and position of each load stmt
 	Names     []string      // names of attributes and predeclared variables
 	Constants []interface{} // = string | int64 | float64 | *big.Int
 	Functions []*Funcode
-	Globals   []Ident  // for error messages and tracing
-	Toplevel  *Funcode // module initialization function
+	Globals   []Binding // for error messages and tracing
+	Toplevel  *Funcode  // module initialization function
 }
 
 // A Funcode is the code of a compiled Starlark function.
 //
-// Funcodes are serialized by the gobFunc function,
+// Funcodes are serialized by the encoder.function method,
 // which must be updated whenever this declaration is changed.
 type Funcode struct {
 	Prog                  *Program
@@ -308,16 +319,27 @@ type Funcode struct {
 	Doc                   string          // docstring of this function
 	Code                  []byte          // the byte code
 	pclinetab             []uint16        // mapping from pc to linenum
-	Locals                []Ident         // locals, parameters first
-	Freevars              []Ident         // for tracing
+	Locals                []Binding       // locals, parameters first
+	Cells                 []int           // indices of Locals that require cells
+	Freevars              []Binding       // for tracing
 	MaxStack              int
 	NumParams             int
 	NumKwonlyParams       int
 	HasVarargs, HasKwargs bool
+
+	// -- transient state --
+
+	lntOnce sync.Once
+	lnt     []pclinecol // decoded line number table
 }
 
-// An Ident is the name and position of an identifier.
-type Ident struct {
+type pclinecol struct {
+	pc        uint32
+	line, col int32
+}
+
+// A Binding is the name and position of a binding identifier.
+type Binding struct {
 	Name string
 	Pos  syntax.Position
 }
@@ -362,67 +384,105 @@ type block struct {
 }
 
 type insn struct {
-	op   Opcode
-	arg  uint32
-	line int32
+	op        Opcode
+	arg       uint32
+	line, col int32
 }
 
+// Position returns the source position for program counter pc.
 func (fn *Funcode) Position(pc uint32) syntax.Position {
-	// Conceptually the table contains rows of the form (pc uint32,
-	// line int32).  Since the pc always increases, usually by a
-	// small amount, and the line number typically also does too
-	// although it may decrease, again typically by a small amount,
-	// we use delta encoding, starting from {pc: 0, line: 0}.
-	//
-	// Each entry is encoded in 16 bits.
-	// The top 8 bits are the unsigned delta pc; the next 7 bits are
-	// the signed line number delta; and the bottom bit indicates
-	// that more rows follow because one of the deltas was maxed out.
-	//
-	// TODO(adonovan): opt: improve the encoding; include the column.
+	fn.lntOnce.Do(fn.decodeLNT)
+
+	// Binary search to find last LNT entry not greater than pc.
+	// To avoid dynamic dispatch, this is a specialization of
+	// sort.Search using this predicate:
+	//   !(i < len(fn.lnt)-1 && fn.lnt[i+1].pc <= pc)
+	n := len(fn.lnt)
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1)
+		if !(h >= n-1 || fn.lnt[h+1].pc > pc) {
+			i = h + 1
+		} else {
+			j = h
+		}
+	}
+
+	var line, col int32
+	if i < n {
+		line = fn.lnt[i].line
+		col = fn.lnt[i].col
+	}
 
 	pos := fn.Pos // copy the (annoyingly inaccessible) filename
-	pos.Line = 0
-	pos.Col = 0
-
-	// Position returns the record for the
-	// largest PC value not greater than 'pc'.
-	var prevpc uint32
-	complete := true
-	for _, x := range fn.pclinetab {
-		nextpc := prevpc + uint32(x>>8)
-		if complete && nextpc > pc {
-			return pos
-		}
-		prevpc = nextpc
-		pos.Line += int32(int8(x) >> 1) // sign extend Δline from 7 to 32 bits
-		complete = (x & 1) == 0
-	}
+	pos.Col = col
+	pos.Line = line
 	return pos
 }
 
-// idents convert syntactic identifiers to compiled form.
-func idents(ids []*syntax.Ident) []Ident {
-	res := make([]Ident, len(ids))
-	for i, id := range ids {
-		res[i].Name = id.Name
-		res[i].Pos = id.NamePos
+// decodeLNT decodes the line number table and populates fn.lnt.
+// It is called at most once.
+func (fn *Funcode) decodeLNT() {
+	// Conceptually the table contains rows of the form
+	// (pc uint32, line int32, col int32), sorted by pc.
+	// We use a delta encoding, since the differences
+	// between successive pc, line, and column values
+	// are typically small and positive (though line and
+	// especially column differences may be negative).
+	// The delta encoding starts from
+	// {pc: 0, line: fn.Pos.Line, col: fn.Pos.Col}.
+	//
+	// Each entry is packed into one or more 16-bit values:
+	//    Δpc        uint4
+	//    Δline      int5
+	//    Δcol       int6
+	//    incomplete uint1
+	// The top 4 bits are the unsigned delta pc.
+	// The next 5 bits are the signed line number delta.
+	// The next 6 bits are the signed column number delta.
+	// The bottom bit indicates that more rows follow because
+	// one of the deltas was maxed out.
+	// These field widths were chosen from a sample of real programs,
+	// and allow >97% of rows to be encoded in a single uint16.
+
+	fn.lnt = make([]pclinecol, 0, len(fn.pclinetab)) // a minor overapproximation
+	entry := pclinecol{
+		pc:   0,
+		line: fn.Pos.Line,
+		col:  fn.Pos.Col,
+	}
+	for _, x := range fn.pclinetab {
+		entry.pc += uint32(x) >> 12
+		entry.line += int32((int16(x) << 4) >> (16 - 5)) // sign extend Δline
+		entry.col += int32((int16(x) << 9) >> (16 - 6))  // sign extend Δcol
+		if (x & 1) == 0 {
+			fn.lnt = append(fn.lnt, entry)
+		}
+	}
+}
+
+// bindings converts resolve.Bindings to compiled form.
+func bindings(bindings []*resolve.Binding) []Binding {
+	res := make([]Binding, len(bindings))
+	for i, bind := range bindings {
+		res[i].Name = bind.First.Name
+		res[i].Pos = bind.First.NamePos
 	}
 	return res
 }
 
-// Expr compiles an expression to a program consisting of a single toplevel function.
-func Expr(expr syntax.Expr, name string, locals []*syntax.Ident) *Funcode {
+// Expr compiles an expression to a program whose toplevel function evaluates it.
+func Expr(expr syntax.Expr, name string, locals []*resolve.Binding) *Program {
 	pos := syntax.Start(expr)
 	stmts := []syntax.Stmt{&syntax.ReturnStmt{Result: expr}}
-	return File(stmts, pos, name, locals, nil).Toplevel
+	return File(stmts, pos, name, locals, nil)
 }
 
 // File compiles the statements of a file into a program.
-func File(stmts []syntax.Stmt, pos syntax.Position, name string, locals, globals []*syntax.Ident) *Program {
+func File(stmts []syntax.Stmt, pos syntax.Position, name string, locals, globals []*resolve.Binding) *Program {
 	pcomp := &pcomp{
 		prog: &Program{
-			Globals: idents(globals),
+			Globals: bindings(globals),
 		},
 		names:     make(map[string]uint32),
 		constants: make(map[interface{}]uint32),
@@ -433,7 +493,7 @@ func File(stmts []syntax.Stmt, pos syntax.Position, name string, locals, globals
 	return pcomp.prog
 }
 
-func (pcomp *pcomp) function(name string, pos syntax.Position, stmts []syntax.Stmt, locals, freevars []*syntax.Ident) *Funcode {
+func (pcomp *pcomp) function(name string, pos syntax.Position, stmts []syntax.Stmt, locals, freevars []*resolve.Binding) *Funcode {
 	fcomp := &fcomp{
 		pcomp: pcomp,
 		pos:   pos,
@@ -442,9 +502,16 @@ func (pcomp *pcomp) function(name string, pos syntax.Position, stmts []syntax.St
 			Pos:      pos,
 			Name:     name,
 			Doc:      docStringFromBody(stmts),
-			Locals:   idents(locals),
-			Freevars: idents(freevars),
+			Locals:   bindings(locals),
+			Freevars: bindings(freevars),
 		},
+	}
+
+	// Record indices of locals that require cells.
+	for i, local := range locals {
+		if local.Scope == resolve.Cell {
+			fcomp.fn.Cells = append(fcomp.fn.Cells, i)
+		}
 	}
 
 	if debug {
@@ -652,9 +719,10 @@ func (insn *insn) stackeffect() int {
 func (fcomp *fcomp) generate(blocks []*block, codelen uint32) {
 	code := make([]byte, 0, codelen)
 	var pclinetab []uint16
-	var prev struct {
-		pc   uint32
-		line int32
+	prev := pclinecol{
+		pc:   0,
+		line: fcomp.fn.Pos.Line,
+		col:  fcomp.fn.Pos.Col,
 	}
 
 	for _, b := range blocks {
@@ -669,24 +737,29 @@ func (fcomp *fcomp) generate(blocks []*block, codelen uint32) {
 				for {
 					var incomplete uint16
 
+					// Δpc, uint4
 					deltapc := pc - prev.pc
-					if deltapc > 0xff {
-						deltapc = 0xff
+					if deltapc > 0x0f {
+						deltapc = 0x0f
 						incomplete = 1
 					}
 					prev.pc += deltapc
 
-					deltaline := insn.line - prev.line
-					if deltaline > 0x3f {
-						deltaline = 0x3f
-						incomplete = 1
-					} else if deltaline < -0x40 {
-						deltaline = -0x40
+					// Δline, int5
+					deltaline, ok := clip(insn.line-prev.line, -0x10, 0x0f)
+					if !ok {
 						incomplete = 1
 					}
 					prev.line += deltaline
 
-					entry := uint16(deltapc<<8) | uint16(uint8(deltaline<<1)) | incomplete
+					// Δcol, int6
+					deltacol, ok := clip(insn.col-prev.col, -0x20, 0x1f)
+					if !ok {
+						incomplete = 1
+					}
+					prev.col += deltacol
+
+					entry := uint16(deltapc<<12) | uint16(deltaline&0x1f)<<7 | uint16(deltacol&0x3f)<<1 | incomplete
 					pclinetab = append(pclinetab, entry)
 					if incomplete == 0 {
 						break
@@ -729,6 +802,18 @@ func (fcomp *fcomp) generate(blocks []*block, codelen uint32) {
 
 	fcomp.fn.pclinetab = pclinetab
 	fcomp.fn.Code = code
+}
+
+// clip returns the value nearest x in the range [min...max],
+// and whether it equals x.
+func clip(x, min, max int32) (int32, bool) {
+	if x > max {
+		return max, false
+	} else if x < min {
+		return min, false
+	} else {
+		return x, true
+	}
 }
 
 // addUint32 encodes x as 7-bit little-endian varint.
@@ -809,9 +894,10 @@ func (fcomp *fcomp) emit(op Opcode) {
 	if op >= OpcodeArgMin {
 		panic("missing arg: " + op.String())
 	}
-	insn := insn{op: op, line: fcomp.pos.Line}
+	insn := insn{op: op, line: fcomp.pos.Line, col: fcomp.pos.Col}
 	fcomp.block.insns = append(fcomp.block.insns, insn)
 	fcomp.pos.Line = 0
+	fcomp.pos.Col = 0
 }
 
 // emit1 emits an instruction with an immediate operand.
@@ -819,9 +905,10 @@ func (fcomp *fcomp) emit1(op Opcode, arg uint32) {
 	if op < OpcodeArgMin {
 		panic("unwanted arg: " + op.String())
 	}
-	insn := insn{op: op, arg: arg, line: fcomp.pos.Line}
+	insn := insn{op: op, arg: arg, line: fcomp.pos.Line, col: fcomp.pos.Col}
 	fcomp.block.insns = append(fcomp.block.insns, insn)
 	fcomp.pos.Line = 0
+	fcomp.pos.Col = 0
 }
 
 // jump emits a jump to the specified block.
@@ -896,36 +983,48 @@ func (fcomp *fcomp) setPos(pos syntax.Position) {
 }
 
 // set emits code to store the top-of-stack value
-// to the specified local or global variable.
+// to the specified local, cell, or global variable.
 func (fcomp *fcomp) set(id *syntax.Ident) {
-	switch resolve.Scope(id.Scope) {
+	bind := id.Binding.(*resolve.Binding)
+	switch bind.Scope {
 	case resolve.Local:
-		fcomp.emit1(SETLOCAL, uint32(id.Index))
+		fcomp.emit1(SETLOCAL, uint32(bind.Index))
+	case resolve.Cell:
+		// TODO(adonovan): opt: make a single op for LOCAL<n>, SETCELL.
+		fcomp.emit1(LOCAL, uint32(bind.Index))
+		fcomp.emit(SETCELL)
 	case resolve.Global:
-		fcomp.emit1(SETGLOBAL, uint32(id.Index))
+		fcomp.emit1(SETGLOBAL, uint32(bind.Index))
 	default:
-		log.Fatalf("%s: set(%s): neither global nor local (%d)", id.NamePos, id.Name, id.Scope)
+		log.Fatalf("%s: set(%s): not global/local/cell (%d)", id.NamePos, id.Name, bind.Scope)
 	}
 }
 
 // lookup emits code to push the value of the specified variable.
 func (fcomp *fcomp) lookup(id *syntax.Ident) {
-	switch resolve.Scope(id.Scope) {
+	bind := id.Binding.(*resolve.Binding)
+	if bind.Scope != resolve.Universal { // (universal lookup can't fail)
+		fcomp.setPos(id.NamePos)
+	}
+	switch bind.Scope {
 	case resolve.Local:
-		fcomp.setPos(id.NamePos)
-		fcomp.emit1(LOCAL, uint32(id.Index))
+		fcomp.emit1(LOCAL, uint32(bind.Index))
 	case resolve.Free:
-		fcomp.emit1(FREE, uint32(id.Index))
+		// TODO(adonovan): opt: make a single op for FREE<n>, CELL.
+		fcomp.emit1(FREE, uint32(bind.Index))
+		fcomp.emit(CELL)
+	case resolve.Cell:
+		// TODO(adonovan): opt: make a single op for LOCAL<n>, CELL.
+		fcomp.emit1(LOCAL, uint32(bind.Index))
+		fcomp.emit(CELL)
 	case resolve.Global:
-		fcomp.setPos(id.NamePos)
-		fcomp.emit1(GLOBAL, uint32(id.Index))
+		fcomp.emit1(GLOBAL, uint32(bind.Index))
 	case resolve.Predeclared:
-		fcomp.setPos(id.NamePos)
 		fcomp.emit1(PREDECLARED, fcomp.pcomp.nameIndex(id.Name))
 	case resolve.Universal:
 		fcomp.emit1(UNIVERSAL, fcomp.pcomp.nameIndex(id.Name))
 	default:
-		log.Fatalf("%s: compiler.lookup(%s): scope = %d", id.NamePos, id.Name, id.Scope)
+		log.Fatalf("%s: compiler.lookup(%s): scope = %d", id.NamePos, id.Name, bind.Scope)
 	}
 }
 
@@ -1050,7 +1149,7 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 		}
 
 	case *syntax.DefStmt:
-		fcomp.function(stmt.Def, stmt.Name.Name, &stmt.Function)
+		fcomp.function(stmt.Function.(*resolve.Function))
 		fcomp.set(stmt.Name)
 
 	case *syntax.ForStmt:
@@ -1108,7 +1207,7 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 			fcomp.string(stmt.From[i].Name)
 		}
 		module := stmt.Module.Value.(string)
-		fcomp.pcomp.prog.Loads = append(fcomp.pcomp.prog.Loads, Ident{
+		fcomp.pcomp.prog.Loads = append(fcomp.pcomp.prog.Loads, Binding{
 			Name: module,
 			Pos:  stmt.Module.TokenPos,
 		})
@@ -1116,7 +1215,7 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 		fcomp.setPos(stmt.Load)
 		fcomp.emit1(LOAD, uint32(len(stmt.From)))
 		for i := range stmt.To {
-			fcomp.emit1(SETGLOBAL, uint32(stmt.To[len(stmt.To)-1-i].Index))
+			fcomp.set(stmt.To[len(stmt.To)-1-i])
 		}
 
 	default:
@@ -1329,7 +1428,7 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		fcomp.call(e)
 
 	case *syntax.LambdaExpr:
-		fcomp.function(e.Lambda, "lambda", &e.Function)
+		fcomp.function(e.Function.(*resolve.Function))
 
 	default:
 		start, _ := e.Span()
@@ -1678,41 +1777,51 @@ func (fcomp *fcomp) comprehension(comp *syntax.Comprehension, clauseIndex int) {
 	log.Fatalf("%s: unexpected comprehension clause %T", start, clause)
 }
 
-func (fcomp *fcomp) function(pos syntax.Position, name string, f *syntax.Function) {
-	// Evalution of the elements of both MAKETUPLEs may fail,
-	// so record the position.
-	fcomp.setPos(pos)
+func (fcomp *fcomp) function(f *resolve.Function) {
+	// Evaluation of the defaults may fail, so record the position.
+	fcomp.setPos(f.Pos)
+
+	// To reduce allocation, we emit a combined tuple
+	// for the defaults and the freevars.
+	// The function knows where to split it at run time.
 
 	// Generate tuple of parameter defaults. For:
 	//  def f(p1, p2=dp2, p3=dp3, *, k1, k2=dk2, k3, **kwargs)
 	// the tuple is:
 	//  (dp2, dp3, MANDATORY, dk2, MANDATORY).
-	n := 0
+	ndefaults := 0
 	seenStar := false
 	for _, param := range f.Params {
 		switch param := param.(type) {
 		case *syntax.BinaryExpr:
 			fcomp.expr(param.Y)
-			n++
+			ndefaults++
 		case *syntax.UnaryExpr:
 			seenStar = true // * or *args (also **kwargs)
 		case *syntax.Ident:
 			if seenStar {
 				fcomp.emit(MANDATORY)
-				n++
+				ndefaults++
 			}
 		}
 	}
-	fcomp.emit1(MAKETUPLE, uint32(n))
 
-	// Capture the values of the function's
+	// Capture the cells of the function's
 	// free variables from the lexical environment.
 	for _, freevar := range f.FreeVars {
-		fcomp.lookup(freevar)
+		// Don't call fcomp.lookup because we want
+		// the cell itself, not its content.
+		switch freevar.Scope {
+		case resolve.Free:
+			fcomp.emit1(FREE, uint32(freevar.Index))
+		case resolve.Cell:
+			fcomp.emit1(LOCAL, uint32(freevar.Index))
+		}
 	}
-	fcomp.emit1(MAKETUPLE, uint32(len(f.FreeVars)))
 
-	funcode := fcomp.pcomp.function(name, pos, f.Body, f.Locals, f.FreeVars)
+	fcomp.emit1(MAKETUPLE, uint32(ndefaults+len(f.FreeVars)))
+
+	funcode := fcomp.pcomp.function(f.Name, f.Pos, f.Body, f.Locals, f.FreeVars)
 
 	if debug {
 		// TODO(adonovan): do compilations sequentially not as a tree,

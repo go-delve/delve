@@ -39,10 +39,10 @@ func Walk(n Node, f func(Node) bool) {
 
 	case *DefStmt:
 		Walk(n.Name, f)
-		for _, param := range n.Function.Params {
+		for _, param := range n.Params {
 			Walk(param, f)
 		}
-		walkStmts(n.Function.Body, f)
+		walkStmts(n.Body, f)
 
 	case *ForStmt:
 		Walk(n.Vars, f)
@@ -144,10 +144,10 @@ func Walk(n Node, f func(Node) bool) {
 		}
 
 	case *LambdaExpr:
-		for _, param := range n.Function.Params {
+		for _, param := range n.Params {
 			Walk(param, f)
 		}
-		walkStmts(n.Function.Body, f)
+		Walk(n.Body, f)
 
 	default:
 		panic(n)
