@@ -5,7 +5,6 @@
 package starlark
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,6 +13,7 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -30,8 +30,8 @@ type Thread struct {
 	// Name is an optional name that describes the thread, for debugging.
 	Name string
 
-	// frame is the current Starlark execution frame.
-	frame *Frame
+	// stack is the stack of (internal) call frames.
+	stack []*frame
 
 	// Print is the client-supplied implementation of the Starlark
 	// 'print' function. If nil, fmt.Fprintln(os.Stderr, msg) is
@@ -49,6 +49,9 @@ type Thread struct {
 	// locals holds arbitrary "thread-local" Go values belonging to the client.
 	// They are accessible to the client but not to any Starlark program.
 	locals map[string]interface{}
+
+	// proftime holds the accumulated execution time since the last profile event.
+	proftime time.Duration
 }
 
 // SetLocal sets the thread-local value associated with the specified key.
@@ -65,12 +68,30 @@ func (thread *Thread) Local(key string) interface{} {
 	return thread.locals[key]
 }
 
-// Caller returns the frame of the caller of the current function.
+// CallFrame returns a copy of the specified frame of the callstack.
 // It should only be used in built-ins called from Starlark code.
-func (thread *Thread) Caller() *Frame { return thread.frame.parent }
+// Depth 0 means the frame of the built-in itself, 1 is its caller, and so on.
+//
+// It is equivalent to CallStack().At(depth), but more efficient.
+func (thread *Thread) CallFrame(depth int) CallFrame {
+	return thread.frameAt(depth).asCallFrame()
+}
 
-// TopFrame returns the topmost stack frame.
-func (thread *Thread) TopFrame() *Frame { return thread.frame }
+func (thread *Thread) frameAt(depth int) *frame {
+	return thread.stack[len(thread.stack)-1-depth]
+}
+
+// CallStack returns a new slice containing the thread's stack of call frames.
+func (thread *Thread) CallStack() CallStack {
+	frames := make([]CallFrame, len(thread.stack))
+	for i, fr := range thread.stack {
+		frames[i] = fr.asCallFrame()
+	}
+	return frames
+}
+
+// CallStackDepth returns the number of frames in the current call stack.
+func (thread *Thread) CallStackDepth() int { return len(thread.stack) }
 
 // A StringDict is a mapping from names to values, and represents
 // an environment such as the global variables of a module.
@@ -88,14 +109,14 @@ func (d StringDict) Keys() []string {
 }
 
 func (d StringDict) String() string {
-	var buf bytes.Buffer
+	buf := new(strings.Builder)
 	buf.WriteByte('{')
 	sep := ""
 	for _, name := range d.Keys() {
 		buf.WriteString(sep)
 		buf.WriteString(name)
 		buf.WriteString(": ")
-		writeValue(&buf, d[name], nil)
+		writeValue(buf, d[name], nil)
 		sep = ", "
 	}
 	buf.WriteByte('}')
@@ -111,63 +132,85 @@ func (d StringDict) Freeze() {
 // Has reports whether the dictionary contains the specified key.
 func (d StringDict) Has(key string) bool { _, ok := d[key]; return ok }
 
-// A Frame records a call to a Starlark function (including module toplevel)
+// A frame records a call to a Starlark function (including module toplevel)
 // or a built-in function or method.
-type Frame struct {
-	parent   *Frame          // caller's frame (or nil)
-	callable Callable        // current function (or toplevel) or built-in
-	posn     syntax.Position // source position of PC, set during error
-	callpc   uint32          // PC of position of active call, set during call
-	locals   []Value         // local variables, for debugger
-}
-
-// NewFrame returns a new frame with the specified parent and callable.
-//
-// It may be used to synthesize stack frames for error messages.
-// Few clients should need to use this function.
-func NewFrame(parent *Frame, callable Callable) *Frame {
-	return &Frame{parent: parent, callable: callable}
-}
-
-// The Frames of a thread are structured as a spaghetti stack, not a
-// slice, so that an EvalError can copy a stack efficiently and immutably.
-// In hindsight using a slice would have led to a more convenient API.
-
-func (fr *Frame) errorf(posn syntax.Position, format string, args ...interface{}) *EvalError {
-	fr.posn = posn
-	msg := fmt.Sprintf(format, args...)
-	return &EvalError{Msg: msg, Frame: fr}
+type frame struct {
+	callable  Callable // current function (or toplevel) or built-in
+	pc        uint32   // program counter (Starlark frames only)
+	locals    []Value  // local variables (Starlark frames only)
+	spanStart int64    // start time of current profiler span
 }
 
 // Position returns the source position of the current point of execution in this frame.
-func (fr *Frame) Position() syntax.Position {
-	if fr.posn.IsValid() {
-		return fr.posn // leaf frame only (the error)
-	}
+func (fr *frame) Position() syntax.Position {
 	switch c := fr.callable.(type) {
 	case *Function:
 		// Starlark function
-		return c.funcode.Position(fr.callpc) // position of active call
-	case interface{ Position() syntax.Position }:
+		return c.funcode.Position(fr.pc)
+	case callableWithPosition:
 		// If a built-in Callable defines
 		// a Position method, use it.
 		return c.Position()
 	}
-	return syntax.MakePosition(&builtinFilename, 1, 0)
+	return syntax.MakePosition(&builtinFilename, 0, 0)
 }
 
 var builtinFilename = "<builtin>"
 
 // Function returns the frame's function or built-in.
-func (fr *Frame) Callable() Callable { return fr.callable }
+func (fr *frame) Callable() Callable { return fr.callable }
 
-// Parent returns the frame of the enclosing function call, if any.
-func (fr *Frame) Parent() *Frame { return fr.parent }
+// A CallStack is a stack of call frames, outermost first.
+type CallStack []CallFrame
 
-// An EvalError is a Starlark evaluation error and its associated call stack.
+// At returns a copy of the frame at depth i.
+// At(0) returns the topmost frame.
+func (stack CallStack) At(i int) CallFrame { return stack[len(stack)-1-i] }
+
+// Pop removes and returns the topmost frame.
+func (stack *CallStack) Pop() CallFrame {
+	last := len(*stack) - 1
+	top := (*stack)[last]
+	*stack = (*stack)[:last]
+	return top
+}
+
+// String returns a user-friendly description of the stack.
+func (stack CallStack) String() string {
+	out := new(strings.Builder)
+	fmt.Fprintf(out, "Traceback (most recent call last):\n")
+	for _, fr := range stack {
+		fmt.Fprintf(out, "  %s: in %s\n", fr.Pos, fr.Name)
+	}
+	return out.String()
+}
+
+// An EvalError is a Starlark evaluation error and
+// a copy of the thread's stack at the moment of the error.
 type EvalError struct {
-	Msg   string
-	Frame *Frame
+	Msg       string
+	CallStack CallStack
+}
+
+// A CallFrame represents the function name and current
+// position of execution of an enclosing call frame.
+type CallFrame struct {
+	Name string
+	Pos  syntax.Position
+}
+
+func (fr *frame) asCallFrame() CallFrame {
+	return CallFrame{
+		Name: fr.Callable().Name(),
+		Pos:  fr.Position(),
+	}
+}
+
+func (thread *Thread) evalError(err error) *EvalError {
+	return &EvalError{
+		Msg:       err.Error(),
+		CallStack: thread.CallStack(),
+	}
 }
 
 func (e *EvalError) Error() string { return e.Msg }
@@ -175,32 +218,7 @@ func (e *EvalError) Error() string { return e.Msg }
 // Backtrace returns a user-friendly error message describing the stack
 // of calls that led to this error.
 func (e *EvalError) Backtrace() string {
-	var buf bytes.Buffer
-	e.Frame.WriteBacktrace(&buf)
-	fmt.Fprintf(&buf, "Error: %s", e.Msg)
-	return buf.String()
-}
-
-// WriteBacktrace writes a user-friendly description of the stack to buf.
-func (fr *Frame) WriteBacktrace(out *bytes.Buffer) {
-	fmt.Fprintf(out, "Traceback (most recent call last):\n")
-	var print func(fr *Frame)
-	print = func(fr *Frame) {
-		if fr != nil {
-			print(fr.parent)
-			fmt.Fprintf(out, "  %s: in %s\n", fr.Position(), fr.Callable().Name())
-		}
-	}
-	print(fr)
-}
-
-// Stack returns the stack of frames, innermost first.
-func (e *EvalError) Stack() []*Frame {
-	var stack []*Frame
-	for fr := e.Frame; fr != nil; fr = fr.parent {
-		stack = append(stack, fr)
-	}
-	return stack
+	return fmt.Sprintf("%sError: %s", e.CallStack, e.Msg)
 }
 
 // A Program is a compiled Starlark program.
@@ -311,7 +329,8 @@ func FileProgram(f *syntax.File, isPredeclared func(string) bool) (*Program, err
 		pos = syntax.MakePosition(&f.Path, 1, 1)
 	}
 
-	compiled := compile.File(f.Stmts, pos, "<toplevel>", f.Locals, f.Globals)
+	module := f.Module.(*resolve.Module)
+	compiled := compile.File(f.Stmts, pos, "<toplevel>", module.Locals, module.Globals)
 
 	return &Program{compiled}, nil
 }
@@ -334,7 +353,7 @@ func CompiledProgram(in io.Reader) (*Program, error) {
 // executes the toplevel code of the specified program,
 // and returns a new, unfrozen dictionary of the globals.
 func (prog *Program) Init(thread *Thread, predeclared StringDict) (StringDict, error) {
-	toplevel := makeToplevelFunction(prog.compiled.Toplevel, predeclared)
+	toplevel := makeToplevelFunction(prog.compiled, predeclared)
 
 	_, err := Call(thread, toplevel, nil, nil)
 
@@ -343,10 +362,10 @@ func (prog *Program) Init(thread *Thread, predeclared StringDict) (StringDict, e
 	return toplevel.Globals(), err
 }
 
-func makeToplevelFunction(funcode *compile.Funcode, predeclared StringDict) *Function {
+func makeToplevelFunction(prog *compile.Program, predeclared StringDict) *Function {
 	// Create the Starlark value denoted by each program constant c.
-	constants := make([]Value, len(funcode.Prog.Constants))
-	for i, c := range funcode.Prog.Constants {
+	constants := make([]Value, len(prog.Constants))
+	for i, c := range prog.Constants {
 		var v Value
 		switch c := c.(type) {
 		case int64:
@@ -364,10 +383,13 @@ func makeToplevelFunction(funcode *compile.Funcode, predeclared StringDict) *Fun
 	}
 
 	return &Function{
-		funcode:     funcode,
-		predeclared: predeclared,
-		globals:     make([]Value, len(funcode.Prog.Globals)),
-		constants:   constants,
+		funcode: prog.Toplevel,
+		module: &module{
+			program:     prog,
+			predeclared: predeclared,
+			globals:     make([]Value, len(prog.Globals)),
+			constants:   constants,
+		},
 	}
 }
 
@@ -395,6 +417,7 @@ func Eval(thread *Thread, filename string, src interface{}, env StringDict) (Val
 
 // EvalExpr resolves and evaluates an expression within the
 // specified (predeclared) environment.
+// Evaluating a comma-separated list of expressions yields a tuple value.
 //
 // Resolving an expression mutates it.
 // Do not call EvalExpr more than once for the same expression.
@@ -987,14 +1010,38 @@ func Call(thread *Thread, fn Value, args Tuple, kwargs []Tuple) (Value, error) {
 		return nil, fmt.Errorf("invalid call of non-function (%s)", fn.Type())
 	}
 
-	thread.frame = NewFrame(thread.frame, c)
+	// Allocate and push a new frame.
+	var fr *frame
+	// Optimization: use slack portion of thread.stack
+	// slice as a freelist of empty frames.
+	if n := len(thread.stack); n < cap(thread.stack) {
+		fr = thread.stack[n : n+1][0]
+	}
+	if fr == nil {
+		fr = new(frame)
+	}
+	thread.stack = append(thread.stack, fr) // push
+
+	fr.callable = c
+
+	thread.beginProfSpan()
 	result, err := c.CallInternal(thread, args, kwargs)
-	thread.frame = thread.frame.parent
+	thread.endProfSpan()
 
 	// Sanity check: nil is not a valid Starlark value.
 	if result == nil && err == nil {
-		return nil, fmt.Errorf("internal error: nil (not None) returned from %s", fn)
+		err = fmt.Errorf("internal error: nil (not None) returned from %s", fn)
 	}
+
+	// Always return an EvalError with an accurate frame.
+	if err != nil {
+		if _, ok := err.(*EvalError); !ok {
+			err = thread.evalError(err)
+		}
+	}
+
+	*fr = frame{}                                     // clear out any references
+	thread.stack = thread.stack[:len(thread.stack)-1] // pop
 
 	return result, err
 }
@@ -1248,7 +1295,7 @@ func setArgs(locals []Value, fn *Function, args Tuple, kwargs []Tuple) error {
 	return nil
 }
 
-func findParam(params []compile.Ident, name string) int {
+func findParam(params []compile.Binding, name string) int {
 	for i, param := range params {
 		if param.Name == name {
 			return i
@@ -1257,52 +1304,9 @@ func findParam(params []compile.Ident, name string) int {
 	return -1
 }
 
-type intset struct {
-	small uint64       // bitset, used if n < 64
-	large map[int]bool //    set, used if n >= 64
-}
-
-func (is *intset) init(n int) {
-	if n >= 64 {
-		is.large = make(map[int]bool)
-	}
-}
-
-func (is *intset) set(i int) (prev bool) {
-	if is.large == nil {
-		prev = is.small&(1<<uint(i)) != 0
-		is.small |= 1 << uint(i)
-	} else {
-		prev = is.large[i]
-		is.large[i] = true
-	}
-	return
-}
-
-func (is *intset) get(i int) bool {
-	if is.large == nil {
-		return is.small&(1<<uint(i)) != 0
-	}
-	return is.large[i]
-}
-
-func (is *intset) len() int {
-	if is.large == nil {
-		// Suboptimal, but used only for error reporting.
-		len := 0
-		for i := 0; i < 64; i++ {
-			if is.small&(1<<uint(i)) != 0 {
-				len++
-			}
-		}
-		return len
-	}
-	return len(is.large)
-}
-
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string-interpolation
 func interpolate(format string, x Value) (Value, error) {
-	var buf bytes.Buffer
+	buf := new(strings.Builder)
 	index := 0
 	nargs := 1
 	if tuple, ok := x.(Tuple); ok {
@@ -1367,7 +1371,7 @@ func interpolate(format string, x Value) (Value, error) {
 			if str, ok := AsString(arg); ok && c == 's' {
 				buf.WriteString(str)
 			} else {
-				writeValue(&buf, arg, nil)
+				writeValue(buf, arg, nil)
 			}
 		case 'd', 'i', 'o', 'x', 'X':
 			i, err := NumberToInt(arg)
@@ -1376,13 +1380,13 @@ func interpolate(format string, x Value) (Value, error) {
 			}
 			switch c {
 			case 'd', 'i':
-				fmt.Fprintf(&buf, "%d", i)
+				fmt.Fprintf(buf, "%d", i)
 			case 'o':
-				fmt.Fprintf(&buf, "%o", i)
+				fmt.Fprintf(buf, "%o", i)
 			case 'x':
-				fmt.Fprintf(&buf, "%x", i)
+				fmt.Fprintf(buf, "%x", i)
 			case 'X':
-				fmt.Fprintf(&buf, "%X", i)
+				fmt.Fprintf(buf, "%X", i)
 			}
 		case 'e', 'f', 'g', 'E', 'F', 'G':
 			f, ok := AsFloat(arg)
@@ -1391,17 +1395,17 @@ func interpolate(format string, x Value) (Value, error) {
 			}
 			switch c {
 			case 'e':
-				fmt.Fprintf(&buf, "%e", f)
+				fmt.Fprintf(buf, "%e", f)
 			case 'f':
-				fmt.Fprintf(&buf, "%f", f)
+				fmt.Fprintf(buf, "%f", f)
 			case 'g':
-				fmt.Fprintf(&buf, "%g", f)
+				fmt.Fprintf(buf, "%g", f)
 			case 'E':
-				fmt.Fprintf(&buf, "%E", f)
+				fmt.Fprintf(buf, "%E", f)
 			case 'F':
-				fmt.Fprintf(&buf, "%F", f)
+				fmt.Fprintf(buf, "%F", f)
 			case 'G':
-				fmt.Fprintf(&buf, "%G", f)
+				fmt.Fprintf(buf, "%G", f)
 			}
 		case 'c':
 			switch arg := arg.(type) {

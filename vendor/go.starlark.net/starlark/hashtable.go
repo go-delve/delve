@@ -36,6 +36,22 @@ type entry struct {
 	prevLink   **entry // address of link to this entry (perhaps &head)
 }
 
+func (ht *hashtable) init(size int) {
+	if size < 0 {
+		panic("size < 0")
+	}
+	nb := 1
+	for overloaded(size, nb) {
+		nb = nb << 1
+	}
+	if nb < 2 {
+		ht.table = ht.bucket0[:1]
+	} else {
+		ht.table = make([]bucket, nb)
+	}
+	ht.tailLink = &ht.head
+}
+
 func (ht *hashtable) freeze() {
 	if !ht.frozen {
 		ht.frozen = true
@@ -61,8 +77,7 @@ func (ht *hashtable) insert(k, v Value) error {
 		return fmt.Errorf("cannot insert into hash table during iteration")
 	}
 	if ht.table == nil {
-		ht.table = ht.bucket0[:1]
-		ht.tailLink = &ht.head
+		ht.init(1)
 	}
 	h, err := k.Hash()
 	if err != nil {

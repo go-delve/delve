@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"go.starlark.net/internal/compile"
+	"go.starlark.net/internal/spell"
 	"go.starlark.net/resolve"
 	"go.starlark.net/syntax"
 )
@@ -15,14 +16,12 @@ const vmdebug = false // TODO(adonovan): use a bitfield of specific kinds of err
 
 // TODO(adonovan):
 // - optimize position table.
-// - opt: reduce allocations by preallocating a large stack, saving it
-//   in the thread, and slicing it.
 // - opt: record MaxIterStack during compilation and preallocate the stack.
 
 func (fn *Function) CallInternal(thread *Thread, args Tuple, kwargs []Tuple) (Value, error) {
 	if !resolve.AllowRecursion {
 		// detect recursion
-		for fr := thread.frame.parent; fr != nil; fr = fr.parent {
+		for _, fr := range thread.stack[:len(thread.stack)-1] {
 			// We look for the same function code,
 			// not function value, otherwise the user could
 			// defeat the check by writing the Y combinator.
@@ -33,23 +32,42 @@ func (fn *Function) CallInternal(thread *Thread, args Tuple, kwargs []Tuple) (Va
 	}
 
 	f := fn.funcode
-	fr := thread.frame
-	nlocals := len(f.Locals)
-	stack := make([]Value, nlocals+f.MaxStack)
-	locals := stack[:nlocals:nlocals] // local variables, starting with parameters
-	stack = stack[nlocals:]
+	fr := thread.frameAt(0)
 
+	// Allocate space for stack and locals.
+	// Logically these do not escape from this frame
+	// (See https://github.com/golang/go/issues/20533.)
+	//
+	// This heap allocation looks expensive, but I was unable to get
+	// more than 1% real time improvement in a large alloc-heavy
+	// benchmark (in which this alloc was 8% of alloc-bytes)
+	// by allocating space for 8 Values in each frame, or
+	// by allocating stack by slicing an array held by the Thread
+	// that is expanded in chunks of min(k, nspace), for k=256 or 1024.
+	nlocals := len(f.Locals)
+	nspace := nlocals + f.MaxStack
+	space := make([]Value, nspace)
+	locals := space[:nlocals:nlocals] // local variables, starting with parameters
+	stack := space[nlocals:]          // operand stack
+
+	// Digest arguments and set parameters.
 	err := setArgs(locals, fn, args, kwargs)
 	if err != nil {
-		return nil, fr.errorf(fr.Position(), "%v", err)
+		return nil, thread.evalError(err)
 	}
 
-	fr.locals = locals // for debugger
+	fr.locals = locals
 
 	if vmdebug {
 		fmt.Printf("Entering %s @ %s\n", f.Name, f.Position(0))
 		fmt.Printf("%d stack, %d locals\n", len(stack), len(locals))
 		defer fmt.Println("Leaving ", f.Name)
+	}
+
+	// Spill indicated locals to cells.
+	// Each cell is a separate alloc to avoid spurious liveness.
+	for _, index := range f.Cells {
+		locals[index] = &cell{locals[index]}
 	}
 
 	// TODO(adonovan): add static check that beneath this point
@@ -59,12 +77,12 @@ func (fn *Function) CallInternal(thread *Thread, args Tuple, kwargs []Tuple) (Va
 	var iterstack []Iterator // stack of active iterators
 
 	sp := 0
-	var pc, savedpc uint32
+	var pc uint32
 	var result Value
 	code := f.Code
 loop:
 	for {
-		savedpc = pc
+		fr.pc = pc
 
 		op := compile.Opcode(code[pc])
 		pc++
@@ -83,7 +101,7 @@ loop:
 		}
 		if vmdebug {
 			fmt.Fprintln(os.Stderr, stack[:sp]) // very verbose!
-			compile.PrintOp(f, savedpc, op, arg)
+			compile.PrintOp(f, fr.pc, op, arg)
 		}
 
 		switch op {
@@ -280,11 +298,12 @@ loop:
 
 			if vmdebug {
 				fmt.Printf("VM call %s args=%s kwargs=%s @%s\n",
-					function, positional, kvpairs, f.Position(fr.callpc))
+					function, positional, kvpairs, f.Position(fr.pc))
 			}
 
-			fr.callpc = savedpc
+			thread.endProfSpan()
 			z, err2 := Call(thread, function, positional, kvpairs)
+			thread.beginProfSpan()
 			if err2 != nil {
 				err = err2
 				break loop
@@ -438,7 +457,7 @@ loop:
 			sp--
 
 		case compile.CONSTANT:
-			stack[sp] = fn.constants[arg]
+			stack[sp] = fn.module.constants[arg]
 			sp++
 
 		case compile.MAKETUPLE:
@@ -459,18 +478,16 @@ loop:
 
 		case compile.MAKEFUNC:
 			funcode := f.Prog.Functions[arg]
-			freevars := stack[sp-1].(Tuple)
-			defaults := stack[sp-2].(Tuple)
-			sp -= 2
-			stack[sp] = &Function{
-				funcode:     funcode,
-				predeclared: fn.predeclared,
-				globals:     fn.globals,
-				constants:   fn.constants,
-				defaults:    defaults,
-				freevars:    freevars,
+			tuple := stack[sp-1].(Tuple)
+			n := len(tuple) - len(funcode.Freevars)
+			defaults := tuple[:n:n]
+			freevars := tuple[n:]
+			stack[sp-1] = &Function{
+				funcode:  funcode,
+				module:   fn.module,
+				defaults: defaults,
+				freevars: freevars,
 			}
-			sp++
 
 		case compile.LOAD:
 			n := int(arg)
@@ -482,7 +499,9 @@ loop:
 				break loop
 			}
 
+			thread.endProfSpan()
 			dict, err2 := thread.Load(thread, module)
+			thread.beginProfSpan()
 			if err2 != nil {
 				err = fmt.Errorf("cannot load %s: %v", module, err2)
 				break loop
@@ -493,6 +512,9 @@ loop:
 				v, ok := dict[from]
 				if !ok {
 					err = fmt.Errorf("load: name %s not found in module %s", from, module)
+					if n := spell.Nearest(from, dict.Keys()); n != "" {
+						err = fmt.Errorf("%s (did you mean %s?)", err, n)
+					}
 					break loop
 				}
 				stack[sp-1-i] = v
@@ -502,8 +524,14 @@ loop:
 			locals[arg] = stack[sp-1]
 			sp--
 
+		case compile.SETCELL:
+			x := stack[sp-2]
+			y := stack[sp-1]
+			sp -= 2
+			y.(*cell).v = x
+
 		case compile.SETGLOBAL:
-			fn.globals[arg] = stack[sp-1]
+			fn.module.globals[arg] = stack[sp-1]
 			sp--
 
 		case compile.LOCAL:
@@ -519,8 +547,12 @@ loop:
 			stack[sp] = fn.freevars[arg]
 			sp++
 
+		case compile.CELL:
+			x := stack[sp-1]
+			stack[sp-1] = x.(*cell).v
+
 		case compile.GLOBAL:
-			x := fn.globals[arg]
+			x := fn.module.globals[arg]
 			if x == nil {
 				err = fmt.Errorf("global variable %s referenced before assignment", f.Prog.Globals[arg].Name)
 				break loop
@@ -530,7 +562,7 @@ loop:
 
 		case compile.PREDECLARED:
 			name := f.Prog.Names[arg]
-			x := fn.predeclared[name]
+			x := fn.module.predeclared[name]
 			if x == nil {
 				err = fmt.Errorf("internal error: predeclared variable %s is uninitialized", name)
 				break loop
@@ -553,12 +585,6 @@ loop:
 		iter.Done()
 	}
 
-	if err != nil {
-		if _, ok := err.(*EvalError); !ok {
-			err = fr.errorf(f.Position(savedpc), "%s", err.Error())
-		}
-	}
-
 	fr.locals = nil
 
 	return result, err
@@ -573,3 +599,21 @@ func (mandatory) Type() string          { return "mandatory" }
 func (mandatory) Freeze()               {} // immutable
 func (mandatory) Truth() Bool           { return False }
 func (mandatory) Hash() (uint32, error) { return 0, nil }
+
+// A cell is a box containing a Value.
+// Local variables marked as cells hold their value indirectly
+// so that they may be shared by outer and inner nested functions.
+// Cells are always accessed using indirect CELL/SETCELL instructions.
+// The FreeVars tuple contains only cells.
+// The FREE instruction always yields a cell.
+type cell struct{ v Value }
+
+func (c *cell) String() string { return "cell" }
+func (c *cell) Type() string   { return "cell" }
+func (c *cell) Freeze() {
+	if c.v != nil {
+		c.v.Freeze()
+	}
+}
+func (c *cell) Truth() Bool           { panic("unreachable") }
+func (c *cell) Hash() (uint32, error) { panic("unreachable") }

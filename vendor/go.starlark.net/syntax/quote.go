@@ -7,7 +7,6 @@ package syntax
 // Starlark quoted string utilities.
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -95,7 +94,7 @@ func unquote(quoted string) (s string, triple bool, err error) {
 	// Otherwise process quoted string.
 	// Each iteration processes one escape sequence along with the
 	// plain text leading up to it.
-	var buf bytes.Buffer
+	buf := new(strings.Builder)
 	for {
 		// Remove prefix before escape sequence.
 		i := strings.IndexAny(quoted, unquoteChars)
@@ -204,7 +203,7 @@ func quote(unquoted string, triple bool) string {
 		q = `"""`
 	}
 
-	var buf bytes.Buffer
+	buf := new(strings.Builder)
 	buf.WriteString(q)
 
 	for i := 0; i < len(unquoted); i++ {

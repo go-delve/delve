@@ -7,7 +7,6 @@ package syntax
 // A lexical scanner for Starlark.
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -186,21 +185,19 @@ var tokenNames = [...]string{
 // A Position describes the location of a rune of input.
 type Position struct {
 	file *string // filename (indirect for compactness)
-	Line int32   // 1-based line number
-	Col  int32   // 1-based column number (strictly: rune)
+	Line int32   // 1-based line number; 0 if line unknown
+	Col  int32   // 1-based column (rune) number; 0 if column unknown
 }
 
 // IsValid reports whether the position is valid.
-func (p Position) IsValid() bool {
-	return p.Line >= 1
-}
+func (p Position) IsValid() bool { return p.file != nil }
 
 // Filename returns the name of the file containing this position.
 func (p Position) Filename() string {
 	if p.file != nil {
 		return *p.file
 	}
-	return "<unknown>"
+	return "<invalid>"
 }
 
 // MakePosition returns position with the specified components.
@@ -218,10 +215,14 @@ func (p Position) add(s string) Position {
 }
 
 func (p Position) String() string {
-	if p.Col > 0 {
-		return fmt.Sprintf("%s:%d:%d", p.Filename(), p.Line, p.Col)
+	file := p.Filename()
+	if p.Line > 0 {
+		if p.Col > 0 {
+			return fmt.Sprintf("%s:%d:%d", file, p.Line, p.Col)
+		}
+		return fmt.Sprintf("%s:%d", file, p.Line)
 	}
-	return fmt.Sprintf("%s:%d", p.Filename(), p.Line)
+	return file
 }
 
 func (p Position) isBefore(q Position) bool {
@@ -832,7 +833,7 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 		// A triple-quoted string literal may span multiple
 		// gulps of REPL input; it is the only such token.
 		// Thus we must avoid {start,end}Token.
-		var raw bytes.Buffer
+		raw := new(strings.Builder)
 
 		// Copy the prefix, e.g. r''' or """ (see startToken).
 		raw.Write(sc.token[:len(sc.token)-len(sc.rest)])
@@ -950,13 +951,8 @@ func (sc *scanner) scanNumber(val *tokenValue, c rune) Token {
 			} else if c == 'e' || c == 'E' {
 				exponent = true
 			} else if octal && !allzeros {
-				// We must support old octal until the Java
-				// implementation groks the new one.
-				// TODO(adonovan): reenable the check.
-				if false {
-					sc.endToken(val)
-					sc.errorf(sc.pos, "obsolete form of octal literal; use 0o%s", val.raw[1:])
-				}
+				sc.endToken(val)
+				sc.errorf(sc.pos, "obsolete form of octal literal; use 0o%s", val.raw[1:])
 			}
 		}
 	} else {

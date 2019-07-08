@@ -83,6 +83,7 @@ func ParseCompoundStmt(filename string, readline func() ([]byte, error)) (f *Fil
 }
 
 // ParseExpr parses a Starlark expression.
+// A comma-separated list of expressions is parsed as a tuple.
 // See Parse for explanation of parameters.
 func ParseExpr(filename string, src interface{}, mode Mode) (expr Expr, err error) {
 	in, err := newScanner(filename, src, mode&RetainComments != 0)
@@ -94,10 +95,8 @@ func ParseExpr(filename string, src interface{}, mode Mode) (expr Expr, err erro
 
 	p.nextToken() // read first lookahead token
 
-	// TODO(adonovan): Python's eval would use the equivalent of
-	// parseExpr here, which permits an unparenthesized tuple.
-	// We should too.
-	expr = p.parseTest()
+	// Use parseExpr, not parseTest, to permit an unparenthesized tuple.
+	expr = p.parseExpr(false)
 
 	// A following newline (e.g. "f()\n") appears outside any brackets,
 	// on a non-blank line, and thus results in a NEWLINE token.
@@ -165,13 +164,10 @@ func (p *parser) parseDefStmt() Stmt {
 	p.consume(COLON)
 	body := p.parseSuite()
 	return &DefStmt{
-		Def:  defpos,
-		Name: id,
-		Function: Function{
-			StartPos: defpos,
-			Params:   params,
-			Body:     body,
-		},
+		Def:    defpos,
+		Name:   id,
+		Params: params,
+		Body:   body,
 	}
 }
 
@@ -570,11 +566,8 @@ func (p *parser) parseLambda(allowCond bool) Expr {
 
 	return &LambdaExpr{
 		Lambda: lambda,
-		Function: Function{
-			StartPos: lambda,
-			Params:   params,
-			Body:     []Stmt{&ReturnStmt{Result: body}},
-		},
+		Params: params,
+		Body:   body,
 	}
 }
 
