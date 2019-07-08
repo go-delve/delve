@@ -913,3 +913,17 @@ func TestIssue1493(t *testing.T) {
 func findStarFile(name string) string {
 	return filepath.Join(test.FindFixturesDir(), name+".star")
 }
+
+func TestIssue1598(t *testing.T) {
+	test.MustSupportFunctionCalls(t, testBackend)
+	withTestTerminal("issue1598", t, func(term *FakeTerminal) {
+		term.MustExec("break issue1598.go:5")
+		term.MustExec("continue")
+		term.MustExec("config max-string-len 500")
+		r := term.MustExec("call x()")
+		t.Logf("result %q", r)
+		if !strings.Contains(r, "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut \\nlabore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut") {
+			t.Fatalf("wrong value returned")
+		}
+	})
+}
