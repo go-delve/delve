@@ -97,8 +97,7 @@ This option can only be specified if testset is basic or a single package.`)
 		Use:   "vendor",
 		Short: "vendors dependencies",
 		Run: func(cmd *cobra.Command, args []string) {
-			execute("glide", "up", "-v")
-			execute("glide-vc", "--use-lock-file", "--no-tests", "--only-code")
+			execute("go", "mod", "vendor")
 		},
 	})
 
