@@ -356,6 +356,8 @@ const (
 	StepOut = "stepOut"
 	// StepInstruction continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"
+	// ReverseStepInstruction reverses execution for exactly 1 cpu instruction.
+	ReverseStepInstruction = "reverseStepInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
 	// SwitchThread switches the debugger's current thread context.
