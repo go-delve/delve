@@ -167,6 +167,14 @@ func (t *Term) Run() (int, error) {
 	go t.sigintGuard(ch, multiClient)
 
 	t.line.SetCompleter(func(line string) (c []string) {
+		if strings.HasPrefix(line, "break ") || strings.HasPrefix(line, "b ") {
+			filter := line[strings.Index(line, " ")+1:]
+			funcs, _ := t.client.ListFunctions(filter)
+			for _, f := range funcs {
+				c = append(c, "break "+f)
+			}
+			return
+		}
 		for _, cmd := range t.cmds.cmds {
 			for _, alias := range cmd.aliases {
 				if strings.HasPrefix(alias, strings.ToLower(line)) {
