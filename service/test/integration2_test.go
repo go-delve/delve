@@ -1055,6 +1055,9 @@ func TestNegativeStackDepthBug(t *testing.T) {
 }
 
 func TestClientServer_CondBreakpoint(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestClient2("parallel_next", t, func(c service.Client) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})

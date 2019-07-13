@@ -37,6 +37,10 @@ func platformCases() []tCase {
 		// Should be case-sensitive
 		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/path/file.go", "/TmP/path/file.go"},
 	}
+	casesFreebsd := []tCase{
+		// Should be case-sensitive
+		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/path/file.go", "/TmP/path/file.go"},
+	}
 	casesDarwin := []tCase{
 		// Can be either case-sensitive or case-insensitive depending on
 		// filesystem settings, we always treat it as case-sensitive.
@@ -62,6 +66,9 @@ func platformCases() []tCase {
 	}
 	if runtime.GOOS == "linux" {
 		return append(casesUnix, casesLinux...)
+	}
+	if runtime.GOOS == "freebsd" {
+		return append(casesUnix, casesFreebsd...)
 	}
 	return casesUnix
 }

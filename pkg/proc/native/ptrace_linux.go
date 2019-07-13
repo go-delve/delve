@@ -80,5 +80,5 @@ func PtraceGetRegset(tid int) (regset linutil.AMD64Xstate, err error) {
 
 	regset.Xsave = xstateargs[:iov.Len]
 	err = linutil.AMD64XstateRead(regset.Xsave, false, &regset)
-	return regset, err
+	return
 }

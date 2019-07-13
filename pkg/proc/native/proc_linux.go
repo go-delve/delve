@@ -317,19 +317,15 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 			th.os.running = false
 			return th, nil
 		}
-		if th != nil {
-			// TODO(dp) alert user about unexpected signals here.
-			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
-				if err == sys.ESRCH {
-					return nil, proc.ErrProcessExited{Pid: dbp.pid}
-				}
-				return nil, err
+
+		// TODO(dp) alert user about unexpected signals here.
+		if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
+			if err == sys.ESRCH {
+				return nil, proc.ErrProcessExited{Pid: dbp.pid}
 			}
+			return nil, err
 		}
 	}
-}
-
-func (dbp *Process) loadProcessInformation() {
 }
 
 func status(pid int, comm string) rune {
@@ -422,7 +418,7 @@ func (dbp *Process) resume() error {
 	return nil
 }
 
-// stop stops all running threads threads and sets breakpoints
+// stop stops all running threads and sets breakpoints
 func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}

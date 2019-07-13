@@ -524,6 +524,9 @@ func TestNextGeneral(t *testing.T) {
 }
 
 func TestNextConcurrent(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -560,6 +563,9 @@ func TestNextConcurrent(t *testing.T) {
 }
 
 func TestNextConcurrentVariant2(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
 		{8, 9},
@@ -1397,6 +1403,9 @@ func TestIssue325(t *testing.T) {
 }
 
 func TestBreakpointCounts(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("bpcountstest", t, func(p proc.Process, fixture protest.Fixture) {
 		addr, _, err := p.BinInfo().LineToPC(fixture.Source, 12)
@@ -1614,6 +1623,9 @@ func BenchmarkLocalVariables(b *testing.B) {
 }
 
 func TestCondBreakpoint(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p proc.Process, fixture protest.Fixture) {
 		addr, _, err := p.BinInfo().LineToPC(fixture.Source, 9)
@@ -1638,6 +1650,9 @@ func TestCondBreakpoint(t *testing.T) {
 }
 
 func TestCondBreakpointError(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p proc.Process, fixture protest.Fixture) {
 		addr, _, err := p.BinInfo().LineToPC(fixture.Source, 9)
@@ -1954,6 +1969,9 @@ func TestIssue462(t *testing.T) {
 }
 
 func TestNextParked(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p proc.Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.sayhi")
@@ -2005,6 +2023,9 @@ func TestNextParked(t *testing.T) {
 }
 
 func TestStepParked(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p proc.Process, fixture protest.Fixture) {
 		bp, err := setFunctionBreakpoint(p, "main.sayhi")
@@ -2326,6 +2347,9 @@ func TestStepOut(t *testing.T) {
 }
 
 func TestStepConcurrentDirect(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		pc, err := proc.FindFileLocation(p, fixture.Source, 37)
@@ -2392,6 +2416,9 @@ func TestStepConcurrentDirect(t *testing.T) {
 }
 
 func TestStepConcurrentPtr(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		pc, err := proc.FindFileLocation(p, fixture.Source, 24)
@@ -4355,6 +4382,9 @@ func testCallConcurrentCheckReturns(p proc.Process, t *testing.T, gid1, gid2 int
 }
 
 func TestCallConcurrent(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture, 24)
