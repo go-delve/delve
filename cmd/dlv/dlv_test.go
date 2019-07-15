@@ -224,7 +224,7 @@ func TestContinue(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
-	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--listen :0")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", ":0")
 	cmd.Dir = buildtestdir
 	out, _ := cmd.CombinedOutput()
 	const hello = "hello world!"
