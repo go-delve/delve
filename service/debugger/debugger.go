@@ -102,11 +102,6 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
 		d.target = p
-		if d.config.ContinueOnStart {
-			if _, err := d.target.ContinueOnce(); err != nil {
-				return nil, err
-			}
-		}
 
 	case d.config.CoreFile != "":
 		var p proc.Process
@@ -143,12 +138,6 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		if err := d.checkGoVersion(); err != nil {
 			d.target.Detach(true)
 			return nil, err
-		}
-		if d.config.ContinueOnStart {
-			if _, err := d.target.ContinueOnce(); err != nil {
-				d.target.Detach(true)
-				return nil, err
-			}
 		}
 	}
 	return d, nil
