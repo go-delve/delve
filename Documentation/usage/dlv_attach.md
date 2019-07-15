@@ -16,12 +16,6 @@ option to let the process continue or kill it.
 dlv attach pid [executable]
 ```
 
-### Options
-
-```
-      --continue   Continue the debugged process after attach.
-```
-
 ### Options inherited from parent commands
 
 ```

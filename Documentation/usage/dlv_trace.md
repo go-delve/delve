@@ -19,7 +19,6 @@ dlv trace [package] regexp
 ### Options
 
 ```
-      --continue        Continue the traced process on start.
   -e, --exec string     Binary file to exec and trace.
       --output string   Output path for the binary. (default "debug")
   -p, --pid int         Pid to attach to.
