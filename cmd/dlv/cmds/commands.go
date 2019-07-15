@@ -565,7 +565,17 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	defer logflags.Close()
 
 	if Headless && (InitFile != "") {
-		fmt.Fprint(os.Stderr, "Warning: init file ignored\n")
+		fmt.Fprint(os.Stderr, "Warning: init file ignored with --headless\n")
+	}
+	if ContinueOnStart {
+		if !Headless {
+			fmt.Fprint(os.Stderr, "Error: --continue only works with --headless; use an init file\n")
+			return 1
+		}
+		if !AcceptMulti {
+			fmt.Fprint(os.Stderr, "Error: --continue requires --accept-multiclient\n")
+			return 1
+		}
 	}
 
 	if !Headless && AcceptMulti {
@@ -610,7 +620,6 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			Foreground:           Headless,
 			DebugInfoDirectories: conf.DebugInfoDirectories,
 			CheckGoVersion:       CheckGoVersion,
-			ContinueOnStart:      ContinueOnStart,
 
 			DisconnectChan: disconnectChan,
 		})
@@ -638,6 +647,11 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 
 	var status int
 	if Headless {
+		if ContinueOnStart {
+			var client *rpc2.RPCClient
+			client = rpc2.NewClient(listener.Addr().String())
+			client.Disconnect(true) // true = continue after disconnect
+		}
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT)
 		select {
