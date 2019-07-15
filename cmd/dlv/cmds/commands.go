@@ -144,7 +144,6 @@ option to let the process continue or kill it.
 		},
 		Run: attachCmd,
 	}
-	attachCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process after attach.")
 	RootCommand.AddCommand(attachCommand)
 
 	// 'connect' subcommand.
@@ -226,7 +225,6 @@ that package instead.`,
 		Run: testCmd,
 	}
 	testCommand.Flags().String("output", "debug.test", "Output path for the binary.")
-	testCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
 	RootCommand.AddCommand(testCommand)
 
 	// 'trace' subcommand.
@@ -246,7 +244,6 @@ to know what functions your process is executing.`,
 	traceCommand.Flags().BoolVarP(&traceTestBinary, "test", "t", false, "Trace a test binary.")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
 	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
-	traceCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the traced process on start.")
 	RootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{

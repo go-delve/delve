@@ -57,7 +57,7 @@ type Config struct {
 	// attach.
 	AttachPid int
 
-	// ContinueOnStart determiend whether the new process should be paused on start.
+	// ContinueOnStart determines whether the new process should be paused on start.
 	ContinueOnStart bool
 
 	// CoreFile specifies the path to the core dump to open.
