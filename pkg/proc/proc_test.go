@@ -4448,3 +4448,19 @@ func TestIssue1601(t *testing.T) {
 		evalVariable(p, t, "C.globalq")
 	})
 }
+
+func TestIssue1615(t *testing.T) {
+	// A breakpoint condition that tests for string equality with a constant string shouldn't fail with 'string too long for comparison' error
+
+	withTestProcess("issue1615", t, func(p proc.Process, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture, 19)
+		bp.Cond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "s"},
+			Y:  &ast.BasicLit{Kind: token.STRING, Value: `"projects/my-gcp-project-id-string/locations/us-central1/queues/my-task-queue-name"`},
+		}
+
+		assertNoError(proc.Continue(p), t, "Continue")
+		assertLineNumber(p, t, 19, "")
+	})
+}

@@ -983,7 +983,9 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	xv.loadValue(loadFullValue)
+	if xv.Kind != reflect.String { // delay loading strings until we use them
+		xv.loadValue(loadFullValue)
+	}
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
 	}
@@ -1004,7 +1006,9 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	yv.loadValue(loadFullValue)
+	if yv.Kind != reflect.String { // delay loading strings until we use them
+		yv.loadValue(loadFullValue)
+	}
 	if yv.Unreadable != nil {
 		return nil, yv.Unreadable
 	}
@@ -1037,6 +1041,12 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		return newConstant(constant.MakeBool(v), xv.mem), nil
 
 	default:
+		if xv.Kind == reflect.String {
+			xv.loadValue(loadFullValueLongerStrings)
+		}
+		if yv.Kind == reflect.String {
+			yv.loadValue(loadFullValueLongerStrings)
+		}
 		if xv.Value == nil {
 			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
 		}
@@ -1083,6 +1093,12 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 			case token.NEQ:
 				return true, nil
 			}
+		}
+		if xv.Kind == reflect.String {
+			xv.loadValue(loadFullValueLongerStrings)
+		}
+		if yv.Kind == reflect.String {
+			yv.loadValue(loadFullValueLongerStrings)
 		}
 		if int64(len(constant.StringVal(xv.Value))) != xv.Len || int64(len(constant.StringVal(yv.Value))) != yv.Len {
 			return false, fmt.Errorf("string too long for comparison")
