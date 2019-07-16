@@ -163,6 +163,7 @@ type LoadConfig struct {
 
 var loadSingleValue = LoadConfig{false, 0, 64, 0, 0, 0}
 var loadFullValue = LoadConfig{true, 1, 64, 64, -1, 0}
+var loadFullValueLongerStrings = LoadConfig{true, 1, 1024 * 1024, 64, -1, 0}
 
 // G status, from: src/runtime/runtime2.go
 const (
