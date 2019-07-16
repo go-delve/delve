@@ -71,6 +71,12 @@ const (
 	VariableArgument
 	// VariableReturnArgument means this variable is a function return value
 	VariableReturnArgument
+	// VariableFakeAddress means the address of this variable is either fake
+	// (i.e. the variable is partially or completely stored in a CPU register
+	// and doesn't have a real address) or possibly no longer availabe (because
+	// the variable is the return value of a function call and allocated on a
+	// frame that no longer exists)
+	VariableFakeAddress
 )
 
 // Variable represents a variable. It contains the address, name,
@@ -1050,6 +1056,9 @@ func (scope *EvalScope) extractVarInfoFromEntry(varEntry *dwarf.Entry) (*Variabl
 	}
 
 	v := scope.newVariable(n, uintptr(addr), t, mem)
+	if pieces != nil {
+		v.Flags |= VariableFakeAddress
+	}
 	v.LocationExpr = descr
 	v.DeclLine, _ = entry.Val(dwarf.AttrDeclLine).(int64)
 	if err != nil {

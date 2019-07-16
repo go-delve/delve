@@ -746,6 +746,9 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		}
 
 		loadValues(fncall.retvars, callScope.callCtx.retLoadCfg)
+		for _, v := range fncall.retvars {
+			v.Flags |= VariableFakeAddress
+		}
 
 	case debugCallAXReadPanic:
 		// read panic value from stack
@@ -755,11 +758,6 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 			break
 		}
 		fncall.panicvar.Name = "~panic"
-		fncall.panicvar.loadValue(callScope.callCtx.retLoadCfg)
-		if fncall.panicvar.Unreadable != nil {
-			fncall.err = fmt.Errorf("could not get panic: %v", fncall.panicvar.Unreadable)
-			break
-		}
 
 	default:
 		// Got an unknown AX value, this is probably bad but the safest thing
@@ -785,6 +783,7 @@ func readTopstackVariable(thread Thread, regs Registers, typename string, loadCf
 	if v.Unreadable != nil {
 		return nil, v.Unreadable
 	}
+	v.Flags |= VariableFakeAddress
 	return v, nil
 }
 
