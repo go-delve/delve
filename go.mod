@@ -1,5 +1,7 @@
 module github.com/go-delve/delve
 
+go 1.10
+
 require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e // indirect
 	github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5
