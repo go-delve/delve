@@ -321,6 +321,7 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 		// TODO(dp) alert user about unexpected signals here.
 		if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
 			if err == sys.ESRCH {
+				dbp.postExit()
 				return nil, proc.ErrProcessExited{Pid: dbp.pid}
 			}
 			return nil, err
