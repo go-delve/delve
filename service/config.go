@@ -13,8 +13,6 @@ type Config struct {
 	Listener net.Listener
 	// ProcessArgs are the arguments to launch a new process.
 	ProcessArgs []string
-	// ContinueOnStart determines whether the new process should be continued on start.
-	ContinueOnStart bool
 	// WorkingDir is working directory of the new process. This field is used
 	// only when launching a new process.
 	WorkingDir string

@@ -57,9 +57,6 @@ type Config struct {
 	// attach.
 	AttachPid int
 
-	// ContinueOnStart determines whether the new process should be paused on start.
-	ContinueOnStart bool
-
 	// CoreFile specifies the path to the core dump to open.
 	CoreFile string
 	// Backend specifies the debugger backend.
