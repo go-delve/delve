@@ -316,8 +316,28 @@ func (it *stackIterator) switchStack() bool {
 		it.atend = true
 		return true
 
+	case "runtime.mstart":
+		// Calls to runtime.systemstack will switch to the systemstack then:
+		// 1. alter the goroutine stack so that it looks like systemstack_switch
+		//    was called
+		// 2. alter the system stack so that it looks like the bottom-most frame
+		//    belongs to runtime.mstart
+		// If we find a runtime.mstart frame on the system stack of a goroutine
+		// parked on runtime.systemstack_switch we assume runtime.systemstack was
+		// called and continue tracing from the parked position.
+
+		if it.top || !it.systemstack || it.g == nil {
+			return false
+		}
+		if fn := it.bi.PCToFunc(it.g.PC); fn == nil || fn.Name != "runtime.systemstack_switch" {
+			return false
+		}
+
+		it.switchToGoroutineStack()
+		return true
+
 	default:
-		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") {
+		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
 			// The runtime switches to the system stack in multiple places.
 			// This usually happens through a call to runtime.systemstack but there
 			// are functions that switch to the system stack manually (for example
@@ -325,16 +345,25 @@ func (it *stackIterator) switchStack() bool {
 			// Since we are only interested in printing the system stack for cgo
 			// calls we switch directly to the goroutine stack if we detect that the
 			// function at the top of the stack is a runtime function.
-			it.systemstack = false
-			it.top = false
-			it.pc = it.g.PC
-			it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
-			it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
+			//
+			// The function "runtime.fatalthrow" is deliberately excluded from this
+			// because it can end up in the stack during a cgo call and switching to
+			// the goroutine stack will exclude all the C functions from the stack
+			// trace.
+			it.switchToGoroutineStack()
 			return true
 		}
 
 		return false
 	}
+}
+
+func (it *stackIterator) switchToGoroutineStack() {
+	it.systemstack = false
+	it.top = false
+	it.pc = it.g.PC
+	it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
+	it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
 }
 
 // Frame returns the frame the iterator is pointing at.
