@@ -218,23 +218,37 @@ func TestOutput(t *testing.T) {
 	}
 }
 
-// TestContinue verifies that the debugged executable starts immediate with --continue
+// TestContinue verifies that the debugged executable starts immediately with --continue
 func TestContinue(t *testing.T) {
+	const listenAddr = "localhost:40573"
+
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
-	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", ":0")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
 	cmd.Dir = buildtestdir
-	out, _ := cmd.CombinedOutput()
-	const hello = "hello world!"
-	if !strings.Contains(string(out), hello) {
-		t.Errorf("stdout %q should contain %q", out, hello)
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stderr pipe")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("could not start headless instance: %v", err)
 	}
-	const exitStatus = "has exited with status 0"
-	if !strings.Contains(string(out), exitStatus) {
-		t.Errorf("stdout %q should contain %q", out, exitStatus)
+
+	scan := bufio.NewScanner(stdout)
+	// wait for the debugger to start
+	for scan.Scan() {
+		t.Log(scan.Text())
+		if scan.Text() == "hello world!" {
+			break
+		} 
 	}
+
+	// and detach from and kill the headless instance
+	client := rpc2.NewClient(listenAddr)
+	if err := client.Detach(true); err != nil {
+		t.Fatalf("error detaching from headless instance: %v", err)
+	}
+	cmd.Wait()
 }
 
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
