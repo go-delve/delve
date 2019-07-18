@@ -483,7 +483,7 @@ func (t *ChanType) stringIntl(recCheck recCheck) string {
 
 // Type reads the type at off in the DWARF ``info'' section.
 func ReadType(d *dwarf.Data, index int, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
-	typ, err := readType(d, "info", d.Reader(), off, typeCache)
+	typ, err := readType(d, "info", d.Reader(), off, typeCache, nil)
 	if typ != nil {
 		typ.Common().Index = index
 	}
@@ -495,9 +495,14 @@ func getKind(e *dwarf.Entry) reflect.Kind {
 	return reflect.Kind(integer)
 }
 
+type delayedSize struct {
+	ct *CommonType // type that needs its size computed from ut
+	ut Type        // underlying type
+}
+
 // readType reads a type from r at off of name using and updating a
-// type cache.
-func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
+// type cache, callers sohuld pass nil to delayedSize, it is used for recursion.
+func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typeCache map[dwarf.Offset]Type, delayedSizes *[]delayedSize) (Type, error) {
 	if t, ok := typeCache[off]; ok {
 		return t, nil
 	}
@@ -511,9 +516,23 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		return nil, dwarf.DecodeError{name, off, "no type at offset"}
 	}
 
+	// If this is the root of the recursion, prepare to resolve typedef sizes
+	// once the recursion is done. This must be done after the type graph is
+	// constructed because it may need to resolve cycles in a different order
+	// than readType encounters them.
+	if delayedSizes == nil {
+		var delayedSizeList []delayedSize
+		defer func() {
+			for _, ds := range delayedSizeList {
+				ds.ct.ByteSize = ds.ut.Size()
+			}
+		}()
+		delayedSizes = &delayedSizeList
+	}
+
 	// Parse type from dwarf.Entry.
 	// Must always set typeCache[off] before calling
-	// d.Type recursively, to handle circular types correctly.
+	// d.readType recursively, to handle circular types correctly.
 	var typ Type
 
 	nextDepth := 0
@@ -558,7 +577,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		var t Type
 		switch toff := tval.(type) {
 		case dwarf.Offset:
-			if t, err = readType(d, name, d.Reader(), toff, typeCache); err != nil {
+			if t, err = readType(d, name, d.Reader(), toff, typeCache, delayedSizes); err != nil {
 				return nil
 			}
 		case uint64:
@@ -971,13 +990,13 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 			b = -1
 			switch t := typ.(type) {
 			case *TypedefType:
-				b = t.Type.Size()
+				*delayedSizes = append(*delayedSizes, delayedSize{typ.Common(), t.Type})
 			case *MapType:
-				b = t.Type.Size()
+				*delayedSizes = append(*delayedSizes, delayedSize{typ.Common(), t.Type})
 			case *ChanType:
-				b = t.Type.Size()
+				*delayedSizes = append(*delayedSizes, delayedSize{typ.Common(), t.Type})
 			case *InterfaceType:
-				b = t.Type.Size()
+				*delayedSizes = append(*delayedSizes, delayedSize{typ.Common(), t.Type})
 			case *PtrType:
 				b = int64(addressSize)
 			case *FuncType:

@@ -125,6 +125,12 @@ func (c *RPCClient) StepInstruction() (*api.DebuggerState, error) {
 	return state, err
 }
 
+func (c *RPCClient) ReverseStepInstruction() (*api.DebuggerState, error) {
+	state := new(api.DebuggerState)
+	err := c.call("Command", &api.DebuggerCommand{Name: api.ReverseStepInstruction}, state)
+	return state, err
+}
+
 func (c *RPCClient) SwitchThread(threadID int) (*api.DebuggerState, error) {
 	state := new(api.DebuggerState)
 	cmd := &api.DebuggerCommand{

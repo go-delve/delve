@@ -132,9 +132,9 @@ func (r *AMD64Registers) GAddr() (uint64, bool) {
 func (r *AMD64Registers) Get(n int) (uint64, error) {
 	reg := x86asm.Reg(n)
 	const (
-		mask8  = 0x000f
-		mask16 = 0x00ff
-		mask32 = 0xffff
+		mask8  = 0x000000ff
+		mask16 = 0x0000ffff
+		mask32 = 0xffffffff
 	)
 
 	switch reg {

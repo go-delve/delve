@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -33,6 +34,7 @@ const (
 	noPrefix = cmdPrefix(0)
 	onPrefix = cmdPrefix(1 << iota)
 	deferredPrefix
+	revPrefix
 )
 
 type callContext struct {
@@ -135,7 +137,7 @@ the arguments.  With -noargs, the process starts with an empty commandline.
 `},
 		{aliases: []string{"continue", "c"}, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, cmdFn: c.step, helpMsg: "Single step through program."},
-		{aliases: []string{"step-instruction", "si"}, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
+		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
 		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: "Step over to next source line."},
 		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
@@ -297,7 +299,11 @@ Move the current frame down by <m>. The second form runs the command on the give
 Executes the specified command (print, args, locals) in the context of the n-th deferred call in the current frame.`},
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: `Executes a file containing a list of delve commands
 
-	source <path>`},
+	source <path>
+	
+If path ends with the .star extension it will be interpreted as a starlark script. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/starlark.md for the syntax.
+
+If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
 		{aliases: []string{"disassemble", "disass"}, cmdFn: disassCommand, helpMsg: `Disassembler.
 
 	[goroutine <n>] [frame <m>] disassemble [-a <start> <end>] [-l <locspec>]
@@ -374,6 +380,12 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 			helpMsg: `Deletes checkpoint.
 
 	clear-checkpoint <id>`,
+		})
+		c.cmds = append(c.cmds, command{
+			aliases: []string{"rev"},
+			cmdFn:   c.revCmd,
+			helpMsg: `Reverses the execution of the target program for the command specified.
+Currently, only the rev step-instruction command is supported.`,
 		})
 		for i := range c.cmds {
 			v := &c.cmds[i]
@@ -983,13 +995,33 @@ func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error 
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
-	state, err := exitedToError(t.client.StepInstruction())
+
+	var fn func() (*api.DebuggerState, error)
+	if ctx.Prefix == revPrefix {
+		fn = t.client.ReverseStepInstruction
+	} else {
+		fn = t.client.StepInstruction
+	}
+
+	state, err := exitedToError(fn())
 	if err != nil {
 		printcontextNoState(t)
 		return err
 	}
 	printcontext(t, state)
 	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	return nil
+}
+
+func (c *Commands) revCmd(t *Term, ctx callContext, args string) error {
+	if len(args) == 0 {
+		return errors.New("not enough arguments")
+	}
+
+	ctx.Prefix = revPrefix
+	if err := c.CallWithContext(args, t, ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1035,7 +1067,7 @@ func (c *Commands) call(t *Term, ctx callContext, args string) error {
 		unsafe = true
 		args = args[len(unsafePrefix):]
 	}
-	state, err := exitedToError(t.client.Call(args, unsafe))
+	state, err := exitedToError(t.client.Call(ctx.Scope.GoroutineID, args, unsafe))
 	c.frame = 0
 	if err != nil {
 		printcontextNoState(t)
@@ -1566,6 +1598,15 @@ func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 		return fmt.Errorf("wrong number of arguments: source <filename>")
 	}
 
+	if filepath.Ext(args) == ".star" {
+		_, err := t.starlarkEnv.Execute(args, nil, "main", nil)
+		return err
+	}
+
+	if args == "-" {
+		return t.starlarkEnv.REPL()
+	}
+
 	return c.executeFile(t, args)
 }
 
@@ -2057,7 +2098,7 @@ func checkpoints(t *Term, ctx callContext, args string) error {
 }
 
 func clearCheckpoint(t *Term, ctx callContext, args string) error {
-	if len(args) < 0 {
+	if len(args) == 0 {
 		return errors.New("not enough arguments to clear-checkpoint")
 	}
 	if args[0] != 'c' {

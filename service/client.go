@@ -39,10 +39,12 @@ type Client interface {
 	// StepOut continues to the return address of the current function
 	StepOut() (*api.DebuggerState, error)
 	// Call resumes process execution while making a function call.
-	Call(expr string, unsafe bool) (*api.DebuggerState, error)
+	Call(goroutineID int, expr string, unsafe bool) (*api.DebuggerState, error)
 
 	// SingleStep will step a single cpu instruction.
 	StepInstruction() (*api.DebuggerState, error)
+	// ReverseSingleStep will reverse step a single cpu instruction.
+	ReverseStepInstruction() (*api.DebuggerState, error)
 	// SwitchThread switches the current thread context.
 	SwitchThread(threadID int) (*api.DebuggerState, error)
 	// SwitchGoroutine switches the current goroutine (and the current thread as well)
@@ -147,4 +149,7 @@ type Client interface {
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error
+
+	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
+	CallAPI(method string, args, reply interface{}) error
 }

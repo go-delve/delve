@@ -61,9 +61,11 @@ type BinaryInfo struct {
 	packageMap map[string]string
 
 	frameEntries frame.FrameDescriptionEntries
-	compileUnits []*compileUnit
-	types        map[string]dwarfRef
-	packageVars  []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
+
+	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
+
+	types       map[string]dwarfRef
+	packageVars []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
 
 	gStructOffset uint64
 
@@ -112,7 +114,7 @@ type compileUnit struct {
 	optimized          bool                // this compile unit is optimized
 	producer           string              // producer attribute
 
-	startOffset, endOffset dwarf.Offset // interval of offsets contained in this compile unit
+	offset dwarf.Offset // offset of the entry describing the compile unit
 
 	image *Image // parent image of this compilation unit.
 }
@@ -320,7 +322,7 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 	defer wg.Wait()
 
 	switch bi.GOOS {
-	case "linux":
+	case "linux", "freebsd":
 		return loadBinaryInfoElf(bi, image, path, entryPoint, &wg)
 	case "windows":
 		return loadBinaryInfoPE(bi, image, path, entryPoint, &wg)
@@ -399,6 +401,20 @@ func (bi *BinaryInfo) AllPCsForFileLine(filename string, lineno int) []uint64 {
 	for _, cu := range bi.compileUnits {
 		if cu.lineInfo.Lookup[filename] != nil {
 			r = append(r, cu.lineInfo.AllPCsForFileLine(filename, lineno)...)
+		}
+	}
+	return r
+}
+
+// AllPCsForFileLines returns a map providing all PC addresses for filename and each line in linenos
+func (bi *BinaryInfo) AllPCsForFileLines(filename string, linenos []int) map[int][]uint64 {
+	r := make(map[int][]uint64)
+	for _, line := range linenos {
+		r[line] = make([]uint64, 0, 1)
+	}
+	for _, cu := range bi.compileUnits {
+		if cu.lineInfo.Lookup[filename] != nil {
+			cu.lineInfo.AllPCsForFileLines(filename, r)
 		}
 	}
 	return r
@@ -608,6 +624,45 @@ func (bi *BinaryInfo) locationExpr(entry reader.Entry, attr dwarf.Attr, pc uint6
 	return instr, descr.String(), nil
 }
 
+// LocationCovers returns the list of PC addresses that is covered by the
+// location attribute 'attr' of entry 'entry'.
+func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]uint64, error) {
+	a := entry.Val(attr)
+	if a == nil {
+		return nil, fmt.Errorf("attribute %s not found", attr)
+	}
+	if _, isblock := a.([]byte); isblock {
+		return [][2]uint64{[2]uint64{0, ^uint64(0)}}, nil
+	}
+
+	off, ok := a.(int64)
+	if !ok {
+		return nil, fmt.Errorf("attribute %s of unsupported type %T", attr, a)
+	}
+	cu := bi.findCompileUnitForOffset(entry.Offset)
+	if cu == nil {
+		return nil, errors.New("could not find compile unit")
+	}
+
+	image := cu.image
+	base := cu.lowPC
+	if image == nil || image.loclist.data == nil {
+		return nil, errors.New("malformed executable")
+	}
+
+	r := [][2]uint64{}
+	image.loclist.Seek(int(off))
+	var e loclistEntry
+	for image.loclist.Next(&e) {
+		if e.BaseAddressSelection() {
+			base = e.highpc
+			continue
+		}
+		r = append(r, [2]uint64{e.lowpc + base, e.highpc + base})
+	}
+	return r, nil
+}
+
 // Location returns the location described by attribute attr of entry.
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
@@ -662,12 +717,13 @@ func (bi *BinaryInfo) findCompileUnit(pc uint64) *compileUnit {
 }
 
 func (bi *BinaryInfo) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
-	for _, cu := range bi.compileUnits {
-		if off >= cu.startOffset && off < cu.endOffset {
-			return cu
-		}
+	i := sort.Search(len(bi.compileUnits), func(i int) bool {
+		return bi.compileUnits[i].offset >= off
+	})
+	if i > 0 {
+		i--
 	}
-	return nil
+	return bi.compileUnits[i]
 }
 
 // Producer returns the value of DW_AT_producer.

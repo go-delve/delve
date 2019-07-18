@@ -214,6 +214,13 @@ const (
 
 	// VariableReturnArgument means this variable is a function return value
 	VariableReturnArgument
+
+	// VariableFakeAddress means the address of this variable is either fake
+	// (i.e. the variable is partially or completely stored in a CPU register
+	// and doesn't have a real address) or possibly no longer availabe (because
+	// the variable is the return value of a function call and allocated on a
+	// frame that no longer exists)
+	VariableFakeAddress
 )
 
 // Variable describes a variable.
@@ -304,7 +311,7 @@ type DebuggerCommand struct {
 	// command.
 	ThreadID int `json:"threadID,omitempty"`
 	// GoroutineID is used to specify which thread to use with the SwitchGoroutine
-	// command.
+	// and Call commands.
 	GoroutineID int `json:"goroutineID,omitempty"`
 	// When ReturnInfoLoadConfig is not nil it will be used to load the value
 	// of any return variables.
@@ -356,6 +363,8 @@ const (
 	StepOut = "stepOut"
 	// StepInstruction continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"
+	// ReverseStepInstruction reverses execution for exactly 1 cpu instruction.
+	ReverseStepInstruction = "reverseStepInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
 	// SwitchThread switches the debugger's current thread context.

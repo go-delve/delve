@@ -148,15 +148,21 @@ func (c *RPCClient) StepOut() (*api.DebuggerState, error) {
 	return &out.State, err
 }
 
-func (c *RPCClient) Call(expr string, unsafe bool) (*api.DebuggerState, error) {
+func (c *RPCClient) Call(goroutineID int, expr string, unsafe bool) (*api.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", api.DebuggerCommand{Name: api.Call, ReturnInfoLoadConfig: c.retValLoadCfg, Expr: expr, UnsafeCall: unsafe}, &out)
+	err := c.call("Command", api.DebuggerCommand{Name: api.Call, ReturnInfoLoadConfig: c.retValLoadCfg, Expr: expr, UnsafeCall: unsafe, GoroutineID: goroutineID}, &out)
 	return &out.State, err
 }
 
 func (c *RPCClient) StepInstruction() (*api.DebuggerState, error) {
 	var out CommandOut
 	err := c.call("Command", api.DebuggerCommand{Name: api.StepInstruction}, &out)
+	return &out.State, err
+}
+
+func (c *RPCClient) ReverseStepInstruction() (*api.DebuggerState, error) {
+	var out CommandOut
+	err := c.call("Command", api.DebuggerCommand{Name: api.ReverseStepInstruction}, &out)
 	return &out.State, err
 }
 
@@ -409,4 +415,8 @@ func (c *RPCClient) ListDynamicLibraries() ([]api.Image, error) {
 
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
+}
+
+func (c *RPCClient) CallAPI(method string, args, reply interface{}) error {
+	return c.call(method, args, reply)
 }

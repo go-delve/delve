@@ -20,7 +20,15 @@ func configureCmd(t *Term, ctx callContext, args string) error {
 	case "":
 		return fmt.Errorf("wrong number of arguments to \"config\"")
 	default:
-		return configureSet(t, args)
+		err := configureSet(t, args)
+		if err != nil {
+			return err
+		}
+		if t.client != nil { // only happens in tests
+			lcfg := t.loadConfig()
+			t.client.SetReturnValuesLoadConfig(&lcfg)
+		}
+		return nil
 	}
 }
 

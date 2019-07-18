@@ -3,17 +3,18 @@ package terminal
 import (
 	"fmt"
 	"io"
+	"net/rpc"
 	"os"
 	"os/signal"
 	"runtime"
 	"strings"
 	"sync"
-
 	"syscall"
 
 	"github.com/peterh/liner"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/go-delve/delve/pkg/terminal/starbind"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 )
@@ -54,6 +55,8 @@ type Term struct {
 	stdout   io.Writer
 	InitFile string
 
+	starlarkEnv *starbind.Env
+
 	// quitContinue is set to true by exitCommand to signal that the process
 	// should be resumed before quitting.
 	quitContinue bool
@@ -82,10 +85,6 @@ func New(client service.Client, conf *config.Config) *Term {
 		w = getColorableWriter()
 	}
 
-	if client != nil {
-		client.SetReturnValuesLoadConfig(&LongLoadConfig)
-	}
-
 	if (conf.SourceListLineColor > ansiWhite &&
 		conf.SourceListLineColor < ansiBrBlack) ||
 		conf.SourceListLineColor < ansiBlack ||
@@ -93,7 +92,7 @@ func New(client service.Client, conf *config.Config) *Term {
 		conf.SourceListLineColor = ansiBlue
 	}
 
-	return &Term{
+	t := &Term{
 		client: client,
 		conf:   conf,
 		prompt: "(dlv) ",
@@ -102,6 +101,14 @@ func New(client service.Client, conf *config.Config) *Term {
 		dumb:   dumb,
 		stdout: w,
 	}
+
+	if client != nil {
+		lcfg := t.loadConfig()
+		client.SetReturnValuesLoadConfig(&lcfg)
+	}
+
+	t.starlarkEnv = starbind.New(starlarkContext{t})
+	return t
 }
 
 // Close returns the terminal to its previous mode.
@@ -111,6 +118,7 @@ func (t *Term) Close() {
 
 func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 	for range ch {
+		t.starlarkEnv.Cancel()
 		if multiClient {
 			answer, err := t.line.Prompt("Would you like to [s]top the target or [q]uit this client, leaving the target running [s/q]? ")
 			if err != nil {
@@ -160,6 +168,14 @@ func (t *Term) Run() (int, error) {
 	go t.sigintGuard(ch, multiClient)
 
 	t.line.SetCompleter(func(line string) (c []string) {
+		if strings.HasPrefix(line, "break ") || strings.HasPrefix(line, "b ") {
+			filter := line[strings.Index(line, " ")+1:]
+			funcs, _ := t.client.ListFunctions(filter)
+			for _, f := range funcs {
+				c = append(c, "break "+f)
+			}
+			return
+		}
 		for _, cmd := range t.cmds.cmds {
 			for _, alias := range cmd.aliases {
 				if strings.HasPrefix(alias, strings.ToLower(line)) {
@@ -338,6 +354,18 @@ func (t *Term) handleExit() (int, error) {
 
 	s, err := t.client.GetState()
 	if err != nil {
+		if isErrProcessExited(err) && t.client.IsMulticlient() {
+			answer, err := yesno(t.line, "Remote process has exited. Would you like to kill the headless instance? [Y/n] ")
+			if err != nil {
+				return 2, io.EOF
+			}
+			if answer {
+				if err := t.client.Detach(true); err != nil {
+					return 1, err
+				}
+			}
+			return 0, err
+		}
 		return 1, err
 	}
 	if !s.Exited {
@@ -388,4 +416,10 @@ func (t *Term) loadConfig() api.LoadConfig {
 	}
 
 	return r
+}
+
+// isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited
+func isErrProcessExited(err error) bool {
+	rpcError, ok := err.(rpc.ServerError)
+	return ok && strings.Contains(rpcError.Error(), "has exited with status")
 }

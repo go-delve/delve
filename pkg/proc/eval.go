@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/parser"
 	"go/printer"
+	"go/scanner"
 	"go/token"
 	"reflect"
 	"strconv"
@@ -28,6 +29,13 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 		defer close(scope.callCtx.continueRequest)
 	}
 	t, err := parser.ParseExpr(expr)
+	if eqOff, isAs := isAssignment(err); scope.callCtx != nil && isAs {
+		lexpr := expr[:eqOff]
+		rexpr := expr[eqOff+1:]
+		err := scope.SetVariable(lexpr, rexpr)
+		scope.callCtx.doReturn(nil, err)
+		return nil, err
+	}
 	if err != nil {
 		scope.callCtx.doReturn(nil, err)
 		return nil, err
@@ -47,6 +55,14 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 	}
 	scope.callCtx.doReturn(ev, nil)
 	return ev, nil
+}
+
+func isAssignment(err error) (int, bool) {
+	el, isScannerErr := err.(scanner.ErrorList)
+	if isScannerErr && el[0].Msg == "expected '==', found '='" {
+		return el[0].Pos.Offset, true
+	}
+	return 0, false
 }
 
 // evalToplevelTypeCast implements certain type casts that we only support
@@ -198,10 +214,10 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 		// try to interpret the selector as a package variable
 		if maybePkg, ok := node.X.(*ast.Ident); ok {
 			if maybePkg.Name == "runtime" && node.Sel.Name == "curg" {
-				if scope.Gvar == nil {
+				if scope.g == nil {
 					return nilVariable, nil
 				}
-				return scope.Gvar.clone(), nil
+				return scope.g.variable.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
 				return newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem), nil
 			} else if v, err := scope.findGlobal(maybePkg.Name + "." + node.Sel.Name); err == nil {
@@ -911,8 +927,8 @@ func negotiateType(op token.Token, xv, yv *Variable) (godwarf.Type, error) {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			// ok
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			if yv.DwarfType != nil || constant.Sign(yv.Value) < 0 {
-				return nil, fmt.Errorf("shift count type %s, must be unsigned integer", yv.Kind.String())
+			if constant.Sign(yv.Value) < 0 {
+				return nil, fmt.Errorf("shift count must not be negative")
 			}
 		default:
 			return nil, fmt.Errorf("shift count type %s, must be unsigned integer", yv.Kind.String())
@@ -967,7 +983,9 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	xv.loadValue(loadFullValue)
+	if xv.Kind != reflect.String { // delay loading strings until we use them
+		xv.loadValue(loadFullValue)
+	}
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
 	}
@@ -988,7 +1006,9 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	yv.loadValue(loadFullValue)
+	if yv.Kind != reflect.String { // delay loading strings until we use them
+		yv.loadValue(loadFullValue)
+	}
 	if yv.Unreadable != nil {
 		return nil, yv.Unreadable
 	}
@@ -1021,6 +1041,12 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		return newConstant(constant.MakeBool(v), xv.mem), nil
 
 	default:
+		if xv.Kind == reflect.String {
+			xv.loadValue(loadFullValueLongerStrings)
+		}
+		if yv.Kind == reflect.String {
+			yv.loadValue(loadFullValueLongerStrings)
+		}
 		if xv.Value == nil {
 			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
 		}
@@ -1067,6 +1093,12 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 			case token.NEQ:
 				return true, nil
 			}
+		}
+		if xv.Kind == reflect.String {
+			xv.loadValue(loadFullValueLongerStrings)
+		}
+		if yv.Kind == reflect.String {
+			yv.loadValue(loadFullValueLongerStrings)
 		}
 		if int64(len(constant.StringVal(xv.Value))) != xv.Len || int64(len(constant.StringVal(yv.Value))) != yv.Len {
 			return false, fmt.Errorf("string too long for comparison")

@@ -55,7 +55,7 @@ func assertNoError(err error, t testing.TB, s string) {
 }
 
 func setFunctionBreakpoint(p proc.Process, t *testing.T, fname string) *proc.Breakpoint {
-	addr, err := proc.FindFunctionLocation(p, fname, true, 0)
+	addr, err := proc.FindFunctionLocation(p, fname, 0)
 	assertNoError(err, t, fmt.Sprintf("FindFunctionLocation(%s)", fname))
 	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
 	assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x) function %s", addr, fname))

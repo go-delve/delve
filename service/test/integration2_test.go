@@ -1055,6 +1055,9 @@ func TestNegativeStackDepthBug(t *testing.T) {
 }
 
 func TestClientServer_CondBreakpoint(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	protest.AllowRecording(t)
 	withTestClient2("parallel_next", t, func(c service.Client) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})
@@ -1085,6 +1088,12 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 	})
 }
 
+func clientEvalVariable(t *testing.T, c service.Client, expr string) *api.Variable {
+	v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, expr, normalLoadConfig)
+	assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", expr))
+	return v
+}
+
 func TestSkipPrologue(t *testing.T) {
 	withTestClient2("locationsprog2", t, func(c service.Client) {
 		<-c.Continue()
@@ -1093,7 +1102,7 @@ func TestSkipPrologue(t *testing.T) {
 		findLocationHelper(t, c, "*fn1", false, 1, afunction)
 		findLocationHelper(t, c, "locationsprog2.go:8", false, 1, afunction)
 
-		afunction0 := findLocationHelper(t, c, "main.afunction:0", false, 1, 0)[0]
+		afunction0 := uint64(clientEvalVariable(t, c, "main.afunction").Addr)
 
 		if afunction == afunction0 {
 			t.Fatal("Skip prologue failed")
@@ -1104,21 +1113,21 @@ func TestSkipPrologue(t *testing.T) {
 func TestSkipPrologue2(t *testing.T) {
 	withTestClient2("callme", t, func(c service.Client) {
 		callme := findLocationHelper(t, c, "main.callme", false, 1, 0)[0]
-		callmeZ := findLocationHelper(t, c, "main.callme:0", false, 1, 0)[0]
+		callmeZ := uint64(clientEvalVariable(t, c, "main.callme").Addr)
 		findLocationHelper(t, c, "callme.go:5", false, 1, callme)
 		if callme == callmeZ {
 			t.Fatal("Skip prologue failed")
 		}
 
 		callme2 := findLocationHelper(t, c, "main.callme2", false, 1, 0)[0]
-		callme2Z := findLocationHelper(t, c, "main.callme2:0", false, 1, 0)[0]
+		callme2Z := uint64(clientEvalVariable(t, c, "main.callme2").Addr)
 		findLocationHelper(t, c, "callme.go:12", false, 1, callme2)
 		if callme2 == callme2Z {
 			t.Fatal("Skip prologue failed")
 		}
 
 		callme3 := findLocationHelper(t, c, "main.callme3", false, 1, 0)[0]
-		callme3Z := findLocationHelper(t, c, "main.callme3:0", false, 1, 0)[0]
+		callme3Z := uint64(clientEvalVariable(t, c, "main.callme3").Addr)
 		ver, _ := goversion.Parse(runtime.Version())
 		if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVer18Beta) {
 			findLocationHelper(t, c, "callme.go:19", false, 1, callme3)
@@ -1549,7 +1558,7 @@ func TestClientServerFunctionCall(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 		beforeCallFn := state.CurrentThread.Function.Name()
-		state, err := c.Call("call1(one, two)", false)
+		state, err := c.Call(-1, "call1(one, two)", false)
 		assertNoError(err, t, "Call()")
 		t.Logf("returned to %q", state.CurrentThread.Function.Name())
 		if state.CurrentThread.Function.Name() != beforeCallFn {
@@ -1592,7 +1601,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
-		state, err = c.Call("main.call1(main.zero, main.zero)", false)
+		state, err = c.Call(-1, "main.call1(main.zero, main.zero)", false)
 		if err == nil || err.Error() != "call not at safe point" {
 			t.Fatalf("wrong error or no error: %v", err)
 		}
@@ -1606,7 +1615,7 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
-		state, err := c.Call("callpanic()", false)
+		state, err := c.Call(-1, "callpanic()", false)
 		assertNoError(err, t, "Call()")
 		t.Logf("at: %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
 		if state.CurrentThread.ReturnValues == nil {
@@ -1632,7 +1641,7 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 		c.SetReturnValuesLoadConfig(&api.LoadConfig{false, 0, 2048, 0, 0})
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
-		state, err := c.Call("callstacktrace()", false)
+		state, err := c.Call(-1, "callstacktrace()", false)
 		assertNoError(err, t, "Call()")
 		t.Logf("at: %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
 		if state.CurrentThread.ReturnValues == nil {

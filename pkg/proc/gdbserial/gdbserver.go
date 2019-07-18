@@ -968,7 +968,7 @@ func (p *Process) Checkpoints() ([]proc.Checkpoint, error) {
 		if err != nil {
 			return nil, fmt.Errorf("can not parse \"info checkpoints\" output line %q: %v", line, err)
 		}
-		r = append(r, proc.Checkpoint{cpid, fields[1], fields[2]})
+		r = append(r, proc.Checkpoint{ID: cpid, When: fields[1], Where: fields[2]})
 	}
 	return r, nil
 }
@@ -1318,15 +1318,12 @@ func (t *Thread) Blocked() bool {
 func (p *Process) loadGInstr() []byte {
 	var op []byte
 	switch p.bi.GOOS {
-	case "windows":
+	case "windows", "darwin", "freebsd":
 		// mov rcx, QWORD PTR gs:{uint32(off)}
 		op = []byte{0x65, 0x48, 0x8b, 0x0c, 0x25}
 	case "linux":
 		// mov rcx,QWORD PTR fs:{uint32(off)}
 		op = []byte{0x64, 0x48, 0x8B, 0x0C, 0x25}
-	case "darwin":
-		// mov rcx,QWORD PTR gs:{uint32(off)}
-		op = []byte{0x65, 0x48, 0x8B, 0x0C, 0x25}
 	default:
 		panic("unsupported operating system attempting to find Goroutine on Thread")
 	}

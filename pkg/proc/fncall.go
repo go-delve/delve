@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/token"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"golang.org/x/arch/x86/x86asm"
 )
@@ -55,6 +59,7 @@ var (
 	errNoAddrUnsupported          = errors.New("arguments to a function call must have an address")
 	errNotAGoFunction             = errors.New("not a Go function")
 	errFuncCallNotAllowed         = errors.New("function calls not allowed without using 'call'")
+	errFuncCallNotAllowedStrAlloc = errors.New("literal string can not be allocated because function calls are not allowed without using 'call'")
 )
 
 type functionCallState struct {
@@ -101,7 +106,7 @@ type callContext struct {
 	// To signal that evaluation is completed a value will be written to
 	// continueRequest having cont == false and the return values in ret.
 	continueRequest   chan<- continueRequest
-	continueCompleted <-chan struct{}
+	continueCompleted <-chan *G
 }
 
 type continueRequest struct {
@@ -110,9 +115,9 @@ type continueRequest struct {
 	ret  *Variable
 }
 
-func (callCtx *callContext) doContinue() {
+func (callCtx *callContext) doContinue() *G {
 	callCtx.continueRequest <- continueRequest{cont: true}
-	<-callCtx.continueCompleted
+	return <-callCtx.continueCompleted
 }
 
 func (callCtx *callContext) doReturn(ret *Variable, err error) {
@@ -125,12 +130,21 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
 // Because this can only be done in the current goroutine, unlike
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
-func EvalExpressionWithCalls(p Process, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
+func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
 	bi := p.BinInfo()
 	if !p.Common().fncallEnabled {
 		return errFuncCallUnsupportedBackend
 	}
-	if p.Common().continueCompleted != nil {
+
+	// check that the target goroutine is running
+	if g == nil {
+		return errNoGoroutine
+	}
+	if g.Status != Grunning || g.Thread == nil {
+		return errGoroutineNotRunning
+	}
+
+	if callinj := p.Common().fncallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
 		return errFuncCallInProgress
 	}
 
@@ -139,22 +153,13 @@ func EvalExpressionWithCalls(p Process, expr string, retLoadCfg LoadConfig, chec
 		return errFuncCallUnsupported
 	}
 
-	// check that the selected goroutine is running
-	g := p.SelectedGoroutine()
-	if g == nil {
-		return errNoGoroutine
-	}
-	if g.Status != Grunning || g.Thread == nil {
-		return errGoroutineNotRunning
-	}
-
-	scope, err := GoroutineScope(p.CurrentThread())
+	scope, err := GoroutineScope(g.Thread)
 	if err != nil {
 		return err
 	}
 
 	continueRequest := make(chan continueRequest)
-	continueCompleted := make(chan struct{})
+	continueCompleted := make(chan *G)
 
 	scope.callCtx = &callContext{
 		p:                 p,
@@ -164,8 +169,10 @@ func EvalExpressionWithCalls(p Process, expr string, retLoadCfg LoadConfig, chec
 		continueCompleted: continueCompleted,
 	}
 
-	p.Common().continueRequest = continueRequest
-	p.Common().continueCompleted = continueCompleted
+	p.Common().fncallForG[g.ID] = &callInjection{
+		continueCompleted,
+		continueRequest,
+	}
 
 	go scope.EvalExpression(expr, retLoadCfg)
 
@@ -174,33 +181,35 @@ func EvalExpressionWithCalls(p Process, expr string, retLoadCfg LoadConfig, chec
 		return Continue(p)
 	}
 
-	return finishEvalExpressionWithCalls(p, contReq, ok)
+	return finishEvalExpressionWithCalls(p, g, contReq, ok)
 }
 
-func finishEvalExpressionWithCalls(p Process, contReq continueRequest, ok bool) error {
+func finishEvalExpressionWithCalls(p Process, g *G, contReq continueRequest, ok bool) error {
+	fncallLog("stashing return values for %d in thread=%d\n", g.ID, g.Thread.ThreadID())
 	var err error
 	if !ok {
 		err = errors.New("internal error EvalExpressionWithCalls didn't return anything")
 	} else if contReq.err != nil {
 		if fpe, ispanic := contReq.err.(fncallPanicErr); ispanic {
-			p.CurrentThread().Common().returnValues = []*Variable{fpe.panicVar}
+			g.Thread.Common().returnValues = []*Variable{fpe.panicVar}
 		} else {
 			err = contReq.err
 		}
-	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil {
+	} else if contReq.ret == nil {
+		g.Thread.Common().returnValues = nil
+	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil && contReq.ret.Kind == reflect.Invalid {
 		// this is a variable returned by a function call with multiple return values
 		r := make([]*Variable, len(contReq.ret.Children))
 		for i := range contReq.ret.Children {
 			r[i] = &contReq.ret.Children[i]
 		}
-		p.CurrentThread().Common().returnValues = r
+		g.Thread.Common().returnValues = r
 	} else {
-		p.CurrentThread().Common().returnValues = []*Variable{contReq.ret}
+		g.Thread.Common().returnValues = []*Variable{contReq.ret}
 	}
 
-	p.Common().continueRequest = nil
-	close(p.Common().continueCompleted)
-	p.Common().continueCompleted = nil
+	close(p.Common().fncallForG[g.ID].continueCompleted)
+	delete(p.Common().fncallForG, g.ID)
 	return err
 }
 
@@ -234,22 +243,13 @@ func (scope *EvalScope) evalFunctionCall(node *ast.CallExpr) (*Variable, error) 
 		return nil, errFuncCallUnsupported
 	}
 
-	// check that the selected goroutine is running
-	g := p.SelectedGoroutine()
-	if g == nil {
-		return nil, errNoGoroutine
-	}
-	if g.Status != Grunning || g.Thread == nil {
-		return nil, errGoroutineNotRunning
-	}
-
 	// check that there are at least 256 bytes free on the stack
-	regs, err := g.Thread.Registers(true)
+	regs, err := scope.g.Thread.Registers(true)
 	if err != nil {
 		return nil, err
 	}
 	regs = regs.Copy()
-	if regs.SP()-256 <= g.stacklo {
+	if regs.SP()-256 <= scope.g.stacklo {
 		return nil, errNotEnoughStack
 	}
 	_, err = regs.Get(int(x86asm.RAX))
@@ -267,41 +267,38 @@ func (scope *EvalScope) evalFunctionCall(node *ast.CallExpr) (*Variable, error) 
 		return nil, err
 	}
 
-	if err := callOP(bi, g.Thread, regs, dbgcallfn.Entry); err != nil {
+	if err := callOP(bi, scope.g.Thread, regs, dbgcallfn.Entry); err != nil {
 		return nil, err
 	}
 	// write the desired argument frame size at SP-(2*pointer_size) (the extra pointer is the saved PC)
-	if err := writePointer(bi, g.Thread, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
+	if err := writePointer(bi, scope.g.Thread, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
 		return nil, err
 	}
 
-	fncallLog("function call initiated %v frame size %d\n", fncall.fn, fncall.argFrameSize)
+	fncallLog("function call initiated %v frame size %d", fncall.fn, fncall.argFrameSize)
 
-	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(g.stackhi)
-	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(g.stackhi)
-	fboff := scope.Regs.FrameBase - int64(g.stackhi)
+	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stackhi)
+	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stackhi)
+	fboff := scope.Regs.FrameBase - int64(scope.g.stackhi)
 
 	for {
-		scope.callCtx.doContinue()
+		scope.g = scope.callCtx.doContinue()
 
-		g = p.SelectedGoroutine()
-		if g != nil {
-			// adjust the value of registers inside scope
-			for regnum := range scope.Regs.Regs {
-				switch uint64(regnum) {
-				case scope.Regs.PCRegNum, scope.Regs.SPRegNum, scope.Regs.BPRegNum:
-					// leave these alone
-				default:
-					// every other register is dirty and unrecoverable
-					scope.Regs.Regs[regnum] = nil
-				}
+		// adjust the value of registers inside scope
+		for regnum := range scope.Regs.Regs {
+			switch uint64(regnum) {
+			case scope.Regs.PCRegNum, scope.Regs.SPRegNum, scope.Regs.BPRegNum:
+				// leave these alone
+			default:
+				// every other register is dirty and unrecoverable
+				scope.Regs.Regs[regnum] = nil
 			}
-
-			scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(spoff + int64(g.stackhi))
-			scope.Regs.Regs[scope.Regs.BPRegNum].Uint64Val = uint64(bpoff + int64(g.stackhi))
-			scope.Regs.FrameBase = fboff + int64(g.stackhi)
-			scope.Regs.CFA = scope.frameOffset + int64(g.stackhi)
 		}
+
+		scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(spoff + int64(scope.g.stackhi))
+		scope.Regs.Regs[scope.Regs.BPRegNum].Uint64Val = uint64(bpoff + int64(scope.g.stackhi))
+		scope.Regs.FrameBase = fboff + int64(scope.g.stackhi)
+		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stackhi)
 
 		finished := funcCallStep(scope, &fncall)
 		if finished {
@@ -458,14 +455,13 @@ type funcCallArg struct {
 // funcCallEvalArgs evaluates the arguments of the function call, copying
 // the into the argument frame starting at argFrameAddr.
 func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, argFrameAddr uint64) error {
-	g := scope.callCtx.p.SelectedGoroutine()
-	if g == nil {
+	if scope.g == nil {
 		// this should never happen
 		return errNoGoroutine
 	}
 
 	if fncall.receiver != nil {
-		err := funcCallCopyOneArg(g, scope, fncall, fncall.receiver, &fncall.formalArgs[0], argFrameAddr)
+		err := funcCallCopyOneArg(scope, fncall, fncall.receiver, &fncall.formalArgs[0], argFrameAddr)
 		if err != nil {
 			return err
 		}
@@ -481,7 +477,7 @@ func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, argFrameAddr 
 		}
 		actualArg.Name = exprToString(fncall.expr.Args[i])
 
-		err = funcCallCopyOneArg(g, scope, fncall, actualArg, formalArg, argFrameAddr)
+		err = funcCallCopyOneArg(scope, fncall, actualArg, formalArg, argFrameAddr)
 		if err != nil {
 			return err
 		}
@@ -490,10 +486,10 @@ func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, argFrameAddr 
 	return nil
 }
 
-func funcCallCopyOneArg(g *G, scope *EvalScope, fncall *functionCallState, actualArg *Variable, formalArg *funcCallArg, argFrameAddr uint64) error {
+func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *Variable, formalArg *funcCallArg, argFrameAddr uint64) error {
 	if scope.callCtx.checkEscape {
 		//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
-		if err := escapeCheck(actualArg, formalArg.name, g); err != nil {
+		if err := escapeCheck(actualArg, formalArg.name, scope.g); err != nil {
 			return fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fncall.fn.Name, err)
 		}
 	}
@@ -502,7 +498,7 @@ func funcCallCopyOneArg(g *G, scope *EvalScope, fncall *functionCallState, actua
 	// by convertToEface.
 
 	formalArgVar := newVariable(formalArg.name, uintptr(formalArg.off+int64(argFrameAddr)), formalArg.typ, scope.BinInfo, scope.Mem)
-	if err := formalArgVar.setValue(actualArg, actualArg.Name); err != nil {
+	if err := scope.setValue(formalArgVar, actualArg, actualArg.Name); err != nil {
 		return err
 	}
 
@@ -511,7 +507,9 @@ func funcCallCopyOneArg(g *G, scope *EvalScope, fncall *functionCallState, actua
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
 	const CFA = 0x1000
-	vrdr := reader.Variables(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, fn.cu.image.StaticBase), int(^uint(0)>>1), false)
+	vrdr := reader.Variables(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, fn.cu.image.StaticBase), int(^uint(0)>>1), false, true)
+
+	trustArgOrder := bi.Producer() != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
 
 	// typechecks arguments, calculates argument frame size
 	for vrdr.Next() {
@@ -524,16 +522,23 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 			return 0, nil, err
 		}
 		typ = resolveTypedef(typ)
-		locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
-		if err != nil {
-			return 0, nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
-		}
-		off, _, err := op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
-		if err != nil {
-			return 0, nil, fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
-		}
+		var off int64
+		if trustArgOrder && fn.Name == "runtime.mallocgc" {
+			// runtime is always optimized and optimized code sometimes doesn't have
+			// location info for arguments, but we still want to call runtime.mallocgc.
+			off = argFrameSize
+		} else {
+			locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
+			if err != nil {
+				return 0, nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
+			}
+			off, _, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
+			if err != nil {
+				return 0, nil, fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
+			}
 
-		off -= CFA
+			off -= CFA
+		}
 
 		if e := off + typ.Size(); e > argFrameSize {
 			argFrameSize = e
@@ -616,7 +621,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 	p := callScope.callCtx.p
 	bi := p.BinInfo()
 
-	thread := p.CurrentThread()
+	thread := callScope.g.Thread
 	regs, err := thread.Registers(false)
 	if err != nil {
 		fncall.err = err
@@ -636,7 +641,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 				fnname = loc.Fn.Name
 			}
 		}
-		fncallLog("function call interrupt rax=%#x (PC=%#x in %s)\n", rax, pc, fnname)
+		fncallLog("function call interrupt gid=%d thread=%d rax=%#x (PC=%#x in %s)", callScope.g.ID, thread.ThreadID(), rax, pc, fnname)
 	}
 
 	switch rax {
@@ -731,8 +736,19 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		fncall.retvars = filterVariables(fncall.retvars, func(v *Variable) bool {
 			return (v.Flags & VariableReturnArgument) != 0
 		})
+		if fncall.fn.Name == "runtime.mallocgc" && fncall.retvars[0].Unreadable != nil {
+			// return values never have a location for optimized functions and the
+			// runtime is always optimized. However we want to call runtime.mallocgc,
+			// so we fix the address of the return value manually.
+			fncall.retvars[0].Unreadable = nil
+			lastArg := fncall.formalArgs[len(fncall.formalArgs)-1]
+			fncall.retvars[0].Addr = uintptr(retScope.Regs.CFA + lastArg.off + int64(bi.Arch.PtrSize()))
+		}
 
 		loadValues(fncall.retvars, callScope.callCtx.retLoadCfg)
+		for _, v := range fncall.retvars {
+			v.Flags |= VariableFakeAddress
+		}
 
 	case debugCallAXReadPanic:
 		// read panic value from stack
@@ -742,11 +758,6 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 			break
 		}
 		fncall.panicvar.Name = "~panic"
-		fncall.panicvar.loadValue(callScope.callCtx.retLoadCfg)
-		if fncall.panicvar.Unreadable != nil {
-			fncall.err = fmt.Errorf("could not get panic: %v", fncall.panicvar.Unreadable)
-			break
-		}
 
 	default:
 		// Got an unknown AX value, this is probably bad but the safest thing
@@ -772,6 +783,7 @@ func readTopstackVariable(thread Thread, regs Registers, typename string, loadCf
 	if v.Unreadable != nil {
 		return nil, v.Unreadable
 	}
+	v.Flags |= VariableFakeAddress
 	return v, nil
 }
 
@@ -802,4 +814,93 @@ func (fncall *functionCallState) returnValues() []*Variable {
 		return []*Variable{fncall.panicvar}
 	}
 	return fncall.retvars
+}
+
+// allocString allocates spaces for the contents of v if it needs to be allocated
+func (scope *EvalScope) allocString(v *Variable) error {
+	if v.Base != 0 || v.Len == 0 {
+		// already allocated
+		return nil
+	}
+
+	if scope.callCtx == nil {
+		return errFuncCallNotAllowedStrAlloc
+	}
+	savedLoadCfg := scope.callCtx.retLoadCfg
+	scope.callCtx.retLoadCfg = loadFullValue
+	defer func() {
+		scope.callCtx.retLoadCfg = savedLoadCfg
+	}()
+	mallocv, err := scope.evalFunctionCall(&ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: "runtime"},
+			Sel: &ast.Ident{Name: "mallocgc"},
+		},
+		Args: []ast.Expr{
+			&ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(int(v.Len))},
+			&ast.Ident{Name: "nil"},
+			&ast.Ident{Name: "false"},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if mallocv.Unreadable != nil {
+		return mallocv.Unreadable
+	}
+	if mallocv.DwarfType.String() != "*void" {
+		return fmt.Errorf("unexpected return type for mallocgc call: %v", mallocv.DwarfType.String())
+	}
+	if len(mallocv.Children) != 1 {
+		return errors.New("internal error, could not interpret return value of mallocgc call")
+	}
+	v.Base = uintptr(mallocv.Children[0].Addr)
+	_, err = scope.Mem.WriteMemory(v.Base, []byte(constant.StringVal(v.Value)))
+	return err
+}
+
+func isCallInjectionStop(loc *Location) bool {
+	if loc.Fn == nil {
+		return false
+	}
+	return strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) || strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2)
+}
+
+// callInjectionProtocol is the function called from Continue to progress
+// the injection protocol for all threads.
+// Returns true if a call injection terminated
+func callInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
+	if len(p.Common().fncallForG) == 0 {
+		// we aren't injecting any calls, no need to check the threads.
+		return false, nil
+	}
+	for _, thread := range threads {
+		loc, err := thread.Location()
+		if err != nil {
+			continue
+		}
+		if !isCallInjectionStop(loc) {
+			continue
+		}
+
+		g, err := GetG(thread)
+		if err != nil {
+			return done, fmt.Errorf("could not determine running goroutine for thread %#x currently executing the function call injection protocol: %v", thread.ThreadID(), err)
+		}
+		callinj := p.Common().fncallForG[g.ID]
+		if callinj == nil || callinj.continueCompleted == nil {
+			return false, fmt.Errorf("could not recover call injection state for goroutine %d", g.ID)
+		}
+		fncallLog("step for injection on goroutine %d thread=%d (location %s)", g.ID, thread.ThreadID(), loc.Fn.Name)
+		callinj.continueCompleted <- g
+		contReq, ok := <-callinj.continueRequest
+		if !contReq.cont {
+			err := finishEvalExpressionWithCalls(p, g, contReq, ok)
+			if err != nil {
+				return done, err
+			}
+			done = true
+		}
+	}
+	return done, nil
 }

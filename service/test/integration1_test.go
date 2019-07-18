@@ -972,6 +972,9 @@ func Test1NegativeStackDepthBug(t *testing.T) {
 }
 
 func Test1ClientServer_CondBreakpoint(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
 	withTestClient1("parallel_next", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})
 		assertNoError(err, t, "CreateBreakpoint()")
@@ -997,56 +1000,6 @@ func Test1ClientServer_CondBreakpoint(t *testing.T) {
 
 		if nvar.SinglelineString() != "7" {
 			t.Fatalf("Stopped on wrong goroutine %s\n", nvar.Value)
-		}
-	})
-}
-
-func Test1SkipPrologue(t *testing.T) {
-	withTestClient1("locationsprog2", t, func(c *rpc1.RPCClient) {
-		<-c.Continue()
-
-		afunction := findLocationHelper(t, c, "main.afunction", false, 1, 0)[0]
-		findLocationHelper(t, c, "*fn1", false, 1, afunction)
-		findLocationHelper(t, c, "locationsprog2.go:8", false, 1, afunction)
-
-		afunction0 := findLocationHelper(t, c, "main.afunction:0", false, 1, 0)[0]
-
-		if afunction == afunction0 {
-			t.Fatal("Skip prologue failed")
-		}
-	})
-}
-
-func Test1SkipPrologue2(t *testing.T) {
-	withTestClient1("callme", t, func(c *rpc1.RPCClient) {
-		callme := findLocationHelper(t, c, "main.callme", false, 1, 0)[0]
-		callmeZ := findLocationHelper(t, c, "main.callme:0", false, 1, 0)[0]
-		findLocationHelper(t, c, "callme.go:5", false, 1, callme)
-		if callme == callmeZ {
-			t.Fatal("Skip prologue failed")
-		}
-
-		callme2 := findLocationHelper(t, c, "main.callme2", false, 1, 0)[0]
-		callme2Z := findLocationHelper(t, c, "main.callme2:0", false, 1, 0)[0]
-		findLocationHelper(t, c, "callme.go:12", false, 1, callme2)
-		if callme2 == callme2Z {
-			t.Fatal("Skip prologue failed")
-		}
-
-		callme3 := findLocationHelper(t, c, "main.callme3", false, 1, 0)[0]
-		callme3Z := findLocationHelper(t, c, "main.callme3:0", false, 1, 0)[0]
-		ver, _ := goversion.Parse(runtime.Version())
-		if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVer18Beta) {
-			findLocationHelper(t, c, "callme.go:19", false, 1, callme3)
-		} else {
-			// callme3 does not have local variables therefore the first line of the
-			// function is immediately after the prologue
-			// This is only true before 1.8 where frame pointer chaining introduced a
-			// bit of prologue even for functions without local variables
-			findLocationHelper(t, c, "callme.go:19", false, 1, callme3Z)
-		}
-		if callme3 == callme3Z {
-			t.Fatal("Skip prologue failed")
 		}
 	})
 }

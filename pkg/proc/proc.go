@@ -8,7 +8,6 @@ import (
 	"go/token"
 	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 // ErrNotExecutable is returned after attempting to execute a non-executable file
@@ -100,27 +99,20 @@ func (err *ErrFunctionNotFound) Error() string {
 }
 
 // FindFunctionLocation finds address of a function's line
-// If firstLine == true is passed FindFunctionLocation will attempt to find the first line of the function
 // If lineOffset is passed FindFunctionLocation will return the address of that line
-// Pass lineOffset == 0 and firstLine == false if you want the address for the function's entry point
-// Note that setting breakpoints at that address will cause surprising behavior:
-// https://github.com/go-delve/delve/issues/170
-func FindFunctionLocation(p Process, funcName string, firstLine bool, lineOffset int) (uint64, error) {
+func FindFunctionLocation(p Process, funcName string, lineOffset int) (uint64, error) {
 	bi := p.BinInfo()
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
 		return 0, &ErrFunctionNotFound{funcName}
 	}
 
-	if firstLine {
+	if lineOffset <= 0 {
 		return FirstPCAfterPrologue(p, origfn, false)
-	} else if lineOffset > 0 {
-		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
-		breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)
-		return breakAddr, err
 	}
-
-	return origfn.Entry, nil
+	filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
+	breakAddr, _, err := bi.LineToPC(filename, lineno+lineOffset)
+	return breakAddr, err
 }
 
 // FunctionReturnLocations will return a list of addresses corresponding
@@ -197,6 +189,11 @@ func Continue(dbp Process) error {
 
 		threads := dbp.ThreadList()
 
+		callInjectionDone, err := callInjectionProtocol(dbp, threads)
+		if err != nil {
+			return err
+		}
+
 		if err := pickCurrentThread(dbp, trapthread, threads); err != nil {
 			return err
 		}
@@ -216,6 +213,7 @@ func Continue(dbp Process) error {
 			if err != nil || loc.Fn == nil {
 				return conditionErrors(threads)
 			}
+			g, _ := GetG(curthread)
 
 			switch {
 			case loc.Fn.Name == "runtime.breakpoint":
@@ -227,22 +225,8 @@ func Continue(dbp Process) error {
 					return err
 				}
 				return conditionErrors(threads)
-			case strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) || strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2):
-				continueCompleted := dbp.Common().continueCompleted
-				if continueCompleted == nil {
-					return conditionErrors(threads)
-				}
-				continueCompleted <- struct{}{}
-				contReq, ok := <-dbp.Common().continueRequest
-				if !contReq.cont {
-					// only stop execution if the expression evaluation with calls finished
-					err := finishEvalExpressionWithCalls(dbp, contReq, ok)
-					if err != nil {
-						return err
-					}
-					return conditionErrors(threads)
-				}
-			default:
+			case g == nil || dbp.Common().fncallForG[g.ID] == nil:
+				// a hardcoded breakpoint somewhere else in the code (probably cgo)
 				return conditionErrors(threads)
 			}
 		case curbp.Active && curbp.Internal:
@@ -291,6 +275,11 @@ func Continue(dbp Process) error {
 			return conditionErrors(threads)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
+		}
+		if callInjectionDone {
+			// a call injection was finished, don't let a breakpoint with a failed
+			// condition or a step breakpoint shadow this.
+			return conditionErrors(threads)
 		}
 	}
 }
@@ -341,8 +330,10 @@ func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) 
 		}
 		loc, err := curthread.Location()
 		if err != nil || loc.Fn == nil || (loc.Fn.Name != fnname1 && loc.Fn.Name != fnname2) {
-			if g := dbp.SelectedGoroutine(); g != nil {
-				g.CurrentLoc = *loc
+			g, _ := GetG(curthread)
+			selg := dbp.SelectedGoroutine()
+			if g != nil && selg != nil && g.ID == selg.ID {
+				selg.CurrentLoc = *loc
 			}
 			return curthread.SetCurrentBreakpoint()
 		}
@@ -713,11 +704,6 @@ func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error
 // Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
 // will be cached.
 func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
-	var gvar *Variable
-	if g != nil {
-		gvar = g.variable
-	}
-
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
 	// Remember that the stack grows downward in memory.
@@ -732,7 +718,7 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 		thread = cacheMemory(thread, uintptr(minaddr), int(maxaddr-minaddr))
 	}
 
-	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, Gvar: gvar, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
 	s.PC = frames[0].lastpc
 	return s
 }
@@ -740,9 +726,9 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 // createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
 // This function is meant to be called by implementations of the Process interface.
 func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", true, 0)
+	panicpc, err := FindFunctionLocation(p, "runtime.startpanic", 0)
 	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
-		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", true, 0)
+		panicpc, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
 		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpc, writeBreakpoint)
@@ -754,7 +740,7 @@ func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpoint
 }
 
 func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	fatalpc, err := FindFunctionLocation(p, "runtime.fatalthrow", true, 0)
+	fatalpc, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
 	if err == nil {
 		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpc, writeBreakpoint)
 		if err == nil {

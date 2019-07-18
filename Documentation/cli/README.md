@@ -32,6 +32,7 @@ Command | Description
 [print](#print) | Evaluate an expression.
 [regs](#regs) | Print contents of CPU registers.
 [restart](#restart) | Restart process from a checkpoint or event.
+[rev](#rev) | Reverses the execution of the target program for the command specified.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
 [set](#set) | Changes the value of a variable.
 [source](#source) | Executes a file containing a list of delve commands
@@ -329,6 +330,11 @@ Restart process from a checkpoint or event.
 
 Aliases: r
 
+## rev
+Reverses the execution of the target program for the command specified.
+Currently, only the rev step-instruction command is supported.
+
+
 ## rewind
 Run backwards until breakpoint or program termination.
 
@@ -346,6 +352,10 @@ See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Document
 Executes a file containing a list of delve commands
 
 	source <path>
+	
+If path ends with the .star extension it will be interpreted as a starlark script. See [Documentation/cli/starlark.md](//github.com/go-delve/delve/tree/master/Documentation/cli/starlark.md) for the syntax.
+
+If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.
 
 
 ## sources

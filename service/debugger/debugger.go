@@ -398,11 +398,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		}
 		addr, err = proc.FindFileLocation(d.target, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		if requestedBp.Line >= 0 {
-			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, false, requestedBp.Line)
-		} else {
-			addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, true, 0)
-		}
+		addr, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, requestedBp.Line)
 	default:
 		addr = requestedBp.Addr
 	}
@@ -605,7 +601,14 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		if command.ReturnInfoLoadConfig == nil {
 			return nil, errors.New("can not call function with nil ReturnInfoLoadConfig")
 		}
-		err = proc.EvalExpressionWithCalls(d.target, command.Expr, *api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall)
+		g := d.target.SelectedGoroutine()
+		if command.GoroutineID > 0 {
+			g, err = proc.FindGoroutine(d.target, command.GoroutineID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		err = proc.EvalExpressionWithCalls(d.target, g, command.Expr, *api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall)
 	case api.Rewind:
 		d.log.Debug("rewinding")
 		if err := d.target.Direction(proc.Backward); err != nil {
@@ -623,6 +626,15 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = proc.Step(d.target)
 	case api.StepInstruction:
 		d.log.Debug("single stepping")
+		err = d.target.StepInstruction()
+	case api.ReverseStepInstruction:
+		d.log.Debug("reverse single stepping")
+		if err := d.target.Direction(proc.Backward); err != nil {
+			return nil, err
+		}
+		defer func() {
+			d.target.Direction(proc.Forward)
+		}()
 		err = d.target.StepInstruction()
 	case api.StepOut:
 		d.log.Debug("step out")
