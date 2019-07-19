@@ -33,6 +33,8 @@ var (
 	LogDest string
 	// Headless is whether to run without terminal.
 	Headless bool
+	// ContinueOnStart is whether to continue the process on startup
+	ContinueOnStart bool
 	// APIVersion is the requested API version while running headless
 	APIVersion int
 	// AcceptMulti allows multiple clients to connect to the same server
@@ -172,6 +174,7 @@ session.`,
 		Run: debugCmd,
 	}
 	debugCommand.Flags().String("output", "./__debug_bin", "Output path for the binary.")
+	debugCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
 	RootCommand.AddCommand(debugCommand)
 
 	// 'exec' subcommand.
@@ -195,6 +198,7 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 			os.Exit(execute(0, args, conf, "", executingExistingFile))
 		},
 	}
+	execCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
 	RootCommand.AddCommand(execCommand)
 
 	// Deprecated 'run' subcommand.
@@ -561,7 +565,17 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	defer logflags.Close()
 
 	if Headless && (InitFile != "") {
-		fmt.Fprint(os.Stderr, "Warning: init file ignored\n")
+		fmt.Fprint(os.Stderr, "Warning: init file ignored with --headless\n")
+	}
+	if ContinueOnStart {
+		if !Headless {
+			fmt.Fprint(os.Stderr, "Error: --continue only works with --headless; use an init file\n")
+			return 1
+		}
+		if !AcceptMulti {
+			fmt.Fprint(os.Stderr, "Error: --continue requires --accept-multiclient\n")
+			return 1
+		}
 	}
 
 	if !Headless && AcceptMulti {
@@ -633,6 +647,11 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 
 	var status int
 	if Headless {
+		if ContinueOnStart {
+			var client *rpc2.RPCClient
+			client = rpc2.NewClient(listener.Addr().String())
+			client.Disconnect(true) // true = continue after disconnect
+		}
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT)
 		select {

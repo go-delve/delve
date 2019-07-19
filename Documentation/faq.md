@@ -28,14 +28,10 @@ And then connect to it from outside the container:
 dlv connect :4040
 ```
 
-The program will not start executing until you connect to Delve and send the `continue` command. If you want the program to start immediately you can do that by:
-
-1. Passing the `--accept-multiclient` option to the headless instance of delve: `dlv exec --headless --listen :4040 --accept-multiclient /path/to/executable`
-2. Using the following script:
+The program will not start executing until you connect to Delve and send the `continue` command.  If you want the program to start immediately you can do that by passing the `--continue` and `--accept-multiclient` options to Delve:
 
 ```
-#!/bin/bash
-while true; do sleep 1; dlv connect :4040 --init <(echo quit -c) && exit; done
+dlv exec --headless --continue --listen :4040 --accept-multiclient /path/to/executable
 ```
 
 Note that the connection to Delve is unauthenticated and will allow arbitrary remote code execution: *do not do this in production*.

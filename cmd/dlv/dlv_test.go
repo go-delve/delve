@@ -218,6 +218,39 @@ func TestOutput(t *testing.T) {
 	}
 }
 
+// TestContinue verifies that the debugged executable starts immediately with --continue
+func TestContinue(t *testing.T) {
+	const listenAddr = "localhost:40573"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
+	cmd.Dir = buildtestdir
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stderr pipe")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("could not start headless instance: %v", err)
+	}
+
+	scan := bufio.NewScanner(stdout)
+	// wait for the debugger to start
+	for scan.Scan() {
+		t.Log(scan.Text())
+		if scan.Text() == "hello world!" {
+			break
+		} 
+	}
+
+	// and detach from and kill the headless instance
+	client := rpc2.NewClient(listenAddr)
+	if err := client.Detach(true); err != nil {
+		t.Fatalf("error detaching from headless instance: %v", err)
+	}
+	cmd.Wait()
+}
+
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
 	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
 
