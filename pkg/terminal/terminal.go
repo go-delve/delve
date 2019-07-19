@@ -386,6 +386,9 @@ func (t *Term) loadConfig() api.LoadConfig {
 	if t.conf != nil && t.conf.MaxArrayValues != nil {
 		r.MaxArrayValues = *t.conf.MaxArrayValues
 	}
+	if t.conf != nil && t.conf.MaxVariableRecurse != nil {
+		r.MaxVariableRecurse = *t.conf.MaxVariableRecurse
+	}
 
 	return r
 }
