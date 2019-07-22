@@ -138,7 +138,12 @@ the arguments.  With -noargs, the process starts with an empty commandline.
 		{aliases: []string{"continue", "c"}, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, cmdFn: c.step, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
-		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: "Step over to next source line."},
+		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: `Step over to next source line.
+
+	 next [count]
+
+Optional [count] argument alloes you to skip multiple lines.
+`},
 		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
 	
@@ -864,6 +869,17 @@ func parseArgs(args string) ([]string, error) {
 	return v[0], nil
 }
 
+// parseOptionalCount parses an optional count argument.
+func parseOptionalCount(arg string, unspecifiedValue int64) (val int64, err error) {
+	if len(arg) == 0 {
+		return unspecifiedValue, nil
+	}
+	if val, err = strconv.ParseInt(arg, 0, 64); err != nil {
+		return unspecifiedValue, err
+	}
+	return val, err
+}
+
 func restart(t *Term, ctx callContext, args string) error {
 	v, err := parseArgs(args)
 	if err != nil {
@@ -1032,13 +1048,27 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
-	state, err := exitedToError(t.client.Next())
-	if err != nil {
-		printcontextNoState(t)
+	var count int64
+	var err error
+	if count, err = parseOptionalCount(args, 1); err != nil {
 		return err
 	}
-	printcontext(t, state)
-	return continueUntilCompleteNext(t, state, "next")
+	if count != 0 {
+		var state *api.DebuggerState
+		for ; count != 0; count-- {
+			state, err = exitedToError(t.client.Next())
+			if err != nil {
+				break
+			}
+		}
+		if err != nil {
+			printcontextNoState(t)
+			return err
+		}
+		printcontext(t, state)
+		return continueUntilCompleteNext(t, state, "next")
+	}
+	return errors.New("Invalid next count")
 }
 
 func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
