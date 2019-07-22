@@ -1053,7 +1053,7 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	if count, err = parseOptionalCount(args, 1); err != nil {
 		return err
 	}
-	if count != 0 {
+	if count > 0 {
 		var state *api.DebuggerState
 		for ; count != 0; count-- {
 			state, err = exitedToError(t.client.Next())
