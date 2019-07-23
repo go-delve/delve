@@ -610,8 +610,16 @@ func (p *Process) SelectedGoroutine() *proc.G {
 const (
 	interruptSignal  = 0x2
 	breakpointSignal = 0x5
+	faultSignal      = 0xb
 	childSignal      = 0x11
 	stopSignal       = 0x13
+
+	debugServerTargetExcBadAccess      = 0x91
+	debugServerTargetExcBadInstruction = 0x92
+	debugServerTargetExcArithmetic     = 0x93
+	debugServerTargetExcEmulation      = 0x94
+	debugServerTargetExcSoftware       = 0x95
+	debugServerTargetExcBreakpoint     = 0x96
 )
 
 // ContinueOnce will continue execution of the process until
@@ -677,7 +685,8 @@ continueLoop:
 		// The following are fake BSD-style signals sent by debugserver
 		// Unfortunately debugserver can not convert them into signals for the
 		// process so we must stop here.
-		case 0x91, 0x92, 0x93, 0x94, 0x95, 0x96: /* TARGET_EXC_BAD_ACCESS */
+		case debugServerTargetExcBadAccess, debugServerTargetExcBadInstruction, debugServerTargetExcArithmetic, debugServerTargetExcEmulation, debugServerTargetExcSoftware, debugServerTargetExcBreakpoint:
+
 			break continueLoop
 
 		// Signal 0 is returned by rr when it reaches the start of the process
@@ -1274,8 +1283,7 @@ func (t *Thread) stepInstruction(tu *threadUpdater) error {
 		}
 		defer t.p.conn.setBreakpoint(pc)
 	}
-	_, _, err := t.p.conn.step(t.strID, tu)
-	return err
+	return t.p.conn.step(t.strID, tu, false)
 }
 
 // StepInstruction will step exactly 1 CPU instruction.
@@ -1485,7 +1493,7 @@ func (t *Thread) reloadGAtPC() error {
 		}
 	}()
 
-	_, _, err = t.p.conn.step(t.strID, nil)
+	err = t.p.conn.step(t.strID, nil, true)
 	if err != nil {
 		if err == threadBlockedError {
 			t.regs.tls = 0
@@ -1538,7 +1546,7 @@ func (t *Thread) reloadGAlloc() error {
 		}
 	}()
 
-	_, _, err = t.p.conn.step(t.strID, nil)
+	err = t.p.conn.step(t.strID, nil, true)
 	if err != nil {
 		if err == threadBlockedError {
 			t.regs.tls = 0

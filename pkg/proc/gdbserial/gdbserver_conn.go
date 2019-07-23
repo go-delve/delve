@@ -575,21 +575,51 @@ func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error)
 }
 
 // step executes a 'vCont' command on the specified thread with 's' action.
-func (conn *gdbConn) step(threadID string, tu *threadUpdater) (string, uint8, error) {
-	if conn.direction == proc.Forward {
-		conn.outbuf.Reset()
-		fmt.Fprintf(&conn.outbuf, "$vCont;s:%s", threadID)
-	} else {
+func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal bool) error {
+	if conn.direction != proc.Forward {
 		if err := conn.selectThread('c', threadID, "step"); err != nil {
-			return "", 0, err
+			return err
 		}
 		conn.outbuf.Reset()
 		fmt.Fprint(&conn.outbuf, "$bs")
+		if err := conn.send(conn.outbuf.Bytes()); err != nil {
+			return err
+		}
+		_, _, err := conn.waitForvContStop("singlestep", threadID, tu)
+		return err
 	}
-	if err := conn.send(conn.outbuf.Bytes()); err != nil {
-		return "", 0, err
+	var sig uint8 = 0
+	for {
+		conn.outbuf.Reset()
+		if sig == 0 {
+			fmt.Fprintf(&conn.outbuf, "$vCont;s:%s", threadID)
+		} else {
+			fmt.Fprintf(&conn.outbuf, "$vCont;S%02x:%s", sig, threadID)
+		}
+		if err := conn.send(conn.outbuf.Bytes()); err != nil {
+			return err
+		}
+		var err error
+		_, sig, err = conn.waitForvContStop("singlestep", threadID, tu)
+		if err != nil {
+			return err
+		}
+		switch sig {
+		case faultSignal:
+			if ignoreFaultSignal { // we attempting to read the TLS, a fault here should be ignored
+				return nil
+			}
+		case interruptSignal, breakpointSignal, stopSignal:
+			return nil
+		case childSignal: // stop on debugserver but SIGCHLD on lldb-server/linux
+			if conn.isDebugserver {
+				return nil
+			}
+		case debugServerTargetExcBadAccess, debugServerTargetExcBadInstruction, debugServerTargetExcArithmetic, debugServerTargetExcEmulation, debugServerTargetExcSoftware, debugServerTargetExcBreakpoint:
+			return nil
+		}
+		// any other signal is propagated to the inferior
 	}
-	return conn.waitForvContStop("singlestep", threadID, tu)
 }
 
 var threadBlockedError = errors.New("thread blocked")
