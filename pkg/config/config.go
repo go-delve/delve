@@ -42,7 +42,7 @@ type Config struct {
 	// MaxArrayValues is the maximum number of array items that the commands
 	// print, locals, args and vars should read (in verbose mode).
 	MaxArrayValues *int `yaml:"max-array-values,omitempty"`
-	// MaxVariableRecurse is output evaluation depth of of nested struct members, array and
+	// MaxVariableRecurse is output evaluation depth of nested struct members, array and
 	// slice items and dereference pointers
 	MaxVariableRecurse *int `yaml:"max-variable-recurse,omitempty"`
 
@@ -220,7 +220,7 @@ substitute-path:
 # max-string-len: 64
 
 # Output evaluation.
-# max-variable-recurse 1
+# max-variable-recurse: 1
 
 # Uncomment the following line to make the whatis command also print the DWARF location expression of its argument.
 # show-location-expr: true
