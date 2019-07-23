@@ -739,6 +739,16 @@ func TestConfig(t *testing.T) {
 	if *term.conf.MaxStringLen != 10 {
 		t.Fatalf("expected MaxStringLen 10, got: %d", *term.conf.MaxStringLen)
 	}
+	err = configureCmd(&term, callContext{}, "max-variable-recurse 4")
+	if err != nil {
+		t.Fatalf("error executing configureCmd(max-variable-recurse): %v", err)
+	}
+	if term.conf.MaxVariableRecurse == nil {
+		t.Fatalf("expected MaxVariableRecurse 4, got nil")
+	}
+	if *term.conf.MaxVariableRecurse != 4 {
+		t.Fatalf("expected MaxVariableRecurse 4, got: %d", *term.conf.MaxVariableRecurse)
+	}
 
 	err = configureCmd(&term, callContext{}, "substitute-path a b")
 	if err != nil {
