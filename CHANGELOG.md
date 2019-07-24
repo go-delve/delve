@@ -5,6 +5,49 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [1.3.0] 2019-XX-XX
+
+### Added
+
+- Go 1.13 support (#1546, @aarzilli)
+- Starlark scripting language in the command line client (#1466, #1605, @aarzilli, @derekparker)
+- Initial support for FreeBSD (#1480, @rayrapetyan)
+- Command line flag to continue process immediately after launch/attach (#1585, @briandealwis)
+- Configuration option for the maximum recursion depth used when printing variables (#1626, @msaf1980)
+- `next` command now takes a numerical option specifying how many times it should be repeated (#1629, @jeremyfaller)
+- Command line options to redirect logs to a file or file descriptor (#1525, @aarzilli)
+- Ability to read goroutine ancestors if they are enabled by passing `GODEBUG="tracebackancestors=N"` (requires Go >= 1.11) (#1514, #1570, @aarzilli)
+- Breakpoint autocompletion for the command line client (#1612, @qingyunha)
+- Added reverse step-instruction command for rr backend (#1596, @dpapastamos)
+- Support debugging programs using plugins on Linux with Go 1.12 or later (#1413, #1414, @aarzilli) 
+- Improved function call injection (#1503, #1504, #1548, #1591, #1602, @aarzilli)
+- New variable flag to mark variables that have a fake or no-longer-valid address, because they are either stored in registers or in a stack frame that has been removed from the stack (#1619, @aarzilli)
+- Support relative file paths when specifying breakpoint locations (#1478, @chainhelen)
+- GetVersion API response now reports currently used backend (#1641, @aarzilli)
+- `so` as alias for `stepout` (#1646, @stmuk)
+
+### Fixed
+
+- Fixed values of registers smaller than 64bit (#1583, @derekparker)
+- Fixed reading maps with removed entries in Go 1.12 (#1532, @aarzilli)
+- Fixed possible crash on Linux caused by function call injection (#1538, @aarzilli)
+- Fixed errors reading DWARF sections (#1574, #1582, #1603, @aarzilli)
+- Prompt to shutdown headless instance after the target process has exited (#1621, @briandealwis)
+- Stacktraces when a SIGSEGV (or other signal) happens during a cgo call (#1647, @aarzilli)
+- Error restarting program with next/step/stepout under some circumstances (#1657, @aarzilli)
+- Other bug fixes (#1487, #1488, #1490, #1500, #1497, #1469, #1553, #1595, #1594, #1620, #1622, #1624, #1637, #1664, #1665, #1668, @derekparker, @aarzilli, @dpapastamos, @pjot726)
+
+### Changed
+
+- Delve will refuse to work with a version of Go that is either too old or too new (can be disabled with `--check-go-version=false`) (#1533, @aarzilli)
+- When the value of a variable is determined to be a symbolic constant the numerical value of the symbolic constant will also be printed (#1530, @aarzilli)
+- Catch fatal runtime errors (such as the deadlock detector triggering) automatically (#1502, @aarzilli)
+- Replaced glide (which we weren't using anymore) with `go mod vendor` in make script (#1606, @derekparker)
+- Removed support for reading interfaces in older versions (prior to 1.7) of Go (#1501, @aarzilli)
+- Removed support for location expression "<fnname>:0" and associated API functionality (#1588, @aarzilli)
+- Calling an unknown method through the JSON-RPC API will now return an error while previously it would simply be ignored (#1571, @aarzilli)
+- Improved documentation and error messages (#1492, #1520, #1524, #1561, #1562, #1556, #1559, #1567, #1638, #1649, #1662, @derekparker, @Ladicle, @qaisjp, @justinclift, @tschundler, @two, @aarzilli, @dr2chase)
+
 ## [1.2.0] 2019-02-19
 
 ### Added
