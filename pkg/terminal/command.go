@@ -949,9 +949,11 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string) error {
+func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, shouldPrintFile bool) error {
 	if !state.NextInProgress {
-		printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+		if shouldPrintFile {
+			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+		}
 		return nil
 	}
 	for {
@@ -1000,7 +1002,7 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
-	return continueUntilCompleteNext(t, state, "step")
+	return continueUntilCompleteNext(t, state, "step", true)
 }
 
 var notOnFrameZeroErr = errors.New("not on topmost frame")
@@ -1066,11 +1068,8 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 		if count == 1 {
 			printcontext(t, state)
 		}
-		// If we hit a breakpoint while executing this next, we need to keep going.
-		if state.NextInProgress {
-			if err := continueUntilCompleteNext(t, state, "next"); err != nil {
-				return err
-			}
+		if err := continueUntilCompleteNext(t, state, "next", count == 1); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1089,7 +1088,7 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
-	return continueUntilCompleteNext(t, state, "stepout")
+	return continueUntilCompleteNext(t, state, "stepout", true)
 }
 
 func (c *Commands) call(t *Term, ctx callContext, args string) error {
@@ -1109,7 +1108,7 @@ func (c *Commands) call(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
-	return continueUntilCompleteNext(t, state, "call")
+	return continueUntilCompleteNext(t, state, "call", true)
 }
 
 func clear(t *Term, ctx callContext, args string) error {
