@@ -296,6 +296,11 @@ If regex is specified only local variables with a name matching it will be retur
 ## next
 Step over to next source line.
 
+	 next [count]
+
+Optional [count] argument alloes you to skip multiple lines.
+
+
 Aliases: n
 
 ## on

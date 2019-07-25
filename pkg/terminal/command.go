@@ -870,12 +870,13 @@ func parseArgs(args string) ([]string, error) {
 }
 
 // parseOptionalCount parses an optional count argument.
-func parseOptionalCount(arg string, unspecifiedValue int64) (val int64, err error) {
+// If there are not arguments, a value of 1 is returned as the default.
+func parseOptionalCount(arg string) (val int64, err error) {
 	if len(arg) == 0 {
-		return unspecifiedValue, nil
+		return 1, nil
 	}
 	if val, err = strconv.ParseInt(arg, 0, 64); err != nil {
-		return unspecifiedValue, err
+		return 1, err
 	}
 	return val, err
 }
@@ -1050,25 +1051,29 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	}
 	var count int64
 	var err error
-	if count, err = parseOptionalCount(args, 1); err != nil {
+	if count, err = parseOptionalCount(args); err != nil {
 		return err
+	} else if count <= 0 {
+		return errors.New("Invalid next count")
 	}
-	if count > 0 {
-		var state *api.DebuggerState
-		for ; count != 0; count-- {
-			state, err = exitedToError(t.client.Next())
-			if err != nil {
-				break
-			}
-		}
+	for ; count > 0; count-- {
+		state, err := exitedToError(t.client.Next())
 		if err != nil {
 			printcontextNoState(t)
 			return err
 		}
-		printcontext(t, state)
-		return continueUntilCompleteNext(t, state, "next")
+		// If we're about the exit the loop, print the context.
+		if count == 1 {
+			printcontext(t, state)
+		}
+		// If we hit a breakpoint while executing this next, we need to keep going.
+		if state.NextInProgress {
+			if err := continueUntilCompleteNext(t, state, "next"); err != nil {
+				return err
+			}
+		}
 	}
-	return errors.New("Invalid next count")
+	return nil
 }
 
 func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
