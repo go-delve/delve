@@ -292,3 +292,18 @@ func TestLocationCovers(t *testing.T) {
 	}
 
 }
+
+func TestIssue1636_InlineWithoutOrigin(t *testing.T) {
+	// Gcc (specifically GNU C++11 6.3.0) will emit DW_TAG_inlined_subroutine
+	// without a DW_AT_abstract_origin or a name. What is an inlined subroutine
+	// without a reference to an abstract origin or even a name? Regardless,
+	// Delve shouldn't crash.
+	dwb := dwarfbuilder.New()
+	dwb.AddCompileUnit("main", 0x0)
+	dwb.AddSubprogram("main.main", 0x40100, 0x41000)
+	dwb.TagOpen(dwarf.TagInlinedSubroutine, "")
+	dwb.TagClose()
+	dwb.TagClose()
+	dwb.TagClose()
+	fakeBinaryInfo(t, dwb)
+}

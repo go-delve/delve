@@ -92,7 +92,9 @@ func (b *Builder) TagOpen(tag dwarf.Tag, name string) dwarf.Offset {
 	ts.tag = tag
 	b.info.WriteByte(0)
 	b.tagStack = append(b.tagStack, ts)
-	b.Attr(dwarf.AttrName, name)
+	if name != "" {
+		b.Attr(dwarf.AttrName, name)
+	}
 
 	return ts.off
 }

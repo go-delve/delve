@@ -410,7 +410,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 					if entry.Tag == 0 {
 						break
 					}
-					if entry.Tag == dwarf.TagInlinedSubroutine {
+					if entry.Tag == dwarf.TagInlinedSubroutine && entry.Val(dwarf.AttrAbstractOrigin) != nil {
 						originOffset := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
 						name := ctxt.abstractOriginNameTable[originOffset]
 						if ranges, _ := image.dwarf.Ranges(entry); len(ranges) == 1 {
