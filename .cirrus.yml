@@ -1,0 +1,9 @@
+env:
+  GOFLAGS: -mod=vendor
+
+freebsd_instance:
+  image: freebsd-11-2-release-amd64
+
+test_task:
+  install_script: pkg install -y go gcc git
+  test_script: make test
