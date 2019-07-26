@@ -14,6 +14,12 @@ $ go get -u github.com/go-delve/delve/cmd/dlv
 
 With this method you will not be able to use delve's native backend, *but you don't need it anyway*: the native backend on macOS [has known problems](https://github.com/go-delve/delve/issues/1112) on recent issues of the OS and is not currently maintained.
 
+If you didn't enable Developer Mode using XCode you will be asked to authorize the debugger every time you use it. To enable Developer Mode and only have to authorize once per session use:
+
+```
+sudo /usr/sbin/DevToolsSecurity -enable
+```
+
 ## Compiling the native backend
 
 Only do this if you have a valid reason to use the native backend.
