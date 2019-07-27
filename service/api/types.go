@@ -415,6 +415,7 @@ type GetVersionIn struct {
 type GetVersionOut struct {
 	DelveVersion string
 	APIVersion   int
+	Backend      string // backend currently in use
 }
 
 // SetAPIVersionIn is the input for SetAPIVersion.
