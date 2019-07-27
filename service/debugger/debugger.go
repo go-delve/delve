@@ -1207,6 +1207,27 @@ func (d *Debugger) ListDynamicLibraries() []api.Image {
 	return r
 }
 
+func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
+	if d.config.CoreFile != "" {
+		if d.config.Backend == "rr" {
+			out.Backend = "rr"
+		} else {
+			out.Backend = "core"
+		}
+	} else {
+		if d.config.Backend == "default" {
+			if runtime.GOOS == "darwin" {
+				out.Backend = "lldb"
+			} else {
+				out.Backend = "native"
+			}
+		} else {
+			out.Backend = d.config.Backend
+		}
+	}
+	return nil
+}
+
 func go11DecodeErrorCheck(err error) error {
 	if _, isdecodeerr := err.(dwarf.DecodeError); !isdecodeerr {
 		return err

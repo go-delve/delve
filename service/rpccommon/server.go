@@ -387,7 +387,7 @@ func (cb *RPCCallback) Return(out interface{}, err error) {
 func (s *RPCServer) GetVersion(args api.GetVersionIn, out *api.GetVersionOut) error {
 	out.DelveVersion = version.DelveVersion.String()
 	out.APIVersion = s.s.config.APIVersion
-	return nil
+	return s.s.debugger.GetVersion(out)
 }
 
 // Changes version of the API being served.
