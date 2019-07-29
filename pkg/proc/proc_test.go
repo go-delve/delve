@@ -656,14 +656,14 @@ func TestNextNetHTTP(t *testing.T) {
 		go func() {
 			// Wait for program to start listening.
 			for {
-				conn, err := net.Dial("tcp", "localhost:9191")
+				conn, err := net.Dial("tcp", "127.0.0.1:9191")
 				if err == nil {
 					conn.Close()
 					break
 				}
 				time.Sleep(50 * time.Millisecond)
 			}
-			http.Get("http://localhost:9191")
+			http.Get("http://127.0.0.1:9191")
 		}()
 		if err := proc.Continue(p); err != nil {
 			t.Fatal(err)
@@ -1951,7 +1951,7 @@ func TestIssue462(t *testing.T) {
 		go func() {
 			// Wait for program to start listening.
 			for {
-				conn, err := net.Dial("tcp", "localhost:9191")
+				conn, err := net.Dial("tcp", "127.0.0.1:9191")
 				if err == nil {
 					conn.Close()
 					break
@@ -2865,7 +2865,7 @@ func TestAttachDetach(t *testing.T) {
 	// wait for testnextnethttp to start listening
 	t0 := time.Now()
 	for {
-		conn, err := net.Dial("tcp", "localhost:9191")
+		conn, err := net.Dial("tcp", "127.0.0.1:9191")
 		if err == nil {
 			conn.Close()
 			break
@@ -2895,7 +2895,7 @@ func TestAttachDetach(t *testing.T) {
 	assertNoError(err, t, "Attach")
 	go func() {
 		time.Sleep(1 * time.Second)
-		http.Get("http://localhost:9191")
+		http.Get("http://127.0.0.1:9191")
 	}()
 
 	assertNoError(proc.Continue(p), t, "Continue")
@@ -2903,7 +2903,7 @@ func TestAttachDetach(t *testing.T) {
 
 	assertNoError(p.Detach(false), t, "Detach")
 
-	resp, err := http.Get("http://localhost:9191/nobp")
+	resp, err := http.Get("http://127.0.0.1:9191/nobp")
 	assertNoError(err, t, "Page request after detach")
 	bs, err := ioutil.ReadAll(resp.Body)
 	assertNoError(err, t, "Reading /nobp page")
@@ -3167,7 +3167,7 @@ func TestAttachStripped(t *testing.T) {
 	// wait for testnextnethttp to start listening
 	t0 := time.Now()
 	for {
-		conn, err := net.Dial("tcp", "localhost:9191")
+		conn, err := net.Dial("tcp", "127.0.0.1:9191")
 		if err == nil {
 			conn.Close()
 			break

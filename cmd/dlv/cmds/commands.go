@@ -98,7 +98,7 @@ func New(docCall bool) *cobra.Command {
 		Long:  dlvCommandLongDesc,
 	}
 
-	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "localhost:0", "Debugging server listen address.")
+	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "127.0.0.1:0", "Debugging server listen address.")
 
 	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
 	RootCommand.PersistentFlags().StringVarP(&LogOutput, "log-output", "", "", `Comma separated list of components that should produce debug output, possible values:

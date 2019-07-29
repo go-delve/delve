@@ -287,7 +287,7 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []s
 // before reassigning one port they just assigned, unless there's heavy
 // churn in the ephemeral range this should work.
 func unusedPort() string {
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return ":8081"
 	}
@@ -343,7 +343,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	var port string
 	var proc *exec.Cmd
 	if _, err := os.Stat(debugserverExecutable); err == nil {
-		listener, err = net.Listen("tcp", "localhost:0")
+		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
@@ -421,7 +421,7 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) 
 	var port string
 	if _, err := os.Stat(debugserverExecutable); err == nil {
 		isDebugserver = true
-		listener, err = net.Listen("tcp", "localhost:0")
+		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}

@@ -73,7 +73,7 @@ func projectRoot() string {
 }
 
 func TestBuild(t *testing.T) {
-	const listenAddr = "localhost:40573"
+	const listenAddr = "127.0.0.1:40573"
 	var err error
 
 	cmd := exec.Command("go", "run", "scripts/make.go", "build")
@@ -220,7 +220,7 @@ func TestOutput(t *testing.T) {
 
 // TestContinue verifies that the debugged executable starts immediately with --continue
 func TestContinue(t *testing.T) {
-	const listenAddr = "localhost:40573"
+	const listenAddr = "127.0.0.1:40573"
 
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
