@@ -142,7 +142,7 @@ the arguments.  With -noargs, the process starts with an empty commandline.
 
 	 next [count]
 
-Optional [count] argument alloes you to skip multiple lines.
+Optional [count] argument allows you to skip multiple lines.
 `},
 		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
@@ -871,14 +871,11 @@ func parseArgs(args string) ([]string, error) {
 
 // parseOptionalCount parses an optional count argument.
 // If there are not arguments, a value of 1 is returned as the default.
-func parseOptionalCount(arg string) (val int64, err error) {
+func parseOptionalCount(arg string) (int64, error) {
 	if len(arg) == 0 {
 		return 1, nil
 	}
-	if val, err = strconv.ParseInt(arg, 0, 64); err != nil {
-		return 1, err
-	}
-	return val, err
+	return strconv.ParseInt(arg, 0, 64)
 }
 
 func restart(t *Term, ctx callContext, args string) error {
@@ -1065,10 +1062,11 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 			return err
 		}
 		// If we're about the exit the loop, print the context.
-		if count == 1 {
+		finishedNext := count == 1
+		if finishedNext {
 			printcontext(t, state)
 		}
-		if err := continueUntilCompleteNext(t, state, "next", count == 1); err != nil {
+		if err := continueUntilCompleteNext(t, state, "next", finishedNext); err != nil {
 			return err
 		}
 	}

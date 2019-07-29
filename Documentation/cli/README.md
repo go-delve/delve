@@ -298,7 +298,7 @@ Step over to next source line.
 
 	 next [count]
 
-Optional [count] argument alloes you to skip multiple lines.
+Optional [count] argument allows you to skip multiple lines.
 
 
 Aliases: n
