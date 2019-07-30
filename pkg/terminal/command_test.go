@@ -664,6 +664,15 @@ func TestCheckpoints(t *testing.T) {
 	})
 }
 
+func TestNextWithCount(t *testing.T) {
+	test.AllowRecording(t)
+	withTestTerminal("nextcond", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		listIsAt(t, term, "continue", 8, -1, -1)
+		listIsAt(t, term, "next 2", 10, -1, -1)
+	})
+}
+
 func TestRestart(t *testing.T) {
 	withTestTerminal("restartargs", t, func(term *FakeTerminal) {
 		term.MustExec("break main.printArgs")
