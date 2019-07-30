@@ -30,7 +30,7 @@ func withTestClient1Extended(name string, t *testing.T, fn func(c *rpc1.RPCClien
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
@@ -63,7 +63,7 @@ func Test1RunWithInvalidPath(t *testing.T) {
 		// inferior returned an error. Therefore we have to ignore errors from rr.
 		return
 	}
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}

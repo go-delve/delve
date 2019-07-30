@@ -94,7 +94,7 @@ func TestRunWithInvalidPath(t *testing.T) {
 		// inferior returned an error. Therefore we have to ignore errors from rr.
 		return
 	}
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
@@ -1509,7 +1509,7 @@ func TestAcceptMulticlient(t *testing.T) {
 	if testBackend == "rr" {
 		t.Skip("recording not allowed for TestAcceptMulticlient")
 	}
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)
 	}
