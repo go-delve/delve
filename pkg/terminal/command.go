@@ -139,7 +139,7 @@ the arguments.  With -noargs, the process starts with an empty commandline.
 		{aliases: []string{"step", "s"}, cmdFn: c.step, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
 		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: "Step over to next source line."},
-		{aliases: []string{"stepout"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
+		{aliases: []string{"stepout", "so"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
 	
 	call [-unsafe] <function call expression>
