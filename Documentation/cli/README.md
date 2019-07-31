@@ -398,6 +398,7 @@ Aliases: si
 ## stepout
 Step out of the current function.
 
+Aliases: so
 
 ## thread
 Switch to the specified thread.
