@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -138,7 +139,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&BuildModePlugin != 0 {
 		buildFlags = append(buildFlags, "-buildmode=plugin")
 	}
-	if ver.AfterOrEqual(goversion.GoVersion{1, 11, -1, 0, 0, ""}) {
+	if ver.IsDevel() || ver.AfterOrEqual(goversion.GoVersion{1, 11, -1, 0, 0, ""}) {
 		if flags&EnableDWZCompression != 0 {
 			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
 		}
@@ -160,9 +161,11 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&EnableDWZCompression != 0 {
 		cmd := exec.Command("dwz", tmpfile)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			fmt.Printf("Error running dwz on %s: %s\n", tmpfile, err)
-			fmt.Printf("%s\n", string(out))
-			os.Exit(1)
+			if regexp.MustCompile(`dwz: Section offsets in (.*?) not monotonically increasing`).FindString(string(out)) == "" {
+				fmt.Printf("Error running dwz on %s: %s\n", tmpfile, err)
+				fmt.Printf("%s\n", string(out))
+				os.Exit(1)
+			}
 		}
 	}
 

@@ -17,4 +17,5 @@ matrix:
 
 before_install:
   - export GOFLAGS=-mod=vendor
-  - if [ $TRAVIS_OS_NAME = "linux" ]; then sudo apt-get -qq update; sudo apt-get install -y dwz; fi
+  - if [ $TRAVIS_OS_NAME = "linux" ]; then sudo apt-get -qq update; sudo apt-get install -y dwz; echo "dwz version $(dwz --version)"; fi
+  
