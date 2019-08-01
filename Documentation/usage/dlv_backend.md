@@ -1,26 +1,19 @@
-## dlv test
+## dlv backend
 
-Compile test binary and begin debugging program.
+Help about the --backend flag.
 
 ### Synopsis
 
 
-Compiles a test binary with optimizations disabled and begins a new debug session.
+The --backend flag specifies which backend should be used, possible values
+are:
 
-The test command allows you to begin a new debug session in the context of your
-unit tests. By default Delve will debug the tests in the current directory.
-Alternatively you can specify a package name, and Delve will debug the tests in
-that package instead.
+	default		Uses lldb on macOS, native everywhere else.
+	native		Native backend.
+	lldb		Uses lldb-server or debugserver.
+	rr		Uses mozilla rr (https://github.com/mozilla/rr).
 
-```
-dlv test [package]
-```
 
-### Options
-
-```
-      --output string   Output path for the binary. (default "debug.test")
-```
 
 ### Options inherited from parent commands
 
@@ -32,7 +25,7 @@ dlv test [package]
       --check-go-version     Checks that the version of Go in use is compatible with Delve. (default true)
       --headless             Run debug server only, in headless mode.
       --init string          Init file, executed by the terminal client.
-  -l, --listen string        Debugging server listen address. (default "127.0.0.1:0")
+  -l, --listen string        Debugging server listen address. (default "localhost:0")
       --log                  Enable debugging server logging.
       --log-dest string      Writes logs to the specified file or file descriptor (see 'dlv help log').
       --log-output string    Comma separated list of components that should produce debug output (see 'dlv help log')
