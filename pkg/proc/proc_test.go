@@ -4464,3 +4464,18 @@ func TestIssue1615(t *testing.T) {
 		assertLineNumber(p, t, 19, "")
 	})
 }
+
+func TestCgoStacktrace2(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture crashes go runtime on windows")
+	}
+	// If a panic happens during cgo execution the stacktrace should show the C
+	// function that caused the problem.
+	withTestProcess("cgosigsegvstack", t, func(p proc.Process, fixture protest.Fixture) {
+		proc.Continue(p)
+		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
+		assertNoError(err, t, "Stacktrace()")
+		logStacktrace(t, p.BinInfo(), frames)
+		stacktraceCheck(t, []string{"C.sigsegv", "C.testfn", "main.main"}, frames)
+	})
+}

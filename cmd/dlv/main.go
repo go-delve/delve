@@ -17,7 +17,7 @@ func main() {
 	}
 	const cgoCflagsEnv = "CGO_CFLAGS"
 	if os.Getenv(cgoCflagsEnv) == "" {
-		os.Setenv(cgoCflagsEnv, "-O -g")
+		os.Setenv(cgoCflagsEnv, "-O0 -g")
 	} else {
 		logrus.WithFields(logrus.Fields{"layer": "dlv"}).Warnln("CGO_CFLAGS already set, Cgo code could be optimized.")
 	}
