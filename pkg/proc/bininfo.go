@@ -80,8 +80,6 @@ type BinaryInfo struct {
 
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
-
-	initialized bool
 }
 
 // ErrUnsupportedLinuxArch is returned when attempting to debug a binary compiled for an unsupported architecture.
@@ -1236,11 +1234,14 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 		defer wg.Done()
 	}
 
-	if !bi.initialized {
+	if bi.types == nil {
 		bi.types = make(map[string]dwarfRef)
+	}
+	if bi.consts == nil {
 		bi.consts = make(map[dwarfRef]*constantType)
+	}
+	if bi.packageMap == nil {
 		bi.packageMap = make(map[string]string)
-		bi.initialized = true
 	}
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 
