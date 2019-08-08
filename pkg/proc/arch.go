@@ -23,12 +23,8 @@ type Arch interface {
 
 // AMD64 represents the AMD64 CPU architecture.
 type AMD64 struct {
-	ptrSize                 int
-	breakInstruction        []byte
-	breakInstructionLen     int
-	gStructOffset           uint64
-	hardwareBreakpointUsage []bool
-	goos                    string
+	gStructOffset uint64
+	goos          string
 
 	// crosscall2fn is the DIE of crosscall2, a function used by the go runtime
 	// to call C functions. This function in go 1.9 (and previous versions) had
@@ -48,36 +44,32 @@ const (
 	amd64DwarfBPRegNum uint64 = 6
 )
 
+var amd64BreakInstruction = []byte{0xCC}
+
 // AMD64Arch returns an initialized AMD64
 // struct.
 func AMD64Arch(goos string) *AMD64 {
-	var breakInstr = []byte{0xCC}
-
 	return &AMD64{
-		ptrSize:                 8,
-		breakInstruction:        breakInstr,
-		breakInstructionLen:     len(breakInstr),
-		hardwareBreakpointUsage: make([]bool, 4),
-		goos:                    goos,
+		goos: goos,
 	}
 }
 
 // PtrSize returns the size of a pointer
 // on this architecture.
 func (a *AMD64) PtrSize() int {
-	return a.ptrSize
+	return 8
 }
 
 // BreakpointInstruction returns the Breakpoint
 // instruction for this architecture.
 func (a *AMD64) BreakpointInstruction() []byte {
-	return a.breakInstruction
+	return amd64BreakInstruction
 }
 
 // BreakpointSize returns the size of the
 // breakpoint instruction on this architecture.
 func (a *AMD64) BreakpointSize() int {
-	return a.breakInstructionLen
+	return len(amd64BreakInstruction)
 }
 
 // DerefTLS returns true if the value of regs.TLS()+GStructOffset() is a
@@ -100,7 +92,6 @@ func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 	}
 
 	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
-		//if true {
 		// When there's no frame descriptor entry use BP (the frame pointer) instead
 		// - return register is [bp + a.PtrSize()] (i.e. [cfa-a.PtrSize()])
 		// - cfa is bp + a.PtrSize()*2
