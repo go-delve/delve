@@ -213,6 +213,60 @@ type G struct {
 	Unreadable error // could not read the G struct
 }
 
+// Defer returns the top-most defer of the goroutine.
+func (g *G) Defer() *Defer {
+	if g.variable.Unreadable != nil {
+		return nil
+	}
+	dvar := g.variable.fieldVariable("_defer").maybeDereference()
+	if dvar.Addr == 0 {
+		return nil
+	}
+	d := &Defer{variable: dvar}
+	d.load()
+	return d
+}
+
+// UserCurrent returns the location the users code is at,
+// or was at before entering a runtime function.
+func (g *G) UserCurrent() Location {
+	it, err := g.stackIterator()
+	if err != nil {
+		return g.CurrentLoc
+	}
+	for it.Next() {
+		frame := it.Frame()
+		if frame.Call.Fn != nil {
+			name := frame.Call.Fn.Name
+			if strings.Contains(name, ".") && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
+				return frame.Call
+			}
+		}
+	}
+	return g.CurrentLoc
+}
+
+// Go returns the location of the 'go' statement
+// that spawned this goroutine.
+func (g *G) Go() Location {
+	pc := g.GoPC
+	if fn := g.variable.bi.PCToFunc(pc); fn != nil {
+		// Backup to CALL instruction.
+		// Mimics runtime/traceback.go:677.
+		if g.GoPC > fn.Entry {
+			pc--
+		}
+	}
+	f, l, fn := g.variable.bi.PCToLine(pc)
+	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
+}
+
+// StartLoc returns the starting location of the goroutine.
+func (g *G) StartLoc() Location {
+	f, l, fn := g.variable.bi.PCToLine(g.StartPC)
+	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
+}
+
 type Ancestor struct {
 	ID         int64 // Goroutine ID
 	Unreadable error
@@ -601,66 +655,12 @@ func (v *Variable) fieldVariable(name string) *Variable {
 	return nil
 }
 
-// Defer returns the top-most defer of the goroutine.
-func (g *G) Defer() *Defer {
-	if g.variable.Unreadable != nil {
-		return nil
-	}
-	dvar := g.variable.fieldVariable("_defer").maybeDereference()
-	if dvar.Addr == 0 {
-		return nil
-	}
-	d := &Defer{variable: dvar}
-	d.load()
-	return d
-}
-
 // From $GOROOT/src/runtime/traceback.go:597
 // isExportedRuntime reports whether name is an exported runtime function.
 // It is only for runtime functions, so ASCII A-Z is fine.
 func isExportedRuntime(name string) bool {
 	const n = len("runtime.")
 	return len(name) > n && name[:n] == "runtime." && 'A' <= name[n] && name[n] <= 'Z'
-}
-
-// UserCurrent returns the location the users code is at,
-// or was at before entering a runtime function.
-func (g *G) UserCurrent() Location {
-	it, err := g.stackIterator()
-	if err != nil {
-		return g.CurrentLoc
-	}
-	for it.Next() {
-		frame := it.Frame()
-		if frame.Call.Fn != nil {
-			name := frame.Call.Fn.Name
-			if strings.Contains(name, ".") && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
-				return frame.Call
-			}
-		}
-	}
-	return g.CurrentLoc
-}
-
-// Go returns the location of the 'go' statement
-// that spawned this goroutine.
-func (g *G) Go() Location {
-	pc := g.GoPC
-	if fn := g.variable.bi.PCToFunc(pc); fn != nil {
-		// Backup to CALL instruction.
-		// Mimics runtime/traceback.go:677.
-		if g.GoPC > fn.Entry {
-			pc--
-		}
-	}
-	f, l, fn := g.variable.bi.PCToLine(pc)
-	return Location{PC: g.GoPC, File: f, Line: l, Fn: fn}
-}
-
-// StartLoc returns the starting location of the goroutine.
-func (g *G) StartLoc() Location {
-	f, l, fn := g.variable.bi.PCToLine(g.StartPC)
-	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
 }
 
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")

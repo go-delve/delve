@@ -18,7 +18,7 @@ type Arch interface {
 	FixFrameUnwindContext(*frame.FrameContext, uint64, *BinaryInfo) *frame.FrameContext
 	RegSize(uint64) int
 	RegistersToDwarfRegisters(uint64, Registers) op.DwarfRegisters
-	GoroutineToDwarfRegisters(*G) op.DwarfRegisters
+	AddrAndStackRegsToDwarfRegisters(uint64, uint64, uint64, uint64) op.DwarfRegisters
 }
 
 // AMD64 represents the AMD64 CPU architecture.
@@ -293,15 +293,20 @@ func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 	}
 }
 
-// GoroutineToDwarfRegisters extract the saved DWARF registers from a parked
-// goroutine in the format used by the DWARF expression interpreter.
-func (a *AMD64) GoroutineToDwarfRegisters(g *G) op.DwarfRegisters {
+// AddrAndStackRegsToDwarfRegisters returns DWARF registers from the passed in
+// PC, SP, and BP registers in the format used by the DWARF expression interpreter.
+func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp uint64) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, amd64DwarfIPRegNum+1)
-	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(g.PC)
-	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(g.SP)
-	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(g.BP)
+	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
+	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
+	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
 
-	so := g.variable.bi.PCToImage(g.PC)
-
-	return op.DwarfRegisters{StaticBase: so.StaticBase, Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
+	return op.DwarfRegisters{
+		StaticBase: staticBase,
+		Regs:       dregs,
+		ByteOrder:  binary.LittleEndian,
+		PCRegNum:   amd64DwarfIPRegNum,
+		SPRegNum:   amd64DwarfSPRegNum,
+		BPRegNum:   amd64DwarfBPRegNum,
+	}
 }
