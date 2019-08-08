@@ -1,7 +1,5 @@
 package proc
 
-import "sort"
-
 // AsmInstruction represents one assembly instruction.
 type AsmInstruction struct {
 	Loc        Location
@@ -75,32 +73,4 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *Breakpoint
 		}
 	}
 	return r, nil
-}
-
-// Looks up symbol (either functions or global variables) at address addr.
-// Used by disassembly formatter.
-func (bi *BinaryInfo) symLookup(addr uint64) (string, uint64) {
-	fn := bi.PCToFunc(addr)
-	if fn != nil {
-		if fn.Entry == addr {
-			// only report the function name if it's the exact address because it's
-			// easier to read the absolute address than function_name+offset.
-			return fn.Name, fn.Entry
-		}
-		return "", 0
-	}
-	i := sort.Search(len(bi.packageVars), func(i int) bool {
-		return bi.packageVars[i].addr >= addr
-	})
-	if i >= len(bi.packageVars) {
-		return "", 0
-	}
-	if bi.packageVars[i].addr > addr {
-		// report previous variable + offset if i-th variable starts after addr
-		i--
-	}
-	if i > 0 {
-		return bi.packageVars[i].name, bi.packageVars[i].addr
-	}
-	return "", 0
 }
