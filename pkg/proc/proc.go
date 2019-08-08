@@ -115,33 +115,6 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) (uint64, e
 	return breakAddr, err
 }
 
-// FunctionReturnLocations will return a list of addresses corresponding
-// to 'ret' or 'call runtime.deferreturn'.
-func FunctionReturnLocations(p Process, funcName string) ([]uint64, error) {
-	const deferReturn = "runtime.deferreturn"
-
-	g := p.SelectedGoroutine()
-	fn, ok := p.BinInfo().LookupFunc[funcName]
-	if !ok {
-		return nil, fmt.Errorf("unable to find function %s", funcName)
-	}
-
-	instructions, err := Disassemble(p, g, fn.Entry, fn.End)
-	if err != nil {
-		return nil, err
-	}
-
-	var addrs []uint64
-	for _, instruction := range instructions {
-		if instruction.IsRet() {
-			addrs = append(addrs, instruction.Loc.PC)
-		}
-	}
-	addrs = append(addrs, findDeferReturnCalls(instructions)...)
-
-	return addrs, nil
-}
-
 // Next continues execution until the next source line.
 func Next(dbp Process) (err error) {
 	if _, err := dbp.Valid(); err != nil {

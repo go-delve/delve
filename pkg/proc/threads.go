@@ -225,7 +225,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 	}
 
 	if !csource {
-		deferreturns := findDeferReturnCalls(text)
+		deferreturns := FindDeferReturnCalls(text)
 
 		// Set breakpoint on the most recently deferred function (if any)
 		var deferpc uint64
@@ -325,7 +325,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 	return nil
 }
 
-func findDeferReturnCalls(text []AsmInstruction) []uint64 {
+func FindDeferReturnCalls(text []AsmInstruction) []uint64 {
 	const deferreturn = "runtime.deferreturn"
 	deferreturns := []uint64{}
 

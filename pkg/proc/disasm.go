@@ -24,39 +24,24 @@ const (
 	GoFlavour
 )
 
-// Disassemble disassembles target memory between startPC and endPC, marking
+// Disassemble disassembles target memory between startAddr and endAddr, marking
 // the current instruction being executed in goroutine g.
-// If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble will evaluate the argument of the CALL instruction using the thread's registers
-// Be aware that the Bytes field of each returned instruction is a slice of a larger array of size endPC - startPC
-func Disassemble(dbp Process, g *G, startPC, endPC uint64) ([]AsmInstruction, error) {
-	if _, err := dbp.Valid(); err != nil {
-		return nil, err
-	}
-	if g == nil {
-		ct := dbp.CurrentThread()
-		regs, _ := ct.Registers(false)
-		return disassemble(ct, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC, false)
-	}
-
-	var regs Registers
-	var mem MemoryReadWriter = dbp.CurrentThread()
-	if g.Thread != nil {
-		mem = g.Thread
-		regs, _ = g.Thread.Registers(false)
-	}
-
-	return disassemble(mem, regs, dbp.Breakpoints(), dbp.BinInfo(), startPC, endPC, false)
+// If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble
+// will evaluate the argument of the CALL instruction using the thread's registers.
+// Be aware that the Bytes field of each returned instruction is a slice of a larger array of size startAddr - endAddr.
+func Disassemble(mem MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64) ([]AsmInstruction, error) {
+	return disassemble(mem, regs, breakpoints, bi, startAddr, endAddr, false)
 }
 
-func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startPC, endPC uint64, singleInstr bool) ([]AsmInstruction, error) {
-	mem := make([]byte, int(endPC-startPC))
-	_, err := memrw.ReadMemory(mem, uintptr(startPC))
+func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64, singleInstr bool) ([]AsmInstruction, error) {
+	mem := make([]byte, int(endAddr-startAddr))
+	_, err := memrw.ReadMemory(mem, uintptr(startAddr))
 	if err != nil {
 		return nil, err
 	}
 
 	r := make([]AsmInstruction, 0, len(mem)/15)
-	pc := startPC
+	pc := startAddr
 
 	var curpc uint64
 	if regs != nil {

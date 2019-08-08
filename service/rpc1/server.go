@@ -317,6 +317,6 @@ type DisassembleRequest struct {
 
 func (c *RPCServer) Disassemble(args DisassembleRequest, answer *api.AsmInstructions) error {
 	var err error
-	*answer, err = c.debugger.Disassemble(args.Scope, args.StartPC, args.EndPC, args.Flavour)
+	*answer, err = c.debugger.Disassemble(args.Scope.GoroutineID, args.StartPC, args.EndPC, args.Flavour)
 	return err
 }
