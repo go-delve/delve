@@ -119,9 +119,16 @@ func (g *G) stackIterator() (*stackIterator, error) {
 			return nil, err
 		}
 		so := g.variable.bi.PCToImage(regs.PC())
-		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs), g.stackhi, stkbar, g.stkbarPos, g), nil
+		return newStackIterator(
+			g.variable.bi, g.Thread,
+			g.variable.bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs),
+			g.stackhi, stkbar, g.stkbarPos, g), nil
 	}
-	return newStackIterator(g.variable.bi, g.variable.mem, g.variable.bi.Arch.GoroutineToDwarfRegisters(g), g.stackhi, stkbar, g.stkbarPos, g), nil
+	so := g.variable.bi.PCToImage(g.PC)
+	return newStackIterator(
+		g.variable.bi, g.variable.mem,
+		g.variable.bi.Arch.AddrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP),
+		g.stackhi, stkbar, g.stkbarPos, g), nil
 }
 
 // Stacktrace returns the stack trace for a goroutine.
