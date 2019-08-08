@@ -435,8 +435,8 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 	return nil
 }
 
-// pcToImage returns the image containing the given PC address.
-func (bi *BinaryInfo) pcToImage(pc uint64) *Image {
+// PCToImage returns the image containing the given PC address.
+func (bi *BinaryInfo) PCToImage(pc uint64) *Image {
 	fn := bi.PCToFunc(pc)
 	return bi.funcToImage(fn)
 }

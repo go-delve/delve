@@ -15,9 +15,9 @@ type Arch interface {
 	BreakpointInstruction() []byte
 	BreakpointSize() int
 	DerefTLS() bool
-	FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext
+	FixFrameUnwindContext(*frame.FrameContext, uint64, *BinaryInfo) *frame.FrameContext
 	RegSize(uint64) int
-	RegistersToDwarfRegisters(bi *BinaryInfo, regs Registers) op.DwarfRegisters
+	RegistersToDwarfRegisters(uint64, Registers) op.DwarfRegisters
 	GoroutineToDwarfRegisters(*G) op.DwarfRegisters
 }
 
@@ -261,7 +261,7 @@ func maxAmd64DwarfRegister() int {
 
 // RegistersToDwarfRegisters converts hardware registers to the format used
 // by the DWARF expression interpreter.
-func (a *AMD64) RegistersToDwarfRegisters(bi *BinaryInfo, regs Registers) op.DwarfRegisters {
+func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, maxAmd64DwarfRegister()+1)
 
 	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(regs.PC())
@@ -283,9 +283,14 @@ func (a *AMD64) RegistersToDwarfRegisters(bi *BinaryInfo, regs Registers) op.Dwa
 		}
 	}
 
-	so := bi.pcToImage(regs.PC())
-
-	return op.DwarfRegisters{StaticBase: so.StaticBase, Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
+	return op.DwarfRegisters{
+		StaticBase: staticBase,
+		Regs:       dregs,
+		ByteOrder:  binary.LittleEndian,
+		PCRegNum:   amd64DwarfIPRegNum,
+		SPRegNum:   amd64DwarfSPRegNum,
+		BPRegNum:   amd64DwarfBPRegNum,
+	}
 }
 
 // GoroutineToDwarfRegisters extract the saved DWARF registers from a parked
@@ -296,7 +301,7 @@ func (a *AMD64) GoroutineToDwarfRegisters(g *G) op.DwarfRegisters {
 	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(g.SP)
 	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(g.BP)
 
-	so := g.variable.bi.pcToImage(g.PC)
+	so := g.variable.bi.PCToImage(g.PC)
 
 	return op.DwarfRegisters{StaticBase: so.StaticBase, Regs: dregs, ByteOrder: binary.LittleEndian, PCRegNum: amd64DwarfIPRegNum, SPRegNum: amd64DwarfSPRegNum, BPRegNum: amd64DwarfBPRegNum}
 }

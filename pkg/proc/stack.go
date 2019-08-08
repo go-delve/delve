@@ -100,7 +100,8 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 		if err != nil {
 			return nil, err
 		}
-		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(thread.BinInfo(), regs), 0, nil, -1, nil)
+		so := thread.BinInfo().PCToImage(regs.PC())
+		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs), 0, nil, -1, nil)
 		return it.stacktrace(depth)
 	}
 	return g.Stacktrace(depth, false)
@@ -117,7 +118,8 @@ func (g *G) stackIterator() (*stackIterator, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(g.variable.bi, regs), g.stackhi, stkbar, g.stkbarPos, g), nil
+		so := g.variable.bi.PCToImage(regs.PC())
+		return newStackIterator(g.variable.bi, g.Thread, g.variable.bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs), g.stackhi, stkbar, g.stkbarPos, g), nil
 	}
 	return newStackIterator(g.variable.bi, g.variable.mem, g.variable.bi.Arch.GoroutineToDwarfRegisters(g), g.stackhi, stkbar, g.stkbarPos, g), nil
 }
@@ -517,7 +519,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
 
-	callimage := it.bi.pcToImage(it.pc)
+	callimage := it.bi.PCToImage(it.pc)
 
 	callFrameRegs = op.DwarfRegisters{StaticBase: callimage.StaticBase, ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum}
 
