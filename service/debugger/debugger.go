@@ -218,12 +218,42 @@ func (d *Debugger) LastModified() time.Time {
 	return d.target.BinInfo().LastModified()
 }
 
+const deferReturn = "runtime.deferreturn"
+
 // FunctionReturnLocations returns all return locations
-// for the given function. See the documentation for the
-// function of the same name within the `proc` package for
-// more information.
+// for the given function, a list of addresses corresponding
+// to 'ret' or 'call runtime.deferreturn'.
 func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
-	return proc.FunctionReturnLocations(d.target, fnName)
+	var (
+		p = d.target
+		g = p.SelectedGoroutine()
+	)
+
+	fn, ok := p.BinInfo().LookupFunc[fnName]
+	if !ok {
+		return nil, fmt.Errorf("unable to find function %s", fnName)
+	}
+
+	var regs proc.Registers
+	var mem proc.MemoryReadWriter = p.CurrentThread()
+	if g.Thread != nil {
+		mem = g.Thread
+		regs, _ = g.Thread.Registers(false)
+	}
+	instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
+	if err != nil {
+		return nil, err
+	}
+
+	var addrs []uint64
+	for _, instruction := range instructions {
+		if instruction.IsRet() {
+			addrs = append(addrs, instruction.Loc.PC)
+		}
+	}
+	addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
+
+	return addrs, nil
 }
 
 // Detach detaches from the target process.
@@ -1121,9 +1151,9 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string) ([]api.Locat
 	return locs, err
 }
 
-// Disassemble code between startPC and endPC
-// if endPC == 0 it will find the function containing startPC and disassemble the whole function
-func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+// Disassemble code between startPC and endPC.
+// if endPC == 0 it will find the function containing startPC and disassemble the whole function.
+func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -1131,21 +1161,27 @@ func (d *Debugger) Disassemble(scope api.EvalScope, startPC, endPC uint64, flavo
 		return nil, err
 	}
 
-	if endPC == 0 {
-		_, _, fn := d.target.BinInfo().PCToLine(startPC)
+	if addr2 == 0 {
+		_, _, fn := d.target.BinInfo().PCToLine(addr1)
 		if fn == nil {
-			return nil, fmt.Errorf("Address 0x%x does not belong to any function", startPC)
+			return nil, fmt.Errorf("address %#x does not belong to any function", addr1)
 		}
-		startPC = fn.Entry
-		endPC = fn.End
+		addr1 = fn.Entry
+		addr2 = fn.End
 	}
 
-	g, err := proc.FindGoroutine(d.target, scope.GoroutineID)
+	g, err := proc.FindGoroutine(d.target, goroutineID)
 	if err != nil {
 		return nil, err
 	}
 
-	insts, err := proc.Disassemble(d.target, g, startPC, endPC)
+	var regs proc.Registers
+	var mem proc.MemoryReadWriter = d.target.CurrentThread()
+	if g.Thread != nil {
+		mem = g.Thread
+		regs, _ = g.Thread.Registers(false)
+	}
+	insts, err := proc.Disassemble(mem, regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
 	if err != nil {
 		return nil, err
 	}

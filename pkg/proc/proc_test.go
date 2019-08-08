@@ -2545,7 +2545,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 			regs, err := p.CurrentThread().Registers(false)
 			assertNoError(err, t, "Registers()")
 			pc := regs.PC()
-			text, err := proc.Disassemble(p, nil, pc, pc+maxInstructionLength)
+			text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), pc, pc+maxInstructionLength)
 			assertNoError(err, t, "Disassemble()")
 			if text[0].IsCall() {
 				found = true
@@ -3629,7 +3629,8 @@ func TestIssue1145(t *testing.T) {
 func TestDisassembleGlobalVars(t *testing.T) {
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		mainfn := p.BinInfo().LookupFunc["main.main"]
-		text, err := proc.Disassemble(p, nil, mainfn.Entry, mainfn.End)
+		regs, _ := p.CurrentThread().Registers(false)
+		text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), mainfn.Entry, mainfn.End)
 		assertNoError(err, t, "Disassemble")
 		found := false
 		for i := range text {
