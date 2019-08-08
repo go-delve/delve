@@ -61,8 +61,6 @@ type BinaryInfo struct {
 	closer         io.Closer
 	sepDebugCloser io.Closer
 
-	staticBase uint64
-
 	// Maps package names to package paths, needed to lookup types inside DWARF info
 	packageMap map[string]string
 
@@ -82,9 +80,6 @@ type BinaryInfo struct {
 
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
-
-	loadErrMu sync.Mutex
-	loadErr   error
 
 	initialized bool
 }
