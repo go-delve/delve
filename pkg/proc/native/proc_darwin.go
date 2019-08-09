@@ -443,10 +443,10 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if !dbp.os.initialized {
 		return nil
 	}
-	trapthread.SetCurrentBreakpoint()
+	trapthread.SetCurrentBreakpoint(true)
 	for _, port := range ports {
 		if th, ok := dbp.threads[port]; ok {
-			err := th.SetCurrentBreakpoint()
+			err := th.SetCurrentBreakpoint(true)
 			if err != nil {
 				return err
 			}

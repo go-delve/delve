@@ -294,7 +294,7 @@ func (dbp *Process) StepInstruction() (err error) {
 	if err != nil {
 		return err
 	}
-	err = thread.SetCurrentBreakpoint()
+	err = thread.SetCurrentBreakpoint(true)
 	if err != nil {
 		return err
 	}
@@ -339,10 +339,12 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 }
 
 // FindBreakpoint finds the breakpoint for the given pc.
-func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
-	// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
-	if bp, ok := dbp.breakpoints.M[pc-uint64(dbp.bi.Arch.BreakpointSize())]; ok {
-		return bp, true
+func (dbp *Process) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, bool) {
+	if adjustPC {
+		// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
+		if bp, ok := dbp.breakpoints.M[pc-uint64(dbp.bi.Arch.BreakpointSize())]; ok {
+			return bp, true
+		}
 	}
 	// Directly use addr to lookup breakpoint.
 	if bp, ok := dbp.breakpoints.M[pc]; ok {

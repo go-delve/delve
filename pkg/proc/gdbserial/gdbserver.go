@@ -767,7 +767,7 @@ func (p *Process) StepInstruction() error {
 	if err != nil {
 		return err
 	}
-	err = thread.SetCurrentBreakpoint()
+	err = thread.SetCurrentBreakpoint(true)
 	if err != nil {
 		return err
 	}
@@ -1024,10 +1024,6 @@ func (p *Process) Breakpoints() *proc.BreakpointMap {
 
 // FindBreakpoint returns the breakpoint at the given address.
 func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
-	// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
-	if bp, ok := p.breakpoints.M[pc-uint64(p.bi.Arch.BreakpointSize())]; ok {
-		return bp, true
-	}
 	// Directly use addr to lookup breakpoint.
 	if bp, ok := p.breakpoints.M[pc]; ok {
 		return bp, true
@@ -1193,7 +1189,7 @@ func (p *Process) setCurrentBreakpoints() error {
 	if p.threadStopInfo {
 		for _, th := range p.threads {
 			if th.setbp {
-				err := th.SetCurrentBreakpoint()
+				err := th.SetCurrentBreakpoint(true)
 				if err != nil {
 					return err
 				}
@@ -1203,7 +1199,7 @@ func (p *Process) setCurrentBreakpoints() error {
 	if !p.threadStopInfo {
 		for _, th := range p.threads {
 			if th.CurrentBreakpoint.Breakpoint == nil {
-				err := th.SetCurrentBreakpoint()
+				err := th.SetCurrentBreakpoint(true)
 				if err != nil {
 					return err
 				}
@@ -1573,7 +1569,9 @@ func (t *Thread) clearBreakpointState() {
 }
 
 // SetCurrentBreakpoint will find and set the threads current breakpoint.
-func (t *Thread) SetCurrentBreakpoint() error {
+func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
+	// adjustPC is ignored, it is the stub's responsibiility to set the PC
+	// address correctly after hitting a breakpoint.
 	t.clearBreakpointState()
 	regs, err := t.Registers(false)
 	if err != nil {
