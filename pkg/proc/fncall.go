@@ -222,7 +222,7 @@ func finishEvalExpressionWithCalls(p Process, g *G, contReq continueRequest, ok 
 // possible.
 // See runtime.debugCallV1 in $GOROOT/src/runtime/asm_amd64.s for a
 // description of the protocol.
-func (scope *EvalScope) evalFunctionCall(node *ast.CallExpr) (*Variable, error) {
+func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	r, err := scope.evalBuiltinCall(node)
 	if r != nil || err != nil {
 		// it was a builtin call
@@ -817,7 +817,7 @@ func (fncall *functionCallState) returnValues() []*Variable {
 }
 
 // allocString allocates spaces for the contents of v if it needs to be allocated
-func (scope *EvalScope) allocString(v *Variable) error {
+func allocString(scope *EvalScope, v *Variable) error {
 	if v.Base != 0 || v.Len == 0 {
 		// already allocated
 		return nil
@@ -831,7 +831,7 @@ func (scope *EvalScope) allocString(v *Variable) error {
 	defer func() {
 		scope.callCtx.retLoadCfg = savedLoadCfg
 	}()
-	mallocv, err := scope.evalFunctionCall(&ast.CallExpr{
+	mallocv, err := evalFunctionCall(scope, &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   &ast.Ident{Name: "runtime"},
 			Sel: &ast.Ident{Name: "mallocgc"},
