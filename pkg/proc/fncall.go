@@ -315,7 +315,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	}
 	switch len(fncall.retvars) {
 	case 0:
-		r := scope.newVariable("", 0, nil, nil)
+		r := newVariable("", 0, nil, scope.BinInfo, nil)
 		r.loaded = true
 		r.Unreadable = errors.New("no return values")
 		return r, nil
@@ -323,7 +323,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		return fncall.retvars[0], nil
 	default:
 		// create a fake variable without address or type to return multiple values
-		r := scope.newVariable("", 0, nil, nil)
+		r := newVariable("", 0, nil, scope.BinInfo, nil)
 		r.loaded = true
 		r.Children = make([]Variable, len(fncall.retvars))
 		for i := range fncall.retvars {
@@ -778,7 +778,7 @@ func readTopstackVariable(thread Thread, regs Registers, typename string, loadCf
 	if err != nil {
 		return nil, err
 	}
-	v := scope.newVariable("", uintptr(regs.SP()), typ, scope.Mem)
+	v := newVariable("", uintptr(regs.SP()), typ, scope.BinInfo, scope.Mem)
 	v.loadValue(loadCfg)
 	if v.Unreadable != nil {
 		return nil, v.Unreadable

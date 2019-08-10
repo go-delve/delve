@@ -812,6 +812,44 @@ func readVarEntry(varEntry *dwarf.Entry, image *Image) (entry reader.Entry, name
 	return entry, name, typ, nil
 }
 
+// Extracts the name and type of a variable from a dwarf entry
+// then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
+func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, varEntry *dwarf.Entry) (*Variable, error) {
+	if varEntry == nil {
+		return nil, fmt.Errorf("invalid entry")
+	}
+
+	if varEntry.Tag != dwarf.TagFormalParameter && varEntry.Tag != dwarf.TagVariable {
+		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", varEntry.Tag.String())
+	}
+
+	entry, n, t, err := readVarEntry(varEntry, image)
+	if err != nil {
+		return nil, err
+	}
+
+	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs)
+	if pieces != nil {
+		addr = fakeAddress
+		var cmem *compositeMemory
+		cmem, err = newCompositeMemory(mem, regs, pieces)
+		if cmem != nil {
+			mem = cmem
+		}
+	}
+
+	v := newVariable(n, uintptr(addr), t, bi, mem)
+	if pieces != nil {
+		v.Flags |= VariableFakeAddress
+	}
+	v.LocationExpr = descr
+	v.DeclLine, _ = entry.Val(dwarf.AttrDeclLine).(int64)
+	if err != nil {
+		v.Unreadable = err
+	}
+	return v, nil
+}
+
 // If v is a pointer a new variable is returned containing the value pointed by v.
 func (v *Variable) maybeDereference() *Variable {
 	if v.Unreadable != nil {
