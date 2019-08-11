@@ -108,7 +108,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()
-		val, err := scope.extractVarInfoFromEntry(entry)
+		val, err := extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry)
 		if err != nil {
 			// skip variables that we can't parse yet
 			continue
@@ -249,45 +249,6 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	return fmt.Errorf("can not set variables of type %s (not implemented)", dstv.Kind.String())
 }
 
-// Extracts the name and type of a variable from a dwarf entry
-// then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func (scope *EvalScope) extractVarInfoFromEntry(varEntry *dwarf.Entry) (*Variable, error) {
-	if varEntry == nil {
-		return nil, fmt.Errorf("invalid entry")
-	}
-
-	if varEntry.Tag != dwarf.TagFormalParameter && varEntry.Tag != dwarf.TagVariable {
-		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", varEntry.Tag.String())
-	}
-
-	entry, n, t, err := readVarEntry(varEntry, scope.image())
-	if err != nil {
-		return nil, err
-	}
-
-	addr, pieces, descr, err := scope.BinInfo.Location(entry, dwarf.AttrLocation, scope.PC, scope.Regs)
-	mem := scope.Mem
-	if pieces != nil {
-		addr = fakeAddress
-		var cmem *compositeMemory
-		cmem, err = newCompositeMemory(scope.Mem, scope.Regs, pieces)
-		if cmem != nil {
-			mem = cmem
-		}
-	}
-
-	v := scope.newVariable(n, uintptr(addr), t, mem)
-	if pieces != nil {
-		v.Flags |= VariableFakeAddress
-	}
-	v.LocationExpr = descr
-	v.DeclLine, _ = entry.Val(dwarf.AttrDeclLine).(int64)
-	if err != nil {
-		v.Unreadable = err
-	}
-	return v, nil
-}
-
 // EvalVariable returns the value of the given expression (backwards compatibility).
 func (scope *EvalScope) EvalVariable(name string, cfg LoadConfig) (*Variable, error) {
 	return scope.EvalExpression(name, cfg)
@@ -364,6 +325,11 @@ func filterVariables(vars []*Variable, pred func(v *Variable) bool) []*Variable 
 	return r
 }
 
+func regsReplaceStaticBase(regs op.DwarfRegisters, image *Image) op.DwarfRegisters {
+	regs.StaticBase = image.StaticBase
+	return regs
+}
+
 // PackageVariables returns the name, value, and type of all package variables in the application.
 func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 	var vars []*Variable
@@ -389,7 +355,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 			}
 
 			// Ignore errors trying to extract values
-			val, err := scope.globalFor(image).extractVarInfoFromEntry(entry)
+			val, err := extractVarInfoFromEntry(scope.BinInfo, image, regsReplaceStaticBase(scope.Regs, image), scope.Mem, entry)
 			if err != nil {
 				continue
 			}
@@ -410,13 +376,13 @@ func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
 			if err != nil {
 				return nil, err
 			}
-			return scope.globalFor(pkgvar.cu.image).extractVarInfoFromEntry(entry)
+			return extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, entry)
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {
 		if fn.Name == name || strings.HasSuffix(fn.Name, "/"+name) {
 			//TODO(aarzilli): convert function entry into a function type?
-			r := scope.globalFor(fn.cu.image).newVariable(fn.Name, uintptr(fn.Entry), &godwarf.FuncType{}, scope.Mem)
+			r := newVariable(fn.Name, uintptr(fn.Entry), &godwarf.FuncType{}, scope.BinInfo, scope.Mem)
 			r.Value = constant.MakeString(fn.Name)
 			r.Base = uintptr(fn.Entry)
 			r.loaded = true
@@ -430,7 +396,7 @@ func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
 				if err != nil {
 					return nil, err
 				}
-				v := scope.globalFor(scope.BinInfo.Images[0]).newVariable(name, 0x0, t, scope.Mem)
+				v := newVariable(name, 0x0, t, scope.BinInfo, scope.Mem)
 				switch v.Kind {
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 					v.Value = constant.MakeInt64(cval.value)
@@ -446,9 +412,6 @@ func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
 		}
 	}
 	return nil, fmt.Errorf("could not find symbol value for %s", name)
-}
-func (scope *EvalScope) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
-	return newVariable(name, addr, dwarfType, scope.BinInfo, mem)
 }
 
 // image returns the image containing the current function.
@@ -522,7 +485,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 			return nil, converr
 		}
 		for i, ch := range []byte(constant.StringVal(argv.Value)) {
-			e := scope.newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType, argv.mem)
+			e := newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
 			e.loaded = true
 			e.Value = constant.MakeInt64(int64(ch))
 			v.Children = append(v.Children, *e)
@@ -536,7 +499,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 			return nil, converr
 		}
 		for i, ch := range constant.StringVal(argv.Value) {
-			e := scope.newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType, argv.mem)
+			e := newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
 			e.loaded = true
 			e.Value = constant.MakeInt64(int64(ch))
 			v.Children = append(v.Children, *e)
@@ -741,7 +704,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 		n, _ := constant.Int64Val(argv.Value)
 
-		v.Children = []Variable{*(scope.newVariable("", uintptr(n), ttyp.Type, scope.Mem))}
+		v.Children = []Variable{*(newVariable("", uintptr(n), ttyp.Type, scope.BinInfo, scope.Mem))}
 		return v, nil
 
 	case *godwarf.UintType:

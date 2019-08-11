@@ -212,12 +212,14 @@ func TestDwarfExprLoclist(t *testing.T) {
 	mainfn := bi.LookupFunc["main.main"]
 
 	mem := newFakeMemory(defaultCFA, uint16(before), uint16(after))
-	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{}}
+	const PC = 0x40100
+	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{Rip: PC}}
 
-	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, BinInfo: bi}
+	scope := &proc.EvalScope{Location: proc.Location{PC: PC, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, BinInfo: bi}
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800
+	scope.Regs.Regs[scope.Regs.PCRegNum].Uint64Val = scope.PC
 	uintExprCheck(t, scope, "a", after)
 }
 
