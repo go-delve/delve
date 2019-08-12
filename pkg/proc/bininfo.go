@@ -191,6 +191,15 @@ func (fn *Function) Optimized() bool {
 	return fn.cu.optimized
 }
 
+// PrologueEndPC returns the PC just after the function prologue
+func (fn *Function) PrologueEndPC() uint64 {
+	pc, _, _, ok := fn.cu.lineInfo.PrologueEndPC(fn.Entry, fn.End)
+	if !ok {
+		return fn.Entry
+	}
+	return pc
+}
+
 type constantsMap map[dwarfRef]*constantType
 
 type constantType struct {
