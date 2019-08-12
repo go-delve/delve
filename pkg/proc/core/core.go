@@ -340,7 +340,7 @@ func (t *Thread) Blocked() bool {
 
 // SetCurrentBreakpoint will always just return nil
 // for core files, as there are no breakpoints in core files.
-func (t *Thread) SetCurrentBreakpoint() error {
+func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 	return nil
 }
 

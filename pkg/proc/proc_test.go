@@ -4480,3 +4480,16 @@ func TestCgoStacktrace2(t *testing.T) {
 		stacktraceCheck(t, []string{"C.sigsegv", "C.testfn", "main.main"}, frames)
 	})
 }
+
+func TestIssue1656(t *testing.T) {
+	withTestProcess("issue1656/", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileLineBreakpoint(p, t, filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.s")), 5)
+		assertNoError(proc.Continue(p), t, "Continue()")
+		t.Logf("step1\n")
+		assertNoError(proc.Step(p), t, "Step()")
+		assertLineNumber(p, t, 8, "wrong line number after first step")
+		t.Logf("step2\n")
+		assertNoError(proc.Step(p), t, "Step()")
+		assertLineNumber(p, t, 9, "wrong line number after second step")
+	})
+}

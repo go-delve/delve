@@ -308,7 +308,7 @@ func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) 
 			if g != nil && selg != nil && g.ID == selg.ID {
 				selg.CurrentLoc = *loc
 			}
-			return curthread.SetCurrentBreakpoint()
+			return curthread.SetCurrentBreakpoint(true)
 		}
 	}
 }
@@ -456,7 +456,7 @@ func StepOut(dbp Process) error {
 	}
 
 	if bp := curthread.Breakpoint(); bp.Breakpoint == nil {
-		curthread.SetCurrentBreakpoint()
+		curthread.SetCurrentBreakpoint(false)
 	}
 
 	success = true

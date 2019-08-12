@@ -34,7 +34,7 @@ func (t *Thread) Continue() error {
 	}
 	// Check whether we are stopped at a breakpoint, and
 	// if so, single step over it before continuing.
-	if _, ok := t.dbp.FindBreakpoint(pc); ok {
+	if _, ok := t.dbp.FindBreakpoint(pc, false); ok {
 		if err := t.StepInstruction(); err != nil {
 			return err
 		}
@@ -58,7 +58,7 @@ func (t *Thread) StepInstruction() (err error) {
 		return err
 	}
 
-	bp, ok := t.dbp.FindBreakpoint(pc)
+	bp, ok := t.dbp.FindBreakpoint(pc, true)
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
 		err = t.ClearBreakpoint(bp)
@@ -113,13 +113,13 @@ func (t *Thread) Common() *proc.CommonThread {
 
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
-func (t *Thread) SetCurrentBreakpoint() error {
+func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 	t.CurrentBreakpoint.Clear()
 	pc, err := t.PC()
 	if err != nil {
 		return err
 	}
-	if bp, ok := t.dbp.FindBreakpoint(pc); ok {
+	if bp, ok := t.dbp.FindBreakpoint(pc, adjustPC); ok {
 		if err = t.SetPC(bp.Addr); err != nil {
 			return err
 		}
