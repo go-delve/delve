@@ -372,7 +372,7 @@ func (sm *StateMachine) next() error {
 			for i := 0; i < int(opnum); i++ {
 				util.DecodeSLEB128(sm.buf)
 			}
-			fmt.Printf("unknown opcode\n")
+			fmt.Printf("unknown opcode %d(0x%x), %d arguments, file %s, line %d, address 0x%x\n", b, b, opnum, sm.file, sm.line, sm.address)
 		}
 	} else {
 		execSpecialOpcode(sm, b)
