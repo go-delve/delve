@@ -599,6 +599,9 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 		if err := conn.send(conn.outbuf.Bytes()); err != nil {
 			return err
 		}
+		if tu != nil {
+			tu.Reset()
+		}
 		var err error
 		_, sig, err = conn.waitForvContStop("singlestep", threadID, tu)
 		if err != nil {
