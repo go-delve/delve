@@ -103,6 +103,9 @@ func (r *SplicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) 
 			return n, fmt.Errorf("hit unmapped area at %v after %v bytes", addr, n)
 		}
 
+		// The reading of the memory has been started after the first iteration
+		started = true
+
 		// Don't go past the region.
 		pb := buf
 		if addr+uintptr(len(buf)) > entry.offset+entry.length {
