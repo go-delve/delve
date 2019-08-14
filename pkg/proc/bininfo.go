@@ -1576,7 +1576,7 @@ func (bi *BinaryInfo) symLookup(addr uint64) (string, uint64) {
 		// report previous variable + offset if i-th variable starts after addr
 		i--
 	}
-	if i > 0 {
+	if i >= 0 && bi.packageVars[i].addr != 0 {
 		return bi.packageVars[i].name, bi.packageVars[i].addr
 	}
 	return "", 0
