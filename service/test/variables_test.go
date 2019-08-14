@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go/constant"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -1061,18 +1062,24 @@ func TestConstants(t *testing.T) {
 	})
 }
 
-func setFunctionBreakpoint(p proc.Process, fname string) (*proc.Breakpoint, error) {
+func setFunctionBreakpoint(p proc.Process, t testing.TB, fname string) *proc.Breakpoint {
+	_, f, l, _ := runtime.Caller(1)
+	f = filepath.Base(f)
+
 	addr, err := proc.FindFunctionLocation(p, fname, 0)
 	if err != nil {
-		return nil, err
+		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
-	return p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
+	if err != nil {
+		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
+	}
+	return bp
 }
 
 func TestIssue1075(t *testing.T) {
 	withTestProcess("clientdo", t, func(p proc.Process, fixture protest.Fixture) {
-		_, err := setFunctionBreakpoint(p, "net/http.(*Client).Do")
-		assertNoError(err, t, "setFunctionBreakpoint")
+		setFunctionBreakpoint(p, t, "net/http.(*Client).Do")
 		assertNoError(proc.Continue(p), t, "Continue()")
 		for i := 0; i < 10; i++ {
 			scope, err := proc.GoroutineScope(p.CurrentThread())
@@ -1326,14 +1333,17 @@ func TestIssue1531(t *testing.T) {
 	})
 }
 
-func setFileLineBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *proc.Breakpoint {
-	addr, err := proc.FindFileLocation(p, path, lineno)
+func setFileBreakpoint(p proc.Process, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
+	_, f, l, _ := runtime.Caller(1)
+	f = filepath.Base(f)
+
+	addr, err := proc.FindFileLocation(p, fixture.Source, lineno)
 	if err != nil {
-		t.Fatalf("FindFileLocation: %v", err)
+		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, fixture.Source, lineno, err)
 	}
 	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
 	if err != nil {
-		t.Fatalf("SetBreakpoint: %v", err)
+		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
 	return bp
 }
@@ -1362,14 +1372,12 @@ func TestPluginVariables(t *testing.T) {
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
 	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p proc.Process, fixture protest.Fixture) {
-		setFileLineBreakpoint(p, t, fixture.Source, 41)
+		setFileBreakpoint(p, t, fixture, 41)
 		assertNoError(proc.Continue(p), t, "Continue 1")
 
-		bp, err := setFunctionBreakpoint(p, "github.com/go-delve/delve/_fixtures/plugin2.TypesTest")
-		assertNoError(err, t, "SetBreakpoint(TypesTest)")
+		bp := setFunctionBreakpoint(p, t, "github.com/go-delve/delve/_fixtures/plugin2.TypesTest")
 		t.Logf("bp.Addr = %#x", bp.Addr)
-		_, err = setFunctionBreakpoint(p, "github.com/go-delve/delve/_fixtures/plugin2.aIsNotNil")
-		assertNoError(err, t, "SetBreakpoint(aIsNotNil)")
+		setFunctionBreakpoint(p, t, "github.com/go-delve/delve/_fixtures/plugin2.aIsNotNil")
 
 		for _, image := range p.BinInfo().Images {
 			t.Logf("%#x %s\n", image.StaticBase, image.Path)
