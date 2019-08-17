@@ -142,6 +142,18 @@ func TestClosureScope() {
 	f(3)
 	f1(b)
 }
+func TestClosureShadow() {
+	v := 1
+	closure := func() {
+		f1(v) // v int = 1
+		v := 2
+		f1(v) // v int = 1, v int = 2
+		for i := 0; i < 1; i++ {
+			f1(v) // v int = 1, v int = 2, i int = 0
+		}
+	}
+	closure()
+}
 func main() {
 	ch <- 12
 	TestNestedFor()
@@ -162,4 +174,5 @@ func main() {
 	TestDiscontiguousRanges()
 	TestDiscontiguousRanges()
 	TestClosureScope()
+	TestClosureShadow()
 }

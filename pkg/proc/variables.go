@@ -1946,16 +1946,21 @@ func (ctyp *constantType) describe(n int64) string {
 	return ""
 }
 
-type variablesByDepth struct {
+type variablesByDepthAndDeclLine struct {
 	vars   []*Variable
 	depths []int
 }
 
-func (v *variablesByDepth) Len() int { return len(v.vars) }
+func (v *variablesByDepthAndDeclLine) Len() int { return len(v.vars) }
 
-func (v *variablesByDepth) Less(i int, j int) bool { return v.depths[i] < v.depths[j] }
+func (v *variablesByDepthAndDeclLine) Less(i int, j int) bool {
+	if v.depths[i] == v.depths[j] {
+		return v.vars[i].DeclLine < v.vars[j].DeclLine
+	}
+	return v.depths[i] < v.depths[j]
+}
 
-func (v *variablesByDepth) Swap(i int, j int) {
+func (v *variablesByDepthAndDeclLine) Swap(i int, j int) {
 	v.depths[i], v.depths[j] = v.depths[j], v.depths[i]
 	v.vars[i], v.vars[j] = v.vars[j], v.vars[i]
 }
