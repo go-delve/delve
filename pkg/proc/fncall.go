@@ -523,21 +523,34 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		}
 		typ = resolveTypedef(typ)
 		var off int64
-		if trustArgOrder && fn.Name == "runtime.mallocgc" {
-			// runtime is always optimized and optimized code sometimes doesn't have
-			// location info for arguments, but we still want to call runtime.mallocgc.
-			off = argFrameSize
+
+		locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
+		if err != nil {
+			err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
 		} else {
-			locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
+			var pieces []op.Piece
+			off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
 			if err != nil {
-				return 0, nil, fmt.Errorf("could not get argument location of %s: %v", argname, err)
+				err = fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
 			}
-			off, _, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
-			if err != nil {
-				return 0, nil, fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
+			if pieces != nil {
+				err = fmt.Errorf("unsupported location expression for argument %s (uses DW_OP_piece)", argname)
+			}
+			off -= CFA
+		}
+		if err != nil {
+			if !trustArgOrder {
+				return 0, nil, err
 			}
 
-			off -= CFA
+			// With Go version 1.12 or later we can trust that the arguments appear
+			// in the same order as declared, which means we can calculate their
+			// address automatically.
+			// With this we can call optimized functions (which sometimes do not have
+			// an argument address, due to a compiler bug) as well as runtime
+			// functions (which are always optimized).
+			off = argFrameSize
+			off = alignAddr(off, typ.Align())
 		}
 
 		if e := off + typ.Size(); e > argFrameSize {
@@ -557,6 +570,11 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 	})
 
 	return argFrameSize, formalArgs, nil
+}
+
+// alignAddr rounds up addr to a multiple of align. Align must be a power of 2.
+func alignAddr(addr, align int64) int64 {
+	return (addr + int64(align-1)) &^ int64(align-1)
 }
 
 func escapeCheck(v *Variable, name string, g *G) error {
@@ -736,14 +754,6 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		fncall.retvars = filterVariables(fncall.retvars, func(v *Variable) bool {
 			return (v.Flags & VariableReturnArgument) != 0
 		})
-		if fncall.fn.Name == "runtime.mallocgc" && fncall.retvars[0].Unreadable != nil {
-			// return values never have a location for optimized functions and the
-			// runtime is always optimized. However we want to call runtime.mallocgc,
-			// so we fix the address of the return value manually.
-			fncall.retvars[0].Unreadable = nil
-			lastArg := fncall.formalArgs[len(fncall.formalArgs)-1]
-			fncall.retvars[0].Addr = uintptr(retScope.Regs.CFA + lastArg.off + int64(bi.Arch.PtrSize()))
-		}
 
 		loadValues(fncall.retvars, callScope.callCtx.retLoadCfg)
 		for _, v := range fncall.retvars {
