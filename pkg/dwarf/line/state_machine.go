@@ -24,6 +24,7 @@ type StateMachine struct {
 	address       uint64
 	column        uint
 	isStmt        bool
+	isa           uint64 // instruction set architecture register (DWARFv4)
 	basicBlock    bool
 	endSeq        bool
 	lastDelta     int
@@ -70,6 +71,7 @@ const (
 	DW_LNS_fixed_advance_pc = 9
 	DW_LNS_prologue_end     = 10
 	DW_LNS_epilogue_begin   = 11
+	DW_LNS_set_isa          = 12
 )
 
 // Extended opcodes
@@ -91,6 +93,7 @@ var standardopcodes = map[byte]opcodefn{
 	DW_LNS_fixed_advance_pc: fixedadvancepc,
 	DW_LNS_prologue_end:     prologueend,
 	DW_LNS_epilogue_begin:   epiloguebegin,
+	DW_LNS_set_isa:          setisa,
 }
 
 var extendedopcodes = map[byte]opcodefn{
@@ -354,6 +357,7 @@ func (sm *StateMachine) next() error {
 		sm.file = sm.dbl.FileNames[0].Path
 		sm.line = 1
 		sm.column = 0
+		sm.isa = 0
 		sm.isStmt = sm.dbl.Prologue.InitialIsStmt == uint8(1)
 		sm.basicBlock = false
 	}
@@ -477,4 +481,9 @@ func prologueend(sm *StateMachine, buf *bytes.Buffer) {
 
 func epiloguebegin(sm *StateMachine, buf *bytes.Buffer) {
 	sm.epilogueBegin = true
+}
+
+func setisa(sm *StateMachine, buf *bytes.Buffer) {
+	c, _ := util.DecodeULEB128(buf)
+	sm.isa = c
 }
