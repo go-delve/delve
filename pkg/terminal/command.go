@@ -357,6 +357,18 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 	
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
+		{aliases: []string{"display"}, cmdFn: display, helpMsg: `List all expressions, or add an expression to display at every prompt.
+
+Add a new expression:
+
+	display <expression>
+
+List all expressions:
+
+	display
+
+Also see the undisplay command.`},
+		{aliases: []string{"undisplay"}, cmdFn: undisplay, helpMsg: `Remove an expression that is displayed at every prompt.`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -2141,6 +2153,52 @@ func clearCheckpoint(t *Term, ctx callContext, args string) error {
 		return errors.New("clear-checkpoint argument must be a checkpoint ID")
 	}
 	return t.client.ClearCheckpoint(id)
+}
+
+func display(t *Term, ctxt callContext, args string) error {
+	args = strings.TrimSpace(args)
+	if len(args) == 0 {
+		listDisplay(t)
+	} else {
+		index := t.nextDisplayID
+		t.nextDisplayID++
+		t.display = append(t.display, displayExpression{index, args})
+	}
+	return nil
+}
+
+func undisplay(t *Term, ctxt callContext, args string) error {
+	args = strings.TrimSpace(args)
+	if len(args) == 0 {
+		listDisplay(t)
+	}
+	parsed, err := strconv.ParseInt(args, 0, 32)
+	if err != nil {
+		return err
+	}
+	toDelete := int(parsed)
+	index := -1
+	for i, x := range t.display {
+		if x.id == toDelete {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		return errors.New(fmt.Sprintf("Invalid index to undisplay [%v]", toDelete))
+	}
+	t.display = append(t.display[:index], t.display[index+1:]...)
+	return nil
+}
+
+func listDisplay(t *Term) {
+	if len(t.display) == 0 {
+		fmt.Println("No expressions set.")
+	} else {
+		for _, x := range t.display {
+			fmt.Printf("\t[%d] %v\n", x.id, x.expression)
+		}
+	}
 }
 
 func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {

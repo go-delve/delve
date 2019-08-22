@@ -16,6 +16,7 @@ Command | Description
 [continue](#continue) | Run until breakpoint or program termination.
 [deferred](#deferred) | Executes command in the context of a deferred call.
 [disassemble](#disassemble) | Disassembler.
+[display](#display) | List all expressions, or add an expression to display at every prompt.
 [down](#down) | Move the current frame down.
 [edit](#edit) | Open where you are in $DELVE_EDITOR or $EDITOR
 [exit](#exit) | Exit the debugger.
@@ -45,6 +46,7 @@ Command | Description
 [threads](#threads) | Print out info for every traced thread.
 [trace](#trace) | Set tracepoint.
 [types](#types) | Print list of types
+[undisplay](#undisplay) | Remove an expression that is displayed at every prompt.
 [up](#up) | Move the current frame up.
 [vars](#vars) | Print package variables.
 [whatis](#whatis) | Prints type of an expression.
@@ -185,6 +187,20 @@ If no argument is specified the function being executed in the selected stack fr
 	-l <locspec>		disassembles the specified function
 
 Aliases: disass
+
+## display
+List all expressions, or add an expression to display at every prompt.
+
+Add a new expression:
+
+	display <expression>
+
+List all expressions:
+
+	display
+
+Also see the undisplay command.
+
 
 ## down
 Move the current frame down.
@@ -428,6 +444,10 @@ Print list of types
 	types [<regex>]
 
 If regex is specified only the types matching it will be returned.
+
+
+## undisplay
+Remove an expression that is displayed at every prompt.
 
 
 ## up

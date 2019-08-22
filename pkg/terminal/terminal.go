@@ -44,6 +44,12 @@ const (
 	ansiBrWhite   = 97
 )
 
+// Holds an expression for display at every prompt.
+type displayExpression struct {
+	id         int
+	expression string
+}
+
 // Term represents the terminal running dlv.
 type Term struct {
 	client   service.Client
@@ -56,6 +62,10 @@ type Term struct {
 	InitFile string
 
 	starlarkEnv *starbind.Env
+
+	// Control expression printing.
+	nextDisplayID int
+	display       []displayExpression
 
 	// quitContinue is set to true by exitCommand to signal that the process
 	// should be resumed before quitting.
@@ -223,25 +233,41 @@ func (t *Term) Run() (int, error) {
 			return 1, fmt.Errorf("Prompt for input failed.\n")
 		}
 
-		if err := t.cmds.Call(cmdstr, t); err != nil {
-			if _, ok := err.(ExitRequestError); ok {
-				return t.handleExit()
-			}
-			// The type information gets lost in serialization / de-serialization,
-			// so we do a string compare on the error message to see if the process
-			// has exited, or if the command actually failed.
-			if strings.Contains(err.Error(), "exited") {
-				fmt.Fprintln(os.Stderr, err.Error())
-			} else {
-				t.quittingMutex.Lock()
-				quitting := t.quitting
-				t.quittingMutex.Unlock()
-				if quitting {
+		executeCommand := func(cmdstr string, t *Term) (int, error) {
+			if err := t.cmds.Call(cmdstr, t); err != nil {
+				if _, ok := err.(ExitRequestError); ok {
 					return t.handleExit()
 				}
-				fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
+				// The type information gets lost in serialization / de-serialization,
+				// so we do a string compare on the error message to see if the process
+				// has exited, or if the command actually failed.
+				if strings.Contains(err.Error(), "exited") {
+					fmt.Fprintln(os.Stderr, err.Error())
+				} else {
+					t.quittingMutex.Lock()
+					quitting := t.quitting
+					t.quittingMutex.Unlock()
+					if quitting {
+						return t.handleExit()
+					}
+					fmt.Fprintf(os.Stderr, "Command failed: %s\n", err)
+				}
+			}
+			return 0, nil
+		}
+
+		if c, err := executeCommand(cmdstr, t); err != nil {
+			return c, err
+		}
+
+		// Display all expressions we've been asked to.
+		lastCmd := t.cmds.lastCmd
+		for _, x := range t.display {
+			if c, err := executeCommand("print "+x.expression, t); err != nil {
+				return c, err
 			}
 		}
+		t.cmds.lastCmd = lastCmd
 	}
 }
 
