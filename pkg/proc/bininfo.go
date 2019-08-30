@@ -980,9 +980,13 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 		bi.gStructOffset = ^uint64(8) + 1 // -8
 		return
 	}
-	memsz := tls.Memsz
 
-	memsz = (memsz + uint64(bi.Arch.PtrSize()) - 1) & ^uint64(bi.Arch.PtrSize()-1) // align to pointer-sized-boundary
+	// According to https://reviews.llvm.org/D61824, linkers must pad the actual
+	// size of the TLS segment to ensure that (tlsoffset%align) == (vaddr%align).
+	// This formula, copied from the lld code, matches that.
+	// https://github.com/llvm-mirror/lld/blob/9aef969544981d76bea8e4d1961d3a6980980ef9/ELF/InputSection.cpp#L643
+	memsz := tls.Memsz + (-tls.Vaddr-tls.Memsz)&(tls.Align-1)
+
 	// The TLS register points to the end of the TLS block, which is
 	// tls.Memsz long. runtime.tlsg is an offset from the beginning of that block.
 	bi.gStructOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
