@@ -90,7 +90,7 @@ func parseCIE(ctx *parseContext) parsefunc {
 	data := ctx.buf.Next(int(ctx.length))
 	buf := bytes.NewBuffer(data)
 	// parse version
-	ctx.common.Version = data[0]
+	ctx.common.Version, _ = buf.ReadByte()
 
 	// parse augmentation
 	ctx.common.Augmentation, _ = util.ParseString(buf)
