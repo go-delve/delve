@@ -51,7 +51,7 @@ process_pid() | Equivalent to API call [ProcessPid](https://godoc.org/github.com
 recorded() | Equivalent to API call [Recorded](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Recorded)
 restart(Position, ResetArgs, NewArgs) | Equivalent to API call [Restart](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Restart)
 set_expr(Scope, Symbol, Value) | Equivalent to API call [Set](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Set)
-stacktrace(Id, Depth, Full, Defers, Cfg) | Equivalent to API call [Stacktrace](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Stacktrace)
+stacktrace(Id, Depth, Full, Defers, Opts, Cfg) | Equivalent to API call [Stacktrace](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Stacktrace)
 state(NonBlocking) | Equivalent to API call [State](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.State)
 dlv_command(command) | Executes the specified command as if typed at the dlv_prompt
 read_file(path) | Reads the file as a string

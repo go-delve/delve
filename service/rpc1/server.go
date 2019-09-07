@@ -87,7 +87,7 @@ func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations
 	if args.Full {
 		loadcfg = &defaultLoadConfig
 	}
-	locs, err := s.debugger.Stacktrace(args.Id, args.Depth, false, loadcfg)
+	locs, err := s.debugger.Stacktrace(args.Id, args.Depth, 0, loadcfg)
 	if err != nil {
 		return err
 	}

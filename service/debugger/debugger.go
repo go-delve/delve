@@ -989,7 +989,7 @@ func (d *Debugger) Goroutines(start, count int) ([]*api.Goroutine, int, error) {
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.
-func (d *Debugger) Stacktrace(goroutineID, depth int, readDefers bool, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
+func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -1007,7 +1007,7 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, readDefers bool, cfg *proc
 	if g == nil {
 		rawlocs, err = proc.ThreadStacktrace(d.target.CurrentThread(), depth)
 	} else {
-		rawlocs, err = g.Stacktrace(depth, readDefers)
+		rawlocs, err = g.Stacktrace(depth, proc.StacktraceOptions(opts))
 	}
 	if err != nil {
 		return nil, err

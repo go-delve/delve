@@ -155,7 +155,8 @@ type StacktraceIn struct {
 	Id     int
 	Depth  int
 	Full   bool
-	Defers bool // read deferred functions
+	Defers bool // read deferred functions (equivalent to passing StacktraceReadDefers in Opts)
+	Opts   api.StacktraceOptions
 	Cfg    *api.LoadConfig
 }
 
@@ -172,8 +173,11 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	if cfg == nil && arg.Full {
 		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
 	}
+	if arg.Defers {
+		arg.Opts |= api.StacktraceReadDefers
+	}
 	var err error
-	out.Locations, err = s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Defers, api.LoadConfigToProc(cfg))
+	out.Locations, err = s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Opts, api.LoadConfigToProc(cfg))
 	return err
 }
 

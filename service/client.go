@@ -100,7 +100,7 @@ type Client interface {
 	ListGoroutines(start, count int) ([]*api.Goroutine, int, error)
 
 	// Returns stacktrace
-	Stacktrace(goroutineID int, depth int, readDefers bool, cfg *api.LoadConfig) ([]api.Stackframe, error)
+	Stacktrace(goroutineID int, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error)
 
 	// Returns ancestor stacktraces
 	Ancestors(goroutineID int, numAncestors int, depth int) ([]api.Ancestor, error)

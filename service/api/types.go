@@ -479,3 +479,22 @@ type Ancestor struct {
 
 	Unreadable string
 }
+
+// StacktraceOptions is the type of the Opts field of StacktraceIn that
+// configures the stacktrace.
+// Tracks proc.StacktraceOptions
+type StacktraceOptions uint16
+
+const (
+	// StacktraceReadDefers requests a stacktrace decorated with deferred calls
+	// for each frame.
+	StacktraceReadDefers StacktraceOptions = 1 << iota
+
+	// StacktraceSimple requests a stacktrace where no stack switches will be
+	// attempted.
+	StacktraceSimple
+
+	// StacktraceG requests a stacktrace starting with the register
+	// values saved in the runtime.g structure.
+	StacktraceG
+)

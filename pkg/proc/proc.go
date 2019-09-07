@@ -646,7 +646,12 @@ func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error
 		thread = g.Thread
 	}
 
-	locs, err := g.Stacktrace(frame+1, deferCall > 0)
+	var opts StacktraceOptions
+	if deferCall > 0 {
+		opts = StacktraceReadDefers
+	}
+
+	locs, err := g.Stacktrace(frame+1, opts)
 	if err != nil {
 		return nil, err
 	}

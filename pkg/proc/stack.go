@@ -101,13 +101,13 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 			return nil, err
 		}
 		so := thread.BinInfo().PCToImage(regs.PC())
-		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs), 0, nil, -1, nil)
+		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs), 0, nil, -1, nil, 0)
 		return it.stacktrace(depth)
 	}
-	return g.Stacktrace(depth, false)
+	return g.Stacktrace(depth, 0)
 }
 
-func (g *G) stackIterator() (*stackIterator, error) {
+func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 	stkbar, err := g.stkbar()
 	if err != nil {
 		return nil, err
@@ -122,19 +122,35 @@ func (g *G) stackIterator() (*stackIterator, error) {
 		return newStackIterator(
 			g.variable.bi, g.Thread,
 			g.variable.bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs),
-			g.stackhi, stkbar, g.stkbarPos, g), nil
+			g.stackhi, stkbar, g.stkbarPos, g, opts), nil
 	}
 	so := g.variable.bi.PCToImage(g.PC)
 	return newStackIterator(
 		g.variable.bi, g.variable.mem,
 		g.variable.bi.Arch.AddrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP),
-		g.stackhi, stkbar, g.stkbarPos, g), nil
+		g.stackhi, stkbar, g.stkbarPos, g, opts), nil
 }
+
+type StacktraceOptions uint16
+
+const (
+	// StacktraceReadDefers requests a stacktrace decorated with deferred calls
+	// for each frame.
+	StacktraceReadDefers StacktraceOptions = 1 << iota
+
+	// StacktraceSimple requests a stacktrace where no stack switches will be
+	// attempted.
+	StacktraceSimple
+
+	// StacktraceG requests a stacktrace starting with the register
+	// values saved in the runtime.g structure.
+	StacktraceG
+)
 
 // Stacktrace returns the stack trace for a goroutine.
 // Note the locations in the array are return addresses not call addresses.
-func (g *G) Stacktrace(depth int, readDefers bool) ([]Stackframe, error) {
-	it, err := g.stackIterator()
+func (g *G) Stacktrace(depth int, opts StacktraceOptions) ([]Stackframe, error) {
+	it, err := g.stackIterator(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +158,7 @@ func (g *G) Stacktrace(depth int, readDefers bool) ([]Stackframe, error) {
 	if err != nil {
 		return nil, err
 	}
-	if readDefers {
+	if opts&StacktraceReadDefers != 0 {
 		g.readDefers(frames)
 	}
 	return frames, nil
@@ -177,6 +193,8 @@ type stackIterator struct {
 
 	g           *G     // the goroutine being stacktraced, nil if we are stacktracing a goroutine-less thread
 	g0_sched_sp uint64 // value of g0.sched.sp (see comments around its use)
+
+	opts StacktraceOptions
 }
 
 type savedLR struct {
@@ -184,7 +202,7 @@ type savedLR struct {
 	val uint64
 }
 
-func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, stkbar []savedLR, stkbarPos int, g *G) *stackIterator {
+func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, stkbar []savedLR, stkbarPos int, g *G, opts StacktraceOptions) *stackIterator {
 	stackBarrierFunc := bi.LookupFunc["runtime.stackBarrier"] // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
@@ -216,7 +234,7 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegiste
 			}
 		}
 	}
-	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp, opts: opts}
 }
 
 // Next points the iterator to the next stack frame.
@@ -233,8 +251,10 @@ func (it *stackIterator) Next() bool {
 		it.stkbar = it.stkbar[1:]
 	}
 
-	if it.switchStack() {
-		return true
+	if it.opts&StacktraceSimple == 0 {
+		if it.switchStack() {
+			return true
+		}
 	}
 
 	if it.frame.Ret <= 0 {
@@ -434,6 +454,10 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 	if depth < 0 {
 		return nil, errors.New("negative maximum stack depth")
+	}
+	if it.opts&StacktraceG != 0 && it.g != nil {
+		it.switchToGoroutineStack()
+		it.top = true
 	}
 	frames := make([]Stackframe, 0, depth+1)
 	for it.Next() {
