@@ -306,7 +306,10 @@ type Iovec struct {
 	Base *byte
 	Len  uint64
 }
-
+type Iovec_arm struct {
+	Base  *PtraceRegs
+	Len  uintptr
+}
 type IPMreq struct {
 	Multiaddr [4]byte /* in_addr */
 	Interface [4]byte /* in_addr */

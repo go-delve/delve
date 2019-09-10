@@ -16,11 +16,14 @@ import (
 	"runtime"
 	"syscall"
 	"unsafe"
+	"debug/elf"
 )
 
 /*
  * Wrapped
  */
+
+
 
 func Access(path string, mode uint32) (err error) {
 	return Faccessat(AT_FDCWD, path, mode, 0)
@@ -1374,11 +1377,23 @@ func PtracePokeUser(pid int, addr uintptr, data []byte) (count int, err error) {
 	return ptracePoke(PTRACE_POKEUSR, PTRACE_PEEKUSR, pid, addr, data)
 }
 
-func PtraceGetRegs(pid int, regsout *PtraceRegs) (err error) {
+func PtraceGetRegs(pid int, regsout *PtraceRegs) (err error) {	
+	if (runtime.GOARCH == "arm64") {
+		var iov Iovec_arm
+		iov.Base = regsout
+		iov.Len = unsafe.Sizeof(*regsout)
+		return ptrace(PTRACE_GETREGSET, pid, uintptr(elf.NT_PRSTATUS), uintptr(unsafe.Pointer(&iov)))
+	}
 	return ptrace(PTRACE_GETREGS, pid, 0, uintptr(unsafe.Pointer(regsout)))
 }
 
-func PtraceSetRegs(pid int, regs *PtraceRegs) (err error) {
+func PtraceSetRegs(pid int, regs *PtraceRegs) (err error) {	
+	if (runtime.GOARCH == "arm64") {
+		var iov Iovec_arm
+		iov.Base = regs
+		iov.Len = unsafe.Sizeof(*regs)
+		return ptrace(PTRACE_SETREGSET, pid, uintptr(elf.NT_PRSTATUS), uintptr(unsafe.Pointer(&iov)))
+	}	
 	return ptrace(PTRACE_SETREGS, pid, 0, uintptr(unsafe.Pointer(regs)))
 }
 

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	sys "golang.org/x/sys/unix"
-
+	"runtime"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 
@@ -178,7 +178,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 	}
 
 	var err error
-	if attach {
+	if attach {		
 		dbp.execPtraceFunc(func() { err = sys.PtraceAttach(tid) })
 		if err != nil && err != sys.EPERM {
 			// Do not return err if err == EPERM,
@@ -493,8 +493,11 @@ func (dbp *Process) EntryPoint() (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("could not read auxiliary vector: %v", err)
 	}
-
-	return linutil.EntryPointFromAuxvAMD64(auxvbuf), nil
+	if (runtime.GOARCH == "amd64") {
+		return linutil.EntryPointFromAuxvAMD64(auxvbuf), nil
+	} else {
+		return linutil.EntryPointFromAuxvARM64(auxvbuf), nil
+	}
 }
 
 func killProcess(pid int) error {

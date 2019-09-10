@@ -9,6 +9,11 @@ import (
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
+type Iovec_arm1 struct {
+	Base *linutil.ARM64PtraceFpRegs
+	Len  uintptr
+}
+
 // PtraceAttach executes the sys.PtraceAttach call.
 func PtraceAttach(pid int) error {
 	return sys.PtraceAttach(pid)
@@ -81,4 +86,16 @@ func PtraceGetRegset(tid int) (regset linutil.AMD64Xstate, err error) {
 	regset.Xsave = xstateargs[:iov.Len]
 	err = linutil.AMD64XstateRead(regset.Xsave, false, &regset)
 	return
+}
+// PtraceGetRegset returns floating point registers of the specified thread
+// using PTRACE.
+// See arm64_linux_fetch_inferior_registers in gdb/arm64-linux-nat.c.html
+// and arm64_supply_xsave in gdb/arm64-tdep.c.html
+func PtraceGetRegset_arm64(tid int) (regset linutil.ARM64PtraceFpRegs, err error) {
+	iov := Iovec_arm1{Base: &regset, Len: unsafe.Sizeof(regset)}
+	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETREGSET, uintptr(tid), uintptr(2), uintptr(unsafe.Pointer(&iov)), 0, 0)
+	if err == syscall.Errno(0) || err == syscall.ENODEV {
+		err = nil
+	}
+	return regset, err
 }

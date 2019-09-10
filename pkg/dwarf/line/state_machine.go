@@ -217,7 +217,11 @@ func (lineInfo *DebugLineInfo) stateMachineForEntry(basePC uint64) (sm *StateMac
 	sm = lineInfo.stateMachineCache[basePC]
 	if sm == nil {
 		sm = newStateMachine(lineInfo, lineInfo.Instructions)
-		sm.PCToLine(basePC)
+		_, _, tmpSm := sm.PCToLine(basePC)
+		if tmpSm == true {
+			sm.prologueEnd = true
+		}
+		
 		lineInfo.stateMachineCache[basePC] = sm
 	}
 	sm = sm.copy()

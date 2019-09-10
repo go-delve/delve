@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	"runtime"
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/line"
@@ -308,6 +308,8 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 	switch goarch {
 	case "amd64":
 		r.Arch = AMD64Arch(goos)
+	case "arm64":
+		r.Arch = ARM64Arch(goos)	
 	}
 
 	return r
@@ -866,10 +868,15 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	if err != nil {
 		return err
 	}
-	if elfFile.Machine != elf.EM_X86_64 {
-		return ErrUnsupportedLinuxArch
+	if (runtime.GOARCH == "amd64") {
+		if elfFile.Machine != elf.EM_X86_64 {
+			return ErrUnsupportedLinuxArch
+		}
+	} else {
+		if elfFile.Machine != elf.EM_AARCH64 {
+			return ErrUnsupportedLinuxArch
+		}
 	}
-
 	if image.index == 0 {
 		// adding executable file:
 		// - addr is entryPoint therefore staticBase needs to be calculated by

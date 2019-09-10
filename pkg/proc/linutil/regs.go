@@ -8,6 +8,7 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"golang.org/x/arch/arm64/arm64asm"
 )
 
 // AMD64Registers implements the proc.Registers interface for the native/linux
@@ -17,7 +18,11 @@ type AMD64Registers struct {
 	Fpregs   []proc.Register
 	Fpregset *AMD64Xstate
 }
-
+type ARM64Registers struct {
+	Regs     *ARM64PtraceRegs
+	Fpregs   []proc.Register
+	Fpregset *ARM64Xstate
+}
 // AMD64PtraceRegs is the struct used by the linux kernel to return the
 // general purpose registers for AMD64 CPUs.
 type AMD64PtraceRegs struct {
@@ -49,7 +54,12 @@ type AMD64PtraceRegs struct {
 	Fs       uint64
 	Gs       uint64
 }
-
+type ARM64PtraceRegs struct {
+	Regs   [31]uint64
+	Sp     uint64
+	Pc     uint64
+	Pstate uint64
+}
 // Slice returns the registers as a list of (name, value) pairs.
 func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 	var regs = []struct {
@@ -97,29 +107,95 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 	}
 	return out
 }
-
+func (r *ARM64Registers) Slice(floatingPoint bool) []proc.Register {
+	var regs = []struct {
+		k string
+		v uint64
+	} {
+		{"X30", r.Regs.Regs[30]},
+		{"X29", r.Regs.Regs[29]},
+		{"X28", r.Regs.Regs[28]},
+		{"X27", r.Regs.Regs[27]},
+		{"X26", r.Regs.Regs[26]},
+		{"X25", r.Regs.Regs[25]},
+		{"X24", r.Regs.Regs[24]},
+		{"X23", r.Regs.Regs[23]},
+		{"X22", r.Regs.Regs[22]},
+		{"X21", r.Regs.Regs[21]},
+		{"X20", r.Regs.Regs[20]},
+		{"X19", r.Regs.Regs[19]},
+		{"X18", r.Regs.Regs[18]},
+		{"X17", r.Regs.Regs[17]},
+		{"X16", r.Regs.Regs[16]},
+		{"X15", r.Regs.Regs[15]},
+		{"X14", r.Regs.Regs[14]},
+		{"X13", r.Regs.Regs[13]},
+		{"X12", r.Regs.Regs[12]},
+		{"X11", r.Regs.Regs[11]},
+		{"X10", r.Regs.Regs[10]},
+		{"X9", r.Regs.Regs[9]},
+		{"X8", r.Regs.Regs[8]},
+		{"X7", r.Regs.Regs[7]},
+		{"X6", r.Regs.Regs[6]},
+		{"X5", r.Regs.Regs[5]},
+		{"X4", r.Regs.Regs[4]},
+		{"X3", r.Regs.Regs[3]},
+		{"X2", r.Regs.Regs[2]},
+		{"X1", r.Regs.Regs[1]},
+		{"X0", r.Regs.Regs[0]},
+		{"SP", r.Regs.Sp},
+		{"PC", r.Regs.Pc},
+		{"PState", r.Regs.Pstate},
+	}
+	out := make([]proc.Register, 0, len(regs))
+	for _, reg := range regs {
+		if reg.k == "Eflags" {
+			out = proc.AppendEflagReg(out, reg.k, reg.v)
+		} else {
+			out = proc.AppendQwordReg(out, reg.k, reg.v)
+		}
+	}
+	if floatingPoint {
+		out = append(out, r.Fpregs...)
+	}
+	return out
+}
 // PC returns the value of RIP register.
 func (r *AMD64Registers) PC() uint64 {
 	return r.Regs.Rip
+}
+func (r *ARM64Registers) PC() uint64 {
+	return r.Regs.Pc
 }
 
 // SP returns the value of RSP register.
 func (r *AMD64Registers) SP() uint64 {
 	return r.Regs.Rsp
 }
+func (r *ARM64Registers) SP() uint64 {
+	return r.Regs.Sp
+}
 
 func (r *AMD64Registers) BP() uint64 {
 	return r.Regs.Rbp
 }
-
+func (r *ARM64Registers) BP() uint64 {
+	return r.Regs.Regs[30]
+}
 // CX returns the value of RCX register.
 func (r *AMD64Registers) CX() uint64 {
 	return r.Regs.Rcx
 }
-
+// CX returns the value of RCX register.
+func (r *ARM64Registers) CX() uint64 {
+	return r.Regs.Regs[29]
+}
 // TLS returns the address of the thread local storage memory segment.
 func (r *AMD64Registers) TLS() uint64 {
 	return r.Regs.Fs_base
+}
+func (r *ARM64Registers) TLS() uint64 {
+	return r.Regs.Regs[0]
 }
 
 // GAddr returns the address of the G variable if it is known, 0 and false
@@ -127,7 +203,9 @@ func (r *AMD64Registers) TLS() uint64 {
 func (r *AMD64Registers) GAddr() (uint64, bool) {
 	return 0, false
 }
-
+func (r *ARM64Registers) GAddr() (uint64, bool) {
+	return 0, false
+}
 // Get returns the value of the n-th register (in x86asm order).
 func (r *AMD64Registers) Get(n int) (uint64, error) {
 	reg := x86asm.Reg(n)
@@ -285,6 +363,81 @@ func (r *AMD64Registers) Get(n int) (uint64, error) {
 
 	return 0, proc.ErrUnknownRegister
 }
+func (r *ARM64Registers) Get(n int) (uint64, error) {	
+	reg := arm64asm.Reg(n)
+	const (
+		mask32 = 0xffffffff
+	)	
+	switch reg {
+	case arm64asm.W0:
+		return 0, nil
+	case arm64asm.X0:
+		return r.Regs.Regs[0], nil
+	case arm64asm.X1:
+		return r.Regs.Regs[1], nil
+	case arm64asm.X2:
+		return r.Regs.Regs[2], nil
+	case arm64asm.X3:
+		return r.Regs.Regs[3], nil
+	case arm64asm.X4:
+		return r.Regs.Regs[4], nil
+	case arm64asm.X5:
+		return r.Regs.Regs[5], nil
+	case arm64asm.X6:
+		return r.Regs.Regs[6], nil
+	case arm64asm.X7:
+		return r.Regs.Regs[7], nil
+	case arm64asm.X8:
+		return r.Regs.Regs[8], nil
+	case arm64asm.X9:
+		return r.Regs.Regs[9], nil
+	case arm64asm.X10:
+		return r.Regs.Regs[10], nil
+	case arm64asm.X11:
+		return r.Regs.Regs[11], nil
+	case arm64asm.X12:
+		return r.Regs.Regs[12], nil
+	case arm64asm.X13:
+		return r.Regs.Regs[13], nil
+	case arm64asm.X14:
+		return r.Regs.Regs[14], nil
+	case arm64asm.X15:
+		return r.Regs.Regs[15], nil
+	case arm64asm.X16:
+		return r.Regs.Regs[16], nil
+	case arm64asm.X17:
+		return r.Regs.Regs[17], nil
+	case arm64asm.X18:
+		return r.Regs.Regs[18], nil
+	case arm64asm.X19:
+		return r.Regs.Regs[19], nil
+	case arm64asm.X20:
+		return r.Regs.Regs[20], nil
+	case arm64asm.X21:
+		return r.Regs.Regs[21], nil
+	case arm64asm.X22:
+		return r.Regs.Regs[22], nil
+	case arm64asm.X23:
+		return r.Regs.Regs[23], nil
+	case arm64asm.X24:
+		return r.Regs.Regs[24], nil
+	case arm64asm.X25:
+		return r.Regs.Regs[25], nil
+	case arm64asm.X26:
+		return r.Regs.Regs[26], nil
+	case arm64asm.X27:
+		return r.Regs.Regs[27], nil
+	case arm64asm.X28:
+		return r.Regs.Regs[28], nil
+	case arm64asm.X29:
+		return r.Regs.Regs[29], nil
+	case arm64asm.X30:
+		return r.Regs.Regs[30], nil
+	case arm64asm.XZR:
+		return r.Regs.Sp, nil
+	}
+	return 0, proc.ErrUnknownRegister
+}
 
 // Copy returns a copy of these registers that is guarenteed not to change.
 func (r *AMD64Registers) Copy() proc.Registers {
@@ -301,7 +454,15 @@ func (r *AMD64Registers) Copy() proc.Registers {
 	}
 	return &rr
 }
+// Get returns the value of the n-th register (in arm64asm order).
 
+// Copy returns a copy of these registers that is guarenteed not to change.
+func (r *ARM64Registers) Copy() proc.Registers {
+	var rr ARM64Registers
+	rr.Regs = &ARM64PtraceRegs{}
+	*(rr.Regs) = *(r.Regs)
+	return &rr
+}
 // AMD64PtraceFpRegs tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
 type AMD64PtraceFpRegs struct {
 	Cwd      uint16
@@ -316,6 +477,12 @@ type AMD64PtraceFpRegs struct {
 	XmmSpace [256]byte
 	Padding  [24]uint32
 }
+type ARM64PtraceFpRegs struct {
+	Vregs    [32][16]byte
+	Fpsr     uint32
+	Fpcr     uint32
+	Reserved [2]uint32
+}
 
 // AMD64Xstate represents amd64 XSAVE area. See Section 13.1 (and
 // following) of Intel® 64 and IA-32 Architectures Software Developer’s
@@ -326,7 +493,18 @@ type AMD64Xstate struct {
 	AvxState bool   // contains AVX state
 	YmmSpace [256]byte
 }
-
+// // AMD64Xstate represents amd64 XSAVE area. See Section 13.1 (and
+// // following) of Intel® 64 and IA-32 Architectures Software Developer’s
+// // Manual, Volume 1: Basic Architecture.
+type ARM64Xstate struct {
+	ARM64PtraceFpRegs
+	Xsave    []byte // raw xsave area
+	AvxState bool   // contains AVX state
+	YmmSpace [256]byte
+}
+func (xsave *ARM64Xstate) Decode() (regs []proc.Register) {
+	return
+}
 // Decode decodes an XSAVE area to a list of name/value pairs of registers.
 func (xsave *AMD64Xstate) Decode() (regs []proc.Register) {
 	// x87 registers
@@ -374,6 +552,41 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate) er
 	if readLegacy {
 		rdr := bytes.NewReader(xstateargs[:_XSAVE_HEADER_START])
 		if err := binary.Read(rdr, binary.LittleEndian, &regset.AMD64PtraceFpRegs); err != nil {
+			return err
+		}
+	}
+	xsaveheader := xstateargs[_XSAVE_HEADER_START : _XSAVE_HEADER_START+_XSAVE_HEADER_LEN]
+	xstate_bv := binary.LittleEndian.Uint64(xsaveheader[0:8])
+	xcomp_bv := binary.LittleEndian.Uint64(xsaveheader[8:16])
+
+	if xcomp_bv&(1<<63) != 0 {
+		// compact format not supported
+		return nil
+	}
+
+	if xstate_bv&(1<<2) == 0 {
+		// AVX state not present
+		return nil
+	}
+
+	avxstate := xstateargs[_XSAVE_EXTENDED_REGION_START:]
+	regset.AvxState = true
+	copy(regset.YmmSpace[:], avxstate[:len(regset.YmmSpace)])
+
+	return nil
+}
+// // LinuxX86XstateRead reads a byte array containing an XSAVE area into regset.
+// // If readLegacy is true regset.PtraceFpRegs will be filled with the
+// // contents of the legacy region of the XSAVE area.
+// // See Section 13.1 (and following) of Intel® 64 and IA-32 Architectures
+// // Software Developer’s Manual, Volume 1: Basic Architecture.
+func ARM64XstateRead(xstateargs []byte, readLegacy bool, regset *ARM64Xstate) error {
+	if _XSAVE_HEADER_START+_XSAVE_HEADER_LEN >= len(xstateargs) {
+		return nil
+	}
+	if readLegacy {
+		rdr := bytes.NewReader(xstateargs[:_XSAVE_HEADER_START])
+		if err := binary.Read(rdr, binary.LittleEndian, &regset.ARM64PtraceFpRegs); err != nil {
 			return err
 		}
 	}

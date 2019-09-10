@@ -1653,6 +1653,7 @@ const (
 	PTRACE_EVENT_VFORK                   = 0x2
 	PTRACE_EVENT_VFORK_DONE              = 0x5
 	PTRACE_GETEVENTMSG                   = 0x4201
+	PTRACE_GETFPREGS                     = 0xe
 	PTRACE_GETREGS                       = 0xc
 	PTRACE_GETREGSET                     = 0x4204
 	PTRACE_GETSIGINFO                    = 0x4202
@@ -1682,6 +1683,7 @@ const (
 	PTRACE_SECCOMP_GET_FILTER            = 0x420c
 	PTRACE_SECCOMP_GET_METADATA          = 0x420d
 	PTRACE_SEIZE                         = 0x4206
+	PTRACE_SETFPREGS                     = 0xf
 	PTRACE_SETOPTIONS                    = 0x4200
 	PTRACE_SETREGS                       = 0xd
 	PTRACE_SETREGSET                     = 0x4205

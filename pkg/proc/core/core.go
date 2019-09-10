@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"io"
-
+	"runtime"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -188,8 +188,8 @@ var (
 
 type openFn func(string, string) (*Process, error)
 
-var openFns = []openFn{readLinuxAMD64Core, readAMD64Minidump}
-
+var openFns_amd64 = []openFn{readLinuxAMD64Core, readAMD64Minidump}
+var openFns_arm64 = []openFn{readLinuxARM64Core, readAMD64Minidump}
 // ErrUnrecognizedFormat is returned when the core file is not recognized as
 // any of the supported formats.
 var ErrUnrecognizedFormat = errors.New("unrecognized core format")
@@ -200,10 +200,19 @@ var ErrUnrecognizedFormat = errors.New("unrecognized core format")
 func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error) {
 	var p *Process
 	var err error
-	for _, openFn := range openFns {
-		p, err = openFn(corePath, exePath)
-		if err != ErrUnrecognizedFormat {
-			break
+	if (runtime.GOARCH == "amd64") {
+		for _, openFn := range openFns_amd64 {
+			p, err = openFn(corePath, exePath)
+			if err != ErrUnrecognizedFormat {
+				break
+			}
+		}
+	} else {
+		for _, openFn := range openFns_arm64 {
+			p, err = openFn(corePath, exePath)
+			if err != ErrUnrecognizedFormat {
+				break
+			}
 		}
 	}
 	if err != nil {

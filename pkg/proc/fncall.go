@@ -12,13 +12,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
+	"runtime"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"golang.org/x/arch/x86/x86asm"
+	"golang.org/x/arch/arm64/arm64asm"
 )
 
 // This file implements the function call injection introduced in go1.11.
@@ -252,7 +253,11 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if regs.SP()-256 <= scope.g.stacklo {
 		return nil, errNotEnoughStack
 	}
+	if (runtime.GOARCH == "amd64") {
 	_, err = regs.Get(int(x86asm.RAX))
+	} else {
+	_, err = regs.Get(int(arm64asm.X0))
+	}
 	if err != nil {
 		return nil, errFuncCallUnsupportedBackend
 	}
@@ -628,9 +633,12 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		return true
 	}
 	regs = regs.Copy()
-
-	rax, _ := regs.Get(int(x86asm.RAX))
-
+	var rax uint64
+	if (runtime.GOARCH == "amd64") {
+		rax, _ = regs.Get(int(x86asm.RAX))
+	} else {
+		rax, _ = regs.Get(int(arm64asm.X0))
+	}
 	if logflags.FnCall() {
 		loc, _ := thread.Location()
 		var pc uint64
