@@ -121,6 +121,19 @@ func noreturncall(n int) {
 	return
 }
 
+type Base struct{
+	y int
+}
+
+type Derived struct {
+	x int
+	Base
+}
+
+func (b *Base) Method() int {
+	return b.y
+}
+
 func main() {
 	one, two := 1, 2
 	intslice := []int{1, 2, 3}
@@ -142,9 +155,13 @@ func main() {
 	fn2ptrmeth := pa.PRcvr
 	var fn2nil func()
 
+	d := &Derived{3, Base{4}}
+
 	runtime.Breakpoint()
 	call1(one, two)
 	fn2clos(2)
 	strings.LastIndexByte(stringslice[1], 'w')
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str)
+	d.Method()
+	d.Base.Method()
+	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d)
 }
