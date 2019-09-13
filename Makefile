@@ -9,6 +9,9 @@ build:
 install:
 	@go run scripts/make.go install
 
+uninstall:
+	@go run scripts/make.go uninstall
+
 test:
 	@go run scripts/make.go test
 

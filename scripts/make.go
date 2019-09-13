@@ -54,6 +54,14 @@ func NewMakeCommands() *cobra.Command {
 		},
 	})
 
+	RootCommand.AddCommand(&cobra.Command{
+		Use:   "uninstall",
+		Short: "Uninstalls delve",
+		Run: func(cmd *cobra.Command, args []string) {
+			execute("go", "clean", "-i", DelveMainPackagePath)
+		},
+	})
+
 	test := &cobra.Command{
 		Use:   "test",
 		Short: "Tests delve",
