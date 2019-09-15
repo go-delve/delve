@@ -105,7 +105,6 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	var vars []*Variable
 	var depths []int
 	varReader := reader.Variables(scope.image().dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true, false)
-	hasScopes := false
 	for varReader.Next() {
 		entry := varReader.Entry()
 		val, err := extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry)
@@ -127,9 +126,6 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			}
 		}
 		depths = append(depths, depth)
-		if depth > 1 {
-			hasScopes = true
-		}
 	}
 
 	if err := varReader.Err(); err != nil {
@@ -140,9 +136,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 		return vars, nil
 	}
 
-	if hasScopes {
-		sort.Stable(&variablesByDepth{vars, depths})
-	}
+	sort.Stable(&variablesByDepthAndDeclLine{vars, depths})
 
 	lvn := map[string]*Variable{} // lvn[n] is the last variable we saw named n
 
@@ -160,12 +154,10 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			v.DeclLine = declLine
 			vars[i] = v
 		}
-		if hasScopes {
-			if otherv := lvn[v.Name]; otherv != nil {
-				otherv.Flags |= VariableShadowed
-			}
-			lvn[v.Name] = v
+		if otherv := lvn[v.Name]; otherv != nil {
+			otherv.Flags |= VariableShadowed
 		}
+		lvn[v.Name] = v
 	}
 
 	return vars, nil
