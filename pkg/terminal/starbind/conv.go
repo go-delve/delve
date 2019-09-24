@@ -573,7 +573,7 @@ func (it *mapVariableAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 		return false
 	}
 	if it.cur >= len(it.v.Children) {
-		v2 := it.env.autoLoad(fmt.Sprintf("%s[%d:]", varAddrExpr(it.v), len(it.v.Children)))
+		v2 := it.env.autoLoad(fmt.Sprintf("%s[%d:]", varAddrExpr(it.v), len(it.v.Children)/2))
 		it.v.Children = append(it.v.Children, v2.Children...)
 	}
 	if it.cur >= len(it.v.Children) {
