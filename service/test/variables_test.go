@@ -689,7 +689,7 @@ func TestEvalExpression(t *testing.T) {
 		{"len(ch1)", false, "4", "4", "", nil},
 		{"cap(chnil)", false, "0", "0", "", nil},
 		{"len(chnil)", false, "0", "0", "", nil},
-		{"len(m1)", false, "41", "41", "", nil},
+		{"len(m1)", false, "66", "66", "", nil},
 		{"len(mnil)", false, "0", "0", "", nil},
 		{"imag(cpx1)", false, "2", "2", "", nil},
 		{"real(cpx1)", false, "1", "1", "", nil},
@@ -892,24 +892,31 @@ func TestMapEvaluation(t *testing.T) {
 			t.Fatalf("Wrong type: %s", m1.Type)
 		}
 
-		if len(m1.Children)/2 != 41 {
+		if len(m1.Children)/2 != 64 {
 			t.Fatalf("Wrong number of children: %d", len(m1.Children)/2)
 		}
 
-		found := false
-		for i := range m1.Children {
-			if i%2 == 0 && m1.Children[i].Value == "Malone" {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("Could not find Malone")
+		m1sliced, err := evalVariable(p, "m1[64:]", pnormalLoadConfig)
+		assertNoError(err, t, "EvalVariable(m1[64:])")
+		if len(m1sliced.Children)/2 != int(m1.Len-64) {
+			t.Fatalf("Wrong number of children (after slicing): %d", len(m1sliced.Children)/2)
 		}
 
-		m1sliced, err := evalVariable(p, "m1[10:]", pnormalLoadConfig)
-		assertNoError(err, t, "EvalVariable(m1[10:])")
-		if len(m1sliced.Children)/2 != int(m1.Len-10) {
-			t.Fatalf("Wrong number of children (after slicing): %d", len(m1sliced.Children)/2)
+		countMalone := func(m *api.Variable) int {
+			found := 0
+			for i := range m.Children {
+				if i%2 == 0 && m.Children[i].Value == "Malone" {
+					found++
+				}
+			}
+			return found
+		}
+
+		found := countMalone(m1)
+		found += countMalone(api.ConvertVar(m1sliced))
+
+		if found != 1 {
+			t.Fatalf("Could not find Malone exactly 1 time: found %d", found)
 		}
 	})
 }
