@@ -1099,7 +1099,13 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 			}
 		}
 		if len(args) > 4 && args[4] != starlark.None {
-			err := unmarshalStarlarkValue(args[4], &rpcArgs.Cfg, "Cfg")
+			err := unmarshalStarlarkValue(args[4], &rpcArgs.Opts, "Opts")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		if len(args) > 5 && args[5] != starlark.None {
+			err := unmarshalStarlarkValue(args[5], &rpcArgs.Cfg, "Cfg")
 			if err != nil {
 				return starlark.None, decorateError(thread, err)
 			}
@@ -1115,6 +1121,8 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Full, "Full")
 			case "Defers":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Defers, "Defers")
+			case "Opts":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Opts, "Opts")
 			case "Cfg":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Cfg, "Cfg")
 			default:

@@ -90,7 +90,7 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 		}
 		frames, err = ThreadStacktrace(thread, 1)
 	} else {
-		frames, err = g.Stacktrace(1, true)
+		frames, err = g.Stacktrace(1, StacktraceReadDefers)
 	}
 	if err != nil {
 		return Stackframe{}, Stackframe{}, err

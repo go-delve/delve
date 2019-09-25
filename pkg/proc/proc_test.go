@@ -917,7 +917,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		mainCount := 0
 
 		for i, g := range gs {
-			locations, err := g.Stacktrace(40, false)
+			locations, err := g.Stacktrace(40, 0)
 			if err != nil {
 				// On windows we do not have frame information for goroutines doing system calls.
 				t.Logf("Could not retrieve goroutine stack for goid=%d: %v", g.ID, err)
@@ -1226,7 +1226,7 @@ func TestFrameEvaluation(t *testing.T) {
 		found := make([]bool, 10)
 		for _, g := range gs {
 			frame := -1
-			frames, err := g.Stacktrace(10, false)
+			frames, err := g.Stacktrace(10, 0)
 			if err != nil {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
@@ -1925,7 +1925,7 @@ func TestNextParked(t *testing.T) {
 				if g.Thread != nil {
 					continue
 				}
-				frames, _ := g.Stacktrace(5, false)
+				frames, _ := g.Stacktrace(5, 0)
 				for _, frame := range frames {
 					// line 11 is the line where wg.Done is called
 					if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.sayhi" && frame.Current.Line < 11 {
@@ -1980,7 +1980,7 @@ func TestStepParked(t *testing.T) {
 		}
 
 		t.Logf("Parked g is: %v\n", parkedg)
-		frames, _ := parkedg.Stacktrace(20, false)
+		frames, _ := parkedg.Stacktrace(20, 0)
 		for _, frame := range frames {
 			name := ""
 			if frame.Call.Fn != nil {
@@ -2686,7 +2686,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 				goid, _ := constant.Int64Val(goidVar.Value)
 
 				if g := getg(int(goid), gs); g != nil {
-					stack, err := g.Stacktrace(50, false)
+					stack, err := g.Stacktrace(50, 0)
 					assertNoError(err, t, fmt.Sprintf("Stacktrace(goroutine = %d)", goid))
 					for _, frame := range stack {
 						if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.bottomUpTree" {
@@ -2712,7 +2712,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 		for _, goid := range stackBarrierGoids {
 			g := getg(goid, gs)
 
-			stack, err := g.Stacktrace(200, false)
+			stack, err := g.Stacktrace(200, 0)
 			assertNoError(err, t, "Stacktrace()")
 
 			// Check that either main.main or main.main.func1 appear in the
@@ -3260,7 +3260,7 @@ func TestCgoStacktrace(t *testing.T) {
 				}
 			}
 
-			frames, err := g.Stacktrace(100, false)
+			frames, err := g.Stacktrace(100, 0)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
 
 			t.Logf("iteration step %d", itidx)
@@ -3347,7 +3347,7 @@ func TestSystemstackStacktrace(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "second continue")
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG")
-		frames, err := g.Stacktrace(100, false)
+		frames, err := g.Stacktrace(100, 0)
 		assertNoError(err, t, "stacktrace")
 		logStacktrace(t, p.BinInfo(), frames)
 		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "runtime.gopanic", "main.main"}, frames)
@@ -3380,7 +3380,7 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 				break
 			}
 		}
-		frames, err := g.Stacktrace(100, false)
+		frames, err := g.Stacktrace(100, 0)
 		assertNoError(err, t, "stacktrace")
 		logStacktrace(t, p.BinInfo(), frames)
 		m := stacktraceCheck(t, []string{"!runtime.newstack", "main.main"}, frames)
@@ -3396,7 +3396,7 @@ func TestIssue1034(t *testing.T) {
 	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(proc.Continue(p), t, "Continue()")
-		frames, err := p.SelectedGoroutine().Stacktrace(10, false)
+		frames, err := p.SelectedGoroutine().Stacktrace(10, 0)
 		assertNoError(err, t, "Stacktrace")
 		scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
@@ -3949,7 +3949,7 @@ func TestIssue1264(t *testing.T) {
 func TestReadDefer(t *testing.T) {
 	withTestProcess("deferstack", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue")
-		frames, err := p.SelectedGoroutine().Stacktrace(10, true)
+		frames, err := p.SelectedGoroutine().Stacktrace(10, proc.StacktraceReadDefers)
 		assertNoError(err, t, "Stacktrace")
 
 		logStacktrace(t, p.BinInfo(), frames)

@@ -258,13 +258,17 @@ When connected to a headless instance started with the --accept-multiclient, pas
 Show source around current point or provided linespec.`},
 		{aliases: []string{"stack", "bt"}, allowedPrefixes: onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
-	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer] [-a <n>] [-adepth <depth>]
+	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer] [-a <n>] [-adepth <depth>] [-mode <mode>]
 
 	-full		every stackframe is decorated with the value of its local variables and arguments.
 	-offsets	prints frame offset of each frame.
 	-defer		prints deferred function call stack for each frame.
 	-a <n>		prints stacktrace of n ancestors of the selected goroutine (target process must have tracebackancestors enabled)
 	-adepth <depth>	configures depth of ancestor stacktrace
+	-mode <mode>	specifies the stacktrace mode, possible values are:
+			normal	- attempts to automatically switch between cgo frames and go frames
+			simple	- disables automatic switch between cgo and go
+			fromg	- starts from the registers stored in the runtime.g struct
 `},
 		{aliases: []string{"frame"},
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
@@ -601,7 +605,7 @@ func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, bPrin
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
 		if bPrintStack {
-			stack, err := t.client.Stacktrace(g.ID, 10, false, nil)
+			stack, err := t.client.Stacktrace(g.ID, 10, 0, nil)
 			if err != nil {
 				return err
 			}
@@ -745,7 +749,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	if frame < 0 {
 		return fmt.Errorf("Invalid frame %d", frame)
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, frame, false, nil)
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, frame, 0, nil)
 	if err != nil {
 		return err
 	}
@@ -1473,7 +1477,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if sa.full {
 		cfg = &ShortLoadConfig
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, sa.depth, sa.readDefers, cfg)
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, sa.depth, sa.opts, cfg)
 	if err != nil {
 		return err
 	}
@@ -1496,10 +1500,10 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 }
 
 type stackArgs struct {
-	depth      int
-	full       bool
-	offsets    bool
-	readDefers bool
+	depth   int
+	full    bool
+	offsets bool
+	opts    api.StacktraceOptions
 
 	ancestors     int
 	ancestorDepth int
@@ -1530,7 +1534,23 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 			case "-offsets":
 				r.offsets = true
 			case "-defer":
-				r.readDefers = true
+				r.opts |= api.StacktraceReadDefers
+			case "-mode":
+				i++
+				if i >= len(args) {
+					return stackArgs{}, fmt.Errorf("expected normal, simple or fromg after -mode")
+				}
+				switch args[i] {
+				case "normal":
+					r.opts &^= api.StacktraceSimple
+					r.opts &^= api.StacktraceG
+				case "simple":
+					r.opts |= api.StacktraceSimple
+				case "fromg":
+					r.opts |= api.StacktraceG | api.StacktraceSimple
+				default:
+					return stackArgs{}, fmt.Errorf("expected normal, simple or fromg after -mode")
+				}
 			case "-a":
 				i++
 				n, err := numarg("-a")
@@ -1578,7 +1598,7 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 		return state.CurrentThread.File, state.CurrentThread.Line, true, nil
 
 	case len(args) == 0 && ctx.scoped():
-		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, false, nil)
+		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, 0, nil)
 		if err != nil {
 			return "", 0, false, err
 		}

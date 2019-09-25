@@ -813,7 +813,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 		assertNoError(err, t, "GoroutinesInfo()")
 		found := make([]bool, 10)
 		for _, g := range gs {
-			frames, err := c.Stacktrace(g.ID, 10, false, &normalLoadConfig)
+			frames, err := c.Stacktrace(g.ID, 10, 0, &normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
 			for i, frame := range frames {
 				if frame.Function == nil {
@@ -847,7 +847,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		frames, err := c.Stacktrace(-1, 10, false, &normalLoadConfig)
+		frames, err := c.Stacktrace(-1, 10, 0, &normalLoadConfig)
 		assertNoError(err, t, "Stacktrace")
 
 		cur := 3
@@ -926,7 +926,7 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListRegisters()")
 		_, _, err = c.ListGoroutines(0, 0)
 		assertError(err, t, "ListGoroutines()")
-		_, err = c.Stacktrace(gid, 10, false, &normalLoadConfig)
+		_, err = c.Stacktrace(gid, 10, 0, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 		_, err = c.FindLocation(api.EvalScope{gid, 0, 0}, "+1")
 		assertError(err, t, "FindLocation()")
@@ -1049,7 +1049,7 @@ func TestNegativeStackDepthBug(t *testing.T) {
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
-		_, err = c.Stacktrace(-1, -2, false, &normalLoadConfig)
+		_, err = c.Stacktrace(-1, -2, 0, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 	})
 }
