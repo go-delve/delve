@@ -1110,7 +1110,7 @@ func TestCallFunction(t *testing.T) {
 		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil},
 		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil},
 		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
-		{`stringsJoin(s1, comma)`, nil, errors.New("could not find symbol value for s1")},
+		{`stringsJoin(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument v in function main.stringsJoin: could not find symbol value for s1`)},
 		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
 		{`noreturncall(2)`, nil, nil},
 
@@ -1172,6 +1172,15 @@ func TestCallFunction(t *testing.T) {
 		// string allocation requires trusted argument order, which we don't have in Go 1.11
 		{`stringsJoin(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
 		{`str = "a new string"; str`, []string{`str:string:"a new string"`}, nil},
+
+		// support calling optimized functions
+		{`strings.Join(nil, "")`, []string{`:string:""`}, nil},
+		{`strings.Join(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
+		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument a in function strings.Join: could not find symbol value for s1`)},
+		{`strings.Join(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
+		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
+		{`strings.LastIndexByte(stringslice[1], 'w')`, []string{":int:1"}, nil},
+		{`strings.LastIndexByte(stringslice[1], 'o')`, []string{":int:2"}, nil},
 	}
 
 	var testcases113 = []testCaseCallFunction{

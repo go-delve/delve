@@ -102,6 +102,8 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 		return nil, errors.New("unable to find function context")
 	}
 
+	trustArgOrder := scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12)
+
 	var vars []*Variable
 	var depths []int
 	varReader := reader.Variables(scope.image().dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true, false)
@@ -111,6 +113,14 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 		if err != nil {
 			// skip variables that we can't parse yet
 			continue
+		}
+		if trustArgOrder && val.Unreadable != nil && val.Addr == 0 && entry.Tag == dwarf.TagFormalParameter {
+			addr := afterLastArgAddr(vars)
+			if addr == 0 {
+				addr = uintptr(scope.Regs.CFA)
+			}
+			addr = uintptr(alignAddr(int64(addr), val.DwarfType.Align()))
+			val = newVariable(val.Name, addr, val.DwarfType, scope.BinInfo, scope.Mem)
 		}
 		vars = append(vars, val)
 		depth := varReader.Depth()
@@ -161,6 +171,16 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	}
 
 	return vars, nil
+}
+
+func afterLastArgAddr(vars []*Variable) uintptr {
+	for i := len(vars) - 1; i >= 0; i-- {
+		v := vars[i]
+		if (v.Flags&VariableArgument != 0) || (v.Flags&VariableReturnArgument != 0) {
+			return v.Addr + uintptr(v.DwarfType.Size())
+		}
+	}
+	return 0
 }
 
 // setValue writes the value of srcv to dstv.
@@ -378,6 +398,9 @@ func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
 			r.Value = constant.MakeString(fn.Name)
 			r.Base = uintptr(fn.Entry)
 			r.loaded = true
+			if fn.Entry == 0 {
+				r.Unreadable = fmt.Errorf("function %s is inlined", fn.Name)
+			}
 			return r, nil
 		}
 	}
@@ -777,27 +800,31 @@ func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
 		return nil, nil
 	}
 
-	args := make([]*Variable, len(node.Args))
+	callBuiltinWithArgs := func(builtin func([]*Variable, []ast.Expr) (*Variable, error)) (*Variable, error) {
+		args := make([]*Variable, len(node.Args))
 
-	for i := range node.Args {
-		v, err := scope.evalAST(node.Args[i])
-		if err != nil {
-			return nil, err
+		for i := range node.Args {
+			v, err := scope.evalAST(node.Args[i])
+			if err != nil {
+				return nil, err
+			}
+			args[i] = v
 		}
-		args[i] = v
+
+		return builtin(args, node.Args)
 	}
 
 	switch fnnode.Name {
 	case "cap":
-		return capBuiltin(args, node.Args)
+		return callBuiltinWithArgs(capBuiltin)
 	case "len":
-		return lenBuiltin(args, node.Args)
+		return callBuiltinWithArgs(lenBuiltin)
 	case "complex":
-		return complexBuiltin(args, node.Args)
+		return callBuiltinWithArgs(complexBuiltin)
 	case "imag":
-		return imagBuiltin(args, node.Args)
+		return callBuiltinWithArgs(imagBuiltin)
 	case "real":
-		return realBuiltin(args, node.Args)
+		return callBuiltinWithArgs(realBuiltin)
 	}
 
 	return nil, nil
