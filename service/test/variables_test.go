@@ -1181,6 +1181,8 @@ func TestCallFunction(t *testing.T) {
 		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
 		{`strings.LastIndexByte(stringslice[1], 'w')`, []string{":int:1"}, nil},
 		{`strings.LastIndexByte(stringslice[1], 'o')`, []string{":int:2"}, nil},
+		{`d.Base.Method()`, []string{ `:int:4` }, nil },
+		{`d.Method()`, []string{ `:int:4` }, nil },
 	}
 
 	var testcases113 = []testCaseCallFunction{

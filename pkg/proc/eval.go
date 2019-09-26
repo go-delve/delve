@@ -1847,7 +1847,32 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 		}
 		return r, nil
 	}
+	return v.tryFindMethodInEmbeddedFields(mname)
+}
 
+func (v *Variable) tryFindMethodInEmbeddedFields(mname string) (*Variable, error) {
+	structVar := v.maybeDereference()
+	structVar.Name = v.Name
+	if structVar.Unreadable != nil {
+		return structVar, nil
+	}
+	switch t := structVar.RealType.(type) {
+	case *godwarf.StructType:
+		for _, field := range t.Field {
+			if field.Embedded {
+				// Recursively check for promoted fields on the embedded field
+				embeddedVar, err := structVar.toField(field)
+				if err != nil {
+					return nil, err
+				}
+				if embeddedMethod, err := embeddedVar.findMethod(mname); err != nil {
+					return nil, err
+				} else if embeddedMethod != nil {
+					return embeddedMethod, nil
+				}
+			}
+		}
+	}
 	return nil, nil
 }
 
