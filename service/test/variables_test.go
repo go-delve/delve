@@ -1205,7 +1205,6 @@ func TestCallFunction(t *testing.T) {
 		// support calling optimized functions
 		{`strings.Join(nil, "")`, []string{`:string:""`}, nil},
 		{`strings.Join(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
-		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument a in function strings.Join: could not find symbol value for s1`)},
 		{`strings.Join(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
 		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
 		{`strings.LastIndexByte(stringslice[1], 'w')`, []string{":int:1"}, nil},
@@ -1230,6 +1229,14 @@ func TestCallFunction(t *testing.T) {
 		{`getVRcvrableFromAStructPtr(6).VRcvr(5)`, []string{`:string:"5 + 6 = 11"`}, nil}, // indirect call of method on interface / containing pointer with pointer method
 	}
 
+	var testcasesBefore114After112 = []testCaseCallFunction{
+		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument a in function strings.Join: could not find symbol value for s1`)},
+	}
+
+	var testcases114 = []testCaseCallFunction{
+		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument elems in function strings.Join: could not find symbol value for s1`)},
+	}
+
 	withTestProcess("fncall", t, func(p *proc.Target, fixture protest.Fixture) {
 		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", 0)
 		if err != nil {
@@ -1244,10 +1251,21 @@ func TestCallFunction(t *testing.T) {
 			for _, tc := range testcases112 {
 				testCallFunction(t, p, tc)
 			}
+			if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+				for _, tc := range testcasesBefore114After112 {
+					testCallFunction(t, p, tc)
+				}
+			}
 		}
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 			for _, tc := range testcases113 {
+				testCallFunction(t, p, tc)
+			}
+		}
+
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+			for _, tc := range testcases114 {
 				testCallFunction(t, p, tc)
 			}
 		}

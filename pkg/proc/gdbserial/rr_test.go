@@ -197,7 +197,7 @@ func TestCheckpoints(t *testing.T) {
 		bp := setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(proc.Continue(p), t, "Continue")
 		when0, loc0 := getPosition(p, t)
-		t.Logf("when0: %q (%#x)", when0, loc0.PC)
+		t.Logf("when0: %q (%#x) %x", when0, loc0.PC, p.CurrentThread().ThreadID())
 
 		// Create a checkpoint and check that the list of checkpoints reflects this
 		cpid, err := p.Checkpoint("checkpoint1")
@@ -215,7 +215,7 @@ func TestCheckpoints(t *testing.T) {
 		assertNoError(proc.Next(p), t, "First Next")
 		assertNoError(proc.Next(p), t, "Second Next")
 		when1, loc1 := getPosition(p, t)
-		t.Logf("when1: %q (%#x)", when1, loc1.PC)
+		t.Logf("when1: %q (%#x) %x", when1, loc1.PC, p.CurrentThread().ThreadID())
 		if loc0.PC == loc1.PC {
 			t.Fatalf("next did not move process %#x", loc0.PC)
 		}
@@ -226,8 +226,9 @@ func TestCheckpoints(t *testing.T) {
 		// Move back to checkpoint, check that the output of 'when' is the same as
 		// what it was when we set the breakpoint
 		p.Restart(fmt.Sprintf("c%d", cpid))
+		p.SwitchGoroutine(1)
 		when2, loc2 := getPosition(p, t)
-		t.Logf("when2: %q (%#x)", when2, loc2.PC)
+		t.Logf("when2: %q (%#x) %x", when2, loc2.PC, p.CurrentThread().ThreadID())
 		if loc2.PC != loc0.PC {
 			t.Fatalf("PC address mismatch %#x != %#x", loc0.PC, loc2.PC)
 		}
@@ -252,6 +253,7 @@ func TestCheckpoints(t *testing.T) {
 		_, err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		p.Restart(fmt.Sprintf("c%d", cpid))
+		p.SwitchGoroutine(1)
 		assertNoError(proc.Next(p), t, "First Next")
 		assertNoError(proc.Next(p), t, "Second Next")
 		when4, loc4 := getPosition(p, t)

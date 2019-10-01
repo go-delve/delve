@@ -271,8 +271,8 @@ func TestIssue411(t *testing.T) {
 	}
 	test.AllowRecording(t)
 	withTestTerminal("math", t, func(term *FakeTerminal) {
-		term.MustExec("break math.go:8")
-		term.MustExec("trace math.go:9")
+		term.MustExec("break _fixtures/math.go:8")
+		term.MustExec("trace _fixtures/math.go:9")
 		term.MustExec("continue")
 		out := term.MustExec("next")
 		if !strings.HasPrefix(out, "> main.main()") {
@@ -683,7 +683,9 @@ func TestCheckpoints(t *testing.T) {
 		term.MustExec("checkpoints")
 		listIsAt(t, term, "next", 17, -1, -1)
 		listIsAt(t, term, "next", 18, -1, -1)
-		listIsAt(t, term, "restart c1", 16, -1, -1)
+		term.MustExec("restart c1")
+		term.MustExec("goroutine 1")
+		listIsAt(t, term, "list", 16, -1, -1)
 	})
 }
 
