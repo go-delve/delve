@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/go-delve/delve/cmd/dlv/cmds"
@@ -21,5 +22,6 @@ func main() {
 	} else {
 		logrus.WithFields(logrus.Fields{"layer": "dlv"}).Warnln("CGO_CFLAGS already set, Cgo code could be optimized.")
 	}
+	fmt.Printf("PATCH APPLIED\n")
 	cmds.New(false).Execute()
 }

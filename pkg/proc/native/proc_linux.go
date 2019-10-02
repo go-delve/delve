@@ -35,6 +35,8 @@ const (
 	// version of the kernel ('T' is job control stop on modern 3.x+ kernels) we
 	// may want to differentiate at some point.
 	StatusTraceStopT = 'T'
+
+	StatusDisappeared = '\000'
 )
 
 // OSProcessDetails contains Linux specific
@@ -332,7 +334,7 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 func status(pid int, comm string) rune {
 	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
-		return '\000'
+		return StatusDisappeared
 	}
 	defer f.Close()
 
