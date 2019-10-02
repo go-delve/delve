@@ -33,10 +33,11 @@ func (t *Thread) stop() (err error) {
 // the operating system level.
 func (t *Thread) Stopped() bool {
 	state := status(t.ID, t.dbp.os.comm)
-	if state == StatusDisappeared {
+	stopped := state == StatusTraceStop || state == StatusTraceStopT || state == StatusDisappeared
+	if stopped {
 		t.os.running = false
 	}
-	return state == StatusTraceStop || state == StatusTraceStopT || state == StatusDisappeared
+	return stopped
 }
 
 func (t *Thread) resume() error {

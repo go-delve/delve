@@ -22,6 +22,6 @@ func main() {
 	} else {
 		logrus.WithFields(logrus.Fields{"layer": "dlv"}).Warnln("CGO_CFLAGS already set, Cgo code could be optimized.")
 	}
-	fmt.Printf("PATCH APPLIED\n")
+	fmt.Printf("PATCH APPLIED (b)\n")
 	cmds.New(false).Execute()
 }
