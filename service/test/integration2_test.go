@@ -1718,3 +1718,15 @@ func TestUnknownMethodCall(t *testing.T) {
 		t.Errorf("wrong error message: %v", err)
 	}
 }
+
+func TestIssue1703(t *testing.T) {
+	// Calling Disassemble when there is no current goroutine should work.
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "main.main")
+		assertNoError(err, t, "FindLocation")
+		t.Logf("FindLocation: %#v", locs)
+		text, err := c.DisassemblePC(api.EvalScope{GoroutineID: -1}, locs[0].PC, api.IntelFlavour)
+		assertNoError(err, t, "DisassemblePC")
+		t.Logf("text: %#v\n", text)
+	})
+}

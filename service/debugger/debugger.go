@@ -1175,13 +1175,13 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 		return nil, err
 	}
 
-	var regs proc.Registers
-	var mem proc.MemoryReadWriter = d.target.CurrentThread()
-	if g.Thread != nil {
-		mem = g.Thread
-		regs, _ = g.Thread.Registers(false)
+	curthread := d.target.CurrentThread()
+	if g != nil && g.Thread != nil {
+		curthread = g.Thread
 	}
-	insts, err := proc.Disassemble(mem, regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
+	regs, _ := curthread.Registers(false)
+
+	insts, err := proc.Disassemble(curthread, regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
 	if err != nil {
 		return nil, err
 	}
