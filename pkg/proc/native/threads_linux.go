@@ -37,6 +37,7 @@ func (t *Thread) Stopped() bool {
 	if stopped {
 		t.os.running = false
 	}
+	fmt.Printf("\tthread %x status %c (%v)\n", t.ID, state, t.os.running)
 	return stopped
 }
 

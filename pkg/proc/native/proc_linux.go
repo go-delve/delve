@@ -439,11 +439,14 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		allstopped := true
 		for _, th := range dbp.threads {
 			if th.os.running {
+				state := status(th.ID, dbp.os.comm)
+				fmt.Printf("\tthread %x still running %c\n", th.ID, state)
 				allstopped = false
 				break
 			}
 		}
 		if allstopped {
+			fmt.Printf("\tall threads stopped\n")
 			break
 		}
 		_, err := dbp.trapWaitInternal(-1, true)
