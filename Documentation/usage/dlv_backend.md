@@ -25,7 +25,7 @@ are:
       --check-go-version     Checks that the version of Go in use is compatible with Delve. (default true)
       --headless             Run debug server only, in headless mode.
       --init string          Init file, executed by the terminal client.
-  -l, --listen string        Debugging server listen address. (default "localhost:0")
+  -l, --listen string        Debugging server listen address. (default "127.0.0.1:0")
       --log                  Enable debugging server logging.
       --log-dest string      Writes logs to the specified file or file descriptor (see 'dlv help log').
       --log-output string    Comma separated list of components that should produce debug output (see 'dlv help log')

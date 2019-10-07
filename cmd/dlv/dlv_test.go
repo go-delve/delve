@@ -285,7 +285,9 @@ func TestGeneratedDoc(t *testing.T) {
 	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
 	assertNoError(err, t, "TempDir")
 	defer cmds.SafeRemoveAll(tempDir)
-	exec.Command("go", "run", "scripts/gen-usage-docs.go", tempDir).Run()
+	cmd := exec.Command("go", "run", "scripts/gen-usage-docs.go", tempDir)
+	cmd.Dir = projectRoot()
+	cmd.Run()
 	entries, err := ioutil.ReadDir(tempDir)
 	assertNoError(err, t, "ReadDir")
 	for _, doc := range entries {
