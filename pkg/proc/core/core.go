@@ -113,8 +113,11 @@ func (r *SplicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) 
 		}
 		pn, err := entry.reader.ReadMemory(pb, addr)
 		n += pn
-		if err != nil || pn != len(pb) {
-			return n, err
+		if err != nil {
+			return n, fmt.Errorf("error while reading spliced memory at %#x: %v", addr, err)
+		}
+		if pn != len(pb) {
+			return n, nil
 		}
 		buf = buf[pn:]
 		addr += uintptr(pn)
