@@ -80,6 +80,8 @@ type BinaryInfo struct {
 
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
+
+	logger *logrus.Entry
 }
 
 // ErrUnsupportedLinuxArch is returned when attempting to debug a binary compiled for an unsupported architecture.
@@ -302,7 +304,7 @@ type ElfDynamicSection struct {
 
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
 func NewBinaryInfo(goos, goarch string) *BinaryInfo {
-	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry)}
+	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), logger: logflags.DebuggerLogger()}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info).
 	switch goarch {
@@ -1414,74 +1416,20 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 			reader.SkipChildren()
 
 		case dwarf.TagSubprogram:
-			ok1 := false
 			inlined := false
-			var lowpc, highpc uint64
+
 			if inval, ok := entry.Val(dwarf.AttrInline).(int64); ok {
 				inlined = inval == 1
 			}
-			if ranges, _ := image.dwarf.Ranges(entry); len(ranges) == 1 {
-				ok1 = true
-				lowpc = ranges[0][0] + image.StaticBase
-				highpc = ranges[0][1] + image.StaticBase
-			}
-			name, ok2 := entry.Val(dwarf.AttrName).(string)
-			if !ok2 {
+
+			if inlined {
+				bi.addAbstractSubprogram(entry, ctxt, reader, image, cu)
+			} else {
 				originOffset, hasAbstractOrigin := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
 				if hasAbstractOrigin {
-					name, ok2 = ctxt.abstractOriginNameTable[originOffset]
-				}
-			}
-
-			var fn Function
-			if (ok1 == !inlined) && ok2 {
-				if inlined {
-					ctxt.abstractOriginNameTable[entry.Offset] = name
-				}
-				if !cu.isgo {
-					name = "C." + name
-				}
-				fn = Function{
-					Name:  name,
-					Entry: lowpc, End: highpc,
-					offset: entry.Offset,
-					cu:     cu,
-				}
-				bi.Functions = append(bi.Functions, fn)
-			}
-			if entry.Children {
-				for {
-					entry, err = reader.Next()
-					if err != nil {
-						image.setLoadError("error reading debug_info: %v", err)
-						return
-					}
-					if entry.Tag == 0 {
-						break
-					}
-					if entry.Tag == dwarf.TagInlinedSubroutine && entry.Val(dwarf.AttrAbstractOrigin) != nil {
-						originOffset := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
-						name := ctxt.abstractOriginNameTable[originOffset]
-						if ranges, _ := image.dwarf.Ranges(entry); len(ranges) == 1 {
-							ok1 = true
-							lowpc = ranges[0][0]
-							highpc = ranges[0][1]
-						}
-						callfileidx, ok1 := entry.Val(dwarf.AttrCallFile).(int64)
-						callline, ok2 := entry.Val(dwarf.AttrCallLine).(int64)
-						if ok1 && ok2 {
-							callfile := cu.lineInfo.FileNames[callfileidx-1].Path
-							cu.concreteInlinedFns = append(cu.concreteInlinedFns, inlinedFn{
-								Name:     name,
-								LowPC:    lowpc + image.StaticBase,
-								HighPC:   highpc + image.StaticBase,
-								CallFile: callfile,
-								CallLine: callline,
-								Parent:   &fn,
-							})
-						}
-					}
-					reader.SkipChildren()
+					bi.addConcreteInlinedSubprogram(entry, originOffset, ctxt, reader, cu)
+				} else {
+					bi.addConcreteSubprogram(entry, ctxt, reader, cu)
 				}
 			}
 		}
@@ -1505,6 +1453,179 @@ func (bi *BinaryInfo) loadDebugInfoMapsImportedUnit(entry *dwarf.Entry, ctxt *lo
 		return
 	}
 	bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
+}
+
+// addAbstractSubprogram adds the abstract entry for an inlined function.
+func (bi *BinaryInfo) addAbstractSubprogram(entry *dwarf.Entry, ctxt *loadDebugInfoMapsContext, reader *reader.Reader, image *Image, cu *compileUnit) {
+	name, ok := subprogramEntryName(entry, cu)
+	if !ok {
+		bi.logger.Errorf("Error reading debug_info: abstract subprogram without name at %#x", entry.Offset)
+		if entry.Children {
+			reader.SkipChildren()
+		}
+		return
+	}
+
+	fn := Function{
+		Name:   name,
+		offset: entry.Offset,
+		cu:     cu,
+	}
+
+	if entry.Children {
+		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu, &fn)
+	}
+
+	bi.Functions = append(bi.Functions, fn)
+	ctxt.abstractOriginNameTable[entry.Offset] = name
+}
+
+// addConcreteInlinedSubprogram adds the concrete entry of a subprogram that was also inlined.
+func (bi *BinaryInfo) addConcreteInlinedSubprogram(entry *dwarf.Entry, originOffset dwarf.Offset, ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit) {
+	lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
+	if !ok {
+		bi.logger.Errorf("Error reading debug_info: concrete inlined subprogram without address range at %#x", entry.Offset)
+		if entry.Children {
+			reader.SkipChildren()
+		}
+		return
+	}
+
+	name, ok := ctxt.abstractOriginNameTable[originOffset]
+	if !ok {
+		bi.logger.Errorf("Error reading debug_info: could not find abstract origin of concrete inlined subprogram at %#x (origin offset %#x)", entry.Offset, originOffset)
+		if entry.Children {
+			reader.SkipChildren()
+		}
+		return
+	}
+
+	fn := Function{
+		Name:  name,
+		Entry: lowpc, End: highpc,
+		offset: entry.Offset,
+		cu:     cu,
+	}
+	bi.Functions = append(bi.Functions, fn)
+
+	if entry.Children {
+		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu, &fn)
+	}
+}
+
+// addConcreteSubprogram adds a concrete subprogram (a normal subprogram
+// that doesn't have abstract or inlined entries).
+func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit) {
+	lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
+	if !ok {
+		bi.logger.Errorf("Error reading debug_info: concrete subprogram without address range at %#x", entry.Offset)
+		if entry.Children {
+			reader.SkipChildren()
+		}
+		return
+	}
+
+	name, ok := subprogramEntryName(entry, cu)
+	if !ok {
+		bi.logger.Errorf("Error reading debug_info: concrete subprogram without name at %#x", entry.Offset)
+		if entry.Children {
+			reader.SkipChildren()
+		}
+		return
+	}
+
+	fn := Function{
+		Name:   name,
+		Entry:  lowpc,
+		End:    highpc,
+		offset: entry.Offset,
+		cu:     cu,
+	}
+	bi.Functions = append(bi.Functions, fn)
+
+	if entry.Children {
+		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu, &fn)
+	}
+}
+
+func subprogramEntryName(entry *dwarf.Entry, cu *compileUnit) (string, bool) {
+	name, ok := entry.Val(dwarf.AttrName).(string)
+	if !ok {
+		return "", false
+	}
+	if !cu.isgo {
+		name = "C." + name
+	}
+	return name, true
+}
+
+func subprogramEntryRange(entry *dwarf.Entry, image *Image) (lowpc, highpc uint64, ok bool) {
+	ok = false
+	if ranges, _ := image.dwarf.Ranges(entry); len(ranges) >= 1 {
+		ok = true
+		lowpc = ranges[0][0] + image.StaticBase
+		highpc = ranges[0][1] + image.StaticBase
+	}
+	return lowpc, highpc, ok
+}
+
+func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit, parentFn *Function) {
+	for {
+		entry, err := reader.Next()
+		if err != nil {
+			cu.image.setLoadError("error reading debug_info: %v", err)
+			return
+		}
+		switch entry.Tag {
+		case 0:
+			return
+		case dwarf.TagInlinedSubroutine:
+			originOffset, ok := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+			if !ok {
+				bi.logger.Errorf("Error reading debug_info: inlined call without origin offset at %#x", entry.Offset)
+				reader.SkipChildren()
+				continue
+			}
+
+			name, ok := ctxt.abstractOriginNameTable[originOffset]
+			if !ok {
+				bi.logger.Errorf("Error reading debug_info: could not find abstract origin (%#x) of inlined call at %#x", originOffset, entry.Offset)
+				reader.SkipChildren()
+				continue
+			}
+
+			lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
+			if !ok {
+				bi.logger.Errorf("Error reading debug_info: inlined call without address range at %#x", entry.Offset)
+				reader.SkipChildren()
+				continue
+			}
+
+			callfileidx, ok1 := entry.Val(dwarf.AttrCallFile).(int64)
+			callline, ok2 := entry.Val(dwarf.AttrCallLine).(int64)
+			if !ok1 || !ok2 {
+				bi.logger.Errorf("Error reading debug_info: inlined call without CallFile/CallLine at %#x", entry.Offset)
+				reader.SkipChildren()
+				continue
+			}
+			if int(callfileidx-1) >= len(cu.lineInfo.FileNames) {
+				bi.logger.Errorf("Error reading debug_info: CallFile (%d) of inlined call does not exist in compile unit file table at %#x", callfileidx, entry.Offset)
+				reader.SkipChildren()
+				continue
+			}
+			callfile := cu.lineInfo.FileNames[callfileidx-1].Path
+
+			cu.concreteInlinedFns = append(cu.concreteInlinedFns, inlinedFn{
+				Name:     name,
+				LowPC:    lowpc,
+				HighPC:   highpc,
+				CallFile: callfile,
+				CallLine: callline,
+				Parent:   parentFn,
+			})
+		}
+		reader.SkipChildren()
+	}
 }
 
 func uniq(s []string) []string {
