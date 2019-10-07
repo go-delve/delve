@@ -15,7 +15,7 @@ func TestStarlarkExamples(t *testing.T) {
 		t.Run("linked_list", func(t *testing.T) { testStarlarkExampleLinkedList(t, term) })
 		t.Run("echo_expr", func(t *testing.T) { testStarlarkEchoExpr(t, term) })
 		t.Run("find_array", func(t *testing.T) { testStarlarkFindArray(t, term) })
-		t.Run("map_iteartion", func(t *testing.T) { testStarlarkMapIteration(t, term) })
+		t.Run("map_iteration", func(t *testing.T) { testStarlarkMapIteration(t, term) })
 	})
 }
 
@@ -112,6 +112,9 @@ func testStarlarkFindArray(t *testing.T, term *FakeTerminal) {
 
 func testStarlarkMapIteration(t *testing.T, term *FakeTerminal) {
 	out := term.MustExec("source " + findStarFile("starlark_map_iteration"))
+	if !strings.Contains(out, "values=66") {
+		t.Fatalf("testStarlarkMapIteration example failed")
+	}
 	t.Logf("%s", out)
 }
 
