@@ -210,8 +210,9 @@ func (entry *pctolineEntry) match(file string, line int) bool {
 	return entry.file == file && entry.line == line
 }
 
-func setupTestPCToLine(t testing.TB, lineInfos DebugLines) []pctolineEntry {
+func setupTestPCToLine(t testing.TB, lineInfos DebugLines) ([]pctolineEntry, []uint64) {
 	entries := []pctolineEntry{}
+	basePCs := []uint64{}
 
 	sm := newStateMachine(lineInfos[0], lineInfos[0].Instructions)
 	for {
@@ -225,6 +226,9 @@ func setupTestPCToLine(t testing.TB, lineInfos DebugLines) []pctolineEntry {
 				// having two entries at the same PC address messes up the test
 				entries[len(entries)-1].file = ""
 			}
+			if len(basePCs) == 0 || sm.address-basePCs[len(basePCs)-1] >= 0x1000 {
+				basePCs = append(basePCs, sm.address)
+			}
 		}
 	}
 
@@ -234,16 +238,21 @@ func setupTestPCToLine(t testing.TB, lineInfos DebugLines) []pctolineEntry {
 		}
 	}
 
-	return entries
+	return entries, basePCs
 }
 
-func runTestPCToLine(t testing.TB, lineInfos DebugLines, entries []pctolineEntry, log bool, testSize uint64) {
+func runTestPCToLine(t testing.TB, lineInfos DebugLines, entries []pctolineEntry, basePCs []uint64, log bool, testSize uint64) {
 	const samples = 1000
 	t0 := time.Now()
 
 	i := 0
+	basePCIdx := 0
 	for pc := entries[0].pc; pc <= entries[0].pc+testSize; pc++ {
-		file, line := lineInfos[0].PCToLine(pc/0x1000*0x1000, pc)
+		if basePCIdx+1 < len(basePCs) && pc >= basePCs[basePCIdx+1] {
+			basePCIdx++
+		}
+		basePC := basePCs[basePCIdx]
+		file, line := lineInfos[0].PCToLine(basePC, pc)
 		if pc == entries[i].pc {
 			if i%samples == 0 && log {
 				fmt.Printf("match %x / %x (%v)\n", pc, entries[len(entries)-1].pc, time.Since(t0)/samples)
@@ -265,18 +274,18 @@ func runTestPCToLine(t testing.TB, lineInfos DebugLines, entries []pctolineEntry
 func TestPCToLine(t *testing.T) {
 	lineInfos := loadBenchmarkData(t)
 
-	entries := setupTestPCToLine(t, lineInfos)
-	runTestPCToLine(t, lineInfos, entries, true, 0x50000)
+	entries, basePCs := setupTestPCToLine(t, lineInfos)
+	runTestPCToLine(t, lineInfos, entries, basePCs, true, 0x50000)
 	t.Logf("restart form beginning")
-	runTestPCToLine(t, lineInfos, entries, true, 0x10000)
+	runTestPCToLine(t, lineInfos, entries, basePCs, true, 0x10000)
 }
 
 func BenchmarkPCToLine(b *testing.B) {
 	lineInfos := loadBenchmarkData(b)
 
-	entries := setupTestPCToLine(b, lineInfos)
+	entries, basePCs := setupTestPCToLine(b, lineInfos)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		runTestPCToLine(b, lineInfos, entries, false, 0x10000)
+		runTestPCToLine(b, lineInfos, entries, basePCs, false, 0x10000)
 	}
 }

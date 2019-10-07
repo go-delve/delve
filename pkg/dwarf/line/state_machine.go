@@ -108,7 +108,7 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte) *StateMachine {
 	for op := range standardopcodes {
 		opcodes[op] = standardopcodes[op]
 	}
-	sm := &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1, buf: bytes.NewBuffer(instructions), opcodes: opcodes, isStmt: dbl.Prologue.InitialIsStmt == uint8(1), address: dbl.staticBase}
+	sm := &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1, buf: bytes.NewBuffer(instructions), opcodes: opcodes, isStmt: dbl.Prologue.InitialIsStmt == uint8(1), address: dbl.staticBase, lastAddress: ^uint64(0)}
 	return sm
 }
 
@@ -193,10 +193,10 @@ func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64, excludeFile stri
 		if !sm.valid {
 			continue
 		}
-		if sm.address > end {
+		if (sm.address > end) && (end >= sm.lastAddress) {
 			break
 		}
-		if (sm.address >= begin && sm.address > lastaddr) && sm.isStmt && ((sm.file != excludeFile) || (sm.line != excludeLine)) {
+		if sm.address >= begin && sm.address <= end && sm.address > lastaddr && sm.isStmt && ((sm.file != excludeFile) || (sm.line != excludeLine)) {
 			lastaddr = sm.address
 			pcs = append(pcs, sm.address)
 		}
@@ -265,12 +265,12 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 			return "", 0, false
 		}
 	}
-	if sm.lastAddress > pc {
+	if sm.lastAddress > pc && sm.lastAddress != ^uint64(0) {
 		return "", 0, false
 	}
 	for {
 		if sm.valid {
-			if sm.address > pc {
+			if (sm.address > pc) && (pc >= sm.lastAddress) {
 				return sm.lastFile, sm.lastLine, true
 			}
 			if sm.address == pc {
@@ -360,6 +360,7 @@ func (sm *StateMachine) next() error {
 		sm.isa = 0
 		sm.isStmt = sm.dbl.Prologue.InitialIsStmt == uint8(1)
 		sm.basicBlock = false
+		sm.lastAddress = ^uint64(0)
 	}
 	b, err := sm.buf.ReadByte()
 	if err != nil {
@@ -463,6 +464,7 @@ func endsequence(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func setaddress(sm *StateMachine, buf *bytes.Buffer) {
+	//TODO: this needs to be changed to support 32bit architectures (addr must be target arch pointer sized) -- also target endianness
 	var addr uint64
 
 	binary.Read(buf, binary.LittleEndian, &addr)
