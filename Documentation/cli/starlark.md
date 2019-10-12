@@ -206,6 +206,37 @@ def command_switch_to_main_goroutine(args):
 			break
 ```
 
+## Listing goroutines
+
+Create a command, "goexcl", that lists all goroutines excluding the ones stopped on a specified function.
+
+```
+def command_goexcl(args):
+	"""Prints all goroutines not stopped in the function passed as argument."""
+	excluded = 0
+	start = 0
+	while start >= 0:
+		gr = goroutines(start, 10)
+		start = gr.Nextg
+		for g in gr.Goroutines:
+			fn = g.UserCurrentLoc.Function
+			if fn == None:
+				print("Goroutine", g.ID, "User:", g.UserCurrentLoc.File, g.UserCurrentLoc.Line)
+			elif fn.Name_ != args:
+				print("Goroutine", g.ID, "User:", g.UserCurrentLoc.File, g.UserCurrentLoc.Line, fn.Name_)
+			else:
+				excluded = excluded + 1
+	print("Excluded", excluded, "goroutines")
+```
+
+Usage:
+
+```
+(dlv) goexcl main.somefunc
+```
+
+prints all goroutines that are not stopped inside `main.somefunc`.
+
 ## Repeatedly executing the target until a breakpoint is hit.
 
 Repeatedly call continue and restart until the target hits a breakpoint.
