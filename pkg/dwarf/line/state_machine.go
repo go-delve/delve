@@ -322,6 +322,10 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 
 // PrologueEndPC returns the first PC address marked as prologue_end in the half open interval [start, end)
 func (lineInfo *DebugLineInfo) PrologueEndPC(start, end uint64) (pc uint64, file string, line int, ok bool) {
+	if lineInfo == nil {
+		return 0, "", 0, false
+	}
+
 	sm := lineInfo.stateMachineForEntry(start)
 	for {
 		if sm.valid {
