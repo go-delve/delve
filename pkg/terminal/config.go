@@ -123,6 +123,9 @@ func configureSet(t *Term, args string) error {
 			if err != nil {
 				return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number", cfgname)
 			}
+			if n < 0 {
+				return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number greater than zero", cfgname)
+			}
 			return reflect.ValueOf(&n), nil
 		case reflect.Bool:
 			v := rest == "true"
