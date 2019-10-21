@@ -5,6 +5,35 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [1.3.2] 2019-10-21
+
+### Added
+
+- New example for starlark documentation (@aarzilli)
+- Allow calls to optimized functions (@aarzilli)
+- Option to bypass smart stacktraces (@aarzilli)
+- Ability to call method of embedded field (@chainhelen)
+- Added `make unininstall` command (@chainhelen)
+- User can re-record recorded targets (@aarzilli)
+
+### Fixed
+
+- Fix version reporting (current latest tagged as 1.3.1, reporting 1.3.0) (@derekparker)
+- Fix nil pointer deref on proc.GetG (@aarzilli)
+- Better handling of DW_TAG_inlined_subroutine without debug_line info (@aarzilli)
+- Fix panic on invalid config values (@TerrySolar)
+- Fix debug_line state machine behavior with multi-sequence units (@aarzilli)
+- Fix starlark iteration on maps > 64 entries (@alxn)
+- debug_frame parser fixed parsing augmentation (@chainhelen)
+- Round TLS segment size to its alignment (@heschik)
+
+### Changed
+
+- Documentation bumped required Go version (@codekaup)
+- Disassemble now works without a selected goroutine (@aarzilli)
+- Correctly mark closure variables as shadowed (@aarzilli)
+- Bump CI to use Go 1.13 (@aarzilli)
+
 ## [1.3.0] 2019-08-27
 
 ### Added
