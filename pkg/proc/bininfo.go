@@ -307,10 +307,7 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), logger: logflags.DebuggerLogger()}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info).
-	switch goarch {
-	case "amd64":
-		r.Arch = AMD64Arch(goos)
-	}
+	r.Arch = ArchInfo(goos)
 
 	return r
 }

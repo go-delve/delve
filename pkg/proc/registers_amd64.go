@@ -88,3 +88,7 @@ func GetDwarfRegister(regs Registers, i int) []byte {
 	}
 	return []byte{}
 }
+
+func getFirstReg() x86asm.Reg {
+	return x86asm.RAX
+}

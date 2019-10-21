@@ -18,7 +18,6 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
-	"golang.org/x/arch/x86/x86asm"
 )
 
 // This file implements the function call injection introduced in go1.11.
@@ -252,7 +251,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if regs.SP()-256 <= scope.g.stacklo {
 		return nil, errNotEnoughStack
 	}
-	_, err = regs.Get(int(x86asm.RAX))
+	_, err = regs.Get(int(getFirstReg()))
 	if err != nil {
 		return nil, errFuncCallUnsupportedBackend
 	}
@@ -647,7 +646,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 	}
 	regs = regs.Copy()
 
-	rax, _ := regs.Get(int(x86asm.RAX))
+	rax, _ := regs.Get(int(getFirstReg()))
 
 	if logflags.FnCall() {
 		loc, _ := thread.Location()
