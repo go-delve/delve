@@ -38,9 +38,6 @@ func withTestRecording(name string, t testing.TB, fn func(p *gdbserial.Process, 
 
 	defer func() {
 		p.Detach(true)
-		if tracedir != "" {
-			protest.SafeRemoveAll(tracedir)
-		}
 	}()
 
 	fn(p, fixture)

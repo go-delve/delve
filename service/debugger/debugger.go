@@ -106,7 +106,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		switch d.config.Backend {
 		case "rr":
 			d.log.Infof("opening trace %s", d.config.CoreFile)
-			p, err = gdbserial.Replay(d.config.CoreFile, false, d.config.DebugInfoDirectories)
+			p, err = gdbserial.Replay(d.config.CoreFile, false, false, d.config.DebugInfoDirectories)
 		default:
 			d.log.Infof("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
 			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0], d.config.DebugInfoDirectories)
@@ -138,6 +138,18 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		}
 	}
 	return d, nil
+}
+
+// canRestart returns true if the target was started with Launch and can be restarted
+func (d *Debugger) canRestart() bool {
+	switch {
+	case d.config.AttachPid > 0:
+		return false
+	case d.config.CoreFile != "":
+		return false
+	default:
+		return true
+	}
 }
 
 func (d *Debugger) checkGoVersion() error {
@@ -273,16 +285,19 @@ func (d *Debugger) detach(kill bool) error {
 	return d.target.Detach(kill)
 }
 
+var ErrCanNotRestart = errors.New("can not restart this target")
+
 // Restart will restart the target process, first killing
 // and then exec'ing it again.
 // If the target process is a recording it will restart it from the given
 // position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
 // event number. If resetArgs is true, newArgs will replace the process args.
-func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error) {
+func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	if recorded, _ := d.target.Recorded(); recorded {
+	recorded, _ := d.target.Recorded()
+	if recorded && !rerecord {
 		return nil, d.target.Restart(pos)
 	}
 
@@ -290,7 +305,11 @@ func (d *Debugger) Restart(pos string, resetArgs bool, newArgs []string) ([]api.
 		return nil, proc.ErrNotRecorded
 	}
 
-	if valid, _ := d.target.Valid(); valid {
+	if !d.canRestart() {
+		return nil, ErrCanNotRestart
+	}
+
+	if valid, _ := d.target.Valid(); valid && !recorded {
 		// Ensure the process is in a PTRACE_STOP.
 		if err := stopProcess(d.ProcessPid()); err != nil {
 			return nil, err

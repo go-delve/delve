@@ -138,9 +138,6 @@ func withTestProcessArgs(name string, t *testing.T, wd string, args []string, bu
 
 	defer func() {
 		p.Detach(true)
-		if tracedir != "" {
-			protest.SafeRemoveAll(tracedir)
-		}
 	}()
 
 	fn(p, fixture)

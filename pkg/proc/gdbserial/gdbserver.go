@@ -124,6 +124,8 @@ type Process struct {
 	process  *os.Process
 	waitChan chan *os.ProcessState
 
+	onDetach func() // called after a successful detach
+
 	common proc.CommonProcess
 }
 
@@ -866,6 +868,9 @@ func (p *Process) Detach(kill bool) error {
 		p.process = nil
 	}
 	p.detached = true
+	if p.onDetach != nil {
+		p.onDetach()
+	}
 	return p.bi.Close()
 }
 

@@ -161,11 +161,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 	}
 	client := rpc2.NewClient(listener.Addr().String())
 	defer func() {
-		dir, _ := client.TraceDirectory()
 		client.Detach(true)
-		if dir != "" {
-			test.SafeRemoveAll(dir)
-		}
 	}()
 
 	ft := &FakeTerminal{
