@@ -413,9 +413,13 @@ type GetVersionIn struct {
 
 // GetVersionOut is the result of GetVersion.
 type GetVersionOut struct {
-	DelveVersion string
-	APIVersion   int
-	Backend      string // backend currently in use
+	DelveVersion    string
+	APIVersion      int
+	Backend         string // backend currently in use
+	TargetGoVersion string
+
+	MinSupportedVersionOfGo string
+	MaxSupportedVersionOfGo string
 }
 
 // SetAPIVersionIn is the input for SetAPIVersion.

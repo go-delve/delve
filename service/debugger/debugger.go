@@ -1280,6 +1280,12 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 			out.Backend = d.config.Backend
 		}
 	}
+
+	out.TargetGoVersion = d.target.BinInfo().Producer()
+
+	out.MinSupportedVersionOfGo = fmt.Sprintf("%d.%d.0", goversion.MinSupportedVersionOfGoMajor, goversion.MinSupportedVersionOfGoMinor)
+	out.MaxSupportedVersionOfGo = fmt.Sprintf("%d.%d.0", goversion.MaxSupportedVersionOfGoMajor, goversion.MaxSupportedVersionOfGoMinor)
+
 	return nil
 }
 
