@@ -49,7 +49,7 @@ threads() | Equivalent to API call [ListThreads](https://godoc.org/github.com/go
 types(Filter) | Equivalent to API call [ListTypes](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListTypes)
 process_pid() | Equivalent to API call [ProcessPid](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ProcessPid)
 recorded() | Equivalent to API call [Recorded](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Recorded)
-restart(Position, ResetArgs, NewArgs) | Equivalent to API call [Restart](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Restart)
+restart(Position, ResetArgs, NewArgs, Rerecord) | Equivalent to API call [Restart](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Restart)
 set_expr(Scope, Symbol, Value) | Equivalent to API call [Set](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Set)
 stacktrace(Id, Depth, Full, Defers, Opts, Cfg) | Equivalent to API call [Stacktrace](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Stacktrace)
 state(NonBlocking) | Equivalent to API call [State](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.State)
@@ -205,6 +205,37 @@ def command_switch_to_main_goroutine(args):
 			raw_command("switchGoroutine", GoroutineID=g.id)
 			break
 ```
+
+## Listing goroutines
+
+Create a command, "goexcl", that lists all goroutines excluding the ones stopped on a specified function.
+
+```
+def command_goexcl(args):
+	"""Prints all goroutines not stopped in the function passed as argument."""
+	excluded = 0
+	start = 0
+	while start >= 0:
+		gr = goroutines(start, 10)
+		start = gr.Nextg
+		for g in gr.Goroutines:
+			fn = g.UserCurrentLoc.Function
+			if fn == None:
+				print("Goroutine", g.ID, "User:", g.UserCurrentLoc.File, g.UserCurrentLoc.Line)
+			elif fn.Name_ != args:
+				print("Goroutine", g.ID, "User:", g.UserCurrentLoc.File, g.UserCurrentLoc.Line, fn.Name_)
+			else:
+				excluded = excluded + 1
+	print("Excluded", excluded, "goroutines")
+```
+
+Usage:
+
+```
+(dlv) goexcl main.somefunc
+```
+
+prints all goroutines that are not stopped inside `main.somefunc`.
 
 ## Repeatedly executing the target until a breakpoint is hit.
 

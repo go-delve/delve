@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -53,7 +54,7 @@ func Record(cmd []string, wd string, quiet bool) (tracedir string, err error) {
 
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
-func Replay(tracedir string, quiet bool, debugInfoDirs []string) (*Process, error) {
+func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*Process, error) {
 	if err := checkRRAvailabe(); err != nil {
 		return nil, err
 	}
@@ -82,6 +83,11 @@ func Replay(tracedir string, quiet bool, debugInfoDirs []string) (*Process, erro
 
 	p := New(rrcmd.Process)
 	p.tracedir = tracedir
+	if deleteOnDetach {
+		p.onDetach = func() {
+			safeRemoveAll(p.tracedir)
+		}
+	}
 	err = p.Dial(init.port, init.exe, 0, debugInfoDirs)
 	if err != nil {
 		rrcmd.Process.Kill()
@@ -262,6 +268,31 @@ func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string
 	if tracedir == "" {
 		return nil, "", err
 	}
-	p, err = Replay(tracedir, quiet, debugInfoDirs)
+	p, err = Replay(tracedir, quiet, true, debugInfoDirs)
 	return p, tracedir, err
+}
+
+// safeRemoveAll removes dir and its contents but only as long as dir does
+// not contain directories.
+func safeRemoveAll(dir string) {
+	dh, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer dh.Close()
+	fis, err := dh.Readdir(-1)
+	if err != nil {
+		return
+	}
+	for _, fi := range fis {
+		if fi.IsDir() {
+			return
+		}
+	}
+	for _, fi := range fis {
+		if err := os.Remove(filepath.Join(dir, fi.Name())); err != nil {
+			return
+		}
+	}
+	os.Remove(dir)
 }

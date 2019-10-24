@@ -1608,6 +1608,11 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 				reader.SkipChildren()
 				continue
 			}
+			if cu.lineInfo == nil {
+				bi.logger.Errorf("Error reading debug_info: inlined call on a compilation unit without debug_line section at %#x", entry.Offset)
+				reader.SkipChildren()
+				continue
+			}
 			if int(callfileidx-1) >= len(cu.lineInfo.FileNames) {
 				bi.logger.Errorf("Error reading debug_info: CallFile (%d) of inlined call does not exist in compile unit file table at %#x", callfileidx, entry.Offset)
 				reader.SkipChildren()
