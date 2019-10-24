@@ -292,3 +292,18 @@ Example use (find the first element of slice 's2' with field A equal to 5):
 
 	print("not found")
 ```
+
+## Rerunning a program until it fails or hits a breakpoint
+
+```
+def command_flaky(args):
+	"Continues and restarts the target program repeatedly (re-recording it on the rr backend), until a breakpoint is hit"
+	count = 1
+	while True:
+		if dlv_command("continue") == None:
+			break
+		print("restarting", count, "...")
+		count = count+1
+		restart(Rerecord=True)
+
+```
