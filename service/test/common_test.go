@@ -75,12 +75,27 @@ func countBreakpoints(t *testing.T, c BreakpointLister) int {
 	return bpcount
 }
 
-type LocationFinder interface {
+type locationFinder1 interface {
 	FindLocation(api.EvalScope, string) ([]api.Location, error)
 }
 
-func findLocationHelper(t *testing.T, c LocationFinder, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
-	locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, loc)
+type locationFinder2 interface {
+	FindLocation(api.EvalScope, string, bool) ([]api.Location, error)
+}
+
+func findLocationHelper(t *testing.T, c interface{}, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
+	var locs []api.Location
+	var err error
+
+	switch c := c.(type) {
+	case locationFinder1:
+		locs, err = c.FindLocation(api.EvalScope{-1, 0, 0}, loc)
+	case locationFinder2:
+		locs, err = c.FindLocation(api.EvalScope{-1, 0, 0}, loc, false)
+	default:
+		t.Errorf("unexpected type %T passed to findLocationHelper", c)
+	}
+
 	t.Logf("FindLocation(\"%s\") → %v\n", loc, locs)
 
 	if shouldErr {

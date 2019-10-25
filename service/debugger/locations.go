@@ -17,7 +17,7 @@ import (
 const maxFindLocationCandidates = 5
 
 type LocationSpec interface {
-	Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error)
+	Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error)
 }
 
 type NormalLocationSpec struct {
@@ -242,7 +242,7 @@ func (spec *FuncLocationSpec) Match(sym proc.Function) bool {
 	return true
 }
 
-func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	funcs := d.target.BinInfo().Functions
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
 	if err != nil {
@@ -258,7 +258,7 @@ func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr st
 	return r, nil
 }
 
-func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		addr, err := strconv.ParseInt(loc.AddrExpr, 0, 64)
 		if err != nil {
@@ -330,7 +330,7 @@ func (ale AmbiguousLocationError) Error() string {
 	return fmt.Sprintf("Location \"%s\" ambiguous: %s…", ale.Location, strings.Join(candidates, ", "))
 }
 
-func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	limit := maxFindLocationCandidates
 	var candidateFiles []string
 	for _, file := range d.target.BinInfo().Sources {
@@ -367,7 +367,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 		// expression that the user forgot to prefix with '*', try treating it as
 		// such.
 		addrSpec := &AddrLocationSpec{locStr}
-		locs, err := addrSpec.Find(d, scope, locStr)
+		locs, err := addrSpec.Find(d, scope, locStr, includeNonExecutableLines)
 		if err != nil {
 			return nil, fmt.Errorf("Location \"%s\" not found", locStr)
 		}
@@ -384,6 +384,11 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 			return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
 		}
 		addr, err = proc.FindFileLocation(d.target, candidateFiles[0], loc.LineOffset)
+		if includeNonExecutableLines {
+			if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
+				return []api.Location{{File: candidateFiles[0], Line: loc.LineOffset}}, nil
+			}
+		}
 	} else { // len(candidateFUncs) == 1
 		addr, err = proc.FindFunctionLocation(d.target, candidateFuncs[0], loc.LineOffset)
 	}
@@ -394,7 +399,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	return []api.Location{{PC: addr}}, nil
 }
 
-func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
@@ -406,10 +411,15 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 		return nil, fmt.Errorf("could not determine current location")
 	}
 	addr, err := proc.FindFileLocation(d.target, file, line+loc.Offset)
+	if includeNonExecutableLines {
+		if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
+			return []api.Location{{File: file, Line: line + loc.Offset}}, nil
+		}
+	}
 	return []api.Location{{PC: addr}}, err
 }
 
-func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string) ([]api.Location, error) {
+func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
@@ -418,5 +428,10 @@ func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 		return nil, fmt.Errorf("could not determine current location")
 	}
 	addr, err := proc.FindFileLocation(d.target, file, loc.Line)
+	if includeNonExecutableLines {
+		if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
+			return []api.Location{{File: file, Line: loc.Line}}, nil
+		}
+	}
 	return []api.Location{{PC: addr}}, err
 }

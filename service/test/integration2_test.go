@@ -924,7 +924,7 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListGoroutines()")
 		_, err = c.Stacktrace(gid, 10, 0, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
-		_, err = c.FindLocation(api.EvalScope{gid, 0, 0}, "+1")
+		_, err = c.FindLocation(api.EvalScope{gid, 0, 0}, "+1", false)
 		assertError(err, t, "FindLocation()")
 		_, err = c.DisassemblePC(api.EvalScope{-1, 0, 0}, 0x40100, api.IntelFlavour)
 		assertError(err, t, "DisassemblePC()")
@@ -941,7 +941,7 @@ func TestDisasm(t *testing.T) {
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
 
-		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "main.main")
+		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "main.main", false)
 		assertNoError(err, t, "FindLocation()")
 		if len(locs) != 1 {
 			t.Fatalf("wrong number of locations for main.main: %d", len(locs))
@@ -1192,7 +1192,7 @@ func TestTypesCommand(t *testing.T) {
 func TestIssue406(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("issue406", t, func(c service.Client) {
-		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "issue406.go:146")
+		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "issue406.go:146", false)
 		assertNoError(err, t, "FindLocation()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{Addr: locs[0].PC})
 		assertNoError(err, t, "CreateBreakpoint()")
@@ -1545,7 +1545,7 @@ func TestAcceptMulticlient(t *testing.T) {
 }
 
 func mustHaveDebugCalls(t *testing.T, c service.Client) {
-	locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "runtime.debugCallV1")
+	locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "runtime.debugCallV1", false)
 	if len(locs) == 0 || err != nil {
 		t.Skip("function calls not supported on this version of go")
 	}
@@ -1589,7 +1589,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 	}
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
-		loc, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "fmt/print.go:649")
+		loc, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "fmt/print.go:649", false)
 		assertNoError(err, t, "could not find location")
 
 		_, err = c.CreateBreakpoint(&api.Breakpoint{File: loc[0].File, Line: loc[0].Line})
@@ -1723,7 +1723,7 @@ func TestUnknownMethodCall(t *testing.T) {
 func TestIssue1703(t *testing.T) {
 	// Calling Disassemble when there is no current goroutine should work.
 	withTestClient2("testnextprog", t, func(c service.Client) {
-		locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "main.main")
+		locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "main.main", true)
 		assertNoError(err, t, "FindLocation")
 		t.Logf("FindLocation: %#v", locs)
 		text, err := c.DisassemblePC(api.EvalScope{GoroutineID: -1}, locs[0].PC, api.IntelFlavour)

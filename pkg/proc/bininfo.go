@@ -377,6 +377,19 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 	return f, ln, fn
 }
 
+type ErrCouldNotFindLine struct {
+	fileFound bool
+	filename  string
+	lineno    int
+}
+
+func (err *ErrCouldNotFindLine) Error() string {
+	if err.fileFound {
+		return fmt.Sprintf("could not find statement at %s:%d, please use a line with a statement", err.filename, err.lineno)
+	}
+	return fmt.Sprintf("could not find file %s", err.filename)
+}
+
 // LineToPC converts a file:line into a memory address.
 func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *Function, err error) {
 	fileFound := false
@@ -398,11 +411,7 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pc uint64, fn *Func
 			}
 		}
 	}
-	if fileFound {
-		return 0, nil, fmt.Errorf("could not find statement at %s:%d, please use a line with a statement", filename, lineno)
-	} else {
-		return 0, nil, fmt.Errorf("could not find file %s", filename)
-	}
+	return 0, nil, &ErrCouldNotFindLine{fileFound, filename, lineno}
 }
 
 // AllPCsForFileLine returns all PC addresses for the given filename:lineno.
