@@ -19,7 +19,7 @@ require (
 	github.com/spf13/pflag v0.0.0-20170417173400-9e4c21054fa1 // indirect
 	github.com/stretchr/testify v1.3.0 // indirect
 	go.starlark.net v0.0.0-20190702223751-32f345186213
-	golang.org/x/arch v0.0.0-20171004143515-077ac972c2e4
+	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 	golang.org/x/crypto v0.0.0-20180614174826-fd5f17ee7299 // indirect
 	golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb
 	golang.org/x/tools v0.0.0-20181120060634-fc4f04983f62

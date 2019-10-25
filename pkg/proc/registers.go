@@ -170,6 +170,43 @@ func AppendSSEReg(regs []Register, name string, xmm []byte) []Register {
 	return append(regs, Register{name, xmm, out.String()})
 }
 
+// AppendFPReg appends a 128 bit FP register to regs.
+func AppendFPReg(regs []Register, name string, reg_value []byte) []Register {
+	buf := bytes.NewReader(reg_value)
+
+	var out bytes.Buffer
+	var vi [16]uint8
+	for i := range vi {
+		binary.Read(buf, binary.LittleEndian, &vi[i])
+	}
+
+	fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+
+	fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+
+	fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
+
+	fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
+
+	fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
+
+	buf.Seek(0, os.SEEK_SET)
+	var v2 [2]float64
+	for i := range v2 {
+		binary.Read(buf, binary.LittleEndian, &v2[i])
+	}
+	fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
+
+	buf.Seek(0, os.SEEK_SET)
+	var v4 [4]float32
+	for i := range v4 {
+		binary.Read(buf, binary.LittleEndian, &v4[i])
+	}
+	fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
+
+	return append(regs, Register{name, reg_value, out.String()})
+}
+
 // ErrUnknownRegister is returned when the value of an unknown
 // register is requested.
 var ErrUnknownRegister = errors.New("unknown register")
