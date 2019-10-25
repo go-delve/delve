@@ -32,13 +32,14 @@ func Disassemble(mem MemoryReadWriter, regs Registers, breakpoints *BreakpointMa
 }
 
 func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64, singleInstr bool) ([]AsmInstruction, error) {
+	minInstructionLength := bi.Arch.MinInstructionLength()
 	mem := make([]byte, int(endAddr-startAddr))
 	_, err := memrw.ReadMemory(mem, uintptr(startAddr))
 	if err != nil {
 		return nil, err
 	}
 
-	r := make([]AsmInstruction, 0, len(mem)/15)
+	r := make([]AsmInstruction, 0, len(mem)/int(maxInstructionLength))
 	pc := startAddr
 
 	var curpc uint64
@@ -58,15 +59,15 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *Breakpoint
 		inst, err := asmDecode(mem, pc)
 		if err == nil {
 			atpc := (regs != nil) && (curpc == pc)
-			destloc := resolveCallArg(inst, atpc, regs, memrw, bi)
-			r = append(r, AsmInstruction{Loc: loc, DestLoc: destloc, Bytes: mem[:inst.Len], Breakpoint: atbp, AtPC: atpc, Inst: inst})
+			destloc := resolveCallArg(inst, pc, atpc, regs, memrw, bi)
+			r = append(r, AsmInstruction{Loc: loc, DestLoc: destloc, Bytes: mem[:inst.Size()], Breakpoint: atbp, AtPC: atpc, Inst: inst})
 
 			pc += uint64(inst.Size())
 			mem = mem[inst.Size():]
 		} else {
-			r = append(r, AsmInstruction{Loc: loc, Bytes: mem[:1], Breakpoint: atbp, Inst: nil})
-			pc++
-			mem = mem[1:]
+			r = append(r, AsmInstruction{Loc: loc, Bytes: mem[:minInstructionLength], Breakpoint: atbp, Inst: nil})
+			pc += uint64(minInstructionLength)
+			mem = mem[minInstructionLength:]
 		}
 		if singleInstr {
 			break
