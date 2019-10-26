@@ -125,7 +125,7 @@ func main() {
 	var fn2 functype = nil
 	var nilslice []int = nil
 	var nilptr *int = nil
-	ch1 := make(chan int, 10)
+	ch1 := make(chan int, 11)
 	ch1 <- 1
 	ch1 <- 4
 	ch1 <- 3

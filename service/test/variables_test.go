@@ -233,7 +233,7 @@ func TestSetVariable(t *testing.T) {
 		{"b.ptr", "*main.A", "*main.A {val: 1337}", "nil", "*main.A nil"},
 		{"m2", "map[int]*main.astruct", "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "nil", "map[int]*main.astruct nil"},
 		{"fn1", "main.functype", "main.afunc", "nil", "nil"},
-		{"ch1", "chan int", "chan int 4/10", "nil", "chan int nil"},
+		{"ch1", "chan int", "chan int 4/11", "nil", "chan int nil"},
 		{"s2", "[]main.astruct", "[]main.astruct len: 8, cap: 8, [{A: 1, B: 2},{A: 3, B: 4},{A: 5, B: 6},{A: 7, B: 8},{A: 9, B: 10},{A: 11, B: 12},{A: 13, B: 14},{A: 15, B: 16}]", "nil", "[]main.astruct len: 0, cap: 0, nil"},
 		{"err1", "error", "error(*main.astruct) *{A: 1, B: 2}", "nil", "error nil"},
 		{"s1[0]", "string", `"one"`, `""`, `""`},
@@ -587,7 +587,7 @@ func TestEvalExpression(t *testing.T) {
 		{"*p3", false, "", "", "int", fmt.Errorf("nil pointer dereference")},
 
 		// channels
-		{"ch1", true, "chan int 4/10", "chan int 4/10", "chan int", nil},
+		{"ch1", true, "chan int 4/11", "chan int 4/11", "chan int", nil},
 		{"chnil", true, "chan int nil", "chan int nil", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
 
@@ -682,7 +682,7 @@ func TestEvalExpression(t *testing.T) {
 		{"len(s3)", false, "0", "0", "", nil},
 		{"cap(nilslice)", false, "0", "0", "", nil},
 		{"len(nilslice)", false, "0", "0", "", nil},
-		{"cap(ch1)", false, "10", "10", "", nil},
+		{"cap(ch1)", false, "11", "11", "", nil},
 		{"len(ch1)", false, "4", "4", "", nil},
 		{"cap(chnil)", false, "0", "0", "", nil},
 		{"len(chnil)", false, "0", "0", "", nil},
@@ -790,8 +790,8 @@ func TestEvalExpression(t *testing.T) {
 
 		// access to channel field members
 		{"ch1.qcount", false, "4", "4", "uint", nil},
-		{"ch1.dataqsiz", false, "10", "10", "uint", nil},
-		{"ch1.buf", false, `*[10]int [1,4,3,2,0,0,0,0,0,0]`, `(*[10]int)(…`, "*[10]int", nil},
+		{"ch1.dataqsiz", false, "11", "11", "uint", nil},
+		{"ch1.buf", false, `*[11]int [1,4,3,2,0,0,0,0,0,0,0]`, `(*[11]int)(…`, "*[11]int", nil},
 		{"ch1.buf[0]", false, "1", "1", "int", nil},
 
 		// shortcircuited logical operators
@@ -1185,8 +1185,8 @@ func TestCallFunction(t *testing.T) {
 		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
 		{`strings.LastIndexByte(stringslice[1], 'w')`, []string{":int:1"}, nil},
 		{`strings.LastIndexByte(stringslice[1], 'o')`, []string{":int:2"}, nil},
-		{`d.Base.Method()`, []string{ `:int:4` }, nil },
-		{`d.Method()`, []string{ `:int:4` }, nil },
+		{`d.Base.Method()`, []string{`:int:4`}, nil},
+		{`d.Method()`, []string{`:int:4`}, nil},
 	}
 
 	var testcases113 = []testCaseCallFunction{
