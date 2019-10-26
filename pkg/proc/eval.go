@@ -1903,6 +1903,18 @@ func fakeSliceType(fieldType godwarf.Type) godwarf.Type {
 	}
 }
 
+func fakeArrayType(n uint64, fieldType godwarf.Type) godwarf.Type {
+	stride := alignAddr(fieldType.Common().ByteSize, fieldType.Align())
+	return &godwarf.ArrayType{
+		CommonType: godwarf.CommonType{
+			ReflectKind: reflect.Array,
+			ByteSize:    int64(n) * stride,
+			Name:        fmt.Sprintf("[%d]%s", n, fieldType.String())},
+		Type:          fieldType,
+		StrideBitSize: stride * 8,
+		Count:         int64(n)}
+}
+
 var errMethodEvalUnsupported = errors.New("evaluating methods not supported on this version of Go")
 
 func (fn *Function) fakeType(bi *BinaryInfo, removeReceiver bool) (*godwarf.FuncType, error) {

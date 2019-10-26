@@ -1160,17 +1160,7 @@ func (v *Variable) loadChanInfo() {
 		field := &godwarf.StructField{}
 		*field = *structType.Field[i]
 		if field.Name == "buf" {
-			stride := chanType.ElemType.Common().ByteSize
-			atyp := &godwarf.ArrayType{
-				CommonType: godwarf.CommonType{
-					ReflectKind: reflect.Array,
-					ByteSize:    int64(chanLen) * stride,
-					Name:        fmt.Sprintf("[%d]%s", chanLen, chanType.ElemType.String())},
-				Type:          chanType.ElemType,
-				StrideBitSize: stride * 8,
-				Count:         int64(chanLen)}
-
-			field.Type = pointerTo(atyp, v.bi.Arch)
+			field.Type = pointerTo(fakeArrayType(chanLen, chanType.ElemType), v.bi.Arch)
 		}
 		newStructType.Field[i] = field
 	}

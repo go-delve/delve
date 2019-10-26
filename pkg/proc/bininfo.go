@@ -15,7 +15,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1177,6 +1176,18 @@ func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 		// string. Useful as a catch-all workaround for cases where we don't
 		// parse/serialize types correctly or can not resolve package paths.
 		typn, _ := strconv.Unquote(lit.Value)
+
+		// Check if the type in question is an array type, in which case we try to
+		// fake it.
+		if len(typn) > 0 && typn[0] == '[' {
+			closedBrace := strings.Index(typn, "]")
+			if closedBrace > 1 {
+				n, err := strconv.Atoi(typn[1:closedBrace])
+				if err == nil {
+					return bi.findArrayType(n, typn[closedBrace+1:])
+				}
+			}
+		}
 		return bi.findType(typn)
 	}
 	bi.expandPackagesInType(expr)
@@ -1192,32 +1203,35 @@ func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 		return pointerTo(ptyp, bi.Arch), nil
 	}
 	if anode, ok := expr.(*ast.ArrayType); ok {
-		// Byte array types (i.e. [N]byte) are only present in DWARF if they are
+		// Array types (for example [N]byte) are only present in DWARF if they are
 		// used by the program, but it's convenient to make all of them available
-		// to the user so that they can be used to read arbitrary memory, byte by
-		// byte.
+		// to the user for two reasons:
+		// 1. to allow reading arbitrary memory byte-by-byte (by casting an
+		//    address to an array of bytes).
+		// 2. to read the contents of a channel's buffer (we create fake array
+		//    types for them)
 
 		alen, litlen := anode.Len.(*ast.BasicLit)
 		if litlen && alen.Kind == token.INT {
 			n, _ := strconv.Atoi(alen.Value)
-			switch exprToString(anode.Elt) {
-			case "byte", "uint8":
-				btyp, err := bi.findType("uint8")
-				if err != nil {
-					return nil, err
-				}
-				return &godwarf.ArrayType{
-					CommonType: godwarf.CommonType{
-						ReflectKind: reflect.Array,
-						ByteSize:    int64(n),
-						Name:        fmt.Sprintf("[%d]uint8", n)},
-					Type:          btyp,
-					StrideBitSize: 8,
-					Count:         int64(n)}, nil
-			}
+			return bi.findArrayType(n, exprToString(anode.Elt))
 		}
 	}
 	return bi.findType(exprToString(expr))
+}
+
+func (bi *BinaryInfo) findArrayType(n int, etyp string) (godwarf.Type, error) {
+	switch etyp {
+	case "byte", "uint8":
+		etyp = "uint8"
+		fallthrough
+	default:
+		btyp, err := bi.findType(etyp)
+		if err != nil {
+			return nil, err
+		}
+		return fakeArrayType(uint64(n), btyp), nil
+	}
 }
 
 func complexType(typename string) bool {

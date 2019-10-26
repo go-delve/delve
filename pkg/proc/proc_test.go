@@ -4407,3 +4407,16 @@ func TestBreakpointConfusionOnResume(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1736(t *testing.T) {
+	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		ch1BufVar := evalVariable(p, t, "*(ch1.buf)")
+		q := fmt.Sprintf("*(*%q)(%d)", ch1BufVar.DwarfType.Common().Name, ch1BufVar.Addr)
+		t.Logf("%s", q)
+		ch1BufVar2 := evalVariable(p, t, q)
+		if ch1BufVar2.Unreadable != nil {
+			t.Fatal(ch1BufVar2.Unreadable)
+		}
+	})
+}
