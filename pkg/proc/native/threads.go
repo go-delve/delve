@@ -58,7 +58,7 @@ func (t *Thread) StepInstruction() (err error) {
 		return err
 	}
 
-	bp, ok := t.dbp.FindBreakpoint(pc, true)
+	bp, ok := t.dbp.FindBreakpoint(pc, false)
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
 		err = t.ClearBreakpoint(bp)

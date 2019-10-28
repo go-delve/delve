@@ -4383,3 +4383,27 @@ func TestIssue1656(t *testing.T) {
 		assertLineNumber(p, t, 9, "wrong line number after second step")
 	})
 }
+
+func TestBreakpointConfusionOnResume(t *testing.T) {
+	// Checks that SetCurrentBreakpoint, (*Thread).StepInstruction and
+	// native.(*Thread).singleStep all agree on which breakpoint the thread is
+	// stopped at.
+	// This test checks for a regression introduced when fixing Issue #1656
+	if runtime.GOARCH != "amd64" {
+		t.Skip("amd64 only")
+	}
+	withTestProcess("nopbreakpoint/", t, func(p proc.Process, fixture protest.Fixture) {
+		maindots := filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.s"))
+		maindotgo := filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.go"))
+		setFileBreakpoint(p, t, maindots, 5) // line immediately after the NOP
+		assertNoError(proc.Continue(p), t, "First Continue")
+		assertLineNumber(p, t, 5, "not on main.s:5")
+		setFileBreakpoint(p, t, maindots, 4)   // sets a breakpoint on the NOP line, which will be one byte before the breakpoint we currently are stopped at.
+		setFileBreakpoint(p, t, maindotgo, 18) // set one extra breakpoint so that we can recover execution and check the global variable g
+		assertNoError(proc.Continue(p), t, "Second Continue")
+		gvar := evalVariable(p, t, "g")
+		if n, _ := constant.Int64Val(gvar.Value); n != 1 {
+			t.Fatalf("wrong value of global variable 'g': %v (expected 1)", gvar.Value)
+		}
+	})
+}
