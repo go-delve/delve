@@ -1,4 +1,4 @@
-# Installation on OSX
+# Installation on macOS
 
 Ensure you have a proper compilation toolchain.
 
