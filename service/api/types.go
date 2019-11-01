@@ -39,15 +39,17 @@ type DebuggerState struct {
 	Err error `json:"-"`
 }
 
-// Breakpoint addresses a location at which process execution may be
+// Breakpoint addresses a set of locations at which process execution may be
 // suspended.
 type Breakpoint struct {
 	// ID is a unique identifier for the breakpoint.
 	ID int `json:"id"`
-	// User defined name of the breakpoint
+	// User defined name of the breakpoint.
 	Name string `json:"name"`
-	// Addr is the address of the breakpoint.
+	// Addr is deprecated, use Addrs.
 	Addr uint64 `json:"addr"`
+	// Addrs is the list of addresses for this breakpoint.
+	Addrs []uint64 `json:"addrs"`
 	// File is the source file for the breakpoint.
 	File string `json:"file"`
 	// Line is a line in File for the breakpoint.

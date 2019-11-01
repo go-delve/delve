@@ -18,7 +18,7 @@ import (
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
 		Name:          bp.Name,
-		ID:            bp.ID,
+		ID:            bp.LogicalID,
 		FunctionName:  bp.FunctionName,
 		File:          bp.File,
 		Line:          bp.Line,
@@ -31,6 +31,7 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		LoadArgs:      LoadConfigFromProc(bp.LoadArgs),
 		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
 		TotalHitCount: bp.TotalHitCount,
+		Addrs:         []uint64{bp.Addr},
 	}
 
 	b.HitCount = map[string]uint64{}
@@ -43,6 +44,28 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b.Cond = buf.String()
 
 	return b
+}
+
+// ConvertBreakpoints converts a slice of physical breakpoints into a slice
+// of logical breakpoints.
+// The input must be sorted by increasing LogicalID
+func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
+	if len(bps) <= 0 {
+		return nil
+	}
+	r := make([]*Breakpoint, 0, len(bps))
+	for _, bp := range bps {
+		if len(r) > 0 {
+			if r[len(r)-1].ID == bp.LogicalID {
+				r[len(r)-1].Addrs = append(r[len(r)-1].Addrs, bp.Addr)
+				continue
+			} else if r[len(r)-1].ID > bp.LogicalID {
+				panic("input not sorted")
+			}
+		}
+		r = append(r, ConvertBreakpoint(bp))
+	}
+	return r
 }
 
 // ConvertThread converts a proc.Thread into an

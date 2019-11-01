@@ -176,11 +176,14 @@ func setFunctionBreakpoint(p proc.Process, t testing.TB, fname string) *proc.Bre
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addr, err := proc.FindFunctionLocation(p, fname, 0)
+	addrs, err := proc.FindFunctionLocation(p, fname, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
-	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
+	if len(addrs) != 1 {
+		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
+	}
+	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -191,11 +194,14 @@ func setFileBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *p
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addr, err := proc.FindFileLocation(p, path, lineno)
+	addrs, err := proc.FindFileLocation(p, path, lineno)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, path, lineno, err)
 	}
-	bp, err := p.SetBreakpoint(addr, proc.UserBreakpoint, nil)
+	if len(addrs) != 1 {
+		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, path, lineno, addrs)
+	}
+	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
@@ -203,23 +209,29 @@ func setFileBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *p
 }
 
 func findFunctionLocation(p proc.Process, t *testing.T, fnname string) uint64 {
-	addr, err := proc.FindFunctionLocation(p, fnname, 0)
+	_, f, l, _ := runtime.Caller(1)
+	f = filepath.Base(f)
+	addrs, err := proc.FindFunctionLocation(p, fnname, 0)
 	if err != nil {
-		_, f, l, _ := runtime.Caller(1)
-		f = filepath.Base(f)
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fnname, err)
 	}
-	return addr
+	if len(addrs) != 1 {
+		t.Fatalf("%s:%d: FindFunctionLocation(%s): too many results %v", f, l, fnname, addrs)
+	}
+	return addrs[0]
 }
 
 func findFileLocation(p proc.Process, t *testing.T, file string, lineno int) uint64 {
-	addr, err := proc.FindFileLocation(p, file, lineno)
+	_, f, l, _ := runtime.Caller(1)
+	f = filepath.Base(f)
+	addrs, err := proc.FindFileLocation(p, file, lineno)
 	if err != nil {
-		_, f, l, _ := runtime.Caller(1)
-		f = filepath.Base(f)
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, file, lineno, err)
 	}
-	return addr
+	if len(addrs) != 1 {
+		t.Fatalf("%s:%d: FindFileLocation(%s, %d): too many results %v", f, l, file, lineno, addrs)
+	}
+	return addrs[0]
 }
 
 func TestHalt(t *testing.T) {
@@ -359,7 +371,7 @@ type nextTest struct {
 func countBreakpoints(p proc.Process) int {
 	bpcount := 0
 	for _, bp := range p.Breakpoints().M {
-		if bp.ID >= 0 {
+		if bp.LogicalID >= 0 {
 			bpcount++
 		}
 	}
@@ -1031,11 +1043,11 @@ func TestContinueMulti(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			if bp := p.CurrentThread().Breakpoint(); bp.ID == bp1.ID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp1.LogicalID {
 				mainCount++
 			}
 
-			if bp := p.CurrentThread().Breakpoint(); bp.ID == bp2.ID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp2.LogicalID {
 				sayhiCount++
 			}
 		}
@@ -3626,7 +3638,8 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 	}
 
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p proc.Process, fixture protest.Fixture) {
-		pcs := p.BinInfo().AllPCsForFileLine(fixture.Source, 7)
+		pcs, err := p.BinInfo().LineToPC(fixture.Source, 7)
+		assertNoError(err, t, "LineToPC")
 		if len(pcs) < 2 {
 			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
 		}
@@ -3774,15 +3787,17 @@ func TestInlineBreakpoint(t *testing.T) {
 		t.Skip("inlining not supported")
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
-		pc, fn, err := p.BinInfo().LineToPC(fixture.Source, 17)
-		if pc == 0 {
-			t.Fatal("unable to get PC for inlined function call")
+		pcs, err := p.BinInfo().LineToPC(fixture.Source, 17)
+		t.Logf("%#v\n", pcs)
+		if len(pcs) != 1 {
+			t.Fatalf("unable to get PC for inlined function call: %v", pcs)
 		}
+		fn := p.BinInfo().PCToFunc(pcs[0])
 		expectedFn := "main.main"
 		if fn.Name != expectedFn {
 			t.Fatalf("incorrect function returned, expected %s, got %s", expectedFn, fn.Name)
 		}
-		_, err = p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(pcs[0], proc.UserBreakpoint, nil)
 		if err != nil {
 			t.Fatalf("unable to set breakpoint: %v", err)
 		}
@@ -4290,7 +4305,7 @@ func TestCallConcurrent(t *testing.T) {
 		returned := testCallConcurrentCheckReturns(p, t, gid1, -1)
 
 		curthread := p.CurrentThread()
-		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.ID != bp.ID || returned > 0 {
+		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.LogicalID != bp.LogicalID || returned > 0 {
 			t.Logf("skipping test, the call injection terminated before we hit a breakpoint in a different thread")
 			return
 		}
