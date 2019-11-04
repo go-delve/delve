@@ -251,8 +251,8 @@ func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr st
 	r := make([]api.Location, 0, len(matches))
 	for i := range matches {
 		addrs, _ := proc.FindFunctionLocation(d.target, matches[i], 0)
-		for _, addr := range addrs {
-			r = append(r, api.Location{PC: addr})
+		if len(addrs) > 0 {
+			r = append(r, addressesToLocation(addrs))
 		}
 	}
 	return r, nil
@@ -283,7 +283,7 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 			if err != nil {
 				return nil, err
 			}
-			return []api.Location{{PC: uint64(pc)}}, nil
+			return []api.Location{{PC: pc}}, nil
 		default:
 			return nil, fmt.Errorf("wrong expression kind: %v", v.Kind)
 		}
@@ -389,25 +389,21 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 				return []api.Location{{File: candidateFiles[0], Line: loc.LineOffset}}, nil
 			}
 		}
-	} else { // len(candidateFUncs) == 1
+	} else { // len(candidateFuncs) == 1
 		addrs, err = proc.FindFunctionLocation(d.target, candidateFuncs[0], loc.LineOffset)
 	}
 
 	if err != nil {
 		return nil, err
 	}
-	return addressesToLocations(addrs), nil
+	return []api.Location{addressesToLocation(addrs)}, nil
 }
 
-func addressesToLocations(addrs []uint64) []api.Location {
-	if addrs == nil {
-		return nil
+func addressesToLocation(addrs []uint64) api.Location {
+	if len(addrs) <= 0 {
+		return api.Location{}
 	}
-	r := make([]api.Location, len(addrs))
-	for i := range addrs {
-		r[i] = api.Location{PC: addrs[i]}
-	}
-	return r
+	return api.Location{PC: addrs[0], PCs: addrs}
 }
 
 func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
@@ -427,7 +423,7 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 			return []api.Location{{File: file, Line: line + loc.Offset}}, nil
 		}
 	}
-	return addressesToLocations(addrs), err
+	return []api.Location{addressesToLocation(addrs)}, err
 }
 
 func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
@@ -444,5 +440,5 @@ func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 			return []api.Location{{File: file, Line: loc.Line}}, nil
 		}
 	}
-	return addressesToLocations(addrs), err
+	return []api.Location{addressesToLocation(addrs)}, err
 }

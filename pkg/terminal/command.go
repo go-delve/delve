@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"go/parser"
@@ -1188,6 +1189,9 @@ func clearAll(t *Term, ctx callContext, args string) error {
 		}
 		locPCs = make(map[uint64]struct{})
 		for _, loc := range locs {
+			for _, pc := range loc.PCs {
+				locPCs[pc] = struct{}{}
+			}
 			locPCs[loc.PC] = struct{}{}
 		}
 	}
@@ -1297,6 +1301,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 	}
 	for _, loc := range locs {
 		requestedBp.Addr = loc.PC
+		requestedBp.Addrs = loc.PCs
 
 		bp, err := t.client.CreateBreakpoint(requestedBp)
 		if err != nil {
@@ -2222,9 +2227,24 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 }
 
 func formatBreakpointLocation(bp *api.Breakpoint) string {
+	var out bytes.Buffer
+	if len(bp.Addrs) > 0 {
+		for i, addr := range bp.Addrs {
+			if i == 0 {
+				fmt.Fprintf(&out, "%#x", addr)
+			} else {
+				fmt.Fprintf(&out, ",%#x", addr)
+			}
+		}
+	} else {
+		// In case we are connecting to an older version of delve that does not return the Addrs field.
+		fmt.Fprintf(&out, "%#x", bp.Addr)
+	}
+	fmt.Fprintf(&out, " for ")
 	p := ShortenFilePath(bp.File)
 	if bp.FunctionName != "" {
-		return fmt.Sprintf("%#v for %s() %s:%d", bp.Addr, bp.FunctionName, p, bp.Line)
+		fmt.Fprintf(&out, "%s() ", bp.FunctionName)
 	}
-	return fmt.Sprintf("%#v for %s:%d", bp.Addr, p, bp.Line)
+	fmt.Fprintf(&out, "%s:%d", p, bp.Line)
+	return out.String()
 }
