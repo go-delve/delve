@@ -23,6 +23,9 @@ func (npe errIssue419) Error() string {
 }
 
 func TestIssue419(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if testBackend == "lldb" && runtime.GOOS == "darwin" {
 		// debugserver bug?
 		return

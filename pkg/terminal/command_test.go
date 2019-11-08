@@ -266,6 +266,9 @@ func TestIssue354(t *testing.T) {
 }
 
 func TestIssue411(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	test.AllowRecording(t)
 	withTestTerminal("math", t, func(term *FakeTerminal) {
 		term.MustExec("break math.go:8")
@@ -279,6 +282,9 @@ func TestIssue411(t *testing.T) {
 }
 
 func TestScopePrefix(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	const goroutinesLinePrefix = "  Goroutine "
 	const goroutinesCurLinePrefix = "* Goroutine "
 	test.AllowRecording(t)
@@ -423,6 +429,9 @@ func TestOnPrefix(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	const prefix = "\ti: "
 	test.AllowRecording(t)
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
@@ -478,6 +487,9 @@ func TestNoVars(t *testing.T) {
 func TestOnPrefixLocals(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
+	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("arm64 do not support PointerSetting for now.")
 	}
 	const prefix = "\ti: "
 	test.AllowRecording(t)
@@ -536,6 +548,9 @@ func countOccurrences(s string, needle string) int {
 func TestIssue387(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
+	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
 	}
 	// a breakpoint triggering during a 'next' operation will interrupt it
 	test.AllowRecording(t)
@@ -616,6 +631,9 @@ func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end 
 }
 
 func TestListCmd(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestTerminal("testvariables", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
 		term.MustExec("continue")
@@ -663,6 +681,9 @@ func TestCheckpoints(t *testing.T) {
 }
 
 func TestNextWithCount(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	test.AllowRecording(t)
 	withTestTerminal("nextcond", t, func(term *FakeTerminal) {
 		term.MustExec("break main.main")
@@ -831,6 +852,9 @@ func TestIssue1090(t *testing.T) {
 }
 
 func TestPrintContextParkedGoroutine(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("break stacktraceme")
 		term.MustExec("continue")
@@ -866,6 +890,9 @@ func TestPrintContextParkedGoroutine(t *testing.T) {
 }
 
 func TestStepOutReturn(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		t.Skip("return variables aren't marked on 1.9 or earlier")
@@ -923,6 +950,9 @@ func TestTruncateStacktrace(t *testing.T) {
 func TestIssue1493(t *testing.T) {
 	// The 'regs' command without the '-a' option should only return
 	// general purpose registers.
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
 		r := term.MustExec("regs")
 		nr := len(strings.Split(r, "\n"))
@@ -941,6 +971,9 @@ func findStarFile(name string) string {
 }
 
 func TestIssue1598(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	test.MustSupportFunctionCalls(t, testBackend)
 	withTestTerminal("issue1598", t, func(term *FakeTerminal) {
 		term.MustExec("break issue1598.go:5")

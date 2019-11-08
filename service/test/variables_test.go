@@ -144,6 +144,9 @@ func withTestProcessArgs(name string, t *testing.T, wd string, args []string, bu
 }
 
 func TestVariableEvaluation(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, "[3]main.FooBar [{Baz: 1, Bur: \"a\"},{Baz: 2, Bur: \"b\"},{Baz: 3, Bur: \"c\"}]", "", "[3]main.FooBar", nil},
@@ -223,6 +226,9 @@ func TestVariableEvaluation(t *testing.T) {
 }
 
 func TestSetVariable(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	var testcases = []struct {
 		name     string
 		typ      string // type of <name>
@@ -271,6 +277,9 @@ func TestSetVariable(t *testing.T) {
 }
 
 func TestVariableEvaluationShort(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, "[3]main.FooBar [...]", "", "[3]main.FooBar", nil},
@@ -338,6 +347,9 @@ func TestVariableEvaluationShort(t *testing.T) {
 }
 
 func TestMultilineVariableEvaluation(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, `[3]main.FooBar [
@@ -404,6 +416,9 @@ func (s varArray) Less(i, j int) bool {
 }
 
 func TestLocalVariables(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	testcases := []struct {
 		fn     func(*proc.EvalScope, proc.LoadConfig) ([]*proc.Variable, error)
 		output []varTest
@@ -482,6 +497,9 @@ func TestLocalVariables(t *testing.T) {
 }
 
 func TestEmbeddedStruct(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		testcases := []varTest{
@@ -524,6 +542,9 @@ func TestEmbeddedStruct(t *testing.T) {
 }
 
 func TestComplexSetting(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestProcess("testvariables", t, func(p proc.Process, fixture protest.Fixture) {
 		err := proc.Continue(p)
 		assertNoError(err, t, "Continue() returned an error")
@@ -545,6 +566,9 @@ func TestComplexSetting(t *testing.T) {
 }
 
 func TestEvalExpression(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	testcases := []varTest{
 		// slice/array/string subscript
 		{"s1[0]", false, "\"one\"", "\"one\"", "string", nil},
@@ -850,6 +874,9 @@ func TestEvalExpression(t *testing.T) {
 }
 
 func TestEvalAddrAndCast(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
@@ -877,6 +904,9 @@ func TestEvalAddrAndCast(t *testing.T) {
 }
 
 func TestMapEvaluation(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
@@ -919,6 +949,9 @@ func TestMapEvaluation(t *testing.T) {
 }
 
 func TestUnsafePointer(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue() returned an error")
@@ -937,6 +970,9 @@ type issue426TestCase struct {
 }
 
 func TestIssue426(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// type casts using quoted type names
 	testcases := []issue426TestCase{
 		{"iface1", `interface {}`},
@@ -972,6 +1008,9 @@ func TestIssue426(t *testing.T) {
 }
 
 func TestPackageRenames(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// Tests that the concrete type of an interface variable is resolved
 	// correctly in a few edge cases, in particular:
 	// - in the presence of renamed imports
@@ -1039,6 +1078,9 @@ func TestPackageRenames(t *testing.T) {
 }
 
 func TestConstants(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	testcases := []varTest{
 		{"a", true, "constTwo (2)", "", "main.ConstType", nil},
 		{"b", true, "constThree (3)", "", "main.ConstType", nil},
@@ -1107,6 +1149,9 @@ type testCaseCallFunction struct {
 }
 
 func TestCallFunction(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 
 	var testcases = []testCaseCallFunction{
@@ -1310,6 +1355,9 @@ func testCallFunction(t *testing.T, p proc.Process, tc testCaseCallFunction) {
 }
 
 func TestIssue1531(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// Go 1.12 introduced a change to the map representation where empty cells can be marked with 1 instead of just 0.
 	withTestProcess("issue1531", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
@@ -1390,6 +1438,9 @@ func assertCurrentLocationFunction(p proc.Process, t *testing.T, fnname string) 
 }
 
 func TestPluginVariables(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
 	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p proc.Process, fixture protest.Fixture) {

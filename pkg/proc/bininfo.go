@@ -89,7 +89,7 @@ type BinaryInfo struct {
 }
 
 // ErrUnsupportedLinuxArch is returned when attempting to debug a binary compiled for an unsupported architecture.
-var ErrUnsupportedLinuxArch = errors.New("unsupported architecture - only linux/amd64 is supported")
+var ErrUnsupportedLinuxArch = errors.New("unsupported architecture - only linux/amd64 and linux/arm64 are supported")
 
 // ErrUnsupportedWindowsArch is returned when attempting to debug a binary compiled for an unsupported architecture.
 var ErrUnsupportedWindowsArch = errors.New("unsupported architecture of windows/386 - only windows/amd64 is supported")
@@ -317,6 +317,8 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 	switch goarch {
 	case "amd64":
 		r.Arch = AMD64Arch(goos)
+	case "arm64":
+		r.Arch = ARM64Arch(goos)
 	}
 
 	return r
@@ -885,7 +887,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugFilePath, err.Error())
 	}
 
-	if elfFile.Machine != elf.EM_X86_64 {
+	if elfFile.Machine != elf.EM_X86_64 && elfFile.Machine != elf.EM_AARCH64 {
 		sepFile.Close()
 		return nil, nil, fmt.Errorf("can't open separate debug file %q: %v", debugFilePath, ErrUnsupportedLinuxArch.Error())
 	}
@@ -933,7 +935,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	if err != nil {
 		return err
 	}
-	if elfFile.Machine != elf.EM_X86_64 {
+	if elfFile.Machine != elf.EM_X86_64 && elfFile.Machine != elf.EM_AARCH64 {
 		return ErrUnsupportedLinuxArch
 	}
 

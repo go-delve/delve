@@ -19,6 +19,9 @@ import (
 )
 
 func TestScopeWithEscapedVariable(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("arm64 do not support ScopeWithEscapedVariable for now")
+	}
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 3, 0, ""}) {
 		return
 	}
@@ -63,6 +66,9 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 //    every variable except the last one should be marked as shadowed
 // 2. EvalExpression should return the last one.
 func TestScope(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
 		return
 	}

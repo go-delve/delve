@@ -1,3 +1,7 @@
+// TODO: disassembler support should be compiled in unconditionally,
+// instead of being decided by the build-target architecture, and be
+// part of the Arch object instead.
+
 package proc
 
 import (
@@ -73,7 +77,7 @@ func (inst *AsmInstruction) IsRet() bool {
 	return inst.Inst.Op == x86asm.RET || inst.Inst.Op == x86asm.LRET
 }
 
-func resolveCallArg(inst *archInst, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
+func resolveCallArg(inst *archInst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	if inst.Op != x86asm.CALL && inst.Op != x86asm.LCALL {
 		return nil
 	}

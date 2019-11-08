@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/go-delve/delve/pkg/proc/native"
@@ -11,6 +12,9 @@ import (
 )
 
 func TestLoadingExternalDebugInfo(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	fixture := protest.BuildFixture("locationsprog", 0)
 	defer os.Remove(fixture.Path)
 	stripAndCopyDebugInfo(fixture, t)

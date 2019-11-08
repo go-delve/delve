@@ -728,6 +728,9 @@ func TestClientServer_FindLocations(t *testing.T) {
 }
 
 func TestClientServer_FindLocationsAddr(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestClient2("locationsprog2", t, func(c service.Client) {
 		<-c.Continue()
 
@@ -740,6 +743,9 @@ func TestClientServer_FindLocationsAddr(t *testing.T) {
 }
 
 func TestClientServer_FindLocationsExactMatch(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// if an expression matches multiple functions but one of them is an exact
 	// match it should be used anyway.
 	// In this example "math/rand.Intn" would normally match "math/rand.Intn"
@@ -752,6 +758,9 @@ func TestClientServer_FindLocationsExactMatch(t *testing.T) {
 }
 
 func TestClientServer_EvalVariable(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestClient2("testvariables", t, func(c service.Client) {
 		state := <-c.Continue()
 
@@ -771,6 +780,9 @@ func TestClientServer_EvalVariable(t *testing.T) {
 }
 
 func TestClientServer_SetVariable(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestClient2("testvariables", t, func(c service.Client) {
 		state := <-c.Continue()
 
@@ -796,6 +808,9 @@ func TestClientServer_SetVariable(t *testing.T) {
 }
 
 func TestClientServer_FullStacktrace(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestClient2("goroutinestackprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
@@ -869,6 +884,9 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 }
 
 func TestIssue355(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
 	withTestClient2("continuetestprog", t, func(c service.Client) {
@@ -932,6 +950,9 @@ func TestIssue355(t *testing.T) {
 }
 
 func TestDisasm(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// Tests that disassembling by PC, range, and current PC all yeld similar results
 	// Tests that disassembly by current PC will return a disassembly containing the instruction at PC
 	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
@@ -1091,6 +1112,9 @@ func clientEvalVariable(t *testing.T, c service.Client, expr string) *api.Variab
 }
 
 func TestSkipPrologue(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestClient2("locationsprog2", t, func(c service.Client) {
 		<-c.Continue()
 
@@ -1107,6 +1131,9 @@ func TestSkipPrologue(t *testing.T) {
 }
 
 func TestSkipPrologue2(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestClient2("callme", t, func(c service.Client) {
 		callme := findLocationHelper(t, c, "main.callme", false, 1, 0)[0]
 		callmeZ := uint64(clientEvalVariable(t, c, "main.callme").Addr)
@@ -1163,6 +1190,9 @@ func TestIssue419(t *testing.T) {
 }
 
 func TestTypesCommand(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestClient2("testvariables2", t, func(c service.Client) {
 		state := <-c.Continue()
@@ -1207,6 +1237,9 @@ func TestIssue406(t *testing.T) {
 }
 
 func TestEvalExprName(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestClient2("testvariables2", t, func(c service.Client) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1225,6 +1258,9 @@ func TestEvalExprName(t *testing.T) {
 }
 
 func TestClientServer_Issue528(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// FindLocation with Receiver.MethodName syntax does not work
 	// on remote package names due to a bug in debug/gosym that
 	// Was fixed in go 1.7 // Commit that fixes the issue in go:
@@ -1242,6 +1278,9 @@ func TestClientServer_Issue528(t *testing.T) {
 }
 
 func TestClientServer_FpRegisters(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	regtests := []struct{ name, value string }{
 		{"ST(0)", "0x3fffe666660000000000"},
 		{"ST(1)", "0x3fffd9999a0000000000"},
@@ -1287,6 +1326,9 @@ func TestClientServer_FpRegisters(t *testing.T) {
 }
 
 func TestClientServer_RestartBreakpointPosition(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	if buildMode == "pie" {
 		t.Skip("not meaningful in PIE mode")
@@ -1317,6 +1359,9 @@ func TestClientServer_RestartBreakpointPosition(t *testing.T) {
 }
 
 func TestClientServer_SelectedGoroutineLoc(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// CurrentLocation of SelectedGoroutine should reflect what's happening on
 	// the thread running the goroutine, not the position the goroutine was in
 	// the last time it was parked.
@@ -1341,6 +1386,9 @@ func TestClientServer_SelectedGoroutineLoc(t *testing.T) {
 }
 
 func TestClientServer_ReverseContinue(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	if testBackend != "rr" {
 		t.Skip("backend is not rr")
@@ -1375,6 +1423,9 @@ func TestClientServer_ReverseContinue(t *testing.T) {
 }
 
 func TestClientServer_collectBreakpointInfoOnNext(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{
@@ -1409,6 +1460,9 @@ func TestClientServer_collectBreakpointInfoOnNext(t *testing.T) {
 }
 
 func TestClientServer_collectBreakpointInfoError(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{
@@ -1422,6 +1476,9 @@ func TestClientServer_collectBreakpointInfoError(t *testing.T) {
 }
 
 func TestClientServerConsistentExit(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// This test is useful because it ensures that Next and Continue operations both
 	// exit with the same exit status and details when the target application terminates.
 	// Other program execution API calls should also behave in the same way.
@@ -1450,6 +1507,9 @@ func TestClientServerConsistentExit(t *testing.T) {
 }
 
 func TestClientServer_StepOutReturn(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		t.Skip("return variables aren't marked on 1.9 or earlier")
@@ -1507,6 +1567,9 @@ func TestClientServer_StepOutReturn(t *testing.T) {
 }
 
 func TestAcceptMulticlient(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if testBackend == "rr" {
 		t.Skip("recording not allowed for TestAcceptMulticlient")
 	}
@@ -1552,6 +1615,9 @@ func mustHaveDebugCalls(t *testing.T, c service.Client) {
 }
 
 func TestClientServerFunctionCall(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
@@ -1583,6 +1649,9 @@ func TestClientServerFunctionCall(t *testing.T) {
 }
 
 func TestClientServerFunctionCallBadPos(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
 		t.Skip("this is a safe point for Go 1.12")
@@ -1610,6 +1679,9 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 }
 
 func TestClientServerFunctionCallPanic(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
@@ -1636,6 +1708,9 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 }
 
 func TestClientServerFunctionCallStacktrace(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
@@ -1661,6 +1736,9 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 }
 
 func TestAncestors(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
 		t.Skip("not supported on Go <= 1.10")
 	}
