@@ -4,7 +4,6 @@ package proc_test
 
 import (
 	"fmt"
-	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -23,10 +22,6 @@ func (npe errIssue419) Error() string {
 }
 
 func TestIssue419(t *testing.T) {
-	if testBackend == "lldb" && runtime.GOOS == "darwin" {
-		// debugserver bug?
-		return
-	}
 	if testBackend == "rr" {
 		return
 	}
