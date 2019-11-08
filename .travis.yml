@@ -5,6 +5,10 @@ os:
   - linux
   - osx
 
+arch:
+  - amd64
+  - arm64
+
 go:
   - tip
   - 1.13.x

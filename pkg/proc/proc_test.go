@@ -154,6 +154,9 @@ func TestExit(t *testing.T) {
 }
 
 func TestExitAfterContinue(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("continuetestprog", t, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.sayhi")
@@ -528,6 +531,9 @@ func TestNextConcurrent(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -565,6 +571,9 @@ func TestNextConcurrent(t *testing.T) {
 func TestNextConcurrentVariant2(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
+	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
 	}
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
@@ -808,6 +817,9 @@ func (l1 *loc) match(l2 proc.Stackframe) bool {
 }
 
 func TestStacktrace(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	stacks := [][]loc{
 		{{4, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
 		{{4, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
@@ -843,6 +855,9 @@ func TestStacktrace(t *testing.T) {
 }
 
 func TestStacktrace2(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestProcess("retstack", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 
@@ -891,6 +906,9 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 }
 
 func TestStacktraceGoroutine(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
 		mainStack[0].line = 15
@@ -960,6 +978,9 @@ func TestStacktraceGoroutine(t *testing.T) {
 }
 
 func TestKill(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if testBackend == "lldb" {
 		// k command presumably works but leaves the process around?
 		return
@@ -1017,6 +1038,9 @@ func TestGetG(t *testing.T) {
 }
 
 func TestContinueMulti(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("integrationprog", t, func(p proc.Process, fixture protest.Fixture) {
 		bp1 := setFunctionBreakpoint(p, t, "main.main")
@@ -1210,6 +1234,9 @@ func TestVariableEvaluation(t *testing.T) {
 }
 
 func TestFrameEvaluation(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.stacktraceme")
@@ -1363,6 +1390,9 @@ func TestIssue325(t *testing.T) {
 func TestBreakpointCounts(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
+	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
 	}
 	protest.AllowRecording(t)
 	withTestProcess("bpcountstest", t, func(p proc.Process, fixture protest.Fixture) {
@@ -1690,6 +1720,9 @@ func TestIssue384(t *testing.T) {
 }
 
 func TestIssue332_Part1(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// Next shouldn't step inside a function call
 	protest.AllowRecording(t)
 	withTestProcess("issue332", t, func(p proc.Process, fixture protest.Fixture) {
@@ -1711,6 +1744,9 @@ func TestIssue332_Part1(t *testing.T) {
 }
 
 func TestIssue332_Part2(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// Step should skip a function's prologue
 	// In some parts of the prologue, for some functions, the FDE data is incorrect
 	// which leads to 'next' and 'stack' failing with error "could not find FDE for PC: <garbage>"
@@ -1897,6 +1933,9 @@ func TestNextParked(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sayhi")
@@ -1947,6 +1986,9 @@ func TestNextParked(t *testing.T) {
 }
 
 func TestStepParked(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
@@ -2082,6 +2124,9 @@ func TestIssue573(t *testing.T) {
 }
 
 func TestTestvariables2Prologue(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		addrEntry := p.BinInfo().LookupFunc["main.main"].Entry
 		addrPrologue := findFunctionLocation(p, t, "main.main")
@@ -2270,6 +2315,9 @@ func TestStepConcurrentDirect(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 37)
@@ -2333,6 +2381,9 @@ func TestStepConcurrentDirect(t *testing.T) {
 }
 
 func TestStepConcurrentPtr(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
@@ -2437,6 +2488,9 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 const maxInstructionLength uint64 = 15
 
 func TestStepOnCallPtrInstr(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("teststepprog", t, func(p proc.Process, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 10)
@@ -2645,6 +2699,9 @@ func getg(goid int, gs []*proc.G) *proc.G {
 }
 
 func TestStacktraceWithBarriers(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// Go's Garbage Collector will insert stack barriers into stacks.
 	// This stack barrier is inserted by overwriting the return address for the
 	// stack frame with the address of runtime.stackBarrier.
@@ -3207,6 +3264,9 @@ func frameInFile(frame proc.Stackframe, file string) bool {
 }
 
 func TestCgoStacktrace(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Parse(runtime.Version())
 		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
@@ -3312,6 +3372,9 @@ func TestCgoStacktrace(t *testing.T) {
 }
 
 func TestCgoSources(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Parse(runtime.Version())
 		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
@@ -3337,6 +3400,9 @@ func TestCgoSources(t *testing.T) {
 }
 
 func TestSystemstackStacktrace(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// check that we can follow a stack switch initiated by runtime.systemstack()
 	withTestProcess("panic", t, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "runtime.startpanic_m")
@@ -3355,6 +3421,9 @@ func TestSystemstackStacktrace(t *testing.T) {
 }
 
 func TestSystemstackOnRuntimeNewstack(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// The bug being tested here manifests as follows:
 	// - set a breakpoint somewhere or interrupt the program with Ctrl-C
 	// - try to look at stacktraces of other goroutines
@@ -3388,6 +3457,9 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 }
 
 func TestIssue1034(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// The external linker on macOS produces an abbrev for DW_TAG_subprogram
 	// without the "has children" flag, we should support this.
 	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
@@ -3405,6 +3477,9 @@ func TestIssue1034(t *testing.T) {
 }
 
 func TestIssue1008(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// The external linker on macOS inserts "end of sequence" extended opcodes
 	// in debug_line. which we should support correctly.
 	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
@@ -3521,6 +3596,9 @@ func TestIssue1145(t *testing.T) {
 }
 
 func TestDisassembleGlobalVars(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		mainfn := p.BinInfo().LookupFunc["main.main"]
 		regs, _ := p.CurrentThread().Registers(false)
@@ -3578,6 +3656,9 @@ func TestAllPCsForFileLines(t *testing.T) {
 }
 
 func TestInlinedStacktraceAndVariables(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
@@ -3822,6 +3903,9 @@ func TestIssue951(t *testing.T) {
 }
 
 func TestDWZCompression(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// If dwz is not available in the system, skip this test
 	if _, err := exec.LookPath("dwz"); err != nil {
 		t.Skip("dwz not installed")
@@ -3863,6 +3947,9 @@ func TestMapLoadConfigWithReslice(t *testing.T) {
 }
 
 func TestStepOutReturn(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		t.Skip("return variables aren't marked on 1.9 or earlier")
@@ -4003,6 +4090,9 @@ func TestReadDefer(t *testing.T) {
 }
 
 func TestNextUnknownInstr(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 10) {
 		t.Skip("versions of Go before 1.10 can't assemble the instruction VPUNPCKLWD")
 	}
@@ -4014,6 +4104,9 @@ func TestNextUnknownInstr(t *testing.T) {
 }
 
 func TestReadDeferArgs(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	var tests = []struct {
 		frame, deferCall int
 		a, b             int64
@@ -4057,6 +4150,9 @@ func TestReadDeferArgs(t *testing.T) {
 }
 
 func TestIssue1374(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	// Continue did not work when stopped at a breakpoint immediately after calling CallFunction.
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("issue1374", t, func(p proc.Process, fixture protest.Fixture) {
@@ -4276,6 +4372,9 @@ func TestCallConcurrent(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 24)
@@ -4357,6 +4456,9 @@ func TestIssue1615(t *testing.T) {
 }
 
 func TestCgoStacktrace2(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture crashes go runtime on windows")
 	}
@@ -4372,6 +4474,9 @@ func TestCgoStacktrace2(t *testing.T) {
 }
 
 func TestIssue1656(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	withTestProcess("issue1656/", t, func(p proc.Process, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.s")), 5)
 		assertNoError(proc.Continue(p), t, "Continue()")

@@ -22,7 +22,6 @@ require (
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 	golang.org/x/crypto v0.0.0-20180614174826-fd5f17ee7299 // indirect
 	golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb
-	golang.org/x/tools v0.0.0-20181120060634-fc4f04983f62
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/gemnasium/logrus-airbrake-hook.v2 v2.1.2 // indirect
