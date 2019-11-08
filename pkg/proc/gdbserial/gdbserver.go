@@ -355,6 +355,9 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		if foreground {
 			args = append(args, "--stdio-path", "/dev/tty")
 		}
+		if logflags.LLDBServerOutput() {
+			args = append(args, "-g", "-l", "stdout")
+		}
 		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--")
 		args = append(args, cmd...)
 
@@ -657,7 +660,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 continueLoop:
 	for {
 		tu.Reset()
-		threadID, sig, err = p.conn.resume(sig, &tu)
+		threadID, sig, err = p.conn.resume(sig, threadID, &tu)
 		if err != nil {
 			if _, exited := err.(proc.ErrProcessExited); exited {
 				p.exited = true
@@ -896,7 +899,7 @@ func (p *Process) Restart(pos string) error {
 
 	// for some reason we have to send a vCont;c after a vRun to make rr behave
 	// properly, because that's what gdb does.
-	_, _, err = p.conn.resume(0, nil)
+	_, _, err = p.conn.resume(0, "", nil)
 	if err != nil {
 		return err
 	}

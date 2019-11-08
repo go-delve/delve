@@ -539,14 +539,15 @@ func (conn *gdbConn) writeRegister(threadID string, regnum int, data []byte) err
 }
 
 // resume executes a 'vCont' command on all threads with action 'c' if sig
-// is 0 or 'C' if it isn't.
-func (conn *gdbConn) resume(sig uint8, tu *threadUpdater) (string, uint8, error) {
+// is 0 or 'C' if it isn't. If sig isn't 0 a threadID should be specified as
+// the target of the signal.
+func (conn *gdbConn) resume(sig uint8, threadID string, tu *threadUpdater) (string, uint8, error) {
 	if conn.direction == proc.Forward {
 		conn.outbuf.Reset()
 		if sig == 0 {
 			fmt.Fprint(&conn.outbuf, "$vCont;c")
 		} else {
-			fmt.Fprintf(&conn.outbuf, "$vCont;C%02x", sig)
+			fmt.Fprintf(&conn.outbuf, "$vCont;C%02x:%s;c", sig, threadID)
 		}
 	} else {
 		if err := conn.selectThread('c', "p-1.-1", "resume"); err != nil {
