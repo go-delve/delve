@@ -190,6 +190,11 @@ func Continue(dbp Process) error {
 
 			switch {
 			case loc.Fn.Name == "runtime.breakpoint":
+				// In linux-arm64, PtraceSingleStep seems cannot step over BRK instruction
+				// (linux-arm64 feature or kernel bug maybe).
+				if arch, ok := curthread.Arch().(*ARM64); ok {
+					curthread.SetPC(loc.PC + uint64(arch.BreakpointSize()))
+				}
 				// Single-step current thread until we exit runtime.breakpoint and
 				// runtime.Breakpoint.
 				// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
