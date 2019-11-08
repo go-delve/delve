@@ -2,6 +2,7 @@ package proc_test
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/go-delve/delve/pkg/proc"
@@ -9,6 +10,9 @@ import (
 )
 
 func TestGoroutineCreationLocation(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.agoroutine")

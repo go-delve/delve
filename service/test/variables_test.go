@@ -1126,6 +1126,9 @@ type testCaseCallFunction struct {
 }
 
 func TestCallFunction(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 
 	var testcases = []testCaseCallFunction{
@@ -1409,6 +1412,9 @@ func assertCurrentLocationFunction(p proc.Process, t *testing.T, fnname string) 
 }
 
 func TestPluginVariables(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
 	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p proc.Process, fixture protest.Fixture) {
