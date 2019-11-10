@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/spf13/cobra"
 )
 
@@ -71,7 +72,7 @@ func NewMakeCommands() *cobra.Command {
 Use the flags -s, -r and -b to specify which tests to run. Specifying nothing is equivalent to:
 
 	go run scripts/make.go test -s all -b default
-	go run scripts/make.go test -s basic -b lldb    # if lldb-server is installed
+	go run scripts/make.go test -s basic -b lldb    # if lldb-server is installed and Go < 1.14
 	go run scripts/make.go test -s basic -b rr      # if rr is installed
 	
 	go run scripts/make.go test -s basic -m pie     # only on linux
@@ -295,7 +296,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 
 		fmt.Println("Testing default backend")
 		testCmdIntl("all", "", "default", "normal")
-		if inpath("lldb-server") {
+		if inpath("lldb-server") && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
 			fmt.Println("\nTesting LLDB backend")
 			testCmdIntl("basic", "", "lldb", "normal")
 		}
