@@ -24,6 +24,7 @@ var buildMode string
 
 func TestMain(m *testing.M) {
 	flag.StringVar(&buildMode, "test-buildmode", "", "selects build mode")
+	flag.Parse()
 	if buildMode != "" && buildMode != "pie" {
 		fmt.Fprintf(os.Stderr, "unknown build mode %q", buildMode)
 		os.Exit(1)
