@@ -187,7 +187,7 @@ func quotemaybe(args []string) []string {
 func getoutput(cmd string, args ...interface{}) string {
 	x := exec.Command(cmd, strflatten(args)...)
 	x.Env = os.Environ()
-	out, err := x.CombinedOutput()
+	out, err := x.Output()
 	if err != nil {
 		log.Fatal(err)
 	}

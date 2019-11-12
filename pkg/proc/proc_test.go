@@ -953,7 +953,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 					if locations[i].Call.Fn != nil {
 						name = locations[i].Call.Fn.Name
 					}
-					t.Logf("\t%s:%d %s (%#x)\n", locations[i].Call.File, locations[i].Call.Line, name, locations[i].Current.PC)
+					t.Logf("\t%s:%d %s (%#x) %x %v\n", locations[i].Call.File, locations[i].Call.Line, name, locations[i].Current.PC, locations[i].FrameOffset(), locations[i].SystemStack)
 				}
 			}
 		}

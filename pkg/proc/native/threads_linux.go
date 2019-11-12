@@ -16,8 +16,9 @@ type WaitStatus sys.WaitStatus
 // OSSpecificDetails hold Linux specific
 // process details.
 type OSSpecificDetails struct {
-	registers sys.PtraceRegs
-	running   bool
+	delayedSignal int
+	registers     sys.PtraceRegs
+	running       bool
 }
 
 func (t *Thread) stop() (err error) {
@@ -37,7 +38,9 @@ func (t *Thread) Stopped() bool {
 }
 
 func (t *Thread) resume() error {
-	return t.resumeWithSig(0)
+	sig := t.os.delayedSignal
+	t.os.delayedSignal = 0
+	return t.resumeWithSig(sig)
 }
 
 func (t *Thread) resumeWithSig(sig int) (err error) {

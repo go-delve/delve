@@ -319,12 +319,23 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 		}
 
 		// TODO(dp) alert user about unexpected signals here.
-		if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
-			if err == sys.ESRCH {
-				dbp.postExit()
-				return nil, proc.ErrProcessExited{Pid: dbp.pid}
+		if halt && !th.os.running {
+			// We are trying to stop the process, queue this signal to be delivered
+			// to the thread when we resume.
+			// Do not do this for threads that were running because we sent them a
+			// STOP signal and we need to observe it so we don't mistakenly deliver
+			// it later.
+			th.os.delayedSignal = int(status.StopSignal())
+			th.os.running = false
+			return th, nil
+		} else {
+			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
+				if err == sys.ESRCH {
+					dbp.postExit()
+					return nil, proc.ErrProcessExited{Pid: dbp.pid}
+				}
+				return nil, err
 			}
-			return nil, err
 		}
 	}
 }
@@ -429,6 +440,9 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 			if err := th.stop(); err != nil {
 				return dbp.exitGuard(err)
 			}
+		} else {
+			// Thread is already in a trace stop but we didn't get the notification yet.
+			th.os.running = false
 		}
 	}
 
