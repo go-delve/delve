@@ -24,6 +24,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/line"
+	"github.com/go-delve/delve/pkg/dwarf/loclist"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -231,70 +232,6 @@ type packageVar struct {
 	cu     *compileUnit
 	offset dwarf.Offset
 	addr   uint64
-}
-
-type loclistReader struct {
-	data  []byte
-	cur   int
-	ptrSz int
-}
-
-func (rdr *loclistReader) Seek(off int) {
-	rdr.cur = off
-}
-
-func (rdr *loclistReader) read(sz int) []byte {
-	r := rdr.data[rdr.cur : rdr.cur+sz]
-	rdr.cur += sz
-	return r
-}
-
-func (rdr *loclistReader) oneAddr() uint64 {
-	switch rdr.ptrSz {
-	case 4:
-		addr := binary.LittleEndian.Uint32(rdr.read(rdr.ptrSz))
-		if addr == ^uint32(0) {
-			return ^uint64(0)
-		}
-		return uint64(addr)
-	case 8:
-		addr := uint64(binary.LittleEndian.Uint64(rdr.read(rdr.ptrSz)))
-		return addr
-	default:
-		panic("bad address size")
-	}
-}
-
-func (rdr *loclistReader) Next(e *loclistEntry) bool {
-	e.lowpc = rdr.oneAddr()
-	e.highpc = rdr.oneAddr()
-
-	if e.lowpc == 0 && e.highpc == 0 {
-		return false
-	}
-
-	if e.BaseAddressSelection() {
-		e.instr = nil
-		return true
-	}
-
-	instrlen := binary.LittleEndian.Uint16(rdr.read(2))
-	e.instr = rdr.read(int(instrlen))
-	return true
-}
-
-type loclistEntry struct {
-	lowpc, highpc uint64
-	instr         []byte
-}
-
-type runtimeTypeDIE struct {
-	offset dwarf.Offset
-	kind   int64
-}
-
-func (e *loclistEntry) BaseAddressSelection() bool {
-	return e.lowpc == ^uint64(0)
 }
 
 type buildIDHeader struct {
@@ -529,7 +466,7 @@ type Image struct {
 
 	dwarf       *dwarf.Data
 	dwarfReader *dwarf.Reader
-	loclist     loclistReader
+	loclist     *loclist.Reader
 
 	typeCache map[dwarf.Offset]godwarf.Type
 
@@ -670,16 +607,11 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0)
 	}
 
-	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
 
 	bi.loadDebugInfoMaps(image, debugLineBytes, nil, nil)
 
 	bi.Images = append(bi.Images, image)
-}
-
-func (image *Image) loclistInit(data []byte, ptrSz int) {
-	image.loclist.data = data
-	image.loclist.ptrSz = ptrSz
 }
 
 func (bi *BinaryInfo) locationExpr(entry reader.Entry, attr dwarf.Attr, pc uint64) ([]byte, string, error) {
@@ -729,19 +661,19 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 
 	image := cu.image
 	base := cu.lowPC
-	if image == nil || image.loclist.data == nil {
+	if image == nil || image.loclist.Empty() {
 		return nil, errors.New("malformed executable")
 	}
 
 	r := [][2]uint64{}
+	var e loclist.Entry
 	image.loclist.Seek(int(off))
-	var e loclistEntry
 	for image.loclist.Next(&e) {
 		if e.BaseAddressSelection() {
-			base = e.highpc
+			base = e.HighPC
 			continue
 		}
-		r = append(r, [2]uint64{e.lowpc + base, e.highpc + base})
+		r = append(r, [2]uint64{e.LowPC + base, e.HighPC + base})
 	}
 	return r, nil
 }
@@ -768,19 +700,19 @@ func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 		base = cu.lowPC
 		image = cu.image
 	}
-	if image == nil || image.loclist.data == nil {
+	if image == nil || image.loclist.Empty() {
 		return nil
 	}
 
 	image.loclist.Seek(int(off))
-	var e loclistEntry
+	var e loclist.Entry
 	for image.loclist.Next(&e) {
 		if e.BaseAddressSelection() {
-			base = e.highpc
+			base = e.HighPC
 			continue
 		}
-		if pc >= e.lowpc+base && pc < e.highpc+base {
-			return e.instr
+		if pc >= e.LowPC+base && pc < e.HighPC+base {
+			return e.Instr
 		}
 	}
 
@@ -980,7 +912,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "loc")
-	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
 
 	wg.Add(2)
 	go bi.parseDebugFrameElf(image, dwarfFile, wg)
@@ -1095,7 +1027,7 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionPE(peFile, "loc")
-	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
 
 	wg.Add(2)
 	go bi.parseDebugFramePE(image, peFile, wg)
@@ -1180,7 +1112,7 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionMacho(exe, "loc")
-	image.loclistInit(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
 
 	wg.Add(2)
 	go bi.parseDebugFrameMacho(image, exe, wg)

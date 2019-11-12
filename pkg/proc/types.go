@@ -42,6 +42,11 @@ const (
 	interfacetypeFieldMhdr = "mhdr"
 )
 
+type runtimeTypeDIE struct {
+	offset dwarf.Offset
+	kind   int64
+}
+
 func pointerTo(typ godwarf.Type, arch Arch) godwarf.Type {
 	return &godwarf.PtrType{
 		CommonType: godwarf.CommonType{
