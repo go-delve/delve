@@ -675,9 +675,25 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		}
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT)
-		select {
-		case <-ch:
-		case <-disconnectChan:
+		if runtime.GOOS == "windows" {
+			// On windows Ctrl-C sent to inferior process is delivered
+			// as SIGINT to delve. Ignore it instead of stopping the server
+			// in order to be able to debug signal handlers.
+			go func() {
+				for {
+					select {
+					case <-ch:
+					}
+				}
+			}()
+			select {
+			case <-disconnectChan:
+			}
+		} else {
+			select {
+			case <-ch:
+			case <-disconnectChan:
+			}
 		}
 		err = server.Stop()
 		if err != nil {
