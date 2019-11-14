@@ -10,7 +10,7 @@ import (
 // Implementations of Process are not required to be thread safe and users
 // of Process should not assume they are.
 // There is one exception to this rule: it is safe to call RequestManualStop
-// concurrently with ContinueOnce.
+// concurrently with Resume.
 type Process interface {
 	Info
 	ProcessManipulation
@@ -61,7 +61,7 @@ type Checkpoint struct {
 type Info interface {
 	Pid() int
 	// ResumeNotify specifies a channel that will be closed the next time
-	// ContinueOnce finishes resuming the target.
+	// Resume finishes resuming the target.
 	ResumeNotify(chan<- struct{})
 	// Valid returns true if this Process can be used. When it returns false it
 	// also returns an error describing why the Process is invalid (either
@@ -92,7 +92,7 @@ type GoroutineInfo interface {
 
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
-	ContinueOnce() (trapthread Thread, err error)
+	Resume() (trapthread Thread, err error)
 	StepInstruction() error
 	SwitchThread(int) error
 	SwitchGoroutine(int) error

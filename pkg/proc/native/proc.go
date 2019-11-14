@@ -142,7 +142,7 @@ func (dbp *Process) Valid() (bool, error) {
 }
 
 // ResumeNotify specifies a channel that will be closed the next time
-// ContinueOnce finishes resuming the target.
+// Resume finishes resuming the target.
 func (dbp *Process) ResumeNotify(ch chan<- struct{}) {
 	dbp.resumeChan = ch
 }
@@ -236,9 +236,9 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	return dbp.breakpoints.Clear(addr, dbp.currentThread.ClearBreakpoint)
 }
 
-// ContinueOnce will continue the target until it stops.
+// Resume will continue the target until it stops.
 // This could be the result of a breakpoint or signal.
-func (dbp *Process) ContinueOnce() (proc.Thread, error) {
+func (dbp *Process) Resume() (proc.Thread, error) {
 	if dbp.exited {
 		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}

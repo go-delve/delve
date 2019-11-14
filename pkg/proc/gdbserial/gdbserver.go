@@ -576,7 +576,7 @@ func (p *Process) Valid() (bool, error) {
 }
 
 // ResumeNotify specifies a channel that will be closed the next time
-// ContinueOnce finishes resuming the target.
+// Resume finishes resuming the target.
 func (p *Process) ResumeNotify(ch chan<- struct{}) {
 	p.conn.resumeChan = ch
 }
@@ -627,9 +627,9 @@ const (
 	debugServerTargetExcBreakpoint     = 0x96
 )
 
-// ContinueOnce will continue execution of the process until
+// Resume will continue execution of the process until
 // a breakpoint is hit or signal is received.
-func (p *Process) ContinueOnce() (proc.Thread, error) {
+func (p *Process) Resume() (proc.Thread, error) {
 	if p.exited {
 		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}

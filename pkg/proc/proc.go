@@ -176,7 +176,7 @@ func Continue(dbp Process) error {
 			dbp.ClearInternalBreakpoints()
 			return nil
 		}
-		trapthread, err := dbp.ContinueOnce()
+		trapthread, err := dbp.Resume()
 		if err != nil {
 			return err
 		}
