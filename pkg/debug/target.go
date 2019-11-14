@@ -190,7 +190,7 @@ func (t *Target) ClearCheckpoint(n int) error { return t.Process.ClearCheckpoint
 func (t *Target) Valid() (bool, error) { return t.Process.Valid() }
 
 // ResumeNotify specifies a channel that will be closed the next time
-// ContinueOnce finishes resuming the underlying process.
+// Resume finishes resuming the underlying process.
 func (t *Target) ResumeNotify(ch chan<- struct{}) { t.Process.ResumeNotify(ch) }
 
 // ThreadList returns a list of threads in the underlying process.

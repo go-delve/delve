@@ -314,7 +314,7 @@ func (dbp *Process) exitGuard(err error) error {
 	return err
 }
 
-// Used by ContinueOnce
+// Used by Resume
 func (dbp *Process) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
@@ -331,7 +331,7 @@ func (dbp *Process) resume() error {
 	return err
 }
 
-// Used by ContinueOnce
+// Used by Resume
 // stop stops all running threads and sets breakpoints
 func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
