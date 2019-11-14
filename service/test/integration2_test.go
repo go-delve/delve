@@ -1110,9 +1110,6 @@ func clientEvalVariable(t *testing.T, c service.Client, expr string) *api.Variab
 }
 
 func TestSkipPrologue(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	withTestClient2("locationsprog2", t, func(c service.Client) {
 		<-c.Continue()
 
@@ -1129,9 +1126,6 @@ func TestSkipPrologue(t *testing.T) {
 }
 
 func TestSkipPrologue2(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	withTestClient2("callme", t, func(c service.Client) {
 		callme := findLocationHelper(t, c, "main.callme", false, 1, 0)[0]
 		callmeZ := uint64(clientEvalVariable(t, c, "main.callme").Addr)
