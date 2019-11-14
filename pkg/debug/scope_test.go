@@ -1,4 +1,4 @@
-package proc_test
+package debug_test
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 		return
 	}
 
-	withTestProcess("scopeescapevareval", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestTarget("scopeescapevareval", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue")
 
 		// On the breakpoint there are two 'a' variables in scope, the one that
@@ -72,7 +72,7 @@ func TestScope(t *testing.T) {
 
 	scopeChecks := getScopeChecks(scopetestPath, t)
 
-	withTestProcess("scopetest", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestTarget("scopetest", t, func(p proc.Process, fixture protest.Fixture) {
 		for i := range scopeChecks {
 			setFileBreakpoint(p, t, fixture.Source, scopeChecks[i].line)
 		}
@@ -115,6 +115,128 @@ func TestScope(t *testing.T) {
 		}
 	}
 
+}
+
+func TestInlinedStacktraceAndVariables(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("arm64 does not support Stacktrace for now")
+	}
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+
+	firstCallCheck := &scopeCheck{
+		line: 7,
+		ok:   false,
+		varChecks: []varCheck{
+			varCheck{
+				name:   "a",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 3,
+			},
+			varCheck{
+				name:   "z",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 9,
+			},
+		},
+	}
+
+	secondCallCheck := &scopeCheck{
+		line: 7,
+		ok:   false,
+		varChecks: []varCheck{
+			varCheck{
+				name:   "a",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 4,
+			},
+			varCheck{
+				name:   "z",
+				typ:    "int",
+				kind:   reflect.Int,
+				hasVal: true,
+				intVal: 16,
+			},
+		},
+	}
+
+	withTestTargetArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p proc.Process, fixture protest.Fixture) {
+		pcs, err := p.BinInfo().LineToPC(fixture.Source, 7)
+		assertNoError(err, t, "LineToPC")
+		if len(pcs) < 2 {
+			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
+		}
+		for _, pc := range pcs {
+			t.Logf("setting breakpoint at %#x\n", pc)
+			_, err := p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
+		}
+
+		// first inlined call
+		assertNoError(proc.Continue(p), t, "Continue")
+		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 20)
+		assertNoError(err, t, "ThreadStacktrace")
+		t.Logf("Stacktrace:\n")
+		for i := range frames {
+			t.Logf("\t%s at %s:%d (%#x)\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line, frames[i].Current.PC)
+		}
+
+		if err := checkFrame(frames[0], "main.inlineThis", fixture.Source, 7, true); err != nil {
+			t.Fatalf("Wrong frame 0: %v", err)
+		}
+		if err := checkFrame(frames[1], "main.main", fixture.Source, 18, false); err != nil {
+			t.Fatalf("Wrong frame 1: %v", err)
+		}
+
+		if avar, _ := constant.Int64Val(evalVariable(p, t, "a").Value); avar != 3 {
+			t.Fatalf("value of 'a' variable is not 3 (%d)", avar)
+		}
+		if zvar, _ := constant.Int64Val(evalVariable(p, t, "z").Value); zvar != 9 {
+			t.Fatalf("value of 'z' variable is not 9 (%d)", zvar)
+		}
+
+		if _, ok := firstCallCheck.checkLocalsAndArgs(p, t); !ok {
+			t.Fatalf("exiting for past errors")
+		}
+
+		// second inlined call
+		assertNoError(proc.Continue(p), t, "Continue")
+		frames, err = proc.ThreadStacktrace(p.CurrentThread(), 20)
+		assertNoError(err, t, "ThreadStacktrace (2)")
+		t.Logf("Stacktrace 2:\n")
+		for i := range frames {
+			t.Logf("\t%s at %s:%d (%#x)\n", frames[i].Call.Fn.Name, frames[i].Call.File, frames[i].Call.Line, frames[i].Current.PC)
+		}
+
+		if err := checkFrame(frames[0], "main.inlineThis", fixture.Source, 7, true); err != nil {
+			t.Fatalf("Wrong frame 0: %v", err)
+		}
+		if err := checkFrame(frames[1], "main.main", fixture.Source, 19, false); err != nil {
+			t.Fatalf("Wrong frame 1: %v", err)
+		}
+
+		if avar, _ := constant.Int64Val(evalVariable(p, t, "a").Value); avar != 4 {
+			t.Fatalf("value of 'a' variable is not 3 (%d)", avar)
+		}
+		if zvar, _ := constant.Int64Val(evalVariable(p, t, "z").Value); zvar != 16 {
+			t.Fatalf("value of 'z' variable is not 9 (%d)", zvar)
+		}
+		if bvar, err := evalVariableOrError(p, "b"); err == nil {
+			t.Fatalf("expected error evaluating 'b', but it succeeded instead: %v", bvar)
+		}
+
+		if _, ok := secondCallCheck.checkLocalsAndArgs(p, t); !ok {
+			t.Fatalf("exiting for past errors")
+		}
+	})
 }
 
 type scopeCheck struct {

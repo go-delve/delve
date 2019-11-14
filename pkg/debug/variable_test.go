@@ -1,4 +1,4 @@
-package proc_test
+package debug_test
 
 import (
 	"path/filepath"
@@ -14,7 +14,7 @@ func TestGoroutineCreationLocation(t *testing.T) {
 		t.Skip("arm64 does not support GetStackInfo for now")
 	}
 	protest.AllowRecording(t)
-	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestTarget("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.agoroutine")
 		assertNoError(proc.Continue(p), t, "Continue()")
 

@@ -2,7 +2,7 @@
 // are only produced for optimized code (for both Go and C) therefore we can
 // not get the compiler to produce them reliably enough for tests.
 
-package proc_test
+package debug_test
 
 import (
 	"bytes"
