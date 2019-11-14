@@ -1,4 +1,4 @@
-package proc_test
+package debug_test
 
 import (
 	"os"
