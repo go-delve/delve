@@ -5,8 +5,6 @@
 package proc
 
 import (
-	//"encoding/binary"
-
 	"golang.org/x/arch/arm64/arm64asm"
 )
 
@@ -99,16 +97,13 @@ type instrseq []arm64asm.Op
 
 // Possible stacksplit prologues are inserted by stacksplit in
 // $GOROOT/src/cmd/internal/obj/arm64/obj7.go.
-// The stacksplit prologue will always begin with loading curg in CX, this
-// instruction is added by load_g_cx in the same file and is either 1 or 2
-// MOVs.
 var prologues []instrseq
 
 func init() {
 	var tinyStacksplit = instrseq{arm64asm.MOV, arm64asm.CMP, arm64asm.B}
 	var smallStacksplit = instrseq{arm64asm.SUB, arm64asm.CMP, arm64asm.B}
 	var bigStacksplit = instrseq{arm64asm.CMP, arm64asm.B, arm64asm.ADD, arm64asm.SUB, arm64asm.MOV, arm64asm.CMP, arm64asm.B}
-	var unixGetG = instrseq{arm64asm.MOV}
+	var unixGetG = instrseq{arm64asm.LDR}
 
 	prologues = make([]instrseq, 0, 3)
 	for _, getG := range []instrseq{unixGetG} {

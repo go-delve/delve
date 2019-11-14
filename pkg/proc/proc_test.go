@@ -2124,9 +2124,6 @@ func TestIssue573(t *testing.T) {
 }
 
 func TestTestvariables2Prologue(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	withTestProcess("testvariables2", t, func(p proc.Process, fixture protest.Fixture) {
 		addrEntry := p.BinInfo().LookupFunc["main.main"].Entry
 		addrPrologue := findFunctionLocation(p, t, "main.main")
