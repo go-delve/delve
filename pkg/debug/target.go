@@ -148,10 +148,20 @@ func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error)
 	return p, errMacOSBackendUnavailable
 }
 
+// Initialize performs any setup that must be taken after
+// we have successfully attached to the process we are going to debug.
+// This includes any post-startup initialization the process must perform,
+// as well as setting the default goroutine and creating some initial breakpoints
+// that are set by default to catch when the process crashes or panics.
 func (t *Target) Initialize() error {
 	if err := t.Process.Initialize(); err != nil {
 		return err
 	}
+	g, _ := proc.GetG(t.CurrentThread())
+	t.SetSelectedGoroutine(g)
+
+	createUnrecoveredPanicBreakpoint(t)
+	createFatalThrowBreakpoint(t)
 	return nil
 }
 

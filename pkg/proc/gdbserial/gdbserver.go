@@ -522,10 +522,6 @@ func (p *Process) Initialize() error {
 			return err
 		}
 	}
-	if err = proc.PostInitializationSetup(p, p.writeBreakpoint); err != nil {
-		p.conn.conn.Close()
-		return err
-	}
 
 	// None of the stubs we support returns the value of fs_base or gs_base
 	// along with the registers, therefore we have to resort to executing a MOV
@@ -1052,7 +1048,7 @@ func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	return nil, false
 }
 
-func (p *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
+func (p *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := p.BinInfo().PCToLine(uint64(addr))
 
 	if err := p.conn.setBreakpoint(addr); err != nil {
@@ -1067,7 +1063,7 @@ func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.
 	if p.exited {
 		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
-	return p.breakpoints.Set(addr, kind, cond, p.writeBreakpoint)
+	return p.breakpoints.Set(addr, kind, cond, p.WriteBreakpoint)
 }
 
 // ClearBreakpoint clears a breakpoint at the given address.

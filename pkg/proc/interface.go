@@ -17,6 +17,7 @@ type Process interface {
 	// with a passing test suite.
 	SetTarget(Process)
 	Initialize() error
+	WriteBreakpoint(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
 
 	Info
 	ProcessManipulation

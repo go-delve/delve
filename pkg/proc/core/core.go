@@ -221,10 +221,8 @@ func OpenCore(corePath, exePath string) (*Process, string, string, error) {
 	return p, os, arch, nil
 }
 
-// Initialize for core files doesn't do much
-// aside from call the post initialization setup.
 func (p *Process) Initialize() error {
-	return proc.PostInitializationSetup(p, p.writeBreakpoint)
+	return nil
 }
 
 func (p *Process) ExecutablePath() string {
@@ -252,9 +250,9 @@ func (p *Process) EntryPoint() (uint64, error) {
 	return p.entryPoint, nil
 }
 
-// writeBreakpoint is a noop function since you
+// WriteBreakpoint is a noop function since you
 // cannot write breakpoints into core files.
-func (p *Process) writeBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
+func (p *Process) WriteBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
 	return "", 0, nil, nil, errors.New("cannot write a breakpoint to a core file")
 }
 
