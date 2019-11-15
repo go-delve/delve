@@ -36,7 +36,7 @@ func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -58,6 +58,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 	var p *os.Process
 	dbp := New(0)
 	dbp.common = proc.NewCommonProcess(true)
+	dbp.common.ExePath = argv0Go
 	dbp.execPtraceFunc(func() {
 		attr := &os.ProcAttr{
 			Dir:   wd,
@@ -76,10 +77,6 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 	dbp.pid = p.Pid
 	dbp.childProcess = true
 
-	if err = dbp.initialize(argv0Go, []string{}); err != nil {
-		dbp.Detach(true)
-		return nil, err
-	}
 	return dbp, nil
 }
 
@@ -117,7 +114,10 @@ func initialize(dbp *Process) error {
 }
 
 // findExePath searches for process pid, and returns its executable path.
-func findExePath(pid int) (string, error) {
+func findExePath(path string, pid int) string {
+	if path != "" {
+		return path
+	}
 	// Original code suggested different approach (see below).
 	// Maybe it could be useful in the future.
 	//
@@ -126,7 +126,7 @@ func findExePath(pid int) (string, error) {
 
 	p, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
 	if err != nil {
-		return "", err
+		return ""
 	}
 	defer syscall.CloseHandle(p)
 
@@ -140,32 +140,26 @@ func findExePath(pid int) (string, error) {
 			n *= 2
 			// but stop if it gets too big
 			if n > 10000 {
-				return "", err
+				return ""
 			}
 		case nil:
-			return syscall.UTF16ToString(buf[:n]), nil
+			return syscall.UTF16ToString(buf[:n])
 		default:
-			return "", err
+			return ""
 		}
 	}
 }
 
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*Process, error) {
+func Attach(pid int) (*Process, error) {
 	// TODO: Probably should have SeDebugPrivilege before starting here.
 	err := _DebugActiveProcess(uint32(pid))
 	if err != nil {
 		return nil, err
 	}
-	exepath, err := findExePath(pid)
-	if err != nil {
-		return nil, err
-	}
+	exepath := findExePath("", pid)
 	dbp := New(pid)
-	if err = dbp.initialize(exepath, []string{}); err != nil {
-		dbp.Detach(true)
-		return nil, err
-	}
+	dbp.common.ExePath = exepath
 	return dbp, nil
 }
 
@@ -320,9 +314,9 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 				// this exception anymore.
 				atbp := true
 				if thread, found := dbp.threads[tid]; found {
-					data := make([]byte, dbp.bi.Arch.BreakpointSize())
+					data := make([]byte, dbp.BinInfo().Arch.BreakpointSize())
 					if _, err := thread.ReadMemory(data, exception.ExceptionRecord.ExceptionAddress); err == nil {
-						instr := dbp.bi.Arch.BreakpointInstruction()
+						instr := dbp.BinInfo().Arch.BreakpointInstruction()
 						for i := range instr {
 							if data[i] != instr[i] {
 								atbp = false

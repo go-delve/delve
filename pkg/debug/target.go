@@ -17,11 +17,30 @@ import (
 // that is used to manipulate and inspect a running process.
 type Target struct {
 	proc.Process
+
+	bi *proc.BinaryInfo
 }
 
 // New returns an initialized Target.
-func New(p proc.Process) *Target {
-	return &Target{Process: p}
+func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, error) {
+	entry, err := p.EntryPoint()
+	if err != nil {
+		return nil, err
+	}
+	bi, err := proc.NewBinaryInfo(p.ExecutablePath(), os, arch, entry, debugInfoDirs)
+	if err != nil {
+		return nil, err
+	}
+	t := &Target{
+		Process: p,
+		bi:      bi,
+	}
+	// TODO(refactor) REMOVE BEFORE MERGE
+	p.SetTarget(t)
+	if err := t.Initialize(); err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 // ErrNoAttachPath is the error returned when the client tries to attach to
@@ -37,24 +56,25 @@ func Attach(pid int, path, backend string, debugInfoDirs []string) (*Target, err
 		p   proc.Process
 		err error
 	)
+
 	switch backend {
 	case "native":
-		p, err = native.Attach(pid, debugInfoDirs)
+		p, err = native.Attach(pid)
 	case "lldb":
-		p, err = betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, debugInfoDirs))
+		p, err = betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path))
 	case "default":
 		if runtime.GOOS == "darwin" {
-			p, err = betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, debugInfoDirs))
+			p, err = betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path))
 			break
 		}
-		p, err = native.Attach(pid, debugInfoDirs)
+		p, err = native.Attach(pid)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", backend)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return New(p), nil
+	return New(p, runtime.GOOS, runtime.GOARCH, debugInfoDirs)
 }
 
 // Launch will start a process with the given args and working directory using the
@@ -69,24 +89,24 @@ func Launch(processArgs []string, wd string, foreground bool, backend string, de
 	)
 	switch backend {
 	case "native":
-		p, err = native.Launch(processArgs, wd, foreground, debugInfoDirs)
+		p, err = native.Launch(processArgs, wd, foreground)
 	case "lldb":
-		p, err = betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, foreground, debugInfoDirs))
+		p, err = betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, foreground))
 	case "rr":
-		p, _, err = gdbserial.RecordAndReplay(processArgs, wd, false, debugInfoDirs)
+		p, _, err = gdbserial.RecordAndReplay(processArgs, wd, false)
 	case "default":
 		if runtime.GOOS == "darwin" {
-			p, err = betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, foreground, debugInfoDirs))
+			p, err = betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, foreground))
 			break
 		}
-		p, err = native.Launch(processArgs, wd, foreground, debugInfoDirs)
+		p, err = native.Launch(processArgs, wd, foreground)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", backend)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return New(p), nil
+	return New(p, runtime.GOOS, runtime.GOARCH, debugInfoDirs)
 }
 
 // OpenCoreOrRecording takes a path and opens either an RR recording or a core file
@@ -99,17 +119,20 @@ func OpenCoreOrRecording(backend, path, argv0 string, debugInfoDirs []string) (*
 	var (
 		p   proc.Process
 		err error
+
+		os   = runtime.GOOS
+		arch = runtime.GOARCH
 	)
 	switch backend {
 	case "rr":
-		p, err = gdbserial.Replay(path, false, false, debugInfoDirs)
+		p, err = gdbserial.Replay(path, false, false)
 	default:
-		p, err = core.OpenCore(path, argv0, debugInfoDirs)
+		p, os, arch, err = core.OpenCore(path, argv0)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return New(p), nil
+	return New(p, os, arch, debugInfoDirs)
 }
 
 var errMacOSBackendUnavailable = errors.New("debugserver or lldb-server not found: install XCode's command line tools or lldb-server")
@@ -123,6 +146,13 @@ func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error)
 	}
 
 	return p, errMacOSBackendUnavailable
+}
+
+func (t *Target) Initialize() error {
+	if err := t.Process.Initialize(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Detach will force the target to stop tracing the process.
@@ -139,7 +169,7 @@ func (t *Target) Detach(kill bool) error {
 // information, and much more.
 // See the documentation for BinaryInfo for more information.
 func (t *Target) BinInfo() *proc.BinaryInfo {
-	return t.Process.BinInfo()
+	return t.bi
 }
 
 // Pid returns the PID of the process this target is attached to.

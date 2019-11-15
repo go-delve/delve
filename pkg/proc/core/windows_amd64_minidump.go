@@ -7,7 +7,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
-func readAMD64Minidump(minidumpPath, exePath string) (*Process, error) {
+func readAMD64Minidump(minidumpPath, exePath string) (*Process, string, string, error) {
 	var logfn func(string, ...interface{})
 	if logflags.Minidump() {
 		logfn = logflags.MinidumpLogger().Infof
@@ -16,9 +16,9 @@ func readAMD64Minidump(minidumpPath, exePath string) (*Process, error) {
 	mdmp, err := minidump.Open(minidumpPath, logfn)
 	if err != nil {
 		if _, isNotAMinidump := err.(minidump.ErrNotAMinidump); isNotAMinidump {
-			return nil, ErrUnrecognizedFormat
+			return nil, "", "", ErrUnrecognizedFormat
 		}
-		return nil, err
+		return nil, "", "", err
 	}
 
 	memory := &SplicedMemory{}
@@ -31,7 +31,6 @@ func readAMD64Minidump(minidumpPath, exePath string) (*Process, error) {
 	p := &Process{
 		mem:         memory,
 		Threads:     map[int]*Thread{},
-		bi:          proc.NewBinaryInfo("windows", "amd64"),
 		breakpoints: proc.NewBreakpointMap(),
 		pid:         int(mdmp.Pid),
 	}
@@ -43,7 +42,7 @@ func readAMD64Minidump(minidumpPath, exePath string) (*Process, error) {
 			p.currentThread = p.Threads[int(th.ID)]
 		}
 	}
-	return p, nil
+	return p, "windows", "amd64", nil
 }
 
 type windowsAMD64Thread struct {

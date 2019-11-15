@@ -50,22 +50,7 @@ func (pe ProcessDetachedError) Error() string {
 
 // PostInitializationSetup handles all of the initialization procedures
 // that must happen after Delve creates or attaches to a process.
-func PostInitializationSetup(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn) error {
-	entryPoint, err := p.EntryPoint()
-	if err != nil {
-		return err
-	}
-
-	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, debugInfoDirs)
-	if err != nil {
-		return err
-	}
-	for _, image := range p.BinInfo().Images {
-		if image.loadErr != nil {
-			return image.loadErr
-		}
-	}
-
+func PostInitializationSetup(p Process, writeBreakpoint WriteBreakpointFn) error {
 	g, _ := GetG(p.CurrentThread())
 	p.SetSelectedGoroutine(g)
 

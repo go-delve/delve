@@ -48,7 +48,7 @@ type OSProcessDetails struct {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	var (
 		process *exec.Cmd
 		err     error
@@ -85,13 +85,11 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 		return nil, err
 	}
 	dbp.pid = process.Process.Pid
+	dbp.common.ExePath = cmd[0]
 	dbp.childProcess = true
 	_, _, err = dbp.wait(process.Process.Pid, 0)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
-	}
-	if err = dbp.initialize(cmd[0], debugInfoDirs); err != nil {
-		return nil, err
 	}
 	return dbp, nil
 }
@@ -99,7 +97,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 // Attach to an existing process with the given PID. Once attached, if
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Attach(pid int, debugInfoDirs []string) (*Process, error) {
+func Attach(pid int) (*Process, error) {
 	dbp := New(pid)
 	dbp.common = proc.NewCommonProcess(true)
 
@@ -113,18 +111,6 @@ func Attach(pid int, debugInfoDirs []string) (*Process, error) {
 		return nil, err
 	}
 
-	err = dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
-	if err != nil {
-		dbp.Detach(false)
-		return nil, err
-	}
-
-	// ElfUpdateSharedObjects can only be done after we initialize because it
-	// needs an initialized BinaryInfo object to work.
-	err = linutil.ElfUpdateSharedObjects(dbp)
-	if err != nil {
-		return nil, err
-	}
 	return dbp, nil
 }
 
@@ -243,7 +229,7 @@ func (dbp *Process) updateThreadList() error {
 	return linutil.ElfUpdateSharedObjects(dbp)
 }
 
-func findExecutable(path string, pid int) string {
+func findExePath(path string, pid int) string {
 	if path == "" {
 		path = fmt.Sprintf("/proc/%d/exe", pid)
 	}

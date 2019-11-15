@@ -90,19 +90,19 @@ func (t *Thread) Location() (*proc.Location, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, l, fn := t.dbp.bi.PCToLine(pc)
+	f, l, fn := t.BinInfo().PCToLine(pc)
 	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
 // Arch returns the architecture the binary is
 // compiled for and executing on.
 func (t *Thread) Arch() proc.Arch {
-	return t.dbp.bi.Arch
+	return t.BinInfo().Arch
 }
 
 // BinInfo returns information on the binary.
 func (t *Thread) BinInfo() *proc.BinaryInfo {
-	return t.dbp.bi
+	return t.dbp.BinInfo()
 }
 
 // Common returns information common across Process

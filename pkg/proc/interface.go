@@ -12,6 +12,12 @@ import (
 // There is one exception to this rule: it is safe to call RequestManualStop
 // concurrently with Resume.
 type Process interface {
+	// TODO(refactor) REMOVE THIS BEFORE MERGE
+	// This is only temporary to enable refactoring
+	// with a passing test suite.
+	SetTarget(Process)
+	Initialize() error
+
 	Info
 	ProcessManipulation
 	BreakpointManipulation
@@ -68,6 +74,7 @@ type Info interface {
 	// ErrProcessExited or ProcessDetachedError).
 	Valid() (bool, error)
 	BinInfo() *BinaryInfo
+	ExecutablePath() string
 	EntryPoint() (uint64, error)
 	// Common returns a struct with fields common to all backends
 	Common() *CommonProcess
@@ -114,6 +121,8 @@ type BreakpointManipulation interface {
 // CommonProcess contains fields used by this package, common to all
 // implementations of the Process interface.
 type CommonProcess struct {
+	ExePath string
+
 	allGCache     []*G
 	fncallEnabled bool
 

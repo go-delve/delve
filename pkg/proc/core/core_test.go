@@ -173,7 +173,7 @@ func withCoreFile(t *testing.T, name, args string) *Process {
 	}
 	corePath := cores[0]
 
-	p, err := OpenCore(corePath, fix.Path, []string{})
+	p, _, _, err := OpenCore(corePath, fix.Path)
 	if err != nil {
 		t.Errorf("OpenCore(%q) failed: %v", corePath, err)
 		pat, err := ioutil.ReadFile("/proc/sys/kernel/core_pattern")
@@ -380,7 +380,7 @@ func TestMinidump(t *testing.T) {
 	fix := test.BuildFixture("sleep", buildFlags)
 	mdmpPath := procdump(t, fix.Path)
 
-	p, err := OpenCore(mdmpPath, fix.Path, []string{})
+	p, _, _, err := OpenCore(mdmpPath, fix.Path)
 	if err != nil {
 		t.Fatalf("OpenCore: %v", err)
 	}

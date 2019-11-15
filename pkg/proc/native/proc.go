@@ -12,7 +12,7 @@ import (
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	bi *proc.BinaryInfo
+	t proc.Process
 
 	pid int // Process Pid
 
@@ -56,15 +56,18 @@ func New(pid int) *Process {
 		os:             new(OSProcessDetails),
 		ptraceChan:     make(chan func()),
 		ptraceDoneChan: make(chan interface{}),
-		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
 	}
 	go dbp.handlePtraceFuncs()
 	return dbp
 }
 
+func (dbp *Process) SetTarget(p proc.Process) {
+	dbp.t = p
+}
+
 // BinInfo will return the binary info struct associated with this process.
 func (dbp *Process) BinInfo() *proc.BinaryInfo {
-	return dbp.bi
+	return dbp.t.BinInfo()
 }
 
 // Recorded always returns false for the native proc backend.
@@ -103,7 +106,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		if err != nil {
 			return err
 		}
-		dbp.bi.Close()
+		dbp.BinInfo().Close()
 		return nil
 	}
 	// Clean up any breakpoints we've set.
@@ -208,9 +211,9 @@ func (dbp *Process) CheckAndClearManualStopRequest() bool {
 }
 
 func (dbp *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
-	f, l, fn := dbp.bi.PCToLine(uint64(addr))
+	f, l, fn := dbp.BinInfo().PCToLine(uint64(addr))
 
-	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
+	originalData := make([]byte, dbp.BinInfo().Arch.BreakpointSize())
 	_, err := dbp.currentThread.ReadMemory(originalData, uintptr(addr))
 	if err != nil {
 		return "", 0, nil, nil, err
@@ -340,7 +343,7 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 func (dbp *Process) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, bool) {
 	if adjustPC {
 		// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
-		if bp, ok := dbp.breakpoints.M[pc-uint64(dbp.bi.Arch.BreakpointSize())]; ok {
+		if bp, ok := dbp.breakpoints.M[pc-uint64(dbp.BinInfo().Arch.BreakpointSize())]; ok {
 			return bp, true
 		}
 	}
@@ -351,16 +354,21 @@ func (dbp *Process) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, 
 	return nil, false
 }
 
-// initialize will ensure that all relevant information is loaded
+// Initialize will ensure that all relevant information is loaded
 // so the process is ready to be debugged.
-func (dbp *Process) initialize(path string, debugInfoDirs []string) error {
+func (dbp *Process) Initialize() error {
 	if err := initialize(dbp); err != nil {
 		return err
 	}
+	dbp.Common().ExePath = findExePath(dbp.Common().ExePath, dbp.Pid())
 	if err := dbp.updateThreadList(); err != nil {
 		return err
 	}
-	return proc.PostInitializationSetup(dbp, path, debugInfoDirs, dbp.writeBreakpoint)
+	return proc.PostInitializationSetup(dbp, dbp.writeBreakpoint)
+}
+
+func (dbp *Process) ExecutablePath() string {
+	return dbp.Common().ExePath
 }
 
 // SetSelectedGoroutine will set internally the goroutine that should be
@@ -407,11 +415,11 @@ func (dbp *Process) postExit() {
 	dbp.exited = true
 	close(dbp.ptraceChan)
 	close(dbp.ptraceDoneChan)
-	dbp.bi.Close()
+	dbp.BinInfo().Close()
 }
 
 func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
-	_, err := thread.WriteMemory(uintptr(addr), dbp.bi.Arch.BreakpointInstruction())
+	_, err := thread.WriteMemory(uintptr(addr), dbp.BinInfo().Arch.BreakpointInstruction())
 	return err
 }
 

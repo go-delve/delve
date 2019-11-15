@@ -12,12 +12,12 @@ import (
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
 
 // Launch returns ErrNativeBackendDisabled.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
 // Attach returns ErrNativeBackendDisabled.
-func Attach(pid int, _ []string) (*Process, error) {
+func Attach(pid int) (*Process, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
@@ -31,7 +31,7 @@ type OSSpecificDetails struct{}
 // OSProcessDetails holds Darwin specific information.
 type OSProcessDetails struct{}
 
-func findExecutable(path string, pid int) string {
+func findExePath(path string, pid int) string {
 	panic(ErrNativeBackendDisabled)
 }
 
