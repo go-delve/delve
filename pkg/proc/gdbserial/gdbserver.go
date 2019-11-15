@@ -101,7 +101,8 @@ var ErrDirChange = errors.New("direction change with internal breakpoints")
 // Process implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
 type Process struct {
-	bi   *proc.BinaryInfo
+	t proc.Process
+
 	conn gdbConn
 
 	threads           map[int]*Thread
@@ -179,7 +180,6 @@ func New(process *os.Process) *Process {
 			log:                 logger,
 		},
 		threads:        make(map[int]*Thread),
-		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
 		breakpoints:    proc.NewBreakpointMap(),
 		gcmdok:         true,
 		threadStopInfo: true,
@@ -198,8 +198,14 @@ func New(process *os.Process) *Process {
 	return p
 }
 
+// TODO(refactor) REMOVE BEFORE MERGE
+func (p *Process) SetTarget(pp proc.Process) {
+	p.t = pp
+}
+
+// TODO(refactor) REMOVE BEFORE MERGE
 // Listen waits for a connection from the stub.
-func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string) error {
+func (p *Process) Listen(listener net.Listener, path string, pid int) error {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -213,7 +219,7 @@ func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoD
 		if conn == nil {
 			return errors.New("could not connect")
 		}
-		return p.Connect(conn, path, pid, debugInfoDirs)
+		return p.Connect(conn, path, pid)
 	case status := <-p.waitChan:
 		listener.Close()
 		return fmt.Errorf("stub exited while waiting for connection: %v", status)
@@ -221,11 +227,11 @@ func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoD
 }
 
 // Dial attempts to connect to the stub.
-func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string) error {
+func (p *Process) Dial(addr string, path string, pid int) error {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
-			return p.Connect(conn, path, pid, debugInfoDirs)
+			return p.Connect(conn, path, pid)
 		}
 		select {
 		case status := <-p.waitChan:
@@ -242,7 +248,7 @@ func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string) error {
+func (p *Process) Connect(conn net.Conn, path string, pid int) error {
 	p.conn.conn = conn
 	p.conn.pid = pid
 	err := p.conn.handshake()
@@ -263,23 +269,6 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []s
 		}
 	}
 
-	if err := p.initialize(path, debugInfoDirs); err != nil {
-		return err
-	}
-
-	// None of the stubs we support returns the value of fs_base or gs_base
-	// along with the registers, therefore we have to resort to executing a MOV
-	// instruction on the inferior to find out where the G struct of a given
-	// thread is located.
-	// Here we try to allocate some memory on the inferior which we will use to
-	// store the MOV instruction.
-	// If the stub doesn't support memory allocation reloadRegisters will
-	// overwrite some existing memory to store the MOV.
-	if addr, err := p.conn.allocMemory(256); err == nil {
-		if _, err := p.conn.writeMemory(uintptr(addr), p.loadGInstr()); err == nil {
-			p.loadGInstrAddr = addr
-		}
-	}
 	return nil
 }
 
@@ -320,7 +309,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*Process, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 	switch runtime.GOOS {
 	case "windows":
 		return nil, ErrUnsupportedOS
@@ -398,11 +387,12 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 	p := New(proc.Process)
 	p.conn.isDebugserver = isDebugserver
+	p.common.ExePath = cmd[0]
 
 	if listener != nil {
-		err = p.Listen(listener, cmd[0], 0, debugInfoDirs)
+		err = p.Listen(listener, cmd[0], 0)
 	} else {
-		err = p.Dial(port, cmd[0], 0, debugInfoDirs)
+		err = p.Dial(port, cmd[0], 0)
 	}
 	if err != nil {
 		return nil, err
@@ -415,7 +405,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 // Path is path to the target's executable, path only needs to be specified
 // for some stubs that do not provide an automated way of determining it
 // (for example debugserver).
-func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) {
+func LLDBAttach(pid int, path string) (*Process, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -450,11 +440,12 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) 
 
 	p := New(process.Process)
 	p.conn.isDebugserver = isDebugserver
+	p.common.ExePath = path
 
 	if listener != nil {
-		err = p.Listen(listener, path, pid, debugInfoDirs)
+		err = p.Listen(listener, path, pid)
 	} else {
-		err = p.Dial(port, path, pid, debugInfoDirs)
+		err = p.Dial(port, path, pid)
 	}
 	if err != nil {
 		return nil, err
@@ -475,11 +466,12 @@ func (p *Process) EntryPoint() (uint64, error) {
 	return entryPoint, nil
 }
 
-// initialize uses qProcessInfo to load the inferior's PID and
+// Initialize uses qProcessInfo to load the inferior's PID and
 // executable path. This command is not supported by all stubs and not all
 // stubs will report both the PID and executable path.
-func (p *Process) initialize(path string, debugInfoDirs []string) error {
+func (p *Process) Initialize() error {
 	var err error
+	path := p.common.ExePath
 	if path == "" {
 		// If we are attaching to a running process and the user didn't specify
 		// the executable file manually we must ask the stub for it.
@@ -513,10 +505,12 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 		}
 	}
 
+	p.common.ExePath = path
+
 	err = p.updateThreadList(&threadUpdater{p: p})
 	if err != nil {
 		p.conn.conn.Close()
-		p.bi.Close()
+		p.BinInfo().Close()
 		return err
 	}
 
@@ -524,14 +518,29 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 		p.conn.pid, _, err = queryProcessInfo(p, 0)
 		if err != nil && !isProtocolErrorUnsupported(err) {
 			p.conn.conn.Close()
-			p.bi.Close()
+			p.BinInfo().Close()
 			return err
 		}
 	}
-	if err = proc.PostInitializationSetup(p, path, debugInfoDirs, p.writeBreakpoint); err != nil {
+	if err = proc.PostInitializationSetup(p, p.writeBreakpoint); err != nil {
 		p.conn.conn.Close()
 		return err
 	}
+
+	// None of the stubs we support returns the value of fs_base or gs_base
+	// along with the registers, therefore we have to resort to executing a MOV
+	// instruction on the inferior to find out where the G struct of a given
+	// thread is located.
+	// Here we try to allocate some memory on the inferior which we will use to
+	// store the MOV instruction.
+	// If the stub doesn't support memory allocation reloadRegisters will
+	// overwrite some existing memory to store the MOV.
+	if addr, err := p.conn.allocMemory(256); err == nil {
+		if _, err := p.conn.writeMemory(uintptr(addr), p.loadGInstr()); err == nil {
+			p.loadGInstrAddr = addr
+		}
+	}
+
 	return nil
 }
 
@@ -549,7 +558,7 @@ func queryProcessInfo(p *Process, pid int) (int, string, error) {
 
 // BinInfo returns information on the binary.
 func (p *Process) BinInfo() *proc.BinaryInfo {
-	return p.bi
+	return p.t.BinInfo()
 }
 
 // Recorded returns whether or not we are debugging
@@ -561,6 +570,10 @@ func (p *Process) Recorded() (bool, string) {
 // Pid returns the process ID.
 func (p *Process) Pid() int {
 	return int(p.conn.pid)
+}
+
+func (p *Process) ExecutablePath() string {
+	return p.Common().ExePath
 }
 
 // Valid returns true if we are not detached
@@ -874,7 +887,7 @@ func (p *Process) Detach(kill bool) error {
 	if p.onDetach != nil {
 		p.onDetach()
 	}
-	return p.bi.Close()
+	return p.BinInfo().Close()
 }
 
 // Restart will restart the process from the given position.
@@ -1040,7 +1053,7 @@ func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 }
 
 func (p *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
-	f, l, fn := p.bi.PCToLine(uint64(addr))
+	f, l, fn := p.BinInfo().PCToLine(uint64(addr))
 
 	if err := p.conn.setBreakpoint(addr); err != nil {
 		return "", 0, nil, nil, err
@@ -1238,7 +1251,7 @@ func (t *Thread) Location() (*proc.Location, error) {
 		return nil, err
 	}
 	pc := regs.PC()
-	f, l, fn := t.p.bi.PCToLine(pc)
+	f, l, fn := t.p.BinInfo().PCToLine(pc)
 	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
@@ -1265,12 +1278,12 @@ func (t *Thread) RestoreRegisters(savedRegs proc.Registers) error {
 
 // Arch will return the CPU architecture for the target.
 func (t *Thread) Arch() proc.Arch {
-	return t.p.bi.Arch
+	return t.p.BinInfo().Arch
 }
 
 // BinInfo will return information on the binary being debugged.
 func (t *Thread) BinInfo() *proc.BinaryInfo {
-	return t.p.bi
+	return t.p.BinInfo()
 }
 
 // Common returns common information across Process implementations.
@@ -1329,7 +1342,7 @@ func (t *Thread) Blocked() bool {
 // inferior's thread.
 func (p *Process) loadGInstr() []byte {
 	var op []byte
-	switch p.bi.GOOS {
+	switch runtime.GOOS {
 	case "windows", "darwin", "freebsd":
 		// mov rcx, QWORD PTR gs:{uint32(off)}
 		op = []byte{0x65, 0x48, 0x8b, 0x0c, 0x25}
@@ -1341,7 +1354,7 @@ func (p *Process) loadGInstr() []byte {
 	}
 	buf := &bytes.Buffer{}
 	buf.Write(op)
-	binary.Write(buf, binary.LittleEndian, uint32(p.bi.GStructOffset()))
+	binary.Write(buf, binary.LittleEndian, uint32(p.BinInfo().GStructOffset()))
 	return buf.Bytes()
 }
 
@@ -1387,7 +1400,7 @@ func (t *Thread) reloadRegisters() error {
 		}
 	}
 
-	switch t.p.bi.GOOS {
+	switch runtime.GOOS {
 	case "linux":
 		if reg, hasFsBase := t.regs.regs[regnameFsBase]; hasFsBase {
 			t.regs.gaddr = 0

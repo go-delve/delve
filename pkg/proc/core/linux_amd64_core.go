@@ -37,34 +37,34 @@ const elfErrorBadMagicNumber = "bad magic number"
 // http://uhlo.blogspot.fr/2012/05/brief-look-into-core-dumps.html,
 // elf_core_dump in http://lxr.free-electrons.com/source/fs/binfmt_elf.c,
 // and, if absolutely desperate, readelf.c from the binutils source.
-func readLinuxAMD64Core(corePath, exePath string) (*Process, error) {
+func readLinuxAMD64Core(corePath, exePath string) (*Process, string, string, error) {
 	coreFile, err := elf.Open(corePath)
 	if err != nil {
 		if _, isfmterr := err.(*elf.FormatError); isfmterr && (strings.Contains(err.Error(), elfErrorBadMagicNumber) || strings.Contains(err.Error(), " at offset 0x0: too short")) {
 			// Go >=1.11 and <1.11 produce different errors when reading a non-elf file.
-			return nil, ErrUnrecognizedFormat
+			return nil, "", "", ErrUnrecognizedFormat
 		}
-		return nil, err
+		return nil, "", "", err
 	}
 	exe, err := os.Open(exePath)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 	exeELF, err := elf.NewFile(exe)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 
 	if coreFile.Type != elf.ET_CORE {
-		return nil, fmt.Errorf("%v is not a core file", coreFile)
+		return nil, "", "", fmt.Errorf("%v is not a core file", coreFile)
 	}
 	if exeELF.Type != elf.ET_EXEC && exeELF.Type != elf.ET_DYN {
-		return nil, fmt.Errorf("%v is not an exe file", exeELF)
+		return nil, "", "", fmt.Errorf("%v is not an exe file", exeELF)
 	}
 
 	notes, err := readNotes(coreFile)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 	memory := buildMemory(coreFile, exeELF, exe, notes)
 	entryPoint := findEntryPoint(notes)
@@ -73,7 +73,6 @@ func readLinuxAMD64Core(corePath, exePath string) (*Process, error) {
 		mem:         memory,
 		Threads:     map[int]*Thread{},
 		entryPoint:  entryPoint,
-		bi:          proc.NewBinaryInfo("linux", "amd64"),
 		breakpoints: proc.NewBreakpointMap(),
 	}
 
@@ -95,7 +94,7 @@ func readLinuxAMD64Core(corePath, exePath string) (*Process, error) {
 			p.pid = int(note.Desc.(*LinuxPrPsInfo).Pid)
 		}
 	}
-	return p, nil
+	return p, "linux", "amd64", nil
 }
 
 type linuxAMD64Thread struct {

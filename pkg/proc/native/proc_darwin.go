@@ -37,7 +37,7 @@ type OSProcessDetails struct {
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	// check that the argument to Launch is an executable file
 	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
 		return nil, proc.ErrNotExecutable
@@ -55,6 +55,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 	if _, err := os.Stat(argv0Go); err != nil {
 		return nil, err
 	}
+	dbp.common.ExePath = argv0Go
 
 	argv0 := C.CString(argv0Go)
 	argvSlice := make([]*C.char, 0, len(cmd)+1)
@@ -131,7 +132,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 }
 
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*Process, error) {
+func Attach(pid int) (*Process, error) {
 	dbp := New(pid)
 
 	kret := C.acquire_mach_task(C.int(pid),
@@ -275,11 +276,11 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 	return thread, nil
 }
 
-func findExecutable(path string, pid int) string {
-	if path == "" {
-		path = C.GoString(C.find_executable(C.int(pid)))
+func findExePath(path string, pid int) string {
+	if path != "" {
+		return path
 	}
-	return path
+	return C.GoString(C.find_executable(C.int(pid)))
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {

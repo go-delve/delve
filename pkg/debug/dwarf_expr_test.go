@@ -17,6 +17,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
+	"github.com/sirupsen/logrus"
 )
 
 const defaultCFA = 0xc420051d00
@@ -27,7 +28,8 @@ func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) (*proc.BinaryInfo, 
 	dwdata, err := dwarf.New(abbrev, aranges, frame, info, line, pubnames, ranges, str)
 	assertNoError(err, t, "creating dwarf")
 
-	bi := proc.NewBinaryInfo("linux", "amd64")
+	bi := &proc.BinaryInfo{GOOS: "linux", Arch: proc.AMD64Arch("linux")}
+	bi.SetLogger(logrus.New().WithField("type", "bintest"))
 	bi.LoadImageFromData(dwdata, frame, line, loc)
 
 	return bi, dwdata

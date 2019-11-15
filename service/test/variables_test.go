@@ -10,10 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/proc/gdbserial"
-	"github.com/go-delve/delve/pkg/proc/native"
 	"github.com/go-delve/delve/service/api"
 
 	protest "github.com/go-delve/delve/pkg/proc/test"
@@ -116,22 +115,7 @@ func withTestProcessArgs(name string, t *testing.T, wd string, args []string, bu
 		buildFlags |= protest.BuildModePIE
 	}
 	fixture := protest.BuildFixture(name, buildFlags)
-	var p proc.Process
-	var err error
-	var tracedir string
-	switch testBackend {
-	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false, []string{})
-	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false, []string{})
-	case "rr":
-		protest.MustHaveRecordingAllowed(t)
-		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{})
-		t.Logf("replaying %q", tracedir)
-	default:
-		t.Fatalf("unknown backend %q", testBackend)
-	}
+	p, err := debug.Launch(append([]string{fixture.Path}, args...), wd, false, testBackend, []string{})
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}

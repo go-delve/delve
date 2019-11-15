@@ -149,6 +149,9 @@ func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error)
 
 // Process represents a core file.
 type Process struct {
+	// TODO(refactor) REMOVE BEFORE MERGE
+	t proc.Process
+
 	mem     proc.MemoryReader
 	Threads map[int]*Thread
 	pid     int
@@ -189,7 +192,7 @@ var (
 	ErrChangeRegisterCore = errors.New("can not change register values of core process")
 )
 
-type openFn func(string, string) (*Process, error)
+type openFn func(string, string) (*Process, string, string, error)
 
 var openFns = []openFn{readLinuxAMD64Core, readAMD64Minidump}
 
@@ -200,35 +203,41 @@ var ErrUnrecognizedFormat = errors.New("unrecognized core format")
 // OpenCore will open the core file and return a Process struct.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error) {
+func OpenCore(corePath, exePath string) (*Process, string, string, error) {
 	var p *Process
 	var err error
+	var os, arch string
 	for _, openFn := range openFns {
-		p, err = openFn(corePath, exePath)
+		p, os, arch, err = openFn(corePath, exePath)
 		if err != ErrUnrecognizedFormat {
 			break
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
+	p.Common().ExePath = exePath
 
-	if err := p.initialize(exePath, debugInfoDirs); err != nil {
-		return nil, err
-	}
-
-	return p, nil
+	return p, os, arch, nil
 }
 
-// initialize for core files doesn't do much
+// Initialize for core files doesn't do much
 // aside from call the post initialization setup.
-func (p *Process) initialize(path string, debugInfoDirs []string) error {
-	return proc.PostInitializationSetup(p, path, debugInfoDirs, p.writeBreakpoint)
+func (p *Process) Initialize() error {
+	return proc.PostInitializationSetup(p, p.writeBreakpoint)
+}
+
+func (p *Process) ExecutablePath() string {
+	return p.Common().ExePath
+}
+
+func (p *Process) SetTarget(pp proc.Process) {
+	p.t = pp
 }
 
 // BinInfo will return the binary info.
 func (p *Process) BinInfo() *proc.BinaryInfo {
-	return p.bi
+	return p.t.BinInfo()
 }
 
 // SetSelectedGoroutine will set internally the goroutine that should be

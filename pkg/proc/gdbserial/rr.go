@@ -54,7 +54,7 @@ func Record(cmd []string, wd string, quiet bool) (tracedir string, err error) {
 
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
-func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*Process, error) {
+func Replay(tracedir string, quiet, deleteOnDetach bool) (*Process, error) {
 	if err := checkRRAvailabe(); err != nil {
 		return nil, err
 	}
@@ -83,12 +83,13 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string)
 
 	p := New(rrcmd.Process)
 	p.tracedir = tracedir
+	p.common.ExePath = init.exe
 	if deleteOnDetach {
 		p.onDetach = func() {
 			safeRemoveAll(p.tracedir)
 		}
 	}
-	err = p.Dial(init.port, init.exe, 0, debugInfoDirs)
+	err = p.Dial(init.port, init.exe, 0)
 	if err != nil {
 		rrcmd.Process.Kill()
 		return nil, err
@@ -263,12 +264,12 @@ func splitQuotedFields(in string) []string {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string) (p *Process, tracedir string, err error) {
+func RecordAndReplay(cmd []string, wd string, quiet bool) (p *Process, tracedir string, err error) {
 	tracedir, err = Record(cmd, wd, quiet)
 	if tracedir == "" {
 		return nil, "", err
 	}
-	p, err = Replay(tracedir, quiet, true, debugInfoDirs)
+	p, err = Replay(tracedir, quiet, true)
 	return p, tracedir, err
 }
 

@@ -255,22 +255,21 @@ type ElfDynamicSection struct {
 }
 
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
-func NewBinaryInfo(goos, goarch string) *BinaryInfo {
-	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), logger: logflags.DebuggerLogger()}
+func NewBinaryInfo(path, goos, goarch string, entryPoint uint64, debugInfoDirs []string) (*BinaryInfo, error) {
+	bi := &BinaryInfo{
+		GOOS:              goos,
+		nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry),
+		logger:            logflags.DebuggerLogger(),
+	}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info).
 	switch goarch {
 	case "amd64":
-		r.Arch = AMD64Arch(goos)
+		bi.Arch = AMD64Arch(goos)
 	case "arm64":
-		r.Arch = ARM64Arch(goos)
+		bi.Arch = ARM64Arch(goos)
 	}
 
-	return r
-}
-
-// LoadBinaryInfo will load and store the information from the binary at 'path'.
-func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDirs []string) error {
 	fi, err := os.Stat(path)
 	if err == nil {
 		bi.lastModified = fi.ModTime()
@@ -278,10 +277,14 @@ func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDi
 
 	bi.debugInfoDirectories = debugInfoDirs
 
-	return bi.AddImage(path, entryPoint)
+	if err := bi.AddImage(path, entryPoint); err != nil {
+		return nil, err
+	}
+
+	return bi, nil
 }
 
-func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
+func parseBinarySections(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -294,6 +297,12 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 		return loadBinaryInfoMacho(bi, image, path, entryPoint, &wg)
 	}
 	return errors.New("unsupported operating system")
+}
+
+// SetLogger sets the internal logger to use for
+// the BinaryInfo object. Mostly useful for tests.
+func (bi *BinaryInfo) SetLogger(l *logrus.Entry) {
+	bi.logger = l
 }
 
 // GStructOffset returns the offset of the G
@@ -518,7 +527,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 	// add Image regardless of error so that we don't attempt to re-add it every time we stop
 	image.index = len(bi.Images)
 	bi.Images = append(bi.Images, image)
-	err := loadBinaryInfo(bi, image, path, addr)
+	err := parseBinarySections(bi, image, path, addr)
 	if err != nil {
 		bi.Images[len(bi.Images)-1].loadErr = err
 	}
