@@ -353,7 +353,6 @@ func (dbp *Process) detach(kill bool) error {
 	return PtraceDetach(dbp.pid)
 }
 
-// Used by PostInitializationSetup
 // EntryPoint will return the process entry point address, useful for debugging PIEs.
 func (dbp *Process) EntryPoint() (uint64, error) {
 	ep, err := C.get_entry_point(C.int(dbp.pid))

@@ -10,6 +10,9 @@ import (
 	"strconv"
 )
 
+// TODO(refactor) REMOVE BEFORE MERGE - this should be removed when execution logic is moved to target
+const UnrecoveredPanic = "unrecovered-panic"
+
 // ErrNotExecutable is returned after attempting to execute a non-executable file
 // to begin a debug session.
 var ErrNotExecutable = errors.New("not an executable file")
@@ -17,17 +20,6 @@ var ErrNotExecutable = errors.New("not an executable file")
 // ErrNotRecorded is returned when an action is requested that is
 // only possible on recorded (traced) programs.
 var ErrNotRecorded = errors.New("not a recording")
-
-const (
-	// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
-	UnrecoveredPanic = "unrecovered-panic"
-
-	// FatalThrow is the name given to the breakpoint triggered when the target process dies because of a fatal runtime error
-	FatalThrow = "runtime-fatal-throw"
-
-	unrecoveredPanicID = -1
-	fatalThrowID       = -2
-)
 
 // ErrProcessExited indicates that the process has exited and contains both
 // process id and exit status.
@@ -46,18 +38,6 @@ type ProcessDetachedError struct {
 
 func (pe ProcessDetachedError) Error() string {
 	return "detached from the process"
-}
-
-// PostInitializationSetup handles all of the initialization procedures
-// that must happen after Delve creates or attaches to a process.
-func PostInitializationSetup(p Process, writeBreakpoint WriteBreakpointFn) error {
-	g, _ := GetG(p.CurrentThread())
-	p.SetSelectedGoroutine(g)
-
-	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
-	createFatalThrowBreakpoint(p, writeBreakpoint)
-
-	return nil
 }
 
 // FindFileLocation returns the PC for a given file:line.
@@ -710,32 +690,6 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
 	s.PC = frames[0].lastpc
 	return s
-}
-
-// createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
-// This function is meant to be called by implementations of the Process interface.
-func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	panicpcs, err := FindFunctionLocation(p, "runtime.startpanic", 0)
-	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
-		panicpcs, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
-	}
-	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpcs[0], writeBreakpoint)
-		if err == nil {
-			bp.Name = UnrecoveredPanic
-			bp.Variables = []string{"runtime.curg._panic.arg"}
-		}
-	}
-}
-
-func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	fatalpcs, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
-	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpcs[0], writeBreakpoint)
-		if err == nil {
-			bp.Name = FatalThrow
-		}
-	}
 }
 
 // FirstPCAfterPrologue returns the address of the first

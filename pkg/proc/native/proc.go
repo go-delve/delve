@@ -210,7 +210,7 @@ func (dbp *Process) CheckAndClearManualStopRequest() bool {
 	return msr
 }
 
-func (dbp *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
+func (dbp *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := dbp.BinInfo().PCToLine(uint64(addr))
 
 	originalData := make([]byte, dbp.BinInfo().Arch.BreakpointSize())
@@ -228,7 +228,7 @@ func (dbp *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, [
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
 func (dbp *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return dbp.breakpoints.Set(addr, kind, cond, dbp.writeBreakpoint)
+	return dbp.breakpoints.Set(addr, kind, cond, dbp.WriteBreakpoint)
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
@@ -361,10 +361,7 @@ func (dbp *Process) Initialize() error {
 		return err
 	}
 	dbp.Common().ExePath = findExePath(dbp.Common().ExePath, dbp.Pid())
-	if err := dbp.updateThreadList(); err != nil {
-		return err
-	}
-	return proc.PostInitializationSetup(dbp, dbp.writeBreakpoint)
+	return dbp.updateThreadList()
 }
 
 func (dbp *Process) ExecutablePath() string {
