@@ -59,6 +59,13 @@ func (a *ARM64) BreakpointInstruction() []byte {
 	return arm64BreakInstruction
 }
 
+// BreakInstrMovesPC returns whether the
+// breakpoint instruction will change the value
+// of PC after being executed
+func (a *ARM64) BreakInstrMovesPC() bool {
+	return false
+}
+
 // BreakpointSize returns the size of the
 // breakpoint instruction on this architecture.
 func (a *ARM64) BreakpointSize() int {

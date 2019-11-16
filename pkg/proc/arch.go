@@ -11,6 +11,7 @@ type Arch interface {
 	PtrSize() int
 	MinInstructionLength() int
 	BreakpointInstruction() []byte
+	BreakInstrMovesPC() bool
 	BreakpointSize() int
 	DerefTLS() bool
 	FixFrameUnwindContext(*frame.FrameContext, uint64, *BinaryInfo) *frame.FrameContext
