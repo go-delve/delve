@@ -246,9 +246,6 @@ func TestClientServer_step(t *testing.T) {
 }
 
 func TestClientServer_stepout(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: -1})
@@ -807,7 +804,7 @@ func TestClientServer_SetVariable(t *testing.T) {
 
 func TestClientServer_FullStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+		t.Skip("arm64 do not support Stacktrace for now")
 	}
 	protest.AllowRecording(t)
 	withTestClient2("goroutinestackprog", t, func(c service.Client) {
@@ -883,7 +880,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 
 func TestIssue355(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+		t.Skip("arm64 do not support Stacktrace for now")
 	}
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
@@ -948,9 +945,6 @@ func TestIssue355(t *testing.T) {
 }
 
 func TestDisasm(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	// Tests that disassembling by PC, range, and current PC all yeld similar results
 	// Tests that disassembly by current PC will return a disassembly containing the instruction at PC
 	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
@@ -994,7 +988,7 @@ func TestDisasm(t *testing.T) {
 		// look for static call to afunction() on line 29
 		found := false
 		for i := range d3 {
-			if d3[i].Loc.Line == 29 && strings.HasPrefix(d3[i].Text, "call") && d3[i].DestLoc != nil && d3[i].DestLoc.Function != nil && d3[i].DestLoc.Function.Name() == "main.afunction" {
+			if d3[i].Loc.Line == 29 && (strings.HasPrefix(d3[i].Text, "call") || strings.HasPrefix(d3[i].Text, "CALL")) && d3[i].DestLoc != nil && d3[i].DestLoc.Function != nil && d3[i].DestLoc.Function.Name() == "main.afunction" {
 				found = true
 				break
 			}
@@ -1039,7 +1033,7 @@ func TestDisasm(t *testing.T) {
 				t.Fatal("Calling StepInstruction() repeatedly did not find the call instruction")
 			}
 
-			if strings.HasPrefix(curinstr.Text, "call") {
+			if strings.HasPrefix(curinstr.Text, "call") || strings.HasPrefix(curinstr.Text, "CALL") {
 				t.Logf("call: %v", curinstr)
 				if curinstr.DestLoc == nil || curinstr.DestLoc.Function == nil {
 					t.Fatalf("Call instruction does not have destination: %v", curinstr)
@@ -1261,8 +1255,8 @@ func TestClientServer_Issue528(t *testing.T) {
 }
 
 func TestClientServer_FpRegisters(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+	if runtime.GOARCH != "amd64" {
+		t.Skip("test is valid only on AMD64")
 	}
 	regtests := []struct{ name, value string }{
 		{"ST(0)", "0x3fffe666660000000000"},
@@ -1444,9 +1438,6 @@ func TestClientServer_collectBreakpointInfoError(t *testing.T) {
 }
 
 func TestClientServerConsistentExit(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	// This test is useful because it ensures that Next and Continue operations both
 	// exit with the same exit status and details when the target application terminates.
 	// Other program execution API calls should also behave in the same way.
@@ -1475,9 +1466,6 @@ func TestClientServerConsistentExit(t *testing.T) {
 }
 
 func TestClientServer_StepOutReturn(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		t.Skip("return variables aren't marked on 1.9 or earlier")
@@ -1581,7 +1569,7 @@ func mustHaveDebugCalls(t *testing.T, c service.Client) {
 
 func TestClientServerFunctionCall(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+		t.Skip("arm64 do not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
@@ -1615,7 +1603,7 @@ func TestClientServerFunctionCall(t *testing.T) {
 
 func TestClientServerFunctionCallBadPos(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+		t.Skip("arm64 do not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
@@ -1645,7 +1633,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 
 func TestClientServerFunctionCallPanic(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+		t.Skip("arm64 do not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
@@ -1674,7 +1662,7 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 
 func TestClientServerFunctionCallStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+		t.Skip("arm64 do not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
@@ -1748,9 +1736,6 @@ func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
 }
 
 func TestUnknownMethodCall(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	clientConn, _ := startServer("continuetestprog", t)
 	client := &brokenRPCClient{jsonrpc.NewClient(clientConn)}
 	client.call("SetApiVersion", api.SetAPIVersionIn{2}, &api.SetAPIVersionOut{})
