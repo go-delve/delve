@@ -119,9 +119,14 @@ func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 	if err != nil {
 		return err
 	}
+	if _, ok := t.Arch().(*proc.ARM64); ok {
+		adjustPC = false
+	}
 	if bp, ok := t.dbp.FindBreakpoint(pc, adjustPC); ok {
-		if err = t.SetPC(bp.Addr); err != nil {
-			return err
+		if adjustPC {
+			if err = t.SetPC(bp.Addr); err != nil {
+				return err
+			}
 		}
 		t.CurrentBreakpoint = bp.CheckCondition(t)
 		if t.CurrentBreakpoint.Breakpoint != nil && t.CurrentBreakpoint.Active {
