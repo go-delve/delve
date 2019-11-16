@@ -79,7 +79,7 @@ Use the flags -s, -r and -b to specify which tests to run. Specifying nothing is
 `,
 		Run: testCmd,
 	}
-	test.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", true, "Verbose tests")
+	test.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Verbose tests")
 	test.PersistentFlags().StringVarP(&TestSet, "test-set", "s", "", `Select the set of tests to run, one of either:
 	all		tests all packages
 	basic		tests proc, integration and terminal

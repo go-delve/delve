@@ -18,6 +18,9 @@ go:
 matrix:
   allow_failures:
     - go: tip
+  exclude:
+    - os: osx
+      arch: arm64
 
 before_install:
   - export GOFLAGS=-mod=vendor
