@@ -119,9 +119,18 @@ func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 	if err != nil {
 		return err
 	}
+
+	// If the breakpoint instruction does not change the value
+	// of PC after being executed we should look for breakpoints
+	// with bp.Addr == PC and there is no need to call SetPC
+	// after finding one.
+	adjustPC = adjustPC && t.Arch().BreakInstrMovesPC()
+
 	if bp, ok := t.dbp.FindBreakpoint(pc, adjustPC); ok {
-		if err = t.SetPC(bp.Addr); err != nil {
-			return err
+		if adjustPC {
+			if err = t.SetPC(bp.Addr); err != nil {
+				return err
+			}
 		}
 		t.CurrentBreakpoint = bp.CheckCondition(t)
 		if t.CurrentBreakpoint.Breakpoint != nil && t.CurrentBreakpoint.Active {
