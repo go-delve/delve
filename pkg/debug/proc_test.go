@@ -58,6 +58,9 @@ func withTestTarget(name string, t testing.TB, fn func(p proc.Process, fixture p
 }
 
 func withTestTargetArgs(name string, t testing.TB, wd string, args []string, buildFlags protest.BuildFlags, fn func(p proc.Process, fixture protest.Fixture)) {
+	if testBackend == "rr" {
+		protest.MustHaveRecordingAllowed(t)
+	}
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
@@ -3098,24 +3101,8 @@ func TestAttachStripped(t *testing.T) {
 		}
 	}
 
-	var p proc.Process
-	var err error
-
-	switch testBackend {
-	case "native":
-		p, err = native.Attach(cmd.Process.Pid)
-	case "lldb":
-		path := ""
-		if runtime.GOOS == "darwin" {
-			path = fixture.Path
-		}
-		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path)
-	default:
-		t.Fatalf("unknown backend %q", testBackend)
-	}
-
+	p, err := debug.Attach(cmd.Process.Pid, fixture.Path, testBackend, []string{})
 	t.Logf("error is %v", err)
-
 	if err == nil {
 		p.Detach(true)
 		t.Fatalf("expected error after attach, got nothing")

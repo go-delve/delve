@@ -255,7 +255,7 @@ func testFlags() []string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	testFlags := []string{"-count", "1", "-p", "1"}
+	testFlags := []string{"-count", "1", "-p", "1", "-v"}
 	if Verbose {
 		testFlags = append(testFlags, "-v")
 	}
@@ -369,7 +369,7 @@ func testSetToPackages(testSet string) []string {
 		return allPackages()
 
 	case "basic":
-		return []string{"github.com/go-delve/delve/pkg/proc", "github.com/go-delve/delve/service/test", "github.com/go-delve/delve/pkg/terminal"}
+		return []string{"github.com/go-delve/delve/pkg/debug", "github.com/go-delve/delve/service/test", "github.com/go-delve/delve/pkg/terminal"}
 
 	case "integration":
 		return []string{"github.com/go-delve/delve/service/test"}

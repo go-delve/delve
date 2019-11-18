@@ -100,6 +100,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 func Attach(pid int) (*Process, error) {
 	dbp := New(pid)
 	dbp.common = proc.NewCommonProcess(true)
+	dbp.Common().ExePath = findExePath(dbp.Common().ExePath, dbp.Pid())
 
 	var err error
 	dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })
