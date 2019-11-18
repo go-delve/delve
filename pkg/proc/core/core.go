@@ -302,7 +302,7 @@ func (t *Thread) Location() (*proc.Location, error) {
 		return nil, err
 	}
 	pc := regs.PC()
-	f, l, fn := t.p.bi.PCToLine(pc)
+	f, l, fn := t.BinInfo().PCToLine(pc)
 	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
@@ -331,12 +331,12 @@ func (t *Thread) RestoreRegisters(proc.Registers) error {
 
 // Arch returns the architecture the target is built for and executing on.
 func (t *Thread) Arch() proc.Arch {
-	return t.p.bi.Arch
+	return t.p.BinInfo().Arch
 }
 
 // BinInfo returns information about the binary.
 func (t *Thread) BinInfo() *proc.BinaryInfo {
-	return t.p.bi
+	return t.p.BinInfo()
 }
 
 // StepInstruction will only return an error for core files,
