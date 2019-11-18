@@ -2814,6 +2814,7 @@ func TestAttachDetach(t *testing.T) {
 			t.Fatal("fixture did not start")
 		}
 	}
+	defer cmd.Process.Kill()
 
 	p, err := debug.Attach(cmd.Process.Pid, fixture.Path, testBackend, []string{})
 	assertNoError(err, t, "Attach")
@@ -2835,7 +2836,6 @@ func TestAttachDetach(t *testing.T) {
 		t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
 	}
 
-	cmd.Process.Kill()
 }
 
 func TestVarSum(t *testing.T) {

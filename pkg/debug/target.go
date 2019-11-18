@@ -23,14 +23,7 @@ type Target struct {
 
 // New returns an initialized Target.
 func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, error) {
-	entry, err := p.EntryPoint()
-	if err != nil {
-		return nil, err
-	}
-	bi, err := proc.NewBinaryInfo(p.ExecutablePath(), os, arch, entry, debugInfoDirs)
-	if err != nil {
-		return nil, err
-	}
+	bi := proc.NewBinaryInfo(os, arch, debugInfoDirs)
 	t := &Target{
 		Process: p,
 		bi:      bi,
@@ -74,7 +67,12 @@ func Attach(pid int, path, backend string, debugInfoDirs []string) (*Target, err
 	if err != nil {
 		return nil, err
 	}
-	return New(p, runtime.GOOS, runtime.GOARCH, debugInfoDirs)
+	t, err := New(p, runtime.GOOS, runtime.GOARCH, debugInfoDirs)
+	if err != nil {
+		p.Detach(false)
+		return nil, err
+	}
+	return t, nil
 }
 
 // Launch will start a process with the given args and working directory using the
@@ -106,7 +104,12 @@ func Launch(processArgs []string, wd string, foreground bool, backend string, de
 	if err != nil {
 		return nil, err
 	}
-	return New(p, runtime.GOOS, runtime.GOARCH, debugInfoDirs)
+	t, err := New(p, runtime.GOOS, runtime.GOARCH, debugInfoDirs)
+	if err != nil {
+		p.Detach(true)
+		return nil, err
+	}
+	return t, nil
 }
 
 // OpenCoreOrRecording takes a path and opens either an RR recording or a core file
@@ -154,9 +157,18 @@ func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error)
 // as well as setting the default goroutine and creating some initial breakpoints
 // that are set by default to catch when the process crashes or panics.
 func (t *Target) Initialize() error {
+	entry, err := t.Process.EntryPoint()
+	if err != nil {
+		return err
+	}
+	if err := t.bi.AddImage(t.Process.ExecutablePath(), entry); err != nil {
+		return err
+	}
+
 	if err := t.Process.Initialize(); err != nil {
 		return err
 	}
+
 	g, _ := proc.GetG(t.CurrentThread())
 	t.SetSelectedGoroutine(g)
 

@@ -158,7 +158,6 @@ type Process struct {
 
 	entryPoint uint64
 
-	bi                *proc.BinaryInfo
 	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G

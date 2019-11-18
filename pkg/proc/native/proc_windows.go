@@ -114,9 +114,9 @@ func initialize(dbp *Process) error {
 }
 
 // findExePath searches for process pid, and returns its executable path.
-func findExePath(path string, pid int) string {
+func findExePath(path string, pid int) (string, error) {
 	if path != "" {
-		return path
+		return path, nil
 	}
 	// Original code suggested different approach (see below).
 	// Maybe it could be useful in the future.
@@ -126,7 +126,7 @@ func findExePath(path string, pid int) string {
 
 	p, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
 	if err != nil {
-		return ""
+		return "", err
 	}
 	defer syscall.CloseHandle(p)
 
@@ -140,12 +140,13 @@ func findExePath(path string, pid int) string {
 			n *= 2
 			// but stop if it gets too big
 			if n > 10000 {
-				return ""
+				return "", err
 			}
 		case nil:
-			return syscall.UTF16ToString(buf[:n])
+			path := syscall.UTF16ToString(buf[:n])
+			return path, nil
 		default:
-			return ""
+			return "", err
 		}
 	}
 }
@@ -153,12 +154,19 @@ func findExePath(path string, pid int) string {
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*Process, error) {
 	// TODO: Probably should have SeDebugPrivilege before starting here.
-	err := _DebugActiveProcess(uint32(pid))
+	var err error
+	dbp := New(pid)
+	dbp.execPtraceFunc(func() {
+		err = _DebugActiveProcess(uint32(pid))
+	})
 	if err != nil {
 		return nil, err
 	}
-	dbp := New(pid)
-	dbp.common.ExePath = findExePath("", pid)
+	path, err := findExePath("", pid)
+	if err != nil {
+		return nil, err
+	}
+	dbp.Common().ExePath = path
 	return dbp, nil
 }
 
@@ -220,10 +228,6 @@ func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, susp
 		}
 	}
 	return thread, nil
-}
-
-func findExecutable(path string, pid int) string {
-	return path
 }
 
 type waitForDebugEventFlags int

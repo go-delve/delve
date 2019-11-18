@@ -203,7 +203,6 @@ func (p *Process) SetTarget(pp proc.Process) {
 	p.t = pp
 }
 
-// TODO(refactor) REMOVE BEFORE MERGE
 // Listen waits for a connection from the stub.
 func (p *Process) Listen(listener net.Listener, path string, pid int) error {
 	acceptChan := make(chan net.Conn)
@@ -387,7 +386,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool) (*Process, error) {
 
 	p := New(proc.Process)
 	p.conn.isDebugserver = isDebugserver
-	p.common.ExePath = cmd[0]
+	p.Common().ExePath = cmd[0]
 
 	if listener != nil {
 		err = p.Listen(listener, cmd[0], 0)
@@ -440,7 +439,7 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 
 	p := New(process.Process)
 	p.conn.isDebugserver = isDebugserver
-	p.common.ExePath = path
+	p.Common().ExePath = path
 
 	if listener != nil {
 		err = p.Listen(listener, path, pid)
@@ -471,7 +470,7 @@ func (p *Process) EntryPoint() (uint64, error) {
 // stubs will report both the PID and executable path.
 func (p *Process) Initialize() error {
 	var err error
-	path := p.common.ExePath
+	path := p.Common().ExePath
 	if path == "" {
 		// If we are attaching to a running process and the user didn't specify
 		// the executable file manually we must ask the stub for it.
@@ -505,7 +504,7 @@ func (p *Process) Initialize() error {
 		}
 	}
 
-	p.common.ExePath = path
+	p.Common().ExePath = path
 
 	err = p.updateThreadList(&threadUpdater{p: p})
 	if err != nil {
