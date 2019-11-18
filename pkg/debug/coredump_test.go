@@ -1,0 +1,325 @@
+package debug_test
+
+import (
+	"fmt"
+	"go/constant"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/go-delve/delve/pkg/debug"
+	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/test"
+)
+
+func withCoreFile(t *testing.T, name, args string) *debug.Target {
+	// This is all very fragile and won't work on hosts with non-default core patterns.
+	// Might be better to check in the binary and core?
+	tempDir, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	test.PathsToRemove = append(test.PathsToRemove, tempDir)
+	var buildFlags test.BuildFlags
+	if buildMode == "pie" {
+		buildFlags = test.BuildModePIE
+	}
+	fix := test.BuildFixture(name, buildFlags)
+	bashCmd := fmt.Sprintf("cd %v && ulimit -c unlimited && GOTRACEBACK=crash %v %s", tempDir, fix.Path, args)
+	exec.Command("bash", "-c", bashCmd).Run()
+	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
+	switch {
+	case err != nil || len(cores) > 1:
+		t.Fatalf("Got %v, wanted one file named core* in %v", cores, tempDir)
+	case len(cores) == 0:
+		t.Skipf("core file was not produced, could not run test")
+		return nil
+	}
+	corePath := cores[0]
+
+	p, err := debug.OpenCoreOrRecording("core", corePath, fix.Path, []string{})
+	if err != nil {
+		t.Errorf("OpenCore(%q) failed: %v", corePath, err)
+		pat, err := ioutil.ReadFile("/proc/sys/kernel/core_pattern")
+		t.Errorf("read core_pattern: %q, %v", pat, err)
+		apport, err := ioutil.ReadFile("/var/log/apport.log")
+		t.Errorf("read apport log: %q, %v", apport, err)
+		t.Fatalf("previous errors")
+	}
+	return p
+}
+
+func TestCore(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return
+	}
+	p := withCoreFile(t, "panic", "")
+
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	if err != nil || len(gs) == 0 {
+		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
+	}
+
+	var panicking *proc.G
+	var panickingStack []proc.Stackframe
+	for _, g := range gs {
+		t.Logf("Goroutine %d", g.ID)
+		stack, err := g.Stacktrace(10, 0)
+		if err != nil {
+			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
+		}
+		for _, frame := range stack {
+			fnname := ""
+			if frame.Call.Fn != nil {
+				fnname = frame.Call.Fn.Name
+			}
+			t.Logf("\tframe %s:%d in %s %#x (systemstack: %v)", frame.Call.File, frame.Call.Line, fnname, frame.Call.PC, frame.SystemStack)
+			if frame.Current.Fn != nil && strings.Contains(frame.Current.Fn.Name, "panic") {
+				panicking = g
+				panickingStack = stack
+			}
+		}
+	}
+	if panicking == nil {
+		t.Fatalf("Didn't find a call to panic in goroutine stacks: %v", gs)
+	}
+
+	var mainFrame *proc.Stackframe
+	// Walk backward, because the current function seems to be main.main
+	// in the actual call to panic().
+	for i := len(panickingStack) - 1; i >= 0; i-- {
+		if panickingStack[i].Current.Fn != nil && panickingStack[i].Current.Fn.Name == "main.main" {
+			mainFrame = &panickingStack[i]
+		}
+	}
+	if mainFrame == nil {
+		t.Fatalf("Couldn't find main in stack %v", panickingStack)
+	}
+	msg, err := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame).EvalVariable("msg", proc.LoadConfig{MaxStringLen: 64})
+	if err != nil {
+		t.Fatalf("Couldn't EvalVariable(msg, ...): %v", err)
+	}
+	if constant.StringVal(msg.Value) != "BOOM!" {
+		t.Errorf("main.msg = %q, want %q", msg.Value, "BOOM!")
+	}
+
+	regs, err := p.CurrentThread().Registers(true)
+	if err != nil {
+		t.Fatalf("Couldn't get current thread registers: %v", err)
+	}
+	regslice := regs.Slice(true)
+	for _, reg := range regslice {
+		t.Logf("%s = %s", reg.Name, reg.Value)
+	}
+}
+
+func TestCoreFpRegisters(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return
+	}
+	// in go1.10 the crash is executed on a different thread and registers are
+	// no longer available in the core dump.
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+		t.Skip("not supported in go1.10 and later")
+	}
+
+	p := withCoreFile(t, "fputest/", "panic")
+
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	if err != nil || len(gs) == 0 {
+		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
+	}
+
+	var regs proc.Registers
+	for _, thread := range p.ThreadList() {
+		frames, err := proc.ThreadStacktrace(thread, 10)
+		if err != nil {
+			t.Errorf("ThreadStacktrace for %x = %v", thread.ThreadID(), err)
+			continue
+		}
+		for i := range frames {
+			if frames[i].Current.Fn == nil {
+				continue
+			}
+			if frames[i].Current.Fn.Name == "main.main" {
+				regs, err = thread.Registers(true)
+				if err != nil {
+					t.Fatalf("Could not get registers for thread %x, %v", thread.ThreadID(), err)
+				}
+				break
+			}
+		}
+		if regs != nil {
+			break
+		}
+	}
+
+	regtests := []struct{ name, value string }{
+		{"ST(0)", "0x3fffe666660000000000"},
+		{"ST(1)", "0x3fffd9999a0000000000"},
+		{"ST(2)", "0x3fffcccccd0000000000"},
+		{"ST(3)", "0x3fffc000000000000000"},
+		{"ST(4)", "0x3fffb333333333333000"},
+		{"ST(5)", "0x3fffa666666666666800"},
+		{"ST(6)", "0x3fff9999999999999800"},
+		{"ST(7)", "0x3fff8cccccccccccd000"},
+		// Unlike TestClientServer_FpRegisters in service/test/integration2_test
+		// we can not test the value of XMM0, it probably has been reused by
+		// something between the panic and the time we get the core dump.
+		{"XMM9", "0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM10", "0x3fe666663fd9999a3fcccccd3fc00000"},
+		{"XMM3", "0x3ff199999999999a3ff3333333333333"},
+		{"XMM4", "0x3ff4cccccccccccd3ff6666666666666"},
+		{"XMM5", "0x3fcccccd3fc000003fe666663fd9999a"},
+		{"XMM6", "0x4004cccccccccccc4003333333333334"},
+		{"XMM7", "0x40026666666666664002666666666666"},
+		{"XMM8", "0x4059999a404ccccd4059999a404ccccd"},
+	}
+
+	for _, reg := range regs.Slice(true) {
+		t.Logf("%s = %s", reg.Name, reg.Value)
+	}
+
+	for _, regtest := range regtests {
+		found := false
+		for _, reg := range regs.Slice(true) {
+			if reg.Name == regtest.name {
+				found = true
+				if !strings.HasPrefix(reg.Value, regtest.value) {
+					t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, reg.Value)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("register %s not found: %v", regtest.name, regs)
+		}
+	}
+}
+
+func TestCoreWithEmptyString(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return
+	}
+	p := withCoreFile(t, "coreemptystring", "")
+
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	assertNoError(err, t, "GoroutinesInfo")
+
+	var mainFrame *proc.Stackframe
+mainSearch:
+	for _, g := range gs {
+		stack, err := g.Stacktrace(10, 0)
+		assertNoError(err, t, "Stacktrace()")
+		for _, frame := range stack {
+			if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.main" {
+				mainFrame = &frame
+				break mainSearch
+			}
+		}
+	}
+
+	if mainFrame == nil {
+		t.Fatal("could not find main.main frame")
+	}
+
+	scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame)
+	v1, err := scope.EvalVariable("t", proc.LoadConfig{true, 1, 64, 64, -1, 0})
+	assertNoError(err, t, "EvalVariable(t)")
+	assertNoError(v1.Unreadable, t, "unreadable variable 't'")
+	t.Logf("t = %#v\n", v1)
+	v2, err := scope.EvalVariable("s", proc.LoadConfig{true, 1, 64, 64, -1, 0})
+	assertNoError(err, t, "EvalVariable(s)")
+	assertNoError(v2.Unreadable, t, "unreadable variable 's'")
+	t.Logf("s = %#v\n", v2)
+}
+
+func TestMinidump(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("minidumps can only be produced on windows")
+	}
+	var buildFlags test.BuildFlags
+	if buildMode == "pie" {
+		buildFlags = test.BuildModePIE
+	}
+	fix := test.BuildFixture("sleep", buildFlags)
+	mdmpPath := procdump(t, fix.Path)
+
+	p, err := debug.OpenCoreOrRecording("core", mdmpPath, fix.Path, []string{})
+	if err != nil {
+		t.Fatalf("OpenCore: %v", err)
+	}
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	if err != nil || len(gs) == 0 {
+		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
+	}
+	t.Logf("%d goroutines", len(gs))
+	foundMain, foundTime := false, false
+	for _, g := range gs {
+		stack, err := g.Stacktrace(10, 0)
+		if err != nil {
+			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
+		}
+		t.Logf("goroutine %d", g.ID)
+		for _, frame := range stack {
+			name := "?"
+			if frame.Current.Fn != nil {
+				name = frame.Current.Fn.Name
+			}
+			t.Logf("\t%s:%d in %s %#x", frame.Current.File, frame.Current.Line, name, frame.Current.PC)
+			if frame.Current.Fn == nil {
+				continue
+			}
+			switch frame.Current.Fn.Name {
+			case "main.main":
+				foundMain = true
+			case "time.Sleep":
+				foundTime = true
+			}
+		}
+		if foundMain != foundTime {
+			t.Errorf("found main.main but no time.Sleep (or viceversa) %v %v", foundMain, foundTime)
+		}
+	}
+	if !foundMain {
+		t.Fatalf("could not find main goroutine")
+	}
+}
+
+func procdump(t *testing.T, exePath string) string {
+	exeDir := filepath.Dir(exePath)
+	cmd := exec.Command("procdump64", "-accepteula", "-ma", "-n", "1", "-s", "3", "-x", exeDir, exePath, "quit")
+	out, err := cmd.CombinedOutput() // procdump exits with non-zero status on success, so we have to ignore the error here
+	if !strings.Contains(string(out), "Dump count reached.") {
+		t.Fatalf("possible error running procdump64, output: %q, error: %v", string(out), err)
+	}
+
+	dh, err := os.Open(exeDir)
+	if err != nil {
+		t.Fatalf("could not open executable file directory %q: %v", exeDir, err)
+	}
+	defer dh.Close()
+	fis, err := dh.Readdir(-1)
+	if err != nil {
+		t.Fatalf("could not read executable file directory %q: %v", exeDir, err)
+	}
+	t.Logf("looking for dump file")
+	exeName := filepath.Base(exePath)
+	for _, fi := range fis {
+		name := fi.Name()
+		t.Logf("\t%s", name)
+		if strings.HasPrefix(name, exeName) && strings.HasSuffix(name, ".dmp") {
+			mdmpPath := filepath.Join(exeDir, name)
+			test.PathsToRemove = append(test.PathsToRemove, mdmpPath)
+			return mdmpPath
+		}
+	}
+
+	t.Fatalf("could not find dump file")
+	return ""
+}
