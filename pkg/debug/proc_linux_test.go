@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/go-delve/delve/pkg/proc/native"
+	"github.com/go-delve/delve/pkg/debug"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -14,7 +14,7 @@ func TestLoadingExternalDebugInfo(t *testing.T) {
 	fixture := protest.BuildFixture("locationsprog", 0)
 	defer os.Remove(fixture.Path)
 	stripAndCopyDebugInfo(fixture, t)
-	p, err := native.Launch(append([]string{fixture.Path}, ""), "", false, []string{filepath.Dir(fixture.Path)})
+	p, err := debug.Launch(append([]string{fixture.Path}, ""), "", false, "native", []string{filepath.Dir(fixture.Path)})
 	if err != nil {
 		t.Fatal(err)
 	}

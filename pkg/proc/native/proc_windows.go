@@ -157,9 +157,8 @@ func Attach(pid int) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	exepath := findExePath("", pid)
 	dbp := New(pid)
-	dbp.common.ExePath = exepath
+	dbp.common.ExePath = findExePath("", pid)
 	return dbp, nil
 }
 

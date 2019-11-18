@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -23,18 +23,17 @@ func TestMain(m *testing.M) {
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
-func withTestRecording(name string, t testing.TB, fn func(p *gdbserial.Process, fixture protest.Fixture)) {
+func withTestRecording(name string, t testing.TB, fn func(p proc.Process, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(name, 0)
 	protest.MustHaveRecordingAllowed(t)
 	if path, _ := exec.LookPath("rr"); path == "" {
 		t.Skip("test skipped, rr not found")
 	}
 	t.Log("recording")
-	p, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true)
+	p, err := debug.Launch([]string{fixture.Path}, ".", true, "rr", []string{})
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
-	t.Logf("replaying %q", tracedir)
 
 	defer func() {
 		p.Detach(true)
@@ -71,7 +70,7 @@ func setFunctionBreakpoint(p proc.Process, t *testing.T, fname string) *proc.Bre
 
 func TestRestartAfterExit(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("testnextprog", t, func(p *gdbserial.Process, fixture protest.Fixture) {
+	withTestRecording("testnextprog", t, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(proc.Continue(p), t, "Continue")
 		loc, err := p.CurrentThread().Location()
@@ -98,7 +97,7 @@ func TestRestartAfterExit(t *testing.T) {
 
 func TestRestartDuringStop(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("testnextprog", t, func(p *gdbserial.Process, fixture protest.Fixture) {
+	withTestRecording("testnextprog", t, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(proc.Continue(p), t, "Continue")
 		loc, err := p.CurrentThread().Location()
@@ -139,7 +138,7 @@ func setFileBreakpoint(p proc.Process, t *testing.T, fixture protest.Fixture, li
 
 func TestReverseBreakpointCounts(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("bpcountstest", t, func(p *gdbserial.Process, fixture protest.Fixture) {
+	withTestRecording("bpcountstest", t, func(p proc.Process, fixture protest.Fixture) {
 		endbp := setFileBreakpoint(p, t, fixture, 28)
 		assertNoError(proc.Continue(p), t, "Continue()")
 		loc, _ := p.CurrentThread().Location()
@@ -183,7 +182,7 @@ func TestReverseBreakpointCounts(t *testing.T) {
 	})
 }
 
-func getPosition(p *gdbserial.Process, t *testing.T) (when string, loc *proc.Location) {
+func getPosition(p proc.Process, t *testing.T) (when string, loc *proc.Location) {
 	var err error
 	when, err = p.When()
 	assertNoError(err, t, "When")
@@ -194,7 +193,7 @@ func getPosition(p *gdbserial.Process, t *testing.T) (when string, loc *proc.Loc
 
 func TestCheckpoints(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("continuetestprog", t, func(p *gdbserial.Process, fixture protest.Fixture) {
+	withTestRecording("continuetestprog", t, func(p proc.Process, fixture protest.Fixture) {
 		// Continues until start of main.main, record output of 'when'
 		bp := setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(proc.Continue(p), t, "Continue")
@@ -278,7 +277,7 @@ func TestCheckpoints(t *testing.T) {
 func TestIssue1376(t *testing.T) {
 	// Backward Continue should terminate when it encounters the start of the process.
 	protest.AllowRecording(t)
-	withTestRecording("continuetestprog", t, func(p *gdbserial.Process, fixture protest.Fixture) {
+	withTestRecording("continuetestprog", t, func(p proc.Process, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(proc.Continue(p), t, "Continue (forward)")
 		_, err := p.ClearBreakpoint(bp.Addr)

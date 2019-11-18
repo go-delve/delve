@@ -111,6 +111,9 @@ func withTestProcess(name string, t *testing.T, fn func(p proc.Process, fixture 
 }
 
 func withTestProcessArgs(name string, t *testing.T, wd string, args []string, buildFlags protest.BuildFlags, fn func(p proc.Process, fixture protest.Fixture)) {
+	if testBackend == "rr" {
+		protest.MustHaveRecordingAllowed(t)
+	}
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
