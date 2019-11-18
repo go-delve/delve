@@ -255,11 +255,12 @@ type ElfDynamicSection struct {
 }
 
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
-func NewBinaryInfo(path, goos, goarch string, entryPoint uint64, debugInfoDirs []string) (*BinaryInfo, error) {
+func NewBinaryInfo(goos, goarch string, debugInfoDirs []string) *BinaryInfo {
 	bi := &BinaryInfo{
-		GOOS:              goos,
-		nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry),
-		logger:            logflags.DebuggerLogger(),
+		GOOS:                 goos,
+		nameOfRuntimeType:    make(map[uintptr]nameOfRuntimeTypeEntry),
+		logger:               logflags.DebuggerLogger(),
+		debugInfoDirectories: debugInfoDirs,
 	}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info).
@@ -269,19 +270,7 @@ func NewBinaryInfo(path, goos, goarch string, entryPoint uint64, debugInfoDirs [
 	case "arm64":
 		bi.Arch = ARM64Arch(goos)
 	}
-
-	fi, err := os.Stat(path)
-	if err == nil {
-		bi.lastModified = fi.ModTime()
-	}
-
-	bi.debugInfoDirectories = debugInfoDirs
-
-	if err := bi.AddImage(path, entryPoint); err != nil {
-		return nil, err
-	}
-
-	return bi, nil
+	return bi
 }
 
 func parseBinarySections(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
@@ -512,6 +501,12 @@ func (image *Image) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.Re
 // the relocation offset) for all other images.
 // The first image added must be the executable file.
 func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
+	if bi.lastModified.IsZero() {
+		fi, err := os.Stat(path)
+		if err == nil {
+			bi.lastModified = fi.ModTime()
+		}
+	}
 	// Check if the image is already present.
 	if len(bi.Images) > 0 && !strings.HasPrefix(path, "/") {
 		return nil
