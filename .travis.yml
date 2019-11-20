@@ -16,6 +16,9 @@ go:
   - 1.11.x
 
 matrix:
+  exclude:
+    - os: osx
+      arch: arm64
   allow_failures:
     - go: tip
 
