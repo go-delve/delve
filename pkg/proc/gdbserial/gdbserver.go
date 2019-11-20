@@ -114,8 +114,6 @@ type Process struct {
 
 	manualStopRequested bool
 
-	breakpoints proc.BreakpointMap
-
 	gcmdok         bool   // true if the stub supports g and G commands
 	threadStopInfo bool   // true if the stub supports qThreadStopInfo
 	tracedir       string // if attached to rr the path to the trace directory
@@ -180,7 +178,6 @@ func New(process *os.Process) *Process {
 			log:                 logger,
 		},
 		threads:        make(map[int]*Thread),
-		breakpoints:    proc.NewBreakpointMap(),
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
@@ -918,7 +915,7 @@ func (p *Process) Restart(pos string) error {
 	}
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
-	for addr := range p.breakpoints.M {
+	for addr := range p.Breakpoints().M {
 		p.conn.setBreakpoint(addr)
 	}
 
@@ -1035,13 +1032,13 @@ func (p *Process) Direction(dir proc.Direction) error {
 
 // Breakpoints returns the list of breakpoints currently set.
 func (p *Process) Breakpoints() *proc.BreakpointMap {
-	return &p.breakpoints
+	return p.t.Breakpoints()
 }
 
 // FindBreakpoint returns the breakpoint at the given address.
 func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	// Directly use addr to lookup breakpoint.
-	if bp, ok := p.breakpoints.M[pc]; ok {
+	if bp, ok := p.Breakpoints().M[pc]; ok {
 		return bp, true
 	}
 	return nil, false
@@ -1062,7 +1059,7 @@ func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.
 	if p.exited {
 		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
-	return p.breakpoints.Set(addr, kind, cond, p.WriteBreakpoint)
+	return p.Breakpoints().Set(addr, kind, cond, p.WriteBreakpoint)
 }
 
 // ClearBreakpoint clears a breakpoint at the given address.
@@ -1070,14 +1067,14 @@ func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	if p.exited {
 		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
-	return p.breakpoints.Clear(addr, func(bp *proc.Breakpoint) error {
+	return p.Breakpoints().Clear(addr, func(bp *proc.Breakpoint) error {
 		return p.conn.clearBreakpoint(bp.Addr)
 	})
 }
 
 // ClearInternalBreakpoints clear all internal use breakpoints like those set by 'next'.
 func (p *Process) ClearInternalBreakpoints() error {
-	return p.breakpoints.ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
+	return p.Breakpoints().ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
 		if err := p.conn.clearBreakpoint(bp.Addr); err != nil {
 			return err
 		}
@@ -1288,7 +1285,7 @@ func (t *Thread) Common() *proc.CommonThread {
 
 func (t *Thread) stepInstruction(tu *threadUpdater) error {
 	pc := t.regs.PC()
-	if _, atbp := t.p.breakpoints.M[pc]; atbp {
+	if _, atbp := t.p.Breakpoints().M[pc]; atbp {
 		err := t.p.conn.clearBreakpoint(pc)
 		if err != nil {
 			return err
@@ -1471,7 +1468,7 @@ func (t *Thread) reloadGAtPC() error {
 	// around by clearing and re-setting the breakpoint in a specific sequence
 	// with the memory writes.
 	// Additionally all breakpoints in [pc, pc+len(movinstr)] need to be removed
-	for addr := range t.p.breakpoints.M {
+	for addr := range t.p.Breakpoints().M {
 		if addr >= pc && addr <= pc+uint64(len(movinstr)) {
 			err := t.p.conn.clearBreakpoint(addr)
 			if err != nil {

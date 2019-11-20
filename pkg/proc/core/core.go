@@ -158,7 +158,6 @@ type Process struct {
 
 	entryPoint uint64
 
-	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G
 	common            proc.CommonProcess
@@ -382,7 +381,7 @@ func (t *Thread) SetDX(uint64) error {
 
 // Breakpoints will return all breakpoints for the process.
 func (p *Process) Breakpoints() *proc.BreakpointMap {
-	return &p.breakpoints
+	return p.t.Breakpoints()
 }
 
 // ClearBreakpoint will always return an error as you cannot set or clear

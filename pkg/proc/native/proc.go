@@ -16,10 +16,6 @@ type Process struct {
 
 	pid int // Process Pid
 
-	// Breakpoint table, holds information on breakpoints.
-	// Maps instruction address to Breakpoint struct.
-	breakpoints proc.BreakpointMap
-
 	// List of threads mapped as such: pid -> *Thread
 	threads map[int]*Thread
 
@@ -51,7 +47,6 @@ func New(pid int) *Process {
 	dbp := &Process{
 		pid:            pid,
 		threads:        make(map[int]*Thread),
-		breakpoints:    proc.NewBreakpointMap(),
 		firstStart:     true,
 		os:             new(OSProcessDetails),
 		ptraceChan:     make(chan func()),
@@ -110,7 +105,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		return nil
 	}
 	// Clean up any breakpoints we've set.
-	for _, bp := range dbp.breakpoints.M {
+	for _, bp := range dbp.Breakpoints().M {
 		if bp != nil {
 			_, err := dbp.ClearBreakpoint(bp.Addr)
 			if err != nil {
@@ -183,7 +178,7 @@ func (dbp *Process) CurrentThread() proc.Thread {
 
 // Breakpoints returns a list of breakpoints currently set.
 func (dbp *Process) Breakpoints() *proc.BreakpointMap {
-	return &dbp.breakpoints
+	return dbp.t.Breakpoints()
 }
 
 // RequestManualStop sets the `halt` flag and
@@ -228,7 +223,7 @@ func (dbp *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, [
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
 func (dbp *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return dbp.breakpoints.Set(addr, kind, cond, dbp.WriteBreakpoint)
+	return dbp.Breakpoints().Set(addr, kind, cond, dbp.WriteBreakpoint)
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
@@ -236,7 +231,7 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	if dbp.exited {
 		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
-	return dbp.breakpoints.Clear(addr, dbp.currentThread.ClearBreakpoint)
+	return dbp.Breakpoints().Clear(addr, dbp.currentThread.ClearBreakpoint)
 }
 
 // Resume will continue the target until it stops.
@@ -343,12 +338,12 @@ func (dbp *Process) SwitchGoroutine(gid int) error {
 func (dbp *Process) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, bool) {
 	if adjustPC {
 		// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
-		if bp, ok := dbp.breakpoints.M[pc-uint64(dbp.BinInfo().Arch.BreakpointSize())]; ok {
+		if bp, ok := dbp.Breakpoints().M[pc-uint64(dbp.BinInfo().Arch.BreakpointSize())]; ok {
 			return bp, true
 		}
 	}
 	// Directly use addr to lookup breakpoint.
-	if bp, ok := dbp.breakpoints.M[pc]; ok {
+	if bp, ok := dbp.Breakpoints().M[pc]; ok {
 		return bp, true
 	}
 	return nil, false
@@ -377,7 +372,7 @@ func (dbp *Process) SetSelectedGoroutine(g *proc.G) {
 // ClearInternalBreakpoints will clear all non-user set breakpoints. These
 // breakpoints are set for internal operations such as 'next'.
 func (dbp *Process) ClearInternalBreakpoints() error {
-	return dbp.breakpoints.ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
+	return dbp.Breakpoints().ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
 		if err := dbp.currentThread.ClearBreakpoint(bp); err != nil {
 			return err
 		}

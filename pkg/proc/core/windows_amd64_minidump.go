@@ -29,10 +29,9 @@ func readAMD64Minidump(minidumpPath, exePath string) (*Process, string, string, 
 	}
 
 	p := &Process{
-		mem:         memory,
-		Threads:     map[int]*Thread{},
-		breakpoints: proc.NewBreakpointMap(),
-		pid:         int(mdmp.Pid),
+		mem:     memory,
+		Threads: map[int]*Thread{},
+		pid:     int(mdmp.Pid),
 	}
 
 	for i := range mdmp.Threads {

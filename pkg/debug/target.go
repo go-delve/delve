@@ -19,14 +19,19 @@ type Target struct {
 	proc.Process
 
 	bi *proc.BinaryInfo
+
+	// Breakpoint table, holds information on breakpoints.
+	// Maps instruction address to Breakpoint struct.
+	breakpoints proc.BreakpointMap
 }
 
 // New returns an initialized Target.
 func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, error) {
 	bi := proc.NewBinaryInfo(os, arch, debugInfoDirs)
 	t := &Target{
-		Process: p,
-		bi:      bi,
+		Process:     p,
+		bi:          bi,
+		breakpoints: proc.NewBreakpointMap(),
 	}
 	// TODO(refactor) REMOVE BEFORE MERGE
 	p.SetTarget(t)
@@ -258,7 +263,7 @@ func (t *Target) CurrentThread() proc.Thread { return t.Process.CurrentThread() 
 
 // Breakpoints returns a list of the active breakpoints that have been set in the
 // underlying process.
-func (t *Target) Breakpoints() *proc.BreakpointMap { return t.Process.Breakpoints() }
+func (t *Target) Breakpoints() *proc.BreakpointMap { return &t.breakpoints }
 
 // RequestManualStop will attempt to stop the underlying process. Once stopped
 // you may inspect process state.

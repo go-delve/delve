@@ -70,10 +70,9 @@ func readLinuxAMD64Core(corePath, exePath string) (*Process, string, string, err
 	entryPoint := findEntryPoint(notes)
 
 	p := &Process{
-		mem:         memory,
-		Threads:     map[int]*Thread{},
-		entryPoint:  entryPoint,
-		breakpoints: proc.NewBreakpointMap(),
+		mem:        memory,
+		Threads:    map[int]*Thread{},
+		entryPoint: entryPoint,
 	}
 
 	var lastThread *linuxAMD64Thread
