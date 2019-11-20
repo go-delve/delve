@@ -43,7 +43,7 @@ type OSProcessDetails struct {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	var (
 		process *exec.Cmd
 		err     error
@@ -61,6 +61,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 
 	dbp := New(0)
 	dbp.common = proc.NewCommonProcess(true)
+	dbp.Common().ExePath = cmd[0]
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
@@ -85,16 +86,13 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	if err = dbp.initialize(cmd[0], debugInfoDirs); err != nil {
-		return nil, err
-	}
 	return dbp, nil
 }
 
 // Attach to an existing process with the given PID. Once attached, if
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Attach(pid int, debugInfoDirs []string) (*Process, error) {
+func Attach(pid int) (*Process, error) {
 	dbp := New(pid)
 	dbp.common = proc.NewCommonProcess(true)
 
@@ -108,11 +106,7 @@ func Attach(pid int, debugInfoDirs []string) (*Process, error) {
 		return nil, err
 	}
 
-	err = dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
-	if err != nil {
-		dbp.Detach(false)
-		return nil, err
-	}
+	dbp.Common().ExePath = findExecutable("", dbp.pid)
 	return dbp, nil
 }
 
