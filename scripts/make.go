@@ -300,7 +300,6 @@ func testCmd(cmd *cobra.Command, args []string) {
 		if runtime.GOOS == "linux" {
 			fmt.Println("\nTesting PIE buildmode, default backend")
 			testCmdIntl("basic", "", "default", "pie")
-			testCmdIntl("core", "", "default", "pie")
 		}
 		if runtime.GOOS == "linux" && inpath("rr") {
 			fmt.Println("\nTesting PIE buildmode, RR backend")
