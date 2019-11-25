@@ -1474,7 +1474,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsImportedUnit(entry *dwarf.Entry, ctxt *lo
 func (bi *BinaryInfo) addAbstractSubprogram(entry *dwarf.Entry, ctxt *loadDebugInfoMapsContext, reader *reader.Reader, image *Image, cu *compileUnit) {
 	name, ok := subprogramEntryName(entry, cu)
 	if !ok {
-		bi.logger.Errorf("Error reading debug_info: abstract subprogram without name at %#x", entry.Offset)
+		bi.logger.Warnf("reading debug_info: abstract subprogram without name at %#x", entry.Offset)
 		if entry.Children {
 			reader.SkipChildren()
 		}
@@ -1499,7 +1499,7 @@ func (bi *BinaryInfo) addAbstractSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 func (bi *BinaryInfo) addConcreteInlinedSubprogram(entry *dwarf.Entry, originOffset dwarf.Offset, ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit) {
 	lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
 	if !ok {
-		bi.logger.Errorf("Error reading debug_info: concrete inlined subprogram without address range at %#x", entry.Offset)
+		bi.logger.Warnf("reading debug_info: concrete inlined subprogram without address range at %#x", entry.Offset)
 		if entry.Children {
 			reader.SkipChildren()
 		}
@@ -1508,7 +1508,7 @@ func (bi *BinaryInfo) addConcreteInlinedSubprogram(entry *dwarf.Entry, originOff
 
 	originIdx, ok := ctxt.abstractOriginTable[originOffset]
 	if !ok {
-		bi.logger.Errorf("Error reading debug_info: could not find abstract origin of concrete inlined subprogram at %#x (origin offset %#x)", entry.Offset, originOffset)
+		bi.logger.Warnf("reading debug_info: could not find abstract origin of concrete inlined subprogram at %#x (origin offset %#x)", entry.Offset, originOffset)
 		if entry.Children {
 			reader.SkipChildren()
 		}
@@ -1530,7 +1530,7 @@ func (bi *BinaryInfo) addConcreteInlinedSubprogram(entry *dwarf.Entry, originOff
 func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit) {
 	lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
 	if !ok {
-		bi.logger.Errorf("Error reading debug_info: concrete subprogram without address range at %#x", entry.Offset)
+		bi.logger.Warnf("reading debug_info: concrete subprogram without address range at %#x", entry.Offset)
 		if entry.Children {
 			reader.SkipChildren()
 		}
@@ -1539,7 +1539,7 @@ func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 
 	name, ok := subprogramEntryName(entry, cu)
 	if !ok {
-		bi.logger.Errorf("Error reading debug_info: concrete subprogram without name at %#x", entry.Offset)
+		bi.logger.Warnf("reading debug_info: concrete subprogram without name at %#x", entry.Offset)
 		if entry.Children {
 			reader.SkipChildren()
 		}
@@ -1594,14 +1594,14 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 		case dwarf.TagInlinedSubroutine:
 			originOffset, ok := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
 			if !ok {
-				bi.logger.Errorf("Error reading debug_info: inlined call without origin offset at %#x", entry.Offset)
+				bi.logger.Warnf("reading debug_info: inlined call without origin offset at %#x", entry.Offset)
 				reader.SkipChildren()
 				continue
 			}
 
 			originIdx, ok := ctxt.abstractOriginTable[originOffset]
 			if !ok {
-				bi.logger.Errorf("Error reading debug_info: could not find abstract origin (%#x) of inlined call at %#x", originOffset, entry.Offset)
+				bi.logger.Warnf("reading debug_info: could not find abstract origin (%#x) of inlined call at %#x", originOffset, entry.Offset)
 				reader.SkipChildren()
 				continue
 			}
@@ -1609,7 +1609,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 
 			lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)
 			if !ok {
-				bi.logger.Errorf("Error reading debug_info: inlined call without address range at %#x", entry.Offset)
+				bi.logger.Warnf("reading debug_info: inlined call without address range at %#x", entry.Offset)
 				reader.SkipChildren()
 				continue
 			}
@@ -1617,17 +1617,17 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 			callfileidx, ok1 := entry.Val(dwarf.AttrCallFile).(int64)
 			callline, ok2 := entry.Val(dwarf.AttrCallLine).(int64)
 			if !ok1 || !ok2 {
-				bi.logger.Errorf("Error reading debug_info: inlined call without CallFile/CallLine at %#x", entry.Offset)
+				bi.logger.Warnf("reading debug_info: inlined call without CallFile/CallLine at %#x", entry.Offset)
 				reader.SkipChildren()
 				continue
 			}
 			if cu.lineInfo == nil {
-				bi.logger.Errorf("Error reading debug_info: inlined call on a compilation unit without debug_line section at %#x", entry.Offset)
+				bi.logger.Warnf("reading debug_info: inlined call on a compilation unit without debug_line section at %#x", entry.Offset)
 				reader.SkipChildren()
 				continue
 			}
 			if int(callfileidx-1) >= len(cu.lineInfo.FileNames) {
-				bi.logger.Errorf("Error reading debug_info: CallFile (%d) of inlined call does not exist in compile unit file table at %#x", callfileidx, entry.Offset)
+				bi.logger.Warnf("reading debug_info: CallFile (%d) of inlined call does not exist in compile unit file table at %#x", callfileidx, entry.Offset)
 				reader.SkipChildren()
 				continue
 			}
