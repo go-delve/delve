@@ -155,6 +155,12 @@ func (s *ServerImpl) Run() error {
 					panic(err)
 				}
 			}
+
+			if !canAccept(s.listener.Addr(), c.RemoteAddr()) {
+				c.Close()
+				continue
+			}
+
 			go s.serveJSONCodec(c)
 			if !s.config.AcceptMulti {
 				break
