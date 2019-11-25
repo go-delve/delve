@@ -61,8 +61,16 @@ type BinaryInfo struct {
 	closer         io.Closer
 	sepDebugCloser io.Closer
 
-	// Maps package names to package paths, needed to lookup types inside DWARF info
-	packageMap map[string]string
+	// PackageMap maps package names to package paths, needed to lookup types inside DWARF info.
+	// On Go1.12 this mapping is determined by using the last element of a package path, for example:
+	//   github.com/go-delve/delve
+	// will map to 'delve' because it ends in '/delve'.
+	// Starting with Go1.13 debug_info will contain a special attribute
+	// (godwarf.AttrGoPackageName) containing the canonical package name for
+	// each package.
+	// If multiple packages have the same name the map entry will have more
+	// than one item in the slice.
+	PackageMap map[string][]string
 
 	frameEntries frame.FrameDescriptionEntries
 
@@ -1253,7 +1261,7 @@ func (bi *BinaryInfo) registerTypeToPackageMap(entry *dwarf.Entry) {
 		return
 	}
 	name := path[slash+1:]
-	bi.packageMap[name] = path
+	bi.PackageMap[name] = []string{path}
 }
 
 func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg *sync.WaitGroup, cont func()) {
@@ -1267,8 +1275,8 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 	if bi.consts == nil {
 		bi.consts = make(map[dwarfRef]*constantType)
 	}
-	if bi.packageMap == nil {
-		bi.packageMap = make(map[string]string)
+	if bi.PackageMap == nil {
+		bi.PackageMap = make(map[string][]string)
 	}
 	if bi.inlinedCallLines == nil {
 		bi.inlinedCallLines = make(map[fileLine][]uint64)
@@ -1329,6 +1337,10 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 					cu.producer = cu.producer[:semicolon]
 				}
 			}
+			gopkg, _ := entry.Val(godwarf.AttrGoPackageName).(string)
+			if cu.isgo && gopkg != "" {
+				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.Replace(cu.name, "\\", "/", -1)))
+			}
 			bi.compileUnits = append(bi.compileUnits, cu)
 			if entry.Children {
 				bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
@@ -1370,6 +1382,8 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 
 // loadDebugInfoMapsCompileUnit loads entry from a single compile unit.
 func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContext, image *Image, reader *reader.Reader, cu *compileUnit) {
+	hasAttrGoPkgName := goversion.ProducerAfterOrEqual(cu.producer, 1, 13)
+
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			image.setLoadError("error reading debug_info: %v", err)
@@ -1391,7 +1405,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 					bi.types[name] = dwarfRef{image.index, entry.Offset}
 				}
 			}
-			if cu != nil && cu.isgo {
+			if cu != nil && cu.isgo && !hasAttrGoPkgName {
 				bi.registerTypeToPackageMap(entry)
 			}
 			image.registerRuntimeTypeToDIE(entry, ctxt.ardr)
@@ -1684,8 +1698,13 @@ func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 	case *ast.SelectorExpr:
 		switch x := e.X.(type) {
 		case *ast.Ident:
-			if path, ok := bi.packageMap[x.Name]; ok {
-				x.Name = path
+			if len(bi.PackageMap[x.Name]) > 0 {
+				// There's no particular reason to expect the first entry to be the
+				// correct one if the package name is ambiguous, but trying all possible
+				// expansions of all types mentioned in the expression is complicated
+				// and, besides type assertions, users can always specify the type they
+				// want exactly, using a string.
+				x.Name = bi.PackageMap[x.Name][0]
 			}
 		default:
 			bi.expandPackagesInType(e.X)
@@ -1695,6 +1714,17 @@ func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 	default:
 		// nothing to do
 	}
+}
+
+// escapePackagePath returns pkg with '.' replaced with '%2e' (in all
+// elements of the path except the first one) like Go does in variable and
+// type names.
+func escapePackagePath(pkg string) string {
+	slash := strings.Index(pkg, "/")
+	if slash < 0 {
+		slash = 0
+	}
+	return pkg[:slash] + strings.Replace(pkg[slash:], ".", "%2e", -1)
 }
 
 // Looks up symbol (either functions or global variables) at address addr.

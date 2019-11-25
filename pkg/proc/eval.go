@@ -379,7 +379,21 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 	return vars, nil
 }
 
-func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
+func (scope *EvalScope) findGlobal(pkgName, varName string) (*Variable, error) {
+	for _, pkgPath := range scope.BinInfo.PackageMap[pkgName] {
+		v, err := scope.findGlobalInternal(pkgPath + "." + varName)
+		if err != nil || v != nil {
+			return v, err
+		}
+	}
+	v, err := scope.findGlobalInternal(pkgName + "." + varName)
+	if err != nil || v != nil {
+		return v, err
+	}
+	return nil, fmt.Errorf("could not find symbol value for %s.%s", pkgName, varName)
+}
+
+func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 	for _, pkgvar := range scope.BinInfo.packageVars {
 		if pkgvar.name == name || strings.HasSuffix(pkgvar.name, "/"+name) {
 			reader := pkgvar.cu.image.dwarfReader
@@ -426,7 +440,7 @@ func (scope *EvalScope) findGlobal(name string) (*Variable, error) {
 			}
 		}
 	}
-	return nil, fmt.Errorf("could not find symbol value for %s", name)
+	return nil, nil
 }
 
 // image returns the image containing the current function.
@@ -608,7 +622,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 				return scope.g.variable.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
 				return newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem), nil
-			} else if v, err := scope.findGlobal(maybePkg.Name + "." + node.Sel.Name); err == nil {
+			} else if v, err := scope.findGlobal(maybePkg.Name, node.Sel.Name); err == nil {
 				return v, nil
 			}
 		}
@@ -616,7 +630,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 		if maybePkg, ok := node.X.(*ast.BasicLit); ok && maybePkg.Kind == token.STRING {
 			pkgpath, err := strconv.Unquote(maybePkg.Value)
 			if err == nil {
-				if v, err := scope.findGlobal(pkgpath + "." + node.Sel.Name); err == nil {
+				if v, err := scope.findGlobal(pkgpath, node.Sel.Name); err == nil {
 					return v, nil
 				}
 			}
@@ -1013,7 +1027,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 
 	// if it's not a local variable then it could be a package variable w/o explicit package name
 	if scope.Fn != nil {
-		if v, err := scope.findGlobal(scope.Fn.PackageName() + "." + node.Name); err == nil {
+		if v, err := scope.findGlobal(scope.Fn.PackageName(), node.Name); err == nil {
 			v.Name = node.Name
 			return v, nil
 		}

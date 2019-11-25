@@ -216,7 +216,7 @@ func stripReceiverDecoration(in string) string {
 	return in[2 : len(in)-1]
 }
 
-func (spec *FuncLocationSpec) Match(sym proc.Function) bool {
+func (spec *FuncLocationSpec) Match(sym proc.Function, packageMap map[string][]string) bool {
 	if spec.BaseName != sym.BaseName() {
 		return false
 	}
@@ -231,15 +231,24 @@ func (spec *FuncLocationSpec) Match(sym proc.Function) bool {
 				return false
 			}
 		} else {
-			if !partialPathMatch(spec.PackageName, sym.PackageName()) {
+			if !packageMatch(spec.PackageName, sym.PackageName(), packageMap) {
 				return false
 			}
 		}
 	}
-	if spec.PackageOrReceiverName != "" && !partialPathMatch(spec.PackageOrReceiverName, sym.PackageName()) && spec.PackageOrReceiverName != recv {
+	if spec.PackageOrReceiverName != "" && !packageMatch(spec.PackageOrReceiverName, sym.PackageName(), packageMap) && spec.PackageOrReceiverName != recv {
 		return false
 	}
 	return true
+}
+
+func packageMatch(specPkg, symPkg string, packageMap map[string][]string) bool {
+	for _, pkg := range packageMap[specPkg] {
+		if partialPackageMatch(pkg, symPkg) {
+			return true
+		}
+	}
+	return partialPackageMatch(specPkg, symPkg)
 }
 
 func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
@@ -304,6 +313,10 @@ func partialPathMatch(expr, path string) bool {
 		expr = strings.ToLower(filepath.ToSlash(expr))
 		path = strings.ToLower(filepath.ToSlash(path))
 	}
+	return partialPackageMatch(expr, path)
+}
+
+func partialPackageMatch(expr, path string) bool {
 	if len(expr) < len(path)-1 {
 		return strings.HasSuffix(path, expr) && (path[len(path)-len(expr)-1] == '/')
 	} else {
@@ -347,7 +360,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	var candidateFuncs []string
 	if loc.FuncBase != nil {
 		for _, f := range d.target.BinInfo().Functions {
-			if !loc.FuncBase.Match(f) {
+			if !loc.FuncBase.Match(f, d.target.BinInfo().PackageMap) {
 				continue
 			}
 			if loc.Base == f.Name {

@@ -8,6 +8,7 @@ import (
 	pkg1 "go/ast"
 	pkg2 "net/http"
 
+	"github.com/go-delve/delve/_fixtures/internal/dir.io"
 	"github.com/go-delve/delve/_fixtures/internal/dir0/pkg"
 	"github.com/go-delve/delve/_fixtures/internal/dir0/renamedpackage"
 	dir1pkg "github.com/go-delve/delve/_fixtures/internal/dir1/pkg"
@@ -51,5 +52,5 @@ func main() {
 	m := t.Method(0)
 	fmt.Println(m.Type.In(0))
 	fmt.Println(m.Type.String())
-	fmt.Println(badexpr, req, amap, amap2, dir0someType, dir1someType, amap3, anarray, achan, aslice, afunc, astruct, astruct2, iface2iface, iface3, pkg.SomeVar, pkg.A, dir1pkg.A)
+	fmt.Println(badexpr, req, amap, amap2, dir0someType, dir1someType, amap3, anarray, achan, aslice, afunc, astruct, astruct2, iface2iface, iface3, pkg.SomeVar, pkg.A, dir1pkg.A, dirio.A, dirio.SomeFunction)
 }
