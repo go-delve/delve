@@ -162,6 +162,10 @@ func (t *Thread) ClearBreakpoint(bp *proc.Breakpoint) error {
 	return nil
 }
 
+func (t *Thread) ClearCurrentBreakpointState() {
+	t.CurrentBreakpoint.Clear()
+}
+
 // Registers obtains register values from the debugged process.
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return registers(t, floatingPoint)

@@ -18,6 +18,7 @@ type Process interface {
 	SetTarget(Process)
 	Initialize() error
 	WriteBreakpoint(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
+	ClearBreakpointFn(*Breakpoint) error
 
 	Info
 	ProcessManipulation

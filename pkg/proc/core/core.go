@@ -311,6 +311,10 @@ func (t *Thread) Breakpoint() proc.BreakpointState {
 	return proc.BreakpointState{}
 }
 
+func (t *Thread) ClearCurrentBreakpointState() {
+	// noop
+}
+
 // ThreadID returns the ID for this thread.
 func (t *Thread) ThreadID() int {
 	return int(t.th.pid())
@@ -388,6 +392,10 @@ func (p *Process) Breakpoints() *proc.BreakpointMap {
 // breakpoints on core files.
 func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	return nil, proc.NoBreakpointError{Addr: addr}
+}
+
+func (p *Process) ClearBreakpointFn(bp *proc.Breakpoint) error {
+	return proc.NoBreakpointError{Addr: bp.Addr}
 }
 
 // ClearInternalBreakpoints will always return nil and have no

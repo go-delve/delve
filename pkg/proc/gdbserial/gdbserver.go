@@ -652,7 +652,7 @@ func (p *Process) Resume() (proc.Thread, error) {
 
 	p.common.ClearAllGCache()
 	for _, th := range p.threads {
-		th.clearBreakpointState()
+		th.ClearCurrentBreakpointState()
 	}
 
 	p.setCtrlC(false)
@@ -772,7 +772,7 @@ func (p *Process) StepInstruction() error {
 	if p.exited {
 		return &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
-	thread.clearBreakpointState()
+	thread.ClearCurrentBreakpointState()
 	err := thread.StepInstruction()
 	if err != nil {
 		return err
@@ -892,7 +892,7 @@ func (p *Process) Restart(pos string) error {
 
 	p.common.ClearAllGCache()
 	for _, th := range p.threads {
-		th.clearBreakpointState()
+		th.ClearCurrentBreakpointState()
 	}
 
 	p.setCtrlC(false)
@@ -1056,35 +1056,21 @@ func (p *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []b
 
 // SetBreakpoint creates a new breakpoint.
 func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	return p.Breakpoints().Set(addr, kind, cond, p.WriteBreakpoint)
+	return p.t.SetBreakpoint(addr, kind, cond)
 }
 
 // ClearBreakpoint clears a breakpoint at the given address.
 func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	return p.Breakpoints().Clear(addr, func(bp *proc.Breakpoint) error {
-		return p.conn.clearBreakpoint(bp.Addr)
-	})
+	return p.t.ClearBreakpoint(addr)
+}
+
+func (p *Process) ClearBreakpointFn(bp *proc.Breakpoint) error {
+	return p.conn.clearBreakpoint(bp.Addr)
 }
 
 // ClearInternalBreakpoints clear all internal use breakpoints like those set by 'next'.
 func (p *Process) ClearInternalBreakpoints() error {
-	return p.Breakpoints().ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
-		if err := p.conn.clearBreakpoint(bp.Addr); err != nil {
-			return err
-		}
-		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint.Breakpoint == bp {
-				thread.clearBreakpointState()
-			}
-		}
-		return nil
-	})
+	return p.t.ClearInternalBreakpoints()
 }
 
 type threadUpdater struct {
@@ -1576,7 +1562,7 @@ func (t *Thread) reloadGAlloc() error {
 	return err
 }
 
-func (t *Thread) clearBreakpointState() {
+func (t *Thread) ClearCurrentBreakpointState() {
 	t.setbp = false
 	t.CurrentBreakpoint.Clear()
 }
@@ -1585,7 +1571,7 @@ func (t *Thread) clearBreakpointState() {
 func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 	// adjustPC is ignored, it is the stub's responsibiility to set the PC
 	// address correctly after hitting a breakpoint.
-	t.clearBreakpointState()
+	t.ClearCurrentBreakpointState()
 	regs, err := t.Registers(false)
 	if err != nil {
 		return err

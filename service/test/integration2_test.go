@@ -1410,7 +1410,7 @@ func TestClientServer_collectBreakpointInfoOnNext(t *testing.T) {
 			t.Fatalf("wrong line number %s:%d, expected %d", stateBefore.CurrentThread.File, stateBefore.CurrentThread.Line, 23)
 		}
 		if bi := stateBefore.CurrentThread.BreakpointInfo; bi == nil || len(bi.Variables) != 1 {
-			t.Fatalf("bad breakpoint info %v", bi)
+			t.Fatalf("bad breakpoint info after continue %v", bi)
 		}
 
 		stateAfter, err := c.Next()
@@ -1419,7 +1419,7 @@ func TestClientServer_collectBreakpointInfoOnNext(t *testing.T) {
 			t.Fatalf("wrong line number %s:%d, expected %d", stateAfter.CurrentThread.File, stateAfter.CurrentThread.Line, 24)
 		}
 		if bi := stateAfter.CurrentThread.BreakpointInfo; bi == nil || len(bi.Variables) != 1 {
-			t.Fatalf("bad breakpoint info %v", bi)
+			t.Fatalf("bad breakpoint info %v after next", bi)
 		}
 	})
 }

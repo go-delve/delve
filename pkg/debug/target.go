@@ -271,12 +271,18 @@ func (t *Target) RequestManualStop() error { return t.Process.RequestManualStop(
 
 // SetBreakpoint sets a breakpoint at the provided address.
 func (t *Target) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return t.Process.SetBreakpoint(addr, kind, cond)
+	if ok, err := t.Valid(); !ok {
+		return nil, err
+	}
+	return t.Breakpoints().Set(addr, kind, cond, t.Process.WriteBreakpoint)
 }
 
 // ClearBreakpoint clears a breakpoint at the provided address.
 func (t *Target) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	return t.Process.ClearBreakpoint(addr)
+	if ok, err := t.Valid(); !ok {
+		return nil, err
+	}
+	return t.Breakpoints().Clear(addr, t.Process.ClearBreakpointFn)
 }
 
 // StepInstruction will continue execution in the underlying process exactly 1 CPU instruction.
@@ -291,4 +297,16 @@ func (t *Target) SwitchThread(tid int) error { return t.Process.SwitchThread(tid
 func (t *Target) SwitchGoroutine(gid int) error { return t.Process.SwitchGoroutine(gid) }
 
 // ClearInternalBreakpoints will clear any non-user defined breakpoint.
-func (t *Target) ClearInternalBreakpoints() error { return t.Process.ClearInternalBreakpoints() }
+func (t *Target) ClearInternalBreakpoints() error {
+	return t.Breakpoints().ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
+		if _, err := t.ClearBreakpoint(bp.Addr); err != nil {
+			return err
+		}
+		for _, thread := range t.ThreadList() {
+			if b := thread.Breakpoint(); b.Breakpoint == bp {
+				thread.ClearCurrentBreakpointState()
+			}
+		}
+		return nil
+	})
+}
