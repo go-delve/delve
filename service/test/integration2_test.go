@@ -797,7 +797,7 @@ func TestClientServer_SetVariable(t *testing.T) {
 
 func TestClientServer_FullStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	protest.AllowRecording(t)
 	withTestClient2("goroutinestackprog", t, func(c service.Client) {
@@ -873,7 +873,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 
 func TestIssue355(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
@@ -1562,7 +1562,7 @@ func mustHaveDebugCalls(t *testing.T, c service.Client) {
 
 func TestClientServerFunctionCall(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FunctionCall for now")
+		t.Skip("arm64 does not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
@@ -1596,7 +1596,7 @@ func TestClientServerFunctionCall(t *testing.T) {
 
 func TestClientServerFunctionCallBadPos(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FunctionCall for now")
+		t.Skip("arm64 does not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
@@ -1626,7 +1626,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 
 func TestClientServerFunctionCallPanic(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FunctionCall for now")
+		t.Skip("arm64 does not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
@@ -1655,7 +1655,7 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 
 func TestClientServerFunctionCallStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FunctionCall for now")
+		t.Skip("arm64 does not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
