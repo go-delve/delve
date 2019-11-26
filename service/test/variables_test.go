@@ -1127,7 +1127,7 @@ type testCaseCallFunction struct {
 
 func TestCallFunction(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support CallFunction for now")
+		t.Skip("arm64 does not support CallFunction for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 

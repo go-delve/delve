@@ -34,7 +34,6 @@ func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
 			iov := sys.Iovec{Base: &sr.Fpregset[0], Len: uint64(len(sr.Fpregset))}
 			_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGSET, uintptr(t.ID), uintptr(elf.NT_FPREGSET), uintptr(unsafe.Pointer(&iov)), 0, 0)
 		}
-		//return
 	})
 	if restoreRegistersErr == syscall.Errno(0) {
 		restoreRegistersErr = nil

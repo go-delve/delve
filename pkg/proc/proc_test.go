@@ -824,7 +824,7 @@ func (l1 *loc) match(l2 proc.Stackframe) bool {
 
 func TestStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	stacks := [][]loc{
 		{{4, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
@@ -862,7 +862,7 @@ func TestStacktrace(t *testing.T) {
 
 func TestStacktrace2(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	withTestProcess("retstack", t, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
@@ -913,7 +913,7 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 
 func TestStacktraceGoroutine(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
@@ -1238,7 +1238,7 @@ func TestVariableEvaluation(t *testing.T) {
 
 func TestFrameEvaluation(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
@@ -1721,7 +1721,7 @@ func TestIssue384(t *testing.T) {
 
 func TestIssue332_Part1(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	// Next shouldn't step inside a function call
 	protest.AllowRecording(t)
@@ -1745,7 +1745,7 @@ func TestIssue332_Part1(t *testing.T) {
 
 func TestIssue332_Part2(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	// Step should skip a function's prologue
 	// In some parts of the prologue, for some functions, the FDE data is incorrect
@@ -1905,7 +1905,7 @@ func TestCmdLineArgs(t *testing.T) {
 
 func TestIssue462(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	// Stacktrace of Goroutine 0 fails with an error
 	if runtime.GOOS == "windows" {
@@ -1937,7 +1937,7 @@ func TestNextParked(t *testing.T) {
 		t.Skip("test is not valid on FreeBSD")
 	}
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p proc.Process, fixture protest.Fixture) {
@@ -1990,7 +1990,7 @@ func TestNextParked(t *testing.T) {
 
 func TestStepParked(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
@@ -2316,7 +2316,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 		t.Skip("test is not valid on FreeBSD")
 	}
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
@@ -2700,7 +2700,7 @@ func getg(goid int, gs []*proc.G) *proc.G {
 
 func TestStacktraceWithBarriers(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	// Go's Garbage Collector will insert stack barriers into stacks.
 	// This stack barrier is inserted by overwriting the return address for the
@@ -3373,7 +3373,7 @@ func TestCgoStacktrace(t *testing.T) {
 
 func TestCgoSources(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Cgo-debug for now")
+		t.Skip("arm64 does not support Cgo-debug for now")
 	}
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Parse(runtime.Version())
@@ -3401,7 +3401,7 @@ func TestCgoSources(t *testing.T) {
 
 func TestSystemstackStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	// check that we can follow a stack switch initiated by runtime.systemstack()
 	withTestProcess("panic", t, func(p proc.Process, fixture protest.Fixture) {
@@ -3422,7 +3422,7 @@ func TestSystemstackStacktrace(t *testing.T) {
 
 func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	// The bug being tested here manifests as follows:
 	// - set a breakpoint somewhere or interrupt the program with Ctrl-C
@@ -3458,7 +3458,7 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 
 func TestIssue1034(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace and Cgo-debug for now")
+		t.Skip("arm64 does not support Stacktrace and Cgo-debug for now")
 	}
 	// The external linker on macOS produces an abbrev for DW_TAG_subprogram
 	// without the "has children" flag, we should support this.
@@ -3478,7 +3478,7 @@ func TestIssue1034(t *testing.T) {
 
 func TestIssue1008(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace and Cgo-debug for now")
+		t.Skip("arm64 does not support Stacktrace and Cgo-debug for now")
 	}
 	// The external linker on macOS inserts "end of sequence" extended opcodes
 	// in debug_line. which we should support correctly.
@@ -3657,7 +3657,7 @@ func TestAllPCsForFileLines(t *testing.T) {
 
 func TestInlinedStacktraceAndVariables(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
@@ -4105,7 +4105,7 @@ func TestNextUnknownInstr(t *testing.T) {
 
 func TestReadDeferArgs(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	var tests = []struct {
 		frame, deferCall int
@@ -4151,7 +4151,7 @@ func TestReadDeferArgs(t *testing.T) {
 
 func TestIssue1374(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FunctionCall for now")
+		t.Skip("arm64 does not support FunctionCall for now")
 	}
 	// Continue did not work when stopped at a breakpoint immediately after calling CallFunction.
 	protest.MustSupportFunctionCalls(t, testBackend)
@@ -4373,7 +4373,7 @@ func TestCallConcurrent(t *testing.T) {
 		t.Skip("test is not valid on FreeBSD")
 	}
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FunctionCall for now")
+		t.Skip("arm64 does not support FunctionCall for now")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
@@ -4457,7 +4457,7 @@ func TestIssue1615(t *testing.T) {
 
 func TestCgoStacktrace2(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace and Cgo-debug for now")
+		t.Skip("arm64 does not support Stacktrace and Cgo-debug for now")
 	}
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture crashes go runtime on windows")

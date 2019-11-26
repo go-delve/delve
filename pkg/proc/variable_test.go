@@ -11,7 +11,7 @@ import (
 
 func TestGoroutineCreationLocation(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support GetStackInfo for now")
+		t.Skip("arm64 does not support GetStackInfo for now")
 	}
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {

@@ -283,7 +283,7 @@ func TestIssue411(t *testing.T) {
 
 func TestScopePrefix(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	const goroutinesLinePrefix = "  Goroutine "
 	const goroutinesCurLinePrefix = "* Goroutine "
@@ -847,7 +847,7 @@ func TestIssue1090(t *testing.T) {
 
 func TestPrintContextParkedGoroutine(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("break stacktraceme")
@@ -923,7 +923,7 @@ func TestOptimizationCheck(t *testing.T) {
 
 func TestTruncateStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support Stacktrace for now")
+		t.Skip("arm64 does not support Stacktrace for now")
 	}
 	withTestTerminal("stacktraceprog", t, func(term *FakeTerminal) {
 		term.MustExec("break main.stacktraceme")
@@ -943,7 +943,7 @@ func TestTruncateStacktrace(t *testing.T) {
 
 func TestIssue1493(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FpRegs for now")
+		t.Skip("arm64 does not support FpRegs for now")
 	}
 	// The 'regs' command without the '-a' option should only return
 	// general purpose registers.
@@ -966,7 +966,7 @@ func findStarFile(name string) string {
 
 func TestIssue1598(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 do not support FunctionCall for now")
+		t.Skip("arm64 does not support FunctionCall for now")
 	}
 	test.MustSupportFunctionCalls(t, testBackend)
 	withTestTerminal("issue1598", t, func(term *FakeTerminal) {
