@@ -118,6 +118,13 @@ func Attach(pid int, debugInfoDirs []string) (*Process, error) {
 		dbp.Detach(false)
 		return nil, err
 	}
+
+	// ElfUpdateSharedObjects can only be done after we initialize because it
+	// needs an initialized BinaryInfo object to work.
+	err = linutil.ElfUpdateSharedObjects(dbp)
+	if err != nil {
+		return nil, err
+	}
 	return dbp, nil
 }
 
