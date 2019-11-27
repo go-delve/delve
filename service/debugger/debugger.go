@@ -1305,7 +1305,7 @@ func (d *Debugger) ListDynamicLibraries() []api.Image {
 	r := make([]api.Image, 0, len(bi.Images)-1)
 	// skips the first image because it's the executable file
 	for i := range bi.Images[1:] {
-		r = append(r, api.ConvertImage(bi.Images[i]))
+		r = append(r, api.ConvertImage(bi.Images[i+1]))
 	}
 	return r
 }
