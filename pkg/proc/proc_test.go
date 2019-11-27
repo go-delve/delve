@@ -154,9 +154,6 @@ func TestExit(t *testing.T) {
 }
 
 func TestExitAfterContinue(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	protest.AllowRecording(t)
 	withTestProcess("continuetestprog", t, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.sayhi")
@@ -984,9 +981,6 @@ func TestStacktraceGoroutine(t *testing.T) {
 }
 
 func TestKill(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	if testBackend == "lldb" {
 		// k command presumably works but leaves the process around?
 		return
@@ -999,6 +993,10 @@ func TestKill(t *testing.T) {
 			t.Fatal("expected process to have exited")
 		}
 		if runtime.GOOS == "linux" {
+			if runtime.GOARCH == "arm64" {
+				//there is no any sync between signal sended(tracee handled) and open /proc/%d/. It may fail on arm64
+				return
+			}
 			_, err := os.Open(fmt.Sprintf("/proc/%d/", p.Pid()))
 			if err == nil {
 				t.Fatal("process has not exited", p.Pid())
