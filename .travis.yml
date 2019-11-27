@@ -18,4 +18,5 @@ matrix:
 before_install:
   - export GOFLAGS=-mod=vendor
   - if [ $TRAVIS_OS_NAME = "linux" ]; then sudo apt-get -qq update; sudo apt-get install -y dwz; echo "dwz version $(dwz --version)"; fi
-  
+  - if [ $TRAVIS_OS_NAME = "linux" -a $TRAVIS_CPU_ARCH = "amd64" ]; then sudo bash scripts/travis-ci-mozilla-rr-install.sh; fi
+
