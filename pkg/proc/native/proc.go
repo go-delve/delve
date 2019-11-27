@@ -106,14 +106,12 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		dbp.bi.Close()
 		return nil
 	}
-	if !kill {
-		// Clean up any breakpoints we've set.
-		for _, bp := range dbp.breakpoints.M {
-			if bp != nil {
-				_, err := dbp.ClearBreakpoint(bp.Addr)
-				if err != nil {
-					return err
-				}
+	// Clean up any breakpoints we've set.
+	for _, bp := range dbp.breakpoints.M {
+		if bp != nil {
+			_, err := dbp.ClearBreakpoint(bp.Addr)
+			if err != nil {
+				return err
 			}
 		}
 	}
