@@ -165,7 +165,7 @@ func setFunctionBreakpoint(p proc.Process, t testing.TB, fname string) *proc.Bre
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := proc.FindFunctionLocation(p, fname, 0)
+	addrs, err := p.BinInfo().FindFunctionLocation(p, fname, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -183,7 +183,7 @@ func setFileBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *p
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := proc.FindFileLocation(p, path, lineno)
+	addrs, err := p.BinInfo().FindFileLocation(p, path, lineno)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, path, lineno, err)
 	}
@@ -200,7 +200,7 @@ func setFileBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *p
 func findFunctionLocation(p proc.Process, t *testing.T, fnname string) uint64 {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
-	addrs, err := proc.FindFunctionLocation(p, fnname, 0)
+	addrs, err := p.BinInfo().FindFunctionLocation(p, fnname, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fnname, err)
 	}
@@ -213,7 +213,7 @@ func findFunctionLocation(p proc.Process, t *testing.T, fnname string) uint64 {
 func findFileLocation(p proc.Process, t *testing.T, file string, lineno int) uint64 {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
-	addrs, err := proc.FindFileLocation(p, file, lineno)
+	addrs, err := p.BinInfo().FindFileLocation(p, file, lineno)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, file, lineno, err)
 	}

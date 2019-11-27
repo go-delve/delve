@@ -259,7 +259,7 @@ func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr st
 	}
 	r := make([]api.Location, 0, len(matches))
 	for i := range matches {
-		addrs, _ := proc.FindFunctionLocation(d.target, matches[i], 0)
+		addrs, _ := d.target.BinInfo().FindFunctionLocation(d.target, matches[i], 0)
 		if len(addrs) > 0 {
 			r = append(r, addressesToLocation(addrs))
 		}
@@ -396,14 +396,14 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 		if loc.LineOffset < 0 {
 			return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
 		}
-		addrs, err = proc.FindFileLocation(d.target, candidateFiles[0], loc.LineOffset)
+		addrs, err = d.target.BinInfo().FindFileLocation(d.target, candidateFiles[0], loc.LineOffset)
 		if includeNonExecutableLines {
 			if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
 				return []api.Location{{File: candidateFiles[0], Line: loc.LineOffset}}, nil
 			}
 		}
 	} else { // len(candidateFuncs) == 1
-		addrs, err = proc.FindFunctionLocation(d.target, candidateFuncs[0], loc.LineOffset)
+		addrs, err = d.target.BinInfo().FindFunctionLocation(d.target, candidateFuncs[0], loc.LineOffset)
 	}
 
 	if err != nil {
@@ -430,7 +430,7 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
-	addrs, err := proc.FindFileLocation(d.target, file, line+loc.Offset)
+	addrs, err := d.target.BinInfo().FindFileLocation(d.target, file, line+loc.Offset)
 	if includeNonExecutableLines {
 		if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
 			return []api.Location{{File: file, Line: line + loc.Offset}}, nil
@@ -447,7 +447,7 @@ func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 	if fn == nil {
 		return nil, fmt.Errorf("could not determine current location")
 	}
-	addrs, err := proc.FindFileLocation(d.target, file, loc.Line)
+	addrs, err := d.target.BinInfo().FindFileLocation(d.target, file, loc.Line)
 	if includeNonExecutableLines {
 		if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
 			return []api.Location{{File: file, Line: loc.Line}}, nil

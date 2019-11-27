@@ -329,6 +329,66 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 	return f, ln, fn
 }
 
+// FindFunctionLocation finds address of a function's line
+// If lineOffset is passed FindFunctionLocation will return the address of that line
+func (bi *BinaryInfo) FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64, error) {
+	origfn := bi.LookupFunc[funcName]
+	if origfn == nil {
+		return nil, &ErrFunctionNotFound{funcName}
+	}
+
+	if lineOffset <= 0 {
+		r := make([]uint64, 0, len(origfn.InlinedCalls)+1)
+		if origfn.Entry > 0 {
+			// add concrete implementation of the function
+			pc, err := FirstPCAfterPrologue(p, origfn, false)
+			if err != nil {
+				return nil, err
+			}
+			r = append(r, pc)
+		}
+		// add inlined calls to the function
+		for _, call := range origfn.InlinedCalls {
+			r = append(r, call.LowPC)
+		}
+		if len(r) == 0 {
+			return nil, &ErrFunctionNotFound{funcName}
+		}
+		return r, nil
+	}
+	filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
+	return bi.LineToPC(filename, lineno+lineOffset)
+}
+
+// FindFileLocation returns the PC for a given file:line.
+// Assumes that `file` is normalized to lower case and '/' on Windows.
+func (bi *BinaryInfo) FindFileLocation(p Process, fileName string, lineno int) ([]uint64, error) {
+	pcs, err := bi.LineToPC(fileName, lineno)
+	if err != nil {
+		return nil, err
+	}
+	var fn *Function
+	for i := range pcs {
+		if fn == nil || pcs[i] < fn.Entry || pcs[i] >= fn.End {
+			fn = bi.PCToFunc(pcs[i])
+		}
+		if fn != nil && fn.Entry == pcs[i] {
+			pcs[i], _ = FirstPCAfterPrologue(p, fn, true)
+		}
+	}
+	return pcs, nil
+}
+
+// ErrFunctionNotFound is returned when failing to find the
+// function named 'FuncName' within the binary.
+type ErrFunctionNotFound struct {
+	FuncName string
+}
+
+func (err *ErrFunctionNotFound) Error() string {
+	return fmt.Sprintf("Could not find function %s\n", err.FuncName)
+}
+
 type ErrCouldNotFindLine struct {
 	fileFound bool
 	filename  string

@@ -54,7 +54,7 @@ func setFunctionBreakpoint(p proc.Process, t *testing.T, fname string) *proc.Bre
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := proc.FindFunctionLocation(p, fname, 0)
+	addrs, err := p.BinInfo().FindFunctionLocation(p, fname, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -122,7 +122,7 @@ func setFileBreakpoint(p proc.Process, t *testing.T, fixture protest.Fixture, li
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := proc.FindFileLocation(p, fixture.Source, lineno)
+	addrs, err := p.BinInfo().FindFileLocation(p, fixture.Source, lineno)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, fixture.Source, lineno, err)
 	}
