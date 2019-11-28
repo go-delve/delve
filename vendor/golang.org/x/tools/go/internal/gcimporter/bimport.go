@@ -126,7 +126,7 @@ func BImportData(fset *token.FileSet, imports map[string]*types.Package, data []
 	// --- generic export data ---
 
 	// populate typList with predeclared "known" types
-	p.typList = append(p.typList, predeclared...)
+	p.typList = append(p.typList, predeclared()...)
 
 	// read package data
 	pkg = p.pkg()
@@ -332,7 +332,7 @@ func (p *importer) pos() token.Pos {
 	p.prevFile = file
 	p.prevLine = line
 
-	return p.fake.pos(file, line)
+	return p.fake.pos(file, line, 0)
 }
 
 // Synthesize a token.Pos
@@ -341,7 +341,9 @@ type fakeFileSet struct {
 	files map[string]*token.File
 }
 
-func (s *fakeFileSet) pos(file string, line int) token.Pos {
+func (s *fakeFileSet) pos(file string, line, column int) token.Pos {
+	// TODO(mdempsky): Make use of column.
+
 	// Since we don't know the set of needed file positions, we
 	// reserve maxlines positions per file.
 	const maxlines = 64 * 1024
@@ -976,50 +978,59 @@ const (
 	aliasTag
 )
 
-var predeclared = []types.Type{
-	// basic types
-	types.Typ[types.Bool],
-	types.Typ[types.Int],
-	types.Typ[types.Int8],
-	types.Typ[types.Int16],
-	types.Typ[types.Int32],
-	types.Typ[types.Int64],
-	types.Typ[types.Uint],
-	types.Typ[types.Uint8],
-	types.Typ[types.Uint16],
-	types.Typ[types.Uint32],
-	types.Typ[types.Uint64],
-	types.Typ[types.Uintptr],
-	types.Typ[types.Float32],
-	types.Typ[types.Float64],
-	types.Typ[types.Complex64],
-	types.Typ[types.Complex128],
-	types.Typ[types.String],
+var predeclOnce sync.Once
+var predecl []types.Type // initialized lazily
 
-	// basic type aliases
-	types.Universe.Lookup("byte").Type(),
-	types.Universe.Lookup("rune").Type(),
+func predeclared() []types.Type {
+	predeclOnce.Do(func() {
+		// initialize lazily to be sure that all
+		// elements have been initialized before
+		predecl = []types.Type{ // basic types
+			types.Typ[types.Bool],
+			types.Typ[types.Int],
+			types.Typ[types.Int8],
+			types.Typ[types.Int16],
+			types.Typ[types.Int32],
+			types.Typ[types.Int64],
+			types.Typ[types.Uint],
+			types.Typ[types.Uint8],
+			types.Typ[types.Uint16],
+			types.Typ[types.Uint32],
+			types.Typ[types.Uint64],
+			types.Typ[types.Uintptr],
+			types.Typ[types.Float32],
+			types.Typ[types.Float64],
+			types.Typ[types.Complex64],
+			types.Typ[types.Complex128],
+			types.Typ[types.String],
 
-	// error
-	types.Universe.Lookup("error").Type(),
+			// basic type aliases
+			types.Universe.Lookup("byte").Type(),
+			types.Universe.Lookup("rune").Type(),
 
-	// untyped types
-	types.Typ[types.UntypedBool],
-	types.Typ[types.UntypedInt],
-	types.Typ[types.UntypedRune],
-	types.Typ[types.UntypedFloat],
-	types.Typ[types.UntypedComplex],
-	types.Typ[types.UntypedString],
-	types.Typ[types.UntypedNil],
+			// error
+			types.Universe.Lookup("error").Type(),
 
-	// package unsafe
-	types.Typ[types.UnsafePointer],
+			// untyped types
+			types.Typ[types.UntypedBool],
+			types.Typ[types.UntypedInt],
+			types.Typ[types.UntypedRune],
+			types.Typ[types.UntypedFloat],
+			types.Typ[types.UntypedComplex],
+			types.Typ[types.UntypedString],
+			types.Typ[types.UntypedNil],
 
-	// invalid type
-	types.Typ[types.Invalid], // only appears in packages with errors
+			// package unsafe
+			types.Typ[types.UnsafePointer],
 
-	// used internally by gc; never used by this package or in .a files
-	anyType{},
+			// invalid type
+			types.Typ[types.Invalid], // only appears in packages with errors
+
+			// used internally by gc; never used by this package or in .a files
+			anyType{},
+		}
+	})
+	return predecl
 }
 
 type anyType struct{}
