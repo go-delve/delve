@@ -3595,7 +3595,7 @@ func TestIssue1145(t *testing.T) {
 
 func TestDisassembleGlobalVars(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
+		t.Skip("On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778")
 	}
 	withTestProcess("teststepconcurrent", t, func(p proc.Process, fixture protest.Fixture) {
 		mainfn := p.BinInfo().LookupFunc["main.main"]
