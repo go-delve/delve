@@ -12,11 +12,37 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
 
-// findExternalTool returns the file path of a tool that supplies
+// The Driver Protocol
+//
+// The driver, given the inputs to a call to Load, returns metadata about the packages specified.
+// This allows for different build systems to support go/packages by telling go/packages how the
+// packages' source is organized.
+// The driver is a binary, either specified by the GOPACKAGESDRIVER environment variable or in
+// the path as gopackagesdriver. It's given the inputs to load in its argv. See the package
+// documentation in doc.go for the full description of the patterns that need to be supported.
+// A driver receives as a JSON-serialized driverRequest struct in standard input and will
+// produce a JSON-serialized driverResponse (see definition in packages.go) in its standard output.
+
+// driverRequest is used to provide the portion of Load's Config that is needed by a driver.
+type driverRequest struct {
+	Mode LoadMode `json:"mode"`
+	// Env specifies the environment the underlying build system should be run in.
+	Env []string `json:"env"`
+	// BuildFlags are flags that should be passed to the underlying build system.
+	BuildFlags []string `json:"build_flags"`
+	// Tests specifies whether the patterns should also return test packages.
+	Tests bool `json:"tests"`
+	// Overlay maps file paths (relative to the driver's working directory) to the byte contents
+	// of overlay files.
+	Overlay map[string][]byte `json:"overlay"`
+}
+
+// findExternalDriver returns the file path of a tool that supplies
 // the build system package structure, or "" if not found."
 // If GOPACKAGESDRIVER is set in the environment findExternalTool returns its
 // value, otherwise it searches for a binary named gopackagesdriver on the PATH.
@@ -39,23 +65,29 @@ func findExternalDriver(cfg *Config) driver {
 		}
 	}
 	return func(cfg *Config, words ...string) (*driverResponse, error) {
+		req, err := json.Marshal(driverRequest{
+			Mode:       cfg.Mode,
+			Env:        cfg.Env,
+			BuildFlags: cfg.BuildFlags,
+			Tests:      cfg.Tests,
+			Overlay:    cfg.Overlay,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode message to driver tool: %v", err)
+		}
+
 		buf := new(bytes.Buffer)
-		fullargs := []string{
-			"list",
-			fmt.Sprintf("-test=%t", cfg.Tests),
-			fmt.Sprintf("-export=%t", usesExportData(cfg)),
-			fmt.Sprintf("-deps=%t", cfg.Mode >= LoadImports),
-		}
-		for _, f := range cfg.BuildFlags {
-			fullargs = append(fullargs, fmt.Sprintf("-buildflag=%v", f))
-		}
-		fullargs = append(fullargs, "--")
-		fullargs = append(fullargs, words...)
-		cmd := exec.CommandContext(cfg.Context, tool, fullargs...)
-		cmd.Env = cfg.Env
+		stderr := new(bytes.Buffer)
+		cmd := exec.CommandContext(cfg.Context, tool, words...)
 		cmd.Dir = cfg.Dir
+		cmd.Env = cfg.Env
+		cmd.Stdin = bytes.NewReader(req)
 		cmd.Stdout = buf
-		cmd.Stderr = new(bytes.Buffer)
+		cmd.Stderr = stderr
+		if len(stderr.Bytes()) != 0 && os.Getenv("GOPACKAGESPRINTDRIVERERRORS") != "" {
+			fmt.Fprintf(os.Stderr, "%s stderr: <<%s>>\n", cmdDebugStr(cmd, words...), stderr)
+		}
+
 		if err := cmd.Run(); err != nil {
 			return nil, fmt.Errorf("%v: %v: %s", tool, err, cmd.Stderr)
 		}
