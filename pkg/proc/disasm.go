@@ -7,7 +7,32 @@ type AsmInstruction struct {
 	Bytes      []byte
 	Breakpoint bool
 	AtPC       bool
-	Inst       *archInst
+
+	Size int
+	Kind AsmInstructionKind
+
+	Inst archInst
+}
+
+type AsmInstructionKind uint8
+
+const (
+	OtherInstruction AsmInstructionKind = iota
+	CallInstruction
+	RetInstruction
+)
+
+func (instr *AsmInstruction) IsCall() bool {
+	return instr.Kind == CallInstruction
+}
+
+func (instr *AsmInstruction) IsRet() bool {
+	return instr.Kind == RetInstruction
+}
+
+type archInst interface {
+	Text(flavour AssemblyFlavour, pc uint64, symLookup func(uint64) (string, uint64)) string
+	OpcodeEquals(op uint64) bool
 }
 
 // AssemblyFlavour is the assembly syntax to display.
@@ -21,6 +46,8 @@ const (
 	// GoFlavour will display Go assembly syntax.
 	GoFlavour
 )
+
+type opcodeSeq []uint64
 
 // firstPCAfterPrologueDisassembly returns the address of the first
 // instruction after the prologue for function fn by disassembling fn and
@@ -40,7 +67,7 @@ func firstPCAfterPrologueDisassembly(p Process, fn *Function, sameline bool) (ui
 		return fn.Entry, nil
 	}
 
-	for _, prologue := range prologues {
+	for _, prologue := range p.BinInfo().Arch.Prologues() {
 		if len(prologue) >= len(text) {
 			continue
 		}
@@ -58,10 +85,10 @@ func firstPCAfterPrologueDisassembly(p Process, fn *Function, sameline bool) (ui
 	return fn.Entry, nil
 }
 
-func checkPrologue(s []AsmInstruction, prologuePattern instrseq) bool {
+func checkPrologue(s []AsmInstruction, prologuePattern opcodeSeq) bool {
 	line := s[0].Loc.Line
 	for i, op := range prologuePattern {
-		if s[i].Inst.Op != op || s[i].Loc.Line != line {
+		if !s[i].Inst.OpcodeEquals(op) || s[i].Loc.Line != line {
 			return false
 		}
 	}
@@ -78,14 +105,13 @@ func Disassemble(mem MemoryReadWriter, regs Registers, breakpoints *BreakpointMa
 }
 
 func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64, singleInstr bool) ([]AsmInstruction, error) {
-	minInstructionLength := bi.Arch.MinInstructionLength()
 	mem := make([]byte, int(endAddr-startAddr))
 	_, err := memrw.ReadMemory(mem, uintptr(startAddr))
 	if err != nil {
 		return nil, err
 	}
 
-	r := make([]AsmInstruction, 0, len(mem)/int(maxInstructionLength))
+	r := make([]AsmInstruction, 0, len(mem)/int(bi.Arch.MaxInstructionLength()))
 	pc := startAddr
 
 	var curpc uint64
@@ -100,24 +126,30 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *Breakpoint
 				mem[i] = bp.OriginalData[i]
 			}
 		}
-		file, line, fn := bi.PCToLine(pc)
-		loc := Location{PC: pc, File: file, Line: line, Fn: fn}
-		inst, err := asmDecode(mem, pc)
-		if err == nil {
-			atpc := (regs != nil) && (curpc == pc)
-			destloc := resolveCallArg(inst, pc, atpc, regs, memrw, bi)
-			r = append(r, AsmInstruction{Loc: loc, DestLoc: destloc, Bytes: mem[:inst.Size()], Breakpoint: atbp, AtPC: atpc, Inst: inst})
 
-			pc += uint64(inst.Size())
-			mem = mem[inst.Size():]
-		} else {
-			r = append(r, AsmInstruction{Loc: loc, Bytes: mem[:minInstructionLength], Breakpoint: atbp, Inst: nil})
-			pc += uint64(minInstructionLength)
-			mem = mem[minInstructionLength:]
-		}
+		file, line, fn := bi.PCToLine(pc)
+
+		var inst AsmInstruction
+		inst.Loc = Location{PC: pc, File: file, Line: line, Fn: fn}
+		inst.Breakpoint = atbp
+		inst.AtPC = (regs != nil) && (curpc == pc)
+
+		bi.Arch.AsmDecode(&inst, mem, regs, memrw, bi)
+
+		r = append(r, inst)
+
+		pc += uint64(inst.Size)
+		mem = mem[inst.Size:]
+
 		if singleInstr {
 			break
 		}
 	}
 	return r, nil
+}
+
+// Text will return the assembly instructions in human readable format according to
+// the flavour specified.
+func (inst *AsmInstruction) Text(flavour AssemblyFlavour, bi *BinaryInfo) string {
+	return inst.Inst.Text(flavour, inst.Loc.PC, bi.symLookup)
 }
