@@ -47,10 +47,9 @@ func (a *AMD64) PtrSize() int {
 	return 8
 }
 
-// MinInstructionLength returns the min lenth
-// of the instruction
-func (a *AMD64) MinInstructionLength() int {
-	return 1
+// MaxInstructionLength returns the maximum lenght of an instruction.
+func (a *AMD64) MaxInstructionLength() int {
+	return 15
 }
 
 // BreakpointInstruction returns the Breakpoint

@@ -240,7 +240,7 @@ func Continue(dbp Process) error {
 					return err
 				}
 				pc := regs.PC()
-				text, err := disassemble(curthread, regs, dbp.Breakpoints(), dbp.BinInfo(), pc, pc+maxInstructionLength, true)
+				text, err := disassemble(curthread, regs, dbp.Breakpoints(), dbp.BinInfo(), pc, pc+uint64(dbp.BinInfo().Arch.MaxInstructionLength()), true)
 				if err != nil {
 					return err
 				}

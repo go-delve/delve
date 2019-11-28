@@ -47,9 +47,8 @@ func (a *ARM64) PtrSize() int {
 	return 8
 }
 
-// MinInstructionLength returns the min lenth
-// of the instruction
-func (a *ARM64) MinInstructionLength() int {
+// MaxInstructionLength returns the maximum lenght of an instruction.
+func (a *ARM64) MaxInstructionLength() int {
 	return 4
 }
 

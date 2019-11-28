@@ -2483,12 +2483,6 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 var maxInstructionLength uint64
 
 func TestStepOnCallPtrInstr(t *testing.T) {
-	switch runtime.GOARCH {
-	case "amd64":
-		maxInstructionLength = 15
-	case "arm64":
-		maxInstructionLength = 4
-	}
 	protest.AllowRecording(t)
 	withTestProcess("teststepprog", t, func(p proc.Process, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 10)
@@ -2505,7 +2499,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 			regs, err := p.CurrentThread().Registers(false)
 			assertNoError(err, t, "Registers()")
 			pc := regs.PC()
-			text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), pc, pc+maxInstructionLength)
+			text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), pc, pc+uint64(p.BinInfo().Arch.MaxInstructionLength()))
 			assertNoError(err, t, "Disassemble()")
 			if text[0].IsCall() {
 				found = true

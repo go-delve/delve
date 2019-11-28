@@ -9,7 +9,9 @@ import (
 // CPU architecture.
 type Arch interface {
 	PtrSize() int
-	MinInstructionLength() int
+	MaxInstructionLength() int
+	AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error
+	Prologues() []opcodeSeq
 	BreakpointInstruction() []byte
 	BreakInstrMovesPC() bool
 	BreakpointSize() int
