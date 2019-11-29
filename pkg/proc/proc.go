@@ -8,7 +8,6 @@ import (
 	"go/constant"
 	"go/token"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -436,30 +435,9 @@ func StepOut(dbp *Target) error {
 	sameGCond := SameGoroutineCondition(selg)
 	retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
 
-	var deferpc uint64
-	if filepath.Ext(topframe.Current.File) == ".go" {
-		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
-			deferfn := dbp.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
-			deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if deferpc != 0 && deferpc != topframe.Current.PC {
-		bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
-		if err != nil {
-			if _, ok := err.(BreakpointExistsError); !ok {
-				return err
-			}
-		}
-		if bp != nil {
-			// For StepOut we do not want to step into the deferred function
-			// when it's called by runtime.deferreturn so we do not populate
-			// DeferReturns.
-			bp.DeferReturns = []uint64{}
-		}
+	deferpc, err := setDeferBreakpoint(dbp, nil, topframe, sameGCond, false)
+	if err != nil {
+		return err
 	}
 
 	if topframe.Ret == 0 && deferpc == 0 {
@@ -521,6 +499,37 @@ func StepInstruction(dbp *Target) (err error) {
 		dbp.selectedGoroutine = tg
 	}
 	return nil
+}
+
+// setDeferBreakpoint is a helper function used by next and StepOut to set a
+// breakpoint on the first deferred function.
+func setDeferBreakpoint(p Process, text []AsmInstruction, topframe Stackframe, sameGCond ast.Expr, stepInto bool) (uint64, error) {
+	// Set breakpoint on the most recently deferred function (if any)
+	var deferpc uint64
+	if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
+		deferfn := p.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
+		var err error
+		deferpc, err = FirstPCAfterPrologue(p, deferfn, false)
+		if err != nil {
+			return 0, err
+		}
+	}
+	if deferpc != 0 && deferpc != topframe.Current.PC {
+		bp, err := p.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
+		if err != nil {
+			if _, ok := err.(BreakpointExistsError); !ok {
+				return 0, err
+			}
+		}
+		if bp != nil && stepInto {
+			// If DeferReturns is set then the breakpoint will also be triggered when
+			// called from runtime.deferreturn. We only do this for the step command,
+			// not for next or stepout.
+			bp.DeferReturns = FindDeferReturnCalls(text)
+		}
+	}
+
+	return deferpc, nil
 }
 
 // GoroutinesInfo searches for goroutines starting at index 'start', and

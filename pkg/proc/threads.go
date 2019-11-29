@@ -224,30 +224,9 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
-	if !csource {
-		deferreturns := FindDeferReturnCalls(text)
-
-		// Set breakpoint on the most recently deferred function (if any)
-		var deferpc uint64
-		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
-			deferfn := dbp.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
-			var err error
-			deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
-			if err != nil {
-				return err
-			}
-		}
-		if deferpc != 0 && deferpc != topframe.Current.PC {
-			bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
-			if err != nil {
-				if _, ok := err.(BreakpointExistsError); !ok {
-					return err
-				}
-			}
-			if bp != nil && stepInto {
-				bp.DeferReturns = deferreturns
-			}
-		}
+	_, err = setDeferBreakpoint(dbp, text, topframe, sameGCond, stepInto)
+	if err != nil {
+		return err
 	}
 
 	// Add breakpoints on all the lines in the current function
