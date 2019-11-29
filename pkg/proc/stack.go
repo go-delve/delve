@@ -195,7 +195,14 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegiste
 				// runtime.stackBarrier has incremented stkbarPos.
 				stkbarPos--
 			} else {
-				return &amd64Stack{err: fmt.Errorf("failed to unwind through stackBarrier at SP %x", regs.SP())}
+				switch bi.Arch.(type) {
+				case *AMD64:
+					return &amd64Stack{err: fmt.Errorf("failed to unwind through stackBarrier at SP %x", regs.SP())}
+				case *ARM64:
+					return &arm64Stack{err: fmt.Errorf("failed to unwind through stackBarrier at SP %x", regs.SP())}
+				default:
+					return nil
+				}
 			}
 		}
 		stkbar = stkbar[stkbarPos:]
@@ -212,7 +219,14 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegiste
 			}
 		}
 	}
-	return &amd64Stack{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp, opts: opts}
+	switch bi.Arch.(type) {
+	case *AMD64:
+		return &amd64Stack{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp, opts: opts}
+	case *ARM64:
+		return &arm64Stack{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp, opts: opts}
+	default:
+		return nil
+	}
 }
 
 // Defer represents one deferred call
