@@ -187,23 +187,6 @@ func TestCommandDefault(t *testing.T) {
 	}
 }
 
-func TestCommandReplay(t *testing.T) {
-	cmds := DebugCommands(nil)
-	cmds.Register("foo", func(t *Term, ctx callContext, args string) error { return fmt.Errorf("registered command") }, "foo command")
-	cmd := cmds.Find("foo", noPrefix)
-
-	err := cmd(nil, callContext{}, "")
-	if err.Error() != "registered command" {
-		t.Fatal("wrong command output")
-	}
-
-	cmd = cmds.Find("", noPrefix)
-	err = cmd(nil, callContext{}, "")
-	if err.Error() != "registered command" {
-		t.Fatal("wrong command output")
-	}
-}
-
 func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
