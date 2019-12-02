@@ -275,6 +275,10 @@ func (p *Process) Checkpoints() ([]proc.Checkpoint, error) { return nil, nil }
 // ClearCheckpoint clears a checkpoint, but will only return an error for core files.
 func (p *Process) ClearCheckpoint(int) error { return errors.New("checkpoint not found") }
 
+func (p *Process) StepInstructionOut(proc.Thread, string, string) error {
+	return ErrContinueCore
+}
+
 // ReadMemory will return memory from the core file at the specified location and put the
 // read memory into `data`, returning the length read, and returning an error if
 // the length read is shorter than the length of the `data` buffer.

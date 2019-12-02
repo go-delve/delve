@@ -130,7 +130,7 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
 // Because this can only be done in the current goroutine, unlike
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
-func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
+func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool, continueFn func() error) error {
 	bi := p.BinInfo()
 	if !p.Common().fncallEnabled {
 		return errFuncCallUnsupportedBackend
@@ -144,7 +144,7 @@ func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig
 		return errGoroutineNotRunning
 	}
 
-	if callinj := p.Common().fncallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
+	if callinj := p.Common().FnCallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
 		return errFuncCallInProgress
 	}
 
@@ -169,7 +169,7 @@ func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig
 		continueCompleted: continueCompleted,
 	}
 
-	p.Common().fncallForG[g.ID] = &callInjection{
+	p.Common().FnCallForG[g.ID] = &callInjection{
 		continueCompleted,
 		continueRequest,
 	}
@@ -178,7 +178,7 @@ func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig
 
 	contReq, ok := <-continueRequest
 	if contReq.cont {
-		return Continue(p)
+		return continueFn()
 	}
 
 	return finishEvalExpressionWithCalls(p, g, contReq, ok)
@@ -191,25 +191,25 @@ func finishEvalExpressionWithCalls(p Process, g *G, contReq continueRequest, ok 
 		err = errors.New("internal error EvalExpressionWithCalls didn't return anything")
 	} else if contReq.err != nil {
 		if fpe, ispanic := contReq.err.(fncallPanicErr); ispanic {
-			g.Thread.Common().returnValues = []*Variable{fpe.panicVar}
+			g.Thread.Common().RetVals = []*Variable{fpe.panicVar}
 		} else {
 			err = contReq.err
 		}
 	} else if contReq.ret == nil {
-		g.Thread.Common().returnValues = nil
+		g.Thread.Common().RetVals = nil
 	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil && contReq.ret.Kind == reflect.Invalid {
 		// this is a variable returned by a function call with multiple return values
 		r := make([]*Variable, len(contReq.ret.Children))
 		for i := range contReq.ret.Children {
 			r[i] = &contReq.ret.Children[i]
 		}
-		g.Thread.Common().returnValues = r
+		g.Thread.Common().RetVals = r
 	} else {
-		g.Thread.Common().returnValues = []*Variable{contReq.ret}
+		g.Thread.Common().RetVals = []*Variable{contReq.ret}
 	}
 
-	close(p.Common().fncallForG[g.ID].continueCompleted)
-	delete(p.Common().fncallForG, g.ID)
+	close(p.Common().FnCallForG[g.ID].continueCompleted)
+	delete(p.Common().FnCallForG, g.ID)
 	return err
 }
 
@@ -404,7 +404,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 		return err
 	}
 	if fnvar.Kind != reflect.Func {
-		return fmt.Errorf("expression %q is not a function", exprToString(fncall.expr.Fun))
+		return fmt.Errorf("expression %q is not a function", ExprToString(fncall.expr.Fun))
 	}
 	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0, 0})
 	if fnvar.Unreadable != nil {
@@ -415,9 +415,9 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	}
 	fncall.fn = bi.PCToFunc(uint64(fnvar.Base))
 	if fncall.fn == nil {
-		return fmt.Errorf("could not find DIE for function %q", exprToString(fncall.expr.Fun))
+		return fmt.Errorf("could not find DIE for function %q", ExprToString(fncall.expr.Fun))
 	}
-	if !fncall.fn.cu.isgo {
+	if !fncall.fn.CompileUnit.isgo {
 		return errNotAGoFunction
 	}
 	fncall.closureAddr = fnvar.closureAddr
@@ -432,7 +432,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	if len(fnvar.Children) > 0 {
 		argnum++
 		fncall.receiver = &fnvar.Children[0]
-		fncall.receiver.Name = exprToString(fncall.expr.Fun)
+		fncall.receiver.Name = ExprToString(fncall.expr.Fun)
 	}
 
 	if argnum > len(fncall.formalArgs) {
@@ -473,9 +473,9 @@ func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, argFrameAddr 
 
 		actualArg, err := scope.evalAST(fncall.expr.Args[i])
 		if err != nil {
-			return fmt.Errorf("error evaluating %q as argument %s in function %s: %v", exprToString(fncall.expr.Args[i]), formalArg.name, fncall.fn.Name, err)
+			return fmt.Errorf("error evaluating %q as argument %s in function %s: %v", ExprToString(fncall.expr.Args[i]), formalArg.name, fncall.fn.Name, err)
 		}
-		actualArg.Name = exprToString(fncall.expr.Args[i])
+		actualArg.Name = ExprToString(fncall.expr.Args[i])
 
 		err = funcCallCopyOneArg(scope, fncall, actualArg, formalArg, argFrameAddr)
 		if err != nil {
@@ -507,7 +507,7 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
 	const CFA = 0x1000
-	vrdr := reader.Variables(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, fn.cu.image.StaticBase), int(^uint(0)>>1), false, true)
+	vrdr := reader.Variables(fn.CompileUnit.Image.Dwarf, fn.Offset, reader.ToRelAddr(fn.Entry, fn.CompileUnit.Image.StaticBase), int(^uint(0)>>1), false, true)
 
 	trustArgOrder := bi.Producer() != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
 
@@ -517,7 +517,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		if e.Tag != dwarf.TagFormalParameter {
 			continue
 		}
-		entry, argname, typ, err := readVarEntry(e, fn.cu.image)
+		entry, argname, typ, err := readVarEntry(e, fn.CompileUnit.Image)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -727,7 +727,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		if err := thread.SetSP(sp); err != nil {
 			fncall.err = fmt.Errorf("could not restore SP: %v", err)
 		}
-		if err := stepInstructionOut(p, thread, debugCallFunctionName, debugCallFunctionName); err != nil {
+		if err := p.StepInstructionOut(thread, debugCallFunctionName, debugCallFunctionName); err != nil {
 			fncall.err = fmt.Errorf("could not step out of %s: %v", debugCallFunctionName, err)
 		}
 		return true
@@ -810,8 +810,8 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	scope.Regs.CFA = cfa
 	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = sp
 
-	fn.cu.image.dwarfReader.Seek(fn.offset)
-	e, err := fn.cu.image.dwarfReader.Next()
+	fn.CompileUnit.Image.dwarfReader.Seek(fn.Offset)
+	e, err := fn.CompileUnit.Image.dwarfReader.Next()
 	if err != nil {
 		return err
 	}
@@ -876,11 +876,11 @@ func isCallInjectionStop(loc *Location) bool {
 	return strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) || strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2)
 }
 
-// callInjectionProtocol is the function called from Continue to progress
+// CallInjectionProtocol is the function called from Continue to progress
 // the injection protocol for all threads.
 // Returns true if a call injection terminated
-func callInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
-	if len(p.Common().fncallForG) == 0 {
+func CallInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
+	if len(p.Common().FnCallForG) == 0 {
 		// we aren't injecting any calls, no need to check the threads.
 		return false, nil
 	}
@@ -897,7 +897,7 @@ func callInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
 		if err != nil {
 			return done, fmt.Errorf("could not determine running goroutine for thread %#x currently executing the function call injection protocol: %v", thread.ThreadID(), err)
 		}
-		callinj := p.Common().fncallForG[g.ID]
+		callinj := p.Common().FnCallForG[g.ID]
 		if callinj == nil || callinj.continueCompleted == nil {
 			return false, fmt.Errorf("could not recover call injection state for goroutine %d", g.ID)
 		}

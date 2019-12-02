@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
@@ -23,14 +24,14 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 		return
 	}
 
-	withTestTarget("scopeescapevareval", t, func(p proc.Process, fixture protest.Fixture) {
-		assertNoError(proc.Continue(p), t, "Continue")
+	withTestTarget("scopeescapevareval", t, func(tgt *debug.Target, fixture protest.Fixture) {
+		assertNoError(tgt.Continue(), t, "Continue")
 
 		// On the breakpoint there are two 'a' variables in scope, the one that
 		// isn't shadowed is a variable that escapes to the heap and figures in
 		// debug_info as '&a'. Evaluating 'a' should yield the escaped variable.
 
-		avar := evalVariable(p, t, "a")
+		avar := evalVariable(tgt, t, "a")
 		if aval, _ := constant.Int64Val(avar.Value); aval != 3 {
 			t.Errorf("wrong value for variable a: %d", aval)
 		}
@@ -72,28 +73,28 @@ func TestScope(t *testing.T) {
 
 	scopeChecks := getScopeChecks(scopetestPath, t)
 
-	withTestTarget("scopetest", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestTarget("scopetest", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		for i := range scopeChecks {
-			setFileBreakpoint(p, t, fixture.Source, scopeChecks[i].line)
+			setFileBreakpoint(tgt, t, fixture.Source, scopeChecks[i].line)
 		}
 
 		t.Logf("%d breakpoints set", len(scopeChecks))
 
 		for {
-			if err := proc.Continue(p); err != nil {
+			if err := tgt.Continue(); err != nil {
 				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}
 				assertNoError(err, t, "Continue()")
 			}
-			bp := p.CurrentThread().Breakpoint()
+			bp := tgt.CurrentThread().Breakpoint()
 
 			scopeCheck := findScopeCheck(scopeChecks, bp.Line)
 			if scopeCheck == nil {
 				t.Errorf("unknown stop position %s:%d %#x", bp.File, bp.Line, bp.Addr)
 			}
 
-			scope, _ := scopeCheck.checkLocalsAndArgs(p, t)
+			scope, _ := scopeCheck.checkLocalsAndArgs(tgt, t)
 
 			for i := range scopeCheck.varChecks {
 				vc := &scopeCheck.varChecks[i]
@@ -104,7 +105,7 @@ func TestScope(t *testing.T) {
 			}
 
 			scopeCheck.ok = true
-			_, err := p.ClearBreakpoint(bp.Addr)
+			_, err := tgt.ClearBreakpoint(bp.Addr)
 			assertNoError(err, t, "ClearBreakpoint")
 		}
 	})
@@ -168,21 +169,21 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		},
 	}
 
-	withTestTargetArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p proc.Process, fixture protest.Fixture) {
-		pcs, err := p.BinInfo().LineToPC(fixture.Source, 7)
+	withTestTargetArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(tgt *debug.Target, fixture protest.Fixture) {
+		pcs, err := tgt.BinInfo().LineToPC(fixture.Source, 7)
 		assertNoError(err, t, "LineToPC")
 		if len(pcs) < 2 {
 			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
 		}
 		for _, pc := range pcs {
 			t.Logf("setting breakpoint at %#x\n", pc)
-			_, err := p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+			_, err := tgt.SetBreakpoint(pc, proc.UserBreakpoint, nil)
 			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
 		}
 
 		// first inlined call
-		assertNoError(proc.Continue(p), t, "Continue")
-		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 20)
+		assertNoError(tgt.Continue(), t, "Continue")
+		frames, err := proc.ThreadStacktrace(tgt.CurrentThread(), 20)
 		assertNoError(err, t, "ThreadStacktrace")
 		t.Logf("Stacktrace:\n")
 		for i := range frames {
@@ -196,20 +197,20 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 			t.Fatalf("Wrong frame 1: %v", err)
 		}
 
-		if avar, _ := constant.Int64Val(evalVariable(p, t, "a").Value); avar != 3 {
+		if avar, _ := constant.Int64Val(evalVariable(tgt, t, "a").Value); avar != 3 {
 			t.Fatalf("value of 'a' variable is not 3 (%d)", avar)
 		}
-		if zvar, _ := constant.Int64Val(evalVariable(p, t, "z").Value); zvar != 9 {
+		if zvar, _ := constant.Int64Val(evalVariable(tgt, t, "z").Value); zvar != 9 {
 			t.Fatalf("value of 'z' variable is not 9 (%d)", zvar)
 		}
 
-		if _, ok := firstCallCheck.checkLocalsAndArgs(p, t); !ok {
+		if _, ok := firstCallCheck.checkLocalsAndArgs(tgt, t); !ok {
 			t.Fatalf("exiting for past errors")
 		}
 
 		// second inlined call
-		assertNoError(proc.Continue(p), t, "Continue")
-		frames, err = proc.ThreadStacktrace(p.CurrentThread(), 20)
+		assertNoError(tgt.Continue(), t, "Continue")
+		frames, err = proc.ThreadStacktrace(tgt.CurrentThread(), 20)
 		assertNoError(err, t, "ThreadStacktrace (2)")
 		t.Logf("Stacktrace 2:\n")
 		for i := range frames {
@@ -223,17 +224,17 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 			t.Fatalf("Wrong frame 1: %v", err)
 		}
 
-		if avar, _ := constant.Int64Val(evalVariable(p, t, "a").Value); avar != 4 {
+		if avar, _ := constant.Int64Val(evalVariable(tgt, t, "a").Value); avar != 4 {
 			t.Fatalf("value of 'a' variable is not 3 (%d)", avar)
 		}
-		if zvar, _ := constant.Int64Val(evalVariable(p, t, "z").Value); zvar != 16 {
+		if zvar, _ := constant.Int64Val(evalVariable(tgt, t, "z").Value); zvar != 16 {
 			t.Fatalf("value of 'z' variable is not 9 (%d)", zvar)
 		}
-		if bvar, err := evalVariableOrError(p, "b"); err == nil {
+		if bvar, err := evalVariableOrError(tgt, "b"); err == nil {
 			t.Fatalf("expected error evaluating 'b', but it succeeded instead: %v", bvar)
 		}
 
-		if _, ok := secondCallCheck.checkLocalsAndArgs(p, t); !ok {
+		if _, ok := secondCallCheck.checkLocalsAndArgs(tgt, t); !ok {
 			t.Fatalf("exiting for past errors")
 		}
 	})
@@ -359,8 +360,8 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 	}
 }
 
-func (scopeCheck *scopeCheck) checkLocalsAndArgs(p proc.Process, t *testing.T) (*proc.EvalScope, bool) {
-	scope, err := proc.GoroutineScope(p.CurrentThread())
+func (scopeCheck *scopeCheck) checkLocalsAndArgs(tgt *debug.Target, t *testing.T) (*proc.EvalScope, bool) {
+	scope, err := proc.GoroutineScope(tgt.CurrentThread())
 	assertNoError(err, t, "GoroutineScope()")
 
 	ok := true

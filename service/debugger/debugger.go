@@ -620,7 +620,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 	switch command.Name {
 	case api.Continue:
 		d.log.Debug("continuing")
-		err = proc.Continue(d.target)
+		err = d.target.Continue()
 	case api.Call:
 		d.log.Debugf("function call %s", command.Expr)
 		if command.ReturnInfoLoadConfig == nil {
@@ -633,7 +633,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 				return nil, err
 			}
 		}
-		err = proc.EvalExpressionWithCalls(d.target, g, command.Expr, *api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall)
+		err = proc.EvalExpressionWithCalls(d.target, g, command.Expr, *api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall, d.target.Continue)
 	case api.Rewind:
 		d.log.Debug("rewinding")
 		if err := d.target.Direction(proc.Backward); err != nil {
@@ -642,13 +642,13 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		defer func() {
 			d.target.Direction(proc.Forward)
 		}()
-		err = proc.Continue(d.target)
+		err = d.target.Continue()
 	case api.Next:
 		d.log.Debug("nexting")
-		err = proc.Next(d.target)
+		err = d.target.Next()
 	case api.Step:
 		d.log.Debug("stepping")
-		err = proc.Step(d.target)
+		err = d.target.Step()
 	case api.StepInstruction:
 		d.log.Debug("single stepping")
 		err = d.target.StepInstruction()
@@ -663,7 +663,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = d.target.StepInstruction()
 	case api.StepOut:
 		d.log.Debug("step out")
-		err = proc.StepOut(d.target)
+		err = d.target.StepOut()
 	case api.SwitchThread:
 		d.log.Debugf("switching to thread %d", command.ThreadID)
 		err = d.target.SwitchThread(command.ThreadID)

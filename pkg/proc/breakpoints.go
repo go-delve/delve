@@ -57,7 +57,7 @@ type Breakpoint struct {
 
 	// ReturnInfo describes how to collect return variables when this
 	// breakpoint is hit as a return breakpoint.
-	returnInfo *returnBreakpointInfo
+	ReturnInfo *returnBreakpointInfo
 }
 
 // BreakpointKind determines the behavior of delve when the
@@ -83,6 +83,10 @@ const (
 
 func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.LogicalID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
+}
+
+func (bp *Breakpoint) InternalCond() ast.Expr {
+	return bp.internalCond
 }
 
 // BreakpointExistsError is returned when trying to set a breakpoint at
@@ -141,7 +145,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	}
 	if bp.IsInternal() {
 		// Check internalCondition if this is also an internal breakpoint
-		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.internalCond)
+		bpstate.Active, bpstate.CondError = EvalBreakpointCondition(thread, bp.internalCond)
 		bpstate.Active = bpstate.Active && nextDeferOk
 		if bpstate.Active || bpstate.CondError != nil {
 			bpstate.Internal = true
@@ -150,7 +154,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	}
 	if bp.IsUser() {
 		// Check normal condition if this is also a user breakpoint
-		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.Cond)
+		bpstate.Active, bpstate.CondError = EvalBreakpointCondition(thread, bp.Cond)
 	}
 	return bpstate
 }
@@ -169,7 +173,7 @@ func (bp *Breakpoint) IsUser() bool {
 	return bp.Kind&UserBreakpoint != 0
 }
 
-func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
+func EvalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
 	if cond == nil {
 		return true, nil
 	}
@@ -323,7 +327,7 @@ func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakp
 	for addr, bp := range bpmap.M {
 		bp.Kind = bp.Kind & UserBreakpoint
 		bp.internalCond = nil
-		bp.returnInfo = nil
+		bp.ReturnInfo = nil
 		if bp.Kind != 0 {
 			continue
 		}
@@ -378,11 +382,11 @@ func (bpstate *BreakpointState) String() string {
 	return s
 }
 
-func configureReturnBreakpoint(bi *BinaryInfo, bp *Breakpoint, topframe *Stackframe, retFrameCond ast.Expr) {
+func ConfigureReturnBreakpoint(bi *BinaryInfo, bp *Breakpoint, topframe *Stackframe, retFrameCond ast.Expr) {
 	if topframe.Current.Fn == nil {
 		return
 	}
-	bp.returnInfo = &returnBreakpointInfo{
+	bp.ReturnInfo = &returnBreakpointInfo{
 		retFrameCond: retFrameCond,
 		fn:           topframe.Current.Fn,
 		frameOffset:  topframe.FrameOffset(),

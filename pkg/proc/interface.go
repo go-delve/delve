@@ -103,6 +103,7 @@ type GoroutineInfo interface {
 type ProcessManipulation interface {
 	Resume() (trapthread Thread, err error)
 	StepInstruction() error
+	StepInstructionOut(Thread, string, string) error
 	SwitchThread(int) error
 	SwitchGoroutine(int) error
 	RequestManualStop() error
@@ -128,7 +129,7 @@ type CommonProcess struct {
 	allGCache     []*G
 	fncallEnabled bool
 
-	fncallForG map[int]*callInjection
+	FnCallForG map[int]*callInjection
 }
 
 type callInjection struct {
@@ -142,7 +143,7 @@ type callInjection struct {
 // NewCommonProcess returns a struct with fields common across
 // all process implementations.
 func NewCommonProcess(fncallEnabled bool) CommonProcess {
-	return CommonProcess{fncallEnabled: fncallEnabled, fncallForG: make(map[int]*callInjection)}
+	return CommonProcess{fncallEnabled: fncallEnabled, FnCallForG: make(map[int]*callInjection)}
 }
 
 // ClearAllGCache clears the cached contents of the cache for runtime.allgs.

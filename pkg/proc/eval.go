@@ -53,6 +53,84 @@ type EvalScope struct {
 	callCtx *callContext
 }
 
+// ConvertEvalScope returns a new EvalScope in the context of the
+// specified goroutine ID and stack frame.
+// If deferCall is > 0 the eval scope will be relative to the specified deferred call.
+func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error) {
+	if _, err := dbp.Valid(); err != nil {
+		return nil, err
+	}
+	ct := dbp.CurrentThread()
+	g, err := FindGoroutine(dbp, gid)
+	if err != nil {
+		return nil, err
+	}
+	if g == nil {
+		return ThreadScope(ct)
+	}
+
+	var thread MemoryReadWriter
+	if g.Thread == nil {
+		thread = ct
+	} else {
+		thread = g.Thread
+	}
+
+	var opts StacktraceOptions
+	if deferCall > 0 {
+		opts = StacktraceReadDefers
+	}
+
+	locs, err := g.Stacktrace(frame+1, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if frame >= len(locs) {
+		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+	}
+
+	if deferCall > 0 {
+		if deferCall-1 >= len(locs[frame].Defers) {
+			return nil, fmt.Errorf("Frame %d only has %d deferred calls", frame, len(locs[frame].Defers))
+		}
+
+		d := locs[frame].Defers[deferCall-1]
+		if d.Unreadable != nil {
+			return nil, d.Unreadable
+		}
+
+		return d.EvalScope(ct)
+	}
+
+	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame:]...), nil
+}
+
+// FrameToScope returns a new EvalScope for frames[0].
+// If frames has at least two elements all memory between
+// frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
+// Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
+// will be cached.
+func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
+	// Creates a cacheMem that will preload the entire stack frame the first
+	// time any local variable is read.
+	// Remember that the stack grows downward in memory.
+	minaddr := frames[0].Regs.SP()
+	var maxaddr uint64
+	if len(frames) > 1 && frames[0].SystemStack == frames[1].SystemStack {
+		maxaddr = uint64(frames[1].Regs.CFA)
+	} else {
+		maxaddr = uint64(frames[0].Regs.CFA)
+	}
+	if maxaddr > minaddr && maxaddr-minaddr < maxFramePrefetchSize {
+		thread = cacheMemory(thread, uintptr(minaddr), int(maxaddr-minaddr))
+	}
+
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
+	s.PC = frames[0].lastpc
+	return s
+}
+
 // EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
 	if scope.callCtx != nil {
@@ -106,7 +184,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 
 	var vars []*Variable
 	var depths []int
-	varReader := reader.Variables(scope.image().dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true, false)
+	varReader := reader.Variables(scope.image().Dwarf, scope.Fn.Offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true, false)
 	for varReader.Next() {
 		entry := varReader.Entry()
 		val, err := extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry)
@@ -349,7 +427,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		if image.loadErr != nil {
 			continue
 		}
-		reader := reader.New(image.dwarf)
+		reader := reader.New(image.Dwarf)
 
 		var utypoff dwarf.Offset
 		utypentry, err := reader.SeekToTypeNamed("<unspecified>")
@@ -396,13 +474,13 @@ func (scope *EvalScope) findGlobal(pkgName, varName string) (*Variable, error) {
 func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 	for _, pkgvar := range scope.BinInfo.packageVars {
 		if pkgvar.name == name || strings.HasSuffix(pkgvar.name, "/"+name) {
-			reader := pkgvar.cu.image.dwarfReader
+			reader := pkgvar.cu.Image.dwarfReader
 			reader.Seek(pkgvar.offset)
 			entry, err := reader.Next()
 			if err != nil {
 				return nil, err
 			}
-			return extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, entry)
+			return extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.Image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.Image), scope.Mem, entry)
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {
@@ -452,7 +530,7 @@ func (scope *EvalScope) image() *Image {
 func (scope *EvalScope) globalFor(image *Image) *EvalScope {
 	r := *scope
 	r.Regs.StaticBase = image.StaticBase
-	r.Fn = &Function{cu: &compileUnit{image: image}}
+	r.Fn = &Function{CompileUnit: &compileUnit{Image: image}}
 	return &r
 }
 
@@ -474,7 +552,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 	if call == nil || len(call.Args) != 1 {
 		return nil, nil
 	}
-	targetTypeStr := exprToString(removeParen(call.Fun))
+	targetTypeStr := ExprToString(removeParen(call.Fun))
 	var targetType godwarf.Type
 	switch targetTypeStr {
 	case "[]byte", "[]uint8":
@@ -506,7 +584,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 	v := newVariable("", 0, targetType, scope.BinInfo, scope.Mem)
 	v.loaded = true
 
-	converr := fmt.Errorf("can not convert %q to %s", exprToString(call.Args[0]), targetTypeStr)
+	converr := fmt.Errorf("can not convert %q to %s", ExprToString(call.Args[0]), targetTypeStr)
 
 	switch targetTypeStr {
 	case "[]byte", "[]uint8":
@@ -676,7 +754,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	}
 }
 
-func exprToString(t ast.Expr) string {
+func ExprToString(t ast.Expr) string {
 	var buf bytes.Buffer
 	printer.Fprint(&buf, token.NewFileSet(), t)
 	return buf.String()
@@ -715,7 +793,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	}
 	typ := resolveTypedef(styp)
 
-	converr := fmt.Errorf("can not convert %q to %s", exprToString(node.Args[0]), typ.String())
+	converr := fmt.Errorf("can not convert %q to %s", ExprToString(node.Args[0]), typ.String())
 
 	v := newVariable("", 0, styp, scope.BinInfo, scope.Mem)
 	v.loaded = true
@@ -850,7 +928,7 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	arg := args[0]
-	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for cap", exprToString(nodeargs[0]), arg.TypeString())
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for cap", ExprToString(nodeargs[0]), arg.TypeString())
 
 	switch arg.Kind {
 	case reflect.Ptr:
@@ -882,7 +960,7 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		return nil, fmt.Errorf("wrong number of arguments to len: %d", len(args))
 	}
 	arg := args[0]
-	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for len", exprToString(nodeargs[0]), arg.TypeString())
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for len", ExprToString(nodeargs[0]), arg.TypeString())
 
 	switch arg.Kind {
 	case reflect.Ptr:
@@ -939,11 +1017,11 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	if realev.Value == nil || ((realev.Value.Kind() != constant.Int) && (realev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("invalid argument 1 %s (type %s) to complex", exprToString(nodeargs[0]), realev.TypeString())
+		return nil, fmt.Errorf("invalid argument 1 %s (type %s) to complex", ExprToString(nodeargs[0]), realev.TypeString())
 	}
 
 	if imagev.Value == nil || ((imagev.Value.Kind() != constant.Int) && (imagev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("invalid argument 2 %s (type %s) to complex", exprToString(nodeargs[1]), imagev.TypeString())
+		return nil, fmt.Errorf("invalid argument 2 %s (type %s) to complex", ExprToString(nodeargs[1]), imagev.TypeString())
 	}
 
 	sz := int64(0)
@@ -981,7 +1059,7 @@ func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	if arg.Kind != reflect.Complex64 && arg.Kind != reflect.Complex128 {
-		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", exprToString(nodeargs[0]), arg.TypeString())
+		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", ExprToString(nodeargs[0]), arg.TypeString())
 	}
 
 	return newConstant(constant.Imag(arg.Value), arg.mem), nil
@@ -1000,7 +1078,7 @@ func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	if arg.Value == nil || ((arg.Value.Kind() != constant.Int) && (arg.Value.Kind() != constant.Float) && (arg.Value.Kind() != constant.Complex)) {
-		return nil, fmt.Errorf("invalid argument %s (type %s) to real", exprToString(nodeargs[0]), arg.TypeString())
+		return nil, fmt.Errorf("invalid argument %s (type %s) to real", ExprToString(nodeargs[0]), arg.TypeString())
 	}
 
 	return newConstant(constant.Real(arg.Value), arg.mem), nil
@@ -1058,7 +1136,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 		return nil, err
 	}
 	if xv.Kind != reflect.Interface {
-		return nil, fmt.Errorf("expression \"%s\" not an interface", exprToString(node.X))
+		return nil, fmt.Errorf("expression \"%s\" not an interface", ExprToString(node.X))
 	}
 	xv.loadInterface(0, false, loadFullValue)
 	if xv.Unreadable != nil {
@@ -1068,7 +1146,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 		return nil, xv.Children[0].Unreadable
 	}
 	if xv.Children[0].Addr == 0 {
-		return nil, fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), exprToString(node.Type))
+		return nil, fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), ExprToString(node.Type))
 	}
 	// Accept .(data) as a type assertion that always succeeds, so that users
 	// can access the data field of an interface without actually having to
@@ -1107,7 +1185,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	cantindex := fmt.Errorf("expression \"%s\" (%s) does not support indexing", exprToString(node.X), xev.TypeString())
+	cantindex := fmt.Errorf("expression \"%s\" (%s) does not support indexing", ExprToString(node.X), xev.TypeString())
 
 	switch xev.Kind {
 	case reflect.Ptr:
@@ -1123,7 +1201,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 
 	case reflect.Slice, reflect.Array, reflect.String:
 		if xev.Base == 0 {
-			return nil, fmt.Errorf("can not index \"%s\"", exprToString(node.X))
+			return nil, fmt.Errorf("can not index \"%s\"", ExprToString(node.X))
 		}
 		n, err := idxev.asInt()
 		if err != nil {
@@ -1162,7 +1240,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 		low, err = lowv.asInt()
 		if err != nil {
-			return nil, fmt.Errorf("can not convert \"%s\" to int: %v", exprToString(node.Low), err)
+			return nil, fmt.Errorf("can not convert \"%s\" to int: %v", ExprToString(node.Low), err)
 		}
 	}
 
@@ -1175,14 +1253,14 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 		high, err = highv.asInt()
 		if err != nil {
-			return nil, fmt.Errorf("can not convert \"%s\" to int: %v", exprToString(node.High), err)
+			return nil, fmt.Errorf("can not convert \"%s\" to int: %v", ExprToString(node.High), err)
 		}
 	}
 
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
 		if xev.Base == 0 {
-			return nil, fmt.Errorf("can not slice \"%s\"", exprToString(node.X))
+			return nil, fmt.Errorf("can not slice \"%s\"", ExprToString(node.X))
 		}
 		return xev.reslice(low, high)
 	case reflect.Map:
@@ -1196,7 +1274,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 		return xev, nil
 	default:
-		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.TypeString())
+		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", ExprToString(node.X), xev.TypeString())
 	}
 }
 
@@ -1208,7 +1286,7 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 	}
 
 	if xev.Kind != reflect.Ptr {
-		return nil, fmt.Errorf("expression \"%s\" (%s) can not be dereferenced", exprToString(node.X), xev.TypeString())
+		return nil, fmt.Errorf("expression \"%s\" (%s) can not be dereferenced", ExprToString(node.X), xev.TypeString())
 	}
 
 	if xev == nilVariable {
@@ -1233,7 +1311,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, err
 	}
 	if xev.Addr == 0 || xev.DwarfType == nil {
-		return nil, fmt.Errorf("can not take address of \"%s\"", exprToString(node.X))
+		return nil, fmt.Errorf("can not take address of \"%s\"", ExprToString(node.X))
 	}
 
 	return xev.pointerToVariable(), nil
@@ -1301,7 +1379,7 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, errOperationOnSpecialFloat
 	}
 	if xv.Value == nil {
-		return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
+		return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), ExprToString(node.X))
 	}
 	rc, err := constantUnaryOp(node.Op, xv.Value)
 	if err != nil {
@@ -1454,11 +1532,11 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 			yv.loadValue(loadFullValueLongerStrings)
 		}
 		if xv.Value == nil {
-			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
+			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), ExprToString(node.X))
 		}
 
 		if yv.Value == nil {
-			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.Y))
+			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), ExprToString(node.Y))
 		}
 
 		rc, err := constantBinaryOp(op, xv.Value, yv.Value)
@@ -1985,4 +2063,45 @@ func (fn *Function) fakeType(bi *BinaryInfo, removeReceiver bool) (*godwarf.Func
 		// reads the subroutine entry because it needs to know the stack offsets).
 		// If we start using them they should be filled here.
 	}, nil
+}
+
+// SameGoroutineCondition returns an expression that evaluates to true when
+// the current goroutine is g.
+func SameGoroutineCondition(g *G) ast.Expr {
+	if g == nil {
+		return nil
+	}
+	return &ast.BinaryExpr{
+		Op: token.EQL,
+		X: &ast.SelectorExpr{
+			X: &ast.SelectorExpr{
+				X:   &ast.Ident{Name: "runtime"},
+				Sel: &ast.Ident{Name: "curg"},
+			},
+			Sel: &ast.Ident{Name: "goid"},
+		},
+		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(g.ID)},
+	}
+}
+
+func FrameoffCondition(frameoff int64) ast.Expr {
+	return &ast.BinaryExpr{
+		Op: token.EQL,
+		X: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: "runtime"},
+			Sel: &ast.Ident{Name: "frameoff"},
+		},
+		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.FormatInt(frameoff, 10)},
+	}
+}
+
+func AndFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
+	if cond == nil {
+		return nil
+	}
+	return &ast.BinaryExpr{
+		Op: token.LAND,
+		X:  cond,
+		Y:  FrameoffCondition(frameoff),
+	}
 }

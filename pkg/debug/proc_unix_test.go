@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
@@ -29,26 +30,26 @@ func TestIssue419(t *testing.T) {
 	errChan := make(chan error, 2)
 
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
-	withTestTarget("issue419", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestTarget("issue419", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		defer close(errChan)
-		setFunctionBreakpoint(p, t, "main.main")
-		assertNoError(proc.Continue(p), t, "Continue()")
+		setFunctionBreakpoint(tgt, t, "main.main")
+		assertNoError(tgt.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)
 		go func() {
 			time.Sleep(500 * time.Millisecond)
 			<-resumeChan
-			if p.Pid() <= 0 {
+			if tgt.Pid() <= 0 {
 				// if we don't stop the inferior the test will never finish
-				p.RequestManualStop()
-				err := p.Detach(true)
-				errChan <- errIssue419{pid: p.Pid(), err: err}
+				tgt.RequestManualStop()
+				err := tgt.Detach(true)
+				errChan <- errIssue419{pid: tgt.Pid(), err: err}
 				return
 			}
-			err := syscall.Kill(p.Pid(), syscall.SIGINT)
-			errChan <- errIssue419{pid: p.Pid(), err: err}
+			err := syscall.Kill(tgt.Pid(), syscall.SIGINT)
+			errChan <- errIssue419{pid: tgt.Pid(), err: err}
 		}()
-		p.ResumeNotify(resumeChan)
-		errChan <- proc.Continue(p)
+		tgt.ResumeNotify(resumeChan)
+		errChan <- tgt.Continue()
 	})
 
 	for i := 0; i < 2; i++ {

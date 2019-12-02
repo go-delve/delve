@@ -91,6 +91,32 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 	return int64(frame.Regs.BP()) - int64(frame.stackHi)
 }
 
+// Topframe returns the two topmost frames of g, or thread if g is nil.
+func Topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
+	var frames []Stackframe
+	var err error
+
+	if g == nil {
+		if thread.Blocked() {
+			return Stackframe{}, Stackframe{}, ErrThreadBlocked{}
+		}
+		frames, err = ThreadStacktrace(thread, 1)
+	} else {
+		frames, err = g.Stacktrace(1, StacktraceReadDefers)
+	}
+	if err != nil {
+		return Stackframe{}, Stackframe{}, err
+	}
+	switch len(frames) {
+	case 0:
+		return Stackframe{}, Stackframe{}, errors.New("empty stack trace")
+	case 1:
+		return frames[0], Stackframe{}, nil
+	default:
+		return frames[0], frames[1], nil
+	}
+}
+
 // ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
 func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
@@ -409,8 +435,8 @@ func (it *stackIterator) Err() error {
 // frameBase calculates the frame base pseudo-register for DWARF for fn and
 // the current frame.
 func (it *stackIterator) frameBase(fn *Function) int64 {
-	rdr := fn.cu.image.dwarfReader
-	rdr.Seek(fn.offset)
+	rdr := fn.CompileUnit.Image.dwarfReader
+	rdr.Seek(fn.Offset)
 	e, err := rdr.Next()
 	if err != nil {
 		return 0
@@ -445,7 +471,7 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 			// instruction to look for at pc - 1
 		default:
 			r.lastpc = it.pc - 1
-			r.Call.File, r.Call.Line = r.Current.Fn.cu.lineInfo.PCToLine(r.Current.Fn.Entry, it.pc-1)
+			r.Call.File, r.Call.Line = r.Current.Fn.CompileUnit.LineInfo.PCToLine(r.Current.Fn.Entry, it.pc-1)
 		}
 	}
 	return r
@@ -479,7 +505,7 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 	if frame.Call.Fn == nil {
 		return append(frames, frame)
 	}
-	if frame.Call.Fn.cu.lineInfo == nil {
+	if frame.Call.Fn.CompileUnit.LineInfo == nil {
 		return append(frames, frame)
 	}
 
@@ -488,9 +514,9 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		callpc--
 	}
 
-	image := frame.Call.Fn.cu.image
+	image := frame.Call.Fn.CompileUnit.Image
 
-	irdr := reader.InlineStack(image.dwarf, frame.Call.Fn.offset, reader.ToRelAddr(callpc, image.StaticBase))
+	irdr := reader.InlineStack(image.Dwarf, frame.Call.Fn.Offset, reader.ToRelAddr(callpc, image.StaticBase))
 	for irdr.Next() {
 		entry, offset := reader.LoadAbstractOrigin(irdr.Entry(), image.dwarfReader)
 
@@ -501,11 +527,11 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		if !okname || !okfileidx || !okline {
 			break
 		}
-		if fileidx-1 < 0 || fileidx-1 >= int64(len(frame.Current.Fn.cu.lineInfo.FileNames)) {
+		if fileidx-1 < 0 || fileidx-1 >= int64(len(frame.Current.Fn.CompileUnit.LineInfo.FileNames)) {
 			break
 		}
 
-		inlfn := &Function{Name: fnname, Entry: frame.Call.Fn.Entry, End: frame.Call.Fn.End, offset: offset, cu: frame.Call.Fn.cu}
+		inlfn := &Function{Name: fnname, Entry: frame.Call.Fn.Entry, End: frame.Call.Fn.End, Offset: offset, CompileUnit: frame.Call.Fn.CompileUnit}
 		frames = append(frames, Stackframe{
 			Current: frame.Current,
 			Call: Location{
@@ -524,7 +550,7 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 			lastpc:      frame.lastpc,
 		})
 
-		frame.Call.File = frame.Current.Fn.cu.lineInfo.FileNames[fileidx-1].Path
+		frame.Call.File = frame.Current.Fn.CompileUnit.LineInfo.FileNames[fileidx-1].Path
 		frame.Call.Line = int(line)
 	}
 
@@ -764,8 +790,8 @@ func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
 	scope.Regs.CFA = (int64(d.variable.Addr) + d.variable.RealType.Common().ByteSize)
 	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(scope.Regs.CFA - int64(bi.Arch.PtrSize()))
 
-	rdr := scope.Fn.cu.image.dwarfReader
-	rdr.Seek(scope.Fn.offset)
+	rdr := scope.Fn.CompileUnit.Image.dwarfReader
+	rdr.Seek(scope.Fn.Offset)
 	e, err := rdr.Next()
 	if err != nil {
 		return nil, fmt.Errorf("could not read DWARF function entry: %v", err)
