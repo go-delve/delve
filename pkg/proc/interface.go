@@ -36,8 +36,10 @@ type RecordingManipulation interface {
 	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
 	// number.
 	Restart(pos string) error
-	// Direction changes execution direction.
-	Direction(Direction) error
+	// ChangeDirection changes execution direction.
+	ChangeDirection(Direction) error
+	// Direction returns the current execution direction.
+	Direction() Direction
 	// When returns current recording position.
 	When() (string, error)
 	// Checkpoint sets a checkpoint at the current position.

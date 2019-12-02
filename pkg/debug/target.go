@@ -526,7 +526,20 @@ func (t *Target) Continue() error {
 			t.ClearInternalBreakpoints()
 			return nil
 		}
-		trapthread, err := t.Resume()
+		// all threads stopped over a breakpoint are made to step over it
+		if t.Direction() == proc.Forward {
+			for _, thread := range t.ThreadList() {
+				if thread.Breakpoint().Breakpoint != nil {
+					if err := thread.StepInstruction(); err != nil {
+						return err
+					}
+					thread.ClearCurrentBreakpointState()
+				}
+			}
+		}
+		t.Process.Common().ClearAllGCache()
+		// everything is resumed
+		trapthread, err := t.Process.Resume()
 		if err != nil {
 			return err
 		}
@@ -880,7 +893,9 @@ func (t *Target) Restart(from string) error { return t.Process.Restart(from) }
 
 // Direction controls whether execution goes forward or backward depending on the
 // settings. This is only valid when using the "rr" backend.
-func (t *Target) Direction(dir proc.Direction) error { return t.Process.Direction(dir) }
+func (t *Target) ChangeDirection(dir proc.Direction) error { return t.Process.ChangeDirection(dir) }
+
+func (t *Target) Direction() proc.Direction { return t.Process.Direction() }
 
 // When returns rr's current internal event number. Only valid when using the
 // "rr" backend.

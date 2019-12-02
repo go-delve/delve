@@ -636,11 +636,11 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = proc.EvalExpressionWithCalls(d.target, g, command.Expr, *api.LoadConfigToProc(command.ReturnInfoLoadConfig), !command.UnsafeCall, d.target.Continue)
 	case api.Rewind:
 		d.log.Debug("rewinding")
-		if err := d.target.Direction(proc.Backward); err != nil {
+		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
 		defer func() {
-			d.target.Direction(proc.Forward)
+			d.target.ChangeDirection(proc.Forward)
 		}()
 		err = d.target.Continue()
 	case api.Next:
@@ -654,11 +654,11 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = d.target.StepInstruction()
 	case api.ReverseStepInstruction:
 		d.log.Debug("reverse single stepping")
-		if err := d.target.Direction(proc.Backward); err != nil {
+		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
 		defer func() {
-			d.target.Direction(proc.Forward)
+			d.target.ChangeDirection(proc.Forward)
 		}()
 		err = d.target.StepInstruction()
 	case api.StepOut:

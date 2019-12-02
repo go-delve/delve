@@ -147,7 +147,7 @@ func TestReverseBreakpointCounts(t *testing.T) {
 		}
 
 		tgt.ClearBreakpoint(endbp.Addr)
-		assertNoError(tgt.Direction(proc.Backward), t, "Switching to backward direction")
+		assertNoError(tgt.ChangeDirection(proc.Backward), t, "Switching to backward direction")
 		bp := setFileBreakpoint(tgt, t, fixture, 12)
 		startbp := setFileBreakpoint(tgt, t, fixture, 20)
 
@@ -282,7 +282,7 @@ func TestIssue1376(t *testing.T) {
 		assertNoError(tgt.Continue(), t, "Continue (forward)")
 		_, err := tgt.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
-		assertNoError(tgt.Direction(proc.Backward), t, "Switching to backward direction")
+		assertNoError(tgt.ChangeDirection(proc.Backward), t, "Switching to backward direction")
 		assertNoError(tgt.Continue(), t, "Continue (backward)")
 	})
 }

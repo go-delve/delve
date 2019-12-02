@@ -635,26 +635,6 @@ const (
 // Resume will continue execution of the process until
 // a breakpoint is hit or signal is received.
 func (p *Process) Resume() (proc.Thread, error) {
-	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-
-	if p.conn.direction == proc.Forward {
-		// step threads stopped at any breakpoint over their breakpoint
-		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint.Breakpoint != nil {
-				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-
-	p.common.ClearAllGCache()
-	for _, th := range p.threads {
-		th.ClearCurrentBreakpointState()
-	}
-
 	p.setCtrlC(false)
 
 	// resume all threads
@@ -991,7 +971,7 @@ func (p *Process) ClearCheckpoint(id int) error {
 }
 
 // Direction sets whether to run the program forwards or in reverse execution.
-func (p *Process) Direction(dir proc.Direction) error {
+func (p *Process) ChangeDirection(dir proc.Direction) error {
 	if p.tracedir == "" {
 		return proc.ErrNotRecorded
 	}
@@ -1007,6 +987,8 @@ func (p *Process) Direction(dir proc.Direction) error {
 	p.conn.direction = dir
 	return nil
 }
+
+func (p *Process) Direction() proc.Direction { return p.conn.direction }
 
 // Breakpoints returns the list of breakpoints currently set.
 func (p *Process) Breakpoints() *proc.BreakpointMap {

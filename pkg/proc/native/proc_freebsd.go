@@ -310,16 +310,6 @@ func (dbp *Process) exitGuard(err error) error {
 
 // Used by Resume
 func (dbp *Process) resume() error {
-	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.threads {
-		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
-				return err
-			}
-			thread.CurrentBreakpoint.Clear()
-		}
-	}
-	// all threads are resumed
 	var err error
 	dbp.execPtraceFunc(func() { err = PtraceCont(dbp.pid, 0) })
 	return err
