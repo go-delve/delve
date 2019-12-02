@@ -142,16 +142,16 @@ For live targets the command takes the following forms:
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
 `},
-		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
-		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, helpMsg: "Single step through program."},
+		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, allowedPrefixes: revPrefix, helpMsg: "Run until breakpoint or program termination."},
+		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, allowedPrefixes: revPrefix, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
-		{aliases: []string{"next", "n"}, group: runCmds, cmdFn: c.next, helpMsg: `Step over to next source line.
+		{aliases: []string{"next", "n"}, group: runCmds, cmdFn: c.next, allowedPrefixes: revPrefix, helpMsg: `Step over to next source line.
 
 	 next [count]
 
 Optional [count] argument allows you to skip multiple lines.
 `},
-		{aliases: []string{"stepout", "so"}, group: runCmds, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
+		{aliases: []string{"stepout", "so"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, group: runCmds, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
 	
 	call [-unsafe] <function call expression>
@@ -390,7 +390,7 @@ For example:
 		c.cmds = append(c.cmds, command{
 			aliases: []string{"rewind", "rw"},
 			group:   runCmds,
-			cmdFn:   rewind,
+			cmdFn:   c.rewind,
 			helpMsg: "Run backwards until breakpoint or program termination.",
 		})
 		c.cmds = append(c.cmds, command{
@@ -416,6 +416,7 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 		})
 		c.cmds = append(c.cmds, command{
 			aliases: []string{"rev"},
+			group: runCmds,
 			cmdFn:   c.revCmd,
 			helpMsg: `Reverses the execution of the target program for the command specified.
 Currently, only the rev step-instruction command is supported.`,
@@ -1056,6 +1057,9 @@ func printcontextNoState(t *Term) {
 }
 
 func (c *Commands) cont(t *Term, ctx callContext, args string) error {
+	if ctx.Prefix == revPrefix {
+		return c.rewind(t, ctx, args)
+	}
 	c.frame = 0
 	stateChan := t.client.Continue()
 	var state *api.DebuggerState
@@ -1079,7 +1083,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 	}
 	for {
 		fmt.Printf("\tbreakpoint hit during %s, continuing...\n", op)
-		stateChan := t.client.Continue()
+		stateChan := t.client.DirectionCongruentContinue()
 		var state *api.DebuggerState
 		for state = range stateChan {
 			if state.Err != nil {
@@ -1117,7 +1121,11 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	c.frame = 0
-	state, err := exitedToError(t.client.Step())
+	stepfn := t.client.Step
+	if ctx.Prefix == revPrefix {
+		stepfn = t.client.ReverseStep
+	}
+	state, err := exitedToError(stepfn())
 	if err != nil {
 		printcontextNoState(t)
 		return err
@@ -1172,6 +1180,12 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
+
+	nextfn := t.client.Next
+	if ctx.Prefix == revPrefix {
+		nextfn = t.client.ReverseNext
+	}
+
 	var count int64
 	var err error
 	if count, err = parseOptionalCount(args); err != nil {
@@ -1180,7 +1194,7 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 		return errors.New("Invalid next count")
 	}
 	for ; count > 0; count-- {
-		state, err := exitedToError(t.client.Next())
+		state, err := exitedToError(nextfn())
 		if err != nil {
 			printcontextNoState(t)
 			return err
@@ -1204,7 +1218,13 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
-	state, err := exitedToError(t.client.StepOut())
+
+	stepoutfn := t.client.StepOut
+	if ctx.Prefix == revPrefix {
+		stepoutfn = t.client.ReverseStepOut
+	}
+
+	state, err := exitedToError(stepoutfn())
 	if err != nil {
 		printcontextNoState(t)
 		return err
@@ -2304,7 +2324,8 @@ func (c *Commands) executeFile(t *Term, name string) error {
 	return scanner.Err()
 }
 
-func rewind(t *Term, ctx callContext, args string) error {
+func (c *Commands) rewind(t *Term, ctx callContext, args string) error {
+	c.frame = 0
 	stateChan := t.client.Rewind()
 	var state *api.DebuggerState
 	for state = range stateChan {

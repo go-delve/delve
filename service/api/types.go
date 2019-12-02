@@ -366,16 +366,24 @@ const (
 	Continue = "continue"
 	// Rewind resumes process execution backwards (target must be a recording).
 	Rewind = "rewind"
+	// DirecitonCongruentContinue resumes process execution, if a reverse next, step or stepout operation is in progress it will resume execution backward.
+	DirectionCongruentContinue = "directionCongruentContinue"
 	// Step continues to next source line, entering function calls.
 	Step = "step"
+	// ReverseStep continues backward to the previous line of source code, entering function calls.
+	ReverseStep = "reverseStep"
 	// StepOut continues to the return address of the current function
 	StepOut = "stepOut"
+	// ReverseStepOut continues backward to the calle rof the current function.
+	ReverseStepOut = "reverseStepOut"
 	// StepInstruction continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"
 	// ReverseStepInstruction reverses execution for exactly 1 cpu instruction.
 	ReverseStepInstruction = "reverseStepInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
+	// ReverseNext continues backward to the previous line of source code, not entering function calls.
+	ReverseNext = "reverseNext"
 	// SwitchThread switches the debugger's current thread context.
 	SwitchThread = "switchThread"
 	// SwitchGoroutine switches the debugger's current thread context to the thread running the specified goroutine

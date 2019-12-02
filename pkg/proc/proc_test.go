@@ -467,23 +467,23 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 				if traceTestseq2 {
 					t.Log("reverse-next")
 				}
-				assertNoError(p.Direction(proc.Backward), t, "direction switch")
+				assertNoError(p.ChangeDirection(proc.Backward), t, "direction switch")
 				assertNoError(proc.Next(p), t, "reverse Next() returned an error")
-				assertNoError(p.Direction(proc.Forward), t, "direction switch")
+				assertNoError(p.ChangeDirection(proc.Forward), t, "direction switch")
 			case contReverseStep:
 				if traceTestseq2 {
 					t.Log("reverse-step")
 				}
-				assertNoError(p.Direction(proc.Backward), t, "direction switch")
+				assertNoError(p.ChangeDirection(proc.Backward), t, "direction switch")
 				assertNoError(proc.Step(p), t, "reverse Step() returned an error")
-				assertNoError(p.Direction(proc.Forward), t, "direction switch")
+				assertNoError(p.ChangeDirection(proc.Forward), t, "direction switch")
 			case contReverseStepout:
 				if traceTestseq2 {
 					t.Log("reverse-stepout")
 				}
-				assertNoError(p.Direction(proc.Backward), t, "direction switch")
+				assertNoError(p.ChangeDirection(proc.Backward), t, "direction switch")
 				assertNoError(proc.StepOut(p), t, "reverse StepOut() returned an error")
-				assertNoError(p.Direction(proc.Forward), t, "direction switch")
+				assertNoError(p.ChangeDirection(proc.Forward), t, "direction switch")
 			case contContinueToBreakpoint:
 				bp := setFileBreakpoint(p, t, fixture.Source, tc.pos.(int))
 				if traceTestseq2 {

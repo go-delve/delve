@@ -1021,10 +1021,13 @@ func (p *Process) ClearCheckpoint(id int) error {
 	return nil
 }
 
-// Direction sets whether to run the program forwards or in reverse execution.
-func (p *Process) Direction(dir proc.Direction) error {
+// ChangeDirection sets whether to run the program forwards or in reverse execution.
+func (p *Process) ChangeDirection(dir proc.Direction) error {
 	if p.tracedir == "" {
-		return proc.ErrNotRecorded
+		if dir != proc.Forward {
+			return proc.ErrNotRecorded
+		}
+		return nil
 	}
 	if p.conn.conn == nil {
 		return proc.ErrProcessExited{Pid: p.conn.pid}
