@@ -369,7 +369,7 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 	}
 
 	if !csource {
-		deferreturns := proc.FindDeferReturnCalls(text)
+		deferreturns := FindDeferReturnCalls(text)
 
 		// Set breakpoint on the most recently deferred function (if any)
 		var deferpc uint64
@@ -991,4 +991,18 @@ func (t *Target) ClearInternalBreakpoints() error {
 		}
 		return nil
 	})
+}
+
+func FindDeferReturnCalls(text []proc.AsmInstruction) []uint64 {
+	const deferreturn = "runtime.deferreturn"
+	deferreturns := []uint64{}
+
+	// Find all runtime.deferreturn locations in the function
+	// See documentation of Breakpoint.DeferCond for why this is necessary
+	for _, instr := range text {
+		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && instr.DestLoc.Fn.Name == deferreturn {
+			deferreturns = append(deferreturns, instr.Loc.PC)
+		}
+	}
+	return deferreturns
 }

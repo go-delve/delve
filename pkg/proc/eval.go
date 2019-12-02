@@ -131,6 +131,34 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 	return s
 }
 
+// ThreadScope returns an EvalScope for this thread.
+func ThreadScope(thread Thread) (*EvalScope, error) {
+	locations, err := ThreadStacktrace(thread, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(locations) < 1 {
+		return nil, errors.New("could not decode first frame")
+	}
+	return FrameToScope(thread.BinInfo(), thread, nil, locations...), nil
+}
+
+// GoroutineScope returns an EvalScope for the goroutine running on this thread.
+func GoroutineScope(thread Thread) (*EvalScope, error) {
+	locations, err := ThreadStacktrace(thread, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(locations) < 1 {
+		return nil, errors.New("could not decode first frame")
+	}
+	g, err := GetG(thread)
+	if err != nil {
+		return nil, err
+	}
+	return FrameToScope(thread.BinInfo(), thread, g, locations...), nil
+}
+
 // EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
 	if scope.callCtx != nil {

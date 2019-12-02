@@ -212,6 +212,103 @@ type G struct {
 	Unreadable error // could not read the G struct
 }
 
+func getGVariable(thread Thread) (*Variable, error) {
+	regs, err := thread.Registers(false)
+	if err != nil {
+		return nil, err
+	}
+
+	gaddr, hasgaddr := regs.GAddr()
+	if !hasgaddr {
+		gaddrbs := make([]byte, thread.Arch().PtrSize())
+		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()))
+		if err != nil {
+			return nil, err
+		}
+		gaddr = binary.LittleEndian.Uint64(gaddrbs)
+	}
+
+	return newGVariable(thread, uintptr(gaddr), thread.Arch().DerefTLS())
+}
+
+func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
+	typ, err := thread.BinInfo().findType("runtime.g")
+	if err != nil {
+		return nil, err
+	}
+
+	name := ""
+
+	if deref {
+		typ = &godwarf.PtrType{
+			CommonType: godwarf.CommonType{
+				ByteSize:    int64(thread.Arch().PtrSize()),
+				Name:        "",
+				ReflectKind: reflect.Ptr,
+				Offset:      0,
+			},
+			Type: typ,
+		}
+	} else {
+		name = "runtime.curg"
+	}
+
+	return newVariableFromThread(thread, name, gaddr, typ), nil
+}
+
+// GetG returns information on the G (goroutine) that is executing on this thread.
+//
+// The G structure for a thread is stored in thread local storage. Here we simply
+// calculate the address and read and parse the G struct.
+//
+// We cannot simply use the allg linked list in order to find the M that represents
+// the given OS thread and follow its G pointer because on Darwin mach ports are not
+// universal, so our port for this thread would not map to the `id` attribute of the M
+// structure. Also, when linked against libc, Go prefers the libc version of clone as
+// opposed to the runtime version. This has the consequence of not setting M.id for
+// any thread, regardless of OS.
+//
+// In order to get around all this craziness, we read the address of the G structure for
+// the current thread from the thread local storage area.
+func GetG(thread Thread) (*G, error) {
+	if loc, _ := thread.Location(); loc != nil && loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
+		// When threads are executing runtime.clone the value of TLS is unreliable.
+		return nil, nil
+	}
+	gaddr, err := getGVariable(thread)
+	if err != nil {
+		return nil, err
+	}
+
+	g, err := gaddr.parseG()
+	if err != nil {
+		return nil, err
+	}
+	if g.ID == 0 {
+		// The runtime uses a special goroutine with ID == 0 to mark that the
+		// current goroutine is executing on the system stack (sometimes also
+		// referred to as the g0 stack or scheduler stack, I'm not sure if there's
+		// actually any difference between those).
+		// For our purposes it's better if we always return the real goroutine
+		// since the rest of the code assumes the goroutine ID is univocal.
+		// The real 'current goroutine' is stored in g0.m.curg
+		curgvar, err := g.variable.fieldVariable("m").structMember("curg")
+		if err != nil {
+			return nil, err
+		}
+		g, err = curgvar.parseG()
+		if err != nil {
+			return nil, err
+		}
+		g.SystemStack = true
+	}
+	g.Thread = thread
+	if loc, err := thread.Location(); err == nil {
+		g.CurrentLoc = *loc
+	}
+	return g, nil
+}
+
 // Defer returns the top-most defer of the goroutine.
 func (g *G) Defer() *Defer {
 	if g.variable.Unreadable != nil {
