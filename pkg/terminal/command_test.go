@@ -281,6 +281,19 @@ func TestIssue411(t *testing.T) {
 	})
 }
 
+func TestExitStatus(t *testing.T) {
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.Exec("continue")
+		status, err := term.handleExit()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status != 0 {
+			t.Fatalf("incorrect exit status, expected 0, got %d", status)
+		}
+	})
+}
+
 func TestScopePrefix(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		t.Skip("arm64 does not support Stacktrace for now")

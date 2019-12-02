@@ -354,17 +354,20 @@ func (t *Term) handleExit() (int, error) {
 
 	s, err := t.client.GetState()
 	if err != nil {
-		if isErrProcessExited(err) && t.client.IsMulticlient() {
-			answer, err := yesno(t.line, "Remote process has exited. Would you like to kill the headless instance? [Y/n] ")
-			if err != nil {
-				return 2, io.EOF
-			}
-			if answer {
-				if err := t.client.Detach(true); err != nil {
-					return 1, err
+		if isErrProcessExited(err) {
+			if t.client.IsMulticlient() {
+				answer, err := yesno(t.line, "Remote process has exited. Would you like to kill the headless instance? [Y/n] ")
+				if err != nil {
+					return 2, io.EOF
 				}
+				if answer {
+					if err := t.client.Detach(true); err != nil {
+						return 1, err
+					}
+				}
+				return 0, err
 			}
-			return 0, err
+			return 0, nil
 		}
 		return 1, err
 	}
