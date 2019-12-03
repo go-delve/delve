@@ -43,6 +43,7 @@ functions(Filter) | Equivalent to API call [ListFunctions](https://godoc.org/git
 goroutines(Start, Count) | Equivalent to API call [ListGoroutines](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListGoroutines)
 local_vars(Scope, Cfg) | Equivalent to API call [ListLocalVars](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListLocalVars)
 package_vars(Filter, Cfg) | Equivalent to API call [ListPackageVars](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackageVars)
+packages_build_info(IncludeFiles) | Equivalent to API call [ListPackagesBuildInfo](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackagesBuildInfo)
 registers(ThreadID, IncludeFp) | Equivalent to API call [ListRegisters](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListRegisters)
 sources(Filter) | Equivalent to API call [ListSources](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListSources)
 threads() | Equivalent to API call [ListThreads](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListThreads)

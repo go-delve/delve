@@ -731,3 +731,23 @@ func (s *RPCServer) ListDynamicLibraries(in ListDynamicLibrariesIn, out *ListDyn
 	out.List = s.debugger.ListDynamicLibraries()
 	return nil
 }
+
+// ListPackagesBuildInfoIn holds the arguments of ListPackages.
+type ListPackagesBuildInfoIn struct {
+	IncludeFiles bool
+}
+
+// ListPackagesBuildInfoOut holds the return values of ListPackages.
+type ListPackagesBuildInfoOut struct {
+	List []api.PackageBuildInfo
+}
+
+// ListPackagesBuildInfo returns the list of packages used by the program along with
+// the directory where each package was compiled and optionally the list of
+// files constituting the package.
+// Note that the directory path is a best guess and may be wrong is a tool
+// other than cmd/go is used to perform the build.
+func (s *RPCServer) ListPackagesBuildInfo(in ListPackagesBuildInfoIn, out *ListPackagesBuildInfoOut) error {
+	out.List = s.debugger.ListPackagesBuildInfo(in.IncludeFiles)
+	return nil
+}

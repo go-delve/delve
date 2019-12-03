@@ -4525,3 +4525,24 @@ func TestIssue1817(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 16)
 	})
 }
+
+func TestListPackagesBuildInfo(t *testing.T) {
+	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
+		pkgs := p.BinInfo().ListPackagesBuildInfo(true)
+		t.Logf("returned %d", len(pkgs))
+		if len(pkgs) < 10 {
+			t.Errorf("very few packages returned")
+		}
+		for _, pkg := range pkgs {
+			t.Logf("%q %q", pkg.ImportPath, pkg.DirectoryPath)
+			const _fixtures = "_fixtures"
+			fidx := strings.Index(pkg.ImportPath, _fixtures)
+			if fidx < 0 {
+				continue
+			}
+			if !strings.HasSuffix(strings.Replace(pkg.DirectoryPath, "\\", "/", -1), pkg.ImportPath[fidx:]) {
+				t.Errorf("unexpected suffix: %q %q", pkg.ImportPath, pkg.DirectoryPath)
+			}
+		}
+	})
+}
