@@ -385,9 +385,24 @@ func (lineInfo *DebugLineInfo) FirstStmtForLine(start, end uint64) (pc uint64, f
 		}
 		if err := sm.next(); err != nil {
 			if lineInfo.Logf != nil {
-				lineInfo.Logf("StmtAfter error: %v", err)
+				lineInfo.Logf("FirstStmtForLine error: %v", err)
 			}
 			return 0, "", 0, false
+		}
+	}
+}
+
+func (lineInfo *DebugLineInfo) FirstFile() string {
+	sm := newStateMachine(lineInfo, lineInfo.Instructions)
+	for {
+		if sm.valid {
+			return sm.file
+		}
+		if err := sm.next(); err != nil {
+			if lineInfo.Logf != nil {
+				lineInfo.Logf("FirstFile error: %v", err)
+			}
+			return ""
 		}
 	}
 }

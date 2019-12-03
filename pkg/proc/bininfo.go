@@ -351,7 +351,7 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pcs []uint64, err e
 	fileFound := false
 	var pc uint64
 	for _, cu := range bi.compileUnits {
-		if cu.lineInfo.Lookup[filename] == nil {
+		if cu.lineInfo != nil && cu.lineInfo.Lookup[filename] == nil {
 			continue
 		}
 		fileFound = true
@@ -411,7 +411,7 @@ func (bi *BinaryInfo) AllPCsForFileLines(filename string, linenos []int) map[int
 		r[line] = make([]uint64, 0, 1)
 	}
 	for _, cu := range bi.compileUnits {
-		if cu.lineInfo.Lookup[filename] != nil {
+		if cu.lineInfo != nil && cu.lineInfo.Lookup[filename] != nil {
 			cu.lineInfo.AllPCsForFileLines(filename, r)
 		}
 	}
@@ -1317,8 +1317,8 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 			if len(cu.ranges) >= 1 {
 				cu.lowPC = cu.ranges[0][0]
 			}
-			lineInfoOffset, _ := entry.Val(dwarf.AttrStmtList).(int64)
-			if lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
+			lineInfoOffset, hasLineInfo := entry.Val(dwarf.AttrStmtList).(int64)
+			if hasLineInfo && lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				var logfn func(string, ...interface{})
 				if logflags.DebugLineErrors() {
 					logger := logrus.New().WithFields(logrus.Fields{"layer": "dwarf-line"})
@@ -1755,4 +1755,53 @@ func (bi *BinaryInfo) symLookup(addr uint64) (string, uint64) {
 		return bi.packageVars[i].name, bi.packageVars[i].addr
 	}
 	return "", 0
+}
+
+type PackageBuildInfo struct {
+	ImportPath    string
+	DirectoryPath string
+	Files         map[string]struct{}
+}
+
+// ListPackagesBuildInfo returns the list of packages used by the program along with
+// the directory where each package was compiled and optionally the list of
+// files constituting the package.
+func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildInfo {
+	m := make(map[string]*PackageBuildInfo)
+	for _, cu := range bi.compileUnits {
+		if cu.image != bi.Images[0] || !cu.isgo || cu.lineInfo == nil {
+			//TODO(aarzilli): what's the correct thing to do for plugins?
+			continue
+		}
+
+		ip := strings.Replace(cu.name, "\\", "/", -1)
+		if _, ok := m[ip]; !ok {
+			path := cu.lineInfo.FirstFile()
+			if ext := filepath.Ext(path); ext != ".go" && ext != ".s" {
+				continue
+			}
+			dp := filepath.Dir(path)
+			m[ip] = &PackageBuildInfo{
+				ImportPath:    ip,
+				DirectoryPath: dp,
+				Files:         make(map[string]struct{}),
+			}
+		}
+
+		if includeFiles {
+			pbi := m[ip]
+
+			for _, file := range cu.lineInfo.FileNames {
+				pbi.Files[file.Path] = struct{}{}
+			}
+		}
+	}
+
+	r := make([]*PackageBuildInfo, 0, len(m))
+	for _, pbi := range m {
+		r = append(r, pbi)
+	}
+
+	sort.Slice(r, func(i, j int) bool { return r[i].ImportPath < r[j].ImportPath })
+	return r
 }

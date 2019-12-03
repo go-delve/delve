@@ -1337,6 +1337,35 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 	return nil
 }
 
+// ListPackagesBuildInfo returns the list of packages used by the program along with
+// the directory where each package was compiled and optionally the list of
+// files constituting the package.
+func (d *Debugger) ListPackagesBuildInfo(includeFiles bool) []api.PackageBuildInfo {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+	pkgs := d.target.BinInfo().ListPackagesBuildInfo(includeFiles)
+	r := make([]api.PackageBuildInfo, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		var files []string
+
+		if len(pkg.Files) > 0 {
+			files = make([]string, 0, len(pkg.Files))
+			for file := range pkg.Files {
+				files = append(files, file)
+			}
+		}
+
+		sort.Strings(files)
+
+		r = append(r, api.PackageBuildInfo{
+			ImportPath:    pkg.ImportPath,
+			DirectoryPath: pkg.DirectoryPath,
+			Files:         files,
+		})
+	}
+	return r
+}
+
 func go11DecodeErrorCheck(err error) error {
 	if _, isdecodeerr := err.(dwarf.DecodeError); !isdecodeerr {
 		return err

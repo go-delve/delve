@@ -509,3 +509,10 @@ const (
 	// values saved in the runtime.g structure.
 	StacktraceG
 )
+
+// ImportPathToDirectoryPath maps an import path to a directory path.
+type PackageBuildInfo struct {
+	ImportPath    string
+	DirectoryPath string
+	Files         []string
+}
