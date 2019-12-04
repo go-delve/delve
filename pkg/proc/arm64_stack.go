@@ -160,11 +160,7 @@ func (it *arm64Stack) switchStack() bool {
 			// Since we are only interested in printing the system stack for cgo
 			// calls we switch directly to the goroutine stack if we detect that the
 			// function at the top of the stack is a runtime function.
-			it.systemstack = false
-			it.top = false
-			it.pc = it.g.PC
-			it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
-			it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
+			it.switchToGoroutineStack()
 			return true
 		}
 
@@ -178,6 +174,7 @@ func (it *arm64Stack) switchToGoroutineStack() {
 	it.pc = it.g.PC
 	it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
 	it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
+	it.regs.Reg(it.regs.LRRegNum).Uint64Val = it.g.LR
 }
 
 // Frame returns the frame the iterator is pointing at.

@@ -803,9 +803,6 @@ func TestClientServer_SetVariable(t *testing.T) {
 }
 
 func TestClientServer_FullStacktrace(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	protest.AllowRecording(t)
 	withTestClient2("goroutinestackprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
@@ -879,9 +876,6 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 }
 
 func TestIssue355(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
 	withTestClient2("continuetestprog", t, func(c service.Client) {

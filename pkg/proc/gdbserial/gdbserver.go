@@ -1626,6 +1626,10 @@ func (regs *gdbRegisters) BP() uint64 {
 	return binary.LittleEndian.Uint64(regs.regs[regnameBP].value)
 }
 
+func (regs *gdbRegisters) LR() uint64 {
+	return 0
+}
+
 func (regs *gdbRegisters) CX() uint64 {
 	return binary.LittleEndian.Uint64(regs.regs[regnameCX].value)
 }

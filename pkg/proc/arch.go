@@ -17,7 +17,7 @@ type Arch interface {
 	FixFrameUnwindContext(*frame.FrameContext, uint64, *BinaryInfo) *frame.FrameContext
 	RegSize(uint64) int
 	RegistersToDwarfRegisters(uint64, Registers) op.DwarfRegisters
-	AddrAndStackRegsToDwarfRegisters(uint64, uint64, uint64, uint64) op.DwarfRegisters
+	AddrAndStackRegsToDwarfRegisters(uint64, uint64, uint64, uint64, uint64) op.DwarfRegisters
 }
 
 const (

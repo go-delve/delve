@@ -28,6 +28,7 @@ type ARM64 struct {
 const (
 	arm64DwarfIPRegNum uint64 = 32
 	arm64DwarfSPRegNum uint64 = 31
+	arm64DwarfLRRegNum uint64 = 30
 	arm64DwarfBPRegNum uint64 = 29
 )
 
@@ -155,6 +156,13 @@ func (a *ARM64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 			Offset: 0,
 		}
 	}
+	if fctxt.Regs[arm64DwarfLRRegNum].Rule == frame.RuleUndefined {
+		fctxt.Regs[arm64DwarfLRRegNum] = frame.DWRule{
+			Rule:   frame.RuleFramePointer,
+			Reg:    arm64DwarfLRRegNum,
+			Offset: 0,
+		}
+	}
 
 	return fctxt
 }
@@ -258,6 +266,7 @@ func (a *ARM64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 	dregs[arm64DwarfIPRegNum] = op.DwarfRegisterFromUint64(regs.PC())
 	dregs[arm64DwarfSPRegNum] = op.DwarfRegisterFromUint64(regs.SP())
 	dregs[arm64DwarfBPRegNum] = op.DwarfRegisterFromUint64(regs.BP())
+	dregs[arm64DwarfLRRegNum] = op.DwarfRegisterFromUint64(regs.LR())
 
 	for dwarfReg, asmReg := range arm64DwarfToHardware {
 		v, err := regs.Get(int(asmReg))
@@ -273,16 +282,18 @@ func (a *ARM64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 		PCRegNum:   arm64DwarfIPRegNum,
 		SPRegNum:   arm64DwarfSPRegNum,
 		BPRegNum:   arm64DwarfBPRegNum,
+		LRRegNum:   arm64DwarfLRRegNum,
 	}
 }
 
 // AddrAndStackRegsToDwarfRegisters returns DWARF registers from the passed in
 // PC, SP, and BP registers in the format used by the DWARF expression interpreter.
-func (a *ARM64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp uint64) op.DwarfRegisters {
+func (a *ARM64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, arm64DwarfIPRegNum+1)
 	dregs[arm64DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
 	dregs[arm64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
 	dregs[arm64DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
+	dregs[arm64DwarfLRRegNum] = op.DwarfRegisterFromUint64(lr)
 
 	return op.DwarfRegisters{
 		StaticBase: staticBase,
@@ -291,5 +302,6 @@ func (a *ARM64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp uint64) 
 		PCRegNum:   arm64DwarfIPRegNum,
 		SPRegNum:   arm64DwarfSPRegNum,
 		BPRegNum:   arm64DwarfBPRegNum,
+		LRRegNum:   arm64DwarfLRRegNum,
 	}
 }

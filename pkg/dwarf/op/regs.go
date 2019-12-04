@@ -17,6 +17,7 @@ type DwarfRegisters struct {
 	PCRegNum  uint64
 	SPRegNum  uint64
 	BPRegNum  uint64
+	LRRegNum  uint64
 }
 
 type DwarfRegister struct {
@@ -66,6 +67,10 @@ func (regs *DwarfRegisters) SP() uint64 {
 
 func (regs *DwarfRegisters) BP() uint64 {
 	return regs.Uint64Val(regs.BPRegNum)
+}
+
+func (regs *DwarfRegisters) LR() uint64 {
+	return regs.Uint64Val(regs.LRRegNum)
 }
 
 // AddReg adds register idx to regs.

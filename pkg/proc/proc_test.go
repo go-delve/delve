@@ -3383,9 +3383,6 @@ func TestSystemstackStacktrace(t *testing.T) {
 }
 
 func TestSystemstackOnRuntimeNewstack(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	// The bug being tested here manifests as follows:
 	// - set a breakpoint somewhere or interrupt the program with Ctrl-C
 	// - try to look at stacktraces of other goroutines
@@ -3420,7 +3417,7 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 
 func TestIssue1034(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace and Cgo-debug for now")
+		t.Skip("arm64 does not support Cgo-debug for now")
 	}
 	// The external linker on macOS produces an abbrev for DW_TAG_subprogram
 	// without the "has children" flag, we should support this.
@@ -3440,7 +3437,7 @@ func TestIssue1034(t *testing.T) {
 
 func TestIssue1008(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace and Cgo-debug for now")
+		t.Skip("arm64 does not support Cgo-debug for now")
 	}
 	// The external linker on macOS inserts "end of sequence" extended opcodes
 	// in debug_line. which we should support correctly.
@@ -4064,7 +4061,7 @@ func TestNextUnknownInstr(t *testing.T) {
 
 func TestReadDeferArgs(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
+		t.Skip("arm64 does not support ReadDeferArgs for now")
 	}
 	var tests = []struct {
 		frame, deferCall int
@@ -4416,7 +4413,7 @@ func TestIssue1615(t *testing.T) {
 
 func TestCgoStacktrace2(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace and Cgo-debug for now")
+		t.Skip("arm64 does not support Cgo-debug for now")
 	}
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture crashes go runtime on windows")

@@ -124,7 +124,7 @@ func (g *G) stackIterator(opts StacktraceOptions) (stackIterator, error) {
 	so := g.variable.bi.PCToImage(g.PC)
 	return newStackIterator(
 		g.variable.bi, g.variable.mem,
-		g.variable.bi.Arch.AddrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP),
+		g.variable.bi.Arch.AddrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP, g.LR),
 		g.stackhi, stkbar, g.stkbarPos, g, opts), nil
 }
 

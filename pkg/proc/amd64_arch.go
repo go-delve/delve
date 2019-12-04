@@ -289,7 +289,7 @@ func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 
 // AddrAndStackRegsToDwarfRegisters returns DWARF registers from the passed in
 // PC, SP, and BP registers in the format used by the DWARF expression interpreter.
-func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp uint64) op.DwarfRegisters {
+func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, amd64DwarfIPRegNum+1)
 	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
 	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)

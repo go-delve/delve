@@ -87,6 +87,10 @@ func (r *ARM64Registers) BP() uint64 {
 	return r.Regs.Regs[29]
 }
 
+func (r *ARM64Registers) LR() uint64 {
+	return r.Regs.Regs[30]
+}
+
 // CX returns the value of RCX register.
 func (r *ARM64Registers) CX() uint64 {
 	return 0
