@@ -21,6 +21,12 @@ matrix:
   exclude:
     - os: osx
       arch: arm64
+    - os: linux
+      go: 1.11.x
+      arch: arm64
+    - os: linux
+      go: 1.12.x
+      arch: arm64
 
 before_install:
   - export GOFLAGS=-mod=vendor
