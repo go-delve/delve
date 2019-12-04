@@ -530,10 +530,9 @@ func (t *Target) Continue() error {
 		if t.Direction() == proc.Forward {
 			for _, thread := range t.ThreadList() {
 				if thread.Breakpoint().Breakpoint != nil {
-					if err := thread.StepInstruction(); err != nil {
+					if err := threadStepInstruction(t, thread); err != nil {
 						return err
 					}
-					thread.ClearCurrentBreakpointState()
 				}
 			}
 		}
@@ -646,6 +645,24 @@ func (t *Target) Continue() error {
 	}
 }
 
+func threadStepInstruction(tgt *Target, th proc.Thread) error {
+	if ok, err := tgt.Valid(); !ok {
+		return err
+	}
+	regs, err := th.Registers(false)
+	if err != nil {
+		return err
+	}
+	if bp, ok := tgt.Breakpoints().M[regs.PC()]; ok {
+		if err := tgt.ClearBreakpointFn(bp); err != nil {
+			return err
+		}
+		defer tgt.WriteBreakpoint(bp.Addr)
+	}
+	th.ClearCurrentBreakpointState()
+	return th.StepInstruction()
+}
+
 // onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
 func onNextGoroutine(thread proc.Thread, breakpoints *proc.BreakpointMap) (bool, error) {
 	var bp *proc.Breakpoint
@@ -727,7 +744,7 @@ func pickCurrentThread(t *Target, trapthread proc.Thread, threads []proc.Thread)
 // runtime.debugCallV1.
 func (t *Target) StepInstructionOut(curthread proc.Thread, fnname1, fnname2 string) error {
 	for {
-		if err := curthread.StepInstruction(); err != nil {
+		if err := threadStepInstruction(t, curthread); err != nil {
 			return err
 		}
 		loc, err := curthread.Location()
@@ -973,7 +990,7 @@ func (t *Target) StepInstruction() error {
 		return err
 	}
 	thread.ClearCurrentBreakpointState()
-	if err := thread.StepInstruction(); err != nil {
+	if err := threadStepInstruction(t, thread); err != nil {
 		return err
 	}
 	if err := thread.SetCurrentBreakpoint(true); err != nil {

@@ -1230,14 +1230,6 @@ func (t *Thread) Common() *proc.CommonThread {
 }
 
 func (t *Thread) stepInstruction(tu *threadUpdater) error {
-	pc := t.regs.PC()
-	if _, atbp := t.p.Breakpoints().M[pc]; atbp {
-		err := t.p.conn.clearBreakpoint(pc)
-		if err != nil {
-			return err
-		}
-		defer t.p.conn.setBreakpoint(pc)
-	}
 	return t.p.conn.step(t.strID, tu, false)
 }
 

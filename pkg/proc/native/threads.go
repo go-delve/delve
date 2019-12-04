@@ -28,17 +28,6 @@ type Thread struct {
 // first and then resume execution. Thread will continue until
 // it hits a breakpoint or is signaled.
 func (t *Thread) Continue() error {
-	pc, err := t.PC()
-	if err != nil {
-		return err
-	}
-	// Check whether we are stopped at a breakpoint, and
-	// if so, single step over it before continuing.
-	if _, ok := t.dbp.FindBreakpoint(pc, false); ok {
-		if err := t.StepInstruction(); err != nil {
-			return err
-		}
-	}
 	return t.resume()
 }
 
@@ -53,24 +42,6 @@ func (t *Thread) StepInstruction() (err error) {
 	defer func() {
 		t.singleStepping = false
 	}()
-	pc, err := t.PC()
-	if err != nil {
-		return err
-	}
-
-	bp, ok := t.dbp.FindBreakpoint(pc, false)
-	if ok {
-		// Clear the breakpoint so that we can continue execution.
-		err = t.ClearBreakpoint(bp)
-		if err != nil {
-			return err
-		}
-
-		// Restore breakpoint now that we have passed it.
-		defer func() {
-			err = t.dbp.writeSoftwareBreakpoint(t, bp.Addr)
-		}()
-	}
 
 	err = t.singleStep()
 	if err != nil {
