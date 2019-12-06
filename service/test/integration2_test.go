@@ -1810,3 +1810,13 @@ func TestRerecord(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue1787(t *testing.T) {
+	// Calling FunctionReturnLocations without a selected goroutine should
+	// work.
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		if c, _ := c.(*rpc2.RPCClient); c != nil {
+			c.FunctionReturnLocations("main.main")
+		}
+	})
+}
