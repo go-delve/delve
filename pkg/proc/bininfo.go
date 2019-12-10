@@ -721,7 +721,7 @@ func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 			base = e.HighPC
 			continue
 		}
-		if pc >= e.LowPC+base && pc < e.HighPC+base {
+		if pc >= e.LowPC+base+image.StaticBase && pc < e.HighPC+base+image.StaticBase {
 			return e.Instr
 		}
 	}
