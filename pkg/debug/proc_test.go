@@ -274,7 +274,7 @@ func TestStep(t *testing.T) {
 		regs := getRegisters(tgt, t)
 		rip := regs.PC()
 
-		err := tgt.CurrentThread().StepInstruction()
+		err := tgt.StepInstruction()
 		assertNoError(err, t, "Step()")
 
 		regs = getRegisters(tgt, t)
