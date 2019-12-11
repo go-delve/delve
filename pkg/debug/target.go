@@ -462,9 +462,6 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
-	if bp := curthread.Breakpoint(); bp.Breakpoint == nil {
-		curthread.SetCurrentBreakpoint(false)
-	}
 	success = true
 	return nil
 }
