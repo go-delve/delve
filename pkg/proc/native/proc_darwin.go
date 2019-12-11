@@ -55,7 +55,6 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	if _, err := os.Stat(argv0Go); err != nil {
 		return nil, err
 	}
-	dbp.common.ExePath = argv0Go
 
 	argv0 := C.CString(argv0Go)
 	argvSlice := make([]*C.char, 0, len(cmd)+1)
@@ -66,6 +65,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	argvSlice = append(argvSlice, nil)
 
 	dbp := New(0)
+	dbp.common.ExePath = argv0Go
 	var pid int
 	dbp.execPtraceFunc(func() {
 		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
@@ -110,7 +110,7 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 		th.CurrentBreakpoint.Clear()
 	}
 
-	trapthread, err := dbp.trapWait(-1)
+	_, err = dbp.trapWait(-1)
 	if err != nil {
 		return nil, err
 	}
@@ -119,14 +119,6 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	}
 
 	dbp.os.initialized = true
-	err = dbp.initialize(argv0Go, []string{})
-	if err != nil {
-		return nil, err
-	}
-
-	if err := dbp.SwitchThread(trapthread.ID); err != nil {
-		return nil, err
-	}
 
 	return dbp, err
 }
@@ -155,11 +147,6 @@ func Attach(pid int) (*Process, error) {
 		return nil, err
 	}
 
-	err = dbp.initialize("", []string{})
-	if err != nil {
-		dbp.Detach(false)
-		return nil, err
-	}
 	return dbp, nil
 }
 
