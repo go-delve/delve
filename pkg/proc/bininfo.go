@@ -332,7 +332,7 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 
 // FindFunctionLocation finds address of a function's line
 // If lineOffset is passed FindFunctionLocation will return the address of that line
-func (bi *BinaryInfo) FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64, error) {
+func (bi *BinaryInfo) FindFunctionLocation(p Process, breakpoints *BreakpointMap, funcName string, lineOffset int) ([]uint64, error) {
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
 		return nil, &ErrFunctionNotFound{funcName}
@@ -342,7 +342,7 @@ func (bi *BinaryInfo) FindFunctionLocation(p Process, funcName string, lineOffse
 		r := make([]uint64, 0, len(origfn.InlinedCalls)+1)
 		if origfn.Entry > 0 {
 			// add concrete implementation of the function
-			pc, err := FirstPCAfterPrologue(p, origfn, false)
+			pc, err := FirstPCAfterPrologue(p, breakpoints, origfn, false)
 			if err != nil {
 				return nil, err
 			}
@@ -363,7 +363,7 @@ func (bi *BinaryInfo) FindFunctionLocation(p Process, funcName string, lineOffse
 
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normalized to lower case and '/' on Windows.
-func (bi *BinaryInfo) FindFileLocation(p Process, fileName string, lineno int) ([]uint64, error) {
+func (bi *BinaryInfo) FindFileLocation(p Process, breakpoints *BreakpointMap, fileName string, lineno int) ([]uint64, error) {
 	pcs, err := bi.LineToPC(fileName, lineno)
 	if err != nil {
 		return nil, err
@@ -374,7 +374,7 @@ func (bi *BinaryInfo) FindFileLocation(p Process, fileName string, lineno int) (
 			fn = bi.PCToFunc(pcs[i])
 		}
 		if fn != nil && fn.Entry == pcs[i] {
-			pcs[i], _ = FirstPCAfterPrologue(p, fn, true)
+			pcs[i], _ = FirstPCAfterPrologue(p, breakpoints, fn, true)
 		}
 	}
 	return pcs, nil

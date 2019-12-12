@@ -389,11 +389,6 @@ func (t *Thread) SetDX(uint64) error {
 	return ErrChangeRegisterCore
 }
 
-// Breakpoints will return all breakpoints for the process.
-func (p *Process) Breakpoints() *proc.BreakpointMap {
-	return p.t.Breakpoints()
-}
-
 // ClearBreakpoint will always return an error as you cannot set or clear
 // breakpoints on core files.
 func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
@@ -402,12 +397,6 @@ func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 
 func (p *Process) ClearBreakpointFn(bp *proc.Breakpoint) error {
 	return proc.NoBreakpointError{Addr: bp.Addr}
-}
-
-// ClearInternalBreakpoints will always return nil and have no
-// effect since you cannot set breakpoints on core files.
-func (p *Process) ClearInternalBreakpoints() error {
-	return nil
 }
 
 // Resume will always return an error because you

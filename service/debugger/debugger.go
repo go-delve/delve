@@ -269,7 +269,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			continue
 		}
 		if len(oldBp.File) > 0 {
-			addrs, err := t.BinInfo().FindFileLocation(t, oldBp.File, oldBp.Line)
+			addrs, err := t.BinInfo().FindFileLocation(t, t.Breakpoints(), oldBp.File, oldBp.Line)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
 				continue
@@ -325,7 +325,8 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	}
 
 	for _, thread := range d.target.ThreadList() {
-		th := api.ConvertThread(thread)
+		bp := d.target.BreakpointStateForThread(thread.ThreadID())
+		th := api.ConvertThread(thread, bp)
 
 		if retLoadCfg != nil {
 			th.ReturnValues = convertVars(thread.Common().ReturnValues(*retLoadCfg))
@@ -380,9 +381,9 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 				}
 			}
 		}
-		addrs, err = d.target.BinInfo().FindFileLocation(d.target, fileName, requestedBp.Line)
+		addrs, err = d.target.BinInfo().FindFileLocation(d.target, d.target.Breakpoints(), fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		addrs, err = d.target.BinInfo().FindFunctionLocation(d.target, requestedBp.FunctionName, requestedBp.Line)
+		addrs, err = d.target.BinInfo().FindFunctionLocation(d.target, d.target.Breakpoints(), requestedBp.FunctionName, requestedBp.Line)
 	case len(requestedBp.Addrs) > 0:
 		addrs = requestedBp.Addrs
 	default:
@@ -403,11 +404,11 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 // createLogicalBreakpoint creates one physical breakpoint for each address
 // in addrs and associates all of them with the same logical breakpoint.
-func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+func createLogicalBreakpoint(t *debug.Target, addrs []uint64, requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	bps := make([]*proc.Breakpoint, len(addrs))
 	var err error
 	for i := range addrs {
-		bps[i], err = p.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
+		bps[i], err = t.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
 		if err != nil {
 			break
 		}
@@ -424,7 +425,7 @@ func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Br
 			if bp == nil {
 				continue
 			}
-			if _, err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
+			if _, err1 := t.ClearBreakpoint(bp.Addr); err1 != nil {
 				err = fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err, err1)
 				return nil, err
 			}
@@ -564,7 +565,8 @@ func (d *Debugger) Threads() ([]*api.Thread, error) {
 
 	threads := []*api.Thread{}
 	for _, th := range d.target.ThreadList() {
-		threads = append(threads, api.ConvertThread(th))
+		bp := d.target.BreakpointStateForThread(th.ThreadID())
+		threads = append(threads, api.ConvertThread(th, bp))
 	}
 	return threads, nil
 }
@@ -580,7 +582,8 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 
 	for _, th := range d.target.ThreadList() {
 		if th.ThreadID() == id {
-			return api.ConvertThread(th), nil
+			bp := d.target.BreakpointStateForThread(th.ThreadID())
+			return api.ConvertThread(th, bp), nil
 		}
 	}
 	return nil, nil

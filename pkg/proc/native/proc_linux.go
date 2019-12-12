@@ -452,14 +452,6 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		return err
 	}
 
-	// set breakpoints on all threads
-	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil {
-			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }
 

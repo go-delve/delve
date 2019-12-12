@@ -12,9 +12,8 @@ import (
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
 type Thread struct {
-	ID                int                  // Thread ID or mach port
-	Status            *WaitStatus          // Status returned from last wait call
-	CurrentBreakpoint proc.BreakpointState // Breakpoint thread is currently stopped at
+	ID     int         // Thread ID or mach port
+	Status *WaitStatus // Status returned from last wait call
 
 	dbp            *Process
 	singleStepping bool
@@ -82,44 +81,6 @@ func (t *Thread) Common() *proc.CommonThread {
 	return &t.common
 }
 
-// SetCurrentBreakpoint sets the current breakpoint that this
-// thread is stopped at as CurrentBreakpoint on the thread struct.
-func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
-	t.CurrentBreakpoint.Clear()
-	pc, err := t.PC()
-	if err != nil {
-		return err
-	}
-
-	// If the breakpoint instruction does not change the value
-	// of PC after being executed we should look for breakpoints
-	// with bp.Addr == PC and there is no need to call SetPC
-	// after finding one.
-	adjustPC = adjustPC && t.Arch().BreakInstrMovesPC()
-
-	if bp, ok := t.dbp.FindBreakpoint(pc, adjustPC); ok {
-		if adjustPC {
-			if err = t.SetPC(bp.Addr); err != nil {
-				return err
-			}
-		}
-		t.CurrentBreakpoint = bp.CheckCondition(t)
-		if t.CurrentBreakpoint.Breakpoint != nil && t.CurrentBreakpoint.Active {
-			if g, err := proc.GetG(t); err == nil {
-				t.CurrentBreakpoint.HitCount[g.ID]++
-			}
-			t.CurrentBreakpoint.TotalHitCount++
-		}
-	}
-	return nil
-}
-
-// Breakpoint returns the current breakpoint that is active
-// on this thread.
-func (t *Thread) Breakpoint() proc.BreakpointState {
-	return t.CurrentBreakpoint
-}
-
 // ThreadID returns the ID of this thread.
 func (t *Thread) ThreadID() int {
 	return t.ID
@@ -131,10 +92,6 @@ func (t *Thread) ClearBreakpoint(bp *proc.Breakpoint) error {
 		return fmt.Errorf("could not clear breakpoint %s", err)
 	}
 	return nil
-}
-
-func (t *Thread) ClearCurrentBreakpointState() {
-	t.CurrentBreakpoint.Clear()
 }
 
 // Registers obtains register values from the debugged process.

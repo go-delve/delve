@@ -70,7 +70,7 @@ func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
 
 // ConvertThread converts a proc.Thread into an
 // api thread.
-func ConvertThread(th proc.Thread) *Thread {
+func ConvertThread(th proc.Thread, b proc.BreakpointState) *Thread {
 	var (
 		function *Function
 		file     string
@@ -89,7 +89,7 @@ func ConvertThread(th proc.Thread) *Thread {
 
 	var bp *Breakpoint
 
-	if b := th.Breakpoint(); b.Active {
+	if b.Active {
 		bp = ConvertBreakpoint(b.Breakpoint)
 	}
 

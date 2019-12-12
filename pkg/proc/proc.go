@@ -200,7 +200,7 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 // instruction after the prologue for function fn.
 // If sameline is set FirstPCAfterPrologue will always return an
 // address associated with the same line as fn.Entry.
-func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error) {
+func FirstPCAfterPrologue(p Process, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
 	pc, _, line, ok := fn.CompileUnit.LineInfo.PrologueEndPC(fn.Entry, fn.End)
 	if ok {
 		if !sameline {
@@ -212,7 +212,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		}
 	}
 
-	pc, err := firstPCAfterPrologueDisassembly(p, fn, sameline)
+	pc, err := firstPCAfterPrologueDisassembly(p, breakpoints, fn, sameline)
 	if err != nil {
 		return fn.Entry, err
 	}

@@ -4,9 +4,6 @@ package proc
 type Thread interface {
 	MemoryReadWriter
 	Location() (*Location, error)
-	// Breakpoint will return the breakpoint that this thread is stopped at or
-	// nil if the thread is not stopped at any breakpoint.
-	Breakpoint() BreakpointState
 	ThreadID() int
 
 	// Registers returns the CPU registers of this thread. The contents of the
@@ -24,9 +21,6 @@ type Thread interface {
 	StepInstruction() error
 	// Blocked returns true if the thread is blocked
 	Blocked() bool
-	// SetCurrentBreakpoint updates the current breakpoint of this thread, if adjustPC is true also checks for breakpoints that were just hit (this should only be passed true after a thread resume)
-	SetCurrentBreakpoint(adjustPC bool) error
-	ClearCurrentBreakpointState()
 	// Common returns the CommonThread structure for this thread
 	Common() *CommonThread
 

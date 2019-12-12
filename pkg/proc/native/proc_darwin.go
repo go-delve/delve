@@ -106,9 +106,6 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 	}
 
 	dbp.common.ClearAllGCache()
-	for _, th := range dbp.threads {
-		th.CurrentBreakpoint.Clear()
-	}
 
 	_, err = dbp.trapWait(-1)
 	if err != nil {
@@ -402,7 +399,7 @@ func (dbp *Process) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *Process) stop(trapthread *Thread) error {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
@@ -414,21 +411,12 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		}
 	}
 
-	ports, err := dbp.waitForStop()
+	_, err := dbp.waitForStop()
 	if err != nil {
 		return err
 	}
 	if !dbp.os.initialized {
 		return nil
-	}
-	trapthread.SetCurrentBreakpoint(true)
-	for _, port := range ports {
-		if th, ok := dbp.threads[port]; ok {
-			err := th.SetCurrentBreakpoint(true)
-			if err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }

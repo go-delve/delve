@@ -1,9 +1,5 @@
 package proc
 
-import (
-	"go/ast"
-)
-
 // Process represents the target of the debugger. This
 // target could be a system process, core file, etc.
 //
@@ -22,7 +18,6 @@ type Process interface {
 
 	Info
 	ProcessManipulation
-	BreakpointManipulation
 	RecordingManipulation
 }
 
@@ -113,14 +108,6 @@ type ProcessManipulation interface {
 	// after a call to RequestManualStop.
 	CheckAndClearManualStopRequest() bool
 	Detach(bool) error
-}
-
-// BreakpointManipulation is an interface for managing breakpoints.
-type BreakpointManipulation interface {
-	Breakpoints() *BreakpointMap
-	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
-	ClearBreakpoint(addr uint64) (*Breakpoint, error)
-	ClearInternalBreakpoints() error
 }
 
 // CommonProcess contains fields used by this package, common to all

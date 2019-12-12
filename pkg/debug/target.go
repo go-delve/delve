@@ -26,6 +26,10 @@ func (err *ErrNoSourceForPC) Error() string {
 	return fmt.Sprintf("no source for PC %#x", err.pc)
 }
 
+type state struct {
+	threadBreakpointState map[int]proc.BreakpointState
+}
+
 // Target represents the process being debugged.
 // It is responsible for implementing the high level logic
 // that is used to manipulate and inspect a running process.
@@ -37,6 +41,8 @@ type Target struct {
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
 	breakpoints proc.BreakpointMap
+
+	state *state
 }
 
 // New returns an initialized Target.
@@ -46,6 +52,7 @@ func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, erro
 		Process:     p,
 		bi:          bi,
 		breakpoints: proc.NewBreakpointMap(),
+		state:       new(state),
 	}
 	// TODO(refactor) REMOVE BEFORE MERGE
 	p.SetTarget(t)
@@ -246,7 +253,7 @@ func setStepIntoBreakpoint(t *Target, text []proc.AsmInstruction, cond ast.Expr)
 	// sometimes point inside the body of those functions, well after the
 	// prologue.
 	if fn != nil && fn.Entry == instr.DestLoc.PC {
-		pc, _ = proc.FirstPCAfterPrologue(t, fn, false)
+		pc, _ = proc.FirstPCAfterPrologue(t, t.Breakpoints(), fn, false)
 	}
 
 	// Set a breakpoint after the function's prologue
@@ -376,7 +383,7 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := t.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
 			var err error
-			deferpc, err = proc.FirstPCAfterPrologue(t, deferfn, false)
+			deferpc, err = proc.FirstPCAfterPrologue(t, t.Breakpoints(), deferfn, false)
 			if err != nil {
 				return err
 			}
@@ -499,6 +506,70 @@ func removePCsBetween(pcs []uint64, start, end, staticBase uint64) []uint64 {
 	}
 	return out
 }
+func (t *Target) SetCurrentBreakpoints() error {
+	for _, th := range t.Process.ThreadList() {
+		if err := t.SetCurrentBreakpointStateForThread(th, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *Target) ClearCurrentBreakpointStateForThread(tid int) {
+	delete(t.state.threadBreakpointState, tid)
+}
+
+func (t *Target) SetCurrentBreakpointStateForThread(thread proc.Thread, adjustPC bool) error {
+	tid := thread.ThreadID()
+	delete(t.state.threadBreakpointState, tid)
+	regs, err := thread.Registers(false)
+	if err != nil {
+		return err
+	}
+	pc := regs.PC()
+	if _, ok := t.Process.(*native.Process); ok {
+		adjustPC = adjustPC && t.BinInfo().Arch.BreakInstrMovesPC()
+	} else {
+		adjustPC = false
+	}
+	if bp, ok := t.FindBreakpoint(pc, adjustPC); ok {
+		if adjustPC {
+			if err = thread.SetPC(bp.Addr); err != nil {
+				return err
+			}
+		}
+		bps := bp.CheckCondition(thread)
+		if bps.Breakpoint != nil && bps.Active {
+			if g, err := proc.GetG(thread); err == nil {
+				bps.HitCount[g.ID]++
+			}
+			bps.TotalHitCount++
+		}
+		if t.state.threadBreakpointState == nil {
+			t.state.threadBreakpointState = make(map[int]proc.BreakpointState)
+		}
+		t.state.threadBreakpointState[tid] = bps
+	}
+	return nil
+}
+
+func (t *Target) BreakpointStateForThread(tid int) proc.BreakpointState {
+	return t.state.threadBreakpointState[tid]
+}
+
+func (t *Target) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, bool) {
+	if adjustPC {
+		// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
+		if bp, ok := t.Breakpoints().M[pc-uint64(t.BinInfo().Arch.BreakpointSize())]; ok {
+			return bp, true
+		}
+	}
+	// Directly use addr to lookup breakpoint.
+	if bp, ok := t.Breakpoints().M[pc]; ok {
+		return bp, true
+	}
+	return nil, false
+}
 
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
@@ -526,7 +597,7 @@ func (t *Target) Continue() error {
 		// all threads stopped over a breakpoint are made to step over it
 		if t.Direction() == proc.Forward {
 			for _, thread := range t.ThreadList() {
-				if thread.Breakpoint().Breakpoint != nil {
+				if t.BreakpointStateForThread(thread.ThreadID()).Breakpoint != nil {
 					if err := threadStepInstruction(t, thread); err != nil {
 						return err
 					}
@@ -537,6 +608,9 @@ func (t *Target) Continue() error {
 		// everything is resumed
 		trapthread, err := t.Process.Resume()
 		if err != nil {
+			return err
+		}
+		if err := t.SetCurrentBreakpoints(); err != nil {
 			return err
 		}
 
@@ -552,19 +626,19 @@ func (t *Target) Continue() error {
 		}
 
 		curthread := t.CurrentThread()
-		curbp := curthread.Breakpoint()
+		curbp := t.BreakpointStateForThread(curthread.ThreadID())
 
 		switch {
 		case curbp.Breakpoint == nil:
 			// runtime.Breakpoint, manual stop or debugCallV1-related stop
 			recorded, _ := t.Recorded()
 			if recorded {
-				return conditionErrors(threads)
+				return conditionErrors(t.state)
 			}
 
 			loc, err := curthread.Location()
 			if err != nil || loc.Fn == nil {
-				return conditionErrors(threads)
+				return conditionErrors(t.state)
 			}
 			g, _ := proc.GetG(curthread)
 
@@ -582,16 +656,16 @@ func (t *Target) Continue() error {
 				if err := t.StepInstructionOut(curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
 					return err
 				}
-				return conditionErrors(threads)
+				return conditionErrors(t.state)
 			case g == nil || t.Common().FnCallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo)
-				return conditionErrors(threads)
+				return conditionErrors(t.state)
 			}
 		case curbp.Active && curbp.Internal:
 			switch curbp.Kind {
 			case proc.StepBreakpoint:
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints
-				if err := conditionErrors(threads); err != nil {
+				if err := conditionErrors(t.state); err != nil {
 					return err
 				}
 				regs, err := curthread.Registers(false)
@@ -614,7 +688,7 @@ func (t *Target) Continue() error {
 				if err := t.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
-				return conditionErrors(threads)
+				return conditionErrors(t.state)
 			}
 		case curbp.Active:
 			onNextGoroutine, err := onNextGoroutine(curthread, t.Breakpoints())
@@ -630,14 +704,14 @@ func (t *Target) Continue() error {
 			if curbp.Name == UnrecoveredPanic {
 				t.ClearInternalBreakpoints()
 			}
-			return conditionErrors(threads)
+			return conditionErrors(t.state)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
 		}
 		if callInjectionDone {
 			// a call injection was finished, don't let a breakpoint with a failed
 			// condition or a step breakpoint shadow this.
-			return conditionErrors(threads)
+			return conditionErrors(t.state)
 		}
 	}
 }
@@ -656,7 +730,7 @@ func threadStepInstruction(tgt *Target, th proc.Thread) error {
 		}
 		defer tgt.WriteBreakpoint(bp.Addr)
 	}
-	th.ClearCurrentBreakpointState()
+	tgt.ClearCurrentBreakpointStateForThread(th.ThreadID())
 	return th.StepInstruction()
 }
 
@@ -700,10 +774,10 @@ func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
 	return w
 }
 
-func conditionErrors(threads []proc.Thread) error {
+func conditionErrors(state *state) error {
 	var condErr error
-	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Breakpoint != nil && bp.CondError != nil {
+	for _, bp := range state.threadBreakpointState {
+		if bp.Breakpoint != nil && bp.CondError != nil {
 			if condErr == nil {
 				condErr = bp.CondError
 			} else {
@@ -720,15 +794,16 @@ func conditionErrors(threads []proc.Thread) error {
 // 	- trapthread
 func pickCurrentThread(t *Target, trapthread proc.Thread, threads []proc.Thread) error {
 	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Active && bp.Internal {
+		bp := t.BreakpointStateForThread(th.ThreadID())
+		if bp.Active && bp.Internal {
 			return t.SwitchThread(th.ThreadID())
 		}
 	}
-	if bp := trapthread.Breakpoint(); bp.Active {
+	if bp := t.BreakpointStateForThread(trapthread.ThreadID()); bp.Active {
 		return t.SwitchThread(trapthread.ThreadID())
 	}
 	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Active {
+		if bp := t.BreakpointStateForThread(th.ThreadID()); bp.Active {
 			return t.SwitchThread(th.ThreadID())
 		}
 	}
@@ -751,7 +826,7 @@ func (t *Target) StepInstructionOut(curthread proc.Thread, fnname1, fnname2 stri
 			if g != nil && selg != nil && g.ID == selg.ID {
 				selg.CurrentLoc = *loc
 			}
-			return curthread.SetCurrentBreakpoint(true)
+			return t.SetCurrentBreakpointStateForThread(curthread, false)
 		}
 	}
 }
@@ -819,7 +894,7 @@ func (t *Target) StepOut() error {
 	if filepath.Ext(topframe.Current.File) == ".go" {
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := t.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
-			deferpc, err = proc.FirstPCAfterPrologue(t, deferfn, false)
+			deferpc, err = proc.FirstPCAfterPrologue(t, t.Breakpoints(), deferfn, false)
 			if err != nil {
 				return err
 			}
@@ -857,8 +932,8 @@ func (t *Target) StepOut() error {
 		}
 	}
 
-	if bp := curthread.Breakpoint(); bp.Breakpoint == nil {
-		curthread.SetCurrentBreakpoint(false)
+	if bp := t.BreakpointStateForThread(curthread.ThreadID()); bp.Breakpoint == nil {
+		t.SetCurrentBreakpointStateForThread(curthread, false)
 	}
 
 	success = true
@@ -868,6 +943,17 @@ func (t *Target) StepOut() error {
 // Detach will force the target to stop tracing the process.
 // If kill is true the process will be killed during the detach.
 func (t *Target) Detach(kill bool) error {
+	if !kill {
+		// Clean up any breakpoints we've set.
+		for _, bp := range t.Breakpoints().M {
+			if bp != nil {
+				_, err := t.ClearBreakpoint(bp.Addr)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return t.Process.Detach(kill)
 }
 
@@ -903,11 +989,26 @@ func (t *Target) Recorded() (bool, string) {
 
 // Restart allows you to restart the process from a given location.
 // Only works when the selected backend is "rr".
-func (t *Target) Restart(from string) error { return t.Process.Restart(from) }
+func (t *Target) Restart(from string) error {
+	if err := t.Process.Restart(from); err != nil {
+		return err
+	}
+
+	for addr := range t.Breakpoints().M {
+		t.Process.WriteBreakpoint(addr)
+	}
+
+	return t.SetCurrentBreakpoints()
+}
 
 // Direction controls whether execution goes forward or backward depending on the
 // settings. This is only valid when using the "rr" backend.
-func (t *Target) ChangeDirection(dir proc.Direction) error { return t.Process.ChangeDirection(dir) }
+func (t *Target) ChangeDirection(dir proc.Direction) error {
+	if t.Breakpoints().HasInternalBreakpoints() {
+		return errors.New("direction change with internal breakpoints")
+	}
+	return t.Process.ChangeDirection(dir)
+}
 
 func (t *Target) Direction() proc.Direction { return t.Process.Direction() }
 
@@ -986,11 +1087,11 @@ func (t *Target) StepInstruction() error {
 	if ok, err := t.Valid(); !ok {
 		return err
 	}
-	thread.ClearCurrentBreakpointState()
+	t.ClearCurrentBreakpointStateForThread(thread.ThreadID())
 	if err := threadStepInstruction(t, thread); err != nil {
 		return err
 	}
-	if err := thread.SetCurrentBreakpoint(true); err != nil {
+	if err := t.SetCurrentBreakpointStateForThread(thread, true); err != nil {
 		return err
 	}
 	if g, _ := proc.GetG(thread); g != nil {
@@ -1013,9 +1114,9 @@ func (t *Target) ClearInternalBreakpoints() error {
 		if _, err := t.ClearBreakpoint(bp.Addr); err != nil {
 			return err
 		}
-		for _, thread := range t.ThreadList() {
-			if b := thread.Breakpoint(); b.Breakpoint == bp {
-				thread.ClearCurrentBreakpointState()
+		for tid, b := range t.state.threadBreakpointState {
+			if b.Breakpoint == bp {
+				delete(t.state.threadBreakpointState, tid)
 			}
 		}
 		return nil
