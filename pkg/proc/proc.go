@@ -226,6 +226,9 @@ func Continue(dbp Process) error {
 				return conditionErrors(threads)
 			case g == nil || dbp.Common().fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo)
+				if !curthread.Arch().BreakInstrMovesPC() {
+					curthread.SetPC(loc.PC + uint64(curthread.Arch().BreakpointSize()))
+				}
 				return conditionErrors(threads)
 			}
 		case curbp.Active && curbp.Internal:
