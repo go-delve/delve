@@ -82,9 +82,6 @@ func readLinuxAMD64Core(corePath, exePath string) (*Process, string, string, err
 			t := note.Desc.(*LinuxPrStatus)
 			lastThread = &linuxAMD64Thread{linutil.AMD64Registers{Regs: &t.Reg}, t}
 			p.Threads[int(t.Pid)] = &Thread{lastThread, p, proc.CommonThread{}}
-			if p.currentThread == nil {
-				p.currentThread = p.Threads[int(t.Pid)]
-			}
 		case NT_X86_XSTATE:
 			if lastThread != nil {
 				lastThread.regs.Fpregs = note.Desc.(*linutil.AMD64Xstate).Decode()

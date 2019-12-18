@@ -165,7 +165,7 @@ func setFunctionBreakpoint(tgt *debug.Target, t testing.TB, fname string) *proc.
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := tgt.BinInfo().FindFunctionLocation(tgt, tgt.Breakpoints(), fname, 0)
+	addrs, err := tgt.BinInfo().FindFunctionLocation(tgt.CurrentThread(), tgt.Breakpoints(), fname, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -183,7 +183,7 @@ func setFileBreakpoint(tgt *debug.Target, t *testing.T, path string, lineno int)
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := tgt.BinInfo().FindFileLocation(tgt, tgt.Breakpoints(), path, lineno)
+	addrs, err := tgt.BinInfo().FindFileLocation(tgt.CurrentThread(), tgt.Breakpoints(), path, lineno)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, path, lineno, err)
 	}
@@ -200,7 +200,7 @@ func setFileBreakpoint(tgt *debug.Target, t *testing.T, path string, lineno int)
 func findFunctionLocation(tgt *debug.Target, t *testing.T, fnname string) uint64 {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
-	addrs, err := tgt.BinInfo().FindFunctionLocation(tgt, tgt.Breakpoints(), fnname, 0)
+	addrs, err := tgt.BinInfo().FindFunctionLocation(tgt.CurrentThread(), tgt.Breakpoints(), fnname, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fnname, err)
 	}
@@ -213,7 +213,7 @@ func findFunctionLocation(tgt *debug.Target, t *testing.T, fnname string) uint64
 func findFileLocation(tgt *debug.Target, t *testing.T, file string, lineno int) uint64 {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
-	addrs, err := tgt.BinInfo().FindFileLocation(tgt, tgt.Breakpoints(), file, lineno)
+	addrs, err := tgt.BinInfo().FindFileLocation(tgt.CurrentThread(), tgt.Breakpoints(), file, lineno)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, file, lineno, err)
 	}
@@ -917,7 +917,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 
 		assertNoError(tgt.Continue(), t, "Continue()")
 
-		gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+		gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
 
 		agoroutineCount := 0
@@ -1235,7 +1235,7 @@ func TestFrameEvaluation(t *testing.T) {
 		t.Logf("stopped on thread %d, goroutine: %#v", tgt.CurrentThread().ThreadID(), tgt.SelectedGoroutine())
 
 		// Testing evaluation on goroutines
-		gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+		gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
 		found := make([]bool, 10)
 		for _, g := range gs {
@@ -1259,7 +1259,7 @@ func TestFrameEvaluation(t *testing.T) {
 				continue
 			}
 
-			scope, err := proc.ConvertEvalScope(tgt, g.ID, frame, 0)
+			scope, err := proc.ConvertEvalScope(tgt, tgt.CurrentThread(), g, frame, 0)
 			assertNoError(err, t, "ConvertEvalScope()")
 			t.Logf("scope = %v", scope)
 			v, err := scope.EvalVariable("i", normalLoadConfig)
@@ -1284,7 +1284,7 @@ func TestFrameEvaluation(t *testing.T) {
 		assertNoError(err, t, "GetG()")
 
 		for i := 0; i <= 3; i++ {
-			scope, err := proc.ConvertEvalScope(tgt, g.ID, i+1, 0)
+			scope, err := proc.ConvertEvalScope(tgt, tgt.CurrentThread(), g, i+1, 0)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
 			v, err := scope.EvalVariable("n", normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
@@ -1516,7 +1516,7 @@ func BenchmarkGoroutinesInfo(b *testing.B) {
 		assertNoError(tgt.Continue(), b, "Continue()")
 		for i := 0; i < b.N; i++ {
 			tgt.Common().ClearAllGCache()
-			_, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+			_, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 			assertNoError(err, b, "GoroutinesInfo")
 		}
 	})
@@ -1940,7 +1940,7 @@ func TestNextParked(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+			gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 			assertNoError(err, t, "GoroutinesInfo()")
 
 			// Search for a parked goroutine that we know for sure will have to be
@@ -1997,7 +1997,7 @@ func TestStepParked(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+			gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 			assertNoError(err, t, "GoroutinesInfo()")
 
 			for _, g := range gs {
@@ -2708,7 +2708,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 				return
 			}
 			assertNoError(err, t, "Continue()")
-			gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+			gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 			assertNoError(err, t, "GoroutinesInfo()")
 			for _, th := range tgt.ThreadList() {
 				if bp := tgt.BreakpointStateForThread(th.ThreadID()); bp.Breakpoint == nil {
@@ -2739,7 +2739,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 
 		assertNoError(tgt.StepOut(), t, "StepOut()")
 
-		gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+		gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 		assertNoError(err, t, "GoroutinesInfo()")
 
 		for _, goid := range stackBarrierGoids {
@@ -3950,7 +3950,11 @@ func TestReadDeferArgs(t *testing.T) {
 		assertNoError(tgt.Continue(), t, "Continue()")
 
 		for _, test := range tests {
-			scope, err := proc.ConvertEvalScope(tgt, -1, test.frame, test.deferCall)
+			g, err := debug.FindGoroutine(tgt, -1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope, err := proc.ConvertEvalScope(tgt, tgt.CurrentThread(), g, test.frame, test.deferCall)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope(-1, %d, %d)", test.frame, test.deferCall))
 
 			if scope.Fn.Name != "main.f2" {
@@ -4030,7 +4034,7 @@ func TestGoroutinesInfoLimit(t *testing.T) {
 			oldnextg := nextg
 			var gs []*proc.G
 			var err error
-			gs, nextg, err = proc.GoroutinesInfo(tgt, nextg, goroutinesInfoLimit)
+			gs, nextg, err = proc.GoroutinesInfo(tgt, tgt.CurrentThread(), nextg, goroutinesInfoLimit)
 			assertNoError(err, t, fmt.Sprintf("GoroutinesInfo(%d, %d)", oldnextg, goroutinesInfoLimit))
 			gcount += len(gs)
 			t.Logf("got %d goroutines\n", len(gs))
@@ -4038,7 +4042,7 @@ func TestGoroutinesInfoLimit(t *testing.T) {
 
 		t.Logf("number of goroutines: %d\n", gcount)
 
-		gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+		gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 		assertNoError(err, t, "GoroutinesInfo(0, 0)")
 		t.Logf("number of goroutines (full scan): %d\n", gcount)
 		if len(gs) != gcount {
@@ -4146,7 +4150,7 @@ func TestAncestors(t *testing.T) {
 	withTestTarget("testnextprog", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(tgt, t, "main.testgoroutine")
 		assertNoError(tgt.Continue(), t, "Continue()")
-		as, err := proc.Ancestors(tgt, tgt.SelectedGoroutine(), 1000)
+		as, err := proc.Ancestors(tgt, tgt.CurrentThread(), tgt.SelectedGoroutine(), 1000)
 		assertNoError(err, t, "Ancestors")
 		t.Logf("ancestors: %#v\n", as)
 		if len(as) != 1 {

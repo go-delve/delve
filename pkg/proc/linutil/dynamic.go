@@ -24,7 +24,7 @@ const (
 // dynamicSearchDebug searches for the DT_DEBUG entry in the .dynamic section
 func dynamicSearchDebug(p proc.Process) (uint64, error) {
 	bi := p.BinInfo()
-	mem := p.CurrentThread()
+	mem := p.ThreadList()[0]
 
 	dynbuf := make([]byte, bi.ElfDynamicSection.Size)
 	_, err := mem.ReadMemory(dynbuf, uintptr(bi.ElfDynamicSection.Addr))
@@ -64,7 +64,7 @@ const (
 
 func readPtr(p proc.Process, addr uint64) (uint64, error) {
 	ptrbuf := make([]byte, p.BinInfo().Arch.PtrSize())
-	_, err := p.CurrentThread().ReadMemory(ptrbuf, uintptr(addr))
+	_, err := p.ThreadList()[0].ReadMemory(ptrbuf, uintptr(addr))
 	if err != nil {
 		return 0, err
 	}
@@ -106,7 +106,7 @@ func readCString(p proc.Process, addr uint64) (string, error) {
 	if addr == 0 {
 		return "", nil
 	}
-	mem := p.CurrentThread()
+	mem := p.ThreadList()[0]
 	buf := make([]byte, 1)
 	r := []byte{}
 	for {

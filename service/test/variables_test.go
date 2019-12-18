@@ -98,7 +98,7 @@ func (tc *varTest) alternateVarTest() varTest {
 	return r
 }
 
-func setVariable(tgt proc.Process, symbol, value string) error {
+func setVariable(tgt *debug.Target, symbol, value string) error {
 	scope, err := proc.GoroutineScope(tgt.CurrentThread())
 	if err != nil {
 		return err
@@ -1076,7 +1076,7 @@ func setFunctionBreakpoint(tgt *debug.Target, t testing.TB, fname string) *proc.
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := tgt.BinInfo().FindFunctionLocation(tgt, tgt.Breakpoints(), fname, 0)
+	addrs, err := tgt.BinInfo().FindFunctionLocation(tgt.CurrentThread(), tgt.Breakpoints(), fname, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -1218,7 +1218,7 @@ func TestCallFunction(t *testing.T) {
 	}
 
 	withTestTarget("fncall", t, func(tgt *debug.Target, fixture protest.Fixture) {
-		_, err := tgt.BinInfo().FindFunctionLocation(tgt, tgt.Breakpoints(), "runtime.debugCallV1", 0)
+		_, err := tgt.BinInfo().FindFunctionLocation(tgt.CurrentThread(), tgt.Breakpoints(), "runtime.debugCallV1", 0)
 		if err != nil {
 			t.Skip("function calls not supported on this version of go")
 		}
@@ -1364,7 +1364,7 @@ func setFileBreakpoint(tgt *debug.Target, t *testing.T, fixture protest.Fixture,
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
-	addrs, err := tgt.BinInfo().FindFileLocation(tgt, tgt.Breakpoints(), fixture.Source, lineno)
+	addrs, err := tgt.BinInfo().FindFileLocation(tgt.CurrentThread(), tgt.Breakpoints(), fixture.Source, lineno)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, fixture.Source, lineno, err)
 	}

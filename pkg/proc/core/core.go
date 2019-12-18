@@ -158,9 +158,7 @@ type Process struct {
 
 	entryPoint uint64
 
-	currentThread     *Thread
-	selectedGoroutine *proc.G
-	common            proc.CommonProcess
+	common proc.CommonProcess
 }
 
 // Thread represents a thread in the core file being debugged.
@@ -234,13 +232,6 @@ func (p *Process) SetTarget(pp proc.Process) {
 // BinInfo will return the binary info.
 func (p *Process) BinInfo() *proc.BinaryInfo {
 	return p.t.BinInfo()
-}
-
-// SetSelectedGoroutine will set internally the goroutine that should be
-// the default for any command executed, the goroutine being actively
-// followed.
-func (p *Process) SetSelectedGoroutine(g *proc.G) {
-	p.selectedGoroutine = g
 }
 
 // EntryPoint will return the entry point address for this core file.
@@ -424,11 +415,6 @@ func (p *Process) CheckAndClearManualStopRequest() bool {
 	return false
 }
 
-// CurrentThread returns the current active thread.
-func (p *Process) CurrentThread() proc.Thread {
-	return p.currentThread
-}
-
 // Detach will always return nil and have no
 // effect as you cannot detach from a core file
 // and have it continue execution or exit.
@@ -458,42 +444,9 @@ func (p *Process) Pid() int {
 func (p *Process) ResumeNotify(chan<- struct{}) {
 }
 
-// SelectedGoroutine returns the current active and selected
-// goroutine.
-func (p *Process) SelectedGoroutine() *proc.G {
-	return p.selectedGoroutine
-}
-
 // SetBreakpoint will always return an error for core files as you cannot write memory or control execution.
 func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
 	return nil, ErrWriteCore
-}
-
-// SwitchGoroutine will change the selected and active goroutine.
-func (p *Process) SwitchGoroutine(gid int) error {
-	g, err := proc.FindGoroutine(p, gid)
-	if err != nil {
-		return err
-	}
-	if g == nil {
-		// user specified -1 and selectedGoroutine is nil
-		return nil
-	}
-	if g.Thread != nil {
-		return p.SwitchThread(g.Thread.ThreadID())
-	}
-	p.selectedGoroutine = g
-	return nil
-}
-
-// SwitchThread will change the selected and active thread.
-func (p *Process) SwitchThread(tid int) error {
-	if th, ok := p.Threads[tid]; ok {
-		p.currentThread = th
-		p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
-		return nil
-	}
-	return fmt.Errorf("thread %d does not exist", tid)
 }
 
 // ThreadList will return a list of all threads currently in the process.

@@ -37,9 +37,6 @@ func readAMD64Minidump(minidumpPath, exePath string) (*Process, string, string, 
 	for i := range mdmp.Threads {
 		th := &mdmp.Threads[i]
 		p.Threads[int(th.ID)] = &Thread{&windowsAMD64Thread{th}, p, proc.CommonThread{}}
-		if p.currentThread == nil {
-			p.currentThread = p.Threads[int(th.ID)]
-		}
 	}
 	return p, "windows", "amd64", nil
 }

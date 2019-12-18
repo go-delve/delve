@@ -104,9 +104,7 @@ type Process struct {
 
 	conn gdbConn
 
-	threads           map[int]*Thread
-	currentThread     *Thread
-	selectedGoroutine *proc.G
+	threads map[int]*Thread
 
 	exited, detached bool
 	ctrlC            bool // ctrl-c was sent to stop inferior
@@ -599,20 +597,9 @@ func (p *Process) ThreadList() []proc.Thread {
 	return r
 }
 
-// CurrentThread returns the current active
-// selected thread.
-func (p *Process) CurrentThread() proc.Thread {
-	return p.currentThread
-}
-
 // Common returns common information across Process implementations.
 func (p *Process) Common() *proc.CommonProcess {
 	return &p.common
-}
-
-// SelectedGoroutine returns the current actuve selected goroutine.
-func (p *Process) SelectedGoroutine() *proc.G {
-	return p.selectedGoroutine
 }
 
 const (
@@ -723,13 +710,6 @@ continueLoop:
 	return nil, fmt.Errorf("could not find thread %s", threadID)
 }
 
-// SetSelectedGoroutine will set internally the goroutine that should be
-// the default for any command executed, the goroutine being actively
-// followed.
-func (p *Process) SetSelectedGoroutine(g *proc.G) {
-	p.selectedGoroutine = g
-}
-
 // StepInstruction will step exactly one CPU instruction.
 func (p *Process) StepInstruction() error {
 	return p.t.StepInstruction()
@@ -737,36 +717,6 @@ func (p *Process) StepInstruction() error {
 
 func (p *Process) StepInstructionOut(thread proc.Thread, fn1, fn2 string) error {
 	return p.t.StepInstructionOut(thread, fn1, fn2)
-}
-
-// SwitchThread will change the internal selected thread.
-func (p *Process) SwitchThread(tid int) error {
-	if p.exited {
-		return proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	if th, ok := p.threads[tid]; ok {
-		p.currentThread = th
-		p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
-		return nil
-	}
-	return fmt.Errorf("thread %d does not exist", tid)
-}
-
-// SwitchGoroutine will change the internal selected goroutine.
-func (p *Process) SwitchGoroutine(gid int) error {
-	g, err := proc.FindGoroutine(p, gid)
-	if err != nil {
-		return err
-	}
-	if g == nil {
-		// user specified -1 and selectedGoroutine is nil
-		return nil
-	}
-	if g.Thread != nil {
-		return p.SwitchThread(g.Thread.ThreadID())
-	}
-	p.selectedGoroutine = g
-	return nil
 }
 
 // RequestManualStop will attempt to stop the process
@@ -862,7 +812,6 @@ func (p *Process) Restart(pos string) error {
 	if err != nil {
 		return err
 	}
-	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
 	return nil
 }
@@ -1032,21 +981,6 @@ func (tu *threadUpdater) Finish() {
 			continue
 		}
 		delete(tu.p.threads, threadID)
-		if tu.p.currentThread.ID == threadID {
-			tu.p.currentThread = nil
-		}
-	}
-	if tu.p.currentThread != nil {
-		if _, exists := tu.p.threads[tu.p.currentThread.ID]; !exists {
-			// current thread was removed
-			tu.p.currentThread = nil
-		}
-	}
-	if tu.p.currentThread == nil {
-		for _, thread := range tu.p.threads {
-			tu.p.currentThread = thread
-			break
-		}
 	}
 }
 

@@ -42,6 +42,9 @@ type Target struct {
 	// Maps instruction address to Breakpoint struct.
 	breakpoints proc.BreakpointMap
 
+	selectedGoroutine *proc.G
+	selectedThread    proc.Thread
+
 	state *state
 }
 
@@ -195,8 +198,9 @@ func (t *Target) Initialize() error {
 		return err
 	}
 
+	t.selectedThread = t.Process.ThreadList()[0]
 	g, _ := proc.GetG(t.CurrentThread())
-	t.SetSelectedGoroutine(g)
+	t.selectedGoroutine = g
 
 	createUnrecoveredPanicBreakpoint(t)
 	createFatalThrowBreakpoint(t)
@@ -253,7 +257,7 @@ func setStepIntoBreakpoint(t *Target, text []proc.AsmInstruction, cond ast.Expr)
 	// sometimes point inside the body of those functions, well after the
 	// prologue.
 	if fn != nil && fn.Entry == instr.DestLoc.PC {
-		pc, _ = proc.FirstPCAfterPrologue(t, t.Breakpoints(), fn, false)
+		pc, _ = proc.FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), fn, false)
 	}
 
 	// Set a breakpoint after the function's prologue
@@ -383,7 +387,7 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := t.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
 			var err error
-			deferpc, err = proc.FirstPCAfterPrologue(t, t.Breakpoints(), deferfn, false)
+			deferpc, err = proc.FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), deferfn, false)
 			if err != nil {
 				return err
 			}
@@ -894,7 +898,7 @@ func (t *Target) StepOut() error {
 	if filepath.Ext(topframe.Current.File) == ".go" {
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := t.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
-			deferpc, err = proc.FirstPCAfterPrologue(t, t.Breakpoints(), deferfn, false)
+			deferpc, err = proc.FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), deferfn, false)
 			if err != nil {
 				return err
 			}
@@ -979,7 +983,7 @@ func (t *Target) Pid() int {
 // hitting a breakpoint.
 // It could also be a goroutine the user selected.
 func (t *Target) SelectedGoroutine() *proc.G {
-	return t.Process.SelectedGoroutine()
+	return t.selectedGoroutine
 }
 
 // Recorded returns whether or not the target was recorded.
@@ -998,10 +1002,12 @@ func (t *Target) Restart(from string) error {
 		t.Process.WriteBreakpoint(addr)
 	}
 
+	t.selectedGoroutine, _ = proc.GetG(t.CurrentThread())
+
 	return t.SetCurrentBreakpoints()
 }
 
-// Direction controls whether execution goes forward or backward depending on the
+// ChangeDirection controls whether execution goes forward or backward depending on the
 // settings. This is only valid when using the "rr" backend.
 func (t *Target) ChangeDirection(dir proc.Direction) error {
 	if t.Breakpoints().HasInternalBreakpoints() {
@@ -1045,7 +1051,9 @@ func (t *Target) FindThread(id int) (proc.Thread, bool) { return t.Process.FindT
 // CurrentThread returns the default thread to be used for various operations.
 // This is usually the last thread that threw an exception, however it could be
 // a user set thread as well.
-func (t *Target) CurrentThread() proc.Thread { return t.Process.CurrentThread() }
+func (t *Target) CurrentThread() proc.Thread {
+	return t.selectedThread
+}
 
 // Breakpoints returns a list of the active breakpoints that have been set in the
 // underlying process.
@@ -1095,18 +1103,45 @@ func (t *Target) StepInstruction() error {
 		return err
 	}
 	if g, _ := proc.GetG(thread); g != nil {
-		t.SetSelectedGoroutine(g)
+		t.selectedGoroutine = g
 	}
 	return nil
 }
 
 // SwitchThread will set the default thread to the one specified by "tid".
 // That thread will then be used by default by any command that inspects process state.
-func (t *Target) SwitchThread(tid int) error { return t.Process.SwitchThread(tid) }
+func (t *Target) SwitchThread(tid int) error {
+	if ok, _ := t.Valid(); !ok {
+		return &proc.ErrProcessExited{Pid: t.Process.Pid()}
+	}
+	if th, ok := t.Process.FindThread(tid); ok {
+		t.selectedThread = th
+		t.selectedGoroutine, _ = proc.GetG(t.CurrentThread())
+		return nil
+	}
+	return fmt.Errorf("thread %d does not exist", tid)
+}
 
 // SwitchGoroutine will set the default goroutine to the one specified by "gid".
 // This ennsures the selected goroutine remains active when continuing execution.
-func (t *Target) SwitchGoroutine(gid int) error { return t.Process.SwitchGoroutine(gid) }
+func (t *Target) SwitchGoroutine(gid int) error {
+	if ok, _ := t.Valid(); !ok {
+		return &proc.ErrProcessExited{Pid: t.Process.Pid()}
+	}
+	g, err := FindGoroutine(t, gid)
+	if err != nil {
+		return err
+	}
+	if g == nil {
+		// user specified -1 and selectedGoroutine is nil
+		return nil
+	}
+	if g.Thread != nil {
+		return t.SwitchThread(g.Thread.ThreadID())
+	}
+	t.selectedGoroutine = g
+	return nil
+}
 
 // ClearInternalBreakpoints will clear any non-user defined breakpoint.
 func (t *Target) ClearInternalBreakpoints() error {
@@ -1135,4 +1170,65 @@ func FindDeferReturnCalls(text []proc.AsmInstruction) []uint64 {
 		}
 	}
 	return deferreturns
+}
+
+// FindGoroutine returns a G struct representing the goroutine
+// specified by `gid`.
+func FindGoroutine(t *Target, gid int) (*proc.G, error) {
+	if selg := t.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
+		// Return the currently selected goroutine in the following circumstances:
+		//
+		// 1. if the caller asks for gid == -1 (because that's what a goroutine ID of -1 means in our API).
+		// 2. if gid == selg.ID.
+		//    this serves two purposes: (a) it's an optimizations that allows us
+		//    to avoid reading any other goroutine and, more importantly, (b) we
+		//    could be reading an incorrect value for the goroutine ID of a thread.
+		//    This condition usually happens when a goroutine calls runtime.clone
+		//    and for a short period of time two threads will appear to be running
+		//    the same goroutine.
+		// 3. if the caller asks for gid == 0 and the selected goroutine is
+		//    either 0 or nil.
+		//    Goroutine 0 is special, it either means we have no current goroutine
+		//    (for example, running C code), or that we are running on a speical
+		//    stack (system stack, signal handling stack) and we didn't properly
+		//    detect it.
+		//    Since there could be multiple goroutines '0' running simultaneously
+		//    if the user requests it return the one that's already selected or
+		//    nil if there isn't a selected goroutine.
+		return selg, nil
+	}
+
+	if gid == 0 {
+		return nil, fmt.Errorf("Unknown goroutine %d", gid)
+	}
+
+	// Calling GoroutinesInfo could be slow if there are many goroutines
+	// running, check if a running goroutine has been requested first.
+	for _, thread := range t.Process.ThreadList() {
+		g, _ := proc.GetG(thread)
+		if g != nil && g.ID == gid {
+			return g, nil
+		}
+	}
+
+	const goroutinesInfoLimit = 10
+	nextg := 0
+	for nextg >= 0 {
+		var gs []*proc.G
+		var err error
+		gs, nextg, err = proc.GoroutinesInfo(t, t.CurrentThread(), nextg, goroutinesInfoLimit)
+		if err != nil {
+			return nil, err
+		}
+		for i := range gs {
+			if gs[i].ID == gid {
+				if gs[i].Unreadable != nil {
+					return nil, gs[i].Unreadable
+				}
+				return gs[i], nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("Unknown goroutine %d", gid)
 }

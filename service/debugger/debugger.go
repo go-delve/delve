@@ -269,7 +269,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			continue
 		}
 		if len(oldBp.File) > 0 {
-			addrs, err := t.BinInfo().FindFileLocation(t, t.Breakpoints(), oldBp.File, oldBp.Line)
+			addrs, err := t.BinInfo().FindFileLocation(t.CurrentThread(), t.Breakpoints(), oldBp.File, oldBp.Line)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
 				continue
@@ -381,9 +381,9 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 				}
 			}
 		}
-		addrs, err = d.target.BinInfo().FindFileLocation(d.target, d.target.Breakpoints(), fileName, requestedBp.Line)
+		addrs, err = d.target.BinInfo().FindFileLocation(d.target.CurrentThread(), d.target.Breakpoints(), fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		addrs, err = d.target.BinInfo().FindFunctionLocation(d.target, d.target.Breakpoints(), requestedBp.FunctionName, requestedBp.Line)
+		addrs, err = d.target.BinInfo().FindFunctionLocation(d.target.CurrentThread(), d.target.Breakpoints(), requestedBp.FunctionName, requestedBp.Line)
 	case len(requestedBp.Addrs) > 0:
 		addrs = requestedBp.Addrs
 	default:
@@ -631,7 +631,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		}
 		g := d.target.SelectedGoroutine()
 		if command.GoroutineID > 0 {
-			g, err = proc.FindGoroutine(d.target, command.GoroutineID)
+			g, err = debug.FindGoroutine(d.target, command.GoroutineID)
 			if err != nil {
 				return nil, err
 			}
@@ -914,7 +914,11 @@ func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]a
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	g, err := debug.FindGoroutine(d.target, scope.GoroutineID)
+	if err != nil {
+		return nil, err
+	}
+	s, err := proc.ConvertEvalScope(d.target, d.target.CurrentThread(), g, scope.Frame, scope.DeferredCall)
 	if err != nil {
 		return nil, err
 	}
@@ -930,7 +934,11 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) (
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	g, err := debug.FindGoroutine(d.target, scope.GoroutineID)
+	if err != nil {
+		return nil, err
+	}
+	s, err := proc.ConvertEvalScope(d.target, d.target.CurrentThread(), g, scope.Frame, scope.DeferredCall)
 	if err != nil {
 		return nil, err
 	}
@@ -947,7 +955,11 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg p
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	g, err := debug.FindGoroutine(d.target, scope.GoroutineID)
+	if err != nil {
+		return nil, err
+	}
+	s, err := proc.ConvertEvalScope(d.target, d.target.CurrentThread(), g, scope.Frame, scope.DeferredCall)
 	if err != nil {
 		return nil, err
 	}
@@ -964,7 +976,11 @@ func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string)
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	g, err := debug.FindGoroutine(d.target, scope.GoroutineID)
+	if err != nil {
+		return err
+	}
+	s, err := proc.ConvertEvalScope(d.target, d.target.CurrentThread(), g, scope.Frame, scope.DeferredCall)
 	if err != nil {
 		return err
 	}
@@ -977,7 +993,7 @@ func (d *Debugger) Goroutines(start, count int) ([]*api.Goroutine, int, error) {
 	defer d.processMutex.Unlock()
 
 	goroutines := []*api.Goroutine{}
-	gs, nextg, err := proc.GoroutinesInfo(d.target, start, count)
+	gs, nextg, err := proc.GoroutinesInfo(d.target, d.target.CurrentThread(), start, count)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1000,7 +1016,7 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions
 
 	var rawlocs []proc.Stackframe
 
-	g, err := proc.FindGoroutine(d.target, goroutineID)
+	g, err := debug.FindGoroutine(d.target, goroutineID)
 	if err != nil {
 		return nil, err
 	}
@@ -1026,7 +1042,7 @@ func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancest
 		return nil, err
 	}
 
-	g, err := proc.FindGoroutine(d.target, goroutineID)
+	g, err := debug.FindGoroutine(d.target, goroutineID)
 	if err != nil {
 		return nil, err
 	}
@@ -1034,7 +1050,7 @@ func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancest
 		return nil, errors.New("no selected goroutine")
 	}
 
-	ancestors, err := proc.Ancestors(d.target, g, numAncestors)
+	ancestors, err := proc.Ancestors(d.target, d.target.CurrentThread(), g, numAncestors)
 	if err != nil {
 		return nil, err
 	}
@@ -1140,7 +1156,11 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 		return nil, err
 	}
 
-	s, _ := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	g, err := debug.FindGoroutine(d.target, scope.GoroutineID)
+	if err != nil {
+		return nil, err
+	}
+	s, _ := proc.ConvertEvalScope(d.target, d.target.CurrentThread(), g, scope.Frame, scope.DeferredCall)
 
 	locs, err := loc.Find(d, s, locStr, includeNonExecutableLines)
 	for i := range locs {
@@ -1174,7 +1194,7 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 		addr2 = fn.End
 	}
 
-	g, err := proc.FindGoroutine(d.target, goroutineID)
+	g, err := debug.FindGoroutine(d.target, goroutineID)
 	if err != nil {
 		return nil, err
 	}

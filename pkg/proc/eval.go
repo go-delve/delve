@@ -56,22 +56,17 @@ type EvalScope struct {
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 // If deferCall is > 0 the eval scope will be relative to the specified deferred call.
-func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error) {
+func ConvertEvalScope(dbp Process, th Thread, g *G, frame, deferCall int) (*EvalScope, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, err
 	}
-	ct := dbp.CurrentThread()
-	g, err := FindGoroutine(dbp, gid)
-	if err != nil {
-		return nil, err
-	}
 	if g == nil {
-		return ThreadScope(ct)
+		return ThreadScope(th)
 	}
 
 	var thread MemoryReadWriter
 	if g.Thread == nil {
-		thread = ct
+		thread = th
 	} else {
 		thread = g.Thread
 	}
@@ -87,7 +82,7 @@ func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error
 	}
 
 	if frame >= len(locs) {
-		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, g.ID)
 	}
 
 	if deferCall > 0 {
@@ -100,7 +95,7 @@ func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error
 			return nil, d.Unreadable
 		}
 
-		return d.EvalScope(ct)
+		return d.EvalScope(th)
 	}
 
 	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame:]...), nil

@@ -19,7 +19,7 @@ func TestGoroutineCreationLocation(t *testing.T) {
 		bp := setFunctionBreakpoint(tgt, t, "main.agoroutine")
 		assertNoError(tgt.Continue(), t, "Continue()")
 
-		gs, _, err := proc.GoroutinesInfo(tgt, 0, 0)
+		gs, _, err := proc.GoroutinesInfo(tgt, tgt.CurrentThread(), 0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
 
 		for _, g := range gs {

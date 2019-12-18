@@ -54,9 +54,7 @@ type opcodeSeq []uint64
 // matching the instructions against known split-stack prologue patterns.
 // If sameline is set firstPCAfterPrologueDisassembly will always return an
 // address associated with the same line as fn.Entry
-func firstPCAfterPrologueDisassembly(p Process, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
-	var mem MemoryReadWriter = p.CurrentThread()
-	bi := p.BinInfo()
+func firstPCAfterPrologueDisassembly(mem MemoryReadWriter, bi *BinaryInfo, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
 	text, err := disassemble(mem, nil, breakpoints, bi, fn.Entry, fn.End, false)
 	if err != nil {
 		return fn.Entry, err

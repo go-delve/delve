@@ -1,7 +1,6 @@
 package native
 
 import (
-	"fmt"
 	"runtime"
 	"sync"
 
@@ -17,13 +16,6 @@ type Process struct {
 
 	// List of threads mapped as such: pid -> *Thread
 	threads map[int]*Thread
-
-	// Active thread
-	currentThread *Thread
-
-	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
-	// Normally selectedGoroutine is currentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
-	selectedGoroutine *proc.G
 
 	common              proc.CommonProcess
 	os                  *OSProcessDetails
@@ -142,12 +134,6 @@ func (dbp *Process) Pid() int {
 	return dbp.pid
 }
 
-// SelectedGoroutine returns the current selected,
-// active goroutine.
-func (dbp *Process) SelectedGoroutine() *proc.G {
-	return dbp.selectedGoroutine
-}
-
 // ThreadList returns a list of threads in the process.
 func (dbp *Process) ThreadList() []proc.Thread {
 	r := make([]proc.Thread, 0, len(dbp.threads))
@@ -161,11 +147,6 @@ func (dbp *Process) ThreadList() []proc.Thread {
 func (dbp *Process) FindThread(threadID int) (proc.Thread, bool) {
 	th, ok := dbp.threads[threadID]
 	return th, ok
-}
-
-// CurrentThread returns the current selected, active thread.
-func (dbp *Process) CurrentThread() proc.Thread {
-	return dbp.currentThread
 }
 
 // RequestManualStop sets the `halt` flag and
@@ -196,11 +177,12 @@ func (dbp *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, [
 	f, l, fn := dbp.BinInfo().PCToLine(uint64(addr))
 
 	originalData := make([]byte, dbp.BinInfo().Arch.BreakpointSize())
-	_, err := dbp.currentThread.ReadMemory(originalData, uintptr(addr))
+	th := dbp.ThreadList()[0]
+	_, err := th.ReadMemory(originalData, uintptr(addr))
 	if err != nil {
 		return "", 0, nil, nil, err
 	}
-	if err := dbp.writeSoftwareBreakpoint(dbp.currentThread, addr); err != nil {
+	if err := dbp.writeSoftwareBreakpoint(th.(*Thread), addr); err != nil {
 		return "", 0, nil, nil, err
 	}
 
@@ -208,7 +190,8 @@ func (dbp *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, [
 }
 
 func (dbp *Process) ClearBreakpointFn(bp *proc.Breakpoint) error {
-	return dbp.currentThread.ClearBreakpoint(bp)
+	th := dbp.ThreadList()[0]
+	return th.(*Thread).ClearBreakpoint(bp)
 }
 
 // Resume will continue the target until it stops.
@@ -251,40 +234,6 @@ func (p *Process) StepInstructionOut(thread proc.Thread, fn1, fn2 string) error 
 	return p.t.StepInstructionOut(thread, fn1, fn2)
 }
 
-// SwitchThread changes from current thread to the thread specified by `tid`.
-func (dbp *Process) SwitchThread(tid int) error {
-	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	if th, ok := dbp.threads[tid]; ok {
-		dbp.currentThread = th
-		dbp.selectedGoroutine, _ = proc.GetG(dbp.currentThread)
-		return nil
-	}
-	return fmt.Errorf("thread %d does not exist", tid)
-}
-
-// SwitchGoroutine changes from current thread to the thread
-// running the specified goroutine.
-func (dbp *Process) SwitchGoroutine(gid int) error {
-	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	g, err := proc.FindGoroutine(dbp, gid)
-	if err != nil {
-		return err
-	}
-	if g == nil {
-		// user specified -1 and selectedGoroutine is nil
-		return nil
-	}
-	if g.Thread != nil {
-		return dbp.SwitchThread(g.Thread.ThreadID())
-	}
-	dbp.selectedGoroutine = g
-	return nil
-}
-
 // Initialize will ensure that all relevant information is loaded
 // so the process is ready to be debugged.
 func (dbp *Process) Initialize() error {
@@ -296,13 +245,6 @@ func (dbp *Process) Initialize() error {
 
 func (dbp *Process) ExecutablePath() string {
 	return dbp.Common().ExePath
-}
-
-// SetSelectedGoroutine will set internally the goroutine that should be
-// the default for any command executed, the goroutine being actively
-// followed.
-func (dbp *Process) SetSelectedGoroutine(g *proc.G) {
-	dbp.selectedGoroutine = g
 }
 
 func (dbp *Process) handlePtraceFuncs() {

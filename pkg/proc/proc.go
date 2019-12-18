@@ -43,7 +43,7 @@ func (pe ProcessDetachedError) Error() string {
 // GoroutinesInfo also returns the next index to be used as 'start' argument
 // while scanning for all available goroutines, or -1 if there was an error
 // or if the index already reached the last possible value.
-func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
+func GoroutinesInfo(dbp Process, mem MemoryReadWriter, start, count int) ([]*G, int, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, -1, err
 	}
@@ -78,7 +78,7 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		return nil, -1, err
 	}
 	allglenBytes := make([]byte, 8)
-	_, err = dbp.CurrentThread().ReadMemory(allglenBytes, uintptr(addr))
+	_, err = mem.ReadMemory(allglenBytes, uintptr(addr))
 	if err != nil {
 		return nil, -1, err
 	}
@@ -94,7 +94,7 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		}
 	}
 	faddr := make([]byte, dbp.BinInfo().Arch.PtrSize())
-	_, err = dbp.CurrentThread().ReadMemory(faddr, uintptr(allgentryaddr))
+	_, err = mem.ReadMemory(faddr, uintptr(allgentryaddr))
 	if err != nil {
 		return nil, -1, err
 	}
@@ -104,7 +104,7 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		if count != 0 && len(allg) >= count {
 			return allg, int(i), nil
 		}
-		gvar, err := newGVariable(dbp.CurrentThread(), uintptr(allgptr+(i*uint64(dbp.BinInfo().Arch.PtrSize()))), true)
+		gvar, err := newGVariable(mem, dbp.BinInfo(), uintptr(allgptr+(i*uint64(dbp.BinInfo().Arch.PtrSize()))), true)
 		if err != nil {
 			allg = append(allg, &G{Unreadable: err})
 			continue
@@ -135,72 +135,11 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 	return allg, -1, nil
 }
 
-// FindGoroutine returns a G struct representing the goroutine
-// specified by `gid`.
-func FindGoroutine(dbp Process, gid int) (*G, error) {
-	if selg := dbp.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
-		// Return the currently selected goroutine in the following circumstances:
-		//
-		// 1. if the caller asks for gid == -1 (because that's what a goroutine ID of -1 means in our API).
-		// 2. if gid == selg.ID.
-		//    this serves two purposes: (a) it's an optimizations that allows us
-		//    to avoid reading any other goroutine and, more importantly, (b) we
-		//    could be reading an incorrect value for the goroutine ID of a thread.
-		//    This condition usually happens when a goroutine calls runtime.clone
-		//    and for a short period of time two threads will appear to be running
-		//    the same goroutine.
-		// 3. if the caller asks for gid == 0 and the selected goroutine is
-		//    either 0 or nil.
-		//    Goroutine 0 is special, it either means we have no current goroutine
-		//    (for example, running C code), or that we are running on a speical
-		//    stack (system stack, signal handling stack) and we didn't properly
-		//    detect it.
-		//    Since there could be multiple goroutines '0' running simultaneously
-		//    if the user requests it return the one that's already selected or
-		//    nil if there isn't a selected goroutine.
-		return selg, nil
-	}
-
-	if gid == 0 {
-		return nil, fmt.Errorf("Unknown goroutine %d", gid)
-	}
-
-	// Calling GoroutinesInfo could be slow if there are many goroutines
-	// running, check if a running goroutine has been requested first.
-	for _, thread := range dbp.ThreadList() {
-		g, _ := GetG(thread)
-		if g != nil && g.ID == gid {
-			return g, nil
-		}
-	}
-
-	const goroutinesInfoLimit = 10
-	nextg := 0
-	for nextg >= 0 {
-		var gs []*G
-		var err error
-		gs, nextg, err = GoroutinesInfo(dbp, nextg, goroutinesInfoLimit)
-		if err != nil {
-			return nil, err
-		}
-		for i := range gs {
-			if gs[i].ID == gid {
-				if gs[i].Unreadable != nil {
-					return nil, gs[i].Unreadable
-				}
-				return gs[i], nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("Unknown goroutine %d", gid)
-}
-
 // FirstPCAfterPrologue returns the address of the first
 // instruction after the prologue for function fn.
 // If sameline is set FirstPCAfterPrologue will always return an
 // address associated with the same line as fn.Entry.
-func FirstPCAfterPrologue(p Process, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
+func FirstPCAfterPrologue(bi *BinaryInfo, mem MemoryReadWriter, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
 	pc, _, line, ok := fn.CompileUnit.LineInfo.PrologueEndPC(fn.Entry, fn.End)
 	if ok {
 		if !sameline {
@@ -212,7 +151,7 @@ func FirstPCAfterPrologue(p Process, breakpoints *BreakpointMap, fn *Function, s
 		}
 	}
 
-	pc, err := firstPCAfterPrologueDisassembly(p, breakpoints, fn, sameline)
+	pc, err := firstPCAfterPrologueDisassembly(mem, bi, breakpoints, fn, sameline)
 	if err != nil {
 		return fn.Entry, err
 	}

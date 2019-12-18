@@ -16,9 +16,9 @@ const (
 // createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
 // This function is meant to be called by implementations of the Process interface.
 func createUnrecoveredPanicBreakpoint(t *Target) {
-	panicpcs, err := t.BinInfo().FindFunctionLocation(t, t.Breakpoints(), "runtime.startpanic", 0)
+	panicpcs, err := t.BinInfo().FindFunctionLocation(t.selectedThread, t.Breakpoints(), "runtime.startpanic", 0)
 	if _, isFnNotFound := err.(*proc.ErrFunctionNotFound); isFnNotFound {
-		panicpcs, err = t.BinInfo().FindFunctionLocation(t, t.Breakpoints(), "runtime.fatalpanic", 0)
+		panicpcs, err = t.BinInfo().FindFunctionLocation(t.selectedThread, t.Breakpoints(), "runtime.fatalpanic", 0)
 	}
 	if err == nil {
 		bp, err := t.Breakpoints().SetWithID(unrecoveredPanicID, panicpcs[0], t.Process.WriteBreakpoint)
@@ -30,7 +30,7 @@ func createUnrecoveredPanicBreakpoint(t *Target) {
 }
 
 func createFatalThrowBreakpoint(t *Target) {
-	fatalpcs, err := t.BinInfo().FindFunctionLocation(t, t.Breakpoints(), "runtime.fatalthrow", 0)
+	fatalpcs, err := t.BinInfo().FindFunctionLocation(t.selectedThread, t.Breakpoints(), "runtime.fatalthrow", 0)
 	if err == nil {
 		bp, err := t.Breakpoints().SetWithID(fatalThrowID, fatalpcs[0], t.Process.WriteBreakpoint)
 		if err == nil {

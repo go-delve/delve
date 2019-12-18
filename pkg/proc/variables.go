@@ -228,11 +228,11 @@ func getGVariable(thread Thread) (*Variable, error) {
 		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
 
-	return newGVariable(thread, uintptr(gaddr), thread.Arch().DerefTLS())
+	return newGVariable(thread, thread.BinInfo(), uintptr(gaddr), thread.Arch().DerefTLS())
 }
 
-func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
-	typ, err := thread.BinInfo().findType("runtime.g")
+func newGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref bool) (*Variable, error) {
+	typ, err := bi.findType("runtime.g")
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 	if deref {
 		typ = &godwarf.PtrType{
 			CommonType: godwarf.CommonType{
-				ByteSize:    int64(thread.Arch().PtrSize()),
+				ByteSize:    int64(bi.Arch.PtrSize()),
 				Name:        "",
 				ReflectKind: reflect.Ptr,
 				Offset:      0,
@@ -253,7 +253,7 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 		name = "runtime.curg"
 	}
 
-	return newVariableFromThread(thread, name, gaddr, typ), nil
+	return newVariableFromThread(mem, bi, name, gaddr, typ), nil
 }
 
 // GetG returns information on the G (goroutine) that is executing on this thread.
@@ -382,8 +382,8 @@ func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope 
 	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, frameOffset: 0}
 }
 
-func newVariableFromThread(t Thread, name string, addr uintptr, dwarfType godwarf.Type) *Variable {
-	return newVariable(name, addr, dwarfType, t.BinInfo(), t)
+func newVariableFromThread(t MemoryReadWriter, bi *BinaryInfo, name string, addr uintptr, dwarfType godwarf.Type) *Variable {
+	return newVariable(name, addr, dwarfType, bi, t)
 }
 
 func (v *Variable) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
@@ -706,8 +706,8 @@ func IsExportedRuntime(name string) bool {
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
-func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.CurrentThread())
+func Ancestors(p Process, mem MemoryReadWriter, g *G, n int) ([]Ancestor, error) {
+	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], mem)
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)
