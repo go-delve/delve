@@ -1,7 +1,6 @@
 package main
 
 // #cgo CFLAGS: -g -Wall -O0
-
 /*
 void sigsegv(int x) {
 	int *p = NULL;

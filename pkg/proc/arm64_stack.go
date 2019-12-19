@@ -124,10 +124,10 @@ func (it *arm64Stack) switchSp() bool {
 		// entering the system stack
 		it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g0_sched_sp
 		// reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack
+
 		it.g0_sched_sp, _ = readUintRaw(it.mem, uintptr(it.regs.SP()+prevG0schedSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
 		it.systemstack = true
 		return true
-
 	default:
 		return false
 	}
@@ -151,8 +151,22 @@ func (it *arm64Stack) switchStack() bool {
 		return true
 	case "runtime.sigpanic":
 		return false
+	case "crosscall2":
+		newsp, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
+		newbp, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+8*14), int64(it.bi.Arch.PtrSize()))
+		newlr, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+8*15), int64(it.bi.Arch.PtrSize()))
+		if it.regs.Reg(it.regs.BPRegNum) != nil {
+			it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
+		} else {
+			reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*14)
+			it.regs.AddReg(it.regs.BPRegNum, reg)
+		}
+		it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
+		it.pc = newlr
+		return true
 	default:
-		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") {
+		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
 			// The runtime switches to the system stack in multiple places.
 			// This usually happens through a call to runtime.systemstack but there
 			// are functions that switch to the system stack manually (for example
@@ -343,7 +357,7 @@ func (it *arm64Stack) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
 
-	callFrameRegs = op.DwarfRegisters{ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum}
+	callFrameRegs = op.DwarfRegisters{ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum, LRRegNum: it.regs.LRRegNum}
 
 	// According to the standard the compiler should be responsible for emitting
 	// rules for the RSP register so that it can then be used to calculate CFA,
@@ -372,9 +386,6 @@ func (it *arm64Stack) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64
 
 	_, _, fn := it.bi.PCToLine(it.pc)
 	if fn != nil && fn.Name == "runtime.sigpanic" {
-		origsp := uint64(cfareg.Uint64Val + spAlign)
-		callFrameRegs.Regs[callFrameRegs.SPRegNum].Uint64Val = uint64(origsp)
-
 		lr, _ := readUintRaw(it.mem, uintptr(cfareg.Uint64Val), int64(it.bi.Arch.PtrSize()))
 		if callFrameRegs.Regs[30] != nil {
 			callFrameRegs.Regs[30].Uint64Val = uint64(int64(lr))
@@ -382,6 +393,8 @@ func (it *arm64Stack) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64
 			lrreg := op.DwarfRegisterFromUint64(uint64(int64(lr)))
 			callFrameRegs.AddReg(30, lrreg)
 		}
+		origsp := uint64(cfareg.Uint64Val + spAlign)
+		callFrameRegs.Regs[callFrameRegs.SPRegNum].Uint64Val = uint64(origsp)
 	}
 
 	if ret == 0 && it.regs.Regs[30] != nil {
@@ -397,7 +410,11 @@ func (it *arm64Stack) executeFrameRegRule(regnum uint64, rule frame.DWRule, cfa 
 	case frame.RuleUndefined:
 		return nil, nil
 	case frame.RuleSameVal:
-		return it.regs.Reg(regnum), nil
+		if it.regs.Reg(regnum) == nil {
+			return nil, nil
+		}
+		reg := *it.regs.Reg(regnum)
+		return &reg, nil
 	case frame.RuleOffset:
 		return it.readRegisterAt(regnum, uint64(cfa+rule.Offset))
 	case frame.RuleValOffset:
@@ -424,7 +441,16 @@ func (it *arm64Stack) executeFrameRegRule(regnum uint64, rule frame.DWRule, cfa 
 		}
 		return op.DwarfRegisterFromUint64(uint64(int64(it.regs.Uint64Val(rule.Reg)) + rule.Offset)), nil
 	case frame.RuleFramePointer:
-		return it.regs.Reg(rule.Reg), nil
+		curReg := it.regs.Reg(rule.Reg)
+		if curReg == nil {
+			return nil, nil
+		}
+		if curReg.Uint64Val <= uint64(cfa) {
+			return it.readRegisterAt(regnum, curReg.Uint64Val)
+		} else {
+			newReg := *curReg
+			return &newReg, nil
+		}
 	}
 }
 

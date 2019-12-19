@@ -3229,9 +3229,6 @@ func frameInFile(frame proc.Stackframe, file string) bool {
 }
 
 func TestCgoStacktrace(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		t.Skip("amd64 only")
-	}
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Parse(runtime.Version())
 		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
@@ -3337,9 +3334,6 @@ func TestCgoStacktrace(t *testing.T) {
 }
 
 func TestCgoSources(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Cgo-debug for now")
-	}
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Parse(runtime.Version())
 		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
@@ -3416,9 +3410,6 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 }
 
 func TestIssue1034(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Cgo-debug for now")
-	}
 	// The external linker on macOS produces an abbrev for DW_TAG_subprogram
 	// without the "has children" flag, we should support this.
 	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
@@ -3436,9 +3427,6 @@ func TestIssue1034(t *testing.T) {
 }
 
 func TestIssue1008(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Cgo-debug for now")
-	}
 	// The external linker on macOS inserts "end of sequence" extended opcodes
 	// in debug_line. which we should support correctly.
 	withTestProcess("cgostacktest/", t, func(p proc.Process, fixture protest.Fixture) {
@@ -4412,9 +4400,6 @@ func TestIssue1615(t *testing.T) {
 }
 
 func TestCgoStacktrace2(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Cgo-debug for now")
-	}
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture crashes go runtime on windows")
 	}

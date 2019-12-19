@@ -255,7 +255,7 @@ func testFlags() []string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	testFlags := []string{"-count", "1", "-p", "1"}
+	testFlags := []string{"-count", "1", "-p", "1", "-timeout", "0"}
 	if Verbose {
 		testFlags = append(testFlags, "-v")
 	}
