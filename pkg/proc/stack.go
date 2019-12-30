@@ -6,11 +6,21 @@ import (
 	"fmt"
 	"go/constant"
 	"strings"
+	"runtime"
+	"sort"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 )
+
+// Define a list of key indicies.  This is used to call the sort package.
+
+type keyList []uint64
+
+func (a keyList) Len() int           { return len(a) }
+func (a keyList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a keyList) Less(i, j int) bool { return a[i] < a[j] }
 
 // This code is partly adapted from runtime.gentraceback in
 // $GOROOT/src/runtime/traceback.go
@@ -563,7 +573,17 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	// $GDB_SOURCE/dwarf2-frame.c
 	callFrameRegs.AddReg(uint64(amd64DwarfSPRegNum), cfareg)
 
-	for i, regRule := range framectx.Regs {
+	// Sort the key indicies in "framectx.Regs".  On the ARM64, if index 31 is
+	// returned before index 30, the backtrace always messes up on exception
+	// records.  This happens about 12% of the time (due to GO's randomization
+	// of indecies on for loops over ranges on maps).
+	var keys keyList
+	for i := range framectx.Regs {
+		keys = append(keys, i)
+	}
+	sort.Sort(keys)
+	for _, i := range keys {
+		regRule := framectx.Regs[i]
 		reg, err := it.executeFrameRegRule(i, regRule, it.regs.CFA)
 		callFrameRegs.AddReg(i, reg)
 		if i == framectx.RetAddrReg {
@@ -574,6 +594,9 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 				it.err = err
 			} else {
 				ret = reg.Uint64Val
+				if runtime.GOARCH == "arm64" && runtime.GOOS == "linux" {
+					checkException_linux_arm64(it, &ret)
+				}
 			}
 			retaddr = uint64(it.regs.CFA + regRule.Offset)
 		}
