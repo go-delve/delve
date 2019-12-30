@@ -27,6 +27,13 @@ func replaceDocPath(s string) string {
 }
 
 func (commands *Commands) WriteMarkdown(w io.Writer) {
+	fmt.Fprint(w, "# Configuration\n\n")
+	fmt.Fprint(w, "Delve can be configured via the configuration file located in `$HOME/.config/dlv/config.yml`.\n")
+	fmt.Fprint(w, "You can open the file and discover all the configurable options and their default value.\n\n")
+
+	fmt.Fprint(w, "# History\n\n")
+	fmt.Fprint(w, "The command history of delve debugger is stored in `$HOME/.config/dlv/.dbg_history`.\n\n")
+
 	fmt.Fprint(w, "# Commands\n\n")
 
 	fmt.Fprint(w, "Command | Description\n")
