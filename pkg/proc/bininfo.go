@@ -440,7 +440,7 @@ func (bi *BinaryInfo) PCToInlineFunc(pc uint64) *Function {
 	fn := bi.PCToFunc(pc)
 	irdr := reader.InlineStack(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(pc, fn.cu.image.StaticBase))
 	var inlineFnEntry *dwarf.Entry
-	for irdr.Next() {
+	if irdr.Next() {
 		inlineFnEntry = irdr.Entry()
 	}
 

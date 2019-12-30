@@ -371,63 +371,93 @@ func LoadAbstractOrigin(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.O
 type InlineStackReader struct {
 	dwarf  *dwarf.Data
 	reader *dwarf.Reader
-	entry  *dwarf.Entry
-	depth  int
 	pc     uint64
+	entry  *dwarf.Entry
 	err    error
+
+	// stack contains the list of DIEs that will be returned by Next.
+	stack []*dwarf.Entry
 }
 
 // InlineStack returns an InlineStackReader for the specified function and
 // PC address.
 // If pc is 0 then all inlined calls will be returned.
-func InlineStack(dwarf *dwarf.Data, fnoff dwarf.Offset, pc RelAddr) *InlineStackReader {
-	reader := dwarf.Reader()
+func InlineStack(dw *dwarf.Data, fnoff dwarf.Offset, pc RelAddr) *InlineStackReader {
+	reader := dw.Reader()
 	reader.Seek(fnoff)
-	return &InlineStackReader{dwarf: dwarf, reader: reader, entry: nil, depth: 0, pc: uint64(pc)}
+	r := &InlineStackReader{dwarf: dw, reader: reader, pc: uint64(pc)}
+	r.precalcStack(nil)
+	return r
+}
+
+// precalcStack precalculates the inlined call stack for irdr.pc.
+// If irdr.pc == 0 then all inlined calls will be saved in irdr.stack.
+// Otherwise an inlined call will be saved in irdr.stack if its range, or
+// the range of one of its child entries contains irdr.pc.
+// The recursive calculation of range inclusion is necessary because
+// sometimes when doing midstack inlining the Go compiler emits the toplevel
+// inlined call with ranges that do not cover the inlining of nested inlined
+// calls.
+// For example if a function A calls B which calls C and both the calls to
+// B and C are inlined the DW_AT_inlined_subroutine entry for A might have
+// ranges that do not cover the ranges of the inlined call to C.
+// This is probably a violation of the DWARF standard (it's unclear) but we
+// might as well support it as best as possible anyway.
+func (irdr *InlineStackReader) precalcStack(rentry *dwarf.Entry) bool {
+	var contains bool
+
+childLoop:
+	for {
+		if irdr.err != nil {
+			return contains
+		}
+		e2, err := irdr.reader.Next()
+		if e2 == nil || err != nil {
+			break
+		}
+
+		switch e2.Tag {
+		case 0:
+			break childLoop
+		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram, dwarf.TagInlinedSubroutine:
+			if irdr.precalcStack(e2) {
+				contains = true
+			}
+		default:
+			irdr.reader.SkipChildren()
+		}
+	}
+
+	if rentry != nil && rentry.Tag == dwarf.TagInlinedSubroutine {
+		if !contains {
+			if irdr.pc != 0 {
+				contains, irdr.err = entryRangesContains(irdr.dwarf, rentry, irdr.pc)
+			} else {
+				contains = true
+			}
+		}
+		if contains {
+			irdr.stack = append(irdr.stack, rentry)
+		}
+	}
+	return contains
 }
 
 // Next reads next inlined call in the stack, returns false if there aren't any.
+// Next reads the inlined stack of calls backwards, starting with the
+// deepest inlined call and moving back out, like a normal stacktrace works.
 func (irdr *InlineStackReader) Next() bool {
 	if irdr.err != nil {
 		return false
 	}
 
-	for {
-		irdr.entry, irdr.err = irdr.reader.Next()
-		if irdr.entry == nil || irdr.err != nil {
-			return false
-		}
-
-		switch irdr.entry.Tag {
-		case 0:
-			irdr.depth--
-			if irdr.depth == 0 {
-				return false
-			}
-
-		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram, dwarf.TagInlinedSubroutine:
-			var recur bool
-			if irdr.pc != 0 {
-				recur, irdr.err = entryRangesContains(irdr.dwarf, irdr.entry, irdr.pc)
-			} else {
-				recur = true
-			}
-			if recur {
-				irdr.depth++
-				if irdr.entry.Tag == dwarf.TagInlinedSubroutine {
-					return true
-				}
-			} else {
-				if irdr.depth == 0 {
-					return false
-				}
-				irdr.reader.SkipChildren()
-			}
-
-		default:
-			irdr.reader.SkipChildren()
-		}
+	if len(irdr.stack) == 0 {
+		return false
 	}
+
+	irdr.entry = irdr.stack[0]
+	irdr.stack = irdr.stack[1:]
+	return true
 }
 
 // Entry returns the DIE for the current inlined call.

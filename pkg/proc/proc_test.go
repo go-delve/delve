@@ -3177,6 +3177,9 @@ func logStacktrace(t *testing.T, bi *proc.BinaryInfo, frames []proc.Stackframe) 
 		if frames[j].Current.Fn != nil {
 			name = frames[j].Current.Fn.Name
 		}
+		if frames[j].Call.Fn != nil && frames[j].Current.Fn != frames[j].Call.Fn {
+			name = fmt.Sprintf("%s inlined in %s", frames[j].Call.Fn.Name, frames[j].Current.Fn.Name)
+		}
 
 		t.Logf("\t%#x %#x %#x %s at %s:%d\n", frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
 		if frames[j].TopmostDefer != nil {
@@ -3613,8 +3616,10 @@ func checkFrame(frame proc.Stackframe, fnname, file string, line int, inlined bo
 	if frame.Call.Fn == nil || frame.Call.Fn.Name != fnname {
 		return fmt.Errorf("wrong function name: %s", fnname)
 	}
-	if frame.Call.File != file || frame.Call.Line != line {
-		return fmt.Errorf("wrong file:line %s:%d", frame.Call.File, frame.Call.Line)
+	if file != "" {
+		if frame.Call.File != file || frame.Call.Line != line {
+			return fmt.Errorf("wrong file:line %s:%d", frame.Call.File, frame.Call.Line)
+		}
 	}
 	if frame.Inlined != inlined {
 		if inlined {
@@ -4543,6 +4548,47 @@ func TestListPackagesBuildInfo(t *testing.T) {
 			if !strings.HasSuffix(strings.Replace(pkg.DirectoryPath, "\\", "/", -1), pkg.ImportPath[fidx:]) {
 				t.Errorf("unexpected suffix: %q %q", pkg.ImportPath, pkg.DirectoryPath)
 			}
+		}
+	})
+}
+
+func TestIssue1795(t *testing.T) {
+	// When doing midstack inlining the Go compiler sometimes (always?) emits
+	// the toplevel inlined call with ranges that do not cover the inlining of
+	// other nested inlined calls.
+	// For example if a function A calls B which calls C and both the calls to
+	// B and C are inlined the DW_AT_inlined_subroutine entry for A might have
+	// ranges that do not cover the ranges of the inlined call to C.
+	// This is probably a violation of the DWARF standard (it's unclear) but we
+	// might as well support it as best as possible anyway.
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
+		t.Skip("Test not relevant to Go < 1.13")
+	}
+	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		assertLineNumber(p, t, 12, "wrong line number after Continue,")
+		assertNoError(proc.Next(p), t, "Next()")
+		assertLineNumber(p, t, 13, "wrong line number after Next,")
+	})
+	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "regexp.(*Regexp).doExecute")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		assertLineNumber(p, t, 12, "wrong line number after Continue (1),")
+		assertNoError(proc.Continue(p), t, "Continue()")
+		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
+		assertNoError(err, t, "ThreadStacktrace()")
+		logStacktrace(t, p.BinInfo(), frames)
+		if err := checkFrame(frames[0], "regexp.(*Regexp).doExecute", "", 0, false); err != nil {
+			t.Errorf("Wrong frame 0: %v", err)
+		}
+		if err := checkFrame(frames[1], "regexp.(*Regexp).doMatch", "", 0, true); err != nil {
+			t.Errorf("Wrong frame 1: %v", err)
+		}
+		if err := checkFrame(frames[2], "regexp.(*Regexp).MatchString", "", 0, true); err != nil {
+			t.Errorf("Wrong frame 2: %v", err)
+		}
+		if err := checkFrame(frames[3], "main.main", fixture.Source, 12, false); err != nil {
+			t.Errorf("Wrong frame 3: %v", err)
 		}
 	})
 }
