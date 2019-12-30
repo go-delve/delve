@@ -1,3 +1,12 @@
+# Configuration
+
+Delve can be configured via the configuration file located in `$HOME/.config/dlv/config.yml`.
+You can open the file and discover all the configurable options and their default value.
+
+# History
+
+The command history of delve debugger is stored in `$HOME/.config/dlv/.dbg_history`.
+
 # Commands
 
 Command | Description
