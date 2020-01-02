@@ -64,7 +64,7 @@ func firstPCAfterPrologueDisassembly(mem MemoryReadWriter, bi *BinaryInfo, break
 		return fn.Entry, nil
 	}
 
-	for _, prologue := range p.BinInfo().Arch.Prologues() {
+	for _, prologue := range bi.Arch.Prologues() {
 		if len(prologue) >= len(text) {
 			continue
 		}

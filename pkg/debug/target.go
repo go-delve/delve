@@ -677,7 +677,7 @@ func (t *Target) Continue() error {
 					return err
 				}
 				pc := regs.PC()
-				text, err := proc.Disassemble(curthread, regs, t.Breakpoints(), t.BinInfo(), pc, pc+proc.MaxInstructionLength)
+				text, err := proc.Disassemble(curthread, regs, t.Breakpoints(), t.BinInfo(), pc, pc+uint64(t.BinInfo().Arch.MaxInstructionLength()))
 				if err != nil {
 					return err
 				}
