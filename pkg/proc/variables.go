@@ -220,7 +220,7 @@ func getGVariable(thread Thread) (*Variable, error) {
 
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
-		gaddrbs := make([]byte, thread.Arch().PtrSize())
+		gaddrbs := make([]byte, thread.BinInfo().Arch.PtrSize())
 		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()))
 		if err != nil {
 			return nil, err
@@ -228,7 +228,7 @@ func getGVariable(thread Thread) (*Variable, error) {
 		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
 
-	return newGVariable(thread, thread.BinInfo(), uintptr(gaddr), thread.Arch().DerefTLS())
+	return newGVariable(thread, thread.BinInfo(), uintptr(gaddr), thread.BinInfo().Arch.DerefTLS())
 }
 
 func newGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref bool) (*Variable, error) {

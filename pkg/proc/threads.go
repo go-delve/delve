@@ -16,7 +16,6 @@ type Thread interface {
 
 	// RestoreRegisters restores saved registers
 	RestoreRegisters(Registers) error
-	Arch() Arch
 	BinInfo() *BinaryInfo
 	StepInstruction() error
 	// Blocked returns true if the thread is blocked
