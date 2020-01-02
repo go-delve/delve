@@ -59,7 +59,7 @@ func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
 }
 
 func findFirstNonRuntimeFrame(tgt *debug.Target) (proc.Stackframe, error) {
-	frames, err := proc.ThreadStacktrace(tgt.CurrentThread(), 10)
+	frames, err := proc.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 10)
 	if err != nil {
 		return proc.Stackframe{}, err
 	}
@@ -74,7 +74,7 @@ func findFirstNonRuntimeFrame(tgt *debug.Target) (proc.Stackframe, error) {
 
 func evalScope(tgt *debug.Target) (*proc.EvalScope, error) {
 	if testBackend != "rr" {
-		return proc.GoroutineScope(tgt.CurrentThread())
+		return proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 	}
 	frame, err := findFirstNonRuntimeFrame(tgt)
 	if err != nil {
@@ -99,7 +99,7 @@ func (tc *varTest) alternateVarTest() varTest {
 }
 
 func setVariable(tgt *debug.Target, symbol, value string) error {
-	scope, err := proc.GoroutineScope(tgt.CurrentThread())
+	scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 	if err != nil {
 		return err
 	}
@@ -448,7 +448,7 @@ func TestLocalVariables(t *testing.T) {
 					scope = proc.FrameToScope(tgt.BinInfo(), tgt.CurrentThread(), nil, frame)
 				}
 			} else {
-				scope, err = proc.GoroutineScope(tgt.CurrentThread())
+				scope, err = proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 			}
 
 			assertNoError(err, t, "scope")
@@ -1095,7 +1095,7 @@ func TestIssue1075(t *testing.T) {
 		setFunctionBreakpoint(tgt, t, "net/http.(*Client).Do")
 		assertNoError(tgt.Continue(), t, "Continue()")
 		for i := 0; i < 10; i++ {
-			scope, err := proc.GoroutineScope(tgt.CurrentThread())
+			scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 			assertNoError(err, t, fmt.Sprintf("GoroutineScope (%d)", i))
 			vars, err := scope.LocalVariables(pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("LocalVariables (%d)", i))
@@ -1262,7 +1262,7 @@ func testCallFunction(t *testing.T, tgt *debug.Target, tc testCaseCallFunction) 
 		checkEscape = false
 	}
 	t.Logf("call %q", tc.expr)
-	err := proc.EvalExpressionWithCalls(tgt.Process, tgt.SelectedGoroutine(), callExpr, pnormalLoadConfig, checkEscape, tgt.Continue)
+	err := proc.EvalExpressionWithCalls(tgt.Process, tgt.SelectedGoroutine(), tgt.BinInfo(), callExpr, pnormalLoadConfig, checkEscape, tgt.Continue)
 	if tc.err != nil {
 		t.Logf("\terr = %v\n", err)
 		if err == nil {
@@ -1286,7 +1286,7 @@ func testCallFunction(t *testing.T, tgt *debug.Target, tc testCaseCallFunction) 
 	}
 
 	if varExpr != "" {
-		scope, err := proc.GoroutineScope(tgt.CurrentThread())
+		scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 		assertNoError(err, t, "GoroutineScope")
 		v, err := scope.EvalExpression(varExpr, pnormalLoadConfig)
 		assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", varExpr))

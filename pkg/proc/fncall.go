@@ -130,8 +130,7 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
 // Because this can only be done in the current goroutine, unlike
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
-func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool, continueFn func() error) error {
-	bi := p.BinInfo()
+func EvalExpressionWithCalls(p Process, g *G, bi *BinaryInfo, expr string, retLoadCfg LoadConfig, checkEscape bool, continueFn func() error) error {
 	if !p.Common().fncallEnabled {
 		return errFuncCallUnsupportedBackend
 	}
@@ -153,7 +152,7 @@ func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig
 		return errFuncCallUnsupported
 	}
 
-	scope, err := GoroutineScope(g.Thread)
+	scope, err := GoroutineScope(g.Thread, bi)
 	if err != nil {
 		return err
 	}
@@ -665,7 +664,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 	switch rax {
 	case debugCallAXPrecheckFailed:
 		// get error from top of the stack and return it to user
-		errvar, err := readTopstackVariable(thread, regs, "string", loadFullValue)
+		errvar, err := readTopstackVariable(thread, bi, regs, "string", loadFullValue)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get precheck error reason: %v", err)
 			break
@@ -737,7 +736,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		if fncall.panicvar != nil || fncall.lateCallFailure {
 			break
 		}
-		retScope, err := ThreadScope(thread)
+		retScope, err := ThreadScope(thread, bi)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get return values: %v", err)
 			break
@@ -762,7 +761,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 
 	case debugCallAXReadPanic:
 		// read panic value from stack
-		fncall.panicvar, err = readTopstackVariable(thread, regs, "interface {}", callScope.callCtx.retLoadCfg)
+		fncall.panicvar, err = readTopstackVariable(thread, bi, regs, "interface {}", callScope.callCtx.retLoadCfg)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get panic: %v", err)
 			break
@@ -778,9 +777,8 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 	return false
 }
 
-func readTopstackVariable(thread Thread, regs Registers, typename string, loadCfg LoadConfig) (*Variable, error) {
-	bi := thread.BinInfo()
-	scope, err := ThreadScope(thread)
+func readTopstackVariable(thread Thread, bi *BinaryInfo, regs Registers, typename string, loadCfg LoadConfig) (*Variable, error) {
+	scope, err := ThreadScope(thread, bi)
 	if err != nil {
 		return nil, err
 	}
@@ -879,7 +877,7 @@ func isCallInjectionStop(loc *Location) bool {
 // CallInjectionProtocol is the function called from Continue to progress
 // the injection protocol for all threads.
 // Returns true if a call injection terminated
-func CallInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
+func CallInjectionProtocol(p Process, threads []Thread, bi *BinaryInfo) (done bool, err error) {
 	if len(p.Common().FnCallForG) == 0 {
 		// we aren't injecting any calls, no need to check the threads.
 		return false, nil
@@ -893,7 +891,7 @@ func CallInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
 			continue
 		}
 
-		g, err := GetG(thread)
+		g, err := GetG(thread, bi)
 		if err != nil {
 			return done, fmt.Errorf("could not determine running goroutine for thread %#x currently executing the function call injection protocol: %v", thread.ThreadID(), err)
 		}

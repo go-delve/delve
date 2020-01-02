@@ -43,7 +43,7 @@ func (pe ProcessDetachedError) Error() string {
 // GoroutinesInfo also returns the next index to be used as 'start' argument
 // while scanning for all available goroutines, or -1 if there was an error
 // or if the index already reached the last possible value.
-func GoroutinesInfo(dbp Process, mem MemoryReadWriter, start, count int) ([]*G, int, error) {
+func GoroutinesInfo(dbp Process, bi *BinaryInfo, mem MemoryReadWriter, start, count int) ([]*G, int, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, -1, err
 	}
@@ -54,7 +54,7 @@ func GoroutinesInfo(dbp Process, mem MemoryReadWriter, start, count int) ([]*G, 
 		}
 	}
 
-	exeimage := dbp.BinInfo().Images[0] // Image corresponding to the executable file
+	exeimage := bi.Images[0] // Image corresponding to the executable file
 
 	var (
 		threadg = map[int]*G{}
@@ -67,7 +67,7 @@ func GoroutinesInfo(dbp Process, mem MemoryReadWriter, start, count int) ([]*G, 
 		if th.Blocked() {
 			continue
 		}
-		g, _ := GetG(th)
+		g, _ := GetG(th, bi)
 		if g != nil {
 			threadg[g.ID] = g
 		}

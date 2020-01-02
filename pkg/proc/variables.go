@@ -212,7 +212,7 @@ type G struct {
 	Unreadable error // could not read the G struct
 }
 
-func getGVariable(thread Thread) (*Variable, error) {
+func getGVariable(thread Thread, bi *BinaryInfo) (*Variable, error) {
 	regs, err := thread.Registers(false)
 	if err != nil {
 		return nil, err
@@ -220,15 +220,15 @@ func getGVariable(thread Thread) (*Variable, error) {
 
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
-		gaddrbs := make([]byte, thread.BinInfo().Arch.PtrSize())
-		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()))
+		gaddrbs := make([]byte, bi.Arch.PtrSize())
+		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+bi.GStructOffset()))
 		if err != nil {
 			return nil, err
 		}
 		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
 
-	return newGVariable(thread, thread.BinInfo(), uintptr(gaddr), thread.BinInfo().Arch.DerefTLS())
+	return newGVariable(thread, bi, uintptr(gaddr), bi.Arch.DerefTLS())
 }
 
 func newGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref bool) (*Variable, error) {
@@ -270,12 +270,12 @@ func newGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref boo
 //
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
-func GetG(thread Thread) (*G, error) {
+func GetG(thread Thread, bi *BinaryInfo) (*G, error) {
 	if loc, _ := thread.Location(); loc != nil && loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
 		// When threads are executing runtime.clone the value of TLS is unreliable.
 		return nil, nil
 	}
-	gaddr, err := getGVariable(thread)
+	gaddr, err := getGVariable(thread, bi)
 	if err != nil {
 		return nil, err
 	}

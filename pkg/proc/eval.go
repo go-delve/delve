@@ -56,12 +56,12 @@ type EvalScope struct {
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 // If deferCall is > 0 the eval scope will be relative to the specified deferred call.
-func ConvertEvalScope(dbp Process, th Thread, g *G, frame, deferCall int) (*EvalScope, error) {
+func ConvertEvalScope(dbp Process, th Thread, bi *BinaryInfo, g *G, frame, deferCall int) (*EvalScope, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, err
 	}
 	if g == nil {
-		return ThreadScope(th)
+		return ThreadScope(th, bi)
 	}
 
 	var thread MemoryReadWriter
@@ -95,7 +95,7 @@ func ConvertEvalScope(dbp Process, th Thread, g *G, frame, deferCall int) (*Eval
 			return nil, d.Unreadable
 		}
 
-		return d.EvalScope(th)
+		return d.EvalScope(th, bi)
 	}
 
 	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame:]...), nil
@@ -127,31 +127,31 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 }
 
 // ThreadScope returns an EvalScope for this thread.
-func ThreadScope(thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 1)
+func ThreadScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
+	locations, err := ThreadStacktrace(thread, bi, 1)
 	if err != nil {
 		return nil, err
 	}
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return FrameToScope(thread.BinInfo(), thread, nil, locations...), nil
+	return FrameToScope(bi, thread, nil, locations...), nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on this thread.
-func GoroutineScope(thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 1)
+func GoroutineScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
+	locations, err := ThreadStacktrace(thread, bi, 1)
 	if err != nil {
 		return nil, err
 	}
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	g, err := GetG(thread)
+	g, err := GetG(thread, bi)
 	if err != nil {
 		return nil, err
 	}
-	return FrameToScope(thread.BinInfo(), thread, g, locations...), nil
+	return FrameToScope(bi, thread, g, locations...), nil
 }
 
 // EvalExpression returns the value of the given expression.

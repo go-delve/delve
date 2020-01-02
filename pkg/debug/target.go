@@ -199,7 +199,7 @@ func (t *Target) Initialize() error {
 	}
 
 	t.selectedThread = t.Process.ThreadList()[0]
-	g, _ := proc.GetG(t.CurrentThread())
+	g, _ := proc.GetG(t.CurrentThread(), t.BinInfo())
 	t.selectedGoroutine = g
 
 	createUnrecoveredPanicBreakpoint(t)
@@ -300,7 +300,7 @@ func setStepIntoBreakpoint(t *Target, text []proc.AsmInstruction, cond ast.Expr)
 func next(t *Target, stepInto, inlinedStepOut bool) error {
 	selg := t.SelectedGoroutine()
 	curthread := t.CurrentThread()
-	topframe, retframe, err := proc.Topframe(selg, curthread)
+	topframe, retframe, err := proc.Topframe(selg, curthread, t.BinInfo())
 	if err != nil {
 		return err
 	}
@@ -542,9 +542,9 @@ func (t *Target) SetCurrentBreakpointStateForThread(thread proc.Thread, adjustPC
 				return err
 			}
 		}
-		bps := bp.CheckCondition(thread)
+		bps := bp.CheckCondition(thread, t.BinInfo())
 		if bps.Breakpoint != nil && bps.Active {
-			if g, err := proc.GetG(thread); err == nil {
+			if g, err := proc.GetG(thread, t.BinInfo()); err == nil {
 				bps.HitCount[g.ID]++
 			}
 			bps.TotalHitCount++
@@ -620,7 +620,7 @@ func (t *Target) Continue() error {
 
 		threads := t.ThreadList()
 
-		callInjectionDone, err := proc.CallInjectionProtocol(t, threads)
+		callInjectionDone, err := proc.CallInjectionProtocol(t, threads, t.BinInfo())
 		if err != nil {
 			return err
 		}
@@ -644,7 +644,7 @@ func (t *Target) Continue() error {
 			if err != nil || loc.Fn == nil {
 				return conditionErrors(t.state)
 			}
-			g, _ := proc.GetG(curthread)
+			g, _ := proc.GetG(curthread, t.BinInfo())
 
 			switch {
 			case loc.Fn.Name == "runtime.breakpoint":
@@ -688,14 +688,14 @@ func (t *Target) Continue() error {
 					return err
 				}
 			default:
-				curthread.Common().RetVals = curbp.Breakpoint.ReturnInfo.Collect(curthread)
+				curthread.Common().RetVals = curbp.Breakpoint.ReturnInfo.Collect(curthread, t.BinInfo())
 				if err := t.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
 				return conditionErrors(t.state)
 			}
 		case curbp.Active:
-			onNextGoroutine, err := onNextGoroutine(curthread, t.Breakpoints())
+			onNextGoroutine, err := onNextGoroutine(curthread, t.BinInfo(), t.Breakpoints())
 			if err != nil {
 				return err
 			}
@@ -739,7 +739,7 @@ func threadStepInstruction(tgt *Target, th proc.Thread) error {
 }
 
 // onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
-func onNextGoroutine(thread proc.Thread, breakpoints *proc.BreakpointMap) (bool, error) {
+func onNextGoroutine(thread proc.Thread, bi *proc.BinaryInfo, breakpoints *proc.BreakpointMap) (bool, error) {
 	var bp *proc.Breakpoint
 	for i := range breakpoints.M {
 		if breakpoints.M[i].Kind != proc.UserBreakpoint && breakpoints.M[i].InternalCond() != nil {
@@ -759,20 +759,21 @@ func onNextGoroutine(thread proc.Thread, breakpoints *proc.BreakpointMap) (bool,
 	// function or by returning from the function:
 	//   runtime.curg.goid == X && (runtime.frameoff == Y || runtime.frameoff == Z)
 	// Here we are only interested in testing the runtime.curg.goid clause.
-	w := onNextGoroutineWalker{thread: thread}
+	w := onNextGoroutineWalker{thread: thread, bi: bi}
 	ast.Walk(&w, bp.InternalCond())
 	return w.ret, w.err
 }
 
 type onNextGoroutineWalker struct {
 	thread proc.Thread
+	bi     *proc.BinaryInfo
 	ret    bool
 	err    error
 }
 
 func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
 	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL && proc.ExprToString(binx.X) == "runtime.curg.goid" {
-		w.ret, w.err = proc.EvalBreakpointCondition(w.thread, n.(ast.Expr))
+		w.ret, w.err = proc.EvalBreakpointCondition(w.thread, w.bi, n.(ast.Expr))
 		return nil
 	}
 	return w
@@ -825,7 +826,7 @@ func (t *Target) StepInstructionOut(curthread proc.Thread, fnname1, fnname2 stri
 		}
 		loc, err := curthread.Location()
 		if err != nil || loc.Fn == nil || (loc.Fn.Name != fnname1 && loc.Fn.Name != fnname2) {
-			g, _ := proc.GetG(curthread)
+			g, _ := proc.GetG(curthread, t.BinInfo())
 			selg := t.SelectedGoroutine()
 			if g != nil && selg != nil && g.ID == selg.ID {
 				selg.CurrentLoc = *loc
@@ -870,7 +871,7 @@ func (t *Target) StepOut() error {
 	selg := t.SelectedGoroutine()
 	curthread := t.CurrentThread()
 
-	topframe, retframe, err := proc.Topframe(selg, curthread)
+	topframe, retframe, err := proc.Topframe(selg, curthread, t.BinInfo())
 	if err != nil {
 		return err
 	}
@@ -1002,7 +1003,7 @@ func (t *Target) Restart(from string) error {
 		t.Process.WriteBreakpoint(addr)
 	}
 
-	t.selectedGoroutine, _ = proc.GetG(t.CurrentThread())
+	t.selectedGoroutine, _ = proc.GetG(t.CurrentThread(), t.BinInfo())
 
 	return t.SetCurrentBreakpoints()
 }
@@ -1102,7 +1103,7 @@ func (t *Target) StepInstruction() error {
 	if err := t.SetCurrentBreakpointStateForThread(thread, true); err != nil {
 		return err
 	}
-	if g, _ := proc.GetG(thread); g != nil {
+	if g, _ := proc.GetG(thread, t.BinInfo()); g != nil {
 		t.selectedGoroutine = g
 	}
 	return nil
@@ -1116,7 +1117,7 @@ func (t *Target) SwitchThread(tid int) error {
 	}
 	if th, ok := t.Process.FindThread(tid); ok {
 		t.selectedThread = th
-		t.selectedGoroutine, _ = proc.GetG(t.CurrentThread())
+		t.selectedGoroutine, _ = proc.GetG(t.CurrentThread(), t.BinInfo())
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
@@ -1205,7 +1206,7 @@ func FindGoroutine(t *Target, gid int) (*proc.G, error) {
 	// Calling GoroutinesInfo could be slow if there are many goroutines
 	// running, check if a running goroutine has been requested first.
 	for _, thread := range t.Process.ThreadList() {
-		g, _ := proc.GetG(thread)
+		g, _ := proc.GetG(thread, t.BinInfo())
 		if g != nil && g.ID == gid {
 			return g, nil
 		}
@@ -1216,7 +1217,7 @@ func FindGoroutine(t *Target, gid int) (*proc.G, error) {
 	for nextg >= 0 {
 		var gs []*proc.G
 		var err error
-		gs, nextg, err = proc.GoroutinesInfo(t, t.CurrentThread(), nextg, goroutinesInfoLimit)
+		gs, nextg, err = proc.GoroutinesInfo(t, t.BinInfo(), t.CurrentThread(), nextg, goroutinesInfoLimit)
 		if err != nil {
 			return nil, err
 		}

@@ -119,7 +119,7 @@ type returnBreakpointInfo struct {
 }
 
 // CheckCondition evaluates bp's condition on thread.
-func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
+func (bp *Breakpoint) CheckCondition(thread Thread, bi *BinaryInfo) BreakpointState {
 	bpstate := BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
 	if bp.Cond == nil && bp.internalCond == nil {
 		bpstate.Active = true
@@ -128,7 +128,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	}
 	nextDeferOk := true
 	if bp.Kind&NextDeferBreakpoint != 0 {
-		frames, err := ThreadStacktrace(thread, 2)
+		frames, err := ThreadStacktrace(thread, bi, 2)
 		if err == nil {
 			ispanic := len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic"
 			isdeferreturn := false
@@ -145,7 +145,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	}
 	if bp.IsInternal() {
 		// Check internalCondition if this is also an internal breakpoint
-		bpstate.Active, bpstate.CondError = EvalBreakpointCondition(thread, bp.internalCond)
+		bpstate.Active, bpstate.CondError = EvalBreakpointCondition(thread, bi, bp.internalCond)
 		bpstate.Active = bpstate.Active && nextDeferOk
 		if bpstate.Active || bpstate.CondError != nil {
 			bpstate.Internal = true
@@ -154,7 +154,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	}
 	if bp.IsUser() {
 		// Check normal condition if this is also a user breakpoint
-		bpstate.Active, bpstate.CondError = EvalBreakpointCondition(thread, bp.Cond)
+		bpstate.Active, bpstate.CondError = EvalBreakpointCondition(thread, bi, bp.Cond)
 	}
 	return bpstate
 }
@@ -173,11 +173,11 @@ func (bp *Breakpoint) IsUser() bool {
 	return bp.Kind&UserBreakpoint != 0
 }
 
-func EvalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
+func EvalBreakpointCondition(thread Thread, bi *BinaryInfo, cond ast.Expr) (bool, error) {
 	if cond == nil {
 		return true, nil
 	}
-	scope, err := GoroutineScope(thread)
+	scope, err := GoroutineScope(thread, bi)
 	if err != nil {
 		return true, err
 	}
@@ -394,16 +394,16 @@ func ConfigureReturnBreakpoint(bi *BinaryInfo, bp *Breakpoint, topframe *Stackfr
 	}
 }
 
-func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
+func (rbpi *returnBreakpointInfo) Collect(thread Thread, bi *BinaryInfo) []*Variable {
 	if rbpi == nil {
 		return nil
 	}
 
-	g, err := GetG(thread)
+	g, err := GetG(thread, bi)
 	if err != nil {
 		return returnInfoError("could not get g", err, thread)
 	}
-	scope, err := GoroutineScope(thread)
+	scope, err := GoroutineScope(thread, bi)
 	if err != nil {
 		return returnInfoError("could not get scope", err, thread)
 	}

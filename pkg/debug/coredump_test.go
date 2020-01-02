@@ -61,7 +61,7 @@ func TestCore(t *testing.T) {
 	}
 	p := withCoreFile(t, "panic", "")
 
-	gs, _, err := proc.GoroutinesInfo(p, p.CurrentThread(), 0, 0)
+	gs, _, err := proc.GoroutinesInfo(p, p.BinInfo(), p.CurrentThread(), 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}
@@ -131,14 +131,14 @@ func TestCoreFpRegisters(t *testing.T) {
 
 	p := withCoreFile(t, "fputest/", "panic")
 
-	gs, _, err := proc.GoroutinesInfo(p, p.CurrentThread(), 0, 0)
+	gs, _, err := proc.GoroutinesInfo(p, p.BinInfo(), p.CurrentThread(), 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}
 
 	var regs proc.Registers
 	for _, thread := range p.ThreadList() {
-		frames, err := proc.ThreadStacktrace(thread, 10)
+		frames, err := proc.ThreadStacktrace(thread, p.BinInfo(), 10)
 		if err != nil {
 			t.Errorf("ThreadStacktrace for %x = %v", thread.ThreadID(), err)
 			continue
@@ -208,7 +208,7 @@ func TestCoreWithEmptyString(t *testing.T) {
 	}
 	p := withCoreFile(t, "coreemptystring", "")
 
-	gs, _, err := proc.GoroutinesInfo(p, p.CurrentThread(), 0, 0)
+	gs, _, err := proc.GoroutinesInfo(p, p.BinInfo(), p.CurrentThread(), 0, 0)
 	assertNoError(err, t, "GoroutinesInfo")
 
 	var mainFrame *proc.Stackframe
@@ -254,7 +254,7 @@ func TestMinidump(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenCore: %v", err)
 	}
-	gs, _, err := proc.GoroutinesInfo(p, p.CurrentThread(), 0, 0)
+	gs, _, err := proc.GoroutinesInfo(p, p.BinInfo(), p.CurrentThread(), 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}

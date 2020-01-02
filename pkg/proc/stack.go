@@ -92,7 +92,7 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 }
 
 // Topframe returns the two topmost frames of g, or thread if g is nil.
-func Topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
+func Topframe(g *G, thread Thread, bi *BinaryInfo) (Stackframe, Stackframe, error) {
 	var frames []Stackframe
 	var err error
 
@@ -100,7 +100,7 @@ func Topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 		if thread.Blocked() {
 			return Stackframe{}, Stackframe{}, ErrThreadBlocked{}
 		}
-		frames, err = ThreadStacktrace(thread, 1)
+		frames, err = ThreadStacktrace(thread, bi, 1)
 	} else {
 		frames, err = g.Stacktrace(1, StacktraceReadDefers)
 	}
@@ -119,15 +119,15 @@ func Topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 
 // ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
-	g, _ := GetG(thread)
+func ThreadStacktrace(thread Thread, bi *BinaryInfo, depth int) ([]Stackframe, error) {
+	g, _ := GetG(thread, bi)
 	if g == nil {
 		regs, err := thread.Registers(true)
 		if err != nil {
 			return nil, err
 		}
-		so := thread.BinInfo().PCToImage(regs.PC())
-		it := newStackIterator(thread.BinInfo(), thread, thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs), 0, nil, -1, nil, 0)
+		so := bi.PCToImage(regs.PC())
+		it := newStackIterator(bi, thread, bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs), 0, nil, -1, nil, 0)
 		return it.stacktrace(depth)
 	}
 	return g.Stacktrace(depth, 0)
@@ -767,13 +767,12 @@ func (d *Defer) Next() *Defer {
 // EvalScope returns an EvalScope relative to the argument frame of this deferred call.
 // The argument frame of a deferred call is stored in memory immediately
 // after the deferred header.
-func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
-	scope, err := GoroutineScope(thread)
+func (d *Defer) EvalScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
+	scope, err := GoroutineScope(thread, bi)
 	if err != nil {
 		return nil, fmt.Errorf("could not get scope: %v", err)
 	}
 
-	bi := thread.BinInfo()
 	scope.PC = d.DeferredPC
 	scope.File, scope.Line, scope.Fn = bi.PCToLine(d.DeferredPC)
 

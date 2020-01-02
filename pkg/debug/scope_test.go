@@ -183,7 +183,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 
 		// first inlined call
 		assertNoError(tgt.Continue(), t, "Continue")
-		frames, err := proc.ThreadStacktrace(tgt.CurrentThread(), 20)
+		frames, err := proc.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 20)
 		assertNoError(err, t, "ThreadStacktrace")
 		t.Logf("Stacktrace:\n")
 		for i := range frames {
@@ -210,7 +210,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 
 		// second inlined call
 		assertNoError(tgt.Continue(), t, "Continue")
-		frames, err = proc.ThreadStacktrace(tgt.CurrentThread(), 20)
+		frames, err = proc.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 20)
 		assertNoError(err, t, "ThreadStacktrace (2)")
 		t.Logf("Stacktrace 2:\n")
 		for i := range frames {
@@ -361,7 +361,7 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 }
 
 func (scopeCheck *scopeCheck) checkLocalsAndArgs(tgt *debug.Target, t *testing.T) (*proc.EvalScope, bool) {
-	scope, err := proc.GoroutineScope(tgt.CurrentThread())
+	scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 	assertNoError(err, t, "GoroutineScope()")
 
 	ok := true
