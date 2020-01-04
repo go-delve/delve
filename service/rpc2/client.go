@@ -328,9 +328,9 @@ func (c *RPCClient) AttachedToExistingProcess() bool {
 	return out.Answer
 }
 
-func (c *RPCClient) FindLocation(scope api.EvalScope, loc string, findInstructions bool) ([]api.Location, error) {
+func (c *RPCClient) FindLocation(scope api.EvalScope, loc string, findInstructions bool, fullPathMatch bool) ([]api.Location, error) {
 	var out FindLocationOut
-	err := c.call("FindLocation", FindLocationIn{scope, loc, !findInstructions}, &out)
+	err := c.call("FindLocation", FindLocationIn{scope, loc, !findInstructions, fullPathMatch}, &out)
 	return out.Locations, err
 }
 

@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"fmt"
+	protest "github.com/go-delve/delve/pkg/proc/test"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -80,7 +81,7 @@ type locationFinder1 interface {
 }
 
 type locationFinder2 interface {
-	FindLocation(api.EvalScope, string, bool) ([]api.Location, error)
+	FindLocation(api.EvalScope, string, bool, bool) ([]api.Location, error)
 }
 
 func findLocationHelper(t *testing.T, c interface{}, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
@@ -91,7 +92,7 @@ func findLocationHelper(t *testing.T, c interface{}, loc string, shouldErr bool,
 	case locationFinder1:
 		locs, err = c.FindLocation(api.EvalScope{-1, 0, 0}, loc)
 	case locationFinder2:
-		locs, err = c.FindLocation(api.EvalScope{-1, 0, 0}, loc, false)
+		locs, err = c.FindLocation(api.EvalScope{-1, 0, 0}, loc, false, false)
 	default:
 		t.Errorf("unexpected type %T passed to findLocationHelper", c)
 	}
@@ -130,4 +131,30 @@ func getCurinstr(d3 api.AsmInstructions) *api.AsmInstruction {
 		}
 	}
 	return nil
+}
+
+func createSymLink(t *testing.T, originFile string, generatedPath string) (string, string) {
+	fixturesDir := protest.FindFixturesDir()
+	originAbsPathFile, err := filepath.Abs(filepath.Join(fixturesDir, originFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	symLinkAbsDir, err := filepath.Abs(filepath.Join(fixturesDir, generatedPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ensure clean old dir
+	os.RemoveAll(symLinkAbsDir)
+	err = os.MkdirAll(symLinkAbsDir, 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	symbolLinkFile := filepath.Join(symLinkAbsDir, "generated_"+originFile)
+	err = os.Symlink(originAbsPathFile, symbolLinkFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return originAbsPathFile, symLinkAbsDir
 }

@@ -120,7 +120,8 @@ type Client interface {
 	// * *<address> returns the location corresponding to the specified address
 	// NOTE: this function does not actually set breakpoints.
 	// If findInstruction is true FindLocation will only return locations that correspond to instructions.
-	FindLocation(scope api.EvalScope, loc string, findInstruction bool) ([]api.Location, error)
+	// If fullPathMatch is true Delve will try to resolve symbolic links when searching source files. Note: this option may cause performance degradation.
+	FindLocation(scope api.EvalScope, loc string, findInstruction bool, fullPathMatch bool) ([]api.Location, error)
 
 	// Disassemble code between startPC and endPC
 	DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error)

@@ -125,6 +125,17 @@ type Thread struct {
 	ReturnValues []Variable
 }
 
+// FindLocCfg describes how to find location from target.
+type FindLocCfg struct {
+	// IncludeNonExecutableLines makes FindLocations return if the expression can be parsed,
+	// even if it doesn't end up matching any instruction in debug_line.
+	IncludeNonExecutableLines bool
+
+	// If FullPathMatch is true Delve will try to resolve symbolic links when searching source files.
+	// Note: this option may cause performance degradation.
+	FullPathMatch bool
+}
+
 // Location holds program location information.
 // In most cases a Location object will represent a physical location, with
 // a single PC address held in the PC field.

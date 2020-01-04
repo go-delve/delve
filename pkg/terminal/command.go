@@ -1183,7 +1183,7 @@ func clearAll(t *Term, ctx callContext, args string) error {
 
 	var locPCs map[uint64]struct{}
 	if args != "" {
-		locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args, true)
+		locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args, true, t.fullPathMatchConf())
 		if err != nil {
 			return err
 		}
@@ -1286,7 +1286,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(ctx.Scope, locspec, true)
+	locs, err := t.client.FindLocation(ctx.Scope, locspec, true, t.fullPathMatchConf())
 	if err != nil {
 		if requestedBp.Name == "" {
 			return err
@@ -1294,7 +1294,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 		requestedBp.Name = ""
 		locspec = argstr
 		var err2 error
-		locs, err2 = t.client.FindLocation(ctx.Scope, locspec, true)
+		locs, err2 = t.client.FindLocation(ctx.Scope, locspec, true, t.fullPathMatchConf())
 		if err2 != nil {
 			return err
 		}
@@ -1670,7 +1670,7 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 		return loc.File, loc.Line, true, nil
 
 	default:
-		locs, err := t.client.FindLocation(ctx.Scope, args, false)
+		locs, err := t.client.FindLocation(ctx.Scope, args, false, t.fullPathMatchConf())
 		if err != nil {
 			return "", 0, false, err
 		}
@@ -1729,7 +1729,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 
 	switch cmd {
 	case "":
-		locs, err := t.client.FindLocation(ctx.Scope, "+0", true)
+		locs, err := t.client.FindLocation(ctx.Scope, "+0", true, t.fullPathMatchConf())
 		if err != nil {
 			return err
 		}
@@ -1749,7 +1749,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		}
 		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), api.IntelFlavour)
 	case "-l":
-		locs, err := t.client.FindLocation(ctx.Scope, rest, true)
+		locs, err := t.client.FindLocation(ctx.Scope, rest, true, t.fullPathMatchConf())
 		if err != nil {
 			return err
 		}

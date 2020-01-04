@@ -1190,7 +1190,7 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 }
 
 // FindLocation will find the location specified by 'locStr'.
-func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, cfg *api.FindLocCfg) ([]api.Location, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
@@ -1204,8 +1204,10 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 	}
 
 	s, _ := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
-
-	locs, err := loc.Find(d, s, locStr, includeNonExecutableLines)
+	if cfg == nil {
+		cfg = &api.FindLocCfg{false, false}
+	}
+	locs, err := loc.Find(d, s, locStr, *cfg)
 	for i := range locs {
 		if locs[i].PC == 0 {
 			continue

@@ -57,6 +57,10 @@ type Config struct {
 	// DebugFileDirectories is the list of directories Delve will use
 	// in order to resolve external debug info files.
 	DebugInfoDirectories []string `yaml:"debug-info-directories"`
+
+	// If FullPathMatch is true Delve will try to resolve symbolic links when searching source files.
+	// Note: this option may cause performance degradation.
+	FullPathMatch bool `yaml:"full-path-match"`
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.

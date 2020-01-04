@@ -429,3 +429,10 @@ func isErrProcessExited(err error) bool {
 	rpcError, ok := err.(rpc.ServerError)
 	return ok && strings.Contains(rpcError.Error(), "has exited with status")
 }
+
+func (t *Term) fullPathMatchConf() bool {
+	if t.conf != nil {
+		return t.conf.FullPathMatch
+	}
+	return false
+}

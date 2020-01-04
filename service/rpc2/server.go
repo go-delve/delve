@@ -574,6 +574,7 @@ type FindLocationIn struct {
 	Scope                     api.EvalScope
 	Loc                       string
 	IncludeNonExecutableLines bool
+	FullPathMatch             bool
 }
 
 type FindLocationOut struct {
@@ -595,7 +596,7 @@ type FindLocationOut struct {
 // NOTE: this function does not actually set breakpoints.
 func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {
 	var err error
-	out.Locations, err = c.debugger.FindLocation(arg.Scope, arg.Loc, arg.IncludeNonExecutableLines)
+	out.Locations, err = c.debugger.FindLocation(arg.Scope, arg.Loc, &api.FindLocCfg{arg.IncludeNonExecutableLines, arg.FullPathMatch})
 	return err
 }
 

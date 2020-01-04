@@ -29,7 +29,7 @@ create_breakpoint(Breakpoint) | Equivalent to API call [CreateBreakpoint](https:
 detach(Kill) | Equivalent to API call [Detach](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Detach)
 disassemble(Scope, StartPC, EndPC, Flavour) | Equivalent to API call [Disassemble](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Disassemble)
 eval(Scope, Expr, Cfg) | Equivalent to API call [Eval](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Eval)
-find_location(Scope, Loc, IncludeNonExecutableLines) | Equivalent to API call [FindLocation](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.FindLocation)
+find_location(Scope, Loc, IncludeNonExecutableLines, FullPathMatch) | Equivalent to API call [FindLocation](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.FindLocation)
 function_return_locations(FnName) | Equivalent to API call [FunctionReturnLocations](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.FunctionReturnLocations)
 get_breakpoint(Id, Name) | Equivalent to API call [GetBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.GetBreakpoint)
 get_thread(Id) | Equivalent to API call [GetThread](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.GetThread)
