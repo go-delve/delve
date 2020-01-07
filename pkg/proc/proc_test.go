@@ -1802,7 +1802,7 @@ func TestIssue396(t *testing.T) {
 func TestIssue414(t *testing.T) {
 	// Stepping until the program exits
 	protest.AllowRecording(t)
-	withTestProcess("math", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcess("mathematics", t, func(p proc.Process, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 9)
 		assertNoError(proc.Continue(p), t, "Continue()")
 		for {
