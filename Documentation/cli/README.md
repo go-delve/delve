@@ -27,6 +27,7 @@ Command | Description
 [disassemble](#disassemble) | Disassembler.
 [down](#down) | Move the current frame down.
 [edit](#edit) | Open where you are in $DELVE_EDITOR or $EDITOR
+[examinemem](#examinemem) | Examine memory:
 [exit](#exit) | Exit the debugger.
 [frame](#frame) | Set the current frame, or execute command on a different frame.
 [funcs](#funcs) | Print list of functions.
@@ -212,6 +213,18 @@ Open where you are in $DELVE_EDITOR or $EDITOR
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.
 
 Aliases: ed
+
+## examinemem
+Examine memory:
+
+    examinemem [-fmt <format>] [-len <length>] <address>
+
+Format represents the data format and the value is one of this list (default hex): oct(octal), hex(hexadecimal), dec(decimal), bin(binary).
+Length is the number of bytes (default 1) and must be less than or equal to 1000.
+Address is the memory location of the target to examine.
+For example:  x -fmt hex -len 20 0xc00008af38
+
+Aliases: x
 
 ## exit
 Exit the debugger.

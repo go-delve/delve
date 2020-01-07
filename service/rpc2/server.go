@@ -751,3 +751,27 @@ func (s *RPCServer) ListPackagesBuildInfo(in ListPackagesBuildInfoIn, out *ListP
 	out.List = s.debugger.ListPackagesBuildInfo(in.IncludeFiles)
 	return nil
 }
+
+// ExamineMemoryIn holds the arguments of ExamineMemory
+type ExamineMemoryIn struct {
+	Address uintptr
+	Length  int
+}
+
+// ExaminedMemoryOut holds the return values of ExamineMemory
+type ExaminedMemoryOut struct {
+	Mem []byte
+}
+
+func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) error {
+	if arg.Length > 1000 {
+		return fmt.Errorf("len must be less than or equal to 1000")
+	}
+	Mem, err := s.debugger.ExamineMemory(arg.Address, arg.Length)
+	if err != nil {
+		return err
+	}
+
+	out.Mem = Mem
+	return nil
+}

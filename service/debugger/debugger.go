@@ -1310,6 +1310,25 @@ func (d *Debugger) ListDynamicLibraries() []api.Image {
 	return r
 }
 
+// ExamineMemory returns the raw memory stored at the given address.
+// The amount of data to be read is specified by length.
+// This function will return an error if it reads less than `length` bytes.
+func (d *Debugger) ExamineMemory(address uintptr, length int) ([]byte, error) {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+
+	thread := d.target.CurrentThread()
+	data := make([]byte, length)
+	n, err := thread.ReadMemory(data, address)
+	if err != nil {
+		return nil, err
+	}
+	if length != n {
+		return nil, errors.New("the specific range has exceeded readable area")
+	}
+	return data, nil
+}
+
 func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 	if d.config.CoreFile != "" {
 		if d.config.Backend == "rr" {

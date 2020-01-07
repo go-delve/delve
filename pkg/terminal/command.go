@@ -7,6 +7,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/cosiner/argv"
+	"github.com/go-delve/delve/service"
+	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/debugger"
 	"go/parser"
 	"go/scanner"
 	"io"
@@ -20,11 +24,6 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
-
-	"github.com/cosiner/argv"
-	"github.com/go-delve/delve/service"
-	"github.com/go-delve/delve/service/api"
-	"github.com/go-delve/delve/service/debugger"
 )
 
 const optimizedFunctionWarning = "Warning: debugging optimized function"
@@ -368,6 +367,15 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 	
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
+
+		{aliases: []string{"examinemem", "x"}, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
+
+    examinemem [-fmt <format>] [-len <length>] <address>
+
+Format represents the data format and the value is one of this list (default hex): oct(octal), hex(hexadecimal), dec(decimal), bin(binary).
+Length is the number of bytes (default 1) and must be less than or equal to 1000.
+Address is the memory location of the target to examine.
+For example:  x -fmt hex -len 20 0xc00008af38`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -1339,6 +1347,81 @@ func edit(t *Term, ctx callContext, args string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func examineMemoryCmd(t *Term, ctx callContext, args string) error {
+	v := strings.FieldsFunc(args, func(c rune) bool {
+		return c == ' '
+	})
+
+	var (
+		address int64
+		err     error
+		ok      bool
+	)
+
+	// Default value
+	priFmt := byte('x')
+	length := 1
+
+	for i := 0; i < len(v); i++ {
+		switch v[i] {
+		case "-fmt":
+			i++
+			if i >= len(v) {
+				return fmt.Errorf("expected argument after -fmt")
+			}
+			fmtMapToPriFmt := map[string]byte{
+				"oct":         'o',
+				"octal":       'o',
+				"hex":         'x',
+				"hexadecimal": 'x',
+				"dec":         'd',
+				"decimal":     'd',
+				"bin":         'b',
+				"binary":      'b',
+			}
+			priFmt, ok = fmtMapToPriFmt[v[i]]
+			if !ok {
+				return fmt.Errorf("%q is not a valid format", v[i])
+			}
+		case "-len":
+			i++
+			if i >= len(v) {
+				return fmt.Errorf("expected argument after -len")
+			}
+			var err error
+			length, err = strconv.Atoi(v[i])
+			if err != nil || length <= 0 {
+				return fmt.Errorf("len must be an positive integer")
+			}
+			// TODO, maybe configured by user.
+			if length > 1000 {
+				return fmt.Errorf("len must be less than or equal to 1000")
+			}
+		default:
+			if i != len(v)-1 {
+				return fmt.Errorf("unknown option %q", v[i])
+			}
+			// TODO, maybe we can support expression.
+			address, err = strconv.ParseInt(v[len(v)-1], 0, 64)
+			if err != nil {
+				return fmt.Errorf("convert address into uintptr type failed, %s", err)
+			}
+		}
+	}
+
+	if address == 0 {
+		return fmt.Errorf("no address specified")
+	}
+
+	memArea, err := t.client.ExamineMemory(uintptr(address), length)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(api.PrettyExamineMemory(uintptr(address), memArea, priFmt))
+	return nil
 }
 
 func printVar(t *Term, ctx callContext, args string) error {

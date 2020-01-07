@@ -450,6 +450,44 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
+	r["examine_memory"] = starlark.NewBuiltin("examine_memory", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.ExamineMemoryIn
+		var rpcRet rpc2.ExaminedMemoryOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.Address, "Address")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		if len(args) > 1 && args[1] != starlark.None {
+			err := unmarshalStarlarkValue(args[1], &rpcArgs.Length, "Length")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "Address":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Address, "Address")
+			case "Length":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Length, "Length")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("ExamineMemory", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
 	r["find_location"] = starlark.NewBuiltin("find_location", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
