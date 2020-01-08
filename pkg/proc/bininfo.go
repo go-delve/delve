@@ -389,6 +389,11 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pcs []uint64, err e
 	for _, call := range fn.InlinedCalls {
 		pcs = appendLineToPCIn(pcs, filename, lineno, call.cu, bi.PCToFunc(call.LowPC), call.LowPC, call.HighPC)
 	}
+
+	// Ensure LineToPC can return pc at least when pc is not zero.
+	if len(pcs) == 0 {
+		return []uint64{pc}, nil
+	}
 	return pcs, nil
 }
 

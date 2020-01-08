@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"runtime"
+	"unsafe"
 )
 
 type SomeType struct {
@@ -35,6 +37,12 @@ func main() {
 	a.SomeFunction()
 	anotherFunction()
 	ioutil.ReadFile("nonexistent.file.txt")
+
+	//Issue #1817
+	bs := make([]byte, 100)
+	p := uintptr(unsafe.Pointer(&bs))
+	fmt.Println(p)
+	runtime.KeepAlive(bs)
 }
 
 var amap map[string]func()

@@ -573,20 +573,20 @@ func Test1ClientServer_traceContinue2(t *testing.T) {
 
 func Test1ClientServer_FindLocations(t *testing.T) {
 	withTestClient1("locationsprog", t, func(c *rpc1.RPCClient) {
-		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
-		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
+		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:28", false, 1, 0)[0]
+		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:29", false, 1, 0)[0]
 		findLocationHelper(t, c, "anotherFunction:1", false, 1, someFunctionLine1)
 		findLocationHelper(t, c, "main.anotherFunction:1", false, 1, someFunctionLine1)
 		findLocationHelper(t, c, "anotherFunction", false, 1, someFunctionCallAddr)
 		findLocationHelper(t, c, "main.anotherFunction", false, 1, someFunctionCallAddr)
 		findLocationHelper(t, c, fmt.Sprintf("*0x%x", someFunctionCallAddr), false, 1, someFunctionCallAddr)
-		findLocationHelper(t, c, "sprog.go:26", true, 0, 0)
+		findLocationHelper(t, c, "sprog.go:28", true, 0, 0)
 
 		findLocationHelper(t, c, "String", true, 0, 0)
 		findLocationHelper(t, c, "main.String", true, 0, 0)
 
-		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:14", false, 1, 0)[0]
-		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:18", false, 1, 0)[0]
+		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:16", false, 1, 0)[0]
+		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:20", false, 1, 0)[0]
 		findLocationHelper(t, c, "SomeType.String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "(*SomeType).String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "main.SomeType.String", false, 1, someTypeStringFuncAddr)
@@ -612,11 +612,11 @@ func Test1ClientServer_FindLocations(t *testing.T) {
 
 		<-c.Continue()
 
-		locationsprog35Addr := findLocationHelper(t, c, "locationsprog.go:35", false, 1, 0)[0]
-		findLocationHelper(t, c, fmt.Sprintf("%s:35", testProgPath(t, "locationsprog")), false, 1, locationsprog35Addr)
-		findLocationHelper(t, c, "+1", false, 1, locationsprog35Addr)
-		findLocationHelper(t, c, "35", false, 1, locationsprog35Addr)
-		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:33", false, 1, 0)[0])
+		locationsprog37Addr := findLocationHelper(t, c, "locationsprog.go:37", false, 1, 0)[0]
+		findLocationHelper(t, c, fmt.Sprintf("%s:37", testProgPath(t, "locationsprog")), false, 1, locationsprog37Addr)
+		findLocationHelper(t, c, "+1", false, 1, locationsprog37Addr)
+		findLocationHelper(t, c, "37", false, 1, locationsprog37Addr)
+		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:35", false, 1, 0)[0])
 	})
 
 	withTestClient1("testnextdefer", t, func(c *rpc1.RPCClient) {

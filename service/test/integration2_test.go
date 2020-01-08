@@ -631,8 +631,8 @@ func TestClientServer_traceContinue2(t *testing.T) {
 
 func TestClientServer_FindLocations(t *testing.T) {
 	withTestClient2("locationsprog", t, func(c service.Client) {
-		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
-		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
+		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:28", false, 1, 0)[0]
+		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:29", false, 1, 0)[0]
 		findLocationHelper(t, c, "anotherFunction:1", false, 1, someFunctionLine1)
 		findLocationHelper(t, c, "main.anotherFunction:1", false, 1, someFunctionLine1)
 		findLocationHelper(t, c, "anotherFunction", false, 1, someFunctionCallAddr)
@@ -643,8 +643,8 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "String", true, 0, 0)
 		findLocationHelper(t, c, "main.String", true, 0, 0)
 
-		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:14", false, 1, 0)[0]
-		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:18", false, 1, 0)[0]
+		someTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:16", false, 1, 0)[0]
+		otherTypeStringFuncAddr := findLocationHelper(t, c, "locationsprog.go:20", false, 1, 0)[0]
 		findLocationHelper(t, c, "SomeType.String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "(*SomeType).String", false, 1, someTypeStringFuncAddr)
 		findLocationHelper(t, c, "main.SomeType.String", false, 1, someTypeStringFuncAddr)
@@ -656,6 +656,12 @@ func TestClientServer_FindLocations(t *testing.T) {
 		// Issue #296
 		findLocationHelper(t, c, "/io/ioutil.ReadFile", false, 1, readfile)
 		findLocationHelper(t, c, "ioutil.ReadFile", false, 1, readfile)
+
+		// Issue #1817
+		unsafePointerAddr := findLocationHelper(t, c, "locationsprog.go:43", false, 1, 0)[0]
+		if unsafePointerAddr == 0 {
+			t.Fatalf("Wrong location return for \"locationsprog.go:43\", got 0 expected nozero")
+		}
 
 		stringAddrs := findLocationHelper(t, c, "/^main.*Type.*String$/", false, 2, 0)
 
@@ -670,11 +676,11 @@ func TestClientServer_FindLocations(t *testing.T) {
 
 		<-c.Continue()
 
-		locationsprog35Addr := findLocationHelper(t, c, "locationsprog.go:35", false, 1, 0)[0]
-		findLocationHelper(t, c, fmt.Sprintf("%s:35", testProgPath(t, "locationsprog")), false, 1, locationsprog35Addr)
-		findLocationHelper(t, c, "+1", false, 1, locationsprog35Addr)
-		findLocationHelper(t, c, "35", false, 1, locationsprog35Addr)
-		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:33", false, 1, 0)[0])
+		locationsprog37Addr := findLocationHelper(t, c, "locationsprog.go:37", false, 1, 0)[0]
+		findLocationHelper(t, c, fmt.Sprintf("%s:37", testProgPath(t, "locationsprog")), false, 1, locationsprog37Addr)
+		findLocationHelper(t, c, "+1", false, 1, locationsprog37Addr)
+		findLocationHelper(t, c, "37", false, 1, locationsprog37Addr)
+		findLocationHelper(t, c, "-1", false, 1, findLocationHelper(t, c, "locationsprog.go:35", false, 1, 0)[0])
 
 		findLocationHelper(t, c, `*amap["k"]`, false, 1, findLocationHelper(t, c, `amap["k"]`, false, 1, 0)[0])
 	})
