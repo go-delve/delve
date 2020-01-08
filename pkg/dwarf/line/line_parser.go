@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
@@ -34,9 +35,12 @@ type DebugLineInfo struct {
 
 	// lastMachineCache[pc] is a state machine stopped at an address after pc
 	lastMachineCache map[uint64]*StateMachine
-	
+
 	// staticBase is the address at which the executable is loaded, 0 for non-PIEs
 	staticBase uint64
+
+	// if normalizeBackslash is true all backslashes (\) will be converted into forward slashes (/)
+	normalizeBackslash bool
 }
 
 type FileEntry struct {
@@ -49,7 +53,7 @@ type FileEntry struct {
 type DebugLines []*DebugLineInfo
 
 // ParseAll parses all debug_line segments found in data
-func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64) DebugLines {
+func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool) DebugLines {
 	var (
 		lines = make(DebugLines, 0)
 		buf   = bytes.NewBuffer(data)
@@ -57,7 +61,7 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 	// We have to parse multiple file name tables here.
 	for buf.Len() > 0 {
-		lines = append(lines, Parse("", buf, logfn, staticBase))
+		lines = append(lines, Parse("", buf, logfn, staticBase, normalizeBackslash))
 	}
 
 	return lines
@@ -65,7 +69,7 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 // Parse parses a single debug_line segment from buf. Compdir is the
 // DW_AT_comp_dir attribute of the associated compile unit.
-func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64) *DebugLineInfo {
+func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
 	dbl.Logf = logfn
 	dbl.staticBase = staticBase
@@ -76,6 +80,7 @@ func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{})
 
 	dbl.stateMachineCache = make(map[uint64]*StateMachine)
 	dbl.lastMachineCache = make(map[uint64]*StateMachine)
+	dbl.normalizeBackslash = normalizeBackslash
 
 	parseDebugLinePrologue(dbl, buf)
 	parseIncludeDirs(dbl, buf)
@@ -137,6 +142,10 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	entry.Path, _ = util.ParseString(buf)
 	if entry.Path == "" && exitOnEmptyPath {
 		return entry
+	}
+
+	if info.normalizeBackslash {
+		entry.Path = strings.Replace(entry.Path, "\\", "/", -1)
 	}
 
 	entry.DirIdx, _ = util.DecodeULEB128(buf)
