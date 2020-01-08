@@ -1,6 +1,7 @@
 package debug
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -28,6 +29,13 @@ func (err *ErrNoSourceForPC) Error() string {
 
 type state struct {
 	threadBreakpointState map[int]proc.BreakpointState
+
+	allGCache []*proc.G
+}
+
+// ClearAllGCache clears the internal goroutine cache.
+func (s *state) ClearAllGCache() {
+	s.allGCache = nil
 }
 
 // Target represents the process being debugged.
@@ -178,6 +186,10 @@ func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error)
 	}
 
 	return p, errMacOSBackendUnavailable
+}
+
+func (t *Target) State() *state {
+	return t.state
 }
 
 // Initialize performs any setup that must be taken after
@@ -582,6 +594,7 @@ func (t *Target) Continue() error {
 	if _, err := t.Valid(); err != nil {
 		return err
 	}
+	t.state.ClearAllGCache()
 	for _, thread := range t.ThreadList() {
 		thread.Common().RetVals = nil
 	}
@@ -608,7 +621,6 @@ func (t *Target) Continue() error {
 				}
 			}
 		}
-		t.Process.Common().ClearAllGCache()
 		// everything is resumed
 		trapthread, err := t.Process.Resume()
 		if err != nil {
@@ -721,6 +733,7 @@ func (t *Target) Continue() error {
 }
 
 func threadStepInstruction(tgt *Target, th proc.Thread) error {
+	tgt.state.ClearAllGCache()
 	if ok, err := tgt.Valid(); !ok {
 		return err
 	}
@@ -987,6 +1000,24 @@ func (t *Target) SelectedGoroutine() *proc.G {
 	return t.selectedGoroutine
 }
 
+func (t *Target) Goroutines(start, count int) ([]*proc.G, int, error) {
+	if _, err := t.Valid(); err != nil {
+		return nil, -1, err
+	}
+	if t.state.allGCache != nil {
+		// We can't use the cached array to fulfill a subrange request
+		if start == 0 && (count == 0 || count >= len(t.state.allGCache)) {
+			return t.state.allGCache, -1, nil
+		}
+	}
+
+	gs, i, err := goroutinesInfo(t, t.CurrentThread(), start, count)
+	if (start + count) == 0 {
+		t.state.allGCache = gs
+	}
+	return gs, i, err
+}
+
 // Recorded returns whether or not the target was recorded.
 func (t *Target) Recorded() (bool, string) {
 	return t.Process.Recorded()
@@ -995,6 +1026,7 @@ func (t *Target) Recorded() (bool, string) {
 // Restart allows you to restart the process from a given location.
 // Only works when the selected backend is "rr".
 func (t *Target) Restart(from string) error {
+	t.state = new(state)
 	if err := t.Process.Restart(from); err != nil {
 		return err
 	}
@@ -1092,7 +1124,7 @@ func (t *Target) StepInstruction() error {
 		}
 		thread = sg.Thread
 	}
-	t.Process.Common().ClearAllGCache()
+	t.state.ClearAllGCache()
 	if ok, err := t.Valid(); !ok {
 		return err
 	}
@@ -1217,7 +1249,7 @@ func FindGoroutine(t *Target, gid int) (*proc.G, error) {
 	for nextg >= 0 {
 		var gs []*proc.G
 		var err error
-		gs, nextg, err = proc.GoroutinesInfo(t, t.BinInfo(), t.CurrentThread(), nextg, goroutinesInfoLimit)
+		gs, nextg, err = t.Goroutines(nextg, goroutinesInfoLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -1232,4 +1264,90 @@ func FindGoroutine(t *Target, gid int) (*proc.G, error) {
 	}
 
 	return nil, fmt.Errorf("Unknown goroutine %d", gid)
+}
+
+// goroutinesInfo searches for goroutines starting at index 'start', and
+// returns an array of up to 'count' (or all found elements, if 'count' is 0)
+// G structures representing the information Delve care about from the internal
+// runtime G structure.
+// GoroutinesInfo also returns the next index to be used as 'start' argument
+// while scanning for all available goroutines, or -1 if there was an error
+// or if the index already reached the last possible value.
+func goroutinesInfo(t *Target, mem proc.MemoryReadWriter, start, count int) ([]*proc.G, int, error) {
+	exeimage := t.BinInfo().Images[0] // Image corresponding to the executable file
+
+	var (
+		threadg = map[int]*proc.G{}
+		allg    []*proc.G
+		rdr     = exeimage.DwarfReader()
+	)
+
+	threads := t.Process.ThreadList()
+	for _, th := range threads {
+		if th.Blocked() {
+			continue
+		}
+		g, _ := proc.GetG(th, t.BinInfo())
+		if g != nil {
+			threadg[g.ID] = g
+		}
+	}
+
+	addr, err := rdr.AddrFor("runtime.allglen", exeimage.StaticBase)
+	if err != nil {
+		return nil, -1, err
+	}
+	allglenBytes := make([]byte, 8)
+	_, err = mem.ReadMemory(allglenBytes, uintptr(addr))
+	if err != nil {
+		return nil, -1, err
+	}
+	allglen := binary.LittleEndian.Uint64(allglenBytes)
+
+	rdr.Seek(0)
+	allgentryaddr, err := rdr.AddrFor("runtime.allgs", exeimage.StaticBase)
+	if err != nil {
+		// try old name (pre Go 1.6)
+		allgentryaddr, err = rdr.AddrFor("runtime.allg", exeimage.StaticBase)
+		if err != nil {
+			return nil, -1, err
+		}
+	}
+	faddr := make([]byte, t.BinInfo().Arch.PtrSize())
+	_, err = mem.ReadMemory(faddr, uintptr(allgentryaddr))
+	if err != nil {
+		return nil, -1, err
+	}
+	allgptr := binary.LittleEndian.Uint64(faddr)
+
+	for i := uint64(start); i < allglen; i++ {
+		if count != 0 && len(allg) >= count {
+			return allg, int(i), nil
+		}
+		gvar, err := proc.NewGVariable(mem, t.BinInfo(), uintptr(allgptr+(i*uint64(t.BinInfo().Arch.PtrSize()))), true)
+		if err != nil {
+			allg = append(allg, &proc.G{Unreadable: err})
+			continue
+		}
+		g, err := proc.ParseG(gvar)
+		if err != nil {
+			allg = append(allg, &proc.G{Unreadable: err})
+			continue
+		}
+		if thg, allocated := threadg[g.ID]; allocated {
+			loc, err := thg.Thread.Location()
+			if err != nil {
+				return nil, -1, err
+			}
+			g.Thread = thg.Thread
+			// Prefer actual thread location information.
+			g.CurrentLoc = *loc
+			g.SystemStack = thg.SystemStack
+		}
+		if g.Status != proc.Gdead {
+			allg = append(allg, g)
+		}
+	}
+
+	return allg, -1, nil
 }

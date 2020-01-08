@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/go-delve/delve/pkg/debug"
-	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -19,7 +18,7 @@ func TestGoroutineCreationLocation(t *testing.T) {
 		bp := setFunctionBreakpoint(tgt, t, "main.agoroutine")
 		assertNoError(tgt.Continue(), t, "Continue()")
 
-		gs, _, err := proc.GoroutinesInfo(tgt, tgt.BinInfo(), tgt.CurrentThread(), 0, 0)
+		gs, _, err := tgt.Goroutines(0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
 
 		for _, g := range gs {

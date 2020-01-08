@@ -228,10 +228,10 @@ func getGVariable(thread Thread, bi *BinaryInfo) (*Variable, error) {
 		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
 
-	return newGVariable(thread, bi, uintptr(gaddr), bi.Arch.DerefTLS())
+	return NewGVariable(thread, bi, uintptr(gaddr), bi.Arch.DerefTLS())
 }
 
-func newGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref bool) (*Variable, error) {
+func NewGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref bool) (*Variable, error) {
 	typ, err := bi.findType("runtime.g")
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func GetG(thread Thread, bi *BinaryInfo) (*G, error) {
 		return nil, err
 	}
 
-	g, err := gaddr.parseG()
+	g, err := ParseG(gaddr)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +296,7 @@ func GetG(thread Thread, bi *BinaryInfo) (*G, error) {
 		if err != nil {
 			return nil, err
 		}
-		g, err = curgvar.parseG()
+		g, err = ParseG(curgvar)
 		if err != nil {
 			return nil, err
 		}
@@ -586,7 +586,7 @@ func (ng ErrNoGoroutine) Error() string {
 	return fmt.Sprintf("no G executing on thread %d", ng.tid)
 }
 
-func (v *Variable) parseG() (*G, error) {
+func ParseG(v *Variable) (*G, error) {
 	mem := v.mem
 	gaddr := uint64(v.Addr)
 	_, deref := v.RealType.(*godwarf.PtrType)

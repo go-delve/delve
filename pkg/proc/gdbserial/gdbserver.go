@@ -792,8 +792,6 @@ func (p *Process) Restart(pos string) error {
 
 	p.exited = false
 
-	p.common.ClearAllGCache()
-
 	p.setCtrlC(false)
 
 	err := p.conn.restart(pos)

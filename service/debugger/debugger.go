@@ -993,7 +993,7 @@ func (d *Debugger) Goroutines(start, count int) ([]*api.Goroutine, int, error) {
 	defer d.processMutex.Unlock()
 
 	goroutines := []*api.Goroutine{}
-	gs, nextg, err := proc.GoroutinesInfo(d.target, d.target.BinInfo(), d.target.CurrentThread(), start, count)
+	gs, nextg, err := d.target.Goroutines(start, count)
 	if err != nil {
 		return nil, 0, err
 	}

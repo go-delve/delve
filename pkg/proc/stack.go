@@ -254,7 +254,7 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegiste
 		systemstack = g.SystemStack
 		g0var, _ := g.variable.fieldVariable("m").structMember("g0")
 		if g0var != nil {
-			g0, _ := g0var.parseG()
+			g0, _ := ParseG(g0var)
 			if g0 != nil {
 				g0_sched_sp = g0.SP
 			}

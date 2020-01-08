@@ -205,8 +205,6 @@ func (dbp *Process) Resume() (proc.Thread, error) {
 		return nil, err
 	}
 
-	dbp.common.ClearAllGCache()
-
 	if dbp.resumeChan != nil {
 		close(dbp.resumeChan)
 		dbp.resumeChan = nil

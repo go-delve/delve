@@ -105,7 +105,6 @@ type ProcessManipulation interface {
 type CommonProcess struct {
 	ExePath string
 
-	allGCache     []*G
 	fncallEnabled bool
 
 	FnCallForG map[int]*callInjection
@@ -123,9 +122,4 @@ type callInjection struct {
 // all process implementations.
 func NewCommonProcess(fncallEnabled bool) CommonProcess {
 	return CommonProcess{fncallEnabled: fncallEnabled, FnCallForG: make(map[int]*callInjection)}
-}
-
-// ClearAllGCache clears the cached contents of the cache for runtime.allgs.
-func (p *CommonProcess) ClearAllGCache() {
-	p.allGCache = nil
 }
