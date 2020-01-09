@@ -19,6 +19,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/gdbserial"
 )
 
 const (
@@ -272,6 +273,10 @@ func NewGVariable(mem proc.MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, dere
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
 func GetG(thread proc.Thread, bi *BinaryInfo) (*G, error) {
+	if gt, ok := thread.(*gdbserial.Thread); ok {
+		gt.ReloadGAddr(blocked(thread, bi))
+	}
+
 	pc, err := thread.PC()
 	if err != nil {
 		return nil, err

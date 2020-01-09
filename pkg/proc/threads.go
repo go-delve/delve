@@ -6,8 +6,6 @@ type Thread interface {
 	ThreadID() int
 
 	StepInstruction() error
-	// Blocked returns true if the thread is blocked
-	Blocked() bool
 	// Common returns the CommonThread structure for this thread
 	Common() *CommonThread
 

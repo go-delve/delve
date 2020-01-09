@@ -14,6 +14,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/core"
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
+	"github.com/go-delve/delve/pkg/proc/linutil"
 	"github.com/go-delve/delve/pkg/proc/native"
 )
 
@@ -657,6 +658,9 @@ func (t *Target) Continue() error {
 		if err != nil {
 			return err
 		}
+		if t.BinInfo().GOOS() == "linux" {
+			linutil.ElfUpdateSharedObjects(t, t.BinInfo())
+		}
 		if err := t.SetCurrentBreakpoints(); err != nil {
 			return err
 		}
@@ -1059,7 +1063,7 @@ func (t *Target) Recorded() (bool, string) {
 // Restart allows you to restart the process from a given location.
 // Only works when the selected backend is "rr".
 func (t *Target) Restart(from string) error {
-	t.state = new(state)
+	t.state = newState()
 	if err := t.Process.Restart(from); err != nil {
 		return err
 	}
@@ -1319,7 +1323,7 @@ func goroutinesInfo(t *Target, mem proc.MemoryReadWriter, start, count int) ([]*
 
 	threads := t.Process.ThreadList()
 	for _, th := range threads {
-		if th.Blocked() {
+		if blocked(th, t.BinInfo()) {
 			continue
 		}
 		g, _ := GetG(th, t.BinInfo())
@@ -1386,4 +1390,25 @@ func goroutinesInfo(t *Target, mem proc.MemoryReadWriter, start, count int) ([]*
 	}
 
 	return allg, -1, nil
+}
+
+func blocked(t proc.Thread, bi *BinaryInfo) bool {
+	pc, err := t.PC()
+	if err != nil {
+		return false
+	}
+	fName := bi.PCToFuncName(pc)
+	if fName == "" {
+		return true
+	}
+	switch fName {
+	case "runtime.futex", "runtime.usleep", "runtime.clone":
+		return true
+	case "runtime.kevent":
+		return true
+	case "runtime.mach_semaphore_wait", "runtime.mach_semaphore_timedwait":
+		return true
+	default:
+		return strings.HasPrefix(fName, "syscall.Syscall") || strings.HasPrefix(fName, "syscall.RawSyscall")
+	}
 }

@@ -224,7 +224,7 @@ func (dbp *Process) updateThreadList() error {
 			return err
 		}
 	}
-	return linutil.ElfUpdateSharedObjects(dbp)
+	return nil
 }
 
 func findExePath(path string, pid int) string {
@@ -443,10 +443,6 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		if err != nil {
 			return err
 		}
-	}
-
-	if err := linutil.ElfUpdateSharedObjects(dbp); err != nil {
-		return err
 	}
 
 	return nil

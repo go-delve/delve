@@ -96,26 +96,6 @@ func (t *Thread) resume() error {
 	return err
 }
 
-func (t *Thread) Blocked() bool {
-	// TODO: Probably incorrect - what are the runtime functions that
-	// indicate blocking on Windows?
-	regs, err := t.Registers(false)
-	if err != nil {
-		return false
-	}
-	pc := regs.PC()
-	fn := t.BinInfo().PCToFunc(pc)
-	if fn == nil {
-		return false
-	}
-	switch fn.Name {
-	case "runtime.kevent", "runtime.usleep":
-		return true
-	default:
-		return false
-	}
-}
-
 // Stopped returns whether the thread is stopped at the operating system
 // level. On windows this always returns true.
 func (t *Thread) Stopped() bool {

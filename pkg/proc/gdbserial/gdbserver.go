@@ -690,12 +690,6 @@ continueLoop:
 		return nil, err
 	}
 
-	if p.bi.GOOS() == "linux" {
-		if err := linutil.ElfUpdateSharedObjects(p, p.bi); err != nil {
-			return nil, err
-		}
-	}
-
 	for _, thread := range p.threads {
 		if thread.strID == threadID {
 			var err error
@@ -1066,6 +1060,13 @@ func (t *Thread) PC() (uint64, error) {
 	return regs.PC(), nil
 }
 
+func (t *Thread) ReloadGAddr(blocked bool) error {
+	if t.p.loadGInstrAddr > 0 {
+		return t.reloadGAlloc(blocked)
+	}
+	return t.reloadGAtPC(blocked)
+}
+
 // Registers returns the CPU registers for this thread.
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return &t.regs, nil
@@ -1190,10 +1191,7 @@ func (t *Thread) reloadRegisters() error {
 		}
 	}
 
-	if t.p.loadGInstrAddr > 0 {
-		return t.reloadGAlloc()
-	}
-	return t.reloadGAtPC()
+	return nil
 }
 
 func (t *Thread) writeSomeRegisters(regNames ...string) error {
@@ -1236,10 +1234,10 @@ func (t *Thread) readSomeRegisters(regNames ...string) error {
 // reloadGAtPC overwrites the instruction that the thread is stopped at with
 // the MOV instruction used to load current G, executes this single
 // instruction and then puts everything back the way it was.
-func (t *Thread) reloadGAtPC() error {
+func (t *Thread) reloadGAtPC(blocked bool) error {
 	movinstr := t.p.loadGInstr()
 
-	if t.Blocked() {
+	if blocked {
 		t.regs.tls = 0
 		t.regs.gaddr = 0
 		t.regs.hasgaddr = true
@@ -1316,8 +1314,8 @@ func (t *Thread) reloadGAtPC() error {
 // t.p.loadGInstrAddr must point to valid memory on the inferior, containing
 // a MOV instruction that loads the address of the current G in the RCX
 // register.
-func (t *Thread) reloadGAlloc() error {
-	if t.Blocked() {
+func (t *Thread) reloadGAlloc(blocked bool) error {
+	if blocked {
 		t.regs.tls = 0
 		t.regs.gaddr = 0
 		t.regs.hasgaddr = true

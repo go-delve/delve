@@ -98,7 +98,7 @@ func Topframe(g *G, thread proc.Thread, bi *BinaryInfo) (Stackframe, Stackframe,
 	var err error
 
 	if g == nil {
-		if thread.Blocked() {
+		if blocked(thread, bi) {
 			return Stackframe{}, Stackframe{}, proc.ErrThreadBlocked{}
 		}
 		frames, err = ThreadStacktrace(thread, bi, 1)

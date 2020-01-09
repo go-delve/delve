@@ -70,19 +70,6 @@ func (t *Thread) singleStep() (err error) {
 	}
 }
 
-func (t *Thread) Blocked() bool {
-	regs, err := t.Registers(false)
-	if err != nil {
-		return false
-	}
-	pc := regs.PC()
-	fn := t.BinInfo().PCToFunc(pc)
-	if fn != nil && ((fn.Name == "runtime.futex") || (fn.Name == "runtime.usleep") || (fn.Name == "runtime.clone")) {
-		return true
-	}
-	return false
-}
-
 func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
