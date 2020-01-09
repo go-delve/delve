@@ -2,6 +2,7 @@ package rpccommon
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/rpc/jsonrpc"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"unicode"
 	"unicode/utf8"
@@ -271,12 +273,22 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 	codec := jsonrpc.NewServerCodec(conn)
 	var req rpc.Request
 	var resp rpc.Response
+	var hasAuth bool
+	if s.config.Token == "" {
+		hasAuth = true
+	}
 	for {
 		req = rpc.Request{}
+
 		err := codec.ReadRequestHeader(&req)
 		if err != nil {
 			if err != io.EOF {
 				s.log.Error("rpc:", err)
+			}
+			// TODO, a wrong client's conection req (without tls) cause the quit of server.
+			// Maybe need a soft way instead of quitting directly.
+			if _, ok := err.(tls.RecordHeaderError); ok {
+				fmt.Printf("parse jsonrpc req with tls from client failed, %s\n", err)
 			}
 			break
 		}
@@ -306,6 +318,20 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 			argv = argv.Elem()
 		}
 
+		// check auth
+		if !hasAuth {
+			// only rpc2 support `Auth`, so need to SetApiVersion without auth.
+			if mtype.method.Name != "Auth" && mtype.method.Name != "SetApiVersion" {
+				s.log.Error("rpc:", fmt.Errorf("need to valid authentication. use --tls-token"))
+				break
+			}
+			// TODO, maybe have a more better way to handle async.
+			if mtype.method.Name == "Auth" && !mtype.Synchronous {
+				s.log.Error("rpc:", fmt.Errorf("don't use callback for Auth"))
+				break
+			}
+		}
+
 		if mtype.Synchronous {
 			if logflags.RPC() {
 				argvbytes, _ := json.Marshal(argv.Interface())
@@ -333,6 +359,9 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 			if logflags.RPC() {
 				replyvbytes, _ := json.Marshal(replyv.Interface())
 				s.log.Debugf("-> %T%s error: %q", replyv.Interface(), replyvbytes, errmsg)
+			}
+			if !hasAuth && mtype.method.Name == "Auth" && strings.Contains(fmt.Sprintf("%#v", replyv.Interface()), "IsValid:true") {
+				hasAuth = true
 			}
 			s.sendResponse(sending, &req, &resp, replyv.Interface(), codec, errmsg)
 		} else {

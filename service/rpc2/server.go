@@ -751,3 +751,22 @@ func (s *RPCServer) ListPackagesBuildInfo(in ListPackagesBuildInfoIn, out *ListP
 	out.List = s.debugger.ListPackagesBuildInfo(in.IncludeFiles)
 	return nil
 }
+
+type AuthIn struct {
+	Token string
+}
+
+type AuthOut struct {
+	IsValid bool
+}
+
+// Auth will verify the validity of token from client by s.config.Token.
+// Always return pass if s.config.Token is nil.
+func (s *RPCServer) Auth(in AuthIn, out *AuthOut) error {
+	if s.config.Token == "" || s.config.Token == in.Token {
+		out.IsValid = true
+		return nil
+	}
+	out.IsValid = false
+	return nil
+}

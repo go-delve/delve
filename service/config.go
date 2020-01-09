@@ -46,4 +46,8 @@ type Config struct {
 
 	// DisconnectChan will be closed by the server when the client disconnects
 	DisconnectChan chan<- struct{}
+
+	// Token are used for authentication of connection between server and client. Skip
+	// authentication if the value is nil.
+	Token string
 }

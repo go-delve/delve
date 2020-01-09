@@ -3,6 +3,7 @@ package cmds
 import (
 	"errors"
 	"fmt"
+	"github.com/go-delve/delve/pkg/tls"
 	"net"
 	"os"
 	"os/exec"
@@ -47,6 +48,20 @@ var (
 	BuildFlags string
 	// WorkingDir is the working directory for running the program.
 	WorkingDir string
+
+	// MtlsCrtPath is crt's file path which user specify, set by client and server.
+	MtlsCrtPath string
+	// MtlsKeyPath is key's file path which user specify, set by client and server.
+	MtlsKeyPath string
+	// MtlsCaPath is ca crt's file path which user specify, set by client and server.
+	MtlsCaCrtPath string
+
+	// TlsCrtPath is crt's file path, need to be generated manually by server and set by server/client.
+	TlsCrtPath string
+	// TlsKeyPath is key's file path, need to be generated manually by server and only set by server.
+	TlsKeyPath string
+	// TlsToken is the token used for authentication, set by client and server.
+	TlsToken string
 
 	// Backend selection
 	Backend string
@@ -105,6 +120,14 @@ func New(docCall bool) *cobra.Command {
 	RootCommand.PersistentFlags().StringVarP(&LogDest, "log-dest", "", "", "Writes logs to the specified file or file descriptor (see 'dlv help log').")
 
 	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
+	RootCommand.PersistentFlags().StringVar(&MtlsCrtPath, "mtls-crt", "", "Specify crt file path of mtls to establish tcp connection.")
+	RootCommand.PersistentFlags().StringVar(&MtlsKeyPath, "mtls-key", "", "Specify key file path of mtls to establish tcp connection.")
+	RootCommand.PersistentFlags().StringVar(&MtlsCaCrtPath, "mtls-ca-crt", "", "Specify ca crt file path of mtls to establish tcp connection.")
+
+	RootCommand.PersistentFlags().StringVar(&TlsCrtPath, "tls-crt", "", "Specify crt file path of tls, need to be generated manually by server and set by server/client.")
+	RootCommand.PersistentFlags().StringVar(&TlsKeyPath, "tls-key", "", "Specify key file path of tls, need to be generated manually by server and only set by server.")
+	RootCommand.PersistentFlags().StringVar(&TlsToken, "tls-token", "", "Specify token string for authentication, set same value by server/client.")
+
 	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections.")
 	RootCommand.PersistentFlags().IntVar(&APIVersion, "api-version", 1, "Selects API version when headless.")
 	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
@@ -538,13 +561,89 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 	return args, []string{}
 }
 
+// ChooseRunModeOftls choose tls or mtls mode by cli arguments.
+// 0 is default, 1 is tls, 2 is mtls.
+func chooseRunModeOfTls(isSvc bool) (int, error) {
+	mtlsCnt := 0
+	if MtlsCaCrtPath != "" {
+		mtlsCnt++
+	}
+	if MtlsCrtPath != "" {
+		mtlsCnt++
+	}
+	if MtlsKeyPath != "" {
+		mtlsCnt++
+	}
+	tlsCnt := 0
+	if TlsCrtPath != "" {
+		tlsCnt++
+	}
+	if TlsKeyPath != "" {
+		tlsCnt++
+	}
+	if TlsToken != "" {
+		tlsCnt++
+	}
+
+	if mtlsCnt != 0 && tlsCnt != 0 {
+		return 0, fmt.Errorf("Error: --tls and --mtls only one mode can be run\n")
+	}
+
+	if mtlsCnt == 0 && tlsCnt == 0 {
+		return 0, nil
+	}
+
+	// check client and server on mtls
+	if mtlsCnt == 3 {
+		if isSvc {
+			if !Headless {
+				return 0, fmt.Errorf("Error: --mtls must run with --headless mode\n")
+			}
+
+		}
+		return 2, nil
+	}
+	if mtlsCnt != 0 {
+		return 0, fmt.Errorf("Error: --mtls-crt --mtls-key --mtls-ca-crt must be all set or all not\n")
+	}
+
+	// check client and server on tls
+	if isSvc {
+		if tlsCnt == 3 {
+			if !Headless {
+				return 0, fmt.Errorf("Error: --tls must run with --headless mode\n")
+			}
+			return 1, nil
+		}
+		return 0, fmt.Errorf("Error: --tls-crt --tls-key --tls-token must be all set or all not for server\n")
+	}
+	if tlsCnt == 2 && TlsToken != "" && TlsCrtPath != "" {
+		return 1, nil
+	}
+	return 0, fmt.Errorf("Error: only --tls-token and --tls-crt need to be set for client if you want to run on tls\n")
+}
+
 func connect(addr string, clientConn net.Conn, conf *config.Config, kind executeKind) int {
 	// Create and start a terminal - attach to running instance
 	var client *rpc2.RPCClient
 	if clientConn != nil {
 		client = rpc2.NewClientFromConn(clientConn)
 	} else {
-		client = rpc2.NewClient(addr)
+		tlsMode, err := chooseRunModeOfTls(false)
+		if err == nil {
+			switch tlsMode {
+			case 1:
+				client, err = rpc2.NewTlsClientWithToken(addr, TlsCrtPath, TlsToken)
+			case 2:
+				client, err = rpc2.NewMtlsClientWithCrtKeyPath(addr, MtlsCaCrtPath, MtlsCrtPath, MtlsKeyPath)
+			default:
+				client = rpc2.NewClient(addr)
+			}
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, err.Error())
+			return 1
+		}
 	}
 	if client.IsMulticlient() {
 		state, _ := client.GetStateNonBlocking()
@@ -608,11 +707,24 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 
 	var listener net.Listener
 	var clientConn net.Conn
-	var err error
 
 	// Make a TCP listener
+	tlsMode, err := chooseRunModeOfTls(true)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+		return 1
+	}
 	if Headless {
 		listener, err = net.Listen("tcp", Addr)
+		if err == nil {
+			switch tlsMode {
+			case 1:
+				listener, err = tls.WrapListenerWithTls(listener, TlsCrtPath, TlsKeyPath)
+			case 2:
+				listener, err = tls.WrapListenerWithMtls(listener, MtlsCaCrtPath, MtlsCrtPath, MtlsKeyPath)
+			default:
+			}
+		}
 	} else {
 		listener, clientConn = service.ListenerPipe()
 	}
@@ -641,6 +753,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			Foreground:           Headless,
 			DebugInfoDirectories: conf.DebugInfoDirectories,
 			CheckGoVersion:       CheckGoVersion,
+			Token:                TlsToken,
 
 			DisconnectChan: disconnectChan,
 		})

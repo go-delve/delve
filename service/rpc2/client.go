@@ -2,6 +2,7 @@ package rpc2
 
 import (
 	"fmt"
+	"github.com/go-delve/delve/pkg/tls"
 	"log"
 	"net"
 	"net/rpc"
@@ -21,6 +22,34 @@ type RPCClient struct {
 
 // Ensure the implementation satisfies the interface.
 var _ service.Client = &RPCClient{}
+
+// NewMtlsClientWithCrtKeyPath creates a new RPCClient with specific caCrt/crt/key files.
+func NewMtlsClientWithCrtKeyPath(addr, caCrtPath, crtPath, keyPath string) (*RPCClient, error) {
+	conn, err := tls.DialWithMtls("tcp", addr, caCrtPath, crtPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("dialing failed: %s", err)
+	}
+	client := jsonrpc.NewClient(conn)
+	return newFromRPCClient(client), nil
+}
+
+// NewMtlsClientWithCrtKeyPath creates a new RPCClient with specific token.
+func NewTlsClientWithToken(addr, crtPath, token string) (*RPCClient, error) {
+	conn, err := tls.DialWithTls("tcp", addr, crtPath)
+	if err != nil {
+		return nil, fmt.Errorf("dialing failed: %s", err)
+	}
+	rpcClient := newFromRPCClient(jsonrpc.NewClient(conn))
+	// auth with token
+	isValid, err := rpcClient.Auth(token)
+	if err != nil {
+		return nil, fmt.Errorf("rpc failed: %s", err)
+	}
+	if isValid == false {
+		return nil, fmt.Errorf("unauthorized for this token: %s", token)
+	}
+	return rpcClient, nil
+}
 
 // NewClient creates a new RPCClient.
 func NewClient(addr string) *RPCClient {
@@ -419,4 +448,13 @@ func (c *RPCClient) call(method string, args, reply interface{}) error {
 
 func (c *RPCClient) CallAPI(method string, args, reply interface{}) error {
 	return c.call(method, args, reply)
+}
+
+func (c *RPCClient) Auth(token string) (bool, error) {
+	var out AuthOut
+	err := c.call("Auth", AuthIn{token}, &out)
+	if err != nil {
+		return false, err
+	}
+	return out.IsValid, nil
 }

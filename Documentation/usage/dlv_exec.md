@@ -37,6 +37,12 @@ dlv exec <path/to/binary>
       --log                  Enable debugging server logging.
       --log-dest string      Writes logs to the specified file or file descriptor (see 'dlv help log').
       --log-output string    Comma separated list of components that should produce debug output (see 'dlv help log')
+      --mtls-ca-crt string   Specify ca crt file path of mtls to establish tcp connection.
+      --mtls-crt string      Specify crt file path of mtls to establish tcp connection.
+      --mtls-key string      Specify key file path of mtls to establish tcp connection.
+      --tls-crt string       Specify crt file path of tls, need to be generated manually by server and set by server/client.
+      --tls-key string       Specify key file path of tls, need to be generated manually by server and only set by server.
+      --tls-token string     Specify token string for authentication, set same value by server/client.
       --wd string            Working directory for running the program. (default ".")
 ```
 

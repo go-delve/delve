@@ -20,6 +20,7 @@ Function | API Call
 amend_breakpoint(Breakpoint) | Equivalent to API call [AmendBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.AmendBreakpoint)
 ancestors(GoroutineID, NumAncestors, Depth) | Equivalent to API call [Ancestors](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Ancestors)
 attached_to_existing_process() | Equivalent to API call [AttachedToExistingProcess](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.AttachedToExistingProcess)
+auth(Token) | Equivalent to API call [Auth](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Auth)
 cancel_next() | Equivalent to API call [CancelNext](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CancelNext)
 checkpoint(Where) | Equivalent to API call [Checkpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Checkpoint)
 clear_breakpoint(Id, Name) | Equivalent to API call [ClearBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ClearBreakpoint)

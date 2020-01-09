@@ -100,6 +100,36 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
+	r["auth"] = starlark.NewBuiltin("auth", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.AuthIn
+		var rpcRet rpc2.AuthOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.Token, "Token")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "Token":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Token, "Token")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("Auth", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
 	r["cancel_next"] = starlark.NewBuiltin("cancel_next", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)

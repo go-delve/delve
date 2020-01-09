@@ -151,6 +151,9 @@ type Client interface {
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error
 
+	// Auth will verify the validity of token and error only occur when rpc failed.
+	Auth(token string) (bool, error)
+
 	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
 	CallAPI(method string, args, reply interface{}) error
 }
