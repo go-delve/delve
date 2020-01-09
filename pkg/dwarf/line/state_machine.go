@@ -313,13 +313,19 @@ func (lineInfo *DebugLineInfo) LineToPCIn(filename string, lineno int, basePC, s
 
 	sm := lineInfo.stateMachineFor(basePC, startPC)
 
+	var fallbackPC uint64
+
 	for {
 		if sm.valid && sm.started {
 			if sm.address >= endPC {
-				return 0
+				break
 			}
-			if sm.line == lineno && sm.file == filename && sm.address >= startPC && sm.isStmt {
-				return sm.address
+			if sm.line == lineno && sm.file == filename && sm.address >= startPC {
+				if sm.isStmt {
+					return sm.address
+				} else {
+					fallbackPC = sm.address
+				}
 			}
 		}
 		if err := sm.next(); err != nil {
@@ -331,7 +337,7 @@ func (lineInfo *DebugLineInfo) LineToPCIn(filename string, lineno int, basePC, s
 
 	}
 
-	return 0
+	return fallbackPC
 }
 
 // PrologueEndPC returns the first PC address marked as prologue_end in the half open interval [start, end)

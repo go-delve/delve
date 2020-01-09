@@ -199,7 +199,7 @@ func setFileBreakpoint(p proc.Process, t *testing.T, path string, lineno int) *p
 		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, path, lineno, err)
 	}
 	if len(addrs) != 1 {
-		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, path, lineno, addrs)
+		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many (or not enough) results %v", f, l, path, lineno, addrs)
 	}
 	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
@@ -4515,5 +4515,13 @@ func TestIssue1736(t *testing.T) {
 		if ch1BufVar2.Unreadable != nil {
 			t.Fatal(ch1BufVar2.Unreadable)
 		}
+	})
+}
+
+func TestIssue1817(t *testing.T) {
+	// Setting a breakpoint on a line that doesn't have any PC addresses marked
+	// is_stmt should work.
+	withTestProcess("issue1817", t, func(p proc.Process, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 16)
 	})
 }
