@@ -8,10 +8,6 @@ package proc
 // There is one exception to this rule: it is safe to call RequestManualStop
 // concurrently with Resume.
 type Process interface {
-	// TODO(refactor) REMOVE THIS BEFORE MERGE
-	// This is only temporary to enable refactoring
-	// with a passing test suite.
-	SetTarget(Process)
 	Initialize() error
 
 	WriteBreakpoint(addr uint64, instr []byte) (originalData []byte, err error)
@@ -92,8 +88,6 @@ type ThreadInfo interface {
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
 	Resume() (trapthread Thread, err error)
-	StepInstruction() error
-	StepInstructionOut(Thread, string, string) error
 	RequestManualStop() error
 	// CheckAndClearManualStopRequest returns true the first time it's called
 	// after a call to RequestManualStop.

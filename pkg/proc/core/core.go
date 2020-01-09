@@ -148,9 +148,6 @@ func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error)
 
 // Process represents a core file.
 type Process struct {
-	// TODO(refactor) REMOVE BEFORE MERGE
-	t proc.Process
-
 	mem     proc.MemoryReader
 	Threads map[int]*Thread
 	pid     int
@@ -222,10 +219,6 @@ func (p *Process) Initialize() error {
 
 func (p *Process) ExecutablePath() string {
 	return p.Common().ExePath
-}
-
-func (p *Process) SetTarget(pp proc.Process) {
-	p.t = pp
 }
 
 // EntryPoint will return the entry point address for this core file.

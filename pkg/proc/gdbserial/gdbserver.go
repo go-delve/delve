@@ -100,8 +100,6 @@ var ErrDirChange = errors.New("direction change with internal breakpoints")
 // Process implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
 type Process struct {
-	t proc.Process
-
 	conn gdbConn
 
 	threads map[int]*Thread
@@ -206,7 +204,6 @@ func New(process *os.Process) *Process {
 
 // TODO(refactor) REMOVE BEFORE MERGE
 func (p *Process) SetTarget(pp proc.Process) {
-	p.t = pp
 }
 
 func (p *Process) SetBinaryInfo(bi binaryInfo) {
@@ -712,15 +709,6 @@ continueLoop:
 	}
 
 	return nil, fmt.Errorf("could not find thread %s", threadID)
-}
-
-// StepInstruction will step exactly one CPU instruction.
-func (p *Process) StepInstruction() error {
-	return p.t.StepInstruction()
-}
-
-func (p *Process) StepInstructionOut(thread proc.Thread, fn1, fn2 string) error {
-	return p.t.StepInstructionOut(thread, fn1, fn2)
 }
 
 // RequestManualStop will attempt to stop the process

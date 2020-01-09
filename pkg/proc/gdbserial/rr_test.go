@@ -35,9 +35,7 @@ func withTestRecordedTarget(name string, t testing.TB, fn func(tgt *debug.Target
 		t.Fatal("Launch():", err)
 	}
 
-	defer func() {
-		tgt.Detach(true)
-	}()
+	defer tgt.Detach(true)
 
 	fn(tgt, fixture)
 }

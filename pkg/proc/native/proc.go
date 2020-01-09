@@ -10,8 +10,6 @@ import (
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	t proc.Process
-
 	pid int // Process Pid
 
 	// List of threads mapped as such: pid -> *Thread
@@ -45,10 +43,6 @@ func New(pid int) *Process {
 	}
 	go dbp.handlePtraceFuncs()
 	return dbp
-}
-
-func (dbp *Process) SetTarget(p proc.Process) {
-	dbp.t = p
 }
 
 // Recorded always returns false for the native proc backend.
@@ -215,18 +209,6 @@ func (dbp *Process) Resume() (proc.Thread, error) {
 		return nil, err
 	}
 	return trapthread, err
-}
-
-// StepInstruction will continue the current thread for exactly
-// one instruction. This method affects only the thread
-// associated with the selected goroutine. All other
-// threads will remain stopped.
-func (dbp *Process) StepInstruction() (err error) {
-	return dbp.t.StepInstruction()
-}
-
-func (p *Process) StepInstructionOut(thread proc.Thread, fn1, fn2 string) error {
-	return p.t.StepInstructionOut(thread, fn1, fn2)
 }
 
 // Initialize will ensure that all relevant information is loaded

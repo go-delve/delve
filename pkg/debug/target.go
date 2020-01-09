@@ -93,7 +93,6 @@ func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, erro
 		fncallEnabled: true,
 	}
 	// TODO(refactor) REMOVE BEFORE MERGE
-	p.SetTarget(t)
 	if err := t.Initialize(); err != nil {
 		return nil, err
 	}
