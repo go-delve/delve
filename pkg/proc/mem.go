@@ -57,7 +57,7 @@ func (m *memCache) WriteMemory(addr uintptr, data []byte) (written int, err erro
 	return m.mem.WriteMemory(addr, data)
 }
 
-func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter {
+func CacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter {
 	if !cacheEnabled {
 		return mem
 	}
@@ -69,33 +69,33 @@ func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter 
 		if cacheMem.contains(addr, size) {
 			return mem
 		}
-	case *compositeMemory:
+	case *CompositeMemory:
 		return mem
 	}
 	return &memCache{false, addr, make([]byte, size), mem}
 }
 
-// fakeAddress used by extractVarInfoFromEntry for variables that do not
+// FakeAddress used by extractVarInfoFromEntry for variables that do not
 // have a memory address, we can't use 0 because a lot of code (likely
 // including client code) assumes that addr == 0 is nil
-const fakeAddress = 0xbeef0000
+const FakeAddress = 0xbeef0000
 
-// compositeMemory represents a chunk of memory that is stored in CPU
+// CompositeMemory represents a chunk of memory that is stored in CPU
 // registers or non-contiguously.
 //
 // When optimizations are enabled the compiler will store some variables
 // into registers and sometimes it will also store structs non-contiguously
 // with some fields stored into CPU registers and other fields stored in
 // memory.
-type compositeMemory struct {
+type CompositeMemory struct {
 	realmem MemoryReadWriter
 	regs    op.DwarfRegisters
 	pieces  []op.Piece
 	data    []byte
 }
 
-func newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
-	cmem := &compositeMemory{realmem: mem, regs: regs, pieces: pieces, data: []byte{}}
+func NewCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece) (*CompositeMemory, error) {
+	cmem := &CompositeMemory{realmem: mem, regs: regs, pieces: pieces, data: []byte{}}
 	for _, piece := range pieces {
 		if piece.IsRegister {
 			reg := regs.Bytes(piece.RegNum)
@@ -116,8 +116,8 @@ func newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []o
 	return cmem, nil
 }
 
-func (mem *compositeMemory) ReadMemory(data []byte, addr uintptr) (int, error) {
-	addr -= fakeAddress
+func (mem *CompositeMemory) ReadMemory(data []byte, addr uintptr) (int, error) {
+	addr -= FakeAddress
 	if addr >= uintptr(len(mem.data)) || addr+uintptr(len(data)) > uintptr(len(mem.data)) {
 		return 0, errors.New("read out of bounds")
 	}
@@ -125,7 +125,7 @@ func (mem *compositeMemory) ReadMemory(data []byte, addr uintptr) (int, error) {
 	return len(data), nil
 }
 
-func (mem *compositeMemory) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (mem *CompositeMemory) WriteMemory(addr uintptr, data []byte) (int, error) {
 	//TODO(aarzilli): implement
 	return 0, errors.New("can't write composite memory")
 }
@@ -138,7 +138,7 @@ func (mem *compositeMemory) WriteMemory(addr uintptr, data []byte) (int, error) 
 // registers, or composite memory).
 func DereferenceMemory(mem MemoryReadWriter) MemoryReadWriter {
 	switch mem := mem.(type) {
-	case *compositeMemory:
+	case *CompositeMemory:
 		return mem.realmem
 	}
 	return mem

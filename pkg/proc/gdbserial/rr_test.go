@@ -50,7 +50,7 @@ func assertNoError(err error, t testing.TB, s string) {
 	}
 }
 
-func setFunctionBreakpoint(tgt *debug.Target, t *testing.T, fname string) *proc.Breakpoint {
+func setFunctionBreakpoint(tgt *debug.Target, t *testing.T, fname string) *debug.Breakpoint {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
@@ -61,7 +61,7 @@ func setFunctionBreakpoint(tgt *debug.Target, t *testing.T, fname string) *proc.
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
 	}
-	bp, err := tgt.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := tgt.SetBreakpoint(addrs[0], debug.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -73,7 +73,7 @@ func TestRestartAfterExit(t *testing.T) {
 	withTestRecordedTarget("testnextprog", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(tgt, t, "main.main")
 		assertNoError(tgt.Continue(), t, "Continue")
-		loc, err := tgt.CurrentThread().Location()
+		loc, err := threadLocation(tgt.CurrentThread(), tgt.BinInfo())
 		assertNoError(err, t, "CurrentThread().Location()")
 		err = tgt.Continue()
 		if _, isexited := err.(proc.ErrProcessExited); err == nil || !isexited {
@@ -83,7 +83,7 @@ func TestRestartAfterExit(t *testing.T) {
 		assertNoError(tgt.Restart(""), t, "Restart")
 
 		assertNoError(tgt.Continue(), t, "Continue (after restart)")
-		loc2, err := tgt.CurrentThread().Location()
+		loc2, err := threadLocation(tgt.CurrentThread(), tgt.BinInfo())
 		assertNoError(err, t, "CurrentThread().Location() (after restart)")
 		if loc2.Line != loc.Line {
 			t.Fatalf("stopped at %d (expected %d)", loc2.Line, loc.Line)
@@ -100,13 +100,13 @@ func TestRestartDuringStop(t *testing.T) {
 	withTestRecordedTarget("testnextprog", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(tgt, t, "main.main")
 		assertNoError(tgt.Continue(), t, "Continue")
-		loc, err := tgt.CurrentThread().Location()
+		loc, err := threadLocation(tgt.CurrentThread(), tgt.BinInfo())
 		assertNoError(err, t, "CurrentThread().Location()")
 
 		assertNoError(tgt.Restart(""), t, "Restart")
 
 		assertNoError(tgt.Continue(), t, "Continue (after restart)")
-		loc2, err := tgt.CurrentThread().Location()
+		loc2, err := threadLocation(tgt.CurrentThread(), tgt.BinInfo())
 		assertNoError(err, t, "CurrentThread().Location() (after restart)")
 		if loc2.Line != loc.Line {
 			t.Fatalf("stopped at %d (expected %d)", loc2.Line, loc.Line)
@@ -118,7 +118,7 @@ func TestRestartDuringStop(t *testing.T) {
 	})
 }
 
-func setFileBreakpoint(tgt *debug.Target, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
+func setFileBreakpoint(tgt *debug.Target, t *testing.T, fixture protest.Fixture, lineno int) *debug.Breakpoint {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
@@ -129,7 +129,7 @@ func setFileBreakpoint(tgt *debug.Target, t *testing.T, fixture protest.Fixture,
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, fixture.Source, lineno, addrs)
 	}
-	bp, err := tgt.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := tgt.SetBreakpoint(addrs[0], debug.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
@@ -141,7 +141,7 @@ func TestReverseBreakpointCounts(t *testing.T) {
 	withTestRecordedTarget("bpcountstest", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		endbp := setFileBreakpoint(tgt, t, fixture, 28)
 		assertNoError(tgt.Continue(), t, "Continue()")
-		loc, _ := tgt.CurrentThread().Location()
+		loc, _ := threadLocation(tgt.CurrentThread(), tgt.BinInfo())
 		if loc.PC != endbp.Addr {
 			t.Fatalf("did not reach end of main.main function: %s:%d (%#x)", loc.File, loc.Line, loc.PC)
 		}
@@ -154,7 +154,7 @@ func TestReverseBreakpointCounts(t *testing.T) {
 	countLoop:
 		for {
 			assertNoError(tgt.Continue(), t, "Continue()")
-			loc, _ := tgt.CurrentThread().Location()
+			loc, _ := threadLocation(tgt.CurrentThread(), tgt.BinInfo())
 			switch loc.PC {
 			case startbp.Addr:
 				break countLoop
@@ -182,13 +182,22 @@ func TestReverseBreakpointCounts(t *testing.T) {
 	})
 }
 
-func getPosition(tgt *debug.Target, t *testing.T) (when string, loc *proc.Location) {
+func getPosition(tgt *debug.Target, t *testing.T) (when string, loc *debug.Location) {
 	var err error
 	when, err = tgt.When()
 	assertNoError(err, t, "When")
-	loc, err = tgt.CurrentThread().Location()
-	assertNoError(err, t, "Location")
+	pc, err := tgt.CurrentThread().PC()
+	assertNoError(err, t, "PC")
+	loc = tgt.BinInfo().PCToLocation(pc)
 	return
+}
+
+func threadLocation(th proc.Thread, bi *debug.BinaryInfo) (*debug.Location, error) {
+	pc, err := th.PC()
+	if err != nil {
+		return nil, err
+	}
+	return bi.PCToLocation(pc), nil
 }
 
 func TestCheckpoints(t *testing.T) {

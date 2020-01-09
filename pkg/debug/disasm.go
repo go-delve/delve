@@ -1,4 +1,6 @@
-package proc
+package debug
+
+import "github.com/go-delve/delve/pkg/proc"
 
 // AsmInstruction represents one assembly instruction.
 type AsmInstruction struct {
@@ -54,7 +56,7 @@ type opcodeSeq []uint64
 // matching the instructions against known split-stack prologue patterns.
 // If sameline is set firstPCAfterPrologueDisassembly will always return an
 // address associated with the same line as fn.Entry
-func firstPCAfterPrologueDisassembly(mem MemoryReadWriter, bi *BinaryInfo, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
+func firstPCAfterPrologueDisassembly(mem proc.MemoryReadWriter, bi *BinaryInfo, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
 	text, err := disassemble(mem, nil, breakpoints, bi, fn.Entry, fn.End, false)
 	if err != nil {
 		return fn.Entry, err
@@ -97,11 +99,11 @@ func checkPrologue(s []AsmInstruction, prologuePattern opcodeSeq) bool {
 // If currentGoroutine is set and thread is stopped at a CALL instruction Disassemble
 // will evaluate the argument of the CALL instruction using the thread's registers.
 // Be aware that the Bytes field of each returned instruction is a slice of a larger array of size startAddr - endAddr.
-func Disassemble(mem MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64) ([]AsmInstruction, error) {
+func Disassemble(mem proc.MemoryReadWriter, regs proc.Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64) ([]AsmInstruction, error) {
 	return disassemble(mem, regs, breakpoints, bi, startAddr, endAddr, false)
 }
 
-func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64, singleInstr bool) ([]AsmInstruction, error) {
+func disassemble(memrw proc.MemoryReadWriter, regs proc.Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64, singleInstr bool) ([]AsmInstruction, error) {
 	mem := make([]byte, int(endAddr-startAddr))
 	_, err := memrw.ReadMemory(mem, uintptr(startAddr))
 	if err != nil {

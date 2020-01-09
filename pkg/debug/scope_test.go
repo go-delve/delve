@@ -36,7 +36,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 			t.Errorf("wrong value for variable a: %d", aval)
 		}
 
-		if avar.Flags&proc.VariableEscaped == 0 {
+		if avar.Flags&debug.VariableEscaped == 0 {
 			t.Errorf("variable a isn't escaped to the heap")
 		}
 	})
@@ -177,13 +177,13 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		}
 		for _, pc := range pcs {
 			t.Logf("setting breakpoint at %#x\n", pc)
-			_, err := tgt.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+			_, err := tgt.SetBreakpoint(pc, debug.UserBreakpoint, nil)
 			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
 		}
 
 		// first inlined call
 		assertNoError(tgt.Continue(), t, "Continue")
-		frames, err := proc.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 20)
+		frames, err := debug.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 20)
 		assertNoError(err, t, "ThreadStacktrace")
 		t.Logf("Stacktrace:\n")
 		for i := range frames {
@@ -210,7 +210,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 
 		// second inlined call
 		assertNoError(tgt.Continue(), t, "Continue")
-		frames, err = proc.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 20)
+		frames, err = debug.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 20)
 		assertNoError(err, t, "ThreadStacktrace (2)")
 		t.Logf("Stacktrace 2:\n")
 		for i := range frames {
@@ -360,8 +360,8 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 	}
 }
 
-func (scopeCheck *scopeCheck) checkLocalsAndArgs(tgt *debug.Target, t *testing.T) (*proc.EvalScope, bool) {
-	scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
+func (scopeCheck *scopeCheck) checkLocalsAndArgs(tgt *debug.Target, t *testing.T) (*debug.EvalScope, bool) {
+	scope, err := debug.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 	assertNoError(err, t, "GoroutineScope()")
 
 	ok := true
@@ -389,7 +389,7 @@ func (scopeCheck *scopeCheck) checkLocalsAndArgs(tgt *debug.Target, t *testing.T
 	return scope, ok
 }
 
-func (check *scopeCheck) checkVar(v *proc.Variable, t *testing.T) {
+func (check *scopeCheck) checkVar(v *debug.Variable, t *testing.T) {
 	var varCheck *varCheck
 	for i := range check.varChecks {
 		if !check.varChecks[i].ok && (check.varChecks[i].name == v.Name) {
@@ -407,21 +407,21 @@ func (check *scopeCheck) checkVar(v *proc.Variable, t *testing.T) {
 	varCheck.ok = true
 }
 
-func (varCheck *varCheck) checkInScope(line int, scope *proc.EvalScope, t *testing.T) {
+func (varCheck *varCheck) checkInScope(line int, scope *debug.EvalScope, t *testing.T) {
 	v, err := scope.EvalVariable(varCheck.name, normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", varCheck.name))
 	varCheck.check(line, v, t, "EvalExpression")
 
 }
 
-func (varCheck *varCheck) check(line int, v *proc.Variable, t *testing.T, ctxt string) {
+func (varCheck *varCheck) check(line int, v *debug.Variable, t *testing.T, ctxt string) {
 	typ := v.DwarfType.String()
 	typ = strings.Replace(typ, " ", "", -1)
 	if typ != varCheck.typ {
 		t.Errorf("%d: wrong type for %s (%s), got %s, expected %s", line, v.Name, ctxt, typ, varCheck.typ)
 	}
 
-	if varCheck.shdw && v.Flags&proc.VariableShadowed == 0 {
+	if varCheck.shdw && v.Flags&debug.VariableShadowed == 0 {
 		t.Errorf("%d: expected shadowed %s variable", line, v.Name)
 	}
 

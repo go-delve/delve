@@ -13,8 +13,9 @@ type Process interface {
 	// with a passing test suite.
 	SetTarget(Process)
 	Initialize() error
-	WriteBreakpoint(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
-	ClearBreakpointFn(*Breakpoint) error
+
+	WriteBreakpoint(addr uint64, instr []byte) (originalData []byte, err error)
+	ClearBreakpointFn(addr uint64, originalData []byte) error
 
 	Info
 	ProcessManipulation
@@ -72,7 +73,7 @@ type Info interface {
 	// also returns an error describing why the Process is invalid (either
 	// ErrProcessExited or ProcessDetachedError).
 	Valid() (bool, error)
-	BinInfo() *BinaryInfo
+
 	ExecutablePath() string
 	EntryPoint() (uint64, error)
 	// Common returns a struct with fields common to all backends
@@ -104,22 +105,10 @@ type ProcessManipulation interface {
 // implementations of the Process interface.
 type CommonProcess struct {
 	ExePath string
-
-	fncallEnabled bool
-
-	FnCallForG map[int]*callInjection
-}
-
-type callInjection struct {
-	// if continueCompleted is not nil it means we are in the process of
-	// executing an injected function call, see comments throughout
-	// pkg/proc/fncall.go for a description of how this works.
-	continueCompleted chan<- *G
-	continueRequest   <-chan continueRequest
 }
 
 // NewCommonProcess returns a struct with fields common across
 // all process implementations.
-func NewCommonProcess(fncallEnabled bool) CommonProcess {
-	return CommonProcess{fncallEnabled: fncallEnabled, FnCallForG: make(map[int]*callInjection)}
+func NewCommonProcess() CommonProcess {
+	return CommonProcess{}
 }

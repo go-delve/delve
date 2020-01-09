@@ -3,7 +3,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"go/ast"
 	"io"
 
 	"github.com/go-delve/delve/pkg/proc"
@@ -229,11 +228,6 @@ func (p *Process) SetTarget(pp proc.Process) {
 	p.t = pp
 }
 
-// BinInfo will return the binary info.
-func (p *Process) BinInfo() *proc.BinaryInfo {
-	return p.t.BinInfo()
-}
-
 // EntryPoint will return the entry point address for this core file.
 func (p *Process) EntryPoint() (uint64, error) {
 	return p.entryPoint, nil
@@ -241,8 +235,8 @@ func (p *Process) EntryPoint() (uint64, error) {
 
 // WriteBreakpoint is a noop function since you
 // cannot write breakpoints into core files.
-func (p *Process) WriteBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
-	return "", 0, nil, nil, errors.New("cannot write a breakpoint to a core file")
+func (p *Process) WriteBreakpoint(addr uint64, _ []byte) (originalData []byte, err error) {
+	return nil, errors.New("cannot write a breakpoint to a core file")
 }
 
 // Recorded returns whether this is a live or recorded process. Always returns true for core files.
@@ -289,32 +283,17 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	return 0, ErrWriteCore
 }
 
-// Location returns the location of this thread based on
-// the value of the instruction pointer register.
-func (t *Thread) Location() (*proc.Location, error) {
-	regs, err := t.th.registers(false)
-	if err != nil {
-		return nil, err
-	}
-	pc := regs.PC()
-	f, l, fn := t.BinInfo().PCToLine(pc)
-	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
-}
-
-// Breakpoint returns the current breakpoint this thread is stopped at.
-// For core files this always returns an empty BreakpointState struct, as
-// there are no breakpoints when debugging core files.
-func (t *Thread) Breakpoint() proc.BreakpointState {
-	return proc.BreakpointState{}
-}
-
-func (t *Thread) ClearCurrentBreakpointState() {
-	// noop
-}
-
 // ThreadID returns the ID for this thread.
 func (t *Thread) ThreadID() int {
 	return int(t.th.pid())
+}
+
+func (t *Thread) PC() (uint64, error) {
+	regs, err := t.Registers(false)
+	if err != nil {
+		return 0, err
+	}
+	return regs.PC(), nil
 }
 
 // Registers returns the current value of the registers for this thread.
@@ -326,16 +305,6 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 // you cannot change register values for core files.
 func (t *Thread) RestoreRegisters(proc.Registers) error {
 	return ErrChangeRegisterCore
-}
-
-// Arch returns the architecture the target is built for and executing on.
-func (t *Thread) Arch() proc.Arch {
-	return t.p.BinInfo().Arch
-}
-
-// BinInfo returns information about the binary.
-func (t *Thread) BinInfo() *proc.BinaryInfo {
-	return t.p.BinInfo()
 }
 
 // StepInstruction will only return an error for core files,
@@ -380,14 +349,8 @@ func (t *Thread) SetDX(uint64) error {
 	return ErrChangeRegisterCore
 }
 
-// ClearBreakpoint will always return an error as you cannot set or clear
-// breakpoints on core files.
-func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	return nil, proc.NoBreakpointError{Addr: addr}
-}
-
-func (p *Process) ClearBreakpointFn(bp *proc.Breakpoint) error {
-	return proc.NoBreakpointError{Addr: bp.Addr}
+func (p *Process) ClearBreakpointFn(addr uint64, _ []byte) error {
+	return errors.New("breakpoints are not applicable in core files")
 }
 
 // Resume will always return an error because you
@@ -442,11 +405,6 @@ func (p *Process) Pid() int {
 // ResumeNotify is a no-op on core files as we cannot
 // control execution.
 func (p *Process) ResumeNotify(chan<- struct{}) {
-}
-
-// SetBreakpoint will always return an error for core files as you cannot write memory or control execution.
-func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return nil, ErrWriteCore
 }
 
 // ThreadList will return a list of all threads currently in the process.

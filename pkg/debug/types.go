@@ -1,4 +1,4 @@
-package proc
+package debug
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // The kind field in runtime._type is a reflect.Kind value plus
@@ -774,7 +775,7 @@ func constructTypeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, erro
 	}
 }
 
-func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) (typeAddr uint64, typeKind uint64, found bool, err error) {
+func dwarfToRuntimeType(bi *BinaryInfo, mem proc.MemoryReadWriter, typ godwarf.Type) (typeAddr uint64, typeKind uint64, found bool, err error) {
 	so := bi.typeToImage(typ)
 	rdr := so.DwarfReader()
 	rdr.Seek(typ.Common().Offset)

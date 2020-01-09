@@ -12,14 +12,13 @@ import (
 
 	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/goversion"
-	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service/api"
 
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
-var pnormalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
-var pshortLoadConfig = proc.LoadConfig{false, 0, 64, 0, 3, 0}
+var pnormalLoadConfig = debug.LoadConfig{true, 1, 64, 64, -1, 0}
+var pshortLoadConfig = debug.LoadConfig{false, 0, 64, 0, 3, 0}
 
 type varTest struct {
 	name         string
@@ -40,7 +39,7 @@ func matchStringOrPrefix(output, target string) bool {
 	}
 }
 
-func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
+func assertVariable(t *testing.T, variable *debug.Variable, expected varTest) {
 	if expected.preserveName {
 		if variable.Name != expected.name {
 			t.Fatalf("Expected %s got %s\n", expected.name, variable.Name)
@@ -58,10 +57,10 @@ func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
 	}
 }
 
-func findFirstNonRuntimeFrame(tgt *debug.Target) (proc.Stackframe, error) {
-	frames, err := proc.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 10)
+func findFirstNonRuntimeFrame(tgt *debug.Target) (debug.Stackframe, error) {
+	frames, err := debug.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 10)
 	if err != nil {
-		return proc.Stackframe{}, err
+		return debug.Stackframe{}, err
 	}
 
 	for _, frame := range frames {
@@ -69,21 +68,21 @@ func findFirstNonRuntimeFrame(tgt *debug.Target) (proc.Stackframe, error) {
 			return frame, nil
 		}
 	}
-	return proc.Stackframe{}, fmt.Errorf("non-runtime frame not found")
+	return debug.Stackframe{}, fmt.Errorf("non-runtime frame not found")
 }
 
-func evalScope(tgt *debug.Target) (*proc.EvalScope, error) {
+func evalScope(tgt *debug.Target) (*debug.EvalScope, error) {
 	if testBackend != "rr" {
-		return proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
+		return debug.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 	}
 	frame, err := findFirstNonRuntimeFrame(tgt)
 	if err != nil {
 		return nil, err
 	}
-	return proc.FrameToScope(tgt.BinInfo(), tgt.CurrentThread(), nil, frame), nil
+	return debug.FrameToScope(tgt.BinInfo(), tgt.CurrentThread(), nil, frame), nil
 }
 
-func evalVariable(tgt *debug.Target, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
+func evalVariable(tgt *debug.Target, symbol string, cfg debug.LoadConfig) (*debug.Variable, error) {
 	scope, err := evalScope(tgt)
 	if err != nil {
 		return nil, err
@@ -99,7 +98,7 @@ func (tc *varTest) alternateVarTest() varTest {
 }
 
 func setVariable(tgt *debug.Target, symbol, value string) error {
-	scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
+	scope, err := debug.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 	if err != nil {
 		return err
 	}
@@ -373,7 +372,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 	})
 }
 
-type varArray []*proc.Variable
+type varArray []*debug.Variable
 
 // Len is part of sort.Interface.
 func (s varArray) Len() int {
@@ -392,10 +391,10 @@ func (s varArray) Less(i, j int) bool {
 
 func TestLocalVariables(t *testing.T) {
 	testcases := []struct {
-		fn     func(*proc.EvalScope, proc.LoadConfig) ([]*proc.Variable, error)
+		fn     func(*debug.EvalScope, debug.LoadConfig) ([]*debug.Variable, error)
 		output []varTest
 	}{
-		{(*proc.EvalScope).LocalVariables,
+		{(*debug.EvalScope).LocalVariables,
 			[]varTest{
 				{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 				{"a10", true, "\"ofo\"", "", "string", nil},
@@ -426,7 +425,7 @@ func TestLocalVariables(t *testing.T) {
 				{"u64", true, "18446744073709551615", "", "uint64", nil},
 				{"u8", true, "255", "", "uint8", nil},
 				{"up", true, "5", "", "uintptr", nil}}},
-		{(*proc.EvalScope).FunctionArguments,
+		{(*debug.EvalScope).FunctionArguments,
 			[]varTest{
 				{"bar", true, "main.FooBar {Baz: 10, Bur: \"lorem\"}", "", "main.FooBar", nil},
 				{"baz", true, "\"bazburzum\"", "", "string", nil}}},
@@ -438,17 +437,17 @@ func TestLocalVariables(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			var scope *proc.EvalScope
+			var scope *debug.EvalScope
 			var err error
 
 			if testBackend == "rr" {
-				var frame proc.Stackframe
+				var frame debug.Stackframe
 				frame, err = findFirstNonRuntimeFrame(tgt)
 				if err == nil {
-					scope = proc.FrameToScope(tgt.BinInfo(), tgt.CurrentThread(), nil, frame)
+					scope = debug.FrameToScope(tgt.BinInfo(), tgt.CurrentThread(), nil, frame)
 				}
 			} else {
-				scope, err = proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
+				scope, err = debug.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 			}
 
 			assertNoError(err, t, "scope")
@@ -1072,7 +1071,7 @@ func TestConstants(t *testing.T) {
 	})
 }
 
-func setFunctionBreakpoint(tgt *debug.Target, t testing.TB, fname string) *proc.Breakpoint {
+func setFunctionBreakpoint(tgt *debug.Target, t testing.TB, fname string) *debug.Breakpoint {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
@@ -1083,9 +1082,9 @@ func setFunctionBreakpoint(tgt *debug.Target, t testing.TB, fname string) *proc.
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
 	}
-	bp, err := tgt.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := tgt.SetBreakpoint(addrs[0], debug.UserBreakpoint, nil)
 	if err != nil {
-		t.Fatalf("%s:%d: SetBreakpoint(%#v, %v): %v", f, l, addrs[0], proc.UserBreakpoint, err)
+		t.Fatalf("%s:%d: SetBreakpoint(%#v, %v): %v", f, l, addrs[0], debug.UserBreakpoint, err)
 	}
 	return bp
 }
@@ -1095,7 +1094,7 @@ func TestIssue1075(t *testing.T) {
 		setFunctionBreakpoint(tgt, t, "net/http.(*Client).Do")
 		assertNoError(tgt.Continue(), t, "Continue()")
 		for i := 0; i < 10; i++ {
-			scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
+			scope, err := debug.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 			assertNoError(err, t, fmt.Sprintf("GoroutineScope (%d)", i))
 			vars, err := scope.LocalVariables(pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("LocalVariables (%d)", i))
@@ -1262,7 +1261,7 @@ func testCallFunction(t *testing.T, tgt *debug.Target, tc testCaseCallFunction) 
 		checkEscape = false
 	}
 	t.Logf("call %q", tc.expr)
-	err := proc.EvalExpressionWithCalls(tgt.Process, tgt.SelectedGoroutine(), tgt.BinInfo(), callExpr, pnormalLoadConfig, checkEscape, tgt.Continue)
+	err := debug.EvalExpressionWithCalls(tgt, tgt.SelectedGoroutine(), tgt.BinInfo(), callExpr, pnormalLoadConfig, checkEscape, tgt.Continue)
 	if tc.err != nil {
 		t.Logf("\terr = %v\n", err)
 		if err == nil {
@@ -1278,7 +1277,7 @@ func testCallFunction(t *testing.T, tgt *debug.Target, tc testCaseCallFunction) 
 		t.Fatalf("call %q: error %q", tc.expr, err.Error())
 	}
 
-	retvalsVar := tgt.CurrentThread().Common().ReturnValues(pnormalLoadConfig)
+	retvalsVar := tgt.State().ThreadRetVals(tgt.CurrentThread().ThreadID(), pnormalLoadConfig)
 	retvals := make([]*api.Variable, len(retvalsVar))
 
 	for i := range retvals {
@@ -1286,7 +1285,7 @@ func testCallFunction(t *testing.T, tgt *debug.Target, tc testCaseCallFunction) 
 	}
 
 	if varExpr != "" {
-		scope, err := proc.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
+		scope, err := debug.GoroutineScope(tgt.CurrentThread(), tgt.BinInfo())
 		assertNoError(err, t, "GoroutineScope")
 		v, err := scope.EvalExpression(varExpr, pnormalLoadConfig)
 		assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", varExpr))
@@ -1323,7 +1322,7 @@ func TestIssue1531(t *testing.T) {
 	withTestTarget("issue1531", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		assertNoError(tgt.Continue(), t, "Continue()")
 
-		hasKeys := func(mv *proc.Variable, keys ...string) {
+		hasKeys := func(mv *debug.Variable, keys ...string) {
 			n := 0
 			for i := 0; i < len(mv.Children); i += 2 {
 				cv := &mv.Children[i]
@@ -1360,7 +1359,7 @@ func TestIssue1531(t *testing.T) {
 	})
 }
 
-func setFileBreakpoint(tgt *debug.Target, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
+func setFileBreakpoint(tgt *debug.Target, t *testing.T, fixture protest.Fixture, lineno int) *debug.Breakpoint {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
@@ -1371,14 +1370,14 @@ func setFileBreakpoint(tgt *debug.Target, t *testing.T, fixture protest.Fixture,
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, fixture.Source, lineno, addrs)
 	}
-	bp, err := tgt.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := tgt.SetBreakpoint(addrs[0], debug.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
 	return bp
 }
 
-func currentLocation(tgt *debug.Target, t *testing.T) (pc uint64, f string, ln int, fn *proc.Function) {
+func currentLocation(tgt *debug.Target, t *testing.T) (pc uint64, f string, ln int, fn *debug.Function) {
 	regs, err := tgt.CurrentThread().Registers(false)
 	if err != nil {
 		t.Fatalf("Registers error: %v", err)

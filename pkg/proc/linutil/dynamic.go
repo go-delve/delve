@@ -22,12 +22,11 @@ const (
 )
 
 // dynamicSearchDebug searches for the DT_DEBUG entry in the .dynamic section
-func dynamicSearchDebug(p proc.Process) (uint64, error) {
-	bi := p.BinInfo()
+func dynamicSearchDebug(p proc.Process, bi binInfo) (uint64, error) {
 	mem := p.ThreadList()[0]
 
-	dynbuf := make([]byte, bi.ElfDynamicSection.Size)
-	_, err := mem.ReadMemory(dynbuf, uintptr(bi.ElfDynamicSection.Addr))
+	dynbuf := make([]byte, bi.ElfDynamicSectionSize())
+	_, err := mem.ReadMemory(dynbuf, uintptr(bi.ElfDynamicSectionAddr()))
 	if err != nil {
 		return 0, err
 	}
@@ -62,8 +61,8 @@ const (
 	_LINK_MAP_PREV        = 32 // offset of link_map.l_prev field
 )
 
-func readPtr(p proc.Process, addr uint64) (uint64, error) {
-	ptrbuf := make([]byte, p.BinInfo().Arch.PtrSize())
+func readPtr(p proc.Process, addr uint64, bi binInfo) (uint64, error) {
+	ptrbuf := make([]byte, bi.PtrSize())
 	_, err := p.ThreadList()[0].ReadMemory(ptrbuf, uintptr(addr))
 	if err != nil {
 		return 0, err
@@ -78,14 +77,12 @@ type linkMap struct {
 	next, prev uint64
 }
 
-func readLinkMapNode(p proc.Process, r_map uint64) (*linkMap, error) {
-	bi := p.BinInfo()
-
+func readLinkMapNode(p proc.Process, r_map uint64, bi binInfo) (*linkMap, error) {
 	var lm linkMap
 	var ptrs [5]uint64
 	for i := range ptrs {
 		var err error
-		ptrs[i], err = readPtr(p, r_map+uint64(bi.Arch.PtrSize()*i))
+		ptrs[i], err = readPtr(p, r_map+uint64(bi.PtrSize()*i), bi)
 		if err != nil {
 			return nil, err
 		}
@@ -126,17 +123,23 @@ func readCString(p proc.Process, addr uint64) (string, error) {
 	return string(r), nil
 }
 
+type binInfo interface {
+	ElfDynamicSectionAddr() uint64
+	AddImage(string, uint64) error
+	ElfDynamicSectionSize() uint64
+	PtrSize() int
+}
+
 // ElfUpdateSharedObjects reads the list of dynamic libraries loaded by the
 // dynamic linker from the .dynamic section and uses it to update p.BinInfo().
 // See the SysV ABI for a description of how the .dynamic section works:
 // http://www.sco.com/developers/gabi/latest/contents.html
-func ElfUpdateSharedObjects(p proc.Process) error {
-	bi := p.BinInfo()
-	if bi.ElfDynamicSection.Addr == 0 {
+func ElfUpdateSharedObjects(p proc.Process, bi binInfo) error {
+	if bi.ElfDynamicSectionAddr() == 0 {
 		// no dynamic section, therefore nothing to do here
 		return nil
 	}
-	debugAddr, err := dynamicSearchDebug(p)
+	debugAddr, err := dynamicSearchDebug(p, bi)
 	if err != nil {
 		return err
 	}
@@ -145,7 +148,7 @@ func ElfUpdateSharedObjects(p proc.Process) error {
 		return nil
 	}
 
-	r_map, err := readPtr(p, debugAddr+_R_DEBUG_MAP_OFFSET)
+	r_map, err := readPtr(p, debugAddr+_R_DEBUG_MAP_OFFSET, bi)
 	if err != nil {
 		return err
 	}
@@ -159,7 +162,7 @@ func ElfUpdateSharedObjects(p proc.Process) error {
 		if len(libs) > maxNumLibraries {
 			return ErrTooManyLibraries
 		}
-		lm, err := readLinkMapNode(p, r_map)
+		lm, err := readLinkMapNode(p, r_map, bi)
 		if err != nil {
 			return err
 		}

@@ -2,17 +2,18 @@
 // instead of being decided by the build-target architecture, and be
 // part of the Arch object instead.
 
-package proc
+package debug
 
 import (
 	"encoding/binary"
 
+	"github.com/go-delve/delve/pkg/proc"
 	"golang.org/x/arch/x86/x86asm"
 )
 
 // AsmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
 // It assumes that the Loc and AtPC fields of asmInst have already been filled.
-func (a *AMD64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
+func (a *AMD64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs proc.Registers, memrw proc.MemoryReadWriter, bi *BinaryInfo) error {
 	inst, err := x86asm.Decode(mem, 64)
 	if err != nil {
 		asmInst.Inst = (*amd64ArchInst)(nil)
@@ -83,7 +84,7 @@ func (inst *amd64ArchInst) OpcodeEquals(op uint64) bool {
 	return uint64(inst.Op) == op
 }
 
-func resolveCallArgAMD64(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
+func resolveCallArgAMD64(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool, regs proc.Registers, mem proc.MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	if inst.Op != x86asm.CALL && inst.Op != x86asm.LCALL {
 		return nil
 	}

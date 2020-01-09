@@ -1,8 +1,10 @@
-package proc
+package debug
 
 import (
 	"go/constant"
 	"unsafe"
+
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // delve counterpart to runtime.moduledata
@@ -12,7 +14,7 @@ type moduleData struct {
 	typemapVar    *Variable
 }
 
-func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) {
+func loadModuleData(bi *BinaryInfo, mem proc.MemoryReadWriter) ([]moduleData, error) {
 	scope := globalScope(bi, bi.Images[0], mem)
 	var md *Variable
 	md, err := scope.findGlobal("runtime", "firstmoduledata")
@@ -71,7 +73,7 @@ func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) 
 	return r, nil
 }
 
-func findModuleDataForType(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, mem MemoryReadWriter) *moduleData {
+func findModuleDataForType(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, mem proc.MemoryReadWriter) *moduleData {
 	for i := range mds {
 		if typeAddr >= mds[i].types && typeAddr < mds[i].etypes {
 			return &mds[i]
@@ -80,7 +82,7 @@ func findModuleDataForType(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, m
 	return nil
 }
 
-func resolveTypeOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uintptr, mem MemoryReadWriter) (*Variable, error) {
+func resolveTypeOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uintptr, mem proc.MemoryReadWriter) (*Variable, error) {
 	// See runtime.(*_type).typeOff in $GOROOT/src/runtime/type.go
 	md := findModuleDataForType(bi, mds, typeAddr, mem)
 
@@ -108,7 +110,7 @@ func resolveTypeOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uint
 	return newVariable("", res, rtyp, bi, mem), nil
 }
 
-func resolveNameOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uintptr, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
+func resolveNameOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uintptr, mem proc.MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	// See runtime.resolveNameOff in $GOROOT/src/runtime/type.go
 	for _, md := range mds {
 		if typeAddr >= md.types && typeAddr < md.etypes {
@@ -129,7 +131,7 @@ func resolveNameOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uint
 	return loadName(bi, resv.Addr, mem)
 }
 
-func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem MemoryReadWriter) (*Variable, error) {
+func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem proc.MemoryReadWriter) (*Variable, error) {
 	scope := globalScope(bi, bi.Images[0], mem)
 	reflectOffs, err := scope.findGlobal("runtime", "reflectOffs")
 	if err != nil {
@@ -151,7 +153,7 @@ const (
 	nameflagHasPkg   = 1 << 2
 )
 
-func loadName(bi *BinaryInfo, addr uintptr, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
+func loadName(bi *BinaryInfo, addr uintptr, mem proc.MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	off := addr
 	namedata := make([]byte, 3)
 	_, err = mem.ReadMemory(namedata, off)

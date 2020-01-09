@@ -28,14 +28,35 @@ func (err *ErrNoSourceForPC) Error() string {
 }
 
 type state struct {
-	threadBreakpointState map[int]proc.BreakpointState
+	threadBreakpointState map[int]BreakpointState
+	threadRetVals         map[int][]*Variable
 
-	allGCache []*proc.G
+	allGCache []*G
+}
+
+func newState() *state {
+	return &state{
+		threadBreakpointState: make(map[int]BreakpointState),
+		threadRetVals:         make(map[int][]*Variable),
+	}
+}
+
+func (s *state) ThreadRetVals(tid int, cfg LoadConfig) []*Variable {
+	loadValues(s.threadRetVals[tid], cfg)
+	return s.threadRetVals[tid]
 }
 
 // ClearAllGCache clears the internal goroutine cache.
 func (s *state) ClearAllGCache() {
 	s.allGCache = nil
+}
+
+type callInjection struct {
+	// if continueCompleted is not nil it means we are in the process of
+	// executing an injected function call, see comments throughout
+	// pkg/proc/fncall.go for a description of how this works.
+	continueCompleted chan<- *G
+	continueRequest   <-chan continueRequest
 }
 
 // Target represents the process being debugged.
@@ -44,26 +65,31 @@ func (s *state) ClearAllGCache() {
 type Target struct {
 	proc.Process
 
-	bi *proc.BinaryInfo
+	bi *BinaryInfo
 
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
-	breakpoints proc.BreakpointMap
+	breakpoints BreakpointMap
 
-	selectedGoroutine *proc.G
+	selectedGoroutine *G
 	selectedThread    proc.Thread
+
+	fncallEnabled bool
+	FnCallForG    map[int]*callInjection
 
 	state *state
 }
 
 // New returns an initialized Target.
 func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, error) {
-	bi := proc.NewBinaryInfo(os, arch, debugInfoDirs)
+	bi := NewBinaryInfo(os, arch, debugInfoDirs)
 	t := &Target{
-		Process:     p,
-		bi:          bi,
-		breakpoints: proc.NewBreakpointMap(),
-		state:       new(state),
+		Process:       p,
+		bi:            bi,
+		breakpoints:   NewBreakpointMap(),
+		state:         newState(),
+		FnCallForG:    make(map[int]*callInjection),
+		fncallEnabled: true,
 	}
 	// TODO(refactor) REMOVE BEFORE MERGE
 	p.SetTarget(t)
@@ -177,7 +203,7 @@ func OpenCoreOrRecording(backend, path, argv0 string, debugInfoDirs []string) (*
 
 var errMacOSBackendUnavailable = errors.New("debugserver or lldb-server not found: install XCode's command line tools or lldb-server")
 
-func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error) {
+func betterGdbserialLaunchError(p *gdbserial.Process, err error) (*gdbserial.Process, error) {
 	if runtime.GOOS != "darwin" {
 		return p, err
 	}
@@ -206,12 +232,16 @@ func (t *Target) Initialize() error {
 		return err
 	}
 
+	if gp, ok := t.Process.(*gdbserial.Process); ok {
+		gp.SetBinaryInfo(t.BinInfo())
+	}
+
 	if err := t.Process.Initialize(); err != nil {
 		return err
 	}
 
 	t.selectedThread = t.Process.ThreadList()[0]
-	g, _ := proc.GetG(t.CurrentThread(), t.BinInfo())
+	g, _ := GetG(t.CurrentThread(), t.BinInfo())
 	t.selectedGoroutine = g
 
 	createUnrecoveredPanicBreakpoint(t)
@@ -236,7 +266,7 @@ func (t *Target) Next() (err error) {
 	return t.Continue()
 }
 
-func setStepIntoBreakpoint(t *Target, text []proc.AsmInstruction, cond ast.Expr) error {
+func setStepIntoBreakpoint(t *Target, text []AsmInstruction, cond ast.Expr) error {
 	if len(text) <= 0 {
 		return nil
 	}
@@ -252,7 +282,7 @@ func setStepIntoBreakpoint(t *Target, text []proc.AsmInstruction, cond ast.Expr)
 	fn := instr.DestLoc.Fn
 
 	// Skip unexported runtime functions
-	if fn != nil && strings.HasPrefix(fn.Name, "runtime.") && !proc.IsExportedRuntime(fn.Name) {
+	if fn != nil && strings.HasPrefix(fn.Name, "runtime.") && !IsExportedRuntime(fn.Name) {
 		return nil
 	}
 
@@ -269,12 +299,12 @@ func setStepIntoBreakpoint(t *Target, text []proc.AsmInstruction, cond ast.Expr)
 	// sometimes point inside the body of those functions, well after the
 	// prologue.
 	if fn != nil && fn.Entry == instr.DestLoc.PC {
-		pc, _ = proc.FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), fn, false)
+		pc, _ = FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), fn, false)
 	}
 
 	// Set a breakpoint after the function's prologue
-	if _, err := t.SetBreakpoint(pc, proc.NextBreakpoint, cond); err != nil {
-		if _, ok := err.(proc.BreakpointExistsError); !ok {
+	if _, err := t.SetBreakpoint(pc, NextBreakpoint, cond); err != nil {
+		if _, ok := err.(BreakpointExistsError); !ok {
 			return err
 		}
 	}
@@ -312,7 +342,7 @@ func setStepIntoBreakpoint(t *Target, text []proc.AsmInstruction, cond ast.Expr)
 func next(t *Target, stepInto, inlinedStepOut bool) error {
 	selg := t.SelectedGoroutine()
 	curthread := t.CurrentThread()
-	topframe, retframe, err := proc.Topframe(selg, curthread, t.BinInfo())
+	topframe, retframe, err := Topframe(selg, curthread, t.BinInfo())
 	if err != nil {
 		return err
 	}
@@ -345,14 +375,14 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
-	text, err := proc.Disassemble(thread, regs, t.Breakpoints(), t.BinInfo(), topframe.Current.Fn.Entry, topframe.Current.Fn.End)
+	text, err := Disassemble(thread, regs, t.Breakpoints(), t.BinInfo(), topframe.Current.Fn.Entry, topframe.Current.Fn.End)
 	if err != nil && stepInto {
 		return err
 	}
 
-	sameGCond := proc.SameGoroutineCondition(selg)
-	retFrameCond := proc.AndFrameoffCondition(sameGCond, retframe.FrameOffset())
-	sameFrameCond := proc.AndFrameoffCondition(sameGCond, topframe.FrameOffset())
+	sameGCond := SameGoroutineCondition(selg)
+	retFrameCond := AndFrameoffCondition(sameGCond, retframe.FrameOffset())
+	sameFrameCond := AndFrameoffCondition(sameGCond, topframe.FrameOffset())
 	var sameOrRetFrameCond ast.Expr
 	if sameGCond != nil {
 		if topframe.Inlined {
@@ -363,8 +393,8 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 				X:  sameGCond,
 				Y: &ast.BinaryExpr{
 					Op: token.LOR,
-					X:  proc.FrameoffCondition(topframe.FrameOffset()),
-					Y:  proc.FrameoffCondition(retframe.FrameOffset()),
+					X:  FrameoffCondition(topframe.FrameOffset()),
+					Y:  FrameoffCondition(retframe.FrameOffset()),
 				},
 			}
 		}
@@ -377,13 +407,13 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 			}
 
 			if instr.DestLoc != nil && instr.DestLoc.Fn != nil {
-				if err := setStepIntoBreakpoint(t, []proc.AsmInstruction{instr}, sameGCond); err != nil {
+				if err := setStepIntoBreakpoint(t, []AsmInstruction{instr}, sameGCond); err != nil {
 					return err
 				}
 			} else {
 				// Non-absolute call instruction, set a StepBreakpoint here
-				if _, err := t.SetBreakpoint(instr.Loc.PC, proc.StepBreakpoint, sameGCond); err != nil {
-					if _, ok := err.(proc.BreakpointExistsError); !ok {
+				if _, err := t.SetBreakpoint(instr.Loc.PC, StepBreakpoint, sameGCond); err != nil {
+					if _, ok := err.(BreakpointExistsError); !ok {
 						return err
 					}
 				}
@@ -399,15 +429,15 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := t.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
 			var err error
-			deferpc, err = proc.FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), deferfn, false)
+			deferpc, err = FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), deferfn, false)
 			if err != nil {
 				return err
 			}
 		}
 		if deferpc != 0 && deferpc != topframe.Current.PC {
-			bp, err := t.SetBreakpoint(deferpc, proc.NextDeferBreakpoint, sameGCond)
+			bp, err := t.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
 			if err != nil {
-				if _, ok := err.(proc.BreakpointExistsError); !ok {
+				if _, ok := err.(BreakpointExistsError); !ok {
 					return err
 				}
 			}
@@ -453,8 +483,8 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 	}
 
 	for _, pc := range pcs {
-		if _, err := t.SetBreakpoint(pc, proc.NextBreakpoint, sameFrameCond); err != nil {
-			if _, ok := err.(proc.BreakpointExistsError); !ok {
+		if _, err := t.SetBreakpoint(pc, NextBreakpoint, sameFrameCond); err != nil {
+			if _, ok := err.(BreakpointExistsError); !ok {
 				t.ClearInternalBreakpoints()
 				return err
 			}
@@ -466,10 +496,10 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 		// For inlined functions there is no need to do this, the set of PCs
 		// returned by the AllPCsBetween call above already cover all instructions
 		// of the containing function.
-		bp, err := t.SetBreakpoint(topframe.Ret, proc.NextBreakpoint, retFrameCond)
+		bp, err := t.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond)
 		if err != nil {
-			if _, isexists := err.(proc.BreakpointExistsError); isexists {
-				if bp.Kind == proc.NextBreakpoint {
+			if _, isexists := err.(BreakpointExistsError); isexists {
+				if bp.Kind == NextBreakpoint {
 					// If the return address shares the same address with one of the lines
 					// of the function (because we are stepping through a recursive
 					// function) then the corresponding breakpoint should be active both on
@@ -481,7 +511,7 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 			// there it's ok.
 		}
 		if bp != nil {
-			proc.ConfigureReturnBreakpoint(t.BinInfo(), bp, &topframe, retFrameCond)
+			ConfigureReturnBreakpoint(t.BinInfo(), bp, &topframe, retFrameCond)
 		}
 	}
 
@@ -492,7 +522,7 @@ func next(t *Target, stepInto, inlinedStepOut bool) error {
 // Removes instructions belonging to inlined calls of topframe from pcs.
 // If includeCurrentFn is true it will also remove all instructions
 // belonging to the current function.
-func removeInlinedCalls(t *Target, pcs []uint64, topframe proc.Stackframe) ([]uint64, error) {
+func removeInlinedCalls(t *Target, pcs []uint64, topframe Stackframe) ([]uint64, error) {
 	image := topframe.Call.Fn.CompileUnit.Image
 	dwarf := image.Dwarf
 	irdr := reader.InlineStack(dwarf, topframe.Call.Fn.Offset, 0)
@@ -556,24 +586,24 @@ func (t *Target) SetCurrentBreakpointStateForThread(thread proc.Thread, adjustPC
 		}
 		bps := bp.CheckCondition(thread, t.BinInfo())
 		if bps.Breakpoint != nil && bps.Active {
-			if g, err := proc.GetG(thread, t.BinInfo()); err == nil {
+			if g, err := GetG(thread, t.BinInfo()); err == nil {
 				bps.HitCount[g.ID]++
 			}
 			bps.TotalHitCount++
 		}
 		if t.state.threadBreakpointState == nil {
-			t.state.threadBreakpointState = make(map[int]proc.BreakpointState)
+			t.state.threadBreakpointState = make(map[int]BreakpointState)
 		}
 		t.state.threadBreakpointState[tid] = bps
 	}
 	return nil
 }
 
-func (t *Target) BreakpointStateForThread(tid int) proc.BreakpointState {
+func (t *Target) BreakpointStateForThread(tid int) BreakpointState {
 	return t.state.threadBreakpointState[tid]
 }
 
-func (t *Target) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, bool) {
+func (t *Target) FindBreakpoint(pc uint64, adjustPC bool) (*Breakpoint, bool) {
 	if adjustPC {
 		// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
 		if bp, ok := t.Breakpoints().M[pc-uint64(t.BinInfo().Arch.BreakpointSize())]; ok {
@@ -594,9 +624,10 @@ func (t *Target) Continue() error {
 	if _, err := t.Valid(); err != nil {
 		return err
 	}
+	// TODO(derekparker) Refactor this for simplicity.
 	t.state.ClearAllGCache()
 	for _, thread := range t.ThreadList() {
-		thread.Common().RetVals = nil
+		delete(t.state.threadRetVals, thread.ThreadID())
 	}
 	t.CheckAndClearManualStopRequest()
 	defer func() {
@@ -632,7 +663,7 @@ func (t *Target) Continue() error {
 
 		threads := t.ThreadList()
 
-		callInjectionDone, err := proc.CallInjectionProtocol(t, threads, t.BinInfo())
+		callInjectionDone, err := CallInjectionProtocol(t, threads, t.BinInfo())
 		if err != nil {
 			return err
 		}
@@ -652,11 +683,12 @@ func (t *Target) Continue() error {
 				return conditionErrors(t.state)
 			}
 
-			loc, err := curthread.Location()
+			pc, err := curthread.PC()
+			loc := t.BinInfo().PCToLocation(pc)
 			if err != nil || loc.Fn == nil {
 				return conditionErrors(t.state)
 			}
-			g, _ := proc.GetG(curthread, t.BinInfo())
+			g, _ := GetG(curthread, t.BinInfo())
 
 			switch {
 			case loc.Fn.Name == "runtime.breakpoint":
@@ -673,13 +705,13 @@ func (t *Target) Continue() error {
 					return err
 				}
 				return conditionErrors(t.state)
-			case g == nil || t.Common().FnCallForG[g.ID] == nil:
+			case g == nil || t.FnCallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo)
 				return conditionErrors(t.state)
 			}
 		case curbp.Active && curbp.Internal:
 			switch curbp.Kind {
-			case proc.StepBreakpoint:
+			case StepBreakpoint:
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints
 				if err := conditionErrors(t.state); err != nil {
 					return err
@@ -689,18 +721,18 @@ func (t *Target) Continue() error {
 					return err
 				}
 				pc := regs.PC()
-				text, err := proc.Disassemble(curthread, regs, t.Breakpoints(), t.BinInfo(), pc, pc+uint64(t.BinInfo().Arch.MaxInstructionLength()))
+				text, err := Disassemble(curthread, regs, t.Breakpoints(), t.BinInfo(), pc, pc+uint64(t.BinInfo().Arch.MaxInstructionLength()))
 				if err != nil {
 					return err
 				}
 				// here we either set a breakpoint into the destination of the CALL
 				// instruction or we determined that the called function is hidden,
 				// either way we need to resume execution
-				if err = setStepIntoBreakpoint(t, text, proc.SameGoroutineCondition(t.SelectedGoroutine())); err != nil {
+				if err = setStepIntoBreakpoint(t, text, SameGoroutineCondition(t.SelectedGoroutine())); err != nil {
 					return err
 				}
 			default:
-				curthread.Common().RetVals = curbp.Breakpoint.ReturnInfo.Collect(curthread, t.BinInfo())
+				t.state.threadRetVals[curthread.ThreadID()] = curbp.Breakpoint.ReturnInfo.Collect(curthread, t.BinInfo())
 				if err := t.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
@@ -742,20 +774,20 @@ func threadStepInstruction(tgt *Target, th proc.Thread) error {
 		return err
 	}
 	if bp, ok := tgt.Breakpoints().M[regs.PC()]; ok {
-		if err := tgt.ClearBreakpointFn(bp); err != nil {
+		if err := tgt.ClearBreakpointFn(bp.Addr, bp.OriginalData); err != nil {
 			return err
 		}
-		defer tgt.WriteBreakpoint(bp.Addr)
+		defer tgt.WriteBreakpoint(bp.Addr, tgt.bi.Arch.BreakpointInstruction())
 	}
 	tgt.ClearCurrentBreakpointStateForThread(th.ThreadID())
 	return th.StepInstruction()
 }
 
 // onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
-func onNextGoroutine(thread proc.Thread, bi *proc.BinaryInfo, breakpoints *proc.BreakpointMap) (bool, error) {
-	var bp *proc.Breakpoint
+func onNextGoroutine(thread proc.Thread, bi *BinaryInfo, breakpoints *BreakpointMap) (bool, error) {
+	var bp *Breakpoint
 	for i := range breakpoints.M {
-		if breakpoints.M[i].Kind != proc.UserBreakpoint && breakpoints.M[i].InternalCond() != nil {
+		if breakpoints.M[i].Kind != UserBreakpoint && breakpoints.M[i].InternalCond() != nil {
 			bp = breakpoints.M[i]
 			break
 		}
@@ -779,14 +811,14 @@ func onNextGoroutine(thread proc.Thread, bi *proc.BinaryInfo, breakpoints *proc.
 
 type onNextGoroutineWalker struct {
 	thread proc.Thread
-	bi     *proc.BinaryInfo
+	bi     *BinaryInfo
 	ret    bool
 	err    error
 }
 
 func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
-	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL && proc.ExprToString(binx.X) == "runtime.curg.goid" {
-		w.ret, w.err = proc.EvalBreakpointCondition(w.thread, w.bi, n.(ast.Expr))
+	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL && ExprToString(binx.X) == "runtime.curg.goid" {
+		w.ret, w.err = EvalBreakpointCondition(w.thread, w.bi, n.(ast.Expr))
 		return nil
 	}
 	return w
@@ -837,9 +869,10 @@ func (t *Target) StepInstructionOut(curthread proc.Thread, fnname1, fnname2 stri
 		if err := threadStepInstruction(t, curthread); err != nil {
 			return err
 		}
-		loc, err := curthread.Location()
+		pc, err := curthread.PC()
+		loc := t.BinInfo().PCToLocation(pc)
 		if err != nil || loc.Fn == nil || (loc.Fn.Name != fnname1 && loc.Fn.Name != fnname2) {
-			g, _ := proc.GetG(curthread, t.BinInfo())
+			g, _ := GetG(curthread, t.BinInfo())
 			selg := t.SelectedGoroutine()
 			if g != nil && selg != nil && g.ID == selg.ID {
 				selg.CurrentLoc = *loc
@@ -884,7 +917,7 @@ func (t *Target) StepOut() error {
 	selg := t.SelectedGoroutine()
 	curthread := t.CurrentThread()
 
-	topframe, retframe, err := proc.Topframe(selg, curthread, t.BinInfo())
+	topframe, retframe, err := Topframe(selg, curthread, t.BinInfo())
 	if err != nil {
 		return err
 	}
@@ -905,14 +938,14 @@ func (t *Target) StepOut() error {
 		return t.Continue()
 	}
 
-	sameGCond := proc.SameGoroutineCondition(selg)
-	retFrameCond := proc.AndFrameoffCondition(sameGCond, retframe.FrameOffset())
+	sameGCond := SameGoroutineCondition(selg)
+	retFrameCond := AndFrameoffCondition(sameGCond, retframe.FrameOffset())
 
 	var deferpc uint64
 	if filepath.Ext(topframe.Current.File) == ".go" {
 		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
 			deferfn := t.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
-			deferpc, err = proc.FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), deferfn, false)
+			deferpc, err = FirstPCAfterPrologue(t.BinInfo(), t.selectedThread, t.Breakpoints(), deferfn, false)
 			if err != nil {
 				return err
 			}
@@ -920,9 +953,9 @@ func (t *Target) StepOut() error {
 	}
 
 	if deferpc != 0 && deferpc != topframe.Current.PC {
-		bp, err := t.SetBreakpoint(deferpc, proc.NextDeferBreakpoint, sameGCond)
+		bp, err := t.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
 		if err != nil {
-			if _, ok := err.(proc.BreakpointExistsError); !ok {
+			if _, ok := err.(BreakpointExistsError); !ok {
 				return err
 			}
 		}
@@ -939,14 +972,14 @@ func (t *Target) StepOut() error {
 	}
 
 	if topframe.Ret != 0 {
-		bp, err := t.SetBreakpoint(topframe.Ret, proc.NextBreakpoint, retFrameCond)
+		bp, err := t.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond)
 		if err != nil {
-			if _, isexists := err.(proc.BreakpointExistsError); !isexists {
+			if _, isexists := err.(BreakpointExistsError); !isexists {
 				return err
 			}
 		}
 		if bp != nil {
-			proc.ConfigureReturnBreakpoint(t.BinInfo(), bp, &topframe, retFrameCond)
+			ConfigureReturnBreakpoint(t.BinInfo(), bp, &topframe, retFrameCond)
 		}
 	}
 
@@ -982,7 +1015,7 @@ func (t *Target) Detach(kill bool) error {
 // This is useful for getting line number translations, symbol
 // information, and much more.
 // See the documentation for BinaryInfo for more information.
-func (t *Target) BinInfo() *proc.BinaryInfo {
+func (t *Target) BinInfo() *BinaryInfo {
 	return t.bi
 }
 
@@ -996,11 +1029,11 @@ func (t *Target) Pid() int {
 // This is usually the goroutine that active on the thread which was stopped due to
 // hitting a breakpoint.
 // It could also be a goroutine the user selected.
-func (t *Target) SelectedGoroutine() *proc.G {
+func (t *Target) SelectedGoroutine() *G {
 	return t.selectedGoroutine
 }
 
-func (t *Target) Goroutines(start, count int) ([]*proc.G, int, error) {
+func (t *Target) Goroutines(start, count int) ([]*G, int, error) {
 	if _, err := t.Valid(); err != nil {
 		return nil, -1, err
 	}
@@ -1032,10 +1065,10 @@ func (t *Target) Restart(from string) error {
 	}
 
 	for addr := range t.Breakpoints().M {
-		t.Process.WriteBreakpoint(addr)
+		t.Process.WriteBreakpoint(addr, t.BinInfo().Arch.BreakpointInstruction())
 	}
 
-	t.selectedGoroutine, _ = proc.GetG(t.CurrentThread(), t.BinInfo())
+	t.selectedGoroutine, _ = GetG(t.CurrentThread(), t.BinInfo())
 
 	return t.SetCurrentBreakpoints()
 }
@@ -1090,22 +1123,23 @@ func (t *Target) CurrentThread() proc.Thread {
 
 // Breakpoints returns a list of the active breakpoints that have been set in the
 // underlying process.
-func (t *Target) Breakpoints() *proc.BreakpointMap { return &t.breakpoints }
+func (t *Target) Breakpoints() *BreakpointMap { return &t.breakpoints }
 
 // RequestManualStop will attempt to stop the underlying process. Once stopped
 // you may inspect process state.
 func (t *Target) RequestManualStop() error { return t.Process.RequestManualStop() }
 
 // SetBreakpoint sets a breakpoint at the provided address.
-func (t *Target) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
+func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
 	if ok, err := t.Valid(); !ok {
 		return nil, err
 	}
-	return t.Breakpoints().Set(addr, kind, cond, t.Process.WriteBreakpoint)
+	loc := t.BinInfo().PCToLocation(addr)
+	return t.Breakpoints().Set(loc, kind, t.BinInfo().Arch.BreakpointInstruction(), cond, t.Process.WriteBreakpoint)
 }
 
 // ClearBreakpoint clears a breakpoint at the provided address.
-func (t *Target) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
+func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	if ok, err := t.Valid(); !ok {
 		return nil, err
 	}
@@ -1117,7 +1151,7 @@ func (t *Target) StepInstruction() error {
 	thread := t.CurrentThread()
 	if sg := t.SelectedGoroutine(); sg != nil {
 		if t.SelectedGoroutine().Thread == nil {
-			if _, err := t.SetBreakpoint(sg.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(sg)); err != nil {
+			if _, err := t.SetBreakpoint(sg.PC, NextBreakpoint, SameGoroutineCondition(sg)); err != nil {
 				return err
 			}
 			return t.Continue()
@@ -1135,7 +1169,7 @@ func (t *Target) StepInstruction() error {
 	if err := t.SetCurrentBreakpointStateForThread(thread, true); err != nil {
 		return err
 	}
-	if g, _ := proc.GetG(thread, t.BinInfo()); g != nil {
+	if g, _ := GetG(thread, t.BinInfo()); g != nil {
 		t.selectedGoroutine = g
 	}
 	return nil
@@ -1149,7 +1183,7 @@ func (t *Target) SwitchThread(tid int) error {
 	}
 	if th, ok := t.Process.FindThread(tid); ok {
 		t.selectedThread = th
-		t.selectedGoroutine, _ = proc.GetG(t.CurrentThread(), t.BinInfo())
+		t.selectedGoroutine, _ = GetG(t.CurrentThread(), t.BinInfo())
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)
@@ -1178,8 +1212,9 @@ func (t *Target) SwitchGoroutine(gid int) error {
 
 // ClearInternalBreakpoints will clear any non-user defined breakpoint.
 func (t *Target) ClearInternalBreakpoints() error {
-	return t.Breakpoints().ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
-		if _, err := t.ClearBreakpoint(bp.Addr); err != nil {
+	return t.Breakpoints().ClearInternalBreakpoints(func(addr uint64, _ []byte) error {
+		bp, err := t.ClearBreakpoint(addr)
+		if err != nil {
 			return err
 		}
 		for tid, b := range t.state.threadBreakpointState {
@@ -1191,7 +1226,7 @@ func (t *Target) ClearInternalBreakpoints() error {
 	})
 }
 
-func FindDeferReturnCalls(text []proc.AsmInstruction) []uint64 {
+func FindDeferReturnCalls(text []AsmInstruction) []uint64 {
 	const deferreturn = "runtime.deferreturn"
 	deferreturns := []uint64{}
 
@@ -1207,7 +1242,7 @@ func FindDeferReturnCalls(text []proc.AsmInstruction) []uint64 {
 
 // FindGoroutine returns a G struct representing the goroutine
 // specified by `gid`.
-func FindGoroutine(t *Target, gid int) (*proc.G, error) {
+func FindGoroutine(t *Target, gid int) (*G, error) {
 	if selg := t.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
 		// Return the currently selected goroutine in the following circumstances:
 		//
@@ -1238,7 +1273,7 @@ func FindGoroutine(t *Target, gid int) (*proc.G, error) {
 	// Calling GoroutinesInfo could be slow if there are many goroutines
 	// running, check if a running goroutine has been requested first.
 	for _, thread := range t.Process.ThreadList() {
-		g, _ := proc.GetG(thread, t.BinInfo())
+		g, _ := GetG(thread, t.BinInfo())
 		if g != nil && g.ID == gid {
 			return g, nil
 		}
@@ -1247,7 +1282,7 @@ func FindGoroutine(t *Target, gid int) (*proc.G, error) {
 	const goroutinesInfoLimit = 10
 	nextg := 0
 	for nextg >= 0 {
-		var gs []*proc.G
+		var gs []*G
 		var err error
 		gs, nextg, err = t.Goroutines(nextg, goroutinesInfoLimit)
 		if err != nil {
@@ -1273,12 +1308,12 @@ func FindGoroutine(t *Target, gid int) (*proc.G, error) {
 // GoroutinesInfo also returns the next index to be used as 'start' argument
 // while scanning for all available goroutines, or -1 if there was an error
 // or if the index already reached the last possible value.
-func goroutinesInfo(t *Target, mem proc.MemoryReadWriter, start, count int) ([]*proc.G, int, error) {
+func goroutinesInfo(t *Target, mem proc.MemoryReadWriter, start, count int) ([]*G, int, error) {
 	exeimage := t.BinInfo().Images[0] // Image corresponding to the executable file
 
 	var (
-		threadg = map[int]*proc.G{}
-		allg    []*proc.G
+		threadg = map[int]*G{}
+		allg    []*G
 		rdr     = exeimage.DwarfReader()
 	)
 
@@ -1287,7 +1322,7 @@ func goroutinesInfo(t *Target, mem proc.MemoryReadWriter, start, count int) ([]*
 		if th.Blocked() {
 			continue
 		}
-		g, _ := proc.GetG(th, t.BinInfo())
+		g, _ := GetG(th, t.BinInfo())
 		if g != nil {
 			threadg[g.ID] = g
 		}
@@ -1324,27 +1359,28 @@ func goroutinesInfo(t *Target, mem proc.MemoryReadWriter, start, count int) ([]*
 		if count != 0 && len(allg) >= count {
 			return allg, int(i), nil
 		}
-		gvar, err := proc.NewGVariable(mem, t.BinInfo(), uintptr(allgptr+(i*uint64(t.BinInfo().Arch.PtrSize()))), true)
+		gvar, err := NewGVariable(mem, t.BinInfo(), uintptr(allgptr+(i*uint64(t.BinInfo().Arch.PtrSize()))), true)
 		if err != nil {
-			allg = append(allg, &proc.G{Unreadable: err})
+			allg = append(allg, &G{Unreadable: err})
 			continue
 		}
-		g, err := proc.ParseG(gvar)
+		g, err := ParseG(gvar)
 		if err != nil {
-			allg = append(allg, &proc.G{Unreadable: err})
+			allg = append(allg, &G{Unreadable: err})
 			continue
 		}
 		if thg, allocated := threadg[g.ID]; allocated {
-			loc, err := thg.Thread.Location()
+			pc, err := thg.Thread.PC()
 			if err != nil {
 				return nil, -1, err
 			}
+			loc := t.BinInfo().PCToLocation(pc)
 			g.Thread = thg.Thread
 			// Prefer actual thread location information.
 			g.CurrentLoc = *loc
 			g.SystemStack = thg.SystemStack
 		}
-		if g.Status != proc.Gdead {
+		if g.Status != Gdead {
 			allg = append(allg, g)
 		}
 	}

@@ -1,4 +1,4 @@
-package proc
+package debug
 
 import (
 	"bytes"
@@ -21,6 +21,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not implemented")
@@ -30,7 +31,7 @@ var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not
 type EvalScope struct {
 	Location
 	Regs    op.DwarfRegisters
-	Mem     MemoryReadWriter // Target's memory
+	Mem     proc.MemoryReadWriter // Target's memory
 	g       *G
 	BinInfo *BinaryInfo
 
@@ -56,7 +57,7 @@ type EvalScope struct {
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 // If deferCall is > 0 the eval scope will be relative to the specified deferred call.
-func ConvertEvalScope(dbp Process, th Thread, bi *BinaryInfo, g *G, frame, deferCall int) (*EvalScope, error) {
+func ConvertEvalScope(dbp proc.Process, th proc.Thread, bi *BinaryInfo, g *G, frame, deferCall int) (*EvalScope, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, err
 	}
@@ -64,7 +65,7 @@ func ConvertEvalScope(dbp Process, th Thread, bi *BinaryInfo, g *G, frame, defer
 		return ThreadScope(th, bi)
 	}
 
-	var thread MemoryReadWriter
+	var thread proc.MemoryReadWriter
 	if g.Thread == nil {
 		thread = th
 	} else {
@@ -98,7 +99,7 @@ func ConvertEvalScope(dbp Process, th Thread, bi *BinaryInfo, g *G, frame, defer
 		return d.EvalScope(th, bi)
 	}
 
-	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame:]...), nil
+	return FrameToScope(bi, thread, g, locs[frame:]...), nil
 }
 
 // FrameToScope returns a new EvalScope for frames[0].
@@ -106,7 +107,7 @@ func ConvertEvalScope(dbp Process, th Thread, bi *BinaryInfo, g *G, frame, defer
 // frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
 // Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
 // will be cached.
-func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
+func FrameToScope(bi *BinaryInfo, thread proc.MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
 	// Remember that the stack grows downward in memory.
@@ -118,7 +119,7 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 		maxaddr = uint64(frames[0].Regs.CFA)
 	}
 	if maxaddr > minaddr && maxaddr-minaddr < maxFramePrefetchSize {
-		thread = cacheMemory(thread, uintptr(minaddr), int(maxaddr-minaddr))
+		thread = proc.CacheMemory(thread, uintptr(minaddr), int(maxaddr-minaddr))
 	}
 
 	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
@@ -127,7 +128,7 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 }
 
 // ThreadScope returns an EvalScope for this thread.
-func ThreadScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
+func ThreadScope(thread proc.Thread, bi *BinaryInfo) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, bi, 1)
 	if err != nil {
 		return nil, err
@@ -139,7 +140,7 @@ func ThreadScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on this thread.
-func GoroutineScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
+func GoroutineScope(thread proc.Thread, bi *BinaryInfo) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, bi, 1)
 	if err != nil {
 		return nil, err
@@ -1836,7 +1837,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	}
 	mem := v.mem
 	if v.Kind != reflect.Array {
-		mem = DereferenceMemory(mem)
+		mem = proc.DereferenceMemory(mem)
 	}
 	return v.newVariable("", v.Base+uintptr(int64(idx)*v.stride), v.fieldType, mem), nil
 }
@@ -1894,7 +1895,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 
 	mem := v.mem
 	if v.Kind != reflect.Array {
-		mem = DereferenceMemory(mem)
+		mem = proc.DereferenceMemory(mem)
 	}
 
 	r := v.newVariable("", 0, typ, mem)
@@ -1991,7 +1992,7 @@ func (v *Variable) tryFindMethodInEmbeddedFields(mname string) (*Variable, error
 	return nil, nil
 }
 
-func functionToVariable(fn *Function, bi *BinaryInfo, mem MemoryReadWriter) (*Variable, error) {
+func functionToVariable(fn *Function, bi *BinaryInfo, mem proc.MemoryReadWriter) (*Variable, error) {
 	typ, err := fn.fakeType(bi, true)
 	if err != nil {
 		return nil, err

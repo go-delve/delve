@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"unicode"
 
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -390,9 +391,9 @@ type AssemblyFlavour int
 
 const (
 	// GNUFlavour will disassemble using GNU assembly syntax.
-	GNUFlavour = AssemblyFlavour(proc.GNUFlavour)
+	GNUFlavour = AssemblyFlavour(debug.GNUFlavour)
 	// IntelFlavour will disassemble using Intel assembly syntax.
-	IntelFlavour = AssemblyFlavour(proc.IntelFlavour)
+	IntelFlavour = AssemblyFlavour(debug.IntelFlavour)
 )
 
 // AsmInstruction represents one assembly instruction at some address

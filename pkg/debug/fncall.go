@@ -1,4 +1,4 @@
-package proc
+package debug
 
 import (
 	"debug/dwarf"
@@ -18,6 +18,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc"
 	"golang.org/x/arch/x86/x86asm"
 )
 
@@ -64,7 +65,7 @@ var (
 
 type functionCallState struct {
 	// savedRegs contains the saved registers
-	savedRegs Registers
+	savedRegs proc.Registers
 	// err contains a saved error
 	err error
 	// expr is the expression being evaluated
@@ -90,7 +91,7 @@ type functionCallState struct {
 }
 
 type callContext struct {
-	p Process
+	t *Target
 
 	// checkEscape is true if the escape check should be performed.
 	// See service/api.DebuggerCommand.UnsafeCall in service/api/types.go.
@@ -130,8 +131,8 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
 // Because this can only be done in the current goroutine, unlike
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
-func EvalExpressionWithCalls(p Process, g *G, bi *BinaryInfo, expr string, retLoadCfg LoadConfig, checkEscape bool, continueFn func() error) error {
-	if !p.Common().fncallEnabled {
+func EvalExpressionWithCalls(t *Target, g *G, bi *BinaryInfo, expr string, retLoadCfg LoadConfig, checkEscape bool, continueFn func() error) error {
+	if !t.fncallEnabled {
 		return errFuncCallUnsupportedBackend
 	}
 
@@ -143,7 +144,7 @@ func EvalExpressionWithCalls(p Process, g *G, bi *BinaryInfo, expr string, retLo
 		return errGoroutineNotRunning
 	}
 
-	if callinj := p.Common().FnCallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
+	if callinj := t.FnCallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
 		return errFuncCallInProgress
 	}
 
@@ -161,14 +162,14 @@ func EvalExpressionWithCalls(p Process, g *G, bi *BinaryInfo, expr string, retLo
 	continueCompleted := make(chan *G)
 
 	scope.callCtx = &callContext{
-		p:                 p,
+		t:                 t,
 		checkEscape:       checkEscape,
 		retLoadCfg:        retLoadCfg,
 		continueRequest:   continueRequest,
 		continueCompleted: continueCompleted,
 	}
 
-	p.Common().FnCallForG[g.ID] = &callInjection{
+	t.FnCallForG[g.ID] = &callInjection{
 		continueCompleted,
 		continueRequest,
 	}
@@ -180,35 +181,35 @@ func EvalExpressionWithCalls(p Process, g *G, bi *BinaryInfo, expr string, retLo
 		return continueFn()
 	}
 
-	return finishEvalExpressionWithCalls(p, g, contReq, ok)
+	return finishEvalExpressionWithCalls(t, g, contReq, ok)
 }
 
-func finishEvalExpressionWithCalls(p Process, g *G, contReq continueRequest, ok bool) error {
+func finishEvalExpressionWithCalls(t *Target, g *G, contReq continueRequest, ok bool) error {
 	fncallLog("stashing return values for %d in thread=%d\n", g.ID, g.Thread.ThreadID())
 	var err error
 	if !ok {
 		err = errors.New("internal error EvalExpressionWithCalls didn't return anything")
 	} else if contReq.err != nil {
 		if fpe, ispanic := contReq.err.(fncallPanicErr); ispanic {
-			g.Thread.Common().RetVals = []*Variable{fpe.panicVar}
+			t.state.threadRetVals[g.Thread.ThreadID()] = []*Variable{fpe.panicVar}
 		} else {
 			err = contReq.err
 		}
 	} else if contReq.ret == nil {
-		g.Thread.Common().RetVals = nil
+		delete(t.state.threadRetVals, g.Thread.ThreadID())
 	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil && contReq.ret.Kind == reflect.Invalid {
 		// this is a variable returned by a function call with multiple return values
 		r := make([]*Variable, len(contReq.ret.Children))
 		for i := range contReq.ret.Children {
 			r[i] = &contReq.ret.Children[i]
 		}
-		g.Thread.Common().RetVals = r
+		t.state.threadRetVals[g.Thread.ThreadID()] = r
 	} else {
-		g.Thread.Common().RetVals = []*Variable{contReq.ret}
+		t.state.threadRetVals[g.Thread.ThreadID()] = []*Variable{contReq.ret}
 	}
 
-	close(p.Common().FnCallForG[g.ID].continueCompleted)
-	delete(p.Common().FnCallForG, g.ID)
+	close(t.FnCallForG[g.ID].continueCompleted)
+	delete(t.FnCallForG, g.ID)
 	return err
 }
 
@@ -231,9 +232,9 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		return nil, errFuncCallNotAllowed
 	}
 
-	p := scope.callCtx.p
+	t := scope.callCtx.t
 	bi := scope.BinInfo
-	if !p.Common().fncallEnabled {
+	if !t.fncallEnabled {
 		return nil, errFuncCallUnsupportedBackend
 	}
 
@@ -346,7 +347,7 @@ func fncallLog(fmtstr string, args ...interface{}) {
 }
 
 // writePointer writes val as an architecture pointer at addr in mem.
-func writePointer(bi *BinaryInfo, mem MemoryReadWriter, addr, val uint64) error {
+func writePointer(bi *BinaryInfo, mem proc.MemoryReadWriter, addr, val uint64) error {
 	ptrbuf := make([]byte, bi.Arch.PtrSize())
 
 	// TODO: use target architecture endianness instead of LittleEndian
@@ -366,7 +367,7 @@ func writePointer(bi *BinaryInfo, mem MemoryReadWriter, addr, val uint64) error 
 // * pushes the current value of PC on the stack (adjusting SP)
 // * changes the value of PC to callAddr
 // Note: regs are NOT updated!
-func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) error {
+func callOP(bi *BinaryInfo, thread proc.Thread, regs proc.Registers, callAddr uint64) error {
 	sp := regs.SP()
 	// push PC on the stack
 	sp -= uint64(bi.Arch.PtrSize())
@@ -635,7 +636,7 @@ const (
 
 // funcCallStep executes one step of the function call injection protocol.
 func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
-	p := callScope.callCtx.p
+	p := callScope.callCtx.t
 	bi := p.BinInfo()
 
 	thread := callScope.g.Thread
@@ -649,7 +650,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 	rax, _ := regs.Get(int(x86asm.RAX))
 
 	if logflags.FnCall() {
-		loc, _ := thread.Location()
+		loc := bi.PCToLocation(regs.PC())
 		var pc uint64
 		var fnname string
 		if loc != nil {
@@ -777,7 +778,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 	return false
 }
 
-func readTopstackVariable(thread Thread, bi *BinaryInfo, regs Registers, typename string, loadCfg LoadConfig) (*Variable, error) {
+func readTopstackVariable(thread proc.Thread, bi *BinaryInfo, regs proc.Registers, typename string, loadCfg LoadConfig) (*Variable, error) {
 	scope, err := ThreadScope(thread, bi)
 	if err != nil {
 		return nil, err
@@ -877,16 +878,17 @@ func isCallInjectionStop(loc *Location) bool {
 // CallInjectionProtocol is the function called from Continue to progress
 // the injection protocol for all threads.
 // Returns true if a call injection terminated
-func CallInjectionProtocol(p Process, threads []Thread, bi *BinaryInfo) (done bool, err error) {
-	if len(p.Common().FnCallForG) == 0 {
+func CallInjectionProtocol(t *Target, threads []proc.Thread, bi *BinaryInfo) (done bool, err error) {
+	if len(t.FnCallForG) == 0 {
 		// we aren't injecting any calls, no need to check the threads.
 		return false, nil
 	}
 	for _, thread := range threads {
-		loc, err := thread.Location()
+		pc, err := thread.PC()
 		if err != nil {
 			continue
 		}
+		loc := bi.PCToLocation(pc)
 		if !isCallInjectionStop(loc) {
 			continue
 		}
@@ -895,7 +897,7 @@ func CallInjectionProtocol(p Process, threads []Thread, bi *BinaryInfo) (done bo
 		if err != nil {
 			return done, fmt.Errorf("could not determine running goroutine for thread %#x currently executing the function call injection protocol: %v", thread.ThreadID(), err)
 		}
-		callinj := p.Common().FnCallForG[g.ID]
+		callinj := t.FnCallForG[g.ID]
 		if callinj == nil || callinj.continueCompleted == nil {
 			return false, fmt.Errorf("could not recover call injection state for goroutine %d", g.ID)
 		}
@@ -903,7 +905,7 @@ func CallInjectionProtocol(p Process, threads []Thread, bi *BinaryInfo) (done bo
 		callinj.continueCompleted <- g
 		contReq, ok := <-callinj.continueRequest
 		if !contReq.cont {
-			err := finishEvalExpressionWithCalls(p, g, contReq, ok)
+			err := finishEvalExpressionWithCalls(t, g, contReq, ok)
 			if err != nil {
 				return done, err
 			}

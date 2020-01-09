@@ -3,8 +3,13 @@ package proc
 // Thread represents a thread.
 type Thread interface {
 	MemoryReadWriter
-	Location() (*Location, error)
 	ThreadID() int
+
+	StepInstruction() error
+	// Blocked returns true if the thread is blocked
+	Blocked() bool
+	// Common returns the CommonThread structure for this thread
+	Common() *CommonThread
 
 	// Registers returns the CPU registers of this thread. The contents of the
 	// variable returned may or may not change to reflect the new CPU status
@@ -16,25 +21,10 @@ type Thread interface {
 
 	// RestoreRegisters restores saved registers
 	RestoreRegisters(Registers) error
-	StepInstruction() error
-	// Blocked returns true if the thread is blocked
-	Blocked() bool
-	// Common returns the CommonThread structure for this thread
-	Common() *CommonThread
-
+	PC() (uint64, error)
 	SetPC(uint64) error
 	SetSP(uint64) error
 	SetDX(uint64) error
-}
-
-// Location represents the location of a thread.
-// Holds information on the current instruction
-// address, the source file:line, and the function.
-type Location struct {
-	PC   uint64
-	File string
-	Line int
-	Fn   *Function
 }
 
 // ErrThreadBlocked is returned when the thread
@@ -48,12 +38,4 @@ func (tbe ErrThreadBlocked) Error() string {
 // CommonThread contains fields used by this package, common to all
 // implementations of the Thread interface.
 type CommonThread struct {
-	RetVals []*Variable
-}
-
-// ReturnValues reads the return values from the function executing on
-// this thread using the provided LoadConfig.
-func (t *CommonThread) ReturnValues(cfg LoadConfig) []*Variable {
-	loadValues(t.RetVals, cfg)
-	return t.RetVals
 }

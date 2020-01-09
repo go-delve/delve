@@ -52,29 +52,6 @@ func (t *Thread) StepInstruction() (err error) {
 	return nil
 }
 
-// Location returns the threads location, including the file:line
-// of the corresponding source code, the function we're in
-// and the current instruction address.
-func (t *Thread) Location() (*proc.Location, error) {
-	pc, err := t.PC()
-	if err != nil {
-		return nil, err
-	}
-	f, l, fn := t.BinInfo().PCToLine(pc)
-	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
-}
-
-// Arch returns the architecture the binary is
-// compiled for and executing on.
-func (t *Thread) Arch() proc.Arch {
-	return t.BinInfo().Arch
-}
-
-// BinInfo returns information on the binary.
-func (t *Thread) BinInfo() *proc.BinaryInfo {
-	return t.dbp.BinInfo()
-}
-
 // Common returns information common across Process
 // implementations.
 func (t *Thread) Common() *proc.CommonThread {
@@ -87,8 +64,8 @@ func (t *Thread) ThreadID() int {
 }
 
 // ClearBreakpoint clears the specified breakpoint.
-func (t *Thread) ClearBreakpoint(bp *proc.Breakpoint) error {
-	if _, err := t.WriteMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
+func (t *Thread) ClearBreakpoint(pc uint64, originalData []byte) error {
+	if _, err := t.WriteMemory(uintptr(pc), originalData); err != nil {
 		return fmt.Errorf("could not clear breakpoint %s", err)
 	}
 	return nil

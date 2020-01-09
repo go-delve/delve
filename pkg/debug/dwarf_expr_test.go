@@ -12,6 +12,7 @@ import (
 	"go/constant"
 	"testing"
 
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/dwarf/dwarfbuilder"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -22,13 +23,13 @@ import (
 
 const defaultCFA = 0xc420051d00
 
-func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) (*proc.BinaryInfo, *dwarf.Data) {
+func fakeBinaryInfo(t *testing.T, dwb *dwarfbuilder.Builder) (*debug.BinaryInfo, *dwarf.Data) {
 	abbrev, aranges, frame, info, line, pubnames, ranges, str, loc, err := dwb.Build()
 	assertNoError(err, t, "dwarfbuilder.Build")
 	dwdata, err := dwarf.New(abbrev, aranges, frame, info, line, pubnames, ranges, str)
 	assertNoError(err, t, "creating dwarf")
 
-	bi := &proc.BinaryInfo{GOOS: "linux", Arch: proc.AMD64Arch("linux")}
+	bi := &debug.BinaryInfo{OS: "linux", Arch: debug.AMD64Arch("linux")}
 	bi.SetLogger(logrus.New().WithField("type", "bintest"))
 	bi.LoadImageFromData(dwdata, frame, line, loc)
 
@@ -69,7 +70,7 @@ func (mem *fakeMemory) WriteMemory(uintptr, []byte) (int, error) {
 	return 0, fmt.Errorf("not implemented")
 }
 
-func uintExprCheck(t *testing.T, scope *proc.EvalScope, expr string, tgt uint64) {
+func uintExprCheck(t *testing.T, scope *debug.EvalScope, expr string, tgt uint64) {
 	thevar, err := scope.EvalExpression(expr, normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", expr))
 	if thevar.Unreadable != nil {
@@ -81,8 +82,8 @@ func uintExprCheck(t *testing.T, scope *proc.EvalScope, expr string, tgt uint64)
 	}
 }
 
-func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegisters, bi *proc.BinaryInfo, testCases map[string]uint16, fn *proc.Function) *proc.EvalScope {
-	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: fn}, Regs: regs, Mem: mem, BinInfo: bi}
+func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegisters, bi *debug.BinaryInfo, testCases map[string]uint16, fn *debug.Function) *debug.EvalScope {
+	scope := &debug.EvalScope{Location: debug.Location{PC: 0x40100, Fn: fn}, Regs: regs, Mem: mem, BinInfo: bi}
 	for name, value := range testCases {
 		uintExprCheck(t, scope, name, uint64(value))
 	}
@@ -90,8 +91,8 @@ func dwarfExprCheck(t *testing.T, mem proc.MemoryReadWriter, regs op.DwarfRegist
 	return scope
 }
 
-func dwarfRegisters(bi *proc.BinaryInfo, regs *linutil.AMD64Registers) op.DwarfRegisters {
-	a := proc.AMD64Arch("linux")
+func dwarfRegisters(bi *debug.BinaryInfo, regs *linutil.AMD64Registers) op.DwarfRegisters {
+	a := debug.AMD64Arch("linux")
 	so := bi.PCToImage(regs.PC())
 	dwarfRegs := a.RegistersToDwarfRegisters(so.StaticBase, regs)
 	dwarfRegs.CFA = defaultCFA
@@ -217,7 +218,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 	const PC = 0x40100
 	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{Rip: PC}}
 
-	scope := &proc.EvalScope{Location: proc.Location{PC: PC, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, BinInfo: bi}
+	scope := &debug.EvalScope{Location: debug.Location{PC: PC, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, BinInfo: bi}
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800
@@ -252,7 +253,7 @@ func TestIssue1419(t *testing.T) {
 
 	mem := newFakeMemory(defaultCFA)
 
-	scope := &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: mainfn}, Regs: op.DwarfRegisters{}, Mem: mem, BinInfo: bi}
+	scope := &debug.EvalScope{Location: debug.Location{PC: 0x40100, Fn: mainfn}, Regs: op.DwarfRegisters{}, Mem: mem, BinInfo: bi}
 
 	va, err := scope.EvalExpression("a", normalLoadConfig)
 	assertNoError(err, t, "EvalExpression(a)")

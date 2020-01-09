@@ -66,8 +66,8 @@ func TestCore(t *testing.T) {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
 	}
 
-	var panicking *proc.G
-	var panickingStack []proc.Stackframe
+	var panicking *debug.G
+	var panickingStack []debug.Stackframe
 	for _, g := range gs {
 		t.Logf("Goroutine %d", g.ID)
 		stack, err := g.Stacktrace(10, 0)
@@ -90,7 +90,7 @@ func TestCore(t *testing.T) {
 		t.Fatalf("Didn't find a call to panic in goroutine stacks: %v", gs)
 	}
 
-	var mainFrame *proc.Stackframe
+	var mainFrame *debug.Stackframe
 	// Walk backward, because the current function seems to be main.main
 	// in the actual call to panic().
 	for i := len(panickingStack) - 1; i >= 0; i-- {
@@ -101,7 +101,7 @@ func TestCore(t *testing.T) {
 	if mainFrame == nil {
 		t.Fatalf("Couldn't find main in stack %v", panickingStack)
 	}
-	msg, err := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame).EvalVariable("msg", proc.LoadConfig{MaxStringLen: 64})
+	msg, err := debug.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame).EvalVariable("msg", debug.LoadConfig{MaxStringLen: 64})
 	if err != nil {
 		t.Fatalf("Couldn't EvalVariable(msg, ...): %v", err)
 	}
@@ -138,7 +138,7 @@ func TestCoreFpRegisters(t *testing.T) {
 
 	var regs proc.Registers
 	for _, thread := range p.ThreadList() {
-		frames, err := proc.ThreadStacktrace(thread, p.BinInfo(), 10)
+		frames, err := debug.ThreadStacktrace(thread, p.BinInfo(), 10)
 		if err != nil {
 			t.Errorf("ThreadStacktrace for %x = %v", thread.ThreadID(), err)
 			continue
@@ -211,7 +211,7 @@ func TestCoreWithEmptyString(t *testing.T) {
 	gs, _, err := p.Goroutines(0, 0)
 	assertNoError(err, t, "GoroutinesInfo")
 
-	var mainFrame *proc.Stackframe
+	var mainFrame *debug.Stackframe
 mainSearch:
 	for _, g := range gs {
 		stack, err := g.Stacktrace(10, 0)
@@ -228,12 +228,12 @@ mainSearch:
 		t.Fatal("could not find main.main frame")
 	}
 
-	scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame)
-	v1, err := scope.EvalVariable("t", proc.LoadConfig{true, 1, 64, 64, -1, 0})
+	scope := debug.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame)
+	v1, err := scope.EvalVariable("t", debug.LoadConfig{true, 1, 64, 64, -1, 0})
 	assertNoError(err, t, "EvalVariable(t)")
 	assertNoError(v1.Unreadable, t, "unreadable variable 't'")
 	t.Logf("t = %#v\n", v1)
-	v2, err := scope.EvalVariable("s", proc.LoadConfig{true, 1, 64, 64, -1, 0})
+	v2, err := scope.EvalVariable("s", debug.LoadConfig{true, 1, 64, 64, -1, 0})
 	assertNoError(err, t, "EvalVariable(s)")
 	assertNoError(v2.Unreadable, t, "unreadable variable 's'")
 	t.Logf("s = %#v\n", v2)

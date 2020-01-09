@@ -123,6 +123,19 @@ type Process struct {
 	onDetach func() // called after a successful detach
 
 	common proc.CommonProcess
+
+	bi binaryInfo
+}
+
+// Avoidint an import here.
+type binaryInfo interface {
+	GOOS() string
+	GStructOffset() uint64
+	PCToFuncName(uint64) string
+	ElfDynamicSectionAddr() uint64
+	AddImage(string, uint64) error
+	ElfDynamicSectionSize() uint64
+	PtrSize() int
 }
 
 // Thread represents an operating system thread.
@@ -177,7 +190,7 @@ func New(process *os.Process) *Process {
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
-		common:         proc.NewCommonProcess(true),
+		common:         proc.NewCommonProcess(),
 	}
 
 	if process != nil {
@@ -194,6 +207,10 @@ func New(process *os.Process) *Process {
 // TODO(refactor) REMOVE BEFORE MERGE
 func (p *Process) SetTarget(pp proc.Process) {
 	p.t = pp
+}
+
+func (p *Process) SetBinaryInfo(bi binaryInfo) {
+	p.bi = bi
 }
 
 // Listen waits for a connection from the stub.
@@ -502,7 +519,6 @@ func (p *Process) Initialize() error {
 	err = p.updateThreadList(&threadUpdater{p: p})
 	if err != nil {
 		p.conn.conn.Close()
-		p.BinInfo().Close()
 		return err
 	}
 
@@ -510,7 +526,6 @@ func (p *Process) Initialize() error {
 		p.conn.pid, _, err = queryProcessInfo(p, 0)
 		if err != nil && !isProtocolErrorUnsupported(err) {
 			p.conn.conn.Close()
-			p.BinInfo().Close()
 			return err
 		}
 	}
@@ -542,11 +557,6 @@ func queryProcessInfo(p *Process, pid int) (int, string, error) {
 		pid = int(n)
 	}
 	return pid, pi["name"], nil
-}
-
-// BinInfo returns information on the binary.
-func (p *Process) BinInfo() *proc.BinaryInfo {
-	return p.t.BinInfo()
 }
 
 // Recorded returns whether or not we are debugging
@@ -680,8 +690,8 @@ continueLoop:
 		return nil, err
 	}
 
-	if p.BinInfo().GOOS == "linux" {
-		if err := linutil.ElfUpdateSharedObjects(p); err != nil {
+	if p.bi.GOOS() == "linux" {
+		if err := linutil.ElfUpdateSharedObjects(p, p.bi); err != nil {
 			return nil, err
 		}
 	}
@@ -781,7 +791,7 @@ func (p *Process) Detach(kill bool) error {
 	if p.onDetach != nil {
 		p.onDetach()
 	}
-	return p.BinInfo().Close()
+	return nil
 }
 
 // Restart will restart the process from the given position.
@@ -921,18 +931,16 @@ func (p *Process) ChangeDirection(dir proc.Direction) error {
 
 func (p *Process) Direction() proc.Direction { return p.conn.direction }
 
-func (p *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
-	f, l, fn := p.BinInfo().PCToLine(uint64(addr))
-
+func (p *Process) WriteBreakpoint(addr uint64, _ []byte) ([]byte, error) {
 	if err := p.conn.setBreakpoint(addr); err != nil {
-		return "", 0, nil, nil, err
+		return nil, err
 	}
 
-	return f, l, fn, nil, nil
+	return nil, nil
 }
 
-func (p *Process) ClearBreakpointFn(bp *proc.Breakpoint) error {
-	return p.conn.clearBreakpoint(bp.Addr)
+func (p *Process) ClearBreakpointFn(addr uint64, _ []byte) error {
+	return p.conn.clearBreakpoint(addr)
 }
 
 type threadUpdater struct {
@@ -1045,20 +1053,17 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error)
 	return t.p.conn.writeMemory(addr, data)
 }
 
-// Location returns the current location of this thread.
-func (t *Thread) Location() (*proc.Location, error) {
-	regs, err := t.Registers(false)
-	if err != nil {
-		return nil, err
-	}
-	pc := regs.PC()
-	f, l, fn := t.p.BinInfo().PCToLine(pc)
-	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
-}
-
 // ThreadID returns this threads ID.
 func (t *Thread) ThreadID() int {
 	return t.ID
+}
+
+func (t *Thread) PC() (uint64, error) {
+	regs, err := t.Registers(false)
+	if err != nil {
+		return 0, err
+	}
+	return regs.PC(), nil
 }
 
 // Registers returns the CPU registers for this thread.
@@ -1070,16 +1075,6 @@ func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
 func (t *Thread) RestoreRegisters(savedRegs proc.Registers) error {
 	copy(t.regs.buf, savedRegs.(*gdbRegisters).buf)
 	return t.writeRegisters()
-}
-
-// Arch will return the CPU architecture for the target.
-func (t *Thread) Arch() proc.Arch {
-	return t.p.BinInfo().Arch
-}
-
-// BinInfo will return information on the binary being debugged.
-func (t *Thread) BinInfo() *proc.BinaryInfo {
-	return t.p.BinInfo()
 }
 
 // Common returns common information across Process implementations.
@@ -1106,14 +1101,11 @@ func (t *Thread) Blocked() bool {
 		return false
 	}
 	pc := regs.PC()
-	f, ln, fn := t.BinInfo().PCToLine(pc)
-	if fn == nil {
-		if f == "" && ln == 0 {
-			return true
-		}
-		return false
+	fName := t.p.bi.PCToFuncName(pc)
+	if fName == "" {
+		return true
 	}
-	switch fn.Name {
+	switch fName {
 	case "runtime.futex", "runtime.usleep", "runtime.clone":
 		return true
 	case "runtime.kevent":
@@ -1121,7 +1113,7 @@ func (t *Thread) Blocked() bool {
 	case "runtime.mach_semaphore_wait", "runtime.mach_semaphore_timedwait":
 		return true
 	default:
-		return strings.HasPrefix(fn.Name, "syscall.Syscall") || strings.HasPrefix(fn.Name, "syscall.RawSyscall")
+		return strings.HasPrefix(fName, "syscall.Syscall") || strings.HasPrefix(fName, "syscall.RawSyscall")
 	}
 }
 
@@ -1142,7 +1134,7 @@ func (p *Process) loadGInstr() []byte {
 	}
 	buf := &bytes.Buffer{}
 	buf.Write(op)
-	binary.Write(buf, binary.LittleEndian, uint32(p.BinInfo().GStructOffset()))
+	binary.Write(buf, binary.LittleEndian, uint32(p.bi.GStructOffset()))
 	return buf.Bytes()
 }
 

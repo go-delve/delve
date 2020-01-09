@@ -2,15 +2,16 @@
 // instead of being decided by the build-target architecture, and be
 // part of the Arch object instead.
 
-package proc
+package debug
 
 import (
+	"github.com/go-delve/delve/pkg/proc"
 	"golang.org/x/arch/arm64/arm64asm"
 )
 
 // AsmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
 // It assumes that the Loc and AtPC fields of asmInst have already been filled.
-func (a *ARM64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
+func (a *ARM64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs proc.Registers, memrw proc.MemoryReadWriter, bi *BinaryInfo) error {
 	asmInst.Size = 4
 	asmInst.Bytes = mem[:asmInst.Size]
 
@@ -39,7 +40,7 @@ func (a *ARM64) Prologues() []opcodeSeq {
 	return prologuesARM64
 }
 
-func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
+func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs proc.Registers, mem proc.MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	if inst.Op != arm64asm.BL && inst.Op != arm64asm.BLR {
 		return nil
 	}

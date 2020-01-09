@@ -1,4 +1,4 @@
-package proc
+package debug
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 const (
@@ -89,7 +90,7 @@ type Variable struct {
 	DwarfType godwarf.Type
 	RealType  godwarf.Type
 	Kind      reflect.Kind
-	mem       MemoryReadWriter
+	mem       proc.MemoryReadWriter
 	bi        *BinaryInfo
 
 	Value        constant.Value
@@ -205,14 +206,14 @@ type G struct {
 	CurrentLoc Location
 
 	// Thread that this goroutine is currently allocated to
-	Thread Thread
+	Thread proc.Thread
 
 	variable *Variable
 
 	Unreadable error // could not read the G struct
 }
 
-func getGVariable(thread Thread, bi *BinaryInfo) (*Variable, error) {
+func getGVariable(thread proc.Thread, bi *BinaryInfo) (*Variable, error) {
 	regs, err := thread.Registers(false)
 	if err != nil {
 		return nil, err
@@ -231,7 +232,7 @@ func getGVariable(thread Thread, bi *BinaryInfo) (*Variable, error) {
 	return NewGVariable(thread, bi, uintptr(gaddr), bi.Arch.DerefTLS())
 }
 
-func NewGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref bool) (*Variable, error) {
+func NewGVariable(mem proc.MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref bool) (*Variable, error) {
 	typ, err := bi.findType("runtime.g")
 	if err != nil {
 		return nil, err
@@ -270,8 +271,12 @@ func NewGVariable(mem MemoryReadWriter, bi *BinaryInfo, gaddr uintptr, deref boo
 //
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
-func GetG(thread Thread, bi *BinaryInfo) (*G, error) {
-	if loc, _ := thread.Location(); loc != nil && loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
+func GetG(thread proc.Thread, bi *BinaryInfo) (*G, error) {
+	pc, err := thread.PC()
+	if err != nil {
+		return nil, err
+	}
+	if loc := bi.PCToLocation(pc); loc != nil && loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
 		// When threads are executing runtime.clone the value of TLS is unreliable.
 		return nil, nil
 	}
@@ -303,7 +308,7 @@ func GetG(thread Thread, bi *BinaryInfo) (*G, error) {
 		g.SystemStack = true
 	}
 	g.Thread = thread
-	if loc, err := thread.Location(); err == nil {
+	if loc := bi.PCToLocation(pc); err == nil {
 		g.CurrentLoc = *loc
 	}
 	return g, nil
@@ -378,19 +383,19 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
-func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
+func globalScope(bi *BinaryInfo, image *Image, mem proc.MemoryReadWriter) *EvalScope {
 	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, frameOffset: 0}
 }
 
-func newVariableFromThread(t MemoryReadWriter, bi *BinaryInfo, name string, addr uintptr, dwarfType godwarf.Type) *Variable {
+func newVariableFromThread(t proc.MemoryReadWriter, bi *BinaryInfo, name string, addr uintptr, dwarfType godwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, bi, t)
 }
 
-func (v *Variable) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
+func (v *Variable) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem proc.MemoryReadWriter) *Variable {
 	return newVariable(name, addr, dwarfType, v.bi, mem)
 }
 
-func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryInfo, mem MemoryReadWriter) *Variable {
+func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryInfo, mem proc.MemoryReadWriter) *Variable {
 	if styp, isstruct := dwarfType.(*godwarf.StructType); isstruct && !strings.Contains(styp.Name, "<") && !strings.Contains(styp.Name, "{") {
 		// For named structs the compiler will emit a DW_TAG_structure_type entry
 		// and a DW_TAG_typedef entry.
@@ -512,7 +517,7 @@ func resolveTypedef(typ godwarf.Type) godwarf.Type {
 	}
 }
 
-func newConstant(val constant.Value, mem MemoryReadWriter) *Variable {
+func newConstant(val constant.Value, mem proc.MemoryReadWriter) *Variable {
 	v := &Variable{Value: val, mem: mem, loaded: true}
 	switch val.Kind() {
 	case constant.Int:
@@ -601,7 +606,7 @@ func ParseG(v *Variable) (*G, error) {
 	}
 	if gaddr == 0 {
 		id := 0
-		if thread, ok := mem.(Thread); ok {
+		if thread, ok := mem.(proc.Thread); ok {
 			id = thread.ThreadID()
 		}
 		return nil, ErrNoGoroutine{tid: id}
@@ -706,8 +711,8 @@ func IsExportedRuntime(name string) bool {
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
-func Ancestors(p Process, mem MemoryReadWriter, g *G, n int) ([]Ancestor, error) {
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], mem)
+func Ancestors(t *Target, mem proc.MemoryReadWriter, g *G, n int) ([]Ancestor, error) {
+	scope := globalScope(t.BinInfo(), t.BinInfo().Images[0], mem)
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)
@@ -911,7 +916,7 @@ func readVarEntry(varEntry *dwarf.Entry, image *Image) (entry reader.Entry, name
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, varEntry *dwarf.Entry) (*Variable, error) {
+func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem proc.MemoryReadWriter, varEntry *dwarf.Entry) (*Variable, error) {
 	if varEntry == nil {
 		return nil, fmt.Errorf("invalid entry")
 	}
@@ -927,9 +932,9 @@ func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegister
 
 	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs)
 	if pieces != nil {
-		addr = fakeAddress
-		var cmem *compositeMemory
-		cmem, err = newCompositeMemory(mem, regs, pieces)
+		addr = proc.FakeAddress
+		var cmem *proc.CompositeMemory
+		cmem, err = proc.NewCompositeMemory(mem, regs, pieces)
 		if cmem != nil {
 			mem = cmem
 		}
@@ -960,7 +965,7 @@ func (v *Variable) maybeDereference() *Variable {
 			return &v.Children[0]
 		}
 		ptrval, err := readUintRaw(v.mem, uintptr(v.Addr), t.ByteSize)
-		r := v.newVariable("", uintptr(ptrval), t.Type, DereferenceMemory(v.mem))
+		r := v.newVariable("", uintptr(ptrval), t.Type, proc.DereferenceMemory(v.mem))
 		if err != nil {
 			r.Unreadable = err
 		}
@@ -1023,14 +1028,14 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 	case reflect.String:
 		var val string
-		val, v.Unreadable = readStringValue(DereferenceMemory(v.mem), v.Base, v.Len, cfg)
+		val, v.Unreadable = readStringValue(proc.DereferenceMemory(v.mem), v.Base, v.Len, cfg)
 		v.Value = constant.MakeString(val)
 
 	case reflect.Slice, reflect.Array:
 		v.loadArrayValues(recurseLevel, cfg)
 
 	case reflect.Struct:
-		v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
+		v.mem = proc.CacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 		t := v.RealType.(*godwarf.StructType)
 		v.Len = int64(len(t.Field))
 		// Recursively call extractValue to grab
@@ -1117,11 +1122,11 @@ func convertToEface(srcv, dstv *Variable) error {
 	return dstv.writeEmptyInterface(typeAddr, srcv)
 }
 
-func readStringInfo(mem MemoryReadWriter, arch Arch, addr uintptr) (uintptr, int64, error) {
+func readStringInfo(mem proc.MemoryReadWriter, arch Arch, addr uintptr) (uintptr, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
 
-	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
+	mem = proc.CacheMemory(mem, addr, arch.PtrSize()*2)
 
 	// read len
 	val := make([]byte, arch.PtrSize())
@@ -1147,7 +1152,7 @@ func readStringInfo(mem MemoryReadWriter, arch Arch, addr uintptr) (uintptr, int
 	return addr, strlen, nil
 }
 
-func readStringValue(mem MemoryReadWriter, addr uintptr, strlen int64, cfg LoadConfig) (string, error) {
+func readStringValue(mem proc.MemoryReadWriter, addr uintptr, strlen int64, cfg LoadConfig) (string, error) {
 	if strlen == 0 {
 		return "", nil
 	}
@@ -1175,7 +1180,7 @@ const (
 )
 
 func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
-	v.mem = cacheMemory(v.mem, v.Addr, int(t.Size()))
+	v.mem = proc.CacheMemory(v.mem, v.Addr, int(t.Size()))
 
 	var err error
 	for _, f := range t.Field {
@@ -1287,14 +1292,14 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 	}
 
 	if v.stride < maxArrayStridePrefetch {
-		v.mem = cacheMemory(v.mem, v.Base, int(v.stride*count))
+		v.mem = proc.CacheMemory(v.mem, v.Base, int(v.stride*count))
 	}
 
 	errcount := 0
 
 	mem := v.mem
 	if v.Kind != reflect.Array {
-		mem = DereferenceMemory(mem)
+		mem = proc.DereferenceMemory(mem)
 	}
 
 	for i := int64(0); i < count; i++ {
@@ -1343,7 +1348,7 @@ func (v *Variable) writeComplex(real, imag float64, size int64) error {
 	return imagaddr.writeFloatRaw(imag, int64(size/2))
 }
 
-func readIntRaw(mem MemoryReadWriter, addr uintptr, size int64) (int64, error) {
+func readIntRaw(mem proc.MemoryReadWriter, addr uintptr, size int64) (int64, error) {
 	var n int64
 
 	val := make([]byte, int(size))
@@ -1384,7 +1389,7 @@ func (v *Variable) writeUint(value uint64, size int64) error {
 	return err
 }
 
-func readUintRaw(mem MemoryReadWriter, addr uintptr, size int64) (uint64, error) {
+func readUintRaw(mem proc.MemoryReadWriter, addr uintptr, size int64) (uint64, error) {
 	var n uint64
 
 	val := make([]byte, int(size))
@@ -1574,7 +1579,7 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 		if it.values.fieldType.Size() > 0 {
 			val = it.value()
 		} else {
-			val = v.newVariable("", it.values.Addr, it.values.fieldType, DereferenceMemory(v.mem))
+			val = v.newVariable("", it.values.Addr, it.values.fieldType, proc.DereferenceMemory(v.mem))
 		}
 		key.loadValueInternal(recurseLevel+1, cfg)
 		val.loadValueInternal(recurseLevel+1, cfg)
@@ -1635,7 +1640,7 @@ func (v *Variable) mapIterator() *mapIterator {
 		return it
 	}
 
-	v.mem = cacheMemory(v.mem, v.Base, int(v.RealType.Size()))
+	v.mem = proc.CacheMemory(v.mem, v.Base, int(v.RealType.Size()))
 
 	for _, f := range maptype.Field {
 		var err error
@@ -1733,7 +1738,7 @@ func (it *mapIterator) nextBucket() bool {
 		return false
 	}
 
-	it.b.mem = cacheMemory(it.b.mem, it.b.Addr, int(it.b.RealType.Size()))
+	it.b.mem = proc.CacheMemory(it.b.mem, it.b.Addr, int(it.b.RealType.Size()))
 
 	it.tophashes = nil
 	it.keys = nil
@@ -1864,7 +1869,7 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 	//
 	// The following code works for both runtime.iface and runtime.eface.
 
-	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
+	v.mem = proc.CacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
 	ityp := resolveTypedef(&v.RealType.(*godwarf.InterfaceType).TypedefType).(*godwarf.StructType)
 

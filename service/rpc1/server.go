@@ -4,13 +4,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
 )
 
-var defaultLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
+var defaultLoadConfig = debug.LoadConfig{true, 1, 64, 64, -1, 0}
 
 type RPCServer struct {
 	// config is all the information necessary to start the debugger and server.
@@ -83,7 +83,7 @@ type StacktraceGoroutineArgs struct {
 }
 
 func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations *[]api.Stackframe) error {
-	var loadcfg *proc.LoadConfig = nil
+	var loadcfg *debug.LoadConfig = nil
 	if args.Full {
 		loadcfg = &defaultLoadConfig
 	}

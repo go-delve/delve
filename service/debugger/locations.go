@@ -10,14 +10,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/service/api"
 )
 
 const maxFindLocationCandidates = 5
 
 type LocationSpec interface {
-	Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error)
+	Find(d *Debugger, scope *debug.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error)
 }
 
 type NormalLocationSpec struct {
@@ -216,7 +216,7 @@ func stripReceiverDecoration(in string) string {
 	return in[2 : len(in)-1]
 }
 
-func (spec *FuncLocationSpec) Match(sym proc.Function, packageMap map[string][]string) bool {
+func (spec *FuncLocationSpec) Match(sym debug.Function, packageMap map[string][]string) bool {
 	if spec.BaseName != sym.BaseName() {
 		return false
 	}
@@ -251,7 +251,7 @@ func packageMatch(specPkg, symPkg string, packageMap map[string][]string) bool {
 	return partialPackageMatch(specPkg, symPkg)
 }
 
-func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (loc *RegexLocationSpec) Find(d *Debugger, scope *debug.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	funcs := d.target.BinInfo().Functions
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
 	if err != nil {
@@ -267,7 +267,7 @@ func (loc *RegexLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr st
 	return r, nil
 }
 
-func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (loc *AddrLocationSpec) Find(d *Debugger, scope *debug.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		addr, err := strconv.ParseInt(loc.AddrExpr, 0, 64)
 		if err != nil {
@@ -275,7 +275,7 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 		}
 		return []api.Location{{PC: uint64(addr)}}, nil
 	} else {
-		v, err := scope.EvalExpression(loc.AddrExpr, proc.LoadConfig{true, 0, 0, 0, 0, 0})
+		v, err := scope.EvalExpression(loc.AddrExpr, debug.LoadConfig{true, 0, 0, 0, 0, 0})
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +288,7 @@ func (loc *AddrLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 			return []api.Location{{PC: addr}}, nil
 		case reflect.Func:
 			_, _, fn := d.target.BinInfo().PCToLine(uint64(v.Base))
-			pc, err := proc.FirstPCAfterPrologue(d.target.BinInfo(), d.target.CurrentThread(), d.target.Breakpoints(), fn, false)
+			pc, err := debug.FirstPCAfterPrologue(d.target.BinInfo(), d.target.CurrentThread(), d.target.Breakpoints(), fn, false)
 			if err != nil {
 				return nil, err
 			}
@@ -343,7 +343,7 @@ func (ale AmbiguousLocationError) Error() string {
 	return fmt.Sprintf("Location \"%s\" ambiguous: %s…", ale.Location, strings.Join(candidates, ", "))
 }
 
-func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (loc *NormalLocationSpec) Find(d *Debugger, scope *debug.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	limit := maxFindLocationCandidates
 	var candidateFiles []string
 	for _, file := range d.target.BinInfo().Sources {
@@ -398,7 +398,7 @@ func (loc *NormalLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 		}
 		addrs, err = d.target.BinInfo().FindFileLocation(d.target.CurrentThread(), d.target.Breakpoints(), candidateFiles[0], loc.LineOffset)
 		if includeNonExecutableLines {
-			if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
+			if _, isCouldNotFindLine := err.(*debug.ErrCouldNotFindLine); isCouldNotFindLine {
 				return []api.Location{{File: candidateFiles[0], Line: loc.LineOffset}}, nil
 			}
 		}
@@ -419,7 +419,7 @@ func addressesToLocation(addrs []uint64) api.Location {
 	return api.Location{PC: addrs[0], PCs: addrs}
 }
 
-func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (loc *OffsetLocationSpec) Find(d *Debugger, scope *debug.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
@@ -432,14 +432,14 @@ func (loc *OffsetLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr s
 	}
 	addrs, err := d.target.BinInfo().FindFileLocation(d.target.CurrentThread(), d.target.Breakpoints(), file, line+loc.Offset)
 	if includeNonExecutableLines {
-		if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
+		if _, isCouldNotFindLine := err.(*debug.ErrCouldNotFindLine); isCouldNotFindLine {
 			return []api.Location{{File: file, Line: line + loc.Offset}}, nil
 		}
 	}
 	return []api.Location{addressesToLocation(addrs)}, err
 }
 
-func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (loc *LineLocationSpec) Find(d *Debugger, scope *debug.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
 	}
@@ -449,7 +449,7 @@ func (loc *LineLocationSpec) Find(d *Debugger, scope *proc.EvalScope, locStr str
 	}
 	addrs, err := d.target.BinInfo().FindFileLocation(d.target.CurrentThread(), d.target.Breakpoints(), file, loc.Line)
 	if includeNonExecutableLines {
-		if _, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine {
+		if _, isCouldNotFindLine := err.(*debug.ErrCouldNotFindLine); isCouldNotFindLine {
 			return []api.Location{{File: file, Line: loc.Line}}, nil
 		}
 	}

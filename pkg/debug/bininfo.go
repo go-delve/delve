@@ -1,4 +1,4 @@
-package proc
+package debug
 
 import (
 	"bytes"
@@ -29,6 +29,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/sirupsen/logrus"
 )
 
@@ -38,8 +39,8 @@ type BinaryInfo struct {
 	// Architecture of this binary.
 	Arch Arch
 
-	// GOOS operating system this binary is executing on.
-	GOOS string
+	// OS operating system this binary is executing on.
+	OS string
 
 	debugInfoDirectories []string
 
@@ -95,6 +96,16 @@ type BinaryInfo struct {
 	inlinedCallLines map[fileLine][]uint64
 
 	logger *logrus.Entry
+}
+
+// Location represents the location of a thread.
+// Holds information on the current instruction
+// address, the source file:line, and the function.
+type Location struct {
+	PC   uint64
+	File string
+	Line int
+	Fn   *Function
 }
 
 // ErrUnsupportedLinuxArch is returned when attempting to debug a binary compiled for an unsupported architecture.
@@ -258,7 +269,7 @@ type ElfDynamicSection struct {
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
 func NewBinaryInfo(goos, goarch string, debugInfoDirs []string) *BinaryInfo {
 	bi := &BinaryInfo{
-		GOOS:                 goos,
+		OS:                   goos,
 		nameOfRuntimeType:    make(map[uintptr]nameOfRuntimeTypeEntry),
 		logger:               logflags.DebuggerLogger(),
 		debugInfoDirectories: debugInfoDirs,
@@ -278,7 +289,7 @@ func parseBinarySections(bi *BinaryInfo, image *Image, path string, entryPoint u
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	switch bi.GOOS {
+	switch bi.OS {
 	case "linux", "freebsd":
 		return loadBinaryInfoElf(bi, image, path, entryPoint, &wg)
 	case "windows":
@@ -306,9 +317,25 @@ func (bi *BinaryInfo) LastModified() time.Time {
 	return bi.lastModified
 }
 
+func (bi *BinaryInfo) PtrSize() int {
+	return bi.Arch.PtrSize()
+}
+
+func (bi *BinaryInfo) GOOS() string {
+	return bi.OS
+}
+
 // DwarfReader returns a reader for the dwarf data
 func (so *Image) DwarfReader() *reader.Reader {
 	return reader.New(so.Dwarf)
+}
+
+func (bi *BinaryInfo) ElfDynamicSectionAddr() uint64 {
+	return bi.ElfDynamicSection.Addr
+}
+
+func (bi *BinaryInfo) ElfDynamicSectionSize() uint64 {
+	return bi.ElfDynamicSection.Size
 }
 
 // Types returns list of types present in the debugged program.
@@ -318,6 +345,11 @@ func (bi *BinaryInfo) Types() ([]string, error) {
 		types = append(types, k)
 	}
 	return types, nil
+}
+
+func (bi *BinaryInfo) PCToLocation(pc uint64) *Location {
+	f, l, fn := bi.PCToLine(pc)
+	return &Location{PC: pc, File: f, Line: l, Fn: fn}
 }
 
 // PCToLine converts an instruction address to a file/line/function.
@@ -332,7 +364,7 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 
 // FindFunctionLocation finds address of a function's line
 // If lineOffset is passed FindFunctionLocation will return the address of that line
-func (bi *BinaryInfo) FindFunctionLocation(mem MemoryReadWriter, breakpoints *BreakpointMap, funcName string, lineOffset int) ([]uint64, error) {
+func (bi *BinaryInfo) FindFunctionLocation(mem proc.MemoryReadWriter, breakpoints *BreakpointMap, funcName string, lineOffset int) ([]uint64, error) {
 	origfn := bi.LookupFunc[funcName]
 	if origfn == nil {
 		return nil, &ErrFunctionNotFound{funcName}
@@ -363,7 +395,7 @@ func (bi *BinaryInfo) FindFunctionLocation(mem MemoryReadWriter, breakpoints *Br
 
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normalized to lower case and '/' on Windows.
-func (bi *BinaryInfo) FindFileLocation(mem MemoryReadWriter, breakpoints *BreakpointMap, fileName string, lineno int) ([]uint64, error) {
+func (bi *BinaryInfo) FindFileLocation(mem proc.MemoryReadWriter, breakpoints *BreakpointMap, fileName string, lineno int) ([]uint64, error) {
 	pcs, err := bi.LineToPC(fileName, lineno)
 	if err != nil {
 		return nil, err
@@ -491,6 +523,14 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 		}
 	}
 	return nil
+}
+
+func (bi *BinaryInfo) PCToFuncName(pc uint64) string {
+	fn := bi.PCToFunc(pc)
+	if fn == nil {
+		return ""
+	}
+	return fn.Name
 }
 
 // PCToInlineFunc returns the function containing the given PC address.
@@ -1869,4 +1909,37 @@ func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildIn
 
 	sort.Slice(r, func(i, j int) bool { return r[i].ImportPath < r[j].ImportPath })
 	return r
+}
+
+// FirstPCAfterPrologue returns the address of the first
+// instruction after the prologue for function fn.
+// If sameline is set FirstPCAfterPrologue will always return an
+// address associated with the same line as fn.Entry.
+func FirstPCAfterPrologue(bi *BinaryInfo, mem proc.MemoryReadWriter, breakpoints *BreakpointMap, fn *Function, sameline bool) (uint64, error) {
+	pc, _, line, ok := fn.CompileUnit.LineInfo.PrologueEndPC(fn.Entry, fn.End)
+	if ok {
+		if !sameline {
+			return pc, nil
+		}
+		_, entryLine := fn.CompileUnit.LineInfo.PCToLine(fn.Entry, fn.Entry)
+		if entryLine == line {
+			return pc, nil
+		}
+	}
+
+	pc, err := firstPCAfterPrologueDisassembly(mem, bi, breakpoints, fn, sameline)
+	if err != nil {
+		return fn.Entry, err
+	}
+
+	if pc == fn.Entry {
+		// Look for the first instruction with the stmt flag set, so that setting a
+		// breakpoint with file:line and with the function name always result on
+		// the same instruction being selected.
+		if pc2, _, _, ok := fn.CompileUnit.LineInfo.FirstStmtForLine(fn.Entry, fn.End); ok {
+			return pc2, nil
+		}
+	}
+
+	return pc, nil
 }

@@ -1,8 +1,9 @@
-package proc
+package debug
 
 import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // Arch defines an interface for representing a
@@ -10,7 +11,7 @@ import (
 type Arch interface {
 	PtrSize() int
 	MaxInstructionLength() int
-	AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error
+	AsmDecode(asmInst *AsmInstruction, mem []byte, regs proc.Registers, memrw proc.MemoryReadWriter, bi *BinaryInfo) error
 	Prologues() []opcodeSeq
 	BreakpointInstruction() []byte
 	BreakInstrMovesPC() bool
@@ -18,7 +19,7 @@ type Arch interface {
 	DerefTLS() bool
 	FixFrameUnwindContext(*frame.FrameContext, uint64, *BinaryInfo) *frame.FrameContext
 	RegSize(uint64) int
-	RegistersToDwarfRegisters(uint64, Registers) op.DwarfRegisters
+	RegistersToDwarfRegisters(uint64, proc.Registers) op.DwarfRegisters
 	AddrAndStackRegsToDwarfRegisters(uint64, uint64, uint64, uint64) op.DwarfRegisters
 }
 

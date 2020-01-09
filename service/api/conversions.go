@@ -9,13 +9,14 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/go-delve/delve/pkg/debug"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
-// ConvertBreakpoint converts from a proc.Breakpoint to
+// ConvertBreakpoint converts from a debug.Breakpoint to
 // an api.Breakpoint.
-func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
+func ConvertBreakpoint(bp *debug.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
 		Name:          bp.Name,
 		ID:            bp.LogicalID,
@@ -49,7 +50,7 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 // ConvertBreakpoints converts a slice of physical breakpoints into a slice
 // of logical breakpoints.
 // The input must be sorted by increasing LogicalID
-func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
+func ConvertBreakpoints(bps []*debug.Breakpoint) []*Breakpoint {
 	if len(bps) <= 0 {
 		return nil
 	}
@@ -70,7 +71,7 @@ func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
 
 // ConvertThread converts a proc.Thread into an
 // api thread.
-func ConvertThread(th proc.Thread, bi *proc.BinaryInfo, b proc.BreakpointState) *Thread {
+func ConvertThread(th proc.Thread, bi *debug.BinaryInfo, b debug.BreakpointState) *Thread {
 	var (
 		function *Function
 		file     string
@@ -79,7 +80,8 @@ func ConvertThread(th proc.Thread, bi *proc.BinaryInfo, b proc.BreakpointState) 
 		gid      int
 	)
 
-	loc, err := th.Location()
+	pc, err := th.PC()
+	loc := bi.PCToLocation(pc)
 	if err == nil {
 		pc = loc.PC
 		file = loc.File
@@ -93,7 +95,7 @@ func ConvertThread(th proc.Thread, bi *proc.BinaryInfo, b proc.BreakpointState) 
 		bp = ConvertBreakpoint(b.Breakpoint)
 	}
 
-	if g, _ := proc.GetG(th, bi); g != nil {
+	if g, _ := debug.GetG(th, bi); g != nil {
 		gid = g.ID
 	}
 
@@ -122,13 +124,13 @@ func prettyTypeName(typ godwarf.Type) string {
 	return r
 }
 
-func convertFloatValue(v *proc.Variable, sz int) string {
+func convertFloatValue(v *debug.Variable, sz int) string {
 	switch v.FloatSpecial {
-	case proc.FloatIsPosInf:
+	case debug.FloatIsPosInf:
 		return "+Inf"
-	case proc.FloatIsNegInf:
+	case debug.FloatIsNegInf:
 		return "-Inf"
-	case proc.FloatIsNaN:
+	case debug.FloatIsNaN:
 		return "NaN"
 	}
 	f, _ := constant.Float64Val(v.Value)
@@ -136,7 +138,7 @@ func convertFloatValue(v *proc.Variable, sz int) string {
 }
 
 // ConvertVar converts from proc.Variable to api.Variable.
-func ConvertVar(v *proc.Variable) *Variable {
+func ConvertVar(v *debug.Variable) *Variable {
 	r := Variable{
 		Addr:     v.Addr,
 		OnlyAddr: v.OnlyAddr,
@@ -231,7 +233,7 @@ func ConvertVar(v *proc.Variable) *Variable {
 
 // ConvertFunction converts from gosym.Func to
 // api.Function.
-func ConvertFunction(fn *proc.Function) *Function {
+func ConvertFunction(fn *debug.Function) *Function {
 	if fn == nil {
 		return nil
 	}
@@ -250,7 +252,7 @@ func ConvertFunction(fn *proc.Function) *Function {
 }
 
 // ConvertGoroutine converts from proc.G to api.Goroutine.
-func ConvertGoroutine(g *proc.G) *Goroutine {
+func ConvertGoroutine(g *debug.G) *Goroutine {
 	th := g.Thread
 	tid := 0
 	if th != nil {
@@ -271,7 +273,7 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 }
 
 // ConvertLocation converts from proc.Location to api.Location.
-func ConvertLocation(loc proc.Location) Location {
+func ConvertLocation(loc debug.Location) Location {
 	return Location{
 		PC:       loc.PC,
 		File:     loc.File,
@@ -281,7 +283,7 @@ func ConvertLocation(loc proc.Location) Location {
 }
 
 // ConvertAsmInstruction converts from proc.AsmInstruction to api.AsmInstruction.
-func ConvertAsmInstruction(inst proc.AsmInstruction, text string) AsmInstruction {
+func ConvertAsmInstruction(inst debug.AsmInstruction, text string) AsmInstruction {
 	var destloc *Location
 	if inst.DestLoc != nil {
 		r := ConvertLocation(*inst.DestLoc)
@@ -298,11 +300,11 @@ func ConvertAsmInstruction(inst proc.AsmInstruction, text string) AsmInstruction
 }
 
 // LoadConfigToProc converts an api.LoadConfig to proc.LoadConfig.
-func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
+func LoadConfigToProc(cfg *LoadConfig) *debug.LoadConfig {
 	if cfg == nil {
 		return nil
 	}
-	return &proc.LoadConfig{
+	return &debug.LoadConfig{
 		cfg.FollowPointers,
 		cfg.MaxVariableRecurse,
 		cfg.MaxStringLen,
@@ -313,7 +315,7 @@ func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
 }
 
 // LoadConfigFromProc converts a proc.LoadConfig to api.LoadConfig.
-func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
+func LoadConfigFromProc(cfg *debug.LoadConfig) *LoadConfig {
 	if cfg == nil {
 		return nil
 	}
@@ -340,6 +342,6 @@ func ConvertCheckpoint(in proc.Checkpoint) (out Checkpoint) {
 	return Checkpoint(in)
 }
 
-func ConvertImage(image *proc.Image) Image {
+func ConvertImage(image *debug.Image) Image {
 	return Image{Path: image.Path, Address: image.StaticBase}
 }

@@ -1,4 +1,4 @@
-package proc
+package debug
 
 import (
 	"debug/dwarf"
@@ -10,6 +10,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // This code is partly adapted from runtime.gentraceback in
@@ -92,13 +93,13 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 }
 
 // Topframe returns the two topmost frames of g, or thread if g is nil.
-func Topframe(g *G, thread Thread, bi *BinaryInfo) (Stackframe, Stackframe, error) {
+func Topframe(g *G, thread proc.Thread, bi *BinaryInfo) (Stackframe, Stackframe, error) {
 	var frames []Stackframe
 	var err error
 
 	if g == nil {
 		if thread.Blocked() {
-			return Stackframe{}, Stackframe{}, ErrThreadBlocked{}
+			return Stackframe{}, Stackframe{}, proc.ErrThreadBlocked{}
 		}
 		frames, err = ThreadStacktrace(thread, bi, 1)
 	} else {
@@ -119,7 +120,7 @@ func Topframe(g *G, thread Thread, bi *BinaryInfo) (Stackframe, Stackframe, erro
 
 // ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func ThreadStacktrace(thread Thread, bi *BinaryInfo, depth int) ([]Stackframe, error) {
+func ThreadStacktrace(thread proc.Thread, bi *BinaryInfo, depth int) ([]Stackframe, error) {
 	g, _ := GetG(thread, bi)
 	if g == nil {
 		regs, err := thread.Registers(true)
@@ -206,7 +207,7 @@ type stackIterator struct {
 	atend bool
 	frame Stackframe
 	bi    *BinaryInfo
-	mem   MemoryReadWriter
+	mem   proc.MemoryReadWriter
 	err   error
 
 	stackhi        uint64
@@ -228,7 +229,7 @@ type savedLR struct {
 	val uint64
 }
 
-func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, stkbar []savedLR, stkbarPos int, g *G, opts StacktraceOptions) *stackIterator {
+func newStackIterator(bi *BinaryInfo, mem proc.MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, stkbar []savedLR, stkbarPos int, g *G, opts StacktraceOptions) *stackIterator {
 	stackBarrierFunc := bi.LookupFunc["runtime.stackBarrier"] // stack barriers were removed in Go 1.9
 	var stackBarrierPC uint64
 	if stackBarrierFunc != nil && stkbar != nil {
@@ -767,7 +768,7 @@ func (d *Defer) Next() *Defer {
 // EvalScope returns an EvalScope relative to the argument frame of this deferred call.
 // The argument frame of a deferred call is stored in memory immediately
 // after the deferred header.
-func (d *Defer) EvalScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
+func (d *Defer) EvalScope(thread proc.Thread, bi *BinaryInfo) (*EvalScope, error) {
 	scope, err := GoroutineScope(thread, bi)
 	if err != nil {
 		return nil, fmt.Errorf("could not get scope: %v", err)
@@ -796,7 +797,7 @@ func (d *Defer) EvalScope(thread Thread, bi *BinaryInfo) (*EvalScope, error) {
 		return nil, fmt.Errorf("could not read DWARF function entry: %v", err)
 	}
 	scope.Regs.FrameBase, _, _, _ = bi.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
-	scope.Mem = cacheMemory(scope.Mem, uintptr(scope.Regs.CFA), int(d.argSz))
+	scope.Mem = proc.CacheMemory(scope.Mem, uintptr(scope.Regs.CFA), int(d.argSz))
 
 	return scope, nil
 }

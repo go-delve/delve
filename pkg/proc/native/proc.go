@@ -51,11 +51,6 @@ func (dbp *Process) SetTarget(p proc.Process) {
 	dbp.t = p
 }
 
-// BinInfo will return the binary info struct associated with this process.
-func (dbp *Process) BinInfo() *proc.BinaryInfo {
-	return dbp.t.BinInfo()
-}
-
 // Recorded always returns false for the native proc backend.
 func (dbp *Process) Recorded() (bool, string) { return false, "" }
 
@@ -94,7 +89,6 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		if err != nil {
 			return err
 		}
-		dbp.BinInfo().Close()
 		return nil
 	}
 	dbp.execPtraceFunc(func() {
@@ -173,25 +167,28 @@ func (dbp *Process) CheckAndClearManualStopRequest() bool {
 	return msr
 }
 
-func (dbp *Process) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
-	f, l, fn := dbp.BinInfo().PCToLine(uint64(addr))
-
-	originalData := make([]byte, dbp.BinInfo().Arch.BreakpointSize())
+func (dbp *Process) WriteBreakpoint(addr uint64, instr []byte) ([]byte, error) {
+	originalData := make([]byte, len(instr))
 	th := dbp.ThreadList()[0]
 	_, err := th.ReadMemory(originalData, uintptr(addr))
 	if err != nil {
-		return "", 0, nil, nil, err
+		return nil, err
 	}
-	if err := dbp.writeSoftwareBreakpoint(th.(*Thread), addr); err != nil {
-		return "", 0, nil, nil, err
+	if err := dbp.writeSoftwareBreakpoint(th.(*Thread), addr, instr); err != nil {
+		return nil, err
 	}
 
-	return f, l, fn, originalData, nil
+	return originalData, nil
 }
 
-func (dbp *Process) ClearBreakpointFn(bp *proc.Breakpoint) error {
+func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64, instr []byte) error {
+	_, err := thread.WriteMemory(uintptr(addr), instr)
+	return err
+}
+
+func (dbp *Process) ClearBreakpointFn(addr uint64, originalData []byte) error {
 	th := dbp.ThreadList()[0]
-	return th.(*Thread).ClearBreakpoint(bp)
+	return th.(*Thread).ClearBreakpoint(addr, originalData)
 }
 
 // Resume will continue the target until it stops.
@@ -266,12 +263,6 @@ func (dbp *Process) postExit() {
 	dbp.exited = true
 	close(dbp.ptraceChan)
 	close(dbp.ptraceDoneChan)
-	dbp.BinInfo().Close()
-}
-
-func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
-	_, err := thread.WriteMemory(uintptr(addr), dbp.BinInfo().Arch.BreakpointInstruction())
-	return err
 }
 
 // Common returns common information across Process

@@ -1,15 +1,16 @@
-package proc
+package debug
 
 import (
 	"encoding/binary"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"golang.org/x/arch/arm64/arm64asm"
+	"github.com/go-delve/delve/pkg/proc"
+	"golang.org/x/arch/x86/x86asm"
 )
 
-// ARM64 represents the ARM64 CPU architecture.
-type ARM64 struct {
+// AMD64 represents the AMD64 CPU architecture.
+type AMD64 struct {
 	gStructOffset uint64
 	goos          string
 
@@ -26,59 +27,60 @@ type ARM64 struct {
 }
 
 const (
-	arm64DwarfIPRegNum uint64 = 32
-	arm64DwarfSPRegNum uint64 = 31
-	arm64DwarfBPRegNum uint64 = 29
+	amd64DwarfIPRegNum uint64 = 16
+	amd64DwarfSPRegNum uint64 = 7
+	amd64DwarfBPRegNum uint64 = 6
 )
 
-var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
+var amd64BreakInstruction = []byte{0xCC}
 
-// ARM64Arch returns an initialized ARM64
+// AMD64Arch returns an initialized AMD64
 // struct.
-func ARM64Arch(goos string) *ARM64 {
-	return &ARM64{
+func AMD64Arch(goos string) *AMD64 {
+	return &AMD64{
 		goos: goos,
 	}
 }
 
 // PtrSize returns the size of a pointer
 // on this architecture.
-func (a *ARM64) PtrSize() int {
+func (a *AMD64) PtrSize() int {
 	return 8
 }
 
 // MaxInstructionLength returns the maximum lenght of an instruction.
-func (a *ARM64) MaxInstructionLength() int {
-	return 4
+func (a *AMD64) MaxInstructionLength() int {
+	return 15
 }
 
 // BreakpointInstruction returns the Breakpoint
 // instruction for this architecture.
-func (a *ARM64) BreakpointInstruction() []byte {
-	return arm64BreakInstruction
+func (a *AMD64) BreakpointInstruction() []byte {
+	return amd64BreakInstruction
 }
 
 // BreakInstrMovesPC returns whether the
 // breakpoint instruction will change the value
 // of PC after being executed
-func (a *ARM64) BreakInstrMovesPC() bool {
-	return false
+func (a *AMD64) BreakInstrMovesPC() bool {
+	return true
 }
 
 // BreakpointSize returns the size of the
 // breakpoint instruction on this architecture.
-func (a *ARM64) BreakpointSize() int {
-	return len(arm64BreakInstruction)
+func (a *AMD64) BreakpointSize() int {
+	return len(amd64BreakInstruction)
 }
 
-// Always return false for now.
-func (a *ARM64) DerefTLS() bool {
-	return false
+// DerefTLS returns true if the value of regs.TLS()+GStructOffset() is a
+// pointer to the G struct
+func (a *AMD64) DerefTLS() bool {
+	return a.goos == "windows"
 }
 
 // FixFrameUnwindContext adds default architecture rules to fctxt or returns
 // the default frame unwind context if fctxt is nil.
-func (a *ARM64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
+func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
 	if a.sigreturnfn == nil {
 		a.sigreturnfn = bi.LookupFunc["runtime.sigreturn"]
 	}
@@ -103,24 +105,24 @@ func (a *ARM64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 		// here).
 
 		return &frame.FrameContext{
-			RetAddrReg: arm64DwarfIPRegNum,
+			RetAddrReg: amd64DwarfIPRegNum,
 			Regs: map[uint64]frame.DWRule{
-				arm64DwarfIPRegNum: frame.DWRule{
+				amd64DwarfIPRegNum: frame.DWRule{
 					Rule:   frame.RuleOffset,
 					Offset: int64(-a.PtrSize()),
 				},
-				arm64DwarfBPRegNum: frame.DWRule{
+				amd64DwarfBPRegNum: frame.DWRule{
 					Rule:   frame.RuleOffset,
 					Offset: int64(-2 * a.PtrSize()),
 				},
-				arm64DwarfSPRegNum: frame.DWRule{
+				amd64DwarfSPRegNum: frame.DWRule{
 					Rule:   frame.RuleValOffset,
 					Offset: 0,
 				},
 			},
 			CFA: frame.DWRule{
 				Rule:   frame.RuleCFA,
-				Reg:    arm64DwarfBPRegNum,
+				Reg:    amd64DwarfBPRegNum,
 				Offset: int64(2 * a.PtrSize()),
 			},
 		}
@@ -147,10 +149,10 @@ func (a *ARM64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 	// so that we can use it to unwind the stack even when we encounter frames
 	// without descriptor entries.
 	// If there isn't a rule already we emit one.
-	if fctxt.Regs[arm64DwarfBPRegNum].Rule == frame.RuleUndefined {
-		fctxt.Regs[arm64DwarfBPRegNum] = frame.DWRule{
+	if fctxt.Regs[amd64DwarfBPRegNum].Rule == frame.RuleUndefined {
+		fctxt.Regs[amd64DwarfBPRegNum] = frame.DWRule{
 			Rule:   frame.RuleFramePointer,
-			Reg:    arm64DwarfBPRegNum,
+			Reg:    amd64DwarfBPRegNum,
 			Offset: 0,
 		}
 	}
@@ -158,90 +160,92 @@ func (a *ARM64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 	return fctxt
 }
 
-func (a *ARM64) RegSize(regnum uint64) int {
-	// fp registers
-	if regnum >= 64 && regnum <= 95 {
+// RegSize returns the size (in bytes) of register regnum.
+// The mapping between hardware registers and DWARF registers is specified
+// in the System V ABI AMD64 Architecture Processor Supplement page 57,
+// figure 3.36
+// https://www.uclibc.org/docs/psABI-x86_64.pdf
+func (a *AMD64) RegSize(regnum uint64) int {
+	// XMM registers
+	if regnum > amd64DwarfIPRegNum && regnum <= 32 {
 		return 16
 	}
-
-	return 8 // general registers
+	// x87 registers
+	if regnum >= 33 && regnum <= 40 {
+		return 10
+	}
+	return 8
 }
 
 // The mapping between hardware registers and DWARF registers is specified
-// in the DWARF for the ARM® Architecture page 7,
-// Table 1
-// http://infocenter.arm.com/help/topic/com.arm.doc.ihi0040b/IHI0040B_aadwarf.pdf
-var arm64DwarfToHardware = map[int]arm64asm.Reg{
-	0:  arm64asm.X0,
-	1:  arm64asm.X1,
-	2:  arm64asm.X2,
-	3:  arm64asm.X3,
-	4:  arm64asm.X4,
-	5:  arm64asm.X5,
-	6:  arm64asm.X6,
-	7:  arm64asm.X7,
-	8:  arm64asm.X8,
-	9:  arm64asm.X9,
-	10: arm64asm.X10,
-	11: arm64asm.X11,
-	12: arm64asm.X12,
-	13: arm64asm.X13,
-	14: arm64asm.X14,
-	15: arm64asm.X15,
-	16: arm64asm.X16,
-	17: arm64asm.X17,
-	18: arm64asm.X18,
-	19: arm64asm.X19,
-	20: arm64asm.X20,
-	21: arm64asm.X21,
-	22: arm64asm.X22,
-	23: arm64asm.X23,
-	24: arm64asm.X24,
-	25: arm64asm.X25,
-	26: arm64asm.X26,
-	27: arm64asm.X27,
-	28: arm64asm.X28,
-	29: arm64asm.X29,
-	30: arm64asm.X30,
-	31: arm64asm.SP,
+// in the System V ABI AMD64 Architecture Processor Supplement page 57,
+// figure 3.36
+// https://www.uclibc.org/docs/psABI-x86_64.pdf
 
-	64: arm64asm.V0,
-	65: arm64asm.V1,
-	66: arm64asm.V2,
-	67: arm64asm.V3,
-	68: arm64asm.V4,
-	69: arm64asm.V5,
-	70: arm64asm.V6,
-	71: arm64asm.V7,
-	72: arm64asm.V8,
-	73: arm64asm.V9,
-	74: arm64asm.V10,
-	75: arm64asm.V11,
-	76: arm64asm.V12,
-	77: arm64asm.V13,
-	78: arm64asm.V14,
-	79: arm64asm.V15,
-	80: arm64asm.V16,
-	81: arm64asm.V17,
-	82: arm64asm.V18,
-	83: arm64asm.V19,
-	84: arm64asm.V20,
-	85: arm64asm.V21,
-	86: arm64asm.V22,
-	87: arm64asm.V23,
-	88: arm64asm.V24,
-	89: arm64asm.V25,
-	90: arm64asm.V26,
-	91: arm64asm.V27,
-	92: arm64asm.V28,
-	93: arm64asm.V29,
-	94: arm64asm.V30,
-	95: arm64asm.V31,
+var amd64DwarfToHardware = map[int]x86asm.Reg{
+	0:  x86asm.RAX,
+	1:  x86asm.RDX,
+	2:  x86asm.RCX,
+	3:  x86asm.RBX,
+	4:  x86asm.RSI,
+	5:  x86asm.RDI,
+	8:  x86asm.R8,
+	9:  x86asm.R9,
+	10: x86asm.R10,
+	11: x86asm.R11,
+	12: x86asm.R12,
+	13: x86asm.R13,
+	14: x86asm.R14,
+	15: x86asm.R15,
 }
 
-func maxArm64DwarfRegister() int {
-	max := int(arm64DwarfIPRegNum)
-	for i := range arm64DwarfToHardware {
+var amd64DwarfToName = map[int]string{
+	17: "XMM0",
+	18: "XMM1",
+	19: "XMM2",
+	20: "XMM3",
+	21: "XMM4",
+	22: "XMM5",
+	23: "XMM6",
+	24: "XMM7",
+	25: "XMM8",
+	26: "XMM9",
+	27: "XMM10",
+	28: "XMM11",
+	29: "XMM12",
+	30: "XMM13",
+	31: "XMM14",
+	32: "XMM15",
+	33: "ST(0)",
+	34: "ST(1)",
+	35: "ST(2)",
+	36: "ST(3)",
+	37: "ST(4)",
+	38: "ST(5)",
+	39: "ST(6)",
+	40: "ST(7)",
+	49: "Eflags",
+	50: "Es",
+	51: "Cs",
+	52: "Ss",
+	53: "Ds",
+	54: "Fs",
+	55: "Gs",
+	58: "Fs_base",
+	59: "Gs_base",
+	64: "MXCSR",
+	65: "CW",
+	66: "SW",
+}
+
+func maxAmd64DwarfRegister() int {
+	max := int(amd64DwarfIPRegNum)
+	for i := range amd64DwarfToHardware {
+		if i > max {
+			max = i
+		}
+	}
+	for i := range amd64DwarfToName {
 		if i > max {
 			max = i
 		}
@@ -251,17 +255,25 @@ func maxArm64DwarfRegister() int {
 
 // RegistersToDwarfRegisters converts hardware registers to the format used
 // by the DWARF expression interpreter.
-func (a *ARM64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, maxArm64DwarfRegister()+1)
+func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs proc.Registers) op.DwarfRegisters {
+	dregs := make([]*op.DwarfRegister, maxAmd64DwarfRegister()+1)
 
-	dregs[arm64DwarfIPRegNum] = op.DwarfRegisterFromUint64(regs.PC())
-	dregs[arm64DwarfSPRegNum] = op.DwarfRegisterFromUint64(regs.SP())
-	dregs[arm64DwarfBPRegNum] = op.DwarfRegisterFromUint64(regs.BP())
+	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(regs.PC())
+	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(regs.SP())
+	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(regs.BP())
 
-	for dwarfReg, asmReg := range arm64DwarfToHardware {
+	for dwarfReg, asmReg := range amd64DwarfToHardware {
 		v, err := regs.Get(int(asmReg))
 		if err == nil {
 			dregs[dwarfReg] = op.DwarfRegisterFromUint64(v)
+		}
+	}
+
+	for _, reg := range regs.Slice(true) {
+		for dwarfReg, regName := range amd64DwarfToName {
+			if regName == reg.Name {
+				dregs[dwarfReg] = op.DwarfRegisterFromBytes(reg.Bytes)
+			}
 		}
 	}
 
@@ -269,26 +281,26 @@ func (a *ARM64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 		StaticBase: staticBase,
 		Regs:       dregs,
 		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   arm64DwarfIPRegNum,
-		SPRegNum:   arm64DwarfSPRegNum,
-		BPRegNum:   arm64DwarfBPRegNum,
+		PCRegNum:   amd64DwarfIPRegNum,
+		SPRegNum:   amd64DwarfSPRegNum,
+		BPRegNum:   amd64DwarfBPRegNum,
 	}
 }
 
 // AddrAndStackRegsToDwarfRegisters returns DWARF registers from the passed in
 // PC, SP, and BP registers in the format used by the DWARF expression interpreter.
-func (a *ARM64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp uint64) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, arm64DwarfIPRegNum+1)
-	dregs[arm64DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
-	dregs[arm64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
-	dregs[arm64DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
+func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp uint64) op.DwarfRegisters {
+	dregs := make([]*op.DwarfRegister, amd64DwarfIPRegNum+1)
+	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
+	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
+	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
 
 	return op.DwarfRegisters{
 		StaticBase: staticBase,
 		Regs:       dregs,
 		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   arm64DwarfIPRegNum,
-		SPRegNum:   arm64DwarfSPRegNum,
-		BPRegNum:   arm64DwarfBPRegNum,
+		PCRegNum:   amd64DwarfIPRegNum,
+		SPRegNum:   amd64DwarfSPRegNum,
+		BPRegNum:   amd64DwarfBPRegNum,
 	}
 }
