@@ -16,7 +16,7 @@ type ARM64Registers struct {
 
 // ARM64PtraceRegs is the struct used by the linux kernel to return the
 // general purpose registers for ARM64 CPUs.
-//copy form sys/unix/ztypes_linux_arm64.go:735
+// copy from sys/unix/ztypes_linux_arm64.go:735
 type ARM64PtraceRegs struct {
 	Regs   [31]uint64
 	Sp     uint64
