@@ -442,7 +442,7 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pcs []uint64, err e
 	fileFound := false
 	var pc uint64
 	for _, cu := range bi.compileUnits {
-		if cu.lineInfo != nil && cu.lineInfo.Lookup[filename] == nil {
+		if cu.LineInfo != nil && cu.LineInfo.Lookup[filename] == nil {
 			continue
 		}
 		fileFound = true
@@ -502,8 +502,8 @@ func (bi *BinaryInfo) AllPCsForFileLines(filename string, linenos []int) map[int
 		r[line] = make([]uint64, 0, 1)
 	}
 	for _, cu := range bi.compileUnits {
-		if cu.lineInfo != nil && cu.lineInfo.Lookup[filename] != nil {
-			cu.lineInfo.AllPCsForFileLines(filename, r)
+		if cu.LineInfo != nil && cu.LineInfo.Lookup[filename] != nil {
+			cu.LineInfo.AllPCsForFileLines(filename, r)
 		}
 	}
 	return r
@@ -1874,14 +1874,14 @@ type PackageBuildInfo struct {
 func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildInfo {
 	m := make(map[string]*PackageBuildInfo)
 	for _, cu := range bi.compileUnits {
-		if cu.image != bi.Images[0] || !cu.isgo || cu.lineInfo == nil {
+		if cu.Image != bi.Images[0] || !cu.isgo || cu.LineInfo == nil {
 			//TODO(aarzilli): what's the correct thing to do for plugins?
 			continue
 		}
 
 		ip := strings.Replace(cu.name, "\\", "/", -1)
 		if _, ok := m[ip]; !ok {
-			path := cu.lineInfo.FirstFile()
+			path := cu.LineInfo.FirstFile()
 			if ext := filepath.Ext(path); ext != ".go" && ext != ".s" {
 				continue
 			}
@@ -1896,7 +1896,7 @@ func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildIn
 		if includeFiles {
 			pbi := m[ip]
 
-			for _, file := range cu.lineInfo.FileNames {
+			for _, file := range cu.LineInfo.FileNames {
 				pbi.Files[file.Path] = struct{}{}
 			}
 		}

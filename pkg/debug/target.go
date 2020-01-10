@@ -1005,12 +1005,14 @@ func (t *Target) StepOut() error {
 func (t *Target) Detach(kill bool) error {
 	defer t.BinInfo().Close()
 
-	// Clean up any breakpoints we've set.
-	for _, bp := range t.Breakpoints().M {
-		if bp != nil {
-			_, err := t.ClearBreakpoint(bp.Addr)
-			if err != nil {
-				return err
+	if !kill {
+		// Clean up any breakpoints we've set.
+		for _, bp := range t.Breakpoints().M {
+			if bp != nil {
+				_, err := t.ClearBreakpoint(bp.Addr)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}

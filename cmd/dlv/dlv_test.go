@@ -216,7 +216,7 @@ func TestOutput(t *testing.T) {
 	}
 }
 
-// TestContinue verifies that the debugged executable starts immediately with --continue
+// TestContinue verifies that the debugged executable starts immediately with --continue.
 func TestContinue(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 

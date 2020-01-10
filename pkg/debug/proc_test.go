@@ -4371,14 +4371,14 @@ func TestIssue1736(t *testing.T) {
 func TestIssue1817(t *testing.T) {
 	// Setting a breakpoint on a line that doesn't have any PC addresses marked
 	// is_stmt should work.
-	withTestProcess("issue1817", t, func(p proc.Process, fixture protest.Fixture) {
-		setFileBreakpoint(p, t, fixture.Source, 16)
+	withTestTarget("issue1817", t, func(tgt *debug.Target, fixture protest.Fixture) {
+		setFileBreakpoint(tgt, t, fixture.Source, 16)
 	})
 }
 
 func TestListPackagesBuildInfo(t *testing.T) {
-	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
-		pkgs := p.BinInfo().ListPackagesBuildInfo(true)
+	withTestTarget("pkgrenames", t, func(tgt *debug.Target, fixture protest.Fixture) {
+		pkgs := tgt.BinInfo().ListPackagesBuildInfo(true)
 		t.Logf("returned %d", len(pkgs))
 		if len(pkgs) < 10 {
 			t.Errorf("very few packages returned")
@@ -4409,20 +4409,20 @@ func TestIssue1795(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 		t.Skip("Test not relevant to Go < 1.13")
 	}
-	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
-		assertNoError(proc.Continue(p), t, "Continue()")
-		assertLineNumber(p, t, 12, "wrong line number after Continue,")
-		assertNoError(proc.Next(p), t, "Next()")
-		assertLineNumber(p, t, 13, "wrong line number after Next,")
+	withTestTargetArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(tgt *debug.Target, fixture protest.Fixture) {
+		assertNoError(tgt.Continue(), t, "Continue()")
+		assertLineNumber(tgt, t, 12, "wrong line number after Continue,")
+		assertNoError(tgt.Next(), t, "Next()")
+		assertLineNumber(tgt, t, 13, "wrong line number after Next,")
 	})
-	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "regexp.(*Regexp).doExecute")
-		assertNoError(proc.Continue(p), t, "Continue()")
-		assertLineNumber(p, t, 12, "wrong line number after Continue (1),")
-		assertNoError(proc.Continue(p), t, "Continue()")
-		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
+	withTestTargetArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(tgt *debug.Target, fixture protest.Fixture) {
+		setFunctionBreakpoint(tgt, t, "regexp.(*Regexp).doExecute")
+		assertNoError(tgt.Continue(), t, "Continue()")
+		assertLineNumber(tgt, t, 12, "wrong line number after Continue (1),")
+		assertNoError(tgt.Continue(), t, "Continue()")
+		frames, err := debug.ThreadStacktrace(tgt.CurrentThread(), tgt.BinInfo(), 40)
 		assertNoError(err, t, "ThreadStacktrace()")
-		logStacktrace(t, p.BinInfo(), frames)
+		logStacktrace(t, tgt.BinInfo(), frames)
 		if err := checkFrame(frames[0], "regexp.(*Regexp).doExecute", "", 0, false); err != nil {
 			t.Errorf("Wrong frame 0: %v", err)
 		}
