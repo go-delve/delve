@@ -25,6 +25,7 @@ type OSProcessDetails struct {
 	task             C.task_t      // mach task for the debugged process.
 	exceptionPort    C.mach_port_t // mach port for receiving mach exceptions.
 	notificationPort C.mach_port_t // mach port for dead name notification (process exit).
+	threadAct C.thread_act_t
 	initialized      bool
 	halt             bool
 
@@ -105,8 +106,6 @@ func Launch(cmd []string, wd string, foreground bool) (*Process, error) {
 		return nil, err
 	}
 
-	dbp.common.ClearAllGCache()
-
 	_, err = dbp.trapWait(-1)
 	if err != nil {
 		return nil, err
@@ -175,7 +174,7 @@ func (dbp *Process) kill() (err error) {
 func (dbp *Process) requestManualStop() (err error) {
 	var (
 		task          = C.mach_port_t(dbp.os.task)
-		thread        = C.mach_port_t(dbp.currentThread.os.threadAct)
+		thread        = C.mach_port_t(dbp.os.threadAct)
 		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
 	)
 	dbp.os.halt = true
@@ -254,9 +253,6 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 	}
 	dbp.threads[port] = thread
 	thread.os.threadAct = C.thread_act_t(port)
-	if dbp.currentThread == nil {
-		dbp.SwitchThread(thread.ID)
-	}
 	return thread, nil
 }
 
