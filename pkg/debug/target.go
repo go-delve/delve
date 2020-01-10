@@ -231,10 +231,13 @@ func (t *Target) Initialize() error {
 		return err
 	}
 
+	// Necessary so that the gdbserial backend can load G structs.
 	if gp, ok := t.Process.(*gdbserial.Process); ok {
 		gp.SetGStructOffset(t.BinInfo().GStructOffset())
 	}
 
+	// Necessary so that the windows backend can verify if a breakpoint
+	// was actually hit when delayed events are sent to Delve.
 	if np, ok := t.Process.(*native.Process); ok {
 		np.SetBreakpointInstruction(t.BinInfo().Arch.BreakpointInstruction())
 	}
@@ -244,11 +247,11 @@ func (t *Target) Initialize() error {
 	}
 
 	t.selectedThread = t.Process.ThreadList()[0]
-	g, _ := GetG(t.CurrentThread(), t.BinInfo())
-	t.selectedGoroutine = g
+	t.selectedGoroutine, _ = GetG(t.selectedThread, t.BinInfo())
 
 	createUnrecoveredPanicBreakpoint(t)
 	createFatalThrowBreakpoint(t)
+
 	return nil
 }
 
@@ -1000,17 +1003,18 @@ func (t *Target) StepOut() error {
 // Detach will force the target to stop tracing the process.
 // If kill is true the process will be killed during the detach.
 func (t *Target) Detach(kill bool) error {
-	if !kill {
-		// Clean up any breakpoints we've set.
-		for _, bp := range t.Breakpoints().M {
-			if bp != nil {
-				_, err := t.ClearBreakpoint(bp.Addr)
-				if err != nil {
-					return err
-				}
+	defer t.BinInfo().Close()
+
+	// Clean up any breakpoints we've set.
+	for _, bp := range t.Breakpoints().M {
+		if bp != nil {
+			_, err := t.ClearBreakpoint(bp.Addr)
+			if err != nil {
+				return err
 			}
 		}
 	}
+
 	return t.Process.Detach(kill)
 }
 
@@ -1189,7 +1193,7 @@ func (t *Target) SwitchThread(tid int) error {
 	}
 	if th, ok := t.Process.FindThread(tid); ok {
 		t.selectedThread = th
-		t.selectedGoroutine, _ = GetG(t.CurrentThread(), t.BinInfo())
+		t.selectedGoroutine, _ = GetG(th, t.BinInfo())
 		return nil
 	}
 	return fmt.Errorf("thread %d does not exist", tid)

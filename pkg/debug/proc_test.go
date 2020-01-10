@@ -71,9 +71,7 @@ func withTestTargetArgs(name string, t testing.TB, wd string, args []string, bui
 		t.Fatal("Launch():", err)
 	}
 
-	defer func() {
-		tgt.Detach(true)
-	}()
+	defer tgt.Detach(true)
 
 	fn(tgt, fixture)
 }
