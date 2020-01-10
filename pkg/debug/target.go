@@ -92,7 +92,6 @@ func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, erro
 		FnCallForG:    make(map[int]*callInjection),
 		fncallEnabled: true,
 	}
-	// TODO(refactor) REMOVE BEFORE MERGE
 	if err := t.Initialize(); err != nil {
 		return nil, err
 	}
@@ -233,7 +232,7 @@ func (t *Target) Initialize() error {
 	}
 
 	if gp, ok := t.Process.(*gdbserial.Process); ok {
-		gp.SetBinaryInfo(t.BinInfo())
+		gp.SetGStructOffset(t.BinInfo().GStructOffset())
 	}
 
 	if err := t.Process.Initialize(); err != nil {

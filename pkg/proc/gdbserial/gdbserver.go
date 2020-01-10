@@ -114,6 +114,7 @@ type Process struct {
 	tracedir       string // if attached to rr the path to the trace directory
 
 	loadGInstrAddr uint64 // address of the g loading instruction, zero if we couldn't allocate it
+	gStructOffset  uint64
 
 	process  *os.Process
 	waitChan chan *os.ProcessState
@@ -121,19 +122,6 @@ type Process struct {
 	onDetach func() // called after a successful detach
 
 	common proc.CommonProcess
-
-	bi binaryInfo
-}
-
-// Avoidint an import here.
-type binaryInfo interface {
-	GOOS() string
-	GStructOffset() uint64
-	PCToFuncName(uint64) string
-	ElfDynamicSectionAddr() uint64
-	AddImage(string, uint64) error
-	ElfDynamicSectionSize() uint64
-	PtrSize() int
 }
 
 // Thread represents an operating system thread.
@@ -200,14 +188,6 @@ func New(process *os.Process) *Process {
 	}
 
 	return p
-}
-
-// TODO(refactor) REMOVE BEFORE MERGE
-func (p *Process) SetTarget(pp proc.Process) {
-}
-
-func (p *Process) SetBinaryInfo(bi binaryInfo) {
-	p.bi = bi
 }
 
 // Listen waits for a connection from the stub.
@@ -457,6 +437,10 @@ func LLDBAttach(pid int, path string) (*Process, error) {
 		return nil, err
 	}
 	return p, nil
+}
+
+func (p *Process) SetGStructOffset(offset uint64) {
+	p.gStructOffset = offset
 }
 
 // EntryPoint will return the process entry point address, useful for
@@ -1083,29 +1067,6 @@ func (t *Thread) StepInstruction() error {
 	return t.reloadRegisters()
 }
 
-// Blocked returns true if the thread is blocked in runtime or kernel code.
-func (t *Thread) Blocked() bool {
-	regs, err := t.Registers(false)
-	if err != nil {
-		return false
-	}
-	pc := regs.PC()
-	fName := t.p.bi.PCToFuncName(pc)
-	if fName == "" {
-		return true
-	}
-	switch fName {
-	case "runtime.futex", "runtime.usleep", "runtime.clone":
-		return true
-	case "runtime.kevent":
-		return true
-	case "runtime.mach_semaphore_wait", "runtime.mach_semaphore_timedwait":
-		return true
-	default:
-		return strings.HasPrefix(fName, "syscall.Syscall") || strings.HasPrefix(fName, "syscall.RawSyscall")
-	}
-}
-
 // loadGInstr returns the correct MOV instruction for the current
 // OS/architecture that can be executed to load the address of G from an
 // inferior's thread.
@@ -1123,7 +1084,7 @@ func (p *Process) loadGInstr() []byte {
 	}
 	buf := &bytes.Buffer{}
 	buf.Write(op)
-	binary.Write(buf, binary.LittleEndian, uint32(p.bi.GStructOffset()))
+	binary.Write(buf, binary.LittleEndian, uint32(p.gStructOffset))
 	return buf.Bytes()
 }
 

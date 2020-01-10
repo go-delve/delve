@@ -5,9 +5,6 @@ import (
 	"fmt"
 )
 
-// TODO(refactor) REMOVE BEFORE MERGE - this should be removed when execution logic is moved to target
-const UnrecoveredPanic = "unrecovered-panic"
-
 // ErrNotExecutable is returned after attempting to execute a non-executable file
 // to begin a debug session.
 var ErrNotExecutable = errors.New("not an executable file")

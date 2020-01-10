@@ -1845,7 +1845,7 @@ func TestPanicBreakpoint(t *testing.T) {
 	withTestTarget("panic", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		assertNoError(tgt.Continue(), t, "Continue()")
 		bp := tgt.BreakpointStateForThread(tgt.CurrentThread().ThreadID())
-		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
+		if bp.Breakpoint == nil || bp.Name != debug.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	})
@@ -1855,7 +1855,7 @@ func TestCmdLineArgs(t *testing.T) {
 	expectSuccess := func(tgt *debug.Target, fixture protest.Fixture) {
 		err := tgt.Continue()
 		bp := tgt.BreakpointStateForThread(tgt.CurrentThread().ThreadID())
-		if bp.Breakpoint != nil && bp.Name == proc.UnrecoveredPanic {
+		if bp.Breakpoint != nil && bp.Name == debug.UnrecoveredPanic {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", bp)
 		}
 		exit, exited := err.(proc.ErrProcessExited)
@@ -1871,7 +1871,7 @@ func TestCmdLineArgs(t *testing.T) {
 	expectPanic := func(tgt *debug.Target, fixture protest.Fixture) {
 		tgt.Continue()
 		bp := tgt.BreakpointStateForThread(tgt.CurrentThread().ThreadID())
-		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
+		if bp.Breakpoint == nil || bp.Name != debug.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	}
@@ -2313,7 +2313,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		for _, b := range tgt.Breakpoints().M {
-			if b.Name == proc.UnrecoveredPanic {
+			if b.Name == debug.UnrecoveredPanic {
 				_, err := tgt.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
@@ -2375,7 +2375,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 		setFileBreakpoint(tgt, t, fixture.Source, 24)
 
 		for _, b := range tgt.Breakpoints().M {
-			if b.Name == proc.UnrecoveredPanic {
+			if b.Name == debug.UnrecoveredPanic {
 				_, err := tgt.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
@@ -4098,7 +4098,7 @@ func TestDeadlockBreakpoint(t *testing.T) {
 	}
 	deadlockBp := debug.FatalThrow
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
-		deadlockBp = proc.UnrecoveredPanic
+		deadlockBp = debug.UnrecoveredPanic
 	}
 	withTestTarget("testdeadlock", t, func(tgt *debug.Target, fixture protest.Fixture) {
 		assertNoError(tgt.Continue(), t, "Continue()")
