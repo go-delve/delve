@@ -218,9 +218,6 @@ func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, susp
 	}
 	thread.os.hThread = hThread
 	dbp.threads[threadID] = thread
-	if dbp.currentThread == nil {
-		dbp.SwitchThread(thread.ID)
-	}
 	if suspendNewThreads {
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
@@ -317,9 +314,9 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 				// this exception anymore.
 				atbp := true
 				if thread, found := dbp.threads[tid]; found {
-					data := make([]byte, dbp.BinInfo().Arch.BreakpointSize())
+					data := make([]byte, len(dbp.breakpointInstruction))
 					if _, err := thread.ReadMemory(data, exception.ExceptionRecord.ExceptionAddress); err == nil {
-						instr := dbp.BinInfo().Arch.BreakpointInstruction()
+						instr := dbp.breakpointInstruction
 						for i := range instr {
 							if data[i] != instr[i] {
 								atbp = false

@@ -25,6 +25,12 @@ type Process struct {
 	childProcess        bool // this process was launched, not attached to
 	manualStopRequested bool
 
+	// This is needed to check whether or not we are
+	// actually stopped at a breakpoint in case we get a
+	// delayed event on Windows.
+	// Perhaps there is a better way to deal with this?
+	breakpointInstruction []byte
+
 	exited, detached bool
 }
 
@@ -43,6 +49,10 @@ func New(pid int) *Process {
 	}
 	go dbp.handlePtraceFuncs()
 	return dbp
+}
+
+func (dbp *Process) SetBreakpointInstruction(instr []byte) {
+	dbp.breakpointInstruction = instr
 }
 
 // Recorded always returns false for the native proc backend.

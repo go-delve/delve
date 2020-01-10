@@ -235,6 +235,10 @@ func (t *Target) Initialize() error {
 		gp.SetGStructOffset(t.BinInfo().GStructOffset())
 	}
 
+	if np, ok := t.Process.(*native.Process); ok {
+		np.SetBreakpointInstruction(t.BinInfo().Arch.BreakpointInstruction())
+	}
+
 	if err := t.Process.Initialize(); err != nil {
 		return err
 	}
