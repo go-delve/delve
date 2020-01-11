@@ -4362,13 +4362,13 @@ func TestIssue1736(t *testing.T) {
 func TestIssue1817(t *testing.T) {
 	// Setting a breakpoint on a line that doesn't have any PC addresses marked
 	// is_stmt should work.
-	withTestProcess("issue1817", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestTarget("issue1817", t, func(p proc.Process, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 16)
 	})
 }
 
 func TestListPackagesBuildInfo(t *testing.T) {
-	withTestProcess("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestTarget("pkgrenames", t, func(p proc.Process, fixture protest.Fixture) {
 		pkgs := p.BinInfo().ListPackagesBuildInfo(true)
 		t.Logf("returned %d", len(pkgs))
 		if len(pkgs) < 10 {
@@ -4400,13 +4400,13 @@ func TestIssue1795(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 		t.Skip("Test not relevant to Go < 1.13")
 	}
-	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
+	withTestTargetArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		assertLineNumber(p, t, 12, "wrong line number after Continue,")
 		assertNoError(proc.Next(p), t, "Next()")
 		assertLineNumber(p, t, 13, "wrong line number after Next,")
 	})
-	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
+	withTestTargetArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p proc.Process, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "regexp.(*Regexp).doExecute")
 		assertNoError(proc.Continue(p), t, "Continue()")
 		assertLineNumber(p, t, 12, "wrong line number after Continue (1),")
