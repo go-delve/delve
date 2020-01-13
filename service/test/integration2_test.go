@@ -364,8 +364,8 @@ func TestClientServer_breakpointInMainThread(t *testing.T) {
 		}
 
 		state := <-c.Continue()
-		if err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", err, state)
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
 
 		pc := state.CurrentThread.PC
