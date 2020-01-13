@@ -1,6 +1,6 @@
 module github.com/go-delve/delve
 
-go 1.10
+go 1.11
 
 require (
 	github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5
