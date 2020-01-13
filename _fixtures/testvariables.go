@@ -20,8 +20,8 @@ type Nest struct {
 }
 
 func barfoo() {
-	runtime.Breakpoint()
 	a1 := "bur"
+	runtime.Breakpoint()
 	fmt.Println(a1)
 }
 

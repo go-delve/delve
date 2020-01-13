@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
-	"runtime"
 )
 
 func main() {
 	a := 0
-	runtime.Breakpoint()
 	a++
 	b := 0
-	runtime.Breakpoint()
-	fmt.Println(a, b)
+	f1(a, b)
+}
+
+func f1(a, b int) {
+	fmt.Printf("%d %d\n", a, b)
 }

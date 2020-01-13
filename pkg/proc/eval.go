@@ -215,7 +215,12 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 		return nil, err
 	}
 
-	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, true, false)
+	variablesFlags := reader.VariablesOnlyVisible
+	if scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 15) {
+		variablesFlags |= reader.VariablesTrustDeclLine
+	}
+
+	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, variablesFlags)
 	vars := make([]*Variable, 0, len(varEntries))
 	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {

@@ -524,7 +524,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
 	}
 
-	varEntries := reader.Variables(dwarfTree, fn.Entry, int(^uint(0)>>1), false, true)
+	varEntries := reader.Variables(dwarfTree, fn.Entry, int(^uint(0)>>1), reader.VariablesSkipInlinedSubroutines)
 
 	trustArgOrder := bi.Producer() != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
 

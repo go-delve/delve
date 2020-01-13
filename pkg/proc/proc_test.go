@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -3499,6 +3500,30 @@ func TestIssue1008(t *testing.T) {
 	})
 }
 
+func testDeclLineCount(t *testing.T, p *proc.Target, lineno int, tgtvars []string) {
+	sort.Strings(tgtvars)
+
+	assertLineNumber(p, t, lineno, "Program did not continue to correct next location")
+	scope, err := proc.GoroutineScope(p.CurrentThread())
+	assertNoError(err, t, fmt.Sprintf("GoroutineScope (:%d)", lineno))
+	vars, err := scope.Locals()
+	assertNoError(err, t, fmt.Sprintf("Locals (:%d)", lineno))
+	if len(vars) != len(tgtvars) {
+		t.Fatalf("wrong number of variables %d (:%d)", len(vars), lineno)
+	}
+	outvars := make([]string, len(vars))
+	for i, v := range vars {
+		outvars[i] = v.Name
+	}
+	sort.Strings(outvars)
+
+	for i := range outvars {
+		if tgtvars[i] != outvars[i] {
+			t.Fatalf("wrong variables, got: %q expected %q\n", outvars, tgtvars)
+		}
+	}
+}
+
 func TestDeclLine(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
@@ -3506,24 +3531,34 @@ func TestDeclLine(t *testing.T) {
 	}
 
 	withTestProcess("decllinetest", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 8)
+		setFileBreakpoint(p, t, fixture.Source, 9)
+		setFileBreakpoint(p, t, fixture.Source, 10)
+		setFileBreakpoint(p, t, fixture.Source, 11)
+		setFileBreakpoint(p, t, fixture.Source, 14)
+
 		assertNoError(p.Continue(), t, "Continue")
-		scope, err := proc.GoroutineScope(p.CurrentThread())
-		assertNoError(err, t, "GoroutineScope (1)")
-		vars, err := scope.LocalVariables(normalLoadConfig)
-		assertNoError(err, t, "LocalVariables (1)")
-		if len(vars) != 1 {
-			t.Fatalf("wrong number of variables %d", len(vars))
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+			testDeclLineCount(t, p, 8, []string{})
+		} else {
+			testDeclLineCount(t, p, 8, []string{"a"})
 		}
 
 		assertNoError(p.Continue(), t, "Continue")
-		scope, err = proc.GoroutineScope(p.CurrentThread())
-		assertNoError(err, t, "GoroutineScope (2)")
-		scope.LocalVariables(normalLoadConfig)
-		vars, err = scope.LocalVariables(normalLoadConfig)
-		assertNoError(err, t, "LocalVariables (2)")
-		if len(vars) != 2 {
-			t.Fatalf("wrong number of variables %d", len(vars))
+		testDeclLineCount(t, p, 9, []string{"a"})
+
+		assertNoError(p.Continue(), t, "Continue")
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+			testDeclLineCount(t, p, 10, []string{"a"})
+		} else {
+			testDeclLineCount(t, p, 10, []string{"a", "b"})
 		}
+
+		assertNoError(p.Continue(), t, "Continue")
+		testDeclLineCount(t, p, 11, []string{"a", "b"})
+
+		assertNoError(p.Continue(), t, "Continue")
+		testDeclLineCount(t, p, 14, []string{"a", "b"})
 	})
 }
 

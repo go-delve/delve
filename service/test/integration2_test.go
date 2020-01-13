@@ -548,7 +548,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		fp := testProgPath(t, "testnextprog")
-		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 24})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}

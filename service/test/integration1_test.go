@@ -417,7 +417,7 @@ func Test1ClientServer_switchThread(t *testing.T) {
 func Test1ClientServer_infoLocals(t *testing.T) {
 	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "testnextprog")
-		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 24})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
