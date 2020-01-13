@@ -3,7 +3,6 @@ package debug
 import (
 	"errors"
 	"fmt"
-	"go/ast"
 	"runtime"
 
 	"github.com/go-delve/delve/pkg/proc"
@@ -193,97 +192,3 @@ func (t *Target) Detach(kill bool) error {
 func (t *Target) BinInfo() *proc.BinaryInfo {
 	return t.bi
 }
-
-// Pid returns the PID of the process this target is attached to.
-func (t *Target) Pid() int {
-	return t.Process.Pid()
-}
-
-// SelectedGoroutine returns the goroutine which will be used as the default for
-// operations if a specific goroutine is not specified.
-// This is usually the goroutine that active on the thread which was stopped due to
-// hitting a breakpoint.
-// It could also be a goroutine the user selected.
-func (t *Target) SelectedGoroutine() *proc.G {
-	return t.Process.SelectedGoroutine()
-}
-
-// Recorded returns whether or not the target was recorded.
-func (t *Target) Recorded() (bool, string) {
-	return t.Process.Recorded()
-}
-
-// Restart allows you to restart the process from a given location.
-// Only works when the selected backend is "rr".
-func (t *Target) Restart(from string) error { return t.Process.Restart(from) }
-
-// Direction controls whether execution goes forward or backward depending on the
-// settings. This is only valid when using the "rr" backend.
-func (t *Target) Direction(dir proc.Direction) error { return t.Process.Direction(dir) }
-
-// When returns rr's current internal event number. Only valid when using the
-// "rr" backend.
-func (t *Target) When() (string, error) { return t.Process.When() }
-
-// Checkpoint allow you to set a checkpoint at a certain location.
-// Only valid with the "rr" backend.
-func (t *Target) Checkpoint(where string) (int, error) { return t.Process.Checkpoint(where) }
-
-// Checkpoints returns a list of currently active checkpoints.
-// Only valid with the "rr" backend.
-func (t *Target) Checkpoints() ([]proc.Checkpoint, error) { return t.Process.Checkpoints() }
-
-// ClearCheckpoint will clear the checkpoint with the ID "n".
-// Only valid with the "rr" backend.
-func (t *Target) ClearCheckpoint(n int) error { return t.Process.ClearCheckpoint(n) }
-
-// Valid returns true if the underlying process is in a state where
-// it can be manipulated. This means it hasn't exited or been detached from.
-func (t *Target) Valid() (bool, error) { return t.Process.Valid() }
-
-// ResumeNotify specifies a channel that will be closed the next time
-// Resume finishes resuming the underlying process.
-func (t *Target) ResumeNotify(ch chan<- struct{}) { t.Process.ResumeNotify(ch) }
-
-// ThreadList returns a list of threads in the underlying process.
-func (t *Target) ThreadList() []proc.Thread { return t.Process.ThreadList() }
-
-// FindThread returns the thread with the given ID.
-func (t *Target) FindThread(id int) (proc.Thread, bool) { return t.Process.FindThread(id) }
-
-// CurrentThread returns the default thread to be used for various operations.
-// This is usually the last thread that threw an exception, however it could be
-// a user set thread as well.
-func (t *Target) CurrentThread() proc.Thread { return t.Process.CurrentThread() }
-
-// Breakpoints returns a list of the active breakpoints that have been set in the
-// underlying process.
-func (t *Target) Breakpoints() *proc.BreakpointMap { return t.Process.Breakpoints() }
-
-// RequestManualStop will attempt to stop the underlying process. Once stopped
-// you may inspect process state.
-func (t *Target) RequestManualStop() error { return t.Process.RequestManualStop() }
-
-// SetBreakpoint sets a breakpoint at the provided address.
-func (t *Target) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return t.Process.SetBreakpoint(addr, kind, cond)
-}
-
-// ClearBreakpoint clears a breakpoint at the provided address.
-func (t *Target) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	return t.Process.ClearBreakpoint(addr)
-}
-
-// StepInstruction will continue execution in the underlying process exactly 1 CPU instruction.
-func (t *Target) StepInstruction() (err error) { return t.Process.StepInstruction() }
-
-// SwitchThread will set the default thread to the one specified by "tid".
-// That thread will then be used by default by any command that inspects process state.
-func (t *Target) SwitchThread(tid int) error { return t.Process.SwitchThread(tid) }
-
-// SwitchGoroutine will set the default goroutine to the one specified by "gid".
-// This ennsures the selected goroutine remains active when continuing execution.
-func (t *Target) SwitchGoroutine(gid int) error { return t.Process.SwitchGoroutine(gid) }
-
-// ClearInternalBreakpoints will clear any non-user defined breakpoint.
-func (t *Target) ClearInternalBreakpoints() error { return t.Process.ClearInternalBreakpoints() }

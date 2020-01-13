@@ -397,9 +397,9 @@ func (p *Process) ClearInternalBreakpoints() error {
 	return nil
 }
 
-// Resume will always return an error because you
+// ContinueOnce will always return an error because you
 // cannot control execution of a core file.
-func (p *Process) Resume() (proc.Thread, error) {
+func (p *Process) ContinueOnce() (proc.Thread, error) {
 	return nil, ErrContinueCore
 }
 

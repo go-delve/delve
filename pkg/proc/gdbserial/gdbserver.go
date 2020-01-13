@@ -635,9 +635,9 @@ const (
 	debugServerTargetExcBreakpoint     = 0x96
 )
 
-// Resume will continue execution of the process until
+// ContinueOnce will continue execution of the process until
 // a breakpoint is hit or signal is received.
-func (p *Process) Resume() (proc.Thread, error) {
+func (p *Process) ContinueOnce() (proc.Thread, error) {
 	if p.exited {
 		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}

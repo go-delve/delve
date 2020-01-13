@@ -100,7 +100,7 @@ type GoroutineInfo interface {
 
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
-	Resume() (trapthread Thread, err error)
+	ContinueOnce() (trapthread Thread, err error)
 	StepInstruction() error
 	SwitchThread(int) error
 	SwitchGoroutine(int) error

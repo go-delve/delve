@@ -273,7 +273,7 @@ func NewBinaryInfo(goos, goarch string, debugInfoDirs []string) *BinaryInfo {
 	return bi
 }
 
-func parseBinarySections(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
+func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -286,12 +286,6 @@ func parseBinarySections(bi *BinaryInfo, image *Image, path string, entryPoint u
 		return loadBinaryInfoMacho(bi, image, path, entryPoint, &wg)
 	}
 	return errors.New("unsupported operating system")
-}
-
-// SetLogger sets the internal logger to use for
-// the BinaryInfo object. Mostly useful for tests.
-func (bi *BinaryInfo) SetLogger(l *logrus.Entry) {
-	bi.logger = l
 }
 
 // GStructOffset returns the offset of the G
@@ -501,7 +495,7 @@ func (image *Image) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.Re
 // the relocation offset) for all other images.
 // The first image added must be the executable file.
 func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
-	if bi.lastModified.IsZero() {
+	if len(bi.Images) == 0 {
 		fi, err := os.Stat(path)
 		if err == nil {
 			bi.lastModified = fi.ModTime()
@@ -522,7 +516,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 	// add Image regardless of error so that we don't attempt to re-add it every time we stop
 	image.index = len(bi.Images)
 	bi.Images = append(bi.Images, image)
-	err := parseBinarySections(bi, image, path, addr)
+	err := loadBinaryInfo(bi, image, path, addr)
 	if err != nil {
 		bi.Images[len(bi.Images)-1].loadErr = err
 	}

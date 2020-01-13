@@ -239,9 +239,9 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	return dbp.breakpoints.Clear(addr, dbp.currentThread.ClearBreakpoint)
 }
 
-// Resume will continue the target until it stops.
+// ContinueOnce will continue the target until it stops.
 // This could be the result of a breakpoint or signal.
-func (dbp *Process) Resume() (proc.Thread, error) {
+func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	if dbp.exited {
 		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
