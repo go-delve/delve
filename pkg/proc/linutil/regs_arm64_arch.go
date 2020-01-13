@@ -87,10 +87,6 @@ func (r *ARM64Registers) BP() uint64 {
 	return r.Regs.Regs[29]
 }
 
-func (r *ARM64Registers) LR() uint64 {
-	return r.Regs.Regs[30]
-}
-
 // CX returns the value of RCX register.
 func (r *ARM64Registers) CX() uint64 {
 	return 0
@@ -107,7 +103,7 @@ func (r *ARM64Registers) GAddr() (uint64, bool) {
 	return r.Regs.Regs[28], true
 }
 
-// Get returns the value of the n-th register (in x86asm order).
+// Get returns the value of the n-th register (in arm64asm order).
 func (r *ARM64Registers) Get(n int) (uint64, error) {
 	reg := arm64asm.Reg(n)
 

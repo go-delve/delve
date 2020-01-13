@@ -16,6 +16,7 @@ import (
 const DelveMainPackagePath = "github.com/go-delve/delve/cmd/dlv"
 
 var Verbose bool
+var NOTimeout bool
 var TestSet, TestRegex, TestBackend, TestBuildMode string
 
 func NewMakeCommands() *cobra.Command {
@@ -80,6 +81,7 @@ Use the flags -s, -r and -b to specify which tests to run. Specifying nothing is
 		Run: testCmd,
 	}
 	test.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Verbose tests")
+	test.PersistentFlags().BoolVarP(&NOTimeout, "timeout", "t", false, "Set infinite timeouts")
 	test.PersistentFlags().StringVarP(&TestSet, "test-set", "s", "", `Select the set of tests to run, one of either:
 	all		tests all packages
 	basic		tests proc, integration and terminal
@@ -255,9 +257,13 @@ func testFlags() []string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	testFlags := []string{"-count", "1", "-p", "1", "-timeout", "0"}
+	testFlags := []string{"-count", "1", "-p", "1"}
 	if Verbose {
 		testFlags = append(testFlags, "-v")
+	}
+	if NOTimeout {
+		testFlags = append(testFlags, "-timeout")
+		testFlags = append(testFlags, "0")
 	}
 	if runtime.GOOS == "darwin" {
 		testFlags = append(testFlags, "-exec="+wd+"/scripts/testsign")

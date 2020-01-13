@@ -152,10 +152,6 @@ func (r *AMD64Registers) BP() uint64 {
 	return r.rbp
 }
 
-func (r *AMD64Registers) LR() uint64 {
-	return 0
-}
-
 // CX returns the value of the RCX register.
 func (r *AMD64Registers) CX() uint64 {
 	return r.rcx

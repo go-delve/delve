@@ -69,10 +69,6 @@ func (regs *DwarfRegisters) BP() uint64 {
 	return regs.Uint64Val(regs.BPRegNum)
 }
 
-func (regs *DwarfRegisters) LR() uint64 {
-	return regs.Uint64Val(regs.LRRegNum)
-}
-
 // AddReg adds register idx to regs.
 func (regs *DwarfRegisters) AddReg(idx uint64, reg *DwarfRegister) {
 	if idx >= uint64(len(regs.Regs)) {
