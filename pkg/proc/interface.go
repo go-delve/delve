@@ -12,10 +12,9 @@ import (
 // There is one exception to this rule: it is safe to call RequestManualStop
 // concurrently with Resume.
 type Process interface {
-	// TODO(refactor) REMOVE THIS BEFORE MERGE
-	// This is only temporary to enable refactoring
-	// with a passing test suite.
-	SetTarget(Process)
+	// TODO(derekparker) This should only be temporary.
+	SetBinaryInfo(*BinaryInfo)
+
 	Initialize() error
 	WriteBreakpoint(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
 

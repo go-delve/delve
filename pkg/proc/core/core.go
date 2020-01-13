@@ -149,8 +149,7 @@ func (r *OffsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error)
 
 // Process represents a core file.
 type Process struct {
-	// TODO(refactor) REMOVE BEFORE MERGE
-	t proc.Process
+	bi *proc.BinaryInfo
 
 	mem     proc.MemoryReader
 	Threads map[int]*Thread
@@ -228,13 +227,13 @@ func (p *Process) ExecutablePath() string {
 	return p.Common().ExePath
 }
 
-func (p *Process) SetTarget(pp proc.Process) {
-	p.t = pp
+func (p *Process) SetBinaryInfo(bi *proc.BinaryInfo) {
+	p.bi = bi
 }
 
 // BinInfo will return the binary info.
 func (p *Process) BinInfo() *proc.BinaryInfo {
-	return p.t.BinInfo()
+	return p.bi
 }
 
 // SetSelectedGoroutine will set internally the goroutine that should be

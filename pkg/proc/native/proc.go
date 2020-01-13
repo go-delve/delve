@@ -12,9 +12,9 @@ import (
 // Process represents all of the information the debugger
 // is holding onto regarding the process we are debugging.
 type Process struct {
-	t proc.Process
-
 	pid int // Process Pid
+
+	bi *proc.BinaryInfo
 
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
@@ -61,13 +61,13 @@ func New(pid int) *Process {
 	return dbp
 }
 
-func (dbp *Process) SetTarget(p proc.Process) {
-	dbp.t = p
+func (dbp *Process) SetBinaryInfo(bi *proc.BinaryInfo) {
+	dbp.bi = bi
 }
 
 // BinInfo will return the binary info struct associated with this process.
 func (dbp *Process) BinInfo() *proc.BinaryInfo {
-	return dbp.t.BinInfo()
+	return dbp.bi
 }
 
 // Recorded always returns false for the native proc backend.

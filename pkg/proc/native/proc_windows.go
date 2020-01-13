@@ -154,6 +154,7 @@ func findExePath(path string, pid int) (string, error) {
 // Attach to an existing process with the given PID.
 func Attach(pid int) (*Process, error) {
 	var err error
+	dbp := New(pid)
 	dbp.execPtraceFunc(func() {
 		// TODO: Probably should have SeDebugPrivilege before starting here.
 		err = _DebugActiveProcess(uint32(pid))
@@ -161,7 +162,6 @@ func Attach(pid int) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbp := New(pid)
 	path, err := findExePath("", pid)
 	if err != nil {
 		return nil, err

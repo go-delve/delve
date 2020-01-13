@@ -101,9 +101,9 @@ var ErrDirChange = errors.New("direction change with internal breakpoints")
 // Process implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
 type Process struct {
-	t proc.Process
-
 	conn gdbConn
+
+	bi *proc.BinaryInfo
 
 	threads           map[int]*Thread
 	currentThread     *Thread
@@ -198,9 +198,8 @@ func New(process *os.Process) *Process {
 	return p
 }
 
-// TODO(refactor) REMOVE BEFORE MERGE
-func (p *Process) SetTarget(pp proc.Process) {
-	p.t = pp
+func (p *Process) SetBinaryInfo(bi *proc.BinaryInfo) {
+	p.bi = bi
 }
 
 // Listen waits for a connection from the stub.
@@ -553,7 +552,7 @@ func queryProcessInfo(p *Process, pid int) (int, string, error) {
 
 // BinInfo returns information on the binary.
 func (p *Process) BinInfo() *proc.BinaryInfo {
-	return p.t.BinInfo()
+	return p.bi
 }
 
 // Recorded returns whether or not we are debugging
@@ -1337,7 +1336,7 @@ func (t *Thread) Blocked() bool {
 // inferior's thread.
 func (p *Process) loadGInstr() []byte {
 	var op []byte
-	switch runtime.GOOS {
+	switch p.bi.GOOS {
 	case "windows", "darwin", "freebsd":
 		// mov rcx, QWORD PTR gs:{uint32(off)}
 		op = []byte{0x65, 0x48, 0x8b, 0x0c, 0x25}

@@ -27,8 +27,9 @@ func New(p proc.Process, os, arch string, debugInfoDirs []string) (*Target, erro
 		Process: p,
 		bi:      bi,
 	}
-	// TODO(refactor) REMOVE BEFORE MERGE
-	p.SetTarget(t)
+	// TODO(derekparker) Perhaps we can eventually get rid of this.
+	// Ideally the backends should not need to know about BinaryInfo.
+	p.SetBinaryInfo(bi)
 	if err := t.Initialize(); err != nil {
 		return nil, err
 	}
