@@ -100,10 +100,6 @@ func (r *Regs) BP() uint64 {
 	return r.rbp
 }
 
-func (r *Regs) LR() uint64 {
-	return 0
-}
-
 // CX returns the value of the RCX register.
 func (r *Regs) CX() uint64 {
 	return r.rcx

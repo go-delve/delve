@@ -15,6 +15,8 @@ type Arch interface {
 	BreakpointSize() int
 	DerefTLS() bool
 	FixFrameUnwindContext(*frame.FrameContext, uint64, *BinaryInfo) *frame.FrameContext
+	SwitchStack(it *stackIterator) bool
+	SwitchSp(it *stackIterator) bool
 	RegSize(uint64) int
 	RegistersToDwarfRegisters(uint64, Registers) op.DwarfRegisters
 	AddrAndStackRegsToDwarfRegisters(uint64, uint64, uint64, uint64, uint64) op.DwarfRegisters
