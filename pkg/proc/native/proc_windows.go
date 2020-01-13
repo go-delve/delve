@@ -152,8 +152,12 @@ func findExePath(pid int) (string, error) {
 
 // Attach to an existing process with the given PID.
 func Attach(pid int, _ []string) (*Process, error) {
-	// TODO: Probably should have SeDebugPrivilege before starting here.
-	err := _DebugActiveProcess(uint32(pid))
+	dbp := New(pid)
+	var err error
+	dbp.execPtraceFunc(func() {
+		// TODO: Probably should have SeDebugPrivilege before starting here.
+		err = _DebugActiveProcess(uint32(pid))
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +165,6 @@ func Attach(pid int, _ []string) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbp := New(pid)
 	if err = dbp.initialize(exepath, []string{}); err != nil {
 		dbp.Detach(true)
 		return nil, err
