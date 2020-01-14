@@ -18,6 +18,8 @@ var ErrNotExecutable = errors.New("not an executable file")
 // only possible on recorded (traced) programs.
 var ErrNotRecorded = errors.New("not a recording")
 
+var ErrNoRuntimeAllG = errors.New("could not find goroutine array")
+
 const (
 	// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
 	UnrecoveredPanic = "unrecovered-panic"
@@ -71,6 +73,8 @@ func PostInitializationSetup(p Process, path string, debugInfoDirs []string, wri
 
 	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
 	createFatalThrowBreakpoint(p, writeBreakpoint)
+
+	p.Common().goroutineCache.init(p.BinInfo())
 
 	return nil
 }
@@ -507,12 +511,9 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		}
 	}
 
-	exeimage := dbp.BinInfo().Images[0] // Image corresponding to the executable file
-
 	var (
 		threadg = map[int]*G{}
 		allg    []*G
-		rdr     = exeimage.DwarfReader()
 	)
 
 	threads := dbp.ThreadList()
@@ -526,32 +527,10 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		}
 	}
 
-	addr, err := rdr.AddrFor("runtime.allglen", exeimage.StaticBase)
+	allgptr, allglen, err := dbp.Common().getRuntimeAllg(dbp.BinInfo(), dbp.CurrentThread())
 	if err != nil {
 		return nil, -1, err
 	}
-	allglenBytes := make([]byte, 8)
-	_, err = dbp.CurrentThread().ReadMemory(allglenBytes, uintptr(addr))
-	if err != nil {
-		return nil, -1, err
-	}
-	allglen := binary.LittleEndian.Uint64(allglenBytes)
-
-	rdr.Seek(0)
-	allgentryaddr, err := rdr.AddrFor("runtime.allgs", exeimage.StaticBase)
-	if err != nil {
-		// try old name (pre Go 1.6)
-		allgentryaddr, err = rdr.AddrFor("runtime.allg", exeimage.StaticBase)
-		if err != nil {
-			return nil, -1, err
-		}
-	}
-	faddr := make([]byte, dbp.BinInfo().Arch.PtrSize())
-	_, err = dbp.CurrentThread().ReadMemory(faddr, uintptr(allgentryaddr))
-	if err != nil {
-		return nil, -1, err
-	}
-	allgptr := binary.LittleEndian.Uint64(faddr)
 
 	for i := uint64(start); i < allglen; i++ {
 		if count != 0 && len(allg) >= count {
@@ -580,12 +559,63 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		if g.Status != Gdead {
 			allg = append(allg, g)
 		}
+		dbp.Common().addGoroutine(g)
 	}
 	if start == 0 {
 		dbp.Common().allGCache = allg
 	}
 
 	return allg, -1, nil
+}
+
+func (gcache *goroutineCache) init(bi *BinaryInfo) {
+	var err error
+
+	exeimage := bi.Images[0]
+	rdr := exeimage.DwarfReader()
+
+	gcache.allglenAddr, _ = rdr.AddrFor("runtime.allglen", exeimage.StaticBase)
+
+	rdr.Seek(0)
+	gcache.allgentryAddr, err = rdr.AddrFor("runtime.allgs", exeimage.StaticBase)
+	if err != nil {
+		// try old name (pre Go 1.6)
+		gcache.allgentryAddr, _ = rdr.AddrFor("runtime.allg", exeimage.StaticBase)
+	}
+}
+
+func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWriter) (uint64, uint64, error) {
+	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {
+		return 0, 0, ErrNoRuntimeAllG
+	}
+	allglenBytes := make([]byte, 8)
+	_, err := mem.ReadMemory(allglenBytes, uintptr(gcache.allglenAddr))
+	if err != nil {
+		return 0, 0, err
+	}
+	allglen := binary.LittleEndian.Uint64(allglenBytes)
+
+	faddr := make([]byte, bi.Arch.PtrSize())
+	_, err = mem.ReadMemory(faddr, uintptr(gcache.allgentryAddr))
+	if err != nil {
+		return 0, 0, err
+	}
+	allgptr := binary.LittleEndian.Uint64(faddr)
+
+	return allgptr, allglen, nil
+}
+
+func (gcache *goroutineCache) addGoroutine(g *G) {
+	if gcache.partialGCache == nil {
+		gcache.partialGCache = make(map[int]*G)
+	}
+	gcache.partialGCache[g.ID] = g
+}
+
+// ClearAllGCache clears the cached contents of the cache for runtime.allgs.
+func (gcache *goroutineCache) ClearAllGCache() {
+	gcache.partialGCache = nil
+	gcache.allGCache = nil
 }
 
 // FindGoroutine returns a G struct representing the goroutine
@@ -625,6 +655,10 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 		if g != nil && g.ID == gid {
 			return g, nil
 		}
+	}
+
+	if g := dbp.Common().partialGCache[gid]; g != nil {
+		return g, nil
 	}
 
 	const goroutinesInfoLimit = 10
