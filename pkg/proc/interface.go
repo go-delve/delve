@@ -114,10 +114,18 @@ type BreakpointManipulation interface {
 // CommonProcess contains fields used by this package, common to all
 // implementations of the Process interface.
 type CommonProcess struct {
-	allGCache     []*G
+	goroutineCache
+
 	fncallEnabled bool
 
 	fncallForG map[int]*callInjection
+}
+
+type goroutineCache struct {
+	partialGCache map[int]*G
+	allGCache     []*G
+
+	allgentryAddr, allglenAddr uint64
 }
 
 type callInjection struct {
@@ -132,9 +140,4 @@ type callInjection struct {
 // all process implementations.
 func NewCommonProcess(fncallEnabled bool) CommonProcess {
 	return CommonProcess{fncallEnabled: fncallEnabled, fncallForG: make(map[int]*callInjection)}
-}
-
-// ClearAllGCache clears the cached contents of the cache for runtime.allgs.
-func (p *CommonProcess) ClearAllGCache() {
-	p.allGCache = nil
 }
