@@ -241,6 +241,7 @@ func (it *stackIterator) Next() bool {
 	if it.err != nil || it.atend {
 		return false
 	}
+
 	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
 
@@ -251,7 +252,7 @@ func (it *stackIterator) Next() bool {
 	}
 
 	if it.opts&StacktraceSimple == 0 {
-		if it.bi.Arch.SwitchStack(it) {
+		if it.bi.Arch.SwitchStack(it, &callFrameRegs) {
 			return true
 		}
 	}
@@ -425,7 +426,6 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	} else {
 		framectx = it.bi.Arch.FixFrameUnwindContext(fde.EstablishFrame(it.pc), it.pc, it.bi)
 	}
-	it.bi.Arch.SwitchSp(it)
 
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {

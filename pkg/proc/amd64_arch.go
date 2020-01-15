@@ -169,7 +169,7 @@ const amd64cgocallSPOffsetSaveSlot = 0x28
 // SwitchStack will use the current frame to determine if it's time to
 // switch between the system stack and the goroutine stack or vice versa.
 // Sets it.atend when the top of the stack is reached.
-func (a *AMD64) SwitchStack(it *stackIterator) bool {
+func (a *AMD64) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
 		return false
 	}
@@ -277,10 +277,6 @@ func (a *AMD64) SwitchStack(it *stackIterator) bool {
 
 		return false
 	}
-}
-
-func (a *AMD64) SwitchSp(it *stackIterator) bool {
-	return false
 }
 
 // RegSize returns the size (in bytes) of register regnum.
