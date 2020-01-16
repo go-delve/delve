@@ -35,10 +35,6 @@ func (a *ARM64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, m
 	return nil
 }
 
-func (a *ARM64) Prologues() []opcodeSeq {
-	return prologuesARM64
-}
-
 func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	if inst.Op != arm64asm.BL && inst.Op != arm64asm.BLR {
 		return nil
@@ -69,27 +65,6 @@ func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine 
 		return &Location{PC: pc}
 	}
 	return &Location{PC: pc, File: file, Line: line, Fn: fn}
-}
-
-// Possible stacksplit prologues are inserted by stacksplit in
-// $GOROOT/src/cmd/internal/obj/arm64/obj7.go.
-var prologuesARM64 []opcodeSeq
-
-func init() {
-	var tinyStacksplit = opcodeSeq{uint64(arm64asm.MOV), uint64(arm64asm.CMP), uint64(arm64asm.B)}
-	var smallStacksplit = opcodeSeq{uint64(arm64asm.SUB), uint64(arm64asm.CMP), uint64(arm64asm.B)}
-	var bigStacksplit = opcodeSeq{uint64(arm64asm.CMP), uint64(arm64asm.B), uint64(arm64asm.ADD), uint64(arm64asm.SUB), uint64(arm64asm.MOV), uint64(arm64asm.CMP), uint64(arm64asm.B)}
-	var unixGetG = opcodeSeq{uint64(arm64asm.LDR)}
-
-	prologuesARM64 = make([]opcodeSeq, 0, 3)
-	for _, getG := range []opcodeSeq{unixGetG} {
-		for _, stacksplit := range []opcodeSeq{tinyStacksplit, smallStacksplit, bigStacksplit} {
-			prologue := make(opcodeSeq, 0, len(getG)+len(stacksplit))
-			prologue = append(prologue, getG...)
-			prologue = append(prologue, stacksplit...)
-			prologuesARM64 = append(prologuesARM64, prologue)
-		}
-	}
 }
 
 type arm64ArchInst arm64asm.Inst

@@ -38,10 +38,6 @@ func (a *AMD64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, m
 	return nil
 }
 
-func (a *AMD64) Prologues() []opcodeSeq {
-	return prologuesAMD64
-}
-
 // converts PC relative arguments to absolute addresses
 func patchPCRelAMD64(pc uint64, inst *x86asm.Inst) {
 	for i := range inst.Args {
@@ -131,29 +127,4 @@ func resolveCallArgAMD64(inst *x86asm.Inst, instAddr uint64, currentGoroutine bo
 		return &Location{PC: pc}
 	}
 	return &Location{PC: pc, File: file, Line: line, Fn: fn}
-}
-
-// Possible stacksplit prologues are inserted by stacksplit in
-// $GOROOT/src/cmd/internal/obj/x86/obj6.go.
-// The stacksplit prologue will always begin with loading curg in CX, this
-// instruction is added by load_g_cx in the same file and is either 1 or 2
-// MOVs.
-var prologuesAMD64 []opcodeSeq
-
-func init() {
-	var tinyStacksplit = opcodeSeq{uint64(x86asm.CMP), uint64(x86asm.JBE)}
-	var smallStacksplit = opcodeSeq{uint64(x86asm.LEA), uint64(x86asm.CMP), uint64(x86asm.JBE)}
-	var bigStacksplit = opcodeSeq{uint64(x86asm.MOV), uint64(x86asm.CMP), uint64(x86asm.JE), uint64(x86asm.LEA), uint64(x86asm.SUB), uint64(x86asm.CMP), uint64(x86asm.JBE)}
-	var unixGetG = opcodeSeq{uint64(x86asm.MOV)}
-	var windowsGetG = opcodeSeq{uint64(x86asm.MOV), uint64(x86asm.MOV)}
-
-	prologuesAMD64 = make([]opcodeSeq, 0, 2*3)
-	for _, getG := range []opcodeSeq{unixGetG, windowsGetG} {
-		for _, stacksplit := range []opcodeSeq{tinyStacksplit, smallStacksplit, bigStacksplit} {
-			prologue := make(opcodeSeq, 0, len(getG)+len(stacksplit))
-			prologue = append(prologue, getG...)
-			prologue = append(prologue, stacksplit...)
-			prologuesAMD64 = append(prologuesAMD64, prologue)
-		}
-	}
 }

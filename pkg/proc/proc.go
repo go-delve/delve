@@ -801,20 +801,15 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		if entryLine == line {
 			return pc, nil
 		}
+	} else {
+		pc = fn.Entry
 	}
 
-	pc, err := firstPCAfterPrologueDisassembly(p, fn, sameline)
-	if err != nil {
-		return fn.Entry, err
-	}
-
-	if pc == fn.Entry {
-		// Look for the first instruction with the stmt flag set, so that setting a
-		// breakpoint with file:line and with the function name always result on
-		// the same instruction being selected.
-		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmtForLine(fn.Entry, fn.End); ok {
-			return pc2, nil
-		}
+	// Look for the first instruction with the stmt flag set, so that setting a
+	// breakpoint with file:line and with the function name always result on
+	// the same instruction being selected.
+	if pc2, _, _, ok := fn.cu.lineInfo.FirstStmtForLine(fn.Entry, fn.End); ok {
+		return pc2, nil
 	}
 
 	return pc, nil
