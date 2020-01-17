@@ -200,7 +200,7 @@ var ErrUnrecognizedFormat = errors.New("unrecognized core format")
 // OpenCore will open the core file and return a Process struct.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error) {
+func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, error) {
 	var p *Process
 	var err error
 	for _, openFn := range openFns {
@@ -217,7 +217,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error
 		return nil, err
 	}
 
-	return p, nil
+	return proc.NewTarget(p), nil
 }
 
 // initialize for core files doesn't do much

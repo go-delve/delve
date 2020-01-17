@@ -36,7 +36,7 @@ func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 		dbp.Detach(true)
 		return nil, err
 	}
-	return dbp, nil
+	return proc.NewTarget(dbp), nil
 }
 
 func initialize(dbp *Process) error {
@@ -151,7 +151,7 @@ func findExePath(pid int) (string, error) {
 }
 
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*Process, error) {
+func Attach(pid int, _ []string) (*proc.Target, error) {
 	dbp := New(pid)
 	var err error
 	dbp.execPtraceFunc(func() {
@@ -169,7 +169,7 @@ func Attach(pid int, _ []string) (*Process, error) {
 		dbp.Detach(true)
 		return nil, err
 	}
-	return dbp, nil
+	return proc.NewTarget(dbp), nil
 }
 
 // kill kills the process.

@@ -320,7 +320,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*Process, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*proc.Target, error) {
 	switch runtime.GOOS {
 	case "windows":
 		return nil, ErrUnsupportedOS
@@ -343,7 +343,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 	var listener net.Listener
 	var port string
-	var proc *exec.Cmd
+	var process *exec.Cmd
 	if _, err := os.Stat(debugserverExecutable); err == nil {
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -363,7 +363,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 		isDebugserver = true
 
-		proc = exec.Command(debugserverExecutable, args...)
+		process = exec.Command(debugserverExecutable, args...)
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
@@ -374,29 +374,29 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		args = append(args, port, "--")
 		args = append(args, cmd...)
 
-		proc = exec.Command("lldb-server", args...)
+		process = exec.Command("lldb-server", args...)
 	}
 
 	if logflags.LLDBServerOutput() || logflags.GdbWire() || foreground {
-		proc.Stdout = os.Stdout
-		proc.Stderr = os.Stderr
+		process.Stdout = os.Stdout
+		process.Stderr = os.Stderr
 	}
 	if foreground {
 		foregroundSignalsIgnore()
-		proc.Stdin = os.Stdin
+		process.Stdin = os.Stdin
 	}
 	if wd != "" {
-		proc.Dir = wd
+		process.Dir = wd
 	}
 
-	proc.SysProcAttr = sysProcAttr(foreground)
+	process.SysProcAttr = sysProcAttr(foreground)
 
-	err := proc.Start()
+	err := process.Start()
 	if err != nil {
 		return nil, err
 	}
 
-	p := New(proc.Process)
+	p := New(process.Process)
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
@@ -407,7 +407,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	return proc.NewTarget(p), nil
 }
 
 // LLDBAttach starts an instance of lldb-server and connects to it, asking
@@ -415,7 +415,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 // Path is path to the target's executable, path only needs to be specified
 // for some stubs that do not provide an automated way of determining it
 // (for example debugserver).
-func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) {
+func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -459,7 +459,7 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) 
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	return proc.NewTarget(p), nil
 }
 
 // EntryPoint will return the process entry point address, useful for

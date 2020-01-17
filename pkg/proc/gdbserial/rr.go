@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // Record uses rr to record the execution of the specified program and
@@ -54,7 +56,7 @@ func Record(cmd []string, wd string, quiet bool) (tracedir string, err error) {
 
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
-func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*Process, error) {
+func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*proc.Target, error) {
 	if err := checkRRAvailabe(); err != nil {
 		return nil, err
 	}
@@ -94,7 +96,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string)
 		return nil, err
 	}
 
-	return p, nil
+	return proc.NewTarget(p), nil
 }
 
 // ErrPerfEventParanoid is the error returned by Reply and Record if
@@ -263,13 +265,13 @@ func splitQuotedFields(in string) []string {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string) (p *Process, tracedir string, err error) {
-	tracedir, err = Record(cmd, wd, quiet)
+func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string) (*proc.Target, string, error) {
+	tracedir, err := Record(cmd, wd, quiet)
 	if tracedir == "" {
 		return nil, "", err
 	}
-	p, err = Replay(tracedir, quiet, true, debugInfoDirs)
-	return p, tracedir, err
+	t, err := Replay(tracedir, quiet, true, debugInfoDirs)
+	return t, tracedir, err
 }
 
 // safeRemoveAll removes dir and its contents but only as long as dir does
