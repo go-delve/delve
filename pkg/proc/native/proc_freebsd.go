@@ -60,7 +60,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 	}
 
 	dbp := New(0)
-	dbp.common = proc.NewCommonProcess(true)
+	dbp.common = proc.NewCommonProcess()
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
@@ -96,7 +96,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 // for external debug files in the directories passed in.
 func Attach(pid int, debugInfoDirs []string) (*Process, error) {
 	dbp := New(pid)
-	dbp.common = proc.NewCommonProcess(true)
+	dbp.common = proc.NewCommonProcess()
 
 	var err error
 	dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })

@@ -116,8 +116,6 @@ type BreakpointManipulation interface {
 type CommonProcess struct {
 	goroutineCache
 
-	fncallEnabled bool
-
 	fncallForG map[int]*callInjection
 }
 
@@ -138,6 +136,6 @@ type callInjection struct {
 
 // NewCommonProcess returns a struct with fields common across
 // all process implementations.
-func NewCommonProcess(fncallEnabled bool) CommonProcess {
-	return CommonProcess{fncallEnabled: fncallEnabled, fncallForG: make(map[int]*callInjection)}
+func NewCommonProcess() CommonProcess {
+	return CommonProcess{fncallForG: make(map[int]*callInjection)}
 }

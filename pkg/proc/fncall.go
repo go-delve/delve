@@ -132,7 +132,7 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
 func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
 	bi := p.BinInfo()
-	if !p.Common().fncallEnabled {
+	if ok, _ := p.Recorded(); ok {
 		return errFuncCallUnsupportedBackend
 	}
 
@@ -234,7 +234,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 	p := scope.callCtx.p
 	bi := scope.BinInfo
-	if !p.Common().fncallEnabled {
+	if ok, _ := p.Recorded(); ok {
 		return nil, errFuncCallUnsupportedBackend
 	}
 

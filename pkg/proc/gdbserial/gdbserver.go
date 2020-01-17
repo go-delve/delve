@@ -184,7 +184,7 @@ func New(process *os.Process) *Process {
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
-		common:         proc.NewCommonProcess(true),
+		common:         proc.NewCommonProcess(),
 	}
 
 	if process != nil {
