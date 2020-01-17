@@ -1514,7 +1514,7 @@ func BenchmarkGoroutinesInfo(b *testing.B) {
 	withTestProcess("testvariables2", b, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
 		for i := 0; i < b.N; i++ {
-			p.Common().ClearAllGCache()
+			p.ClearAllGCache()
 			_, _, err := proc.GoroutinesInfo(p, 0, 0)
 			assertNoError(err, b, "GoroutinesInfo")
 		}
@@ -1952,7 +1952,7 @@ func TestNextParked(t *testing.T) {
 			}
 		}
 
-		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
+		assertNoError(p.SwitchGoroutine(parkedg), t, "SwitchGoroutine()")
 		p.ClearBreakpoint(bp.Addr)
 		assertNoError(proc.Next(p), t, "Next()")
 
@@ -2002,7 +2002,7 @@ func TestStepParked(t *testing.T) {
 			t.Logf("\t%s:%d in %s (%#x)", frame.Call.File, frame.Call.Line, name, frame.Current.PC)
 		}
 
-		assertNoError(p.SwitchGoroutine(parkedg.ID), t, "SwitchGoroutine()")
+		assertNoError(p.SwitchGoroutine(parkedg), t, "SwitchGoroutine()")
 		p.ClearBreakpoint(bp.Addr)
 		assertNoError(proc.Step(p), t, "Step()")
 

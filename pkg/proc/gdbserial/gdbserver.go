@@ -126,7 +126,6 @@ type Process struct {
 
 	onDetach func() // called after a successful detach
 
-	common proc.CommonProcess
 }
 
 // Thread represents an operating system thread.
@@ -184,7 +183,6 @@ func New(process *os.Process) *Process {
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
-		common:         proc.NewCommonProcess(),
 	}
 
 	if process != nil {
@@ -602,11 +600,6 @@ func (p *Process) CurrentThread() proc.Thread {
 	return p.currentThread
 }
 
-// Common returns common information across Process implementations.
-func (p *Process) Common() *proc.CommonProcess {
-	return &p.common
-}
-
 // SelectedGoroutine returns the current actuve selected goroutine.
 func (p *Process) SelectedGoroutine() *proc.G {
 	return p.selectedGoroutine
@@ -645,7 +638,6 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 		}
 	}
 
-	p.common.ClearAllGCache()
 	for _, th := range p.threads {
 		th.clearBreakpointState()
 	}
@@ -765,13 +757,8 @@ func (p *Process) SwitchThread(tid int) error {
 }
 
 // SwitchGoroutine will change the internal selected goroutine.
-func (p *Process) SwitchGoroutine(gid int) error {
-	g, err := proc.FindGoroutine(p, gid)
-	if err != nil {
-		return err
-	}
+func (p *Process) SwitchGoroutine(g *proc.G) error {
 	if g == nil {
-		// user specified -1 and selectedGoroutine is nil
 		return nil
 	}
 	if g.Thread != nil {
@@ -854,7 +841,6 @@ func (p *Process) Restart(pos string) error {
 
 	p.exited = false
 
-	p.common.ClearAllGCache()
 	for _, th := range p.threads {
 		th.clearBreakpointState()
 	}

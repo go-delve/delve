@@ -159,7 +159,6 @@ type Process struct {
 	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G
-	common            proc.CommonProcess
 }
 
 // Thread represents a thread in the core file being debugged.
@@ -434,12 +433,6 @@ func (p *Process) Valid() (bool, error) {
 	return true, nil
 }
 
-// Common returns common information across Process
-// implementations.
-func (p *Process) Common() *proc.CommonProcess {
-	return &p.common
-}
-
 // Pid returns the process ID of this process.
 func (p *Process) Pid() int {
 	return p.pid
@@ -462,11 +455,7 @@ func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.
 }
 
 // SwitchGoroutine will change the selected and active goroutine.
-func (p *Process) SwitchGoroutine(gid int) error {
-	g, err := proc.FindGoroutine(p, gid)
-	if err != nil {
-		return err
-	}
+func (p *Process) SwitchGoroutine(g *proc.G) error {
 	if g == nil {
 		// user specified -1 and selectedGoroutine is nil
 		return nil

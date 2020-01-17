@@ -736,7 +736,10 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
 		d.log.Debugf("switching to goroutine %d", command.GoroutineID)
-		err = d.target.SwitchGoroutine(command.GoroutineID)
+		g, err := proc.FindGoroutine(d.target, command.GoroutineID)
+		if err == nil {
+			err = d.target.SwitchGoroutine(g)
+		}
 		withBreakpointInfo = false
 	case api.Halt:
 		// RequestManualStop already called
