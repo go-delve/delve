@@ -20,7 +20,7 @@ type Thread interface {
 	Location() (*Location, error)
 	// Breakpoint will return the breakpoint that this thread is stopped at or
 	// nil if the thread is not stopped at any breakpoint.
-	Breakpoint() BreakpointState
+	Breakpoint() *BreakpointState
 	ThreadID() int
 
 	// Registers returns the CPU registers of this thread. The contents of the

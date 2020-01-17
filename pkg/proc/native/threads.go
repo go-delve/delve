@@ -145,8 +145,8 @@ func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 
 // Breakpoint returns the current breakpoint that is active
 // on this thread.
-func (t *Thread) Breakpoint() proc.BreakpointState {
-	return t.CurrentBreakpoint
+func (t *Thread) Breakpoint() *proc.BreakpointState {
+	return &t.CurrentBreakpoint
 }
 
 // ThreadID returns the ID of this thread.

@@ -37,7 +37,7 @@ type Debugger struct {
 	processArgs []string
 	// TODO(DO NOT MERGE WITHOUT) rename to targetMutex
 	processMutex sync.Mutex
-	target       proc.Process
+	target       *proc.Target
 	log          *logrus.Entry
 
 	running      bool
@@ -102,7 +102,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		d.target = p
 
 	case d.config.CoreFile != "":
-		var p proc.Process
+		var p *proc.Target
 		var err error
 		switch d.config.Backend {
 		case "rr":
@@ -165,7 +165,7 @@ func (d *Debugger) checkGoVersion() error {
 }
 
 // Launch will start a process with the given args and working directory.
-func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error) {
+func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
 	switch d.config.Backend {
 	case "native":
 		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories)
@@ -190,7 +190,7 @@ func (d *Debugger) Launch(processArgs []string, wd string) (proc.Process, error)
 var ErrNoAttachPath = errors.New("must specify executable path on macOS")
 
 // Attach will attach to the process specified by 'pid'.
-func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
+func (d *Debugger) Attach(pid int, path string) (*proc.Target, error) {
 	switch d.config.Backend {
 	case "native":
 		return native.Attach(pid, d.config.DebugInfoDirectories)
@@ -208,7 +208,7 @@ func (d *Debugger) Attach(pid int, path string) (proc.Process, error) {
 
 var errMacOSBackendUnavailable = errors.New("debugserver or lldb-server not found: install XCode's command line tools or lldb-server")
 
-func betterGdbserialLaunchError(p proc.Process, err error) (proc.Process, error) {
+func betterGdbserialLaunchError(p *proc.Target, err error) (*proc.Target, error) {
 	if runtime.GOOS != "darwin" {
 		return p, err
 	}
@@ -717,7 +717,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		err = proc.Step(d.target)
 	case api.StepInstruction:
 		d.log.Debug("single stepping")
-		err = d.target.StepInstruction()
+		err = proc.StepInstruction(d.target)
 	case api.ReverseStepInstruction:
 		d.log.Debug("reverse single stepping")
 		if err := d.target.Direction(proc.Backward); err != nil {
@@ -726,7 +726,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		defer func() {
 			d.target.Direction(proc.Forward)
 		}()
-		err = d.target.StepInstruction()
+		err = proc.StepInstruction(d.target)
 	case api.StepOut:
 		d.log.Debug("step out")
 		err = proc.StepOut(d.target)

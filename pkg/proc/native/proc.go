@@ -267,41 +267,6 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	return trapthread, err
 }
 
-// StepInstruction will continue the current thread for exactly
-// one instruction. This method affects only the thread
-// associated with the selected goroutine. All other
-// threads will remain stopped.
-func (dbp *Process) StepInstruction() (err error) {
-	thread := dbp.currentThread
-	if dbp.selectedGoroutine != nil {
-		if dbp.selectedGoroutine.Thread == nil {
-			// Step called on parked goroutine
-			if _, err := dbp.SetBreakpoint(dbp.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(dbp.selectedGoroutine)); err != nil {
-				return err
-			}
-			return proc.Continue(dbp)
-		}
-		thread = dbp.selectedGoroutine.Thread.(*Thread)
-	}
-	dbp.common.ClearAllGCache()
-	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	thread.CurrentBreakpoint.Clear()
-	err = thread.StepInstruction()
-	if err != nil {
-		return err
-	}
-	err = thread.SetCurrentBreakpoint(true)
-	if err != nil {
-		return err
-	}
-	if g, _ := proc.GetG(thread); g != nil {
-		dbp.selectedGoroutine = g
-	}
-	return nil
-}
-
 // SwitchThread changes from current thread to the thread specified by `tid`.
 func (dbp *Process) SwitchThread(tid int) error {
 	if dbp.exited {

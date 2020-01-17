@@ -751,37 +751,6 @@ func (p *Process) SetSelectedGoroutine(g *proc.G) {
 	p.selectedGoroutine = g
 }
 
-// StepInstruction will step exactly one CPU instruction.
-func (p *Process) StepInstruction() error {
-	thread := p.currentThread
-	if p.selectedGoroutine != nil {
-		if p.selectedGoroutine.Thread == nil {
-			if _, err := p.SetBreakpoint(p.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(p.selectedGoroutine)); err != nil {
-				return err
-			}
-			return proc.Continue(p)
-		}
-		thread = p.selectedGoroutine.Thread.(*Thread)
-	}
-	p.common.ClearAllGCache()
-	if p.exited {
-		return &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	thread.clearBreakpointState()
-	err := thread.StepInstruction()
-	if err != nil {
-		return err
-	}
-	err = thread.SetCurrentBreakpoint(true)
-	if err != nil {
-		return err
-	}
-	if g, _ := proc.GetG(thread); g != nil {
-		p.selectedGoroutine = g
-	}
-	return nil
-}
-
 // SwitchThread will change the internal selected thread.
 func (p *Process) SwitchThread(tid int) error {
 	if p.exited {
@@ -1243,8 +1212,8 @@ func (t *Thread) Location() (*proc.Location, error) {
 }
 
 // Breakpoint returns the current active breakpoint for this thread.
-func (t *Thread) Breakpoint() proc.BreakpointState {
-	return t.CurrentBreakpoint
+func (t *Thread) Breakpoint() *proc.BreakpointState {
+	return &t.CurrentBreakpoint
 }
 
 // ThreadID returns this threads ID.

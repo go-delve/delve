@@ -302,8 +302,8 @@ func (t *Thread) Location() (*proc.Location, error) {
 // Breakpoint returns the current breakpoint this thread is stopped at.
 // For core files this always returns an empty BreakpointState struct, as
 // there are no breakpoints when debugging core files.
-func (t *Thread) Breakpoint() proc.BreakpointState {
-	return proc.BreakpointState{}
+func (t *Thread) Breakpoint() *proc.BreakpointState {
+	return &proc.BreakpointState{}
 }
 
 // ThreadID returns the ID for this thread.

@@ -10,7 +10,7 @@ import (
 
 func TestGoroutineCreationLocation(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestProcess("goroutinestackprog", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcess("goroutinestackprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.agoroutine")
 		assertNoError(proc.Continue(p), t, "Continue()")
 

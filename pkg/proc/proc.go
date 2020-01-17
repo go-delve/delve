@@ -142,7 +142,7 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64,
 }
 
 // Next continues execution until the next source line.
-func Next(dbp Process) (err error) {
+func Next(dbp *Target) (err error) {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func Next(dbp Process) (err error) {
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
-func Continue(dbp Process) error {
+func Continue(dbp *Target) error {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -230,7 +230,7 @@ func Continue(dbp Process) error {
 					return err
 				}
 				return conditionErrors(threads)
-			case g == nil || dbp.Common().fncallForG[g.ID] == nil:
+			case g == nil || dbp.fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
 				if !arch.BreakInstrMovesPC() {
 					bpsize := arch.BreakpointSize()
@@ -355,7 +355,7 @@ func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) 
 
 // Step will continue until another source line is reached.
 // Will step into functions.
-func Step(dbp Process) (err error) {
+func Step(dbp *Target) (err error) {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -418,7 +418,7 @@ func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
 
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
-func StepOut(dbp Process) error {
+func StepOut(dbp *Target) error {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -501,6 +501,43 @@ func StepOut(dbp Process) error {
 
 	success = true
 	return Continue(dbp)
+}
+
+// StepInstruction will continue the current thread for exactly
+// one instruction. This method affects only the thread
+// associated with the selected goroutine. All other
+// threads will remain stopped.
+func StepInstruction(dbp *Target) (err error) {
+	thread := dbp.CurrentThread()
+	g := dbp.SelectedGoroutine()
+	if g != nil {
+		if g.Thread == nil {
+			// Step called on parked goroutine
+			if _, err := dbp.SetBreakpoint(g.PC, NextBreakpoint,
+				SameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
+				return err
+			}
+			return Continue(dbp)
+		}
+		thread = g.Thread
+	}
+	dbp.ClearAllGCache()
+	if ok, err := dbp.Valid(); !ok {
+		return err
+	}
+	thread.Breakpoint().Clear()
+	err = thread.StepInstruction()
+	if err != nil {
+		return err
+	}
+	err = thread.SetCurrentBreakpoint(true)
+	if err != nil {
+		return err
+	}
+	if tg, _ := GetG(thread); tg != nil {
+		dbp.SetSelectedGoroutine(tg)
+	}
+	return nil
 }
 
 // GoroutinesInfo searches for goroutines starting at index 'start', and

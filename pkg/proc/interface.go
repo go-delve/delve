@@ -93,7 +93,6 @@ type GoroutineInfo interface {
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
 	ContinueOnce() (trapthread Thread, err error)
-	StepInstruction() error
 	SwitchThread(int) error
 	SwitchGoroutine(int) error
 	RequestManualStop() error
@@ -115,8 +114,6 @@ type BreakpointManipulation interface {
 // implementations of the Process interface.
 type CommonProcess struct {
 	goroutineCache
-
-	fncallForG map[int]*callInjection
 }
 
 type goroutineCache struct {
@@ -126,16 +123,8 @@ type goroutineCache struct {
 	allgentryAddr, allglenAddr uint64
 }
 
-type callInjection struct {
-	// if continueCompleted is not nil it means we are in the process of
-	// executing an injected function call, see comments throughout
-	// pkg/proc/fncall.go for a description of how this works.
-	continueCompleted chan<- *G
-	continueRequest   <-chan continueRequest
-}
-
 // NewCommonProcess returns a struct with fields common across
 // all process implementations.
 func NewCommonProcess() CommonProcess {
-	return CommonProcess{fncallForG: make(map[int]*callInjection)}
+	return CommonProcess{}
 }
