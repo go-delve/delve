@@ -2305,6 +2305,27 @@ func TestIssue561(t *testing.T) {
 	})
 }
 
+func TestGoroutineLables(t *testing.T) {
+	withTestProcess("goroutineLabels", t, func(p proc.Process, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		g, err := proc.GetG(p.CurrentThread())
+		assertNoError(err, t, "GetG()")
+		if len(g.Labels) != 0 {
+			t.Fatalf("No labels expected")
+		}
+
+		assertNoError(proc.Continue(p), t, "Continue()")
+		g, err = proc.GetG(p.CurrentThread())
+		assertNoError(err, t, "GetG()")
+		if v := g.Labels["k1"]; v != "v1" {
+			t.Errorf("Unexpected label value k1=%v", v)
+		}
+		if v := g.Labels["k2"]; v != "v2" {
+			t.Errorf("Unexpected label value k2=%v", v)
+		}
+	})
+}
+
 func TestStepOut(t *testing.T) {
 	testseq2(t, "testnextprog", "main.helloworld", []seqTest{{contContinue, 13}, {contStepout, 35}})
 }

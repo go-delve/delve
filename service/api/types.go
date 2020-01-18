@@ -308,6 +308,8 @@ type Goroutine struct {
 	// ID of the associated thread for running goroutines
 	ThreadID   int    `json:"threadID"`
 	Unreadable string `json:"unreadable"`
+	// Goroutine's pprof labels
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // DebuggerCommand is a command which changes the debugger's execution state.
