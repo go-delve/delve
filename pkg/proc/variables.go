@@ -210,6 +210,8 @@ type G struct {
 	variable *Variable
 
 	Unreadable error // could not read the G struct
+
+	Labels map[string]string // G's pprof labels
 }
 
 // Defer returns the top-most defer of the goroutine.
@@ -558,6 +560,27 @@ func (v *Variable) parseG() (*G, error) {
 
 	status, _ := constant.Int64Val(v.fieldVariable("atomicstatus").Value)
 	f, l, fn := v.bi.PCToLine(uint64(pc))
+
+	var labels map[string]string
+	if labelsVar := v.loadFieldNamed("labels"); labelsVar != nil && len(labelsVar.Children) == 1 {
+		if address := labelsVar.Children[0]; address.Addr != 0 {
+			labelMapType, _ := v.bi.findType("runtime/pprof.labelMap")
+			if labelMapType != nil {
+				labelMap := newVariable("", address.Addr, labelMapType, v.bi, v.mem)
+				labelMap.loadValue(loadFullValue)
+				labels = map[string]string{}
+				// iterate through map as it is done in other places
+				for i := range labelMap.Children {
+					if i % 2 == 0 {
+						k := labelMap.Children[i]
+						v := labelMap.Children[i+1]
+						labels[constant.StringVal(k.Value)] = constant.StringVal(v.Value)
+					}
+				}
+			}
+		}
+	}
+
 	g := &G{
 		ID:         int(id),
 		GoPC:       uint64(gopc),
@@ -573,6 +596,7 @@ func (v *Variable) parseG() (*G, error) {
 		stkbarPos:  int(stkbarPos),
 		stackhi:    stackhi,
 		stacklo:    stacklo,
+		Labels:     labels,
 	}
 	return g, nil
 }
