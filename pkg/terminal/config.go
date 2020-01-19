@@ -95,7 +95,7 @@ func configureList(t *Term) error {
 }
 
 func configureSet(t *Term, args string) error {
-	v := strings.SplitN(args, " ", 2)
+	v := split2PartsBySpace(args)
 
 	cfgname := v[0]
 	var rest string

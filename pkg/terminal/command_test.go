@@ -774,6 +774,13 @@ func TestConfig(t *testing.T) {
 	if *term.conf.MaxStringLen != 10 {
 		t.Fatalf("expected MaxStringLen 10, got: %d", *term.conf.MaxStringLen)
 	}
+	err = configureCmd(&term, callContext{}, "show-location-expr   true")
+	if err != nil {
+		t.Fatalf("error executing configureCmd(show-location-expr   true)")
+	}
+	if term.conf.ShowLocationExpr != true {
+		t.Fatalf("expected ShowLocationExpr true, got false")
+	}
 	err = configureCmd(&term, callContext{}, "max-variable-recurse 4")
 	if err != nil {
 		t.Fatalf("error executing configureCmd(max-variable-recurse): %v", err)
