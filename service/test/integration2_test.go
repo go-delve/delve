@@ -1820,3 +1820,22 @@ func TestIssue1787(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue505(t *testing.T) {
+	withTestClient2("issue505", t, func(c service.Client) {
+		fp := testProgPath(t, "issue505")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 11})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
+		}
+		var1, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "err", normalLoadConfig)
+		assertNoError(err, t, "EvalVariable")
+		if var1.Value != "" {
+			t.Fatalf("Wrong variable value: %s", var1.Value)
+		}
+	})
+}

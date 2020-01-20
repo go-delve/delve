@@ -211,7 +211,7 @@ Alternatively you can specify a package name, and Delve will debug the tests in
 that package instead.`,
 		Run: testCmd,
 	}
-	testCommand.Flags().String("output", "debug.test", "Output path for the binary.")
+	testCommand.Flags().String("output", "./__debug_test", "Output path for the binary.")
 	RootCommand.AddCommand(testCommand)
 
 	// 'trace' subcommand.
@@ -347,6 +347,9 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
+		if runtime.GOOS == "windows" {
+			debugname += ".exe"
+		}
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 		err = gobuild(debugname, dlvArgs)
@@ -403,6 +406,9 @@ func traceCmd(cmd *cobra.Command, args []string) {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%v\n", err)
 					return 1
+				}
+				if runtime.GOOS == "windows" {
+					debugname += ".exe"
 				}
 				if traceTestBinary {
 					if err := gotestbuild(debugname, dlvArgs); err != nil {
@@ -494,6 +500,9 @@ func testCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
+		}
+		if runtime.GOOS == "windows" {
+			debugname += ".exe"
 		}
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)

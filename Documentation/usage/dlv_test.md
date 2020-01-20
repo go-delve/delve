@@ -19,7 +19,7 @@ dlv test [package]
 ### Options
 
 ```
-      --output string   Output path for the binary. (default "debug.test")
+      --output string   Output path for the binary. (default "./__debug_test")
 ```
 
 ### Options inherited from parent commands

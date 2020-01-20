@@ -82,6 +82,9 @@ func TestBuild(t *testing.T) {
 	}
 
 	dlvbin := filepath.Join(cmd.Dir, "dlv")
+	if runtime.GOOS == "windows" {
+		dlvbin += ".exe"
+	}
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
@@ -129,6 +132,9 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 		} else {
 			debugbin = filepath.Join(buildtestdir, output)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		debugbin += ".exe"
 	}
 	cmd := exec.Command(c[0], c[1:]...)
 	cmd.Dir = buildtestdir
