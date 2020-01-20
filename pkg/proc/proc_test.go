@@ -2279,7 +2279,7 @@ func TestIssue561(t *testing.T) {
 }
 
 func TestGoroutineLables(t *testing.T) {
-	withTestProcess("goroutineLabels", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcess("goroutineLabels", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG()")

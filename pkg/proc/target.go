@@ -23,6 +23,25 @@ func NewTarget(p Process) *Target {
 	return t
 }
 
+// SupportsFunctionCalls returns whether or not the backend supports
+// calling functions during a debug session.
+// Currently only non-recorded processes running on AMD64 support
+// function calls.
+func (t *Target) SupportsFunctionCalls() bool {
+	if ok, _ := t.Process.Recorded(); ok {
+		return false
+	}
+	_, ok := t.Process.BinInfo().Arch.(*AMD64)
+	return ok
+}
+
+// ClearAllGCache clears the internal Goroutine cache.
+// This should be called anytime the target process executes instructions.
 func (t *Target) ClearAllGCache() {
 	t.gcache.Clear()
+}
+
+func (t *Target) Restart(from string) error {
+	t.ClearAllGCache()
+	return t.Process.Restart(from)
 }

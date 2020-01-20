@@ -90,7 +90,7 @@ type functionCallState struct {
 }
 
 type callContext struct {
-	p Process
+	p *Target
 
 	// checkEscape is true if the escape check should be performed.
 	// See service/api.DebuggerCommand.UnsafeCall in service/api/types.go.
@@ -140,7 +140,7 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
 func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
 	bi := t.BinInfo()
-	if ok, _ := t.Recorded(); ok {
+	if !t.SupportsFunctionCalls() {
 		return errFuncCallUnsupportedBackend
 	}
 
@@ -242,7 +242,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 	p := scope.callCtx.p
 	bi := scope.BinInfo
-	if ok, _ := p.Recorded(); ok {
+	if !p.SupportsFunctionCalls() {
 		return nil, errFuncCallUnsupportedBackend
 	}
 
