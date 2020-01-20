@@ -4,7 +4,6 @@
 [![GoDoc](https://godoc.org/github.com/go-delve/delve?status.svg)](https://godoc.org/github.com/go-delve/delve)
 [![Build Status](https://travis-ci.org/go-delve/delve.svg?branch=master)](https://travis-ci.org/go-delve/delve)
 [![Build status](https://ci.appveyor.com/api/projects/status/9e9edx1qlp3145j5/branch/master?svg=true)](https://ci.appveyor.com/project/go-delve/delve)
-[![Join the chat at https://gitter.im/go-delve/delve](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/go-delve/delve?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 The GitHub issue tracker is for **bugs** only. Please use the [developer mailing list](https://groups.google.com/forum/#!forum/delve-dev) for any feature proposals and discussions.
 
