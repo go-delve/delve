@@ -96,7 +96,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string)
 		return nil, err
 	}
 
-	return proc.NewTarget(p), nil
+	return proc.NewTarget(p, false), nil
 }
 
 // ErrPerfEventParanoid is the error returned by Reply and Record if

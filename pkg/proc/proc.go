@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"path/filepath"
 	"strconv"
+
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 // ErrNotExecutable is returned after attempting to execute a non-executable file
@@ -813,4 +816,32 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 	}
 
 	return pc, nil
+}
+
+func setAsyncPreemptOff(p *Target, v int64) {
+	logger := p.BinInfo().logger
+	if producer := p.BinInfo().Producer(); producer == "" || !goversion.ProducerAfterOrEqual(producer, 1, 14) {
+		return
+	}
+	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.CurrentThread())
+	debugv, err := scope.findGlobal("runtime", "debug")
+	if err != nil || debugv.Unreadable != nil {
+		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
+		return
+	}
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	if err != nil {
+		logger.Warnf("could not find asyncpreemptoff field: %v", err)
+		return
+	}
+	asyncpreemptoffv.loadValue(loadFullValue)
+	if asyncpreemptoffv.Unreadable != nil {
+		logger.Warnf("asyncpreemptoff field unreadable: %v", asyncpreemptoffv.Unreadable)
+		return
+	}
+	p.asyncPreemptChanged = true
+	p.asyncPreemptOff, _ = constant.Int64Val(asyncpreemptoffv.Value)
+
+	err = scope.setValue(asyncpreemptoffv, newConstant(constant.MakeInt64(v), scope.Mem), "")
+	logger.Warnf("could not set asyncpreemptoff %v", err)
 }

@@ -7,6 +7,9 @@ type Target struct {
 	// fncallForG stores a mapping of current active function calls.
 	fncallForG map[int]*callInjection
 
+	asyncPreemptChanged bool  // runtime/debug.asyncpreemptoff was changed
+	asyncPreemptOff     int64 // cached value of runtime/debug.asyncpreemptoff
+
 	// gcache is a cache for Goroutines that we
 	// have read and parsed from the targets memory.
 	// This must be cleared whenever the target is resumed.
@@ -14,12 +17,17 @@ type Target struct {
 }
 
 // NewTarget returns an initialized Target object.
-func NewTarget(p Process) *Target {
+func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 	t := &Target{
 		Process:    p,
 		fncallForG: make(map[int]*callInjection),
 	}
 	t.gcache.init(p.BinInfo())
+
+	if disableAsyncPreempt {
+		setAsyncPreemptOff(t, 1)
+	}
+
 	return t
 }
 
@@ -44,4 +52,11 @@ func (t *Target) ClearAllGCache() {
 func (t *Target) Restart(from string) error {
 	t.ClearAllGCache()
 	return t.Process.Restart(from)
+}
+
+func (t *Target) Detach(kill bool) error {
+	if !kill && t.asyncPreemptChanged {
+		setAsyncPreemptOff(t, t.asyncPreemptOff)
+	}
+	return t.Process.Detach(kill)
 }

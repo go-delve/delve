@@ -126,7 +126,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 		return nil, err
 	}
 
-	return proc.NewTarget(dbp), err
+	return proc.NewTarget(dbp, false), err
 }
 
 // Attach to an existing process with the given PID.
@@ -158,7 +158,7 @@ func Attach(pid int, _ []string) (*proc.Target, error) {
 		dbp.Detach(false)
 		return nil, err
 	}
-	return proc.NewTarget(dbp), nil
+	return proc.NewTarget(dbp, false), nil
 }
 
 // Kill kills the process.

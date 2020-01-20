@@ -406,7 +406,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	if err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(p), nil
+	return proc.NewTarget(p, false), nil
 }
 
 // LLDBAttach starts an instance of lldb-server and connects to it, asking
@@ -458,7 +458,7 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 	if err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(p), nil
+	return proc.NewTarget(p, false), nil
 }
 
 // EntryPoint will return the process entry point address, useful for

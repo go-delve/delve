@@ -226,7 +226,8 @@ func TestCheckpoints(t *testing.T) {
 		// Move back to checkpoint, check that the output of 'when' is the same as
 		// what it was when we set the breakpoint
 		p.Restart(fmt.Sprintf("c%d", cpid))
-		p.SwitchGoroutine(1)
+		g, _ := proc.FindGoroutine(p, 1)
+		p.SwitchGoroutine(g)
 		when2, loc2 := getPosition(p, t)
 		t.Logf("when2: %q (%#x) %x", when2, loc2.PC, p.CurrentThread().ThreadID())
 		if loc2.PC != loc0.PC {
@@ -253,7 +254,8 @@ func TestCheckpoints(t *testing.T) {
 		_, err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		p.Restart(fmt.Sprintf("c%d", cpid))
-		p.SwitchGoroutine(1)
+		g, _ = proc.FindGoroutine(p, 1)
+		p.SwitchGoroutine(g)
 		assertNoError(proc.Next(p), t, "First Next")
 		assertNoError(proc.Next(p), t, "Second Next")
 		when4, loc4 := getPosition(p, t)
