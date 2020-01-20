@@ -156,9 +156,11 @@ func (s *ServerImpl) Run() error {
 				}
 			}
 
-			if !canAccept(s.listener.Addr(), c.RemoteAddr()) {
-				c.Close()
-				continue
+			if s.config.CheckLocalConnUser {
+				if !canAccept(s.listener.Addr(), c.RemoteAddr()) {
+					c.Close()
+					continue
+				}
 			}
 
 			go s.serveJSONCodec(c)

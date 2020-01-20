@@ -47,6 +47,9 @@ var (
 	BuildFlags string
 	// WorkingDir is the working directory for running the program.
 	WorkingDir string
+	// CheckLocalConnUser is true if the debugger should check that local
+	// connections come from the same user that started the headless server
+	CheckLocalConnUser bool
 
 	// Backend selection
 	Backend string
@@ -111,6 +114,7 @@ func New(docCall bool) *cobra.Command {
 	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 	RootCommand.PersistentFlags().StringVar(&WorkingDir, "wd", ".", "Working directory for running the program.")
 	RootCommand.PersistentFlags().BoolVarP(&CheckGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
+	RootCommand.PersistentFlags().BoolVarP(&CheckLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
 	RootCommand.PersistentFlags().StringVar(&Backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
 
 	// 'attach' subcommand.
@@ -641,6 +645,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			Foreground:           Headless,
 			DebugInfoDirectories: conf.DebugInfoDirectories,
 			CheckGoVersion:       CheckGoVersion,
+			CheckLocalConnUser:   CheckLocalConnUser,
 
 			DisconnectChan: disconnectChan,
 		})
