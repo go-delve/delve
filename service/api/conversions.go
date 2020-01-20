@@ -263,7 +263,7 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 		GoStatementLoc: ConvertLocation(g.Go()),
 		StartLoc:       ConvertLocation(g.StartLoc()),
 		ThreadID:       tid,
-		Labels:         g.Labels,
+		Labels:         g.Labels(),
 	}
 	if g.Unreadable != nil {
 		r.Unreadable = g.Unreadable.Error()
