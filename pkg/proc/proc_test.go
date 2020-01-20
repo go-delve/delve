@@ -2310,17 +2310,18 @@ func TestGoroutineLables(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG()")
-		if len(g.Labels) != 0 {
+		if len(g.Labels()) != 0 {
 			t.Fatalf("No labels expected")
 		}
 
 		assertNoError(proc.Continue(p), t, "Continue()")
 		g, err = proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG()")
-		if v := g.Labels["k1"]; v != "v1" {
+		labels := g.Labels()
+		if v := labels["k1"]; v != "v1" {
 			t.Errorf("Unexpected label value k1=%v", v)
 		}
-		if v := g.Labels["k2"]; v != "v2" {
+		if v := labels["k2"]; v != "v2" {
 			t.Errorf("Unexpected label value k2=%v", v)
 		}
 	})
