@@ -126,7 +126,6 @@ type Process struct {
 
 	onDetach func() // called after a successful detach
 
-	common proc.CommonProcess
 }
 
 // Thread represents an operating system thread.
@@ -184,7 +183,6 @@ func New(process *os.Process) *Process {
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
-		common:         proc.NewCommonProcess(true),
 	}
 
 	if process != nil {
@@ -320,7 +318,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*Process, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*proc.Target, error) {
 	switch runtime.GOOS {
 	case "windows":
 		return nil, ErrUnsupportedOS
@@ -343,7 +341,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 	var listener net.Listener
 	var port string
-	var proc *exec.Cmd
+	var process *exec.Cmd
 	if _, err := os.Stat(debugserverExecutable); err == nil {
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -363,7 +361,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 		isDebugserver = true
 
-		proc = exec.Command(debugserverExecutable, args...)
+		process = exec.Command(debugserverExecutable, args...)
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
@@ -374,29 +372,29 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		args = append(args, port, "--")
 		args = append(args, cmd...)
 
-		proc = exec.Command("lldb-server", args...)
+		process = exec.Command("lldb-server", args...)
 	}
 
 	if logflags.LLDBServerOutput() || logflags.GdbWire() || foreground {
-		proc.Stdout = os.Stdout
-		proc.Stderr = os.Stderr
+		process.Stdout = os.Stdout
+		process.Stderr = os.Stderr
 	}
 	if foreground {
 		foregroundSignalsIgnore()
-		proc.Stdin = os.Stdin
+		process.Stdin = os.Stdin
 	}
 	if wd != "" {
-		proc.Dir = wd
+		process.Dir = wd
 	}
 
-	proc.SysProcAttr = sysProcAttr(foreground)
+	process.SysProcAttr = sysProcAttr(foreground)
 
-	err := proc.Start()
+	err := process.Start()
 	if err != nil {
 		return nil, err
 	}
 
-	p := New(proc.Process)
+	p := New(process.Process)
 	p.conn.isDebugserver = isDebugserver
 
 	if listener != nil {
@@ -407,7 +405,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	return proc.NewTarget(p), nil
 }
 
 // LLDBAttach starts an instance of lldb-server and connects to it, asking
@@ -415,7 +413,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 // Path is path to the target's executable, path only needs to be specified
 // for some stubs that do not provide an automated way of determining it
 // (for example debugserver).
-func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) {
+func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -459,7 +457,7 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*Process, error) 
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	return proc.NewTarget(p), nil
 }
 
 // EntryPoint will return the process entry point address, useful for
@@ -602,11 +600,6 @@ func (p *Process) CurrentThread() proc.Thread {
 	return p.currentThread
 }
 
-// Common returns common information across Process implementations.
-func (p *Process) Common() *proc.CommonProcess {
-	return &p.common
-}
-
 // SelectedGoroutine returns the current actuve selected goroutine.
 func (p *Process) SelectedGoroutine() *proc.G {
 	return p.selectedGoroutine
@@ -645,7 +638,6 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 		}
 	}
 
-	p.common.ClearAllGCache()
 	for _, th := range p.threads {
 		th.clearBreakpointState()
 	}
@@ -751,37 +743,6 @@ func (p *Process) SetSelectedGoroutine(g *proc.G) {
 	p.selectedGoroutine = g
 }
 
-// StepInstruction will step exactly one CPU instruction.
-func (p *Process) StepInstruction() error {
-	thread := p.currentThread
-	if p.selectedGoroutine != nil {
-		if p.selectedGoroutine.Thread == nil {
-			if _, err := p.SetBreakpoint(p.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(p.selectedGoroutine)); err != nil {
-				return err
-			}
-			return proc.Continue(p)
-		}
-		thread = p.selectedGoroutine.Thread.(*Thread)
-	}
-	p.common.ClearAllGCache()
-	if p.exited {
-		return &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	thread.clearBreakpointState()
-	err := thread.StepInstruction()
-	if err != nil {
-		return err
-	}
-	err = thread.SetCurrentBreakpoint(true)
-	if err != nil {
-		return err
-	}
-	if g, _ := proc.GetG(thread); g != nil {
-		p.selectedGoroutine = g
-	}
-	return nil
-}
-
 // SwitchThread will change the internal selected thread.
 func (p *Process) SwitchThread(tid int) error {
 	if p.exited {
@@ -796,13 +757,8 @@ func (p *Process) SwitchThread(tid int) error {
 }
 
 // SwitchGoroutine will change the internal selected goroutine.
-func (p *Process) SwitchGoroutine(gid int) error {
-	g, err := proc.FindGoroutine(p, gid)
-	if err != nil {
-		return err
-	}
+func (p *Process) SwitchGoroutine(g *proc.G) error {
 	if g == nil {
-		// user specified -1 and selectedGoroutine is nil
 		return nil
 	}
 	if g.Thread != nil {
@@ -885,7 +841,6 @@ func (p *Process) Restart(pos string) error {
 
 	p.exited = false
 
-	p.common.ClearAllGCache()
 	for _, th := range p.threads {
 		th.clearBreakpointState()
 	}
@@ -1243,8 +1198,8 @@ func (t *Thread) Location() (*proc.Location, error) {
 }
 
 // Breakpoint returns the current active breakpoint for this thread.
-func (t *Thread) Breakpoint() proc.BreakpointState {
-	return t.CurrentBreakpoint
+func (t *Thread) Breakpoint() *proc.BreakpointState {
+	return &t.CurrentBreakpoint
 }
 
 // ThreadID returns this threads ID.

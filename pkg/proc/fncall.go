@@ -90,7 +90,7 @@ type functionCallState struct {
 }
 
 type callContext struct {
-	p Process
+	p *Target
 
 	// checkEscape is true if the escape check should be performed.
 	// See service/api.DebuggerCommand.UnsafeCall in service/api/types.go.
@@ -115,6 +115,14 @@ type continueRequest struct {
 	ret  *Variable
 }
 
+type callInjection struct {
+	// if continueCompleted is not nil it means we are in the process of
+	// executing an injected function call, see comments throughout
+	// pkg/proc/fncall.go for a description of how this works.
+	continueCompleted chan<- *G
+	continueRequest   <-chan continueRequest
+}
+
 func (callCtx *callContext) doContinue() *G {
 	callCtx.continueRequest <- continueRequest{cont: true}
 	return <-callCtx.continueCompleted
@@ -130,9 +138,9 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
 // Because this can only be done in the current goroutine, unlike
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
-func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
-	bi := p.BinInfo()
-	if !p.Common().fncallEnabled {
+func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
+	bi := t.BinInfo()
+	if !t.SupportsFunctionCalls() {
 		return errFuncCallUnsupportedBackend
 	}
 
@@ -144,7 +152,7 @@ func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig
 		return errGoroutineNotRunning
 	}
 
-	if callinj := p.Common().fncallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
+	if callinj := t.fncallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
 		return errFuncCallInProgress
 	}
 
@@ -162,14 +170,14 @@ func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig
 	continueCompleted := make(chan *G)
 
 	scope.callCtx = &callContext{
-		p:                 p,
+		p:                 t,
 		checkEscape:       checkEscape,
 		retLoadCfg:        retLoadCfg,
 		continueRequest:   continueRequest,
 		continueCompleted: continueCompleted,
 	}
 
-	p.Common().fncallForG[g.ID] = &callInjection{
+	t.fncallForG[g.ID] = &callInjection{
 		continueCompleted,
 		continueRequest,
 	}
@@ -178,13 +186,13 @@ func EvalExpressionWithCalls(p Process, g *G, expr string, retLoadCfg LoadConfig
 
 	contReq, ok := <-continueRequest
 	if contReq.cont {
-		return Continue(p)
+		return Continue(t)
 	}
 
-	return finishEvalExpressionWithCalls(p, g, contReq, ok)
+	return finishEvalExpressionWithCalls(t, g, contReq, ok)
 }
 
-func finishEvalExpressionWithCalls(p Process, g *G, contReq continueRequest, ok bool) error {
+func finishEvalExpressionWithCalls(t *Target, g *G, contReq continueRequest, ok bool) error {
 	fncallLog("stashing return values for %d in thread=%d\n", g.ID, g.Thread.ThreadID())
 	var err error
 	if !ok {
@@ -208,8 +216,8 @@ func finishEvalExpressionWithCalls(p Process, g *G, contReq continueRequest, ok 
 		g.Thread.Common().returnValues = []*Variable{contReq.ret}
 	}
 
-	close(p.Common().fncallForG[g.ID].continueCompleted)
-	delete(p.Common().fncallForG, g.ID)
+	close(t.fncallForG[g.ID].continueCompleted)
+	delete(t.fncallForG, g.ID)
 	return err
 }
 
@@ -234,7 +242,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 	p := scope.callCtx.p
 	bi := scope.BinInfo
-	if !p.Common().fncallEnabled {
+	if !p.SupportsFunctionCalls() {
 		return nil, errFuncCallUnsupportedBackend
 	}
 
@@ -879,8 +887,8 @@ func isCallInjectionStop(loc *Location) bool {
 // callInjectionProtocol is the function called from Continue to progress
 // the injection protocol for all threads.
 // Returns true if a call injection terminated
-func callInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
-	if len(p.Common().fncallForG) == 0 {
+func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
+	if len(t.fncallForG) == 0 {
 		// we aren't injecting any calls, no need to check the threads.
 		return false, nil
 	}
@@ -897,7 +905,7 @@ func callInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
 		if err != nil {
 			return done, fmt.Errorf("could not determine running goroutine for thread %#x currently executing the function call injection protocol: %v", thread.ThreadID(), err)
 		}
-		callinj := p.Common().fncallForG[g.ID]
+		callinj := t.fncallForG[g.ID]
 		if callinj == nil || callinj.continueCompleted == nil {
 			return false, fmt.Errorf("could not recover call injection state for goroutine %d", g.ID)
 		}
@@ -905,7 +913,7 @@ func callInjectionProtocol(p Process, threads []Thread) (done bool, err error) {
 		callinj.continueCompleted <- g
 		contReq, ok := <-callinj.continueRequest
 		if !contReq.cont {
-			err := finishEvalExpressionWithCalls(p, g, contReq, ok)
+			err := finishEvalExpressionWithCalls(t, g, contReq, ok)
 			if err != nil {
 				return done, err
 			}

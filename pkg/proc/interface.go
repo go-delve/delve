@@ -69,8 +69,6 @@ type Info interface {
 	Valid() (bool, error)
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)
-	// Common returns a struct with fields common to all backends
-	Common() *CommonProcess
 
 	ThreadInfo
 	GoroutineInfo
@@ -93,9 +91,8 @@ type GoroutineInfo interface {
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
 	ContinueOnce() (trapthread Thread, err error)
-	StepInstruction() error
 	SwitchThread(int) error
-	SwitchGoroutine(int) error
+	SwitchGoroutine(*G) error
 	RequestManualStop() error
 	// CheckAndClearManualStopRequest returns true the first time it's called
 	// after a call to RequestManualStop.
@@ -109,35 +106,4 @@ type BreakpointManipulation interface {
 	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
 	ClearBreakpoint(addr uint64) (*Breakpoint, error)
 	ClearInternalBreakpoints() error
-}
-
-// CommonProcess contains fields used by this package, common to all
-// implementations of the Process interface.
-type CommonProcess struct {
-	goroutineCache
-
-	fncallEnabled bool
-
-	fncallForG map[int]*callInjection
-}
-
-type goroutineCache struct {
-	partialGCache map[int]*G
-	allGCache     []*G
-
-	allgentryAddr, allglenAddr uint64
-}
-
-type callInjection struct {
-	// if continueCompleted is not nil it means we are in the process of
-	// executing an injected function call, see comments throughout
-	// pkg/proc/fncall.go for a description of how this works.
-	continueCompleted chan<- *G
-	continueRequest   <-chan continueRequest
-}
-
-// NewCommonProcess returns a struct with fields common across
-// all process implementations.
-func NewCommonProcess(fncallEnabled bool) CommonProcess {
-	return CommonProcess{fncallEnabled: fncallEnabled, fncallForG: make(map[int]*callInjection)}
 }

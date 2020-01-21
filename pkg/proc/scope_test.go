@@ -23,7 +23,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 		return
 	}
 
-	withTestProcess("scopeescapevareval", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcess("scopeescapevareval", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue")
 
 		// On the breakpoint there are two 'a' variables in scope, the one that
@@ -72,7 +72,7 @@ func TestScope(t *testing.T) {
 
 	scopeChecks := getScopeChecks(scopetestPath, t)
 
-	withTestProcess("scopetest", t, func(p proc.Process, fixture protest.Fixture) {
+	withTestProcess("scopetest", t, func(p *proc.Target, fixture protest.Fixture) {
 		for i := range scopeChecks {
 			setFileBreakpoint(p, t, fixture.Source, scopeChecks[i].line)
 		}
@@ -237,7 +237,7 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 	}
 }
 
-func (scopeCheck *scopeCheck) checkLocalsAndArgs(p proc.Process, t *testing.T) (*proc.EvalScope, bool) {
+func (scopeCheck *scopeCheck) checkLocalsAndArgs(p *proc.Target, t *testing.T) (*proc.EvalScope, bool) {
 	scope, err := proc.GoroutineScope(p.CurrentThread())
 	assertNoError(err, t, "GoroutineScope()")
 

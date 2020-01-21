@@ -159,7 +159,6 @@ type Process struct {
 	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G
-	common            proc.CommonProcess
 }
 
 // Thread represents a thread in the core file being debugged.
@@ -200,7 +199,7 @@ var ErrUnrecognizedFormat = errors.New("unrecognized core format")
 // OpenCore will open the core file and return a Process struct.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error) {
+func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, error) {
 	var p *Process
 	var err error
 	for _, openFn := range openFns {
@@ -217,7 +216,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*Process, error
 		return nil, err
 	}
 
-	return p, nil
+	return proc.NewTarget(p), nil
 }
 
 // initialize for core files doesn't do much
@@ -302,8 +301,8 @@ func (t *Thread) Location() (*proc.Location, error) {
 // Breakpoint returns the current breakpoint this thread is stopped at.
 // For core files this always returns an empty BreakpointState struct, as
 // there are no breakpoints when debugging core files.
-func (t *Thread) Breakpoint() proc.BreakpointState {
-	return proc.BreakpointState{}
+func (t *Thread) Breakpoint() *proc.BreakpointState {
+	return &proc.BreakpointState{}
 }
 
 // ThreadID returns the ID for this thread.
@@ -434,12 +433,6 @@ func (p *Process) Valid() (bool, error) {
 	return true, nil
 }
 
-// Common returns common information across Process
-// implementations.
-func (p *Process) Common() *proc.CommonProcess {
-	return &p.common
-}
-
 // Pid returns the process ID of this process.
 func (p *Process) Pid() int {
 	return p.pid
@@ -462,11 +455,7 @@ func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.
 }
 
 // SwitchGoroutine will change the selected and active goroutine.
-func (p *Process) SwitchGoroutine(gid int) error {
-	g, err := proc.FindGoroutine(p, gid)
-	if err != nil {
-		return err
-	}
+func (p *Process) SwitchGoroutine(g *proc.G) error {
 	if g == nil {
 		// user specified -1 and selectedGoroutine is nil
 		return nil

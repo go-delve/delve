@@ -2,7 +2,6 @@ package proc
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -75,8 +74,6 @@ func PostInitializationSetup(p Process, path string, debugInfoDirs []string, wri
 	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
 	createFatalThrowBreakpoint(p, writeBreakpoint)
 
-	p.Common().goroutineCache.init(p.BinInfo())
-
 	return nil
 }
 
@@ -142,7 +139,7 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64,
 }
 
 // Next continues execution until the next source line.
-func Next(dbp Process) (err error) {
+func Next(dbp *Target) (err error) {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -161,7 +158,7 @@ func Next(dbp Process) (err error) {
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
-func Continue(dbp Process) error {
+func Continue(dbp *Target) error {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -181,6 +178,7 @@ func Continue(dbp Process) error {
 			dbp.ClearInternalBreakpoints()
 			return nil
 		}
+		dbp.ClearAllGCache()
 		trapthread, err := dbp.ContinueOnce()
 		if err != nil {
 			return err
@@ -230,7 +228,7 @@ func Continue(dbp Process) error {
 					return err
 				}
 				return conditionErrors(threads)
-			case g == nil || dbp.Common().fncallForG[g.ID] == nil:
+			case g == nil || dbp.fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
 				if !arch.BreakInstrMovesPC() {
 					bpsize := arch.BreakpointSize()
@@ -355,7 +353,7 @@ func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) 
 
 // Step will continue until another source line is reached.
 // Will step into functions.
-func Step(dbp Process) (err error) {
+func Step(dbp *Target) (err error) {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -418,7 +416,7 @@ func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
 
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
-func StepOut(dbp Process) error {
+func StepOut(dbp *Target) error {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -503,6 +501,43 @@ func StepOut(dbp Process) error {
 	return Continue(dbp)
 }
 
+// StepInstruction will continue the current thread for exactly
+// one instruction. This method affects only the thread
+// associated with the selected goroutine. All other
+// threads will remain stopped.
+func StepInstruction(dbp *Target) (err error) {
+	thread := dbp.CurrentThread()
+	g := dbp.SelectedGoroutine()
+	if g != nil {
+		if g.Thread == nil {
+			// Step called on parked goroutine
+			if _, err := dbp.SetBreakpoint(g.PC, NextBreakpoint,
+				SameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
+				return err
+			}
+			return Continue(dbp)
+		}
+		thread = g.Thread
+	}
+	dbp.ClearAllGCache()
+	if ok, err := dbp.Valid(); !ok {
+		return err
+	}
+	thread.Breakpoint().Clear()
+	err = thread.StepInstruction()
+	if err != nil {
+		return err
+	}
+	err = thread.SetCurrentBreakpoint(true)
+	if err != nil {
+		return err
+	}
+	if tg, _ := GetG(thread); tg != nil {
+		dbp.SetSelectedGoroutine(tg)
+	}
+	return nil
+}
+
 // GoroutinesInfo searches for goroutines starting at index 'start', and
 // returns an array of up to 'count' (or all found elements, if 'count' is 0)
 // G structures representing the information Delve care about from the internal
@@ -510,14 +545,14 @@ func StepOut(dbp Process) error {
 // GoroutinesInfo also returns the next index to be used as 'start' argument
 // while scanning for all available goroutines, or -1 if there was an error
 // or if the index already reached the last possible value.
-func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
+func GoroutinesInfo(dbp *Target, start, count int) ([]*G, int, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, -1, err
 	}
-	if dbp.Common().allGCache != nil {
+	if dbp.gcache.allGCache != nil {
 		// We can't use the cached array to fulfill a subrange request
-		if start == 0 && (count == 0 || count >= len(dbp.Common().allGCache)) {
-			return dbp.Common().allGCache, -1, nil
+		if start == 0 && (count == 0 || count >= len(dbp.gcache.allGCache)) {
+			return dbp.gcache.allGCache, -1, nil
 		}
 	}
 
@@ -537,7 +572,7 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		}
 	}
 
-	allgptr, allglen, err := dbp.Common().getRuntimeAllg(dbp.BinInfo(), dbp.CurrentThread())
+	allgptr, allglen, err := dbp.gcache.getRuntimeAllg(dbp.BinInfo(), dbp.CurrentThread())
 	if err != nil {
 		return nil, -1, err
 	}
@@ -569,68 +604,18 @@ func GoroutinesInfo(dbp Process, start, count int) ([]*G, int, error) {
 		if g.Status != Gdead {
 			allg = append(allg, g)
 		}
-		dbp.Common().addGoroutine(g)
+		dbp.gcache.addGoroutine(g)
 	}
 	if start == 0 {
-		dbp.Common().allGCache = allg
+		dbp.gcache.allGCache = allg
 	}
 
 	return allg, -1, nil
 }
 
-func (gcache *goroutineCache) init(bi *BinaryInfo) {
-	var err error
-
-	exeimage := bi.Images[0]
-	rdr := exeimage.DwarfReader()
-
-	gcache.allglenAddr, _ = rdr.AddrFor("runtime.allglen", exeimage.StaticBase)
-
-	rdr.Seek(0)
-	gcache.allgentryAddr, err = rdr.AddrFor("runtime.allgs", exeimage.StaticBase)
-	if err != nil {
-		// try old name (pre Go 1.6)
-		gcache.allgentryAddr, _ = rdr.AddrFor("runtime.allg", exeimage.StaticBase)
-	}
-}
-
-func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWriter) (uint64, uint64, error) {
-	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {
-		return 0, 0, ErrNoRuntimeAllG
-	}
-	allglenBytes := make([]byte, 8)
-	_, err := mem.ReadMemory(allglenBytes, uintptr(gcache.allglenAddr))
-	if err != nil {
-		return 0, 0, err
-	}
-	allglen := binary.LittleEndian.Uint64(allglenBytes)
-
-	faddr := make([]byte, bi.Arch.PtrSize())
-	_, err = mem.ReadMemory(faddr, uintptr(gcache.allgentryAddr))
-	if err != nil {
-		return 0, 0, err
-	}
-	allgptr := binary.LittleEndian.Uint64(faddr)
-
-	return allgptr, allglen, nil
-}
-
-func (gcache *goroutineCache) addGoroutine(g *G) {
-	if gcache.partialGCache == nil {
-		gcache.partialGCache = make(map[int]*G)
-	}
-	gcache.partialGCache[g.ID] = g
-}
-
-// ClearAllGCache clears the cached contents of the cache for runtime.allgs.
-func (gcache *goroutineCache) ClearAllGCache() {
-	gcache.partialGCache = nil
-	gcache.allGCache = nil
-}
-
 // FindGoroutine returns a G struct representing the goroutine
 // specified by `gid`.
-func FindGoroutine(dbp Process, gid int) (*G, error) {
+func FindGoroutine(dbp *Target, gid int) (*G, error) {
 	if selg := dbp.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
 		// Return the currently selected goroutine in the following circumstances:
 		//
@@ -667,7 +652,7 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 		}
 	}
 
-	if g := dbp.Common().partialGCache[gid]; g != nil {
+	if g := dbp.gcache.partialGCache[gid]; g != nil {
 		return g, nil
 	}
 
@@ -696,7 +681,7 @@ func FindGoroutine(dbp Process, gid int) (*G, error) {
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 // If deferCall is > 0 the eval scope will be relative to the specified deferred call.
-func ConvertEvalScope(dbp Process, gid, frame, deferCall int) (*EvalScope, error) {
+func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, err
 	}

@@ -30,7 +30,6 @@ type Process struct {
 	// Normally selectedGoroutine is currentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	selectedGoroutine *proc.G
 
-	common              proc.CommonProcess
 	os                  *OSProcessDetails
 	firstStart          bool
 	stopMu              sync.Mutex
@@ -247,7 +246,6 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 		return nil, err
 	}
 
-	dbp.common.ClearAllGCache()
 	for _, th := range dbp.threads {
 		th.CurrentBreakpoint.Clear()
 	}
@@ -267,41 +265,6 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	return trapthread, err
 }
 
-// StepInstruction will continue the current thread for exactly
-// one instruction. This method affects only the thread
-// associated with the selected goroutine. All other
-// threads will remain stopped.
-func (dbp *Process) StepInstruction() (err error) {
-	thread := dbp.currentThread
-	if dbp.selectedGoroutine != nil {
-		if dbp.selectedGoroutine.Thread == nil {
-			// Step called on parked goroutine
-			if _, err := dbp.SetBreakpoint(dbp.selectedGoroutine.PC, proc.NextBreakpoint, proc.SameGoroutineCondition(dbp.selectedGoroutine)); err != nil {
-				return err
-			}
-			return proc.Continue(dbp)
-		}
-		thread = dbp.selectedGoroutine.Thread.(*Thread)
-	}
-	dbp.common.ClearAllGCache()
-	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	thread.CurrentBreakpoint.Clear()
-	err = thread.StepInstruction()
-	if err != nil {
-		return err
-	}
-	err = thread.SetCurrentBreakpoint(true)
-	if err != nil {
-		return err
-	}
-	if g, _ := proc.GetG(thread); g != nil {
-		dbp.selectedGoroutine = g
-	}
-	return nil
-}
-
 // SwitchThread changes from current thread to the thread specified by `tid`.
 func (dbp *Process) SwitchThread(tid int) error {
 	if dbp.exited {
@@ -317,13 +280,9 @@ func (dbp *Process) SwitchThread(tid int) error {
 
 // SwitchGoroutine changes from current thread to the thread
 // running the specified goroutine.
-func (dbp *Process) SwitchGoroutine(gid int) error {
+func (dbp *Process) SwitchGoroutine(g *proc.G) error {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	g, err := proc.FindGoroutine(dbp, gid)
-	if err != nil {
-		return err
 	}
 	if g == nil {
 		// user specified -1 and selectedGoroutine is nil
@@ -413,10 +372,4 @@ func (dbp *Process) postExit() {
 func (dbp *Process) writeSoftwareBreakpoint(thread *Thread, addr uint64) error {
 	_, err := thread.WriteMemory(uintptr(addr), dbp.bi.Arch.BreakpointInstruction())
 	return err
-}
-
-// Common returns common information across Process
-// implementations
-func (dbp *Process) Common() *proc.CommonProcess {
-	return &dbp.common
 }

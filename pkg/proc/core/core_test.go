@@ -148,7 +148,7 @@ func TestSplicedReader(t *testing.T) {
 	}
 }
 
-func withCoreFile(t *testing.T, name, args string) *Process {
+func withCoreFile(t *testing.T, name, args string) *proc.Target {
 	// This is all very fragile and won't work on hosts with non-default core patterns.
 	// Might be better to check in the binary and core?
 	tempDir, err := ioutil.TempDir("", "")

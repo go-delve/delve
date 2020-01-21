@@ -37,7 +37,7 @@ type OSProcessDetails struct {
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, error) {
+func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target, error) {
 	// check that the argument to Launch is an executable file
 	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
 		return nil, proc.ErrNotExecutable
@@ -104,7 +104,6 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 		return nil, err
 	}
 
-	dbp.common.ClearAllGCache()
 	for _, th := range dbp.threads {
 		th.CurrentBreakpoint.Clear()
 	}
@@ -127,11 +126,11 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*Process, err
 		return nil, err
 	}
 
-	return dbp, err
+	return proc.NewTarget(dbp), err
 }
 
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*Process, error) {
+func Attach(pid int, _ []string) (*proc.Target, error) {
 	dbp := New(pid)
 
 	kret := C.acquire_mach_task(C.int(pid),
@@ -159,7 +158,7 @@ func Attach(pid int, _ []string) (*Process, error) {
 		dbp.Detach(false)
 		return nil, err
 	}
-	return dbp, nil
+	return proc.NewTarget(dbp), nil
 }
 
 // Kill kills the process.
