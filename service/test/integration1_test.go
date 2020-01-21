@@ -724,9 +724,6 @@ func Test1ClientServer_SetVariable(t *testing.T) {
 }
 
 func Test1ClientServer_FullStacktrace(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	withTestClient1("goroutinestackprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
@@ -799,9 +796,6 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 }
 
 func Test1Issue355(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	// After the target process has terminated should return an error but not crash
 	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})

@@ -103,7 +103,7 @@ func (r *ARM64Registers) GAddr() (uint64, bool) {
 	return r.Regs.Regs[28], true
 }
 
-// Get returns the value of the n-th register (in x86asm order).
+// Get returns the value of the n-th register (in arm64asm order).
 func (r *ARM64Registers) Get(n int) (uint64, error) {
 	reg := arm64asm.Reg(n)
 

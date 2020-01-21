@@ -17,6 +17,7 @@ type DwarfRegisters struct {
 	PCRegNum  uint64
 	SPRegNum  uint64
 	BPRegNum  uint64
+	LRRegNum  uint64
 }
 
 type DwarfRegister struct {

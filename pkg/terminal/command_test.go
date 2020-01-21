@@ -295,9 +295,6 @@ func TestExitStatus(t *testing.T) {
 }
 
 func TestScopePrefix(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	const goroutinesLinePrefix = "  Goroutine "
 	const goroutinesCurLinePrefix = "* Goroutine "
 	test.AllowRecording(t)
@@ -866,9 +863,6 @@ func TestIssue1090(t *testing.T) {
 }
 
 func TestPrintContextParkedGoroutine(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("break stacktraceme")
 		term.MustExec("continue")
@@ -942,9 +936,6 @@ func TestOptimizationCheck(t *testing.T) {
 }
 
 func TestTruncateStacktrace(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support Stacktrace for now")
-	}
 	withTestTerminal("stacktraceprog", t, func(term *FakeTerminal) {
 		term.MustExec("break main.stacktraceme")
 		term.MustExec("continue")

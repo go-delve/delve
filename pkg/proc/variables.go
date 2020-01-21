@@ -190,6 +190,7 @@ type G struct {
 	PC         uint64 // PC of goroutine when it was parked.
 	SP         uint64 // SP of goroutine when it was parked.
 	BP         uint64 // BP of goroutine when it was parked (go >= 1.7).
+	LR         uint64 // LR of goroutine when it was parked.
 	GoPC       uint64 // PC of 'go' statement that created this goroutine.
 	StartPC    uint64 // PC of the first function run on this goroutine.
 	WaitReason string // Reason for goroutine being parked.
@@ -550,9 +551,12 @@ func (v *Variable) parseG() (*G, error) {
 	schedVar := v.fieldVariable("sched")
 	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
 	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
-	var bp int64
+	var bp, lr int64
 	if bpvar := schedVar.fieldVariable("bp"); bpvar != nil && bpvar.Value != nil {
 		bp, _ = constant.Int64Val(bpvar.Value)
+	}
+	if bpvar := schedVar.fieldVariable("lr"); bpvar != nil && bpvar.Value != nil {
+		lr, _ = constant.Int64Val(bpvar.Value)
 	}
 	id, _ := constant.Int64Val(v.fieldVariable("goid").Value)
 	gopc, _ := constant.Int64Val(v.fieldVariable("gopc").Value)
@@ -594,6 +598,7 @@ func (v *Variable) parseG() (*G, error) {
 		PC:         uint64(pc),
 		SP:         uint64(sp),
 		BP:         uint64(bp),
+		LR:         uint64(lr),
 		WaitReason: waitReason,
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
