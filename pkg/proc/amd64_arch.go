@@ -342,7 +342,7 @@ var amd64DwarfToName = map[int]string{
 	38: "ST(5)",
 	39: "ST(6)",
 	40: "ST(7)",
-	49: "Eflags",
+	49: "Rflags",
 	50: "Es",
 	51: "Cs",
 	52: "Ss",
