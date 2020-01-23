@@ -112,11 +112,6 @@ func (r *AMD64Registers) BP() uint64 {
 	return r.Regs.Rbp
 }
 
-// CX returns the value of RCX register.
-func (r *AMD64Registers) CX() uint64 {
-	return r.Regs.Rcx
-}
-
 // TLS returns the address of the thread local storage memory segment.
 func (r *AMD64Registers) TLS() uint64 {
 	return r.Regs.Fs_base

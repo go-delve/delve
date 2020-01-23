@@ -87,11 +87,6 @@ func (r *ARM64Registers) BP() uint64 {
 	return r.Regs.Regs[29]
 }
 
-// CX returns the value of RCX register.
-func (r *ARM64Registers) CX() uint64 {
-	return 0
-}
-
 // TLS returns the address of the thread local storage memory segment.
 func (r *ARM64Registers) TLS() uint64 {
 	return 0

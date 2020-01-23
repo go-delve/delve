@@ -152,11 +152,6 @@ func (r *AMD64Registers) BP() uint64 {
 	return r.rbp
 }
 
-// CX returns the value of the RCX register.
-func (r *AMD64Registers) CX() uint64 {
-	return r.rcx
-}
-
 // TLS returns the value of the register
 // that contains the location of the thread
 // local storage segment.
