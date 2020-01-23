@@ -67,7 +67,7 @@ func (r *ARM64Registers) Slice(floatingPoint bool) []proc.Register {
 	}
 	out := make([]proc.Register, 0, len(regs64)+len(r.Fpregs))
 	for _, reg := range regs64 {
-		out = proc.AppendQwordReg(out, reg.k, reg.v)
+		out = proc.AppendUint64Register(out, reg.k, reg.v)
 	}
 	out = append(out, r.Fpregs...)
 	return out
@@ -128,7 +128,7 @@ func (r *ARM64Registers) Copy() proc.Registers {
 // Decode decodes an XSAVE area to a list of name/value pairs of registers.
 func Decode(fpregs []byte) (regs []proc.Register) {
 	for i := 0; i < len(fpregs); i += 16 {
-		regs = proc.AppendFPReg(regs, fmt.Sprintf("V%d", i/16), fpregs[i:i+16])
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("V%d", i/16), fpregs[i:i+16])
 	}
 	return
 }

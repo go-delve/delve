@@ -1,13 +1,12 @@
 package proc
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"strings"
+
+	"github.com/go-delve/delve/pkg/dwarf/op"
 )
 
 // Registers is an interface for a generic register type. The
@@ -30,180 +29,16 @@ type Registers interface {
 
 // Register represents a CPU register.
 type Register struct {
-	Name  string
-	Bytes []byte
-	Value string
+	Name string
+	Reg  *op.DwarfRegister
 }
 
-// AppendWordReg appends a word (16 bit) register to regs.
-func AppendWordReg(regs []Register, name string, value uint16) []Register {
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.LittleEndian, value)
-	return append(regs, Register{name, buf.Bytes(), fmt.Sprintf("%#04x", value)})
+func AppendUint64Register(regs []Register, name string, value uint64) []Register {
+	return append(regs, Register{name, op.DwarfRegisterFromUint64(value)})
 }
 
-// AppendDwordReg appends a double word (32 bit) register to regs.
-func AppendDwordReg(regs []Register, name string, value uint32) []Register {
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.LittleEndian, value)
-	return append(regs, Register{name, buf.Bytes(), fmt.Sprintf("%#08x", value)})
-}
-
-// AppendQwordReg appends a quad word (64 bit) register to regs.
-func AppendQwordReg(regs []Register, name string, value uint64) []Register {
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.LittleEndian, value)
-	return append(regs, Register{name, buf.Bytes(), fmt.Sprintf("%#016x", value)})
-}
-
-func appendFlagReg(regs []Register, name string, value uint64, descr flagRegisterDescr, size int) []Register {
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.LittleEndian, value)
-	return append(regs, Register{name, buf.Bytes()[:size], descr.Describe(value, size)})
-}
-
-// AppendEflagReg appends EFLAG register to regs.
-func AppendEflagReg(regs []Register, name string, value uint64) []Register {
-	return appendFlagReg(regs, name, value, eflagsDescription, 64)
-}
-
-// AppendMxcsrReg appends MXCSR register to regs.
-func AppendMxcsrReg(regs []Register, name string, value uint64) []Register {
-	return appendFlagReg(regs, name, value, mxcsrDescription, 32)
-}
-
-// AppendX87Reg appends a 80 bit float register to regs.
-func AppendX87Reg(regs []Register, index int, exponent uint16, mantissa uint64) []Register {
-	var f float64
-	fset := false
-
-	const (
-		_SIGNBIT    = 1 << 15
-		_EXP_BIAS   = (1 << 14) - 1 // 2^(n-1) - 1 = 16383
-		_SPECIALEXP = (1 << 15) - 1 // all bits set
-		_HIGHBIT    = 1 << 63
-		_QUIETBIT   = 1 << 62
-	)
-
-	sign := 1.0
-	if exponent&_SIGNBIT != 0 {
-		sign = -1.0
-	}
-	exponent &= ^uint16(_SIGNBIT)
-
-	NaN := math.NaN()
-	Inf := math.Inf(+1)
-
-	switch exponent {
-	case 0:
-		switch {
-		case mantissa == 0:
-			f = sign * 0.0
-			fset = true
-		case mantissa&_HIGHBIT != 0:
-			f = NaN
-			fset = true
-		}
-	case _SPECIALEXP:
-		switch {
-		case mantissa&_HIGHBIT == 0:
-			f = sign * Inf
-			fset = true
-		default:
-			f = NaN // signaling NaN
-			fset = true
-		}
-	default:
-		if mantissa&_HIGHBIT == 0 {
-			f = NaN
-			fset = true
-		}
-	}
-
-	if !fset {
-		significand := float64(mantissa) / (1 << 63)
-		f = sign * math.Ldexp(significand, int(exponent-_EXP_BIAS))
-	}
-
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.LittleEndian, exponent)
-	binary.Write(&buf, binary.LittleEndian, mantissa)
-
-	return append(regs, Register{fmt.Sprintf("ST(%d)", index), buf.Bytes(), fmt.Sprintf("%#04x%016x\t%g", exponent, mantissa, f)})
-}
-
-// AppendSSEReg appends a 256 bit SSE register to regs.
-func AppendSSEReg(regs []Register, name string, xmm []byte) []Register {
-	buf := bytes.NewReader(xmm)
-
-	var out bytes.Buffer
-	var vi [16]uint8
-	for i := range vi {
-		binary.Read(buf, binary.LittleEndian, &vi[i])
-	}
-
-	fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
-
-	fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
-
-	fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
-
-	fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
-
-	fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
-
-	buf.Seek(0, os.SEEK_SET)
-	var v2 [2]float64
-	for i := range v2 {
-		binary.Read(buf, binary.LittleEndian, &v2[i])
-	}
-	fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
-
-	buf.Seek(0, os.SEEK_SET)
-	var v4 [4]float32
-	for i := range v4 {
-		binary.Read(buf, binary.LittleEndian, &v4[i])
-	}
-	fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
-
-	return append(regs, Register{name, xmm, out.String()})
-}
-
-// AppendFPReg appends a 128 bit FP register to regs.
-func AppendFPReg(regs []Register, name string, reg_value []byte) []Register {
-	buf := bytes.NewReader(reg_value)
-
-	var out bytes.Buffer
-	var vi [16]uint8
-	for i := range vi {
-		binary.Read(buf, binary.LittleEndian, &vi[i])
-	}
-
-	fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
-
-	fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
-
-	fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
-
-	fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
-
-	fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
-
-	buf.Seek(0, os.SEEK_SET)
-	var v2 [2]float64
-	for i := range v2 {
-		binary.Read(buf, binary.LittleEndian, &v2[i])
-	}
-	fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
-
-	buf.Seek(0, os.SEEK_SET)
-	var v4 [4]float32
-	for i := range v4 {
-		binary.Read(buf, binary.LittleEndian, &v4[i])
-	}
-	fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
-
-	return append(regs, Register{name, reg_value, out.String()})
+func AppendBytesRegister(regs []Register, name string, value []byte) []Register {
+	return append(regs, Register{name, op.DwarfRegisterFromBytes(value)})
 }
 
 // ErrUnknownRegister is returned when the value of an unknown

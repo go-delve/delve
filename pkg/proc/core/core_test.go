@@ -244,8 +244,9 @@ func TestCore(t *testing.T) {
 		t.Fatalf("Couldn't get current thread registers: %v", err)
 	}
 	regslice := regs.Slice(true)
+	arch := p.BinInfo().Arch
 	for _, reg := range regslice {
-		t.Logf("%s = %s", reg.Name, reg.Value)
+		t.Logf("%s = %s", reg.Name, arch.DwarfRegisterToString(reg.Name, reg.Reg))
 	}
 }
 
@@ -312,8 +313,9 @@ func TestCoreFpRegisters(t *testing.T) {
 		{"XMM8", "0x4059999a404ccccd4059999a404ccccd"},
 	}
 
+	arch := p.BinInfo().Arch
 	for _, reg := range regs.Slice(true) {
-		t.Logf("%s = %s", reg.Name, reg.Value)
+		t.Logf("%s = %s", reg.Name, arch.DwarfRegisterToString(reg.Name, reg.Reg))
 	}
 
 	for _, regtest := range regtests {
@@ -321,8 +323,9 @@ func TestCoreFpRegisters(t *testing.T) {
 		for _, reg := range regs.Slice(true) {
 			if reg.Name == regtest.name {
 				found = true
-				if !strings.HasPrefix(reg.Value, regtest.value) {
-					t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, reg.Value)
+				regval := arch.DwarfRegisterToString(reg.Name, reg.Reg)
+				if !strings.HasPrefix(regval, regtest.value) {
+					t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, regval)
 				}
 			}
 		}

@@ -101,17 +101,17 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 		// FreeBSD defines the registers as signed, but Linux defines
 		// them as unsigned.  Of course, a register doesn't really have
 		// a concept of signedness.  Cast to what Delve expects.
-		out = proc.AppendQwordReg(out, reg.k, uint64(reg.v))
+		out = proc.AppendUint64Register(out, reg.k, uint64(reg.v))
 	}
 	for _, reg := range regs32 {
-		out = proc.AppendDwordReg(out, reg.k, reg.v)
+		out = proc.AppendUint64Register(out, reg.k, uint64(reg.v))
 	}
 	for _, reg := range regs16 {
-		out = proc.AppendWordReg(out, reg.k, reg.v)
+		out = proc.AppendUint64Register(out, reg.k, uint64(reg.v))
 	}
 	// x86 called this register "Eflags".  amd64 extended it and renamed it
 	// "Rflags", but Linux still uses the old name.
-	out = proc.AppendEflagReg(out, "Rflags", uint64(r.Regs.Rflags))
+	out = proc.AppendUint64Register(out, "Rflags", uint64(r.Regs.Rflags))
 	if floatingPoint {
 		out = append(out, r.Fpregs...)
 	}

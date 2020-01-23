@@ -1,6 +1,8 @@
 package winutil
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"unsafe"
 
@@ -96,7 +98,7 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 		{"R13", r.r13},
 		{"R14", r.r14},
 		{"R15", r.r15},
-		{"Eflags", r.eflags},
+		{"Rflags", r.eflags},
 		{"Cs", r.cs},
 		{"Fs", r.fs},
 		{"Gs", r.gs},
@@ -108,29 +110,28 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 	}
 	out := make([]proc.Register, 0, outlen)
 	for _, reg := range regs {
-		if reg.k == "Eflags" {
-			out = proc.AppendEflagReg(out, reg.k, reg.v)
-		} else {
-			out = proc.AppendQwordReg(out, reg.k, reg.v)
-		}
+		out = proc.AppendUint64Register(out, reg.k, reg.v)
 	}
 	if r.fltSave != nil && floatingPoint {
-		out = proc.AppendWordReg(out, "CW", r.fltSave.ControlWord)
-		out = proc.AppendWordReg(out, "SW", r.fltSave.StatusWord)
-		out = proc.AppendWordReg(out, "TW", uint16(r.fltSave.TagWord))
-		out = proc.AppendWordReg(out, "FOP", r.fltSave.ErrorOpcode)
-		out = proc.AppendQwordReg(out, "FIP", uint64(r.fltSave.ErrorSelector)<<32|uint64(r.fltSave.ErrorOffset))
-		out = proc.AppendQwordReg(out, "FDP", uint64(r.fltSave.DataSelector)<<32|uint64(r.fltSave.DataOffset))
+		out = proc.AppendUint64Register(out, "CW", uint64(r.fltSave.ControlWord))
+		out = proc.AppendUint64Register(out, "SW", uint64(r.fltSave.StatusWord))
+		out = proc.AppendUint64Register(out, "TW", uint64(uint16(r.fltSave.TagWord)))
+		out = proc.AppendUint64Register(out, "FOP", uint64(r.fltSave.ErrorOpcode))
+		out = proc.AppendUint64Register(out, "FIP", uint64(r.fltSave.ErrorSelector)<<32|uint64(r.fltSave.ErrorOffset))
+		out = proc.AppendUint64Register(out, "FDP", uint64(r.fltSave.DataSelector)<<32|uint64(r.fltSave.DataOffset))
 
 		for i := range r.fltSave.FloatRegisters {
-			out = proc.AppendX87Reg(out, i, uint16(r.fltSave.FloatRegisters[i].High), r.fltSave.FloatRegisters[i].Low)
+			var buf bytes.Buffer
+			binary.Write(&buf, binary.LittleEndian, r.fltSave.FloatRegisters[i].Low)
+			binary.Write(&buf, binary.LittleEndian, r.fltSave.FloatRegisters[i].High)
+			out = proc.AppendBytesRegister(out, fmt.Sprintf("ST(%d)", i), buf.Bytes())
 		}
 
-		out = proc.AppendMxcsrReg(out, "MXCSR", uint64(r.fltSave.MxCsr))
-		out = proc.AppendDwordReg(out, "MXCSR_MASK", r.fltSave.MxCsr_Mask)
+		out = proc.AppendUint64Register(out, "MXCSR", uint64(r.fltSave.MxCsr))
+		out = proc.AppendUint64Register(out, "MXCSR_MASK", uint64(r.fltSave.MxCsr_Mask))
 
 		for i := 0; i < len(r.fltSave.XmmRegisters); i += 16 {
-			out = proc.AppendSSEReg(out, fmt.Sprintf("XMM%d", i/16), r.fltSave.XmmRegisters[i:i+16])
+			out = proc.AppendBytesRegister(out, fmt.Sprintf("XMM%d", i/16), r.fltSave.XmmRegisters[i:i+16])
 		}
 	}
 	return out
