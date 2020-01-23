@@ -1800,15 +1800,15 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) []proc.Register {
 		}
 		switch {
 		case reginfo.Name == "eflags":
-			r = proc.AppendEflagReg(r, reginfo.Name, uint64(binary.LittleEndian.Uint32(regs.regs[reginfo.Name].value)))
+			r = proc.AppendBytesRegister(r, "Rflags", regs.regs[reginfo.Name].value)
 		case reginfo.Name == "mxcsr":
-			r = proc.AppendMxcsrReg(r, reginfo.Name, uint64(binary.LittleEndian.Uint32(regs.regs[reginfo.Name].value)))
+			r = proc.AppendBytesRegister(r, reginfo.Name, regs.regs[reginfo.Name].value)
 		case reginfo.Bitsize == 16:
-			r = proc.AppendWordReg(r, reginfo.Name, binary.LittleEndian.Uint16(regs.regs[reginfo.Name].value))
+			r = proc.AppendBytesRegister(r, reginfo.Name, regs.regs[reginfo.Name].value)
 		case reginfo.Bitsize == 32:
-			r = proc.AppendDwordReg(r, reginfo.Name, binary.LittleEndian.Uint32(regs.regs[reginfo.Name].value))
+			r = proc.AppendBytesRegister(r, reginfo.Name, regs.regs[reginfo.Name].value)
 		case reginfo.Bitsize == 64:
-			r = proc.AppendQwordReg(r, reginfo.Name, binary.LittleEndian.Uint64(regs.regs[reginfo.Name].value))
+			r = proc.AppendBytesRegister(r, reginfo.Name, regs.regs[reginfo.Name].value)
 		case reginfo.Bitsize == 80:
 			if !floatingPoint {
 				continue
@@ -1820,12 +1820,11 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) []proc.Register {
 					break
 				}
 			}
-			value := regs.regs[reginfo.Name].value
-			r = proc.AppendX87Reg(r, idx, binary.LittleEndian.Uint16(value[8:]), binary.LittleEndian.Uint64(value[:8]))
+			r = proc.AppendBytesRegister(r, fmt.Sprintf("ST(%d)", idx), regs.regs[reginfo.Name].value)
 
 		case reginfo.Bitsize == 128:
 			if floatingPoint {
-				r = proc.AppendSSEReg(r, strings.ToUpper(reginfo.Name), regs.regs[reginfo.Name].value)
+				r = proc.AppendBytesRegister(r, strings.ToUpper(reginfo.Name), regs.regs[reginfo.Name].value)
 			}
 
 		case reginfo.Bitsize == 256:
@@ -1835,8 +1834,8 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) []proc.Register {
 
 			value := regs.regs[reginfo.Name].value
 			xmmName := "x" + reginfo.Name[1:]
-			r = proc.AppendSSEReg(r, strings.ToUpper(xmmName), value[:16])
-			r = proc.AppendSSEReg(r, strings.ToUpper(reginfo.Name), value[16:])
+			r = proc.AppendBytesRegister(r, strings.ToUpper(xmmName), value[:16])
+			r = proc.AppendBytesRegister(r, strings.ToUpper(reginfo.Name), value[16:])
 		}
 	}
 	return r

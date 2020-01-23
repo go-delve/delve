@@ -1,7 +1,11 @@
 package proc
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
+	"math"
+	"os"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -318,42 +322,42 @@ var amd64DwarfToHardware = map[int]x86asm.Reg{
 }
 
 var amd64DwarfToName = map[int]string{
-	17: "XMM0",
-	18: "XMM1",
-	19: "XMM2",
-	20: "XMM3",
-	21: "XMM4",
-	22: "XMM5",
-	23: "XMM6",
-	24: "XMM7",
-	25: "XMM8",
-	26: "XMM9",
-	27: "XMM10",
-	28: "XMM11",
-	29: "XMM12",
-	30: "XMM13",
-	31: "XMM14",
-	32: "XMM15",
-	33: "ST(0)",
-	34: "ST(1)",
-	35: "ST(2)",
-	36: "ST(3)",
-	37: "ST(4)",
-	38: "ST(5)",
-	39: "ST(6)",
-	40: "ST(7)",
-	49: "Rflags",
-	50: "Es",
-	51: "Cs",
-	52: "Ss",
-	53: "Ds",
-	54: "Fs",
-	55: "Gs",
-	58: "Fs_base",
-	59: "Gs_base",
-	64: "MXCSR",
-	65: "CW",
-	66: "SW",
+	17: "xmm0",
+	18: "xmm1",
+	19: "xmm2",
+	20: "xmm3",
+	21: "xmm4",
+	22: "xmm5",
+	23: "xmm6",
+	24: "xmm7",
+	25: "xmm8",
+	26: "xmm9",
+	27: "xmm10",
+	28: "xmm11",
+	29: "xmm12",
+	30: "xmm13",
+	31: "xmm14",
+	32: "xmm15",
+	33: "st(0)",
+	34: "st(1)",
+	35: "st(2)",
+	36: "st(3)",
+	37: "st(4)",
+	38: "st(5)",
+	39: "st(6)",
+	40: "st(7)",
+	49: "rflags",
+	50: "es",
+	51: "cs",
+	52: "ss",
+	53: "ds",
+	54: "fs",
+	55: "gs",
+	58: "fs_base",
+	59: "gs_base",
+	64: "mxcsr",
+	65: "cw",
+	66: "sw",
 }
 
 func maxAmd64DwarfRegister() int {
@@ -388,9 +392,10 @@ func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 	}
 
 	for _, reg := range regs.Slice(true) {
+		regName1 := strings.ToLower(reg.Name)
 		for dwarfReg, regName := range amd64DwarfToName {
-			if regName == reg.Name {
-				dregs[dwarfReg] = op.DwarfRegisterFromBytes(reg.Bytes)
+			if regName == regName1 {
+				dregs[dwarfReg] = reg.Reg
 			}
 		}
 	}
@@ -421,4 +426,133 @@ func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint
 		SPRegNum:   amd64DwarfSPRegNum,
 		BPRegNum:   amd64DwarfBPRegNum,
 	}
+}
+
+func (a *AMD64) DwarfRegisterToString(name string, reg *op.DwarfRegister) string {
+	name = strings.ToLower(name)
+	switch name {
+	case "rflags":
+		return eflagsDescription.Describe(reg.Uint64Val, 64)
+
+	case "cw", "sw", "tw", "fop":
+		return fmt.Sprintf("%#04x", reg.Uint64Val)
+
+	case "mxcsr_mask":
+		return fmt.Sprintf("%#08x", reg.Uint64Val)
+
+	case "mxcsr":
+		return mxcsrDescription.Describe(reg.Uint64Val, 32)
+
+	default:
+		if reg.Bytes != nil && strings.HasPrefix(name, "xmm") {
+			return formatSSEReg(reg.Bytes)
+		} else if reg.Bytes != nil && strings.HasPrefix(name, "st(") {
+			return formatX87Reg(reg.Bytes)
+		} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) <= 8) {
+			return fmt.Sprintf("%#016x", reg.Uint64Val)
+		} else {
+			return fmt.Sprintf("%#x", reg.Bytes)
+		}
+	}
+}
+
+func formatSSEReg(xmm []byte) string {
+	buf := bytes.NewReader(xmm)
+
+	var out bytes.Buffer
+	var vi [16]uint8
+	for i := range vi {
+		binary.Read(buf, binary.LittleEndian, &vi[i])
+	}
+
+	fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+
+	fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+
+	fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
+
+	fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
+
+	fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
+
+	buf.Seek(0, os.SEEK_SET)
+	var v2 [2]float64
+	for i := range v2 {
+		binary.Read(buf, binary.LittleEndian, &v2[i])
+	}
+	fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
+
+	buf.Seek(0, os.SEEK_SET)
+	var v4 [4]float32
+	for i := range v4 {
+		binary.Read(buf, binary.LittleEndian, &v4[i])
+	}
+	fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
+
+	return out.String()
+}
+
+func formatX87Reg(b []byte) string {
+	if len(b) < 10 {
+		return fmt.Sprintf("%#x", b)
+	}
+	mantissa := binary.LittleEndian.Uint64(b[:8])
+	exponent := uint16(binary.LittleEndian.Uint16(b[8:]))
+
+	var f float64
+	fset := false
+
+	const (
+		_SIGNBIT    = 1 << 15
+		_EXP_BIAS   = (1 << 14) - 1 // 2^(n-1) - 1 = 16383
+		_SPECIALEXP = (1 << 15) - 1 // all bits set
+		_HIGHBIT    = 1 << 63
+		_QUIETBIT   = 1 << 62
+	)
+
+	sign := 1.0
+	if exponent&_SIGNBIT != 0 {
+		sign = -1.0
+	}
+	exponent &= ^uint16(_SIGNBIT)
+
+	NaN := math.NaN()
+	Inf := math.Inf(+1)
+
+	switch exponent {
+	case 0:
+		switch {
+		case mantissa == 0:
+			f = sign * 0.0
+			fset = true
+		case mantissa&_HIGHBIT != 0:
+			f = NaN
+			fset = true
+		}
+	case _SPECIALEXP:
+		switch {
+		case mantissa&_HIGHBIT == 0:
+			f = sign * Inf
+			fset = true
+		default:
+			f = NaN // signaling NaN
+			fset = true
+		}
+	default:
+		if mantissa&_HIGHBIT == 0 {
+			f = NaN
+			fset = true
+		}
+	}
+
+	if !fset {
+		significand := float64(mantissa) / (1 << 63)
+		f = sign * math.Ldexp(significand, int(exponent-_EXP_BIAS))
+	}
+
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, exponent)
+	binary.Write(&buf, binary.LittleEndian, mantissa)
+
+	return fmt.Sprintf("%#04x%016x\t%g", exponent, mantissa, f)
 }
