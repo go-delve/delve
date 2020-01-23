@@ -254,6 +254,7 @@ func (a *ARM64) SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters)
 			return false
 		}
 
+		it.loadG0SchedSP()
 		if it.g0_sched_sp <= 0 {
 			return false
 		}
