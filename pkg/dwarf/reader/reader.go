@@ -426,6 +426,9 @@ childLoop:
 		default:
 			irdr.reader.SkipChildren()
 		}
+		if rentry == nil {
+			break
+		}
 	}
 
 	if rentry != nil && rentry.Tag == dwarf.TagInlinedSubroutine {
