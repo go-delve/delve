@@ -190,7 +190,7 @@ func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Bre
 	return bp
 }
 
-func setFileBreakpoint(p *proc.Target, t *testing.T, path string, lineno int) *proc.Breakpoint {
+func setFileBreakpoint(p *proc.Target, t testing.TB, path string, lineno int) *proc.Breakpoint {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
@@ -4554,6 +4554,22 @@ func TestIssue1795(t *testing.T) {
 		}
 		if err := checkFrame(frames[3], "main.main", fixture.Source, 12, false); err != nil {
 			t.Errorf("Wrong frame 3: %v", err)
+		}
+	})
+}
+
+func BenchmarkConditionalBreakpoints(b *testing.B) {
+	b.N = 1
+	withTestProcess("issue1549", b, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, b, fixture.Source, 12)
+		bp.Cond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "value"},
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "-1"},
+		}
+		err := proc.Continue(p)
+		if _, exited := err.(proc.ErrProcessExited); !exited {
+			b.Fatalf("Unexpected error on Continue(): %v", err)
 		}
 	})
 }
