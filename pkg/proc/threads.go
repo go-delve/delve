@@ -503,7 +503,11 @@ func GetG(thread Thread) (*G, error) {
 		// For our purposes it's better if we always return the real goroutine
 		// since the rest of the code assumes the goroutine ID is univocal.
 		// The real 'current goroutine' is stored in g0.m.curg
-		curgvar, err := g.variable.fieldVariable("m").structMember("curg")
+		mvar, err := g.variable.structMember("m")
+		if err != nil {
+			return nil, err
+		}
+		curgvar, err := mvar.structMember("curg")
 		if err != nil {
 			return nil, err
 		}
