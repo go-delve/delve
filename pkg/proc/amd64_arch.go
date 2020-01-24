@@ -361,6 +361,14 @@ var amd64DwarfToName = map[int]string{
 	66: "sw",
 }
 
+var amd64NameToDwarf = func() map[string]int {
+	r := make(map[string]int)
+	for regNum, regName := range amd64DwarfToName {
+		r[regName] = regNum
+	}
+	return r
+}()
+
 func maxAmd64DwarfRegister() int {
 	max := int(amd64DwarfIPRegNum)
 	for i := range amd64DwarfToHardware {
@@ -393,11 +401,8 @@ func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 	}
 
 	for _, reg := range regs.Slice(true) {
-		regName1 := strings.ToLower(reg.Name)
-		for dwarfReg, regName := range amd64DwarfToName {
-			if regName == regName1 {
-				dregs[dwarfReg] = reg.Reg
-			}
+		if dwarfReg, ok := amd64NameToDwarf[strings.ToLower(reg.Name)]; ok {
+			dregs[dwarfReg] = reg.Reg
 		}
 	}
 
