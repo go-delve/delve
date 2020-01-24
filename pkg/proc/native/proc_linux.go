@@ -1,6 +1,7 @@
 package native
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -351,6 +352,7 @@ func status(pid int, comm string) rune {
 		return '\000'
 	}
 	defer f.Close()
+	rd := bufio.NewReader(f)
 
 	var (
 		p     int
@@ -361,7 +363,7 @@ func status(pid int, comm string) rune {
 	// The name of the task is the base name of the executable for this process limited to TASK_COMM_LEN characters
 	// Since both parenthesis and spaces can appear inside the name of the task and no escaping happens we need to read the name of the executable first
 	// See: include/linux/sched.c:315 and include/linux/sched.c:1510
-	fmt.Fscanf(f, "%d ("+comm+")  %c", &p, &state)
+	fmt.Fscanf(rd, "%d ("+comm+")  %c", &p, &state)
 	return state
 }
 
