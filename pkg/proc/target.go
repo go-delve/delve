@@ -69,6 +69,9 @@ func (t *Target) SupportsFunctionCalls() bool {
 // This should be called anytime the target process executes instructions.
 func (t *Target) ClearAllGCache() {
 	t.gcache.Clear()
+	for _, thread := range t.ThreadList() {
+		thread.Common().g = nil
+	}
 }
 
 func (t *Target) Restart(from string) error {
