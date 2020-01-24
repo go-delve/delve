@@ -422,9 +422,9 @@ func (dbp *Process) resume() error {
 }
 
 // stop stops all running threads threads and sets breakpoints
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *Process) stop(trapthread *Thread) ([]proc.Thread, error) {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	// While the debug event that stopped the target was being propagated
@@ -437,18 +437,14 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	// call to _ContinueDebugEvent will resume execution of some of the
 	// target threads.
 
-	err = trapthread.SetCurrentBreakpoint(true)
-	if err != nil {
-		return err
-	}
-
 	for _, thread := range dbp.threads {
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
+	var additionalTrapThreads []proc.Thread
 	for {
 		var err error
 		var tid int
@@ -459,18 +455,15 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 			}
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if tid == 0 {
 			break
 		}
-		err = dbp.threads[tid].SetCurrentBreakpoint(true)
-		if err != nil {
-			return err
-		}
+		additionalTrapThreads = append(additionalTrapThreads, dbp.threads[tid])
 	}
 
-	return nil
+	return additionalTrapThreads, nil
 }
 
 func (dbp *Process) detach(kill bool) error {

@@ -237,13 +237,13 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 
 // ContinueOnce will continue the target until it stops.
 // This could be the result of a breakpoint or signal.
-func (dbp *Process) ContinueOnce() (proc.Thread, error) {
+func (dbp *Process) ContinueOnce() (proc.Thread, []proc.Thread, error) {
 	if dbp.exited {
-		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	if err := dbp.resume(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, th := range dbp.threads {
@@ -257,12 +257,13 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 
 	trapthread, err := dbp.trapWait(-1)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if err := dbp.stop(trapthread); err != nil {
-		return nil, err
+	additionalTrappedThreads, err := dbp.stop(trapthread)
+	if err != nil {
+		return nil, nil, err
 	}
-	return trapthread, err
+	return trapthread, additionalTrappedThreads, err
 }
 
 // SwitchThread changes from current thread to the thread specified by `tid`.

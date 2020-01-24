@@ -331,19 +331,17 @@ func (dbp *Process) resume() error {
 
 // Used by ContinueOnce
 // stop stops all running threads and sets breakpoints
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *Process) stop(trapthread *Thread) ([]proc.Thread, error) {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
-	// set breakpoints on all threads
+	var r []proc.Thread
 	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil {
-			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return err
-			}
+		if th.ThreadID() != trapthread.ThreadID() {
+			r = append(r, th)
 		}
 	}
-	return nil
+	return r, nil
 }
 
 // Used by Detach

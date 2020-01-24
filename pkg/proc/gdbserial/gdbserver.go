@@ -628,9 +628,9 @@ const (
 
 // ContinueOnce will continue execution of the process until
 // a breakpoint is hit or signal is received.
-func (p *Process) ContinueOnce() (proc.Thread, error) {
+func (p *Process) ContinueOnce() (proc.Thread, []proc.Thread, error) {
 	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
+		return nil, nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 
 	if p.conn.direction == proc.Forward {
@@ -638,7 +638,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 		for _, thread := range p.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil {
 				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 		}
@@ -664,7 +664,7 @@ continueLoop:
 			if _, exited := err.(proc.ErrProcessExited); exited {
 				p.exited = true
 			}
-			return nil, err
+			return nil, nil, err
 		}
 
 		// For stubs that support qThreadStopInfo updateThreadList will
@@ -693,10 +693,6 @@ continueLoop:
 		}
 	}
 
-	if err := p.setCurrentBreakpoints(); err != nil {
-		return nil, err
-	}
-
 	if trapthread == nil {
 		return nil, fmt.Errorf("could not find thread %s", threadID)
 	}
@@ -720,7 +716,15 @@ continueLoop:
 		// the signals that are reported here can not be propagated back to the target process.
 		trapthread.sig = 0
 	}
-	return trapthread, err
+
+	r := make([]proc.Thread, 0, len(p.threads))
+	for _, t := range p.threads {
+		if t.strID != trapthread.ThreadID {
+			r = append(r, t)
+		}
+	}
+
+	return trapthread, r, err
 }
 
 func (p *Process) findThreadByStrID(threadID string) *Thread {

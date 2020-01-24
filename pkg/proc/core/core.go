@@ -392,8 +392,8 @@ func (p *Process) ClearInternalBreakpoints() error {
 
 // ContinueOnce will always return an error because you
 // cannot control execution of a core file.
-func (p *Process) ContinueOnce() (proc.Thread, error) {
-	return nil, ErrContinueCore
+func (p *Process) ContinueOnce() (proc.Thread, []proc.Thread, error) {
+	return nil, nil, ErrContinueCore
 }
 
 // StepInstruction will always return an error

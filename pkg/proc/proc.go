@@ -184,9 +184,16 @@ func Continue(dbp *Target) error {
 			return nil
 		}
 		dbp.ClearAllGCache()
-		trapthread, err := dbp.ContinueOnce()
+		trapthread, additionalTrapThreads, err := dbp.ContinueOnce()
 		if err != nil {
 			return err
+		}
+
+		trappedThreads := append([]Thread{trapthread}, additionalTrapThreads...)
+		for _, t := range trappedThreads {
+			if err := t.SetCurrentBreakpoint(true); err != nil {
+				return err
+			}
 		}
 
 		threads := dbp.ThreadList()

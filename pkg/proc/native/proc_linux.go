@@ -438,14 +438,14 @@ func (dbp *Process) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *Process) stop(trapthread *Thread) ([]proc.Thread, error) {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	for _, th := range dbp.threads {
 		if !th.Stopped() {
 			if err := th.stop(); err != nil {
-				return dbp.exitGuard(err)
+				return nil, dbp.exitGuard(err)
 			}
 		} else {
 			// Thread is already in a trace stop but we didn't get the notification yet.
@@ -467,23 +467,21 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		}
 		_, err := dbp.trapWaitInternal(-1, true)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	if err := linutil.ElfUpdateSharedObjects(dbp); err != nil {
-		return err
+		return nil, err
 	}
 
-	// set breakpoints on all threads
+	var r []proc.Thread
 	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil {
-			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return err
-			}
+		if th.ThreadID() != trapthread.ThreadID() {
+			r = append(r, th)
 		}
 	}
-	return nil
+	return r, nil
 }
 
 func (dbp *Process) detach(kill bool) error {

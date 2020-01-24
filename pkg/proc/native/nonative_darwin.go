@@ -59,7 +59,7 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *Process) stop(trapthread *Thread) ([]proc.Thread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
