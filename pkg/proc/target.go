@@ -1,8 +1,18 @@
 package proc
 
+import (
+	"fmt"
+)
+
 // Target represents the process being debugged.
 type Target struct {
 	Process
+
+	proc ProcessInternal
+
+	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
+	// Normally selectedGoroutine is currentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
+	selectedGoroutine *G
 
 	// fncallForG stores a mapping of current active function calls.
 	fncallForG map[int]*callInjection
@@ -17,18 +27,41 @@ type Target struct {
 }
 
 // NewTarget returns an initialized Target object.
-func NewTarget(p Process, disableAsyncPreempt bool) *Target {
+func NewTarget(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn, disableAsyncPreempt bool) (*Target, error) {
+	entryPoint, err := p.EntryPoint()
+	if err != nil {
+		return nil, err
+	}
+
+	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, debugInfoDirs)
+	if err != nil {
+		return nil, err
+	}
+	for _, image := range p.BinInfo().Images {
+		if image.loadErr != nil {
+			return nil, image.loadErr
+		}
+	}
+
 	t := &Target{
 		Process:    p,
+		proc:       p.(ProcessInternal),
 		fncallForG: make(map[int]*callInjection),
 	}
+
+	g, _ := GetG(p.CurrentThread())
+	t.selectedGoroutine = g
+
+	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
+	createFatalThrowBreakpoint(p, writeBreakpoint)
+
 	t.gcache.init(p.BinInfo())
 
 	if disableAsyncPreempt {
 		setAsyncPreemptOff(t, 1)
 	}
 
-	return t
+	return t, nil
 }
 
 // SupportsFunctionCalls returns whether or not the backend supports
@@ -54,7 +87,45 @@ func (t *Target) ClearAllGCache() {
 // Restarting of a normal process happens at a higher level (debugger.Restart).
 func (t *Target) Restart(from string) error {
 	t.ClearAllGCache()
-	return t.Process.Restart(from)
+	err := t.proc.Restart(from)
+	if err != nil {
+		return err
+	}
+	t.selectedGoroutine, _ = GetG(t.CurrentThread())
+	return nil
+}
+
+// SelectedGoroutine returns the currently selected goroutine.
+func (t *Target) SelectedGoroutine() *G {
+	return t.selectedGoroutine
+}
+
+// SwitchGoroutine will change the selected and active goroutine.
+func (p *Target) SwitchGoroutine(g *G) error {
+	if ok, err := p.Valid(); !ok {
+		return err
+	}
+	if g == nil {
+		return nil
+	}
+	if g.Thread != nil {
+		return p.SwitchThread(g.Thread.ThreadID())
+	}
+	p.selectedGoroutine = g
+	return nil
+}
+
+// SwitchThread will change the selected and active thread.
+func (p *Target) SwitchThread(tid int) error {
+	if ok, err := p.Valid(); !ok {
+		return err
+	}
+	if th, ok := p.FindThread(tid); ok {
+		p.proc.SetCurrentThread(th)
+		p.selectedGoroutine, _ = GetG(p.CurrentThread())
+		return nil
+	}
+	return fmt.Errorf("thread %d does not exist", tid)
 }
 
 // Detach will detach the target from the underylying process.
@@ -65,5 +136,5 @@ func (t *Target) Detach(kill bool) error {
 	if !kill && t.asyncPreemptChanged {
 		setAsyncPreemptOff(t, t.asyncPreemptOff)
 	}
-	return t.Process.Detach(kill)
+	return t.proc.Detach(kill)
 }

@@ -104,9 +104,8 @@ type Process struct {
 	bi   *proc.BinaryInfo
 	conn gdbConn
 
-	threads           map[int]*Thread
-	currentThread     *Thread
-	selectedGoroutine *proc.G
+	threads       map[int]*Thread
+	currentThread *Thread
 
 	exited, detached bool
 	ctrlC            bool // ctrl-c was sent to stop inferior
@@ -125,8 +124,9 @@ type Process struct {
 	waitChan chan *os.ProcessState
 
 	onDetach func() // called after a successful detach
-
 }
+
+var _ proc.ProcessInternal = &Process{}
 
 // Thread represents an operating system thread.
 type Thread struct {
@@ -198,7 +198,7 @@ func New(process *os.Process) *Process {
 }
 
 // Listen waits for a connection from the stub.
-func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string) error {
+func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string) (*proc.Target, error) {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -210,17 +210,17 @@ func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoD
 	case conn := <-acceptChan:
 		listener.Close()
 		if conn == nil {
-			return errors.New("could not connect")
+			return nil, errors.New("could not connect")
 		}
 		return p.Connect(conn, path, pid, debugInfoDirs)
 	case status := <-p.waitChan:
 		listener.Close()
-		return fmt.Errorf("stub exited while waiting for connection: %v", status)
+		return nil, fmt.Errorf("stub exited while waiting for connection: %v", status)
 	}
 }
 
 // Dial attempts to connect to the stub.
-func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string) error {
+func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string) (*proc.Target, error) {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
@@ -228,7 +228,7 @@ func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string
 		}
 		select {
 		case status := <-p.waitChan:
-			return fmt.Errorf("stub exited while attempting to connect: %v", status)
+			return nil, fmt.Errorf("stub exited while attempting to connect: %v", status)
 		default:
 		}
 		time.Sleep(time.Second)
@@ -241,13 +241,13 @@ func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string) error {
+func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string) (*proc.Target, error) {
 	p.conn.conn = conn
 	p.conn.pid = pid
 	err := p.conn.handshake()
 	if err != nil {
 		conn.Close()
-		return err
+		return nil, err
 	}
 
 	if verbuf, err := p.conn.exec([]byte("$qGDBServerVersion"), "init"); err == nil {
@@ -262,8 +262,9 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []s
 		}
 	}
 
-	if err := p.initialize(path, debugInfoDirs); err != nil {
-		return err
+	tgt, err := p.initialize(path, debugInfoDirs)
+	if err != nil {
+		return nil, err
 	}
 
 	// None of the stubs we support returns the value of fs_base or gs_base
@@ -279,7 +280,8 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []s
 			p.loadGInstrAddr = addr
 		}
 	}
-	return nil
+
+	return tgt, nil
 }
 
 // unusedPort returns an unused tcp port
@@ -402,15 +404,13 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	p := New(process.Process)
 	p.conn.isDebugserver = isDebugserver
 
+	var tgt *proc.Target
 	if listener != nil {
-		err = p.Listen(listener, cmd[0], 0, debugInfoDirs)
+		tgt, err = p.Listen(listener, cmd[0], 0, debugInfoDirs)
 	} else {
-		err = p.Dial(port, cmd[0], 0, debugInfoDirs)
+		tgt, err = p.Dial(port, cmd[0], 0, debugInfoDirs)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return proc.NewTarget(p, runtime.GOOS == "darwin"), nil
+	return tgt, err
 }
 
 // LLDBAttach starts an instance of lldb-server and connects to it, asking
@@ -454,15 +454,13 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 	p := New(process.Process)
 	p.conn.isDebugserver = isDebugserver
 
+	var tgt *proc.Target
 	if listener != nil {
-		err = p.Listen(listener, path, pid, debugInfoDirs)
+		tgt, err = p.Listen(listener, path, pid, debugInfoDirs)
 	} else {
-		err = p.Dial(port, path, pid, debugInfoDirs)
+		tgt, err = p.Dial(port, path, pid, debugInfoDirs)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return proc.NewTarget(p, false), nil
+	return tgt, err
 }
 
 // EntryPoint will return the process entry point address, useful for
@@ -481,7 +479,7 @@ func (p *Process) EntryPoint() (uint64, error) {
 // initialize uses qProcessInfo to load the inferior's PID and
 // executable path. This command is not supported by all stubs and not all
 // stubs will report both the PID and executable path.
-func (p *Process) initialize(path string, debugInfoDirs []string) error {
+func (p *Process) initialize(path string, debugInfoDirs []string) (*proc.Target, error) {
 	var err error
 	if path == "" {
 		// If we are attaching to a running process and the user didn't specify
@@ -495,11 +493,11 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 				_, path, err = queryProcessInfo(p, p.Pid())
 				if err != nil {
 					p.conn.conn.Close()
-					return err
+					return nil, err
 				}
 			} else {
 				p.conn.conn.Close()
-				return fmt.Errorf("could not determine executable path: %v", err)
+				return nil, fmt.Errorf("could not determine executable path: %v", err)
 			}
 		}
 	}
@@ -520,7 +518,7 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 	if err != nil {
 		p.conn.conn.Close()
 		p.bi.Close()
-		return err
+		return nil, err
 	}
 	p.clearThreadSignals()
 
@@ -529,14 +527,15 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 		if err != nil && !isProtocolErrorUnsupported(err) {
 			p.conn.conn.Close()
 			p.bi.Close()
-			return err
+			return nil, err
 		}
 	}
-	if err = proc.PostInitializationSetup(p, path, debugInfoDirs, p.writeBreakpoint); err != nil {
+	tgt, err := proc.NewTarget(p, path, debugInfoDirs, p.writeBreakpoint, runtime.GOOS == "darwin")
+	if err != nil {
 		p.conn.conn.Close()
-		return err
+		return nil, err
 	}
-	return nil
+	return tgt, nil
 }
 
 func queryProcessInfo(p *Process, pid int) (int, string, error) {
@@ -606,9 +605,9 @@ func (p *Process) CurrentThread() proc.Thread {
 	return p.currentThread
 }
 
-// SelectedGoroutine returns the current actuve selected goroutine.
-func (p *Process) SelectedGoroutine() *proc.G {
-	return p.selectedGoroutine
+// SetCurrentThread is used internally by proc.Target to change the current thread.
+func (p *Process) SetCurrentThread(th proc.Thread) {
+	p.currentThread = th.(*Thread)
 }
 
 const (
@@ -808,38 +807,6 @@ func (p *Process) handleThreadSignals(trapthread *Thread) (trapthreadOut *Thread
 	return trapthread, shouldStop
 }
 
-// SetSelectedGoroutine will set internally the goroutine that should be
-// the default for any command executed, the goroutine being actively
-// followed.
-func (p *Process) SetSelectedGoroutine(g *proc.G) {
-	p.selectedGoroutine = g
-}
-
-// SwitchThread will change the internal selected thread.
-func (p *Process) SwitchThread(tid int) error {
-	if p.exited {
-		return proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	if th, ok := p.threads[tid]; ok {
-		p.currentThread = th
-		p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
-		return nil
-	}
-	return fmt.Errorf("thread %d does not exist", tid)
-}
-
-// SwitchGoroutine will change the internal selected goroutine.
-func (p *Process) SwitchGoroutine(g *proc.G) error {
-	if g == nil {
-		return nil
-	}
-	if g.Thread != nil {
-		return p.SwitchThread(g.Thread.ThreadID())
-	}
-	p.selectedGoroutine = g
-	return nil
-}
-
 // RequestManualStop will attempt to stop the process
 // without a breakpoint or signal having been recieved.
 func (p *Process) RequestManualStop() error {
@@ -944,7 +911,6 @@ func (p *Process) Restart(pos string) error {
 	}
 	p.clearThreadSignals()
 	p.clearThreadRegisters()
-	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
 	for addr := range p.breakpoints.M {
 		p.conn.setBreakpoint(addr)
