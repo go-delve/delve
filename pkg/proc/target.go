@@ -47,6 +47,9 @@ func (t *Target) SupportsFunctionCalls() bool {
 // This should be called anytime the target process executes instructions.
 func (t *Target) ClearAllGCache() {
 	t.gcache.Clear()
+	for _, thread := range t.ThreadList() {
+		thread.Common().g = nil
+	}
 }
 
 // Restart will start the process over from the location specified by the "from" locspec.
