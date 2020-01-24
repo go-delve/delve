@@ -50,33 +50,6 @@ func (pe ProcessDetachedError) Error() string {
 	return "detached from the process"
 }
 
-// PostInitializationSetup handles all of the initialization procedures
-// that must happen after Delve creates or attaches to a process.
-func PostInitializationSetup(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn) error {
-	entryPoint, err := p.EntryPoint()
-	if err != nil {
-		return err
-	}
-
-	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, debugInfoDirs)
-	if err != nil {
-		return err
-	}
-	for _, image := range p.BinInfo().Images {
-		if image.loadErr != nil {
-			return image.loadErr
-		}
-	}
-
-	g, _ := GetG(p.CurrentThread())
-	p.SetSelectedGoroutine(g)
-
-	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
-	createFatalThrowBreakpoint(p, writeBreakpoint)
-
-	return nil
-}
-
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normalized to lower case and '/' on Windows.
 func FindFileLocation(p Process, fileName string, lineno int) ([]uint64, error) {
@@ -313,7 +286,7 @@ func conditionErrors(threads []Thread) error {
 // 	- a thread with onTriggeredInternalBreakpoint() == true
 // 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
 // 	- trapthread
-func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
+func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
 	for _, th := range threads {
 		if bp := th.Breakpoint(); bp.Active && bp.Internal {
 			return dbp.SwitchThread(th.ThreadID())
@@ -334,7 +307,7 @@ func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
 // function is neither fnname1 or fnname2.
 // This function is used to step out of runtime.Breakpoint as well as
 // runtime.debugCallV1.
-func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) error {
+func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) error {
 	for {
 		if err := curthread.StepInstruction(); err != nil {
 			return err
@@ -533,7 +506,7 @@ func StepInstruction(dbp *Target) (err error) {
 		return err
 	}
 	if tg, _ := GetG(thread); tg != nil {
-		dbp.SetSelectedGoroutine(tg)
+		dbp.selectedGoroutine = tg
 	}
 	return nil
 }

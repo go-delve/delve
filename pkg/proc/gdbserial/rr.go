@@ -90,13 +90,13 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string)
 			safeRemoveAll(p.tracedir)
 		}
 	}
-	err = p.Dial(init.port, init.exe, 0, debugInfoDirs)
+	tgt, err := p.Dial(init.port, init.exe, 0, debugInfoDirs)
 	if err != nil {
 		rrcmd.Process.Kill()
 		return nil, err
 	}
 
-	return proc.NewTarget(p), nil
+	return tgt, nil
 }
 
 // ErrPerfEventParanoid is the error returned by Reply and Record if

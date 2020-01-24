@@ -117,16 +117,14 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 	}
 
 	dbp.os.initialized = true
-	err = dbp.initialize(argv0Go, []string{})
+	dbp.currentThread = trapthread
+
+	tgt, err := dbp.initialize(argv0Go, []string{})
 	if err != nil {
 		return nil, err
 	}
 
-	if err := dbp.SwitchThread(trapthread.ID); err != nil {
-		return nil, err
-	}
-
-	return proc.NewTarget(dbp), err
+	return tgt, err
 }
 
 // Attach to an existing process with the given PID.
@@ -153,12 +151,12 @@ func Attach(pid int, _ []string) (*proc.Target, error) {
 		return nil, err
 	}
 
-	err = dbp.initialize("", []string{})
+	tgt, err := dbp.initialize("", []string{})
 	if err != nil {
 		dbp.Detach(false)
 		return nil, err
 	}
-	return proc.NewTarget(dbp), nil
+	return tgt, nil
 }
 
 // Kill kills the process.
@@ -269,7 +267,7 @@ func (dbp *Process) addThread(port int, attach bool) (*Thread, error) {
 	dbp.threads[port] = thread
 	thread.os.threadAct = C.thread_act_t(port)
 	if dbp.currentThread == nil {
-		dbp.SwitchThread(thread.ID)
+		dbp.currentThread = thread
 	}
 	return thread, nil
 }

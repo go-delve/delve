@@ -71,7 +71,6 @@ type Info interface {
 	EntryPoint() (uint64, error)
 
 	ThreadInfo
-	GoroutineInfo
 }
 
 // ThreadInfo is an interface for getting information on active threads
@@ -80,19 +79,12 @@ type ThreadInfo interface {
 	FindThread(threadID int) (Thread, bool)
 	ThreadList() []Thread
 	CurrentThread() Thread
-}
-
-// GoroutineInfo is an interface for getting information on running goroutines.
-type GoroutineInfo interface {
-	SelectedGoroutine() *G
-	SetSelectedGoroutine(*G)
+	InternalSetCurrentThread(Thread)
 }
 
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
 	ContinueOnce() (trapthread Thread, err error)
-	SwitchThread(int) error
-	SwitchGoroutine(*G) error
 	RequestManualStop() error
 	// CheckAndClearManualStopRequest returns true the first time it's called
 	// after a call to RequestManualStop.
