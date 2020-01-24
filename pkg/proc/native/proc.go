@@ -1,7 +1,6 @@
 package native
 
 import (
-	"fmt"
 	"go/ast"
 	"runtime"
 	"sync"
@@ -26,10 +25,6 @@ type Process struct {
 	// Active thread
 	currentThread *Thread
 
-	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
-	// Normally selectedGoroutine is currentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
-	selectedGoroutine *proc.G
-
 	os                  *OSProcessDetails
 	firstStart          bool
 	stopMu              sync.Mutex
@@ -41,6 +36,8 @@ type Process struct {
 
 	exited, detached bool
 }
+
+var _ proc.ProcessInternal = &Process{}
 
 // New returns an initialized Process struct. Before returning,
 // it will also launch a goroutine in order to handle ptrace(2)
@@ -151,12 +148,6 @@ func (dbp *Process) Pid() int {
 	return dbp.pid
 }
 
-// SelectedGoroutine returns the current selected,
-// active goroutine.
-func (dbp *Process) SelectedGoroutine() *proc.G {
-	return dbp.selectedGoroutine
-}
-
 // ThreadList returns a list of threads in the process.
 func (dbp *Process) ThreadList() []proc.Thread {
 	r := make([]proc.Thread, 0, len(dbp.threads))
@@ -175,6 +166,11 @@ func (dbp *Process) FindThread(threadID int) (proc.Thread, bool) {
 // CurrentThread returns the current selected, active thread.
 func (dbp *Process) CurrentThread() proc.Thread {
 	return dbp.currentThread
+}
+
+// SetCurrentThread is used internally by proc.Target to change the current thread.
+func (p *Process) SetCurrentThread(th proc.Thread) {
+	p.currentThread = th.(*Thread)
 }
 
 // Breakpoints returns a list of breakpoints currently set.
@@ -265,36 +261,6 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 	return trapthread, err
 }
 
-// SwitchThread changes from current thread to the thread specified by `tid`.
-func (dbp *Process) SwitchThread(tid int) error {
-	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	if th, ok := dbp.threads[tid]; ok {
-		dbp.currentThread = th
-		dbp.selectedGoroutine, _ = proc.GetG(dbp.currentThread)
-		return nil
-	}
-	return fmt.Errorf("thread %d does not exist", tid)
-}
-
-// SwitchGoroutine changes from current thread to the thread
-// running the specified goroutine.
-func (dbp *Process) SwitchGoroutine(g *proc.G) error {
-	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	if g == nil {
-		// user specified -1 and selectedGoroutine is nil
-		return nil
-	}
-	if g.Thread != nil {
-		return dbp.SwitchThread(g.Thread.ThreadID())
-	}
-	dbp.selectedGoroutine = g
-	return nil
-}
-
 // FindBreakpoint finds the breakpoint for the given pc.
 func (dbp *Process) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, bool) {
 	if adjustPC {
@@ -312,21 +278,14 @@ func (dbp *Process) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, 
 
 // initialize will ensure that all relevant information is loaded
 // so the process is ready to be debugged.
-func (dbp *Process) initialize(path string, debugInfoDirs []string) error {
+func (dbp *Process) initialize(path string, debugInfoDirs []string) (*proc.Target, error) {
 	if err := initialize(dbp); err != nil {
-		return err
+		return nil, err
 	}
 	if err := dbp.updateThreadList(); err != nil {
-		return err
+		return nil, err
 	}
-	return proc.PostInitializationSetup(dbp, path, debugInfoDirs, dbp.writeBreakpoint)
-}
-
-// SetSelectedGoroutine will set internally the goroutine that should be
-// the default for any command executed, the goroutine being actively
-// followed.
-func (dbp *Process) SetSelectedGoroutine(g *proc.G) {
-	dbp.selectedGoroutine = g
+	return proc.NewTarget(dbp, path, debugInfoDirs, dbp.writeBreakpoint, runtime.GOOS == "windows")
 }
 
 // ClearInternalBreakpoints will clear all non-user set breakpoints. These
