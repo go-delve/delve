@@ -35,7 +35,7 @@ func ptraceSetGRegs(pid int, regs *linutil.ARM64PtraceRegs) (err error) {
 	return
 }
 
-// PtraceGetRegset returns floating point registers of the specified thread
+// PtraceGetFpRegset returns floating point registers of the specified thread
 // using PTRACE.
 func PtraceGetFpRegset(tid int) (fpregset []byte, err error) {
 	var arm64_fpregs [AARCH64_FPREGS_SIZE]byte
