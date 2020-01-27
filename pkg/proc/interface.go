@@ -70,6 +70,8 @@ type Info interface {
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)
 
+	CurrentDirection() Direction
+
 	ThreadInfo
 	GoroutineInfo
 }

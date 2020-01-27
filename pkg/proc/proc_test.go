@@ -285,7 +285,7 @@ func TestStep(t *testing.T) {
 		regs := getRegisters(p, t)
 		rip := regs.PC()
 
-		err := p.CurrentThread().StepInstruction()
+		err := proc.StepInstruction(p)
 		assertNoError(err, t, "Step()")
 
 		regs = getRegisters(p, t)
@@ -466,8 +466,8 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 			pc := regs.PC()
 
 			if traceTestseq2 {
-				t.Logf("at %#x %s:%d", pc, f, ln)
-				fmt.Printf("at %#x %s:%d", pc, f, ln)
+				t.Logf("at %#x %s:%d\n", pc, f, ln)
+				fmt.Printf("at %#x %s:%d\n", pc, f, ln)
 			}
 			switch pos := tc.pos.(type) {
 			case int:

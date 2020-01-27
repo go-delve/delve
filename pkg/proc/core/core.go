@@ -390,6 +390,11 @@ func (p *Process) ContinueOnce() (proc.Thread, []proc.Thread, error) {
 	return nil, nil, ErrContinueCore
 }
 
+// CurrentDirection always returns forward for non-recorded processes.
+func (p *Process) CurrentDirection() proc.Direction {
+	return proc.Forward
+}
+
 // StepInstruction will always return an error
 // as you cannot control execution of a core file.
 func (p *Process) StepInstruction() error {

@@ -31,6 +31,24 @@ func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 	return t
 }
 
+// ClearBreakpoint clears the breakpoint at addr.
+func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
+	if ok, err := t.Valid(); !ok {
+		return nil, err
+	}
+	bp, err := t.Process.ClearBreakpoint(addr)
+	if err != nil {
+		return nil, err
+	}
+	for _, th := range t.Process.ThreadList() {
+		bp := th.Breakpoint()
+		if bp.Breakpoint != nil && bp.Addr == addr {
+			bp.Clear()
+		}
+	}
+	return bp, nil
+}
+
 // SupportsFunctionCalls returns whether or not the backend supports
 // calling functions during a debug session.
 // Currently only non-recorded processes running on AMD64 support
@@ -49,6 +67,8 @@ func (t *Target) ClearAllGCache() {
 	t.gcache.Clear()
 }
 
+// Restart starts the process over from the given location.
+// Only valid for recorded targets.
 func (t *Target) Restart(from string) error {
 	t.ClearAllGCache()
 	return t.Process.Restart(from)

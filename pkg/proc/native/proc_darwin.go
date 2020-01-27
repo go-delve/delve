@@ -404,15 +404,6 @@ func (dbp *Process) exitGuard(err error) error {
 }
 
 func (dbp *Process) resume() error {
-	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.threads {
-		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
-				return err
-			}
-			thread.CurrentBreakpoint.Clear()
-		}
-	}
 	// everything is resumed
 	for _, thread := range dbp.threads {
 		if err := thread.resume(); err != nil {
@@ -441,15 +432,6 @@ func (dbp *Process) stop(trapthread *Thread) ([]proc.Thread, error) {
 	}
 	if !dbp.os.initialized {
 		return nil, nil
-	}
-	trapthread.SetCurrentBreakpoint(true)
-	for _, port := range ports {
-		if th, ok := dbp.threads[port]; ok {
-			err := th.SetCurrentBreakpoint(true)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
 	return dbp.ThreadList(), nil
 }

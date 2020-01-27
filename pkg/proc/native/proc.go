@@ -128,6 +128,11 @@ func (dbp *Process) Detach(kill bool) (err error) {
 	return
 }
 
+// CurrentDirection always returns forward for non-recorded processes.
+func (p *Process) CurrentDirection() proc.Direction {
+	return proc.Forward
+}
+
 // Valid returns whether the process is still attached to and
 // has not exited.
 func (dbp *Process) Valid() (bool, error) {
@@ -342,6 +347,9 @@ func (dbp *Process) ClearInternalBreakpoints() error {
 			return err
 		}
 		for _, thread := range dbp.threads {
+			if thread.CurrentBreakpoint.Breakpoint == nil {
+				continue
+			}
 			if thread.CurrentBreakpoint.Breakpoint.Addr == addr {
 				thread.CurrentBreakpoint.Clear()
 			}

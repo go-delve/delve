@@ -478,6 +478,13 @@ func (p *Process) EntryPoint() (uint64, error) {
 	return entryPoint, nil
 }
 
+// CurrentDirection returns which direction the process will
+// execute in when continued. Only recorded processes will
+// return a value different from proc.Forward.
+func (p *Process) CurrentDirection() proc.Direction {
+	return p.conn.direction
+}
+
 // initialize uses qProcessInfo to load the inferior's PID and
 // executable path. This command is not supported by all stubs and not all
 // stubs will report both the PID and executable path.
@@ -631,17 +638,6 @@ const (
 func (p *Process) ContinueOnce() (proc.Thread, []proc.Thread, error) {
 	if p.exited {
 		return nil, nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-
-	if p.conn.direction == proc.Forward {
-		// step threads stopped at any breakpoint over their breakpoint
-		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint.Breakpoint != nil {
-				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
-					return nil, nil, err
-				}
-			}
-		}
 	}
 
 	for _, th := range p.threads {
@@ -1340,14 +1336,6 @@ func (t *Thread) Common() *proc.CommonThread {
 }
 
 func (t *Thread) stepInstruction(tu *threadUpdater) error {
-	pc := t.regs.PC()
-	if _, atbp := t.p.breakpoints.M[pc]; atbp {
-		err := t.p.conn.clearBreakpoint(pc)
-		if err != nil {
-			return err
-		}
-		defer t.p.conn.setBreakpoint(pc)
-	}
 	// Reset thread registers so the next call to
 	// Thread.Registers will not be cached.
 	t.regs.regs = nil

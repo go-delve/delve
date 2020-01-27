@@ -50,27 +50,7 @@ func (t *Thread) Continue() error {
 // Otherwise we simply execute the next instruction.
 func (t *Thread) StepInstruction() (err error) {
 	t.singleStepping = true
-	defer func() {
-		t.singleStepping = false
-	}()
-	pc, err := t.PC()
-	if err != nil {
-		return err
-	}
-
-	bp, ok := t.dbp.FindBreakpoint(pc, false)
-	if ok {
-		// Clear the breakpoint so that we can continue execution.
-		err = t.ClearBreakpoint(bp.Addr, bp.OriginalData)
-		if err != nil {
-			return err
-		}
-
-		// Restore breakpoint now that we have passed it.
-		defer func() {
-			err = t.dbp.writeSoftwareBreakpoint(t, bp.Addr)
-		}()
-	}
+	defer func() { t.singleStepping = false }()
 
 	err = t.singleStep()
 	if err != nil {
