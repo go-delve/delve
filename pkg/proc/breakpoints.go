@@ -225,7 +225,7 @@ func (bpmap *BreakpointMap) ResetBreakpointIDCounter() {
 // writting breakpoings into the target.
 type WriteBreakpointFn func(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
 
-type clearBreakpointFn func(*Breakpoint) error
+type clearBreakpointFn func(uint64, []byte) error
 
 // Set creates a breakpoint at addr calling writeBreakpoint. Do not call this
 // function, call proc.Process.SetBreakpoint instead, this function exists
@@ -306,7 +306,7 @@ func (bpmap *BreakpointMap) Clear(addr uint64, clearBreakpoint clearBreakpointFn
 		return bp, nil
 	}
 
-	if err := clearBreakpoint(bp); err != nil {
+	if err := clearBreakpoint(bp.Addr, bp.OriginalData); err != nil {
 		return nil, err
 	}
 
@@ -327,7 +327,7 @@ func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakp
 		if bp.Kind != 0 {
 			continue
 		}
-		if err := clearBreakpoint(bp); err != nil {
+		if err := clearBreakpoint(bp.Addr, bp.OriginalData); err != nil {
 			return err
 		}
 		delete(bpmap.M, addr)

@@ -222,7 +222,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 // initialize for core files doesn't do much
 // aside from call the post initialization setup.
 func (p *Process) initialize(path string, debugInfoDirs []string) error {
-	return proc.PostInitializationSetup(p, path, debugInfoDirs, p.writeBreakpoint)
+	return proc.PostInitializationSetup(p, path, debugInfoDirs, p.WriteBreakpointFn)
 }
 
 // BinInfo will return the binary info.
@@ -240,12 +240,6 @@ func (p *Process) SetSelectedGoroutine(g *proc.G) {
 // EntryPoint will return the entry point address for this core file.
 func (p *Process) EntryPoint() (uint64, error) {
 	return p.entryPoint, nil
-}
-
-// writeBreakpoint is a noop function since you
-// cannot write breakpoints into core files.
-func (p *Process) writeBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
-	return "", 0, nil, nil, errors.New("cannot write a breakpoint to a core file")
 }
 
 // Recorded returns whether this is a live or recorded process. Always returns true for core files.
@@ -452,6 +446,14 @@ func (p *Process) SelectedGoroutine() *proc.G {
 // SetBreakpoint will always return an error for core files as you cannot write memory or control execution.
 func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
 	return nil, ErrWriteCore
+}
+
+func (p *Process) WriteBreakpointFn(addr uint64) (string, int, *proc.Function, []byte, error) {
+	return "", 0, nil, nil, ErrWriteCore
+}
+
+func (p *Process) ClearBreakpointFn(uint64, []byte) error {
+	return ErrWriteCore
 }
 
 // SwitchGoroutine will change the selected and active goroutine.

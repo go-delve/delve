@@ -206,7 +206,7 @@ func (dbp *Process) CheckAndClearManualStopRequest() bool {
 	return msr
 }
 
-func (dbp *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
+func (dbp *Process) WriteBreakpointFn(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := dbp.bi.PCToLine(uint64(addr))
 
 	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
@@ -224,7 +224,7 @@ func (dbp *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, [
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
 func (dbp *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return dbp.breakpoints.Set(addr, kind, cond, dbp.writeBreakpoint)
+	return dbp.breakpoints.Set(addr, kind, cond, dbp.WriteBreakpointFn)
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
@@ -232,7 +232,11 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	if dbp.exited {
 		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
-	return dbp.breakpoints.Clear(addr, dbp.currentThread.ClearBreakpoint)
+	return dbp.breakpoints.Clear(addr, dbp.ClearBreakpointFn)
+}
+
+func (dbp *Process) ClearBreakpointFn(addr uint64, originalData []byte) error {
+	return dbp.currentThread.ClearBreakpoint(addr, originalData)
 }
 
 // ContinueOnce will continue the target until it stops.
@@ -320,7 +324,7 @@ func (dbp *Process) initialize(path string, debugInfoDirs []string) error {
 	if err := dbp.updateThreadList(); err != nil {
 		return err
 	}
-	return proc.PostInitializationSetup(dbp, path, debugInfoDirs, dbp.writeBreakpoint)
+	return proc.PostInitializationSetup(dbp, path, debugInfoDirs, dbp.WriteBreakpointFn)
 }
 
 // SetSelectedGoroutine will set internally the goroutine that should be
@@ -333,12 +337,12 @@ func (dbp *Process) SetSelectedGoroutine(g *proc.G) {
 // ClearInternalBreakpoints will clear all non-user set breakpoints. These
 // breakpoints are set for internal operations such as 'next'.
 func (dbp *Process) ClearInternalBreakpoints() error {
-	return dbp.breakpoints.ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
-		if err := dbp.currentThread.ClearBreakpoint(bp); err != nil {
+	return dbp.breakpoints.ClearInternalBreakpoints(func(addr uint64, originalData []byte) error {
+		if err := dbp.currentThread.ClearBreakpoint(addr, originalData); err != nil {
 			return err
 		}
 		for _, thread := range dbp.threads {
-			if thread.CurrentBreakpoint.Breakpoint == bp {
+			if thread.CurrentBreakpoint.Breakpoint.Addr == addr {
 				thread.CurrentBreakpoint.Clear()
 			}
 		}

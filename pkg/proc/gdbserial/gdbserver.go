@@ -532,7 +532,7 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 			return err
 		}
 	}
-	if err = proc.PostInitializationSetup(p, path, debugInfoDirs, p.writeBreakpoint); err != nil {
+	if err = proc.PostInitializationSetup(p, path, debugInfoDirs, p.WriteBreakpointFn); err != nil {
 		p.conn.conn.Close()
 		return err
 	}
@@ -1079,7 +1079,7 @@ func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	return nil, false
 }
 
-func (p *Process) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
+func (p *Process) WriteBreakpointFn(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := p.bi.PCToLine(uint64(addr))
 
 	if err := p.conn.setBreakpoint(addr); err != nil {
@@ -1094,7 +1094,7 @@ func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.
 	if p.exited {
 		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
-	return p.breakpoints.Set(addr, kind, cond, p.writeBreakpoint)
+	return p.breakpoints.Set(addr, kind, cond, p.WriteBreakpointFn)
 }
 
 // ClearBreakpoint clears a breakpoint at the given address.
@@ -1102,19 +1102,26 @@ func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	if p.exited {
 		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
-	return p.breakpoints.Clear(addr, func(bp *proc.Breakpoint) error {
-		return p.conn.clearBreakpoint(bp.Addr)
+	return p.breakpoints.Clear(addr, func(addr uint64, _ []byte) error {
+		return p.ClearBreakpointFn(addr, nil)
 	})
+}
+
+func (p *Process) ClearBreakpointFn(addr uint64, _ []byte) error {
+	return p.conn.clearBreakpoint(addr)
 }
 
 // ClearInternalBreakpoints clear all internal use breakpoints like those set by 'next'.
 func (p *Process) ClearInternalBreakpoints() error {
-	return p.breakpoints.ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
-		if err := p.conn.clearBreakpoint(bp.Addr); err != nil {
+	return p.breakpoints.ClearInternalBreakpoints(func(addr uint64, originalData []byte) error {
+		if err := p.conn.clearBreakpoint(addr); err != nil {
 			return err
 		}
 		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint.Breakpoint == bp {
+			if thread.CurrentBreakpoint.Breakpoint == nil {
+				continue
+			}
+			if thread.CurrentBreakpoint.Breakpoint.Addr == addr {
 				thread.clearBreakpointState()
 			}
 		}
