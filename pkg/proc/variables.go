@@ -524,12 +524,11 @@ func (v *Variable) parseG() (*G, error) {
 	_, deref := v.RealType.(*godwarf.PtrType)
 
 	if deref {
-		gaddrbytes := make([]byte, v.bi.Arch.PtrSize())
-		_, err := mem.ReadMemory(gaddrbytes, uintptr(gaddr))
+		var err error
+		gaddr, err = readUintRaw(mem, uintptr(gaddr), int64(v.bi.Arch.PtrSize()))
 		if err != nil {
 			return nil, fmt.Errorf("error derefing *G %s", err)
 		}
-		gaddr = binary.LittleEndian.Uint64(gaddrbytes)
 	}
 	if gaddr == 0 {
 		id := 0
@@ -1061,26 +1060,23 @@ func readStringInfo(mem MemoryReadWriter, arch Arch, addr uintptr) (uintptr, int
 	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
 
 	// read len
-	val := make([]byte, arch.PtrSize())
-	_, err := mem.ReadMemory(val, addr+uintptr(arch.PtrSize()))
+	strlen, err := readIntRaw(mem, addr+uintptr(arch.PtrSize()), int64(arch.PtrSize()))
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string len %s", err)
 	}
-	strlen := int64(binary.LittleEndian.Uint64(val))
 	if strlen < 0 {
 		return 0, 0, fmt.Errorf("invalid length: %d", strlen)
 	}
 
 	// read addr
-	_, err = mem.ReadMemory(val, addr)
+	val, err := readUintRaw(mem, addr, int64(arch.PtrSize()))
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string pointer %s", err)
 	}
-	addr = uintptr(binary.LittleEndian.Uint64(val))
+	addr = uintptr(val)
 	if addr == 0 {
 		return 0, 0, nil
 	}
-
 	return addr, strlen, nil
 }
 
@@ -1457,14 +1453,13 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	val := make([]byte, v.bi.Arch.PtrSize())
-	_, err := v.mem.ReadMemory(val, uintptr(v.closureAddr))
+	val, err := readUintRaw(v.mem, uintptr(v.closureAddr), int64(v.bi.Arch.PtrSize()))
 	if err != nil {
 		v.Unreadable = err
 		return
 	}
 
-	v.Base = uintptr(binary.LittleEndian.Uint64(val))
+	v.Base = uintptr(val)
 	fn := v.bi.PCToFunc(uint64(v.Base))
 	if fn == nil {
 		v.Unreadable = fmt.Errorf("could not find function for %#v", v.Base)
