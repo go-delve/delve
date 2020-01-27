@@ -32,6 +32,7 @@ type ServerImpl struct {
 	config *service.Config
 	// listener is used to serve HTTP.
 	listener net.Listener
+	closeMu  sync.Mutex
 	// stopChan is used to stop the listener goroutine.
 	stopChan chan struct{}
 	// debugger is the debugger service.
@@ -86,8 +87,10 @@ func NewServer(config *service.Config) *ServerImpl {
 // Stop stops the JSON-RPC server.
 func (s *ServerImpl) Stop() error {
 	if s.config.AcceptMulti {
+		s.closeMu.Lock()
 		close(s.stopChan)
 		s.listener.Close()
+		s.closeMu.Unlock()
 	}
 	kill := s.config.AttachPid == 0
 	return s.debugger.Detach(kill)
@@ -147,11 +150,14 @@ func (s *ServerImpl) Run() error {
 		for {
 			c, err := s.listener.Accept()
 			if err != nil {
+				s.closeMu.Lock()
 				select {
 				case <-s.stopChan:
 					// We were supposed to exit, do nothing and return
+					s.closeMu.Unlock()
 					return
 				default:
+					s.closeMu.Unlock()
 					panic(err)
 				}
 			}
