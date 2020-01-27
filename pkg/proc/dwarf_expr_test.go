@@ -119,7 +119,7 @@ func TestDwarfExprRegisters(t *testing.T) {
 
 	mainfn := bi.LookupFunc["main.main"]
 
-	mem := newFakeMemory(defaultCFA, uint64(0), uint64(testCases["b"]), uint16(testCases["pair.v"]))
+	mem := newFakeMemory(defaultCFA, uint64(0), uint64(testCases["b"]))
 	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{}}
 	regs.Regs.Rax = uint64(testCases["a"])
 	regs.Regs.Rdx = uint64(testCases["c"])
