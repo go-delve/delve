@@ -476,13 +476,10 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 
 	// stop all threads that are still running
 	for _, th := range dbp.threads {
-		if !th.Stopped() {
+		if th.os.running {
 			if err := th.stop(); err != nil {
 				return dbp.exitGuard(err)
 			}
-		} else {
-			// Thread is already in a trace stop but we didn't get the notification yet.
-			th.os.running = false
 		}
 	}
 
