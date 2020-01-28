@@ -225,6 +225,14 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 	return proc.PostInitializationSetup(p, path, debugInfoDirs, p.WriteBreakpointFn)
 }
 
+// AdjustsPCAfterBreakpoint always returns false as the core backend does
+// not execute instructions or hit breakpoints.
+func (dbp *Process) AdjustsPCAfterBreakpoint() bool { return false }
+
+func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
+	return nil, false
+}
+
 // BinInfo will return the binary info.
 func (p *Process) BinInfo() *proc.BinaryInfo {
 	return p.bi
@@ -378,9 +386,9 @@ func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 	return nil, proc.NoBreakpointError{Addr: addr}
 }
 
-// ClearInternalBreakpoints will always return nil and have no
+// ClearInternalBreakpointsInternal will always return nil and have no
 // effect since you cannot set breakpoints on core files.
-func (p *Process) ClearInternalBreakpoints() error {
+func (p *Process) ClearInternalBreakpointsInternal() error {
 	return nil
 }
 

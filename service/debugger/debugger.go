@@ -392,7 +392,8 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	}
 
 	for _, thread := range d.target.ThreadList() {
-		th := api.ConvertThread(thread)
+		bps := d.target.ThreadToBreakpoint(thread)
+		th := api.ConvertThread(thread, bps)
 
 		if retLoadCfg != nil {
 			th.ReturnValues = convertVars(thread.Common().ReturnValues(*retLoadCfg))
@@ -639,7 +640,8 @@ func (d *Debugger) Threads() ([]*api.Thread, error) {
 
 	threads := []*api.Thread{}
 	for _, th := range d.target.ThreadList() {
-		threads = append(threads, api.ConvertThread(th))
+		bps := d.target.ThreadToBreakpoint(th)
+		threads = append(threads, api.ConvertThread(th, bps))
 	}
 	return threads, nil
 }
@@ -655,7 +657,8 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 
 	for _, th := range d.target.ThreadList() {
 		if th.ThreadID() == id {
-			return api.ConvertThread(th), nil
+			bps := d.target.ThreadToBreakpoint(th)
+			return api.ConvertThread(th, bps), nil
 		}
 	}
 	return nil, nil

@@ -18,9 +18,6 @@ import (
 type Thread interface {
 	MemoryReadWriter
 	Location() (*Location, error)
-	// Breakpoint will return the breakpoint that this thread is stopped at or
-	// nil if the thread is not stopped at any breakpoint.
-	Breakpoint() *BreakpointState
 	ThreadID() int
 
 	// Registers returns the CPU registers of this thread. The contents of the
@@ -38,8 +35,6 @@ type Thread interface {
 	StepInstruction() error
 	// Blocked returns true if the thread is blocked
 	Blocked() bool
-	// SetCurrentBreakpoint updates the current breakpoint of this thread, if adjustPC is true also checks for breakpoints that were just hit (this should only be passed true after a thread resume)
-	SetCurrentBreakpoint(adjustPC bool) error
 	// Common returns the CommonThread structure for this thread
 	Common() *CommonThread
 
@@ -142,7 +137,7 @@ func (err *ErrNoSourceForPC) Error() string {
 // for an inlined function call. Everything works the same as normal except
 // when removing instructions belonging to inlined calls we also remove all
 // instructions belonging to the current inlined call.
-func next(dbp Process, stepInto, inlinedStepOut bool) error {
+func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 	topframe, retframe, err := topframe(selg, curthread)
@@ -318,8 +313,8 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
-	if bp := curthread.Breakpoint(); bp.Breakpoint == nil {
-		curthread.SetCurrentBreakpoint(false)
+	if bp := dbp.ThreadToBreakpoint(curthread); bp.Breakpoint == nil {
+		dbp.setThreadBreakpointState(curthread, false)
 	}
 	success = true
 	return nil

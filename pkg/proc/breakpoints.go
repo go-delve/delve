@@ -115,8 +115,8 @@ type returnBreakpointInfo struct {
 }
 
 // CheckCondition evaluates bp's condition on thread.
-func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
-	bpstate := BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
+func (bp *Breakpoint) CheckCondition(thread Thread) *BreakpointState {
+	bpstate := &BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
 	if bp.Cond == nil && bp.internalCond == nil {
 		bpstate.Active = true
 		bpstate.Internal = bp.IsInternal()

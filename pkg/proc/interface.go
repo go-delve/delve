@@ -70,6 +70,9 @@ type Info interface {
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)
 
+	AdjustsPCAfterBreakpoint() bool
+	FindBreakpoint(pc uint64) (*Breakpoint, bool)
+
 	CurrentDirection() Direction
 
 	ThreadInfo
@@ -107,7 +110,7 @@ type BreakpointManipulation interface {
 	Breakpoints() *BreakpointMap
 	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
 	ClearBreakpoint(addr uint64) (*Breakpoint, error)
-	ClearInternalBreakpoints() error
+	ClearInternalBreakpointsInternal() error
 
 	WriteBreakpointFn(addr uint64) (string, int, *Function, []byte, error)
 	ClearBreakpointFn(uint64, []byte) error

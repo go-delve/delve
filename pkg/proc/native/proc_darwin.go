@@ -104,10 +104,6 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 		return nil, err
 	}
 
-	for _, th := range dbp.threads {
-		th.CurrentBreakpoint.Clear()
-	}
-
 	trapthread, err := dbp.trapWait(-1)
 	if err != nil {
 		return nil, err

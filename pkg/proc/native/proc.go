@@ -66,6 +66,10 @@ func (dbp *Process) BinInfo() *proc.BinaryInfo {
 	return dbp.bi
 }
 
+// AdjustsPCAfterBreakpoint always returns false as the native backend does
+// not automatically adjust the PC register once a breakpoint is hit.
+func (dbp *Process) AdjustsPCAfterBreakpoint() bool { return false }
+
 // Recorded always returns false for the native proc backend.
 func (dbp *Process) Recorded() (bool, string) { return false, "" }
 
@@ -255,10 +259,6 @@ func (dbp *Process) ContinueOnce() (proc.Thread, []proc.Thread, error) {
 		return nil, nil, err
 	}
 
-	for _, th := range dbp.threads {
-		th.CurrentBreakpoint.Clear()
-	}
-
 	if dbp.resumeChan != nil {
 		close(dbp.resumeChan)
 		dbp.resumeChan = nil
@@ -306,18 +306,9 @@ func (dbp *Process) SwitchGoroutine(g *proc.G) error {
 }
 
 // FindBreakpoint finds the breakpoint for the given pc.
-func (dbp *Process) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakpoint, bool) {
-	if adjustPC {
-		// Check to see if address is past the breakpoint, (i.e. breakpoint was hit).
-		if bp, ok := dbp.breakpoints.M[pc-uint64(dbp.bi.Arch.BreakpointSize())]; ok {
-			return bp, true
-		}
-	}
-	// Directly use addr to lookup breakpoint.
-	if bp, ok := dbp.breakpoints.M[pc]; ok {
-		return bp, true
-	}
-	return nil, false
+func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
+	bp, ok := dbp.breakpoints.M[pc]
+	return bp, ok
 }
 
 // initialize will ensure that all relevant information is loaded
@@ -339,22 +330,11 @@ func (dbp *Process) SetSelectedGoroutine(g *proc.G) {
 	dbp.selectedGoroutine = g
 }
 
-// ClearInternalBreakpoints will clear all non-user set breakpoints. These
+// ClearInternalBreakpointsInternal will clear all non-user set breakpoints. These
 // breakpoints are set for internal operations such as 'next'.
-func (dbp *Process) ClearInternalBreakpoints() error {
+func (dbp *Process) ClearInternalBreakpointsInternal() error {
 	return dbp.breakpoints.ClearInternalBreakpoints(func(addr uint64, originalData []byte) error {
-		if err := dbp.currentThread.ClearBreakpoint(addr, originalData); err != nil {
-			return err
-		}
-		for _, thread := range dbp.threads {
-			if thread.CurrentBreakpoint.Breakpoint == nil {
-				continue
-			}
-			if thread.CurrentBreakpoint.Breakpoint.Addr == addr {
-				thread.CurrentBreakpoint.Clear()
-			}
-		}
-		return nil
+		return dbp.currentThread.ClearBreakpoint(addr, originalData)
 	})
 }
 

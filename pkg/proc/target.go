@@ -14,6 +14,10 @@ type Target struct {
 	// have read and parsed from the targets memory.
 	// This must be cleared whenever the target is resumed.
 	gcache goroutineCache
+
+	// threadToBreakpoint maps threads to the breakpoint that they
+	// have were trapped on.
+	threadToBreakpoint map[int]*BreakpointState
 }
 
 // NewTarget returns an initialized Target object.
@@ -31,6 +35,13 @@ func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 	return t
 }
 
+func (t *Target) ThreadToBreakpoint(th Thread) *BreakpointState {
+	if bps, ok := t.threadToBreakpoint[th.ThreadID()]; ok {
+		return bps
+	}
+	return new(BreakpointState)
+}
+
 // ClearBreakpoint clears the breakpoint at addr.
 func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	if ok, err := t.Valid(); !ok {
@@ -41,7 +52,7 @@ func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 		return nil, err
 	}
 	for _, th := range t.Process.ThreadList() {
-		bp := th.Breakpoint()
+		bp := t.ThreadToBreakpoint(th)
 		if bp.Breakpoint != nil && bp.Addr == addr {
 			bp.Clear()
 		}
@@ -71,7 +82,67 @@ func (t *Target) ClearAllGCache() {
 // Only valid for recorded targets.
 func (t *Target) Restart(from string) error {
 	t.ClearAllGCache()
-	return t.Process.Restart(from)
+	t.threadToBreakpoint = make(map[int]*BreakpointState)
+	if err := t.Process.Restart(from); err != nil {
+		return err
+	}
+	for _, th := range t.Process.ThreadList() {
+		if err := t.setThreadBreakpointState(th, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *Target) ClearInternalBreakpoints() error {
+	if err := t.Process.ClearInternalBreakpointsInternal(); err != nil {
+		return err
+	}
+	for tid, bp := range t.threadToBreakpoint {
+		if bp.IsInternal() {
+			delete(t.threadToBreakpoint, tid)
+		}
+	}
+	return nil
+}
+
+func (t *Target) setThreadBreakpointState(th Thread, adjustPC bool) error {
+	delete(t.threadToBreakpoint, th.ThreadID())
+
+	regs, err := th.Registers(false)
+	if err != nil {
+		return err
+	}
+	pc := regs.PC()
+
+	// If the breakpoint instruction does not change the value
+	// of PC after being executed we should look for breakpoints
+	// with bp.Addr == PC and there is no need to call SetPC
+	// after finding one.
+	adjustPC = adjustPC &&
+		t.BinInfo().Arch.BreakInstrMovesPC() &&
+		!t.Process.AdjustsPCAfterBreakpoint()
+
+	if adjustPC {
+		pc = pc - uint64(t.BinInfo().Arch.BreakpointSize())
+	}
+
+	if bp, ok := t.Process.FindBreakpoint(pc); ok {
+		if adjustPC {
+			if err = th.SetPC(pc); err != nil {
+				return err
+			}
+		}
+		bps := bp.CheckCondition(th)
+		if bps.Breakpoint != nil && bps.Active {
+			if g, err := GetG(th); err == nil {
+				bps.HitCount[g.ID]++
+			}
+			bps.TotalHitCount++
+		}
+		t.threadToBreakpoint[th.ThreadID()] = bps
+	}
+	return nil
 }
 
 func (t *Target) Detach(kill bool) error {
