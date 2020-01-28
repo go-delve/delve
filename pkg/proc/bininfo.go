@@ -793,29 +793,51 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 	bi.Images = append(bi.Images, image)
 }
 
-func (bi *BinaryInfo) locationExpr(entry godwarf.Entry, attr dwarf.Attr, pc uint64) ([]byte, string, error) {
+func (bi *BinaryInfo) locationExpr(entry godwarf.Entry, attr dwarf.Attr, pc uint64) ([]byte, *locationExpr, error) {
 	a := entry.Val(attr)
 	if a == nil {
-		return nil, "", fmt.Errorf("no location attribute %s", attr)
+		return nil, nil, fmt.Errorf("no location attribute %s", attr)
 	}
 	if instr, ok := a.([]byte); ok {
-		var descr bytes.Buffer
-		fmt.Fprintf(&descr, "[block] ")
-		op.PrettyPrint(&descr, instr)
-		return instr, descr.String(), nil
+		return instr, &locationExpr{isBlock: true, instr: instr}, nil
 	}
 	off, ok := a.(int64)
 	if !ok {
-		return nil, "", fmt.Errorf("could not interpret location attribute %s", attr)
+		return nil, nil, fmt.Errorf("could not interpret location attribute %s", attr)
 	}
 	instr := bi.loclistEntry(off, pc)
 	if instr == nil {
-		return nil, "", fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
+		return nil, nil, fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
+	}
+	return instr, &locationExpr{pc: pc, off: off, instr: instr}, nil
+}
+
+type locationExpr struct {
+	isBlock   bool
+	isEscaped bool
+	off       int64
+	pc        uint64
+	instr     []byte
+}
+
+func (le *locationExpr) String() string {
+	if le == nil {
+		return ""
 	}
 	var descr bytes.Buffer
-	fmt.Fprintf(&descr, "[%#x:%#x] ", off, pc)
-	op.PrettyPrint(&descr, instr)
-	return instr, descr.String(), nil
+
+	if le.isBlock {
+		fmt.Fprintf(&descr, "[block] ")
+		op.PrettyPrint(&descr, le.instr)
+	} else {
+		fmt.Fprintf(&descr, "[%#x:%#x] ", le.off, le.pc)
+		op.PrettyPrint(&descr, le.instr)
+	}
+
+	if le.isEscaped {
+		fmt.Fprintf(&descr, " (escaped)")
+	}
+	return descr.String()
 }
 
 // LocationCovers returns the list of PC addresses that is covered by the
@@ -861,10 +883,10 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
+func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, *locationExpr, error) {
 	instr, descr, err := bi.locationExpr(entry, attr, pc)
 	if err != nil {
-		return 0, nil, "", err
+		return 0, nil, nil, err
 	}
 	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize())
 	return addr, pieces, descr, err

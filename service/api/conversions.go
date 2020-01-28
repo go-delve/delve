@@ -148,7 +148,7 @@ func ConvertVar(v *proc.Variable) *Variable {
 		Flags:    VariableFlags(v.Flags),
 		Base:     v.Base,
 
-		LocationExpr: v.LocationExpr,
+		LocationExpr: v.LocationExpr.String(),
 		DeclLine:     v.DeclLine,
 	}
 
