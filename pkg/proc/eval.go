@@ -266,7 +266,8 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			}
 			v.Name = name[1:]
 			v.Flags |= VariableEscaped
-			v.LocationExpr = locationExpr + " (escaped)"
+			locationExpr.isEscaped = true
+			v.LocationExpr = locationExpr
 			v.DeclLine = declLine
 			vars[i] = v
 		}

@@ -118,8 +118,8 @@ type Variable struct {
 	loaded     bool
 	Unreadable error
 
-	LocationExpr string // location expression
-	DeclLine     int64  // line number of this variable's declaration
+	LocationExpr *locationExpr // location expression
+	DeclLine     int64         // line number of this variable's declaration
 }
 
 // LoadConfig controls how variables are loaded from the targets memory.
@@ -441,8 +441,6 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 		return nil, err
 	}
 
-	name := ""
-
 	if deref {
 		typ = &godwarf.PtrType{
 			CommonType: godwarf.CommonType{
@@ -453,11 +451,9 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 			},
 			Type: typ,
 		}
-	} else {
-		name = "runtime.curg"
 	}
 
-	return newVariableFromThread(thread, name, gaddr, typ), nil
+	return newVariableFromThread(thread, "", gaddr, typ), nil
 }
 
 // Defer returns the top-most defer of the goroutine.
@@ -850,6 +846,8 @@ func (v *Variable) parseG() (*G, error) {
 	}
 
 	f, l, fn := v.bi.PCToLine(uint64(pc))
+
+	v.Name = "runtime.curg"
 
 	g := &G{
 		ID:         int(id),
