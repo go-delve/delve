@@ -287,13 +287,11 @@ func (it *stackIterator) Err() error {
 // frameBase calculates the frame base pseudo-register for DWARF for fn and
 // the current frame.
 func (it *stackIterator) frameBase(fn *Function) int64 {
-	rdr := fn.cu.image.dwarfReader
-	rdr.Seek(fn.offset)
-	e, err := rdr.Next()
+	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
 	if err != nil {
 		return 0
 	}
-	fb, _, _, _ := it.bi.Location(e, dwarf.AttrFrameBase, it.pc, it.regs)
+	fb, _, _, _ := it.bi.Location(dwarfTree.Entry, dwarf.AttrFrameBase, it.pc, it.regs)
 	return fb
 }
 
@@ -366,12 +364,12 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		callpc--
 	}
 
-	image := frame.Call.Fn.cu.image
+	dwarfTree, err := frame.Call.Fn.cu.image.getDwarfTree(frame.Call.Fn.offset)
+	if err != nil {
+		return append(frames, frame)
+	}
 
-	irdr := reader.InlineStack(image.dwarf, frame.Call.Fn.offset, reader.ToRelAddr(callpc, image.StaticBase))
-	for irdr.Next() {
-		entry, offset := reader.LoadAbstractOrigin(irdr.Entry(), image.dwarfReader)
-
+	for _, entry := range reader.InlineStack(dwarfTree, callpc) {
 		fnname, okname := entry.Val(dwarf.AttrName).(string)
 		fileidx, okfileidx := entry.Val(dwarf.AttrCallFile).(int64)
 		line, okline := entry.Val(dwarf.AttrCallLine).(int64)
@@ -383,7 +381,7 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 			break
 		}
 
-		inlfn := &Function{Name: fnname, Entry: frame.Call.Fn.Entry, End: frame.Call.Fn.End, offset: offset, cu: frame.Call.Fn.cu}
+		inlfn := &Function{Name: fnname, Entry: frame.Call.Fn.Entry, End: frame.Call.Fn.End, offset: entry.Offset, cu: frame.Call.Fn.cu}
 		frames = append(frames, Stackframe{
 			Current: frame.Current,
 			Call: Location{

@@ -104,12 +104,16 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 
 	trustArgOrder := scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12)
 
-	var vars []*Variable
-	var depths []int
-	varReader := reader.Variables(scope.image().dwarf, scope.Fn.offset, reader.ToRelAddr(scope.PC, scope.image().StaticBase), scope.Line, true, false)
-	for varReader.Next() {
-		entry := varReader.Entry()
-		val, err := extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry)
+	dwarfTree, err := scope.image().getDwarfTree(scope.Fn.offset)
+	if err != nil {
+		return nil, err
+	}
+
+	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, true, false)
+	vars := make([]*Variable, 0, len(varEntries))
+	depths := make([]int, 0, len(varEntries))
+	for _, entry := range varEntries {
+		val, err := extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree)
 		if err != nil {
 			// skip variables that we can't parse yet
 			continue
@@ -123,7 +127,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			val = newVariable(val.Name, addr, val.DwarfType, scope.BinInfo, scope.Mem)
 		}
 		vars = append(vars, val)
-		depth := varReader.Depth()
+		depth := entry.Depth
 		if entry.Tag == dwarf.TagFormalParameter {
 			if depth <= 1 {
 				depth = 0
@@ -136,10 +140,6 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			}
 		}
 		depths = append(depths, depth)
-	}
-
-	if err := varReader.Err(); err != nil {
-		return nil, err
 	}
 
 	if len(vars) <= 0 {
@@ -367,7 +367,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 			}
 
 			// Ignore errors trying to extract values
-			val, err := extractVarInfoFromEntry(scope.BinInfo, image, regsReplaceStaticBase(scope.Regs, image), scope.Mem, entry)
+			val, err := extractVarInfoFromEntry(scope.BinInfo, image, regsReplaceStaticBase(scope.Regs, image), scope.Mem, godwarf.EntryToTree(entry))
 			if err != nil {
 				continue
 			}
@@ -402,7 +402,7 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 			if err != nil {
 				return nil, err
 			}
-			return extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, entry)
+			return extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {

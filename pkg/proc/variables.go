@@ -16,7 +16,6 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 )
 
@@ -841,39 +840,28 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	}
 }
 
-func readVarEntry(varEntry *dwarf.Entry, image *Image) (entry reader.Entry, name string, typ godwarf.Type, err error) {
-	entry, _ = reader.LoadAbstractOrigin(varEntry, image.dwarfReader)
-
+func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.Type, err error) {
 	name, ok := entry.Val(dwarf.AttrName).(string)
 	if !ok {
-		return nil, "", nil, fmt.Errorf("malformed variable DIE (name)")
+		return "", nil, fmt.Errorf("malformed variable DIE (name)")
 	}
 
-	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
-	if !ok {
-		return nil, "", nil, fmt.Errorf("malformed variable DIE (offset)")
-	}
-
-	typ, err = image.Type(offset)
+	typ, err = entry.Type(image.dwarf, image.index, image.typeCache)
 	if err != nil {
-		return nil, "", nil, err
+		return "", nil, err
 	}
 
-	return entry, name, typ, nil
+	return name, typ, nil
 }
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, varEntry *dwarf.Entry) (*Variable, error) {
-	if varEntry == nil {
-		return nil, fmt.Errorf("invalid entry")
+func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree) (*Variable, error) {
+	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
+		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
 	}
 
-	if varEntry.Tag != dwarf.TagFormalParameter && varEntry.Tag != dwarf.TagVariable {
-		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", varEntry.Tag.String())
-	}
-
-	entry, n, t, err := readVarEntry(varEntry, image)
+	n, t, err := readVarEntry(entry, image)
 	if err != nil {
 		return nil, err
 	}

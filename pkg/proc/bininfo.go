@@ -30,6 +30,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/util"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/sirupsen/logrus"
 )
 
@@ -165,6 +166,8 @@ var supportedDarwinArch = map[macho.Cpu]bool{
 }
 
 const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
+
+const dwarfTreeCacheSize = 512 // size of the dwarfTree cache of each image
 
 type compileUnit struct {
 	name   string // univocal name for non-go compile units
@@ -489,18 +492,16 @@ func (bi *BinaryInfo) PCToFunc(pc uint64) *Function {
 // If the PC address belongs to an inlined call it will return the inlined function.
 func (bi *BinaryInfo) PCToInlineFunc(pc uint64) *Function {
 	fn := bi.PCToFunc(pc)
-	irdr := reader.InlineStack(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(pc, fn.cu.image.StaticBase))
-	var inlineFnEntry *dwarf.Entry
-	if irdr.Next() {
-		inlineFnEntry = irdr.Entry()
+	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
+	if err != nil {
+		return fn
 	}
-
-	if inlineFnEntry == nil {
+	entries := reader.InlineStack(dwarfTree, pc)
+	if len(entries) == 0 {
 		return fn
 	}
 
-	e, _ := reader.LoadAbstractOrigin(inlineFnEntry, fn.cu.image.dwarfReader)
-	fnname, okname := e.Val(dwarf.AttrName).(string)
+	fnname, okname := entries[0].Val(dwarf.AttrName).(string)
 	if !okname {
 		return fn
 	}
@@ -530,6 +531,8 @@ type Image struct {
 	loclist     *loclist.Reader
 
 	typeCache map[dwarf.Offset]godwarf.Type
+
+	dwarfTreeCache *simplelru.LRU
 
 	// runtimeTypeToDIE maps between the offset of a runtime._type in
 	// runtime.moduledata.types and the offset of the DIE in debug_info. This
@@ -566,6 +569,8 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 
 	// Actually add the image.
 	image := &Image{Path: path, addr: addr, typeCache: make(map[dwarf.Offset]godwarf.Type)}
+	image.dwarfTreeCache, _ = simplelru.NewLRU(dwarfTreeCacheSize, nil)
+
 	// add Image regardless of error so that we don't attempt to re-add it every time we stop
 	image.index = len(bi.Images)
 	bi.Images = append(bi.Images, image)
@@ -651,6 +656,18 @@ func (image *Image) LoadError() error {
 	return image.loadErr
 }
 
+func (image *Image) getDwarfTree(off dwarf.Offset) (*godwarf.Tree, error) {
+	if r, ok := image.dwarfTreeCache.Get(off); ok {
+		return r.(*godwarf.Tree), nil
+	}
+	r, err := godwarf.LoadTree(off, image.dwarf, image.StaticBase)
+	if err != nil {
+		return nil, err
+	}
+	image.dwarfTreeCache.Add(off, r)
+	return r, nil
+}
+
 type nilCloser struct{}
 
 func (c *nilCloser) Close() error { return nil }
@@ -663,6 +680,7 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 	image.sepDebugCloser = (*nilCloser)(nil)
 	image.dwarf = dwdata
 	image.typeCache = make(map[dwarf.Offset]godwarf.Type)
+	image.dwarfTreeCache, _ = simplelru.NewLRU(dwarfTreeCacheSize, nil)
 
 	if debugFrameBytes != nil {
 		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0, bi.Arch.PtrSize())
@@ -675,7 +693,7 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 	bi.Images = append(bi.Images, image)
 }
 
-func (bi *BinaryInfo) locationExpr(entry reader.Entry, attr dwarf.Attr, pc uint64) ([]byte, string, error) {
+func (bi *BinaryInfo) locationExpr(entry godwarf.Entry, attr dwarf.Attr, pc uint64) ([]byte, string, error) {
 	a := entry.Val(attr)
 	if a == nil {
 		return nil, "", fmt.Errorf("no location attribute %s", attr)
@@ -743,7 +761,7 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry reader.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
+func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, string, error) {
 	instr, descr, err := bi.locationExpr(entry, attr, pc)
 	if err != nil {
 		return 0, nil, "", err
