@@ -422,7 +422,7 @@ func (dbp *Process) stop(trapthread *Thread) ([]proc.Thread, error) {
 		}
 	}
 
-	ports, err := dbp.waitForStop()
+	_, err := dbp.waitForStop()
 	if err != nil {
 		return nil, err
 	}

@@ -471,7 +471,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 // createLogicalBreakpoint creates one physical breakpoint for each address
 // in addrs and associates all of them with the same logical breakpoint.
-func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+func createLogicalBreakpoint(p *proc.Target, addrs []uint64, requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	bps := make([]*proc.Breakpoint, len(addrs))
 	var err error
 	for i := range addrs {

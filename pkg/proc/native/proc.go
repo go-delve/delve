@@ -2,7 +2,6 @@ package native
 
 import (
 	"fmt"
-	"go/ast"
 	"runtime"
 	"sync"
 
@@ -15,10 +14,6 @@ type Process struct {
 	bi *proc.BinaryInfo
 
 	pid int // Process Pid
-
-	// Breakpoint table, holds information on breakpoints.
-	// Maps instruction address to Breakpoint struct.
-	breakpoints proc.BreakpointMap
 
 	// List of threads mapped as such: pid -> *Thread
 	threads map[int]*Thread
@@ -50,7 +45,6 @@ func New(pid int) *Process {
 	dbp := &Process{
 		pid:            pid,
 		threads:        make(map[int]*Thread),
-		breakpoints:    proc.NewBreakpointMap(),
 		firstStart:     true,
 		os:             new(OSProcessDetails),
 		ptraceChan:     make(chan func()),
@@ -108,15 +102,6 @@ func (dbp *Process) Detach(kill bool) (err error) {
 		}
 		dbp.bi.Close()
 		return nil
-	}
-	// Clean up any breakpoints we've set.
-	for _, bp := range dbp.breakpoints.M {
-		if bp != nil {
-			_, err := dbp.ClearBreakpoint(bp.Addr)
-			if err != nil {
-				return err
-			}
-		}
 	}
 	dbp.execPtraceFunc(func() {
 		err = dbp.detach(kill)
@@ -186,11 +171,6 @@ func (dbp *Process) CurrentThread() proc.Thread {
 	return dbp.currentThread
 }
 
-// Breakpoints returns a list of breakpoints currently set.
-func (dbp *Process) Breakpoints() *proc.BreakpointMap {
-	return &dbp.breakpoints
-}
-
 // RequestManualStop sets the `halt` flag and
 // sends SIGSTOP to all threads.
 func (dbp *Process) RequestManualStop() error {
@@ -228,20 +208,6 @@ func (dbp *Process) WriteBreakpointFn(addr uint64) (string, int, *proc.Function,
 	}
 
 	return f, l, fn, originalData, nil
-}
-
-// SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
-// break point table.
-func (dbp *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return dbp.breakpoints.Set(addr, kind, cond, dbp.WriteBreakpointFn)
-}
-
-// ClearBreakpoint clears the breakpoint at addr.
-func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	if dbp.exited {
-		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	return dbp.breakpoints.Clear(addr, dbp.ClearBreakpointFn)
 }
 
 func (dbp *Process) ClearBreakpointFn(addr uint64, originalData []byte) error {
@@ -305,12 +271,6 @@ func (dbp *Process) SwitchGoroutine(g *proc.G) error {
 	return nil
 }
 
-// FindBreakpoint finds the breakpoint for the given pc.
-func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
-	bp, ok := dbp.breakpoints.M[pc]
-	return bp, ok
-}
-
 // initialize will ensure that all relevant information is loaded
 // so the process is ready to be debugged.
 func (dbp *Process) initialize(path string, debugInfoDirs []string) error {
@@ -328,14 +288,6 @@ func (dbp *Process) initialize(path string, debugInfoDirs []string) error {
 // followed.
 func (dbp *Process) SetSelectedGoroutine(g *proc.G) {
 	dbp.selectedGoroutine = g
-}
-
-// ClearInternalBreakpointsInternal will clear all non-user set breakpoints. These
-// breakpoints are set for internal operations such as 'next'.
-func (dbp *Process) ClearInternalBreakpointsInternal() error {
-	return dbp.breakpoints.ClearInternalBreakpoints(func(addr uint64, originalData []byte) error {
-		return dbp.currentThread.ClearBreakpoint(addr, originalData)
-	})
 }
 
 func (dbp *Process) handlePtraceFuncs() {

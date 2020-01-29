@@ -67,7 +67,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"go/ast"
 	"net"
 	"os"
 	"os/exec"
@@ -93,10 +92,6 @@ const (
 )
 
 const heartbeatInterval = 10 * time.Second
-
-// ErrDirChange is returned when trying to change execution direction
-// while there are still internal breakpoints set.
-var ErrDirChange = errors.New("direction change with internal breakpoints")
 
 // Process implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
@@ -940,10 +935,6 @@ func (p *Process) Restart(pos string) error {
 	p.clearThreadRegisters()
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
-	for addr := range p.breakpoints.M {
-		p.conn.setBreakpoint(addr)
-	}
-
 	return nil
 }
 
@@ -1048,25 +1039,8 @@ func (p *Process) Direction(dir proc.Direction) error {
 	if p.conn.direction == dir {
 		return nil
 	}
-	if p.Breakpoints().HasInternalBreakpoints() {
-		return ErrDirChange
-	}
 	p.conn.direction = dir
 	return nil
-}
-
-// Breakpoints returns the list of breakpoints currently set.
-func (p *Process) Breakpoints() *proc.BreakpointMap {
-	return &p.breakpoints
-}
-
-// FindBreakpoint returns the breakpoint at the given address.
-func (p *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
-	// Directly use addr to lookup breakpoint.
-	if bp, ok := p.breakpoints.M[pc]; ok {
-		return bp, true
-	}
-	return nil, false
 }
 
 func (p *Process) WriteBreakpointFn(addr uint64) (string, int, *proc.Function, []byte, error) {
@@ -1079,33 +1053,8 @@ func (p *Process) WriteBreakpointFn(addr uint64) (string, int, *proc.Function, [
 	return f, l, fn, nil, nil
 }
 
-// SetBreakpoint creates a new breakpoint.
-func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	return p.breakpoints.Set(addr, kind, cond, p.WriteBreakpointFn)
-}
-
-// ClearBreakpoint clears a breakpoint at the given address.
-func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	return p.breakpoints.Clear(addr, func(addr uint64, _ []byte) error {
-		return p.ClearBreakpointFn(addr, nil)
-	})
-}
-
 func (p *Process) ClearBreakpointFn(addr uint64, _ []byte) error {
 	return p.conn.clearBreakpoint(addr)
-}
-
-// ClearInternalBreakpointsInternal clear all internal use breakpoints like those set by 'next'.
-func (p *Process) ClearInternalBreakpointsInternal() error {
-	return p.breakpoints.ClearInternalBreakpoints(func(addr uint64, originalData []byte) error {
-		return p.conn.clearBreakpoint(addr)
-	})
 }
 
 type threadUpdater struct {
@@ -1458,23 +1407,6 @@ func (t *Thread) reloadGAtPC() error {
 
 	cx := t.regs.CX()
 	pc := t.regs.PC()
-
-	// We are partially replicating the code of GdbserverThread.stepInstruction
-	// here.
-	// The reason is that lldb-server has a bug with writing to memory and
-	// setting/clearing breakpoints to that same memory which we must work
-	// around by clearing and re-setting the breakpoint in a specific sequence
-	// with the memory writes.
-	// Additionally all breakpoints in [pc, pc+len(movinstr)] need to be removed
-	for addr := range t.p.breakpoints.M {
-		if addr >= pc && addr <= pc+uint64(len(movinstr)) {
-			err := t.p.conn.clearBreakpoint(addr)
-			if err != nil {
-				return err
-			}
-			defer t.p.conn.setBreakpoint(addr)
-		}
-	}
 
 	savedcode := make([]byte, len(movinstr))
 	_, err := t.ReadMemory(savedcode, uintptr(pc))

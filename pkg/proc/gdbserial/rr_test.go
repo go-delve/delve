@@ -49,7 +49,7 @@ func assertNoError(err error, t testing.TB, s string) {
 	}
 }
 
-func setFunctionBreakpoint(p proc.Process, t *testing.T, fname string) *proc.Breakpoint {
+func setFunctionBreakpoint(p *proc.Target, t *testing.T, fname string) *proc.Breakpoint {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 
@@ -117,7 +117,7 @@ func TestRestartDuringStop(t *testing.T) {
 	})
 }
 
-func setFileBreakpoint(p proc.Process, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
+func setFileBreakpoint(p *proc.Target, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
 	_, f, l, _ := runtime.Caller(1)
 	f = filepath.Base(f)
 

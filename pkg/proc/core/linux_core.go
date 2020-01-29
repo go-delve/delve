@@ -120,10 +120,9 @@ func readLinuxCore(corePath, exePath string) (*Process, error) {
 	memory := buildMemory(coreFile, exeELF, exe, notes)
 	entryPoint := findEntryPoint(notes)
 	p := &Process{
-		mem:         memory,
-		Threads:     map[int]*Thread{},
-		entryPoint:  entryPoint,
-		breakpoints: proc.NewBreakpointMap(),
+		mem:        memory,
+		Threads:    map[int]*Thread{},
+		entryPoint: entryPoint,
 	}
 
 	switch machineType {

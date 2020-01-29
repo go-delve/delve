@@ -1,8 +1,21 @@
 package proc
 
+import (
+	"errors"
+	"go/ast"
+)
+
+// ErrDirChange is returned when trying to change execution direction
+// while there are still internal breakpoints set.
+var ErrDirChange = errors.New("direction change with internal breakpoints")
+
 // Target represents the process being debugged.
 type Target struct {
 	Process
+
+	// Breakpoint table, holds information on breakpoints.
+	// Maps instruction address to Breakpoint struct.
+	breakpoints BreakpointMap
 
 	// fncallForG stores a mapping of current active function calls.
 	fncallForG map[int]*callInjection
@@ -23,8 +36,9 @@ type Target struct {
 // NewTarget returns an initialized Target object.
 func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 	t := &Target{
-		Process:    p,
-		fncallForG: make(map[int]*callInjection),
+		Process:     p,
+		fncallForG:  make(map[int]*callInjection),
+		breakpoints: NewBreakpointMap(),
 	}
 	t.gcache.init(p.BinInfo())
 
@@ -32,9 +46,50 @@ func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 		setAsyncPreemptOff(t, 1)
 	}
 
+	createUnrecoveredPanicBreakpoint(t, p.WriteBreakpointFn)
+	createFatalThrowBreakpoint(t, p.WriteBreakpointFn)
+
 	return t
 }
 
+// Breakpoints returns a list of breakpoints currently set.
+func (t *Target) Breakpoints() *BreakpointMap {
+	return &t.breakpoints
+}
+
+// Detach will stop tracing the debugged process, causing
+// Delve to no longer receive any debug events.
+// If 'kill' is true Delve will kill the process when detaching.
+func (t *Target) Detach(kill bool) error {
+	if !kill {
+		// Clean up any breakpoints we've set.
+		for _, bp := range t.Breakpoints().M {
+			if bp != nil {
+				_, err := t.ClearBreakpoint(bp.Addr)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return t.Process.Detach(kill)
+}
+
+// FindBreakpoint returns the breakpoint at the given address.
+func (t *Target) FindBreakpoint(pc uint64) (*Breakpoint, bool) {
+	bp, ok := t.Breakpoints().M[pc]
+	return bp, ok
+}
+
+// Direction sets the execution direction for the process being debugged.
+func (t *Target) Direction(dir Direction) error {
+	if t.Breakpoints().HasInternalBreakpoints() {
+		return ErrDirChange
+	}
+	return t.Process.Direction(dir)
+}
+
+// ThreadToBreakpoint returns the breakpoint that the given thread is stopped at.
 func (t *Target) ThreadToBreakpoint(th Thread) *BreakpointState {
 	if bps, ok := t.threadToBreakpoint[th.ThreadID()]; ok {
 		return bps
@@ -42,12 +97,18 @@ func (t *Target) ThreadToBreakpoint(th Thread) *BreakpointState {
 	return new(BreakpointState)
 }
 
+// SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
+// break point table.
+func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+	return t.breakpoints.Set(addr, kind, cond, t.Process.WriteBreakpointFn)
+}
+
 // ClearBreakpoint clears the breakpoint at addr.
 func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	if ok, err := t.Valid(); !ok {
 		return nil, err
 	}
-	bp, err := t.Process.ClearBreakpoint(addr)
+	bp, err := t.breakpoints.Clear(addr, t.Process.ClearBreakpointFn)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +147,12 @@ func (t *Target) Restart(from string) error {
 	if err := t.Process.Restart(from); err != nil {
 		return err
 	}
+	for addr := range t.Breakpoints().M {
+		_, _, _, _, err := t.Process.WriteBreakpointFn(addr)
+		if err != nil {
+			return err
+		}
+	}
 	for _, th := range t.Process.ThreadList() {
 		if err := t.setThreadBreakpointState(th, true); err != nil {
 			return err
@@ -94,8 +161,11 @@ func (t *Target) Restart(from string) error {
 	return nil
 }
 
+// ClearInternalBreakpoints clears any breakpoints set during a step or next operation.
 func (t *Target) ClearInternalBreakpoints() error {
-	if err := t.Process.ClearInternalBreakpointsInternal(); err != nil {
+	if err := t.Breakpoints().ClearInternalBreakpoints(func(addr uint64, originalData []byte) error {
+		return t.Process.ClearBreakpointFn(addr, originalData)
+	}); err != nil {
 		return err
 	}
 	for tid, bp := range t.threadToBreakpoint {
@@ -127,7 +197,7 @@ func (t *Target) setThreadBreakpointState(th Thread, adjustPC bool) error {
 		pc = pc - uint64(t.BinInfo().Arch.BreakpointSize())
 	}
 
-	if bp, ok := t.Process.FindBreakpoint(pc); ok {
+	if bp, ok := t.FindBreakpoint(pc); ok {
 		if adjustPC {
 			if err = th.SetPC(pc); err != nil {
 				return err

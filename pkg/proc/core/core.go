@@ -3,7 +3,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"go/ast"
 	"io"
 
 	"github.com/go-delve/delve/pkg/proc"
@@ -156,7 +155,6 @@ type Process struct {
 	entryPoint uint64
 
 	bi                *proc.BinaryInfo
-	breakpoints       proc.BreakpointMap
 	currentThread     *Thread
 	selectedGoroutine *proc.G
 }
@@ -228,10 +226,6 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 // AdjustsPCAfterBreakpoint always returns false as the core backend does
 // not execute instructions or hit breakpoints.
 func (dbp *Process) AdjustsPCAfterBreakpoint() bool { return false }
-
-func (dbp *Process) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
-	return nil, false
-}
 
 // BinInfo will return the binary info.
 func (p *Process) BinInfo() *proc.BinaryInfo {
@@ -375,23 +369,6 @@ func (t *Thread) SetDX(uint64) error {
 	return ErrChangeRegisterCore
 }
 
-// Breakpoints will return all breakpoints for the process.
-func (p *Process) Breakpoints() *proc.BreakpointMap {
-	return &p.breakpoints
-}
-
-// ClearBreakpoint will always return an error as you cannot set or clear
-// breakpoints on core files.
-func (p *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	return nil, proc.NoBreakpointError{Addr: addr}
-}
-
-// ClearInternalBreakpointsInternal will always return nil and have no
-// effect since you cannot set breakpoints on core files.
-func (p *Process) ClearInternalBreakpointsInternal() error {
-	return nil
-}
-
 // ContinueOnce will always return an error because you
 // cannot control execution of a core file.
 func (p *Process) ContinueOnce() (proc.Thread, []proc.Thread, error) {
@@ -454,11 +431,6 @@ func (p *Process) ResumeNotify(chan<- struct{}) {
 // goroutine.
 func (p *Process) SelectedGoroutine() *proc.G {
 	return p.selectedGoroutine
-}
-
-// SetBreakpoint will always return an error for core files as you cannot write memory or control execution.
-func (p *Process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return nil, ErrWriteCore
 }
 
 func (p *Process) WriteBreakpointFn(addr uint64) (string, int, *proc.Function, []byte, error) {

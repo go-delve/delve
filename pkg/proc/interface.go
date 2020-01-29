@@ -1,9 +1,5 @@
 package proc
 
-import (
-	"go/ast"
-)
-
 // Process represents the target of the debugger. This
 // target could be a system process, core file, etc.
 //
@@ -71,7 +67,6 @@ type Info interface {
 	EntryPoint() (uint64, error)
 
 	AdjustsPCAfterBreakpoint() bool
-	FindBreakpoint(pc uint64) (*Breakpoint, bool)
 
 	CurrentDirection() Direction
 
@@ -107,11 +102,6 @@ type ProcessManipulation interface {
 
 // BreakpointManipulation is an interface for managing breakpoints.
 type BreakpointManipulation interface {
-	Breakpoints() *BreakpointMap
-	SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error)
-	ClearBreakpoint(addr uint64) (*Breakpoint, error)
-	ClearInternalBreakpointsInternal() error
-
 	WriteBreakpointFn(addr uint64) (string, int, *Function, []byte, error)
 	ClearBreakpointFn(uint64, []byte) error
 }
