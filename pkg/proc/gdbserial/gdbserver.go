@@ -635,6 +635,11 @@ func (p *gdbProcess) SetCurrentThread(th proc.Thread) {
 	p.currentThread = th.(*gdbThread)
 }
 
+// ExecOnMagicThread calls fn.
+func (p *gdbProcess) ExecOnMagicThread(fn func()) {
+	fn()
+}
+
 const (
 	interruptSignal  = 0x2
 	breakpointSignal = 0x5

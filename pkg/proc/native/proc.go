@@ -38,6 +38,8 @@ type nativeProcess struct {
 	// this process.
 	ctty *os.File
 
+	insidePtraceThread bool // currently executing inside the ptrace thread
+
 	exited, detached bool
 }
 
@@ -296,20 +298,48 @@ func (dbp *nativeProcess) handlePtraceFuncs() {
 	runtime.LockOSThread()
 
 	for fn := range dbp.ptraceChan {
+		dbp.insidePtraceThread = true
 		fn()
+		dbp.insidePtraceThread = false
 		dbp.ptraceDoneChan <- nil
 	}
+	close(dbp.ptraceDoneChan)
 }
 
 func (dbp *nativeProcess) execPtraceFunc(fn func()) {
+	if dbp.insidePtraceThread {
+		fn()
+		return
+	}
 	dbp.ptraceChan <- fn
 	<-dbp.ptraceDoneChan
+}
+
+// ExecOnMagicThread executes fn on the thread that can make ptrace
+// calls (or the equivalent of ptrace on windows). If fn does a lot of calls
+// to other methods of Process that need to do ptrace calls this will speed
+// it up considerably by avoiding a large number of context switches.
+// It is very important that fn does not panic, you must defer a recover
+// call here.
+//
+// This function works by calling fn in the ptrace goroutine and then
+// disabling the code that sends ptrace calls to that goroutine, executing
+// them directly instead.
+// It is very important that only the goroutine that calls this function
+// will attempt to execute ptrace calls, otherwise the ptrace calls will be
+// executed by a goroutine that can't execute them and return the ESRCH / no
+// such process (or access denied on windows).
+// For Delve this property is ensured by the debugger package which takes
+// care to serialize every call to pkg/proc.
+// The only risky thing is function call injection which happens inside a
+// different goroutine.
+func (dbp *nativeProcess) ExecOnMagicThread(fn func()) {
+	dbp.execPtraceFunc(fn)
 }
 
 func (dbp *nativeProcess) postExit() {
 	dbp.exited = true
 	close(dbp.ptraceChan)
-	close(dbp.ptraceDoneChan)
 	dbp.bi.Close()
 	if dbp.ctty != nil {
 		dbp.ctty.Close()

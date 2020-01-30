@@ -32,6 +32,12 @@ type ProcessInternal interface {
 
 	WriteBreakpoint(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
 	EraseBreakpoint(*Breakpoint) error
+
+	// ExecOnMagicThread executes a function on a thread where calls to
+	// other methods of Process will execute faster (maybe).
+	// See the description of this method inside pkg/proc/native for an
+	// explanation.
+	ExecOnMagicThread(func())
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.

@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/token"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/astutil"
@@ -42,6 +43,44 @@ func (dbp *Target) Next() (err error) {
 	return dbp.Continue()
 }
 
+type internalError struct {
+	Err   interface{}
+	Stack []internalErrorFrame
+}
+
+type internalErrorFrame struct {
+	Pc   uintptr
+	Func string
+	File string
+	Line int
+}
+
+func (err *internalError) Error() string {
+	var out bytes.Buffer
+	fmt.Fprintf(&out, "Error during continue: %v\n", err.Err)
+	for _, frame := range err.Stack {
+		fmt.Fprintf(&out, "%s (%#x)\n\t%s:%d\n", frame.Func, frame.Pc, frame.File, frame.Line)
+	}
+	return out.String()
+}
+
+func newInternalError(ierr interface{}) *internalError {
+	r := &internalError{ierr, nil}
+	for i := 1; ; i++ {
+		pc, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+		fname := "<unknown>"
+		fn := runtime.FuncForPC(pc)
+		if fn != nil {
+			fname = fn.Name()
+		}
+		r.Stack = append(r.Stack, internalErrorFrame{pc, fname, file, line})
+	}
+	return r
+}
+
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
@@ -49,6 +88,27 @@ func (dbp *Target) Continue() error {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
+	if len(dbp.fncallForG) == 0 {
+		// If there are no function call injections in progress we can use
+		// ExecOnMagicThread here. Any function call injection introduces
+		// a goroutine that might call ptrace functions while continueInternal is
+		// being executed, which won't work (see the comment describing
+		// InternalExecOnMagicThread inside pkg/proc/native).
+		var err error
+		dbp.proc.ExecOnMagicThread(func() {
+			defer func() {
+				if ierr := recover(); ierr != nil {
+					err = newInternalError(ierr)
+				}
+			}()
+			err = dbp.continueInternal()
+		})
+		return err
+	}
+	return dbp.continueInternal()
+}
+
+func (dbp *Target) continueInternal() error {
 	for _, thread := range dbp.ThreadList() {
 		thread.Common().returnValues = nil
 	}

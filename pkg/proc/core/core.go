@@ -447,3 +447,8 @@ func (p *process) FindThread(threadID int) (proc.Thread, bool) {
 func (p *process) SetCurrentThread(th proc.Thread) {
 	p.currentThread = th.(*thread)
 }
+
+// ExecOnMagicThread calls fn.
+func (p *process) ExecOnMagicThread(fn func()) {
+	fn()
+}
