@@ -537,7 +537,7 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 			return err
 		}
 	}
-	if err = proc.PostInitializationSetup(p, path, debugInfoDirs, p.WriteBreakpointFn); err != nil {
+	if err = proc.PostInitializationSetup(p, path, debugInfoDirs); err != nil {
 		p.conn.conn.Close()
 		return err
 	}

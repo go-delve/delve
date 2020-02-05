@@ -280,7 +280,7 @@ func (dbp *Process) initialize(path string, debugInfoDirs []string) error {
 	if err := dbp.updateThreadList(); err != nil {
 		return err
 	}
-	return proc.PostInitializationSetup(dbp, path, debugInfoDirs, dbp.WriteBreakpointFn)
+	return proc.PostInitializationSetup(dbp, path, debugInfoDirs)
 }
 
 // SetSelectedGoroutine will set internally the goroutine that should be

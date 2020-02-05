@@ -220,7 +220,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 // initialize for core files doesn't do much
 // aside from call the post initialization setup.
 func (p *Process) initialize(path string, debugInfoDirs []string) error {
-	return proc.PostInitializationSetup(p, path, debugInfoDirs, p.WriteBreakpointFn)
+	return proc.PostInitializationSetup(p, path, debugInfoDirs)
 }
 
 // AdjustsPCAfterBreakpoint always returns false as the core backend does
