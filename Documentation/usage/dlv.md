@@ -38,6 +38,7 @@ Pass flags to the program you are debugging using `--`, for example:
 * [dlv attach](dlv_attach.md)	 - Attach to running process and begin debugging.
 * [dlv connect](dlv_connect.md)	 - Connect to a headless debug server.
 * [dlv core](dlv_core.md)	 - Examine a core dump.
+* [dlv dap](dlv_dap.md)	 - [EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
 * [dlv debug](dlv_debug.md)	 - Compile and begin debugging main package in current directory, or the package specified.
 * [dlv exec](dlv_exec.md)	 - Execute a precompiled binary, and begin a debug session.
 * [dlv replay](dlv_replay.md)	 - Replays a rr trace.
