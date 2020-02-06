@@ -5,6 +5,34 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
+## [1.4.0] 2019-02-11
+
+### Added
+
+- Support for Linux/ARM64 (#1733, #1780 @hengwu0, @tykcd996)
+- Support for Go 1.14 (@aarzilli)
+- Added an API call that can be used by Delve front-ends to map between package names and build paths (#1784, @aarzilli)
+- Added a field to goroutine objects returned by the API listing the goroutine's pprof labels (#1836, @nd)
+- Better support for inlined functions (#1717, #1742, #1807 @aarzilli)
+
+### Fixed
+
+- Fixed target program crash after step-instruction (#1738, @aarzilli)
+- Fixed miscellaneus bugs related to debugging Position Indepentent Executables and plugins (#1775, @aarzilli)
+- Always remove breakpoints during detach (#1772, @hengwu0)
+- Fixed Delve's exit status after the program has ended (#1781, @derekparker)
+- Fixed nil pointer dereference in FunctionReturnLocations (#1789, @aarzilli)
+- Improved performance of `goroutines -t` command (#1830, @aarzilli)
+- Fixed occasional "Access Denied" error during attach on Windows (#1826, @alexbrainman)
+- Fixed parsing of the `disassemble` command (#1837, @chainhelen)
+
+### Changed
+
+- Check that local connections originate from the same User ID as the one that started Delve's instance (#1764, @stapelberg)
+- Mapping between package names and package paths is done using the DW_AT_go_package_name where available (#1757, @aarzilli)
+- Improvements to documentation and error messages (#1806, #1822, #1827, #1843, #1848, #1850, #1853 @spacewander, @chainhelen, @stigok)
+- Miscellaneous code refactorings (#1746, #1777, #1834 @derekparker, @aarzilli)
+
 ## [1.3.2] 2019-10-21
 
 ### Added
