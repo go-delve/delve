@@ -14,7 +14,7 @@ type Version struct {
 var (
 	// DelveVersion is the current version of Delve.
 	DelveVersion = Version{
-		Major: "1", Minor: "3", Patch: "2", Metadata: "",
+		Major: "1", Minor: "4", Patch: "0", Metadata: "",
 		Build: "$Id$",
 	}
 )
