@@ -518,6 +518,7 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 		p.bi.Close()
 		return err
 	}
+	p.clearThreadSignals()
 
 	if p.conn.pid <= 0 {
 		p.conn.pid, _, err = queryProcessInfo(p, 0)
@@ -663,9 +664,9 @@ continueLoop:
 			return nil, err
 		}
 
-		// For stubs that support qThreadStopInfo updateThreadListNoRegisters will
+		// For stubs that support qThreadStopInfo updateThreadList will
 		// find out the reason why each thread stopped.
-		p.updateThreadListNoRegisters(&tu)
+		p.updateThreadList(&tu)
 
 		trapthread = p.findThreadByStrID(threadID)
 		if trapthread != nil && !p.threadStopInfo {
@@ -681,9 +682,7 @@ continueLoop:
 		}
 	}
 
-	if err := p.updateThreadRegisters(); err != nil {
-		return nil, err
-	}
+	p.clearThreadRegisters()
 
 	if p.BinInfo().GOOS == "linux" {
 		if err := linutil.ElfUpdateSharedObjects(p); err != nil {
@@ -940,6 +939,8 @@ func (p *Process) Restart(pos string) error {
 	if err != nil {
 		return err
 	}
+	p.clearThreadSignals()
+	p.clearThreadRegisters()
 	p.selectedGoroutine, _ = proc.GetG(p.CurrentThread())
 
 	for addr := range p.breakpoints.M {
@@ -1176,13 +1177,12 @@ func (tu *threadUpdater) Finish() {
 	}
 }
 
-// updateThreadListNoRegisters retrieves the list of inferior threads from
+// updateThreadList retrieves the list of inferior threads from
 // the stub and passes it to threadUpdater.
 // Some stubs will return the list of running threads in the stop packet, if
 // this happens the threadUpdater will know that we have already updated the
 // thread list and the first step of updateThreadList will be skipped.
-// Registers are always reloaded.
-func (p *Process) updateThreadListNoRegisters(tu *threadUpdater) error {
+func (p *Process) updateThreadList(tu *threadUpdater) error {
 	if !tu.done {
 		first := true
 		for {
@@ -1222,33 +1222,17 @@ func (p *Process) updateThreadListNoRegisters(tu *threadUpdater) error {
 	return nil
 }
 
-// updateThreadRegisters reloads register informations for all running
-// threads.
-func (p *Process) updateThreadRegisters() error {
+// clearThreadRegisters clears the memoized thread register state.
+func (p *Process) clearThreadRegisters() {
 	for _, thread := range p.threads {
-		if err := thread.reloadRegisters(); err != nil {
-			return err
-		}
+		thread.regs.regs = nil
 	}
-	return nil
 }
 
-// updateThreadsList retrieves the list of inferior threads from the stub
-// and passes it to the threadUpdater.
-// Then it reloads the register information for all running threads.
-// Some stubs will return the list of running threads in the stop packet, if
-// this happens the threadUpdater will know that we have already updated the
-// thread list and the first step of updateThreadList will be skipped.
-// Registers are always reloaded.
-func (p *Process) updateThreadList(tu *threadUpdater) error {
-	err := p.updateThreadListNoRegisters(tu)
-	if err != nil {
-		return err
-	}
+func (p *Process) clearThreadSignals() {
 	for _, th := range p.threads {
 		th.sig = 0
 	}
-	return p.updateThreadRegisters()
 }
 
 func (p *Process) setCurrentBreakpoints() error {
@@ -1312,6 +1296,11 @@ func (t *Thread) ThreadID() int {
 
 // Registers returns the CPU registers for this thread.
 func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
+	if t.regs.regs == nil {
+		if err := t.reloadRegisters(); err != nil {
+			return nil, err
+		}
+	}
 	return &t.regs, nil
 }
 
@@ -1345,15 +1334,15 @@ func (t *Thread) stepInstruction(tu *threadUpdater) error {
 		}
 		defer t.p.conn.setBreakpoint(pc)
 	}
+	// Reset thread registers so the next call to
+	// Thread.Registers will not be cached.
+	t.regs.regs = nil
 	return t.p.conn.step(t.strID, tu, false)
 }
 
 // StepInstruction will step exactly 1 CPU instruction.
 func (t *Thread) StepInstruction() error {
-	if err := t.stepInstruction(&threadUpdater{p: t.p}); err != nil {
-		return err
-	}
-	return t.reloadRegisters()
+	return t.stepInstruction(&threadUpdater{p: t.p})
 }
 
 // Blocked returns true if the thread is blocked in runtime or kernel code.
