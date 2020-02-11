@@ -19,6 +19,14 @@ var (
 	readFile = ioutil.ReadFile
 )
 
+type errConnectionNotFound struct {
+	filename string
+}
+
+func (e *errConnectionNotFound) Error() string {
+	return fmt.Sprintf("connection not found in %s", e.filename)
+}
+
 func sameUserForHexLocalAddr(filename, hexaddr string) (bool, error) {
 	b, err := readFile(filename)
 	if err != nil {
@@ -48,7 +56,7 @@ func sameUserForHexLocalAddr(filename, hexaddr string) (bool, error) {
 		}
 		return uid == int(remoteUID), nil
 	}
-	return false, fmt.Errorf("connection not found in %s", filename)
+	return false, &errConnectionNotFound{filename}
 }
 
 func sameUserForRemoteAddr4(remoteAddr *net.TCPAddr) (bool, error) {
@@ -56,7 +64,15 @@ func sameUserForRemoteAddr4(remoteAddr *net.TCPAddr) (bool, error) {
 	// https://elixir.bootlin.com/linux/v5.2.2/source/net/ipv4/tcp_ipv4.c#L2375
 	b := remoteAddr.IP.To4()
 	hexaddr := fmt.Sprintf("%02X%02X%02X%02X:%04X", b[3], b[2], b[1], b[0], remoteAddr.Port)
-	return sameUserForHexLocalAddr("/proc/net/tcp", hexaddr)
+	r, err := sameUserForHexLocalAddr("/proc/net/tcp", hexaddr)
+	if _, isNotFound := err.(*errConnectionNotFound); isNotFound {
+		// See Issue #1835
+		r, err2 := sameUserForHexLocalAddr("/proc/net/tcp6", "0000000000000000FFFF0000"+hexaddr)
+		if err2 == nil {
+			return r, nil
+		}
+	}
+	return r, err
 }
 
 func sameUserForRemoteAddr6(remoteAddr *net.TCPAddr) (bool, error) {
