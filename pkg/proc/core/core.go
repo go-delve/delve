@@ -216,7 +216,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, err
 	}
 
-	return proc.NewTarget(p), nil
+	return proc.NewTarget(p, false), nil
 }
 
 // initialize for core files doesn't do much

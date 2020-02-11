@@ -36,9 +36,22 @@ func (t *Thread) singleStep() error {
 		return err
 	}
 
-	_, err = _ResumeThread(t.os.hThread)
-	if err != nil {
-		return err
+	suspendcnt := 0
+
+	// If a thread simultaneously hits a breakpoint and is suspended by the Go
+	// runtime it will have a suspend count greater than 1 and to actually take
+	// a single step we have to resume it multiple times here.
+	// We keep a counter of how many times it was suspended so that after
+	// single-stepping we can re-suspend it the corrent number of times.
+	for {
+		n, err := _ResumeThread(t.os.hThread)
+		if err != nil {
+			return err
+		}
+		suspendcnt++
+		if n == 1 {
+			break
+		}
 	}
 
 	for {
@@ -63,9 +76,11 @@ func (t *Thread) singleStep() error {
 		})
 	}
 
-	_, err = _SuspendThread(t.os.hThread)
-	if err != nil {
-		return err
+	for i := 0; i < suspendcnt; i++ {
+		_, err = _SuspendThread(t.os.hThread)
+		if err != nil {
+			return err
+		}
 	}
 
 	t.dbp.execPtraceFunc(func() {

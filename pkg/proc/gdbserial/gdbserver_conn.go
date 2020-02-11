@@ -538,17 +538,23 @@ func (conn *gdbConn) writeRegister(threadID string, regnum int, data []byte) err
 	return err
 }
 
-// resume executes a 'vCont' command on all threads with action 'c' if sig
-// is 0 or 'C' if it isn't. If sig isn't 0 a threadID should be specified as
-// the target of the signal.
-func (conn *gdbConn) resume(sig uint8, threadID string, tu *threadUpdater) (string, uint8, error) {
+// resume execution of the target process.
+// If the current direction is proc.Backward this is done with the 'bc' command.
+// If the current direction is proc.Forward this is done with the vCont command.
+// The threads argument will be used to determine which signal to use to
+// resume each thread. If a thread has sig == 0 the 'c' action will be used,
+// otherwise the 'C' action will be used and the value of sig will be passed
+// to it.
+func (conn *gdbConn) resume(threads map[int]*Thread, tu *threadUpdater) (string, uint8, error) {
 	if conn.direction == proc.Forward {
 		conn.outbuf.Reset()
-		if sig == 0 {
-			fmt.Fprint(&conn.outbuf, "$vCont;c")
-		} else {
-			fmt.Fprintf(&conn.outbuf, "$vCont;C%02x:%s;c", sig, threadID)
+		fmt.Fprintf(&conn.outbuf, "$vCont")
+		for _, th := range threads {
+			if th.sig != 0 {
+				fmt.Fprintf(&conn.outbuf, ";C%02x:%s", th.sig, th.strID)
+			}
 		}
+		fmt.Fprintf(&conn.outbuf, ";c")
 	} else {
 		if err := conn.selectThread('c', "p-1.-1", "resume"); err != nil {
 			return "", 0, err

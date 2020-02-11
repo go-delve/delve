@@ -87,7 +87,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 	if err = dbp.initialize(cmd[0], debugInfoDirs); err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(dbp), nil
+	return proc.NewTarget(dbp, false), nil
 }
 
 // Attach to an existing process with the given PID. Once attached, if
@@ -111,7 +111,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 		dbp.Detach(false)
 		return nil, err
 	}
-	return proc.NewTarget(dbp), nil
+	return proc.NewTarget(dbp, false), nil
 }
 
 func initialize(dbp *Process) error {

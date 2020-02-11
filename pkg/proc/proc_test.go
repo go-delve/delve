@@ -1244,7 +1244,7 @@ func TestFrameEvaluation(t *testing.T) {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
 			}
-			t.Logf("Goroutine %d", g.ID)
+			t.Logf("Goroutine %d %#v", g.ID, g.Thread)
 			logStacktrace(t, p.BinInfo(), frames)
 			for i := range frames {
 				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {

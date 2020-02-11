@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -55,6 +56,15 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 	}
 	closer.Close()
 
+	env := os.Environ()
+	for i := range env {
+		if strings.HasPrefix(env[i], "GODEBUG=") {
+			// Go 1.14 asynchronous preemption mechanism is incompatible with
+			// debuggers, see: https://github.com/golang/go/issues/36494
+			env[i] += ",asyncpreemptoff=1"
+		}
+	}
+
 	var p *os.Process
 	dbp := New(0)
 	dbp.execPtraceFunc(func() {
@@ -64,6 +74,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 			Sys: &syscall.SysProcAttr{
 				CreationFlags: _DEBUG_ONLY_THIS_PROCESS,
 			},
+			Env: env,
 		}
 		p, err = os.StartProcess(argv0Go, cmd, attr)
 	})
@@ -79,7 +90,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 		dbp.Detach(true)
 		return nil, err
 	}
-	return proc.NewTarget(dbp), nil
+	return proc.NewTarget(dbp, true), nil
 }
 
 func initialize(dbp *Process) error {
@@ -168,7 +179,7 @@ func Attach(pid int, _ []string) (*proc.Target, error) {
 		dbp.Detach(true)
 		return nil, err
 	}
-	return proc.NewTarget(dbp), nil
+	return proc.NewTarget(dbp, true), nil
 }
 
 // kill kills the process.
@@ -472,6 +483,8 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 
 func (dbp *Process) detach(kill bool) error {
 	if !kill {
+		//TODO(aarzilli): when debug.Target exist Detach should be moved to
+		// debug.Target and the call to RestoreAsyncPreempt should be moved there.
 		for _, thread := range dbp.threads {
 			_, err := _ResumeThread(thread.os.hThread)
 			if err != nil {
