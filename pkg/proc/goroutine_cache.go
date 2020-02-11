@@ -1,7 +1,5 @@
 package proc
 
-import "encoding/binary"
-
 type goroutineCache struct {
 	partialGCache map[int]*G
 	allGCache     []*G
@@ -29,20 +27,14 @@ func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWrite
 	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {
 		return 0, 0, ErrNoRuntimeAllG
 	}
-	allglenBytes := make([]byte, 8)
-	_, err := mem.ReadMemory(allglenBytes, uintptr(gcache.allglenAddr))
+	allglen, err := readUintRaw(mem, uintptr(gcache.allglenAddr), int64(bi.Arch.PtrSize()))
 	if err != nil {
 		return 0, 0, err
 	}
-	allglen := binary.LittleEndian.Uint64(allglenBytes)
-
-	faddr := make([]byte, bi.Arch.PtrSize())
-	_, err = mem.ReadMemory(faddr, uintptr(gcache.allgentryAddr))
+	allgptr, err := readUintRaw(mem, uintptr(gcache.allgentryAddr), int64(bi.Arch.PtrSize()))
 	if err != nil {
 		return 0, 0, err
 	}
-	allgptr := binary.LittleEndian.Uint64(faddr)
-
 	return allgptr, allglen, nil
 }
 
