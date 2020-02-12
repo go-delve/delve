@@ -1,7 +1,10 @@
 package proc
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -405,4 +408,45 @@ func (a *ARM64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint
 		BPRegNum:   arm64DwarfBPRegNum,
 		LRRegNum:   arm64DwarfLRRegNum,
 	}
+}
+
+func (a *ARM64) DwarfRegisterToString(name string, reg *op.DwarfRegister) string {
+	if reg.Bytes != nil && (name[0] == 'v' || name[0] == 'V') {
+		buf := bytes.NewReader(reg.Bytes)
+
+		var out bytes.Buffer
+		var vi [16]uint8
+		for i := range vi {
+			binary.Read(buf, binary.LittleEndian, &vi[i])
+		}
+
+		fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+
+		fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+
+		fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
+
+		fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
+
+		fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
+
+		buf.Seek(0, os.SEEK_SET)
+		var v2 [2]float64
+		for i := range v2 {
+			binary.Read(buf, binary.LittleEndian, &v2[i])
+		}
+		fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
+
+		buf.Seek(0, os.SEEK_SET)
+		var v4 [4]float32
+		for i := range v4 {
+			binary.Read(buf, binary.LittleEndian, &v4[i])
+		}
+		fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
+
+		return out.String()
+	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
+		return fmt.Sprintf("%#016x", reg.Uint64Val)
+	}
+	return fmt.Sprintf("%#x", reg.Bytes)
 }

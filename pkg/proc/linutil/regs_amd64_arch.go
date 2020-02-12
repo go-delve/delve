@@ -75,7 +75,7 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 		{"R15", r.Regs.R15},
 		{"Orig_rax", r.Regs.Orig_rax},
 		{"Cs", r.Regs.Cs},
-		{"Eflags", r.Regs.Eflags},
+		{"Rflags", r.Regs.Eflags},
 		{"Ss", r.Regs.Ss},
 		{"Fs_base", r.Regs.Fs_base},
 		{"Gs_base", r.Regs.Gs_base},
@@ -86,11 +86,7 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 	}
 	out := make([]proc.Register, 0, len(regs)+len(r.Fpregs))
 	for _, reg := range regs {
-		if reg.k == "Eflags" {
-			out = proc.AppendEflagReg(out, reg.k, reg.v)
-		} else {
-			out = proc.AppendQwordReg(out, reg.k, reg.v)
-		}
+		out = proc.AppendUint64Register(out, reg.k, reg.v)
 	}
 	if floatingPoint {
 		out = append(out, r.Fpregs...)
@@ -325,25 +321,28 @@ type AMD64Xstate struct {
 // Decode decodes an XSAVE area to a list of name/value pairs of registers.
 func (xsave *AMD64Xstate) Decode() (regs []proc.Register) {
 	// x87 registers
-	regs = proc.AppendWordReg(regs, "CW", xsave.Cwd)
-	regs = proc.AppendWordReg(regs, "SW", xsave.Swd)
-	regs = proc.AppendWordReg(regs, "TW", xsave.Ftw)
-	regs = proc.AppendWordReg(regs, "FOP", xsave.Fop)
-	regs = proc.AppendQwordReg(regs, "FIP", xsave.Rip)
-	regs = proc.AppendQwordReg(regs, "FDP", xsave.Rdp)
+	regs = proc.AppendUint64Register(regs, "CW", uint64(xsave.Cwd))
+	regs = proc.AppendUint64Register(regs, "SW", uint64(xsave.Swd))
+	regs = proc.AppendUint64Register(regs, "TW", uint64(xsave.Ftw))
+	regs = proc.AppendUint64Register(regs, "FOP", uint64(xsave.Fop))
+	regs = proc.AppendUint64Register(regs, "FIP", xsave.Rip)
+	regs = proc.AppendUint64Register(regs, "FDP", xsave.Rdp)
 
 	for i := 0; i < len(xsave.StSpace); i += 4 {
-		regs = proc.AppendX87Reg(regs, i/4, uint16(xsave.StSpace[i+2]), uint64(xsave.StSpace[i+1])<<32|uint64(xsave.StSpace[i]))
+		var buf bytes.Buffer
+		binary.Write(&buf, binary.LittleEndian, uint64(xsave.StSpace[i+1])<<32|uint64(xsave.StSpace[i]))
+		binary.Write(&buf, binary.LittleEndian, uint16(xsave.StSpace[i+2]))
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("ST(%d)", i/4), buf.Bytes())
 	}
 
 	// SSE registers
-	regs = proc.AppendMxcsrReg(regs, "MXCSR", uint64(xsave.Mxcsr))
-	regs = proc.AppendDwordReg(regs, "MXCSR_MASK", xsave.MxcrMask)
+	regs = proc.AppendUint64Register(regs, "MXCSR", uint64(xsave.Mxcsr))
+	regs = proc.AppendUint64Register(regs, "MXCSR_MASK", uint64(xsave.MxcrMask))
 
 	for i := 0; i < len(xsave.XmmSpace); i += 16 {
-		regs = proc.AppendSSEReg(regs, fmt.Sprintf("XMM%d", i/16), xsave.XmmSpace[i:i+16])
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", i/16), xsave.XmmSpace[i:i+16])
 		if xsave.AvxState {
-			regs = proc.AppendSSEReg(regs, fmt.Sprintf("YMM%d", i/16), xsave.YmmSpace[i:i+16])
+			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("YMM%d", i/16), xsave.YmmSpace[i:i+16])
 		}
 	}
 

@@ -328,10 +328,10 @@ func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 }
 
 // ConvertRegisters converts proc.Register to api.Register for a slice.
-func ConvertRegisters(in []proc.Register) (out []Register) {
+func ConvertRegisters(in []proc.Register, arch proc.Arch) (out []Register) {
 	out = make([]Register, len(in))
 	for i := range in {
-		out[i] = Register{in[i].Name, in[i].Value}
+		out[i] = Register{in[i].Name, arch.DwarfRegisterToString(in[i].Name, in[i].Reg)}
 	}
 	return
 }
