@@ -3,6 +3,7 @@ package daptest
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -44,7 +45,7 @@ func (c *Client) Close() {
 
 func (c *Client) send(request dap.Message) {
 	jsonmsg, _ := json.Marshal(request)
-	fmt.Println("[client <- server]", string(jsonmsg))
+	fmt.Println("[client -> server]", string(jsonmsg))
 	dap.WriteProtocolMessage(c.conn, request)
 }
 
@@ -55,8 +56,23 @@ func (c *Client) ReadBaseMessage() ([]byte, error) {
 		fmt.Println("DAP client error:", err)
 		return nil, err
 	}
-	fmt.Println("[client -> server]", string(message))
+	fmt.Println("[client <- server]", string(message))
 	return message, nil
+}
+
+// ReadErrorResponse reads, decodes and validates the result
+// to be an error response. Returns the response or an error.
+func (c *Client) ReadErrorResponse() (dap.Message, error) {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		return nil, err
+	}
+	switch response.(type) {
+	case *dap.ErrorResponse:
+		return response, nil
+	default:
+		return nil, errors.New(fmt.Sprintf("not an ErrorResponse: %#v", response))
+	}
 }
 
 // InitializeRequest sends an 'initialize' request.

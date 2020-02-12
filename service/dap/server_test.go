@@ -3,6 +3,7 @@ package dap
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"net"
 	"os"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/dap/daptest"
+	"github.com/google/go-dap"
 )
 
 func TestMain(m *testing.M) {
@@ -120,16 +122,36 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+func expectErrorResponse(t *testing.T, client *daptest.Client, requestSeq int, command string, message string, id int) *dap.ErrorResponse {
+	response, err := client.ReadErrorResponse()
+	if err != nil {
+		t.Error(err)
+		return nil
+	}
+	got := response.(*dap.ErrorResponse)
+	if got.RequestSeq != requestSeq || got.Command != command || got.Message != message || got.Body.Error.Id != id {
+		want := fmt.Sprintf("{RequestSeq: %d, Command: %q, Message: %q, Id: %d}", requestSeq, command, message, id)
+		t.Errorf("\ngot  %#v\nwant %s", got, want)
+		return nil
+	}
+	return got
+}
+
 func TestBadLaunchRequests(t *testing.T) {
 	runTest(t, "helloworld", func(client *daptest.Client, fixture protest.Fixture) {
 		client.LaunchRequest("", true)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":0,"success":false,"command":"launch","message":"Failed to launch","body":{"error":{"id":3000,"format":"Failed to launch: The program attribute is missing in debug configuration."}}}`))
+		// Test for the DAP-specific detailed error message.
+		want := "Failed to launch: The program attribute is missing in debug configuration."
+		if got := expectErrorResponse(t, client, 0, "launch", "Failed to launch", 3000); got != nil && got.Body.Error.Format != want {
+			t.Errorf("got %q, want %q", got.Body.Error.Format, want)
+		}
 
-		client.LaunchRequest(fixture.Path+"bad", false)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":1,"success":false,"command":"launch","message":"Failed to launch","body":{"error":{"id":3000,"format":"Failed to launch: could not launch process: stub exited while waiting for connection: exit status 0"}}}`))
+		// Skip detailed message checks for potentially different OS-specific errors.
+		client.LaunchRequest(fixture.Path+"does not exist", false)
+		expectErrorResponse(t, client, 1, "launch", "Failed to launch", 3000)
 
-		client.LaunchRequest(fixture.Source, true)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":2,"success":false,"command":"launch","message":"Failed to launch","body":{"error":{"id":3000,"format":"Failed to launch: not an executable file"}}}`))
+		client.LaunchRequest(fixture.Source, true) // Not an executable
+		expectErrorResponse(t, client, 2, "launch", "Failed to launch", 3000)
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
