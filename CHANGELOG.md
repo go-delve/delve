@@ -5,7 +5,7 @@ This project adheres to Semantic Versioning.
 
 All changes mention the author, unless contributed by me (@derekparker).
 
-## [1.4.0] 2019-02-11
+## [1.4.0] 2020-02-11
 
 ### Added
 
