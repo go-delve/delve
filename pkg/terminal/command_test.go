@@ -993,3 +993,42 @@ func TestIssue1598(t *testing.T) {
 		}
 	})
 }
+
+func TestExamineMemoryCmd(t *testing.T) {
+	withTestTerminal("examinememory", t, func(term *FakeTerminal) {
+		term.MustExec("break examinememory.go:19")
+		term.MustExec("break examinememory.go:24")
+		term.MustExec("continue")
+
+		addressStr := strings.TrimSpace(term.MustExec("p bspUintptr"))
+		address, err := strconv.ParseInt(addressStr, 0, 64)
+		if err != nil {
+			t.Fatalf("could convert %s into int64, err %s", addressStr, err)
+		}
+
+		res := term.MustExec("examinemem  -len 52 -fmt hex " + addressStr)
+		t.Logf("the result of examining memory \n%s", res)
+		// check first line
+		firstLine := fmt.Sprintf("%#x:    0xa     0xb     0xc     0xd     0xe     0xf     0x10    0x11", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// check last line
+		lastLine := fmt.Sprintf("%#x:    0x3a    0x3b    0x3c    0x0", address+6*8)
+		if !strings.Contains(res, lastLine) {
+			t.Fatalf("expected last line: %s", lastLine)
+		}
+
+		// second examining memory
+		term.MustExec("continue")
+		res = term.MustExec("x -len 52 -fmt bin " + addressStr)
+		t.Logf("the second result of examining memory result \n%s", res)
+
+		// check first line
+		firstLine = fmt.Sprintf("%#x:    11111111    00001011    00001100    00001101", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+	})
+}

@@ -413,6 +413,17 @@ func (c *RPCClient) ListDynamicLibraries() ([]api.Image, error) {
 	return out.List, nil
 }
 
+func (c *RPCClient) ExamineMemory(address uintptr, count int) ([]byte, error) {
+	out := &ExaminedMemoryOut{}
+
+	err := c.call("ExamineMemory", ExamineMemoryIn{Length: count, Address: address}, out)
+	if err != nil {
+		return nil, err
+	}
+
+	return out.Mem, nil
+}
+
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }

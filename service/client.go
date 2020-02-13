@@ -147,6 +147,11 @@ type Client interface {
 	// ListDynamicLibraries returns a list of loaded dynamic libraries.
 	ListDynamicLibraries() ([]api.Image, error)
 
+	// ExamineMemory returns the raw memory stored at the given address.
+	// The amount of data to be read is specified by length which must be less than or equal to 1000.
+	// This function will return an error if it reads less than `length` bytes.
+	ExamineMemory(address uintptr, length int) ([]byte, error)
+
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error

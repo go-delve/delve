@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -353,4 +354,54 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, newlines bool, indent stri
 	}
 
 	fmt.Fprint(buf, "]")
+}
+
+func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
+	cols := 8
+	// Avoid emitting rows that are too long when using binary format
+	if format == 'b' {
+		cols = 4
+	}
+
+	l := len(memArea)
+	rows := l / cols
+	if l%cols != 0 {
+		rows++
+	}
+
+	var colFormat string
+	// Leading zero and occupy 8 for binary
+	if format == 'b' {
+		colFormat = "    %#08b"
+	} else {
+		var maxColCharNum int
+		for i := 0; i < rows; i++ {
+			for j := 0; j < cols && i*cols+j < l; j++ {
+				curColCharNum := len(fmt.Sprintf("%#"+string(format), memArea[i*cols+j]))
+				if curColCharNum > maxColCharNum {
+					maxColCharNum = curColCharNum
+				}
+			}
+		}
+		colFormat = "    %#-" + strconv.Itoa(maxColCharNum) + string(format)
+	}
+
+	lines := ""
+	for i := 0; i < rows; i++ {
+		lines += fmt.Sprintf("%#x:", address)
+		for j := 0; j < cols && i*cols+j < l; j++ {
+			curOutput := fmt.Sprintf(colFormat, memArea[i*cols+j])
+
+			// Diffrent versions of golang output differently if binary.
+			// See https://ci.appveyor.com/project/derekparker/delve-facy3/builds/30179356.
+			// Remove prefix `0b` if binary in some versions of golang because it is not graceful.
+			if format == 'b' && strings.Contains(curOutput, "0b") {
+				curOutput = "    " + curOutput[6:]
+			}
+			lines += curOutput
+		}
+		lines += "\n"
+		address += uintptr(cols)
+	}
+	return lines
 }
