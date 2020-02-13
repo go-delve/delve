@@ -707,14 +707,18 @@ continueLoop:
 		trapthread.sig = 0
 	}
 
-	r := make([]proc.Thread, 0, len(p.threads))
-	for _, t := range p.threads {
-		if t.strID != trapthread.ThreadID {
-			r = append(r, t)
+	tl := make([]proc.Thread, 0, len(p.threads))
+	for _, th := range p.threads {
+		if th.strID == threadID {
+			continue
+		}
+		if (p.threadStopInfo && th.setbp) || !p.threadStopInfo {
+			tl = append(tl, th)
 		}
 	}
+	return thread, tl, err
 
-	return trapthread, r, err
+	return trapthread, tl, err
 }
 
 func (p *Process) findThreadByStrID(threadID string) *Thread {
