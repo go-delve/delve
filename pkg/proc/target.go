@@ -65,6 +65,9 @@ func (t *Target) Breakpoints() *BreakpointMap {
 // If 'kill' is true Delve will kill the process when detaching.
 func (t *Target) Detach(kill bool) error {
 	if !kill {
+		if t.asyncPreemptChanged {
+			setAsyncPreemptOff(t, t.asyncPreemptOff)
+		}
 		// Clean up any breakpoints we've set.
 		for _, bp := range t.Breakpoints().M {
 			if bp != nil {
@@ -216,11 +219,4 @@ func (t *Target) setThreadBreakpointState(th Thread, adjustPC bool) error {
 		t.threadToBreakpoint[th.ThreadID()] = bps
 	}
 	return nil
-}
-
-func (t *Target) Detach(kill bool) error {
-	if !kill && t.asyncPreemptChanged {
-		setAsyncPreemptOff(t, t.asyncPreemptOff)
-	}
-	return t.Process.Detach(kill)
 }

@@ -679,12 +679,12 @@ continueLoop:
 
 	if p.BinInfo().GOOS == "linux" {
 		if err := linutil.ElfUpdateSharedObjects(p); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	if trapthread == nil {
-		return nil, fmt.Errorf("could not find thread %s", threadID)
+		return nil, nil, fmt.Errorf("could not find thread %s", threadID)
 	}
 
 	var err error
@@ -716,8 +716,6 @@ continueLoop:
 			tl = append(tl, th)
 		}
 	}
-	return thread, tl, err
-
 	return trapthread, tl, err
 }
 
