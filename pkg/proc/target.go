@@ -13,6 +13,8 @@ var ErrDirChange = errors.New("direction change with internal breakpoints")
 type Target struct {
 	Process
 
+	proc ProcessInternal
+
 	// Breakpoint table, holds information on breakpoints.
 	// Maps instruction address to Breakpoint struct.
 	breakpoints BreakpointMap
@@ -37,6 +39,7 @@ type Target struct {
 func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 	t := &Target{
 		Process:     p,
+		proc:        p.(ProcessInternal),
 		fncallForG:  make(map[int]*callInjection),
 		breakpoints: NewBreakpointMap(),
 	}
@@ -46,8 +49,8 @@ func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 		setAsyncPreemptOff(t, 1)
 	}
 
-	createUnrecoveredPanicBreakpoint(t, p.WriteBreakpointFn)
-	createFatalThrowBreakpoint(t, p.WriteBreakpointFn)
+	createUnrecoveredPanicBreakpoint(t, t.proc.WriteBreakpointFn)
+	createFatalThrowBreakpoint(t, t.proc.WriteBreakpointFn)
 
 	return t
 }
@@ -100,7 +103,7 @@ func (t *Target) ThreadToBreakpoint(th Thread) *BreakpointState {
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
 func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
-	return t.breakpoints.Set(addr, kind, cond, t.Process.WriteBreakpointFn)
+	return t.breakpoints.Set(addr, kind, cond, t.proc.WriteBreakpointFn)
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
@@ -108,7 +111,7 @@ func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	if ok, err := t.Valid(); !ok {
 		return nil, err
 	}
-	bp, err := t.breakpoints.Clear(addr, t.Process.ClearBreakpointFn)
+	bp, err := t.breakpoints.Clear(addr, t.proc.ClearBreakpointFn)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +151,7 @@ func (t *Target) Restart(from string) error {
 		return err
 	}
 	for addr := range t.Breakpoints().M {
-		_, _, _, _, err := t.Process.WriteBreakpointFn(addr)
+		_, _, _, _, err := t.proc.WriteBreakpointFn(addr)
 		if err != nil {
 			return err
 		}
@@ -164,7 +167,7 @@ func (t *Target) Restart(from string) error {
 // ClearInternalBreakpoints clears any breakpoints set during a step or next operation.
 func (t *Target) ClearInternalBreakpoints() error {
 	if err := t.Breakpoints().ClearInternalBreakpoints(func(addr uint64, originalData []byte) error {
-		return t.Process.ClearBreakpointFn(addr, originalData)
+		return t.proc.ClearBreakpointFn(addr, originalData)
 	}); err != nil {
 		return err
 	}
@@ -191,7 +194,7 @@ func (t *Target) setThreadBreakpointState(th Thread, adjustPC bool) error {
 	// after finding one.
 	adjustPC = adjustPC &&
 		t.BinInfo().Arch.BreakInstrMovesPC() &&
-		!t.Process.AdjustsPCAfterBreakpoint()
+		!t.proc.AdjustsPCAfterBreakpoint()
 
 	if adjustPC {
 		pc = pc - uint64(t.BinInfo().Arch.BreakpointSize())

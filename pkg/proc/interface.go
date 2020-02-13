@@ -10,8 +10,19 @@ package proc
 type Process interface {
 	Info
 	ProcessManipulation
-	BreakpointManipulation
 	RecordingManipulation
+}
+
+// ProcessInternal holds a set of methods that are
+// not meant to be called by anyone except for an instance of
+// `proc.Target`. These methods are not safe to use by themselves
+// and should never be called directly outside of the `proc` package.
+// This is temporary and in support of an ongoing refactor.
+type ProcessInternal interface {
+	WriteBreakpointFn(addr uint64) (string, int, *Function, []byte, error)
+	ClearBreakpointFn(uint64, []byte) error
+	AdjustsPCAfterBreakpoint() bool
+	CurrentDirection() Direction
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.
@@ -66,10 +77,6 @@ type Info interface {
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)
 
-	AdjustsPCAfterBreakpoint() bool
-
-	CurrentDirection() Direction
-
 	ThreadInfo
 	GoroutineInfo
 }
@@ -98,10 +105,4 @@ type ProcessManipulation interface {
 	// after a call to RequestManualStop.
 	CheckAndClearManualStopRequest() bool
 	Detach(bool) error
-}
-
-// BreakpointManipulation is an interface for managing breakpoints.
-type BreakpointManipulation interface {
-	WriteBreakpointFn(addr uint64) (string, int, *Function, []byte, error)
-	ClearBreakpointFn(uint64, []byte) error
 }

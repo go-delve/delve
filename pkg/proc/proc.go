@@ -181,7 +181,7 @@ func Continue(dbp *Target) error {
 			return nil
 		}
 		dbp.ClearAllGCache()
-		if dbp.Process.CurrentDirection() == Forward {
+		if dbp.proc.CurrentDirection() == Forward {
 			for tid, _ := range dbp.threadToBreakpoint {
 				th, _ := dbp.FindThread(tid)
 				dbp.threadStepInstruction(th, false)
@@ -553,10 +553,10 @@ func StepInstruction(dbp *Target) (err error) {
 func (dbp *Target) threadStepInstruction(thread Thread, setbp bool) error {
 	bp := dbp.ThreadToBreakpoint(thread)
 	if bp.Breakpoint != nil {
-		if err := dbp.Process.ClearBreakpointFn(bp.Addr, bp.OriginalData); err != nil {
+		if err := dbp.proc.ClearBreakpointFn(bp.Addr, bp.OriginalData); err != nil {
 			return err
 		}
-		defer dbp.Process.WriteBreakpointFn(bp.Addr)
+		defer dbp.proc.WriteBreakpointFn(bp.Addr)
 	}
 	if err := thread.StepInstruction(); err != nil {
 		return err
