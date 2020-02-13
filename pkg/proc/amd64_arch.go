@@ -219,6 +219,7 @@ func (a *AMD64) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 			return false
 		}
 
+		it.loadG0SchedSP()
 		if it.g0_sched_sp <= 0 {
 			return false
 		}

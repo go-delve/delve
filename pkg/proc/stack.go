@@ -190,8 +190,9 @@ type stackIterator struct {
 	// regs is the register set for the current frame
 	regs op.DwarfRegisters
 
-	g           *G     // the goroutine being stacktraced, nil if we are stacktracing a goroutine-less thread
-	g0_sched_sp uint64 // value of g0.sched.sp (see comments around its use)
+	g                  *G     // the goroutine being stacktraced, nil if we are stacktracing a goroutine-less thread
+	g0_sched_sp        uint64 // value of g0.sched.sp (see comments around its use)
+	g0_sched_sp_loaded bool   // g0_sched_sp was loaded from g0
 
 	opts StacktraceOptions
 }
@@ -221,19 +222,11 @@ func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegiste
 		}
 		stkbar = stkbar[stkbarPos:]
 	}
-	var g0_sched_sp uint64
 	systemstack := true
 	if g != nil {
 		systemstack = g.SystemStack
-		g0var, _ := g.variable.fieldVariable("m").structMember("g0")
-		if g0var != nil {
-			g0, _ := g0var.parseG()
-			if g0 != nil {
-				g0_sched_sp = g0.SP
-			}
-		}
 	}
-	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, g0_sched_sp: g0_sched_sp, opts: opts}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, opts: opts}
 }
 
 // Next points the iterator to the next stack frame.
@@ -533,6 +526,22 @@ func (it *stackIterator) readRegisterAt(regnum uint64, addr uint64) (*op.DwarfRe
 		return nil, err
 	}
 	return op.DwarfRegisterFromBytes(buf), nil
+}
+
+func (it *stackIterator) loadG0SchedSP() {
+	if it.g0_sched_sp_loaded {
+		return
+	}
+	it.g0_sched_sp_loaded = true
+	if it.g != nil {
+		g0var, _ := it.g.variable.fieldVariable("m").structMember("g0")
+		if g0var != nil {
+			g0, _ := g0var.parseG()
+			if g0 != nil {
+				it.g0_sched_sp = g0.SP
+			}
+		}
+	}
 }
 
 // Defer represents one deferred call
