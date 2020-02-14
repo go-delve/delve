@@ -147,7 +147,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		}
 
 		// Skip detailed message checks for potentially different OS-specific errors.
-		client.LaunchRequest(fixture.Path+"does not exist", false)
+		client.LaunchRequest(fixture.Path+"_does_not_exist", false)
 		expectErrorResponse(t, client, 1, "launch", "Failed to launch", 3000)
 
 		client.LaunchRequest(fixture.Source, true) // Not an executable

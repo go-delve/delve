@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"path/filepath"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -83,7 +82,7 @@ func (s *Server) Stop() {
 	if s.debugger != nil {
 		kill := s.config.AttachPid == 0
 		if err := s.debugger.Detach(kill); err != nil {
-			fmt.Println(err)
+			s.log.Error(err)
 		}
 	}
 }
@@ -130,7 +129,7 @@ func (s *Server) Run() {
 		if err != nil {
 			// This will print if the server is killed with Ctrl+C
 			// before client connection is accepted.
-			fmt.Printf("Error accepting client connection: %s\n", err)
+			s.log.Errorf("Error accepting client connection: %s\n", err)
 			s.signalDisconnect()
 			return
 		}
@@ -158,7 +157,7 @@ func (s *Server) serveDAPCodec() {
 		// dap.DecodeProtocolMessageFieldError.
 		if err != nil {
 			if err != io.EOF {
-				fmt.Println("DAP error:", err)
+				s.log.Error("DAP error: ", err)
 			}
 			return
 		}
@@ -258,7 +257,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// we cannot get to Seq and other fields from dap.Message.
 		// TODO(polina): figure out how to handle this better.
 		// Consider adding GetSeq() method to dap.Message interface.
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("Unable to process %#v\n", request))
+		s.log.Errorf("Unable to process %#v\n", request)
 	}
 }
 
