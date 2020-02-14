@@ -223,9 +223,9 @@ func (p *Process) initialize(path string, debugInfoDirs []string) error {
 	return proc.PostInitializationSetup(p, path, debugInfoDirs)
 }
 
-// AdjustsPCAfterBreakpoint always returns false as the core backend does
+// AdjustPCAfterBreakpoint always returns false as the core backend does
 // not execute instructions or hit breakpoints.
-func (dbp *Process) AdjustsPCAfterBreakpoint() bool { return false }
+func (dbp *Process) AdjustPCAfterBreakpoint() bool { return false }
 
 // BinInfo will return the binary info.
 func (p *Process) BinInfo() *proc.BinaryInfo {

@@ -49,6 +49,9 @@ func NewTarget(p Process, disableAsyncPreempt bool) *Target {
 		setAsyncPreemptOff(t, 1)
 	}
 
+	g, _ := GetG(p.CurrentThread())
+	t.proc.SetSelectedGoroutine(g)
+
 	createUnrecoveredPanicBreakpoint(t, t.proc.WriteBreakpointFn)
 	createFatalThrowBreakpoint(t, t.proc.WriteBreakpointFn)
 
@@ -78,7 +81,7 @@ func (t *Target) Detach(kill bool) error {
 			}
 		}
 	}
-	return t.Process.Detach(kill)
+	return t.proc.Detach(kill)
 }
 
 // FindBreakpoint returns the breakpoint at the given address.
@@ -150,7 +153,7 @@ func (t *Target) ClearAllGCache() {
 func (t *Target) Restart(from string) error {
 	t.ClearAllGCache()
 	t.threadToBreakpoint = make(map[int]*BreakpointState)
-	if err := t.Process.Restart(from); err != nil {
+	if err := t.proc.Restart(from); err != nil {
 		return err
 	}
 	for addr := range t.Breakpoints().M {
@@ -197,7 +200,7 @@ func (t *Target) setThreadBreakpointState(th Thread, adjustPC bool) error {
 	// after finding one.
 	adjustPC = adjustPC &&
 		t.BinInfo().Arch.BreakInstrMovesPC() &&
-		!t.proc.AdjustsPCAfterBreakpoint()
+		t.proc.AdjustPCAfterBreakpoint()
 
 	if adjustPC {
 		pc = pc - uint64(t.BinInfo().Arch.BreakpointSize())

@@ -472,9 +472,9 @@ func (p *Process) EntryPoint() (uint64, error) {
 	return entryPoint, nil
 }
 
-// AdjustsPCAfterBreakpoint always returns true as the gdbserial backend
+// AdjustPCAfterBreakpoint always returns false as the gdbserial backend
 // automatically adjusts the PC register once a breakpoint is hit.
-func (dbp *Process) AdjustsPCAfterBreakpoint() bool { return true }
+func (dbp *Process) AdjustPCAfterBreakpoint() bool { return false }
 
 // CurrentDirection returns which direction the process will
 // execute in when continued. Only recorded processes will

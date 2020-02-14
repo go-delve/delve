@@ -73,9 +73,6 @@ func PostInitializationSetup(p Process, path string, debugInfoDirs []string) err
 		}
 	}
 
-	g, _ := GetG(p.CurrentThread())
-	p.SetSelectedGoroutine(g)
-
 	return nil
 }
 
@@ -188,7 +185,7 @@ func Continue(dbp *Target) error {
 			}
 		}
 		dbp.threadToBreakpoint = make(map[int]*BreakpointState)
-		trapthread, additionalTrapThreads, err := dbp.ContinueOnce()
+		trapthread, additionalTrapThreads, err := dbp.proc.ContinueOnce()
 		if err != nil {
 			return err
 		}
@@ -545,7 +542,7 @@ func StepInstruction(dbp *Target) (err error) {
 	}
 
 	if tg, _ := GetG(thread); tg != nil {
-		dbp.SetSelectedGoroutine(tg)
+		dbp.proc.SetSelectedGoroutine(tg)
 	}
 	return nil
 }

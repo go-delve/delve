@@ -60,9 +60,9 @@ func (dbp *Process) BinInfo() *proc.BinaryInfo {
 	return dbp.bi
 }
 
-// AdjustsPCAfterBreakpoint always returns false as the native backend does
+// AdjustPCAfterBreakpoint always returns true as the native backend does
 // not automatically adjust the PC register once a breakpoint is hit.
-func (dbp *Process) AdjustsPCAfterBreakpoint() bool { return false }
+func (dbp *Process) AdjustPCAfterBreakpoint() bool { return true }
 
 // Recorded always returns false for the native proc backend.
 func (dbp *Process) Recorded() (bool, string) { return false, "" }

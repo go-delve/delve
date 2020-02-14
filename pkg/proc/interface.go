@@ -19,10 +19,45 @@ type Process interface {
 // and should never be called directly outside of the `proc` package.
 // This is temporary and in support of an ongoing refactor.
 type ProcessInternal interface {
+	// WriteBreakpointFn is a low-level function which sets a breakpoint at
+	// the given address. The address corresponds to an instruction address
+	// where the breakpoint should be set.
+	// If the breakpoint is successfully set, the filename, line number, and
+	// enclosing function are returned, otherwise an error is returned.
 	WriteBreakpointFn(addr uint64) (string, int, *Function, []byte, error)
+	// ClearBreakpointFn will clear from memory a breakpoint instruction that
+	// has been set at the given address. Callers should also provide the original
+	// instruction that was overwritten when setting the breakpoint.
 	ClearBreakpointFn(uint64, []byte) error
-	AdjustsPCAfterBreakpoint() bool
+	// AdjustPCAfterBreakpoint returns whether the PC value of a thread must be adjusted when
+	// a breakpoint is hit. Somebackends (gdbserial) will automatically adjust the PC register
+	// for a thread when it hits a breakpoint. Other backends (native) will not make this adjustment
+	// automatically.
+	AdjustPCAfterBreakpoint() bool
+	// CurrentDirection returns the current execution direction. For recorded
+	// processes this can be forward or backward, otherwise it will always return
+	// forward.
 	CurrentDirection() Direction
+	// Restart restarts the recording from the specified position, or from the
+	// last checkpoint if pos == "".
+	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
+	// number.
+	Restart(pos string) error
+	// SetSelectedGoroutine sets the default goroutine to be used when determining
+	// the flow of control. Unless otherwise specified, this goroutine will be used
+	// and followed during the execution of the process to ensure we follow it even
+	// if it begins running on another thread. It will also be used as the default for
+	// evaluation scopes, etc.
+	SetSelectedGoroutine(*G)
+	// ContinueOnce will continue execution of the process until it hits a breakpoint
+	// or is otherwise stopped by a signal, etc. The call will return and the caller
+	// will be able to inspect the state of the process and determine if we should
+	// continue again or return control back to the user.
+	ContinueOnce() (trapthread Thread, additionalTrapThreads []Thread, err error)
+	// Detach will detach the debugger from the process. This means the debugger will
+	// no longer receive events or notifications, or have any control over the process.
+	// If kill is true, the debugger will kill the process during the detach.
+	Detach(kill bool) error
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.
@@ -30,11 +65,6 @@ type RecordingManipulation interface {
 	// Recorded returns true if the current process is a recording and the path
 	// to the trace directory.
 	Recorded() (recorded bool, tracedir string)
-	// Restart restarts the recording from the specified position, or from the
-	// last checkpoint if pos == "".
-	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
-	// number.
-	Restart(pos string) error
 	// Direction changes execution direction.
 	Direction(Direction) error
 	// When returns current recording position.
@@ -92,17 +122,14 @@ type ThreadInfo interface {
 // GoroutineInfo is an interface for getting information on running goroutines.
 type GoroutineInfo interface {
 	SelectedGoroutine() *G
-	SetSelectedGoroutine(*G)
 }
 
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
-	ContinueOnce() (trapthread Thread, additionalTrapThreads []Thread, err error)
 	SwitchThread(int) error
 	SwitchGoroutine(*G) error
 	RequestManualStop() error
 	// CheckAndClearManualStopRequest returns true the first time it's called
 	// after a call to RequestManualStop.
 	CheckAndClearManualStopRequest() bool
-	Detach(bool) error
 }
