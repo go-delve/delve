@@ -177,6 +177,8 @@ func Setup(logFlag bool, logstr string, logDest string) error {
 			fnCall = true
 		case "minidump":
 			minidump = true
+		// If adding another value, do make sure to
+		// update "Help about logging flags" in commands.go.
 		}
 	}
 	return nil

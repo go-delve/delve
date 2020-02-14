@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -161,6 +162,8 @@ func (s *Server) serveDAPCodec() {
 			}
 			return
 		}
+		// TODO(polina) Add a panic guard,
+		// so we do not kill user's process when delve panics.
 		s.handleRequest(request)
 	}
 }
@@ -255,7 +258,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// we cannot get to Seq and other fields from dap.Message.
 		// TODO(polina): figure out how to handle this better.
 		// Consider adding GetSeq() method to dap.Message interface.
-		panic(fmt.Sprintf("Unable to process %#v", request))
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Unable to process %#v\n", request))
 	}
 }
 
@@ -279,7 +282,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	program, ok := request.Arguments["program"]
 	if !ok || program == "" {
 		s.sendErrorResponse(request.Request,
-			3000, "Failed to launch",
+			FailedToContinue, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
@@ -297,7 +300,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// TODO(polina): support "debug", "test" and "remote" modes
 	if mode != "exec" {
 		s.sendErrorResponse(request.Request,
-			3000, "Failed to launch",
+			FailedToContinue, "Failed to launch",
 			fmt.Sprintf("Unsupported 'mode' value '%s' in debug configuration.", mode))
 		return
 	}
@@ -314,7 +317,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	var err error
 	if s.debugger, err = debugger.New(config, s.config.ProcessArgs); err != nil {
 		s.sendErrorResponse(request.Request,
-			3000, "Failed to launch", err.Error())
+			FailedToContinue, "Failed to launch", err.Error())
 		return
 	}
 
@@ -330,7 +333,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 // (in our case this TCP server) can be terminated.
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
-	// TODO(polina): only halt if the program is running
 	if s.debugger != nil {
 		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt})
 		if err != nil {
@@ -410,7 +412,7 @@ func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, 
 }
 
 func (s *Server) sendUnsupportedErrorResponse(request dap.Request) {
-	s.sendErrorResponse(request, 9999, "Unsupported command",
+	s.sendErrorResponse(request, UnsupportedCommand, "Unsupported command",
 		fmt.Sprintf("cannot process '%s' request", request.Command))
 }
 
@@ -456,6 +458,7 @@ func (s *Server) doContinue() {
 		s.send(e)
 	} else {
 		e := &dap.StoppedEvent{Event: *newEvent("stopped")}
+		// TODO(polina): differentiate between breakpoint and pause on halt.
 		e.Body.Reason = "breakpoint"
 		e.Body.AllThreadsStopped = true
 		e.Body.ThreadId = state.SelectedGoroutine.ID

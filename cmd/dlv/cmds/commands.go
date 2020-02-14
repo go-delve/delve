@@ -335,6 +335,7 @@ names selected from this list:
 	lldbout		Copy output from debugserver/lldb to standard output
 	debuglineerr	Log recoverable errors reading .debug_line
 	rpc		Log all RPC messages
+	dap		Log all DAP messages
 	fncall		Log function call protocol
 	minidump	Log minidump loading
 

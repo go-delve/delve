@@ -53,7 +53,7 @@ func expectMessage(t *testing.T, client *daptest.Client, want []byte) {
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
 	var buildFlags protest.BuildFlags
-	fixture := protest.BuildFixture("helloworld", buildFlags)
+	fixture := protest.BuildFixture(name, buildFlags)
 
 	server, addr := startDAPServer(t)
 	client := daptest.NewClient(addr)
@@ -67,7 +67,7 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 // add methods to client to receive, decode and verify responses.
 
 func TestStopOnEntry(t *testing.T) {
-	runTest(t, "helloworld", func(client *daptest.Client, fixture protest.Fixture) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
 		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":0,"success":true,"command":"initialize","body":{"supportsConfigurationDoneRequest":true}}`))
 
@@ -92,7 +92,7 @@ func TestStopOnEntry(t *testing.T) {
 }
 
 func TestSetBreakpoint(t *testing.T) {
-	runTest(t, "helloworld", func(client *daptest.Client, fixture protest.Fixture) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
 		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":0,"success":true,"command":"initialize","body":{"supportsConfigurationDoneRequest":true}}`))
 
@@ -138,7 +138,7 @@ func expectErrorResponse(t *testing.T, client *daptest.Client, requestSeq int, c
 }
 
 func TestBadLaunchRequests(t *testing.T) {
-	runTest(t, "helloworld", func(client *daptest.Client, fixture protest.Fixture) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.LaunchRequest("", true)
 		// Test for the DAP-specific detailed error message.
 		want := "Failed to launch: The program attribute is missing in debug configuration."
