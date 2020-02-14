@@ -25,8 +25,8 @@ Additionally --log-dest can be used to specify where the logs should be
 written. 
 If the argument is a number it will be interpreted as a file descriptor,
 otherwise as a file path.
-This option will also redirect the \"API listening\" message in headless
-mode.
+This option will also redirect the "server listening at" message in headless
+and dap modes.
 
 
 
