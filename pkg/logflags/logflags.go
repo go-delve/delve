@@ -34,7 +34,7 @@ func makeLogger(flag bool, fields logrus.Fields) *logrus.Entry {
 	}
 	logger.Logger.Level = logrus.DebugLevel
 	if !flag {
-		logger.Logger.Level = logrus.PanicLevel
+		logger.Logger.Level = logrus.ErrorLevel
 	}
 	return logger
 }
