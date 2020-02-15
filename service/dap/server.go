@@ -53,7 +53,7 @@ type Server struct {
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
-// via config and assumes its ownerhsip. Optinally takes DisconnectChan
+// via config and assumes its ownership. Optionally takes DisconnectChan
 // via config, which can be used to detect when the client disconnects
 // and the server is ready to be shut down. The caller must call
 // Stop() on shutdown.
