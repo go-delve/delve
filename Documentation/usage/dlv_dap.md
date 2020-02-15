@@ -1,34 +1,22 @@
-## dlv log
+## dlv dap
 
-Help about logging flags.
+[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
 
 ### Synopsis
 
 
-Logging can be enabled by specifying the --log flag and using the
---log-output flag to select which components should produce logs.
+[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
 
-The argument of --log-output must be a comma separated list of component
-names selected from this list:
+The server supports debugging of a precompiled binary akin to 'dlv exec' via a launch request.
+It does not yet support support specification of program arguments.
+It does not yet support launch requests with 'debug' and 'test' modes that require compilation.
+It does not yet support attach requests to debug a running process like with 'dlv attach'.
+It does not yet support asynchronous request-response communication.
+The server does not accept multiple client connections.
 
-
-	debugger	Log debugger commands
-	gdbwire		Log connection to gdbserial backend
-	lldbout		Copy output from debugserver/lldb to standard output
-	debuglineerr	Log recoverable errors reading .debug_line
-	rpc		Log all RPC messages
-	dap		Log all DAP messages
-	fncall		Log function call protocol
-	minidump	Log minidump loading
-
-Additionally --log-dest can be used to specify where the logs should be
-written. 
-If the argument is a number it will be interpreted as a file descriptor,
-otherwise as a file path.
-This option will also redirect the "server listening at" message in headless
-and dap modes.
-
-
+```
+dlv dap
+```
 
 ### Options inherited from parent commands
 

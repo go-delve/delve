@@ -19,6 +19,7 @@ import (
 	"github.com/go-delve/delve/pkg/version"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
 	"github.com/spf13/cobra"
@@ -151,6 +152,22 @@ option to let the process continue or kill it.
 		Run: connectCmd,
 	}
 	RootCommand.AddCommand(connectCommand)
+
+	// 'dap' subcommand.
+	dapCommand := &cobra.Command{
+		Use:   "dap",
+		Short: "[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).",
+		Long: `[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+
+The server supports debugging of a precompiled binary akin to 'dlv exec' via a launch request.
+It does not yet support support specification of program arguments.
+It does not yet support launch requests with 'debug' and 'test' modes that require compilation.
+It does not yet support attach requests to debug a running process like with 'dlv attach'.
+It does not yet support asynchronous request-response communication.
+The server does not accept multiple client connections.`,
+		Run: dapCmd,
+	}
+	RootCommand.AddCommand(dapCommand)
 
 	// 'debug' subcommand.
 	debugCommand := &cobra.Command{
@@ -318,6 +335,7 @@ names selected from this list:
 	lldbout		Copy output from debugserver/lldb to standard output
 	debuglineerr	Log recoverable errors reading .debug_line
 	rpc		Log all RPC messages
+	dap		Log all DAP messages
 	fncall		Log function call protocol
 	minidump	Log minidump loading
 
@@ -325,8 +343,8 @@ Additionally --log-dest can be used to specify where the logs should be
 written. 
 If the argument is a number it will be interpreted as a file descriptor,
 otherwise as a file path.
-This option will also redirect the \"API listening\" message in headless
-mode.
+This option will also redirect the "server listening at" message in headless
+and dap modes.
 
 `,
 	})
@@ -342,6 +360,63 @@ func remove(path string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)
 	}
+}
+
+func dapCmd(cmd *cobra.Command, args []string) {
+	status := func() int {
+		if err := logflags.Setup(Log, LogOutput, LogDest); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
+		defer logflags.Close()
+
+		if Headless {
+			fmt.Fprintf(os.Stderr, "Warning: headless mode not supported with dap\n")
+		}
+		if AcceptMulti {
+			fmt.Fprintf(os.Stderr, "Warning: accept multiclient mode not supported with dap\n")
+		}
+		if InitFile != "" {
+			fmt.Fprint(os.Stderr, "Warning: init file ignored with dap\n")
+		}
+		if ContinueOnStart {
+			fmt.Fprintf(os.Stderr, "Warning: continue ignored with dap; specify via launch/attach request instead\n")
+		}
+		if BuildFlags != "" {
+			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
+		}
+		if WorkingDir != "" {
+			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap; launch requests must specify full program path\n")
+		}
+		dlvArgs, targetArgs := splitArgs(cmd, args)
+		if len(dlvArgs) > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: debug arguments ignored with dap; specify via launch/attach request instead\n")
+		}
+		if len(targetArgs) > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
+		}
+
+		listener, err := net.Listen("tcp", Addr)
+		if err != nil {
+			fmt.Printf("couldn't start listener: %s\n", err)
+			return 1
+		}
+		disconnectChan := make(chan struct{})
+		server := dap.NewServer(&service.Config{
+			Listener:             listener,
+			Backend:              Backend,
+			Foreground:           true, // always headless
+			DebugInfoDirectories: conf.DebugInfoDirectories,
+			CheckGoVersion:       CheckGoVersion,
+			DisconnectChan:       disconnectChan,
+		})
+		defer server.Stop()
+
+		server.Run()
+		waitForDisconnectSignal(disconnectChan)
+		return 0
+	}()
+	os.Exit(status)
 }
 
 func debugCmd(cmd *cobra.Command, args []string) {
@@ -535,6 +610,37 @@ func connectCmd(cmd *cobra.Command, args []string) {
 	os.Exit(connect(addr, nil, conf, executingOther))
 }
 
+// waitForDisconnectSignal is a blocking function that waits for either
+// a SIGINT (Ctrl-C) signal from the OS or for disconnectChan to be closed
+// by the server when the client disconnects.
+// Note that in headless mode, the debugged process is foregrounded
+// (to have control of the tty for debugging interactive programs),
+// so SIGINT gets sent to the debuggee and not to delve.
+func waitForDisconnectSignal(disconnectChan chan struct{}) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT)
+	if runtime.GOOS == "windows" {
+		// On windows Ctrl-C sent to inferior process is delivered
+		// as SIGINT to delve. Ignore it instead of stopping the server
+		// in order to be able to debug signal handlers.
+		go func() {
+			for {
+				select {
+				case <-ch:
+				}
+			}
+		}()
+		select {
+		case <-disconnectChan:
+		}
+	} else {
+		select {
+		case <-ch:
+		case <-disconnectChan:
+		}
+	}
+}
+
 func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 	if cmd.ArgsLenAtDash() >= 0 {
 		return args[:cmd.ArgsLenAtDash()], args[cmd.ArgsLenAtDash():]
@@ -678,28 +784,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			client = rpc2.NewClient(listener.Addr().String())
 			client.Disconnect(true) // true = continue after disconnect
 		}
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, syscall.SIGINT)
-		if runtime.GOOS == "windows" {
-			// On windows Ctrl-C sent to inferior process is delivered
-			// as SIGINT to delve. Ignore it instead of stopping the server
-			// in order to be able to debug signal handlers.
-			go func() {
-				for {
-					select {
-					case <-ch:
-					}
-				}
-			}()
-			select {
-			case <-disconnectChan:
-			}
-		} else {
-			select {
-			case <-ch:
-			case <-disconnectChan:
-			}
-		}
+		waitForDisconnectSignal(disconnectChan)
 		err = server.Stop()
 		if err != nil {
 			fmt.Println(err)

@@ -21,6 +21,7 @@ var gdbWire = false
 var lldbServerOutput = false
 var debugLineErrors = false
 var rpc = false
+var dap = false
 var fnCall = false
 var minidump = false
 
@@ -82,6 +83,16 @@ func RPCLogger() *logrus.Entry {
 	return makeLogger(rpc, logrus.Fields{"layer": "rpc"})
 }
 
+// DAP returns true if dap package should log.
+func DAP() bool {
+	return dap
+}
+
+// DAPLogger returns a logger for dap package.
+func DAPLogger() *logrus.Entry {
+	return makeLogger(dap, logrus.Fields{"layer": "dap"})
+}
+
 // FnCall returns true if the function call protocol should be logged.
 func FnCall() bool {
 	return fnCall
@@ -100,12 +111,21 @@ func MinidumpLogger() *logrus.Entry {
 	return makeLogger(minidump, logrus.Fields{"layer": "core", "kind": "minidump"})
 }
 
+// WriteDAPListeningMessage writes the "DAP server listening" message in dap mode.
+func WriteDAPListeningMessage(addr string) {
+	writeListeningMessage("DAP", addr)
+}
+
 // WriteAPIListeningMessage writes the "API server listening" message in headless mode.
 func WriteAPIListeningMessage(addr string) {
+	writeListeningMessage("API", addr)
+}
+
+func writeListeningMessage(server string, addr string) {
 	if logOut != nil {
-		fmt.Fprintf(logOut, "API server listening at: %s\n", addr)
+		fmt.Fprintf(logOut, "%s server listening at: %s\n", server, addr)
 	} else {
-		fmt.Printf("API server listening at: %s\n", addr)
+		fmt.Printf("%s server listening at: %s\n", server, addr)
 	}
 }
 
@@ -151,10 +171,14 @@ func Setup(logFlag bool, logstr string, logDest string) error {
 			debugLineErrors = true
 		case "rpc":
 			rpc = true
+		case "dap":
+			dap = true
 		case "fncall":
 			fnCall = true
 		case "minidump":
 			minidump = true
+			// If adding another value, do make sure to
+			// update "Help about logging flags" in commands.go.
 		}
 	}
 	return nil
