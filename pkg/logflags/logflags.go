@@ -122,11 +122,10 @@ func WriteAPIListeningMessage(addr string) {
 }
 
 func writeListeningMessage(server string, addr string) {
-	msg := fmt.Sprintf("%s server listening at: %s (pid = %d)", server, addr, os.Getpid())
 	if logOut != nil {
-		fmt.Fprintln(logOut, msg)
+		fmt.Fprintf(logOut, "%s server listening at: %s\n", server, addr)
 	} else {
-		fmt.Println(msg)
+		fmt.Printf("%s server listening at: %s\n", server, addr)
 	}
 }
 
@@ -177,9 +176,9 @@ func Setup(logFlag bool, logstr string, logDest string) error {
 		case "fncall":
 			fnCall = true
 		case "minidump":
-					minidump = true
-				// If adding another value, do make sure to
-		// update "Help about logging flags" in commands.go.
+			minidump = true
+			// If adding another value, do make sure to
+			// update "Help about logging flags" in commands.go.
 		}
 	}
 	return nil
