@@ -125,10 +125,22 @@ func (r *ARM64Registers) Copy() proc.Registers {
 	return &rr
 }
 
-// Decode decodes an XSAVE area to a list of name/value pairs of registers.
-func Decode(fpregs []byte) (regs []proc.Register) {
-	for i := 0; i < len(fpregs); i += 16 {
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("V%d", i/16), fpregs[i:i+16])
+type ARM64PtraceFpRegs struct {
+	Vregs []byte
+	Fpsr  uint32
+	Fpcr  uint32
+}
+
+const _ARM_FP_REGS_LENGTH = 512
+
+func (fpregs *ARM64PtraceFpRegs) Decode() (regs []proc.Register) {
+	for i := 0; i < len(fpregs.Vregs); i += 16 {
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("V%d", i/16), fpregs.Vregs[i:i+16])
 	}
 	return
+}
+
+func (fpregs *ARM64PtraceFpRegs) Byte() []byte {
+	fpregs.Vregs = make([]byte, _ARM_FP_REGS_LENGTH)
+	return fpregs.Vregs[:]
 }
