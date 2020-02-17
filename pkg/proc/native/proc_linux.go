@@ -545,7 +545,7 @@ func (dbp *Process) EntryPoint() (uint64, error) {
 		return 0, fmt.Errorf("could not read auxiliary vector: %v", err)
 	}
 
-	return linutil.EntryPointFromAuxvAMD64(auxvbuf), nil
+	return linutil.EntryPointFromAuxv(auxvbuf, dbp.bi.Arch.PtrSize()), nil
 }
 
 func killProcess(pid int) error {

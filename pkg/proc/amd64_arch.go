@@ -51,7 +51,7 @@ func (a *AMD64) PtrSize() int {
 	return 8
 }
 
-// MaxInstructionLength returns the maximum lenght of an instruction.
+// MaxInstructionLength returns the maximum length of an instruction.
 func (a *AMD64) MaxInstructionLength() int {
 	return 15
 }
@@ -557,4 +557,10 @@ func formatX87Reg(b []byte) string {
 	binary.Write(&buf, binary.LittleEndian, mantissa)
 
 	return fmt.Sprintf("%#04x%016x\t%g", exponent, mantissa, f)
+}
+
+// InhibitStepInto returns whether StepBreakpoint can be set at pc.
+// Always return false on amd64.
+func (a *AMD64) InhibitStepInto(bi *BinaryInfo, pc uint64) bool {
+	return false
 }

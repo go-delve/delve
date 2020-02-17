@@ -13,13 +13,13 @@ func (gcache *goroutineCache) init(bi *BinaryInfo) {
 	exeimage := bi.Images[0]
 	rdr := exeimage.DwarfReader()
 
-	gcache.allglenAddr, _ = rdr.AddrFor("runtime.allglen", exeimage.StaticBase)
+	gcache.allglenAddr, _ = rdr.AddrFor("runtime.allglen", exeimage.StaticBase, bi.Arch.PtrSize())
 
 	rdr.Seek(0)
-	gcache.allgentryAddr, err = rdr.AddrFor("runtime.allgs", exeimage.StaticBase)
+	gcache.allgentryAddr, err = rdr.AddrFor("runtime.allgs", exeimage.StaticBase, bi.Arch.PtrSize())
 	if err != nil {
 		// try old name (pre Go 1.6)
-		gcache.allgentryAddr, _ = rdr.AddrFor("runtime.allg", exeimage.StaticBase)
+		gcache.allgentryAddr, _ = rdr.AddrFor("runtime.allg", exeimage.StaticBase, bi.Arch.PtrSize())
 	}
 }
 
@@ -31,6 +31,7 @@ func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWrite
 	if err != nil {
 		return 0, 0, err
 	}
+	
 	allgptr, err := readUintRaw(mem, uintptr(gcache.allgentryAddr), int64(bi.Arch.PtrSize()))
 	if err != nil {
 		return 0, 0, err

@@ -118,24 +118,29 @@ func readLinuxCore(corePath, exePath string) (*Process, error) {
 		return nil, err
 	}
 	memory := buildMemory(coreFile, exeELF, exe, notes)
-	entryPoint := findEntryPoint(notes)
+
+	// TODO support 386
+	var bi *proc.BinaryInfo
+	switch machineType {
+	case EM_X86_64:
+		bi = proc.NewBinaryInfo("linux", "amd64")
+	case EM_AARCH64:
+		bi = proc.NewBinaryInfo("linux", "arm64")
+	default:
+		return nil, fmt.Errorf("unsupported machine type")
+	}
+
+	entryPoint := findEntryPoint(notes, bi.Arch.PtrSize())
+
 	p := &Process{
 		mem:         memory,
 		Threads:     map[int]*Thread{},
 		entryPoint:  entryPoint,
+		bi:          bi,
 		breakpoints: proc.NewBreakpointMap(),
 	}
 
-	switch machineType {
-	case EM_X86_64:
-		p.bi = proc.NewBinaryInfo("linux", "amd64")
-		linuxThreadsFromNotes(p, notes, machineType)
-	case EM_AARCH64:
-		p.bi = proc.NewBinaryInfo("linux", "arm64")
-		linuxThreadsFromNotes(p, notes, machineType)
-	default:
-		return nil, fmt.Errorf("unsupported machine type")
-	}
+	linuxThreadsFromNotes(p, notes, machineType)
 	return p, nil
 }
 
@@ -352,10 +357,10 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*Note) proc.Me
 	return memory
 }
 
-func findEntryPoint(notes []*Note) uint64 {
+func findEntryPoint(notes []*Note, ptrSize int) uint64 {
 	for _, note := range notes {
 		if note.Type == NT_AUXV {
-			return linutil.EntryPointFromAuxvAMD64(note.Desc.([]byte))
+			return linutil.EntryPointFromAuxv(note.Desc.([]byte), ptrSize)
 		}
 	}
 	return 0

@@ -64,7 +64,7 @@ func (reader *Reader) SeekToFunction(pc RelAddr) (*dwarf.Entry, error) {
 }
 
 // Returns the address for the named entry.
-func (reader *Reader) AddrFor(name string, staticBase uint64) (uint64, error) {
+func (reader *Reader) AddrFor(name string, staticBase uint64, ptrSize int) (uint64, error) {
 	entry, err := reader.FindEntryNamed(name, false)
 	if err != nil {
 		return 0, err
@@ -73,7 +73,7 @@ func (reader *Reader) AddrFor(name string, staticBase uint64) (uint64, error) {
 	if !ok {
 		return 0, fmt.Errorf("type assertion failed")
 	}
-	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions)
+	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions, ptrSize)
 	if err != nil {
 		return 0, err
 	}
@@ -82,7 +82,7 @@ func (reader *Reader) AddrFor(name string, staticBase uint64) (uint64, error) {
 
 // Returns the address for the named struct member. Expects the reader to be at the parent entry
 // or one of the parents children, thus does not seek to parent by itself.
-func (reader *Reader) AddrForMember(member string, initialInstructions []byte) (uint64, error) {
+func (reader *Reader) AddrForMember(member string, initialInstructions []byte, ptrSize int) (uint64, error) {
 	for {
 		entry, err := reader.NextMemberVariable()
 		if err != nil {
@@ -99,7 +99,7 @@ func (reader *Reader) AddrForMember(member string, initialInstructions []byte) (
 		if !ok {
 			continue
 		}
-		addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{}, append(initialInstructions, instructions...))
+		addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{}, append(initialInstructions, instructions...), ptrSize)
 		return uint64(addr), err
 	}
 }

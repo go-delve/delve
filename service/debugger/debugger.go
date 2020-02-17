@@ -127,7 +127,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		d.log.Infof("launching process with args: %v", d.processArgs)
 		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
-			if err != proc.ErrNotExecutable && err != proc.ErrUnsupportedLinuxArch && err != proc.ErrUnsupportedWindowsArch && err != proc.ErrUnsupportedDarwinArch {
+			if _, ok := err.(*proc.ErrUnsupportedArch); !ok {
 				err = go11DecodeErrorCheck(err)
 				err = fmt.Errorf("could not launch process: %s", err)
 			}

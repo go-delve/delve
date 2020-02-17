@@ -112,21 +112,22 @@ func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 		return nil, err
 	}
 
+	bi := g.variable.bi
 	if g.Thread != nil {
 		regs, err := g.Thread.Registers(true)
 		if err != nil {
 			return nil, err
 		}
-		so := g.variable.bi.PCToImage(regs.PC())
+		so := bi.PCToImage(regs.PC())
 		return newStackIterator(
-			g.variable.bi, g.Thread,
-			g.variable.bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs),
+			bi, g.Thread,
+			bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs),
 			g.stackhi, stkbar, g.stkbarPos, g, opts), nil
 	}
 	so := g.variable.bi.PCToImage(g.PC)
 	return newStackIterator(
-		g.variable.bi, g.variable.mem,
-		g.variable.bi.Arch.AddrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP, g.LR),
+		bi, g.variable.mem,
+		bi.Arch.AddrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP, g.LR),
 		g.stackhi, stkbar, g.stkbarPos, g, opts), nil
 }
 
@@ -438,11 +439,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	// implicit.
 	// See also the comment in dwarf2_frame_default_init in
 	// $GDB_SOURCE/dwarf2-frame.c
-	if _, ok := it.bi.Arch.(*ARM64); ok {
-		callFrameRegs.AddReg(uint64(arm64DwarfSPRegNum), cfareg)
-	} else {
-		callFrameRegs.AddReg(uint64(amd64DwarfSPRegNum), cfareg)
-	}
+	callFrameRegs.AddReg(callFrameRegs.SPRegNum, cfareg)
 
 	for i, regRule := range framectx.Regs {
 		reg, err := it.executeFrameRegRule(i, regRule, it.regs.CFA)
@@ -488,13 +485,13 @@ func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, c
 	case frame.RuleRegister:
 		return it.regs.Reg(rule.Reg), nil
 	case frame.RuleExpression:
-		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression)
+		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression, it.bi.Arch.PtrSize())
 		if err != nil {
 			return nil, err
 		}
 		return it.readRegisterAt(regnum, uint64(v))
 	case frame.RuleValExpression:
-		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression)
+		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression, it.bi.Arch.PtrSize())
 		if err != nil {
 			return nil, err
 		}

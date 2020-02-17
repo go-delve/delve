@@ -542,7 +542,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 			err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
 		} else {
 			var pieces []op.Piece
-			off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog)
+			off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog, bi.Arch.PtrSize())
 			if err != nil {
 				err = fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
 			}
