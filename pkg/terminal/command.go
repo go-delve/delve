@@ -1595,7 +1595,13 @@ func regs(t *Term, ctx callContext, args string) error {
 	if args == "-a" {
 		includeFp = true
 	}
-	regs, err := t.client.ListRegisters(0, includeFp)
+	var regs api.Registers
+	var err error
+	if ctx.Scope.GoroutineID < 0 && ctx.Scope.Frame == 0 {
+		regs, err = t.client.ListThreadRegisters(0, includeFp)
+	} else {
+		regs, err = t.client.ListScopeRegisters(ctx.Scope, includeFp)
+	}
 	if err != nil {
 		return err
 	}

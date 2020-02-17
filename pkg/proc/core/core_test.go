@@ -185,6 +185,17 @@ func withCoreFile(t *testing.T, name, args string) *proc.Target {
 	return p
 }
 
+func logRegisters(t *testing.T, regs proc.Registers, arch proc.Arch) {
+	dregs := arch.RegistersToDwarfRegisters(0, regs)
+	for i, reg := range dregs.Regs {
+		if reg == nil {
+			continue
+		}
+		name, _, value := arch.DwarfRegisterToString(i, reg)
+		t.Logf("%s = %s", name, value)
+	}
+}
+
 func TestCore(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return
@@ -243,11 +254,7 @@ func TestCore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Couldn't get current thread registers: %v", err)
 	}
-	regslice := regs.Slice(true)
-	arch := p.BinInfo().Arch
-	for _, reg := range regslice {
-		t.Logf("%s = %s", reg.Name, arch.DwarfRegisterToString(reg.Name, reg.Reg))
-	}
+	logRegisters(t, regs, p.BinInfo().Arch)
 }
 
 func TestCoreFpRegisters(t *testing.T) {
@@ -314,18 +321,17 @@ func TestCoreFpRegisters(t *testing.T) {
 	}
 
 	arch := p.BinInfo().Arch
-	for _, reg := range regs.Slice(true) {
-		t.Logf("%s = %s", reg.Name, arch.DwarfRegisterToString(reg.Name, reg.Reg))
-	}
+	logRegisters(t, regs, arch)
+	dregs := arch.RegistersToDwarfRegisters(0, regs)
 
 	for _, regtest := range regtests {
 		found := false
-		for _, reg := range regs.Slice(true) {
-			if reg.Name == regtest.name {
+		for i, reg := range dregs.Regs {
+			regname, _, regval := arch.DwarfRegisterToString(i, reg)
+			if reg != nil && regname == regtest.name {
 				found = true
-				regval := arch.DwarfRegisterToString(reg.Name, reg.Reg)
 				if !strings.HasPrefix(regval, regtest.value) {
-					t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, regval)
+					t.Fatalf("register %s expected %q got %q", regname, regtest.value, regval)
 				}
 			}
 		}

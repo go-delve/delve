@@ -93,8 +93,10 @@ type Client interface {
 	ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
 	// ListFunctionArgs lists all arguments to the current function.
 	ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
-	// ListRegisters lists registers and their values.
-	ListRegisters(threadID int, includeFp bool) (api.Registers, error)
+	// ListThreadRegisters lists registers and their values, for the given thread.
+	ListThreadRegisters(threadID int, includeFp bool) (api.Registers, error)
+	// ListScopeRegisters lists registers and their values, for the given scope.
+	ListScopeRegisters(scope api.EvalScope, includeFp bool) (api.Registers, error)
 
 	// ListGoroutines lists all goroutines.
 	ListGoroutines(start, count int) ([]*api.Goroutine, int, error)
