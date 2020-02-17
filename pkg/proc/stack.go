@@ -534,11 +534,14 @@ func (it *stackIterator) loadG0SchedSP() {
 	}
 	it.g0_sched_sp_loaded = true
 	if it.g != nil {
-		g0var, _ := it.g.variable.fieldVariable("m").structMember("g0")
-		if g0var != nil {
-			g0, _ := g0var.parseG()
-			if g0 != nil {
-				it.g0_sched_sp = g0.SP
+		mvar, _ := it.g.variable.structMember("m")
+		if mvar != nil {
+			g0var, _ := mvar.structMember("g0")
+			if g0var != nil {
+				g0, _ := g0var.parseG()
+				if g0 != nil {
+					it.g0_sched_sp = g0.SP
+				}
 			}
 		}
 	}

@@ -186,19 +186,18 @@ const (
 // G represents a runtime G (goroutine) structure (at least the
 // fields that Delve is interested in).
 type G struct {
-	ID         int    // Goroutine ID
-	PC         uint64 // PC of goroutine when it was parked.
-	SP         uint64 // SP of goroutine when it was parked.
-	BP         uint64 // BP of goroutine when it was parked (go >= 1.7).
-	LR         uint64 // LR of goroutine when it was parked.
-	GoPC       uint64 // PC of 'go' statement that created this goroutine.
-	StartPC    uint64 // PC of the first function run on this goroutine.
-	WaitReason string // Reason for goroutine being parked.
-	Status     uint64
-	stkbarVar  *Variable // stkbar field of g struct
-	stkbarPos  int       // stkbarPos field of g struct
-	stackhi    uint64    // value of stack.hi
-	stacklo    uint64    // value of stack.lo
+	ID        int    // Goroutine ID
+	PC        uint64 // PC of goroutine when it was parked.
+	SP        uint64 // SP of goroutine when it was parked.
+	BP        uint64 // BP of goroutine when it was parked (go >= 1.7).
+	LR        uint64 // LR of goroutine when it was parked.
+	GoPC      uint64 // PC of 'go' statement that created this goroutine.
+	StartPC   uint64 // PC of the first function run on this goroutine.
+	Status    uint64
+	stkbarVar *Variable // stkbar field of g struct
+	stkbarPos int       // stkbarPos field of g struct
+	stackhi   uint64    // value of stack.hi
+	stacklo   uint64    // value of stack.lo
 
 	SystemStack bool // SystemStack is true if this goroutine is currently executing on a system stack.
 
@@ -220,7 +219,11 @@ func (g *G) Defer() *Defer {
 	if g.variable.Unreadable != nil {
 		return nil
 	}
-	dvar := g.variable.fieldVariable("_defer").maybeDereference()
+	dvar, _ := g.variable.structMember("_defer")
+	if dvar == nil {
+		return nil
+	}
+	dvar = dvar.maybeDereference()
 	if dvar.Addr == 0 {
 		return nil
 	}
@@ -518,6 +521,8 @@ func (ng ErrNoGoroutine) Error() string {
 	return fmt.Sprintf("no G executing on thread %d", ng.tid)
 }
 
+var ErrUnreadableG = errors.New("could not read G struct")
+
 func (v *Variable) parseG() (*G, error) {
 	mem := v.mem
 	gaddr := uint64(v.Addr)
@@ -543,11 +548,13 @@ func (v *Variable) parseG() (*G, error) {
 		}
 		v = v.maybeDereference()
 	}
-	v.loadValue(LoadConfig{false, 2, 64, 0, -1, 0})
-	if v.Unreadable != nil {
-		return nil, v.Unreadable
+
+	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
+
+	schedVar := v.loadFieldNamed("sched")
+	if schedVar == nil {
+		return nil, ErrUnreadableG
 	}
-	schedVar := v.fieldVariable("sched")
 	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
 	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
 	var bp, lr int64
@@ -557,21 +564,24 @@ func (v *Variable) parseG() (*G, error) {
 	if bpvar := schedVar.fieldVariable("lr"); bpvar != nil && bpvar.Value != nil {
 		lr, _ = constant.Int64Val(bpvar.Value)
 	}
-	id, _ := constant.Int64Val(v.fieldVariable("goid").Value)
-	gopc, _ := constant.Int64Val(v.fieldVariable("gopc").Value)
-	startpc, _ := constant.Int64Val(v.fieldVariable("startpc").Value)
-	waitReason := ""
-	if wrvar := v.fieldVariable("waitreason"); wrvar.Value != nil {
-		switch wrvar.Kind {
-		case reflect.String:
-			waitReason = constant.StringVal(wrvar.Value)
-		case reflect.Uint:
-			waitReason = wrvar.ConstDescr()
-		}
 
+	unreadable := false
+
+	loadInt64Maybe := func(name string) int64 {
+		vv := v.loadFieldNamed(name)
+		if vv == nil {
+			unreadable = true
+			return 0
+		}
+		n, _ := constant.Int64Val(vv.Value)
+		return n
 	}
+
+	id := loadInt64Maybe("goid")
+	gopc := loadInt64Maybe("gopc")
+	startpc := loadInt64Maybe("startpc")
 	var stackhi, stacklo uint64
-	if stackVar := v.fieldVariable("stack"); stackVar != nil {
+	if stackVar := v.loadFieldNamed("stack"); stackVar != nil {
 		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
 			stackhi, _ = constant.Uint64Val(stackhiVar.Value)
 		}
@@ -580,14 +590,19 @@ func (v *Variable) parseG() (*G, error) {
 		}
 	}
 
-	stkbarVar, _ := v.structMember("stkbar")
-	stkbarVarPosFld := v.fieldVariable("stkbarPos")
+	stkbarVar := v.loadFieldNamed("stkbar")
+	stkbarVarPosFld := v.loadFieldNamed("stkbarPos")
 	var stkbarPos int64
 	if stkbarVarPosFld != nil { // stack barriers were removed in Go 1.9
 		stkbarPos, _ = constant.Int64Val(stkbarVarPosFld.Value)
 	}
 
-	status, _ := constant.Int64Val(v.fieldVariable("atomicstatus").Value)
+	status := loadInt64Maybe("atomicstatus")
+
+	if unreadable {
+		return nil, ErrUnreadableG
+	}
+
 	f, l, fn := v.bi.PCToLine(uint64(pc))
 
 	g := &G{
@@ -598,7 +613,6 @@ func (v *Variable) parseG() (*G, error) {
 		SP:         uint64(sp),
 		BP:         uint64(bp),
 		LR:         uint64(lr),
-		WaitReason: waitReason,
 		Status:     uint64(status),
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
 		variable:   v,
@@ -623,6 +637,9 @@ func (v *Variable) loadFieldNamed(name string) *Variable {
 }
 
 func (v *Variable) fieldVariable(name string) *Variable {
+	if !v.loaded {
+		panic("fieldVariable called on a variable that wasn't loaded")
+	}
 	for i := range v.Children {
 		if child := &v.Children[i]; child.Name == name {
 			return child
