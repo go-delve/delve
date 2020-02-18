@@ -19,7 +19,7 @@ test-proc-run:
 	@go run scripts/make.go test -s proc -r $(RUN)
 
 test-integration-run:
-	@go run scripts/make.go test -s service/test -r ($RUN)
+	@go run scripts/make.go test -s service/test -r $(RUN)
 
 vendor:
 	@go run scripts/make.go vendor
