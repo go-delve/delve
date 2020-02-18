@@ -3,11 +3,11 @@ package daptest
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net"
 	"path/filepath"
+	"testing"
 
 	"github.com/google/go-dap"
 )
@@ -49,6 +49,94 @@ func (c *Client) send(request dap.Message) {
 	dap.WriteProtocolMessage(c.conn, request)
 }
 
+func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.DisconnectResponse)
+}
+
+func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.ErrorResponse)
+}
+
+func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.ContinueResponse)
+}
+
+func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.TerminatedEvent)
+}
+
+func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.InitializeResponse)
+}
+
+func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.InitializedEvent)
+}
+
+func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.LaunchResponse)
+}
+
+func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExceptionBreakpointsResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.SetExceptionBreakpointsResponse)
+}
+
+func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.SetBreakpointsResponse)
+}
+
+func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.StoppedEvent)
+}
+
+func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
+	response, err := dap.ReadProtocolMessage(c.reader)
+	if err != nil {
+		t.Error(err)
+	}
+	return response.(*dap.ConfigurationDoneResponse)
+}
+
 // ReadBaseMessage reads and returns a json-encoded DAP message.
 func (c *Client) ReadBaseMessage() ([]byte, error) {
 	message, err := dap.ReadBaseMessage(c.reader)
@@ -58,21 +146,6 @@ func (c *Client) ReadBaseMessage() ([]byte, error) {
 	}
 	fmt.Println("[client <- server]", string(message))
 	return message, nil
-}
-
-// ReadErrorResponse reads, decodes and validates the result
-// to be an error response. Returns the response or an error.
-func (c *Client) ReadErrorResponse() (dap.Message, error) {
-	response, err := dap.ReadProtocolMessage(c.reader)
-	if err != nil {
-		return nil, err
-	}
-	switch response.(type) {
-	case *dap.ErrorResponse:
-		return response, nil
-	default:
-		return nil, errors.New(fmt.Sprintf("not an ErrorResponse: %#v", response))
-	}
 }
 
 // InitializeRequest sends an 'initialize' request.
