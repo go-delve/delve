@@ -50,102 +50,91 @@ func (c *Client) send(request dap.Message) {
 }
 
 func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.DisconnectResponse)
+	return m.(*dap.DisconnectResponse)
 }
 
 func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.ErrorResponse)
+	return m.(*dap.ErrorResponse)
 }
 
 func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.ContinueResponse)
+	return m.(*dap.ContinueResponse)
 }
 
 func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.TerminatedEvent)
+	return m.(*dap.TerminatedEvent)
 }
 
 func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.InitializeResponse)
+	return m.(*dap.InitializeResponse)
 }
 
 func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.InitializedEvent)
+	return m.(*dap.InitializedEvent)
 }
 
 func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.LaunchResponse)
+	return m.(*dap.LaunchResponse)
 }
 
 func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExceptionBreakpointsResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.SetExceptionBreakpointsResponse)
+	return m.(*dap.SetExceptionBreakpointsResponse)
 }
 
 func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.SetBreakpointsResponse)
+	return m.(*dap.SetBreakpointsResponse)
 }
 
 func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.StoppedEvent)
+	return m.(*dap.StoppedEvent)
 }
 
 func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
-	response, err := dap.ReadProtocolMessage(c.reader)
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
 		t.Error(err)
 	}
-	return response.(*dap.ConfigurationDoneResponse)
-}
-
-// ReadBaseMessage reads and returns a json-encoded DAP message.
-func (c *Client) ReadBaseMessage() ([]byte, error) {
-	message, err := dap.ReadBaseMessage(c.reader)
-	if err != nil {
-		fmt.Println("DAP client error:", err)
-		return nil, err
-	}
-	fmt.Println("[client <- server]", string(message))
-	return message, nil
+	return m.(*dap.ConfigurationDoneResponse)
 }
 
 // InitializeRequest sends an 'initialize' request.

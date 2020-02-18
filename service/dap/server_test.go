@@ -174,12 +174,10 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest(fixture.Path+"_does_not_exist", false)
-		resp = client.ExpectErrorResponse(t)
-		expectFailedToLaunch(resp, 1)
+		expectFailedToLaunch(client.ExpectErrorResponse(t), 1)
 
 		client.LaunchRequest(fixture.Source, true) // Not an executable
-		resp = client.ExpectErrorResponse(t)
-		expectFailedToLaunch(resp, 2)
+		expectFailedToLaunch(client.ExpectErrorResponse(t), 2)
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
