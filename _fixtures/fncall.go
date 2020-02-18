@@ -121,7 +121,7 @@ func noreturncall(n int) {
 	return
 }
 
-type Base struct{
+type Base struct {
 	y int
 }
 
@@ -132,6 +132,18 @@ type Derived struct {
 
 func (b *Base) Method() int {
 	return b.y
+}
+
+type X int
+
+func (_ X) CallMe() {
+	println("foo")
+}
+
+type X2 int
+
+func (_ X2) CallMe(i int) int {
+	return i * i
 }
 
 func main() {
@@ -148,6 +160,8 @@ func main() {
 	var vable_a VRcvrable = a
 	var vable_pa VRcvrable = pa
 	var pable_pa PRcvrable = pa
+	var x X = 2
+	var x2 X2 = 2
 
 	fn2clos := makeclos(pa)
 	fn2glob := call1
@@ -163,5 +177,6 @@ func main() {
 	strings.LastIndexByte(stringslice[1], 'w')
 	d.Method()
 	d.Base.Method()
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d)
+	x.CallMe()
+	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5))
 }

@@ -1041,6 +1041,10 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 	if err != nil {
 		return nil, err
 	}
+	// Prevent abuse, attempting to call "nil.member" directly.
+	if xv.Addr == 0 && xv.Name == "nil" {
+		return nil, fmt.Errorf("%s (type %s) is not a struct", xv.Name, xv.TypeString())
+	}
 	rv, err := xv.findMethod(node.Sel.Name)
 	if err != nil {
 		return nil, err
@@ -1822,10 +1826,6 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 		typ = ptyp.Type
 	}
 
-	if _, istypedef := typ.(*godwarf.TypedefType); !istypedef {
-		return nil, nil
-	}
-
 	typePath := typ.Common().Name
 	dot := strings.LastIndex(typePath, ".")
 	if dot < 0 {
@@ -1943,7 +1943,26 @@ func (fn *Function) fakeType(bi *BinaryInfo, removeReceiver bool) (*godwarf.Func
 		return nil, err
 	}
 
-	if removeReceiver {
+	// Only try and remove the receiver if it is actually being passed in as a formal argument.
+	// In the case of:
+	//
+	// func (_ X) Method() { ... }
+	//
+	// that would not be true, the receiver is not used and thus
+	// not being passed in as a formal argument.
+	//
+	// TODO(derekparker) This, I think, creates a new bug where
+	// if the receiver is not passed in as a formal argument but
+	// there are other arguments, such as:
+	//
+	// func (_ X) Method(i int) { ... }
+	//
+	// The first argument 'i int' will be removed. We must actually detect
+	// here if the receiver is being used. While this is a bug, it's not a
+	// functional bug, it only affects the string representation of the fake
+	// function type we create. It's not really easy to tell here if we use
+	// the receiver or not. Perhaps we should not perform this manipulation at all?
+	if removeReceiver && len(formalArgs) > 0 {
 		formalArgs = formalArgs[1:]
 	}
 
