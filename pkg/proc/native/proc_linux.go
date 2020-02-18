@@ -250,16 +250,31 @@ func findExecutable(path string, pid int) string {
 }
 
 func (dbp *Process) trapWait(pid int) (*Thread, error) {
-	return dbp.trapWaitInternal(pid, false)
+	return dbp.trapWaitInternal(pid, 0)
 }
 
-func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
+type trapWaitOptions uint8
+
+const (
+	trapWaitHalt trapWaitOptions = 1 << iota
+	trapWaitNohang
+)
+
+func (dbp *Process) trapWaitInternal(pid int, options trapWaitOptions) (*Thread, error) {
+	halt := options&trapWaitHalt != 0
 	for {
-		wpid, status, err := dbp.wait(pid, 0)
+		wopt := 0
+		if options&trapWaitNohang != 0 {
+			wopt = sys.WNOHANG
+		}
+		wpid, status, err := dbp.wait(pid, wopt)
 		if err != nil {
 			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
 		if wpid == 0 {
+			if options&trapWaitNohang != 0 {
+				return nil, nil
+			}
 			continue
 		}
 		th, ok := dbp.threads[wpid]
@@ -321,6 +336,9 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 		}
 		if (halt && status.StopSignal() == sys.SIGSTOP) || (status.StopSignal() == sys.SIGTRAP) {
 			th.os.running = false
+			if status.StopSignal() == sys.SIGTRAP {
+				th.os.setbp = true
+			}
 			return th, nil
 		}
 
@@ -411,7 +429,7 @@ func (dbp *Process) exitGuard(err error) error {
 		return err
 	}
 	if status(dbp.pid, dbp.os.comm) == StatusZombie {
-		_, err := dbp.trapWaitInternal(-1, false)
+		_, err := dbp.trapWaitInternal(-1, 0)
 		return err
 	}
 
@@ -442,6 +460,21 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
+
+	for _, th := range dbp.threads {
+		th.os.setbp = false
+	}
+	trapthread.os.setbp = true
+
+	// check if any other thread simultaneously received a SIGTRAP
+	for {
+		th, _ := dbp.trapWaitInternal(-1, trapWaitNohang)
+		if th == nil {
+			break
+		}
+	}
+
+	// stop all threads that are still running
 	for _, th := range dbp.threads {
 		if !th.Stopped() {
 			if err := th.stop(); err != nil {
@@ -465,7 +498,7 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		if allstopped {
 			break
 		}
-		_, err := dbp.trapWaitInternal(-1, true)
+		_, err := dbp.trapWaitInternal(-1, trapWaitHalt)
 		if err != nil {
 			return err
 		}
@@ -475,9 +508,9 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 		return err
 	}
 
-	// set breakpoints on all threads
+	// set breakpoints on SIGTRAP threads
 	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil {
+		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp {
 			if err := th.SetCurrentBreakpoint(true); err != nil {
 				return err
 			}

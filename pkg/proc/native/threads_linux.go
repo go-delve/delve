@@ -16,6 +16,7 @@ type OSSpecificDetails struct {
 	delayedSignal int
 	registers     sys.PtraceRegs
 	running       bool
+	setbp         bool
 }
 
 func (t *Thread) stop() (err error) {
