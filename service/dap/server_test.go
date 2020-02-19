@@ -2,8 +2,10 @@ package dap
 
 import (
 	"flag"
+	"io"
 	"net"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,31 +24,41 @@ func TestMain(m *testing.M) {
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
-func startDAPServer(t *testing.T) (server *Server, addr string) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	server = NewServer(&service.Config{
-		Listener:       listener,
-		Backend:        "default",
-		DisconnectChan: nil,
-	})
-	server.Run()
-	// Give server time to start listening for clients
-	time.Sleep(100 * time.Millisecond)
-	return server, listener.Addr().String()
-}
-
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
 	var buildFlags protest.BuildFlags
 	fixture := protest.BuildFixture(name, buildFlags)
 
-	server, addr := startDAPServer(t)
-	defer server.Stop()
-	client := daptest.NewClient(addr)
+	// Start the DAP server.
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	disconnectChan := make(chan struct{})
+	server := NewServer(&service.Config{
+		Listener:       listener,
+		Backend:        "default",
+		DisconnectChan: disconnectChan,
+	})
+	server.Run()
+	// Give server time to start listening for clients
+	time.Sleep(100 * time.Millisecond)
+
+	var stopOnce sync.Once
+	// Run a goroutine that stops the server when disconnectChan is signaled.
+	// This helps us test that certain events cause the server to stop as
+	// expected.
+	go func() {
+		<-disconnectChan
+		stopOnce.Do(func() { server.Stop() })
+	}()
+
+	client := daptest.NewClient(listener.Addr().String())
 	defer client.Close()
+
+	defer func() {
+		stopOnce.Do(func() { server.Stop() })
+	}()
 
 	test(client, fixture)
 }
@@ -200,6 +212,21 @@ func TestBadLaunchRequests(t *testing.T) {
 		dresp := client.ExpectDisconnectResponse(t)
 		if dresp.RequestSeq != 3 {
 			t.Errorf("got %#v, want RequestSeq=3", dresp)
+		}
+	})
+}
+
+func TestBadlyFormattedMessageToServer(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// Send a badly formatted message to the server, and expect it to close the
+		// connection.
+		client.UnknownRequest()
+		time.Sleep(100 * time.Millisecond)
+
+		_, err := client.ReadMessage()
+
+		if err != io.EOF {
+			t.Errorf("got err=%v, want io.EOF", err)
 		}
 	})
 }
