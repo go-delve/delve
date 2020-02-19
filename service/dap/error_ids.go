@@ -3,6 +3,7 @@ package dap
 // Unique identifiers for messages returned for errors from requests.
 const (
 	UnsupportedCommand int = 9999
+	InternalError      int = 8888
 
 	// The values below come from the vscode-go debug adaptor.
 	// Although the spec says they should be unique, the adaptor

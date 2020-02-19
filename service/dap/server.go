@@ -161,13 +161,24 @@ func (s *Server) serveDAPCodec() {
 			}
 			return
 		}
-		// TODO(polina) Add a panic guard,
-		// so we do not kill user's process when delve panics.
 		s.handleRequest(request)
 	}
 }
 
 func (s *Server) handleRequest(request dap.Message) {
+	defer func() {
+		// In case a handler panics, we catch the panic and send an error response
+		// back to the client.
+		if ierr := recover(); ierr != nil {
+			req, ok := request.(*dap.Request)
+			if ok {
+				s.sendErrorResponse(*req, InternalError, "Internal Error", fmt.Sprintf("%v", ierr))
+			} else {
+				s.log.Errorf("Internal error while processing %#v: %v", request, ierr)
+			}
+		}
+	}()
+
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
