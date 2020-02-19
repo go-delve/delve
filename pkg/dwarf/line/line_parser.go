@@ -152,8 +152,8 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	entry.LastModTime, _ = util.DecodeULEB128(buf)
 	entry.Length, _ = util.DecodeULEB128(buf)
 	if !filepath.IsAbs(entry.Path) {
-		if entry.DirIdx >= 0 && entry.DirIdx < uint64(len(info.IncludeDirs)) {
-			entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
+		if entry.DirIdx > 0 && entry.DirIdx <= uint64(len(info.IncludeDirs)) {
+			entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx-1], entry.Path)
 		}
 	}
 
