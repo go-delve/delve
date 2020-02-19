@@ -55,45 +55,47 @@ func TestStopOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponse(t)
-		if initResp.RequestSeq != 0 || !initResp.Success || !initResp.Body.SupportsConfigurationDoneRequest {
-			t.Errorf("got %#v, want RequestSeq=0, Success=true, SupportsConfigurationDoneRequest=true", initResp)
+		if initResp.RequestSeq != 0 {
+			t.Errorf("got %#v, want RequestSeq=0", initResp)
 		}
 
 		client.LaunchRequest(fixture.Path, true /*stopOnEntry*/)
 		client.ExpectInitializedEvent(t)
 		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.RequestSeq != 1 || !launchResp.Success {
-			t.Errorf("got %#v, want RequestSeq=1, Success=true", launchResp)
+		if launchResp.RequestSeq != 1 {
+			t.Errorf("got %#v, want RequestSeq=1", launchResp)
 		}
 
 		client.SetExceptionBreakpointsRequest()
 		sResp := client.ExpectSetExceptionBreakpointsResponse(t)
-		if sResp.RequestSeq != 2 || !sResp.Success {
-			t.Errorf("got %#v, want RequestSeq=2, Success=true", sResp)
+		if sResp.RequestSeq != 2 {
+			t.Errorf("got %#v, want RequestSeq=2", sResp)
 		}
 
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
-		if stopEvent.Body.Reason != "breakpoint" || stopEvent.Body.ThreadId != 1 || !stopEvent.Body.AllThreadsStopped {
+		if stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped {
 			t.Errorf("got %#v, want Body Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true", stopEvent)
 		}
 
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.RequestSeq != 3 || !cdResp.Success {
-			t.Errorf("got %#v, want RequestSeq=3, Success=true", cdResp)
+		if cdResp.RequestSeq != 3 {
+			t.Errorf("got %#v, want RequestSeq=3", cdResp)
 		}
 
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.RequestSeq != 4 || !contResp.Success {
-			t.Errorf("got %#v, want RequestSeq=4, Success=true", contResp)
+		if contResp.RequestSeq != 4 {
+			t.Errorf("got %#v, want RequestSeq=4", contResp)
 		}
 		client.ExpectTerminatedEvent(t)
 
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.RequestSeq != 5 || !dResp.Success {
-			t.Errorf("got %#v, want RequestSeq=5, Success=true", dResp)
+		if dResp.RequestSeq != 5 {
+			t.Errorf("got %#v, want RequestSeq=5", dResp)
 		}
 	})
 }
@@ -106,8 +108,8 @@ func TestSetBreakpoint(t *testing.T) {
 		client.LaunchRequest(fixture.Path, false /*stopOnEntry*/)
 		client.ExpectInitializedEvent(t)
 		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.RequestSeq != 1 || !launchResp.Success {
-			t.Errorf("got %#v, want RequestSeq=1, Success=true", launchResp)
+		if launchResp.RequestSeq != 1 {
+			t.Errorf("got %#v, want RequestSeq=1", launchResp)
 		}
 
 		client.SetBreakpointsRequest(fixture.Source, []int{8, 100})
@@ -117,7 +119,7 @@ func TestSetBreakpoint(t *testing.T) {
 		}
 		bkpt0 := sResp.Body.Breakpoints[0]
 		if !bkpt0.Verified || bkpt0.Line != 8 {
-			t.Errorf("got breakpoint 0 = %#v, want Verified=true, Line=8", bkpt0)
+			t.Errorf("got breakpoints[0] = %#v, want Verified=true, Line=8", bkpt0)
 		}
 
 		client.SetExceptionBreakpointsRequest()
@@ -125,8 +127,8 @@ func TestSetBreakpoint(t *testing.T) {
 
 		client.ConfigurationDoneRequest()
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.RequestSeq != 4 || !cdResp.Success {
-			t.Errorf("got %#v, want RequestSeq=4, Success=true", cdResp)
+		if cdResp.RequestSeq != 4 {
+			t.Errorf("got %#v, want RequestSeq=4", cdResp)
 		}
 
 		client.ContinueRequest(1)
@@ -182,8 +184,8 @@ func TestBadLaunchRequests(t *testing.T) {
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
 		dresp := client.ExpectDisconnectResponse(t)
-		if dresp.RequestSeq != 3 || !dresp.Success {
-			t.Errorf("got %#v, want RequestSeq=3, Success=true", dresp)
+		if dresp.RequestSeq != 3 {
+			t.Errorf("got %#v, want RequestSeq=3", dresp)
 		}
 	})
 }
