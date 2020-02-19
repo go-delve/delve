@@ -1,5 +1,7 @@
 package proc
 
+import "fmt"
+
 // AsmInstruction represents one assembly instruction.
 type AsmInstruction struct {
 	Loc        Location
@@ -101,6 +103,9 @@ func checkPrologue(s []AsmInstruction, prologuePattern opcodeSeq) bool {
 // will evaluate the argument of the CALL instruction using the thread's registers.
 // Be aware that the Bytes field of each returned instruction is a slice of a larger array of size startAddr - endAddr.
 func Disassemble(mem MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64) ([]AsmInstruction, error) {
+	if startAddr > endAddr {
+		return nil, fmt.Errorf("start address(%x) should be less than end address(%x)", startAddr, endAddr)
+	}
 	return disassemble(mem, regs, breakpoints, bi, startAddr, endAddr, false)
 }
 
