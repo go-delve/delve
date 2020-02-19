@@ -86,7 +86,11 @@ func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse 
 	if err != nil {
 		t.Error(err)
 	}
-	return m.(*dap.InitializeResponse)
+	initResp := m.(*dap.InitializeResponse)
+	if !initResp.Body.SupportsConfigurationDoneRequest {
+		t.Errorf("got %#v, want SupportsConfigurationDoneRequest=true", initResp)
+	}
+	return initResp
 }
 
 func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
