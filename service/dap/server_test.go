@@ -53,6 +53,8 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 
 func TestStopOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// This test exhaustively tests Seq and RequestSeq on all messages from the
+		// server. Other tests shouldn't necessarily repeat these checks.
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponse(t)
 		if initResp.Seq != 0 || initResp.RequestSeq != 0 {
@@ -60,7 +62,11 @@ func TestStopOnEntry(t *testing.T) {
 		}
 
 		client.LaunchRequest(fixture.Path, true /*stopOnEntry*/)
-		client.ExpectInitializedEvent(t)
+		initEv := client.ExpectInitializedEvent(t)
+		if initEv.Seq != 0 {
+			t.Errorf("got %#v, want Seq=0", initEv)
+		}
+
 		launchResp := client.ExpectLaunchResponse(t)
 		if launchResp.Seq != 0 || launchResp.RequestSeq != 1 {
 			t.Errorf("got %#v, want Seq=0, RequestSeq=1", launchResp)
@@ -91,7 +97,11 @@ func TestStopOnEntry(t *testing.T) {
 		if contResp.Seq != 0 || contResp.RequestSeq != 4 {
 			t.Errorf("got %#v, want Seq=0, RequestSeq=4", contResp)
 		}
-		client.ExpectTerminatedEvent(t)
+
+		termEv := client.ExpectTerminatedEvent(t)
+		if termEv.Seq != 0 {
+			t.Errorf("got %#v, want Seq=0", termEv)
+		}
 
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
