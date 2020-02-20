@@ -300,7 +300,6 @@ func BenchmarkPCToLine(b *testing.B) {
 }
 
 func TestDebugLineC(t * testing.T) {
-
 	p, err := filepath.Abs("../../../_fixtures/debug_line_c_data")
 	if err != nil {
 		t.Fatal("Could not find test data", p, err)
@@ -322,9 +321,8 @@ func TestDebugLineC(t * testing.T) {
 			 "/usr/include/x86_64-linux-gnu/bits/sys_errlist.h"}
 
 	for _, ln := range parsed {
-
 		if len(ln.FileNames) == 0 {
-			print("Parser could not parse Filenames")
+			t.Fatal("Parser could not parse Filenames")
 		}
 		for _, fn := range ln.FileNames {
 			found := false
