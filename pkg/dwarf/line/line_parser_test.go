@@ -298,3 +298,48 @@ func BenchmarkPCToLine(b *testing.B) {
 		runTestPCToLine(b, lineInfos, entries, basePCs, false, 0x10000)
 	}
 }
+
+func TestDebugLineC(t * testing.T) {
+
+	p, err := filepath.Abs("../../../_fixtures/debug_line_c_data")
+	if err != nil {
+		t.Fatal("Could not find test data", p, err)
+	}
+
+	data, err := ioutil.ReadFile(p)
+	if err != nil {
+		t.Fatal("Could not read test data", err)
+	}
+
+	parsed  :=  ParseAll(data, nil, 0, true)
+	if err != nil {
+		t.Fatal("Could not parse test data", err)
+	}
+	if len(parsed) == 0 {
+		t.Fatal("Parser result is empty")
+	}
+
+	file := []string{"main.c", "/mnt/c/develop/delve/_fixtures/main.c" ,"/usr/lib/gcc/x86_64-linux-gnu/7/include/stddef.h",
+			 "/usr/include/x86_64-linux-gnu/bits/types.h" ,"/usr/include/x86_64-linux-gnu/bits/libio.h", "/usr/include/stdio.h",
+			 "/usr/include/x86_64-linux-gnu/bits/sys_errlist.h"}
+
+	for _, ln := range parsed {
+
+		if len(ln.FileNames) == 0 {
+			print("Parser could not parse Filenames")
+		}
+		for _, fn := range ln.FileNames {
+			found := false
+			for _, cmp := range file {
+				if filepath.ToSlash(fn.Path) == cmp {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("Found %s does not appear in the filelist\n", fn.Path)
+			}
+
+		}
+	}
+}

@@ -74,9 +74,7 @@ func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{})
 	dbl.Logf = logfn
 	dbl.staticBase = staticBase
 	dbl.Lookup = make(map[string]*FileEntry)
-	if compdir != "" {
-		dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)
-	}
+	dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)
 
 	dbl.stateMachineCache = make(map[uint64]*StateMachine)
 	dbl.lastMachineCache = make(map[uint64]*StateMachine)
@@ -152,8 +150,8 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	entry.LastModTime, _ = util.DecodeULEB128(buf)
 	entry.Length, _ = util.DecodeULEB128(buf)
 	if !filepath.IsAbs(entry.Path) {
-		if entry.DirIdx > 0 && entry.DirIdx <= uint64(len(info.IncludeDirs)) {
-			entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx-1], entry.Path)
+		if entry.DirIdx >= 0 && entry.DirIdx < uint64(len(info.IncludeDirs)) {
+			entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
 		}
 	}
 
