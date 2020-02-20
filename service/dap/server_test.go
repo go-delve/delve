@@ -75,27 +75,28 @@ func TestStopOnEntry(t *testing.T) {
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
 		if stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Seq != 0 ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("got %#v, want Body Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true", stopEvent)
+			t.Errorf("got %#v, want Body Reason=\"breakpoint\", Seq=0, ThreadId=1, AllThreadsStopped=true", stopEvent)
 		}
 
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.RequestSeq != 3 {
-			t.Errorf("got %#v, want RequestSeq=3", cdResp)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=3", cdResp)
 		}
 
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.RequestSeq != 4 {
-			t.Errorf("got %#v, want RequestSeq=4", contResp)
+		if contResp.Seq != 0 || contResp.RequestSeq != 4 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=4", contResp)
 		}
 		client.ExpectTerminatedEvent(t)
 
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.RequestSeq != 5 {
-			t.Errorf("got %#v, want RequestSeq=5", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 5 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=5", dResp)
 		}
 	})
 }
