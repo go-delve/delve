@@ -385,6 +385,10 @@ const (
 	contNext
 	contStep
 	contStepout
+	contReverseNext
+	contReverseStep
+	contReverseStepout
+	contContinueToBreakpoint
 )
 
 type seqTest struct {
@@ -459,6 +463,35 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 					_, err := p.ClearBreakpoint(bp.Addr)
 					assertNoError(err, t, "ClearBreakpoint() returned an error")
 				}
+			case contReverseNext:
+				if traceTestseq2 {
+					t.Log("reverse-next")
+				}
+				assertNoError(p.Direction(proc.Backward), t, "direction switch")
+				assertNoError(proc.Next(p), t, "reverse Next() returned an error")
+				assertNoError(p.Direction(proc.Forward), t, "direction switch")
+			case contReverseStep:
+				if traceTestseq2 {
+					t.Log("reverse-step")
+				}
+				assertNoError(p.Direction(proc.Backward), t, "direction switch")
+				assertNoError(proc.Step(p), t, "reverse Step() returned an error")
+				assertNoError(p.Direction(proc.Forward), t, "direction switch")
+			case contReverseStepout:
+				if traceTestseq2 {
+					t.Log("reverse-stepout")
+				}
+				assertNoError(p.Direction(proc.Backward), t, "direction switch")
+				assertNoError(proc.StepOut(p), t, "reverse StepOut() returned an error")
+				assertNoError(p.Direction(proc.Forward), t, "direction switch")
+			case contContinueToBreakpoint:
+				bp := setFileBreakpoint(p, t, fixture.Source, tc.pos.(int))
+				if traceTestseq2 {
+					t.Log("continue")
+				}
+				assertNoError(proc.Continue(p), t, "Continue() returned an error")
+				_, err := p.ClearBreakpoint(bp.Addr)
+				assertNoError(err, t, "ClearBreakpoint() returned an error")
 			}
 
 			f, ln = currentLineNumber(p, t)
@@ -467,7 +500,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 
 			if traceTestseq2 {
 				t.Logf("at %#x %s:%d", pc, f, ln)
-				fmt.Printf("at %#x %s:%d", pc, f, ln)
+				fmt.Printf("at %#x %s:%d\n", pc, f, ln)
 			}
 			switch pos := tc.pos.(type) {
 			case int:
@@ -4598,5 +4631,120 @@ func BenchmarkConditionalBreakpoints(b *testing.B) {
 		if _, exited := err.(proc.ErrProcessExited); !exited {
 			b.Fatalf("Unexpected error on Continue(): %v", err)
 		}
+	})
+}
+
+func TestBackwardNextGeneral(t *testing.T) {
+	if testBackend != "rr" {
+		t.Skip("Reverse stepping test needs rr")
+	}
+	testseq2(t, "testnextprog", "main.helloworld", []seqTest{
+		{contContinue, 13},
+		{contNext, 14},
+		{contReverseNext, 13},
+		{contReverseNext, 34},
+		{contReverseNext, 28},
+		{contReverseNext, 27},
+		{contReverseNext, 26},
+		{contReverseNext, 24},
+		{contReverseNext, 23},
+		{contReverseNext, 31},
+		{contReverseNext, 26},
+		{contReverseNext, 24},
+		{contReverseNext, 23},
+		{contReverseNext, 31},
+		{contReverseNext, 26},
+		{contReverseNext, 24},
+		{contReverseNext, 23},
+		{contReverseNext, 20},
+		{contReverseNext, 19},
+		{contReverseNext, 17},
+		{contReverseNext, 39},
+		{contReverseNext, 38},
+		{contReverseNext, 37},
+	})
+}
+
+func TestBackwardStepOutGeneral(t *testing.T) {
+	if testBackend != "rr" {
+		t.Skip("Reverse stepping test needs rr")
+	}
+	testseq2(t, "testnextprog", "main.helloworld", []seqTest{
+		{contContinue, 13},
+		{contNext, 14},
+		{contReverseStepout, 34},
+		{contReverseStepout, 39},
+	})
+}
+
+func TestBackwardStepGeneral(t *testing.T) {
+	if testBackend != "rr" {
+		t.Skip("Reverse stepping test needs rr")
+	}
+	testseq2(t, "testnextprog", "main.helloworld", []seqTest{
+		{contContinue, 13},
+		{contNext, 14},
+		{contReverseStep, 13},
+		{contReverseStep, 34},
+		{contReverseStep, 28},
+		{contReverseNext, 27}, // skip fmt.Printf
+		{contReverseStep, 26},
+		{contReverseStep, 24},
+		{contReverseStep, 23},
+		{contReverseStep, 11},
+		{contReverseNext, 10}, // skip time.Sleep
+		{contReverseStep, 9},
+
+		{contReverseStep, 31},
+		{contReverseStep, 26},
+		{contReverseStep, 24},
+		{contReverseStep, 23},
+		{contReverseStep, 11},
+		{contReverseNext, 10}, // skip time.Sleep
+		{contReverseStep, 9},
+
+		{contReverseStep, 31},
+		{contReverseStep, 26},
+		{contReverseStep, 24},
+		{contReverseStep, 23},
+		{contReverseStep, 20},
+		{contReverseStep, 19},
+		{contReverseStep, 17},
+		{contReverseStep, 39},
+		{contReverseStep, 38},
+		{contReverseStep, 37},
+	})
+}
+
+func TestBackwardNextDeferPanic(t *testing.T) {
+	if testBackend != "rr" {
+		t.Skip("Reverse stepping test needs rr")
+	}
+	testseq2(t, "defercall", "", []seqTest{
+		{contContinue, 12},
+		{contReverseNext, 11},
+		{contReverseNext, 10},
+		{contReverseNext, 9},
+		{contReverseNext, 27},
+
+		{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+		{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+		{contReverseNext, 13},
+		{contReverseNext, 12},
+		{contReverseNext, 11},
+		{contReverseNext, 10},
+		{contReverseNext, 9},
+		{contReverseNext, 27},
+
+		{contContinueToBreakpoint, 18}, // go to panic call
+		{contNext, 6},                  // panic so the deferred call happens
+		{contReverseNext, 18},
+		{contReverseNext, 17},
+		{contReverseNext, 16},
+		{contReverseNext, 15},
+		{contReverseNext, 23},
+		{contReverseNext, 22},
+		{contReverseNext, 21},
+		{contReverseNext, 28},
 	})
 }
