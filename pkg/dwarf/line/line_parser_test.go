@@ -109,7 +109,7 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 			}
 		}
 
-		if len(dbl.IncludeDirs) != 0 {
+		if len(dbl.IncludeDirs) != 1 {
 			t.Fatal("Include dirs not parsed correctly")
 		}
 
@@ -312,9 +312,7 @@ func TestDebugLineC(t * testing.T) {
 	}
 
 	parsed  :=  ParseAll(data, nil, 0, true)
-	if err != nil {
-		t.Fatal("Could not parse test data", err)
-	}
+
 	if len(parsed) == 0 {
 		t.Fatal("Parser result is empty")
 	}
