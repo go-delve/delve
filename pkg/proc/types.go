@@ -8,7 +8,6 @@ import (
 	"go/constant"
 	"reflect"
 	"strings"
-	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
@@ -566,212 +565,31 @@ func uncommon(_type *Variable, tflag int64) *Variable {
 	return _type.newVariable(_type.Name, _type.Addr+uintptr(_type.RealType.Size()), typ, _type.mem)
 }
 
+var kindToRuntimeTypeName = map[reflect.Kind]string{
+	reflect.Array:     "runtime.arraytype",
+	reflect.Chan:      "runtime.chantype",
+	reflect.Func:      "runtime.functype",
+	reflect.Interface: "runtime.interfacetype",
+	reflect.Map:       "runtime.maptype",
+	reflect.Ptr:       "runtime.ptrtype",
+	reflect.Slice:     "runtime.slicetype",
+	reflect.Struct:    "runtime.structtype",
+}
+
 // typeForKind returns a *dwarf.StructType describing the specialization of
 // runtime._type for the specified type kind. For example if kind is
 // reflect.ArrayType it will return runtime.arraytype
 func typeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, error) {
-	var typ godwarf.Type
-	switch reflect.Kind(kind & kindMask) {
-	case reflect.Array:
-		typ, _ = bi.findType("runtime.arraytype")
-	case reflect.Chan:
-		//
-		typ, _ = bi.findType("runtime.chantype")
-	case reflect.Func:
-		typ, _ = bi.findType("runtime.functype")
-	case reflect.Interface:
-		typ, _ = bi.findType("runtime.interfacetype")
-	case reflect.Map:
-		typ, _ = bi.findType("runtime.maptype")
-	case reflect.Ptr:
-		typ, _ = bi.findType("runtime.ptrtype")
-	case reflect.Slice:
-		typ, _ = bi.findType("runtime.slicetype")
-	case reflect.Struct:
-		typ, _ = bi.findType("runtime.structtype")
-	default:
+	typename, ok := kindToRuntimeTypeName[reflect.Kind(kind&kindMask)]
+	if !ok {
 		return nil, nil
 	}
-	if typ != nil {
-		typ = resolveTypedef(typ)
-		return typ.(*godwarf.StructType), nil
-	}
-	return constructTypeForKind(kind, bi)
-}
-
-// constructTypeForKind synthesizes a *dwarf.StructType for the specified kind.
-// This is necessary because on go1.8 and previous the specialized types of
-// runtime._type were not exported.
-func constructTypeForKind(kind int64, bi *BinaryInfo) (*godwarf.StructType, error) {
-	rtyp, err := bi.findType("runtime._type")
+	typ, err := bi.findType(typename)
 	if err != nil {
 		return nil, err
 	}
-	prtyp := pointerTo(rtyp, bi.Arch)
-
-	uintptrtyp, err := bi.findType("uintptr")
-	if err != nil {
-		return nil, err
-	}
-
-	uint32typ := &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 4, Name: "uint32"}}}
-	uint16typ := &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 2, Name: "uint16"}}}
-
-	newStructType := func(name string, sz uintptr) *godwarf.StructType {
-		return &godwarf.StructType{
-			CommonType: godwarf.CommonType{Name: name, ByteSize: int64(sz)},
-			StructName: name,
-			Kind:       "struct",
-			Field:      nil, Incomplete: false,
-		}
-	}
-
-	appendField := func(typ *godwarf.StructType, name string, fieldtype godwarf.Type, off uintptr) {
-		typ.Field = append(typ.Field, &godwarf.StructField{Name: name, ByteOffset: int64(off), Type: fieldtype})
-	}
-
-	newSliceType := func(elemtype godwarf.Type) *godwarf.SliceType {
-		r := newStructType("[]"+elemtype.Common().Name, uintptr(3*uintptrtyp.Size()))
-		appendField(r, "array", pointerTo(elemtype, bi.Arch), 0)
-		appendField(r, "len", uintptrtyp, uintptr(uintptrtyp.Size()))
-		appendField(r, "cap", uintptrtyp, uintptr(2*uintptrtyp.Size()))
-		return &godwarf.SliceType{StructType: *r, ElemType: elemtype}
-	}
-
-	type rtype struct {
-		size       uintptr
-		ptrdata    uintptr
-		hash       uint32 // hash of type; avoids computation in hash tables
-		tflag      uint8  // extra type information flags
-		align      uint8  // alignment of variable with this type
-		fieldAlign uint8  // alignment of struct field with this type
-		kind       uint8  // enumeration for C
-		alg        *byte  // algorithm table
-		gcdata     *byte  // garbage collection data
-		str        int32  // string form
-		ptrToThis  int32  // type for pointer to this type, may be zero
-	}
-
-	switch reflect.Kind(kind & kindMask) {
-	case reflect.Array:
-		// runtime.arraytype
-		var a struct {
-			rtype
-			elem  *rtype // array element type
-			slice *rtype // slice type
-			len   uintptr
-		}
-		typ := newStructType("runtime.arraytype", unsafe.Sizeof(a))
-		appendField(typ, "elem", prtyp, unsafe.Offsetof(a.elem))
-		appendField(typ, "len", uintptrtyp, unsafe.Offsetof(a.len))
-		return typ, nil
-	case reflect.Chan:
-		// runtime.chantype
-		var a struct {
-			rtype
-			elem *rtype  // channel element type
-			dir  uintptr // channel direction (ChanDir)
-		}
-		typ := newStructType("runtime.chantype", unsafe.Sizeof(a))
-		appendField(typ, "elem", prtyp, unsafe.Offsetof(a.elem))
-		return typ, nil
-	case reflect.Func:
-		// runtime.functype
-		var a struct {
-			rtype    `reflect:"func"`
-			inCount  uint16
-			outCount uint16 // top bit is set if last input parameter is ...
-		}
-		typ := newStructType("runtime.functype", unsafe.Sizeof(a))
-		appendField(typ, "inCount", uint16typ, unsafe.Offsetof(a.inCount))
-		appendField(typ, "outCount", uint16typ, unsafe.Offsetof(a.outCount))
-		return typ, nil
-	case reflect.Interface:
-		// runtime.imethod
-		type imethod struct {
-			name uint32 // name of method
-			ityp uint32 // .(*FuncType) underneath
-		}
-
-		var im imethod
-
-		// runtime.interfacetype
-		var a struct {
-			rtype   `reflect:"interface"`
-			pkgPath *byte     // import path
-			mhdr    []imethod // sorted by hash
-		}
-
-		imethodtype := newStructType("runtime.imethod", unsafe.Sizeof(im))
-		appendField(imethodtype, imethodFieldName, uint32typ, unsafe.Offsetof(im.name))
-		appendField(imethodtype, imethodFieldItyp, uint32typ, unsafe.Offsetof(im.ityp))
-		typ := newStructType("runtime.interfacetype", unsafe.Sizeof(a))
-		appendField(typ, interfacetypeFieldMhdr, newSliceType(imethodtype), unsafe.Offsetof(a.mhdr))
-		return typ, nil
-	case reflect.Map:
-		// runtime.maptype
-		var a struct {
-			rtype         `reflect:"map"`
-			key           *rtype // map key type
-			elem          *rtype // map element (value) type
-			bucket        *rtype // internal bucket structure
-			hmap          *rtype // internal map header
-			keysize       uint8  // size of key slot
-			indirectkey   uint8  // store ptr to key instead of key itself
-			valuesize     uint8  // size of value slot
-			indirectvalue uint8  // store ptr to value instead of value itself
-			bucketsize    uint16 // size of bucket
-			reflexivekey  bool   // true if k==k for all keys
-			needkeyupdate bool   // true if we need to update key on an overwrite
-		}
-		typ := newStructType("runtime.maptype", unsafe.Sizeof(a))
-		appendField(typ, "key", prtyp, unsafe.Offsetof(a.key))
-		appendField(typ, "elem", prtyp, unsafe.Offsetof(a.elem))
-		return typ, nil
-	case reflect.Ptr:
-		// runtime.ptrtype
-		var a struct {
-			rtype `reflect:"ptr"`
-			elem  *rtype // pointer element (pointed at) type
-		}
-		typ := newStructType("runtime.ptrtype", unsafe.Sizeof(a))
-		appendField(typ, "elem", prtyp, unsafe.Offsetof(a.elem))
-		return typ, nil
-	case reflect.Slice:
-		// runtime.slicetype
-		var a struct {
-			rtype `reflect:"slice"`
-			elem  *rtype // slice element type
-		}
-
-		typ := newStructType("runtime.slicetype", unsafe.Sizeof(a))
-		appendField(typ, "elem", prtyp, unsafe.Offsetof(a.elem))
-		return typ, nil
-	case reflect.Struct:
-		// runtime.structtype
-		type structField struct {
-			name   *byte   // name is empty for embedded fields
-			typ    *rtype  // type of field
-			offset uintptr // byte offset of field within struct
-		}
-
-		var sf structField
-
-		var a struct {
-			rtype   `reflect:"struct"`
-			pkgPath *byte
-			fields  []structField // sorted by offset
-		}
-
-		fieldtype := newStructType("runtime.structtype", unsafe.Sizeof(sf))
-		appendField(fieldtype, "name", uintptrtyp, unsafe.Offsetof(sf.name))
-		appendField(fieldtype, "typ", prtyp, unsafe.Offsetof(sf.typ))
-		typ := newStructType("runtime.structtype", unsafe.Sizeof(a))
-		appendField(typ, "fields", newSliceType(fieldtype), unsafe.Offsetof(a.fields))
-		return typ, nil
-	default:
-		return nil, nil
-	}
+	typ = resolveTypedef(typ)
+	return typ.(*godwarf.StructType), nil
 }
 
 func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) (typeAddr uint64, typeKind uint64, found bool, err error) {
