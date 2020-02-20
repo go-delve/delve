@@ -213,7 +213,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, err
 	}
 
-	return proc.NewTarget(p, exePath, debugInfoDirs, p.writeBreakpoint, false)
+	return proc.NewTarget(p, exePath, debugInfoDirs, p.writeBreakpoint, false, proc.StopAttached)
 }
 
 // BinInfo will return the binary info.
@@ -376,8 +376,8 @@ func (p *Process) ClearInternalBreakpoints() error {
 
 // ContinueOnce will always return an error because you
 // cannot control execution of a core file.
-func (p *Process) ContinueOnce() (proc.Thread, error) {
-	return nil, ErrContinueCore
+func (p *Process) ContinueOnce() (proc.Thread, proc.StopReason, error) {
+	return nil, proc.StopUnknown, ErrContinueCore
 }
 
 // StepInstruction will always return an error

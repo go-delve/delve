@@ -90,7 +90,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string)
 			safeRemoveAll(p.tracedir)
 		}
 	}
-	tgt, err := p.Dial(init.port, init.exe, 0, debugInfoDirs)
+	tgt, err := p.Dial(init.port, init.exe, 0, debugInfoDirs, proc.StopLaunched)
 	if err != nil {
 		rrcmd.Process.Kill()
 		return nil, err

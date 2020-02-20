@@ -10,6 +10,11 @@ type Target struct {
 
 	proc ProcessInternal
 
+	// StopReason describes the reason why the target process is stopped.
+	// A process could be stopped for multiple simultaneous reasons, in which
+	// case only one will be reported.
+	StopReason StopReason
+
 	// Goroutine that will be used by default to set breakpoint, eval variables, etc...
 	// Normally selectedGoroutine is currentThread.GetG, it will not be only if SwitchGoroutine is called with a goroutine that isn't attached to a thread
 	selectedGoroutine *G
@@ -26,8 +31,25 @@ type Target struct {
 	gcache goroutineCache
 }
 
+// StopReason describes the reason why the target process is stopped.
+// A process could be stopped for multiple simultaneous reasons, in which
+// case only one will be reported.
+type StopReason uint8
+
+const (
+	StopUnknown             StopReason = iota
+	StopLaunched                       // The process was just launched
+	StopAttached                       // The debugger stopped the process after attaching
+	StopExited                         // The target proces terminated
+	StopBreakpoint                     // The target process hit one or more software breakpoints
+	StopHardcodedBreakpoint            // The target process hit a hardcoded breakpoint (for example runtime.Breakpoint())
+	StopManual                         // A manual stop was requested
+	StopNextFinished                   // The next/step/stepout command terminated
+	StopCallReturned                   // An injected call commpleted
+)
+
 // NewTarget returns an initialized Target object.
-func NewTarget(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn, disableAsyncPreempt bool) (*Target, error) {
+func NewTarget(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn, disableAsyncPreempt bool, stopReason StopReason) (*Target, error) {
 	entryPoint, err := p.EntryPoint()
 	if err != nil {
 		return nil, err
@@ -47,6 +69,7 @@ func NewTarget(p Process, path string, debugInfoDirs []string, writeBreakpoint W
 		Process:    p,
 		proc:       p.(ProcessInternal),
 		fncallForG: make(map[int]*callInjection),
+		StopReason: stopReason,
 	}
 
 	g, _ := GetG(p.CurrentThread())
@@ -92,6 +115,11 @@ func (t *Target) Restart(from string) error {
 		return err
 	}
 	t.selectedGoroutine, _ = GetG(t.CurrentThread())
+	if from != "" {
+		t.StopReason = StopManual
+	} else {
+		t.StopReason = StopLaunched
+	}
 	return nil
 }
 
@@ -136,5 +164,6 @@ func (t *Target) Detach(kill bool) error {
 	if !kill && t.asyncPreemptChanged {
 		setAsyncPreemptOff(t, t.asyncPreemptOff)
 	}
+	t.StopReason = StopUnknown
 	return t.proc.Detach(kill)
 }

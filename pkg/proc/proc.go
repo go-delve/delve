@@ -148,16 +148,19 @@ func Continue(dbp *Target) error {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
 		if dbp.CheckAndClearManualStopRequest() {
+			dbp.StopReason = StopManual
 			dbp.ClearInternalBreakpoints()
 		}
 	}()
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
+			dbp.StopReason = StopManual
 			dbp.ClearInternalBreakpoints()
 			return nil
 		}
 		dbp.ClearAllGCache()
-		trapthread, err := dbp.proc.ContinueOnce()
+		trapthread, stopReason, err := dbp.proc.ContinueOnce()
+		dbp.StopReason = stopReason
 		if err != nil {
 			return err
 		}
@@ -205,6 +208,7 @@ func Continue(dbp *Target) error {
 				if err := stepInstructionOut(dbp, curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
 					return err
 				}
+				dbp.StopReason = StopHardcodedBreakpoint
 				return conditionErrors(threads)
 			case g == nil || dbp.fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
@@ -245,6 +249,7 @@ func Continue(dbp *Target) error {
 				if err := dbp.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
+				dbp.StopReason = StopNextFinished
 				return conditionErrors(threads)
 			}
 		case curbp.Active:
@@ -261,6 +266,7 @@ func Continue(dbp *Target) error {
 			if curbp.Name == UnrecoveredPanic {
 				dbp.ClearInternalBreakpoints()
 			}
+			dbp.StopReason = StopBreakpoint
 			return conditionErrors(threads)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
@@ -268,6 +274,7 @@ func Continue(dbp *Target) error {
 		if callInjectionDone {
 			// a call injection was finished, don't let a breakpoint with a failed
 			// condition or a step breakpoint shadow this.
+			dbp.StopReason = StopCallReturned
 			return conditionErrors(threads)
 		}
 	}

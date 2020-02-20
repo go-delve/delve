@@ -31,7 +31,7 @@ type ProcessInternal interface {
 	// number.
 	Restart(pos string) error
 	Detach(bool) error
-	ContinueOnce() (trapthread Thread, err error)
+	ContinueOnce() (trapthread Thread, stopReason StopReason, err error)
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.

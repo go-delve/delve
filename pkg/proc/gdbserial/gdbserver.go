@@ -198,7 +198,7 @@ func New(process *os.Process) *Process {
 }
 
 // Listen waits for a connection from the stub.
-func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string) (*proc.Target, error) {
+func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -212,7 +212,7 @@ func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoD
 		if conn == nil {
 			return nil, errors.New("could not connect")
 		}
-		return p.Connect(conn, path, pid, debugInfoDirs)
+		return p.Connect(conn, path, pid, debugInfoDirs, stopReason)
 	case status := <-p.waitChan:
 		listener.Close()
 		return nil, fmt.Errorf("stub exited while waiting for connection: %v", status)
@@ -220,11 +220,11 @@ func (p *Process) Listen(listener net.Listener, path string, pid int, debugInfoD
 }
 
 // Dial attempts to connect to the stub.
-func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string) (*proc.Target, error) {
+func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
-			return p.Connect(conn, path, pid, debugInfoDirs)
+			return p.Connect(conn, path, pid, debugInfoDirs, stopReason)
 		}
 		select {
 		case status := <-p.waitChan:
@@ -241,7 +241,7 @@ func (p *Process) Dial(addr string, path string, pid int, debugInfoDirs []string
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string) (*proc.Target, error) {
+func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
 	p.conn.conn = conn
 	p.conn.pid = pid
 	err := p.conn.handshake()
@@ -262,7 +262,7 @@ func (p *Process) Connect(conn net.Conn, path string, pid int, debugInfoDirs []s
 		}
 	}
 
-	tgt, err := p.initialize(path, debugInfoDirs)
+	tgt, err := p.initialize(path, debugInfoDirs, stopReason)
 	if err != nil {
 		return nil, err
 	}
@@ -406,9 +406,9 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 	var tgt *proc.Target
 	if listener != nil {
-		tgt, err = p.Listen(listener, cmd[0], 0, debugInfoDirs)
+		tgt, err = p.Listen(listener, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
 	} else {
-		tgt, err = p.Dial(port, cmd[0], 0, debugInfoDirs)
+		tgt, err = p.Dial(port, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
 	}
 	return tgt, err
 }
@@ -456,9 +456,9 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 
 	var tgt *proc.Target
 	if listener != nil {
-		tgt, err = p.Listen(listener, path, pid, debugInfoDirs)
+		tgt, err = p.Listen(listener, path, pid, debugInfoDirs, proc.StopAttached)
 	} else {
-		tgt, err = p.Dial(port, path, pid, debugInfoDirs)
+		tgt, err = p.Dial(port, path, pid, debugInfoDirs, proc.StopAttached)
 	}
 	return tgt, err
 }
@@ -479,7 +479,7 @@ func (p *Process) EntryPoint() (uint64, error) {
 // initialize uses qProcessInfo to load the inferior's PID and
 // executable path. This command is not supported by all stubs and not all
 // stubs will report both the PID and executable path.
-func (p *Process) initialize(path string, debugInfoDirs []string) (*proc.Target, error) {
+func (p *Process) initialize(path string, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
 	var err error
 	if path == "" {
 		// If we are attaching to a running process and the user didn't specify
@@ -530,7 +530,7 @@ func (p *Process) initialize(path string, debugInfoDirs []string) (*proc.Target,
 			return nil, err
 		}
 	}
-	tgt, err := proc.NewTarget(p, path, debugInfoDirs, p.writeBreakpoint, runtime.GOOS == "darwin")
+	tgt, err := proc.NewTarget(p, path, debugInfoDirs, p.writeBreakpoint, runtime.GOOS == "darwin", stopReason)
 	if err != nil {
 		p.conn.conn.Close()
 		return nil, err
@@ -627,9 +627,9 @@ const (
 
 // ContinueOnce will continue execution of the process until
 // a breakpoint is hit or signal is received.
-func (p *Process) ContinueOnce() (proc.Thread, error) {
+func (p *Process) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
+		return nil, proc.StopExited, &proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 
 	if p.conn.direction == proc.Forward {
@@ -637,7 +637,7 @@ func (p *Process) ContinueOnce() (proc.Thread, error) {
 		for _, thread := range p.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil {
 				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
-					return nil, err
+					return nil, proc.StopUnknown, err
 				}
 			}
 		}
@@ -663,7 +663,7 @@ continueLoop:
 			if _, exited := err.(proc.ErrProcessExited); exited {
 				p.exited = true
 			}
-			return nil, err
+			return nil, proc.StopExited, err
 		}
 
 		// For stubs that support qThreadStopInfo updateThreadList will
@@ -688,16 +688,16 @@ continueLoop:
 
 	if p.BinInfo().GOOS == "linux" {
 		if err := linutil.ElfUpdateSharedObjects(p); err != nil {
-			return nil, err
+			return nil, proc.StopUnknown, err
 		}
 	}
 
 	if err := p.setCurrentBreakpoints(); err != nil {
-		return nil, err
+		return nil, proc.StopUnknown, err
 	}
 
 	if trapthread == nil {
-		return nil, fmt.Errorf("could not find thread %s", threadID)
+		return nil, proc.StopUnknown, fmt.Errorf("could not find thread %s", threadID)
 	}
 
 	var err error
@@ -719,7 +719,7 @@ continueLoop:
 		// the signals that are reported here can not be propagated back to the target process.
 		trapthread.sig = 0
 	}
-	return trapthread, err
+	return trapthread, proc.StopUnknown, err
 }
 
 func (p *Process) findThreadByStrID(threadID string) *Thread {

@@ -233,13 +233,13 @@ func (dbp *Process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
 
 // ContinueOnce will continue the target until it stops.
 // This could be the result of a breakpoint or signal.
-func (dbp *Process) ContinueOnce() (proc.Thread, error) {
+func (dbp *Process) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	if dbp.exited {
-		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.StopExited, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	if err := dbp.resume(); err != nil {
-		return nil, err
+		return nil, proc.StopUnknown, err
 	}
 
 	for _, th := range dbp.threads {
@@ -253,12 +253,12 @@ func (dbp *Process) ContinueOnce() (proc.Thread, error) {
 
 	trapthread, err := dbp.trapWait(-1)
 	if err != nil {
-		return nil, err
+		return nil, proc.StopUnknown, err
 	}
 	if err := dbp.stop(trapthread); err != nil {
-		return nil, err
+		return nil, proc.StopUnknown, err
 	}
-	return trapthread, err
+	return trapthread, proc.StopUnknown, err
 }
 
 // FindBreakpoint finds the breakpoint for the given pc.
@@ -285,7 +285,11 @@ func (dbp *Process) initialize(path string, debugInfoDirs []string) (*proc.Targe
 	if err := dbp.updateThreadList(); err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(dbp, path, debugInfoDirs, dbp.writeBreakpoint, runtime.GOOS == "windows")
+	stopReason := proc.StopLaunched
+	if !dbp.childProcess {
+		stopReason = proc.StopAttached
+	}
+	return proc.NewTarget(dbp, path, debugInfoDirs, dbp.writeBreakpoint, runtime.GOOS == "windows", stopReason)
 }
 
 // ClearInternalBreakpoints will clear all non-user set breakpoints. These
