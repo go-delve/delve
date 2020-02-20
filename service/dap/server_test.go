@@ -137,7 +137,7 @@ func TestSetBreakpoint(t *testing.T) {
 		if stopEvent1.Body.Reason != "breakpoint" ||
 			stopEvent1.Body.ThreadId != 1 ||
 			!stopEvent1.Body.AllThreadsStopped {
-			t.Errorf("got %#v, want Body Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true", stopEvent1)
+			t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent1)
 		}
 		client.ExpectContinueResponse(t)
 
