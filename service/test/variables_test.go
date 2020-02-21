@@ -1178,6 +1178,9 @@ func TestCallFunction(t *testing.T) {
 
 		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil},
 
+		{"x.CallMe()", nil, nil},
+		{"x2.CallMe(5)", []string{":int:25"}, nil},
+
 		// Nested function calls tests
 
 		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},

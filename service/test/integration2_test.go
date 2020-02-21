@@ -961,6 +961,11 @@ func TestDisasm(t *testing.T) {
 
 		pcstart := d1[0].Loc.PC
 		pcend := d1[len(d1)-1].Loc.PC + uint64(len(d1[len(d1)-1].Bytes))
+
+		// start address should be less than end address
+		_, err = c.DisassembleRange(api.EvalScope{-1, 0, 0}, pcend, pcstart, api.IntelFlavour)
+		assertError(err, t, "DisassembleRange()")
+
 		d2, err := c.DisassembleRange(api.EvalScope{-1, 0, 0}, pcstart, pcend, api.IntelFlavour)
 		assertNoError(err, t, "DisassembleRange()")
 

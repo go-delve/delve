@@ -44,9 +44,9 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	server, addr := startDAPServer(t)
+	defer server.Stop()
 	client := daptest.NewClient(addr)
 	defer client.Close()
-	defer server.Stop()
 
 	test(client, fixture)
 }
@@ -152,6 +152,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequest("", true)
 
 		expectFailedToLaunch := func(response *dap.ErrorResponse, seq int) {
+			t.Helper()
 			if response.RequestSeq != seq {
 				t.Errorf("RequestSeq got %d, want %d", seq, response.RequestSeq)
 			}
