@@ -310,7 +310,7 @@ func TestDebugLineC(t * testing.T) {
 		t.Fatal("Could not read test data", err)
 	}
 
-	parsed  :=  ParseAll(data, nil, 0, true)
+	parsed := ParseAll(data, nil, 0, true)
 
 	if len(parsed) == 0 {
 		t.Fatal("Parser result is empty")
@@ -335,7 +335,6 @@ func TestDebugLineC(t * testing.T) {
 			if !found {
 				t.Fatalf("Found %s does not appear in the filelist\n", fn.Path)
 			}
-
 		}
 	}
 }
