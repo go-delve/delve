@@ -1,3 +1,5 @@
+// Package daptest provides a sample client with utilities
+// for DAP mode testing.
 package daptest
 
 import (
@@ -11,9 +13,6 @@ import (
 
 	"github.com/google/go-dap"
 )
-
-// Package daptest provides a sample client with utilities
-// for DAP mode testing.
 
 // Client is a debugger service client that uses Debug Adaptor Protocol.
 // It does not (yet?) implement service.Client interface.
@@ -38,7 +37,7 @@ func NewClient(addr string) *Client {
 	return c
 }
 
-// Close closes the client connection
+// Close closes the client connection.
 func (c *Client) Close() {
 	c.conn.Close()
 }

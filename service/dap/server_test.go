@@ -41,6 +41,7 @@ func startDAPServer(t *testing.T) (server *Server, addr string) {
 }
 
 func expectMessage(t *testing.T, client *daptest.Client, want []byte) {
+	t.Helper()
 	got, err := client.ReadBaseMessage()
 	if err != nil {
 		t.Error(err)
@@ -56,9 +57,9 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	server, addr := startDAPServer(t)
+	defer server.Stop()
 	client := daptest.NewClient(addr)
 	defer client.Close()
-	defer server.Stop()
 
 	test(client, fixture)
 }
@@ -123,6 +124,7 @@ func TestSetBreakpoint(t *testing.T) {
 }
 
 func expectErrorResponse(t *testing.T, client *daptest.Client, requestSeq int, command string, message string, id int) *dap.ErrorResponse {
+	t.Helper()
 	response, err := client.ReadErrorResponse()
 	if err != nil {
 		t.Error(err)
