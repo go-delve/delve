@@ -53,49 +53,60 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 
 func TestStopOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// This test exhaustively tests Seq and RequestSeq on all messages from the
+		// server. Other tests shouldn't necessarily repeat these checks.
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponse(t)
-		if initResp.RequestSeq != 0 {
-			t.Errorf("got %#v, want RequestSeq=0", initResp)
+		if initResp.Seq != 0 || initResp.RequestSeq != 0 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=0", initResp)
 		}
 
 		client.LaunchRequest(fixture.Path, true /*stopOnEntry*/)
-		client.ExpectInitializedEvent(t)
+		initEv := client.ExpectInitializedEvent(t)
+		if initEv.Seq != 0 {
+			t.Errorf("got %#v, want Seq=0", initEv)
+		}
+
 		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.RequestSeq != 1 {
-			t.Errorf("got %#v, want RequestSeq=1", launchResp)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 1 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=1", launchResp)
 		}
 
 		client.SetExceptionBreakpointsRequest()
 		sResp := client.ExpectSetExceptionBreakpointsResponse(t)
-		if sResp.RequestSeq != 2 {
-			t.Errorf("got %#v, want RequestSeq=2", sResp)
+		if sResp.Seq != 0 || sResp.RequestSeq != 2 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=2", sResp)
 		}
 
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
-		if stopEvent.Body.Reason != "breakpoint" ||
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "breakpoint" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("got %#v, want Body Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true", stopEvent)
+			t.Errorf("got %#v, want Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
 		}
 
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.RequestSeq != 3 {
-			t.Errorf("got %#v, want RequestSeq=3", cdResp)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=3", cdResp)
 		}
 
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.RequestSeq != 4 {
-			t.Errorf("got %#v, want RequestSeq=4", contResp)
+		if contResp.Seq != 0 || contResp.RequestSeq != 4 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=4", contResp)
 		}
-		client.ExpectTerminatedEvent(t)
+
+		termEv := client.ExpectTerminatedEvent(t)
+		if termEv.Seq != 0 {
+			t.Errorf("got %#v, want Seq=0", termEv)
+		}
 
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.RequestSeq != 5 {
-			t.Errorf("got %#v, want RequestSeq=5", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 5 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=5", dResp)
 		}
 	})
 }
@@ -133,8 +144,10 @@ func TestSetBreakpoint(t *testing.T) {
 
 		client.ContinueRequest(1)
 		stopEvent1 := client.ExpectStoppedEvent(t)
-		if stopEvent1.Body.Reason != "breakpoint" || stopEvent1.Body.ThreadId != 1 || !stopEvent1.Body.AllThreadsStopped {
-			t.Errorf("got %#v, want Body Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true", stopEvent1)
+		if stopEvent1.Body.Reason != "breakpoint" ||
+			stopEvent1.Body.ThreadId != 1 ||
+			!stopEvent1.Body.AllThreadsStopped {
+			t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent1)
 		}
 		client.ExpectContinueResponse(t)
 
