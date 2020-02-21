@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go/parser"
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -43,6 +44,9 @@ type Debugger struct {
 
 	running      bool
 	runningMutex sync.Mutex
+
+	stopRecording func() error
+	recordMutex   sync.Mutex
 }
 
 // Config provides the configuration to start a Debugger.
@@ -133,7 +137,10 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			}
 			return nil, err
 		}
-		d.target = p
+		if p != nil {
+			// if p == nil and err == nil then we are doing a recording, don't touch d.target
+			d.target = p
+		}
 		if err := d.checkGoVersion(); err != nil {
 			d.target.Detach(true)
 			return nil, err
@@ -158,6 +165,10 @@ func (d *Debugger) checkGoVersion() error {
 	if !d.config.CheckGoVersion {
 		return nil
 	}
+	if d.isRecording() {
+		// do not do anything if we are still recording
+		return nil
+	}
 	producer := d.target.BinInfo().Producer()
 	if producer == "" {
 		return nil
@@ -173,8 +184,44 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 	case "lldb":
 		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories))
 	case "rr":
-		p, _, err := gdbserial.RecordAndReplay(processArgs, wd, false, d.config.DebugInfoDirectories)
-		return p, err
+		if d.target != nil {
+			// restart should not call us if the backend is 'rr'
+			panic("internal error: call to Launch with rr backend and target already exists")
+		}
+
+		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false)
+		if err != nil {
+			return nil, err
+		}
+
+		// let the initialization proceed but hold the processMutex lock so that
+		// any other request to debugger will block except State(nowait=true) and
+		// Command(halt).
+		d.processMutex.Lock()
+		d.recordingStart(stop)
+
+		go func() {
+			defer d.processMutex.Unlock()
+
+			p, err := d.recordingRun(run)
+			if err != nil {
+				d.log.Errorf("could not record target: %v", err)
+				// this is ugly but we can't respond to any client requests at this
+				// point so it's better if we die.
+				os.Exit(1)
+			}
+			d.recordingDone()
+			d.target = p
+			if err := d.checkGoVersion(); err != nil {
+				d.log.Error(err)
+				err := d.target.Detach(true)
+				if err != nil {
+					d.log.Errorf("Error detaching from target: %v", err)
+				}
+			}
+		}()
+		return nil, nil
+
 	case "default":
 		if runtime.GOOS == "darwin" {
 			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories))
@@ -183,6 +230,33 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
+}
+
+func (d *Debugger) recordingStart(stop func() error) {
+	d.recordMutex.Lock()
+	d.stopRecording = stop
+	d.recordMutex.Unlock()
+}
+
+func (d *Debugger) recordingDone() {
+	d.recordMutex.Lock()
+	d.stopRecording = nil
+	d.recordMutex.Unlock()
+}
+
+func (d *Debugger) isRecording() bool {
+	d.recordMutex.Lock()
+	defer d.recordMutex.Unlock()
+	return d.stopRecording != nil
+}
+
+func (d *Debugger) recordingRun(run func() (string, error)) (*proc.Target, error) {
+	tracedir, err := run()
+	if err != nil && tracedir == "" {
+		return nil, err
+	}
+
+	return gdbserial.Replay(tracedir, false, true, d.config.DebugInfoDirectories)
 }
 
 // ErrNoAttachPath is the error returned when the client tries to attach to
@@ -223,12 +297,16 @@ func betterGdbserialLaunchError(p *proc.Target, err error) (*proc.Target, error)
 // ProcessPid returns the PID of the process
 // the debugger is debugging.
 func (d *Debugger) ProcessPid() int {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
 	return d.target.Pid()
 }
 
 // LastModified returns the time that the process' executable was last
 // modified.
 func (d *Debugger) LastModified() time.Time {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
 	return d.target.BinInfo().LastModified()
 }
 
@@ -292,6 +370,10 @@ func (d *Debugger) detach(kill bool) error {
 
 var ErrCanNotRestart = errors.New("can not restart this target")
 
+// ErrNotRecording is returned when StopRecording is called while the
+// debugger is not recording the target.
+var ErrNotRecording = errors.New("debugger is not recording")
+
 // Restart will restart the target process, first killing
 // and then exec'ing it again.
 // If the target process is a recording it will restart it from the given
@@ -316,7 +398,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 	if valid, _ := d.target.Valid(); valid && !recorded {
 		// Ensure the process is in a PTRACE_STOP.
-		if err := stopProcess(d.ProcessPid()); err != nil {
+		if err := stopProcess(d.target.Pid()); err != nil {
 			return nil, err
 		}
 	}
@@ -326,10 +408,24 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	if resetArgs {
 		d.processArgs = append([]string{d.processArgs[0]}, newArgs...)
 	}
-	p, err := d.Launch(d.processArgs, d.config.WorkingDir)
+	var p *proc.Target
+	var err error
+	if recorded {
+		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false)
+		if err2 != nil {
+			return nil, err2
+		}
+
+		d.recordingStart(stop)
+		p, err = d.recordingRun(run)
+		d.recordingDone()
+	} else {
+		p, err = d.Launch(d.processArgs, d.config.WorkingDir)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("could not launch process: %s", err)
 	}
+
 	discarded := []api.DiscardedBreakpoint{}
 	for _, oldBp := range api.ConvertBreakpoints(d.breakpoints()) {
 		if oldBp.ID < 0 {
@@ -360,6 +456,10 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
 	if d.isRunning() && nowait {
 		return &api.DebuggerState{Running: true}, nil
+	}
+
+	if d.isRecording() && nowait {
+		return &api.DebuggerState{Recording: true}, nil
 	}
 
 	d.processMutex.Lock()
@@ -533,6 +633,8 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 // CancelNext will clear internal breakpoints, thus cancelling the 'next',
 // 'step' or 'stepout' operation.
 func (d *Debugger) CancelNext() error {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
 	return d.target.ClearInternalBreakpoints()
 }
 
@@ -681,7 +783,12 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
 		d.log.Debug("halting")
-		err = d.target.RequestManualStop()
+
+		d.recordMutex.Lock()
+		if d.stopRecording == nil {
+			err = d.target.RequestManualStop()
+		}
+		d.recordMutex.Unlock()
 	}
 
 	withBreakpointInfo := true
@@ -1439,7 +1546,9 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 		}
 	}
 
-	out.TargetGoVersion = d.target.BinInfo().Producer()
+	if !d.isRecording() && !d.isRunning() {
+		out.TargetGoVersion = d.target.BinInfo().Producer()
+	}
 
 	out.MinSupportedVersionOfGo = fmt.Sprintf("%d.%d.0", goversion.MinSupportedVersionOfGoMajor, goversion.MinSupportedVersionOfGoMinor)
 	out.MaxSupportedVersionOfGo = fmt.Sprintf("%d.%d.0", goversion.MaxSupportedVersionOfGoMajor, goversion.MaxSupportedVersionOfGoMinor)
@@ -1474,6 +1583,16 @@ func (d *Debugger) ListPackagesBuildInfo(includeFiles bool) []api.PackageBuildIn
 		})
 	}
 	return r
+}
+
+// StopRecording stops a recording (if one is in progress)
+func (d *Debugger) StopRecording() error {
+	d.recordMutex.Lock()
+	defer d.recordMutex.Unlock()
+	if d.stopRecording == nil {
+		return ErrNotRecording
+	}
+	return d.stopRecording()
 }
 
 func go11DecodeErrorCheck(err error) error {

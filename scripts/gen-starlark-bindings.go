@@ -26,7 +26,7 @@ func getSuitableMethods(pkg *types.Package, typename string) []*types.Func {
 			continue
 		}
 
-		if fn.Name() == "Command" {
+		if fn.Name() == "Command" || fn.Name() == "Restart" || fn.Name() == "State" {
 			r = append(r, fn)
 			continue
 		}
@@ -120,8 +120,13 @@ func processServerMethods(serverMethods []*types.Func) []binding {
 		}
 
 		retType := sig.Params().At(1).Type().String()
-		if fn.Name() == "Command" {
+		switch fn.Name() {
+		case "Command":
 			retType = "rpc2.CommandOut"
+		case "Restart":
+			retType = "rpc2.RestartOut"
+		case "State":
+			retType = "rpc2.StateOut"
 		}
 
 		bindings[i] = binding{

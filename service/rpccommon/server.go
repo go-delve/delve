@@ -3,7 +3,6 @@ package rpccommon
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -93,14 +92,6 @@ func (s *ServerImpl) Stop() error {
 	}
 	kill := s.config.AttachPid == 0
 	return s.debugger.Detach(kill)
-}
-
-// Restart restarts the debugger.
-func (s *ServerImpl) Restart() error {
-	if s.config.AttachPid != 0 {
-		return errors.New("cannot restart process Delve did not create")
-	}
-	return s.s2.Restart(rpc2.RestartIn{}, nil)
 }
 
 // Run starts a debugger and exposes it with an HTTP server. The debugger

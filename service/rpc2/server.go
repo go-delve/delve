@@ -83,13 +83,15 @@ type RestartOut struct {
 }
 
 // Restart restarts program.
-func (s *RPCServer) Restart(arg RestartIn, out *RestartOut) error {
+func (s *RPCServer) Restart(arg RestartIn, cb service.RPCCallback) {
 	if s.config.AttachPid != 0 {
-		return errors.New("cannot restart process Delve did not create")
+		cb.Return(nil, errors.New("cannot restart process Delve did not create"))
+		return
 	}
+	var out RestartOut
 	var err error
 	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Rerecord, arg.Position, arg.ResetArgs, arg.NewArgs)
-	return err
+	cb.Return(out, err)
 }
 
 type StateIn struct {
@@ -102,13 +104,15 @@ type StateOut struct {
 }
 
 // State returns the current debugger state.
-func (s *RPCServer) State(arg StateIn, out *StateOut) error {
+func (s *RPCServer) State(arg StateIn, cb service.RPCCallback) {
+	var out StateOut
 	st, err := s.debugger.State(arg.NonBlocking)
 	if err != nil {
-		return err
+		cb.Return(nil, err)
+		return
 	}
 	out.State = st
-	return nil
+	cb.Return(out, nil)
 }
 
 type CommandOut struct {
@@ -777,4 +781,20 @@ func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) e
 
 	out.Mem = Mem
 	return nil
+}
+
+type StopRecordingIn struct {
+}
+
+type StopRecordingOut struct {
+}
+
+func (s *RPCServer) StopRecording(arg StopRecordingIn, cb service.RPCCallback) {
+	var out StopRecordingOut
+	err := s.debugger.StopRecording()
+	if err != nil {
+		cb.Return(nil, err)
+		return
+	}
+	cb.Return(out, nil)
 }
