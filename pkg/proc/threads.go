@@ -509,6 +509,9 @@ func GetG(thread Thread) (*G, error) {
 		}
 		g, err = curgvar.parseG()
 		if err != nil {
+			if _, ok := err.(ErrNoGoroutine); ok {
+				err = ErrNoGoroutine{thread.ThreadID()}
+			}
 			return nil, err
 		}
 		g.SystemStack = true
