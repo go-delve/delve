@@ -74,9 +74,7 @@ func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{})
 	dbl.Logf = logfn
 	dbl.staticBase = staticBase
 	dbl.Lookup = make(map[string]*FileEntry)
-	if compdir != "" {
-		dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)
-	}
+	dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)
 
 	dbl.stateMachineCache = make(map[uint64]*StateMachine)
 	dbl.lastMachineCache = make(map[uint64]*StateMachine)

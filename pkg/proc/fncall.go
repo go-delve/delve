@@ -437,7 +437,12 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 
 	argnum := len(fncall.expr.Args)
 
-	if len(fnvar.Children) > 0 {
+	// If the function variable has a child then that child is the method
+	// receiver. However, if the method receiver is not being used (e.g.
+	// func (_ X) Foo()) then it will not actually be listed as a formal
+	// argument. Ensure that we are really off by 1 to add the receiver to
+	// the function call.
+	if len(fnvar.Children) > 0 && argnum == (len(fncall.formalArgs)-1) {
 		argnum++
 		fncall.receiver = &fnvar.Children[0]
 		fncall.receiver.Name = exprToString(fncall.expr.Fun)

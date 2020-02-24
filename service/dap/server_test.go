@@ -1,9 +1,7 @@
 package dap
 
 import (
-	"bytes"
 	"flag"
-	"fmt"
 	"net"
 	"os"
 	"testing"
@@ -40,121 +38,168 @@ func startDAPServer(t *testing.T) (server *Server, addr string) {
 	return server, listener.Addr().String()
 }
 
-func expectMessage(t *testing.T, client *daptest.Client, want []byte) {
-	got, err := client.ReadBaseMessage()
-	if err != nil {
-		t.Error(err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Errorf("\ngot  %q\nwant %q", got, want)
-	}
-}
-
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
 	var buildFlags protest.BuildFlags
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	server, addr := startDAPServer(t)
+	defer server.Stop()
 	client := daptest.NewClient(addr)
 	defer client.Close()
-	defer server.Stop()
 
 	test(client, fixture)
 }
 
-// TODO(polina): instead of hardcoding message bytes,
-// add methods to client to receive, decode and verify responses.
-
 func TestStopOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// This test exhaustively tests Seq and RequestSeq on all messages from the
+		// server. Other tests shouldn't necessarily repeat these checks.
 		client.InitializeRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":0,"success":true,"command":"initialize","body":{"supportsConfigurationDoneRequest":true}}`))
+		initResp := client.ExpectInitializeResponse(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 0 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=0", initResp)
+		}
 
 		client.LaunchRequest(fixture.Path, true /*stopOnEntry*/)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"event","event":"initialized"}`))
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":1,"success":true,"command":"launch"}`))
+		initEv := client.ExpectInitializedEvent(t)
+		if initEv.Seq != 0 {
+			t.Errorf("got %#v, want Seq=0", initEv)
+		}
+
+		launchResp := client.ExpectLaunchResponse(t)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 1 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=1", launchResp)
+		}
 
 		client.SetExceptionBreakpointsRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":2,"success":true,"command":"setExceptionBreakpoints"}`))
+		sResp := client.ExpectSetExceptionBreakpointsResponse(t)
+		if sResp.Seq != 0 || sResp.RequestSeq != 2 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=2", sResp)
+		}
 
 		client.ConfigurationDoneRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"event","event":"stopped","body":{"reason":"breakpoint","threadId":1,"allThreadsStopped":true}}`))
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":3,"success":true,"command":"configurationDone"}`))
+		stopEvent := client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped {
+			t.Errorf("got %#v, want Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+		}
+
+		cdResp := client.ExpectConfigurationDoneResponse(t)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=3", cdResp)
+		}
 
 		client.ContinueRequest(1)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":4,"success":true,"command":"continue","body":{}}`))
-		expectMessage(t, client, []byte(`{"seq":0,"type":"event","event":"terminated","body":{}}`))
+		contResp := client.ExpectContinueResponse(t)
+		if contResp.Seq != 0 || contResp.RequestSeq != 4 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=4", contResp)
+		}
+
+		termEv := client.ExpectTerminatedEvent(t)
+		if termEv.Seq != 0 {
+			t.Errorf("got %#v, want Seq=0", termEv)
+		}
 
 		client.DisconnectRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":5,"success":true,"command":"disconnect"}`))
+		dResp := client.ExpectDisconnectResponse(t)
+		if dResp.Seq != 0 || dResp.RequestSeq != 5 {
+			t.Errorf("got %#v, want Seq=0, RequestSeq=5", dResp)
+		}
 	})
 }
 
 func TestSetBreakpoint(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":0,"success":true,"command":"initialize","body":{"supportsConfigurationDoneRequest":true}}`))
+		client.ExpectInitializeResponse(t)
 
 		client.LaunchRequest(fixture.Path, false /*stopOnEntry*/)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"event","event":"initialized"}`))
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":1,"success":true,"command":"launch"}`))
+		client.ExpectInitializedEvent(t)
+		launchResp := client.ExpectLaunchResponse(t)
+		if launchResp.RequestSeq != 1 {
+			t.Errorf("got %#v, want RequestSeq=1", launchResp)
+		}
 
 		client.SetBreakpointsRequest(fixture.Source, []int{8, 100})
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":2,"success":true,"command":"setBreakpoints","body":{"breakpoints":[{"verified":true,"source":{},"line":8}]}}`))
+		sResp := client.ExpectSetBreakpointsResponse(t)
+		if len(sResp.Body.Breakpoints) != 1 {
+			t.Errorf("got %#v, want len(Breakpoints)=1", sResp)
+		}
+		bkpt0 := sResp.Body.Breakpoints[0]
+		if !bkpt0.Verified || bkpt0.Line != 8 {
+			t.Errorf("got breakpoints[0] = %#v, want Verified=true, Line=8", bkpt0)
+		}
 
 		client.SetExceptionBreakpointsRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":3,"success":true,"command":"setExceptionBreakpoints"}`))
+		client.ExpectSetExceptionBreakpointsResponse(t)
 
 		client.ConfigurationDoneRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":4,"success":true,"command":"configurationDone"}`))
+		cdResp := client.ExpectConfigurationDoneResponse(t)
+		if cdResp.RequestSeq != 4 {
+			t.Errorf("got %#v, want RequestSeq=4", cdResp)
+		}
 
 		client.ContinueRequest(1)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"event","event":"stopped","body":{"reason":"breakpoint","threadId":1,"allThreadsStopped":true}}`))
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":5,"success":true,"command":"continue","body":{}}`))
+		stopEvent1 := client.ExpectStoppedEvent(t)
+		if stopEvent1.Body.Reason != "breakpoint" ||
+			stopEvent1.Body.ThreadId != 1 ||
+			!stopEvent1.Body.AllThreadsStopped {
+			t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent1)
+		}
+		client.ExpectContinueResponse(t)
 
 		client.ContinueRequest(1)
-		expectMessage(t, client, []byte(`{"seq":0,"type":"event","event":"terminated","body":{}}`))
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":6,"success":true,"command":"continue","body":{}}`))
+		client.ExpectTerminatedEvent(t)
+		client.ExpectContinueResponse(t)
 
 		client.DisconnectRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":7,"success":true,"command":"disconnect"}`))
+		client.ExpectDisconnectResponse(t)
 	})
-}
-
-func expectErrorResponse(t *testing.T, client *daptest.Client, requestSeq int, command string, message string, id int) *dap.ErrorResponse {
-	response, err := client.ReadErrorResponse()
-	if err != nil {
-		t.Error(err)
-		return nil
-	}
-	got := response.(*dap.ErrorResponse)
-	if got.RequestSeq != requestSeq || got.Command != command || got.Message != message || got.Body.Error.Id != id {
-		want := fmt.Sprintf("{RequestSeq: %d, Command: %q, Message: %q, Id: %d}", requestSeq, command, message, id)
-		t.Errorf("\ngot  %#v\nwant %s", got, want)
-		return nil
-	}
-	return got
 }
 
 func TestBadLaunchRequests(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.LaunchRequest("", true)
+
+		expectFailedToLaunch := func(response *dap.ErrorResponse, seq int) {
+			t.Helper()
+			if response.RequestSeq != seq {
+				t.Errorf("RequestSeq got %d, want %d", seq, response.RequestSeq)
+			}
+			if response.Command != "launch" {
+				t.Errorf("Command got %q, want \"launch\"", response.Command)
+			}
+			if response.Message != "Failed to launch" {
+				t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
+			}
+			if response.Body.Error.Id != 3000 {
+				t.Errorf("Id got %d, want 3000", response.Body.Error.Id)
+			}
+		}
+
+		resp := client.ExpectErrorResponse(t)
+		expectFailedToLaunch(resp, 0)
 		// Test for the DAP-specific detailed error message.
-		want := "Failed to launch: The program attribute is missing in debug configuration."
-		if got := expectErrorResponse(t, client, 0, "launch", "Failed to launch", 3000); got != nil && got.Body.Error.Format != want {
-			t.Errorf("got %q, want %q", got.Body.Error.Format, want)
+		wantErrorFormat := "Failed to launch: The program attribute is missing in debug configuration."
+		if resp.Body.Error.Format != wantErrorFormat {
+			t.Errorf("got %q, want %q", resp.Body.Error.Format, wantErrorFormat)
 		}
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest(fixture.Path+"_does_not_exist", false)
-		expectErrorResponse(t, client, 1, "launch", "Failed to launch", 3000)
+		expectFailedToLaunch(client.ExpectErrorResponse(t), 1)
 
 		client.LaunchRequest(fixture.Source, true) // Not an executable
-		expectErrorResponse(t, client, 2, "launch", "Failed to launch", 3000)
+		expectFailedToLaunch(client.ExpectErrorResponse(t), 2)
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
-		expectMessage(t, client, []byte(`{"seq":0,"type":"response","request_seq":3,"success":true,"command":"disconnect"}`))
+		dresp := client.ExpectDisconnectResponse(t)
+		if dresp.RequestSeq != 3 {
+			t.Errorf("got %#v, want RequestSeq=3", dresp)
+		}
 	})
 }

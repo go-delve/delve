@@ -1,3 +1,11 @@
+// Package dap implements VSCode's Debug Adaptor Protocol (DAP).
+// This allows delve to communicate with frontends using DAP
+// without a separate adaptor. The frontend will run the debugger
+// (which now doubles as an adaptor) in server mode listening on
+// a port and communicating over TCP. This is work in progress,
+// so for now Delve in dap mode only supports synchronous
+// request-response communication, blocking while processing each request.
+// For DAP details see https://microsoft.github.io/debug-adapter-protocol.
 package dap
 
 import (
@@ -13,18 +21,10 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap"
+	"github.com/google/go-dap"  // dap
 	"github.com/sirupsen/logrus"
 )
 
-// Package dap implements VSCode's Debug Adaptor Protocol (DAP).
-// This allows delve to communicate with frontends using DAP
-// without a separate adaptor. The frontend will run the debugger
-// (which now doubles as an adaptor) in server mode listening on
-// a port and communicating over TCP. This is work in progress,
-// so for now Delve in dap mode only supports synchronous
-// request-response communication, blocking while processing each request.
-// For DAP details see https://microsoft.github.io/debug-adapter-protocol.
 
 // Server implements a DAP server that can accept a single client for
 // a single debug session. It does not support restarting.
@@ -311,7 +311,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if mode != "exec" {
 		s.sendErrorResponse(request.Request,
 			FailedToContinue, "Failed to launch",
-			fmt.Sprintf("Unsupported 'mode' value '%s' in debug configuration.", mode))
+			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
 		return
 	}
 
