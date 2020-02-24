@@ -368,6 +368,7 @@ func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsO
 type ListRegistersIn struct {
 	ThreadID  int
 	IncludeFp bool
+	Scope     *api.EvalScope
 }
 
 type ListRegistersOut struct {
@@ -376,8 +377,10 @@ type ListRegistersOut struct {
 }
 
 // ListRegisters lists registers and their values.
+// If ListRegistersIn.Scope is not nil the registers of that eval scope will
+// be returned, otherwise ListRegistersIn.ThreadID will be used.
 func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) error {
-	if arg.ThreadID == 0 {
+	if arg.ThreadID == 0 && arg.Scope == nil {
 		state, err := s.debugger.State(false)
 		if err != nil {
 			return err
@@ -385,7 +388,7 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 		arg.ThreadID = state.CurrentThread.ID
 	}
 
-	regs, err := s.debugger.Registers(arg.ThreadID, arg.IncludeFp)
+	regs, err := s.debugger.Registers(arg.ThreadID, arg.Scope, arg.IncludeFp)
 	if err != nil {
 		return err
 	}

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
@@ -949,19 +950,65 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 }
 
 // Registers returns string representation of the CPU registers.
-func (d *Debugger) Registers(threadID int, floatingPoint bool) (api.Registers, error) {
+func (d *Debugger) Registers(threadID int, scope *api.EvalScope, floatingPoint bool) (api.Registers, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	thread, found := d.target.FindThread(threadID)
-	if !found {
-		return nil, fmt.Errorf("couldn't find thread %d", threadID)
+	var dregs op.DwarfRegisters
+
+	if scope != nil {
+		s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+		if err != nil {
+			return nil, err
+		}
+		dregs = s.Regs
+	} else {
+		thread, found := d.target.FindThread(threadID)
+		if !found {
+			return nil, fmt.Errorf("couldn't find thread %d", threadID)
+		}
+		regs, err := thread.Registers(floatingPoint)
+		if err != nil {
+			return nil, err
+		}
+		dregs = d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
 	}
-	regs, err := thread.Registers(floatingPoint)
-	if err != nil {
-		return nil, err
-	}
-	return api.ConvertRegisters(regs.Slice(floatingPoint), d.target.BinInfo().Arch), err
+	r := api.ConvertRegisters(dregs, d.target.BinInfo().Arch, floatingPoint)
+	// Sort the registers in a canonical order we prefer, this is mostly
+	// because the DWARF register numbering for AMD64 is weird.
+	sort.Slice(r, func(i, j int) bool {
+		a, b := r[i], r[j]
+		an, aok := canonicalRegisterOrder[strings.ToLower(a.Name)]
+		bn, bok := canonicalRegisterOrder[strings.ToLower(b.Name)]
+		// Registers that don't appear in canonicalRegisterOrder sort after registers that do.
+		if !aok {
+			an = 1000
+		}
+		if !bok {
+			bn = 1000
+		}
+		if an == bn {
+			// keep registers that don't appear in canonicalRegisterOrder in DWARF order
+			return a.DwarfNumber < b.DwarfNumber
+		}
+		return an < bn
+
+	})
+	return r, nil
+}
+
+var canonicalRegisterOrder = map[string]int{
+	// amd64
+	"rip": 0,
+	"rsp": 1,
+	"rax": 2,
+	"rbx": 3,
+	"rcx": 4,
+	"rdx": 5,
+
+	// arm64
+	"pc": 0,
+	"sp": 1,
 }
 
 func convertVars(pv []*proc.Variable) []api.Variable {

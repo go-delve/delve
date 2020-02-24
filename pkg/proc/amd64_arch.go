@@ -426,30 +426,34 @@ func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint
 	}
 }
 
-func (a *AMD64) DwarfRegisterToString(name string, reg *op.DwarfRegister) string {
-	name = strings.ToLower(name)
-	switch name {
+func (a *AMD64) DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+	name, ok := amd64DwarfToName[i]
+	if !ok {
+		name = fmt.Sprintf("unknown%d", i)
+	}
+
+	switch n := strings.ToLower(name); n {
 	case "rflags":
-		return eflagsDescription.Describe(reg.Uint64Val, 64)
+		return name, false, eflagsDescription.Describe(reg.Uint64Val, 64)
 
 	case "cw", "sw", "tw", "fop":
-		return fmt.Sprintf("%#04x", reg.Uint64Val)
+		return name, true, fmt.Sprintf("%#04x", reg.Uint64Val)
 
 	case "mxcsr_mask":
-		return fmt.Sprintf("%#08x", reg.Uint64Val)
+		return name, true, fmt.Sprintf("%#08x", reg.Uint64Val)
 
 	case "mxcsr":
-		return mxcsrDescription.Describe(reg.Uint64Val, 32)
+		return name, true, mxcsrDescription.Describe(reg.Uint64Val, 32)
 
 	default:
-		if reg.Bytes != nil && strings.HasPrefix(name, "xmm") {
-			return formatSSEReg(reg.Bytes)
-		} else if reg.Bytes != nil && strings.HasPrefix(name, "st(") {
-			return formatX87Reg(reg.Bytes)
+		if reg.Bytes != nil && strings.HasPrefix(n, "xmm") {
+			return name, true, formatSSEReg(reg.Bytes)
+		} else if reg.Bytes != nil && strings.HasPrefix(n, "st(") {
+			return name, true, formatX87Reg(reg.Bytes)
 		} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) <= 8) {
-			return fmt.Sprintf("%#016x", reg.Uint64Val)
+			return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 		} else {
-			return fmt.Sprintf("%#x", reg.Bytes)
+			return name, false, fmt.Sprintf("%#x", reg.Bytes)
 		}
 	}
 }
