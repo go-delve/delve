@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/goversion"
@@ -222,7 +223,18 @@ func canMacnative() bool {
 	if strings.TrimSpace(getoutput("go", "env", "CGO_ENABLED")) != "1" {
 		return false
 	}
-	_, err := os.Stat("/usr/include/sys/types.h")
+
+	macOSVersion := strings.Split(strings.TrimSpace(getoutput("/usr/bin/sw_vers", "-productVersion")), ".")
+	minor, err := strconv.ParseInt(macOSVersion[1], 10, 64)
+	if err != nil {
+		return false
+	}
+
+	typesHeader := "/usr/include/sys/types.h"
+	if minor >= 15 {
+		typesHeader = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/types.h"
+	}
+	_, err = os.Stat(typesHeader)
 	if err != nil {
 		return false
 	}
