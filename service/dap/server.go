@@ -21,10 +21,9 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap"  // dap
+	"github.com/google/go-dap" // dap
 	"github.com/sirupsen/logrus"
 )
-
 
 // Server implements a DAP server that can accept a single client for
 // a single debug session. It does not support restarting.
@@ -170,12 +169,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// In case a handler panics, we catch the panic and send an error response
 		// back to the client.
 		if ierr := recover(); ierr != nil {
-			req, ok := request.(*dap.Request)
-			if ok {
-				s.sendErrorResponse(*req, InternalError, "Internal Error", fmt.Sprintf("%v", ierr))
-			} else {
-				s.log.Errorf("Internal error while processing %#v: %v", request, ierr)
-			}
+			s.sendInternalError(request.GetSeq(), fmt.Sprintf("Internal Error: %v", ierr))
 		}
 	}()
 
@@ -417,6 +411,18 @@ func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, 
 	er.Message = summary
 	er.Body.Error.Id = id
 	er.Body.Error.Format = fmt.Sprintf("%s: %s", summary, details)
+	s.log.Error(er.Body.Error.Format)
+	s.send(er)
+}
+
+func (s *Server) sendInternalError(seq int, details string) {
+	er := &dap.ErrorResponse{}
+	er.Type = "response"
+	er.RequestSeq = seq
+	er.Success = false
+	er.Message = "Internal Error"
+	er.Body.Error.Id = InternalError
+	er.Body.Error.Format = details
 	s.log.Error(er.Body.Error.Format)
 	s.send(er)
 }
