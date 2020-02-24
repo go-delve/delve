@@ -357,10 +357,31 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, newlines bool, indent stri
 }
 
 func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
-	cols := 8
-	// Avoid emitting rows that are too long when using binary format
-	if format == 'b' {
-		cols = 4
+
+	var (
+		cols      int
+		colFormat string
+		addrLen   int
+		addrFmt   string
+	)
+
+	// Diffrent versions of golang output differently about '#'.
+	// See https://ci.appveyor.com/project/derekparker/delve-facy3/builds/30179356.
+	switch format {
+	case 'b':
+		cols = 4 // Avoid emitting rows that are too long when using binary format
+		colFormat = "%08b"
+	case 'o':
+		cols = 8
+		colFormat = "%04o" // Always keep one leading zero for octal.
+	case 'd':
+		cols = 8
+		colFormat = "%03d"
+	case 'x':
+		cols = 8
+		colFormat = "0x%02x" // Always keep one leading '0x' for hex.
+	default:
+		return fmt.Sprintf("not supprted format %q\n", string(format))
 	}
 
 	l := len(memArea)
@@ -369,35 +390,17 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
 		rows++
 	}
 
-	var colFormat string
-	// Leading zero and occupy 8 for binary
-	if format == 'b' {
-		colFormat = "    %#08b"
-	} else {
-		var maxColCharNum int
-		for i := 0; i < rows; i++ {
-			for j := 0; j < cols && i*cols+j < l; j++ {
-				curColCharNum := len(fmt.Sprintf("%#"+string(format), memArea[i*cols+j]))
-				if curColCharNum > maxColCharNum {
-					maxColCharNum = curColCharNum
-				}
-			}
-		}
-		colFormat = "    %#-" + strconv.Itoa(maxColCharNum) + string(format)
+	// Avoid the lens of two adjacent address are different, so always use the last addr's len to format.
+	if l != 0 {
+		addrLen = len(fmt.Sprintf("%x", uint64(address)+uint64(l)))
 	}
+	addrFmt = "0x%0" + strconv.Itoa(addrLen) + "x:"
 
 	lines := ""
 	for i := 0; i < rows; i++ {
-		lines += fmt.Sprintf("%#x:", address)
+		lines += fmt.Sprintf(addrFmt, address)
 		for j := 0; j < cols && i*cols+j < l; j++ {
-			curOutput := fmt.Sprintf(colFormat, memArea[i*cols+j])
-
-			// Diffrent versions of golang output differently if binary.
-			// See https://ci.appveyor.com/project/derekparker/delve-facy3/builds/30179356.
-			// Remove prefix `0b` if binary in some versions of golang because it is not graceful.
-			if format == 'b' && strings.Contains(curOutput, "0b") {
-				curOutput = "    " + curOutput[6:]
-			}
+			curOutput := "   " + fmt.Sprintf(colFormat, memArea[i*cols+j])
 			lines += curOutput
 		}
 		lines += "\n"
