@@ -967,7 +967,7 @@ func TestIssue1493(t *testing.T) {
 		ra := term.MustExec("regs -a")
 		nra := len(strings.Split(ra, "\n"))
 		t.Logf("regs -a: %s", ra)
-		if nr > nra/2 {
+		if nr > nra/2+1 {
 			t.Fatalf("'regs' returned too many registers (%d) compared to 'regs -a' (%d)", nr, nra)
 		}
 	})

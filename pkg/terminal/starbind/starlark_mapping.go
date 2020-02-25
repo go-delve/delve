@@ -934,6 +934,15 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 2 && args[2] != starlark.None {
+			err := unmarshalStarlarkValue(args[2], &rpcArgs.Scope, "Scope")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		} else {
+			scope := env.ctx.Scope()
+			rpcArgs.Scope = &scope
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
@@ -941,6 +950,8 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.ThreadID, "ThreadID")
 			case "IncludeFp":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.IncludeFp, "IncludeFp")
+			case "Scope":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Scope, "Scope")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}

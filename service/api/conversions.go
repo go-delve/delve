@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -328,10 +329,18 @@ func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 }
 
 // ConvertRegisters converts proc.Register to api.Register for a slice.
-func ConvertRegisters(in []proc.Register, arch proc.Arch) (out []Register) {
-	out = make([]Register, len(in))
-	for i := range in {
-		out[i] = Register{in[i].Name, arch.DwarfRegisterToString(in[i].Name, in[i].Reg)}
+func ConvertRegisters(in op.DwarfRegisters, arch proc.Arch, floatingPoint bool) (out []Register) {
+	out = make([]Register, 0, len(in.Regs))
+	for i := range in.Regs {
+		reg := in.Reg(uint64(i))
+		if reg == nil {
+			continue
+		}
+		name, fp, repr := arch.DwarfRegisterToString(i, reg)
+		if !floatingPoint && fp {
+			continue
+		}
+		out = append(out, Register{name, repr, i})
 	}
 	return
 }

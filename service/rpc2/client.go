@@ -292,9 +292,15 @@ func (c *RPCClient) ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) 
 	return out.Variables, err
 }
 
-func (c *RPCClient) ListRegisters(threadID int, includeFp bool) (api.Registers, error) {
+func (c *RPCClient) ListThreadRegisters(threadID int, includeFp bool) (api.Registers, error) {
 	out := new(ListRegistersOut)
-	err := c.call("ListRegisters", ListRegistersIn{ThreadID: threadID, IncludeFp: includeFp}, out)
+	err := c.call("ListRegisters", ListRegistersIn{ThreadID: threadID, IncludeFp: includeFp, Scope: nil}, out)
+	return out.Regs, err
+}
+
+func (c *RPCClient) ListScopeRegisters(scope api.EvalScope, includeFp bool) (api.Registers, error) {
+	out := new(ListRegistersOut)
+	err := c.call("ListRegisters", ListRegistersIn{ThreadID: 0, IncludeFp: includeFp, Scope: &scope}, out)
 	return out.Regs, err
 }
 

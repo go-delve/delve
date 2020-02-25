@@ -204,7 +204,7 @@ func (s *RPCServer) ListRegisters(arg interface{}, registers *string) error {
 		return err
 	}
 
-	regs, err := s.debugger.Registers(state.CurrentThread.ID, false)
+	regs, err := s.debugger.Registers(state.CurrentThread.ID, nil, false)
 	if err != nil {
 		return err
 	}
