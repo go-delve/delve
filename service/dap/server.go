@@ -169,7 +169,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// In case a handler panics, we catch the panic and send an error response
 		// back to the client.
 		if ierr := recover(); ierr != nil {
-			s.sendInternalError(request.GetSeq(), fmt.Sprintf("Internal Error: %v", ierr))
+			s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Internal Error: %v", ierr))
 		}
 	}()
 
@@ -258,11 +258,8 @@ func (s *Server) handleRequest(request dap.Message) {
 	default:
 		// This is a DAP message that go-dap has a struct for, so
 		// decoding succeeded, but this function does not know how
-		// to handle. We should be sending an ErrorResponse, but
-		// we cannot get to Seq and other fields from dap.Message.
-		// TODO(polina): figure out how to handle this better.
-		// Consider adding GetSeq() method to dap.Message interface.
-		s.log.Errorf("Unable to process %#v\n", request)
+		// to handle.
+		s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Unable to process %#v\n", request))
 	}
 }
 
@@ -415,7 +412,10 @@ func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, 
 	s.send(er)
 }
 
-func (s *Server) sendInternalError(seq int, details string) {
+// sendInternalErrorResponse sends an "internal error" response back to the client.
+// We only take a seq here because we don't want to make assumptions about the
+// kind of message received by the server that this error is a reply to.
+func (s *Server) sendInternalErrorResponse(seq int, details string) {
 	er := &dap.ErrorResponse{}
 	er.Type = "response"
 	er.RequestSeq = seq
