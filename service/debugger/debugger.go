@@ -1279,7 +1279,7 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 	}
 
 	if addr2 == 0 {
-		_, _, fn := d.target.BinInfo().PCToLine(addr1)
+		fn := d.target.BinInfo().PCToFunc(addr1)
 		if fn == nil {
 			return nil, fmt.Errorf("address %#x does not belong to any function", addr1)
 		}

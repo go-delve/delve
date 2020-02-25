@@ -4027,7 +4027,7 @@ func TestReadDefer(t *testing.T) {
 			if d.Unreadable != nil {
 				t.Fatalf("expected %q as %s of frame %d, got unreadable defer: %v", tgt, deferName, frameIdx, d.Unreadable)
 			}
-			_, _, dfn := p.BinInfo().PCToLine(d.DeferredPC)
+			dfn := p.BinInfo().PCToFunc(d.DeferredPC)
 			if dfn == nil {
 				t.Fatalf("expected %q as %s of frame %d, got %#x", tgt, deferName, frameIdx, d.DeferredPC)
 			}
