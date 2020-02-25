@@ -486,6 +486,9 @@ func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Br
 		}
 	}
 	if err != nil {
+		if isBreakpointExistsErr(err) {
+			return nil, err
+		}
 		for _, bp := range bps {
 			if bp == nil {
 				continue
@@ -499,6 +502,11 @@ func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Br
 	}
 	createdBp := api.ConvertBreakpoints(bps)
 	return createdBp[0], nil // we created a single logical breakpoint, the slice here will always have len == 1
+}
+
+func isBreakpointExistsErr(err error) bool {
+	_, r := err.(proc.BreakpointExistsError)
+	return r
 }
 
 // AmendBreakpoint will update the breakpoint with the matching ID.
