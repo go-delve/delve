@@ -169,7 +169,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// In case a handler panics, we catch the panic and send an error response
 		// back to the client.
 		if ierr := recover(); ierr != nil {
-			s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Internal Error: %v", ierr))
+			s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("%v", ierr))
 		}
 	}()
 
@@ -422,7 +422,7 @@ func (s *Server) sendInternalErrorResponse(seq int, details string) {
 	er.Success = false
 	er.Message = "Internal Error"
 	er.Body.Error.Id = InternalError
-	er.Body.Error.Format = details
+	er.Body.Error.Format = "Internal Error:" + details
 	s.log.Error(er.Body.Error.Format)
 	s.send(er)
 }
