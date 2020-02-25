@@ -422,7 +422,7 @@ func (s *Server) sendInternalErrorResponse(seq int, details string) {
 	er.Success = false
 	er.Message = "Internal Error"
 	er.Body.Error.Id = InternalError
-	er.Body.Error.Format = "Internal Error:" + details
+	er.Body.Error.Format = fmt.Sprintf("%s: %s", er.Message, details)
 	s.log.Error(er.Body.Error.Format)
 	s.send(er)
 }
