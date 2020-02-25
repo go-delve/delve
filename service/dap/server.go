@@ -21,7 +21,7 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap" // dap
+	"github.com/google/go-dap"
 	"github.com/sirupsen/logrus"
 )
 
