@@ -192,14 +192,6 @@ func (c *Client) UnkownRequest() {
 	c.send(request)
 }
 
-// UnkownProtocolMessage triggers dap.DecodeProtocolMessageFieldError.
-func (c *Client) UnkownProtocolMessage() {
-	m := &dap.ProtocolMessage{}
-	m.Seq = -1
-	m.Type = "unknown"
-	c.send(m)
-}
-
 // UnknownEvent triggers dap.DecodeProtocolMessageFieldError.
 func (c *Client) UnknownEvent() {
 	event := &dap.Event{}
