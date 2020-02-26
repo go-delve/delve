@@ -1836,3 +1836,35 @@ func TestIssue1787(t *testing.T) {
 		}
 	})
 }
+
+func TestDoubleCreateBreakpoint(t *testing.T) {
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
+		assertNoError(err, t, "CreateBreakpoint 1")
+
+		bps, err := c.ListBreakpoints()
+		assertNoError(err, t, "ListBreakpoints 1")
+
+		t.Logf("breakpoints before second call:")
+		for _, bp := range bps {
+			t.Logf("\t%v", bp)
+		}
+
+		numBreakpoints := len(bps)
+
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "secondbreakpoint", Tracepoint: true})
+		assertError(err, t, "CreateBreakpoint 2") // breakpoint exists
+
+		bps, err = c.ListBreakpoints()
+		assertNoError(err, t, "ListBreakpoints 2")
+
+		t.Logf("breakpoints after second call:")
+		for _, bp := range bps {
+			t.Logf("\t%v", bp)
+		}
+
+		if len(bps) != numBreakpoints {
+			t.Errorf("wrong number of breakpoints, got %d expected %d", len(bps), numBreakpoints)
+		}
+	})
+}

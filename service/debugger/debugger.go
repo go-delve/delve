@@ -487,6 +487,9 @@ func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Br
 		}
 	}
 	if err != nil {
+		if isBreakpointExistsErr(err) {
+			return nil, err
+		}
 		for _, bp := range bps {
 			if bp == nil {
 				continue
@@ -500,6 +503,11 @@ func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Br
 	}
 	createdBp := api.ConvertBreakpoints(bps)
 	return createdBp[0], nil // we created a single logical breakpoint, the slice here will always have len == 1
+}
+
+func isBreakpointExistsErr(err error) bool {
+	_, r := err.(proc.BreakpointExistsError)
+	return r
 }
 
 // AmendBreakpoint will update the breakpoint with the matching ID.
@@ -1279,7 +1287,7 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 	}
 
 	if addr2 == 0 {
-		_, _, fn := d.target.BinInfo().PCToLine(addr1)
+		fn := d.target.BinInfo().PCToFunc(addr1)
 		if fn == nil {
 			return nil, fmt.Errorf("address %#x does not belong to any function", addr1)
 		}

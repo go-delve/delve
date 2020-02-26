@@ -21,7 +21,7 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap" // dap
+	"github.com/google/go-dap"
 	"github.com/sirupsen/logrus"
 )
 
@@ -168,13 +168,19 @@ func (s *Server) serveDAPCodec() {
 			}
 			return
 		}
-		// TODO(polina) Add a panic guard,
-		// so we do not kill user's process when delve panics.
 		s.handleRequest(request)
 	}
 }
 
 func (s *Server) handleRequest(request dap.Message) {
+	defer func() {
+		// In case a handler panics, we catch the panic and send an error response
+		// back to the client.
+		if ierr := recover(); ierr != nil {
+			s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("%v", ierr))
+		}
+	}()
+
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
@@ -260,11 +266,8 @@ func (s *Server) handleRequest(request dap.Message) {
 	default:
 		// This is a DAP message that go-dap has a struct for, so
 		// decoding succeeded, but this function does not know how
-		// to handle. We should be sending an ErrorResponse, but
-		// we cannot get to Seq and other fields from dap.Message.
-		// TODO(polina): figure out how to handle this better.
-		// Consider adding GetSeq() method to dap.Message interface.
-		s.log.Errorf("Unable to process %#v\n", request)
+		// to handle.
+		s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Unable to process %#v\n", request))
 	}
 }
 
@@ -413,6 +416,21 @@ func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, 
 	er.Message = summary
 	er.Body.Error.Id = id
 	er.Body.Error.Format = fmt.Sprintf("%s: %s", summary, details)
+	s.log.Error(er.Body.Error.Format)
+	s.send(er)
+}
+
+// sendInternalErrorResponse sends an "internal error" response back to the client.
+// We only take a seq here because we don't want to make assumptions about the
+// kind of message received by the server that this error is a reply to.
+func (s *Server) sendInternalErrorResponse(seq int, details string) {
+	er := &dap.ErrorResponse{}
+	er.Type = "response"
+	er.RequestSeq = seq
+	er.Success = false
+	er.Message = "Internal Error"
+	er.Body.Error.Id = InternalError
+	er.Body.Error.Format = fmt.Sprintf("%s: %s", er.Message, details)
 	s.log.Error(er.Body.Error.Format)
 	s.send(er)
 }

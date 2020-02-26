@@ -10,6 +10,8 @@ github.com/golang/protobuf v1.2.0 h1:P3YflyNX/ehuJFLhxviNdFxQPkGK5cDcApsge1SqnvM
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/google/go-dap v0.1.0 h1:UzVzngq6yBR+bJVnTM8mjcdKrQnYR7m7U7JpNSnEo48=
 github.com/google/go-dap v0.1.0/go.mod h1:5q8aYQFnHOAZEMP+6vmq25HKYAEwE+LF5yh7JKrrhSQ=
+github.com/google/go-dap v0.2.0 h1:whjIGQRumwbR40qRU7CEKuFLmePUUc2s4Nt9DoXXxWk=
+github.com/google/go-dap v0.2.0/go.mod h1:5q8aYQFnHOAZEMP+6vmq25HKYAEwE+LF5yh7JKrrhSQ=
 github.com/hpcloud/tail v1.0.0 h1:nfCOvKYfkgYP8hkirhJocXT2+zOD8yUNjXaWfTlyFKI=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/inconshreveable/mousetrap v1.0.0 h1:Z8tu5sraLXCXIcARxBp/8cbvlwVa7Z1NHg9XEKhtSvM=

@@ -213,7 +213,7 @@ func (a *ARM64) SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters)
 		}
 	}
 
-	_, _, fn := it.bi.PCToLine(it.frame.Ret)
+	fn := it.bi.PCToFunc(it.frame.Ret)
 	if fn == nil {
 		return false
 	}
