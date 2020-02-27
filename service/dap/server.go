@@ -41,6 +41,9 @@ type Server struct {
 	listener net.Listener
 	// conn is the accepted client connection.
 	conn net.Conn
+	// stopChan is closed when the server is Stop()-ed. This can be used to signal
+	// to goroutines run by the server that it's time to quit.
+	stopChan chan struct{}
 	// reader is used to read requests from the connection.
 	reader *bufio.Reader
 	// debugger is the underlying debugger service.
@@ -52,25 +55,27 @@ type Server struct {
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
-// via config and assumes its ownership. Optionally takes DisconnectChan
-// via config, which can be used to detect when the client disconnects
-// and the server is ready to be shut down. The caller must call
-// Stop() on shutdown.
+// via config and assumes its ownership. config.disconnectChan has to be set;
+// it will be closed by the server when the client disconnects or requests
+// shutdown. Once disconnectChan is closed, Server.Stop() must be called.
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
 	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
 	return &Server{
 		config:   config,
 		listener: config.Listener,
+		stopChan: make(chan struct{}),
 		log:      logger,
 	}
 }
 
-// Stop stops the DAP debugger service, closes the listener and
-// the client connection. It shuts down the underlying debugger
-// and kills the target process if it was launched by it.
+// Stop stops the DAP debugger service, closes the listener and the client
+// connection. It shuts down the underlying debugger and kills the target
+// process if it was launched by it. This method mustn't be called more than
+// once.
 func (s *Server) Stop() {
 	s.listener.Close()
+	close(s.stopChan)
 	if s.conn != nil {
 		// Unless Stop() was called after serveDAPCodec()
 		// returned, this will result in closed connection error
@@ -96,21 +101,18 @@ func (s *Server) Stop() {
 // TODO(polina): lock this when we add more goroutines that could call
 // this when we support asynchronous request-response communication.
 func (s *Server) signalDisconnect() {
-	// DisconnectChan might be nil at server creation if the
-	// caller does not want to rely on the disconnect signal.
+	// Avoid accidentally closing the channel twice and causing a panic, when
+	// this function is called more than once. For example, we could have the
+	// following sequence of events:
+	// -- run goroutine: calls onDisconnectRequest()
+	// -- run goroutine: calls signalDisconnect()
+	// -- main goroutine: calls Stop()
+	// -- main goroutine: Stop() closes client connection
+	// -- run goroutine: serveDAPCodec() gets "closed network connection"
+	// -- run goroutine: serveDAPCodec() returns
+	// -- run goroutine: serveDAPCodec calls signalDisconnect()
 	if s.config.DisconnectChan != nil {
 		close(s.config.DisconnectChan)
-		// Take advantage of the nil check above to avoid accidentally
-		// closing the channel twice and causing a panic, when this
-		// function is called more than once. For example, we could
-		// have the following sequence of events:
-		// -- run goroutine: calls onDisconnectRequest()
-		// -- run goroutine: calls signalDisconnect()
-		// -- main goroutine: calls Stop()
-		// -- main goroutine: Stop() closes client connection
-		// -- run goroutine: serveDAPCodec() gets "closed network connection"
-		// -- run goroutine: serveDAPCodec() returns
-		// -- run goroutine: serveDAPCodec calls signalDisconnect()
 		s.config.DisconnectChan = nil
 	}
 }
@@ -126,9 +128,11 @@ func (s *Server) Run() {
 	go func() {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			// This will print if the server is killed with Ctrl+C
-			// before client connection is accepted.
-			s.log.Errorf("Error accepting client connection: %s\n", err)
+			select {
+			case <-s.stopChan:
+			default:
+				s.log.Errorf("Error accepting client connection: %s\n", err)
+			}
 			s.signalDisconnect()
 			return
 		}
@@ -147,15 +151,19 @@ func (s *Server) serveDAPCodec() {
 		request, err := dap.ReadProtocolMessage(s.reader)
 		// TODO(polina): Differentiate between errors and handle them
 		// gracefully. For example,
-		// -- "use of closed network connection" means client connection
-		// was closed via Stop() in response to a disconnect request.
 		// -- "Request command 'foo' is not supported" means we
 		// potentially got some new DAP request that we do not yet have
 		// decoding support for, so we can respond with an ErrorResponse.
 		// TODO(polina): to support this add Seq to
 		// dap.DecodeProtocolMessageFieldError.
 		if err != nil {
-			if err != io.EOF {
+			stopRequested := false
+			select {
+			case <-s.stopChan:
+				stopRequested = true
+			default:
+			}
+			if err != io.EOF && !stopRequested {
 				s.log.Error("DAP error: ", err)
 			}
 			return
