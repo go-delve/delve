@@ -216,10 +216,13 @@ Examine memory:
 
     examinemem [-fmt <format>] [-len <length>] <address>
 
-Format represents the data format and the value is one of this list (default hex): oct(octal), hex(hexadecimal), dec(decimal), bin(binary).
+Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
 Address is the memory location of the target to examine.
-For example:  x -fmt hex -len 20 0xc00008af38
+
+For example:
+
+    x -fmt hex -len 20 0xc00008af38
 
 Aliases: x
 
