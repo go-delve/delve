@@ -2310,7 +2310,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 	}
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture.Source, 37)
+		bp := setFileBreakpoint(p, t, fixture.Source, 38)
 
 		assertNoError(proc.Continue(p), t, "Continue()")
 		_, err := p.ClearBreakpoint(bp.Addr)
@@ -2326,7 +2326,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 
 		gid := p.SelectedGoroutine().ID
 
-		seq := []int{37, 38, 13, 15, 16, 38}
+		seq := []int{38, 39, 13, 15, 16, 39}
 
 		i := 0
 		count := 0
@@ -2338,7 +2338,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 			}
 			f, ln := currentLineNumber(p, t)
 			if ln != seq[i] {
-				if i == 1 && ln == 40 {
+				if i == 1 && ln == 41 {
 					// loop exited
 					break
 				}

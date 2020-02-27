@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"time"
 	"sync"
+	"time"
 )
 
 var v int = 99
@@ -34,9 +34,9 @@ func main() {
 	y := x * x
 	var z int
 	Threads(Foo)
+	wg.Wait()
 	for i := 0; i < 100; i++ {
 		z = Foo(x, y)
 	}
 	fmt.Printf("z=%d\n", z)
-	wg.Wait()
 }
