@@ -16,12 +16,13 @@ import (
 	"net"
 	"path/filepath"
 
+	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap"
+	"github.com/google/go-dap" // dap
 	"github.com/sirupsen/logrus"
 )
 
@@ -52,6 +53,8 @@ type Server struct {
 	log *logrus.Entry
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
+	// binaryToRemove is the compiled binary to be removed on disconnect.
+	binaryToRemove string
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -114,6 +117,9 @@ func (s *Server) signalDisconnect() {
 	if s.config.DisconnectChan != nil {
 		close(s.config.DisconnectChan)
 		s.config.DisconnectChan = nil
+	}
+	if s.binaryToRemove != "" {
+		gobuild.Remove(s.binaryToRemove)
 	}
 }
 
@@ -286,33 +292,70 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	s.send(response)
 }
 
+// Output path for the compiled binary in debug or test modes.
+const debugBinary string = "./__debug_bin"
+
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// TODO(polina): Respond with an error if debug session is in progress?
-	program, ok := request.Arguments["program"]
+
+	program, ok := request.Arguments["program"].(string)
 	if !ok || program == "" {
 		s.sendErrorResponse(request.Request,
 			FailedToContinue, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
-	s.config.ProcessArgs = []string{program.(string)}
-	s.config.WorkingDir = filepath.Dir(program.(string))
-	// TODO: support program args
-
-	stop, ok := request.Arguments["stopOnEntry"]
-	s.stopOnEntry = (ok && stop == true)
 
 	mode, ok := request.Arguments["mode"]
 	if !ok || mode == "" {
 		mode = "debug"
 	}
-	// TODO(polina): support "debug", "test" and "remote" modes
-	if mode != "exec" {
+
+	if mode == "debug" || mode == "test" {
+		output, ok := request.Arguments["output"].(string)
+		if !ok || output == "" {
+			output = debugBinary
+		}
+		debugname, err := filepath.Abs(output)
+		if err != nil {
+			s.sendInternalErrorResponse(request.Seq, err.Error())
+			return
+		}
+
+		buildFlags, ok := request.Arguments["buildFlags"].(string)
+		if !ok {
+			buildFlags = ""
+		}
+
+		if mode == "debug" {
+			err = gobuild.GoBuild(debugname, []string{program}, buildFlags)
+		} else if mode == "test" {
+			err = gobuild.GoTestBuild(debugname, []string{program}, buildFlags)
+		}
+		if err != nil {
+			s.sendErrorResponse(request.Request,
+				FailedToContinue, "Failed to launch",
+				fmt.Sprintf("Build error: %s", err.Error()))
+			return
+		}
+		program = debugname
+		s.binaryToRemove = debugname
+	}
+
+	// TODO(polina): support "remote" mode
+	if mode != "exec" && mode != "debug" && mode != "test" {
 		s.sendErrorResponse(request.Request,
 			FailedToContinue, "Failed to launch",
 			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
 		return
 	}
+
+	stop, ok := request.Arguments["stopOnEntry"]
+	s.stopOnEntry = (ok && stop == true)
+
+	// TODO(polina): support target args
+	s.config.ProcessArgs = []string{program}
+	s.config.WorkingDir = filepath.Dir(program)
 
 	config := &debugger.Config{
 		WorkingDir:           s.config.WorkingDir,
