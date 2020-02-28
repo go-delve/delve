@@ -17,6 +17,8 @@ import (
 	"github.com/google/go-dap"
 )
 
+const stopOnEntry bool = true
+
 func TestMain(m *testing.M) {
 	var logOutput string
 	flag.StringVar(&logOutput, "log-output", "", "configures log output")
@@ -74,7 +76,7 @@ func TestStopOnEntry(t *testing.T) {
 			t.Errorf("got %#v, want Seq=0, RequestSeq=0", initResp)
 		}
 
-		client.LaunchRequest("exec", fixture.Path, "", true /*stopOnEntry*/)
+		client.LaunchRequest("exec", fixture.Path, stopOnEntry)
 		initEv := client.ExpectInitializedEvent(t)
 		if initEv.Seq != 0 {
 			t.Errorf("got %#v, want Seq=0", initEv)
@@ -129,7 +131,7 @@ func TestSetBreakpoint(t *testing.T) {
 		client.InitializeRequest()
 		client.ExpectInitializeResponse(t)
 
-		client.LaunchRequest("exec", fixture.Path, "", false /*stopOnEntry*/)
+		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 		client.ExpectInitializedEvent(t)
 		launchResp := client.ExpectLaunchResponse(t)
 		if launchResp.RequestSeq != 1 {
@@ -173,7 +175,9 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
-func initLaunchRunDisconnect(t *testing.T, client *daptest.Client, launchRequest func()) {
+// runDebugSesion is a helper for executing the standard init and shutdown
+// sequences while specifying unique launch criteria via parameters.
+func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func()) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
@@ -192,20 +196,22 @@ func initLaunchRunDisconnect(t *testing.T, client *daptest.Client, launchRequest
 func TestLaunchDebugRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// We reuse the harness that builds, but ignore the actual binary.
-		initLaunchRunDisconnect(t, client, func() {
+		runDebugSession(t, client, func() {
 			// Use the default output directory.
-			client.LaunchRequest("debug", fixture.Source, nil, false /*stopOnEntry*/)
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source})
 		})
 	})
 }
 
 func TestLaunchTestRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		initLaunchRunDisconnect(t, client, func() {
+		runDebugSession(t, client, func() {
 			// We reuse the harness that builds, but ignore the actual binary.
 			fixtures := protest.FindFixturesDir()
 			testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
-			client.LaunchRequest("test", testdir, "__mytestdir", false /*stopOnEntry*/)
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "test", "program": testdir, "output": "__mytestdir"})
 		})
 	})
 }
@@ -239,39 +245,43 @@ func TestBadLaunchRequests(t *testing.T) {
 		}
 
 		// Test for the DAP-specific detailed error message.
-		client.LaunchRequest("exec", "", "", true)
+		client.LaunchRequest("exec", "", stopOnEntry)
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequest("debug", 12345, "", true)
+		client.LaunchRequestWithArgs(map[string]interface{}{"program": 12345})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequest("test", nil, "", true)
+		client.LaunchRequestWithArgs(map[string]interface{}{"program": nil})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequest("remote", fixture.Path, "", true)
+		client.LaunchRequestWithArgs(map[string]interface{}{})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: The program attribute is missing in debug configuration.")
+
+		client.LaunchRequest("remote", fixture.Path, stopOnEntry)
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"remote\" in debug configuration.")
 
-		client.LaunchRequest("notamode", fixture.Path, "", true)
+		client.LaunchRequest("notamode", fixture.Path, stopOnEntry)
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"notamode\" in debug configuration.")
 
-		client.LaunchRequest(12345, fixture.Path, "", true)
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": 12345, "program": fixture.Path})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value %!q(float64=12345) in debug configuration.")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
-		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", "", false)
+		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t))
 
-		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", "", true)
+		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
 
-		client.LaunchRequest("exec", fixture.Source, "", true) // Not an executable
-		expectFailedToLaunch(client.ExpectErrorResponse(t))
+		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()

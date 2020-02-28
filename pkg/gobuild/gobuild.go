@@ -21,7 +21,7 @@ func Remove(path string) {
 	}
 }
 
-// OptFlags generates default build flags to run off optimization and inlining.
+// OptFlags generates default build flags to turn off optimization and inlining.
 func OptFlags(args []string) []string {
 	// after go1.9 building with -gcflags='-N -l' and -a simultaneously works.
 	// after go1.10 specifying -a is unnecessary because of the new caching strategy,
