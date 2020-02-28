@@ -160,6 +160,8 @@ func Setup(logFlag bool, logstr string, logDest string) error {
 	}
 	v := strings.Split(logstr, ",")
 	for _, logcmd := range v {
+		// If adding another value, do make sure to
+		// update "Help about logging flags" in commands.go.
 		switch logcmd {
 		case "debugger":
 			debugger = true
@@ -177,8 +179,8 @@ func Setup(logFlag bool, logstr string, logDest string) error {
 			fnCall = true
 		case "minidump":
 			minidump = true
-			// If adding another value, do make sure to
-			// update "Help about logging flags" in commands.go.
+		default:
+			fmt.Fprintf(os.Stderr, "Warning: unknown log output value %q, run 'dlv help log' for usage.\n", logcmd)
 		}
 	}
 	return nil
