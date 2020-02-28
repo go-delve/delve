@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 )
 
 const (
@@ -383,6 +384,7 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
 	default:
 		return fmt.Sprintf("not supprted format %q\n", string(format))
 	}
+	colFormat += "\t"
 
 	l := len(memArea)
 	rows := l / cols
@@ -394,17 +396,18 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
 	if l != 0 {
 		addrLen = len(fmt.Sprintf("%x", uint64(address)+uint64(l)))
 	}
-	addrFmt = "0x%0" + strconv.Itoa(addrLen) + "x:"
+	addrFmt = "0x%0" + strconv.Itoa(addrLen) + "x:\t"
 
-	lines := ""
+	var b strings.Builder
+	w := tabwriter.NewWriter(&b, 0, 0, 3, ' ', 0)
 	for i := 0; i < rows; i++ {
-		lines += fmt.Sprintf(addrFmt, address)
+		fmt.Fprintf(w, addrFmt, address)
 		for j := 0; j < cols && i*cols+j < l; j++ {
-			curOutput := "   " + fmt.Sprintf(colFormat, memArea[i*cols+j])
-			lines += curOutput
+			fmt.Fprintf(w, colFormat, memArea[i*cols+j])
 		}
-		lines += "\n"
+		fmt.Fprintln(w, "")
 		address += uintptr(cols)
 	}
-	return lines
+	w.Flush()
+	return b.String()
 }
