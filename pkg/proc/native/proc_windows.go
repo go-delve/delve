@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"unsafe"
 
@@ -56,14 +55,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 	}
 	closer.Close()
 
-	env := os.Environ()
-	for i := range env {
-		if strings.HasPrefix(env[i], "GODEBUG=") {
-			// Go 1.14 asynchronous preemption mechanism is incompatible with
-			// debuggers, see: https://github.com/golang/go/issues/36494
-			env[i] += ",asyncpreemptoff=1"
-		}
-	}
+	env := proc.DisableAsyncPreemptEnv()
 
 	var p *os.Process
 	dbp := New(0)
