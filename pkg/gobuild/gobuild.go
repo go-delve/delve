@@ -21,8 +21,8 @@ func Remove(path string) {
 	}
 }
 
-// OptFlags generates default build flags to turn off optimization and inlining.
-func OptFlags(args []string) []string {
+// optflags generates default build flags to turn off optimization and inlining.
+func optflags(args []string) []string {
 	// after go1.9 building with -gcflags='-N -l' and -a simultaneously works.
 	// after go1.10 specifying -a is unnecessary because of the new caching strategy,
 	// but we should pass -gcflags=all=-N -l to have it applied to all packages
@@ -44,7 +44,7 @@ func OptFlags(args []string) []string {
 // and writes the output at 'debugname'.
 func GoBuild(debugname string, pkgs []string, buildflags string) error {
 	args := []string{"-o", debugname}
-	args = OptFlags(args)
+	args = optflags(args)
 	if buildflags != "" {
 		args = append(args, config.SplitQuotedFields(buildflags, '\'')...)
 	}
@@ -56,7 +56,7 @@ func GoBuild(debugname string, pkgs []string, buildflags string) error {
 // and writes the output at 'debugname'.
 func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
 	args := []string{"-c", "-o", debugname}
-	args = OptFlags(args)
+	args = optflags(args)
 	if buildflags != "" {
 		args = append(args, config.SplitQuotedFields(buildflags, '\'')...)
 	}
