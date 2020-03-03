@@ -65,6 +65,23 @@ func (tbe ErrThreadBlocked) Error() string {
 // implementations of the Thread interface.
 type CommonThread struct {
 	returnValues []*Variable
+	// currentBreakpoint is the breakpoint this thread is currently stopped at.
+	currentBreakpoint *BreakpointState
+}
+
+func (t *CommonThread) SetCurrentBreakpoint(bps *BreakpointState) {
+	t.currentBreakpoint = bps
+}
+
+func (t *CommonThread) GetCurrentBreakpoint() *BreakpointState {
+	if t.currentBreakpoint != nil {
+		return t.currentBreakpoint
+	}
+	return new(BreakpointState)
+}
+
+func (t *CommonThread) ClearCurrentBreakpoint() {
+	t.currentBreakpoint = nil
 }
 
 // ReturnValues reads the return values from the function executing on
@@ -313,7 +330,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
-	if bp := dbp.ThreadToBreakpoint(curthread); bp.Breakpoint == nil {
+	if bp := curthread.Common().GetCurrentBreakpoint(); bp.Breakpoint == nil {
 		dbp.setThreadBreakpointState(curthread, false)
 	}
 	success = true

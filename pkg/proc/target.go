@@ -29,10 +29,6 @@ type Target struct {
 	// have read and parsed from the targets memory.
 	// This must be cleared whenever the target is resumed.
 	gcache goroutineCache
-
-	// threadToBreakpoint maps threads to the breakpoint that they
-	// have were trapped on.
-	threadToBreakpoint map[int]*BreakpointState
 }
 
 // NewTarget returns an initialized Target object.
@@ -98,14 +94,6 @@ func (t *Target) Direction(dir Direction) error {
 	return t.Process.Direction(dir)
 }
 
-// ThreadToBreakpoint returns the breakpoint that the given thread is stopped at.
-func (t *Target) ThreadToBreakpoint(th Thread) *BreakpointState {
-	if bps, ok := t.threadToBreakpoint[th.ThreadID()]; ok {
-		return bps
-	}
-	return new(BreakpointState)
-}
-
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
 func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
@@ -122,7 +110,7 @@ func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 		return nil, err
 	}
 	for _, th := range t.Process.ThreadList() {
-		bp := t.ThreadToBreakpoint(th)
+		bp := th.Common().GetCurrentBreakpoint()
 		if bp.Breakpoint != nil && bp.Addr == addr {
 			bp.Clear()
 		}
@@ -152,7 +140,9 @@ func (t *Target) ClearAllGCache() {
 // Only valid for recorded targets.
 func (t *Target) Restart(from string) error {
 	t.ClearAllGCache()
-	t.threadToBreakpoint = make(map[int]*BreakpointState)
+	for _, th := range t.ThreadList() {
+		th.Common().ClearCurrentBreakpoint()
+	}
 	if err := t.proc.Restart(from); err != nil {
 		return err
 	}
@@ -177,16 +167,17 @@ func (t *Target) ClearInternalBreakpoints() error {
 	}); err != nil {
 		return err
 	}
-	for tid, bp := range t.threadToBreakpoint {
-		if bp.IsInternal() {
-			delete(t.threadToBreakpoint, tid)
+	for _, th := range t.ThreadList() {
+		bps := th.Common().GetCurrentBreakpoint()
+		if bps.Breakpoint != nil && bps.IsInternal() {
+			th.Common().ClearCurrentBreakpoint()
 		}
 	}
 	return nil
 }
 
 func (t *Target) setThreadBreakpointState(th Thread, adjustPC bool) error {
-	delete(t.threadToBreakpoint, th.ThreadID())
+	th.Common().ClearCurrentBreakpoint()
 
 	regs, err := th.Registers(false)
 	if err != nil {
@@ -219,7 +210,7 @@ func (t *Target) setThreadBreakpointState(th Thread, adjustPC bool) error {
 			}
 			bps.TotalHitCount++
 		}
-		t.threadToBreakpoint[th.ThreadID()] = bps
+		th.Common().SetCurrentBreakpoint(bps)
 	}
 	return nil
 }

@@ -179,12 +179,14 @@ func Continue(dbp *Target) error {
 		}
 		dbp.ClearAllGCache()
 		if dbp.proc.CurrentDirection() == Forward {
-			for tid, _ := range dbp.threadToBreakpoint {
-				th, _ := dbp.FindThread(tid)
-				dbp.threadStepInstruction(th, false)
+			for _, th := range dbp.ThreadList() {
+				bps := th.Common().GetCurrentBreakpoint()
+				if bps.Breakpoint != nil {
+					dbp.threadStepInstruction(th, false)
+					th.Common().ClearCurrentBreakpoint()
+				}
 			}
 		}
-		dbp.threadToBreakpoint = make(map[int]*BreakpointState)
 		trapthread, additionalTrapThreads, err := dbp.proc.ContinueOnce()
 		if err != nil {
 			return err
@@ -209,7 +211,7 @@ func Continue(dbp *Target) error {
 		}
 
 		curthread := dbp.CurrentThread()
-		curbp := dbp.ThreadToBreakpoint(curthread)
+		curbp := curthread.Common().GetCurrentBreakpoint()
 
 		switch {
 		case curbp.Breakpoint == nil:
@@ -311,7 +313,7 @@ func Continue(dbp *Target) error {
 func conditionErrors(dbp *Target, threads []Thread) error {
 	var condErr error
 	for _, th := range threads {
-		if bp := dbp.ThreadToBreakpoint(th); bp.Breakpoint != nil && bp.CondError != nil {
+		if bp := th.Common().GetCurrentBreakpoint(); bp.Breakpoint != nil && bp.CondError != nil {
 			if condErr == nil {
 				condErr = bp.CondError
 			} else {
@@ -328,15 +330,15 @@ func conditionErrors(dbp *Target, threads []Thread) error {
 // 	- trapthread
 func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
 	for _, th := range threads {
-		if bp := dbp.ThreadToBreakpoint(th); bp.Active && bp.Internal {
+		if bp := th.Common().GetCurrentBreakpoint(); bp.Active && bp.Internal {
 			return dbp.SwitchThread(th.ThreadID())
 		}
 	}
-	if bp := dbp.ThreadToBreakpoint(trapthread); bp.Active {
+	if bp := trapthread.Common().GetCurrentBreakpoint(); bp.Active {
 		return dbp.SwitchThread(trapthread.ThreadID())
 	}
 	for _, th := range threads {
-		if bp := dbp.ThreadToBreakpoint(th); bp.Active {
+		if bp := th.Common().GetCurrentBreakpoint(); bp.Active {
 			return dbp.SwitchThread(th.ThreadID())
 		}
 	}
@@ -506,7 +508,7 @@ func StepOut(dbp *Target) error {
 		}
 	}
 
-	if bp := dbp.ThreadToBreakpoint(curthread); bp.Breakpoint == nil {
+	if bp := curthread.Common().GetCurrentBreakpoint(); bp.Breakpoint == nil {
 		dbp.setThreadBreakpointState(curthread, false)
 	}
 
@@ -548,7 +550,7 @@ func StepInstruction(dbp *Target) (err error) {
 }
 
 func (dbp *Target) threadStepInstruction(thread Thread, setbp bool) error {
-	bp := dbp.ThreadToBreakpoint(thread)
+	bp := thread.Common().GetCurrentBreakpoint()
 	if bp.Breakpoint != nil {
 		if err := dbp.proc.ClearBreakpointFn(bp.Addr, bp.OriginalData); err != nil {
 			return err

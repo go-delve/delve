@@ -609,7 +609,7 @@ func TestNextConcurrentVariant2(t *testing.T) {
 					proc.GetG(thread)
 				}
 				vval, _ = constant.Int64Val(v.Value)
-				if bpstate := p.ThreadToBreakpoint(p.CurrentThread()); bpstate.Breakpoint == nil {
+				if bpstate := p.CurrentThread().Common().GetCurrentBreakpoint(); bpstate.Breakpoint == nil {
 					if vval != initVval {
 						t.Fatal("Did not end up on same goroutine")
 					}
@@ -1047,11 +1047,11 @@ func TestContinueMulti(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			if bp := p.ThreadToBreakpoint(p.CurrentThread()); bp.LogicalID == bp1.LogicalID {
+			if bp := p.CurrentThread().Common().GetCurrentBreakpoint(); bp.LogicalID == bp1.LogicalID {
 				mainCount++
 			}
 
-			if bp := p.ThreadToBreakpoint(p.CurrentThread()); bp.LogicalID == bp2.LogicalID {
+			if bp := p.CurrentThread().Common().GetCurrentBreakpoint(); bp.LogicalID == bp2.LogicalID {
 				sayhiCount++
 			}
 		}
@@ -1441,7 +1441,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				assertNoError(err, t, "Continue()")
 			}
 			for _, th := range p.ThreadList() {
-				if bp := p.ThreadToBreakpoint(th); bp.Breakpoint == nil {
+				if bp := th.Common().GetCurrentBreakpoint(); bp.Breakpoint == nil {
 					continue
 				}
 				scope, err := proc.GoroutineScope(th)
@@ -1836,7 +1836,7 @@ func TestPanicBreakpoint(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("panic", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
-		bp := p.ThreadToBreakpoint(p.CurrentThread())
+		bp := p.CurrentThread().Common().GetCurrentBreakpoint()
 		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
@@ -1846,7 +1846,7 @@ func TestPanicBreakpoint(t *testing.T) {
 func TestCmdLineArgs(t *testing.T) {
 	expectSuccess := func(p *proc.Target, fixture protest.Fixture) {
 		err := proc.Continue(p)
-		bp := p.ThreadToBreakpoint(p.CurrentThread())
+		bp := p.CurrentThread().Common().GetCurrentBreakpoint()
 		if bp.Breakpoint != nil && bp.Name == proc.UnrecoveredPanic {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", bp)
 		}
@@ -1862,7 +1862,7 @@ func TestCmdLineArgs(t *testing.T) {
 
 	expectPanic := func(p *proc.Target, fixture protest.Fixture) {
 		proc.Continue(p)
-		bp := p.ThreadToBreakpoint(p.CurrentThread())
+		bp := p.CurrentThread().Common().GetCurrentBreakpoint()
 		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
@@ -2399,9 +2399,9 @@ func TestStepConcurrentPtr(t *testing.T) {
 			f, ln := currentLineNumber(p, t)
 			if ln != 24 {
 				for _, th := range p.ThreadList() {
-					t.Logf("thread %d stopped on breakpoint %v", th.ThreadID(), p.ThreadToBreakpoint(th))
+					t.Logf("thread %d stopped on breakpoint %v", th.ThreadID(), th.Common().GetCurrentBreakpoint())
 				}
-				curbp := p.ThreadToBreakpoint(p.CurrentThread())
+				curbp := p.CurrentThread().Common().GetCurrentBreakpoint()
 				t.Fatalf("Program did not continue at expected location (24): %s:%d %#x [%v] (gid %d count %d)", f, ln, currentPC(p, t), curbp, p.SelectedGoroutine().ID, count)
 			}
 
@@ -2713,7 +2713,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 			gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 			assertNoError(err, t, "GoroutinesInfo()")
 			for _, th := range p.ThreadList() {
-				if bp := p.ThreadToBreakpoint(th); bp.Breakpoint == nil {
+				if bp := th.Common().GetCurrentBreakpoint(); bp.Breakpoint == nil {
 					continue
 				}
 
@@ -4224,7 +4224,7 @@ func TestDeadlockBreakpoint(t *testing.T) {
 	withTestProcess("testdeadlock", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 
-		bp := p.ThreadToBreakpoint(p.CurrentThread())
+		bp := p.CurrentThread().Common().GetCurrentBreakpoint()
 		if bp.Breakpoint == nil || bp.Name != deadlockBp {
 			t.Fatalf("did not stop at deadlock breakpoint %v", bp)
 		}
@@ -4354,7 +4354,7 @@ func TestCallConcurrent(t *testing.T) {
 		returned := testCallConcurrentCheckReturns(p, t, gid1, -1)
 
 		curthread := p.CurrentThread()
-		if curbp := p.ThreadToBreakpoint(curthread); curbp.Breakpoint == nil || curbp.LogicalID != bp.LogicalID || returned > 0 {
+		if curbp := curthread.Common().GetCurrentBreakpoint(); curbp.Breakpoint == nil || curbp.LogicalID != bp.LogicalID || returned > 0 {
 			t.Logf("skipping test, the call injection terminated before we hit a breakpoint in a different thread")
 			return
 		}

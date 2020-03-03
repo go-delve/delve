@@ -86,7 +86,7 @@ func TestScope(t *testing.T) {
 				}
 				assertNoError(err, t, "Continue()")
 			}
-			bp := p.ThreadToBreakpoint(p.CurrentThread())
+			bp := p.CurrentThread().Common().GetCurrentBreakpoint()
 
 			scopeCheck := findScopeCheck(scopeChecks, bp.Line)
 			if scopeCheck == nil {
