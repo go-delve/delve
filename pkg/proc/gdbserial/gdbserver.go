@@ -116,6 +116,8 @@ type Process struct {
 
 	loadGInstrAddr uint64 // address of the g loading instruction, zero if we couldn't allocate it
 
+	// target is a reference to the target object manipulating this process
+	target   *proc.Target
 	process  *os.Process
 	waitChan chan *os.ProcessState
 
@@ -404,7 +406,8 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	if err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(p, runtime.GOOS == "darwin"), nil
+	p.target = proc.NewTarget(p, runtime.GOOS == "darwin")
+	return p.target, nil
 }
 
 // LLDBAttach starts an instance of lldb-server and connects to it, asking
@@ -456,7 +459,8 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 	if err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(p, false), nil
+	p.target = proc.NewTarget(p, runtime.GOOS == "darwin")
+	return p.target, nil
 }
 
 // EntryPoint will return the process entry point address, useful for
@@ -1409,6 +1413,21 @@ func (t *Thread) reloadGAtPC() error {
 
 	cx := t.regs.CX()
 	pc := t.regs.PC()
+
+	// We must clear breakpoints here because lldb-server will
+	// always write around breakpoints, meaning if there is a breakpoint
+	// where we are trying to write the GetG instruction, lldb-server will
+	// not overwrite it and we will just hit a breakpoint trap when trying
+	// to execute the instruction we just wrote.
+	for addr := range t.p.target.Breakpoints().M {
+		if addr >= pc && addr <= pc+uint64(len(movinstr)) {
+			err := t.p.conn.clearBreakpoint(addr)
+			if err != nil {
+				return err
+			}
+			defer t.p.conn.setBreakpoint(addr)
+		}
+	}
 
 	savedcode := make([]byte, len(movinstr))
 	_, err := t.ReadMemory(savedcode, uintptr(pc))
