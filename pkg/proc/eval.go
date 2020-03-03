@@ -118,6 +118,13 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			addr := afterLastArgAddr(vars)
 			if addr == 0 {
 				addr = uintptr(scope.Regs.CFA)
+				// The address needed on the ARM64 by the Dwarf lookup routines
+				// is offset from scope.Regs.CFA by the length of a 64-bit
+				// pointer.  This is corrected here.  It probably would be better
+				// to store the corrected address in scope.Regs.CFA.
+				if _, isARM64 := scope.BinInfo.Arch.(*ARM64); isARM64 {
+					addr = addr + uintptr(scope.PtrSize())
+				}
 			}
 			addr = uintptr(alignAddr(int64(addr), val.DwarfType.Align()))
 			val = newVariable(val.Name, addr, val.DwarfType, scope.BinInfo, scope.Mem)
