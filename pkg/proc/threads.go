@@ -69,10 +69,16 @@ type CommonThread struct {
 	currentBreakpoint *BreakpointState
 }
 
+// SetCurrentBreakpoint is called when this thread is stopped at a breakpoint.
+// Calling this function will set the given breakpoint as the "current" breakpoint
+// for this thread.
 func (t *CommonThread) SetCurrentBreakpoint(bps *BreakpointState) {
 	t.currentBreakpoint = bps
 }
 
+// GetCurrentBreakpoint will return the breakpoint this thread is currently stopped at.
+// If this thread is not stopped at a breakpoint then a newly initialized BreakpointState
+// object will be returned with the Breakpoint field left nil.
 func (t *CommonThread) GetCurrentBreakpoint() *BreakpointState {
 	if t.currentBreakpoint != nil {
 		return t.currentBreakpoint
@@ -80,6 +86,7 @@ func (t *CommonThread) GetCurrentBreakpoint() *BreakpointState {
 	return new(BreakpointState)
 }
 
+// ClearCurrentBreakpoint clears the current breakpoint from this thread.
 func (t *CommonThread) ClearCurrentBreakpoint() {
 	t.currentBreakpoint = nil
 }
