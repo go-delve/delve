@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/terminal"
@@ -354,14 +355,6 @@ and dap modes.
 	return RootCommand
 }
 
-// Remove the file at path and issue a warning to stderr if this fails.
-func remove(path string) {
-	err := os.Remove(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)
-	}
-}
-
 func dapCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
 		if err := logflags.Setup(Log, LogOutput, LogDest); err != nil {
@@ -428,12 +421,12 @@ func debugCmd(cmd *cobra.Command, args []string) {
 		}
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild(debugname, dlvArgs)
+		err = gobuild.GoBuild(debugname, dlvArgs, BuildFlags)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
-		defer remove(debugname)
+		defer gobuild.Remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
 		return execute(0, processArgs, conf, "", executingGeneratedFile)
 	}()
@@ -484,17 +477,17 @@ func traceCmd(cmd *cobra.Command, args []string) {
 					return 1
 				}
 				if traceTestBinary {
-					if err := gotestbuild(debugname, dlvArgs); err != nil {
+					if err := gobuild.GoTestBuild(debugname, dlvArgs, BuildFlags); err != nil {
 						fmt.Fprintf(os.Stderr, "%v\n", err)
 						return 1
 					}
 				} else {
-					if err := gobuild(debugname, dlvArgs); err != nil {
+					if err := gobuild.GoBuild(debugname, dlvArgs, BuildFlags); err != nil {
 						fmt.Fprintf(os.Stderr, "%v\n", err)
 						return 1
 					}
 				}
-				defer remove(debugname)
+				defer gobuild.Remove(debugname)
 			}
 
 			processArgs = append([]string{debugname}, targetArgs...)
@@ -576,11 +569,11 @@ func testCmd(cmd *cobra.Command, args []string) {
 		}
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gotestbuild(debugname, dlvArgs)
+		err = gobuild.GoTestBuild(debugname, dlvArgs, BuildFlags)
 		if err != nil {
 			return 1
 		}
-		defer remove(debugname)
+		defer gobuild.Remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
 
 		return execute(0, processArgs, conf, "", executingGeneratedTest)
@@ -794,49 +787,4 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	}
 
 	return connect(listener.Addr().String(), clientConn, conf, kind)
-}
-
-func optflags(args []string) []string {
-	// after go1.9 building with -gcflags='-N -l' and -a simultaneously works.
-	// after go1.10 specifying -a is unnecessary because of the new caching strategy, but we should pass -gcflags=all=-N -l to have it applied to all packages
-	// see https://github.com/golang/go/commit/5993251c015dfa1e905bdf44bdb41572387edf90
-
-	ver, _ := goversion.Installed()
-	switch {
-	case ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}):
-		args = append(args, "-gcflags", "all=-N -l")
-	case ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}):
-		args = append(args, "-gcflags", "-N -l", "-a")
-	default:
-		args = append(args, "-gcflags", "-N -l")
-	}
-	return args
-}
-
-func gobuild(debugname string, pkgs []string) error {
-	args := []string{"-o", debugname}
-	args = optflags(args)
-	if BuildFlags != "" {
-		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
-	}
-	args = append(args, pkgs...)
-	return gocommand("build", args...)
-}
-
-func gotestbuild(debugname string, pkgs []string) error {
-	args := []string{"-c", "-o", debugname}
-	args = optflags(args)
-	if BuildFlags != "" {
-		args = append(args, config.SplitQuotedFields(BuildFlags, '\'')...)
-	}
-	args = append(args, pkgs...)
-	return gocommand("test", args...)
-}
-
-func gocommand(command string, args ...string) error {
-	allargs := []string{command}
-	allargs = append(allargs, args...)
-	goBuild := exec.Command("go", allargs...)
-	goBuild.Stderr = os.Stderr
-	return goBuild.Run()
 }

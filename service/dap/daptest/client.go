@@ -136,15 +136,24 @@ func (c *Client) InitializeRequest() {
 	c.send(request)
 }
 
-// LaunchRequest sends a 'launch' request.
-func (c *Client) LaunchRequest(program string, stopOnEntry bool) {
+// LaunchRequest sends a 'launch' request with the specified args.
+func (c *Client) LaunchRequest(mode string, program string, stopOnEntry bool) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
 	request.Arguments = map[string]interface{}{
 		"request":     "launch",
-		"mode":        "exec",
+		"mode":        mode,
 		"program":     program,
 		"stopOnEntry": stopOnEntry,
 	}
+	c.send(request)
+}
+
+// LaunchRequestWithArgs takes a map of untyped implementation-specific
+// arguments to send a 'launch' request. This version can be used to
+// test for values of unexpected types or unspecified values.
+func (c *Client) LaunchRequestWithArgs(arguments map[string]interface{}) {
+	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
+	request.Arguments = arguments
 	c.send(request)
 }
 
