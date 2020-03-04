@@ -327,9 +327,10 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			buildFlags = ""
 		}
 
-		if mode == "debug" {
+		switch mode {
+		case "debug":
 			err = gobuild.GoBuild(debugname, []string{program}, buildFlags)
-		} else if mode == "test" {
+		case "test":
 			err = gobuild.GoTestBuild(debugname, []string{program}, buildFlags)
 		}
 		if err != nil {

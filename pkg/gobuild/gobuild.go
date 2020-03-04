@@ -1,6 +1,5 @@
 // Package gobuild provides utilities for building programs and tests
 // for the debugging session.
-
 package gobuild
 
 import (
