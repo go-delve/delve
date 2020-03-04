@@ -108,8 +108,6 @@ type Process struct {
 
 	manualStopRequested bool
 
-	breakpoints proc.BreakpointMap
-
 	gcmdok         bool   // true if the stub supports g and G commands
 	threadStopInfo bool   // true if the stub supports qThreadStopInfo
 	tracedir       string // if attached to rr the path to the trace directory
@@ -176,7 +174,6 @@ func New(process *os.Process) *Process {
 		},
 		threads:        make(map[int]*Thread),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
-		breakpoints:    proc.NewBreakpointMap(),
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
