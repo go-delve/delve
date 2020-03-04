@@ -49,11 +49,18 @@ func (t *Target) ClearAllGCache() {
 	t.gcache.Clear()
 }
 
+// Restart will start the process over from the location specified by the "from" locspec.
+// This is only useful for recorded targets.
+// Restarting of a normal process happens at a higher level (debugger.Restart).
 func (t *Target) Restart(from string) error {
 	t.ClearAllGCache()
 	return t.Process.Restart(from)
 }
 
+// Detach will detach the target from the underylying process.
+// This means the debugger will no longer receive events from the process
+// we were previously debugging.
+// If kill is true then the process will be killed when we detach.
 func (t *Target) Detach(kill bool) error {
 	if !kill && t.asyncPreemptChanged {
 		setAsyncPreemptOff(t, t.asyncPreemptOff)
