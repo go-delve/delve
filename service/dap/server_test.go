@@ -291,8 +291,8 @@ func TestSetBreakpoint(t *testing.T) {
 
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
-		if len(tResp.Body.Threads) != 5 { // 1 main + 4 runtime
-			t.Errorf("\ngot  %#v\nwant len(Threads)=5", tResp.Body.Threads)
+		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
+			t.Errorf("\ngot  %#v\nwant len(Threads)>1", tResp.Body.Threads)
 		}
 		// TODO(polina): can we reliably test for these values?
 		wantMain := dap.Thread{Id: 1, Name: "main.Increment"}
