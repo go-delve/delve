@@ -472,13 +472,14 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	threads := make([]dap.Thread, len(gs))
 	if len(threads) == 0 {
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
-	}
-	for i, g := range gs {
-		threads[i].Id = g.ID
-		if g.UserCurrentLoc.Function != nil {
-			threads[i].Name = g.UserCurrentLoc.Function.Name()
-		} else {
-			threads[i].Name = fmt.Sprintf("%s@%d", g.UserCurrentLoc.File, g.UserCurrentLoc.Line)
+	} else {
+		for i, g := range gs {
+			threads[i].Id = g.ID
+			if g.UserCurrentLoc.Function != nil {
+				threads[i].Name = g.UserCurrentLoc.Function.Name()
+			} else {
+				threads[i].Name = fmt.Sprintf("%s@%d", g.UserCurrentLoc.File, g.UserCurrentLoc.Line)
+			}
 		}
 	}
 	response := &dap.ThreadsResponse{

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -293,17 +294,13 @@ func TestSetBreakpoint(t *testing.T) {
 		if len(tResp.Body.Threads) != 5 { // 1 main + 4 runtime
 			t.Errorf("\ngot  %#v\nwant len(Threads)=5", tResp.Body.Threads)
 		}
-		var gotThread = func(want dap.Thread) (got bool) {
-			for _, t := range tResp.Body.Threads {
-				got = got || reflect.DeepEqual(t, want)
-			}
-			return got
-		}
 		// TODO(polina): can we reliably test for these values?
 		wantMain := dap.Thread{Id: 1, Name: "main.Increment"}
 		wantRuntime := dap.Thread{Id: 2, Name: "runtime.gopark"}
-		if !gotThread(wantMain) || !gotThread(wantRuntime) {
-			t.Errorf("\ngot  %#v\nwant []dap.Thread{%#v, %#v, ...}", tResp.Body.Threads, wantMain, wantRuntime)
+		for _, got := range tResp.Body.Threads {
+			if !reflect.DeepEqual(got, wantMain) && !strings.HasPrefix(got.Name, "runtime") {
+				t.Errorf("\ngot  %#v\nwant []dap.Thread{%#v, %#v, ...}", tResp.Body.Threads, wantMain, wantRuntime)
+			}
 		}
 
 		// TODO(polina): add other status checking requests
