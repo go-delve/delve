@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
 	"reflect"
 	"runtime"
 	"sync"
@@ -74,6 +75,7 @@ func NewServer(config *service.Config) *ServerImpl {
 	if config.Foreground {
 		// Print listener address
 		logflags.WriteAPIListeningMessage(config.Listener.Addr().String())
+		logger.Debug("API server pid = ", os.Getpid())
 	}
 	return &ServerImpl{
 		config:   config,

@@ -122,7 +122,7 @@ func WriteAPIListeningMessage(addr string) {
 }
 
 func writeListeningMessage(server string, addr string) {
-        msg := fmt.Sprintf("%s server listening at: %s (pid = %d)", server, addr, os.Getpid())
+        msg := fmt.Sprintf("%s server listening at: %s", server, addr)
 	if logOut != nil {
 		fmt.Fprintln(logOut, msg)
 	} else {
