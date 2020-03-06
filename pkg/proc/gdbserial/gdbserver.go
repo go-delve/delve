@@ -530,7 +530,12 @@ func (p *Process) initialize(path string, debugInfoDirs []string, stopReason pro
 			return nil, err
 		}
 	}
-	tgt, err := proc.NewTarget(p, path, debugInfoDirs, p.writeBreakpoint, runtime.GOOS == "darwin", stopReason)
+	tgt, err := proc.NewTarget(p, proc.NewTargetConfig{
+		Path:                path,
+		DebugInfoDirs:       debugInfoDirs,
+		WriteBreakpoint:     p.writeBreakpoint,
+		DisableAsyncPreempt: runtime.GOOS == "darwin",
+		StopReason:          stopReason})
 	if err != nil {
 		p.conn.conn.Close()
 		return nil, err

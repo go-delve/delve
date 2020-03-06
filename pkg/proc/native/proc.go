@@ -289,7 +289,12 @@ func (dbp *Process) initialize(path string, debugInfoDirs []string) (*proc.Targe
 	if !dbp.childProcess {
 		stopReason = proc.StopAttached
 	}
-	return proc.NewTarget(dbp, path, debugInfoDirs, dbp.writeBreakpoint, runtime.GOOS == "windows", stopReason)
+	return proc.NewTarget(dbp, proc.NewTargetConfig{
+		Path:                path,
+		DebugInfoDirs:       debugInfoDirs,
+		WriteBreakpoint:     dbp.writeBreakpoint,
+		DisableAsyncPreempt: runtime.GOOS == "windows",
+		StopReason:          stopReason})
 }
 
 // ClearInternalBreakpoints will clear all non-user set breakpoints. These

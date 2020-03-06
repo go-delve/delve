@@ -48,14 +48,23 @@ const (
 	StopCallReturned                   // An injected call commpleted
 )
 
+// NewTargetConfig contains the configuration for a new Target object,
+type NewTargetConfig struct {
+	Path                string            // path of the main executable
+	DebugInfoDirs       []string          // Directories to search for split debug info
+	WriteBreakpoint     WriteBreakpointFn // Function to write a breakpoint to the target process
+	DisableAsyncPreempt bool              // Go 1.14 asynchronous preemption should be disabled
+	StopReason          StopReason        // Initial stop reason
+}
+
 // NewTarget returns an initialized Target object.
-func NewTarget(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn, disableAsyncPreempt bool, stopReason StopReason) (*Target, error) {
+func NewTarget(p Process, cfg NewTargetConfig) (*Target, error) {
 	entryPoint, err := p.EntryPoint()
 	if err != nil {
 		return nil, err
 	}
 
-	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, debugInfoDirs)
+	err = p.BinInfo().LoadBinaryInfo(cfg.Path, entryPoint, cfg.DebugInfoDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -69,18 +78,18 @@ func NewTarget(p Process, path string, debugInfoDirs []string, writeBreakpoint W
 		Process:    p,
 		proc:       p.(ProcessInternal),
 		fncallForG: make(map[int]*callInjection),
-		StopReason: stopReason,
+		StopReason: cfg.StopReason,
 	}
 
 	g, _ := GetG(p.CurrentThread())
 	t.selectedGoroutine = g
 
-	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
-	createFatalThrowBreakpoint(p, writeBreakpoint)
+	createUnrecoveredPanicBreakpoint(p, cfg.WriteBreakpoint)
+	createFatalThrowBreakpoint(p, cfg.WriteBreakpoint)
 
 	t.gcache.init(p.BinInfo())
 
-	if disableAsyncPreempt {
+	if cfg.DisableAsyncPreempt {
 		setAsyncPreemptOff(t, 1)
 	}
 

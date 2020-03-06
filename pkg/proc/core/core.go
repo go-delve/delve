@@ -213,7 +213,12 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, err
 	}
 
-	return proc.NewTarget(p, exePath, debugInfoDirs, p.writeBreakpoint, false, proc.StopAttached)
+	return proc.NewTarget(p, proc.NewTargetConfig{
+		Path:                exePath,
+		DebugInfoDirs:       debugInfoDirs,
+		WriteBreakpoint:     p.writeBreakpoint,
+		DisableAsyncPreempt: false,
+		StopReason:          proc.StopAttached})
 }
 
 // BinInfo will return the binary info.
