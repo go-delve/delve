@@ -471,15 +471,21 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 
 	threads := make([]dap.Thread, len(gs))
 	if len(threads) == 0 {
+		// Depending on the debug session stage, goroutines information
+		// might not be available. However, the DAP spec states that
+		// "even if a debug adapter does not support multiple threads,
+		// it must implement the threads request and return a single
+		// (dummy) thread".
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else {
 		for i, g := range gs {
 			threads[i].Id = g.ID
-			if g.UserCurrentLoc.Function != nil {
-				threads[i].Name = g.UserCurrentLoc.Function.Name()
+			if fn := g.UserCurrentLoc.Function; fn != nil {
+				threads[i].Name = fn.Name()
 			} else {
 				threads[i].Name = fmt.Sprintf("%s@%d", g.UserCurrentLoc.File, g.UserCurrentLoc.Line)
 			}
+
 		}
 	}
 	response := &dap.ThreadsResponse{
