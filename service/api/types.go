@@ -442,8 +442,9 @@ type SetAPIVersionOut struct {
 
 // Register holds information on a CPU register.
 type Register struct {
-	Name  string
-	Value string
+	Name        string
+	Value       string
+	DwarfNumber int
 }
 
 // Registers is a list of CPU registers.

@@ -90,7 +90,14 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error)
 	if len(data) == 0 {
 		return
 	}
-	t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
+	// ProcessVmWrite can't poke read-only memory like ptrace, so don't
+	// even bother for small writes -- likely breakpoints and such.
+	if len(data) > sys.SizeofPtr {
+		written, _ = ProcessVmWrite(t.ID, addr, data)
+	}
+	if written == 0 {
+		t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
+	}
 	return
 }
 
@@ -101,9 +108,9 @@ func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	if len(data) == 0 {
 		return
 	}
-	t.dbp.execPtraceFunc(func() { _, err = sys.PtracePeekData(t.ID, addr, data) })
-	if err == nil {
-		n = len(data)
+	n, _ = ProcessVmRead(t.ID, addr, data)
+	if n == 0 {
+		t.dbp.execPtraceFunc(func() { n, err = sys.PtracePeekData(t.ID, addr, data) })
 	}
 	return
 }

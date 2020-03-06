@@ -16,15 +16,15 @@ import (
 	"net"
 	"path/filepath"
 
+	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap"  // dap
+	"github.com/google/go-dap"
 	"github.com/sirupsen/logrus"
 )
-
 
 // Server implements a DAP server that can accept a single client for
 // a single debug session. It does not support restarting.
@@ -42,6 +42,9 @@ type Server struct {
 	listener net.Listener
 	// conn is the accepted client connection.
 	conn net.Conn
+	// stopChan is closed when the server is Stop()-ed. This can be used to signal
+	// to goroutines run by the server that it's time to quit.
+	stopChan chan struct{}
 	// reader is used to read requests from the connection.
 	reader *bufio.Reader
 	// debugger is the underlying debugger service.
@@ -50,28 +53,32 @@ type Server struct {
 	log *logrus.Entry
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
+	// binaryToRemove is the compiled binary to be removed on disconnect.
+	binaryToRemove string
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
-// via config and assumes its ownership. Optionally takes DisconnectChan
-// via config, which can be used to detect when the client disconnects
-// and the server is ready to be shut down. The caller must call
-// Stop() on shutdown.
+// via config and assumes its ownership. config.disconnectChan has to be set;
+// it will be closed by the server when the client disconnects or requests
+// shutdown. Once disconnectChan is closed, Server.Stop() must be called.
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
 	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
 	return &Server{
 		config:   config,
 		listener: config.Listener,
+		stopChan: make(chan struct{}),
 		log:      logger,
 	}
 }
 
-// Stop stops the DAP debugger service, closes the listener and
-// the client connection. It shuts down the underlying debugger
-// and kills the target process if it was launched by it.
+// Stop stops the DAP debugger service, closes the listener and the client
+// connection. It shuts down the underlying debugger and kills the target
+// process if it was launched by it. This method mustn't be called more than
+// once.
 func (s *Server) Stop() {
 	s.listener.Close()
+	close(s.stopChan)
 	if s.conn != nil {
 		// Unless Stop() was called after serveDAPCodec()
 		// returned, this will result in closed connection error
@@ -97,22 +104,22 @@ func (s *Server) Stop() {
 // TODO(polina): lock this when we add more goroutines that could call
 // this when we support asynchronous request-response communication.
 func (s *Server) signalDisconnect() {
-	// DisconnectChan might be nil at server creation if the
-	// caller does not want to rely on the disconnect signal.
+	// Avoid accidentally closing the channel twice and causing a panic, when
+	// this function is called more than once. For example, we could have the
+	// following sequence of events:
+	// -- run goroutine: calls onDisconnectRequest()
+	// -- run goroutine: calls signalDisconnect()
+	// -- main goroutine: calls Stop()
+	// -- main goroutine: Stop() closes client connection
+	// -- run goroutine: serveDAPCodec() gets "closed network connection"
+	// -- run goroutine: serveDAPCodec() returns
+	// -- run goroutine: serveDAPCodec calls signalDisconnect()
 	if s.config.DisconnectChan != nil {
 		close(s.config.DisconnectChan)
-		// Take advantage of the nil check above to avoid accidentally
-		// closing the channel twice and causing a panic, when this
-		// function is called more than once. For example, we could
-		// have the following sequence of events:
-		// -- run goroutine: calls onDisconnectRequest()
-		// -- run goroutine: calls signalDisconnect()
-		// -- main goroutine: calls Stop()
-		// -- main goroutine: Stop() closes client connection
-		// -- run goroutine: serveDAPCodec() gets "closed network connection"
-		// -- run goroutine: serveDAPCodec() returns
-		// -- run goroutine: serveDAPCodec calls signalDisconnect()
 		s.config.DisconnectChan = nil
+	}
+	if s.binaryToRemove != "" {
+		gobuild.Remove(s.binaryToRemove)
 	}
 }
 
@@ -127,9 +134,11 @@ func (s *Server) Run() {
 	go func() {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			// This will print if the server is killed with Ctrl+C
-			// before client connection is accepted.
-			s.log.Errorf("Error accepting client connection: %s\n", err)
+			select {
+			case <-s.stopChan:
+			default:
+				s.log.Errorf("Error accepting client connection: %s\n", err)
+			}
 			s.signalDisconnect()
 			return
 		}
@@ -148,26 +157,36 @@ func (s *Server) serveDAPCodec() {
 		request, err := dap.ReadProtocolMessage(s.reader)
 		// TODO(polina): Differentiate between errors and handle them
 		// gracefully. For example,
-		// -- "use of closed network connection" means client connection
-		// was closed via Stop() in response to a disconnect request.
 		// -- "Request command 'foo' is not supported" means we
 		// potentially got some new DAP request that we do not yet have
 		// decoding support for, so we can respond with an ErrorResponse.
 		// TODO(polina): to support this add Seq to
 		// dap.DecodeProtocolMessageFieldError.
 		if err != nil {
-			if err != io.EOF {
+			stopRequested := false
+			select {
+			case <-s.stopChan:
+				stopRequested = true
+			default:
+			}
+			if err != io.EOF && !stopRequested {
 				s.log.Error("DAP error: ", err)
 			}
 			return
 		}
-		// TODO(polina) Add a panic guard,
-		// so we do not kill user's process when delve panics.
 		s.handleRequest(request)
 	}
 }
 
 func (s *Server) handleRequest(request dap.Message) {
+	defer func() {
+		// In case a handler panics, we catch the panic and send an error response
+		// back to the client.
+		if ierr := recover(); ierr != nil {
+			s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("%v", ierr))
+		}
+	}()
+
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
@@ -253,11 +272,8 @@ func (s *Server) handleRequest(request dap.Message) {
 	default:
 		// This is a DAP message that go-dap has a struct for, so
 		// decoding succeeded, but this function does not know how
-		// to handle. We should be sending an ErrorResponse, but
-		// we cannot get to Seq and other fields from dap.Message.
-		// TODO(polina): figure out how to handle this better.
-		// Consider adding GetSeq() method to dap.Message interface.
-		s.log.Errorf("Unable to process %#v\n", request)
+		// to handle.
+		s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Unable to process %#v\n", request))
 	}
 }
 
@@ -276,33 +292,71 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	s.send(response)
 }
 
+// Output path for the compiled binary in debug or test modes.
+const debugBinary string = "./__debug_bin"
+
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// TODO(polina): Respond with an error if debug session is in progress?
-	program, ok := request.Arguments["program"]
+
+	program, ok := request.Arguments["program"].(string)
 	if !ok || program == "" {
 		s.sendErrorResponse(request.Request,
 			FailedToContinue, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
-	s.config.ProcessArgs = []string{program.(string)}
-	s.config.WorkingDir = filepath.Dir(program.(string))
-	// TODO: support program args
-
-	stop, ok := request.Arguments["stopOnEntry"]
-	s.stopOnEntry = (ok && stop == true)
 
 	mode, ok := request.Arguments["mode"]
 	if !ok || mode == "" {
 		mode = "debug"
 	}
-	// TODO(polina): support "debug", "test" and "remote" modes
-	if mode != "exec" {
+
+	if mode == "debug" || mode == "test" {
+		output, ok := request.Arguments["output"].(string)
+		if !ok || output == "" {
+			output = debugBinary
+		}
+		debugname, err := filepath.Abs(output)
+		if err != nil {
+			s.sendInternalErrorResponse(request.Seq, err.Error())
+			return
+		}
+
+		buildFlags, ok := request.Arguments["buildFlags"].(string)
+		if !ok {
+			buildFlags = ""
+		}
+
+		switch mode {
+		case "debug":
+			err = gobuild.GoBuild(debugname, []string{program}, buildFlags)
+		case "test":
+			err = gobuild.GoTestBuild(debugname, []string{program}, buildFlags)
+		}
+		if err != nil {
+			s.sendErrorResponse(request.Request,
+				FailedToContinue, "Failed to launch",
+				fmt.Sprintf("Build error: %s", err.Error()))
+			return
+		}
+		program = debugname
+		s.binaryToRemove = debugname
+	}
+
+	// TODO(polina): support "remote" mode
+	if mode != "exec" && mode != "debug" && mode != "test" {
 		s.sendErrorResponse(request.Request,
 			FailedToContinue, "Failed to launch",
 			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
 		return
 	}
+
+	stop, ok := request.Arguments["stopOnEntry"]
+	s.stopOnEntry = (ok && stop == true)
+
+	// TODO(polina): support target args
+	s.config.ProcessArgs = []string{program}
+	s.config.WorkingDir = filepath.Dir(program)
 
 	config := &debugger.Config{
 		WorkingDir:           s.config.WorkingDir,
@@ -406,6 +460,21 @@ func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, 
 	er.Message = summary
 	er.Body.Error.Id = id
 	er.Body.Error.Format = fmt.Sprintf("%s: %s", summary, details)
+	s.log.Error(er.Body.Error.Format)
+	s.send(er)
+}
+
+// sendInternalErrorResponse sends an "internal error" response back to the client.
+// We only take a seq here because we don't want to make assumptions about the
+// kind of message received by the server that this error is a reply to.
+func (s *Server) sendInternalErrorResponse(seq int, details string) {
+	er := &dap.ErrorResponse{}
+	er.Type = "response"
+	er.RequestSeq = seq
+	er.Success = false
+	er.Message = "Internal Error"
+	er.Body.Error.Id = InternalError
+	er.Body.Error.Format = fmt.Sprintf("%s: %s", er.Message, details)
 	s.log.Error(er.Body.Error.Format)
 	s.send(er)
 }

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
@@ -486,6 +487,9 @@ func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Br
 		}
 	}
 	if err != nil {
+		if isBreakpointExistsErr(err) {
+			return nil, err
+		}
 		for _, bp := range bps {
 			if bp == nil {
 				continue
@@ -499,6 +503,11 @@ func createLogicalBreakpoint(p proc.Process, addrs []uint64, requestedBp *api.Br
 	}
 	createdBp := api.ConvertBreakpoints(bps)
 	return createdBp[0], nil // we created a single logical breakpoint, the slice here will always have len == 1
+}
+
+func isBreakpointExistsErr(err error) bool {
+	_, r := err.(proc.BreakpointExistsError)
+	return r
 }
 
 // AmendBreakpoint will update the breakpoint with the matching ID.
@@ -949,19 +958,65 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 }
 
 // Registers returns string representation of the CPU registers.
-func (d *Debugger) Registers(threadID int, floatingPoint bool) (api.Registers, error) {
+func (d *Debugger) Registers(threadID int, scope *api.EvalScope, floatingPoint bool) (api.Registers, error) {
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	thread, found := d.target.FindThread(threadID)
-	if !found {
-		return nil, fmt.Errorf("couldn't find thread %d", threadID)
+	var dregs op.DwarfRegisters
+
+	if scope != nil {
+		s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+		if err != nil {
+			return nil, err
+		}
+		dregs = s.Regs
+	} else {
+		thread, found := d.target.FindThread(threadID)
+		if !found {
+			return nil, fmt.Errorf("couldn't find thread %d", threadID)
+		}
+		regs, err := thread.Registers(floatingPoint)
+		if err != nil {
+			return nil, err
+		}
+		dregs = d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
 	}
-	regs, err := thread.Registers(floatingPoint)
-	if err != nil {
-		return nil, err
-	}
-	return api.ConvertRegisters(regs.Slice(floatingPoint), d.target.BinInfo().Arch), err
+	r := api.ConvertRegisters(dregs, d.target.BinInfo().Arch, floatingPoint)
+	// Sort the registers in a canonical order we prefer, this is mostly
+	// because the DWARF register numbering for AMD64 is weird.
+	sort.Slice(r, func(i, j int) bool {
+		a, b := r[i], r[j]
+		an, aok := canonicalRegisterOrder[strings.ToLower(a.Name)]
+		bn, bok := canonicalRegisterOrder[strings.ToLower(b.Name)]
+		// Registers that don't appear in canonicalRegisterOrder sort after registers that do.
+		if !aok {
+			an = 1000
+		}
+		if !bok {
+			bn = 1000
+		}
+		if an == bn {
+			// keep registers that don't appear in canonicalRegisterOrder in DWARF order
+			return a.DwarfNumber < b.DwarfNumber
+		}
+		return an < bn
+
+	})
+	return r, nil
+}
+
+var canonicalRegisterOrder = map[string]int{
+	// amd64
+	"rip": 0,
+	"rsp": 1,
+	"rax": 2,
+	"rbx": 3,
+	"rcx": 4,
+	"rdx": 5,
+
+	// arm64
+	"pc": 0,
+	"sp": 1,
 }
 
 func convertVars(pv []*proc.Variable) []api.Variable {
@@ -1232,7 +1287,7 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 	}
 
 	if addr2 == 0 {
-		_, _, fn := d.target.BinInfo().PCToLine(addr1)
+		fn := d.target.BinInfo().PCToFunc(addr1)
 		if fn == nil {
 			return nil, fmt.Errorf("address %#x does not belong to any function", addr1)
 		}

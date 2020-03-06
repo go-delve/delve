@@ -213,7 +213,7 @@ func (a *ARM64) SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters)
 		}
 	}
 
-	_, _, fn := it.bi.PCToLine(it.frame.Ret)
+	fn := it.bi.PCToFunc(it.frame.Ret)
 	if fn == nil {
 		return false
 	}
@@ -411,8 +411,22 @@ func (a *ARM64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint
 	}
 }
 
-func (a *ARM64) DwarfRegisterToString(name string, reg *op.DwarfRegister) string {
-	if reg.Bytes != nil && (name[0] == 'v' || name[0] == 'V') {
+func (a *ARM64) DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+	// see arm64DwarfToHardware table for explanation
+	switch {
+	case i <= 30:
+		name = fmt.Sprintf("X%d", i)
+	case i == 31:
+		name = "SP"
+	case i == 32:
+		name = "PC"
+	case i >= 64 && i <= 95:
+		name = fmt.Sprintf("V%d", i-64)
+	default:
+		name = fmt.Sprintf("unknown%d", i)
+	}
+
+	if reg.Bytes != nil && name[0] == 'V' {
 		buf := bytes.NewReader(reg.Bytes)
 
 		var out bytes.Buffer
@@ -445,9 +459,9 @@ func (a *ARM64) DwarfRegisterToString(name string, reg *op.DwarfRegister) string
 		}
 		fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
 
-		return out.String()
+		return name, true, out.String()
 	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
-		return fmt.Sprintf("%#016x", reg.Uint64Val)
+		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 	}
-	return fmt.Sprintf("%#x", reg.Bytes)
+	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }

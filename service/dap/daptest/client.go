@@ -5,11 +5,11 @@ package daptest
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net"
 	"path/filepath"
+	"testing"
 
 	"github.com/google/go-dap"
 )
@@ -48,30 +48,76 @@ func (c *Client) send(request dap.Message) {
 	dap.WriteProtocolMessage(c.conn, request)
 }
 
-// ReadBaseMessage reads and returns a json-encoded DAP message.
-func (c *Client) ReadBaseMessage() ([]byte, error) {
-	message, err := dap.ReadBaseMessage(c.reader)
-	if err != nil {
-		fmt.Println("DAP client error:", err)
-		return nil, err
-	}
-	fmt.Println("[client <- server]", string(message))
-	return message, nil
+func (c *Client) ReadMessage() (dap.Message, error) {
+	return dap.ReadProtocolMessage(c.reader)
 }
 
-// ReadErrorResponse reads, decodes and validates the result
-// to be an error response. Returns the response or an error.
-func (c *Client) ReadErrorResponse() (dap.Message, error) {
-	response, err := dap.ReadProtocolMessage(c.reader)
+func (c *Client) expectReadProtocolMessage(t *testing.T) dap.Message {
+	t.Helper()
+	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
-		return nil, err
+		t.Error(err)
 	}
-	switch response.(type) {
-	case *dap.ErrorResponse:
-		return response, nil
-	default:
-		return nil, errors.New(fmt.Sprintf("not an ErrorResponse: %#v", response))
+	return m
+}
+
+func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.DisconnectResponse)
+}
+
+func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+}
+
+func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ContinueResponse)
+}
+
+func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.TerminatedEvent)
+}
+
+func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse {
+	t.Helper()
+	initResp := c.expectReadProtocolMessage(t).(*dap.InitializeResponse)
+	if !initResp.Body.SupportsConfigurationDoneRequest {
+		t.Errorf("got %#v, want SupportsConfigurationDoneRequest=true", initResp)
 	}
+	return initResp
+}
+
+func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.InitializedEvent)
+}
+
+func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.LaunchResponse)
+}
+
+func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExceptionBreakpointsResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.SetExceptionBreakpointsResponse)
+}
+
+func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.SetBreakpointsResponse)
+}
+
+func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.StoppedEvent)
+}
+
+func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ConfigurationDoneResponse)
 }
 
 // InitializeRequest sends an 'initialize' request.
@@ -90,15 +136,24 @@ func (c *Client) InitializeRequest() {
 	c.send(request)
 }
 
-// LaunchRequest sends a 'launch' request.
-func (c *Client) LaunchRequest(program string, stopOnEntry bool) {
+// LaunchRequest sends a 'launch' request with the specified args.
+func (c *Client) LaunchRequest(mode string, program string, stopOnEntry bool) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
 	request.Arguments = map[string]interface{}{
 		"request":     "launch",
-		"mode":        "exec",
+		"mode":        mode,
 		"program":     program,
 		"stopOnEntry": stopOnEntry,
 	}
+	c.send(request)
+}
+
+// LaunchRequestWithArgs takes a map of untyped implementation-specific
+// arguments to send a 'launch' request. This version can be used to
+// test for values of unexpected types or unspecified values.
+func (c *Client) LaunchRequestWithArgs(arguments map[string]interface{}) {
+	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
+	request.Arguments = arguments
 	c.send(request)
 }
 
@@ -145,17 +200,9 @@ func (c *Client) ContinueRequest(thread int) {
 }
 
 // UnknownRequest triggers dap.DecodeProtocolMessageFieldError.
-func (c *Client) UnkownRequest() {
+func (c *Client) UnknownRequest() {
 	request := c.newRequest("unknown")
 	c.send(request)
-}
-
-// UnkownProtocolMessage triggers dap.DecodeProtocolMessageFieldError.
-func (c *Client) UnkownProtocolMessage() {
-	m := &dap.ProtocolMessage{}
-	m.Seq = -1
-	m.Type = "unknown"
-	c.send(m)
 }
 
 // UnknownEvent triggers dap.DecodeProtocolMessageFieldError.

@@ -189,7 +189,8 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
 	-s	displays location of the start function
-	-t	displays stack trace of goroutine
+	-t	displays goroutine's stacktrace
+	-l	displays goroutine's labels
 
 If no flag is specified the default is -u.`},
 		{aliases: []string{"goroutine", "gr"}, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
@@ -372,10 +373,13 @@ If locspec is omitted edit will open the current source file in the editor, othe
 
     examinemem [-fmt <format>] [-len <length>] <address>
 
-Format represents the data format and the value is one of this list (default hex): oct(octal), hex(hexadecimal), dec(decimal), bin(binary).
+Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
 Address is the memory location of the target to examine.
-For example:  x -fmt hex -len 20 0xc00008af38`},
+
+For example:
+
+    x -fmt hex -len 20 0xc00008af38`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -612,14 +616,24 @@ func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 // The number of goroutines we're going to request on each RPC call
 const goroutineBatchSize = 10000
 
-func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, bPrintStack bool, state *api.DebuggerState) error {
+type printGoroutinesFlags uint8
+
+const (
+	printGoroutinesStack printGoroutinesFlags = 1 << iota
+	printGoroutinesLabels
+)
+
+func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, flags printGoroutinesFlags, state *api.DebuggerState) error {
 	for _, g := range gs {
 		prefix := "  "
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
-		if bPrintStack {
+		if flags&printGoroutinesLabels != 0 {
+			writeGoroutineLabels(os.Stdout, g, "\t")
+		}
+		if flags&printGoroutinesStack != 0 {
 			stack, err := t.client.Stacktrace(g.ID, 10, 0, nil)
 			if err != nil {
 				return err
@@ -633,7 +647,7 @@ func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, bPrin
 func goroutines(t *Term, ctx callContext, argstr string) error {
 	args := strings.Split(argstr, " ")
 	var fgl = fglUserCurrent
-	bPrintStack := false
+	var flags printGoroutinesFlags
 
 	switch len(args) {
 	case 0:
@@ -650,7 +664,9 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 			case "-s":
 				fgl = fglStart
 			case "-t":
-				bPrintStack = true
+				flags |= printGoroutinesStack
+			case "-l":
+				flags |= printGoroutinesLabels
 			case "":
 				// nothing to do
 			default:
@@ -675,7 +691,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 			return err
 		}
 		sort.Sort(byGoroutineID(gs))
-		err = printGoroutines(t, gs, fgl, bPrintStack, state)
+		err = printGoroutines(t, gs, fgl, flags, state)
 		if err != nil {
 			return err
 		}
@@ -877,6 +893,36 @@ func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
 		prefix, formatLocation(g.UserCurrentLoc),
 		prefix, formatLocation(g.GoStatementLoc),
 		prefix, formatLocation(g.StartLoc))
+	writeGoroutineLabels(w, g, prefix+"\t")
+}
+
+func writeGoroutineLabels(w io.Writer, g *api.Goroutine, prefix string) {
+	const maxNumberOfGoroutineLabels = 5
+
+	if len(g.Labels) <= 0 {
+		return
+	}
+
+	keys := make([]string, 0, len(g.Labels))
+	for k := range g.Labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	more := false
+	if len(keys) > maxNumberOfGoroutineLabels {
+		more = true
+		keys = keys[:maxNumberOfGoroutineLabels]
+	}
+	fmt.Fprintf(w, "%sLabels: ", prefix)
+	for i, k := range keys {
+		fmt.Fprintf(w, "%q:%q", k, g.Labels[k])
+		if i != len(keys)-1 {
+			fmt.Fprintf(w, ", ")
+		} else if more {
+			fmt.Fprintf(w, "... (%d more)", len(g.Labels)-maxNumberOfGoroutineLabels)
+		}
+	}
+	fmt.Fprintf(w, "\n")
 }
 
 func restart(t *Term, ctx callContext, args string) error {
@@ -1428,7 +1474,7 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
-	fmt.Println(api.PrettyExamineMemory(uintptr(address), memArea, priFmt))
+	fmt.Printf(api.PrettyExamineMemory(uintptr(address), memArea, priFmt))
 	return nil
 }
 
@@ -1595,7 +1641,13 @@ func regs(t *Term, ctx callContext, args string) error {
 	if args == "-a" {
 		includeFp = true
 	}
-	regs, err := t.client.ListRegisters(0, includeFp)
+	var regs api.Registers
+	var err error
+	if ctx.Scope.GoroutineID < 0 && ctx.Scope.Frame == 0 {
+		regs, err = t.client.ListThreadRegisters(0, includeFp)
+	} else {
+		regs, err = t.client.ListScopeRegisters(ctx.Scope, includeFp)
+	}
 	if err != nil {
 		return err
 	}

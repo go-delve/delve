@@ -510,13 +510,28 @@ func TestClientServer_infoArgs(t *testing.T) {
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
-		regs, err := c.ListRegisters(0, false)
+		regs, err := c.ListThreadRegisters(0, false)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 		if len(regs) == 0 {
 			t.Fatal("Expected string showing registers values, got empty string")
 		}
+
+		regs, err = c.ListScopeRegisters(api.EvalScope{GoroutineID: -1, Frame: 0}, false)
+		assertNoError(err, t, "ListScopeRegisters(-1, 0)")
+		if len(regs) == 0 {
+			t.Fatal("Expected string showing registers values, got empty string")
+		}
+		t.Logf("GoroutineID: -1, Frame: 0\n%s", regs.String())
+
+		regs, err = c.ListScopeRegisters(api.EvalScope{GoroutineID: -1, Frame: 1}, false)
+		assertNoError(err, t, "ListScopeRegisters(-1, 1)")
+		if len(regs) == 0 {
+			t.Fatal("Expected string showing registers values, got empty string")
+		}
+		t.Logf("GoroutineID: -1, Frame: 1\n%s", regs.String())
+
 		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0, 0}, normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -925,8 +940,10 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListLocalVariables()")
 		_, err = c.ListFunctionArgs(api.EvalScope{gid, 0, 0}, normalLoadConfig)
 		assertError(err, t, "ListFunctionArgs()")
-		_, err = c.ListRegisters(0, false)
-		assertError(err, t, "ListRegisters()")
+		_, err = c.ListThreadRegisters(0, false)
+		assertError(err, t, "ListThreadRegisters()")
+		_, err = c.ListScopeRegisters(api.EvalScope{gid, 0, 0}, false)
+		assertError(err, t, "ListScopeRegisters()")
 		_, _, err = c.ListGoroutines(0, 0)
 		assertError(err, t, "ListGoroutines()")
 		_, err = c.Stacktrace(gid, 10, 0, &normalLoadConfig)
@@ -1279,8 +1296,8 @@ func TestClientServer_FpRegisters(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("fputest/", t, func(c service.Client) {
 		<-c.Continue()
-		regs, err := c.ListRegisters(0, true)
-		assertNoError(err, t, "ListRegisters()")
+		regs, err := c.ListThreadRegisters(0, true)
+		assertNoError(err, t, "ListThreadRegisters()")
 
 		t.Logf("%s", regs.String())
 
@@ -1816,6 +1833,38 @@ func TestIssue1787(t *testing.T) {
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		if c, _ := c.(*rpc2.RPCClient); c != nil {
 			c.FunctionReturnLocations("main.main")
+		}
+	})
+}
+
+func TestDoubleCreateBreakpoint(t *testing.T) {
+	withTestClient2("testnextprog", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
+		assertNoError(err, t, "CreateBreakpoint 1")
+
+		bps, err := c.ListBreakpoints()
+		assertNoError(err, t, "ListBreakpoints 1")
+
+		t.Logf("breakpoints before second call:")
+		for _, bp := range bps {
+			t.Logf("\t%v", bp)
+		}
+
+		numBreakpoints := len(bps)
+
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "secondbreakpoint", Tracepoint: true})
+		assertError(err, t, "CreateBreakpoint 2") // breakpoint exists
+
+		bps, err = c.ListBreakpoints()
+		assertNoError(err, t, "ListBreakpoints 2")
+
+		t.Logf("breakpoints after second call:")
+		for _, bp := range bps {
+			t.Logf("\t%v", bp)
+		}
+
+		if len(bps) != numBreakpoints {
+			t.Errorf("wrong number of breakpoints, got %d expected %d", len(bps), numBreakpoints)
 		}
 	})
 }

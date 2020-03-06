@@ -390,6 +390,10 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 	process.SysProcAttr = sysProcAttr(foreground)
 
+	if runtime.GOOS == "darwin" {
+		process.Env = proc.DisableAsyncPreemptEnv()
+	}
+
 	err := process.Start()
 	if err != nil {
 		return nil, err
@@ -406,7 +410,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	if err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(p, false), nil
+	return proc.NewTarget(p, runtime.GOOS == "darwin"), nil
 }
 
 // LLDBAttach starts an instance of lldb-server and connects to it, asking
@@ -655,7 +659,6 @@ continueLoop:
 		var err error
 		var sig uint8
 		tu.Reset()
-		//TODO: pass thread list to resume, which should use it to pass the correct signals
 		threadID, sig, err = p.conn.resume(p.threads, &tu)
 		if err != nil {
 			if _, exited := err.(proc.ErrProcessExited); exited {
