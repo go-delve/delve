@@ -33,18 +33,26 @@ func (commands *Commands) WriteMarkdown(w io.Writer) {
 	fmt.Fprint(w, "The configuration file `config.yml` contains all the configurable options and their default values. ")
 	fmt.Fprint(w, "The command history is stored in `.dbg_history`.\n\n")
 
-	fmt.Fprint(w, "# Commands\n\n")
+	fmt.Fprint(w, "# Commands\n")
 
-	fmt.Fprint(w, "Command | Description\n")
-	fmt.Fprint(w, "--------|------------\n")
-	for _, cmd := range commands.cmds {
-		h := cmd.helpMsg
-		if idx := strings.Index(h, "\n"); idx >= 0 {
-			h = h[:idx]
+	for _, cgd := range commandGroupDescriptions {
+		fmt.Fprintf(w, "\n## %s\n\n", cgd.description)
+
+		fmt.Fprint(w, "Command | Description\n")
+		fmt.Fprint(w, "--------|------------\n")
+		for _, cmd := range commands.cmds {
+			if cmd.group != cgd.group {
+				continue
+			}
+			h := cmd.helpMsg
+			if idx := strings.Index(h, "\n"); idx >= 0 {
+				h = h[:idx]
+			}
+			fmt.Fprintf(w, "[%s](#%s) | %s\n", cmd.aliases[0], cmd.aliases[0], h)
 		}
-		fmt.Fprintf(w, "[%s](#%s) | %s\n", cmd.aliases[0], cmd.aliases[0], h)
+		fmt.Fprint(w, "\n")
+
 	}
-	fmt.Fprint(w, "\n")
 
 	for _, cmd := range commands.cmds {
 		fmt.Fprintf(w, "## %s\n%s\n\n", cmd.aliases[0], replaceDocPath(cmd.helpMsg))
