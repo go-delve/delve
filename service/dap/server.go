@@ -480,10 +480,10 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	} else {
 		for i, g := range gs {
 			threads[i].Id = g.ID
-			if fn := g.UserCurrentLoc.Function; fn != nil {
-				threads[i].Name = fn.Name()
+			if loc := g.UserCurrentLoc; loc.Function != nil {
+				threads[i].Name = loc.Function.Name()
 			} else {
-				threads[i].Name = fmt.Sprintf("%s@%d", g.UserCurrentLoc.File, g.UserCurrentLoc.Line)
+				threads[i].Name = fmt.Sprintf("%s@%d", loc.File, loc.Line)
 			}
 		}
 	}
