@@ -22,14 +22,22 @@ const (
 	OtherInstruction AsmInstructionKind = iota
 	CallInstruction
 	RetInstruction
+	JmpInstruction
 )
 
+// IsCall is true if instr is a call instruction.
 func (instr *AsmInstruction) IsCall() bool {
 	return instr.Kind == CallInstruction
 }
 
+// IsRet is true if instr is a return instruction.
 func (instr *AsmInstruction) IsRet() bool {
 	return instr.Kind == RetInstruction
+}
+
+// IsJmp is true if instr is an unconditional jump instruction.
+func (instr *AsmInstruction) IsJmp() bool {
+	return instr.Kind == JmpInstruction
 }
 
 type archInst interface {
