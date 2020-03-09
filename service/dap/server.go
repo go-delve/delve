@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -64,6 +65,7 @@ type Server struct {
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
 	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+	logger.Debug("DAP server pid = ", os.Getpid())
 	return &Server{
 		config:   config,
 		listener: config.Listener,
