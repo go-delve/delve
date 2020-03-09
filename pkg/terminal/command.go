@@ -60,6 +60,7 @@ type cmdfunc func(t *Term, ctx callContext, args string) error
 type command struct {
 	aliases         []string
 	builtinAliases  []string
+	group           commandGroup
 	allowedPrefixes cmdPrefix
 	helpMsg         string
 	cmdFn           cmdfunc
@@ -112,21 +113,21 @@ func DebugCommands(client service.Client) *Commands {
 	help [command]
 
 Type "help" followed by the name of a command for more information about it.`},
-		{aliases: []string{"break", "b"}, cmdFn: breakpoint, helpMsg: `Sets a breakpoint.
+		{aliases: []string{"break", "b"}, group: breakCmds, cmdFn: breakpoint, helpMsg: `Sets a breakpoint.
 
 	break [name] <linespec>
 
 See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"`},
-		{aliases: []string{"trace", "t"}, cmdFn: tracepoint, helpMsg: `Set tracepoint.
+		{aliases: []string{"trace", "t"}, group: breakCmds, cmdFn: tracepoint, helpMsg: `Set tracepoint.
 
 	trace [name] <linespec>
 
 A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"`},
-		{aliases: []string{"restart", "r"}, cmdFn: restart, helpMsg: `Restart process.
+		{aliases: []string{"restart", "r"}, group: runCmds, cmdFn: restart, helpMsg: `Restart process.
 
 For recorded targets the command takes the following forms:
 
@@ -141,17 +142,17 @@ For live targets the command takes the following forms:
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
 `},
-		{aliases: []string{"continue", "c"}, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
-		{aliases: []string{"step", "s"}, cmdFn: c.step, helpMsg: "Single step through program."},
-		{aliases: []string{"step-instruction", "si"}, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
-		{aliases: []string{"next", "n"}, cmdFn: c.next, helpMsg: `Step over to next source line.
+		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
+		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, helpMsg: "Single step through program."},
+		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
+		{aliases: []string{"next", "n"}, group: runCmds, cmdFn: c.next, helpMsg: `Step over to next source line.
 
 	 next [count]
 
 Optional [count] argument allows you to skip multiple lines.
 `},
-		{aliases: []string{"stepout", "so"}, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
-		{aliases: []string{"call"}, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
+		{aliases: []string{"stepout", "so"}, group: runCmds, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
+		{aliases: []string{"call"}, group: runCmds, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
 	
 	call [-unsafe] <function call expression>
 	
@@ -167,19 +168,19 @@ Current limitations:
 - calling a function will resume execution of all goroutines.
 - only supported on linux's native backend.
 `},
-		{aliases: []string{"threads"}, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
-		{aliases: []string{"thread", "tr"}, cmdFn: thread, helpMsg: `Switch to the specified thread.
+		{aliases: []string{"threads"}, group: goroutineCmds, cmdFn: threads, helpMsg: "Print out info for every traced thread."},
+		{aliases: []string{"thread", "tr"}, group: goroutineCmds, cmdFn: thread, helpMsg: `Switch to the specified thread.
 
 	thread <id>`},
-		{aliases: []string{"clear"}, cmdFn: clear, helpMsg: `Deletes breakpoint.
+		{aliases: []string{"clear"}, group: breakCmds, cmdFn: clear, helpMsg: `Deletes breakpoint.
 
 	clear <breakpoint name or id>`},
-		{aliases: []string{"clearall"}, cmdFn: clearAll, helpMsg: `Deletes multiple breakpoints.
+		{aliases: []string{"clearall"}, group: breakCmds, cmdFn: clearAll, helpMsg: `Deletes multiple breakpoints.
 
 	clearall [<linespec>]
 
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.`},
-		{aliases: []string{"goroutines", "grs"}, cmdFn: goroutines, helpMsg: `List program goroutines.
+		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: goroutines, helpMsg: `List program goroutines.
 
 	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [ -t (stack trace)]
 
@@ -193,7 +194,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-l	displays goroutine's labels
 
 If no flag is specified the default is -u.`},
-		{aliases: []string{"goroutine", "gr"}, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
+		{aliases: []string{"goroutine", "gr"}, group: goroutineCmds, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
 
 	goroutine
 	goroutine <id>
@@ -202,16 +203,16 @@ If no flag is specified the default is -u.`},
 Called without arguments it will show information about the current goroutine.
 Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
-		{aliases: []string{"breakpoints", "bp"}, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
-		{aliases: []string{"print", "p"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
+		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
+		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print <expression>
 
 See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md for a description of supported expressions.`},
-		{aliases: []string{"whatis"}, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
+		{aliases: []string{"whatis"}, group: dataCmds, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
 
 	whatis <expression>`},
-		{aliases: []string{"set"}, cmdFn: setVar, helpMsg: `Changes the value of a variable.
+		{aliases: []string{"set"}, group: dataCmds, cmdFn: setVar, helpMsg: `Changes the value of a variable.
 
 	[goroutine <n>] [frame <m>] set <variable> = <value>
 
@@ -231,24 +232,24 @@ If regex is specified only the functions matching it will be returned.`},
 	types [<regex>]
 
 If regex is specified only the types matching it will be returned.`},
-		{aliases: []string{"args"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: args, helpMsg: `Print function arguments.
+		{aliases: []string{"args"}, allowedPrefixes: onPrefix | deferredPrefix, group: dataCmds, cmdFn: args, helpMsg: `Print function arguments.
 
 	[goroutine <n>] [frame <m>] args [-v] [<regex>]
 
 If regex is specified only function arguments with a name matching it will be returned. If -v is specified more information about each function argument will be shown.`},
-		{aliases: []string{"locals"}, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: locals, helpMsg: `Print local variables.
+		{aliases: []string{"locals"}, allowedPrefixes: onPrefix | deferredPrefix, group: dataCmds, cmdFn: locals, helpMsg: `Print local variables.
 
 	[goroutine <n>] [frame <m>] locals [-v] [<regex>]
 
 The name of variables that are shadowed in the current scope will be shown in parenthesis.
 
 If regex is specified only local variables with a name matching it will be returned. If -v is specified more information about each local variable will be shown.`},
-		{aliases: []string{"vars"}, cmdFn: vars, helpMsg: `Print package variables.
+		{aliases: []string{"vars"}, cmdFn: vars, group: dataCmds, helpMsg: `Print package variables.
 
 	vars [-v] [<regex>]
 
 If regex is specified only package variables with a name matching it will be returned. If -v is specified more information about each package variable will be shown.`},
-		{aliases: []string{"regs"}, cmdFn: regs, helpMsg: `Print contents of CPU registers.
+		{aliases: []string{"regs"}, cmdFn: regs, group: dataCmds, helpMsg: `Print contents of CPU registers.
 
 	regs [-a]
 
@@ -263,7 +264,7 @@ When connected to a headless instance started with the --accept-multiclient, pas
 	[goroutine <n>] [frame <m>] list [<linespec>]
 
 Show source around current point or provided linespec.`},
-		{aliases: []string{"stack", "bt"}, allowedPrefixes: onPrefix, cmdFn: stackCommand, helpMsg: `Print stack trace.
+		{aliases: []string{"stack", "bt"}, allowedPrefixes: onPrefix, group: stackCmds, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
 	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer] [-a <n>] [-adepth <depth>] [-mode <mode>]
 
@@ -278,6 +279,7 @@ Show source around current point or provided linespec.`},
 			fromg	- starts from the registers stored in the runtime.g struct
 `},
 		{aliases: []string{"frame"},
+			group: stackCmds,
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
 				return c.frameCommand(t, ctx, arg, frameSet)
 			},
@@ -289,6 +291,7 @@ Show source around current point or provided linespec.`},
 The first form sets frame used by subsequent commands such as "print" or "set".
 The second form runs the command on the given frame.`},
 		{aliases: []string{"up"},
+			group: stackCmds,
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
 				return c.frameCommand(t, ctx, arg, frameUp)
 			},
@@ -299,6 +302,7 @@ The second form runs the command on the given frame.`},
 
 Move the current frame up by <m>. The second form runs the command on the given frame.`},
 		{aliases: []string{"down"},
+			group: stackCmds,
 			cmdFn: func(t *Term, ctx callContext, arg string) error {
 				return c.frameCommand(t, ctx, arg, frameDown)
 			},
@@ -308,7 +312,7 @@ Move the current frame up by <m>. The second form runs the command on the given 
 	down [<m>] <command>
 
 Move the current frame down by <m>. The second form runs the command on the given frame.`},
-		{aliases: []string{"deferred"}, cmdFn: c.deferredCommand, helpMsg: `Executes command in the context of a deferred call.
+		{aliases: []string{"deferred"}, group: stackCmds, cmdFn: c.deferredCommand, helpMsg: `Executes command in the context of a deferred call.
 
 	deferred <n> <command>
 
@@ -328,12 +332,12 @@ If no argument is specified the function being executed in the selected stack fr
 
 	-a <start> <end>	disassembles the specified address range
 	-l <locspec>		disassembles the specified function`},
-		{aliases: []string{"on"}, cmdFn: c.onCmd, helpMsg: `Executes a command when a breakpoint is hit.
+		{aliases: []string{"on"}, group: breakCmds, cmdFn: c.onCmd, helpMsg: `Executes a command when a breakpoint is hit.
 
 	on <breakpoint name or id> <command>.
 
 Supported commands: print, stack and goroutine)`},
-		{aliases: []string{"condition", "cond"}, cmdFn: conditionCmd, helpMsg: `Set breakpoint condition.
+		{aliases: []string{"condition", "cond"}, group: breakCmds, cmdFn: conditionCmd, helpMsg: `Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
 
@@ -369,7 +373,7 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
 
-		{aliases: []string{"examinemem", "x"}, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
+		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
 
     examinemem [-fmt <format>] [-len <length>] <address>
 
@@ -385,6 +389,7 @@ For example:
 	if client == nil || client.Recorded() {
 		c.cmds = append(c.cmds, command{
 			aliases: []string{"rewind", "rw"},
+			group:   runCmds,
 			cmdFn:   rewind,
 			helpMsg: "Run backwards until breakpoint or program termination.",
 		})
@@ -526,22 +531,31 @@ func (c *Commands) help(t *Term, ctx callContext, args string) error {
 	}
 
 	fmt.Println("The following commands are available:")
-	w := new(tabwriter.Writer)
-	w.Init(os.Stdout, 0, 8, 0, '-', 0)
-	for _, cmd := range c.cmds {
-		h := cmd.helpMsg
-		if idx := strings.Index(h, "\n"); idx >= 0 {
-			h = h[:idx]
+
+	for _, cgd := range commandGroupDescriptions {
+		fmt.Printf("\n%s:\n", cgd.description)
+		w := new(tabwriter.Writer)
+		w.Init(os.Stdout, 0, 8, 0, '-', 0)
+		for _, cmd := range c.cmds {
+			if cmd.group != cgd.group {
+				continue
+			}
+			h := cmd.helpMsg
+			if idx := strings.Index(h, "\n"); idx >= 0 {
+				h = h[:idx]
+			}
+			if len(cmd.aliases) > 1 {
+				fmt.Fprintf(w, "    %s (alias: %s) \t %s\n", cmd.aliases[0], strings.Join(cmd.aliases[1:], " | "), h)
+			} else {
+				fmt.Fprintf(w, "    %s \t %s\n", cmd.aliases[0], h)
+			}
 		}
-		if len(cmd.aliases) > 1 {
-			fmt.Fprintf(w, "    %s (alias: %s) \t %s\n", cmd.aliases[0], strings.Join(cmd.aliases[1:], " | "), h)
-		} else {
-			fmt.Fprintf(w, "    %s \t %s\n", cmd.aliases[0], h)
+		if err := w.Flush(); err != nil {
+			return err
 		}
 	}
-	if err := w.Flush(); err != nil {
-		return err
-	}
+
+	fmt.Println()
 	fmt.Println("Type help followed by a command for full documentation.")
 	return nil
 }
