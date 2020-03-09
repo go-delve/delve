@@ -485,7 +485,6 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 			} else {
 				threads[i].Name = fmt.Sprintf("%s@%d", g.UserCurrentLoc.File, g.UserCurrentLoc.Line)
 			}
-
 		}
 	}
 	response := &dap.ThreadsResponse{
