@@ -371,6 +371,22 @@ func (fn *Function) PrologueEndPC() uint64 {
 	return pc
 }
 
+// From $GOROOT/src/runtime/traceback.go:597
+// exportedRuntime reports whether the function is an exported runtime function.
+// It is only for runtime functions, so ASCII A-Z is fine.
+func (fn *Function) exportedRuntime() bool {
+	name := fn.Name
+	const n = len("runtime.")
+	return len(name) > n && name[:n] == "runtime." && 'A' <= name[n] && name[n] <= 'Z'
+}
+
+// unexportedRuntime reports whether the function is a private runtime function.
+func (fn *Function) privateRuntime() bool {
+	name := fn.Name
+	const n = len("runtime.")
+	return len(name) > n && name[:n] == "runtime." && !('A' <= name[n] && name[n] <= 'Z')
+}
+
 type constantsMap map[dwarfRef]*constantType
 
 type constantType struct {

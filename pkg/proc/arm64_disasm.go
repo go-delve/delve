@@ -26,6 +26,8 @@ func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw M
 		asmInst.Kind = CallInstruction
 	case arm64asm.RET, arm64asm.ERET:
 		asmInst.Kind = RetInstruction
+	case arm64asm.B, arm64asm.BR:
+		asmInst.Kind = JmpInstruction
 	}
 
 	asmInst.DestLoc = resolveCallArgARM64(&inst, asmInst.Loc.PC, asmInst.AtPC, regs, memrw, bi)
@@ -34,7 +36,10 @@ func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw M
 }
 
 func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
-	if inst.Op != arm64asm.BL && inst.Op != arm64asm.BLR {
+	switch inst.Op {
+	case arm64asm.BL, arm64asm.BLR, arm64asm.B, arm64asm.BR:
+		//ok
+	default:
 		return nil
 	}
 

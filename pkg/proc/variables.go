@@ -489,7 +489,7 @@ func (g *G) UserCurrent() Location {
 		frame := it.Frame()
 		if frame.Call.Fn != nil {
 			name := frame.Call.Fn.Name
-			if strings.Contains(name, ".") && (!strings.HasPrefix(name, "runtime.") || isExportedRuntime(name)) {
+			if strings.Contains(name, ".") && (!strings.HasPrefix(name, "runtime.") || frame.Call.Fn.exportedRuntime()) {
 				return frame.Call
 			}
 		}
@@ -892,14 +892,6 @@ func (v *Variable) fieldVariable(name string) *Variable {
 		}
 	}
 	return nil
-}
-
-// From $GOROOT/src/runtime/traceback.go:597
-// isExportedRuntime reports whether name is an exported runtime function.
-// It is only for runtime functions, so ASCII A-Z is fine.
-func isExportedRuntime(name string) bool {
-	const n = len("runtime.")
-	return len(name) > n && name[:n] == "runtime." && 'A' <= name[n] && name[n] <= 'Z'
 }
 
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")

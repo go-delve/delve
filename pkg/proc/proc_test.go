@@ -4758,3 +4758,49 @@ func TestIssue1925(t *testing.T) {
 		}
 	})
 }
+
+func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "386" && buildMode == "pie" {
+		t.Skip("Skipping wrappers doesn't work on linux/386/PIE due to the use of get_pc_thunk")
+	}
+	// Under some circumstances (when using an interface to call a method on an
+	// embedded field, see _fixtures/ifaceembcall.go) the compiler will
+	// autogenerate a wrapper function that uses a tail call (i.e. it ends in
+	// an unconditional jump instruction to a different function).
+	// Delve should be able to step into this tail call.
+	testseq2(t, "ifaceembcall", "", []seqTest{
+		{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
+		{contStep, 18},     // main.(*A).PtrReceiver
+		{contStep, 19},
+		{contStepout, 28},
+		{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
+		{contStep, 22},                 // main.(A).NonPtrReceiver
+		{contStep, 23},
+		{contStepout, 29}})
+
+	// same test but with next instead of stepout
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) && runtime.GOARCH != "386" {
+		testseq2(t, "ifaceembcall", "", []seqTest{
+			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
+			{contStep, 18},     // main.(*A).PtrReceiver
+			{contNext, 19},
+			{contNext, 19},
+			{contNext, 28},
+			{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
+			{contStep, 22},
+			{contNext, 23},
+			{contNext, 23},
+			{contNext, 29}})
+	} else {
+		testseq2(t, "ifaceembcall", "", []seqTest{
+			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
+			{contStep, 18},     // main.(*A).PtrReceiver
+			{contNext, 19},
+			{contNext, 28},
+			{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
+			{contStep, 22},
+			{contNext, 23},
+			{contNext, 29}})
+
+	}
+}

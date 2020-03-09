@@ -24,6 +24,8 @@ func x86AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw Mem
 	asmInst.Kind = OtherInstruction
 
 	switch inst.Op {
+	case x86asm.JMP, x86asm.LJMP:
+		asmInst.Kind = JmpInstruction
 	case x86asm.CALL, x86asm.LCALL:
 		asmInst.Kind = CallInstruction
 	case x86asm.RET, x86asm.LRET:
@@ -73,7 +75,10 @@ func (inst *x86Inst) OpcodeEquals(op uint64) bool {
 }
 
 func resolveCallArgX86(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
-	if inst.Op != x86asm.CALL && inst.Op != x86asm.LCALL {
+	switch inst.Op {
+	case x86asm.CALL, x86asm.LCALL, x86asm.JMP, x86asm.LJMP:
+		// ok
+	default:
 		return nil
 	}
 
