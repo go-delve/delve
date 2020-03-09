@@ -239,102 +239,119 @@ func TestNoopResponses(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.TerminateRequest()
 		got = client.ExpectTerminateResponse(t)
 		want = &dap.TerminateResponse{Response: newResponse(2, "terminate")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.RestartRequest()
 		got = client.ExpectRestartResponse(t)
 		want = &dap.RestartResponse{Response: newResponse(3, "restart")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.SetFunctionBreakpointsRequest()
 		got = client.ExpectSetFunctionBreakpointsResponse(t)
 		want = &dap.SetFunctionBreakpointsResponse{Response: newResponse(4, "setFunctionBreakpoints")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.StepBackRequest()
 		got = client.ExpectStepBackResponse(t)
 		want = &dap.StepBackResponse{Response: newResponse(5, "stepBack")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.RestartFrameRequest()
 		got = client.ExpectRestartFrameResponse(t)
 		want = &dap.RestartFrameResponse{Response: newResponse(6, "restartFrame")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.SetExpressionRequest()
 		got = client.ExpectSetExpressionResponse(t)
 		want = &dap.SetExpressionResponse{Response: newResponse(7, "setExpression")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.TerminateThreadsRequest()
 		got = client.ExpectTerminateThreadsResponse(t)
 		want = &dap.TerminateThreadsResponse{Response: newResponse(8, "terminateThreads")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.StepInTargetsRequest()
 		got = client.ExpectStepInTargetsResponse(t)
 		want = &dap.StepInTargetsResponse{Response: newResponse(9, "stepInTargets")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.GotoTargetsRequest()
 		got = client.ExpectGotoTargetsResponse(t)
 		want = &dap.GotoTargetsResponse{Response: newResponse(10, "gotoTargets")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.CompletionsRequest()
 		got = client.ExpectCompletionsResponse(t)
 		want = &dap.CompletionsResponse{Response: newResponse(11, "completions")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.ExceptionInfoRequest()
 		got = client.ExpectExceptionInfoResponse(t)
 		want = &dap.ExceptionInfoResponse{Response: newResponse(12, "exceptionInfo")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.LoadedSourcesRequest()
 		got = client.ExpectLoadedSourcesResponse(t)
 		want = &dap.LoadedSourcesResponse{Response: newResponse(13, "loadedSources")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.SetDataBreakpointsRequest()
 		got = client.ExpectSetDataBreakpointsResponse(t)
 		want = &dap.SetDataBreakpointsResponse{Response: newResponse(14, "setDataBreakpoints")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.ReadMemoryRequest()
 		got = client.ExpectReadMemoryResponse(t)
 		want = &dap.ReadMemoryResponse{Response: newResponse(15, "readMemory")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.DisassembleRequest()
 		got = client.ExpectDisassembleResponse(t)
 		want = &dap.DisassembleResponse{Response: newResponse(16, "disassemble")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.CancelRequest()
 		got = client.ExpectCancelResponse(t)
 		want = &dap.CancelResponse{Response: newResponse(17, "cancel")}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("\ngot  %#v\nwant %#v", got, want)
 		}
+
 		client.BreakpointLocationsRequest()
 		got = client.ExpectBreakpointLocationsResponse(t)
 		want = &dap.BreakpointLocationsResponse{Response: newResponse(18, "breakpointLocations")}
