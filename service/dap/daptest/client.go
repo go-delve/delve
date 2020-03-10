@@ -140,6 +140,11 @@ func (c *Client) ExpectStepBackResponse(t *testing.T) *dap.StepBackResponse {
 	return c.expectReadProtocolMessage(t).(*dap.StepBackResponse)
 }
 
+func (c *Client) ExpectReverseContinueResponse(t *testing.T) *dap.ReverseContinueResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ReverseContinueResponse)
+}
+
 func (c *Client) ExpectRestartFrameResponse(t *testing.T) *dap.RestartFrameResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.RestartFrameResponse)
@@ -180,6 +185,11 @@ func (c *Client) ExpectLoadedSourcesResponse(t *testing.T) *dap.LoadedSourcesRes
 	return c.expectReadProtocolMessage(t).(*dap.LoadedSourcesResponse)
 }
 
+func (c *Client) ExpectDataBreakpointInfoResponse(t *testing.T) *dap.DataBreakpointInfoResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.DataBreakpointInfoResponse)
+}
+
 func (c *Client) ExpectSetDataBreakpointsResponse(t *testing.T) *dap.SetDataBreakpointsResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.SetDataBreakpointsResponse)
@@ -203,6 +213,11 @@ func (c *Client) ExpectCancelResponse(t *testing.T) *dap.CancelResponse {
 func (c *Client) ExpectBreakpointLocationsResponse(t *testing.T) *dap.BreakpointLocationsResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.BreakpointLocationsResponse)
+}
+
+func (c *Client) ExpectModulesResponse(t *testing.T) *dap.ModulesResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ModulesResponse)
 }
 
 // InitializeRequest sends an 'initialize' request.
@@ -304,6 +319,11 @@ func (c *Client) StepBackRequest() {
 	c.send(&dap.StepBackRequest{Request: *c.newRequest("stepBack")})
 }
 
+// ReverseContinueRequest sends a 'reverseContinue' request.
+func (c *Client) ReverseContinueRequest() {
+	c.send(&dap.ReverseContinueRequest{Request: *c.newRequest("reverseContinue")})
+}
+
 // RestartFrameRequest sends a 'restartFrame' request.
 func (c *Client) RestartFrameRequest() {
 	c.send(&dap.RestartFrameRequest{Request: *c.newRequest("restartFrame")})
@@ -344,6 +364,11 @@ func (c *Client) LoadedSourcesRequest() {
 	c.send(&dap.LoadedSourcesRequest{Request: *c.newRequest("loadedSources")})
 }
 
+// DataBreakpointInfoRequest sends a 'dataBreakpointInfo' request.
+func (c *Client) DataBreakpointInfoRequest() {
+	c.send(&dap.DataBreakpointInfoRequest{Request: *c.newRequest("dataBreakpointInfo")})
+}
+
 // SetDataBreakpointsRequest sends a 'setDataBreakpoints' request.
 func (c *Client) SetDataBreakpointsRequest() {
 	c.send(&dap.SetDataBreakpointsRequest{Request: *c.newRequest("setDataBreakpoints")})
@@ -367,6 +392,11 @@ func (c *Client) CancelRequest() {
 // BreakpointLocationsRequest sends a 'breakpointLocations' request.
 func (c *Client) BreakpointLocationsRequest() {
 	c.send(&dap.BreakpointLocationsRequest{Request: *c.newRequest("breakpointLocations")})
+}
+
+// ModulesRequest sends a 'modules' request.
+func (c *Client) ModulesRequest() {
+	c.send(&dap.ModulesRequest{Request: *c.newRequest("modules")})
 }
 
 // UnknownRequest triggers dap.DecodeProtocolMessageFieldError.

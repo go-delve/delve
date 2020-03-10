@@ -222,7 +222,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	case *dap.StepBackRequest:
 		s.onStepBackRequest(request)
 	case *dap.ReverseContinueRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		s.onReverseContinueRequest(request)
 	case *dap.RestartFrameRequest:
 		s.onRestartFrameRequest(request)
 	case *dap.GotoRequest:
@@ -258,7 +258,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	case *dap.LoadedSourcesRequest:
 		s.onLoadedSourcesRequest(request)
 	case *dap.DataBreakpointInfoRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		s.onDataBreakpointInfoRequest(request)
 	case *dap.SetDataBreakpointsRequest:
 		s.onSetDataBreakpointsRequest(request)
 	case *dap.ReadMemoryRequest:
@@ -269,6 +269,8 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.onCancelRequest(request)
 	case *dap.BreakpointLocationsRequest:
 		s.onBreakpointLocationsRequest(request)
+	case *dap.ModulesRequest:
+		s.onModulesRequest(request)
 	default:
 		// This is a DAP message that go-dap has a struct for, so
 		// decoding succeeded, but this function does not know how
@@ -459,122 +461,143 @@ func (s *Server) onContinueRequest(request *dap.ContinueRequest) {
 //
 
 // onTerminateRequest is no-op because this adaptor does not support
-// the 'terminate' request (supportsTerminateRequest is false in
+// the 'terminate' request (supportsTerminateRequest is absent in
 // 'initialize' response).
 func (s *Server) onTerminateRequest(request *dap.TerminateRequest) {
 	s.send(&dap.TerminateResponse{Response: *newResponse(request.Request)})
 }
 
 // onRestartRequest is no-op because this adaptor does not support
-// the 'restart' request (supportsRestartRequest is false in
+// the 'restart' request (supportsRestartRequest is absent in
 // 'initialize' response).
 func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
 }
 
 // onSetFunctionBreakpointsRequest is no-op because this adaptor does not support
-// the 'setFunctionBreakpoints' request (supportsSetFunctionBreakpoints is false in
+// the 'setFunctionBreakpoints' request (supportsSetFunctionBreakpoints is absent in
 // 'initialize' response).
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
 	s.send(&dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
 // onStepBackRequest is no-op because this adaptor does not support
-// the 'stepBack' request (supportsStepBack is false in
+// the 'stepBack' request (supportsStepBack is absent in
 // 'initialize' response).
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
 	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
 }
 
+// onReverseContinueRequest is no-op because this adaptor does not support
+// the 'reverseContinue' request (supportsStepBack is absent in
+// 'initialize' response).
+func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
+	s.send(&dap.ReverseContinueResponse{Response: *newResponse(request.Request)})
+}
+
 // onRestartFrameRequest is no-op because this adaptor does not support
-// the 'restartFrame' request (supportsRestartFrame is false in
+// the 'restartFrame' request (supportsRestartFrame is absent in
 // 'initialize' response).
 func (s *Server) onRestartFrameRequest(request *dap.RestartFrameRequest) {
 	s.send(&dap.RestartFrameResponse{Response: *newResponse(request.Request)})
 }
 
 // onSetExpression is no-op because this adaptor does not support
-// the 'setExpression' request (supportsSetExpression is false in
+// the 'setExpression' request (supportsSetExpression is absent in
 // 'initialize' response).
 func (s *Server) onSetExpressionRequest(request *dap.SetExpressionRequest) {
 	s.send(&dap.SetExpressionResponse{Response: *newResponse(request.Request)})
 }
 
 // onTerminateThreadsRequest is no-op because this adaptor does not support
-// the 'terminateThreads' request (supportsTerminateThreadsRequest is false in
+// the 'terminateThreads' request (supportsTerminateThreadsRequest is absent in
 // 'initialize' response).
 func (s *Server) onTerminateThreadsRequest(request *dap.TerminateThreadsRequest) {
 	s.send(&dap.TerminateThreadsResponse{Response: *newResponse(request.Request)})
 }
 
 // onStepInTargetsRequest is no-op because this adaptor does not support
-// the 'stepInTargets' request (supportsStepInTargetsRequest is false in
+// the 'stepInTargets' request (supportsStepInTargetsRequest is absent in
 // 'initialize' response).
 func (s *Server) onStepInTargetsRequest(request *dap.StepInTargetsRequest) {
 	s.send(&dap.StepInTargetsResponse{Response: *newResponse(request.Request)})
 }
 
 // onGotoTargetsRequest is no-op because this adaptor does not support
-// the 'gotoTargets' request (supportsGotoTargetsRequest is false in
+// the 'gotoTargets' request (supportsGotoTargetsRequest is absent in
 // 'initialize' response).
 func (s *Server) onGotoTargetsRequest(request *dap.GotoTargetsRequest) {
 	s.send(&dap.GotoTargetsResponse{Response: *newResponse(request.Request)})
 }
 
 // onCompletionsRequest is no-op because this adaptor does not support
-// the 'completions' request (supportsCompletionsRequest is false in
+// the 'completions' request (supportsCompletionsRequest is absent in
 // 'initialize' response).
 func (s *Server) onCompletionsRequest(request *dap.CompletionsRequest) {
 	s.send(&dap.CompletionsResponse{Response: *newResponse(request.Request)})
 }
 
 // onExceptionInfoRequest is no-op because this adaptor does not support
-// the 'exceptionInfo' request (supportsExceptionInfoRequest is false in
+// the 'exceptionInfo' request (supportsExceptionInfoRequest is absent in
 // 'initialize' response).
 func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	s.send(&dap.ExceptionInfoResponse{Response: *newResponse(request.Request)})
 }
 
 // onLoadedSourcesRequest is no-op because this adaptor does not support
-// the 'loadedSources' request (supportsLoadedSourcesRequest is false in
+// the 'loadedSources' request (supportsLoadedSourcesRequest is absent in
 // 'initialize' response).
 func (s *Server) onLoadedSourcesRequest(request *dap.LoadedSourcesRequest) {
 	s.send(&dap.LoadedSourcesResponse{Response: *newResponse(request.Request)})
 }
 
+// onDataBreakpointInfoRequest is no-op because this adaptor does not support
+// the 'dataBreakpointInfo' request (supportsDataBreakpoints is absent in
+// 'initialize' response).
+func (s *Server) onDataBreakpointInfoRequest(request *dap.DataBreakpointInfoRequest) {
+	s.send(&dap.DataBreakpointInfoResponse{Response: *newResponse(request.Request)})
+}
+
 // onSetDataBreakpointsRequest is no-op because this adaptor does not support
-// the 'setDataBreakpoints' request (supportsDataBreakpoints is false in
+// the 'setDataBreakpoints' request (supportsDataBreakpoints is absent in
 // 'initialize' response).
 func (s *Server) onSetDataBreakpointsRequest(request *dap.SetDataBreakpointsRequest) {
 	s.send(&dap.SetDataBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
 // onReadMemoryRequest is no-op because this adaptor does not support
-// the 'readMemory' request (supportsReadMemoryRequest is false in
+// the 'readMemory' request (supportsReadMemoryRequest is absent in
 // 'initialize' response).
 func (s *Server) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	s.send(&dap.ReadMemoryResponse{Response: *newResponse(request.Request)})
 }
 
 // onDisassembleRequest is no-op because this adaptor does not support
-// the 'disassemble' request (supportsDisassembleRequest is false in
+// the 'disassemble' request (supportsDisassembleRequest is absent in
 // 'initialize' response).
 func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 	s.send(&dap.DisassembleResponse{Response: *newResponse(request.Request)})
 }
 
 // onCancelRequest is no-op because this adaptor does not support
-// the 'cancel' request (supportsCancelRequest is false in
+// the 'cancel' request (supportsCancelRequest is absent in
 // 'initialize' response).
 func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.send(&dap.CancelResponse{Response: *newResponse(request.Request)})
 }
 
 // onBreakpointLocationsRequest is no-op because this adaptor does not support
-// the 'breakpointLocations' request (supportsBreakpointLocationsRequest is false in
+// the 'breakpointLocations' request (supportsBreakpointLocationsRequest is absent in
 // 'initialize' response).
 func (s *Server) onBreakpointLocationsRequest(request *dap.BreakpointLocationsRequest) {
 	s.send(&dap.BreakpointLocationsResponse{Response: *newResponse(request.Request)})
+}
+
+// onModulesRequest is no-op because this adaptor does not support
+// the 'modules' request (supportsModulesRequest is absent in
+// 'initialize' response).
+func (s *Server) onModulesRequest(request *dap.ModulesRequest) {
+	s.send(&dap.ModulesResponse{Response: *newResponse(request.Request)})
 }
 
 func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, details string) {
