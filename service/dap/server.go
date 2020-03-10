@@ -455,9 +455,11 @@ func (s *Server) onContinueRequest(request *dap.ContinueRequest) {
 
 //
 // The rest of the handlers below are no-ops because the adaptor
-// does not support these messages. We choose no-op over an error response
-// because that is the default behavior in vscode-debugadapter-node
-// that many other adaptors, including vscode-go, inherit from.
+// does not support these messages as communicated by the missing
+// capabilities in the 'initialize' response. We choose no-op over
+// an error response or leaving these out completely because that is
+// the default behavior in vscode-debugadapter-node that many other
+// adaptors, including vscode-go, inherit from.
 //
 
 // onTerminateRequest is no-op because this adaptor does not support
