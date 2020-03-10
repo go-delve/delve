@@ -55,33 +55,6 @@ func (pe ProcessDetachedError) Error() string {
 	return "detached from the process"
 }
 
-// PostInitializationSetup handles all of the initialization procedures
-// that must happen after Delve creates or attaches to a process.
-func PostInitializationSetup(p Process, path string, debugInfoDirs []string, writeBreakpoint WriteBreakpointFn) error {
-	entryPoint, err := p.EntryPoint()
-	if err != nil {
-		return err
-	}
-
-	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, debugInfoDirs)
-	if err != nil {
-		return err
-	}
-	for _, image := range p.BinInfo().Images {
-		if image.loadErr != nil {
-			return image.loadErr
-		}
-	}
-
-	g, _ := GetG(p.CurrentThread())
-	p.SetSelectedGoroutine(g)
-
-	createUnrecoveredPanicBreakpoint(p, writeBreakpoint)
-	createFatalThrowBreakpoint(p, writeBreakpoint)
-
-	return nil
-}
-
 // FindFileLocation returns the PC for a given file:line.
 // Assumes that `file` is normalized to lower case and '/' on Windows.
 func FindFileLocation(p Process, fileName string, lineno int) ([]uint64, error) {
@@ -175,16 +148,19 @@ func Continue(dbp *Target) error {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
 		if dbp.CheckAndClearManualStopRequest() {
+			dbp.StopReason = StopManual
 			dbp.ClearInternalBreakpoints()
 		}
 	}()
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
+			dbp.StopReason = StopManual
 			dbp.ClearInternalBreakpoints()
 			return nil
 		}
 		dbp.ClearAllGCache()
-		trapthread, err := dbp.ContinueOnce()
+		trapthread, stopReason, err := dbp.proc.ContinueOnce()
+		dbp.StopReason = stopReason
 		if err != nil {
 			return err
 		}
@@ -232,6 +208,7 @@ func Continue(dbp *Target) error {
 				if err := stepInstructionOut(dbp, curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
 					return err
 				}
+				dbp.StopReason = StopHardcodedBreakpoint
 				return conditionErrors(threads)
 			case g == nil || dbp.fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
@@ -272,6 +249,7 @@ func Continue(dbp *Target) error {
 				if err := dbp.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
+				dbp.StopReason = StopNextFinished
 				return conditionErrors(threads)
 			}
 		case curbp.Active:
@@ -288,6 +266,7 @@ func Continue(dbp *Target) error {
 			if curbp.Name == UnrecoveredPanic {
 				dbp.ClearInternalBreakpoints()
 			}
+			dbp.StopReason = StopBreakpoint
 			return conditionErrors(threads)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
@@ -295,6 +274,7 @@ func Continue(dbp *Target) error {
 		if callInjectionDone {
 			// a call injection was finished, don't let a breakpoint with a failed
 			// condition or a step breakpoint shadow this.
+			dbp.StopReason = StopCallReturned
 			return conditionErrors(threads)
 		}
 	}
@@ -318,7 +298,7 @@ func conditionErrors(threads []Thread) error {
 // 	- a thread with onTriggeredInternalBreakpoint() == true
 // 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
 // 	- trapthread
-func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
+func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
 	for _, th := range threads {
 		if bp := th.Breakpoint(); bp.Active && bp.Internal {
 			return dbp.SwitchThread(th.ThreadID())
@@ -339,7 +319,7 @@ func pickCurrentThread(dbp Process, trapthread Thread, threads []Thread) error {
 // function is neither fnname1 or fnname2.
 // This function is used to step out of runtime.Breakpoint as well as
 // runtime.debugCallV1.
-func stepInstructionOut(dbp Process, curthread Thread, fnname1, fnname2 string) error {
+func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) error {
 	for {
 		if err := curthread.StepInstruction(); err != nil {
 			return err
@@ -538,7 +518,7 @@ func StepInstruction(dbp *Target) (err error) {
 		return err
 	}
 	if tg, _ := GetG(thread); tg != nil {
-		dbp.SetSelectedGoroutine(tg)
+		dbp.selectedGoroutine = tg
 	}
 	return nil
 }

@@ -90,10 +90,11 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 	if err != nil {
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
-	if err = dbp.initialize(cmd[0], debugInfoDirs); err != nil {
+	tgt, err := dbp.initialize(cmd[0], debugInfoDirs)
+	if err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(dbp, false), nil
+	return tgt, nil
 }
 
 // Attach to an existing process with the given PID. Once attached, if
@@ -112,7 +113,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 		return nil, err
 	}
 
-	err = dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
+	tgt, err := dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
 	if err != nil {
 		dbp.Detach(false)
 		return nil, err
@@ -124,7 +125,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 	if err != nil {
 		return nil, err
 	}
-	return proc.NewTarget(dbp, false), nil
+	return tgt, nil
 }
 
 func initialize(dbp *Process) error {
@@ -222,7 +223,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		os:  new(OSSpecificDetails),
 	}
 	if dbp.currentThread == nil {
-		dbp.SwitchThread(tid)
+		dbp.currentThread = dbp.threads[tid]
 	}
 	return dbp.threads[tid], nil
 }

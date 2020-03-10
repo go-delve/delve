@@ -18,16 +18,27 @@ type Process interface {
 	RecordingManipulation
 }
 
-// RecordingManipulation is an interface for manipulating process recordings.
-type RecordingManipulation interface {
-	// Recorded returns true if the current process is a recording and the path
-	// to the trace directory.
-	Recorded() (recorded bool, tracedir string)
+// ProcessInternal holds a set of methods that are not meant to be called by
+// anyone except for an instance of `proc.Target`. These methods are not
+// safe to use by themselves and should never be called directly outside of
+// the `proc` package.
+// This is temporary and in support of an ongoing refactor.
+type ProcessInternal interface {
+	SetCurrentThread(Thread)
 	// Restart restarts the recording from the specified position, or from the
 	// last checkpoint if pos == "".
 	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
 	// number.
 	Restart(pos string) error
+	Detach(bool) error
+	ContinueOnce() (trapthread Thread, stopReason StopReason, err error)
+}
+
+// RecordingManipulation is an interface for manipulating process recordings.
+type RecordingManipulation interface {
+	// Recorded returns true if the current process is a recording and the path
+	// to the trace directory.
+	Recorded() (recorded bool, tracedir string)
 	// Direction changes execution direction.
 	Direction(Direction) error
 	// When returns current recording position.
@@ -71,7 +82,6 @@ type Info interface {
 	EntryPoint() (uint64, error)
 
 	ThreadInfo
-	GoroutineInfo
 }
 
 // ThreadInfo is an interface for getting information on active threads
@@ -82,22 +92,12 @@ type ThreadInfo interface {
 	CurrentThread() Thread
 }
 
-// GoroutineInfo is an interface for getting information on running goroutines.
-type GoroutineInfo interface {
-	SelectedGoroutine() *G
-	SetSelectedGoroutine(*G)
-}
-
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
-	ContinueOnce() (trapthread Thread, err error)
-	SwitchThread(int) error
-	SwitchGoroutine(*G) error
 	RequestManualStop() error
 	// CheckAndClearManualStopRequest returns true the first time it's called
 	// after a call to RequestManualStop.
 	CheckAndClearManualStopRequest() bool
-	Detach(bool) error
 }
 
 // BreakpointManipulation is an interface for managing breakpoints.

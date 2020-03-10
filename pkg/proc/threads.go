@@ -141,7 +141,7 @@ func (err *ErrNoSourceForPC) Error() string {
 // for an inlined function call. Everything works the same as normal except
 // when removing instructions belonging to inlined calls we also remove all
 // instructions belonging to the current inlined call.
-func next(dbp Process, stepInto, inlinedStepOut bool) error {
+func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 	topframe, retframe, err := topframe(selg, curthread)
