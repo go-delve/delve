@@ -69,6 +69,7 @@ func (tbe ErrThreadBlocked) Error() string {
 // implementations of the Thread interface.
 type CommonThread struct {
 	returnValues []*Variable
+	g            *G // cached g for this thread
 }
 
 // ReturnValues reads the return values from the function executing on
@@ -481,6 +482,9 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
 func GetG(thread Thread) (*G, error) {
+	if thread.Common().g != nil {
+		return thread.Common().g, nil
+	}
 	if loc, _ := thread.Location(); loc != nil && loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
 		// When threads are executing runtime.clone the value of TLS is unreliable.
 		return nil, nil
@@ -523,6 +527,7 @@ func GetG(thread Thread) (*G, error) {
 	if loc, err := thread.Location(); err == nil {
 		g.CurrentLoc = *loc
 	}
+	thread.Common().g = g
 	return g, nil
 }
 
