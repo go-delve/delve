@@ -11,6 +11,7 @@ const (
 	// TODO(polina): confirm if the extension expects specific ids
 	// for specific cases, and we must match the existing adaptor
 	// or if these codes can evolve.
-	FailedToContinue = 3000
+	FailedToContinue       = 3000
+	UnableToDisplayThreads = 2003
 	// Add more codes as we support more requests
 )
