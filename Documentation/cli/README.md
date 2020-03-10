@@ -6,55 +6,87 @@ The configuration file `config.yml` contains all the configurable options and th
 
 # Commands
 
+## Running the program
+
 Command | Description
 --------|------------
-[args](#args) | Print function arguments.
-[break](#break) | Sets a breakpoint.
-[breakpoints](#breakpoints) | Print out info for active breakpoints.
 [call](#call) | Resumes process, injecting a function call (EXPERIMENTAL!!!)
-[check](#check) | Creates a checkpoint at the current position.
-[checkpoints](#checkpoints) | Print out info for existing checkpoints.
-[clear](#clear) | Deletes breakpoint.
-[clear-checkpoint](#clear-checkpoint) | Deletes checkpoint.
-[clearall](#clearall) | Deletes multiple breakpoints.
-[condition](#condition) | Set breakpoint condition.
-[config](#config) | Changes configuration parameters.
 [continue](#continue) | Run until breakpoint or program termination.
-[deferred](#deferred) | Executes command in the context of a deferred call.
-[disassemble](#disassemble) | Disassembler.
-[down](#down) | Move the current frame down.
-[edit](#edit) | Open where you are in $DELVE_EDITOR or $EDITOR
-[examinemem](#examinemem) | Examine memory:
-[exit](#exit) | Exit the debugger.
-[frame](#frame) | Set the current frame, or execute command on a different frame.
-[funcs](#funcs) | Print list of functions.
-[goroutine](#goroutine) | Shows or changes current goroutine
-[goroutines](#goroutines) | List program goroutines.
-[help](#help) | Prints the help message.
-[libraries](#libraries) | List loaded dynamic libraries
-[list](#list) | Show source code.
-[locals](#locals) | Print local variables.
 [next](#next) | Step over to next source line.
-[on](#on) | Executes a command when a breakpoint is hit.
-[print](#print) | Evaluate an expression.
-[regs](#regs) | Print contents of CPU registers.
 [restart](#restart) | Restart process from a checkpoint or event.
-[rev](#rev) | Reverses the execution of the target program for the command specified.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
-[set](#set) | Changes the value of a variable.
-[source](#source) | Executes a file containing a list of delve commands
-[sources](#sources) | Print list of source files.
-[stack](#stack) | Print stack trace.
 [step](#step) | Single step through program.
 [step-instruction](#step-instruction) | Single step a single cpu instruction.
 [stepout](#stepout) | Step out of the current function.
-[thread](#thread) | Switch to the specified thread.
-[threads](#threads) | Print out info for every traced thread.
+
+
+## Manipulating breakpoints
+
+Command | Description
+--------|------------
+[break](#break) | Sets a breakpoint.
+[breakpoints](#breakpoints) | Print out info for active breakpoints.
+[clear](#clear) | Deletes breakpoint.
+[clearall](#clearall) | Deletes multiple breakpoints.
+[condition](#condition) | Set breakpoint condition.
+[on](#on) | Executes a command when a breakpoint is hit.
 [trace](#trace) | Set tracepoint.
-[types](#types) | Print list of types
-[up](#up) | Move the current frame up.
+
+
+## Viewing program variables and memory
+
+Command | Description
+--------|------------
+[args](#args) | Print function arguments.
+[examinemem](#examinemem) | Examine memory:
+[locals](#locals) | Print local variables.
+[print](#print) | Evaluate an expression.
+[regs](#regs) | Print contents of CPU registers.
+[set](#set) | Changes the value of a variable.
 [vars](#vars) | Print package variables.
 [whatis](#whatis) | Prints type of an expression.
+
+
+## Listing and switching between threads and goroutines
+
+Command | Description
+--------|------------
+[goroutine](#goroutine) | Shows or changes current goroutine
+[goroutines](#goroutines) | List program goroutines.
+[thread](#thread) | Switch to the specified thread.
+[threads](#threads) | Print out info for every traced thread.
+
+
+## Viewing the call stack and selecting frames
+
+Command | Description
+--------|------------
+[deferred](#deferred) | Executes command in the context of a deferred call.
+[down](#down) | Move the current frame down.
+[frame](#frame) | Set the current frame, or execute command on a different frame.
+[stack](#stack) | Print stack trace.
+[up](#up) | Move the current frame up.
+
+
+## Other commands
+
+Command | Description
+--------|------------
+[check](#check) | Creates a checkpoint at the current position.
+[checkpoints](#checkpoints) | Print out info for existing checkpoints.
+[clear-checkpoint](#clear-checkpoint) | Deletes checkpoint.
+[config](#config) | Changes configuration parameters.
+[disassemble](#disassemble) | Disassembler.
+[edit](#edit) | Open where you are in $DELVE_EDITOR or $EDITOR
+[exit](#exit) | Exit the debugger.
+[funcs](#funcs) | Print list of functions.
+[help](#help) | Prints the help message.
+[libraries](#libraries) | List loaded dynamic libraries
+[list](#list) | Show source code.
+[rev](#rev) | Reverses the execution of the target program for the command specified.
+[source](#source) | Executes a file containing a list of delve commands
+[sources](#sources) | Print list of source files.
+[types](#types) | Print list of types
 
 ## args
 Print function arguments.

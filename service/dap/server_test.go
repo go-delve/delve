@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -67,66 +68,190 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	test(client, fixture)
 }
 
+// TestStopOnEntry emulates the message exchange that can be observed with
+// VS Code for the most basic debug session with "stopOnEntry" enabled:
+// - User selects "Start Debugging":  1 >> initialize
+//                                 :  1 << initialize
+//                                 :  2 >> launch
+//                                 :    << initialized event
+//                                 :  2 << launch
+//                                 :  3 >> setBreakpoints (empty)
+//                                 :  3 << setBreakpoints
+//                                 :  4 >> setExceptionBreakpoints (empty)
+//                                 :  4 << setExceptionBreakpoints
+//                                 :  5 >> configurationDone
+// - Program stops upon launching  :    << stopped event
+//                                 :  5 << configurationDone
+//                                 :  6 >> threads
+//                                 :  6 << threads (Dummy)
+//                                 :  7 >> threads
+//                                 :  7 << threads (Dummy)
+//                                 :  8 >> stackTrace
+//                                 :  8 << stackTrace (Unable to produce stack trace)
+//                                 :  9 >> stackTrace
+//                                 :  9 << stackTrace (Unable to produce stack trace)
+// - User selects "Continue"       : 10 >> continue
+//                                 : 10 << continue
+// - Program runs to completion    :    << terminated event
+//                                 : 11 >> disconnect
+//                                 : 11 << disconnect
+// This test exhaustively tests Seq and RequestSeq on all messages from the
+// server. Other tests do not necessarily need to repeat all these checks.
 func TestStopOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		// This test exhaustively tests Seq and RequestSeq on all messages from the
-		// server. Other tests shouldn't necessarily repeat these checks.
+		// 1 >> initialize, << initialize
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponse(t)
-		if initResp.Seq != 0 || initResp.RequestSeq != 0 {
-			t.Errorf("got %#v, want Seq=0, RequestSeq=0", initResp)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
 
+		// 2 >> launch, << initialized, << launch
 		client.LaunchRequest("exec", fixture.Path, stopOnEntry)
-		initEv := client.ExpectInitializedEvent(t)
-		if initEv.Seq != 0 {
-			t.Errorf("got %#v, want Seq=0", initEv)
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
 		}
-
 		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.Seq != 0 || launchResp.RequestSeq != 1 {
-			t.Errorf("got %#v, want Seq=0, RequestSeq=1", launchResp)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
 		}
 
+		// 3 >> setBreakpoints, << setBreakpoints
+		client.SetBreakpointsRequest(fixture.Source, nil)
+		sbpResp := client.ExpectSetBreakpointsResponse(t)
+		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=3, len(Breakpoints)=0", sbpResp)
+		}
+
+		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
 		client.SetExceptionBreakpointsRequest()
-		sResp := client.ExpectSetExceptionBreakpointsResponse(t)
-		if sResp.Seq != 0 || sResp.RequestSeq != 2 {
-			t.Errorf("got %#v, want Seq=0, RequestSeq=2", sResp)
+		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
+		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
 		}
 
+		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
 		if stopEvent.Seq != 0 ||
 			stopEvent.Body.Reason != "breakpoint" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("got %#v, want Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
 		}
-
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
-			t.Errorf("got %#v, want Seq=0, RequestSeq=3", cdResp)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
 		}
 
+		// 6 >> threads, << threads
+		client.ThreadsRequest()
+		tResp := client.ExpectThreadsResponse(t)
+		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
+		}
+		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
+			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
+		}
+
+		// 7 >> threads, << threads
+		client.ThreadsRequest()
+		tResp = client.ExpectThreadsResponse(t)
+		if tResp.Seq != 0 || tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=1", tResp)
+		}
+
+		// 8 >> stackTrace, << stackTrace
+		client.StackTraceRequest()
+		stResp := client.ExpectErrorResponse(t)
+		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Message != "Unsupported command" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Message=\"Unsupported command\"", stResp)
+		}
+
+		// 9 >> stackTrace, << stackTrace
+		client.StackTraceRequest()
+		stResp = client.ExpectErrorResponse(t)
+		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Message != "Unsupported command" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Message=\"Unsupported command\"", stResp)
+		}
+
+		// 10 >> continue, << continue, << terminated
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 4 {
-			t.Errorf("got %#v, want Seq=0, RequestSeq=4", contResp)
+		if contResp.Seq != 0 || contResp.RequestSeq != 10 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10", contResp)
+		}
+		termEvent := client.ExpectTerminatedEvent(t)
+		if termEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", termEvent)
 		}
 
-		termEv := client.ExpectTerminatedEvent(t)
-		if termEv.Seq != 0 {
-			t.Errorf("got %#v, want Seq=0", termEv)
-		}
-
+		// 11 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 5 {
-			t.Errorf("got %#v, want Seq=0, RequestSeq=5", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 11 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=11", dResp)
 		}
 	})
 }
 
+// Like the test above, except the program is configured to continue on entry.
+func TestContinueOnEntry(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		client.ExpectInitializeResponse(t)
+
+		// 2 >> launch, << initialized, << launch
+		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+		client.ExpectInitializedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		// 3 >> setBreakpoints, << setBreakpoints
+		client.SetBreakpointsRequest(fixture.Source, nil)
+		client.ExpectSetBreakpointsResponse(t)
+
+		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
+		client.SetExceptionBreakpointsRequest()
+		client.ExpectSetExceptionBreakpointsResponse(t)
+
+		// 5 >> configurationDone, << configurationDone
+		client.ConfigurationDoneRequest()
+		client.ExpectConfigurationDoneResponse(t)
+		// "Continue" happens behind the scenes
+
+		// For now continue is blocking and runs until a stop or
+		// termination. But once we upgrade the server to be async,
+		// a simultaneous threads request can be made while continue
+		// is running. Note that vscode-go just keeps track of the
+		// continue state and would just return a dummy response
+		// without talking to debugger if continue was in progress.
+		// TODO(polina): test this once it is possible
+
+		client.ExpectTerminatedEvent(t)
+
+		// It is possible for the program to terminate before the initial
+		// threads request is processed.
+
+		// 6 >> threads, << threads
+		client.ThreadsRequest()
+		tResp := client.ExpectThreadsResponse(t)
+		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=0", tResp)
+		}
+
+		// 7 >> disconnect, << disconnect
+		client.DisconnectRequest()
+		dResp := client.ExpectDisconnectResponse(t)
+		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
+		}
+	})
+}
+
+// TestSetBreakpoint corresponds to a debug session that is configured to
+// continue on entry with a pre-set breakpoint.
 func TestSetBreakpoint(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
@@ -134,10 +259,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 		client.ExpectInitializedEvent(t)
-		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.RequestSeq != 1 {
-			t.Errorf("got %#v, want RequestSeq=1", launchResp)
-		}
+		client.ExpectLaunchResponse(t)
 
 		client.SetBreakpointsRequest(fixture.Source, []int{8, 100})
 		sResp := client.ExpectSetBreakpointsResponse(t)
@@ -153,31 +275,50 @@ func TestSetBreakpoint(t *testing.T) {
 		client.ExpectSetExceptionBreakpointsResponse(t)
 
 		client.ConfigurationDoneRequest()
-		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.RequestSeq != 4 {
-			t.Errorf("got %#v, want RequestSeq=4", cdResp)
-		}
+		client.ExpectConfigurationDoneResponse(t)
+		// This triggers "continue"
 
-		client.ContinueRequest(1)
+		// TODO(polina): add a no-op threads request
+		// with dummy response here once server becomes async
+		// to match what happens in VS Code.
+
 		stopEvent1 := client.ExpectStoppedEvent(t)
 		if stopEvent1.Body.Reason != "breakpoint" ||
 			stopEvent1.Body.ThreadId != 1 ||
 			!stopEvent1.Body.AllThreadsStopped {
 			t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent1)
 		}
-		client.ExpectContinueResponse(t)
+
+		client.ThreadsRequest()
+		tResp := client.ExpectThreadsResponse(t)
+		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
+			t.Errorf("\ngot  %#v\nwant len(Threads)>1", tResp.Body.Threads)
+		}
+		// TODO(polina): can we reliably test for these values?
+		wantMain := dap.Thread{Id: 1, Name: "main.Increment"}
+		wantRuntime := dap.Thread{Id: 2, Name: "runtime.gopark"}
+		for _, got := range tResp.Body.Threads {
+			if !reflect.DeepEqual(got, wantMain) && !strings.HasPrefix(got.Name, "runtime") {
+				t.Errorf("\ngot  %#v\nwant []dap.Thread{%#v, %#v, ...}", tResp.Body.Threads, wantMain, wantRuntime)
+			}
+		}
+
+		// TODO(polina): add other status checking requests
+		// that are not yet supported (stackTrace, scopes, variables)
 
 		client.ContinueRequest(1)
-		client.ExpectTerminatedEvent(t)
 		client.ExpectContinueResponse(t)
+		// "Continue" is triggered after the response is sent
 
+		client.ExpectTerminatedEvent(t)
 		client.DisconnectRequest()
 		client.ExpectDisconnectResponse(t)
 	})
 }
 
 // runDebugSesion is a helper for executing the standard init and shutdown
-// sequences while specifying unique launch criteria via parameters.
+// sequences for a program that does not stop on entry
+// while specifying unique launch criteria via parameters.
 func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func()) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
@@ -186,8 +327,13 @@ func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func())
 	client.ExpectInitializedEvent(t)
 	client.ExpectLaunchResponse(t)
 
+	// Skip no-op setBreakpoints
+	// Skip no-op setExceptionBreakpoints
+
 	client.ConfigurationDoneRequest()
 	client.ExpectConfigurationDoneResponse(t)
+
+	// Program automatically continues to completion
 
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequest()
@@ -229,9 +375,6 @@ func TestNoopResponses(t *testing.T) {
 				Command:         command,
 			}
 		}
-
-		client.InitializeRequest()
-		client.ExpectInitializeResponse(t)
 
 		client.SetExceptionBreakpointsRequest()
 		got = client.ExpectSetExceptionBreakpointsResponse(t)
@@ -384,7 +527,7 @@ func TestNoopResponses(t *testing.T) {
 
 func TestBadLaunchRequests(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		seqCnt := 0
+		seqCnt := 1
 		expectFailedToLaunch := func(response *dap.ErrorResponse) {
 			t.Helper()
 			if response.RequestSeq != seqCnt {

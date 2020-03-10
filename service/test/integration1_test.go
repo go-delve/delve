@@ -919,8 +919,13 @@ func Test1Disasm(t *testing.T) {
 			t.Fatal("PC instruction not found")
 		}
 
-		startinstr := getCurinstr(d3)
+		if runtime.GOARCH == "386" && buildMode == "pie" {
+			// Skip the rest of the test because on intel 386 with PIE build mode
+			// the compiler will insert calls to __x86.get_pc_thunk which do not have DIEs and we can't resolve.
+			return
+		}
 
+		startinstr := getCurinstr(d3)
 		count := 0
 		for {
 			if count > 20 {

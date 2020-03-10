@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -70,6 +69,7 @@ func (tbe ErrThreadBlocked) Error() string {
 // implementations of the Thread interface.
 type CommonThread struct {
 	returnValues []*Variable
+	g            *G // cached g for this thread
 }
 
 // ReturnValues reads the return values from the function executing on
@@ -142,7 +142,7 @@ func (err *ErrNoSourceForPC) Error() string {
 // for an inlined function call. Everything works the same as normal except
 // when removing instructions belonging to inlined calls we also remove all
 // instructions belonging to the current inlined call.
-func next(dbp Process, stepInto, inlinedStepOut bool) error {
+func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 	topframe, retframe, err := topframe(selg, curthread)
@@ -209,7 +209,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 				continue
 			}
 
-			if instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+			if instr.DestLoc != nil {
 				if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, sameGCond); err != nil {
 					return err
 				}
@@ -399,6 +399,11 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 
 	pc := instr.DestLoc.PC
 
+	// Skip InhibitStepInto functions for different arch.
+	if dbp.BinInfo().Arch.InhibitStepInto(dbp.BinInfo(), pc) {
+		return nil
+	}
+
 	// We want to skip the function prologue but we should only do it if the
 	// destination address of the CALL instruction is the entry point of the
 	// function.
@@ -427,12 +432,11 @@ func getGVariable(thread Thread) (*Variable, error) {
 
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
-		gaddrbs := make([]byte, thread.Arch().PtrSize())
-		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()))
+		var err error
+		gaddr, err = readUintRaw(thread, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()), int64(thread.BinInfo().Arch.PtrSize()))
 		if err != nil {
 			return nil, err
 		}
-		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
 
 	return newGVariable(thread, uintptr(gaddr), thread.Arch().DerefTLS())
@@ -478,6 +482,9 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 // In order to get around all this craziness, we read the address of the G structure for
 // the current thread from the thread local storage area.
 func GetG(thread Thread) (*G, error) {
+	if thread.Common().g != nil {
+		return thread.Common().g, nil
+	}
 	if loc, _ := thread.Location(); loc != nil && loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
 		// When threads are executing runtime.clone the value of TLS is unreliable.
 		return nil, nil
@@ -520,6 +527,7 @@ func GetG(thread Thread) (*G, error) {
 	if loc, err := thread.Location(); err == nil {
 		g.CurrentLoc = *loc
 	}
+	thread.Common().g = g
 	return g, nil
 }
 

@@ -5,7 +5,12 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"unsafe"
 )
+
+func ptrSizeByRuntimeArch() int {
+	return int(unsafe.Sizeof(uintptr(0)))
+}
 
 func TestFDEForPC(t *testing.T) {
 	frames := NewFrameIndex()
@@ -62,7 +67,7 @@ func BenchmarkFDEForPC(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	fdes := Parse(data, binary.BigEndian, 0)
+	fdes := Parse(data, binary.BigEndian, 0, ptrSizeByRuntimeArch())
 
 	for i := 0; i < b.N; i++ {
 		// bench worst case, exhaustive search

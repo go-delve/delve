@@ -4,7 +4,6 @@ package daptest
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -34,6 +33,7 @@ func NewClient(addr string) *Client {
 		log.Fatal("dialing:", err)
 	}
 	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
+	c.seq = 1 // match VS Code numbering
 	return c
 }
 
@@ -43,8 +43,6 @@ func (c *Client) Close() {
 }
 
 func (c *Client) send(request dap.Message) {
-	jsonmsg, _ := json.Marshal(request)
-	fmt.Println("[client -> server]", string(jsonmsg))
 	dap.WriteProtocolMessage(c.conn, request)
 }
 
@@ -118,6 +116,16 @@ func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.ConfigurationDoneResponse)
+}
+
+func (c *Client) ExpectThreadsResponse(t *testing.T) *dap.ThreadsResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ThreadsResponse)
+}
+
+func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.StackTraceResponse)
 }
 
 func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
@@ -296,6 +304,18 @@ func (c *Client) ConfigurationDoneRequest() {
 func (c *Client) ContinueRequest(thread int) {
 	request := &dap.ContinueRequest{Request: *c.newRequest("continue")}
 	request.Arguments.ThreadId = thread
+	c.send(request)
+}
+
+// ThreadsRequest sends a 'threads' request.
+func (c *Client) ThreadsRequest() {
+	request := &dap.ThreadsRequest{Request: *c.newRequest("threads")}
+	c.send(request)
+}
+
+// StackTraceRequest sends a 'stackTrace' request.
+func (c *Client) StackTraceRequest() {
+	request := &dap.StackTraceRequest{Request: *c.newRequest("stackTrace")}
 	c.send(request)
 }
 

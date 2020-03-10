@@ -1026,8 +1026,13 @@ func TestDisasm(t *testing.T) {
 			t.Fatal("PC instruction not found")
 		}
 
-		startinstr := getCurinstr(d3)
+		if runtime.GOARCH == "386" && buildMode == "pie" {
+			// Skip the rest of the test because on intel 386 with PIE build mode
+			// the compiler will insert calls to __x86.get_pc_thunk which do not have DIEs and we can't resolve.
+			return
+		}
 
+		startinstr := getCurinstr(d3)
 		count := 0
 		for {
 			if count > 20 {
@@ -1154,13 +1159,14 @@ func TestSkipPrologue2(t *testing.T) {
 		callme3 := findLocationHelper(t, c, "main.callme3", false, 1, 0)[0]
 		callme3Z := uint64(clientEvalVariable(t, c, "main.callme3").Addr)
 		ver, _ := goversion.Parse(runtime.Version())
-		if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVer18Beta) {
+
+		if (ver.Major < 0 || ver.AfterOrEqual(goversion.GoVer18Beta)) && runtime.GOARCH != "386" {
 			findLocationHelper(t, c, "callme.go:19", false, 1, callme3)
 		} else {
 			// callme3 does not have local variables therefore the first line of the
 			// function is immediately after the prologue
-			// This is only true before 1.8 where frame pointer chaining introduced a
-			// bit of prologue even for functions without local variables
+			// This is only true before go1.8 or on Intel386 where frame pointer chaining
+			// introduced a bit of prologue even for functions without local variables
 			findLocationHelper(t, c, "callme.go:19", false, 1, callme3Z)
 		}
 		if callme3 == callme3Z {

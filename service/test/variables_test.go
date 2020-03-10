@@ -1001,13 +1001,11 @@ func TestPackageRenames(t *testing.T) {
 		// Renamed imports
 		{"badexpr", true, `interface {}(*go/ast.BadExpr) *{From: 1, To: 2}`, "", "interface {}", nil},
 		{"req", true, `interface {}(*net/http.Request) *{Method: "amethod", …`, "", "interface {}", nil},
-		{"amap", true, "interface {}(map[go/ast.BadExpr]net/http.Request) [{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
 
 		// Package name that doesn't match import path
 		{"iface3", true, `interface {}(*github.com/go-delve/delve/_fixtures/internal/dir0/renamedpackage.SomeType) *{A: true}`, "", "interface {}", nil},
 
 		// Interfaces to anonymous types
-		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
 		{"dir0someType", true, "interface {}(*github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType) *{X: 3}", "", "interface {}", nil},
 		{"dir1someType", true, "interface {}(github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType) {X: 1, Y: 2}", "", "interface {}", nil},
 		{"amap3", true, "interface {}(map[github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType]github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType) [{X: 4}: {X: 5, Y: 6}, ]", "", "interface {}", nil},
@@ -1020,6 +1018,16 @@ func TestPackageRenames(t *testing.T) {
 
 		{`"dir0/pkg".A`, false, "0", "", "int", nil},
 		{`"dir1/pkg".A`, false, "1", "", "int", nil},
+	}
+
+	testcases_i386 := []varTest{
+		{"amap", true, "interface {}(map[go/ast.BadExpr]net/http.Request) [{From: 2, To: 3}: {Method: \"othermethod\", …", "", "interface {}", nil},
+		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: {Method: \"othermethod\", …", "", "interface {}", nil},
+	}
+
+	testcases_64bit := []varTest{
+		{"amap", true, "interface {}(map[go/ast.BadExpr]net/http.Request) [{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
+		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
 	}
 
 	testcases1_8 := []varTest{
@@ -1053,6 +1061,12 @@ func TestPackageRenames(t *testing.T) {
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 			testPackageRenamesHelper(t, p, testcases1_13)
+		}
+
+		if runtime.GOARCH == "386" {
+			testPackageRenamesHelper(t, p, testcases_i386)
+		} else {
+			testPackageRenamesHelper(t, p, testcases_64bit)
 		}
 	})
 }
