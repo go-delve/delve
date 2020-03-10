@@ -171,12 +171,14 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 
 	_, err = os.Stat(debugbin)
 	if err == nil {
-		if strings.ToLower(os.Getenv("APPVEYOR")) != "true" {
-			// Sometimes delve on Appveyor can't remove the built binary before
+		if strings.ToLower(os.Getenv("TRAVIS")) == "true" && runtime.GOOS == "windows" {
+			// Sometimes delve on Travis on Windows can't remove the built binary before
 			// exiting and gets an "Access is denied" error when trying.
-			// See: https://ci.appveyor.com/project/go-delve/delve/build/1527
-			t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
+			// Just ignore it.
+			// See: https://travis-ci.com/go-delve/delve/jobs/296325131
+			return
 		}
+		t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
 		return
 	}
 	if !os.IsNotExist(err) {
