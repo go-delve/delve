@@ -41,6 +41,7 @@ type DebugLineInfo struct {
 
 	// if normalizeBackslash is true all backslashes (\) will be converted into forward slashes (/)
 	normalizeBackslash bool
+	ptrSize int
 }
 
 type FileEntry struct {
@@ -53,7 +54,7 @@ type FileEntry struct {
 type DebugLines []*DebugLineInfo
 
 // ParseAll parses all debug_line segments found in data
-func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool) DebugLines {
+func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) DebugLines {
 	var (
 		lines = make(DebugLines, 0)
 		buf   = bytes.NewBuffer(data)
@@ -61,7 +62,7 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 	// We have to parse multiple file name tables here.
 	for buf.Len() > 0 {
-		lines = append(lines, Parse("", buf, logfn, staticBase, normalizeBackslash))
+		lines = append(lines, Parse("", buf, logfn, staticBase, normalizeBackslash, ptrSize))
 	}
 
 	return lines
@@ -69,10 +70,11 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 // Parse parses a single debug_line segment from buf. Compdir is the
 // DW_AT_comp_dir attribute of the associated compile unit.
-func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool) *DebugLineInfo {
+func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
 	dbl.Logf = logfn
 	dbl.staticBase = staticBase
+	dbl.ptrSize = ptrSize
 	dbl.Lookup = make(map[string]*FileEntry)
 	dbl.IncludeDirs = append(dbl.IncludeDirs, compdir)
 

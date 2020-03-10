@@ -473,7 +473,7 @@ func (p *Process) EntryPoint() (uint64, error) {
 		// If we can't read the auxiliary vector it just means it's not supported
 		// by the OS or by the stub. If we are debugging a PIE and the entry point
 		// is needed proc.LoadBinaryInfo will complain about it.
-		entryPoint = linutil.EntryPointFromAuxvAMD64(auxv)
+		entryPoint = linutil.EntryPointFromAuxv(auxv, p.BinInfo().Arch.PtrSize())
 	}
 	return entryPoint, nil
 }

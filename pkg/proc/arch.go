@@ -22,8 +22,10 @@ type Arch interface {
 	RegistersToDwarfRegisters(uint64, Registers) op.DwarfRegisters
 	AddrAndStackRegsToDwarfRegisters(uint64, uint64, uint64, uint64, uint64) op.DwarfRegisters
 	DwarfRegisterToString(int, *op.DwarfRegister) (string, bool, string)
+	InhibitStepInto(bi *BinaryInfo, pc uint64) bool
 }
 
+// crosscall2 is defined in $GOROOT/src/runtime/cgo/asm_amd64.s.
 const (
 	crosscall2SPOffsetBad        = 0x8
 	crosscall2SPOffsetWindows    = 0x118

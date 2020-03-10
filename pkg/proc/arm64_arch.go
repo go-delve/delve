@@ -52,7 +52,7 @@ func (a *ARM64) PtrSize() int {
 	return 8
 }
 
-// MaxInstructionLength returns the maximum lenght of an instruction.
+// MaxInstructionLength returns the maximum length of an instruction.
 func (a *ARM64) MaxInstructionLength() int {
 	return 4
 }
@@ -464,4 +464,10 @@ func (a *ARM64) DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string
 		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 	}
 	return name, false, fmt.Sprintf("%#x", reg.Bytes)
+}
+
+// InhibitStepInto returns whether StepBreakpoint can be set at pc.
+// Always return false on arm64.
+func (a *ARM64) InhibitStepInto(bi *BinaryInfo, pc uint64) bool {
+	return false
 }

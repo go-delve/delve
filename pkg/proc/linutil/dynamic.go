@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/go-delve/delve/pkg/proc"
 )
@@ -21,6 +22,25 @@ const (
 	_DT_DEBUG = 21 // DT_DEBUG as defined by SysV ABI specification
 )
 
+// readUintRaw reads an integer of ptrSize bytes, with the specified byte order, from reader.
+func readUintRaw(reader io.Reader, order binary.ByteOrder, ptrSize int) (uint64, error) {
+	switch ptrSize {
+	case 4:
+		var n uint32
+		if err := binary.Read(reader, order, &n); err != nil {
+			return 0, err
+		}
+		return uint64(n), nil
+	case 8:
+		var n uint64
+		if err := binary.Read(reader, order, &n); err != nil {
+			return 0, err
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("not supprted ptr size %d", ptrSize)
+}
+
 // dynamicSearchDebug searches for the DT_DEBUG entry in the .dynamic section
 func dynamicSearchDebug(p proc.Process) (uint64, error) {
 	bi := p.BinInfo()
@@ -36,10 +56,10 @@ func dynamicSearchDebug(p proc.Process) (uint64, error) {
 
 	for {
 		var tag, val uint64
-		if err := binary.Read(rd, binary.LittleEndian, &tag); err != nil {
+		if tag, err = readUintRaw(rd, binary.LittleEndian, p.BinInfo().Arch.PtrSize()); err != nil {
 			return 0, err
 		}
-		if err := binary.Read(rd, binary.LittleEndian, &val); err != nil {
+		if val, err = readUintRaw(rd, binary.LittleEndian, p.BinInfo().Arch.PtrSize()); err != nil {
 			return 0, err
 		}
 		switch tag {
@@ -51,24 +71,13 @@ func dynamicSearchDebug(p proc.Process) (uint64, error) {
 	}
 }
 
-// hard-coded offsets of the fields of the r_debug and link_map structs, see
-// /usr/include/elf/link.h for a full description of those structs.
-const (
-	_R_DEBUG_MAP_OFFSET   = 8
-	_LINK_MAP_ADDR_OFFSET = 0  // offset of link_map.l_addr field (base address shared object is loaded at)
-	_LINK_MAP_NAME_OFFSET = 8  // offset of link_map.l_name field (absolute file name object was found in)
-	_LINK_MAP_LD          = 16 // offset of link_map.l_ld field (dynamic section of the shared object)
-	_LINK_MAP_NEXT        = 24 // offset of link_map.l_next field
-	_LINK_MAP_PREV        = 32 // offset of link_map.l_prev field
-)
-
 func readPtr(p proc.Process, addr uint64) (uint64, error) {
 	ptrbuf := make([]byte, p.BinInfo().Arch.PtrSize())
 	_, err := p.CurrentThread().ReadMemory(ptrbuf, uintptr(addr))
 	if err != nil {
 		return 0, err
 	}
-	return binary.LittleEndian.Uint64(ptrbuf), nil
+	return readUintRaw(bytes.NewReader(ptrbuf), binary.LittleEndian, p.BinInfo().Arch.PtrSize())
 }
 
 type linkMap struct {
@@ -145,7 +154,11 @@ func ElfUpdateSharedObjects(p proc.Process) error {
 		return nil
 	}
 
-	r_map, err := readPtr(p, debugAddr+_R_DEBUG_MAP_OFFSET)
+	// Offsets of the fields of the r_debug and link_map structs,
+	// see /usr/include/elf/link.h for a full description of those structs.
+	debugMapOffset := uint64(p.BinInfo().Arch.PtrSize())
+
+	r_map, err := readPtr(p, debugAddr+debugMapOffset)
 	if err != nil {
 		return err
 	}

@@ -46,6 +46,7 @@ type StateMachine struct {
 	lastAddress uint64
 	lastFile    string
 	lastLine    int
+	ptrSize     int
 }
 
 type opcodeKind uint8
@@ -102,13 +103,23 @@ var extendedopcodes = map[byte]opcodefn{
 	DW_LINE_define_file:  definefile,
 }
 
-func newStateMachine(dbl *DebugLineInfo, instructions []byte) *StateMachine {
+func newStateMachine(dbl *DebugLineInfo, instructions []byte, ptrSize int) *StateMachine {
 	opcodes := make([]opcodefn, len(standardopcodes)+1)
 	opcodes[0] = execExtendedOpcode
 	for op := range standardopcodes {
 		opcodes[op] = standardopcodes[op]
 	}
-	sm := &StateMachine{dbl: dbl, file: dbl.FileNames[0].Path, line: 1, buf: bytes.NewBuffer(instructions), opcodes: opcodes, isStmt: dbl.Prologue.InitialIsStmt == uint8(1), address: dbl.staticBase, lastAddress: ^uint64(0)}
+	sm := &StateMachine{
+		dbl:         dbl,
+		file:        dbl.FileNames[0].Path,
+		line:        1,
+		buf:         bytes.NewBuffer(instructions),
+		opcodes:     opcodes,
+		isStmt:      dbl.Prologue.InitialIsStmt == uint8(1),
+		address:     dbl.staticBase,
+		lastAddress: ^uint64(0),
+		ptrSize:     ptrSize,
+	}
 	return sm
 }
 
@@ -121,7 +132,7 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLines(f string, m map[int][]uint64) 
 
 	var (
 		lastAddr uint64
-		sm       = newStateMachine(lineInfo, lineInfo.Instructions)
+		sm       = newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 	)
 
 	for {
@@ -153,7 +164,7 @@ func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64, excludeFile stri
 	var (
 		pcs      []uint64
 		lastaddr uint64
-		sm       = newStateMachine(lineInfo, lineInfo.Instructions)
+		sm       = newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 	)
 
 	for {
@@ -189,7 +200,7 @@ func (sm *StateMachine) copy() *StateMachine {
 func (lineInfo *DebugLineInfo) stateMachineForEntry(basePC uint64) (sm *StateMachine) {
 	sm = lineInfo.stateMachineCache[basePC]
 	if sm == nil {
-		sm = newStateMachine(lineInfo, lineInfo.Instructions)
+		sm = newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 		sm.PCToLine(basePC)
 		lineInfo.stateMachineCache[basePC] = sm
 	}
@@ -219,7 +230,7 @@ func (lineInfo *DebugLineInfo) PCToLine(basePC, pc uint64) (string, int) {
 func (lineInfo *DebugLineInfo) stateMachineFor(basePC, pc uint64) *StateMachine {
 	var sm *StateMachine
 	if basePC == 0 {
-		sm = newStateMachine(lineInfo, lineInfo.Instructions)
+		sm = newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 	} else {
 		// Try to use the last state machine that we used for this function, if
 		// there isn't one or it's already past pc try to clone the cached state
@@ -274,7 +285,7 @@ func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
 		return 0
 	}
 
-	sm := newStateMachine(lineInfo, lineInfo.Instructions)
+	sm := newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 
 	// if no instruction marked is_stmt is found fallback to the first
 	// instruction assigned to the filename:line.
@@ -393,7 +404,7 @@ func (lineInfo *DebugLineInfo) FirstStmtForLine(start, end uint64) (pc uint64, f
 }
 
 func (lineInfo *DebugLineInfo) FirstFile() string {
-	sm := newStateMachine(lineInfo, lineInfo.Instructions)
+	sm := newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 	for {
 		if sm.valid {
 			return sm.file
@@ -530,11 +541,10 @@ func endsequence(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func setaddress(sm *StateMachine, buf *bytes.Buffer) {
-	//TODO: this needs to be changed to support 32bit architectures (addr must be target arch pointer sized) -- also target endianness
-	var addr uint64
-
-	binary.Read(buf, binary.LittleEndian, &addr)
-
+	addr, err := util.ReadUintRaw(buf, binary.LittleEndian, sm.ptrSize)
+	if err != nil {
+		panic(err)
+	}
 	sm.address = addr + sm.dbl.staticBase
 }
 

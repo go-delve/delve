@@ -2073,15 +2073,17 @@ func TestUnsupportedArch(t *testing.T) {
 		t.Skip("test not valid for this backend")
 	}
 
-	switch err {
-	case proc.ErrUnsupportedLinuxArch, proc.ErrUnsupportedWindowsArch, proc.ErrUnsupportedDarwinArch:
-		// all good
-	case nil:
+	if err == nil {
 		p.Detach(true)
 		t.Fatal("Launch is expected to fail, but succeeded")
-	default:
-		t.Fatal(err)
 	}
+
+	if _, ok := err.(*proc.ErrUnsupportedArch); ok {
+		// all good
+		return
+	}
+
+	t.Fatal(err)
 }
 
 func TestIssue573(t *testing.T) {
@@ -3261,6 +3263,10 @@ func TestCgoStacktrace(t *testing.T) {
 		}
 	}
 
+	if runtime.GOARCH == "386" {
+		t.Skip("cgo stacktraces not supported on i386 for now")
+	}
+
 	// Tests that:
 	// a) we correctly identify the goroutine while we are executing cgo code
 	// b) that we can stitch together the system stack (where cgo code
@@ -3360,6 +3366,10 @@ func TestCgoSources(t *testing.T) {
 		}
 	}
 
+	if runtime.GOARCH == "386" {
+		t.Skip("cgo stacktraces not supported on i386 for now")
+	}
+
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, fixture protest.Fixture) {
 		sources := p.BinInfo().Sources
 		for _, needle := range []string{"main.go", "hello.c"} {
@@ -3429,6 +3439,10 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 }
 
 func TestIssue1034(t *testing.T) {
+	if runtime.GOARCH == "386" {
+		t.Skip("cgo stacktraces not supported on i386 for now")
+	}
+
 	// The external linker on macOS produces an abbrev for DW_TAG_subprogram
 	// without the "has children" flag, we should support this.
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -3446,6 +3460,10 @@ func TestIssue1034(t *testing.T) {
 }
 
 func TestIssue1008(t *testing.T) {
+	if runtime.GOARCH == "386" {
+		t.Skip("cgo stacktraces not supported on i386 for now")
+	}
+
 	// The external linker on macOS inserts "end of sequence" extended opcodes
 	// in debug_line. which we should support correctly.
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -3564,6 +3582,14 @@ func TestIssue1145(t *testing.T) {
 func TestDisassembleGlobalVars(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		t.Skip("On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778")
+	}
+	// On 386 linux when pie, the genered code use __x86.get_pc_thunk to ensure position-independent.
+	// Locate global variable by
+	//    `CALL __x86.get_pc_thunk.ax(SB) 0xb0f7f
+	//     LEAL 0xc0a19(AX), AX`
+	// dynamically.
+	if runtime.GOARCH == "386" && runtime.GOOS == "linux" && buildMode == "pie" {
+		t.Skip("On 386 linux when pie, symLookup can't look up global variables")
 	}
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		mainfn := p.BinInfo().LookupFunc["main.main"]
@@ -4115,8 +4141,8 @@ func TestReadDeferArgs(t *testing.T) {
 }
 
 func TestIssue1374(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
+	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
+		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
 	}
 	// Continue did not work when stopped at a breakpoint immediately after calling CallFunction.
 	protest.MustSupportFunctionCalls(t, testBackend)
@@ -4337,9 +4363,10 @@ func TestCallConcurrent(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
+	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
+		t.Skip(fmt.Sprintf("%s does not support FunctionCall for now", runtime.GOARCH))
 	}
+
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 24)

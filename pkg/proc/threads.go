@@ -1,7 +1,6 @@
 package proc
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -209,7 +208,7 @@ func next(dbp Process, stepInto, inlinedStepOut bool) error {
 				continue
 			}
 
-			if instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+			if instr.DestLoc != nil {
 				if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, sameGCond); err != nil {
 					return err
 				}
@@ -399,6 +398,11 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 
 	pc := instr.DestLoc.PC
 
+	// Skip InhibitStepInto functions for different arch.
+	if dbp.BinInfo().Arch.InhibitStepInto(dbp.BinInfo(), pc) {
+		return nil
+	}
+
 	// We want to skip the function prologue but we should only do it if the
 	// destination address of the CALL instruction is the entry point of the
 	// function.
@@ -427,12 +431,11 @@ func getGVariable(thread Thread) (*Variable, error) {
 
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
-		gaddrbs := make([]byte, thread.Arch().PtrSize())
-		_, err := thread.ReadMemory(gaddrbs, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()))
+		var err error
+		gaddr, err = readUintRaw(thread, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()), int64(thread.BinInfo().Arch.PtrSize()))
 		if err != nil {
 			return nil, err
 		}
-		gaddr = binary.LittleEndian.Uint64(gaddrbs)
 	}
 
 	return newGVariable(thread, uintptr(gaddr), thread.Arch().DerefTLS())

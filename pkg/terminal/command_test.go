@@ -978,8 +978,8 @@ func findStarFile(name string) string {
 }
 
 func TestIssue1598(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
+	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
+		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
 	}
 	test.MustSupportFunctionCalls(t, testBackend)
 	withTestTerminal("issue1598", t, func(term *FakeTerminal) {

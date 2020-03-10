@@ -46,7 +46,7 @@ func TestAMD64Get(t *testing.T) {
 		t.Fatal(err)
 	}
 	if eax != 0xDEADBEEF {
-		t.Fatalf("expected %#v, got %#v\n", 0xdeadbeef, eax)
+		t.Fatalf("expected %#v, got %#v\n", uint64(0xdeadbeef), eax)
 	}
 
 	// Test RAX, full 64 bits of register

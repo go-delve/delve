@@ -1488,13 +1488,12 @@ func (v *Variable) readFunctionPtr() {
 
 // funcvalAddr reads the address of the funcval contained in a function variable.
 func (v *Variable) funcvalAddr() uint64 {
-	val := make([]byte, v.bi.Arch.PtrSize())
-	_, err := v.mem.ReadMemory(val, v.Addr)
+	val, err := readUintRaw(v.mem, v.Addr, int64(v.bi.Arch.PtrSize()))
 	if err != nil {
 		v.Unreadable = err
 		return 0
 	}
-	return binary.LittleEndian.Uint64(val)
+	return val
 }
 
 func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
