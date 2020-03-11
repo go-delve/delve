@@ -24,6 +24,18 @@ matrix:
       arch: arm64
     - os: windows
       arch: arm64
+    - os: windows
+      go: 1.13.x
+    - os: windows
+      go: 1.12.x
+    - os: osx
+      go: 1.13.x
+    - os: osx
+      go: 1.12.x
+    - arch: arm64
+      go: 1.13.x
+    - arch: arm64
+      go: 1.12.x
 
 before_install:
   - export GOFLAGS=-mod=vendor
@@ -32,4 +44,4 @@ before_install:
   
 cache:
   directories:
-  - $HOME/AppData/Local/Temp/chocolatey
+    - $HOME/AppData/Local/Temp/chocolatey
