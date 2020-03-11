@@ -301,7 +301,7 @@ Aliases: gr
 ## goroutines
 List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [ -t (stack trace)]
+	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [-t (stack trace)] [-l (labels)]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
