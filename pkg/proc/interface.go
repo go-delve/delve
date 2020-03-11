@@ -40,7 +40,9 @@ type RecordingManipulation interface {
 	// to the trace directory.
 	Recorded() (recorded bool, tracedir string)
 	// Direction changes execution direction.
-	Direction(Direction) error
+	ChangeDirection(Direction) error
+	// GetDirection returns the current direction of execution.
+	GetDirection() Direction
 	// When returns current recording position.
 	When() (string, error)
 	// Checkpoint sets a checkpoint at the current position.

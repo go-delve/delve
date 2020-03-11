@@ -143,6 +143,7 @@ func (err *ErrNoSourceForPC) Error() string {
 // when removing instructions belonging to inlined calls we also remove all
 // instructions belonging to the current inlined call.
 func next(dbp *Target, stepInto, inlinedStepOut bool) error {
+	backward := dbp.GetDirection() == Backward
 	selg := dbp.SelectedGoroutine()
 	curthread := dbp.CurrentThread()
 	topframe, retframe, err := topframe(selg, curthread)
@@ -152,6 +153,10 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 
 	if topframe.Current.Fn == nil {
 		return &ErrNoSourceForPC{topframe.Current.PC}
+	}
+
+	if backward && retframe.Current.Fn == nil {
+		return &ErrNoSourceForPC{retframe.Current.PC}
 	}
 
 	// sanity check
@@ -178,12 +183,36 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
+	sameGCond := SameGoroutineCondition(selg)
+
+	var firstPCAfterPrologue uint64
+
+	if backward {
+		firstPCAfterPrologue, err = FirstPCAfterPrologue(dbp, topframe.Current.Fn, false)
+		if err != nil {
+			return err
+		}
+		if firstPCAfterPrologue == topframe.Current.PC {
+			// We don't want to step into the prologue so we just execute a reverse step out instead
+			if err := stepOutReverse(dbp, topframe, retframe, sameGCond); err != nil {
+				return err
+			}
+
+			success = true
+			return nil
+		}
+
+		topframe.Ret, err = findCallInstrForRet(dbp, thread, topframe.Ret, retframe.Current.Fn)
+		if err != nil {
+			return err
+		}
+	}
+
 	text, err := disassemble(thread, regs, dbp.Breakpoints(), dbp.BinInfo(), topframe.Current.Fn.Entry, topframe.Current.Fn.End, false)
 	if err != nil && stepInto {
 		return err
 	}
 
-	sameGCond := SameGoroutineCondition(selg)
 	retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
 	sameFrameCond := andFrameoffCondition(sameGCond, topframe.FrameOffset())
 	var sameOrRetFrameCond ast.Expr
@@ -203,50 +232,17 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
-	if stepInto {
-		for _, instr := range text {
-			if instr.Loc.File != topframe.Current.File || instr.Loc.Line != topframe.Current.Line || !instr.IsCall() {
-				continue
-			}
-
-			if instr.DestLoc != nil {
-				if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, sameGCond); err != nil {
-					return err
-				}
-			} else {
-				// Non-absolute call instruction, set a StepBreakpoint here
-				if _, err := dbp.SetBreakpoint(instr.Loc.PC, StepBreakpoint, sameGCond); err != nil {
-					if _, ok := err.(BreakpointExistsError); !ok {
-						return err
-					}
-				}
-			}
+	if stepInto && !backward {
+		err := setStepIntoBreakpoints(dbp, text, topframe, sameGCond)
+		if err != nil {
+			return err
 		}
 	}
 
-	if !csource {
-		deferreturns := FindDeferReturnCalls(text)
-
-		// Set breakpoint on the most recently deferred function (if any)
-		var deferpc uint64
-		if topframe.TopmostDefer != nil && topframe.TopmostDefer.DeferredPC != 0 {
-			deferfn := dbp.BinInfo().PCToFunc(topframe.TopmostDefer.DeferredPC)
-			var err error
-			deferpc, err = FirstPCAfterPrologue(dbp, deferfn, false)
-			if err != nil {
-				return err
-			}
-		}
-		if deferpc != 0 && deferpc != topframe.Current.PC {
-			bp, err := dbp.SetBreakpoint(deferpc, NextDeferBreakpoint, sameGCond)
-			if err != nil {
-				if _, ok := err.(BreakpointExistsError); !ok {
-					return err
-				}
-			}
-			if bp != nil && stepInto {
-				bp.DeferReturns = deferreturns
-			}
+	if !backward {
+		_, err = setDeferBreakpoint(dbp, text, topframe, sameGCond, stepInto)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -254,6 +250,20 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	pcs, err := topframe.Current.Fn.cu.lineInfo.AllPCsBetween(topframe.Current.Fn.Entry, topframe.Current.Fn.End-1, topframe.Current.File, topframe.Current.Line)
 	if err != nil {
 		return err
+	}
+
+	if backward {
+		// Ensure that pcs contains firstPCAfterPrologue when reverse stepping.
+		found := false
+		for _, pc := range pcs {
+			if pc == firstPCAfterPrologue {
+				found = true
+				break
+			}
+		}
+		if !found {
+			pcs = append(pcs, firstPCAfterPrologue)
+		}
 	}
 
 	if !stepInto {
@@ -286,14 +296,19 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	}
 
 	for _, pc := range pcs {
-		if _, err := dbp.SetBreakpoint(pc, NextBreakpoint, sameFrameCond); err != nil {
-			if _, ok := err.(BreakpointExistsError); !ok {
-				dbp.ClearInternalBreakpoints()
-				return err
-			}
+		if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(pc, NextBreakpoint, sameFrameCond)); err != nil {
+			dbp.ClearInternalBreakpoints()
+			return err
 		}
-
 	}
+
+	if stepInto && backward {
+		err := setStepIntoBreakpointsReverse(dbp, text, topframe, sameGCond)
+		if err != nil {
+			return err
+		}
+	}
+
 	if !topframe.Inlined {
 		// Add a breakpoint on the return address for the current frame.
 		// For inlined functions there is no need to do this, the set of PCs
@@ -322,6 +337,46 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		curthread.SetCurrentBreakpoint(false)
 	}
 	success = true
+	return nil
+}
+
+func setStepIntoBreakpoints(dbp Process, text []AsmInstruction, topframe Stackframe, sameGCond ast.Expr) error {
+	for _, instr := range text {
+		if instr.Loc.File != topframe.Current.File || instr.Loc.Line != topframe.Current.Line || !instr.IsCall() {
+			continue
+		}
+
+		if instr.DestLoc != nil {
+			if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, sameGCond); err != nil {
+				return err
+			}
+		} else {
+			// Non-absolute call instruction, set a StepBreakpoint here
+			if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(instr.Loc.PC, StepBreakpoint, sameGCond)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func setStepIntoBreakpointsReverse(dbp Process, text []AsmInstruction, topframe Stackframe, sameGCond ast.Expr) error {
+	// Set a breakpoint after every CALL instruction
+	for i, instr := range text {
+		if instr.Loc.File != topframe.Current.File || !instr.IsCall() || instr.DestLoc == nil || instr.DestLoc.Fn == nil {
+			continue
+		}
+
+		if fn := instr.DestLoc.Fn; strings.HasPrefix(fn.Name, "runtime.") && !isExportedRuntime(fn.Name) {
+			continue
+		}
+
+		if nextIdx := i + 1; nextIdx < len(text) {
+			if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(text[nextIdx].Loc.PC, StepBreakpoint, sameGCond)); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -415,10 +470,8 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 	}
 
 	// Set a breakpoint after the function's prologue
-	if _, err := dbp.SetBreakpoint(pc, NextBreakpoint, cond); err != nil {
-		if _, ok := err.(BreakpointExistsError); !ok {
-			return err
-		}
+	if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(pc, NextBreakpoint, cond)); err != nil {
+		return err
 	}
 
 	return nil

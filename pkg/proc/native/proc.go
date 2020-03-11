@@ -70,9 +70,17 @@ func (dbp *Process) Recorded() (bool, string) { return false, "" }
 // recorded traces.
 func (dbp *Process) Restart(string) error { return proc.ErrNotRecorded }
 
-// Direction will always return an error in the native proc backend, only for
+// ChangeDirection will always return an error in the native proc backend, only for
 // recorded traces.
-func (dbp *Process) Direction(proc.Direction) error { return proc.ErrNotRecorded }
+func (dbp *Process) ChangeDirection(dir proc.Direction) error {
+	if dir != proc.Forward {
+		return proc.ErrNotRecorded
+	}
+	return nil
+}
+
+// GetDirection will always return Forward.
+func (p *Process) GetDirection() proc.Direction { return proc.Forward }
 
 // When will always return an empty string and nil, not supported on native proc backend.
 func (dbp *Process) When() (string, error) { return "", nil }

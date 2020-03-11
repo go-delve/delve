@@ -445,7 +445,7 @@ func TestTypecheckRPC(t *testing.T) {
 			continue
 		}
 
-		if fndecl.Name.Name == "Continue" || fndecl.Name.Name == "Rewind" {
+		if fndecl.Name.Name == "Continue" || fndecl.Name.Name == "Rewind" || fndecl.Name.Name == "DirectionCongruentContinue" {
 			// using continueDir
 			continue
 		}

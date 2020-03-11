@@ -243,8 +243,11 @@ func (p *Process) Recorded() (bool, string) { return true, "" }
 // Restart will only return an error for core files, as they are not executing.
 func (p *Process) Restart(string) error { return ErrContinueCore }
 
-// Direction will only return an error as you cannot continue a core process.
-func (p *Process) Direction(proc.Direction) error { return ErrContinueCore }
+// ChangeDirection will only return an error as you cannot continue a core process.
+func (p *Process) ChangeDirection(proc.Direction) error { return ErrContinueCore }
+
+// GetDirection will always return forward.
+func (p *Process) GetDirection() proc.Direction { return proc.Forward }
 
 // When does not apply to core files, it is to support the Mozilla 'rr' backend.
 func (p *Process) When() (string, error) { return "", nil }

@@ -658,6 +658,7 @@ func (p *Process) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	var threadID string
 	var trapthread *Thread
 	var tu = threadUpdater{p: p}
+	var atstart bool
 continueLoop:
 	for {
 		var err error
@@ -683,7 +684,7 @@ continueLoop:
 		}
 
 		var shouldStop bool
-		trapthread, shouldStop = p.handleThreadSignals(trapthread)
+		trapthread, atstart, shouldStop = p.handleThreadSignals(trapthread)
 		if shouldStop {
 			break continueLoop
 		}
@@ -691,18 +692,23 @@ continueLoop:
 
 	p.clearThreadRegisters()
 
+	stopReason := proc.StopUnknown
+	if atstart {
+		stopReason = proc.StopLaunched
+	}
+
 	if p.BinInfo().GOOS == "linux" {
 		if err := linutil.ElfUpdateSharedObjects(p); err != nil {
-			return nil, proc.StopUnknown, err
+			return nil, stopReason, err
 		}
 	}
 
 	if err := p.setCurrentBreakpoints(); err != nil {
-		return nil, proc.StopUnknown, err
+		return nil, stopReason, err
 	}
 
 	if trapthread == nil {
-		return nil, proc.StopUnknown, fmt.Errorf("could not find thread %s", threadID)
+		return nil, stopReason, fmt.Errorf("could not find thread %s", threadID)
 	}
 
 	var err error
@@ -724,7 +730,7 @@ continueLoop:
 		// the signals that are reported here can not be propagated back to the target process.
 		trapthread.sig = 0
 	}
-	return trapthread, proc.StopUnknown, err
+	return trapthread, stopReason, err
 }
 
 func (p *Process) findThreadByStrID(threadID string) *Thread {
@@ -741,7 +747,7 @@ func (p *Process) findThreadByStrID(threadID string) *Thread {
 // and returns true if we should stop execution in response to one of the
 // signals and return control to the user.
 // Adjusts trapthread to a thread that we actually want to stop at.
-func (p *Process) handleThreadSignals(trapthread *Thread) (trapthreadOut *Thread, shouldStop bool) {
+func (p *Process) handleThreadSignals(trapthread *Thread) (trapthreadOut *Thread, atstart bool, shouldStop bool) {
 	var trapthreadCandidate *Thread
 
 	for _, th := range p.threads {
@@ -777,8 +783,9 @@ func (p *Process) handleThreadSignals(trapthread *Thread) (trapthreadOut *Thread
 		// Signal 0 is returned by rr when it reaches the start of the process
 		// in backward continue mode.
 		case 0:
-			if p.conn.direction == proc.Backward {
+			if p.conn.direction == proc.Backward && th == trapthread {
 				isStopSignal = true
+				atstart = true
 			}
 
 		default:
@@ -809,7 +816,7 @@ func (p *Process) handleThreadSignals(trapthread *Thread) (trapthreadOut *Thread
 		shouldStop = true
 	}
 
-	return trapthread, shouldStop
+	return trapthread, atstart, shouldStop
 }
 
 // RequestManualStop will attempt to stop the process
@@ -1014,10 +1021,13 @@ func (p *Process) ClearCheckpoint(id int) error {
 	return nil
 }
 
-// Direction sets whether to run the program forwards or in reverse execution.
-func (p *Process) Direction(dir proc.Direction) error {
+// ChangeDirection sets whether to run the program forwards or in reverse execution.
+func (p *Process) ChangeDirection(dir proc.Direction) error {
 	if p.tracedir == "" {
-		return proc.ErrNotRecorded
+		if dir != proc.Forward {
+			return proc.ErrNotRecorded
+		}
+		return nil
 	}
 	if p.conn.conn == nil {
 		return proc.ErrProcessExited{Pid: p.conn.pid}
@@ -1030,6 +1040,11 @@ func (p *Process) Direction(dir proc.Direction) error {
 	}
 	p.conn.direction = dir
 	return nil
+}
+
+// GetDirection returns the current direction of execution.
+func (p *Process) GetDirection() proc.Direction {
+	return p.conn.direction
 }
 
 // Breakpoints returns the list of breakpoints currently set.

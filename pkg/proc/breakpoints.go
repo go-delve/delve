@@ -124,19 +124,13 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	}
 	nextDeferOk := true
 	if bp.Kind&NextDeferBreakpoint != 0 {
+		var err error
 		frames, err := ThreadStacktrace(thread, 2)
 		if err == nil {
-			ispanic := len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic"
-			isdeferreturn := false
-			if len(frames) >= 1 {
-				for _, pc := range bp.DeferReturns {
-					if frames[0].Ret == pc {
-						isdeferreturn = true
-						break
-					}
-				}
+			nextDeferOk = isPanicCall(frames)
+			if !nextDeferOk {
+				nextDeferOk, _ = isDeferReturnCall(frames, bp.DeferReturns)
 			}
-			nextDeferOk = ispanic || isdeferreturn
 		}
 	}
 	if bp.IsInternal() {
@@ -153,6 +147,21 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.Cond)
 	}
 	return bpstate
+}
+
+func isPanicCall(frames []Stackframe) bool {
+	return len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic"
+}
+
+func isDeferReturnCall(frames []Stackframe, deferReturns []uint64) (bool, uint64) {
+	if len(frames) >= 1 {
+		for _, pc := range deferReturns {
+			if frames[0].Ret == pc {
+				return true, pc
+			}
+		}
+	}
+	return false, 0
 }
 
 // IsInternal returns true if bp is an internal breakpoint.
