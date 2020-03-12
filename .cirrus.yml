@@ -17,6 +17,7 @@ linux386_task:
       - GOVERSION: 1.13
       - GOVERSION: 1.14
   test_script:
+    -  yum -y install wget make git gcc
     -  wget https://dl.google.com/go/go${GOVERSION}.linux-386.tar.gz
     -  tar -C /usr/local -xzf go${GOVERSION}.linux-386.tar.gz
     -  export PATH=$PATH:/usr/local/go/bin
