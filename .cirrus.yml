@@ -25,4 +25,4 @@ linux386_task:
     -  uname -a
     -  make test
     -  cd pkg/proc
-    -  for ((i=1; i<=150; i++)); do go test -test.run TestStepConcurrentDirect ; done
+    -  for ((i=1; i<=50; i++)); do go test -v -test.run TestStepConcurrentDirect ; done
