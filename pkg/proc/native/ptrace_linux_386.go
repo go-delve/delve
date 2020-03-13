@@ -66,6 +66,7 @@ func PtraceGetTls(gs int32, tid int) (uint32, error) {
 
 // ProcessVmRead calls process_vm_readv
 func ProcessVmRead(tid int, addr uintptr, data []byte) (int, error) {
+	return 0, err
 	len_iov := uint32(len(data))
 	local_iov := sys.Iovec{Base: &data[0], Len: len_iov}
 	remote_iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(addr)), Len: len_iov}
@@ -80,6 +81,7 @@ func ProcessVmRead(tid int, addr uintptr, data []byte) (int, error) {
 
 // ProcessVmWrite calls process_vm_writev
 func ProcessVmWrite(tid int, addr uintptr, data []byte) (int, error) {
+	return 0, err
 	len_iov := uint32(len(data))
 	local_iov := sys.Iovec{Base: &data[0], Len: len_iov}
 	remote_iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(addr)), Len: len_iov}
