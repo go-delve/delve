@@ -168,7 +168,7 @@ func (i *I386) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		return true
 
 	case "runtime.mstart":
-		return fasle
+		return false
 		// Calls to runtime.systemstack will switch to the systemstack then:
 		// 1. alter the goroutine stack so that it looks like systemstack_switch
 		//    was called
