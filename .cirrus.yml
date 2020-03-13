@@ -23,6 +23,5 @@ linux386_task:
     -  export PATH=$PATH:/usr/local/go/bin
     -  go version
     -  uname -a
-    -  make test
     -  cd pkg/proc
     -  for ((i=1; i<=300; i++)); do go test -v -test.run TestStepConcurrentDirect ; done
