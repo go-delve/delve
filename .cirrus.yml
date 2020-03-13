@@ -28,7 +28,7 @@ linuxamd64_task:
 
 linux386_task:
   container:
-    image: i386/centos:6
+    image: i386/centos:7
   env:
     matrix:
       - GOVERSION: 1.12
