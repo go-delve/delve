@@ -34,7 +34,7 @@ func main() {
 	y := x * x
 	var z int
 	Threads(Foo)
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 100; i++ {
 		z = Foo(x, y)
 	}
 	fmt.Printf("z=%d\n", z)

@@ -2389,6 +2389,18 @@ func TestStepConcurrentDirect(t *testing.T) {
 				t.Errorf("Program did not continue at expected location (%d) %s:%d [i %d count %d]", seq[i], f, ln, i, count)
 				anyerr = true
 			}
+			if ln == 13 {
+				regs, _ := p.CurrentThread().Registers(false)
+				fn := p.BinInfo().PCToFunc(regs.PC())
+				if fn == nil {
+					panic(fn)
+				}
+				text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
+				assertNoError(err, t, "Disassemble")
+				for i := range text {
+					fmt.Printf("            %s\n", text[i].Text(proc.IntelFlavour, p.BinInfo()))
+				}
+			}
 			if anyerr {
 				t.FailNow()
 			}
@@ -2399,7 +2411,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 			assertNoError(proc.Step(p), t, "Step()")
 		}
 
-		if count != 1 {
+		if count != 100 {
 			t.Fatalf("Program did not loop expected number of times: %d", count)
 		}
 	})
