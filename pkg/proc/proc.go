@@ -330,6 +330,7 @@ func disassembleCurrentInstruction(p Process, thread Thread) ([]AsmInstruction, 
 // This function is used to step out of runtime.Breakpoint as well as
 // runtime.debugCallV1.
 func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) error {
+	defer dbp.ClearAllGCache()
 	for {
 		if err := curthread.StepInstruction(); err != nil {
 			return err

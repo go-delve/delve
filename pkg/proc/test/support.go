@@ -315,6 +315,9 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" {
 		t.Skip("function call injection tests are failing on macOS on Travis-CI (see #1802)")
 	}
+	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
+		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
+	}
 }
 
 // DefaultTestBackend changes the value of testBackend to be the default
