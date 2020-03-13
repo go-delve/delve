@@ -20,7 +20,7 @@ func Threads(fn func(x, y int) int) {
 	for j := 0; j < 100; j++ {
 		wg.Add(1)
 		go func(fn func(x, y int) int, j int) {defer func() {if r := recover(); r != nil {fmt.Printf("panic ? %#v, j %d\n", fn, j);panic(r)}}()
-			for k := 0; k < 100; k++ { fmt.Printf("fn %#v, %d %d\n", fn, j, k)
+			for k := 0; k < 100; k++ {
 				_ = fn(1, 2)
 				time.Sleep(10 * time.Millisecond)
 			}
