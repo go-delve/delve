@@ -4,6 +4,7 @@ sudo: required
 os:
   - linux
   - osx
+  - windows
 
 arch:
   - amd64
@@ -21,8 +22,26 @@ matrix:
   exclude:
     - os: osx
       arch: arm64
+    - os: windows
+      arch: arm64
+    - os: windows
+      go: 1.13.x
+    - os: windows
+      go: 1.12.x
+    - os: osx
+      go: 1.13.x
+    - os: osx
+      go: 1.12.x
+    - arch: arm64
+      go: 1.13.x
+    - arch: arm64
+      go: 1.12.x
 
 before_install:
   - export GOFLAGS=-mod=vendor
   - if [ $TRAVIS_OS_NAME = "linux" ]; then sudo apt-get -qq update; sudo apt-get install -y dwz; echo "dwz version $(dwz --version)"; fi
+  - if [ $TRAVIS_OS_NAME = "windows" ]; then choco install procdump make; fi
   
+cache:
+  directories:
+    - $HOME/AppData/Local/Temp/chocolatey
