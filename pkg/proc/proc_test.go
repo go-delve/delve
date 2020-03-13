@@ -2398,7 +2398,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 				text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
 				assertNoError(err, t, "Disassemble")
 				for i := range text {
-					fmt.Printf("            %s\n", text[i].Text(proc.IntelFlavour, p.BinInfo()))
+					fmt.Printf("          %x %x %d %s\n", text[i].Loc.PC, text[i].Bytes, text[i].Loc.Line, text[i].Text(proc.IntelFlavour, p.BinInfo()))
 				}
 			}
 			if anyerr {
