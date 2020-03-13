@@ -33,10 +33,16 @@ func main() {
 	x := v
 	y := x * x
 	var z int
-	Threads(Foo)
+	Threads(Foo2)
 	for i := 0; i < 100; i++ {
 		z = Foo(x, y)
 	}
 	fmt.Printf("z=%d\n", z)
 	wg.Wait()
+}
+
+func Foo2(x, y int) (z int) {
+	//s = fmt.Sprintf("x=%d, y=%d, z=%d\n", x, y, z)
+	z = x + y
+	return
 }
