@@ -151,6 +151,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	cmd := exec.Command("go", buildFlags...)
 	cmd.Dir = dir
 
+	fmt.Println(buildFlags)
+
 	// Build the test binary
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Printf("Error compiling %s: %s\n", path, err)
