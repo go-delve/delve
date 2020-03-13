@@ -8,6 +8,24 @@ freebsd_task:
   install_script: pkg install -y go gcc git
   test_script: make test
 
+linuxamd64_task:
+  container:
+    image: amd64/centos:7
+  env:
+    matrix:
+      - GOVERSION: 1.12
+      - GOVERSION: 1.13
+      - GOVERSION: 1.14
+  test_script:
+    -  yum -y install wget make git gcc
+    -  wget -q https://dl.google.com/go/go${GOVERSION}.linux-amd64.tar.gz
+    -  tar -C /usr/local -xzf go${GOVERSION}.linux-amd64.tar.gz
+    -  export PATH=$PATH:/usr/local/go/bin
+    -  go version
+    -  uname -a
+    -  cd pkg/proc
+    -  for ((i=1; i<=300; i++)); do go test -v -test.run TestStepConcurrentDirect ; done
+
 linux386_task:
   container:
     image: i386/centos:7
