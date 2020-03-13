@@ -267,9 +267,10 @@ func (it *stackIterator) switchToGoroutineStack() {
 	it.top = false
 	it.pc = it.g.PC
 	it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
-	if it.regs.Reg(it.regs.BPRegNum) != nil {
-		it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
-	}
+	//if it.regs.Reg(it.regs.BPRegNum) != nil {
+	//	it.regs.Reg(it.regs.BPRegNum).Uint64Val = it.g.BP
+	//}
+	it.regs.AddReg(it.regs.BPRegNum, op.DwarfRegisterFromUint64(it.g.BP))
 	if _, ok := it.bi.Arch.(*ARM64); ok {
 		it.regs.Reg(it.regs.LRRegNum).Uint64Val = it.g.LR
 	}
