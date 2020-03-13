@@ -2351,66 +2351,57 @@ func TestStepConcurrentDirect(t *testing.T) {
 		_, err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
-		
-		err = proc.Continue(p)
-		if err == nil {
-			panic("Continue nil?")
-		}
-		if !strings.Contains(err.Error(), "has exited with status 0") {
-			panic(err)
+		for _, b := range p.Breakpoints().M {
+			if b.Name == proc.UnrecoveredPanic {
+				_, err := p.ClearBreakpoint(b.Addr)
+				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
+				break
+			}
 		}
 
-		//for _, b := range p.Breakpoints().M {
-		//	if b.Name == proc.UnrecoveredPanic {
-		//		_, err := p.ClearBreakpoint(b.Addr)
-		//		assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
-		//		break
-		//	}
-		//}
-		//
-		//gid := p.SelectedGoroutine().ID
-		//
-		//seq := []int{37, 38, 13, 15, 16, 38}
-		//
-		//i := 0
-		//count := 0
-		//for {
-		//	anyerr := false
-		//	if p.SelectedGoroutine().ID != gid {
-		//		t.Errorf("Step switched to different goroutine %d %d\n", gid, p.SelectedGoroutine().ID)
-		//		anyerr = true
-		//	}
-		//	f, ln := currentLineNumber(p, t)
-		//	if ln != seq[i] {
-		//		if i == 1 && ln == 40 {
-		//			// loop exited
-		//			break
-		//		}
-		//		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 20)
-		//		if err != nil {
-		//			t.Errorf("Could not get stacktrace of goroutine %d\n", p.SelectedGoroutine().ID)
-		//		} else {
-		//			t.Logf("Goroutine %d (thread: %d):", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
-		//			for _, frame := range frames {
-		//				t.Logf("\t%s:%d (%#x)", frame.Call.File, frame.Call.Line, frame.Current.PC)
-		//			}
-		//		}
-		//		t.Errorf("Program did not continue at expected location (%d) %s:%d [i %d count %d]", seq[i], f, ln, i, count)
-		//		anyerr = true
-		//	}
-		//	if anyerr {
-		//		t.FailNow()
-		//	}
-		//	i = (i + 1) % len(seq)
-		//	if i == 0 {
-		//		count++
-		//	}
-		//	assertNoError(proc.Step(p), t, "Step()")
-		//}
-		//
-		//if count != 100 {
-		//	t.Fatalf("Program did not loop expected number of times: %d", count)
-		//}
+		gid := p.SelectedGoroutine().ID
+
+		seq := []int{37, 38, 13, 15, 16, 38}
+
+		i := 0
+		count := 0
+		for {
+			anyerr := false
+			if p.SelectedGoroutine().ID != gid {
+				t.Errorf("Step switched to different goroutine %d %d\n", gid, p.SelectedGoroutine().ID)
+				anyerr = true
+			}
+			f, ln := currentLineNumber(p, t)
+			if ln != seq[i] {
+				if i == 1 && ln == 40 {
+					// loop exited
+					break
+				}
+				frames, err := proc.ThreadStacktrace(p.CurrentThread(), 20)
+				if err != nil {
+					t.Errorf("Could not get stacktrace of goroutine %d\n", p.SelectedGoroutine().ID)
+				} else {
+					t.Logf("Goroutine %d (thread: %d):", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
+					for _, frame := range frames {
+						t.Logf("\t%s:%d (%#x)", frame.Call.File, frame.Call.Line, frame.Current.PC)
+					}
+				}
+				t.Errorf("Program did not continue at expected location (%d) %s:%d [i %d count %d]", seq[i], f, ln, i, count)
+				anyerr = true
+			}
+			if anyerr {
+				t.FailNow()
+			}
+			i = (i + 1) % len(seq)
+			if i == 0 {
+				count++
+			}
+			assertNoError(proc.Step(p), t, "Step()")
+		}
+
+		if count != 1 {
+			t.Fatalf("Program did not loop expected number of times: %d", count)
+		}
 	})
 }
 
