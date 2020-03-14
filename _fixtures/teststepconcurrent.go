@@ -17,11 +17,11 @@ func Foo(x, y int) (z int) {
 }
 
 func Threads(fn func(x, y int) int) {
-	wg.Add(100)
 	for j := 0; j < 100; j++ {
-		go func(fn func(x, y int) int, j int) {defer func() {if r := recover(); r != nil {fmt.Printf("panic ? %#v, j %d\n", fn, j);panic(r)}}()
+		wg.Add(1)
+		go func(fn func(x, y int) int, j int) {
 			for k := 0; k < 100; k++ {
-				_ = fn(1, 2)
+				= fn(1, 2)
 				time.Sleep(10 * time.Millisecond)
 			}
 			wg.Done()

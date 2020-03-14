@@ -168,7 +168,6 @@ func (i *I386) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		return true
 
 	case "runtime.mstart":
-		return false
 		// Calls to runtime.systemstack will switch to the systemstack then:
 		// 1. alter the goroutine stack so that it looks like systemstack_switch
 		//    was called
@@ -189,7 +188,6 @@ func (i *I386) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		return true
 
 	default:
-		return false
 		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
 			// The runtime switches to the system stack in multiple places.
 			// This usually happens through a call to runtime.systemstack but there
