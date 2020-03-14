@@ -41,7 +41,7 @@ jobs:
        services: docker
        env: go_32_version=1.12
 
-script: ./.travis.test.sh
+script: chmod u+x ./travis.test.sh && ./.travis.test.sh
 
 cache:
   directories:
