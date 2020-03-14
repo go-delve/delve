@@ -8,10 +8,10 @@ arch:
   - amd64
 
 go:
-  - tip
   - 1.14.x
   - 1.13.x
   - 1.12.x
+  - tip
 
 matrix:
   allow_failures:
@@ -32,15 +32,12 @@ before_install:
 jobs:
   include:
     -  os: linux
-       python: 2.7
        services: docker
        env: go_32_version=1.14
     -  os: linux
        services: docker
-       python: 2.7
        env: go_32_version=1.13
     -  os: linux
-       python: 2.7
        services: docker
        env: go_32_version=1.12
 
