@@ -21,7 +21,7 @@ func Threads(fn func(x, y int) int) {
 		wg.Add(1)
 		go func(fn func(x, y int) int, j int) {
 			for k := 0; k < 100; k++ {
-				= fn(1, 2)
+				fn(1, 2)
 				time.Sleep(10 * time.Millisecond)
 			}
 			wg.Done()
