@@ -32,12 +32,15 @@ before_install:
 jobs:
   include:
     -  os: linux
+       python: 2.7
        services: docker
        env: go_32_version=1.14
     -  os: linux
        services: docker
+       python: 2.7
        env: go_32_version=1.13
     -  os: linux
+       python: 2.7
        services: docker
        env: go_32_version=1.12
 
