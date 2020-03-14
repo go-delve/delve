@@ -213,6 +213,8 @@ func (t *Term) Run() (int, error) {
 		}
 	}
 
+	var lastCmd string
+
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
@@ -222,6 +224,12 @@ func (t *Term) Run() (int, error) {
 			}
 			return 1, fmt.Errorf("Prompt for input failed.\n")
 		}
+
+		if strings.TrimSpace(cmdstr) == "" {
+			cmdstr = lastCmd
+		}
+
+		lastCmd = cmdstr
 
 		if err := t.cmds.Call(cmdstr, t); err != nil {
 			if _, ok := err.(ExitRequestError); ok {

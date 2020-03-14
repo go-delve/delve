@@ -78,10 +78,9 @@ func (c command) match(cmdstr string) bool {
 
 // Commands represents the commands for Delve terminal process.
 type Commands struct {
-	cmds    []command
-	lastCmd cmdfunc
-	client  service.Client
-	frame   int // Current frame as set by frame/up/down commands.
+	cmds   []command
+	client service.Client
+	frame  int // Current frame as set by frame/up/down commands.
 }
 
 var (
@@ -454,9 +453,6 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 	// If <enter> use last command, if there was one.
 	if cmdstr == "" {
-		if c.lastCmd != nil {
-			return c.lastCmd
-		}
 		return nullCommand
 	}
 
@@ -465,7 +461,6 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
 				continue
 			}
-			c.lastCmd = v.cmdFn
 			return v.cmdFn
 		}
 	}
