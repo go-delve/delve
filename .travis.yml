@@ -45,15 +45,17 @@ script: >-
     if [ $TRAVIS_OS_NAME = "linux" ] && [ $go_32_version ]; then
       docker pull i386/centos:7;
       docker help run;
-      docker run -v $(pwd):/delve -e GOVERSION=$(go_32_version) i386/centos:7 /bin/bash -c "cd delve && \
+      docker run -v $(pwd):/delve -e GOVERSION=$(go_32_version) i386/centos:7 /bin/bash -c "set -x && \
+           cd delve && \
            yum -y update && yum -y upgrade && \
            yum -y install wget make git gcc && \
            wget -q https://dl.google.com/go/go${GOVERSION}.linux-386.tar.gz && \
            tar -C /usr/local -xzf go${GOVERSION}.linux-386.tar.gz && \
            export PATH=$PATH:/usr/local/go/bin && \
            go version && \
+           go env && \
            uname -a && \
-           make test";
+           sudo make test";
     else
       make test;
     fi
