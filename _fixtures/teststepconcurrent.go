@@ -19,13 +19,13 @@ func Foo(x, y int) (z int) {
 func Threads(fn func(x, y int) int) {
 	for j := 0; j < 100; j++ {
 		wg.Add(1)
-		go func(fn func(x, y int) int, j int) {
+		go func() {
 			for k := 0; k < 100; k++ {
 				fn(1, 2)
 				time.Sleep(10 * time.Millisecond)
 			}
 			wg.Done()
-		}(fn, j)
+		}()
 	}
 }
 
