@@ -11,10 +11,10 @@ arch:
   - arm64
 
 go:
-  - tip
   - 1.14.x
   - 1.13.x
   - 1.12.x
+  - tip
 
 matrix:
   allow_failures:
@@ -41,6 +41,31 @@ before_install:
   - export GOFLAGS=-mod=vendor
   - if [ $TRAVIS_OS_NAME = "linux" ]; then sudo apt-get -qq update; sudo apt-get install -y dwz; echo "dwz version $(dwz --version)"; fi
   - if [ $TRAVIS_OS_NAME = "windows" ]; then choco install procdump make; fi
+
+
+# 386 linux
+jobs:
+  include:
+    -  os: linux
+       services: docker
+       env: go_32_version=1.14
+
+script: >-
+    if [ $TRAVIS_OS_NAME = "linux" ] && [ $go_32_version ]; then
+      docker pull i386/centos:7;
+      docker run -v $(pwd):/delve --privileged i386/centos:7 /bin/bash -c "set -x && \
+           cd delve && \
+           yum -y update && yum -y upgrade && \
+           yum -y install wget make git gcc && \
+           wget -q https://dl.google.com/go/go${go_32_version}.linux-386.tar.gz && \
+           tar -C /usr/local -xzf go${go_32_version}.linux-386.tar.gz && \
+           export PATH=$PATH:/usr/local/go/bin && \
+           go version && \
+           uname -a && \
+           make test";
+    else
+      make test;
+    fi
   
 cache:
   directories:
