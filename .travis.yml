@@ -28,6 +28,30 @@ script: >-
   for ((i=1; i<=600; i++)); do go test -v -test.run TestStepConcurrentDirect ; done
 
 
+# 386 linux
+jobs:
+  include:
+    -  os: linux
+       dist: trusty
+       services: 
+         - docker
+       env:
+         - go_version: 1.14
+         - go_version: 1.13
+         - go_version: 1.12
+       script: >-
+         docker pull i386/ubuntu:bionic && 
+         docker run -e go_version:$(go_version) -v $(pwd):/delve i386/ubuntu:bionic /bin/bash -c "cd delve && \
+         apt-get -y update && \
+         apt-get -y install software-properties-common && \
+         apt-get -y install git && \
+         add-apt-repository ppa:longsleep/golang-backports && \
+         apt-get -y install golang-$(go_version)-go && \
+         export PATH=$PATH:/usr/lib/go-$(go_version)/bin && \
+         go version && \
+         uname -a && \
+         make test"
+
 cache:
   directories:
     - $HOME/AppData/Local/Temp/chocolatey
