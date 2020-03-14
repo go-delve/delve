@@ -54,9 +54,11 @@ script: >-
            go version && \
            go env && \
            uname -a && \
-           make test";
+           cd pkg/proc && \
+           for ((i=1; i<=600; i++)); do go test -v -test.run TestStepConcurrentDirect ; done";
     else
-      make test;
+      cd pkg/proc;
+      for ((i=1; i<=600; i++)); do go test -v -test.run TestStepConcurrentDirect ; done;
     fi
 
 
