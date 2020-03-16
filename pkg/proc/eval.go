@@ -1041,10 +1041,16 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 	if err != nil {
 		return nil, err
 	}
+
 	// Prevent abuse, attempting to call "nil.member" directly.
 	if xv.Addr == 0 && xv.Name == "nil" {
 		return nil, fmt.Errorf("%s (type %s) is not a struct", xv.Name, xv.TypeString())
 	}
+	// Prevent abuse, attempting to call "\"fake\".member" directly.
+	if xv.Addr == 0 && xv.Name == "" && xv.DwarfType == nil && xv.RealType == nil {
+		return nil, fmt.Errorf("%s (type %s) is not a struct", xv.Value, xv.TypeString())
+	}
+
 	rv, err := xv.findMethod(node.Sel.Name)
 	if err != nil {
 		return nil, err
