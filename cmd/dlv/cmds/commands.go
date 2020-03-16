@@ -745,8 +745,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			DebugInfoDirectories: conf.DebugInfoDirectories,
 			CheckGoVersion:       CheckGoVersion,
 			CheckLocalConnUser:   CheckLocalConnUser,
-
-			DisconnectChan: disconnectChan,
+			DisconnectChan:       disconnectChan,
 		})
 	default:
 		fmt.Printf("Unknown API version: %d\n", APIVersion)
@@ -773,8 +772,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	var status int
 	if Headless {
 		if ContinueOnStart {
-			var client *rpc2.RPCClient
-			client = rpc2.NewClient(listener.Addr().String())
+			client := rpc2.NewClient(listener.Addr().String())
 			client.Disconnect(true) // true = continue after disconnect
 		}
 		waitForDisconnectSignal(disconnectChan)
