@@ -305,12 +305,12 @@ func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
 		return nil
 	}
 	return &proc.LoadConfig{
-		cfg.FollowPointers,
-		cfg.MaxVariableRecurse,
-		cfg.MaxStringLen,
-		cfg.MaxArrayValues,
-		cfg.MaxStructFields,
-		0, // MaxMapBuckets is set internally by pkg/proc, read its documentation for an explanation.
+		FollowPointers:     cfg.FollowPointers,
+		MaxVariableRecurse: cfg.MaxVariableRecurse,
+		MaxStringLen:       cfg.MaxStringLen,
+		MaxArrayValues:     cfg.MaxArrayValues,
+		MaxStructFields:    cfg.MaxStructFields,
+		MaxMapBuckets:      0, // MaxMapBuckets is set internally by pkg/proc, read its documentation for an explanation.
 	}
 }
 
@@ -320,11 +320,11 @@ func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 		return nil
 	}
 	return &LoadConfig{
-		cfg.FollowPointers,
-		cfg.MaxVariableRecurse,
-		cfg.MaxStringLen,
-		cfg.MaxArrayValues,
-		cfg.MaxStructFields,
+		FollowPointers:     cfg.FollowPointers,
+		MaxVariableRecurse: cfg.MaxVariableRecurse,
+		MaxStringLen:       cfg.MaxStringLen,
+		MaxArrayValues:     cfg.MaxArrayValues,
+		MaxStructFields:    cfg.MaxStructFields,
 	}
 }
 

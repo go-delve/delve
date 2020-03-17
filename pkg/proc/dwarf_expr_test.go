@@ -215,8 +215,8 @@ func TestDwarfExprLoclist(t *testing.T) {
 
 	dwb.AddSubprogram("main.main", 0x40100, 0x41000)
 	dwb.AddVariable("a", uint16off, []dwarfbuilder.LocEntry{
-		{0x40100, 0x40700, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa)},
-		{0x40700, 0x41000, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa, op.DW_OP_consts, int(2), op.DW_OP_plus)},
+		{Lowpc: 0x40100, Highpc: 0x40700, Loc: dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa)},
+		{Lowpc: 0x40700, Highpc: 0x41000, Loc: dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa, op.DW_OP_consts, int(2), op.DW_OP_plus)},
 	})
 	dwb.TagClose()
 
@@ -288,8 +288,8 @@ func TestLocationCovers(t *testing.T) {
 	dwb.AddCompileUnit("main", 0x0)
 	dwb.AddSubprogram("main.main", 0x40100, 0x41000)
 	aOff := dwb.AddVariable("a", uint16off, []dwarfbuilder.LocEntry{
-		{0x40100, 0x40700, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa)},
-		{0x40700, 0x41000, dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa, op.DW_OP_consts, int(2), op.DW_OP_plus)},
+		{Lowpc: 0x40100, Highpc: 0x40700, Loc: dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa)},
+		{Lowpc: 0x40700, Highpc: 0x41000, Loc: dwarfbuilder.LocationBlock(op.DW_OP_call_frame_cfa, op.DW_OP_consts, int(2), op.DW_OP_plus)},
 	})
 	dwb.TagClose()
 	dwb.TagClose()

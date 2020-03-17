@@ -417,7 +417,7 @@ func (t *Term) handleExit() (int, error) {
 // loadConfig returns an api.LoadConfig with the parameterss specified in
 // the configuration file.
 func (t *Term) loadConfig() api.LoadConfig {
-	r := api.LoadConfig{true, 1, 64, 64, -1}
+	r := api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 
 	if t.conf != nil && t.conf.MaxStringLen != nil {
 		r.MaxStringLen = *t.conf.MaxStringLen

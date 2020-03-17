@@ -1482,7 +1482,7 @@ func go11DecodeErrorCheck(err error) error {
 	}
 
 	gover, ok := goversion.Installed()
-	if !ok || !gover.AfterOrEqual(goversion.GoVersion{1, 11, -1, 0, 0, ""}) || goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+	if !ok || !gover.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 11, Rev: -1}) || goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
 		return err
 	}
 

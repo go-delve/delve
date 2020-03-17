@@ -170,7 +170,7 @@ func configureSetSubstitutePath(t *Term, rest string) error {
 				return nil
 			}
 		}
-		t.conf.SubstitutePath = append(t.conf.SubstitutePath, config.SubstitutePathRule{argv[0], argv[1]})
+		t.conf.SubstitutePath = append(t.conf.SubstitutePath, config.SubstitutePathRule{From: argv[0], To: argv[1]})
 	default:
 		return fmt.Errorf("too many arguments to \"config substitute-path\"")
 	}

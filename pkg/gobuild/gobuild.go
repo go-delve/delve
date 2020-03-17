@@ -29,9 +29,9 @@ func optflags(args []string) []string {
 
 	ver, _ := goversion.Installed()
 	switch {
-	case ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}):
+	case ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}):
 		args = append(args, "-gcflags", "all=-N -l")
-	case ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}):
+	case ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}):
 		args = append(args, "-gcflags", "-N -l", "-a")
 	default:
 		args = append(args, "-gcflags", "-N -l")

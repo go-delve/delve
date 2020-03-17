@@ -19,8 +19,18 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
-var pnormalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
-var pshortLoadConfig = proc.LoadConfig{false, 0, 64, 0, 3, 0}
+var pnormalLoadConfig = proc.LoadConfig{
+	FollowPointers:     true,
+	MaxVariableRecurse: 1,
+	MaxStringLen:       64,
+	MaxArrayValues:     64,
+	MaxStructFields:    -1,
+}
+
+var pshortLoadConfig = proc.LoadConfig{
+	MaxStringLen:    64,
+	MaxStructFields: 3,
+}
 
 type varTest struct {
 	name         string
@@ -496,7 +506,7 @@ func TestEmbeddedStruct(t *testing.T) {
 		assertNoError(proc.Continue(p), t, "Continue()")
 
 		ver, _ := goversion.Parse(runtime.Version())
-		if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+		if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 			// on go < 1.9 embedded fields had different names
 			for i := range testcases {
 				if testcases[i].name == "b2" {
@@ -812,7 +822,7 @@ func TestEvalExpression(t *testing.T) {
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
 		for i := range testcases {
 			if testcases[i].name == "iface3" {
 				testcases[i].value = "interface {}(*map[string]go/constant.Value) *[]"
@@ -948,7 +958,7 @@ func TestIssue426(t *testing.T) {
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 8, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 8, Rev: -1}) {
 		testcases[2].typ = `struct { main.val go/constant.Value }`
 		testcases[3].typ = `func(struct { main.i int }, interface {}, struct { main.val go/constant.Value })`
 		testcases[4].typ = `struct { main.i int; main.j int }`
@@ -1085,7 +1095,7 @@ func TestConstants(t *testing.T) {
 		{"pkg.SomeConst", false, "2", "", "int", nil},
 	}
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Not supported on 1.9 or earlier
 		t.Skip("constants added in go 1.10")
 	}

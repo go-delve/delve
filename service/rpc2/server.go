@@ -174,7 +174,7 @@ type StacktraceOut struct {
 func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	cfg := arg.Cfg
 	if cfg == nil && arg.Full {
-		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
+		cfg = &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	}
 	if arg.Defers {
 		arg.Opts |= api.StacktraceReadDefers
@@ -453,7 +453,7 @@ type EvalOut struct {
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {
-		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
+		cfg = &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	}
 	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *api.LoadConfigToProc(cfg))
 	if err != nil {

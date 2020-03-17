@@ -90,7 +90,7 @@ func New(docCall bool) *cobra.Command {
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Installed()
-		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 			// Work-around for https://github.com/golang/go/issues/13154
 			buildFlagsDefault = "-ldflags='-linkmode internal'"
 		}
