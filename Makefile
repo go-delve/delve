@@ -16,7 +16,7 @@ test: vet
 	@go run scripts/make.go test
 
 vet:
-	@go vet $$(go list ./... | grep -v scripts)
+	@go vet $$(go list ./... | grep -v scripts | grep -v native)
 
 test-proc-run:
 	@go run scripts/make.go test -s proc -r $(RUN)
