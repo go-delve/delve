@@ -1043,8 +1043,7 @@ func (conn *gdbConn) send(cmd []byte) error {
 	// append checksum to packet
 	cmd = append(cmd, '#')
 	sum := checksum(cmd)
-	cmd = append(cmd, hexdigit[sum>>4])
-	cmd = append(cmd, hexdigit[sum&0xf])
+	cmd = append(cmd, hexdigit[sum>>4], hexdigit[sum&0xf])
 
 	attempt := 0
 	for {

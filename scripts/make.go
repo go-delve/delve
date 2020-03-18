@@ -275,8 +275,7 @@ func testFlags() []string {
 		testFlags = append(testFlags, "-v")
 	}
 	if NOTimeout {
-		testFlags = append(testFlags, "-timeout")
-		testFlags = append(testFlags, "0")
+		testFlags = append(testFlags, "-timeout", "0")
 	}
 	if runtime.GOOS == "darwin" {
 		testFlags = append(testFlags, "-exec="+wd+"/scripts/testsign")

@@ -387,40 +387,41 @@ For example:
 	}
 
 	if client == nil || client.Recorded() {
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"rewind", "rw"},
-			group:   runCmds,
-			cmdFn:   c.rewind,
-			helpMsg: "Run backwards until breakpoint or program termination.",
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"check", "checkpoint"},
-			cmdFn:   checkpoint,
-			helpMsg: `Creates a checkpoint at the current position.
+		c.cmds = append(c.cmds,
+			command{
+				aliases: []string{"rewind", "rw"},
+				group:   runCmds,
+				cmdFn:   c.rewind,
+				helpMsg: "Run backwards until breakpoint or program termination.",
+			},
+			command{
+				aliases: []string{"check", "checkpoint"},
+				cmdFn:   checkpoint,
+				helpMsg: `Creates a checkpoint at the current position.
 
 	checkpoint [note]
 
 The "note" is arbitrary text that can be used to identify the checkpoint, if it is not specified it defaults to the current filename:line position.`,
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"checkpoints"},
-			cmdFn:   checkpoints,
-			helpMsg: "Print out info for existing checkpoints.",
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"clear-checkpoint", "clearcheck"},
-			cmdFn:   clearCheckpoint,
-			helpMsg: `Deletes checkpoint.
+			},
+			command{
+				aliases: []string{"checkpoints"},
+				cmdFn:   checkpoints,
+				helpMsg: "Print out info for existing checkpoints.",
+			},
+			command{
+				aliases: []string{"clear-checkpoint", "clearcheck"},
+				cmdFn:   clearCheckpoint,
+				helpMsg: `Deletes checkpoint.
 
 	clear-checkpoint <id>`,
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"rev"},
-			group:   runCmds,
-			cmdFn:   c.revCmd,
-			helpMsg: `Reverses the execution of the target program for the command specified.
+			},
+			command{
+				aliases: []string{"rev"},
+				group:   runCmds,
+				cmdFn:   c.revCmd,
+				helpMsg: `Reverses the execution of the target program for the command specified.
 Currently, only the rev step-instruction command is supported.`,
-		})
+			})
 		for i := range c.cmds {
 			v := &c.cmds[i]
 			if v.match("restart") {
