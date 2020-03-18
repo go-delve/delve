@@ -371,8 +371,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		}
 		port = unusedPort()
 		args := make([]string, 0, len(cmd)+3)
-		args = append(args, "gdbserver")
-		args = append(args, port, "--")
+		args = append(args, "gdbserver", port, "--")
 		args = append(args, cmd...)
 
 		process = exec.Command("lldb-server", args...)

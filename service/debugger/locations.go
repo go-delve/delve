@@ -138,8 +138,7 @@ func readRegex(in string) (rx string, rest string) {
 			if ch == '/' {
 				out = append(out, '/')
 			} else {
-				out = append(out, '\\')
-				out = append(out, ch)
+				out = append(out, '\\', ch)
 			}
 			escaped = false
 		} else {

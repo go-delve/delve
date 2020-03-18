@@ -1529,8 +1529,7 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 		if key.Unreadable != nil || val.Unreadable != nil {
 			errcount++
 		}
-		v.Children = append(v.Children, *key)
-		v.Children = append(v.Children, *val)
+		v.Children = append(v.Children, *key, *val)
 		count++
 		if errcount > maxErrCount {
 			break
