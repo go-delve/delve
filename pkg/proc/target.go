@@ -2,6 +2,9 @@ package proc
 
 import (
 	"fmt"
+	"go/constant"
+
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 // Target represents the process being debugged.
@@ -178,4 +181,32 @@ func (t *Target) Detach(kill bool) error {
 	}
 	t.StopReason = StopUnknown
 	return t.proc.Detach(kill)
+}
+
+func setAsyncPreemptOff(p *Target, v int64) {
+	logger := p.BinInfo().logger
+	if producer := p.BinInfo().Producer(); producer == "" || !goversion.ProducerAfterOrEqual(producer, 1, 14) {
+		return
+	}
+	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.CurrentThread())
+	debugv, err := scope.findGlobal("runtime", "debug")
+	if err != nil || debugv.Unreadable != nil {
+		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
+		return
+	}
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	if err != nil {
+		logger.Warnf("could not find asyncpreemptoff field: %v", err)
+		return
+	}
+	asyncpreemptoffv.loadValue(loadFullValue)
+	if asyncpreemptoffv.Unreadable != nil {
+		logger.Warnf("asyncpreemptoff field unreadable: %v", asyncpreemptoffv.Unreadable)
+		return
+	}
+	p.asyncPreemptChanged = true
+	p.asyncPreemptOff, _ = constant.Int64Val(asyncpreemptoffv.Value)
+
+	err = scope.setValue(asyncpreemptoffv, newConstant(constant.MakeInt64(v), scope.Mem), "")
+	logger.Warnf("could not set asyncpreemptoff %v", err)
 }
