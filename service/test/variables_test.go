@@ -1205,6 +1205,8 @@ func TestCallFunction(t *testing.T) {
 		{"x.CallMe()", nil, nil},
 		{"x2.CallMe(5)", []string{":int:25"}, nil},
 
+		{"\"delve\".CallMe()", nil, errors.New("\"delve\" (type string) is not a struct")},
+
 		// Nested function calls tests
 
 		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},
