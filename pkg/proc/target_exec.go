@@ -116,7 +116,7 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64,
 }
 
 // Next continues execution until the next source line.
-func Next(dbp *Target) (err error) {
+func (dbp *Target) Next() (err error) {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -129,13 +129,13 @@ func Next(dbp *Target) (err error) {
 		return
 	}
 
-	return Continue(dbp)
+	return dbp.Continue()
 }
 
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
-func Continue(dbp *Target) error {
+func (dbp *Target) Continue() error {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func Continue(dbp *Target) error {
 					if err := dbp.ClearInternalBreakpoints(); err != nil {
 						return err
 					}
-					return StepInstruction(dbp)
+					return dbp.StepInstruction()
 				}
 			default:
 				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(curthread)
@@ -348,7 +348,7 @@ func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) 
 
 // Step will continue until another source line is reached.
 // Will step into functions.
-func Step(dbp *Target) (err error) {
+func (dbp *Target) Step() (err error) {
 	if _, err := dbp.Valid(); err != nil {
 		return err
 	}
@@ -367,10 +367,10 @@ func Step(dbp *Target) (err error) {
 
 	if bp := dbp.CurrentThread().Breakpoint().Breakpoint; bp != nil && bp.Kind == StepBreakpoint && dbp.GetDirection() == Backward {
 		dbp.ClearInternalBreakpoints()
-		return StepInstruction(dbp)
+		return dbp.StepInstruction()
 	}
 
-	return Continue(dbp)
+	return dbp.Continue()
 }
 
 // SameGoroutineCondition returns an expression that evaluates to true when
@@ -416,7 +416,7 @@ func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
 
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
-func StepOut(dbp *Target) error {
+func (dbp *Target) StepOut() error {
 	backward := dbp.GetDirection() == Backward
 	if _, err := dbp.Valid(); err != nil {
 		return err
@@ -446,7 +446,7 @@ func StepOut(dbp *Target) error {
 		}
 
 		success = true
-		return Continue(dbp)
+		return dbp.Continue()
 	}
 
 	sameGCond := SameGoroutineCondition(selg)
@@ -458,7 +458,7 @@ func StepOut(dbp *Target) error {
 		}
 
 		success = true
-		return Continue(dbp)
+		return dbp.Continue()
 	}
 
 	var deferpc uint64
@@ -488,14 +488,14 @@ func StepOut(dbp *Target) error {
 	}
 
 	success = true
-	return Continue(dbp)
+	return dbp.Continue()
 }
 
 // StepInstruction will continue the current thread for exactly
 // one instruction. This method affects only the thread
 // associated with the selected goroutine. All other
 // threads will remain stopped.
-func StepInstruction(dbp *Target) (err error) {
+func (dbp *Target) StepInstruction() (err error) {
 	thread := dbp.CurrentThread()
 	g := dbp.SelectedGoroutine()
 	if g != nil {
@@ -505,7 +505,7 @@ func StepInstruction(dbp *Target) (err error) {
 				SameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
 				return err
 			}
-			return Continue(dbp)
+			return dbp.Continue()
 		}
 		thread = g.Thread
 	}

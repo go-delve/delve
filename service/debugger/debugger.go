@@ -698,10 +698,10 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {
 			return nil, err
 		}
-		err = proc.Continue(d.target)
+		err = d.target.Continue()
 	case api.DirectionCongruentContinue:
 		d.log.Debug("continuing (direction congruent)")
-		err = proc.Continue(d.target)
+		err = d.target.Continue()
 	case api.Call:
 		d.log.Debugf("function call %s", command.Expr)
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {
@@ -723,55 +723,55 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
-		err = proc.Continue(d.target)
+		err = d.target.Continue()
 	case api.Next:
 		d.log.Debug("nexting")
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {
 			return nil, err
 		}
-		err = proc.Next(d.target)
+		err = d.target.Next()
 	case api.ReverseNext:
 		d.log.Debug("reverse nexting")
 		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
-		err = proc.Next(d.target)
+		err = d.target.Next()
 	case api.Step:
 		d.log.Debug("stepping")
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {
 			return nil, err
 		}
-		err = proc.Step(d.target)
+		err = d.target.Step()
 	case api.ReverseStep:
 		d.log.Debug("reverse stepping")
 		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
-		err = proc.Step(d.target)
+		err = d.target.Step()
 	case api.StepInstruction:
 		d.log.Debug("single stepping")
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {
 			return nil, err
 		}
-		err = proc.StepInstruction(d.target)
+		err = d.target.StepInstruction()
 	case api.ReverseStepInstruction:
 		d.log.Debug("reverse single stepping")
 		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
-		err = proc.StepInstruction(d.target)
+		err = d.target.StepInstruction()
 	case api.StepOut:
 		d.log.Debug("step out")
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {
 			return nil, err
 		}
-		err = proc.StepOut(d.target)
+		err = d.target.StepOut()
 	case api.ReverseStepOut:
 		d.log.Debug("reverse step out")
 		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
-		err = proc.StepOut(d.target)
+		err = d.target.StepOut()
 	case api.SwitchThread:
 		d.log.Debugf("switching to thread %d", command.ThreadID)
 		err = d.target.SwitchThread(command.ThreadID)
