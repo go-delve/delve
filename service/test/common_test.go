@@ -89,9 +89,9 @@ func findLocationHelper(t *testing.T, c interface{}, loc string, shouldErr bool,
 
 	switch c := c.(type) {
 	case locationFinder1:
-		locs, err = c.FindLocation(api.EvalScope{-1, 0, 0}, loc)
+		locs, err = c.FindLocation(api.EvalScope{GoroutineID: -1}, loc)
 	case locationFinder2:
-		locs, err = c.FindLocation(api.EvalScope{-1, 0, 0}, loc, false)
+		locs, err = c.FindLocation(api.EvalScope{GoroutineID: -1}, loc, false)
 	default:
 		t.Errorf("unexpected type %T passed to findLocationHelper", c)
 	}

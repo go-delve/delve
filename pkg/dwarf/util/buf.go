@@ -146,6 +146,6 @@ func (b *buf) AssertEmpty() {
 func (b *buf) error(s string) {
 	if b.Err == nil {
 		b.data = nil
-		b.Err = dwarf.DecodeError{b.name, b.off, s}
+		b.Err = dwarf.DecodeError{Name: b.name, Offset: b.off, Err: s}
 	}
 }

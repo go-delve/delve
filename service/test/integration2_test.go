@@ -26,7 +26,14 @@ import (
 	"github.com/go-delve/delve/service/rpccommon"
 )
 
-var normalLoadConfig = api.LoadConfig{true, 1, 64, 64, -1}
+var normalLoadConfig = api.LoadConfig{
+	FollowPointers:     true,
+	MaxVariableRecurse: 1,
+	MaxStringLen:       64,
+	MaxArrayValues:     64,
+	MaxStructFields:    -1,
+}
+
 var testBackend, buildMode string
 
 func TestMain(m *testing.M) {
@@ -304,7 +311,7 @@ func TestNextGeneral(t *testing.T) {
 
 	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
@@ -488,7 +495,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 		if state.Err != nil {
 			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 		}
-		locals, err := c.ListLocalVariables(api.EvalScope{-1, 0, 0}, normalLoadConfig)
+		locals, err := c.ListLocalVariables(api.EvalScope{GoroutineID: -1}, normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -532,7 +539,7 @@ func TestClientServer_infoArgs(t *testing.T) {
 		}
 		t.Logf("GoroutineID: -1, Frame: 1\n%s", regs.String())
 
-		locals, err := c.ListFunctionArgs(api.EvalScope{-1, 0, 0}, normalLoadConfig)
+		locals, err := c.ListFunctionArgs(api.EvalScope{GoroutineID: -1}, normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -781,7 +788,7 @@ func TestClientServer_EvalVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		var1, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "a1", normalLoadConfig)
+		var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "a1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
 
 		t.Logf("var1: %s", var1.SinglelineString())
@@ -800,9 +807,9 @@ func TestClientServer_SetVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		assertNoError(c.SetVariable(api.EvalScope{-1, 0, 0}, "a2", "8"), t, "SetVariable()")
+		assertNoError(c.SetVariable(api.EvalScope{GoroutineID: -1}, "a2", "8"), t, "SetVariable()")
 
-		a2, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "a2", normalLoadConfig)
+		a2, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "a2", normalLoadConfig)
 		if err != nil {
 			t.Fatalf("Could not evaluate variable: %v", err)
 		}
@@ -935,22 +942,22 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListThreads()")
 		_, err = c.GetThread(tid)
 		assertError(err, t, "GetThread()")
-		assertError(c.SetVariable(api.EvalScope{gid, 0, 0}, "a", "10"), t, "SetVariable()")
-		_, err = c.ListLocalVariables(api.EvalScope{gid, 0, 0}, normalLoadConfig)
+		assertError(c.SetVariable(api.EvalScope{GoroutineID: gid}, "a", "10"), t, "SetVariable()")
+		_, err = c.ListLocalVariables(api.EvalScope{GoroutineID: gid}, normalLoadConfig)
 		assertError(err, t, "ListLocalVariables()")
-		_, err = c.ListFunctionArgs(api.EvalScope{gid, 0, 0}, normalLoadConfig)
+		_, err = c.ListFunctionArgs(api.EvalScope{GoroutineID: gid}, normalLoadConfig)
 		assertError(err, t, "ListFunctionArgs()")
 		_, err = c.ListThreadRegisters(0, false)
 		assertError(err, t, "ListThreadRegisters()")
-		_, err = c.ListScopeRegisters(api.EvalScope{gid, 0, 0}, false)
+		_, err = c.ListScopeRegisters(api.EvalScope{GoroutineID: gid}, false)
 		assertError(err, t, "ListScopeRegisters()")
 		_, _, err = c.ListGoroutines(0, 0)
 		assertError(err, t, "ListGoroutines()")
 		_, err = c.Stacktrace(gid, 10, 0, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
-		_, err = c.FindLocation(api.EvalScope{gid, 0, 0}, "+1", false)
+		_, err = c.FindLocation(api.EvalScope{GoroutineID: gid}, "+1", false)
 		assertError(err, t, "FindLocation()")
-		_, err = c.DisassemblePC(api.EvalScope{-1, 0, 0}, 0x40100, api.IntelFlavour)
+		_, err = c.DisassemblePC(api.EvalScope{GoroutineID: -1}, 0x40100, api.IntelFlavour)
 		assertError(err, t, "DisassemblePC()")
 	})
 }
@@ -965,12 +972,12 @@ func TestDisasm(t *testing.T) {
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
 
-		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "main.main", false)
+		locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "main.main", false)
 		assertNoError(err, t, "FindLocation()")
 		if len(locs) != 1 {
 			t.Fatalf("wrong number of locations for main.main: %d", len(locs))
 		}
-		d1, err := c.DisassemblePC(api.EvalScope{-1, 0, 0}, locs[0].PC, api.IntelFlavour)
+		d1, err := c.DisassemblePC(api.EvalScope{GoroutineID: -1}, locs[0].PC, api.IntelFlavour)
 		assertNoError(err, t, "DisassemblePC()")
 		if len(d1) < 2 {
 			t.Fatalf("wrong size of disassembly: %d", len(d1))
@@ -980,10 +987,10 @@ func TestDisasm(t *testing.T) {
 		pcend := d1[len(d1)-1].Loc.PC + uint64(len(d1[len(d1)-1].Bytes))
 
 		// start address should be less than end address
-		_, err = c.DisassembleRange(api.EvalScope{-1, 0, 0}, pcend, pcstart, api.IntelFlavour)
+		_, err = c.DisassembleRange(api.EvalScope{GoroutineID: -1}, pcend, pcstart, api.IntelFlavour)
 		assertError(err, t, "DisassembleRange()")
 
-		d2, err := c.DisassembleRange(api.EvalScope{-1, 0, 0}, pcstart, pcend, api.IntelFlavour)
+		d2, err := c.DisassembleRange(api.EvalScope{GoroutineID: -1}, pcstart, pcend, api.IntelFlavour)
 		assertNoError(err, t, "DisassembleRange()")
 
 		if len(d1) != len(d2) {
@@ -992,7 +999,7 @@ func TestDisasm(t *testing.T) {
 			t.Fatal("mismatched length between disassemble pc and disassemble range")
 		}
 
-		d3, err := c.DisassemblePC(api.EvalScope{-1, 0, 0}, state.CurrentThread.PC, api.IntelFlavour)
+		d3, err := c.DisassemblePC(api.EvalScope{GoroutineID: -1}, state.CurrentThread.PC, api.IntelFlavour)
 		assertNoError(err, t, "DisassemblePC() - second call")
 
 		if len(d1) != len(d3) {
@@ -1041,7 +1048,7 @@ func TestDisasm(t *testing.T) {
 			state, err := c.StepInstruction()
 			assertNoError(err, t, fmt.Sprintf("StepInstruction() %d", count))
 
-			d3, err = c.DisassemblePC(api.EvalScope{-1, 0, 0}, state.CurrentThread.PC, api.IntelFlavour)
+			d3, err = c.DisassemblePC(api.EvalScope{GoroutineID: -1}, state.CurrentThread.PC, api.IntelFlavour)
 			assertNoError(err, t, fmt.Sprintf("StepInstruction() %d", count))
 
 			curinstr := getCurinstr(d3)
@@ -1109,7 +1116,7 @@ func TestClientServer_CondBreakpoint(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
-		nvar, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "n", normalLoadConfig)
+		nvar, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "n", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 
 		if nvar.SinglelineString() != "7" {
@@ -1227,14 +1234,14 @@ func TestTypesCommand(t *testing.T) {
 func TestIssue406(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("issue406", t, func(c service.Client) {
-		locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "issue406.go:146", false)
+		locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "issue406.go:146", false)
 		assertNoError(err, t, "FindLocation()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{Addr: locs[0].PC})
 		assertNoError(err, t, "CreateBreakpoint()")
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
-		v, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "cfgtree", normalLoadConfig)
+		v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		vs := v.MultilineString("")
 		t.Logf("cfgtree formats to: %s\n", vs)
@@ -1246,7 +1253,7 @@ func TestEvalExprName(t *testing.T) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
-		var1, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "i1+1", normalLoadConfig)
+		var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "i1+1", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
 
 		const name = "i1+1"
@@ -1266,7 +1273,7 @@ func TestClientServer_Issue528(t *testing.T) {
 	// f744717d1924340b8f5e5a385e99078693ad9097
 
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
 		t.Log("Test skipped")
 		return
 	}
@@ -1489,7 +1496,7 @@ func TestClientServerConsistentExit(t *testing.T) {
 
 func TestClientServer_StepOutReturn(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		t.Skip("return variables aren't marked on 1.9 or earlier")
 	}
 	withTestClient2("stepoutret", t, func(c service.Client) {
@@ -1583,7 +1590,7 @@ func TestAcceptMulticlient(t *testing.T) {
 }
 
 func mustHaveDebugCalls(t *testing.T, c service.Client) {
-	locs, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "runtime.debugCallV1", false)
+	locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "runtime.debugCallV1", false)
 	if len(locs) == 0 || err != nil {
 		t.Skip("function calls not supported on this version of go")
 	}
@@ -1633,7 +1640,7 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 	}
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
-		loc, err := c.FindLocation(api.EvalScope{-1, 0, 0}, "fmt/print.go:649", false)
+		loc, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "fmt/print.go:649", false)
 		assertNoError(err, t, "could not find location")
 
 		_, err = c.CreateBreakpoint(&api.Breakpoint{File: loc[0].File, Line: loc[0].Line})
@@ -1689,7 +1696,7 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
-		c.SetReturnValuesLoadConfig(&api.LoadConfig{false, 0, 2048, 0, 0})
+		c.SetReturnValuesLoadConfig(&api.LoadConfig{FollowPointers: false, MaxStringLen: 2048})
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 		state, err := c.Call(-1, "callstacktrace()", false)
@@ -1750,7 +1757,7 @@ type brokenRPCClient struct {
 func (c *brokenRPCClient) Detach(kill bool) error {
 	defer c.client.Close()
 	out := new(rpc2.DetachOut)
-	return c.call("Detach", rpc2.DetachIn{kill}, out)
+	return c.call("Detach", rpc2.DetachIn{Kill: kill}, out)
 }
 
 func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
@@ -1760,7 +1767,7 @@ func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
 func TestUnknownMethodCall(t *testing.T) {
 	clientConn, _ := startServer("continuetestprog", t)
 	client := &brokenRPCClient{jsonrpc.NewClient(clientConn)}
-	client.call("SetApiVersion", api.SetAPIVersionIn{2}, &api.SetAPIVersionOut{})
+	client.call("SetApiVersion", api.SetAPIVersionIn{APIVersion: 2}, &api.SetAPIVersionOut{})
 	defer client.Detach(true)
 	var out int
 	err := client.call("NonexistentRPCCall", nil, &out)
@@ -1798,7 +1805,7 @@ func TestRerecord(t *testing.T) {
 				t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
 			}
 
-			vart, err := c.EvalVariable(api.EvalScope{-1, 0, 0}, "t", normalLoadConfig)
+			vart, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "t", normalLoadConfig)
 			assertNoError(err, t, "EvalVariable")
 			if vart.Unreadable != "" {
 				t.Fatalf("Could not read variable 't': %s\n", vart.Unreadable)

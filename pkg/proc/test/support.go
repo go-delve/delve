@@ -109,7 +109,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	buildFlags := []string{"build"}
 	var ver goversion.GoVersion
-	if ver, _ = goversion.Parse(runtime.Version()); runtime.GOOS == "windows" && ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver, _ = goversion.Parse(runtime.Version()); runtime.GOOS == "windows" && ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
@@ -139,7 +139,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&BuildModePlugin != 0 {
 		buildFlags = append(buildFlags, "-buildmode=plugin")
 	}
-	if ver.IsDevel() || ver.AfterOrEqual(goversion.GoVersion{1, 11, -1, 0, 0, ""}) {
+	if ver.IsDevel() || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 11, Rev: -1}) {
 		if flags&EnableDWZCompression != 0 {
 			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
 		}

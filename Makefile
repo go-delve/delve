@@ -12,8 +12,11 @@ install:
 uninstall:
 	@go run scripts/make.go uninstall
 
-test:
+test: vet
 	@go run scripts/make.go test
+
+vet:
+	@go vet $$(go list ./... | grep -v scripts | grep -v native)
 
 test-proc-run:
 	@go run scripts/make.go test -s proc -r $(RUN)
@@ -24,4 +27,4 @@ test-integration-run:
 vendor:
 	@go run scripts/make.go vendor
 
-.PHONY: vendor test-integration-run test-proc-run test check-cert install build
+.PHONY: vendor test-integration-run test-proc-run test check-cert install build vet

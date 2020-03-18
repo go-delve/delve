@@ -33,7 +33,7 @@ func NewClient(addr string) *RPCClient {
 
 func newFromRPCClient(client *rpc.Client) *RPCClient {
 	c := &RPCClient{client: client}
-	c.call("SetApiVersion", api.SetAPIVersionIn{2}, &api.SetAPIVersionOut{})
+	c.call("SetApiVersion", api.SetAPIVersionIn{APIVersion: 2}, &api.SetAPIVersionOut{})
 	return c
 }
 

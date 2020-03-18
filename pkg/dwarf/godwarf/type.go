@@ -545,7 +545,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 	}
 	addressSize := r.AddressSize()
 	if e == nil || e.Offset != off {
-		return nil, dwarf.DecodeError{name, off, "no type at offset"}
+		return nil, dwarf.DecodeError{Name: name, Offset: off, Err: "no type at offset"}
 	}
 
 	// If this is the root of the recursion, prepare to resolve typedef sizes
@@ -613,7 +613,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 				return nil
 			}
 		case uint64:
-			err = dwarf.DecodeError{name, e.Offset, "DWARFv4 section debug_types unsupported"}
+			err = dwarf.DecodeError{Name: name, Offset: e.Offset, Err: "DWARFv4 section debug_types unsupported"}
 			return nil
 		default:
 			// It appears that no Type means "void".
@@ -677,7 +677,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 				}
 				ndim++
 			case dwarf.TagEnumerationType:
-				err = dwarf.DecodeError{name, kid.Offset, "cannot handle enumeration type as array bound"}
+				err = dwarf.DecodeError{Name: name, Offset: kid.Offset, Err: "cannot handle enumeration type as array bound"}
 				goto Error
 			}
 		}
@@ -697,12 +697,12 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		name, _ := e.Val(dwarf.AttrName).(string)
 		enc, ok := e.Val(dwarf.AttrEncoding).(int64)
 		if !ok {
-			err = dwarf.DecodeError{name, e.Offset, "missing encoding attribute for " + name}
+			err = dwarf.DecodeError{Name: name, Offset: e.Offset, Err: "missing encoding attribute for " + name}
 			goto Error
 		}
 		switch enc {
 		default:
-			err = dwarf.DecodeError{name, e.Offset, "unrecognized encoding attribute value"}
+			err = dwarf.DecodeError{Name: name, Offset: e.Offset, Err: "unrecognized encoding attribute value"}
 			goto Error
 
 		case encAddress:
@@ -816,12 +816,12 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 						f.ByteOffset = b.Int()
 						op_ = op.Opcode(b.Uint8())
 						if op_ != op.DW_OP_plus {
-							err = dwarf.DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op_)}
+							err = dwarf.DecodeError{Name: name, Offset: kid.Offset, Err: fmt.Sprintf("unexpected opcode 0x%x", op_)}
 							goto Error
 						}
 						b.AssertEmpty()
 					default:
-						err = dwarf.DecodeError{name, kid.Offset, fmt.Sprintf("unexpected opcode 0x%x", op_)}
+						err = dwarf.DecodeError{Name: name, Offset: kid.Offset, Err: fmt.Sprintf("unexpected opcode 0x%x", op_)}
 						goto Error
 					}
 					if b.Err != nil {

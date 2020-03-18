@@ -263,7 +263,7 @@ func TestCoreFpRegisters(t *testing.T) {
 	}
 	// in go1.10 the crash is executed on a different thread and registers are
 	// no longer available in the core dump.
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		t.Skip("not supported in go1.10 and later")
 	}
 
@@ -368,11 +368,12 @@ mainSearch:
 	}
 
 	scope := proc.FrameToScope(p.BinInfo(), p.CurrentThread(), nil, *mainFrame)
-	v1, err := scope.EvalVariable("t", proc.LoadConfig{true, 1, 64, 64, -1, 0})
+	loadConfig := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	v1, err := scope.EvalVariable("t", loadConfig)
 	assertNoError(err, t, "EvalVariable(t)")
 	assertNoError(v1.Unreadable, t, "unreadable variable 't'")
 	t.Logf("t = %#v\n", v1)
-	v2, err := scope.EvalVariable("s", proc.LoadConfig{true, 1, 64, 64, -1, 0})
+	v2, err := scope.EvalVariable("s", loadConfig)
 	assertNoError(err, t, "EvalVariable(s)")
 	assertNoError(v2.Unreadable, t, "unreadable variable 's'")
 	t.Logf("s = %#v\n", v2)

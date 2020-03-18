@@ -7,10 +7,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/cosiner/argv"
-	"github.com/go-delve/delve/service"
-	"github.com/go-delve/delve/service/api"
-	"github.com/go-delve/delve/service/debugger"
 	"go/parser"
 	"go/scanner"
 	"io"
@@ -24,6 +20,11 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/cosiner/argv"
+	"github.com/go-delve/delve/service"
+	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/debugger"
 )
 
 const optimizedFunctionWarning = "Warning: debugging optimized function"
@@ -88,10 +89,10 @@ var (
 	// * Follows pointers
 	// * Loads more array values
 	// * Does not limit struct fields
-	LongLoadConfig = api.LoadConfig{true, 1, 64, 64, -1}
+	LongLoadConfig = api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	// ShortLoadConfig loads less information, not following pointers
 	// and limiting struct fields loaded to 3.
-	ShortLoadConfig = api.LoadConfig{false, 0, 64, 0, 3}
+	ShortLoadConfig = api.LoadConfig{MaxStringLen: 64, MaxStructFields: 3}
 )
 
 // ByFirstAlias will sort by the first
@@ -415,7 +416,7 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 		})
 		c.cmds = append(c.cmds, command{
 			aliases: []string{"rev"},
-			group: runCmds,
+			group:   runCmds,
 			cmdFn:   c.revCmd,
 			helpMsg: `Reverses the execution of the target program for the command specified.
 Currently, only the rev step-instruction command is supported.`,

@@ -527,7 +527,7 @@ func TestNextGeneral(t *testing.T) {
 
 	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
 		testcases = []nextTest{
 			{17, 19},
 			{19, 20},
@@ -674,7 +674,7 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 
 	ver, _ := goversion.Parse(runtime.Version())
 
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		testcases = []nextTest{
 			{5, 6},
 			{6, 9},
@@ -1724,7 +1724,7 @@ func TestIssue384(t *testing.T) {
 	// Crash related to reading uninitialized memory, introduced by the memory prefetching optimization
 
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// go 1.10 emits DW_AT_decl_line and we won't be able to evaluate 'st'
 		// which is declared after line 13.
 		t.Skip("can not evaluate not-yet-declared variables with go 1.10")
@@ -1856,7 +1856,7 @@ func TestPackageVariables(t *testing.T) {
 
 func TestIssue149(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
 		return
 	}
 	// setting breakpoint on break statement
@@ -2073,7 +2073,7 @@ func TestIssue509(t *testing.T) {
 
 func TestUnsupportedArch(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major < 0 || !ver.AfterOrEqual(goversion.GoVersion{1, 6, -1, 0, 0, ""}) || ver.AfterOrEqual(goversion.GoVersion{1, 7, -1, 0, 0, ""}) {
+	if ver.Major < 0 || !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 6, Rev: -1}) || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
 		// cross compile (with -N?) works only on select versions of go
 		return
 	}
@@ -2725,7 +2725,7 @@ func TestStacktraceWithBarriers(t *testing.T) {
 	// struct.
 
 	// In Go 1.9 stack barriers have been removed and this test must be disabled.
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		return
 	}
 
@@ -3074,7 +3074,7 @@ func TestIssue871(t *testing.T) {
 }
 
 func TestShadowedFlag(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		return
 	}
 	withTestProcess("testshadow", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -3285,13 +3285,13 @@ func frameInFile(frame proc.Stackframe, file string) bool {
 func TestCgoStacktrace(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Parse(runtime.Version())
-		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 			t.Skip("disabled on windows with go before version 1.9")
 		}
 	}
 	if runtime.GOOS == "darwin" {
 		ver, _ := goversion.Parse(runtime.Version())
-		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 8, -1, 0, 0, ""}) {
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 8, Rev: -1}) {
 			t.Skip("disabled on macOS with go before version 1.8")
 		}
 	}
@@ -3394,7 +3394,7 @@ func TestCgoStacktrace(t *testing.T) {
 func TestCgoSources(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Parse(runtime.Version())
-		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 			t.Skip("disabled on windows with go before version 1.9")
 		}
 	}
@@ -3516,7 +3516,7 @@ func TestIssue1008(t *testing.T) {
 
 func TestDeclLine(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		t.Skip("go 1.9 and prior versions do not emit DW_AT_decl_line")
 	}
 
@@ -3662,7 +3662,7 @@ func checkFrame(frame proc.Stackframe, fnname, file string, line int, inlined bo
 }
 
 func TestAllPCsForFileLines(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3683,7 +3683,7 @@ func TestAllPCsForFileLines(t *testing.T) {
 }
 
 func TestInlinedStacktraceAndVariables(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3802,7 +3802,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 }
 
 func TestInlineStep(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3816,7 +3816,7 @@ func TestInlineStep(t *testing.T) {
 }
 
 func TestInlineNext(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3830,7 +3830,7 @@ func TestInlineNext(t *testing.T) {
 }
 
 func TestInlineStepOver(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3842,7 +3842,7 @@ func TestInlineStepOver(t *testing.T) {
 }
 
 func TestInlineStepOut(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3855,7 +3855,7 @@ func TestInlineStepOut(t *testing.T) {
 
 func TestInlineFunctionList(t *testing.T) {
 	// We should be able to list all functions, even inlined ones.
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3875,7 +3875,7 @@ func TestInlineFunctionList(t *testing.T) {
 
 func TestInlineBreakpoint(t *testing.T) {
 	// We should be able to set a breakpoint on the call site of an inlined function.
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
@@ -3898,7 +3898,7 @@ func TestInlineBreakpoint(t *testing.T) {
 }
 
 func TestIssue951(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		t.Skip("scopes not implemented in <=go1.8")
 	}
 
@@ -3975,7 +3975,7 @@ func TestMapLoadConfigWithReslice(t *testing.T) {
 
 func TestStepOutReturn(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		t.Skip("return variables aren't marked on 1.9 or earlier")
 	}
 	withTestProcess("stepoutret", t, func(p *proc.Target, fixture protest.Fixture) {

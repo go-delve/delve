@@ -10,7 +10,13 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 )
 
-var defaultLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
+var defaultLoadConfig = proc.LoadConfig{
+	FollowPointers:     true,
+	MaxVariableRecurse: 1,
+	MaxStringLen:       64,
+	MaxArrayValues:     64,
+	MaxStructFields:    -1,
+}
 
 type RPCServer struct {
 	// config is all the information necessary to start the debugger and server.
