@@ -14,107 +14,6 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 )
 
-// ErrNotExecutable is returned after attempting to execute a non-executable file
-// to begin a debug session.
-var ErrNotExecutable = errors.New("not an executable file")
-
-// ErrNotRecorded is returned when an action is requested that is
-// only possible on recorded (traced) programs.
-var ErrNotRecorded = errors.New("not a recording")
-
-var ErrNoRuntimeAllG = errors.New("could not find goroutine array")
-
-const (
-	// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
-	UnrecoveredPanic = "unrecovered-panic"
-
-	// FatalThrow is the name given to the breakpoint triggered when the target process dies because of a fatal runtime error
-	FatalThrow = "runtime-fatal-throw"
-
-	unrecoveredPanicID = -1
-	fatalThrowID       = -2
-)
-
-// ErrProcessExited indicates that the process has exited and contains both
-// process id and exit status.
-type ErrProcessExited struct {
-	Pid    int
-	Status int
-}
-
-func (pe ErrProcessExited) Error() string {
-	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
-}
-
-// ProcessDetachedError indicates that we detached from the target process.
-type ProcessDetachedError struct {
-}
-
-func (pe ProcessDetachedError) Error() string {
-	return "detached from the process"
-}
-
-// FindFileLocation returns the PC for a given file:line.
-// Assumes that `file` is normalized to lower case and '/' on Windows.
-func FindFileLocation(p Process, fileName string, lineno int) ([]uint64, error) {
-	pcs, err := p.BinInfo().LineToPC(fileName, lineno)
-	if err != nil {
-		return nil, err
-	}
-	var fn *Function
-	for i := range pcs {
-		if fn == nil || pcs[i] < fn.Entry || pcs[i] >= fn.End {
-			fn = p.BinInfo().PCToFunc(pcs[i])
-		}
-		if fn != nil && fn.Entry == pcs[i] {
-			pcs[i], _ = FirstPCAfterPrologue(p, fn, true)
-		}
-	}
-	return pcs, nil
-}
-
-// ErrFunctionNotFound is returned when failing to find the
-// function named 'FuncName' within the binary.
-type ErrFunctionNotFound struct {
-	FuncName string
-}
-
-func (err *ErrFunctionNotFound) Error() string {
-	return fmt.Sprintf("Could not find function %s\n", err.FuncName)
-}
-
-// FindFunctionLocation finds address of a function's line
-// If lineOffset is passed FindFunctionLocation will return the address of that line
-func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64, error) {
-	bi := p.BinInfo()
-	origfn := bi.LookupFunc[funcName]
-	if origfn == nil {
-		return nil, &ErrFunctionNotFound{funcName}
-	}
-
-	if lineOffset <= 0 {
-		r := make([]uint64, 0, len(origfn.InlinedCalls)+1)
-		if origfn.Entry > 0 {
-			// add concrete implementation of the function
-			pc, err := FirstPCAfterPrologue(p, origfn, false)
-			if err != nil {
-				return nil, err
-			}
-			r = append(r, pc)
-		}
-		// add inlined calls to the function
-		for _, call := range origfn.InlinedCalls {
-			r = append(r, call.LowPC)
-		}
-		if len(r) == 0 {
-			return nil, &ErrFunctionNotFound{funcName}
-		}
-		return r, nil
-	}
-	filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
-	return bi.LineToPC(filename, lineno+lineOffset)
-}
-
 // Next continues execution until the next source line.
 func (dbp *Target) Next() (err error) {
 	if _, err := dbp.Valid(); err != nil {
@@ -281,50 +180,6 @@ func (dbp *Target) Continue() error {
 	}
 }
 
-func conditionErrors(threads []Thread) error {
-	var condErr error
-	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Breakpoint != nil && bp.CondError != nil {
-			if condErr == nil {
-				condErr = bp.CondError
-			} else {
-				return fmt.Errorf("multiple errors evaluating conditions")
-			}
-		}
-	}
-	return condErr
-}
-
-// pick a new dbp.currentThread, with the following priority:
-// 	- a thread with onTriggeredInternalBreakpoint() == true
-// 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
-// 	- trapthread
-func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
-	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Active && bp.Internal {
-			return dbp.SwitchThread(th.ThreadID())
-		}
-	}
-	if bp := trapthread.Breakpoint(); bp.Active {
-		return dbp.SwitchThread(trapthread.ThreadID())
-	}
-	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Active {
-			return dbp.SwitchThread(th.ThreadID())
-		}
-	}
-	return dbp.SwitchThread(trapthread.ThreadID())
-}
-
-func disassembleCurrentInstruction(p Process, thread Thread) ([]AsmInstruction, error) {
-	regs, err := thread.Registers(false)
-	if err != nil {
-		return nil, err
-	}
-	pc := regs.PC()
-	return disassemble(thread, regs, p.Breakpoints(), p.BinInfo(), pc, pc+uint64(p.BinInfo().Arch.MaxInstructionLength()), true)
-}
-
 // stepInstructionOut repeatedly calls StepInstruction until the current
 // function is neither fnname1 or fnname2.
 // This function is used to step out of runtime.Breakpoint as well as
@@ -371,47 +226,6 @@ func (dbp *Target) Step() (err error) {
 	}
 
 	return dbp.Continue()
-}
-
-// SameGoroutineCondition returns an expression that evaluates to true when
-// the current goroutine is g.
-func SameGoroutineCondition(g *G) ast.Expr {
-	if g == nil {
-		return nil
-	}
-	return &ast.BinaryExpr{
-		Op: token.EQL,
-		X: &ast.SelectorExpr{
-			X: &ast.SelectorExpr{
-				X:   &ast.Ident{Name: "runtime"},
-				Sel: &ast.Ident{Name: "curg"},
-			},
-			Sel: &ast.Ident{Name: "goid"},
-		},
-		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(g.ID)},
-	}
-}
-
-func frameoffCondition(frameoff int64) ast.Expr {
-	return &ast.BinaryExpr{
-		Op: token.EQL,
-		X: &ast.SelectorExpr{
-			X:   &ast.Ident{Name: "runtime"},
-			Sel: &ast.Ident{Name: "frameoff"},
-		},
-		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.FormatInt(frameoff, 10)},
-	}
-}
-
-func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
-	if cond == nil {
-		return nil
-	}
-	return &ast.BinaryExpr{
-		Op: token.LAND,
-		X:  cond,
-		Y:  frameoffCondition(frameoff),
-	}
 }
 
 // StepOut will continue until the current goroutine exits the
@@ -526,6 +340,47 @@ func (dbp *Target) StepInstruction() (err error) {
 		dbp.selectedGoroutine = tg
 	}
 	return nil
+}
+
+// SameGoroutineCondition returns an expression that evaluates to true when
+// the current goroutine is g.
+func SameGoroutineCondition(g *G) ast.Expr {
+	if g == nil {
+		return nil
+	}
+	return &ast.BinaryExpr{
+		Op: token.EQL,
+		X: &ast.SelectorExpr{
+			X: &ast.SelectorExpr{
+				X:   &ast.Ident{Name: "runtime"},
+				Sel: &ast.Ident{Name: "curg"},
+			},
+			Sel: &ast.Ident{Name: "goid"},
+		},
+		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(g.ID)},
+	}
+}
+
+func frameoffCondition(frameoff int64) ast.Expr {
+	return &ast.BinaryExpr{
+		Op: token.EQL,
+		X: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: "runtime"},
+			Sel: &ast.Ident{Name: "frameoff"},
+		},
+		Y: &ast.BasicLit{Kind: token.INT, Value: strconv.FormatInt(frameoff, 10)},
+	}
+}
+
+func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
+	if cond == nil {
+		return nil
+	}
+	return &ast.BinaryExpr{
+		Op: token.LAND,
+		X:  cond,
+		Y:  frameoffCondition(frameoff),
+	}
 }
 
 func allowDuplicateBreakpoint(bp *Breakpoint, err error) (*Breakpoint, error) {
@@ -906,21 +761,6 @@ func DisableAsyncPreemptEnv() []string {
 	return env
 }
 
-// FindDeferReturnCalls will find all runtime.deferreturn locations in the given buffer of
-// assembly instructions.
-// See documentation of Breakpoint.DeferCond for why this is necessary
-func FindDeferReturnCalls(text []AsmInstruction) []uint64 {
-	const deferreturn = "runtime.deferreturn"
-	deferreturns := []uint64{}
-
-	for _, instr := range text {
-		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && instr.DestLoc.Fn.Name == deferreturn {
-			deferreturns = append(deferreturns, instr.Loc.PC)
-		}
-	}
-	return deferreturns
-}
-
 // Set breakpoints at every line, and the return address. Also look for
 // a deferred function and set a breakpoint there too.
 // If stepInto is true it will also set breakpoints inside all
@@ -1220,6 +1060,50 @@ func removePCsBetween(pcs []uint64, start, end, staticBase uint64) []uint64 {
 	return out
 }
 
+func conditionErrors(threads []Thread) error {
+	var condErr error
+	for _, th := range threads {
+		if bp := th.Breakpoint(); bp.Breakpoint != nil && bp.CondError != nil {
+			if condErr == nil {
+				condErr = bp.CondError
+			} else {
+				return fmt.Errorf("multiple errors evaluating conditions")
+			}
+		}
+	}
+	return condErr
+}
+
+// pick a new dbp.currentThread, with the following priority:
+// 	- a thread with onTriggeredInternalBreakpoint() == true
+// 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
+// 	- trapthread
+func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
+	for _, th := range threads {
+		if bp := th.Breakpoint(); bp.Active && bp.Internal {
+			return dbp.SwitchThread(th.ThreadID())
+		}
+	}
+	if bp := trapthread.Breakpoint(); bp.Active {
+		return dbp.SwitchThread(trapthread.ThreadID())
+	}
+	for _, th := range threads {
+		if bp := th.Breakpoint(); bp.Active {
+			return dbp.SwitchThread(th.ThreadID())
+		}
+	}
+	return dbp.SwitchThread(trapthread.ThreadID())
+}
+
+func disassembleCurrentInstruction(p Process, thread Thread) ([]AsmInstruction, error) {
+	regs, err := thread.Registers(false)
+	if err != nil {
+		return nil, err
+	}
+	pc := regs.PC()
+	return disassemble(thread, regs, p.Breakpoints(), p.BinInfo(), pc, pc+uint64(p.BinInfo().Arch.MaxInstructionLength()), true)
+}
+
 func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) error {
 	if len(text) <= 0 {
 		return nil
@@ -1267,30 +1151,4 @@ func setStepIntoBreakpoint(dbp Process, text []AsmInstruction, cond ast.Expr) er
 	}
 
 	return nil
-}
-
-// createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
-// This function is meant to be called by implementations of the Process interface.
-func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	panicpcs, err := FindFunctionLocation(p, "runtime.startpanic", 0)
-	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
-		panicpcs, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
-	}
-	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpcs[0], writeBreakpoint)
-		if err == nil {
-			bp.Name = UnrecoveredPanic
-			bp.Variables = []string{"runtime.curg._panic.arg"}
-		}
-	}
-}
-
-func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	fatalpcs, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
-	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpcs[0], writeBreakpoint)
-		if err == nil {
-			bp.Name = FatalThrow
-		}
-	}
 }

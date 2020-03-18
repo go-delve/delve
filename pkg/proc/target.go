@@ -7,6 +7,17 @@ import (
 	"github.com/go-delve/delve/pkg/goversion"
 )
 
+const (
+	// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
+	UnrecoveredPanic = "unrecovered-panic"
+
+	// FatalThrow is the name given to the breakpoint triggered when the target process dies because of a fatal runtime error
+	FatalThrow = "runtime-fatal-throw"
+
+	unrecoveredPanicID = -1
+	fatalThrowID       = -2
+)
+
 // Target represents the process being debugged.
 type Target struct {
 	Process
@@ -209,4 +220,30 @@ func setAsyncPreemptOff(p *Target, v int64) {
 
 	err = scope.setValue(asyncpreemptoffv, newConstant(constant.MakeInt64(v), scope.Mem), "")
 	logger.Warnf("could not set asyncpreemptoff %v", err)
+}
+
+// createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
+// This function is meant to be called by implementations of the Process interface.
+func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
+	panicpcs, err := FindFunctionLocation(p, "runtime.startpanic", 0)
+	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
+		panicpcs, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
+	}
+	if err == nil {
+		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpcs[0], writeBreakpoint)
+		if err == nil {
+			bp.Name = UnrecoveredPanic
+			bp.Variables = []string{"runtime.curg._panic.arg"}
+		}
+	}
+}
+
+func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
+	fatalpcs, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
+	if err == nil {
+		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpcs[0], writeBreakpoint)
+		if err == nil {
+			bp.Name = FatalThrow
+		}
+	}
 }
