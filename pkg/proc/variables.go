@@ -214,6 +214,146 @@ type G struct {
 	labels *map[string]string // G's pprof labels, computed on demand in Labels() method
 }
 
+// GoroutinesInfo searches for goroutines starting at index 'start', and
+// returns an array of up to 'count' (or all found elements, if 'count' is 0)
+// G structures representing the information Delve care about from the internal
+// runtime G structure.
+// GoroutinesInfo also returns the next index to be used as 'start' argument
+// while scanning for all available goroutines, or -1 if there was an error
+// or if the index already reached the last possible value.
+func GoroutinesInfo(t *Target, start, count int) ([]*G, int, error) {
+	if _, err := t.Valid(); err != nil {
+		return nil, -1, err
+	}
+	if t.gcache.allGCache != nil {
+		// We can't use the cached array to fulfill a subrange request
+		if start == 0 && (count == 0 || count >= len(t.gcache.allGCache)) {
+			return t.gcache.allGCache, -1, nil
+		}
+	}
+
+	var (
+		threadg = map[int]*G{}
+		allg    []*G
+	)
+
+	threads := t.ThreadList()
+	for _, th := range threads {
+		if th.Blocked() {
+			continue
+		}
+		g, _ := GetG(th)
+		if g != nil {
+			threadg[g.ID] = g
+		}
+	}
+
+	allgptr, allglen, err := t.gcache.getRuntimeAllg(t.BinInfo(), t.CurrentThread())
+	if err != nil {
+		return nil, -1, err
+	}
+
+	for i := uint64(start); i < allglen; i++ {
+		if count != 0 && len(allg) >= count {
+			return allg, int(i), nil
+		}
+		gvar, err := newGVariable(t.CurrentThread(), uintptr(allgptr+(i*uint64(t.BinInfo().Arch.PtrSize()))), true)
+		if err != nil {
+			allg = append(allg, &G{Unreadable: err})
+			continue
+		}
+		g, err := gvar.parseG()
+		if err != nil {
+			allg = append(allg, &G{Unreadable: err})
+			continue
+		}
+		if thg, allocated := threadg[g.ID]; allocated {
+			loc, err := thg.Thread.Location()
+			if err != nil {
+				return nil, -1, err
+			}
+			g.Thread = thg.Thread
+			// Prefer actual thread location information.
+			g.CurrentLoc = *loc
+			g.SystemStack = thg.SystemStack
+		}
+		if g.Status != Gdead {
+			allg = append(allg, g)
+		}
+		t.gcache.addGoroutine(g)
+	}
+	if start == 0 {
+		t.gcache.allGCache = allg
+	}
+
+	return allg, -1, nil
+}
+
+// FindGoroutine returns a G struct representing the goroutine
+// specified by `gid`.
+func FindGoroutine(t *Target, gid int) (*G, error) {
+	if selg := t.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
+		// Return the currently selected goroutine in the following circumstances:
+		//
+		// 1. if the caller asks for gid == -1 (because that's what a goroutine ID of -1 means in our API).
+		// 2. if gid == selg.ID.
+		//    this serves two purposes: (a) it's an optimizations that allows us
+		//    to avoid reading any other goroutine and, more importantly, (b) we
+		//    could be reading an incorrect value for the goroutine ID of a thread.
+		//    This condition usually happens when a goroutine calls runtime.clone
+		//    and for a short period of time two threads will appear to be running
+		//    the same goroutine.
+		// 3. if the caller asks for gid == 0 and the selected goroutine is
+		//    either 0 or nil.
+		//    Goroutine 0 is special, it either means we have no current goroutine
+		//    (for example, running C code), or that we are running on a speical
+		//    stack (system stack, signal handling stack) and we didn't properly
+		//    detect it.
+		//    Since there could be multiple goroutines '0' running simultaneously
+		//    if the user requests it return the one that's already selected or
+		//    nil if there isn't a selected goroutine.
+		return selg, nil
+	}
+
+	if gid == 0 {
+		return nil, fmt.Errorf("Unknown goroutine %d", gid)
+	}
+
+	// Calling GoroutinesInfo could be slow if there are many goroutines
+	// running, check if a running goroutine has been requested first.
+	for _, thread := range t.ThreadList() {
+		g, _ := GetG(thread)
+		if g != nil && g.ID == gid {
+			return g, nil
+		}
+	}
+
+	if g := t.gcache.partialGCache[gid]; g != nil {
+		return g, nil
+	}
+
+	const goroutinesInfoLimit = 10
+	nextg := 0
+	for nextg >= 0 {
+		var gs []*G
+		var err error
+		gs, nextg, err = GoroutinesInfo(t, nextg, goroutinesInfoLimit)
+		if err != nil {
+			return nil, err
+		}
+		for i := range gs {
+			if gs[i].ID == gid {
+				if gs[i].Unreadable != nil {
+					return nil, gs[i].Unreadable
+				}
+				return gs[i], nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("Unknown goroutine %d", gid)
+}
+
 // Defer returns the top-most defer of the goroutine.
 func (g *G) Defer() *Defer {
 	if g.variable.Unreadable != nil {

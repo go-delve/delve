@@ -3,6 +3,8 @@ package proc
 import (
 	"fmt"
 	"go/constant"
+	"os"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/goversion"
 )
@@ -192,6 +194,20 @@ func (t *Target) Detach(kill bool) error {
 	}
 	t.StopReason = StopUnknown
 	return t.proc.Detach(kill)
+}
+
+// DisableAsyncPreemptEnv returns a process environment (like os.Environ)
+// where asyncpreemptoff is set to 1.
+func DisableAsyncPreemptEnv() []string {
+	env := os.Environ()
+	for i := range env {
+		if strings.HasPrefix(env[i], "GODEBUG=") {
+			// Go 1.14 asynchronous preemption mechanism is incompatible with
+			// debuggers, see: https://github.com/golang/go/issues/36494
+			env[i] += ",asyncpreemptoff=1"
+		}
+	}
+	return env
 }
 
 func setAsyncPreemptOff(p *Target, v int64) {
