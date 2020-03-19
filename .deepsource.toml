@@ -2,7 +2,7 @@ version = 1
 
 test_patterns = ["**/*_test.go"]
 
-exclude_patterns = ["vendor"]
+exclude_patterns = ["vendor", "_fixtures"]
 
 [[analyzers]]
 name = "go"
