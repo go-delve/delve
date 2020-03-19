@@ -163,7 +163,7 @@ func (t *Term) Run() (int, error) {
 	multiClient := t.client.IsMulticlient()
 
 	// Send the debugger a halt command on SIGINT
-	ch := make(chan os.Signal)
+	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT)
 	go t.sigintGuard(ch, multiClient)
 
