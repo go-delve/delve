@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"os"
+	"io"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -445,14 +445,14 @@ func (a *ARM64) DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string
 
 		fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
 
-		buf.Seek(0, os.SEEK_SET)
+		buf.Seek(0, io.SeekStart)
 		var v2 [2]float64
 		for i := range v2 {
 			binary.Read(buf, binary.LittleEndian, &v2[i])
 		}
 		fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
 
-		buf.Seek(0, os.SEEK_SET)
+		buf.Seek(0, io.SeekStart)
 		var v4 [4]float32
 		for i := range v4 {
 			binary.Read(buf, binary.LittleEndian, &v4[i])
