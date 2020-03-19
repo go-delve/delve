@@ -1,5 +1,6 @@
 language: go
 sudo: required
+go_import_path: github.com/go-delve/delve
 
 os:
   - linux
