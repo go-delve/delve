@@ -1267,6 +1267,11 @@ func (t *Thread) Location() (*proc.Location, error) {
 	if err != nil {
 		return nil, err
 	}
+	if pcreg, ok := regs.(*gdbRegisters).regs[regnamePC]; !ok {
+		t.p.conn.log.Errorf("thread %d could not find RIP register", t.ID)
+	} else if len(pcreg.value) < t.p.bi.Arch.PtrSize() {
+		t.p.conn.log.Errorf("thread %d bad length for RIP register: %d", t.ID, len(pcreg.value))
+	}
 	pc := regs.PC()
 	f, l, fn := t.p.bi.PCToLine(pc)
 	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
