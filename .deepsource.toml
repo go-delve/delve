@@ -1,6 +1,6 @@
 version = 1
 
-test_patterns = ["**/*_test.go"]
+test_patterns = ["**/*_test.go", "_fixtures"]
 
 exclude_patterns = ["vendor"]
 
