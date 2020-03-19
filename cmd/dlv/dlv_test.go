@@ -406,7 +406,7 @@ func qf(*types.Package) string {
 func TestTypecheckRPC(t *testing.T) {
 	fset := &token.FileSet{}
 	cfg := &packages.Config{
-		Mode: packages.LoadSyntax,
+		Mode: packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedName | packages.NeedCompiledGoFiles | packages.NeedTypes,
 		Fset: fset,
 	}
 	pkgs, err := packages.Load(cfg, "github.com/go-delve/delve/service/rpc2")
