@@ -4174,9 +4174,6 @@ func TestReadDeferArgs(t *testing.T) {
 }
 
 func TestIssue1374(t *testing.T) {
-	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
-		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
-	}
 	// Continue did not work when stopped at a breakpoint immediately after calling CallFunction.
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("issue1374", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -4395,9 +4392,6 @@ func testCallConcurrentCheckReturns(p *proc.Target, t *testing.T, gid1, gid2 int
 func TestCallConcurrent(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
-	}
-	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
-		t.Skip(fmt.Sprintf("%s does not support FunctionCall for now", runtime.GOARCH))
 	}
 
 	protest.MustSupportFunctionCalls(t, testBackend)
@@ -4746,5 +4740,22 @@ func TestBackwardNextDeferPanic(t *testing.T) {
 		{contReverseNext, 22},
 		{contReverseNext, 21},
 		{contReverseNext, 28},
+	})
+}
+
+func TestIssue1925(t *testing.T) {
+	// Calling a function should not leave cached goroutine information in an
+	// inconsistent state.
+	// In particular the stepInstructionOut function called at the end of a
+	// 'call' procedure should clean the G cache like every other function
+	// altering the state of the target process.
+	protest.MustSupportFunctionCalls(t, testBackend)
+	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
+		assertNoError(proc.Continue(p), t, "Continue()")
+		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "afunc(2)", normalLoadConfig, true), t, "Call")
+		t.Logf("%v\n", p.SelectedGoroutine().CurrentLoc)
+		if loc := p.SelectedGoroutine().CurrentLoc; loc.File != fixture.Source {
+			t.Errorf("wrong location for selected goroutine after call: %s:%d", loc.File, loc.Line)
+		}
 	})
 }
