@@ -54,6 +54,7 @@ type Term struct {
 	dumb     bool
 	stdout   io.Writer
 	InitFile string
+	displays []string
 
 	starlarkEnv *starbind.Env
 
@@ -430,6 +431,50 @@ func (t *Term) loadConfig() api.LoadConfig {
 	}
 
 	return r
+}
+
+func (t *Term) removeDisplay(n int) error {
+	if n < 0 || n >= len(t.displays) {
+		return fmt.Errorf("%d is out of range", n)
+	}
+	t.displays[n] = ""
+	for i := len(t.displays) - 1; i >= 0; i-- {
+		if t.displays[i] != "" {
+			t.displays = t.displays[:i+1]
+			return nil
+		}
+	}
+	t.displays = t.displays[:0]
+	return nil
+}
+
+func (t *Term) addDisplay(expr string) {
+	t.displays = append(t.displays, expr)
+}
+
+func (t *Term) printDisplay(i int) {
+	expr := t.displays[i]
+	val, err := t.client.EvalVariable(api.EvalScope{GoroutineID: -1}, expr, ShortLoadConfig)
+	if err != nil {
+		if isErrProcessExited(err) {
+			return
+		}
+		fmt.Printf("%d: %s = error %v\n", i, expr, err)
+		return
+	}
+	fmt.Printf("%d: %s = %s\n", i, val.Name, val.SinglelineString())
+}
+
+func (t *Term) printDisplays() {
+	for i := range t.displays {
+		if t.displays[i] != "" {
+			t.printDisplay(i)
+		}
+	}
+}
+
+func (t *Term) onStop() {
+	t.printDisplays()
 }
 
 // isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited

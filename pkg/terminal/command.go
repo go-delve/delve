@@ -375,7 +375,7 @@ If locspec is omitted edit will open the current source file in the editor, othe
 
 		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
 
-    examinemem [-fmt <format>] [-len <length>] <address>
+	examinemem [-fmt <format>] [-len <length>] <address>
 
 Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
@@ -384,6 +384,15 @@ Address is the memory location of the target to examine.
 For example:
 
     x -fmt hex -len 20 0xc00008af38`},
+
+		{aliases: []string{"display"}, group: dataCmds, cmdFn: display, helpMsg: `Print value of an expression every time the program stops.
+
+	display -a <expression>
+	display -d <number>
+
+The '-a' option adds an expression to the list of expression printed every time the program stops. The '-d' option removes the specified expression from the list.
+
+If display is called without arguments it will print the value of all expression in the list.`},
 	}
 
 	if client == nil || client.Recorded() {
@@ -981,6 +990,7 @@ func restartRecorded(t *Term, ctx callContext, args string) error {
 	}
 	printcontext(t, state)
 	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	t.onStop()
 	return nil
 }
 
@@ -1057,6 +1067,7 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 	if ctx.Prefix == revPrefix {
 		return c.rewind(t, ctx, args)
 	}
+	defer t.onStop()
 	c.frame = 0
 	stateChan := t.client.Continue()
 	var state *api.DebuggerState
@@ -1072,6 +1083,7 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 }
 
 func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, shouldPrintFile bool) error {
+	defer t.onStop()
 	if !state.NextInProgress {
 		if shouldPrintFile {
 			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
@@ -1140,6 +1152,8 @@ func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error 
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
+
+	defer t.onStop()
 
 	var fn func() (*api.DebuggerState, error)
 	if ctx.Prefix == revPrefix {
@@ -2384,6 +2398,37 @@ func clearCheckpoint(t *Term, ctx callContext, args string) error {
 		return errors.New("clear-checkpoint argument must be a checkpoint ID")
 	}
 	return t.client.ClearCheckpoint(id)
+}
+
+func display(t *Term, ctx callContext, args string) error {
+	const (
+		addOption = "-a "
+		delOption = "-d "
+	)
+	switch {
+	case args == "":
+		t.printDisplays()
+
+	case strings.HasPrefix(args, addOption):
+		args = strings.TrimSpace(args[len(addOption):])
+		if args == "" {
+			return fmt.Errorf("not enough arguments")
+		}
+		t.addDisplay(args)
+		t.printDisplay(len(t.displays) - 1)
+
+	case strings.HasPrefix(args, delOption):
+		args = strings.TrimSpace(args[len(delOption):])
+		n, err := strconv.Atoi(args)
+		if err != nil {
+			return fmt.Errorf("%q is not a number", args)
+		}
+		return t.removeDisplay(n)
+
+	default:
+		return fmt.Errorf("wrong arguments")
+	}
+	return nil
 }
 
 func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {

@@ -39,6 +39,7 @@ Command | Description
 Command | Description
 --------|------------
 [args](#args) | Print function arguments.
+[display](#display) | Print value of an expression every time the program stops.
 [examinemem](#examinemem) | Examine memory:
 [locals](#locals) | Print local variables.
 [print](#print) | Evaluate an expression.
@@ -225,6 +226,17 @@ If no argument is specified the function being executed in the selected stack fr
 
 Aliases: disass
 
+## display
+Print value of an expression every time the program stops.
+
+	display -a <expression>
+	display -d <number>
+
+The '-a' option adds an expression to the list of expression printed every time the program stops. The '-d' option removes the specified expression from the list.
+
+If display is called without arguments it will print the value of all expression in the list.
+
+
 ## down
 Move the current frame down.
 
@@ -246,7 +258,7 @@ Aliases: ed
 ## examinemem
 Examine memory:
 
-    examinemem [-fmt <format>] [-len <length>] <address>
+	examinemem [-fmt <format>] [-len <length>] <address>
 
 Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
