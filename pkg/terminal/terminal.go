@@ -55,6 +55,8 @@ type Term struct {
 	stdout   io.Writer
 	InitFile string
 
+	historyFile *os.File
+
 	starlarkEnv *starbind.Env
 
 	// quitContinue is set to true by exitCommand to signal that the process
@@ -191,16 +193,14 @@ func (t *Term) Run() (int, error) {
 		fmt.Printf("Unable to load history file: %v.", err)
 	}
 
-	f, err := os.Open(fullHistoryFile)
+	t.historyFile, err = os.OpenFile(fullHistoryFile, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
-		f, err = os.Create(fullHistoryFile)
-		if err != nil {
-			fmt.Printf("Unable to open history file: %v. History will not be saved for this session.", err)
-		}
+		fmt.Printf("Unable to open history file: %v. History will not be saved for this session.", err)
+	}
+	if _, err := t.line.ReadHistory(t.historyFile); err != nil {
+		fmt.Printf("Unable to read history file: %v", err)
 	}
 
-	t.line.ReadHistory(f)
-	f.Close()
 	fmt.Println("Type 'help' for list of commands.")
 
 	if t.InitFile != "" {
@@ -340,16 +340,12 @@ func yesno(line *liner.State, question string) (bool, error) {
 }
 
 func (t *Term) handleExit() (int, error) {
-	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
-	if err != nil {
-		fmt.Println("Error saving history file:", err)
-	} else {
-		if f, err := os.OpenFile(fullHistoryFile, os.O_RDWR, 0666); err == nil {
-			_, err = t.line.WriteHistory(f)
-			if err != nil {
-				fmt.Println("readline history error:", err)
-			}
-			f.Close()
+	if t.historyFile != nil {
+		if _, err := t.line.WriteHistory(t.historyFile); err != nil {
+			fmt.Println("readline history error:", err)
+		}
+		if err := t.historyFile.Close(); err != nil {
+			fmt.Printf("error closing history file: %s\n", err)
 		}
 	}
 
