@@ -398,30 +398,25 @@ func FindDeferReturnCalls(text []AsmInstruction) []uint64 {
 // If includeCurrentFn is true it will also remove all instructions
 // belonging to the current function.
 func removeInlinedCalls(dbp Process, pcs []uint64, topframe Stackframe) ([]uint64, error) {
-	image := topframe.Call.Fn.cu.image
-	dwarf := image.dwarf
-	irdr := reader.InlineStack(dwarf, topframe.Call.Fn.offset, 0)
-	for irdr.Next() {
-		e := irdr.Entry()
+	dwarfTree, err := topframe.Call.Fn.cu.image.getDwarfTree(topframe.Call.Fn.offset)
+	if err != nil {
+		return pcs, err
+	}
+	for _, e := range reader.InlineStack(dwarfTree, 0) {
 		if e.Offset == topframe.Call.Fn.offset {
 			continue
 		}
-		ranges, err := dwarf.Ranges(e)
-		if err != nil {
-			return pcs, err
+		for _, rng := range e.Ranges {
+			pcs = removePCsBetween(pcs, rng[0], rng[1])
 		}
-		for _, rng := range ranges {
-			pcs = removePCsBetween(pcs, rng[0], rng[1], image.StaticBase)
-		}
-		irdr.SkipChildren()
 	}
-	return pcs, irdr.Err()
+	return pcs, nil
 }
 
-func removePCsBetween(pcs []uint64, start, end, staticBase uint64) []uint64 {
+func removePCsBetween(pcs []uint64, start, end uint64) []uint64 {
 	out := pcs[:0]
 	for _, pc := range pcs {
-		if pc < start+staticBase || pc >= end+staticBase {
+		if pc < start || pc >= end {
 			out = append(out, pc)
 		}
 	}
