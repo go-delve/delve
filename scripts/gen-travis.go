@@ -58,6 +58,7 @@ func main() {
 	out := bufio.NewWriter(os.Stdout)
 	err := template.Must(template.New("travis.yml").Parse(`language: go
 sudo: required
+go_import_path: github.com/go-delve/delve
 
 os:
   - linux
