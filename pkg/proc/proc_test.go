@@ -1445,10 +1445,10 @@ func TestBreakpointCounts(t *testing.T) {
 
 func BenchmarkArray(b *testing.B) {
 	// each bencharr struct is 128 bytes, bencharr is 64 elements long
-	protest.AllowRecording(b)
 	b.SetBytes(int64(64 * 128))
 	withTestProcess("testvariables2", b, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			evalVariable(p, b, "bencharr")
 		}
@@ -1518,10 +1518,10 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 func BenchmarkArrayPointer(b *testing.B) {
 	// each bencharr struct is 128 bytes, benchparr is an array of 64 pointers to bencharr
 	// each read will read 64 bencharr structs plus the 64 pointers of benchparr
-	protest.AllowRecording(b)
 	b.SetBytes(int64(64*128 + 64*8))
 	withTestProcess("testvariables2", b, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			evalVariable(p, b, "bencharr")
 		}
@@ -1532,10 +1532,10 @@ func BenchmarkMap(b *testing.B) {
 	// m1 contains 41 entries, each one has a value that's 2 int values (2* 8 bytes) and a string key
 	// each string key has an average of 9 character
 	// reading strings and the map structure imposes a overhead that we ignore here
-	protest.AllowRecording(b)
 	b.SetBytes(int64(41 * (2*8 + 9)))
 	withTestProcess("testvariables2", b, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			evalVariable(p, b, "m1")
 		}
@@ -1543,9 +1543,9 @@ func BenchmarkMap(b *testing.B) {
 }
 
 func BenchmarkGoroutinesInfo(b *testing.B) {
-	protest.AllowRecording(b)
 	withTestProcess("testvariables2", b, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue()")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			p.ClearAllGCache()
 			_, _, err := proc.GoroutinesInfo(p, 0, 0)
@@ -1605,11 +1605,11 @@ func TestPointerLoops(t *testing.T) {
 }
 
 func BenchmarkLocalVariables(b *testing.B) {
-	protest.AllowRecording(b)
 	withTestProcess("testvariables", b, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(proc.Continue(p), b, "Continue() returned an error")
 		scope, err := proc.GoroutineScope(p.CurrentThread())
 		assertNoError(err, b, "Scope()")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			_, err := scope.LocalVariables(normalLoadConfig)
 			assertNoError(err, b, "LocalVariables()")
@@ -2667,7 +2667,6 @@ func TestIssue664(t *testing.T) {
 
 // Benchmarks (*Processs).Continue + (*Scope).FunctionArguments
 func BenchmarkTrace(b *testing.B) {
-	protest.AllowRecording(b)
 	withTestProcess("traceperf", b, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, b, "main.PerfCheck")
 		b.ResetTimer()
