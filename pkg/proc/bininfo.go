@@ -34,6 +34,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	dwarfGoLanguage    = 22  // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
+	dwarfTreeCacheSize = 512 // size of the dwarfTree cache of each image
+)
+
 // BinaryInfo holds information on the binaries being executed (this
 // includes both the executable and also any loaded libraries).
 type BinaryInfo struct {
@@ -102,22 +107,135 @@ type BinaryInfo struct {
 	logger *logrus.Entry
 }
 
-// ErrCouldNotDetermineRelocation is an error returned when Delve could not determine the base address of a
-// position independant executable.
-var ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
+var (
+	// ErrCouldNotDetermineRelocation is an error returned when Delve could not determine the base address of a
+	// position independant executable.
+	ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
 
-// ErrNoDebugInfoFound is returned when Delve cannot open the debug_info
-// section or find an external debug info file.
-var ErrNoDebugInfoFound = errors.New("could not open debug info")
+	// ErrNoDebugInfoFound is returned when Delve cannot open the debug_info
+	// section or find an external debug info file.
+	ErrNoDebugInfoFound = errors.New("could not open debug info")
+)
+
+var (
+	supportedLinuxArch = map[elf.Machine]bool{
+		elf.EM_X86_64:  true,
+		elf.EM_AARCH64: true,
+		elf.EM_386:     true,
+	}
+
+	supportedWindowsArch = map[PEMachine]bool{
+		IMAGE_FILE_MACHINE_AMD64: true,
+	}
+
+	supportedDarwinArch = map[macho.Cpu]bool{
+		macho.CpuAmd64: true,
+	}
+)
+
+// ErrFunctionNotFound is returned when failing to find the
+// function named 'FuncName' within the binary.
+type ErrFunctionNotFound struct {
+	FuncName string
+}
+
+func (err *ErrFunctionNotFound) Error() string {
+	return fmt.Sprintf("could not find function %s\n", err.FuncName)
+}
+
+// FindFileLocation returns the PC for a given file:line.
+// Assumes that `file` is normalized to lower case and '/' on Windows.
+func FindFileLocation(p Process, fileName string, lineno int) ([]uint64, error) {
+	pcs, err := p.BinInfo().LineToPC(fileName, lineno)
+	if err != nil {
+		return nil, err
+	}
+	var fn *Function
+	for i := range pcs {
+		if fn == nil || pcs[i] < fn.Entry || pcs[i] >= fn.End {
+			fn = p.BinInfo().PCToFunc(pcs[i])
+		}
+		if fn != nil && fn.Entry == pcs[i] {
+			pcs[i], _ = FirstPCAfterPrologue(p, fn, true)
+		}
+	}
+	return pcs, nil
+}
+
+// FindFunctionLocation finds address of a function's line
+// If lineOffset is passed FindFunctionLocation will return the address of that line
+func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64, error) {
+	bi := p.BinInfo()
+	origfn := bi.LookupFunc[funcName]
+	if origfn == nil {
+		return nil, &ErrFunctionNotFound{funcName}
+	}
+
+	if lineOffset <= 0 {
+		r := make([]uint64, 0, len(origfn.InlinedCalls)+1)
+		if origfn.Entry > 0 {
+			// add concrete implementation of the function
+			pc, err := FirstPCAfterPrologue(p, origfn, false)
+			if err != nil {
+				return nil, err
+			}
+			r = append(r, pc)
+		}
+		// add inlined calls to the function
+		for _, call := range origfn.InlinedCalls {
+			r = append(r, call.LowPC)
+		}
+		if len(r) == 0 {
+			return nil, &ErrFunctionNotFound{funcName}
+		}
+		return r, nil
+	}
+	filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
+	return bi.LineToPC(filename, lineno+lineOffset)
+}
+
+// FirstPCAfterPrologue returns the address of the first
+// instruction after the prologue for function fn.
+// If sameline is set FirstPCAfterPrologue will always return an
+// address associated with the same line as fn.Entry.
+func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error) {
+	pc, _, line, ok := fn.cu.lineInfo.PrologueEndPC(fn.Entry, fn.End)
+	if ok {
+		if !sameline {
+			return pc, nil
+		}
+		_, entryLine := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+		if entryLine == line {
+			return pc, nil
+		}
+	}
+
+	pc, err := firstPCAfterPrologueDisassembly(p, fn, sameline)
+	if err != nil {
+		return fn.Entry, err
+	}
+
+	if pc == fn.Entry {
+		// Look for the first instruction with the stmt flag set, so that setting a
+		// breakpoint with file:line and with the function name always result on
+		// the same instruction being selected.
+		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmtForLine(fn.Entry, fn.End); ok {
+			return pc2, nil
+		}
+	}
+
+	return pc, nil
+}
+
+// CpuArch is a stringer interface representing CPU architectures.
+type CpuArch interface {
+	String() string
+}
 
 // ErrUnsupportedArch is returned when attempting to debug a binary compiled for an unsupported architecture.
 type ErrUnsupportedArch struct {
 	os      string
 	cpuArch CpuArch
-}
-
-type CpuArch interface {
-	String() string
 }
 
 func (e *ErrUnsupportedArch) Error() string {
@@ -150,24 +268,6 @@ func (e *ErrUnsupportedArch) Error() string {
 
 	return errStr
 }
-
-var supportedLinuxArch = map[elf.Machine]bool{
-	elf.EM_X86_64:  true,
-	elf.EM_AARCH64: true,
-	elf.EM_386:     true,
-}
-
-var supportedWindowsArch = map[PEMachine]bool{
-	IMAGE_FILE_MACHINE_AMD64: true,
-}
-
-var supportedDarwinArch = map[macho.Cpu]bool{
-	macho.CpuAmd64: true,
-}
-
-const dwarfGoLanguage = 22 // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
-
-const dwarfTreeCacheSize = 512 // size of the dwarfTree cache of each image
 
 type compileUnit struct {
 	name   string // univocal name for non-go compile units

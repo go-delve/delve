@@ -78,7 +78,7 @@ type Info interface {
 	ResumeNotify(chan<- struct{})
 	// Valid returns true if this Process can be used. When it returns false it
 	// also returns an error describing why the Process is invalid (either
-	// ErrProcessExited or ProcessDetachedError).
+	// ErrProcessExited or ErrProcessDetached).
 	Valid() (bool, error)
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)

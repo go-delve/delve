@@ -53,6 +53,112 @@ type EvalScope struct {
 	callCtx *callContext
 }
 
+// ConvertEvalScope returns a new EvalScope in the context of the
+// specified goroutine ID and stack frame.
+// If deferCall is > 0 the eval scope will be relative to the specified deferred call.
+func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error) {
+	if _, err := dbp.Valid(); err != nil {
+		return nil, err
+	}
+	ct := dbp.CurrentThread()
+	g, err := FindGoroutine(dbp, gid)
+	if err != nil {
+		return nil, err
+	}
+	if g == nil {
+		return ThreadScope(ct)
+	}
+
+	var thread MemoryReadWriter
+	if g.Thread == nil {
+		thread = ct
+	} else {
+		thread = g.Thread
+	}
+
+	var opts StacktraceOptions
+	if deferCall > 0 {
+		opts = StacktraceReadDefers
+	}
+
+	locs, err := g.Stacktrace(frame+1, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if frame >= len(locs) {
+		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+	}
+
+	if deferCall > 0 {
+		if deferCall-1 >= len(locs[frame].Defers) {
+			return nil, fmt.Errorf("Frame %d only has %d deferred calls", frame, len(locs[frame].Defers))
+		}
+
+		d := locs[frame].Defers[deferCall-1]
+		if d.Unreadable != nil {
+			return nil, d.Unreadable
+		}
+
+		return d.EvalScope(ct)
+	}
+
+	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame:]...), nil
+}
+
+// FrameToScope returns a new EvalScope for frames[0].
+// If frames has at least two elements all memory between
+// frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
+// Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
+// will be cached.
+func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
+	// Creates a cacheMem that will preload the entire stack frame the first
+	// time any local variable is read.
+	// Remember that the stack grows downward in memory.
+	minaddr := frames[0].Regs.SP()
+	var maxaddr uint64
+	if len(frames) > 1 && frames[0].SystemStack == frames[1].SystemStack {
+		maxaddr = uint64(frames[1].Regs.CFA)
+	} else {
+		maxaddr = uint64(frames[0].Regs.CFA)
+	}
+	if maxaddr > minaddr && maxaddr-minaddr < maxFramePrefetchSize {
+		thread = cacheMemory(thread, uintptr(minaddr), int(maxaddr-minaddr))
+	}
+
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
+	s.PC = frames[0].lastpc
+	return s
+}
+
+// ThreadScope returns an EvalScope for the given thread.
+func ThreadScope(thread Thread) (*EvalScope, error) {
+	locations, err := ThreadStacktrace(thread, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(locations) < 1 {
+		return nil, errors.New("could not decode first frame")
+	}
+	return FrameToScope(thread.BinInfo(), thread, nil, locations...), nil
+}
+
+// GoroutineScope returns an EvalScope for the goroutine running on the given thread.
+func GoroutineScope(thread Thread) (*EvalScope, error) {
+	locations, err := ThreadStacktrace(thread, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(locations) < 1 {
+		return nil, errors.New("could not decode first frame")
+	}
+	g, err := GetG(thread)
+	if err != nil {
+		return nil, err
+	}
+	return FrameToScope(thread.BinInfo(), thread, g, locations...), nil
+}
+
 // EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
 	if scope.callCtx != nil {

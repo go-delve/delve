@@ -1,7 +1,30 @@
 package proc
 
 import (
+	"errors"
 	"fmt"
+	"go/constant"
+	"os"
+	"strings"
+
+	"github.com/go-delve/delve/pkg/goversion"
+)
+
+var (
+	// ErrNotExecutable is returned after attempting to execute a non-executable file
+	// to begin a debug session.
+	ErrNotExecutable = errors.New("not an executable file")
+
+	// ErrNotRecorded is returned when an action is requested that is
+	// only possible on recorded (traced) programs.
+	ErrNotRecorded = errors.New("not a recording")
+
+	// ErrNoRuntimeAllG is returned when the runtime.allg list could
+	// not be found.
+	ErrNoRuntimeAllG = errors.New("could not find goroutine array")
+
+	// ErrProcessDetached indicates that we detached from the target process.
+	ErrProcessDetached = errors.New("detached from the process")
 )
 
 // Target represents the process being debugged.
@@ -31,6 +54,17 @@ type Target struct {
 	gcache goroutineCache
 }
 
+// ErrProcessExited indicates that the process has exited and contains both
+// process id and exit status.
+type ErrProcessExited struct {
+	Pid    int
+	Status int
+}
+
+func (pe ErrProcessExited) Error() string {
+	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
+}
+
 // StopReason describes the reason why the target process is stopped.
 // A process could be stopped for multiple simultaneous reasons, in which
 // case only one will be reported.
@@ -55,6 +89,20 @@ type NewTargetConfig struct {
 	WriteBreakpoint     WriteBreakpointFn // Function to write a breakpoint to the target process
 	DisableAsyncPreempt bool              // Go 1.14 asynchronous preemption should be disabled
 	StopReason          StopReason        // Initial stop reason
+}
+
+// DisableAsyncPreemptEnv returns a process environment (like os.Environ)
+// where asyncpreemptoff is set to 1.
+func DisableAsyncPreemptEnv() []string {
+	env := os.Environ()
+	for i := range env {
+		if strings.HasPrefix(env[i], "GODEBUG=") {
+			// Go 1.14 asynchronous preemption mechanism is incompatible with
+			// debuggers, see: https://github.com/golang/go/issues/36494
+			env[i] += ",asyncpreemptoff=1"
+		}
+	}
+	return env
 }
 
 // NewTarget returns an initialized Target object.
@@ -178,4 +226,61 @@ func (t *Target) Detach(kill bool) error {
 	}
 	t.StopReason = StopUnknown
 	return t.proc.Detach(kill)
+}
+
+// setAsyncPreemptOff enables or disables async goroutine preemption by
+// writing the value 'v' to runtime.debug.asyncpreemptoff.
+// A value of '1' means off, a value of '0' means on.
+func setAsyncPreemptOff(p *Target, v int64) {
+	if producer := p.BinInfo().Producer(); producer == "" || !goversion.ProducerAfterOrEqual(producer, 1, 14) {
+		return
+	}
+	logger := p.BinInfo().logger
+	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.CurrentThread())
+	debugv, err := scope.findGlobal("runtime", "debug")
+	if err != nil || debugv.Unreadable != nil {
+		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
+		return
+	}
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	if err != nil {
+		logger.Warnf("could not find asyncpreemptoff field: %v", err)
+		return
+	}
+	asyncpreemptoffv.loadValue(loadFullValue)
+	if asyncpreemptoffv.Unreadable != nil {
+		logger.Warnf("asyncpreemptoff field unreadable: %v", asyncpreemptoffv.Unreadable)
+		return
+	}
+	p.asyncPreemptChanged = true
+	p.asyncPreemptOff, _ = constant.Int64Val(asyncpreemptoffv.Value)
+
+	err = scope.setValue(asyncpreemptoffv, newConstant(constant.MakeInt64(v), scope.Mem), "")
+	logger.Warnf("could not set asyncpreemptoff %v", err)
+}
+
+// createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
+func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
+	panicpcs, err := FindFunctionLocation(p, "runtime.startpanic", 0)
+	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
+		panicpcs, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
+	}
+	if err == nil {
+		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpcs[0], writeBreakpoint)
+		if err == nil {
+			bp.Name = UnrecoveredPanic
+			bp.Variables = []string{"runtime.curg._panic.arg"}
+		}
+	}
+}
+
+// createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
+func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
+	fatalpcs, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
+	if err == nil {
+		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpcs[0], writeBreakpoint)
+		if err == nil {
+			bp.Name = FatalThrow
+		}
+	}
 }

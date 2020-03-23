@@ -137,7 +137,7 @@ func (dbp *Process) Detach(kill bool) (err error) {
 // has not exited.
 func (dbp *Process) Valid() (bool, error) {
 	if dbp.detached {
-		return false, &proc.ProcessDetachedError{}
+		return false, proc.ErrProcessDetached
 	}
 	if dbp.exited {
 		return false, &proc.ErrProcessExited{Pid: dbp.Pid()}
