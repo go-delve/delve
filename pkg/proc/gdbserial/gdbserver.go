@@ -574,7 +574,7 @@ func (p *Process) Pid() int {
 // and the process has not exited.
 func (p *Process) Valid() (bool, error) {
 	if p.detached {
-		return false, &proc.ProcessDetachedError{}
+		return false, proc.ErrProcessDetached
 	}
 	if p.exited {
 		return false, &proc.ErrProcessExited{Pid: p.Pid()}

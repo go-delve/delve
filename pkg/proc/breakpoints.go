@@ -8,6 +8,18 @@ import (
 	"reflect"
 )
 
+const (
+	// UnrecoveredPanic is the name given to the unrecovered panic breakpoint.
+	UnrecoveredPanic = "unrecovered-panic"
+
+	// FatalThrow is the name given to the breakpoint triggered when the target
+	// process dies because of a fatal runtime error.
+	FatalThrow = "runtime-fatal-throw"
+
+	unrecoveredPanicID = -1
+	fatalThrowID       = -2
+)
+
 // Breakpoint represents a physical breakpoint. Stores information on the break
 // point including the byte of data that originally was stored at that
 // address.

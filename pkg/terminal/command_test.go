@@ -389,7 +389,7 @@ func TestScopePrefix(t *testing.T) {
 
 		term.AssertExecError("frame", "not enough arguments")
 		term.AssertExecError(fmt.Sprintf("goroutine %d frame 10 locals", curgid), fmt.Sprintf("Frame 10 does not exist in goroutine %d", curgid))
-		term.AssertExecError("goroutine 9000 locals", "Unknown goroutine 9000")
+		term.AssertExecError("goroutine 9000 locals", "unknown goroutine 9000")
 
 		term.AssertExecError("print n", "could not find symbol value for n")
 		term.AssertExec("frame 1 print n", "3\n")

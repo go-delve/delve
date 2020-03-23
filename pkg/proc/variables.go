@@ -213,6 +213,253 @@ type G struct {
 	labels *map[string]string // G's pprof labels, computed on demand in Labels() method
 }
 
+// GetG returns information on the G (goroutine) that is executing on this thread.
+//
+// The G structure for a thread is stored in thread local storage. Here we simply
+// calculate the address and read and parse the G struct.
+//
+// We cannot simply use the allg linked list in order to find the M that represents
+// the given OS thread and follow its G pointer because on Darwin mach ports are not
+// universal, so our port for this thread would not map to the `id` attribute of the M
+// structure. Also, when linked against libc, Go prefers the libc version of clone as
+// opposed to the runtime version. This has the consequence of not setting M.id for
+// any thread, regardless of OS.
+//
+// In order to get around all this craziness, we read the address of the G structure for
+// the current thread from the thread local storage area.
+func GetG(thread Thread) (*G, error) {
+	if thread.Common().g != nil {
+		return thread.Common().g, nil
+	}
+	if loc, _ := thread.Location(); loc != nil && loc.Fn != nil && loc.Fn.Name == "runtime.clone" {
+		// When threads are executing runtime.clone the value of TLS is unreliable.
+		return nil, nil
+	}
+	gaddr, err := getGVariable(thread)
+	if err != nil {
+		return nil, err
+	}
+
+	g, err := gaddr.parseG()
+	if err != nil {
+		return nil, err
+	}
+	if g.ID == 0 {
+		// The runtime uses a special goroutine with ID == 0 to mark that the
+		// current goroutine is executing on the system stack (sometimes also
+		// referred to as the g0 stack or scheduler stack, I'm not sure if there's
+		// actually any difference between those).
+		// For our purposes it's better if we always return the real goroutine
+		// since the rest of the code assumes the goroutine ID is univocal.
+		// The real 'current goroutine' is stored in g0.m.curg
+		mvar, err := g.variable.structMember("m")
+		if err != nil {
+			return nil, err
+		}
+		curgvar, err := mvar.structMember("curg")
+		if err != nil {
+			return nil, err
+		}
+		g, err = curgvar.parseG()
+		if err != nil {
+			if _, ok := err.(ErrNoGoroutine); ok {
+				err = ErrNoGoroutine{thread.ThreadID()}
+			}
+			return nil, err
+		}
+		g.SystemStack = true
+	}
+	g.Thread = thread
+	if loc, err := thread.Location(); err == nil {
+		g.CurrentLoc = *loc
+	}
+	thread.Common().g = g
+	return g, nil
+}
+
+// GoroutinesInfo searches for goroutines starting at index 'start', and
+// returns an array of up to 'count' (or all found elements, if 'count' is 0)
+// G structures representing the information Delve care about from the internal
+// runtime G structure.
+// GoroutinesInfo also returns the next index to be used as 'start' argument
+// while scanning for all available goroutines, or -1 if there was an error
+// or if the index already reached the last possible value.
+func GoroutinesInfo(dbp *Target, start, count int) ([]*G, int, error) {
+	if _, err := dbp.Valid(); err != nil {
+		return nil, -1, err
+	}
+	if dbp.gcache.allGCache != nil {
+		// We can't use the cached array to fulfill a subrange request
+		if start == 0 && (count == 0 || count >= len(dbp.gcache.allGCache)) {
+			return dbp.gcache.allGCache, -1, nil
+		}
+	}
+
+	var (
+		threadg = map[int]*G{}
+		allg    []*G
+	)
+
+	threads := dbp.ThreadList()
+	for _, th := range threads {
+		if th.Blocked() {
+			continue
+		}
+		g, _ := GetG(th)
+		if g != nil {
+			threadg[g.ID] = g
+		}
+	}
+
+	allgptr, allglen, err := dbp.gcache.getRuntimeAllg(dbp.BinInfo(), dbp.CurrentThread())
+	if err != nil {
+		return nil, -1, err
+	}
+
+	for i := uint64(start); i < allglen; i++ {
+		if count != 0 && len(allg) >= count {
+			return allg, int(i), nil
+		}
+		gvar, err := newGVariable(dbp.CurrentThread(), uintptr(allgptr+(i*uint64(dbp.BinInfo().Arch.PtrSize()))), true)
+		if err != nil {
+			allg = append(allg, &G{Unreadable: err})
+			continue
+		}
+		g, err := gvar.parseG()
+		if err != nil {
+			allg = append(allg, &G{Unreadable: err})
+			continue
+		}
+		if thg, allocated := threadg[g.ID]; allocated {
+			loc, err := thg.Thread.Location()
+			if err != nil {
+				return nil, -1, err
+			}
+			g.Thread = thg.Thread
+			// Prefer actual thread location information.
+			g.CurrentLoc = *loc
+			g.SystemStack = thg.SystemStack
+		}
+		if g.Status != Gdead {
+			allg = append(allg, g)
+		}
+		dbp.gcache.addGoroutine(g)
+	}
+	if start == 0 {
+		dbp.gcache.allGCache = allg
+	}
+
+	return allg, -1, nil
+}
+
+// FindGoroutine returns a G struct representing the goroutine
+// specified by `gid`.
+func FindGoroutine(dbp *Target, gid int) (*G, error) {
+	if selg := dbp.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
+		// Return the currently selected goroutine in the following circumstances:
+		//
+		// 1. if the caller asks for gid == -1 (because that's what a goroutine ID of -1 means in our API).
+		// 2. if gid == selg.ID.
+		//    this serves two purposes: (a) it's an optimizations that allows us
+		//    to avoid reading any other goroutine and, more importantly, (b) we
+		//    could be reading an incorrect value for the goroutine ID of a thread.
+		//    This condition usually happens when a goroutine calls runtime.clone
+		//    and for a short period of time two threads will appear to be running
+		//    the same goroutine.
+		// 3. if the caller asks for gid == 0 and the selected goroutine is
+		//    either 0 or nil.
+		//    Goroutine 0 is special, it either means we have no current goroutine
+		//    (for example, running C code), or that we are running on a speical
+		//    stack (system stack, signal handling stack) and we didn't properly
+		//    detect it.
+		//    Since there could be multiple goroutines '0' running simultaneously
+		//    if the user requests it return the one that's already selected or
+		//    nil if there isn't a selected goroutine.
+		return selg, nil
+	}
+
+	if gid == 0 {
+		return nil, fmt.Errorf("unknown goroutine %d", gid)
+	}
+
+	// Calling GoroutinesInfo could be slow if there are many goroutines
+	// running, check if a running goroutine has been requested first.
+	for _, thread := range dbp.ThreadList() {
+		g, _ := GetG(thread)
+		if g != nil && g.ID == gid {
+			return g, nil
+		}
+	}
+
+	if g := dbp.gcache.partialGCache[gid]; g != nil {
+		return g, nil
+	}
+
+	const goroutinesInfoLimit = 10
+	nextg := 0
+	for nextg >= 0 {
+		var gs []*G
+		var err error
+		gs, nextg, err = GoroutinesInfo(dbp, nextg, goroutinesInfoLimit)
+		if err != nil {
+			return nil, err
+		}
+		for i := range gs {
+			if gs[i].ID == gid {
+				if gs[i].Unreadable != nil {
+					return nil, gs[i].Unreadable
+				}
+				return gs[i], nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("unknown goroutine %d", gid)
+}
+
+func getGVariable(thread Thread) (*Variable, error) {
+	regs, err := thread.Registers(false)
+	if err != nil {
+		return nil, err
+	}
+
+	gaddr, hasgaddr := regs.GAddr()
+	if !hasgaddr {
+		var err error
+		gaddr, err = readUintRaw(thread, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()), int64(thread.BinInfo().Arch.PtrSize()))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return newGVariable(thread, uintptr(gaddr), thread.Arch().DerefTLS())
+}
+
+func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
+	typ, err := thread.BinInfo().findType("runtime.g")
+	if err != nil {
+		return nil, err
+	}
+
+	name := ""
+
+	if deref {
+		typ = &godwarf.PtrType{
+			CommonType: godwarf.CommonType{
+				ByteSize:    int64(thread.Arch().PtrSize()),
+				Name:        "",
+				ReflectKind: reflect.Ptr,
+				Offset:      0,
+			},
+			Type: typ,
+		}
+	} else {
+		name = "runtime.curg"
+	}
+
+	return newVariableFromThread(thread, name, gaddr, typ), nil
+}
+
 // Defer returns the top-most defer of the goroutine.
 func (g *G) Defer() *Defer {
 	if g.variable.Unreadable != nil {
@@ -427,7 +674,7 @@ func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryIn
 	case *godwarf.UnspecifiedType:
 		v.Kind = reflect.Invalid
 	default:
-		v.Unreadable = fmt.Errorf("Unknown type: %T", t)
+		v.Unreadable = fmt.Errorf("unknown type: %T", t)
 	}
 
 	return v
