@@ -452,6 +452,10 @@ func (c *RPCClient) ExamineMemory(address uintptr, count int) ([]byte, error) {
 	return out.Mem, nil
 }
 
+func (c *RPCClient) StopRecording() error {
+	return c.call("StopRecording", StopRecordingIn{}, &StopRecordingOut{})
+}
+
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }

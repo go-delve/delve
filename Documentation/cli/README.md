@@ -13,7 +13,7 @@ Command | Description
 [call](#call) | Resumes process, injecting a function call (EXPERIMENTAL!!!)
 [continue](#continue) | Run until breakpoint or program termination.
 [next](#next) | Step over to next source line.
-[restart](#restart) | Restart process from a checkpoint or event.
+[restart](#restart) | Restart process.
 [rev](#rev) | Reverses the execution of the target program for the command specified.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
 [step](#step) | Single step through program.
@@ -396,9 +396,21 @@ Argument -a shows more registers.
 
 
 ## restart
-Restart process from a checkpoint or event.
+Restart process.
 
-  restart [event number or checkpoint id]
+For recorded targets the command takes the following forms:
+
+	restart				resets ot the start of the recording
+	restart [checkpoint]		resets the recording to the given checkpoint
+	restart -r [newargv...]		re-records the target process
+	
+For live targets the command takes the following forms:
+
+	restart [newargv...]		restarts the process
+
+If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
+If -noargs is specified instead, the argument vector is cleared.
+
 
 Aliases: r
 

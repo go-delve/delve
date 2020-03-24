@@ -162,6 +162,9 @@ type Client interface {
 	// This function will return an error if it reads less than `length` bytes.
 	ExamineMemory(address uintptr, length int) ([]byte, error)
 
+	// StopRecording stops a recording if one is in progress.
+	StopRecording() error
+
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error

@@ -190,20 +190,6 @@ func TestRestart_duringStop(t *testing.T) {
 	})
 }
 
-func TestRestart_attachPid(t *testing.T) {
-	// Assert it does not work and returns error.
-	// We cannot restart a process we did not spawn.
-	server := rpccommon.NewServer(&service.Config{
-		Listener:   nil,
-		AttachPid:  999,
-		APIVersion: 2,
-		Backend:    testBackend,
-	})
-	if err := server.Restart(); err == nil {
-		t.Fatal("expected error on restart after attaching to pid but got none")
-	}
-}
-
 func TestClientServer_exit(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("continuetestprog", t, func(c service.Client) {
@@ -1879,5 +1865,28 @@ func TestDoubleCreateBreakpoint(t *testing.T) {
 		if len(bps) != numBreakpoints {
 			t.Errorf("wrong number of breakpoints, got %d expected %d", len(bps), numBreakpoints)
 		}
+	})
+}
+
+func TestStopRecording(t *testing.T) {
+	protest.AllowRecording(t)
+	if testBackend != "rr" {
+		t.Skip("only for rr backend")
+	}
+	withTestClient2("sleep", t, func(c service.Client) {
+		time.Sleep(time.Second)
+		c.StopRecording()
+		_, err := c.GetState()
+		assertNoError(err, t, "GetState()")
+
+		// try rerecording
+		go func() {
+			c.RestartFrom(true, "", false, nil)
+		}()
+
+		time.Sleep(time.Second) // hopefully the re-recording started...
+		c.StopRecording()
+		_, err = c.GetState()
+		assertNoError(err, t, "GetState()")
 	})
 }

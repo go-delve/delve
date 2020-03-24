@@ -395,7 +395,17 @@ The '-a' option adds an expression to the list of expression printed every time 
 If display is called without arguments it will print the value of all expression in the list.`},
 	}
 
-	if client == nil || client.Recorded() {
+	addrecorded := client == nil
+	if !addrecorded {
+		if state, err := client.GetStateNonBlocking(); err == nil {
+			addrecorded = state.Recording
+			if !addrecorded {
+				addrecorded = client.Recorded()
+			}
+		}
+	}
+
+	if addrecorded {
 		c.cmds = append(c.cmds,
 			command{
 				aliases: []string{"rewind", "rw"},
@@ -431,14 +441,6 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 				helpMsg: `Reverses the execution of the target program for the command specified.
 Currently, only the rev step-instruction command is supported.`,
 			})
-		for i := range c.cmds {
-			v := &c.cmds[i]
-			if v.match("restart") {
-				v.helpMsg = `Restart process from a checkpoint or event.
-
-  restart [event number or checkpoint id]`
-			}
-		}
 	}
 
 	sort.Sort(ByFirstAlias(c.cmds))

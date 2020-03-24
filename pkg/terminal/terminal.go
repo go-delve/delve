@@ -122,6 +122,15 @@ func (t *Term) Close() {
 func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 	for range ch {
 		t.starlarkEnv.Cancel()
+		state, err := t.client.GetStateNonBlocking()
+		if err == nil && state.Recording {
+			fmt.Printf("received SIGINT, stopping recording (will not forward signal)\n")
+			err := t.client.StopRecording()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+			}
+			continue
+		}
 		if multiClient {
 			answer, err := t.line.Prompt("Would you like to [s]top the target or [q]uit this client, leaving the target running [s/q]? ")
 			if err != nil {
@@ -215,6 +224,10 @@ func (t *Term) Run() (int, error) {
 	}
 
 	var lastCmd string
+
+	// Ensure that the target process is neither running nor recording by
+	// making a blocking call.
+	_, _ = t.client.GetState()
 
 	for {
 		cmdstr, err := t.promptForInput()

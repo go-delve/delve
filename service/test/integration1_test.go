@@ -154,19 +154,6 @@ func Test1Restart_duringStop(t *testing.T) {
 	})
 }
 
-func Test1Restart_attachPid(t *testing.T) {
-	// Assert it does not work and returns error.
-	// We cannot restart a process we did not spawn.
-	server := rpccommon.NewServer(&service.Config{
-		Listener:  nil,
-		AttachPid: 999,
-		Backend:   testBackend,
-	})
-	if err := server.Restart(); err == nil {
-		t.Fatal("expected error on restart after attaching to pid but got none")
-	}
-}
-
 func Test1ClientServer_exit(t *testing.T) {
 	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		state, err := c.GetState()
