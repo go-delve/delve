@@ -32,7 +32,7 @@ func TestIssue419(t *testing.T) {
 	withTestProcess("issue419", t, func(p *proc.Target, fixture protest.Fixture) {
 		defer close(errChan)
 		setFunctionBreakpoint(p, t, "main.main")
-		assertNoError(proc.Continue(p), t, "Continue()")
+		assertNoError(p.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)
 		go func() {
 			time.Sleep(500 * time.Millisecond)
@@ -48,7 +48,7 @@ func TestIssue419(t *testing.T) {
 			errChan <- errIssue419{pid: p.Pid(), err: err}
 		}()
 		p.ResumeNotify(resumeChan)
-		errChan <- proc.Continue(p)
+		errChan <- p.Continue()
 	})
 
 	for i := 0; i < 2; i++ {
