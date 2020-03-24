@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"bytes"
 	"debug/dwarf"
 	"errors"
 	"fmt"
@@ -659,14 +660,51 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 	d.processMutex.Lock()
 	defer d.processMutex.Unlock()
 
-	var clearedBp *api.Breakpoint
-	bp, err := d.target.ClearBreakpoint(requestedBp.Addr)
-	if err != nil {
-		return nil, fmt.Errorf("Can't clear breakpoint @%x: %s", requestedBp.Addr, err)
+	var bps []*proc.Breakpoint
+	var errs []error
+
+	clear := func(addr uint64) {
+		bp, err := d.target.ClearBreakpoint(addr)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("address %#x: %v", addr, err))
+		}
+		if bp != nil {
+			bps = append(bps, bp)
+		}
 	}
-	clearedBp = api.ConvertBreakpoint(bp)
+
+	clearAddr := true
+	for _, addr := range requestedBp.Addrs {
+		if addr == requestedBp.Addr {
+			clearAddr = false
+		}
+		clear(addr)
+	}
+	if clearAddr {
+		clear(requestedBp.Addr)
+	}
+
+	if len(errs) > 0 {
+		buf := new(bytes.Buffer)
+		for i, err := range errs {
+			fmt.Fprintf(buf, "%s", err)
+			if i != len(errs)-1 {
+				fmt.Fprintf(buf, ", ")
+			}
+		}
+
+		if len(bps) == 0 {
+			return nil, fmt.Errorf("unable to clear breakpoint %d: %v", requestedBp.ID, buf.String())
+		}
+		return nil, fmt.Errorf("unable to clear breakpoint %d (partial): %s", requestedBp.ID, buf.String())
+	}
+
+	clearedBp := api.ConvertBreakpoints(bps)
+	if len(clearedBp) < 0 {
+		return nil, nil
+	}
 	d.log.Infof("cleared breakpoint: %#v", clearedBp)
-	return clearedBp, err
+	return clearedBp[0], nil
 }
 
 // Breakpoints returns the list of current breakpoints.

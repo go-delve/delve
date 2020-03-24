@@ -52,20 +52,19 @@ func TestMain(m *testing.M) {
 }
 
 func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
-	withTestClient2Extended(name, t, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended(name, t, 0, func(c service.Client, fixture protest.Fixture) {
 		fn(c)
 	})
 }
 
-func startServer(name string, t *testing.T) (clientConn net.Conn, fixture protest.Fixture) {
+func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clientConn net.Conn, fixture protest.Fixture) {
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
 	listener, clientConn := service.ListenerPipe()
 	defer listener.Close()
-	var buildFlags protest.BuildFlags
 	if buildMode == "pie" {
-		buildFlags = protest.BuildModePIE
+		buildFlags |= protest.BuildModePIE
 	}
 	fixture = protest.BuildFixture(name, buildFlags)
 	server := rpccommon.NewServer(&service.Config{
@@ -80,8 +79,8 @@ func startServer(name string, t *testing.T) (clientConn net.Conn, fixture protes
 	return clientConn, fixture
 }
 
-func withTestClient2Extended(name string, t *testing.T, fn func(c service.Client, fixture protest.Fixture)) {
-	clientConn, fixture := startServer(name, t)
+func withTestClient2Extended(name string, t *testing.T, buildFlags protest.BuildFlags, fn func(c service.Client, fixture protest.Fixture)) {
+	clientConn, fixture := startServer(name, buildFlags, t)
 	client := rpc2.NewClientFromConn(clientConn)
 	defer func() {
 		client.Detach(true)
@@ -697,7 +696,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 
-	withTestClient2Extended("locationsUpperCase", t, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("locationsUpperCase", t, 0, func(c service.Client, fixture protest.Fixture) {
 		// Upper case
 		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
 
@@ -1765,7 +1764,7 @@ func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
 }
 
 func TestUnknownMethodCall(t *testing.T) {
-	clientConn, _ := startServer("continuetestprog", t)
+	clientConn, _ := startServer("continuetestprog", 0, t)
 	client := &brokenRPCClient{jsonrpc.NewClient(clientConn)}
 	client.call("SetApiVersion", api.SetAPIVersionIn{APIVersion: 2}, &api.SetAPIVersionOut{})
 	defer client.Detach(true)
@@ -1902,5 +1901,29 @@ func TestStopRecording(t *testing.T) {
 		c.StopRecording()
 		_, err = c.GetState()
 		assertNoError(err, t, "GetState()")
+	})
+}
+
+func TestClearLogicalBreakpoint(t *testing.T) {
+	// Clearing a logical breakpoint should clear all associated physical
+	// breakpoints.
+	// Issue #1955.
+	withTestClient2Extended("testinline", t, protest.EnableInlining, func(c service.Client, fixture protest.Fixture) {
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.inlineThis"})
+		assertNoError(err, t, "CreateBreakpoint()")
+		t.Logf("breakpoint set at %#v", bp.Addrs)
+		if len(bp.Addrs) < 2 {
+			t.Fatal("Wrong number of addresses for main.inlineThis breakpoint")
+		}
+		_, err = c.ClearBreakpoint(bp.ID)
+		assertNoError(err, t, "ClearBreakpoint()")
+		bps, err := c.ListBreakpoints()
+		assertNoError(err, t, "ListBreakpoints()")
+		for _, curbp := range bps {
+			if curbp.ID == bp.ID {
+				t.Errorf("logical breakpoint still exists: %#v", curbp)
+				break
+			}
+		}
 	})
 }
