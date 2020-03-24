@@ -24,7 +24,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 	}
 
 	withTestProcess("scopeescapevareval", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(proc.Continue(p), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue")
 
 		// On the breakpoint there are two 'a' variables in scope, the one that
 		// isn't shadowed is a variable that escapes to the heap and figures in
@@ -80,7 +80,7 @@ func TestScope(t *testing.T) {
 		t.Logf("%d breakpoints set", len(scopeChecks))
 
 		for {
-			if err := proc.Continue(p); err != nil {
+			if err := p.Continue(); err != nil {
 				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}

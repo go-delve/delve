@@ -186,7 +186,7 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 
 	contReq, ok := <-continueRequest
 	if contReq.cont {
-		return Continue(t)
+		return t.Continue()
 	}
 
 	return finishEvalExpressionWithCalls(t, g, contReq, ok)
