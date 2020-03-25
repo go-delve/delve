@@ -315,6 +315,9 @@ func TestGeneratedDoc(t *testing.T) {
 
 	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("scripts/gen-starlark-bindings.go", "go", "-"))
 	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("scripts/gen-starlark-bindings.go", "doc/dummy", "Documentation/cli/starlark.md"))
+
+	// Checks gen-travis.go
+	checkAutogenDoc(t, ".travis.yml", "scripts/gen-travis.go > .travis.yml", runScript("scripts/gen-travis.go"))
 }
 
 func TestExitInInit(t *testing.T) {
