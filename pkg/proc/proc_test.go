@@ -946,6 +946,19 @@ func TestStacktraceGoroutine(t *testing.T) {
 		{{10, "main.agoroutine"}},
 	}
 
+	tgtAgoroutineCount := 10
+
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+		// We try to make sure that all goroutines are stopped at a sensible place
+		// before reading their stacktrace, but due to the nature of the test
+		// program there is no guarantee that we always find them in a reasonable
+		// state.
+		// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+		// unnecessary flakiness reduce the target count to 9, allowing one
+		// goroutine to be in a bad state.
+		tgtAgoroutineCount = 9
+	}
+
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.stacktraceme")
@@ -995,7 +1008,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 			t.Fatalf("Main goroutine stack not found %d", mainCount)
 		}
 
-		if agoroutineCount != 10 {
+		if agoroutineCount < tgtAgoroutineCount {
 			t.Fatalf("Goroutine stacks not found (%d)", agoroutineCount)
 		}
 
