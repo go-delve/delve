@@ -193,9 +193,11 @@ func getoutput(cmd string, args ...interface{}) string {
 	x.Env = os.Environ()
 	out, err := x.Output()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error executing %s %v\n", cmd, args)
 		log.Fatal(err)
 	}
 	if !x.ProcessState.Success() {
+		fmt.Fprintf(os.Stderr, "Error executing %s %v\n", cmd, args)
 		os.Exit(1)
 	}
 	return string(out)
@@ -416,7 +418,7 @@ func inpath(exe string) bool {
 
 func allPackages() []string {
 	r := []string{}
-	for _, dir := range strings.Split(getoutput("go", "list", "./..."), "\n") {
+	for _, dir := range strings.Split(getoutput("go", "list", "-mod=vendor", "./..."), "\n") {
 		dir = strings.TrimSpace(dir)
 		if dir == "" || strings.Contains(dir, "/vendor/") || strings.Contains(dir, "/scripts") {
 			continue
@@ -428,5 +430,6 @@ func allPackages() []string {
 }
 
 func main() {
+	allPackages() // checks that vendor directory is synced as a side effect
 	NewMakeCommands().Execute()
 }
