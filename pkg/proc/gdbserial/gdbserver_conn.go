@@ -545,7 +545,7 @@ func (conn *gdbConn) writeRegister(threadID string, regnum int, data []byte) err
 // resume each thread. If a thread has sig == 0 the 'c' action will be used,
 // otherwise the 'C' action will be used and the value of sig will be passed
 // to it.
-func (conn *gdbConn) resume(threads map[int]*Thread, tu *threadUpdater) (string, uint8, error) {
+func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (string, uint8, error) {
 	if conn.direction == proc.Forward {
 		conn.outbuf.Reset()
 		fmt.Fprintf(&conn.outbuf, "$vCont")

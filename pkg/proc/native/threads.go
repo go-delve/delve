@@ -11,14 +11,14 @@ import (
 // Process struct that contains info on the process as
 // a whole, and Status represents the last result of a `wait` call
 // on this thread.
-type Thread struct {
+type nativeThread struct {
 	ID                int                  // Thread ID or mach port
-	Status            *WaitStatus          // Status returned from last wait call
+	Status            *waitStatus          // Status returned from last wait call
 	CurrentBreakpoint proc.BreakpointState // Breakpoint thread is currently stopped at
 
-	dbp            *Process
+	dbp            *nativeProcess
 	singleStepping bool
-	os             *OSSpecificDetails
+	os             *osSpecificDetails
 	common         proc.CommonThread
 }
 
@@ -27,7 +27,7 @@ type Thread struct {
 // If we are currently at a breakpoint, we'll clear it
 // first and then resume execution. Thread will continue until
 // it hits a breakpoint or is signaled.
-func (t *Thread) Continue() error {
+func (t *nativeThread) Continue() error {
 	pc, err := t.PC()
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func (t *Thread) Continue() error {
 // If the thread is at a breakpoint, we first clear it,
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
-func (t *Thread) StepInstruction() (err error) {
+func (t *nativeThread) StepInstruction() (err error) {
 	t.singleStepping = true
 	defer func() {
 		t.singleStepping = false
@@ -85,7 +85,7 @@ func (t *Thread) StepInstruction() (err error) {
 // Location returns the threads location, including the file:line
 // of the corresponding source code, the function we're in
 // and the current instruction address.
-func (t *Thread) Location() (*proc.Location, error) {
+func (t *nativeThread) Location() (*proc.Location, error) {
 	pc, err := t.PC()
 	if err != nil {
 		return nil, err
@@ -95,19 +95,19 @@ func (t *Thread) Location() (*proc.Location, error) {
 }
 
 // BinInfo returns information on the binary.
-func (t *Thread) BinInfo() *proc.BinaryInfo {
+func (t *nativeThread) BinInfo() *proc.BinaryInfo {
 	return t.dbp.bi
 }
 
 // Common returns information common across Process
 // implementations.
-func (t *Thread) Common() *proc.CommonThread {
+func (t *nativeThread) Common() *proc.CommonThread {
 	return &t.common
 }
 
 // SetCurrentBreakpoint sets the current breakpoint that this
 // thread is stopped at as CurrentBreakpoint on the thread struct.
-func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
+func (t *nativeThread) SetCurrentBreakpoint(adjustPC bool) error {
 	t.CurrentBreakpoint.Clear()
 	pc, err := t.PC()
 	if err != nil {
@@ -139,17 +139,17 @@ func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 
 // Breakpoint returns the current breakpoint that is active
 // on this thread.
-func (t *Thread) Breakpoint() *proc.BreakpointState {
+func (t *nativeThread) Breakpoint() *proc.BreakpointState {
 	return &t.CurrentBreakpoint
 }
 
 // ThreadID returns the ID of this thread.
-func (t *Thread) ThreadID() int {
+func (t *nativeThread) ThreadID() int {
 	return t.ID
 }
 
 // ClearBreakpoint clears the specified breakpoint.
-func (t *Thread) ClearBreakpoint(bp *proc.Breakpoint) error {
+func (t *nativeThread) ClearBreakpoint(bp *proc.Breakpoint) error {
 	if _, err := t.WriteMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
 		return fmt.Errorf("could not clear breakpoint %s", err)
 	}
@@ -157,18 +157,18 @@ func (t *Thread) ClearBreakpoint(bp *proc.Breakpoint) error {
 }
 
 // Registers obtains register values from the debugged process.
-func (t *Thread) Registers(floatingPoint bool) (proc.Registers, error) {
+func (t *nativeThread) Registers(floatingPoint bool) (proc.Registers, error) {
 	return registers(t, floatingPoint)
 }
 
 // RestoreRegisters will set the value of the CPU registers to those
 // passed in via 'savedRegs'.
-func (t *Thread) RestoreRegisters(savedRegs proc.Registers) error {
+func (t *nativeThread) RestoreRegisters(savedRegs proc.Registers) error {
 	return t.restoreRegisters(savedRegs)
 }
 
 // PC returns the current program counter value for this thread.
-func (t *Thread) PC() (uint64, error) {
+func (t *nativeThread) PC() (uint64, error) {
 	regs, err := t.Registers(false)
 	if err != nil {
 		return 0, err

@@ -35,13 +35,13 @@ type Fixture struct {
 }
 
 // FixtureKey holds the name and builds flags used for a test fixture.
-type FixtureKey struct {
+type fixtureKey struct {
 	Name  string
 	Flags BuildFlags
 }
 
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
-var Fixtures = make(map[FixtureKey]Fixture)
+var fixtures = make(map[fixtureKey]Fixture)
 
 // PathsToRemove is a list of files and directories to remove after running all the tests
 var PathsToRemove []string
@@ -84,8 +84,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if !runningWithFixtures {
 		panic("RunTestsWithFixtures not called")
 	}
-	fk := FixtureKey{name, flags}
-	if f, ok := Fixtures[fk]; ok {
+	fk := fixtureKey{name, flags}
+	if f, ok := fixtures[fk]; ok {
 		return f
 	}
 
@@ -180,8 +180,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	fixture := Fixture{Name: name, Path: tmpfile, Source: source, BuildDir: absdir}
 
-	Fixtures[fk] = fixture
-	return Fixtures[fk]
+	fixtures[fk] = fixture
+	return fixtures[fk]
 }
 
 // RunTestsWithFixtures will pre-compile test fixtures before running test
@@ -194,7 +194,7 @@ func RunTestsWithFixtures(m *testing.M) int {
 	status := m.Run()
 
 	// Remove the fixtures.
-	for _, f := range Fixtures {
+	for _, f := range fixtures {
 		os.Remove(f.Path)
 	}
 

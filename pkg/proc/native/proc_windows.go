@@ -15,8 +15,8 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 )
 
-// OSProcessDetails holds Windows specific information.
-type OSProcessDetails struct {
+// osProcessDetails holds Windows specific information.
+type osProcessDetails struct {
 	hProcess    syscall.Handle
 	breakThread int
 	entryPoint  uint64
@@ -58,7 +58,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 	env := proc.DisableAsyncPreemptEnv()
 
 	var p *os.Process
-	dbp := New(0)
+	dbp := newProcess(0)
 	dbp.execPtraceFunc(func() {
 		attr := &os.ProcAttr{
 			Dir:   wd,
@@ -86,7 +86,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target,
 	return tgt, nil
 }
 
-func initialize(dbp *Process) error {
+func initialize(dbp *nativeProcess) error {
 	// It should not actually be possible for the
 	// call to waitForDebugEvent to fail, since Windows
 	// will always fire a CREATE_PROCESS_DEBUG_EVENT event
@@ -155,7 +155,7 @@ func findExePath(pid int) (string, error) {
 
 // Attach to an existing process with the given PID.
 func Attach(pid int, _ []string) (*proc.Target, error) {
-	dbp := New(pid)
+	dbp := newProcess(pid)
 	var err error
 	dbp.execPtraceFunc(func() {
 		// TODO: Probably should have SeDebugPrivilege before starting here.
@@ -177,7 +177,7 @@ func Attach(pid int, _ []string) (*proc.Target, error) {
 }
 
 // kill kills the process.
-func (dbp *Process) kill() error {
+func (dbp *nativeProcess) kill() error {
 	if dbp.exited {
 		return nil
 	}
@@ -203,24 +203,24 @@ func (dbp *Process) kill() error {
 	return nil
 }
 
-func (dbp *Process) requestManualStop() error {
+func (dbp *nativeProcess) requestManualStop() error {
 	return _DebugBreakProcess(dbp.os.hProcess)
 }
 
-func (dbp *Process) updateThreadList() error {
+func (dbp *nativeProcess) updateThreadList() error {
 	// We ignore this request since threads are being
 	// tracked as they are created/killed in waitForDebugEvent.
 	return nil
 }
 
-func (dbp *Process) addThread(hThread syscall.Handle, threadID int, attach, suspendNewThreads bool) (*Thread, error) {
+func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach, suspendNewThreads bool) (*nativeThread, error) {
 	if thread, ok := dbp.threads[threadID]; ok {
 		return thread, nil
 	}
-	thread := &Thread{
+	thread := &nativeThread{
 		ID:  threadID,
 		dbp: dbp,
-		os:  new(OSSpecificDetails),
+		os:  new(osSpecificDetails),
 	}
 	thread.os.hThread = hThread
 	dbp.threads[threadID] = thread
@@ -250,7 +250,7 @@ const (
 
 const _MS_VC_EXCEPTION = 0x406D1388 // part of VisualC protocol to set thread names
 
-func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, exitCode int, err error) {
+func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, exitCode int, err error) {
 	var debugEvent _DEBUG_EVENT
 	shouldExit := false
 	for {
@@ -378,7 +378,7 @@ func (dbp *Process) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, e
 	}
 }
 
-func (dbp *Process) trapWait(pid int) (*Thread, error) {
+func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	var err error
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
@@ -395,15 +395,15 @@ func (dbp *Process) trapWait(pid int) (*Thread, error) {
 	return th, nil
 }
 
-func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	return 0, nil, fmt.Errorf("not implemented: wait")
 }
 
-func (dbp *Process) exitGuard(err error) error {
+func (dbp *nativeProcess) exitGuard(err error) error {
 	return err
 }
 
-func (dbp *Process) resume() error {
+func (dbp *nativeProcess) resume() error {
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
@@ -424,7 +424,7 @@ func (dbp *Process) resume() error {
 }
 
 // stop stops all running threads threads and sets breakpoints
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
@@ -475,7 +475,7 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	return nil
 }
 
-func (dbp *Process) detach(kill bool) error {
+func (dbp *nativeProcess) detach(kill bool) error {
 	if !kill {
 		//TODO(aarzilli): when debug.Target exist Detach should be moved to
 		// debug.Target and the call to RestoreAsyncPreempt should be moved there.
@@ -489,7 +489,7 @@ func (dbp *Process) detach(kill bool) error {
 	return _DebugActiveProcessStop(uint32(dbp.pid))
 }
 
-func (dbp *Process) EntryPoint() (uint64, error) {
+func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	return dbp.os.entryPoint, nil
 }
 

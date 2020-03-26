@@ -9,7 +9,7 @@ import (
 )
 
 // SetPC sets the RIP register to the value specified by `pc`.
-func (thread *Thread) SetPC(pc uint64) error {
+func (thread *nativeThread) SetPC(pc uint64) error {
 	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
@@ -24,7 +24,7 @@ func (thread *Thread) SetPC(pc uint64) error {
 }
 
 // SetSP sets the RSP register to the value specified by `sp`.
-func (thread *Thread) SetSP(sp uint64) error {
+func (thread *nativeThread) SetSP(sp uint64) error {
 	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
@@ -38,7 +38,7 @@ func (thread *Thread) SetSP(sp uint64) error {
 	return _SetThreadContext(thread.os.hThread, context)
 }
 
-func (thread *Thread) SetDX(dx uint64) error {
+func (thread *nativeThread) SetDX(dx uint64) error {
 	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
@@ -52,7 +52,7 @@ func (thread *Thread) SetDX(dx uint64) error {
 	return _SetThreadContext(thread.os.hThread, context)
 }
 
-func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
 	context := winutil.NewCONTEXT()
 
 	context.ContextFlags = _CONTEXT_ALL

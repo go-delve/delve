@@ -239,12 +239,6 @@ func TestHalt(t *testing.T) {
 	withTestProcess("loopprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.loop")
 		assertNoError(p.Continue(), t, "Continue")
-		if p, ok := p.Process.(*native.Process); ok {
-			for _, th := range p.ThreadList() {
-				_, err := th.Registers(false)
-				assertNoError(err, t, "Registers")
-			}
-		}
 		resumeChan := make(chan struct{}, 1)
 		go func() {
 			<-resumeChan
@@ -257,21 +251,6 @@ func TestHalt(t *testing.T) {
 
 		if err, ok := retVal.(error); ok && err != nil {
 			t.Fatal()
-		}
-
-		// Loop through threads and make sure they are all
-		// actually stopped, err will not be nil if the process
-		// is still running.
-		if p, ok := p.Process.(*native.Process); ok {
-			for _, th := range p.ThreadList() {
-				if th, ok := th.(*native.Thread); ok {
-					if !th.Stopped() {
-						t.Fatal("expected thread to be stopped, but was not")
-					}
-				}
-				_, err := th.Registers(false)
-				assertNoError(err, t, "Registers")
-			}
 		}
 	})
 }

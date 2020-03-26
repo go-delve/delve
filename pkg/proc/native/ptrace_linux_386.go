@@ -12,12 +12,12 @@ import (
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
-// PtraceGetRegset returns floating point registers of the specified thread
+// ptraceGetRegset returns floating point registers of the specified thread
 // using PTRACE.
 // See i386_linux_fetch_inferior_registers in gdb/i386-linux-nat.c.html
 // and i386_supply_xsave in gdb/i386-tdep.c.html
 // and Section 13.1 (and following) of Intel® 64 and IA-32 Architectures Software Developer’s Manual, Volume 1: Basic Architecture
-func PtraceGetRegset(tid int) (regset linutil.I386Xstate, err error) {
+func ptraceGetRegset(tid int) (regset linutil.I386Xstate, err error) {
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETFPREGS, uintptr(tid), uintptr(0), uintptr(unsafe.Pointer(&regset.I386PtraceFpRegs)), 0, 0)
 	if err == syscall.Errno(0) || err == syscall.ENODEV {
 		// ignore ENODEV, it just means this CPU doesn't have X87 registers (??)
@@ -43,7 +43,7 @@ func PtraceGetRegset(tid int) (regset linutil.I386Xstate, err error) {
 	return
 }
 
-// PtraceGetTls return the addr of tls by PTRACE_GET_THREAD_AREA for specify thread.
+// ptraceGetTls return the addr of tls by PTRACE_GET_THREAD_AREA for specify thread.
 // See http://man7.org/linux/man-pages/man2/ptrace.2.html for detail about PTRACE_GET_THREAD_AREA.
 // struct user_desc at https://golang.org/src/runtime/sys_linux_386.s
 // type UserDesc struct {
@@ -52,7 +52,7 @@ func PtraceGetRegset(tid int) (regset linutil.I386Xstate, err error) {
 //	 Limit       uint32
 //	 Flag        uint32
 // }
-func PtraceGetTls(gs int32, tid int) (uint32, error) {
+func ptraceGetTls(gs int32, tid int) (uint32, error) {
 	ud := [4]uint32{}
 
 	// Gs usually is 0x33
@@ -64,8 +64,8 @@ func PtraceGetTls(gs int32, tid int) (uint32, error) {
 	return uint32(ud[1]), nil
 }
 
-// ProcessVmRead calls process_vm_readv
-func ProcessVmRead(tid int, addr uintptr, data []byte) (int, error) {
+// processVmRead calls process_vm_readv
+func processVmRead(tid int, addr uintptr, data []byte) (int, error) {
 	len_iov := uint32(len(data))
 	local_iov := sys.Iovec{Base: &data[0], Len: len_iov}
 	remote_iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(addr)), Len: len_iov}
@@ -78,8 +78,8 @@ func ProcessVmRead(tid int, addr uintptr, data []byte) (int, error) {
 	return int(n), nil
 }
 
-// ProcessVmWrite calls process_vm_writev
-func ProcessVmWrite(tid int, addr uintptr, data []byte) (int, error) {
+// processVmWrite calls process_vm_writev
+func processVmWrite(tid int, addr uintptr, data []byte) (int, error) {
 	len_iov := uint32(len(data))
 	local_iov := sys.Iovec{Base: &data[0], Len: len_iov}
 	remote_iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(addr)), Len: len_iov}

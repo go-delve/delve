@@ -104,7 +104,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string)
 		return nil, init.err
 	}
 
-	p := New(rrcmd.Process)
+	p := newProcess(rrcmd.Process)
 	p.tracedir = tracedir
 	if deleteOnDetach {
 		p.onDetach = func() {
