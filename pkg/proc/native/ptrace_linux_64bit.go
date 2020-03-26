@@ -9,8 +9,8 @@ import (
 	sys "golang.org/x/sys/unix"
 )
 
-// ProcessVmRead calls process_vm_readv
-func ProcessVmRead(tid int, addr uintptr, data []byte) (int, error) {
+// processVmRead calls process_vm_readv
+func processVmRead(tid int, addr uintptr, data []byte) (int, error) {
 	len_iov := uint64(len(data))
 	local_iov := sys.Iovec{Base: &data[0], Len: len_iov}
 	remote_iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(addr)), Len: len_iov}
@@ -23,8 +23,8 @@ func ProcessVmRead(tid int, addr uintptr, data []byte) (int, error) {
 	return int(n), nil
 }
 
-// ProcessVmWrite calls process_vm_writev
-func ProcessVmWrite(tid int, addr uintptr, data []byte) (int, error) {
+// processVmWrite calls process_vm_writev
+func processVmWrite(tid int, addr uintptr, data []byte) (int, error) {
 	len_iov := uint64(len(data))
 	local_iov := sys.Iovec{Base: &data[0], Len: len_iov}
 	remote_iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(addr)), Len: len_iov}

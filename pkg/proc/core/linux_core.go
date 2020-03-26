@@ -15,68 +15,68 @@ import (
 
 // Copied from golang.org/x/sys/unix.Timeval since it's not available on all
 // systems.
-type LinuxCoreTimeval struct {
+type linuxCoreTimeval struct {
 	Sec  int64
 	Usec int64
 }
 
 // NT_FILE is file mapping information, e.g. program text mappings. Desc is a LinuxNTFile.
-const NT_FILE elf.NType = 0x46494c45 // "FILE".
+const _NT_FILE elf.NType = 0x46494c45 // "FILE".
 
 // NT_X86_XSTATE is other registers, including AVX and such.
-const NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAVE area.
+const _NT_X86_XSTATE elf.NType = 0x202 // Note type for notes containing X86 XSAVE area.
 
 // NT_AUXV is the note type for notes containing a copy of the Auxv array
-const NT_AUXV elf.NType = 0x6
+const _NT_AUXV elf.NType = 0x6
 
 // NT_FPREGSET is the note type for floating point registers.
-const NT_FPREGSET elf.NType = 0x2
+const _NT_FPREGSET elf.NType = 0x2
 
 // Fetch architecture using exeELF.Machine from core file
 // Refer http://man7.org/linux/man-pages/man5/elf.5.html
 const (
-	EM_AARCH64           = 183
-	EM_X86_64            = 62
+	_EM_AARCH64          = 183
+	_EM_X86_64           = 62
 	_ARM_FP_HEADER_START = 512
 )
 
 const elfErrorBadMagicNumber = "bad magic number"
 
-func linuxThreadsFromNotes(p *Process, notes []*Note, machineType elf.Machine) {
+func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
 	var lastThreadAMD *linuxAMD64Thread
 	var lastThreadARM *linuxARM64Thread
 	for _, note := range notes {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
-			if machineType == EM_X86_64 {
-				t := note.Desc.(*LinuxPrStatusAMD64)
+			if machineType == _EM_X86_64 {
+				t := note.Desc.(*linuxPrStatusAMD64)
 				lastThreadAMD = &linuxAMD64Thread{linutil.AMD64Registers{Regs: &t.Reg}, t}
-				p.Threads[int(t.Pid)] = &Thread{lastThreadAMD, p, proc.CommonThread{}}
+				p.Threads[int(t.Pid)] = &thread{lastThreadAMD, p, proc.CommonThread{}}
 				if p.currentThread == nil {
 					p.currentThread = p.Threads[int(t.Pid)]
 				}
-			} else if machineType == EM_AARCH64 {
-				t := note.Desc.(*LinuxPrStatusARM64)
+			} else if machineType == _EM_AARCH64 {
+				t := note.Desc.(*linuxPrStatusARM64)
 				lastThreadARM = &linuxARM64Thread{linutil.ARM64Registers{Regs: &t.Reg}, t}
-				p.Threads[int(t.Pid)] = &Thread{lastThreadARM, p, proc.CommonThread{}}
+				p.Threads[int(t.Pid)] = &thread{lastThreadARM, p, proc.CommonThread{}}
 				if p.currentThread == nil {
 					p.currentThread = p.Threads[int(t.Pid)]
 				}
 			}
-		case NT_FPREGSET:
-			if machineType == EM_AARCH64 {
+		case _NT_FPREGSET:
+			if machineType == _EM_AARCH64 {
 				if lastThreadARM != nil {
 					lastThreadARM.regs.Fpregs = note.Desc.(*linutil.ARM64PtraceFpRegs).Decode()
 				}
 			}
-		case NT_X86_XSTATE:
-			if machineType == EM_X86_64 {
+		case _NT_X86_XSTATE:
+			if machineType == _EM_X86_64 {
 				if lastThreadAMD != nil {
 					lastThreadAMD.regs.Fpregs = note.Desc.(*linutil.AMD64Xstate).Decode()
 				}
 			}
 		case elf.NT_PRPSINFO:
-			p.pid = int(note.Desc.(*LinuxPrPsInfo).Pid)
+			p.pid = int(note.Desc.(*linuxPrPsInfo).Pid)
 		}
 	}
 }
@@ -87,7 +87,7 @@ func linuxThreadsFromNotes(p *Process, notes []*Note, machineType elf.Machine) {
 // http://uhlo.blogspot.fr/2012/05/brief-look-into-core-dumps.html,
 // elf_core_dump in http://lxr.free-electrons.com/source/fs/binfmt_elf.c,
 // and, if absolutely desperate, readelf.c from the binutils source.
-func readLinuxCore(corePath, exePath string) (*Process, error) {
+func readLinuxCore(corePath, exePath string) (*process, error) {
 	coreFile, err := elf.Open(corePath)
 	if err != nil {
 		if _, isfmterr := err.(*elf.FormatError); isfmterr && (strings.Contains(err.Error(), elfErrorBadMagicNumber) || strings.Contains(err.Error(), " at offset 0x0: too short")) {
@@ -122,9 +122,9 @@ func readLinuxCore(corePath, exePath string) (*Process, error) {
 	// TODO support 386
 	var bi *proc.BinaryInfo
 	switch machineType {
-	case EM_X86_64:
+	case _EM_X86_64:
 		bi = proc.NewBinaryInfo("linux", "amd64")
-	case EM_AARCH64:
+	case _EM_AARCH64:
 		bi = proc.NewBinaryInfo("linux", "arm64")
 	default:
 		return nil, fmt.Errorf("unsupported machine type")
@@ -132,9 +132,9 @@ func readLinuxCore(corePath, exePath string) (*Process, error) {
 
 	entryPoint := findEntryPoint(notes, bi.Arch.PtrSize())
 
-	p := &Process{
+	p := &process{
 		mem:         memory,
-		Threads:     map[int]*Thread{},
+		Threads:     map[int]*thread{},
 		entryPoint:  entryPoint,
 		bi:          bi,
 		breakpoints: proc.NewBreakpointMap(),
@@ -146,12 +146,12 @@ func readLinuxCore(corePath, exePath string) (*Process, error) {
 
 type linuxAMD64Thread struct {
 	regs linutil.AMD64Registers
-	t    *LinuxPrStatusAMD64
+	t    *linuxPrStatusAMD64
 }
 
 type linuxARM64Thread struct {
 	regs linutil.ARM64Registers
-	t    *LinuxPrStatusARM64
+	t    *linuxPrStatusARM64
 }
 
 func (t *linuxAMD64Thread) registers(floatingPoint bool) (proc.Registers, error) {
@@ -187,14 +187,14 @@ func (t *linuxARM64Thread) pid() int {
 // - NT_PRSTATUS: Information about a thread, including base registers, state, etc. Desc is a LinuxPrStatus.
 // - NT_FPREGSET (Not implemented): x87 floating point registers.
 // - NT_X86_XSTATE: Other registers, including AVX and such.
-type Note struct {
+type note struct {
 	Type elf.NType
 	Name string
 	Desc interface{} // Decoded Desc from the
 }
 
 // readNotes reads all the notes from the notes prog in core.
-func readNotes(core *elf.File, machineType elf.Machine) ([]*Note, error) {
+func readNotes(core *elf.File, machineType elf.Machine) ([]*note, error) {
 	var notesProg *elf.Prog
 	for _, prog := range core.Progs {
 		if prog.Type == elf.PT_NOTE {
@@ -204,7 +204,7 @@ func readNotes(core *elf.File, machineType elf.Machine) ([]*Note, error) {
 	}
 
 	r := notesProg.Open()
-	notes := []*Note{}
+	notes := []*note{}
 	for {
 		note, err := readNote(r, machineType)
 		if err == io.EOF {
@@ -220,11 +220,11 @@ func readNotes(core *elf.File, machineType elf.Machine) ([]*Note, error) {
 }
 
 // readNote reads a single note from r, decoding the descriptor if possible.
-func readNote(r io.ReadSeeker, machineType elf.Machine) (*Note, error) {
+func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 	// Notes are laid out as described in the SysV ABI:
 	// http://www.sco.com/developers/gabi/latest/ch5.pheader.html#note_section
-	note := &Note{}
-	hdr := &ELFNotesHdr{}
+	note := &note{}
+	hdr := &elfNotesHdr{}
 
 	err := binary.Read(r, binary.LittleEndian, hdr)
 	if err != nil {
@@ -247,10 +247,10 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*Note, error) {
 	descReader := bytes.NewReader(desc)
 	switch note.Type {
 	case elf.NT_PRSTATUS:
-		if machineType == EM_X86_64 {
-			note.Desc = &LinuxPrStatusAMD64{}
-		} else if machineType == EM_AARCH64 {
-			note.Desc = &LinuxPrStatusARM64{}
+		if machineType == _EM_X86_64 {
+			note.Desc = &linuxPrStatusAMD64{}
+		} else if machineType == _EM_AARCH64 {
+			note.Desc = &linuxPrStatusARM64{}
 		} else {
 			return nil, fmt.Errorf("unsupported machine type")
 		}
@@ -258,39 +258,39 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*Note, error) {
 			return nil, fmt.Errorf("reading NT_PRSTATUS: %v", err)
 		}
 	case elf.NT_PRPSINFO:
-		note.Desc = &LinuxPrPsInfo{}
+		note.Desc = &linuxPrPsInfo{}
 		if err := binary.Read(descReader, binary.LittleEndian, note.Desc); err != nil {
 			return nil, fmt.Errorf("reading NT_PRPSINFO: %v", err)
 		}
-	case NT_FILE:
+	case _NT_FILE:
 		// No good documentation reference, but the structure is
 		// simply a header, including entry count, followed by that
 		// many entries, and then the file name of each entry,
 		// null-delimited. Not reading the names here.
-		data := &LinuxNTFile{}
-		if err := binary.Read(descReader, binary.LittleEndian, &data.LinuxNTFileHdr); err != nil {
+		data := &linuxNTFile{}
+		if err := binary.Read(descReader, binary.LittleEndian, &data.linuxNTFileHdr); err != nil {
 			return nil, fmt.Errorf("reading NT_FILE header: %v", err)
 		}
 		for i := 0; i < int(data.Count); i++ {
-			entry := &LinuxNTFileEntry{}
+			entry := &linuxNTFileEntry{}
 			if err := binary.Read(descReader, binary.LittleEndian, entry); err != nil {
 				return nil, fmt.Errorf("reading NT_FILE entry %v: %v", i, err)
 			}
 			data.entries = append(data.entries, entry)
 		}
 		note.Desc = data
-	case NT_X86_XSTATE:
-		if machineType == EM_X86_64 {
+	case _NT_X86_XSTATE:
+		if machineType == _EM_X86_64 {
 			var fpregs linutil.AMD64Xstate
 			if err := linutil.AMD64XstateRead(desc, true, &fpregs); err != nil {
 				return nil, err
 			}
 			note.Desc = &fpregs
 		}
-	case NT_AUXV:
+	case _NT_AUXV:
 		note.Desc = desc
-	case NT_FPREGSET:
-		if machineType == EM_AARCH64 {
+	case _NT_FPREGSET:
+		if machineType == _EM_AARCH64 {
 			fpregs := &linutil.ARM64PtraceFpRegs{}
 			rdr := bytes.NewReader(desc[:_ARM_FP_HEADER_START])
 			if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
@@ -320,15 +320,15 @@ func skipPadding(r io.ReadSeeker, pad int64) error {
 	return nil
 }
 
-func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*Note) proc.MemoryReader {
-	memory := &SplicedMemory{}
+func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*note) proc.MemoryReader {
+	memory := &splicedMemory{}
 
 	// For now, assume all file mappings are to the exe.
 	for _, note := range notes {
-		if note.Type == NT_FILE {
-			fileNote := note.Desc.(*LinuxNTFile)
+		if note.Type == _NT_FILE {
+			fileNote := note.Desc.(*linuxNTFile)
 			for _, entry := range fileNote.entries {
-				r := &OffsetReaderAt{
+				r := &offsetReaderAt{
 					reader: exe,
 					offset: uintptr(entry.Start - (entry.FileOfs * fileNote.PageSize)),
 				}
@@ -346,7 +346,7 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*Note) proc.Me
 				if prog.Filesz == 0 {
 					continue
 				}
-				r := &OffsetReaderAt{
+				r := &offsetReaderAt{
 					reader: prog.ReaderAt,
 					offset: uintptr(prog.Vaddr),
 				}
@@ -357,9 +357,9 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*Note) proc.Me
 	return memory
 }
 
-func findEntryPoint(notes []*Note, ptrSize int) uint64 {
+func findEntryPoint(notes []*note, ptrSize int) uint64 {
 	for _, note := range notes {
-		if note.Type == NT_AUXV {
+		if note.Type == _NT_AUXV {
 			return linutil.EntryPointFromAuxv(note.Desc.([]byte), ptrSize)
 		}
 	}
@@ -370,7 +370,7 @@ func findEntryPoint(notes []*Note, ptrSize int) uint64 {
 // AMD64 specific primarily because of unix.PtraceRegs, but also
 // because some of the fields are word sized.
 // See http://lxr.free-electrons.com/source/include/uapi/linux/elfcore.h
-type LinuxPrPsInfo struct {
+type linuxPrPsInfo struct {
 	State                uint8
 	Sname                int8
 	Zomb                 uint8
@@ -384,61 +384,61 @@ type LinuxPrPsInfo struct {
 }
 
 // LinuxPrStatusAMD64 is a copy of the prstatus kernel struct.
-type LinuxPrStatusAMD64 struct {
-	Siginfo                      LinuxSiginfo
+type linuxPrStatusAMD64 struct {
+	Siginfo                      linuxSiginfo
 	Cursig                       uint16
 	_                            [2]uint8
 	Sigpend                      uint64
 	Sighold                      uint64
 	Pid, Ppid, Pgrp, Sid         int32
-	Utime, Stime, CUtime, CStime LinuxCoreTimeval
+	Utime, Stime, CUtime, CStime linuxCoreTimeval
 	Reg                          linutil.AMD64PtraceRegs
 	Fpvalid                      int32
 }
 
 // LinuxPrStatusARM64 is a copy of the prstatus kernel struct.
-type LinuxPrStatusARM64 struct {
-	Siginfo                      LinuxSiginfo
+type linuxPrStatusARM64 struct {
+	Siginfo                      linuxSiginfo
 	Cursig                       uint16
 	_                            [2]uint8
 	Sigpend                      uint64
 	Sighold                      uint64
 	Pid, Ppid, Pgrp, Sid         int32
-	Utime, Stime, CUtime, CStime LinuxCoreTimeval
+	Utime, Stime, CUtime, CStime linuxCoreTimeval
 	Reg                          linutil.ARM64PtraceRegs
 	Fpvalid                      int32
 }
 
 // LinuxSiginfo is a copy of the
 // siginfo kernel struct.
-type LinuxSiginfo struct {
+type linuxSiginfo struct {
 	Signo int32
 	Code  int32
 	Errno int32
 }
 
 // LinuxNTFile contains information on mapped files.
-type LinuxNTFile struct {
-	LinuxNTFileHdr
-	entries []*LinuxNTFileEntry
+type linuxNTFile struct {
+	linuxNTFileHdr
+	entries []*linuxNTFileEntry
 }
 
 // LinuxNTFileHdr is a header struct for NTFile.
-type LinuxNTFileHdr struct {
+type linuxNTFileHdr struct {
 	Count    uint64
 	PageSize uint64
 }
 
 // LinuxNTFileEntry is an entry of an NT_FILE note.
-type LinuxNTFileEntry struct {
+type linuxNTFileEntry struct {
 	Start   uint64
 	End     uint64
 	FileOfs uint64
 }
 
-// ELFNotesHdr is the ELF Notes header.
+// elfNotesHdr is the ELF Notes header.
 // Same size on 64 and 32-bit machines.
-type ELFNotesHdr struct {
+type elfNotesHdr struct {
 	Namesz uint32
 	Descsz uint32
 	Type   uint32

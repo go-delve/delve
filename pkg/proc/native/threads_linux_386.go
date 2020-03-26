@@ -5,6 +5,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 )
 
-func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
+func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	return fmt.Errorf("restore regs not supported on i386")
 }

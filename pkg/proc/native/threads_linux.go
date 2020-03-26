@@ -8,18 +8,18 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 )
 
-type WaitStatus sys.WaitStatus
+type waitStatus sys.WaitStatus
 
-// OSSpecificDetails hold Linux specific
+// osSpecificDetails hold Linux specific
 // process details.
-type OSSpecificDetails struct {
+type osSpecificDetails struct {
 	delayedSignal int
 	registers     sys.PtraceRegs
 	running       bool
 	setbp         bool
 }
 
-func (t *Thread) stop() (err error) {
+func (t *nativeThread) stop() (err error) {
 	err = sys.Tgkill(t.dbp.pid, t.ID, sys.SIGSTOP)
 	if err != nil {
 		err = fmt.Errorf("stop err %s on thread %d", err, t.ID)
@@ -30,24 +30,24 @@ func (t *Thread) stop() (err error) {
 
 // Stopped returns whether the thread is stopped at
 // the operating system level.
-func (t *Thread) Stopped() bool {
+func (t *nativeThread) Stopped() bool {
 	state := status(t.ID, t.dbp.os.comm)
-	return state == StatusTraceStop || state == StatusTraceStopT
+	return state == statusTraceStop || state == statusTraceStopT
 }
 
-func (t *Thread) resume() error {
+func (t *nativeThread) resume() error {
 	sig := t.os.delayedSignal
 	t.os.delayedSignal = 0
 	return t.resumeWithSig(sig)
 }
 
-func (t *Thread) resumeWithSig(sig int) (err error) {
+func (t *nativeThread) resumeWithSig(sig int) (err error) {
 	t.os.running = true
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
+	t.dbp.execPtraceFunc(func() { err = ptraceCont(t.ID, sig) })
 	return
 }
 
-func (t *Thread) singleStep() (err error) {
+func (t *nativeThread) singleStep() (err error) {
 	for {
 		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.ID) })
 		if err != nil {
@@ -71,7 +71,7 @@ func (t *Thread) singleStep() (err error) {
 	}
 }
 
-func (t *Thread) Blocked() bool {
+func (t *nativeThread) Blocked() bool {
 	regs, err := t.Registers(false)
 	if err != nil {
 		return false
@@ -84,7 +84,7 @@ func (t *Thread) Blocked() bool {
 	return false
 }
 
-func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
@@ -94,7 +94,7 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error)
 	// ProcessVmWrite can't poke read-only memory like ptrace, so don't
 	// even bother for small writes -- likely breakpoints and such.
 	if len(data) > sys.SizeofPtr {
-		written, _ = ProcessVmWrite(t.ID, addr, data)
+		written, _ = processVmWrite(t.ID, addr, data)
 	}
 	if written == 0 {
 		t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
@@ -102,14 +102,14 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error)
 	return
 }
 
-func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (t *nativeThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return
 	}
-	n, _ = ProcessVmRead(t.ID, addr, data)
+	n, _ = processVmRead(t.ID, addr, data)
 	if n == 0 {
 		t.dbp.execPtraceFunc(func() { n, err = sys.PtracePeekData(t.ID, addr, data) })
 	}

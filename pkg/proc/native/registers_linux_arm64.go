@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	AARCH64_GREGS_SIZE  = 34 * 8
-	AARCH64_FPREGS_SIZE = 32*16 + 8
+	_AARCH64_GREGS_SIZE  = 34 * 8
+	_AARCH64_FPREGS_SIZE = 32*16 + 8
 )
 
 func ptraceGetGRegs(pid int, regs *linutil.ARM64PtraceRegs) (err error) {
-	iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(regs)), Len: AARCH64_GREGS_SIZE}
+	iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(regs)), Len: _AARCH64_GREGS_SIZE}
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETREGSET, uintptr(pid), uintptr(elf.NT_PRSTATUS), uintptr(unsafe.Pointer(&iov)), 0, 0)
 	if err == syscall.Errno(0) {
 		err = nil
@@ -27,7 +27,7 @@ func ptraceGetGRegs(pid int, regs *linutil.ARM64PtraceRegs) (err error) {
 }
 
 func ptraceSetGRegs(pid int, regs *linutil.ARM64PtraceRegs) (err error) {
-	iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(regs)), Len: AARCH64_GREGS_SIZE}
+	iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(regs)), Len: _AARCH64_GREGS_SIZE}
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGSET, uintptr(pid), uintptr(elf.NT_PRSTATUS), uintptr(unsafe.Pointer(&iov)), 0, 0)
 	if err == syscall.Errno(0) {
 		err = nil
@@ -35,11 +35,11 @@ func ptraceSetGRegs(pid int, regs *linutil.ARM64PtraceRegs) (err error) {
 	return
 }
 
-// PtraceGetFpRegset returns floating point registers of the specified thread
+// ptraceGetFpRegset returns floating point registers of the specified thread
 // using PTRACE.
-func PtraceGetFpRegset(tid int) (fpregset []byte, err error) {
-	var arm64_fpregs [AARCH64_FPREGS_SIZE]byte
-	iov := sys.Iovec{Base: &arm64_fpregs[0], Len: AARCH64_FPREGS_SIZE}
+func ptraceGetFpRegset(tid int) (fpregset []byte, err error) {
+	var arm64_fpregs [_AARCH64_FPREGS_SIZE]byte
+	iov := sys.Iovec{Base: &arm64_fpregs[0], Len: _AARCH64_FPREGS_SIZE}
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETREGSET, uintptr(tid), uintptr(elf.NT_FPREGSET), uintptr(unsafe.Pointer(&iov)), 0, 0)
 	if err != syscall.Errno(0) {
 		if err == syscall.ENODEV {
@@ -55,7 +55,7 @@ func PtraceGetFpRegset(tid int) (fpregset []byte, err error) {
 }
 
 // SetPC sets PC to the value specified by 'pc'.
-func (thread *Thread) SetPC(pc uint64) error {
+func (thread *nativeThread) SetPC(pc uint64) error {
 	ir, err := registers(thread, false)
 	if err != nil {
 		return err
@@ -67,7 +67,7 @@ func (thread *Thread) SetPC(pc uint64) error {
 }
 
 // SetSP sets RSP to the value specified by 'sp'
-func (thread *Thread) SetSP(sp uint64) (err error) {
+func (thread *nativeThread) SetSP(sp uint64) (err error) {
 	var ir proc.Registers
 	ir, err = registers(thread, false)
 	if err != nil {
@@ -79,11 +79,11 @@ func (thread *Thread) SetSP(sp uint64) (err error) {
 	return
 }
 
-func (thread *Thread) SetDX(dx uint64) (err error) {
+func (thread *nativeThread) SetDX(dx uint64) (err error) {
 	return fmt.Errorf("not supported")
 }
 
-func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
 	var (
 		regs linutil.ARM64PtraceRegs
 		err  error

@@ -9,12 +9,12 @@ import (
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
-// PtraceGetRegset returns floating point registers of the specified thread
+// ptraceGetRegset returns floating point registers of the specified thread
 // using PTRACE.
 // See amd64_linux_fetch_inferior_registers in gdb/amd64-linux-nat.c.html
 // and amd64_supply_xsave in gdb/amd64-tdep.c.html
 // and Section 13.1 (and following) of Intel® 64 and IA-32 Architectures Software Developer’s Manual, Volume 1: Basic Architecture
-func PtraceGetRegset(tid int) (regset linutil.AMD64Xstate, err error) {
+func ptraceGetRegset(tid int) (regset linutil.AMD64Xstate, err error) {
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETFPREGS, uintptr(tid), uintptr(0), uintptr(unsafe.Pointer(&regset.AMD64PtraceFpRegs)), 0, 0)
 	if err == syscall.Errno(0) || err == syscall.ENODEV {
 		// ignore ENODEV, it just means this CPU doesn't have X87 registers (??)

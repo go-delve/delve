@@ -111,7 +111,7 @@ func (r *Regs) GAddr() (uint64, bool) {
 }
 
 // SetPC sets the RIP register to the value specified by `pc`.
-func (thread *Thread) SetPC(pc uint64) error {
+func (thread *nativeThread) SetPC(pc uint64) error {
 	kret := C.set_pc(thread.os.threadAct, C.uint64_t(pc))
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not set pc")
@@ -120,11 +120,11 @@ func (thread *Thread) SetPC(pc uint64) error {
 }
 
 // SetSP sets the RSP register to the value specified by `pc`.
-func (thread *Thread) SetSP(sp uint64) error {
+func (thread *nativeThread) SetSP(sp uint64) error {
 	return errors.New("not implemented")
 }
 
-func (thread *Thread) SetDX(dx uint64) error {
+func (thread *nativeThread) SetDX(dx uint64) error {
 	return errors.New("not implemented")
 }
 
@@ -285,7 +285,7 @@ func (r *Regs) Get(n int) (uint64, error) {
 	return 0, proc.ErrUnknownRegister
 }
 
-func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
 	var state C.x86_thread_state64_t
 	var identity C.thread_identifier_info_data_t
 	kret := C.get_registers(C.mach_port_name_t(thread.os.threadAct), &state)

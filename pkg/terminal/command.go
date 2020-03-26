@@ -85,23 +85,23 @@ type Commands struct {
 }
 
 var (
-	// LongLoadConfig loads more information:
+	// longLoadConfig loads more information:
 	// * Follows pointers
 	// * Loads more array values
 	// * Does not limit struct fields
-	LongLoadConfig = api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	longLoadConfig = api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	// ShortLoadConfig loads less information, not following pointers
 	// and limiting struct fields loaded to 3.
 	ShortLoadConfig = api.LoadConfig{MaxStringLen: 64, MaxStructFields: 3}
 )
 
-// ByFirstAlias will sort by the first
+// byFirstAlias will sort by the first
 // alias of a command.
-type ByFirstAlias []command
+type byFirstAlias []command
 
-func (a ByFirstAlias) Len() int           { return len(a) }
-func (a ByFirstAlias) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByFirstAlias) Less(i, j int) bool { return a[i].aliases[0] < a[j].aliases[0] }
+func (a byFirstAlias) Len() int           { return len(a) }
+func (a byFirstAlias) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byFirstAlias) Less(i, j int) bool { return a[i].aliases[0] < a[j].aliases[0] }
 
 // DebugCommands returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
@@ -443,7 +443,7 @@ Currently, only the rev step-instruction command is supported.`,
 			})
 	}
 
-	sort.Sort(ByFirstAlias(c.cmds))
+	sort.Sort(byFirstAlias(c.cmds))
 	return c
 }
 
@@ -592,7 +592,7 @@ func threads(t *Term, ctx callContext, args string) error {
 		}
 		if th.Function != nil {
 			fmt.Printf("%sThread %d at %#v %s:%d %s\n",
-				prefix, th.ID, th.PC, ShortenFilePath(th.File),
+				prefix, th.ID, th.PC, shortenFilePath(th.File),
 				th.Line, th.Function.Name())
 		} else {
 			fmt.Printf("%sThread %s\n", prefix, formatThread(th))
@@ -825,7 +825,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	}
 	printcontext(t, state)
 	th := stack[frame]
-	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, ShortenFilePath(th.File), th.Line, th.PC)
+	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, shortenFilePath(th.File), th.Line, th.PC)
 	printfile(t, th.File, th.Line, true)
 	return nil
 }
@@ -863,7 +863,7 @@ func formatThread(th *api.Thread) string {
 	if th == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%d at %s:%d", th.ID, ShortenFilePath(th.File), th.Line)
+	return fmt.Sprintf("%d at %s:%d", th.ID, shortenFilePath(th.File), th.Line)
 }
 
 type formatGoroutineLoc int
@@ -876,7 +876,7 @@ const (
 )
 
 func formatLocation(loc api.Location) string {
-	return fmt.Sprintf("%s:%d %s (%#v)", ShortenFilePath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
+	return fmt.Sprintf("%s:%d %s (%#v)", shortenFilePath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
 }
 
 func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
@@ -1325,19 +1325,19 @@ func clearAll(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-// ByID sorts breakpoints by ID.
-type ByID []*api.Breakpoint
+// byID sorts breakpoints by ID.
+type byID []*api.Breakpoint
 
-func (a ByID) Len() int           { return len(a) }
-func (a ByID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByID) Less(i, j int) bool { return a[i].ID < a[j].ID }
+func (a byID) Len() int           { return len(a) }
+func (a byID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
 func breakpoints(t *Term, ctx callContext, args string) error {
 	breakPoints, err := t.client.ListBreakpoints()
 	if err != nil {
 		return err
 	}
-	sort.Sort(ByID(breakPoints))
+	sort.Sort(byID(breakPoints))
 	for _, bp := range breakPoints {
 		fmt.Printf("%s at %v (%d)\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp), bp.TotalHitCount)
 
@@ -1352,14 +1352,14 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 			attrs = append(attrs, "\tgoroutine")
 		}
 		if bp.LoadArgs != nil {
-			if *(bp.LoadArgs) == LongLoadConfig {
+			if *(bp.LoadArgs) == longLoadConfig {
 				attrs = append(attrs, "\targs -v")
 			} else {
 				attrs = append(attrs, "\targs")
 			}
 		}
 		if bp.LoadLocals != nil {
-			if *(bp.LoadLocals) == LongLoadConfig {
+			if *(bp.LoadLocals) == longLoadConfig {
 				attrs = append(attrs, "\tlocals -v")
 			} else {
 				attrs = append(attrs, "\tlocals")
@@ -1955,7 +1955,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		return disasmErr
 	}
 
-	DisasmPrint(disasm, os.Stdout)
+	disasmPrint(disasm, os.Stdout)
 
 	return nil
 }
@@ -2004,7 +2004,7 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 			continue
 		}
 		fmt.Printf(fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
-		fmt.Printf("%sat %s:%d\n", s, ShortenFilePath(stack[i].File), stack[i].Line)
+		fmt.Printf("%sat %s:%d\n", s, shortenFilePath(stack[i].File), stack[i].Line)
 
 		if offsets {
 			fmt.Printf("%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
@@ -2084,7 +2084,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 }
 
 func printcontextLocation(loc api.Location) {
-	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), ShortenFilePath(loc.File), loc.Line, loc.PC)
+	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), shortenFilePath(loc.File), loc.Line, loc.PC)
 	if loc.Function != nil && loc.Function.Optimized {
 		fmt.Println(optimizedFunctionWarning)
 	}
@@ -2137,7 +2137,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			bpname,
 			fn.Name(),
 			args,
-			ShortenFilePath(th.File),
+			shortenFilePath(th.File),
 			th.Line,
 			th.GoroutineID,
 			hitCount,
@@ -2148,7 +2148,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			bpname,
 			fn.Name(),
 			args,
-			ShortenFilePath(th.File),
+			shortenFilePath(th.File),
 			th.Line,
 			th.Breakpoint.TotalHitCount,
 			th.PC)
@@ -2172,14 +2172,14 @@ func printcontextThread(t *Term, th *api.Thread) {
 		}
 
 		for _, v := range bpi.Locals {
-			if *bp.LoadLocals == LongLoadConfig {
+			if *bp.LoadLocals == longLoadConfig {
 				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
 			} else {
 				fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
 			}
 		}
 
-		if bp.LoadArgs != nil && *bp.LoadArgs == LongLoadConfig {
+		if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
 			for _, v := range bpi.Arguments {
 				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
 			}
@@ -2302,9 +2302,9 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 	return t.client.AmendBreakpoint(bp)
 }
 
-// ShortenFilePath take a full file path and attempts to shorten
+// shortenFilePath take a full file path and attempts to shorten
 // it by replacing the current directory to './'.
-func ShortenFilePath(fullPath string) string {
+func shortenFilePath(fullPath string) string {
 	workingDir, _ := os.Getwd()
 	return strings.Replace(fullPath, workingDir, ".", 1)
 }
@@ -2463,7 +2463,7 @@ func formatBreakpointLocation(bp *api.Breakpoint) string {
 		fmt.Fprintf(&out, "%#x", bp.Addr)
 	}
 	fmt.Fprintf(&out, " for ")
-	p := ShortenFilePath(bp.File)
+	p := shortenFilePath(bp.File)
 	if bp.FunctionName != "" {
 		fmt.Fprintf(&out, "%s() ", bp.FunctionName)
 	}

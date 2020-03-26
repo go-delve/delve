@@ -10,7 +10,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
-func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
+func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	sr := savedRegs.(*linutil.AMD64Registers)
 
 	var restoreRegistersErr error
