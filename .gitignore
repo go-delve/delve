@@ -1,4 +1,3 @@
-**/*.txt
 **/*.test
 .tags*
 tags
