@@ -594,7 +594,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		if inlinedStepOut {
 			frame = retframe
 		}
-		pcs, err = removeInlinedCalls(dbp, pcs, frame)
+		pcs, err = removeInlinedCalls(pcs, frame)
 		if err != nil {
 			return err
 		}
@@ -717,7 +717,7 @@ func FindDeferReturnCalls(text []AsmInstruction) []uint64 {
 // Removes instructions belonging to inlined calls of topframe from pcs.
 // If includeCurrentFn is true it will also remove all instructions
 // belonging to the current function.
-func removeInlinedCalls(dbp Process, pcs []uint64, topframe Stackframe) ([]uint64, error) {
+func removeInlinedCalls(pcs []uint64, topframe Stackframe) ([]uint64, error) {
 	dwarfTree, err := topframe.Call.Fn.cu.image.getDwarfTree(topframe.Call.Fn.offset)
 	if err != nil {
 		return pcs, err

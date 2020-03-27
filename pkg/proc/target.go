@@ -74,12 +74,12 @@ const (
 	StopUnknown             StopReason = iota
 	StopLaunched                       // The process was just launched
 	StopAttached                       // The debugger stopped the process after attaching
-	StopExited                         // The target proces terminated
+	StopExited                         // The target process terminated
 	StopBreakpoint                     // The target process hit one or more software breakpoints
 	StopHardcodedBreakpoint            // The target process hit a hardcoded breakpoint (for example runtime.Breakpoint())
 	StopManual                         // A manual stop was requested
 	StopNextFinished                   // The next/step/stepout command terminated
-	StopCallReturned                   // An injected call commpleted
+	StopCallReturned                   // An injected call completed
 )
 
 // NewTargetConfig contains the configuration for a new Target object,
