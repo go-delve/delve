@@ -33,10 +33,14 @@ type Register struct {
 	Reg  *op.DwarfRegister
 }
 
+// AppendUint64Register will create a new Register struct with the name and value
+// specified and append it to the `regs` slice.
 func AppendUint64Register(regs []Register, name string, value uint64) []Register {
 	return append(regs, Register{name, op.DwarfRegisterFromUint64(value)})
 }
 
+// AppendBytesRegister will create a new Register struct with the name and value
+// specified and append it to the `regs` slice.
 func AppendBytesRegister(regs []Register, name string, value []byte) []Register {
 	return append(regs, Register{name, op.DwarfRegisterFromBytes(value)})
 }

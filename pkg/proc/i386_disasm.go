@@ -14,6 +14,8 @@ func (i *I386) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, me
 	return x86AsmDecode(asmInst, mem, regs, memrw, bi, 32)
 }
 
+// Prologues returns a list of stack split prologues
+// that are inserted at function entry.
 func (i *I386) Prologues() []opcodeSeq {
 	return prologuesI386
 }
