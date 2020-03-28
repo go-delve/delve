@@ -72,13 +72,13 @@ func NewMakeCommands() *cobra.Command {
 
 Use the flags -s, -r and -b to specify which tests to run. Specifying nothing is equivalent to:
 
-	go run scripts/make.go test -s all -b default
-	go run scripts/make.go test -s basic -b lldb    # if lldb-server is installed and Go < 1.14
-	go run scripts/make.go test -s basic -b rr      # if rr is installed
+	go run _scripts/make.go test -s all -b default
+	go run _scripts/make.go test -s basic -b lldb    # if lldb-server is installed and Go < 1.14
+	go run _scripts/make.go test -s basic -b rr      # if rr is installed
 	
-	go run scripts/make.go test -s basic -m pie     # only on linux
-	go run scripts/make.go test -s core -m pie      # only on linux
-	go run scripts/make.go test -s 
+	go run _scripts/make.go test -s basic -m pie     # only on linux
+	go run _scripts/make.go test -s core -m pie      # only on linux
+	go run _scripts/make.go test -s 
 `,
 		Run: testCmd,
 	}
@@ -122,7 +122,7 @@ func checkCert() bool {
 		return true
 	}
 
-	x := exec.Command("scripts/gencert.sh")
+	x := exec.Command("_scripts/gencert.sh")
 	x.Stdout = os.Stdout
 	x.Stderr = os.Stderr
 	x.Env = os.Environ()
@@ -280,7 +280,7 @@ func testFlags() []string {
 		testFlags = append(testFlags, "-timeout", "0")
 	}
 	if runtime.GOOS == "darwin" {
-		testFlags = append(testFlags, "-exec="+wd+"/scripts/testsign")
+		testFlags = append(testFlags, "-exec="+wd+"/_scripts/testsign")
 	}
 	return testFlags
 }
@@ -420,7 +420,7 @@ func allPackages() []string {
 	r := []string{}
 	for _, dir := range strings.Split(getoutput("go", "list", "-mod=vendor", "./..."), "\n") {
 		dir = strings.TrimSpace(dir)
-		if dir == "" || strings.Contains(dir, "/vendor/") || strings.Contains(dir, "/scripts") {
+		if dir == "" || strings.Contains(dir, "/vendor/") || strings.Contains(dir, "/_scripts") {
 			continue
 		}
 		r = append(r, dir)

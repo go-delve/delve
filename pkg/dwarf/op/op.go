@@ -14,7 +14,7 @@ import (
 // See ./opcodes.go for a full list.
 type Opcode byte
 
-//go:generate go run ../../../scripts/gen-opcodes.go opcodes.table opcodes.go
+//go:generate go run ../../../_scripts/gen-opcodes.go opcodes.table opcodes.go
 
 type stackfn func(Opcode, *context) error
 
