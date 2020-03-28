@@ -435,6 +435,15 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 	var p *proc.Target
 	var err error
+
+	// TODO executeKind from command.go
+	if rebuild && d.canRestart() {
+		err := gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
+		if err != nil {
+			return nil, fmt.Errorf("could not rebuild process: %s", err)
+		}
+	}
+
 	if recorded {
 		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false)
 		if err2 != nil {
@@ -445,12 +454,6 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		p, err = d.recordingRun(run)
 		d.recordingDone()
 	} else {
-		if rebuild {
-			err := gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
-			if err != nil {
-				return nil, fmt.Errorf("could not rebuild process: %s", err)
-			}
-		}
 		p, err = d.Launch(d.processArgs, d.config.WorkingDir)
 	}
 	if err != nil {

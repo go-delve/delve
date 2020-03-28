@@ -194,6 +194,13 @@ func TestRestart_duringStop(t *testing.T) {
 	})
 }
 
+func TestRestart_rebuild(t *testing.T) {
+	withTestClient2("continuetestprog", t, func(c service.Client) {
+		// TODO WIP
+		t.FailNow()
+	})
+}
+
 func TestClientServer_exit(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("continuetestprog", t, func(c service.Client) {
