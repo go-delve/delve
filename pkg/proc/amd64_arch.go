@@ -110,15 +110,15 @@ func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 		return &frame.FrameContext{
 			RetAddrReg: amd64DwarfIPRegNum,
 			Regs: map[uint64]frame.DWRule{
-				amd64DwarfIPRegNum: frame.DWRule{
+				amd64DwarfIPRegNum: {
 					Rule:   frame.RuleOffset,
 					Offset: int64(-a.PtrSize()),
 				},
-				amd64DwarfBPRegNum: frame.DWRule{
+				amd64DwarfBPRegNum: {
 					Rule:   frame.RuleOffset,
 					Offset: int64(-2 * a.PtrSize()),
 				},
-				amd64DwarfSPRegNum: frame.DWRule{
+				amd64DwarfSPRegNum: {
 					Rule:   frame.RuleValOffset,
 					Offset: 0,
 				},
@@ -426,6 +426,7 @@ func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint
 	}
 }
 
+// DwarfRegisterToString returns the name and value representation of the given register.
 func (a *AMD64) DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	name, ok := amd64DwarfToName[i]
 	if !ok {
