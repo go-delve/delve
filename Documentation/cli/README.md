@@ -13,6 +13,7 @@ Command | Description
 [call](#call) | Resumes process, injecting a function call (EXPERIMENTAL!!!)
 [continue](#continue) | Run until breakpoint or program termination.
 [next](#next) | Step over to next source line.
+[reload](#reload) | Refresh code.
 [restart](#restart) | Restart process.
 [rev](#rev) | Reverses the execution of the target program for the command specified.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
@@ -400,6 +401,10 @@ Print contents of CPU registers.
 	regs [-a]
 
 Argument -a shows more registers.
+
+
+## reload
+Refresh code.
 
 
 ## restart

@@ -391,11 +391,11 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		if workingDir != "" {
 			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap; launch requests must specify full program path\n")
 		}
-		dlvArgs, targetArgs := splitArgs(cmd, args)
-		if len(dlvArgs) > 0 {
+		DlvArgs, TargetArgs := splitArgs(cmd, args)
+		if len(DlvArgs) > 0 {
 			fmt.Fprintf(os.Stderr, "Warning: debug arguments ignored with dap; specify via launch/attach request instead\n")
 		}
-		if len(targetArgs) > 0 {
+		if len(TargetArgs) > 0 {
 			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
 		}
 
@@ -440,7 +440,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
-		processArgs := append([]string{debugname}, targetArgs...)
+		processArgs := append([]string{debugname}, TargetArgs...)
 		return execute(0, processArgs, conf, "", executingGeneratedFile)
 	}()
 	os.Exit(status)
@@ -465,21 +465,21 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		var regexp string
 		var processArgs []string
 
-		dlvArgs, targetArgs := splitArgs(cmd, args)
+		DlvArgs, TargetArgs := splitArgs(cmd, args)
 
 		if traceAttachPid == 0 {
-			var dlvArgsLen = len(dlvArgs)
+			var dlvArgsLen = len(DlvArgs)
 
 			if dlvArgsLen == 1 {
 				regexp = args[0]
-				dlvArgs = dlvArgs[0:0]
+				DlvArgs = DlvArgs[0:0]
 			} else if dlvArgsLen >= 2 {
 				if traceExecFile != "" {
 					fmt.Fprintln(os.Stderr, "Cannot specify package when using exec.")
 					return 1
 				}
-				regexp = dlvArgs[dlvArgsLen-1]
-				dlvArgs = dlvArgs[:dlvArgsLen-1]
+				regexp = DlvArgs[dlvArgsLen-1]
+				DlvArgs = DlvArgs[:dlvArgsLen-1]
 			}
 
 			debugname := traceExecFile
@@ -503,7 +503,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 				defer gobuild.Remove(debugname)
 			}
 
-			processArgs = append([]string{debugname}, targetArgs...)
+			processArgs = append([]string{debugname}, TargetArgs...)
 		}
 
 		// Make a local in-memory connection that client and server use to communicate
@@ -590,7 +590,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
-		processArgs := append([]string{debugname}, targetArgs...)
+		processArgs := append([]string{debugname}, TargetArgs...)
 
 		return execute(0, processArgs, conf, "", executingGeneratedTest)
 	}()

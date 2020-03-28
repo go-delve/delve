@@ -124,7 +124,7 @@ func TestRestart_afterExit(t *testing.T) {
 		if !state.Exited {
 			t.Fatal("expected initial process to have exited")
 		}
-		if _, err := c.Restart(); err != nil {
+		if _, err := c.Restart(false); err != nil {
 			t.Fatal(err)
 		}
 		if c.ProcessPid() == origPid {
@@ -154,7 +154,7 @@ func TestRestart_breakpointPreservation(t *testing.T) {
 		}
 
 		t.Log("Restart")
-		c.Restart()
+		c.Restart(false)
 		stateCh = c.Continue()
 		state = <-stateCh
 		if state.CurrentThread.Breakpoint.Name != "firstbreakpoint" || !state.CurrentThread.Breakpoint.Tracepoint {
@@ -178,7 +178,7 @@ func TestRestart_duringStop(t *testing.T) {
 		if state.CurrentThread.Breakpoint == nil {
 			t.Fatal("did not hit breakpoint")
 		}
-		if _, err := c.Restart(); err != nil {
+		if _, err := c.Restart(false); err != nil {
 			t.Fatal(err)
 		}
 		if c.ProcessPid() == origPid {
@@ -1350,7 +1350,7 @@ func TestClientServer_RestartBreakpointPosition(t *testing.T) {
 		}
 		_, err = c.Halt()
 		assertNoError(err, t, "Halt")
-		_, err = c.Restart()
+		_, err = c.Restart(false)
 		assertNoError(err, t, "Restart")
 		bps, err := c.ListBreakpoints()
 		assertNoError(err, t, "ListBreakpoints")
@@ -1826,7 +1826,7 @@ func TestRerecord(t *testing.T) {
 
 		t0 := gett()
 
-		_, err = c.RestartFrom(false, "", false, nil)
+		_, err = c.RestartFrom(false, "", false, nil, false)
 		assertNoError(err, t, "First restart")
 		t1 := gett()
 
@@ -1836,7 +1836,7 @@ func TestRerecord(t *testing.T) {
 
 		time.Sleep(2 * time.Second) // make sure that we're not running inside the same second
 
-		_, err = c.RestartFrom(true, "", false, nil)
+		_, err = c.RestartFrom(true, "", false, nil, false)
 		assertNoError(err, t, "Second restart")
 		t2 := gett()
 
@@ -1901,7 +1901,7 @@ func TestStopRecording(t *testing.T) {
 
 		// try rerecording
 		go func() {
-			c.RestartFrom(true, "", false, nil)
+			c.RestartFrom(true, "", false, nil, false)
 		}()
 
 		time.Sleep(time.Second) // hopefully the re-recording started...

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -98,6 +99,12 @@ type Config struct {
 	// TTY is passed along to the target process on creation. Used to specify a
 	// TTY for that process.
 	TTY string
+
+	// Packages contains the packages that we are debugging.
+	Packages []string
+
+	// BuildFlags contains the flags passed to the compiler.
+	BuildFlags string
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -390,9 +397,16 @@ func (d *Debugger) detach(kill bool) error {
 // If the target process is a recording it will restart it from the given
 // position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
 // event number. If resetArgs is true, newArgs will replace the process args.
+<<<<<<< HEAD
 func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
+=======
+// If rebuild is true, the process wil be build again.
+func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
+	d.processMutex.Lock()
+	defer d.processMutex.Unlock()
+>>>>>>> terminal/command: Add 'reload' command
 
 	recorded, _ := d.target.Recorded()
 	if recorded && !rerecord {
@@ -431,6 +445,12 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		p, err = d.recordingRun(run)
 		d.recordingDone()
 	} else {
+		if rebuild {
+			err := gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
+			if err != nil {
+				return nil, fmt.Errorf("could not rebuild process: %s", err)
+			}
+		}
 		p, err = d.Launch(d.processArgs, d.config.WorkingDir)
 	}
 	if err != nil {
