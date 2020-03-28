@@ -152,7 +152,7 @@ func removePackagePath(typePath string) string {
 func genMapping(bindings []binding) []byte {
 	buf := bytes.NewBuffer([]byte{})
 
-	fmt.Fprintf(buf, "// DO NOT EDIT: auto-generated using scripts/gen-starlark-bindings.go\n\n")
+	fmt.Fprintf(buf, "// DO NOT EDIT: auto-generated using _scripts/gen-starlark-bindings.go\n\n")
 	fmt.Fprintf(buf, "package starbind\n\n")
 	fmt.Fprintf(buf, "import ( \"go.starlark.net/starlark\" \n \"github.com/go-delve/delve/service/api\" \n \"github.com/go-delve/delve/service/rpc2\" \n \"fmt\" )\n\n")
 	fmt.Fprintf(buf, "func (env *Env) starlarkPredeclare() starlark.StringDict {\n")

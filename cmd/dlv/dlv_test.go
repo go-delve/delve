@@ -76,7 +76,7 @@ func TestBuild(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 	var err error
 
-	cmd := exec.Command("go", "run", "scripts/make.go", "build")
+	cmd := exec.Command("go", "run", "_scripts/make.go", "build")
 	cmd.Dir = projectRoot()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -285,20 +285,20 @@ func TestGeneratedDoc(t *testing.T) {
 	var generatedBuf bytes.Buffer
 	commands := terminal.DebugCommands(nil)
 	commands.WriteMarkdown(&generatedBuf)
-	checkAutogenDoc(t, "Documentation/cli/README.md", "scripts/gen-cli-docs.go", generatedBuf.Bytes())
+	checkAutogenDoc(t, "Documentation/cli/README.md", "_scripts/gen-cli-docs.go", generatedBuf.Bytes())
 
 	// Checks gen-usage-docs.go
 	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
 	assertNoError(err, t, "TempDir")
 	defer protest.SafeRemoveAll(tempDir)
-	cmd := exec.Command("go", "run", "scripts/gen-usage-docs.go", tempDir)
+	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
 	cmd.Dir = projectRoot()
 	cmd.Run()
 	entries, err := ioutil.ReadDir(tempDir)
 	assertNoError(err, t, "ReadDir")
 	for _, doc := range entries {
 		docFilename := "Documentation/usage/" + doc.Name()
-		checkAutogenDoc(t, docFilename, "scripts/gen-usage-docs.go", slurpFile(t, tempDir+"/"+doc.Name()))
+		checkAutogenDoc(t, docFilename, "_scripts/gen-usage-docs.go", slurpFile(t, tempDir+"/"+doc.Name()))
 	}
 
 	runScript := func(args ...string) []byte {
@@ -313,8 +313,8 @@ func TestGeneratedDoc(t *testing.T) {
 		return out
 	}
 
-	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("scripts/gen-starlark-bindings.go", "go", "-"))
-	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("scripts/gen-starlark-bindings.go", "doc/dummy", "Documentation/cli/starlark.md"))
+	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "go", "-"))
+	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "doc/dummy", "Documentation/cli/starlark.md"))
 }
 
 func TestExitInInit(t *testing.T) {

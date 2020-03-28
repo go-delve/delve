@@ -1,4 +1,4 @@
-// This file is used by scripts/gen-opcodes.go to generate
+// This file is used by _scripts/gen-opcodes.go to generate
 // pkg/dwarf/op/opcodes.go 
 // Lines starting with // are comments and will be discarded.
 // Non empty lines contain the following tab separated fields:
