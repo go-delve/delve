@@ -130,6 +130,8 @@ func configureSet(t *Term, args string) error {
 		case reflect.Bool:
 			v := rest == "true"
 			return reflect.ValueOf(&v), nil
+		case reflect.String:
+			return reflect.ValueOf(&rest), nil
 		default:
 			return reflect.ValueOf(nil), fmt.Errorf("unsupported type for configuration key %q", cfgname)
 		}

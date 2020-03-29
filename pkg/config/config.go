@@ -45,6 +45,9 @@ type Config struct {
 	// MaxVariableRecurse is output evaluation depth of nested struct members, array and
 	// slice items and dereference pointers
 	MaxVariableRecurse *int `yaml:"max-variable-recurse,omitempty"`
+	// DisassembleFlavor allow user to specify output syntax flavor of assembly, one of
+	// this list "intel"(default), "gnu", "go"
+	DisassembleFlavor *string `yaml:"disassemble-flavor,omitempty"`
 
 	// If ShowLocationExpr is true whatis will print the DWARF location
 	// expression for its argument.
@@ -224,6 +227,9 @@ substitute-path:
 
 # Uncomment the following line to make the whatis command also print the DWARF location expression of its argument.
 # show-location-expr: true
+
+# Allow user to specify output syntax flavor of assembly, one of this list "intel"(default), "gnu", "go".
+# disassemble-flavor: intel
 
 # List of directories to use when searching for separate debug info files.
 debug-info-directories: ["/usr/lib/debug/.build-id"]

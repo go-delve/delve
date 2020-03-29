@@ -1914,6 +1914,18 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		rest = argv[1]
 	}
 
+	flavor := api.IntelFlavour
+	if t.conf != nil && t.conf.DisassembleFlavor != nil {
+		switch *t.conf.DisassembleFlavor {
+		case "go":
+			flavor = api.GoFlavour
+		case "gnu":
+			flavor = api.GNUFlavour
+		default:
+			flavor = api.IntelFlavour
+		}
+	}
+
 	var disasm api.AsmInstructions
 	var disasmErr error
 
@@ -1923,7 +1935,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if err != nil {
 			return err
 		}
-		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	case "-a":
 		v := split2PartsBySpace(rest)
 		if len(v) != 2 {
@@ -1937,7 +1949,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if err != nil {
 			return fmt.Errorf("wrong argument: %q is not a number", v[1])
 		}
-		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), flavor)
 	case "-l":
 		locs, err := t.client.FindLocation(ctx.Scope, rest, true)
 		if err != nil {
@@ -1946,7 +1958,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if len(locs) != 1 {
 			return errors.New("expression specifies multiple locations")
 		}
-		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	default:
 		return disasmUsageError
 	}
