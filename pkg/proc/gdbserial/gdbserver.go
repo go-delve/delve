@@ -67,7 +67,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"go/ast"
 	"net"
 	"os"
 	"os/exec"
@@ -555,7 +554,6 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 	tgt, err := proc.NewTarget(p, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
-		WriteBreakpoint:     p.writeBreakpoint,
 		DisableAsyncPreempt: runtime.GOOS == "darwin",
 		StopReason:          stopReason})
 	if err != nil {
@@ -1083,7 +1081,7 @@ func (p *gdbProcess) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	return nil, false
 }
 
-func (p *gdbProcess) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
+func (p *gdbProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := p.bi.PCToLine(uint64(addr))
 
 	if err := p.conn.setBreakpoint(addr); err != nil {
@@ -1093,37 +1091,8 @@ func (p *gdbProcess) writeBreakpoint(addr uint64) (string, int, *proc.Function, 
 	return f, l, fn, nil, nil
 }
 
-// SetBreakpoint creates a new breakpoint.
-func (p *gdbProcess) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	return p.breakpoints.Set(addr, kind, cond, p.writeBreakpoint)
-}
-
-// ClearBreakpoint clears a breakpoint at the given address.
-func (p *gdbProcess) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	if p.exited {
-		return nil, &proc.ErrProcessExited{Pid: p.conn.pid}
-	}
-	return p.breakpoints.Clear(addr, func(bp *proc.Breakpoint) error {
-		return p.conn.clearBreakpoint(bp.Addr)
-	})
-}
-
-// ClearInternalBreakpoints clear all internal use breakpoints like those set by 'next'.
-func (p *gdbProcess) ClearInternalBreakpoints() error {
-	return p.breakpoints.ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
-		if err := p.conn.clearBreakpoint(bp.Addr); err != nil {
-			return err
-		}
-		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint.Breakpoint == bp {
-				thread.clearBreakpointState()
-			}
-		}
-		return nil
-	})
+func (p *gdbProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
+	return p.conn.clearBreakpoint(bp.Addr)
 }
 
 type threadUpdater struct {
