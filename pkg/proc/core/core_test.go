@@ -185,7 +185,7 @@ func withCoreFile(t *testing.T, name, args string) *proc.Target {
 	return p
 }
 
-func logRegisters(t *testing.T, regs proc.Registers, arch proc.Arch) {
+func logRegisters(t *testing.T, regs proc.Registers, arch *proc.Arch) {
 	dregs := arch.RegistersToDwarfRegisters(0, regs)
 	for i, reg := range dregs.Regs {
 		if reg == nil {

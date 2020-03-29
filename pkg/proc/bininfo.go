@@ -43,7 +43,7 @@ const (
 // includes both the executable and also any loaded libraries).
 type BinaryInfo struct {
 	// Architecture of this binary.
-	Arch Arch
+	Arch *Arch
 
 	// GOOS operating system this binary is executing on.
 	GOOS string

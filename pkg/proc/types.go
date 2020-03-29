@@ -46,7 +46,7 @@ type runtimeTypeDIE struct {
 	kind   int64
 }
 
-func pointerTo(typ godwarf.Type, arch Arch) godwarf.Type {
+func pointerTo(typ godwarf.Type, arch *Arch) godwarf.Type {
 	return &godwarf.PtrType{
 		CommonType: godwarf.CommonType{
 			ByteSize:    int64(arch.PtrSize()),

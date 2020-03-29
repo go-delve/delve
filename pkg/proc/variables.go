@@ -432,7 +432,7 @@ func getGVariable(thread Thread) (*Variable, error) {
 		}
 	}
 
-	return newGVariable(thread, uintptr(gaddr), thread.Arch().DerefTLS())
+	return newGVariable(thread, uintptr(gaddr), thread.BinInfo().Arch.DerefTLS())
 }
 
 func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
@@ -446,7 +446,7 @@ func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
 	if deref {
 		typ = &godwarf.PtrType{
 			CommonType: godwarf.CommonType{
-				ByteSize:    int64(thread.Arch().PtrSize()),
+				ByteSize:    int64(thread.BinInfo().Arch.PtrSize()),
 				Name:        "",
 				ReflectKind: reflect.Ptr,
 				Offset:      0,
@@ -1305,7 +1305,7 @@ func convertToEface(srcv, dstv *Variable) error {
 	return dstv.writeEmptyInterface(typeAddr, srcv)
 }
 
-func readStringInfo(mem MemoryReadWriter, arch Arch, addr uintptr) (uintptr, int64, error) {
+func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uintptr) (uintptr, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
 

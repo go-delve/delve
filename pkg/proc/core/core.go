@@ -313,11 +313,6 @@ func (t *Thread) RestoreRegisters(proc.Registers) error {
 	return ErrChangeRegisterCore
 }
 
-// Arch returns the architecture the target is built for and executing on.
-func (t *Thread) Arch() proc.Arch {
-	return t.p.bi.Arch
-}
-
 // BinInfo returns information about the binary.
 func (t *Thread) BinInfo() *proc.BinaryInfo {
 	return t.p.bi

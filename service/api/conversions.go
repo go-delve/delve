@@ -329,7 +329,7 @@ func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 }
 
 // ConvertRegisters converts proc.Register to api.Register for a slice.
-func ConvertRegisters(in op.DwarfRegisters, arch proc.Arch, floatingPoint bool) (out []Register) {
+func ConvertRegisters(in op.DwarfRegisters, arch *proc.Arch, floatingPoint bool) (out []Register) {
 	out = make([]Register, 0, len(in.Regs))
 	for i := range in.Regs {
 		reg := in.Reg(uint64(i))

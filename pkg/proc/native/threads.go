@@ -94,12 +94,6 @@ func (t *Thread) Location() (*proc.Location, error) {
 	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }
 
-// Arch returns the architecture the binary is
-// compiled for and executing on.
-func (t *Thread) Arch() proc.Arch {
-	return t.dbp.bi.Arch
-}
-
 // BinInfo returns information on the binary.
 func (t *Thread) BinInfo() *proc.BinaryInfo {
 	return t.dbp.bi
@@ -124,7 +118,7 @@ func (t *Thread) SetCurrentBreakpoint(adjustPC bool) error {
 	// of PC after being executed we should look for breakpoints
 	// with bp.Addr == PC and there is no need to call SetPC
 	// after finding one.
-	adjustPC = adjustPC && t.Arch().BreakInstrMovesPC()
+	adjustPC = adjustPC && t.BinInfo().Arch.BreakInstrMovesPC()
 
 	if bp, ok := t.dbp.FindBreakpoint(pc, adjustPC); ok {
 		if adjustPC {

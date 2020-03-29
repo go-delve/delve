@@ -8,16 +8,8 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
-// AsmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
-// It assumes that the Loc and AtPC fields of asmInst have already been filled.
-func (i *I386) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
+func i386AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
 	return x86AsmDecode(asmInst, mem, regs, memrw, bi, 32)
-}
-
-// Prologues returns a list of stack split prologues
-// that are inserted at function entry.
-func (i *I386) Prologues() []opcodeSeq {
-	return prologuesI386
 }
 
 // Possible stacksplit prologues are inserted by stacksplit in
