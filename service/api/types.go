@@ -408,6 +408,8 @@ const (
 	GNUFlavour = AssemblyFlavour(proc.GNUFlavour)
 	// IntelFlavour will disassemble using Intel assembly syntax.
 	IntelFlavour = AssemblyFlavour(proc.IntelFlavour)
+	// GoFlavour will disassemble using Go assembly syntax.
+	GoFlavour = AssemblyFlavour(proc.GoFlavour)
 )
 
 // AsmInstruction represents one assembly instruction at some address
