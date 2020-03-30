@@ -1,6 +1,7 @@
 # Installation on Linux
 
 Please use the following steps to build and install Delve on Linux.
+(Warning, this does not support wsl 1. If you are using wsl, please update you wsl)
 
 There are two ways to install on Linux. First is the standard `go get` method:
 
