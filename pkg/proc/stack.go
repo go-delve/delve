@@ -127,7 +127,7 @@ func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 	so := g.variable.bi.PCToImage(g.PC)
 	return newStackIterator(
 		bi, g.variable.mem,
-		bi.Arch.AddrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP, g.LR),
+		bi.Arch.addrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP, g.LR),
 		g.stackhi, stkbar, g.stkbarPos, g, opts), nil
 }
 
@@ -246,7 +246,7 @@ func (it *stackIterator) Next() bool {
 	}
 
 	if it.opts&StacktraceSimple == 0 {
-		if it.bi.Arch.SwitchStack(it, &callFrameRegs) {
+		if it.bi.Arch.switchStack(it, &callFrameRegs) {
 			return true
 		}
 	}
@@ -268,7 +268,7 @@ func (it *stackIterator) switchToGoroutineStack() {
 	it.pc = it.g.PC
 	it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
 	it.regs.AddReg(it.regs.BPRegNum, op.DwarfRegisterFromUint64(it.g.BP))
-	if _, ok := it.bi.Arch.(*ARM64); ok {
+	if it.bi.Arch.Name == "arm64" {
 		it.regs.Reg(it.regs.LRRegNum).Uint64Val = it.g.LR
 	}
 }
@@ -414,9 +414,9 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	fde, err := it.bi.frameEntries.FDEForPC(it.pc)
 	var framectx *frame.FrameContext
 	if _, nofde := err.(*frame.ErrNoFDEForPC); nofde {
-		framectx = it.bi.Arch.FixFrameUnwindContext(nil, it.pc, it.bi)
+		framectx = it.bi.Arch.fixFrameUnwindContext(nil, it.pc, it.bi)
 	} else {
-		framectx = it.bi.Arch.FixFrameUnwindContext(fde.EstablishFrame(it.pc), it.pc, it.bi)
+		framectx = it.bi.Arch.fixFrameUnwindContext(fde.EstablishFrame(it.pc), it.pc, it.bi)
 	}
 
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
@@ -455,7 +455,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		}
 	}
 
-	if _, ok := it.bi.Arch.(*ARM64); ok {
+	if it.bi.Arch.Name == "arm64" {
 		if ret == 0 && it.regs.Regs[it.regs.LRRegNum] != nil {
 			ret = it.regs.Regs[it.regs.LRRegNum].Uint64Val
 		}
@@ -515,7 +515,7 @@ func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, c
 }
 
 func (it *stackIterator) readRegisterAt(regnum uint64, addr uint64) (*op.DwarfRegister, error) {
-	buf := make([]byte, it.bi.Arch.RegSize(regnum))
+	buf := make([]byte, it.bi.Arch.regSize(regnum))
 	_, err := it.mem.ReadMemory(buf, uintptr(addr))
 	if err != nil {
 		return nil, err

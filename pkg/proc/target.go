@@ -152,8 +152,7 @@ func (t *Target) SupportsFunctionCalls() bool {
 	if ok, _ := t.Process.Recorded(); ok {
 		return false
 	}
-	_, ok := t.Process.BinInfo().Arch.(*AMD64)
-	return ok
+	return t.Process.BinInfo().Arch.Name == "amd64"
 }
 
 // ClearAllGCache clears the internal Goroutine cache.

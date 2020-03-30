@@ -139,7 +139,7 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *Breakpoint
 		inst.Breakpoint = atbp
 		inst.AtPC = (regs != nil) && (curpc == pc)
 
-		bi.Arch.AsmDecode(&inst, mem, regs, memrw, bi)
+		bi.Arch.asmDecode(&inst, mem, regs, memrw, bi)
 
 		r = append(r, inst)
 

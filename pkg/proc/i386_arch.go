@@ -8,23 +8,6 @@ import (
 	"strings"
 )
 
-// I386 represents the Intel386 CPU architecture.
-type I386 struct {
-	gStructOffset uint64
-	goos          string
-
-	// crosscall2fn is the DIE of crosscall2, a function used by the go runtime
-	// to call C functions. This function in go 1.9 (and previous versions) had
-	// a bad frame descriptor which needs to be fixed to generate good stack
-	// traces.
-	crosscall2fn *Function
-
-	// sigreturnfn is the DIE of runtime.sigreturn, the return trampoline for
-	// the signal handler. See comment in FixFrameUnwindContext for a
-	// description of why this is needed.
-	sigreturnfn *Function
-}
-
 const (
 	i386DwarfIPRegNum uint64 = 8
 	i386DwarfSPRegNum uint64 = 4
@@ -35,50 +18,28 @@ var i386BreakInstruction = []byte{0xCC}
 
 // I386Arch returns an initialized I386Arch
 // struct.
-func I386Arch(goos string) *I386 {
-	return &I386{
-		goos: goos,
+func I386Arch(goos string) *Arch {
+	return &Arch{
+		Name:                             "386",
+		ptrSize:                          4,
+		maxInstructionLength:             15,
+		breakpointInstruction:            i386BreakInstruction,
+		breakInstrMovesPC:                true,
+		derefTLS:                         false,
+		prologues:                        prologuesI386,
+		fixFrameUnwindContext:            i386FixFrameUnwindContext,
+		switchStack:                      i386SwitchStack,
+		regSize:                          i386RegSize,
+		RegistersToDwarfRegisters:        i386RegistersToDwarfRegisters,
+		addrAndStackRegsToDwarfRegisters: i386AddrAndStackRegsToDwarfRegisters,
+		DwarfRegisterToString:            i386DwarfRegisterToString,
+		inhibitStepInto:                  i386InhibitStepInto,
+		asmDecode:                        i386AsmDecode,
 	}
 }
 
-// PtrSize returns the size of a pointer
-// on this architecture.
-func (i *I386) PtrSize() int {
-	return 4
-}
-
-// MaxInstructionLength returns the maximum length of an instruction.
-func (i *I386) MaxInstructionLength() int {
-	return 15
-}
-
-// BreakpointInstruction returns the Breakpoint
-// instruction for this architecture.
-func (i *I386) BreakpointInstruction() []byte {
-	return i386BreakInstruction
-}
-
-// BreakInstrMovesPC returns whether the
-// breakpoint instruction will change the value
-// of PC after being executed
-func (i *I386) BreakInstrMovesPC() bool {
-	return true
-}
-
-// BreakpointSize returns the size of the
-// breakpoint instruction on this architecture.
-func (i *I386) BreakpointSize() int {
-	return len(i386BreakInstruction)
-}
-
-// TODO, Not sure, always return false for now. Need to test on windows.
-func (i *I386) DerefTLS() bool {
-	return false
-}
-
-// FixFrameUnwindContext adds default architecture rules to fctxt or returns
-// the default frame unwind context if fctxt is nil.
-func (i *I386) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
+func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
+	i := bi.Arch
 	if i.sigreturnfn == nil {
 		i.sigreturnfn = bi.LookupFunc["runtime.sigreturn"]
 	}
@@ -153,9 +114,7 @@ func (i *I386) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *B
 }
 
 // SwitchStack will use the current frame to determine if it's time to
-// switch between the system stack and the goroutine stack or vice versa.
-// Sets it.atend when the top of the stack is reached.
-func (i *I386) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
+func i386SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
 		return false
 	}
@@ -214,7 +173,7 @@ func (i *I386) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 // in the System V ABI Intel386 Architecture Processor Supplement page 25,
 // table 2.14
 // https://www.uclibc.org/docs/psABI-i386.pdf
-func (i *I386) RegSize(regnum uint64) int {
+func i386RegSize(regnum uint64) int {
 	// XMM registers
 	if regnum >= 21 && regnum <= 36 {
 		return 16
@@ -293,7 +252,7 @@ func maxI386DwarfRegister() int {
 	return max
 }
 
-func (i *I386) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
+func i386RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, maxI386DwarfRegister()+1)
 
 	for _, reg := range regs.Slice(true) {
@@ -312,9 +271,7 @@ func (i *I386) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.D
 	}
 }
 
-// AddrAndStackRegsToDwarfRegisters returns DWARF registers from the passed in
-// PC, SP, and BP registers in the format used by the DWARF expression interpreter.
-func (i *I386) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
+func i386AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, i386DwarfIPRegNum+1)
 	dregs[i386DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
 	dregs[i386DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
@@ -330,7 +287,7 @@ func (i *I386) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint6
 	}
 }
 
-func (i *I386) DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+func i386DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	name, ok := i386DwarfToName[j]
 	if !ok {
 		name = fmt.Sprintf("unknown%d", j)
@@ -356,11 +313,11 @@ func (i *I386) DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string,
 	}
 }
 
-// InhibitStepInto returns whether StepBreakpoint can be set at pc.
+// i386InhibitStepInto returns whether StepBreakpoint can be set at pc.
 // When cgo or pie on 386 linux, compiler will insert more instructions (ex: call __x86.get_pc_thunk.).
 // StepBreakpoint shouldn't be set on __x86.get_pc_thunk and skip it.
 // See comments on stacksplit in $GOROOT/src/cmd/internal/obj/x86/obj6.go for generated instructions details.
-func (i *I386) InhibitStepInto(bi *BinaryInfo, pc uint64) bool {
+func i386InhibitStepInto(bi *BinaryInfo, pc uint64) bool {
 	if bi.SymNames != nil && bi.SymNames[pc] != nil &&
 		strings.HasPrefix(bi.SymNames[pc].Name, "__x86.get_pc_thunk.") {
 		return true

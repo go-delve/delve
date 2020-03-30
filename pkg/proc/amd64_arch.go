@@ -12,23 +12,6 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 )
 
-// AMD64 represents the AMD64 CPU architecture.
-type AMD64 struct {
-	gStructOffset uint64
-	goos          string
-
-	// crosscall2fn is the DIE of crosscall2, a function used by the go runtime
-	// to call C functions. This function in go 1.9 (and previous versions) had
-	// a bad frame descriptor which needs to be fixed to generate good stack
-	// traces.
-	crosscall2fn *Function
-
-	// sigreturnfn is the DIE of runtime.sigreturn, the return trampoline for
-	// the signal handler. See comment in FixFrameUnwindContext for a
-	// description of why this is needed.
-	sigreturnfn *Function
-}
-
 const (
 	amd64DwarfIPRegNum uint64 = 16
 	amd64DwarfSPRegNum uint64 = 7
@@ -39,51 +22,28 @@ var amd64BreakInstruction = []byte{0xCC}
 
 // AMD64Arch returns an initialized AMD64
 // struct.
-func AMD64Arch(goos string) *AMD64 {
-	return &AMD64{
-		goos: goos,
+func AMD64Arch(goos string) *Arch {
+	return &Arch{
+		Name:                             "amd64",
+		ptrSize:                          8,
+		maxInstructionLength:             15,
+		breakpointInstruction:            amd64BreakInstruction,
+		breakInstrMovesPC:                true,
+		derefTLS:                         goos == "windows",
+		prologues:                        prologuesAMD64,
+		fixFrameUnwindContext:            amd64FixFrameUnwindContext,
+		switchStack:                      amd64SwitchStack,
+		regSize:                          amd64RegSize,
+		RegistersToDwarfRegisters:        amd64RegistersToDwarfRegisters,
+		addrAndStackRegsToDwarfRegisters: amd64AddrAndStackRegsToDwarfRegisters,
+		DwarfRegisterToString:            amd64DwarfRegisterToString,
+		inhibitStepInto:                  func(*BinaryInfo, uint64) bool { return false },
+		asmDecode:                        amd64AsmDecode,
 	}
 }
 
-// PtrSize returns the size of a pointer
-// on this architecture.
-func (a *AMD64) PtrSize() int {
-	return 8
-}
-
-// MaxInstructionLength returns the maximum length of an instruction.
-func (a *AMD64) MaxInstructionLength() int {
-	return 15
-}
-
-// BreakpointInstruction returns the Breakpoint
-// instruction for this architecture.
-func (a *AMD64) BreakpointInstruction() []byte {
-	return amd64BreakInstruction
-}
-
-// BreakInstrMovesPC returns whether the
-// breakpoint instruction will change the value
-// of PC after being executed
-func (a *AMD64) BreakInstrMovesPC() bool {
-	return true
-}
-
-// BreakpointSize returns the size of the
-// breakpoint instruction on this architecture.
-func (a *AMD64) BreakpointSize() int {
-	return len(amd64BreakInstruction)
-}
-
-// DerefTLS returns true if the value of regs.TLS()+GStructOffset() is a
-// pointer to the G struct
-func (a *AMD64) DerefTLS() bool {
-	return a.goos == "windows"
-}
-
-// FixFrameUnwindContext adds default architecture rules to fctxt or returns
-// the default frame unwind context if fctxt is nil.
-func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
+func amd64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
+	a := bi.Arch
 	if a.sigreturnfn == nil {
 		a.sigreturnfn = bi.LookupFunc["runtime.sigreturn"]
 	}
@@ -138,7 +98,7 @@ func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
 		rule := fctxt.CFA
 		if rule.Offset == crosscall2SPOffsetBad {
-			switch a.goos {
+			switch bi.GOOS {
 			case "windows":
 				rule.Offset += crosscall2SPOffsetWindows
 			default:
@@ -168,10 +128,7 @@ func (a *AMD64) FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *
 // switch happens.
 const amd64cgocallSPOffsetSaveSlot = 0x28
 
-// SwitchStack will use the current frame to determine if it's time to
-// switch between the system stack and the goroutine stack or vice versa.
-// Sets it.atend when the top of the stack is reached.
-func (a *AMD64) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
+func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
 		return false
 	}
@@ -282,12 +239,12 @@ func (a *AMD64) SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 	}
 }
 
-// RegSize returns the size (in bytes) of register regnum.
+// amd64RegSize returns the size (in bytes) of register regnum.
 // The mapping between hardware registers and DWARF registers is specified
 // in the System V ABI AMD64 Architecture Processor Supplement page 57,
 // figure 3.36
 // https://www.uclibc.org/docs/psABI-x86_64.pdf
-func (a *AMD64) RegSize(regnum uint64) int {
+func amd64RegSize(regnum uint64) int {
 	// XMM registers
 	if regnum > amd64DwarfIPRegNum && regnum <= 32 {
 		return 16
@@ -387,9 +344,7 @@ func maxAmd64DwarfRegister() int {
 	return max
 }
 
-// RegistersToDwarfRegisters converts hardware registers to the format used
-// by the DWARF expression interpreter.
-func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
+func amd64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, maxAmd64DwarfRegister()+1)
 
 	for _, reg := range regs.Slice(true) {
@@ -408,9 +363,7 @@ func (a *AMD64) RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.
 	}
 }
 
-// AddrAndStackRegsToDwarfRegisters returns DWARF registers from the passed in
-// PC, SP, and BP registers in the format used by the DWARF expression interpreter.
-func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
+func amd64AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, amd64DwarfIPRegNum+1)
 	dregs[amd64DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
 	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
@@ -426,8 +379,7 @@ func (a *AMD64) AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint
 	}
 }
 
-// DwarfRegisterToString returns the name and value representation of the given register.
-func (a *AMD64) DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+func amd64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	name, ok := amd64DwarfToName[i]
 	if !ok {
 		name = fmt.Sprintf("unknown%d", i)
@@ -558,10 +510,4 @@ func formatX87Reg(b []byte) string {
 	binary.Write(&buf, binary.LittleEndian, mantissa)
 
 	return fmt.Sprintf("%#04x%016x\t%g", exponent, mantissa, f)
-}
-
-// InhibitStepInto returns whether StepBreakpoint can be set at pc.
-// Always return false on amd64.
-func (a *AMD64) InhibitStepInto(bi *BinaryInfo, pc uint64) bool {
-	return false
 }

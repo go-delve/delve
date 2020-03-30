@@ -1303,11 +1303,6 @@ func (t *Thread) RestoreRegisters(savedRegs proc.Registers) error {
 	return t.writeRegisters()
 }
 
-// Arch will return the CPU architecture for the target.
-func (t *Thread) Arch() proc.Arch {
-	return t.p.bi.Arch
-}
-
 // BinInfo will return information on the binary being debugged.
 func (t *Thread) BinInfo() *proc.BinaryInfo {
 	return t.p.bi
