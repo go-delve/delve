@@ -438,7 +438,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	if s.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
-			Body:  dap.StoppedEventBody{Reason: "breakpoint", ThreadId: 1, AllThreadsStopped: true},
+			Body:  dap.StoppedEventBody{Reason: "entry", ThreadId: 1, AllThreadsStopped: true},
 		}
 		s.send(e)
 	}
