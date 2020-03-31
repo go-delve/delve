@@ -25,75 +25,75 @@ func (err *ErrNoSourceForPC) Error() string {
 }
 
 // Next continues execution until the next source line.
-func (dbp *Target) Next() (err error) {
-	if _, err := dbp.Valid(); err != nil {
+func (t *Target) Next() (err error) {
+	if _, err := t.Valid(); err != nil {
 		return err
 	}
-	if dbp.Breakpoints().HasInternalBreakpoints() {
+	if t.Breakpoints().HasInternalBreakpoints() {
 		return fmt.Errorf("next while nexting")
 	}
 
-	if err = next(dbp, false, false); err != nil {
-		dbp.ClearInternalBreakpoints()
+	if err = next(t, false, false); err != nil {
+		t.ClearInternalBreakpoints()
 		return
 	}
 
-	return dbp.Continue()
+	return t.Continue()
 }
 
 // Continue continues execution of the debugged
 // process. It will continue until it hits a breakpoint
 // or is otherwise stopped.
-func (dbp *Target) Continue() error {
-	if _, err := dbp.Valid(); err != nil {
+func (t *Target) Continue() error {
+	if _, err := t.Valid(); err != nil {
 		return err
 	}
-	for _, thread := range dbp.ThreadList() {
+	for _, thread := range t.ThreadList() {
 		thread.Common().returnValues = nil
 	}
-	dbp.CheckAndClearManualStopRequest()
+	t.CheckAndClearManualStopRequest()
 	defer func() {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
-		if dbp.CheckAndClearManualStopRequest() {
-			dbp.StopReason = StopManual
-			dbp.ClearInternalBreakpoints()
+		if t.CheckAndClearManualStopRequest() {
+			t.StopReason = StopManual
+			t.ClearInternalBreakpoints()
 		}
 	}()
 	for {
-		if dbp.CheckAndClearManualStopRequest() {
-			dbp.StopReason = StopManual
-			dbp.ClearInternalBreakpoints()
+		if t.CheckAndClearManualStopRequest() {
+			t.StopReason = StopManual
+			t.ClearInternalBreakpoints()
 			return nil
 		}
-		dbp.ClearAllGCache()
-		trapthread, stopReason, err := dbp.proc.ContinueOnce()
-		dbp.StopReason = stopReason
+		t.ClearAllGCache()
+		trapthread, stopReason, err := t.proc.ContinueOnce()
+		t.StopReason = stopReason
 		if err != nil {
 			return err
 		}
-		if dbp.StopReason == StopLaunched {
-			dbp.ClearInternalBreakpoints()
+		if t.StopReason == StopLaunched {
+			t.ClearInternalBreakpoints()
 		}
 
-		threads := dbp.ThreadList()
+		threads := t.ThreadList()
 
-		callInjectionDone, err := callInjectionProtocol(dbp, threads)
+		callInjectionDone, err := callInjectionProtocol(t, threads)
 		if err != nil {
 			return err
 		}
 
-		if err := pickCurrentThread(dbp, trapthread, threads); err != nil {
+		if err := pickCurrentThread(t, trapthread, threads); err != nil {
 			return err
 		}
 
-		curthread := dbp.CurrentThread()
+		curthread := t.CurrentThread()
 		curbp := curthread.Breakpoint()
 
 		switch {
 		case curbp.Breakpoint == nil:
 			// runtime.Breakpoint, manual stop or debugCallV1-related stop
-			recorded, _ := dbp.Recorded()
+			recorded, _ := t.Recorded()
 			if recorded {
 				return conditionErrors(threads)
 			}
@@ -103,7 +103,7 @@ func (dbp *Target) Continue() error {
 				return conditionErrors(threads)
 			}
 			g, _ := GetG(curthread)
-			arch := dbp.BinInfo().Arch
+			arch := t.BinInfo().Arch
 
 			switch {
 			case loc.Fn.Name == "runtime.breakpoint":
@@ -116,17 +116,17 @@ func (dbp *Target) Continue() error {
 				// runtime.Breakpoint.
 				// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
 				// to the compiler requires 4 steps.
-				if err := stepInstructionOut(dbp, curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
+				if err := stepInstructionOut(t, curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
 					return err
 				}
-				dbp.StopReason = StopHardcodedBreakpoint
+				t.StopReason = StopHardcodedBreakpoint
 				return conditionErrors(threads)
-			case g == nil || dbp.fncallForG[g.ID] == nil:
+			case g == nil || t.fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
 				if !arch.BreakInstrMovesPC() {
 					bpsize := arch.BreakpointSize()
 					bp := make([]byte, bpsize)
-					_, err = dbp.CurrentThread().ReadMemory(bp, uintptr(loc.PC))
+					_, err = t.CurrentThread().ReadMemory(bp, uintptr(loc.PC))
 					if bytes.Equal(bp, arch.BreakpointInstruction()) {
 						curthread.SetPC(loc.PC + uint64(bpsize))
 					}
@@ -140,43 +140,43 @@ func (dbp *Target) Continue() error {
 				if err := conditionErrors(threads); err != nil {
 					return err
 				}
-				if dbp.GetDirection() == Forward {
-					text, err := disassembleCurrentInstruction(dbp, curthread)
+				if t.GetDirection() == Forward {
+					text, err := disassembleCurrentInstruction(t, curthread)
 					// here we either set a breakpoint into the destination of the CALL
 					// instruction or we determined that the called function is hidden,
 					// either way we need to resume execution
-					if err = setStepIntoBreakpoint(dbp, text, sameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
+					if err = setStepIntoBreakpoint(t, text, sameGoroutineCondition(t.SelectedGoroutine())); err != nil {
 						return err
 					}
 				} else {
-					if err := dbp.ClearInternalBreakpoints(); err != nil {
+					if err := t.ClearInternalBreakpoints(); err != nil {
 						return err
 					}
-					return dbp.StepInstruction()
+					return t.StepInstruction()
 				}
 			default:
 				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(curthread)
-				if err := dbp.ClearInternalBreakpoints(); err != nil {
+				if err := t.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
-				dbp.StopReason = StopNextFinished
+				t.StopReason = StopNextFinished
 				return conditionErrors(threads)
 			}
 		case curbp.Active:
-			onNextGoroutine, err := onNextGoroutine(curthread, dbp.Breakpoints())
+			onNextGoroutine, err := onNextGoroutine(curthread, t.Breakpoints())
 			if err != nil {
 				return err
 			}
 			if onNextGoroutine {
-				err := dbp.ClearInternalBreakpoints()
+				err := t.ClearInternalBreakpoints()
 				if err != nil {
 					return err
 				}
 			}
 			if curbp.Name == UnrecoveredPanic {
-				dbp.ClearInternalBreakpoints()
+				t.ClearInternalBreakpoints()
 			}
-			dbp.StopReason = StopBreakpoint
+			t.StopReason = StopBreakpoint
 			return conditionErrors(threads)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
@@ -184,7 +184,7 @@ func (dbp *Target) Continue() error {
 		if callInjectionDone {
 			// a call injection was finished, don't let a breakpoint with a failed
 			// condition or a step breakpoint shadow this.
-			dbp.StopReason = StopCallReturned
+			t.StopReason = StopCallReturned
 			return conditionErrors(threads)
 		}
 	}
@@ -258,29 +258,29 @@ func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) 
 
 // Step will continue until another source line is reached.
 // Will step into functions.
-func (dbp *Target) Step() (err error) {
-	if _, err := dbp.Valid(); err != nil {
+func (t *Target) Step() (err error) {
+	if _, err := t.Valid(); err != nil {
 		return err
 	}
-	if dbp.Breakpoints().HasInternalBreakpoints() {
+	if t.Breakpoints().HasInternalBreakpoints() {
 		return fmt.Errorf("next while nexting")
 	}
 
-	if err = next(dbp, true, false); err != nil {
+	if err = next(t, true, false); err != nil {
 		switch err.(type) {
 		case ErrThreadBlocked: // Noop
 		default:
-			dbp.ClearInternalBreakpoints()
+			t.ClearInternalBreakpoints()
 			return
 		}
 	}
 
-	if bp := dbp.CurrentThread().Breakpoint().Breakpoint; bp != nil && bp.Kind == StepBreakpoint && dbp.GetDirection() == Backward {
-		dbp.ClearInternalBreakpoints()
-		return dbp.StepInstruction()
+	if bp := t.CurrentThread().Breakpoint().Breakpoint; bp != nil && bp.Kind == StepBreakpoint && t.GetDirection() == Backward {
+		t.ClearInternalBreakpoints()
+		return t.StepInstruction()
 	}
 
-	return dbp.Continue()
+	return t.Continue()
 }
 
 // sameGoroutineCondition returns an expression that evaluates to true when
@@ -326,17 +326,17 @@ func andFrameoffCondition(cond ast.Expr, frameoff int64) ast.Expr {
 
 // StepOut will continue until the current goroutine exits the
 // function currently being executed or a deferred function is executed
-func (dbp *Target) StepOut() error {
-	backward := dbp.GetDirection() == Backward
-	if _, err := dbp.Valid(); err != nil {
+func (t *Target) StepOut() error {
+	backward := t.GetDirection() == Backward
+	if _, err := t.Valid(); err != nil {
 		return err
 	}
-	if dbp.Breakpoints().HasInternalBreakpoints() {
+	if t.Breakpoints().HasInternalBreakpoints() {
 		return fmt.Errorf("next while nexting")
 	}
 
-	selg := dbp.SelectedGoroutine()
-	curthread := dbp.CurrentThread()
+	selg := t.SelectedGoroutine()
+	curthread := t.CurrentThread()
 
 	topframe, retframe, err := topframe(selg, curthread)
 	if err != nil {
@@ -346,33 +346,33 @@ func (dbp *Target) StepOut() error {
 	success := false
 	defer func() {
 		if !success {
-			dbp.ClearInternalBreakpoints()
+			t.ClearInternalBreakpoints()
 		}
 	}()
 
 	if topframe.Inlined {
-		if err := next(dbp, false, true); err != nil {
+		if err := next(t, false, true); err != nil {
 			return err
 		}
 
 		success = true
-		return dbp.Continue()
+		return t.Continue()
 	}
 
 	sameGCond := sameGoroutineCondition(selg)
 
 	if backward {
-		if err := stepOutReverse(dbp, topframe, retframe, sameGCond); err != nil {
+		if err := stepOutReverse(t, topframe, retframe, sameGCond); err != nil {
 			return err
 		}
 
 		success = true
-		return dbp.Continue()
+		return t.Continue()
 	}
 
 	var deferpc uint64
 	if !backward {
-		deferpc, err = setDeferBreakpoint(dbp, nil, topframe, sameGCond, false)
+		deferpc, err = setDeferBreakpoint(t, nil, topframe, sameGCond, false)
 		if err != nil {
 			return err
 		}
@@ -385,12 +385,12 @@ func (dbp *Target) StepOut() error {
 	if topframe.Ret != 0 {
 		topframe, retframe := skipAutogeneratedWrappersOut(selg, curthread, &topframe, &retframe)
 		retFrameCond := andFrameoffCondition(sameGCond, retframe.FrameOffset())
-		bp, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond))
+		bp, err := allowDuplicateBreakpoint(t.SetBreakpoint(topframe.Ret, NextBreakpoint, retFrameCond))
 		if err != nil {
 			return err
 		}
 		if bp != nil {
-			configureReturnBreakpoint(dbp.BinInfo(), bp, topframe, retFrameCond)
+			configureReturnBreakpoint(t.BinInfo(), bp, topframe, retFrameCond)
 		}
 	}
 
@@ -399,29 +399,29 @@ func (dbp *Target) StepOut() error {
 	}
 
 	success = true
-	return dbp.Continue()
+	return t.Continue()
 }
 
 // StepInstruction will continue the current thread for exactly
 // one instruction. This method affects only the thread
 // associated with the selected goroutine. All other
 // threads will remain stopped.
-func (dbp *Target) StepInstruction() (err error) {
-	thread := dbp.CurrentThread()
-	g := dbp.SelectedGoroutine()
+func (t *Target) StepInstruction() (err error) {
+	thread := t.CurrentThread()
+	g := t.SelectedGoroutine()
 	if g != nil {
 		if g.Thread == nil {
 			// Step called on parked goroutine
-			if _, err := dbp.SetBreakpoint(g.PC, NextBreakpoint,
-				sameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
+			if _, err := t.SetBreakpoint(g.PC, NextBreakpoint,
+				sameGoroutineCondition(t.SelectedGoroutine())); err != nil {
 				return err
 			}
-			return dbp.Continue()
+			return t.Continue()
 		}
 		thread = g.Thread
 	}
-	dbp.ClearAllGCache()
-	if ok, err := dbp.Valid(); !ok {
+	t.ClearAllGCache()
+	if ok, err := t.Valid(); !ok {
 		return err
 	}
 	thread.Breakpoint().Clear()
@@ -434,7 +434,7 @@ func (dbp *Target) StepInstruction() (err error) {
 		return err
 	}
 	if tg, _ := GetG(thread); tg != nil {
-		dbp.selectedGoroutine = tg
+		t.selectedGoroutine = tg
 	}
 	return nil
 }
