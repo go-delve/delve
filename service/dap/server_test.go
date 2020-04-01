@@ -135,10 +135,10 @@ func TestStopOnEntry(t *testing.T) {
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
 		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.Reason != "entry" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
 		}
 		cdResp := client.ExpectConfigurationDoneResponse(t)
 		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
