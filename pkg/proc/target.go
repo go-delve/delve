@@ -11,10 +11,6 @@ import (
 )
 
 var (
-	// ErrNotExecutable is returned after attempting to execute a non-executable file
-	// to begin a debug session.
-	ErrNotExecutable = errors.New("not an executable file")
-
 	// ErrNotRecorded is returned when an action is requested that is
 	// only possible on recorded (traced) programs.
 	ErrNotRecorded = errors.New("not a recording")

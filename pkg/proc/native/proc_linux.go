@@ -54,10 +54,6 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 		process *exec.Cmd
 		err     error
 	)
-	// check that the argument to Launch is an executable file
-	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, proc.ErrNotExecutable
-	}
 
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
 		// exec.(*Process).Start will fail if we try to send a process to
