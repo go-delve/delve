@@ -1,11 +1,8 @@
 package native
 
 import (
-	"debug/pe"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"syscall"
 	"unsafe"
@@ -22,38 +19,12 @@ type osProcessDetails struct {
 	entryPoint  uint64
 }
 
-func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
-	f, err := os.OpenFile(path, 0, os.ModePerm)
-	if err != nil {
-		return nil, nil, err
-	}
-	peFile, err := pe.NewFile(f)
-	if err != nil {
-		f.Close()
-		return nil, nil, err
-	}
-	return peFile, f, nil
-}
-
 // Launch creates and begins debugging a new process.
 func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
 	}
-
-	// Make sure the binary exists and is an executable file
-	if filepath.Base(cmd[0]) == cmd[0] {
-		if _, err := exec.LookPath(cmd[0]); err != nil {
-			return nil, err
-		}
-	}
-
-	_, closer, err := openExecutablePathPE(argv0Go)
-	if err != nil {
-		return nil, proc.ErrNotExecutable
-	}
-	closer.Close()
 
 	env := proc.DisableAsyncPreemptEnv()
 

@@ -26,6 +26,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var (
+	// ErrCanNotRestart is returned when the target cannot be restarted.
+	// This is returned for targets that have been attached to, or when
+	// debugging core files.
+	ErrCanNotRestart = errors.New("can not restart this target")
+
+	// ErrNotRecording is returned when StopRecording is called while the
+	// debugger is not recording the target.
+	ErrNotRecording = errors.New("debugger is not recording")
+)
+
 // Debugger service.
 //
 // Debugger provides a higher level of
@@ -179,6 +190,9 @@ func (d *Debugger) checkGoVersion() error {
 
 // Launch will start a process with the given args and working directory.
 func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
+	if err := verifyBinaryFormat(processArgs[0]); err != nil {
+		return nil, err
+	}
 	switch d.config.Backend {
 	case "native":
 		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories)
@@ -259,11 +273,6 @@ func (d *Debugger) recordingRun(run func() (string, error)) (*proc.Target, error
 
 	return gdbserial.Replay(tracedir, false, true, d.config.DebugInfoDirectories)
 }
-
-// ErrNoAttachPath is the error returned when the client tries to attach to
-// a process on macOS using the lldb backend without specifying the path to
-// the target's executable.
-var ErrNoAttachPath = errors.New("must specify executable path on macOS")
 
 // Attach will attach to the process specified by 'pid'.
 func (d *Debugger) Attach(pid int, path string) (*proc.Target, error) {
@@ -368,12 +377,6 @@ func (d *Debugger) detach(kill bool) error {
 	}
 	return d.target.Detach(kill)
 }
-
-var ErrCanNotRestart = errors.New("can not restart this target")
-
-// ErrNotRecording is returned when StopRecording is called while the
-// debugger is not recording the target.
-var ErrNotRecording = errors.New("debugger is not recording")
 
 // Restart will restart the target process, first killing
 // and then exec'ing it again.

@@ -322,14 +322,8 @@ func getLdEnvVars() []string {
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
 func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*proc.Target, error) {
-	switch runtime.GOOS {
-	case "windows":
+	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
-	default:
-		// check that the argument to Launch is an executable file
-		if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-			return nil, proc.ErrNotExecutable
-		}
 	}
 
 	if foreground {

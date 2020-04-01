@@ -38,10 +38,6 @@ type osProcessDetails struct {
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
 func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target, error) {
-	// check that the argument to Launch is an executable file
-	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, proc.ErrNotExecutable
-	}
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err

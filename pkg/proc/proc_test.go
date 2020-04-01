@@ -2037,32 +2037,6 @@ func TestStepParked(t *testing.T) {
 	})
 }
 
-func TestIssue509(t *testing.T) {
-	fixturesDir := protest.FindFixturesDir()
-	nomaindir := filepath.Join(fixturesDir, "nomaindir")
-	cmd := exec.Command("go", "build", "-gcflags=-N -l", "-o", "debug")
-	cmd.Dir = nomaindir
-	assertNoError(cmd.Run(), t, "go build")
-	exepath := filepath.Join(nomaindir, "debug")
-	defer os.Remove(exepath)
-	var err error
-
-	switch testBackend {
-	case "native":
-		_, err = native.Launch([]string{exepath}, ".", false, []string{})
-	case "lldb":
-		_, err = gdbserial.LLDBLaunch([]string{exepath}, ".", false, []string{})
-	default:
-		t.Skip("test not valid for this backend")
-	}
-	if err == nil {
-		t.Fatalf("expected error but none was generated")
-	}
-	if err != proc.ErrNotExecutable {
-		t.Fatalf("expected error \"%v\" got \"%v\"", proc.ErrNotExecutable, err)
-	}
-}
-
 func TestUnsupportedArch(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major < 0 || !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 6, Rev: -1}) || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {

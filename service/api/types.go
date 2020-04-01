@@ -13,7 +13,7 @@ import (
 
 // ErrNotExecutable is an error returned when trying
 // to debug a non-executable file.
-var ErrNotExecutable = proc.ErrNotExecutable
+var ErrNotExecutable = errors.New("not an executable file")
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
@@ -212,7 +212,7 @@ const (
 	// that may outlive the stack frame are allocated on the heap instead and
 	// only the address is recorded on the stack. These variables will be
 	// marked with this flag.
-	VariableEscaped = (1 << iota)
+	VariableEscaped = 1 << iota
 
 	// VariableShadowed is set for local variables that are shadowed by a
 	// variable with the same name in another scope
