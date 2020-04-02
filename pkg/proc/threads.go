@@ -19,7 +19,7 @@ type Thread interface {
 	// SetPC/SetSP/etc.
 	// To insure that the the returned variable won't change call the Copy
 	// method of Registers.
-	Registers(floatingPoint bool) (Registers, error)
+	Registers() (Registers, error)
 
 	// RestoreRegisters restores saved registers
 	RestoreRegisters(Registers) error

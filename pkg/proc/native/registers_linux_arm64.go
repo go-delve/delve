@@ -56,7 +56,7 @@ func ptraceGetFpRegset(tid int) (fpregset []byte, err error) {
 
 // SetPC sets PC to the value specified by 'pc'.
 func (thread *nativeThread) SetPC(pc uint64) error {
-	ir, err := registers(thread, false)
+	ir, err := registers(thread)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 // SetSP sets RSP to the value specified by 'sp'
 func (thread *nativeThread) SetSP(sp uint64) (err error) {
 	var ir proc.Registers
-	ir, err = registers(thread, false)
+	ir, err = registers(thread)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (thread *nativeThread) SetDX(dx uint64) (err error) {
 	return fmt.Errorf("not supported")
 }
 
-func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread) (proc.Registers, error) {
 	var (
 		regs linutil.ARM64PtraceRegs
 		err  error
@@ -92,12 +92,10 @@ func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error)
 	if err != nil {
 		return nil, err
 	}
-	r := &linutil.ARM64Registers{&regs, nil, nil}
-	if floatingPoint {
-		r.Fpregs, r.Fpregset, err = thread.fpRegisters()
-		if err != nil {
-			return nil, err
-		}
-	}
+	r := linutil.NewARM64Registers(&regs, func(r *linutil.ARM64Registers) error {
+		var floatLoadError error
+		r.Fpregs, r.Fpregset, floatLoadError = thread.fpRegisters()
+		return floatLoadError
+	})
 	return r, nil
 }

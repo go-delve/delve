@@ -157,8 +157,8 @@ func (t *nativeThread) ClearBreakpoint(bp *proc.Breakpoint) error {
 }
 
 // Registers obtains register values from the debugged process.
-func (t *nativeThread) Registers(floatingPoint bool) (proc.Registers, error) {
-	return registers(t, floatingPoint)
+func (t *nativeThread) Registers() (proc.Registers, error) {
+	return registers(t)
 }
 
 // RestoreRegisters will set the value of the CPU registers to those
@@ -169,7 +169,7 @@ func (t *nativeThread) RestoreRegisters(savedRegs proc.Registers) error {
 
 // PC returns the current program counter value for this thread.
 func (t *nativeThread) PC() (uint64, error) {
-	regs, err := t.Registers(false)
+	regs, err := t.Registers()
 	if err != nil {
 		return 0, err
 	}

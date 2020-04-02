@@ -187,7 +187,9 @@ func withCoreFile(t *testing.T, name, args string) *proc.Target {
 
 func logRegisters(t *testing.T, regs proc.Registers, arch *proc.Arch) {
 	dregs := arch.RegistersToDwarfRegisters(0, regs)
-	for i, reg := range dregs.Regs {
+	dregs.Reg(^uint64(0))
+	for i := 0; i < dregs.CurrentSize(); i++ {
+		reg := dregs.Reg(uint64(i))
 		if reg == nil {
 			continue
 		}
@@ -250,7 +252,7 @@ func TestCore(t *testing.T) {
 		t.Errorf("main.msg = %q, want %q", msg.Value, "BOOM!")
 	}
 
-	regs, err := p.CurrentThread().Registers(true)
+	regs, err := p.CurrentThread().Registers()
 	if err != nil {
 		t.Fatalf("Couldn't get current thread registers: %v", err)
 	}
@@ -286,7 +288,7 @@ func TestCoreFpRegisters(t *testing.T) {
 				continue
 			}
 			if frames[i].Current.Fn.Name == "main.main" {
-				regs, err = thread.Registers(true)
+				regs, err = thread.Registers()
 				if err != nil {
 					t.Fatalf("Could not get registers for thread %x, %v", thread.ThreadID(), err)
 				}
@@ -326,7 +328,9 @@ func TestCoreFpRegisters(t *testing.T) {
 
 	for _, regtest := range regtests {
 		found := false
-		for i, reg := range dregs.Regs {
+		dregs.Reg(^uint64(0))
+		for i := 0; i < dregs.CurrentSize(); i++ {
+			reg := dregs.Reg(uint64(i))
 			regname, _, regval := arch.DwarfRegisterToString(i, reg)
 			if reg != nil && regname == regtest.name {
 				found = true

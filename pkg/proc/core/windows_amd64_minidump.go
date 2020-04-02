@@ -54,6 +54,6 @@ func (th *windowsAMD64Thread) pid() int {
 	return int(th.th.ID)
 }
 
-func (th *windowsAMD64Thread) registers(floatingPoint bool) (proc.Registers, error) {
-	return winutil.NewAMD64Registers(&th.th.Context, th.th.TEB, floatingPoint), nil
+func (th *windowsAMD64Thread) registers() (proc.Registers, error) {
+	return winutil.NewAMD64Registers(&th.th.Context, th.th.TEB), nil
 }

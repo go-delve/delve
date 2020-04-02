@@ -170,7 +170,7 @@ type thread struct {
 }
 
 type osThread interface {
-	registers(floatingPoint bool) (proc.Registers, error)
+	registers() (proc.Registers, error)
 	pid() int
 }
 
@@ -281,7 +281,7 @@ func (t *thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 // Location returns the location of this thread based on
 // the value of the instruction pointer register.
 func (t *thread) Location() (*proc.Location, error) {
-	regs, err := t.th.registers(false)
+	regs, err := t.th.registers()
 	if err != nil {
 		return nil, err
 	}
@@ -303,8 +303,8 @@ func (t *thread) ThreadID() int {
 }
 
 // Registers returns the current value of the registers for this thread.
-func (t *thread) Registers(floatingPoint bool) (proc.Registers, error) {
-	return t.th.registers(floatingPoint)
+func (t *thread) Registers() (proc.Registers, error) {
+	return t.th.registers()
 }
 
 // RestoreRegisters will only return an error for core files,

@@ -1286,7 +1286,7 @@ func (t *gdbThread) WriteMemory(addr uintptr, data []byte) (written int, err err
 
 // Location returns the current location of this thread.
 func (t *gdbThread) Location() (*proc.Location, error) {
-	regs, err := t.Registers(false)
+	regs, err := t.Registers()
 	if err != nil {
 		return nil, err
 	}
@@ -1311,7 +1311,7 @@ func (t *gdbThread) ThreadID() int {
 }
 
 // Registers returns the CPU registers for this thread.
-func (t *gdbThread) Registers(floatingPoint bool) (proc.Registers, error) {
+func (t *gdbThread) Registers() (proc.Registers, error) {
 	if t.regs.regs == nil {
 		if err := t.reloadRegisters(); err != nil {
 			return nil, err
@@ -1358,7 +1358,7 @@ func (t *gdbThread) StepInstruction() error {
 
 // Blocked returns true if the thread is blocked in runtime or kernel code.
 func (t *gdbThread) Blocked() bool {
-	regs, err := t.Registers(false)
+	regs, err := t.Registers()
 	if err != nil {
 		return false
 	}
@@ -1639,7 +1639,7 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	// adjustPC is ignored, it is the stub's responsibiility to set the PC
 	// address correctly after hitting a breakpoint.
 	t.clearBreakpointState()
-	regs, err := t.Registers(false)
+	regs, err := t.Registers()
 	if err != nil {
 		return err
 	}
@@ -1865,6 +1865,10 @@ func (regs *gdbRegisters) Get(n int) (uint64, error) {
 	return 0, proc.ErrUnknownRegister
 }
 
+func (r *gdbRegisters) FloatLoadError() error {
+	return nil
+}
+
 // SetPC will set the value of the PC register to the given value.
 func (t *gdbThread) SetPC(pc uint64) error {
 	t.regs.setPC(pc)
@@ -1895,7 +1899,7 @@ func (t *gdbThread) SetDX(dx uint64) error {
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 
-func (regs *gdbRegisters) Slice(floatingPoint bool) []proc.Register {
+func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 	r := make([]proc.Register, 0, len(regs.regsInfo))
 	for _, reginfo := range regs.regsInfo {
 		if reginfo.Group == "float" && !floatingPoint {
@@ -1941,12 +1945,12 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) []proc.Register {
 			r = proc.AppendBytesRegister(r, strings.ToUpper(reginfo.Name), value[16:])
 		}
 	}
-	return r
+	return r, nil
 }
 
-func (regs *gdbRegisters) Copy() proc.Registers {
+func (regs *gdbRegisters) Copy() (proc.Registers, error) {
 	savedRegs := &gdbRegisters{}
 	savedRegs.init(regs.regsInfo)
 	copy(savedRegs.buf, regs.buf)
-	return savedRegs
+	return savedRegs, nil
 }

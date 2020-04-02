@@ -232,7 +232,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800
-	scope.Regs.Regs[scope.Regs.PCRegNum].Uint64Val = scope.PC
+	scope.Regs.Reg(scope.Regs.PCRegNum).Uint64Val = scope.PC
 	uintExprCheck(t, scope, "a", after)
 }
 

@@ -349,7 +349,7 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	var mem proc.MemoryReadWriter = p.CurrentThread()
 	if g != nil && g.Thread != nil {
 		mem = g.Thread
-		regs, _ = g.Thread.Registers(false)
+		regs, _ = g.Thread.Registers()
 	}
 	instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
 	if err != nil {
@@ -1162,13 +1162,16 @@ func (d *Debugger) Registers(threadID int, scope *api.EvalScope, floatingPoint b
 		if !found {
 			return nil, fmt.Errorf("couldn't find thread %d", threadID)
 		}
-		regs, err := thread.Registers(floatingPoint)
+		regs, err := thread.Registers()
 		if err != nil {
 			return nil, err
 		}
 		dregs = d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
 	}
 	r := api.ConvertRegisters(dregs, d.target.BinInfo().Arch, floatingPoint)
+	if floatingPoint && dregs.FloatLoadError != nil {
+		return nil, dregs.FloatLoadError
+	}
 	// Sort the registers in a canonical order we prefer, this is mostly
 	// because the DWARF register numbering for AMD64 is weird.
 	sort.Slice(r, func(i, j int) bool {
@@ -1491,7 +1494,7 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 	if g != nil && g.Thread != nil {
 		curthread = g.Thread
 	}
-	regs, _ := curthread.Registers(false)
+	regs, _ := curthread.Registers()
 
 	insts, err := proc.Disassemble(curthread, regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
 	if err != nil {

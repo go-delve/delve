@@ -39,7 +39,7 @@ func killProcess(pid int) error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread) (proc.Registers, error) {
 	panic(ErrNativeBackendDisabled)
 }
 

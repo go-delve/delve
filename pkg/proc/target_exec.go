@@ -230,7 +230,7 @@ func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
 }
 
 func disassembleCurrentInstruction(p Process, thread Thread) ([]AsmInstruction, error) {
-	regs, err := thread.Registers(false)
+	regs, err := thread.Registers()
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +474,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	var regs Registers
 	if selg != nil && selg.Thread != nil {
 		thread = selg.Thread
-		regs, err = selg.Thread.Registers(false)
+		regs, err = selg.Thread.Registers()
 		if err != nil {
 			return err
 		}

@@ -104,6 +104,9 @@ func newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []o
 				sz = len(reg)
 			}
 			if sz > len(reg) {
+				if regs.FloatLoadError != nil {
+					return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d), also error loading floating point registers: %v", sz, piece.RegNum, len(reg), regs.FloatLoadError)
+				}
 				return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d)", sz, piece.RegNum, len(reg))
 			}
 			cmem.data = append(cmem.data, reg[:sz]...)

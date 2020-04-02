@@ -52,7 +52,7 @@ func (thread *nativeThread) SetDX(dx uint64) error {
 	return _SetThreadContext(thread.os.hThread, context)
 }
 
-func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread) (proc.Registers, error) {
 	context := winutil.NewCONTEXT()
 
 	context.ContextFlags = _CONTEXT_ALL
@@ -67,5 +67,5 @@ func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error)
 		return nil, fmt.Errorf("NtQueryInformationThread failed: it returns 0x%x", status)
 	}
 
-	return winutil.NewAMD64Registers(context, uint64(threadInfo.TebBaseAddress), floatingPoint), nil
+	return winutil.NewAMD64Registers(context, uint64(threadInfo.TebBaseAddress)), nil
 }

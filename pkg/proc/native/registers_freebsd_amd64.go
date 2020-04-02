@@ -11,7 +11,7 @@ import (
 
 // SetPC sets RIP to the value specified by 'pc'.
 func (thread *nativeThread) SetPC(pc uint64) error {
-	ir, err := registers(thread, false)
+	ir, err := registers(thread)
 	if err != nil {
 		return err
 	}
@@ -24,7 +24,7 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 // SetSP sets RSP to the value specified by 'sp'
 func (thread *nativeThread) SetSP(sp uint64) (err error) {
 	var ir proc.Registers
-	ir, err = registers(thread, false)
+	ir, err = registers(thread)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (thread *nativeThread) SetSP(sp uint64) (err error) {
 
 func (thread *nativeThread) SetDX(dx uint64) (err error) {
 	var ir proc.Registers
-	ir, err = registers(thread, false)
+	ir, err = registers(thread)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (thread *nativeThread) SetDX(dx uint64) (err error) {
 	return
 }
 
-func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread) (proc.Registers, error) {
 	var (
 		regs fbsdutil.AMD64PtraceRegs
 		err  error
@@ -60,15 +60,13 @@ func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error)
 	if err != nil {
 		return nil, err
 	}
-	r := &fbsdutil.AMD64Registers{&regs, nil, nil, uint64(fsbase)}
-	if floatingPoint {
+	r := fbsdutil.NewAMD64Registers(&regs, uint64(fsbase), func(r *fbsdutil.AMD64Registers) error {
 		var fpregset fbsdutil.AMD64Xstate
-		r.Fpregs, fpregset, err = thread.fpRegisters()
+		var floatLoadError error
+		r.Fpregs, fpregset, floatLoadError = thread.fpRegisters()
 		r.Fpregset = &fpregset
-		if err != nil {
-			return nil, err
-		}
-	}
+		return floatLoadError
+	})
 	return r, nil
 }
 

@@ -252,11 +252,14 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	}
 
 	// check that there are at least 256 bytes free on the stack
-	regs, err := scope.g.Thread.Registers(true)
+	regs, err := scope.g.Thread.Registers()
 	if err != nil {
 		return nil, err
 	}
-	regs = regs.Copy()
+	regs, err = regs.Copy()
+	if err != nil {
+		return nil, err
+	}
 	if regs.SP()-256 <= scope.g.stack.lo {
 		return nil, errNotEnoughStack
 	}
@@ -293,18 +296,13 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		scope.g = scope.callCtx.doContinue()
 
 		// adjust the value of registers inside scope
-		for regnum := range scope.Regs.Regs {
-			switch uint64(regnum) {
-			case scope.Regs.PCRegNum, scope.Regs.SPRegNum, scope.Regs.BPRegNum:
-				// leave these alone
-			default:
-				// every other register is dirty and unrecoverable
-				scope.Regs.Regs[regnum] = nil
-			}
-		}
-
-		scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(spoff + int64(scope.g.stack.hi))
-		scope.Regs.Regs[scope.Regs.BPRegNum].Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
+		pcreg, bpreg, spreg := scope.Regs.Reg(scope.Regs.PCRegNum), scope.Regs.Reg(scope.Regs.BPRegNum), scope.Regs.Reg(scope.Regs.SPRegNum)
+		scope.Regs.ClearRegisters()
+		scope.Regs.AddReg(scope.Regs.PCRegNum, pcreg)
+		scope.Regs.AddReg(scope.Regs.BPRegNum, bpreg)
+		scope.Regs.AddReg(scope.Regs.SPRegNum, spreg)
+		scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(spoff + int64(scope.g.stack.hi))
+		scope.Regs.Reg(scope.Regs.BPRegNum).Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
 		scope.Regs.FrameBase = fboff + int64(scope.g.stack.hi)
 		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 
@@ -655,12 +653,16 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 	bi := p.BinInfo()
 
 	thread := callScope.g.Thread
-	regs, err := thread.Registers(false)
+	regs, err := thread.Registers()
 	if err != nil {
 		fncall.err = err
 		return true
 	}
-	regs = regs.Copy()
+	regs, err = regs.Copy()
+	if err != nil {
+		fncall.err = err
+		return true
+	}
 
 	rax, _ := regs.Get(int(x86asm.RAX))
 
@@ -823,7 +825,7 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	scope.File, scope.Line, _ = scope.BinInfo.PCToLine(fn.Entry)
 
 	scope.Regs.CFA = cfa
-	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = sp
+	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = sp
 
 	fn.cu.image.dwarfReader.Seek(fn.offset)
 	e, err := fn.cu.image.dwarfReader.Next()

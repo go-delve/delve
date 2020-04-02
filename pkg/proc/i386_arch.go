@@ -253,22 +253,11 @@ func maxI386DwarfRegister() int {
 }
 
 func i386RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, maxI386DwarfRegister()+1)
+	dregs := initDwarfRegistersFromSlice(maxI386DwarfRegister(), regs, i386NameToDwarf)
+	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, i386DwarfIPRegNum, i386DwarfSPRegNum, i386DwarfBPRegNum, 0)
+	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, i386NameToDwarf))
 
-	for _, reg := range regs.Slice(true) {
-		if dwarfReg, ok := i386NameToDwarf[strings.ToLower(reg.Name)]; ok {
-			dregs[dwarfReg] = reg.Reg
-		}
-	}
-
-	return op.DwarfRegisters{
-		StaticBase: staticBase,
-		Regs:       dregs,
-		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   i386DwarfIPRegNum,
-		SPRegNum:   i386DwarfSPRegNum,
-		BPRegNum:   i386DwarfBPRegNum,
-	}
+	return *dr
 }
 
 func i386AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
@@ -277,14 +266,7 @@ func i386AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.
 	dregs[i386DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
 	dregs[i386DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
 
-	return op.DwarfRegisters{
-		StaticBase: staticBase,
-		Regs:       dregs,
-		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   i386DwarfIPRegNum,
-		SPRegNum:   i386DwarfSPRegNum,
-		BPRegNum:   i386DwarfBPRegNum,
-	}
+	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, i386DwarfIPRegNum, i386DwarfSPRegNum, i386DwarfBPRegNum, 0)
 }
 
 func i386DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
@@ -301,9 +283,9 @@ func i386DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string, float
 		return name, true, fmt.Sprintf("%#04x", reg.Uint64Val)
 
 	default:
-		if reg.Bytes != nil && strings.HasPrefix(name, "xmm") {
+		if reg.Bytes != nil && strings.HasPrefix(n, "xmm") {
 			return name, true, formatSSEReg(reg.Bytes)
-		} else if reg.Bytes != nil && strings.HasPrefix(name, "st(") {
+		} else if reg.Bytes != nil && strings.HasPrefix(n, "st(") {
 			return name, true, formatX87Reg(reg.Bytes)
 		} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) <= 8) {
 			return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
