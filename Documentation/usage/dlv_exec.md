@@ -20,7 +20,8 @@ dlv exec <path/to/binary>
 ### Options
 
 ```
-      --continue   Continue the debugged process on start.
+      --continue     Continue the debugged process on start.
+      --tty string   TTY to use for the target program
 ```
 
 ### Options inherited from parent commands

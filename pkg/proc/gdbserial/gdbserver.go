@@ -321,7 +321,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*proc.Target, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -349,6 +349,9 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		args = append(args, ldEnvVars...)
 		if foreground {
 			args = append(args, "--stdio-path", "/dev/tty")
+		}
+		if tty != "" {
+			args = append(args, "--stdio-path", tty)
 		}
 		if logflags.LLDBServerOutput() {
 			args = append(args, "-g", "-l", "stdout")
