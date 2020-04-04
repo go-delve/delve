@@ -291,7 +291,7 @@ func (d *Debugger) Attach(pid int, path string) (*proc.Target, error) {
 	}
 }
 
-var errMacOSBackendUnavailable = errors.New("debugserver or lldb-server not found: install XCode's command line tools or lldb-server")
+var errMacOSBackendUnavailable = errors.New("debugserver or lldb-server not found: install Xcode's command line tools or lldb-server")
 
 func betterGdbserialLaunchError(p *proc.Target, err error) (*proc.Target, error) {
 	if runtime.GOOS != "darwin" {
