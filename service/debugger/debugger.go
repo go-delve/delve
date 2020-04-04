@@ -91,6 +91,10 @@ type Config struct {
 	// used to compile the executable and refuse to work on incompatible
 	// versions.
 	CheckGoVersion bool
+
+	// TTY is passed along to the target process on creation. Used to specify a
+	// TTY for that process.
+	TTY string
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -195,9 +199,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 	}
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories)
+		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY))
 	case "rr":
 		if d.target != nil {
 			// restart should not call us if the backend is 'rr'
@@ -239,9 +243,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY))
 		}
-		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories)
+		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}

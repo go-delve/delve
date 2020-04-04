@@ -52,6 +52,8 @@ var (
 	// checkLocalConnUser is true if the debugger should check that local
 	// connections come from the same user that started the headless server
 	checkLocalConnUser bool
+	// tty is used to provide an alternate TTY for the program you wish to debug.
+	tty string
 
 	// backend selection
 	backend string
@@ -184,6 +186,7 @@ session.`,
 	}
 	debugCommand.Flags().String("output", "./__debug_bin", "Output path for the binary.")
 	debugCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
+	debugCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
 	rootCommand.AddCommand(debugCommand)
 
 	// 'exec' subcommand.
@@ -207,6 +210,7 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 			os.Exit(execute(0, args, conf, "", executingExistingFile))
 		},
 	}
+	execCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
 	execCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
 	rootCommand.AddCommand(execCommand)
 
@@ -398,10 +402,11 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		server := dap.NewServer(&service.Config{
 			Listener:             listener,
 			Backend:              backend,
-			Foreground:           true, // always headless
+			Foreground:           (headless && tty == ""),
 			DebugInfoDirectories: conf.DebugInfoDirectories,
 			CheckGoVersion:       checkGoVersion,
 			DisconnectChan:       disconnectChan,
+			TTY:                  tty,
 		})
 		defer server.Stop()
 
@@ -741,11 +746,12 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			WorkingDir:           workingDir,
 			Backend:              backend,
 			CoreFile:             coreFile,
-			Foreground:           headless,
+			Foreground:           (headless && tty == ""),
 			DebugInfoDirectories: conf.DebugInfoDirectories,
 			CheckGoVersion:       checkGoVersion,
 			CheckLocalConnUser:   checkLocalConnUser,
 			DisconnectChan:       disconnectChan,
+			TTY:                  tty,
 		})
 	default:
 		fmt.Printf("Unknown API version: %d\n", apiVersion)

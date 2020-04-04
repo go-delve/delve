@@ -20,7 +20,7 @@ type osProcessDetails struct {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err

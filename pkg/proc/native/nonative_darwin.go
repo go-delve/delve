@@ -12,12 +12,12 @@ import (
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
 
 // Launch returns ErrNativeBackendDisabled.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target, error) {
+func Launch(_ []string, _ string, _ bool, _ []string, _ string) (*proc.Target, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
 // Attach returns ErrNativeBackendDisabled.
-func Attach(pid int, _ []string) (*proc.Target, error) {
+func Attach(_ int, _ []string) (*proc.Target, error) {
 	return nil, ErrNativeBackendDisabled
 }
 

@@ -5,8 +5,8 @@ go 1.11
 require (
 	github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5
 	github.com/cpuguy83/go-md2man v1.0.10 // indirect
+	github.com/creack/pty v1.1.9
 	github.com/google/go-dap v0.2.0
-	github.com/cpuguy83/go-md2man v1.0.8 // indirect
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/mattn/go-colorable v0.0.0-20170327083344-ded68f7a9561

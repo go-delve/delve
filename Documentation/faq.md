@@ -35,3 +35,17 @@ dlv exec --headless --continue --listen :4040 --accept-multiclient /path/to/exec
 ```
 
 Note that the connection to Delve is unauthenticated and will allow arbitrary remote code execution: *do not do this in production*.
+
+#### How can I use Delve to debug a CLI application?
+
+There are three good ways to go about this
+
+1. Run your CLI application in a separate terminal and then attach to it via `dlv attach`. 
+
+1. Run Delve in headless mode via `dlv debug --headless` and then connect to it from
+another terminal. This will place the process in the foreground and allow it to access
+the terminal TTY.
+
+1. Assign the process its own TTY. This can be done on UNIX systems via the `--tty` flag for the 
+`dlv debug` and `dlv exec` commands. For the best experience, you should create your own PTY and 
+assign it as the TTY. This can be done via [ptyme](https://github.com/derekparker/ptyme).

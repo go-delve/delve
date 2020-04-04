@@ -368,6 +368,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		Foreground:           s.config.Foreground,
 		DebugInfoDirectories: s.config.DebugInfoDirectories,
 		CheckGoVersion:       s.config.CheckGoVersion,
+		TTY:                  s.config.TTY,
 	}
 	var err error
 	if s.debugger, err = debugger.New(config, s.config.ProcessArgs); err != nil {
