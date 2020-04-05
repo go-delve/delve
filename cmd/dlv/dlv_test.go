@@ -253,6 +253,44 @@ func TestContinue(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestStdinPipe(t *testing.T) {
+	const listenAddr = "127.0.0.1:40573"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "stdintest")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--log-dest", "/dev/null", "--listen", listenAddr)
+	cmd.Dir = buildtestdir
+	stdin, err := cmd.StdinPipe()
+	assertNoError(err, t, "stdin pipe")
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("could not start headless instance: %v", err)
+	}
+
+	checkstr := "hello world!"
+	fmt.Fprintln(stdin, checkstr)
+
+	text, _, err := bufio.NewReader(stdout).ReadLine()
+	if err != nil {
+		t.Fatalf("could not read from headless instance: %v", err)
+	}
+
+	if string(text) != "echo: "+checkstr {
+		t.Fatalf("wrong text received: %s", text)
+	}
+
+	// and detach from and kill the headless instance
+	client := rpc2.NewClient(listenAddr)
+	if err := client.Detach(true); err != nil {
+		t.Fatalf("error detaching from headless instance: %v", err)
+	}
+	cmd.Wait()
+}
+
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
 	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
 

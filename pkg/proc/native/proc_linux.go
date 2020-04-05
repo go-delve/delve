@@ -65,12 +65,12 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
+		process.Stdin = os.Stdin
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
 		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true, Foreground: foreground}
 		if foreground {
 			signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
-			process.Stdin = os.Stdin
 		}
 		if wd != "" {
 			process.Dir = wd
