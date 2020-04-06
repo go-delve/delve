@@ -299,7 +299,10 @@ func unusedPort() string {
 	return fmt.Sprintf(":%d", port)
 }
 
-const debugserverExecutable = "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
+var debugserverExecutablePaths = []string{
+	"/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver",
+	"/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver",
+}
 
 // ErrUnsupportedOS is returned when trying to use the lldb backend on Windows.
 var ErrUnsupportedOS = errors.New("lldb backend not supported on Windows")
@@ -339,8 +342,8 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	var listener net.Listener
 	var port string
 	var process *exec.Cmd
-	if _, err := os.Stat(debugserverExecutable); err == nil {
-		listener, err = net.Listen("tcp", "127.0.0.1:0")
+	if debugserverExecutable := findDebugserverExecutable(); debugserverExecutable != "" {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
@@ -358,7 +361,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 		isDebugserver = true
 
-		process = exec.Command(debugserverExecutable, args...)
+		process = logAndExecCommand(debugserverExecutable, args...)
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
@@ -368,7 +371,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		args = append(args, "gdbserver", port, "--")
 		args = append(args, cmd...)
 
-		process = exec.Command("lldb-server", args...)
+		process = logAndExecCommand("lldb-server", args...)
 	}
 
 	if logflags.LLDBServerOutput() || logflags.GdbWire() || foreground {
@@ -420,19 +423,19 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 	var process *exec.Cmd
 	var listener net.Listener
 	var port string
-	if _, err := os.Stat(debugserverExecutable); err == nil {
+	if debugserverExecutable := findDebugserverExecutable(); debugserverExecutable != "" {
 		isDebugserver = true
-		listener, err = net.Listen("tcp", "127.0.0.1:0")
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
-		process = exec.Command(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
+		process = logAndExecCommand(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
 		}
 		port = unusedPort()
-		process = exec.Command("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
+		process = logAndExecCommand("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
 	}
 
 	process.Stdout = os.Stdout
@@ -454,6 +457,20 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 		tgt, err = p.Dial(port, path, pid, debugInfoDirs, proc.StopAttached)
 	}
 	return tgt, err
+}
+
+func findDebugserverExecutable() string {
+	for _, path := range debugserverExecutablePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+func logAndExecCommand(cmd string, args ...string) *exec.Cmd {
+	logflags.GdbWireLogger().Debugf("running %q %q", cmd, args)
+	return exec.Command(cmd, args...)
 }
 
 // EntryPoint will return the process entry point address, useful for
