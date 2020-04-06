@@ -299,7 +299,24 @@ func unusedPort() string {
 	return fmt.Sprintf(":%d", port)
 }
 
-const debugserverExecutable = "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
+var debugserverExecutable = getDebugServerAbsolutePath()
+
+// Helper function to resolve path of "debugserver"
+//
+// Returns a string of the absolute path to the debugserver binary IFF it is
+// found in the system path ($PATH) or in the Xcode bundle. Otherwise will
+// return the path to the standalone CLT location
+func getDebugServerAbsolutePath() string {
+	if path, err := exec.LookPath("debugserver"); err == nil {
+		return path
+	}
+
+	if xcodePath, e := exec.LookPath("/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver"); e == nil {
+		return xcodePath
+	}
+
+	return "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
+}
 
 // ErrUnsupportedOS is returned when trying to use the lldb backend on Windows.
 var ErrUnsupportedOS = errors.New("lldb backend not supported on Windows")
