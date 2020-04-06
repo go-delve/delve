@@ -299,14 +299,14 @@ func unusedPort() string {
 	return fmt.Sprintf(":%d", port)
 }
 
-var debugserverExecutable = getDebugServerAbsolutePath()
+var debugserverExecutable = GetDebugServerAbsolutePath()
 
 // Helper function to resolve path of "debugserver"
 //
 // Returns a string of the absolute path to the debugserver binary IFF it is
 // found in the system path ($PATH) or in the Xcode bundle. Otherwise will
 // return the path to the standalone CLT location
-func getDebugServerAbsolutePath() string {
+func GetDebugServerAbsolutePath() string {
 	if path, err := exec.LookPath("debugserver"); err == nil {
 		return path
 	}
@@ -316,6 +316,15 @@ func getDebugServerAbsolutePath() string {
 	}
 
 	return "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
+}
+
+// Process logger function
+//
+// A wrapper around the exec.Command() function to log the arguments prior to
+// starting the process
+func commandLogger(binary string, arguments ...string) *exec.Cmd {
+	logflags.GdbWireLogger().Debugf("executing %s %v", binary, arguments)
+	return exec.Command(binary, arguments...)
 }
 
 // ErrUnsupportedOS is returned when trying to use the lldb backend on Windows.
@@ -375,7 +384,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 		isDebugserver = true
 
-		process = exec.Command(debugserverExecutable, args...)
+		process = commandLogger(debugserverExecutable, args...)
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
@@ -385,7 +394,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		args = append(args, "gdbserver", port, "--")
 		args = append(args, cmd...)
 
-		process = exec.Command("lldb-server", args...)
+		process = commandLogger("lldb-server", args...)
 	}
 
 	if logflags.LLDBServerOutput() || logflags.GdbWire() || foreground {
@@ -443,13 +452,13 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 		if err != nil {
 			return nil, err
 		}
-		process = exec.Command(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
+		process = commandLogger(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
 		}
 		port = unusedPort()
-		process = exec.Command("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
+		process = commandLogger("lldb-server", "gdbserver", "--attach", strconv.Itoa(pid), port)
 	}
 
 	process.Stdout = os.Stdout
