@@ -1214,7 +1214,9 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return nil, xev.Unreadable
 	}
 
-	xev = xev.maybeDereference()
+	if xev.Flags&VariableCPtr == 0 {
+		xev = xev.maybeDereference()
+	}
 
 	idxev, err := scope.evalAST(node.Index)
 	if err != nil {
@@ -1228,11 +1230,13 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		if xev == nilVariable {
 			return nil, cantindex
 		}
-		_, isarrptr := xev.RealType.(*godwarf.PtrType).Type.(*godwarf.ArrayType)
-		if !isarrptr {
-			return nil, cantindex
+		if xev.Flags&VariableCPtr == 0 {
+			_, isarrptr := xev.RealType.(*godwarf.PtrType).Type.(*godwarf.ArrayType)
+			if !isarrptr {
+				return nil, cantindex
+			}
+			xev = xev.maybeDereference()
 		}
-		xev = xev.maybeDereference()
 		fallthrough
 
 	case reflect.Slice, reflect.Array, reflect.String:
@@ -1309,6 +1313,11 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 			return nil, fmt.Errorf("map index out of bounds")
 		}
 		return xev, nil
+	case reflect.Ptr:
+		if xev.Flags&VariableCPtr != 0 {
+			return xev.reslice(low, high)
+		}
+		fallthrough
 	default:
 		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.TypeString())
 	}
@@ -1844,7 +1853,13 @@ func sameType(t1, t2 godwarf.Type) bool {
 }
 
 func (v *Variable) sliceAccess(idx int) (*Variable, error) {
-	if idx < 0 || int64(idx) >= v.Len {
+	wrong := false
+	if v.Flags&VariableCPtr == 0 {
+		wrong = idx < 0 || int64(idx) >= v.Len
+	} else {
+		wrong = idx < 0
+	}
+	if wrong {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 	mem := v.mem
@@ -1889,7 +1904,18 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 }
 
 func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
-	if low < 0 || low >= v.Len || high < 0 || high > v.Len {
+	wrong := false
+	cptrNeedsFakeSlice := false
+	if v.Flags&VariableCPtr == 0 {
+		wrong = low < 0 || low >= v.Len || high < 0 || high > v.Len
+	} else {
+		wrong = low < 0 || high < 0
+		if high == 0 {
+			high = low
+		}
+		cptrNeedsFakeSlice = v.Kind != reflect.String
+	}
+	if wrong {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 
@@ -1901,7 +1927,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	}
 
 	typ := v.DwarfType
-	if _, isarr := v.DwarfType.(*godwarf.ArrayType); isarr {
+	if _, isarr := v.DwarfType.(*godwarf.ArrayType); isarr || cptrNeedsFakeSlice {
 		typ = fakeSliceType(v.fieldType)
 	}
 

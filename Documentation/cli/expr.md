@@ -106,3 +106,7 @@ Packages with the same name can be disambiguated by using the full package path.
 (dlv) p "some/package".A
 (dlv) p "some/other/package".A
 ```
+
+# Pointers in Cgo
+
+Char pointers are always treated as NUL terminated strings, both indexing and the slice operator can be applied to them. Other C pointers can also be used similarly to Go slices, with indexing and the slice operator. In both of these cases it is up to the user to respect array bounds.

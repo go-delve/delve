@@ -75,6 +75,8 @@ const (
 	// the variable is the return value of a function call and allocated on a
 	// frame that no longer exists)
 	VariableFakeAddress
+	// VariableCPrt means the variable is a C pointer
+	VariableCPtr
 )
 
 // Variable represents a variable. It contains the address, name,
@@ -612,6 +614,18 @@ func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryIn
 		v.Kind = reflect.Ptr
 		if _, isvoid := t.Type.(*godwarf.VoidType); isvoid {
 			v.Kind = reflect.UnsafePointer
+		} else if isCgoType(bi, t) {
+			v.Flags |= VariableCPtr
+			v.fieldType = t.Type
+			v.stride = alignAddr(v.fieldType.Size(), v.fieldType.Align())
+			v.Len = 0
+			if isCgoCharPtr(bi, t) {
+				v.Kind = reflect.String
+			}
+			if v.Addr != 0 {
+				n, err := readUintRaw(v.mem, v.Addr, int64(v.bi.Arch.PtrSize()))
+				v.Base, v.Unreadable = uintptr(n), err
+			}
 		}
 	case *godwarf.ChanType:
 		v.Kind = reflect.Chan
@@ -655,6 +669,14 @@ func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryIn
 			v.Kind = reflect.Complex128
 		}
 	case *godwarf.IntType:
+		v.Kind = reflect.Int
+	case *godwarf.CharType:
+		// Rest of the code assumes that Kind == reflect.Int implies RealType ==
+		// godwarf.IntType.
+		v.RealType = &godwarf.IntType{BasicType: t.BasicType}
+		v.Kind = reflect.Int
+	case *godwarf.UcharType:
+		v.RealType = &godwarf.IntType{BasicType: t.BasicType}
 		v.Kind = reflect.Int
 	case *godwarf.UintType:
 		v.Kind = reflect.Uint
@@ -1204,7 +1226,18 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 	case reflect.String:
 		var val string
-		val, v.Unreadable = readStringValue(DereferenceMemory(v.mem), v.Base, v.Len, cfg)
+		if v.Flags&VariableCPtr == 0 {
+			val, v.Unreadable = readStringValue(DereferenceMemory(v.mem), v.Base, v.Len, cfg)
+		} else {
+			var done bool
+			val, done, v.Unreadable = readCStringValue(DereferenceMemory(v.mem), v.Base, cfg)
+			if v.Unreadable == nil {
+				v.Len = int64(len(val))
+				if !done {
+					v.Len++
+				}
+			}
+		}
 		v.Value = constant.MakeString(val)
 
 	case reflect.Slice, reflect.Array:
@@ -1341,9 +1374,50 @@ func readStringValue(mem MemoryReadWriter, addr uintptr, strlen int64, cfg LoadC
 		return "", fmt.Errorf("could not read string at %#v due to %s", addr, err)
 	}
 
-	retstr := *(*string)(unsafe.Pointer(&val))
+	return string(val), nil
+}
 
-	return retstr, nil
+func readCStringValue(mem MemoryReadWriter, addr uintptr, cfg LoadConfig) (string, bool, error) {
+	buf := make([]byte, cfg.MaxStringLen) //
+	val := buf[:0]                        // part of the string we've already read
+
+	for len(buf) > 0 {
+		// Reads some memory for the string but (a) never more than we would
+		// need (considering cfg.MaxStringLen), and (b) never cross a page boundary
+		// until we're sure we have to.
+		// The page check is needed to avoid getting an I/O error for reading
+		// memory we don't even need.
+		// We don't know how big a page is but 1024 is a reasonable minimum common
+		// divisor for all architectures.
+		curaddr := addr + uintptr(len(val))
+		maxsize := int(alignAddr(int64(curaddr+1), 1024) - int64(curaddr))
+		size := len(buf)
+		if size > maxsize {
+			size = maxsize
+		}
+
+		_, err := mem.ReadMemory(buf[:size], curaddr)
+		if err != nil {
+			return "", false, fmt.Errorf("could not read string at %#v due to %s", addr, err)
+		}
+
+		done := false
+		for i := 0; i < size; i++ {
+			if buf[i] == 0 {
+				done = true
+				size = i
+				break
+			}
+		}
+
+		val = val[:len(val)+size]
+		buf = buf[size:]
+		if done {
+			return string(val), true, nil
+		}
+	}
+
+	return string(val), false, nil
 }
 
 const (
@@ -2155,6 +2229,37 @@ func popcnt(x uint64) int {
 	x += x >> 16
 	x += x >> 32
 	return int(x) & (1<<7 - 1)
+}
+
+func isCgoType(bi *BinaryInfo, typ godwarf.Type) bool {
+	cu := bi.Images[typ.Common().Index].findCompileUnitForOffset(typ.Common().Offset)
+	if cu == nil {
+		return false
+	}
+	return !cu.isgo
+}
+
+func isCgoCharPtr(bi *BinaryInfo, typ *godwarf.PtrType) bool {
+	if !isCgoType(bi, typ) {
+		return false
+	}
+
+	fieldtyp := typ.Type
+resolveQualTypedef:
+	for {
+		switch t := fieldtyp.(type) {
+		case *godwarf.QualType:
+			fieldtyp = t.Type
+		case *godwarf.TypedefType:
+			fieldtyp = t.Type
+		default:
+			break resolveQualTypedef
+		}
+	}
+
+	_, ischar := fieldtyp.(*godwarf.CharType)
+	_, isuchar := fieldtyp.(*godwarf.UcharType)
+	return ischar || isuchar
 }
 
 func (cm constantsMap) Get(typ godwarf.Type) *constantType {
