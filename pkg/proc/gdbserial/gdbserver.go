@@ -299,8 +299,6 @@ func unusedPort() string {
 	return fmt.Sprintf(":%d", port)
 }
 
-var debugserverExecutable = GetDebugServerAbsolutePath()
-
 // Helper function to resolve path of "debugserver"
 //
 // Returns a string of the absolute path to the debugserver binary IFF it is
@@ -365,7 +363,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 	var listener net.Listener
 	var port string
 	var process *exec.Cmd
-	if _, err := os.Stat(debugserverExecutable); err == nil {
+	if _, err := os.Stat(GetDebugServerAbsolutePath()); err == nil {
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
@@ -384,7 +382,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 		isDebugserver = true
 
-		process = commandLogger(debugserverExecutable, args...)
+		process = commandLogger(GetDebugServerAbsolutePath(), args...)
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
@@ -446,13 +444,13 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 	var process *exec.Cmd
 	var listener net.Listener
 	var port string
-	if _, err := os.Stat(debugserverExecutable); err == nil {
+	if _, err := os.Stat(GetDebugServerAbsolutePath()); err == nil {
 		isDebugserver = true
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
-		process = commandLogger(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
+		process = commandLogger(GetDebugServerAbsolutePath(), "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
 		if _, err := exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
