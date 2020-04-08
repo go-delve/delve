@@ -54,7 +54,11 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte, ptrSize int) 
 		}
 		opcode := Opcode(opcodeByte)
 		if ctxt.reg && opcode != DW_OP_piece {
-			break
+			// last opcode was DW_OP_regN and next one isn't DW_OP_piece so convert
+			// the register piece into a stack value.
+			ctxt.stack = append(ctxt.stack, int64(regs.Uint64Val(ctxt.pieces[len(ctxt.pieces)-1].RegNum)))
+			ctxt.pieces = ctxt.pieces[:len(ctxt.pieces)-1]
+			ctxt.reg = false
 		}
 		fn, ok := oplut[opcode]
 		if !ok {
@@ -68,6 +72,9 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte, ptrSize int) 
 	}
 
 	if ctxt.pieces != nil {
+		if len(ctxt.pieces) == 1 && ctxt.pieces[0].IsRegister {
+			return int64(regs.Uint64Val(ctxt.pieces[0].RegNum)), ctxt.pieces, nil
+		}
 		return 0, ctxt.pieces, nil
 	}
 
