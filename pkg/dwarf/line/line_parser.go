@@ -14,6 +14,7 @@ type DebugLinePrologue struct {
 	Version        uint16
 	Length         uint32
 	MinInstrLength uint8
+	MaxOpPerInstr  uint8
 	InitialIsStmt  uint8
 	LineBase       int8
 	LineRange      uint8
@@ -41,7 +42,7 @@ type DebugLineInfo struct {
 
 	// if normalizeBackslash is true all backslashes (\) will be converted into forward slashes (/)
 	normalizeBackslash bool
-	ptrSize int
+	ptrSize            int
 }
 
 type FileEntry struct {
@@ -102,6 +103,11 @@ func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 	p.Version = binary.LittleEndian.Uint16(buf.Next(2))
 	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
 	p.MinInstrLength = uint8(buf.Next(1)[0])
+	if p.Version == 4 {
+		p.MaxOpPerInstr = uint8(buf.Next(1)[0])
+	} else {
+		p.MaxOpPerInstr = 1
+	}
 	p.InitialIsStmt = uint8(buf.Next(1)[0])
 	p.LineBase = int8(buf.Next(1)[0])
 	p.LineRange = uint8(buf.Next(1)[0])
