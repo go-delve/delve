@@ -62,6 +62,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
 		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true, Foreground: foreground}
+		process.Env = proc.DisableAsyncPreemptEnv()
 		if foreground {
 			signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
 			process.Stdin = os.Stdin
