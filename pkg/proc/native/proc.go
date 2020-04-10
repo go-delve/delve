@@ -301,7 +301,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
 		WriteBreakpoint:     dbp.writeBreakpoint,
-		DisableAsyncPreempt: runtime.GOOS == "windows",
+		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd",
 		StopReason:          stopReason})
 }
 
