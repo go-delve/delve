@@ -342,12 +342,9 @@ func (dbp *Target) StepOut() error {
 		return dbp.Continue()
 	}
 
-	var deferpc uint64
-	if !backward {
-		deferpc, err = setDeferBreakpoint(dbp, nil, topframe, sameGCond, false)
-		if err != nil {
-			return err
-		}
+	deferpc, err := setDeferBreakpoint(dbp, nil, topframe, sameGCond, false)
+	if err != nil {
+		return err
 	}
 
 	if topframe.Ret == 0 && deferpc == 0 {
