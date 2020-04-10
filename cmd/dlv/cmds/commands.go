@@ -139,6 +139,7 @@ option to let the process continue or kill it.
 		},
 		Run: attachCmd,
 	}
+	attachCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
 	rootCommand.AddCommand(attachCommand)
 
 	// 'connect' subcommand.
