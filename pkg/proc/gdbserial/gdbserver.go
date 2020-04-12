@@ -94,11 +94,17 @@ const (
 
 const heartbeatInterval = 10 * time.Second
 
+var debugserverExecutablePaths = []string{
+	"debugserver",
+	"/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver",
+	"/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver",
+}
+
 // ErrDirChange is returned when trying to change execution direction
 // while there are still internal breakpoints set.
 var ErrDirChange = errors.New("direction change with internal breakpoints")
 
-// Process implements proc.Process using a connection to a debugger stub
+// gdbProcess implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
 type gdbProcess struct {
 	bi   *proc.BinaryInfo
@@ -128,7 +134,7 @@ type gdbProcess struct {
 
 var _ proc.ProcessInternal = &gdbProcess{}
 
-// Thread represents an operating system thread.
+// gdbThread represents an operating system thread.
 type gdbThread struct {
 	ID                int
 	strID             string
@@ -299,26 +305,18 @@ func unusedPort() string {
 	return fmt.Sprintf(":%d", port)
 }
 
-// Helper function to resolve path of "debugserver"
-//
-// Returns a string of the absolute path to the debugserver binary IFF it is
-// found in the system path ($PATH) or in the Xcode bundle. Otherwise will
-// return the path to the standalone CLT location
-func GetDebugServerAbsolutePath() string {
-	if path, err := exec.LookPath("debugserver"); err == nil {
-		return path
+// getDebugServerAbsolutePath returns a string of the absolute path to the debugserver binary IFF it is
+// found in the system path ($PATH), the Xcode bundle or the standalone CLT location.
+func getDebugServerAbsolutePath() string {
+	for _, debugServerPath := range debugserverExecutablePaths {
+		if _, err := exec.LookPath(debugServerPath); err == nil {
+			return debugServerPath
+		}
 	}
-
-	if xcodePath, e := exec.LookPath("/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver"); e == nil {
-		return xcodePath
-	}
-
-	return "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
+	return ""
 }
 
-// Process logger function
-//
-// A wrapper around the exec.Command() function to log the arguments prior to
+// commandLogger is a wrapper around the exec.Command() function to log the arguments prior to
 // starting the process
 func commandLogger(binary string, arguments ...string) *exec.Cmd {
 	logflags.GdbWireLogger().Debugf("executing %s %v", binary, arguments)
@@ -358,12 +356,15 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		}
 	}
 
-	isDebugserver := false
+	var (
+		isDebugserver bool
+		listener      net.Listener
+		port          string
+		process       *exec.Cmd
+		err           error
+	)
 
-	var listener net.Listener
-	var port string
-	var process *exec.Cmd
-	if _, err := os.Stat(GetDebugServerAbsolutePath()); err == nil {
+	if debugserverExecutable := getDebugServerAbsolutePath(); debugserverExecutable != "" {
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
@@ -385,9 +386,9 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 
 		isDebugserver = true
 
-		process = commandLogger(GetDebugServerAbsolutePath(), args...)
+		process = commandLogger(debugserverExecutable, args...)
 	} else {
-		if _, err := exec.LookPath("lldb-server"); err != nil {
+		if _, err = exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
 		}
 		port = unusedPort()
@@ -416,8 +417,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		process.Env = proc.DisableAsyncPreemptEnv()
 	}
 
-	err := process.Start()
-	if err != nil {
+	if err = process.Start(); err != nil {
 		return nil, err
 	}
 
@@ -443,19 +443,22 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 		return nil, ErrUnsupportedOS
 	}
 
-	isDebugserver := false
-	var process *exec.Cmd
-	var listener net.Listener
-	var port string
-	if _, err := os.Stat(GetDebugServerAbsolutePath()); err == nil {
+	var (
+		isDebugserver bool
+		process       *exec.Cmd
+		listener      net.Listener
+		port          string
+		err           error
+	)
+	if debugserverExecutable := getDebugServerAbsolutePath(); debugserverExecutable != "" {
 		isDebugserver = true
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
-		process = commandLogger(GetDebugServerAbsolutePath(), "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
+		process = commandLogger(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
 	} else {
-		if _, err := exec.LookPath("lldb-server"); err != nil {
+		if _, err = exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
 		}
 		port = unusedPort()
@@ -466,8 +469,7 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 	process.Stderr = os.Stderr
 	process.SysProcAttr = sysProcAttr(false)
 
-	err := process.Start()
-	if err != nil {
+	if err = process.Start(); err != nil {
 		return nil, err
 	}
 
