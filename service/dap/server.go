@@ -89,7 +89,7 @@ func (s *Server) Stop() {
 		s.conn.Close()
 	}
 	if s.debugger != nil {
-		kill := s.config.AttachPid == 0
+		kill := s.config.Debugger.AttachPid == 0
 		if err := s.debugger.Detach(kill); err != nil {
 			s.log.Error(err)
 		}
@@ -354,24 +354,15 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	stop, ok := request.Arguments["stopOnEntry"]
-	s.stopOnEntry = (ok && stop == true)
+	s.stopOnEntry = ok && stop == true
 
 	// TODO(polina): support target args
 	s.config.ProcessArgs = []string{program}
-	s.config.WorkingDir = filepath.Dir(program)
+	s.config.Debugger.WorkingDir = filepath.Dir(program)
 
-	config := &debugger.Config{
-		WorkingDir:           s.config.WorkingDir,
-		AttachPid:            0,
-		CoreFile:             "",
-		Backend:              s.config.Backend,
-		Foreground:           s.config.Foreground,
-		DebugInfoDirectories: s.config.DebugInfoDirectories,
-		CheckGoVersion:       s.config.CheckGoVersion,
-		TTY:                  s.config.TTY,
-	}
+	config := s.config.Debugger
 	var err error
-	if s.debugger, err = debugger.New(config, s.config.ProcessArgs); err != nil {
+	if s.debugger, err = debugger.New(&config, s.config.ProcessArgs); err != nil {
 		s.sendErrorResponse(request.Request,
 			FailedToContinue, "Failed to launch", err.Error())
 		return
@@ -394,7 +385,7 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 		if err != nil {
 			s.log.Error(err)
 		}
-		kill := s.config.AttachPid == 0
+		kill := s.config.Debugger.AttachPid == 0
 		err = s.debugger.Detach(kill)
 		if err != nil {
 			s.log.Error(err)

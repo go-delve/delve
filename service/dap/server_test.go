@@ -16,6 +16,7 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/dap/daptest"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
 )
 
@@ -42,8 +43,10 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	disconnectChan := make(chan struct{})
 	server := NewServer(&service.Config{
 		Listener:       listener,
-		Backend:        "default",
 		DisconnectChan: disconnectChan,
+		Debugger: debugger.Config{
+			Backend: "default",
+		},
 	})
 	server.Run()
 	// Give server time to start listening for clients

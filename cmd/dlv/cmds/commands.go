@@ -21,6 +21,7 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/dap"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
 	"github.com/spf13/cobra"
@@ -401,13 +402,15 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		disconnectChan := make(chan struct{})
 		server := dap.NewServer(&service.Config{
-			Listener:             listener,
-			Backend:              backend,
-			Foreground:           (headless && tty == ""),
-			DebugInfoDirectories: conf.DebugInfoDirectories,
-			CheckGoVersion:       checkGoVersion,
-			DisconnectChan:       disconnectChan,
-			TTY:                  tty,
+			Listener:       listener,
+			DisconnectChan: disconnectChan,
+			Debugger: debugger.Config{
+				Backend:              backend,
+				Foreground:           headless && tty == "",
+				DebugInfoDirectories: conf.DebugInfoDirectories,
+				CheckGoVersion:       checkGoVersion,
+				TTY:                  tty,
+			},
 		})
 		defer server.Stop()
 
@@ -505,13 +508,15 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 		// Create and start a debug server
 		server := rpccommon.NewServer(&service.Config{
-			Listener:       listener,
-			ProcessArgs:    processArgs,
-			AttachPid:      traceAttachPid,
-			APIVersion:     2,
-			WorkingDir:     workingDir,
-			Backend:        backend,
-			CheckGoVersion: checkGoVersion,
+			Listener:    listener,
+			ProcessArgs: processArgs,
+			APIVersion:  2,
+			Debugger: debugger.Config{
+				AttachPid:      traceAttachPid,
+				WorkingDir:     workingDir,
+				Backend:        backend,
+				CheckGoVersion: checkGoVersion,
+			},
 		})
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -739,20 +744,22 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	switch apiVersion {
 	case 1, 2:
 		server = rpccommon.NewServer(&service.Config{
-			Listener:             listener,
-			ProcessArgs:          processArgs,
-			AttachPid:            attachPid,
-			AcceptMulti:          acceptMulti,
-			APIVersion:           apiVersion,
-			WorkingDir:           workingDir,
-			Backend:              backend,
-			CoreFile:             coreFile,
-			Foreground:           (headless && tty == ""),
-			DebugInfoDirectories: conf.DebugInfoDirectories,
-			CheckGoVersion:       checkGoVersion,
-			CheckLocalConnUser:   checkLocalConnUser,
-			DisconnectChan:       disconnectChan,
-			TTY:                  tty,
+			Listener:           listener,
+			ProcessArgs:        processArgs,
+			AcceptMulti:        acceptMulti,
+			APIVersion:         apiVersion,
+			CheckLocalConnUser: checkLocalConnUser,
+			DisconnectChan:     disconnectChan,
+			Debugger: debugger.Config{
+				AttachPid:            attachPid,
+				WorkingDir:           workingDir,
+				Backend:              backend,
+				CoreFile:             coreFile,
+				Foreground:           headless && tty == "",
+				DebugInfoDirectories: conf.DebugInfoDirectories,
+				CheckGoVersion:       checkGoVersion,
+				TTY:                  tty,
+			},
 		})
 	default:
 		fmt.Printf("Unknown API version: %d\n", apiVersion)

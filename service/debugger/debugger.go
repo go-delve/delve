@@ -77,6 +77,7 @@ type Config struct {
 
 	// CoreFile specifies the path to the core dump to open.
 	CoreFile string
+
 	// Backend specifies the debugger backend.
 	Backend string
 
