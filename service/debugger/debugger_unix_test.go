@@ -54,7 +54,7 @@ func TestDebugger_LaunchNoExecutablePerm(t *testing.T) {
 }
 
 func TestDebugger_LaunchWithTTY(t *testing.T) {
-	if os.Getenv("TRAVIS") == "true" {
+	if os.Getenv("CI") == "true" {
 		if _, err := exec.LookPath("lsof"); err != nil {
 			t.Skip("skipping test in CI, system does not contain lsof")
 		}
