@@ -521,7 +521,7 @@ func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pcs []uint64, err e
 	fileFound := false
 	var pc uint64
 	for _, cu := range bi.compileUnits {
-		if cu.lineInfo != nil && cu.lineInfo.Lookup[filename] == nil {
+		if cu.lineInfo == nil || cu.lineInfo.Lookup[filename] == nil {
 			continue
 		}
 		fileFound = true
