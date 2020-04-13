@@ -17,6 +17,7 @@ import (
 	"time"
 
 	protest "github.com/go-delve/delve/pkg/proc/test"
+	"github.com/go-delve/delve/service/debugger"
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -68,10 +69,12 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 	}
 	fixture = protest.BuildFixture(name, buildFlags)
 	server := rpccommon.NewServer(&service.Config{
-		Listener:       listener,
-		ProcessArgs:    []string{fixture.Path},
-		Backend:        testBackend,
-		CheckGoVersion: true,
+		Listener:    listener,
+		ProcessArgs: []string{fixture.Path},
+		Debugger: debugger.Config{
+			Backend:        testBackend,
+			CheckGoVersion: true,
+		},
 	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
@@ -105,7 +108,9 @@ func TestRunWithInvalidPath(t *testing.T) {
 		Listener:    listener,
 		ProcessArgs: []string{"invalid_path"},
 		APIVersion:  2,
-		Backend:     testBackend,
+		Debugger: debugger.Config{
+			Backend: testBackend,
+		},
 	})
 	if err := server.Run(); err == nil {
 		t.Fatal("Expected Run to return error for invalid program path")
@@ -1566,9 +1571,11 @@ func TestAcceptMulticlient(t *testing.T) {
 		server := rpccommon.NewServer(&service.Config{
 			Listener:       listener,
 			ProcessArgs:    []string{protest.BuildFixture("testvariables2", 0).Path},
-			Backend:        testBackend,
 			AcceptMulti:    true,
 			DisconnectChan: disconnectChan,
+			Debugger: debugger.Config{
+				Backend: testBackend,
+			},
 		})
 		if err := server.Run(); err != nil {
 			t.Fatal(err)

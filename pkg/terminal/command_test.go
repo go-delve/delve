@@ -21,6 +21,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
 )
@@ -154,7 +155,9 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{test.BuildFixture(name, buildFlags).Path},
-		Backend:     testBackend,
+		Debugger: debugger.Config{
+			Backend: testBackend,
+		},
 	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)

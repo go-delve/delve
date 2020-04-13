@@ -12,6 +12,7 @@ import (
 	"time"
 
 	protest "github.com/go-delve/delve/pkg/proc/test"
+	"github.com/go-delve/delve/service/debugger"
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/service"
@@ -43,7 +44,9 @@ func withTestClient1Extended(name string, t *testing.T, fn func(c *rpc1.RPCClien
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{fixture.Path},
-		Backend:     testBackend,
+		Debugger: debugger.Config{
+			Backend: testBackend,
+		},
 	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
@@ -71,7 +74,9 @@ func Test1RunWithInvalidPath(t *testing.T) {
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{"invalid_path"},
-		Backend:     testBackend,
+		Debugger: debugger.Config{
+			Backend: testBackend,
+		},
 	})
 	if err := server.Run(); err == nil {
 		t.Fatal("Expected Run to return error for invalid program path")

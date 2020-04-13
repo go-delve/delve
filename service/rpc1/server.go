@@ -43,7 +43,7 @@ func (s *RPCServer) Detach(kill bool, ret *int) error {
 }
 
 func (s *RPCServer) Restart(arg1 interface{}, arg2 *int) error {
-	if s.config.AttachPid != 0 {
+	if s.config.Debugger.AttachPid != 0 {
 		return errors.New("cannot restart process Delve did not create")
 	}
 	_, err := s.debugger.Restart(false, "", false, nil)
@@ -298,7 +298,7 @@ func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine
 }
 
 func (c *RPCServer) AttachedToExistingProcess(arg interface{}, answer *bool) error {
-	if c.config.AttachPid != 0 {
+	if c.config.Debugger.AttachPid != 0 {
 		*answer = true
 	}
 	return nil
