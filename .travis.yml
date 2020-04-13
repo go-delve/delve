@@ -61,6 +61,7 @@ script: >-
       docker run \
       -v $(pwd):/delve \
       --env TRAVIS=true \
+      --env CI=true \
       --privileged i386/centos:7 \
       /bin/bash -c "set -x && \
            cd delve && \
