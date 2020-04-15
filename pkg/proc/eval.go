@@ -451,36 +451,33 @@ func regsReplaceStaticBase(regs op.DwarfRegisters, image *Image) op.DwarfRegiste
 
 // PackageVariables returns the name, value, and type of all package variables in the application.
 func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
-	var vars []*Variable
-	for _, image := range scope.BinInfo.Images {
-		if image.loadErr != nil {
+	pkgvars := make([]packageVar, len(scope.BinInfo.packageVars))
+	copy(pkgvars, scope.BinInfo.packageVars)
+	sort.Slice(pkgvars, func(i, j int) bool {
+		if pkgvars[i].cu.image.addr == pkgvars[j].cu.image.addr {
+			return pkgvars[i].offset < pkgvars[j].offset
+		}
+		return pkgvars[i].cu.image.addr < pkgvars[j].cu.image.addr
+	})
+	vars := make([]*Variable, 0, len(scope.BinInfo.packageVars))
+	for _, pkgvar := range pkgvars {
+		reader := pkgvar.cu.image.dwarfReader
+		reader.Seek(pkgvar.offset)
+		entry, err := reader.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		// Ignore errors trying to extract values
+		val, err := extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+		if val.Kind == reflect.Invalid {
 			continue
 		}
-		reader := reader.New(image.dwarf)
-
-		var utypoff dwarf.Offset
-		utypentry, err := reader.SeekToTypeNamed("<unspecified>")
-		if err == nil {
-			utypoff = utypentry.Offset
+		if err != nil {
+			continue
 		}
-
-		for entry, err := reader.NextPackageVariable(); entry != nil; entry, err = reader.NextPackageVariable() {
-			if err != nil {
-				return nil, err
-			}
-
-			if typoff, ok := entry.Val(dwarf.AttrType).(dwarf.Offset); !ok || typoff == utypoff {
-				continue
-			}
-
-			// Ignore errors trying to extract values
-			val, err := extractVarInfoFromEntry(scope.BinInfo, image, regsReplaceStaticBase(scope.Regs, image), scope.Mem, godwarf.EntryToTree(entry))
-			if err != nil {
-				continue
-			}
-			val.loadValue(cfg)
-			vars = append(vars, val)
-		}
+		val.loadValue(cfg)
+		vars = append(vars, val)
 	}
 
 	return vars, nil

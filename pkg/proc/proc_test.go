@@ -1825,6 +1825,14 @@ func TestIssue414(t *testing.T) {
 }
 
 func TestPackageVariables(t *testing.T) {
+	var skippedVariable = map[string]bool{
+		"runtime.uint16Eface": true,
+		"runtime.uint32Eface": true,
+		"runtime.uint64Eface": true,
+		"runtime.stringEface": true,
+		"runtime.sliceEface":  true,
+	}
+
 	protest.AllowRecording(t)
 	withTestProcess("testvariables", t, func(p *proc.Target, fixture protest.Fixture) {
 		err := p.Continue()
@@ -1835,6 +1843,9 @@ func TestPackageVariables(t *testing.T) {
 		assertNoError(err, t, "PackageVariables()")
 		failed := false
 		for _, v := range vars {
+			if skippedVariable[v.Name] {
+				continue
+			}
 			if v.Unreadable != nil && v.Unreadable.Error() != "no location attribute Location" {
 				failed = true
 				t.Logf("Unreadable variable %s: %v", v.Name, v.Unreadable)
