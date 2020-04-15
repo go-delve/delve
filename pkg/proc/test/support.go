@@ -135,6 +135,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	}
 	if flags&BuildModePIE != 0 {
 		buildFlags = append(buildFlags, "-buildmode=pie")
+	} else {
+		buildFlags = append(buildFlags, "-buildmode=exe")
 	}
 	if flags&BuildModePlugin != 0 {
 		buildFlags = append(buildFlags, "-buildmode=plugin")

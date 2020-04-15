@@ -70,15 +70,7 @@ func NewMakeCommands() *cobra.Command {
 		Short: "Tests delve",
 		Long: `Tests delve.
 
-Use the flags -s, -r and -b to specify which tests to run. Specifying nothing is equivalent to:
-
-	go run _scripts/make.go test -s all -b default
-	go run _scripts/make.go test -s basic -b lldb    # if lldb-server is installed and Go < 1.14
-	go run _scripts/make.go test -s basic -b rr      # if rr is installed
-	
-	go run _scripts/make.go test -s basic -m pie     # only on linux
-	go run _scripts/make.go test -s core -m pie      # only on linux
-	go run _scripts/make.go test -s 
+Use the flags -s, -r and -b to specify which tests to run. Specifying nothing will run all tests relevant for the current environment (see testStandard).
 `,
 		Run: testCmd,
 	}
@@ -310,25 +302,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 
-		fmt.Println("Testing default backend")
-		testCmdIntl("all", "", "default", "normal")
-		if inpath("lldb-server") && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-			fmt.Println("\nTesting LLDB backend")
-			testCmdIntl("basic", "", "lldb", "normal")
-		}
-		if inpath("rr") {
-			fmt.Println("\nTesting RR backend")
-			testCmdIntl("basic", "", "rr", "normal")
-		}
-		if runtime.GOOS == "linux" {
-			fmt.Println("\nTesting PIE buildmode, default backend")
-			testCmdIntl("basic", "", "default", "pie")
-			testCmdIntl("core", "", "default", "pie")
-		}
-		if runtime.GOOS == "linux" && inpath("rr") {
-			fmt.Println("\nTesting PIE buildmode, RR backend")
-			testCmdIntl("basic", "", "rr", "pie")
-		}
+		testStandard()
 		return
 	}
 
@@ -345,6 +319,28 @@ func testCmd(cmd *cobra.Command, args []string) {
 	}
 
 	testCmdIntl(TestSet, TestRegex, TestBackend, TestBuildMode)
+}
+
+func testStandard() {
+	fmt.Println("Testing default backend")
+	testCmdIntl("all", "", "default", "normal")
+	if inpath("lldb-server") && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+		fmt.Println("\nTesting LLDB backend")
+		testCmdIntl("basic", "", "lldb", "normal")
+	}
+	if inpath("rr") {
+		fmt.Println("\nTesting RR backend")
+		testCmdIntl("basic", "", "rr", "normal")
+	}
+	if runtime.GOOS == "linux" || (runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15)) {
+		fmt.Println("\nTesting PIE buildmode, default backend")
+		testCmdIntl("basic", "", "default", "pie")
+		testCmdIntl("core", "", "default", "pie")
+	}
+	if runtime.GOOS == "linux" && inpath("rr") {
+		fmt.Println("\nTesting PIE buildmode, RR backend")
+		testCmdIntl("basic", "", "rr", "pie")
+	}
 }
 
 func testCmdIntl(testSet, testRegex, testBackend, testBuildMode string) {
