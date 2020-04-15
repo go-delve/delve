@@ -805,9 +805,7 @@ func TestCGONext(t *testing.T) {
 	if runtime.GOOS == "darwin" && strings.Contains(runtime.Version(), "1.4") {
 		return
 	}
-	if os.Getenv("CGO_ENABLED") == "" {
-		return
-	}
+	protest.MustHaveCgo(t)
 
 	protest.AllowRecording(t)
 	withTestProcess("cgotest", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -1047,9 +1045,7 @@ func TestGetG(t *testing.T) {
 	if runtime.GOOS == "darwin" && strings.Contains(runtime.Version(), "1.4") {
 		return
 	}
-	if os.Getenv("CGO_ENABLED") == "" {
-		return
-	}
+	protest.MustHaveCgo(t)
 
 	protest.AllowRecording(t)
 	withTestProcess("cgotest", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -3264,6 +3260,7 @@ func TestCgoStacktrace(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("cgo stacktraces not supported on i386 for now")
 	}
+	protest.MustHaveCgo(t)
 
 	// Tests that:
 	// a) we correctly identify the goroutine while we are executing cgo code
@@ -3368,6 +3365,8 @@ func TestCgoSources(t *testing.T) {
 		t.Skip("cgo stacktraces not supported on i386 for now")
 	}
 
+	protest.MustHaveCgo(t)
+
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, fixture protest.Fixture) {
 		sources := p.BinInfo().Sources
 		for _, needle := range []string{"main.go", "hello.c"} {
@@ -3441,6 +3440,8 @@ func TestIssue1034(t *testing.T) {
 		t.Skip("cgo stacktraces not supported on i386 for now")
 	}
 
+	protest.MustHaveCgo(t)
+
 	// The external linker on macOS produces an abbrev for DW_TAG_subprogram
 	// without the "has children" flag, we should support this.
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -3461,6 +3462,8 @@ func TestIssue1008(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("cgo stacktraces not supported on i386 for now")
 	}
+
+	protest.MustHaveCgo(t)
 
 	// The external linker on macOS inserts "end of sequence" extended opcodes
 	// in debug_line. which we should support correctly.
@@ -4416,6 +4419,7 @@ func TestPluginStepping(t *testing.T) {
 }
 
 func TestIssue1601(t *testing.T) {
+	protest.MustHaveCgo(t)
 	//Tests that recursive types involving C qualifiers and typedefs are parsed correctly
 	withTestProcess("issue1601", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue")
@@ -4443,6 +4447,7 @@ func TestCgoStacktrace2(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture crashes go runtime on windows")
 	}
+	protest.MustHaveCgo(t)
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
 	withTestProcess("cgosigsegvstack", t, func(p *proc.Target, fixture protest.Fixture) {
