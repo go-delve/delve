@@ -658,7 +658,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 			return v, nil
 		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uintptr:
 			b, _ := constant.Int64Val(argv.Value)
-			s := string(b)
+			s := string(rune(b))
 			v.Value = constant.MakeString(s)
 			v.Len = int64(len(s))
 			return v, nil
