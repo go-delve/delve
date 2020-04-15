@@ -584,7 +584,7 @@ func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryIn
 		// b. anonymous struct types (they contain the '{' character)
 		// c. Go internal struct types used to describe maps (they contain the '<'
 		// character).
-		cu := bi.findCompileUnitForOffset(dwarfType.Common().Offset)
+		cu := bi.Images[dwarfType.Common().Index].findCompileUnitForOffset(dwarfType.Common().Offset)
 		if cu != nil && cu.isgo {
 			dwarfType = &godwarf.TypedefType{
 				CommonType: *(dwarfType.Common()),

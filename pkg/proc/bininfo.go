@@ -84,8 +84,6 @@ type BinaryInfo struct {
 
 	frameEntries frame.FrameDescriptionEntries
 
-	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
-
 	types       map[string]dwarfRef
 	packageVars []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
 
@@ -520,14 +518,17 @@ func (err *ErrCouldNotFindLine) Error() string {
 func (bi *BinaryInfo) LineToPC(filename string, lineno int) (pcs []uint64, err error) {
 	fileFound := false
 	var pc uint64
-	for _, cu := range bi.compileUnits {
-		if cu.lineInfo == nil || cu.lineInfo.Lookup[filename] == nil {
-			continue
-		}
-		fileFound = true
-		pc = cu.lineInfo.LineToPC(filename, lineno)
-		if pc != 0 {
-			break
+pcsearch:
+	for _, image := range bi.Images {
+		for _, cu := range image.compileUnits {
+			if cu.lineInfo == nil || cu.lineInfo.Lookup[filename] == nil {
+				continue
+			}
+			fileFound = true
+			pc = cu.lineInfo.LineToPC(filename, lineno)
+			if pc != 0 {
+				break pcsearch
+			}
 		}
 	}
 
@@ -580,9 +581,11 @@ func (bi *BinaryInfo) AllPCsForFileLines(filename string, linenos []int) map[int
 	for _, line := range linenos {
 		r[line] = make([]uint64, 0, 1)
 	}
-	for _, cu := range bi.compileUnits {
-		if cu.lineInfo != nil && cu.lineInfo.Lookup[filename] != nil {
-			cu.lineInfo.AllPCsForFileLines(filename, r)
+	for _, image := range bi.Images {
+		for _, cu := range image.compileUnits {
+			if cu.lineInfo != nil && cu.lineInfo.Lookup[filename] != nil {
+				cu.lineInfo.AllPCsForFileLines(filename, r)
+			}
 		}
 	}
 	return r
@@ -647,6 +650,8 @@ type Image struct {
 	loclist     *loclist.Reader
 
 	typeCache map[dwarf.Offset]godwarf.Type
+
+	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
 
 	dwarfTreeCache *simplelru.LRU
 
@@ -871,7 +876,7 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 	if !ok {
 		return nil, fmt.Errorf("attribute %s of unsupported type %T", attr, a)
 	}
-	cu := bi.findCompileUnitForOffset(entry.Offset)
+	cu := bi.Images[0].findCompileUnitForOffset(entry.Offset)
 	if cu == nil {
 		return nil, errors.New("could not find compile unit")
 	}
@@ -938,17 +943,19 @@ func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 
 // findCompileUnit returns the compile unit containing address pc.
 func (bi *BinaryInfo) findCompileUnit(pc uint64) *compileUnit {
-	for _, cu := range bi.compileUnits {
-		for _, rng := range cu.ranges {
-			if pc >= rng[0] && pc < rng[1] {
-				return cu
+	for _, image := range bi.Images {
+		for _, cu := range image.compileUnits {
+			for _, rng := range cu.ranges {
+				if pc >= rng[0] && pc < rng[1] {
+					return cu
+				}
 			}
 		}
 	}
 	return nil
 }
 
-func (bi *BinaryInfo) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
+func (bi *Image) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
 	i := sort.Search(len(bi.compileUnits), func(i int) bool {
 		return bi.compileUnits[i].offset >= off
 	})
@@ -960,7 +967,7 @@ func (bi *BinaryInfo) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
 
 // Producer returns the value of DW_AT_producer.
 func (bi *BinaryInfo) Producer() string {
-	for _, cu := range bi.compileUnits {
+	for _, cu := range bi.Images[0].compileUnits {
 		if cu.isgo && cu.producer != "" {
 			return cu.producer
 		}
@@ -1569,7 +1576,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 			if cu.isgo && gopkg != "" {
 				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.Replace(cu.name, "\\", "/", -1)))
 			}
-			bi.compileUnits = append(bi.compileUnits, cu)
+			image.compileUnits = append(image.compileUnits, cu)
 			if entry.Children {
 				bi.loadDebugInfoMapsCompileUnit(ctxt, image, reader, cu)
 			}
@@ -1583,7 +1590,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 		}
 	}
 
-	sort.Sort(compileUnitsByOffset(bi.compileUnits))
+	sort.Sort(compileUnitsByOffset(image.compileUnits))
 	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
 	sort.Sort(packageVarsByAddr(bi.packageVars))
 
@@ -1593,7 +1600,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 	}
 
 	bi.Sources = []string{}
-	for _, cu := range bi.compileUnits {
+	for _, cu := range image.compileUnits {
 		if cu.lineInfo != nil {
 			for _, fileEntry := range cu.lineInfo.FileNames {
 				bi.Sources = append(bi.Sources, fileEntry.Path)
@@ -1997,7 +2004,7 @@ type PackageBuildInfo struct {
 // files constituting the package.
 func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildInfo {
 	m := make(map[string]*PackageBuildInfo)
-	for _, cu := range bi.compileUnits {
+	for _, cu := range bi.Images[0].compileUnits {
 		if cu.image != bi.Images[0] || !cu.isgo || cu.lineInfo == nil {
 			//TODO(aarzilli): what's the correct thing to do for plugins?
 			continue
