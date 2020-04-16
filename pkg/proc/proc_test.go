@@ -1807,12 +1807,18 @@ func TestIssue396(t *testing.T) {
 }
 
 func TestIssue414(t *testing.T) {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "386" && buildMode == "pie" {
+		t.Skip("test occasionally hangs on linux/386/pie")
+	}
 	// Stepping until the program exits
 	protest.AllowRecording(t)
 	withTestProcess("math", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 9)
 		assertNoError(p.Continue(), t, "Continue()")
 		for {
+			pc := currentPC(p, t)
+			f, ln := currentLineNumber(p, t)
+			t.Logf("at %s:%d %#x\n", f, ln, pc)
 			err := p.Step()
 			if err != nil {
 				if _, exited := err.(proc.ErrProcessExited); exited {
