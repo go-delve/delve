@@ -355,3 +355,17 @@ func WithPlugins(t *testing.T, flags BuildFlags, plugins ...string) []Fixture {
 	}
 	return r
 }
+
+var hasCgo = func() bool {
+	out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
+	if err != nil {
+		panic(err)
+	}
+	return strings.TrimSpace(string(out)) == "1"
+}()
+
+func MustHaveCgo(t *testing.T) {
+	if !hasCgo {
+		t.Skip("Cgo not enabled")
+	}
+}
