@@ -49,10 +49,11 @@ type Debugger struct {
 	config *Config
 	// arguments to launch a new process.
 	processArgs []string
-	// TODO(DO NOT MERGE WITHOUT) rename to targetMutex
-	processMutex sync.Mutex
-	target       *proc.Target
-	log          *logrus.Entry
+
+	targetMutex sync.Mutex
+	target      *proc.Target
+
+	log *logrus.Entry
 
 	running      bool
 	runningMutex sync.Mutex
@@ -214,14 +215,14 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 			return nil, err
 		}
 
-		// let the initialization proceed but hold the processMutex lock so that
+		// let the initialization proceed but hold the targetMutex lock so that
 		// any other request to debugger will block except State(nowait=true) and
 		// Command(halt).
-		d.processMutex.Lock()
+		d.targetMutex.Lock()
 		d.recordingStart(stop)
 
 		go func() {
-			defer d.processMutex.Unlock()
+			defer d.targetMutex.Unlock()
 
 			p, err := d.recordingRun(run)
 			if err != nil {
@@ -312,16 +313,16 @@ func betterGdbserialLaunchError(p *proc.Target, err error) (*proc.Target, error)
 // ProcessPid returns the PID of the process
 // the debugger is debugging.
 func (d *Debugger) ProcessPid() int {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.target.Pid()
 }
 
 // LastModified returns the time that the process' executable was last
 // modified.
 func (d *Debugger) LastModified() time.Time {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.target.BinInfo().LastModified()
 }
 
@@ -331,8 +332,8 @@ const deferReturn = "runtime.deferreturn"
 // for the given function, a list of addresses corresponding
 // to 'ret' or 'call runtime.deferreturn'.
 func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	var (
 		p = d.target
@@ -370,8 +371,8 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 // If `kill` is true we will kill the process after
 // detaching.
 func (d *Debugger) Detach(kill bool) error {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	return d.detach(kill)
 }
@@ -389,8 +390,8 @@ func (d *Debugger) detach(kill bool) error {
 // position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
 // event number. If resetArgs is true, newArgs will replace the process args.
 func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	recorded, _ := d.target.Recorded()
 	if recorded && !rerecord {
@@ -471,8 +472,8 @@ func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
 		return &api.DebuggerState{Recording: true}, nil
 	}
 
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.state(nil)
 }
 
@@ -524,8 +525,8 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 
 // CreateBreakpoint creates a breakpoint.
 func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	var (
 		addrs []uint64
@@ -621,8 +622,8 @@ func isBreakpointExistsErr(err error) bool {
 
 // AmendBreakpoint will update the breakpoint with the matching ID.
 func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	originals := d.findBreakpoint(amend.ID)
 	if originals == nil {
@@ -642,8 +643,8 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 // CancelNext will clear internal breakpoints, thus cancelling the 'next',
 // 'step' or 'stepout' operation.
 func (d *Debugger) CancelNext() error {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.target.ClearInternalBreakpoints()
 }
 
@@ -665,8 +666,8 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 
 // ClearBreakpoint clears a breakpoint.
 func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	var bps []*proc.Breakpoint
 	var errs []error
@@ -717,8 +718,8 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 
 // Breakpoints returns the list of current breakpoints.
 func (d *Debugger) Breakpoints() []*api.Breakpoint {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return api.ConvertBreakpoints(d.breakpoints())
 }
 
@@ -735,8 +736,8 @@ func (d *Debugger) breakpoints() []*proc.Breakpoint {
 
 // FindBreakpoint returns the breakpoint specified by 'id'.
 func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	bps := api.ConvertBreakpoints(d.findBreakpoint(id))
 	if len(bps) <= 0 {
 		return nil
@@ -756,8 +757,8 @@ func (d *Debugger) findBreakpoint(id int) []*proc.Breakpoint {
 
 // FindBreakpointByName returns the breakpoint specified by 'name'
 func (d *Debugger) FindBreakpointByName(name string) *api.Breakpoint {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.findBreakpointByName(name)
 }
 
@@ -778,8 +779,8 @@ func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
 
 // Threads returns the threads of the target process.
 func (d *Debugger) Threads() ([]*api.Thread, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
@@ -794,8 +795,8 @@ func (d *Debugger) Threads() ([]*api.Thread, error) {
 
 // FindThread returns the thread for the given 'id'.
 func (d *Debugger) FindThread(id int) (*api.Thread, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
@@ -839,8 +840,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 
 	withBreakpointInfo := true
 
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	d.setRunning(true)
 	defer d.setRunning(false)
@@ -1046,8 +1047,8 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 
 // Sources returns a list of the source files for target binary.
 func (d *Debugger) Sources(filter string) ([]string, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	regex, err := regexp.Compile(filter)
 	if err != nil {
@@ -1065,16 +1066,16 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 
 // Functions returns a list of functions in the target process.
 func (d *Debugger) Functions(filter string) ([]string, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	return regexFilterFuncs(filter, d.target.BinInfo().Functions)
 }
 
 // Types returns all type information in the binary.
 func (d *Debugger) Types(filter string) ([]string, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	regex, err := regexp.Compile(filter)
 	if err != nil {
@@ -1114,8 +1115,8 @@ func regexFilterFuncs(filter string, allFuncs []proc.Function) ([]string, error)
 // PackageVariables returns a list of package variables for the thread,
 // optionally regexp filtered using regexp described in 'filter'.
 func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadConfig) ([]api.Variable, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	regex, err := regexp.Compile(filter)
 	if err != nil {
@@ -1145,8 +1146,8 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 
 // Registers returns string representation of the CPU registers.
 func (d *Debugger) Registers(threadID int, scope *api.EvalScope, floatingPoint bool) (api.Registers, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	var dregs op.DwarfRegisters
 
@@ -1218,8 +1219,8 @@ func convertVars(pv []*proc.Variable) []api.Variable {
 
 // LocalVariables returns a list of the local variables.
 func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
 	if err != nil {
@@ -1234,8 +1235,8 @@ func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]a
 
 // FunctionArguments returns the arguments to the current function.
 func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
 	if err != nil {
@@ -1251,8 +1252,8 @@ func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) (
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
 func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg proc.LoadConfig) (*api.Variable, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
 	if err != nil {
@@ -1268,8 +1269,8 @@ func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg p
 // SetVariableInScope will set the value of the variable represented by
 // 'symbol' to the value given, in the given scope.
 func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string) error {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
 	if err != nil {
@@ -1280,8 +1281,8 @@ func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string)
 
 // Goroutines will return a list of goroutines in the target process.
 func (d *Debugger) Goroutines(start, count int) ([]*api.Goroutine, int, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	goroutines := []*api.Goroutine{}
 	gs, nextg, err := proc.GoroutinesInfo(d.target, start, count)
@@ -1298,8 +1299,8 @@ func (d *Debugger) Goroutines(start, count int) ([]*api.Goroutine, int, error) {
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.
 func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
@@ -1326,8 +1327,8 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions
 
 // Ancestors returns the stacktraces for the ancestors of a goroutine.
 func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancestor, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
@@ -1435,8 +1436,8 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 
 // FindLocation will find the location specified by 'locStr'.
 func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
@@ -1465,8 +1466,8 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 // Disassemble code between startPC and endPC.
 // if endPC == 0 it will find the function containing startPC and disassemble the whole function.
 func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
@@ -1507,22 +1508,22 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 
 // Recorded returns true if the target is a recording.
 func (d *Debugger) Recorded() (recorded bool, tracedir string) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.target.Recorded()
 }
 
 // Checkpoint will set a checkpoint specified by the locspec.
 func (d *Debugger) Checkpoint(where string) (int, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.target.Checkpoint(where)
 }
 
 // Checkpoints will return a list of checkpoints.
 func (d *Debugger) Checkpoints() ([]api.Checkpoint, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	cps, err := d.target.Checkpoints()
 	if err != nil {
 		return nil, err
@@ -1536,15 +1537,15 @@ func (d *Debugger) Checkpoints() ([]api.Checkpoint, error) {
 
 // ClearCheckpoint will clear the checkpoint of the given ID.
 func (d *Debugger) ClearCheckpoint(id int) error {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	return d.target.ClearCheckpoint(id)
 }
 
 // ListDynamicLibraries returns a list of loaded dynamic libraries.
 func (d *Debugger) ListDynamicLibraries() []api.Image {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	bi := d.target.BinInfo()
 	r := make([]api.Image, 0, len(bi.Images)-1)
 	// skips the first image because it's the executable file
@@ -1558,8 +1559,8 @@ func (d *Debugger) ListDynamicLibraries() []api.Image {
 // The amount of data to be read is specified by length.
 // This function will return an error if it reads less than `length` bytes.
 func (d *Debugger) ExamineMemory(address uintptr, length int) ([]byte, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
 	thread := d.target.CurrentThread()
 	data := make([]byte, length)
@@ -1606,8 +1607,8 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 // the directory where each package was compiled and optionally the list of
 // files constituting the package.
 func (d *Debugger) ListPackagesBuildInfo(includeFiles bool) []api.PackageBuildInfo {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	pkgs := d.target.BinInfo().ListPackagesBuildInfo(includeFiles)
 	r := make([]api.PackageBuildInfo, 0, len(pkgs))
 	for _, pkg := range pkgs {
