@@ -475,7 +475,10 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 
 	// check if any other thread simultaneously received a SIGTRAP
 	for {
-		th, _ := dbp.trapWaitInternal(-1, trapWaitNohang)
+		th, err := dbp.trapWaitInternal(-1, trapWaitNohang)
+		if err != nil {
+			return dbp.exitGuard(err)
+		}
 		if th == nil {
 			break
 		}
