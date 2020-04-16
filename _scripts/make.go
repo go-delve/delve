@@ -278,6 +278,9 @@ func testFlags() []string {
 	}
 	if NOTimeout {
 		testFlags = append(testFlags, "-timeout", "0")
+	} else if os.Getenv("TRAVIS") == "true" {
+		// Make test timeout shorter than Travis' own timeout so that Go can report which test hangs.
+		testFlags = append(testFlags, "-timeout", "9m")
 	}
 	if runtime.GOOS == "darwin" {
 		testFlags = append(testFlags, "-exec="+wd+"/_scripts/testsign")
