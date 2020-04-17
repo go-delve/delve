@@ -81,7 +81,6 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
-	isatty "github.com/mattn/go-isatty"
 )
 
 const (
@@ -350,14 +349,6 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		return nil, ErrUnsupportedOS
 	}
 
-	if foreground {
-		// Disable foregrounding if we can't open /dev/tty or debugserver will
-		// crash. See issue #1215.
-		if !isatty.IsTerminal(os.Stdin.Fd()) {
-			foreground = false
-		}
-	}
-
 	isDebugserver := false
 
 	var listener net.Listener
@@ -372,9 +363,8 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		args := make([]string, 0, len(cmd)+4+len(ldEnvVars))
 		args = append(args, ldEnvVars...)
 		if foreground {
-			args = append(args, "--stdio-path", "/dev/tty")
-		}
-		if tty != "" {
+			args = append(args, "--stdin-path", "/dev/stdin", "--stdout-path", "/dev/stdout", "--stderr-path", "/dev/stderr")
+		} else if tty != "" {
 			args = append(args, "--stdio-path", tty)
 		}
 		if logflags.LLDBServerOutput() {
