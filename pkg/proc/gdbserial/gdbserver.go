@@ -81,6 +81,7 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
+	isatty "github.com/mattn/go-isatty"
 )
 
 const (
@@ -349,6 +350,13 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		return nil, ErrUnsupportedOS
 	}
 
+	passStdin := foreground
+	if foreground {
+		if !isatty.IsTerminal(os.Stdin.Fd()) {
+			foreground = false
+		}
+	}
+
 	isDebugserver := false
 
 	var listener net.Listener
@@ -362,7 +370,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		ldEnvVars := getLdEnvVars()
 		args := make([]string, 0, len(cmd)+4+len(ldEnvVars))
 		args = append(args, ldEnvVars...)
-		if foreground {
+		if passStdin {
 			args = append(args, "--stdin-path", "/dev/stdin", "--stdout-path", "/dev/stdout", "--stderr-path", "/dev/stderr")
 		} else if tty != "" {
 			args = append(args, "--stdio-path", tty)
@@ -392,7 +400,7 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
 	}
-	if foreground {
+	if passStdin {
 		foregroundSignalsIgnore()
 		process.Stdin = os.Stdin
 	}
