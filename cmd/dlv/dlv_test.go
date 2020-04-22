@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 			}
 		}
 	}
-	os.Exit(m.Run())
+	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
 func assertNoError(err error, t testing.TB, s string) {
@@ -251,6 +251,50 @@ func TestContinue(t *testing.T) {
 		t.Fatalf("error detaching from headless instance: %v", err)
 	}
 	cmd.Wait()
+}
+
+// TestChildProcessExitWhenNoDebugInfo verifies that the child process exits when dlv launch the binary without debug info
+func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("test skipped on darwin, see https://github.com/go-delve/delve/pull/2018 for details")
+	}
+
+	if _, err := exec.LookPath("ps"); err != nil {
+		t.Skip("test skipped, `ps` not found")
+	}
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	fix := protest.BuildFixture("http_server", protest.LinkStrip)
+
+	// dlv exec the binary file and expect error.
+	if _, err := exec.Command(dlvbin, "exec", fix.Path).CombinedOutput(); err == nil {
+		t.Fatalf("Expected err when launching the binary without debug info, but got nil")
+	}
+
+	// search the running process named fix.Name
+	cmd := exec.Command("ps", "-aux")
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stderr pipe")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("`ps -aux` failed: %v", err)
+	}
+
+	var foundFlag bool
+	scan := bufio.NewScanner(stdout)
+	for scan.Scan() {
+		t.Log(scan.Text())
+		if strings.Contains(scan.Text(), fix.Name) {
+			foundFlag = true
+			break
+		}
+	}
+	cmd.Wait()
+
+	if foundFlag {
+		t.Fatalf("Expected child process exited, but found it running")
+	}
 }
 
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {

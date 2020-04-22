@@ -91,12 +91,14 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 				break
 			}
 			if err != couldNotGetThreadCount && err != couldNotGetThreadList {
+				_ = dbp.Detach(true)
 				return nil, err
 			}
 		}
 	}
 
 	if err := dbp.resume(); err != nil {
+		_ = dbp.Detach(true)
 		return nil, err
 	}
 
@@ -106,9 +108,11 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 
 	trapthread, err := dbp.trapWait(-1)
 	if err != nil {
+		_ = dbp.Detach(true)
 		return nil, err
 	}
 	if err := dbp.stop(nil); err != nil {
+		_ = dbp.Detach(true)
 		return nil, err
 	}
 
@@ -117,6 +121,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 
 	tgt, err := dbp.initialize(argv0Go, []string{})
 	if err != nil {
+		_ = dbp.Detach(true)
 		return nil, err
 	}
 

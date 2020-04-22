@@ -94,10 +94,12 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 	dbp.childProcess = true
 	_, _, err = dbp.wait(process.Process.Pid, 0)
 	if err != nil {
+		_ = dbp.Detach(true)
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
 	tgt, err := dbp.initialize(cmd[0], debugInfoDirs)
 	if err != nil {
+		_ = dbp.Detach(true)
 		return nil, err
 	}
 	return tgt, nil
@@ -126,7 +128,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 
 	tgt, err := dbp.initialize(execPath, debugInfoDirs)
 	if err != nil {
-		dbp.Detach(false)
+		_ = dbp.Detach(false)
 		return nil, err
 	}
 
@@ -162,7 +164,7 @@ func initialize(dbp *nativeProcess) error {
 		}
 		comm = match[1]
 	}
-	dbp.os.comm = strings.Replace(string(comm), "%", "%%", -1)
+	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
 	return nil
 }
 
@@ -362,14 +364,12 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			th.os.delayedSignal = int(status.StopSignal())
 			th.os.running = false
 			return th, nil
-		} else {
-			if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
-				if err == sys.ESRCH {
-					dbp.postExit()
-					return nil, proc.ErrProcessExited{Pid: dbp.pid}
-				}
-				return nil, err
+		} else if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
+			if err == sys.ESRCH {
+				dbp.postExit()
+				return nil, proc.ErrProcessExited{Pid: dbp.pid}
 			}
+			return nil, err
 		}
 	}
 }
@@ -391,7 +391,7 @@ func status(pid int, comm string) rune {
 	// The name of the task is the base name of the executable for this process limited to TASK_COMM_LEN characters
 	// Since both parenthesis and spaces can appear inside the name of the task and no escaping happens we need to read the name of the executable first
 	// See: include/linux/sched.c:315 and include/linux/sched.c:1510
-	fmt.Fscanf(rd, "%d ("+comm+")  %c", &p, &state)
+	_, _ = fmt.Fscanf(rd, "%d ("+comm+")  %c", &p, &state)
 	return state
 }
 
@@ -545,7 +545,7 @@ func (dbp *nativeProcess) detach(kill bool) error {
 	// SIGCONT it if it is.
 	time.Sleep(50 * time.Millisecond)
 	if s := status(dbp.pid, dbp.os.comm); s == 'T' {
-		sys.Kill(dbp.pid, sys.SIGCONT)
+		_ = sys.Kill(dbp.pid, sys.SIGCONT)
 	}
 	return nil
 }
