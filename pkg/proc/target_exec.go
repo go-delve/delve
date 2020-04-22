@@ -78,13 +78,17 @@ func (dbp *Target) Continue() error {
 
 		threads := dbp.ThreadList()
 
-		callInjectionDone, err := callInjectionProtocol(dbp, threads)
-		if err != nil {
-			return err
-		}
+		callInjectionDone, callErr := callInjectionProtocol(dbp, threads)
+		// callErr check delayed until after pickCurrentThread, which must always
+		// happen, otherwise the debugger could be left in an inconsistent
+		// state.
 
 		if err := pickCurrentThread(dbp, trapthread, threads); err != nil {
 			return err
+		}
+
+		if callErr != nil {
+			return callErr
 		}
 
 		curthread := dbp.CurrentThread()
