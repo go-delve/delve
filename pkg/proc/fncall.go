@@ -107,6 +107,14 @@ type callContext struct {
 	// continueRequest having cont == false and the return values in ret.
 	continueRequest   chan<- continueRequest
 	continueCompleted <-chan *G
+
+	// injectionThread is the thread to use for nested call injections if the
+	// original injection goroutine isn't running (because we are in Go 1.15)
+	injectionThread Thread
+
+	// stacks is a slice of known goroutine stacks used to check for
+	// inappropriate escapes
+	stacks []stack
 }
 
 type continueRequest struct {
@@ -121,6 +129,7 @@ type callInjection struct {
 	// pkg/proc/fncall.go for a description of how this works.
 	continueCompleted chan<- *G
 	continueRequest   <-chan continueRequest
+	startThreadID     int
 }
 
 func (callCtx *callContext) doContinue() *G {
@@ -178,8 +187,9 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 	}
 
 	t.fncallForG[g.ID] = &callInjection{
-		continueCompleted,
-		continueRequest,
+		continueCompleted: continueCompleted,
+		continueRequest:   continueRequest,
+		startThreadID:     0,
 	}
 
 	go scope.EvalExpression(expr, retLoadCfg)
@@ -193,7 +203,7 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 }
 
 func finishEvalExpressionWithCalls(t *Target, g *G, contReq continueRequest, ok bool) error {
-	fncallLog("stashing return values for %d in thread=%d\n", g.ID, g.Thread.ThreadID())
+	fncallLog("stashing return values for %d in thread=%d", g.ID, g.Thread.ThreadID())
 	var err error
 	if !ok {
 		err = errors.New("internal error EvalExpressionWithCalls didn't return anything")
@@ -239,6 +249,23 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if scope.callCtx == nil {
 		return nil, errFuncCallNotAllowed
 	}
+	thread := scope.g.Thread
+	stacklo := scope.g.stack.lo
+	if thread == nil {
+		// We are doing a nested function call and using Go 1.15, the original
+		// injection goroutine was suspended and now we are using a different
+		// goroutine, evaluation still happend on the original goroutine but we
+		// need to use a different thread to do the nested call injection.
+		thread = scope.callCtx.injectionThread
+		g2, err := GetG(thread)
+		if err != nil {
+			return nil, err
+		}
+		stacklo = g2.stack.lo
+	}
+	if thread == nil {
+		return nil, errGoroutineNotRunning
+	}
 
 	p := scope.callCtx.p
 	bi := scope.BinInfo
@@ -252,7 +279,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	}
 
 	// check that there are at least 256 bytes free on the stack
-	regs, err := scope.g.Thread.Registers()
+	regs, err := thread.Registers()
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +287,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if regs.SP()-256 <= scope.g.stack.lo {
+	if regs.SP()-256 <= stacklo {
 		return nil, errNotEnoughStack
 	}
 	_, err = regs.Get(int(x86asm.RAX))
@@ -278,22 +305,37 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	if err := callOP(bi, scope.g.Thread, regs, dbgcallfn.Entry); err != nil {
+	if err := callOP(bi, thread, regs, dbgcallfn.Entry); err != nil {
 		return nil, err
 	}
 	// write the desired argument frame size at SP-(2*pointer_size) (the extra pointer is the saved PC)
-	if err := writePointer(bi, scope.g.Thread, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
+	if err := writePointer(bi, thread, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
 		return nil, err
 	}
 
-	fncallLog("function call initiated %v frame size %d", fncall.fn, fncall.argFrameSize)
+	fncallLog("function call initiated %v frame size %d goroutine %d (thread %d)", fncall.fn, fncall.argFrameSize, scope.g.ID, thread.ThreadID())
+
+	p.fncallForG[scope.g.ID].startThreadID = thread.ThreadID()
 
 	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
 	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
 	fboff := scope.Regs.FrameBase - int64(scope.g.stack.hi)
 
 	for {
-		scope.g = scope.callCtx.doContinue()
+		scope.callCtx.injectionThread = nil
+		g := scope.callCtx.doContinue()
+		// Go 1.15 will move call injection execution to a different goroutine,
+		// but we want to keep evaluation on the original goroutine.
+		if g.ID == scope.g.ID {
+			scope.g = g
+		} else {
+			// We are in Go 1.15 and we switched to a new goroutine, the original
+			// goroutine is now parked and therefore does not have a thread
+			// associated.
+			scope.g.Thread = nil
+			scope.g.Status = Gwaiting
+			scope.callCtx.injectionThread = g.Thread
+		}
 
 		// adjust the value of registers inside scope
 		pcreg, bpreg, spreg := scope.Regs.Reg(scope.Regs.PCRegNum), scope.Regs.Reg(scope.Regs.BPRegNum), scope.Regs.Reg(scope.Regs.SPRegNum)
@@ -306,7 +348,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		scope.Regs.FrameBase = fboff + int64(scope.g.stack.hi)
 		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 
-		finished := funcCallStep(scope, &fncall)
+		finished := funcCallStep(scope, &fncall, g.Thread)
 		if finished {
 			break
 		}
@@ -500,8 +542,13 @@ func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, argFrameAddr 
 func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *Variable, formalArg *funcCallArg, argFrameAddr uint64) error {
 	if scope.callCtx.checkEscape {
 		//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
-		if err := escapeCheck(actualArg, formalArg.name, scope.g); err != nil {
+		if err := escapeCheck(actualArg, formalArg.name, scope.g.stack); err != nil {
 			return fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fncall.fn.Name, err)
+		}
+		for _, stack := range scope.callCtx.stacks {
+			if err := escapeCheck(actualArg, formalArg.name, stack); err != nil {
+				return fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fncall.fn.Name, err)
+			}
 		}
 	}
 
@@ -590,7 +637,7 @@ func alignAddr(addr, align int64) int64 {
 	return (addr + int64(align-1)) &^ int64(align-1)
 }
 
-func escapeCheck(v *Variable, name string, g *G) error {
+func escapeCheck(v *Variable, name string, stack stack) error {
 	switch v.Kind {
 	case reflect.Ptr:
 		var w *Variable
@@ -600,31 +647,31 @@ func escapeCheck(v *Variable, name string, g *G) error {
 		} else {
 			w = v.maybeDereference()
 		}
-		return escapeCheckPointer(w.Addr, name, g)
+		return escapeCheckPointer(w.Addr, name, stack)
 	case reflect.Chan, reflect.String, reflect.Slice:
-		return escapeCheckPointer(v.Base, name, g)
+		return escapeCheckPointer(v.Base, name, stack)
 	case reflect.Map:
 		sv := v.clone()
 		sv.RealType = resolveTypedef(&(v.RealType.(*godwarf.MapType).TypedefType))
 		sv = sv.maybeDereference()
-		return escapeCheckPointer(sv.Addr, name, g)
+		return escapeCheckPointer(sv.Addr, name, stack)
 	case reflect.Struct:
 		t := v.RealType.(*godwarf.StructType)
 		for _, field := range t.Field {
 			fv, _ := v.toField(field)
-			if err := escapeCheck(fv, fmt.Sprintf("%s.%s", name, field.Name), g); err != nil {
+			if err := escapeCheck(fv, fmt.Sprintf("%s.%s", name, field.Name), stack); err != nil {
 				return err
 			}
 		}
 	case reflect.Array:
 		for i := int64(0); i < v.Len; i++ {
 			sv, _ := v.sliceAccess(int(i))
-			if err := escapeCheck(sv, fmt.Sprintf("%s[%d]", name, i), g); err != nil {
+			if err := escapeCheck(sv, fmt.Sprintf("%s[%d]", name, i), stack); err != nil {
 				return err
 			}
 		}
 	case reflect.Func:
-		if err := escapeCheckPointer(uintptr(v.funcvalAddr()), name, g); err != nil {
+		if err := escapeCheckPointer(uintptr(v.funcvalAddr()), name, stack); err != nil {
 			return err
 		}
 	}
@@ -632,8 +679,8 @@ func escapeCheck(v *Variable, name string, g *G) error {
 	return nil
 }
 
-func escapeCheckPointer(addr uintptr, name string, g *G) error {
-	if uint64(addr) >= g.stack.lo && uint64(addr) < g.stack.hi {
+func escapeCheckPointer(addr uintptr, name string, stack stack) error {
+	if uint64(addr) >= stack.lo && uint64(addr) < stack.hi {
 		return fmt.Errorf("stack object passed to escaping pointer: %s", name)
 	}
 	return nil
@@ -648,17 +695,11 @@ const (
 )
 
 // funcCallStep executes one step of the function call injection protocol.
-func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
+func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread) bool {
 	p := callScope.callCtx.p
 	bi := p.BinInfo()
 
-	thread := callScope.g.Thread
 	regs, err := thread.Registers()
-	if err != nil {
-		fncall.err = err
-		return true
-	}
-	regs, err = regs.Copy()
 	if err != nil {
 		fncall.err = err
 		return true
@@ -676,7 +717,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 				fnname = loc.Fn.Name
 			}
 		}
-		fncallLog("function call interrupt gid=%d thread=%d rax=%#x (PC=%#x in %s)", callScope.g.ID, thread.ThreadID(), rax, pc, fnname)
+		fncallLog("function call interrupt gid=%d (original) thread=%d rax=%#x (PC=%#x in %s)", callScope.g.ID, thread.ThreadID(), rax, pc, fnname)
 	}
 
 	switch rax {
@@ -691,6 +732,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		fncall.err = fmt.Errorf("%v", constant.StringVal(errvar.Value))
 
 	case debugCallAXCompleteCall:
+		p.fncallForG[callScope.g.ID].startThreadID = 0
 		// evaluate arguments of the target function, copy them into its argument frame and call the function
 		if fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0 {
 			// if we couldn't figure out which function we are calling before
@@ -775,6 +817,13 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState) bool {
 		loadValues(fncall.retvars, callScope.callCtx.retLoadCfg)
 		for _, v := range fncall.retvars {
 			v.Flags |= VariableFakeAddress
+		}
+
+		// Store the stack span of the currently running goroutine (which in Go >=
+		// 1.15 might be different from the original injection goroutine) so that
+		// later on we can use it to perform the escapeCheck
+		if threadg, _ := GetG(thread); threadg != nil {
+			callScope.callCtx.stacks = append(callScope.callCtx.stacks, threadg.stack)
 		}
 
 	case debugCallAXReadPanic:
@@ -886,11 +935,18 @@ func allocString(scope *EvalScope, v *Variable) error {
 	return err
 }
 
-func isCallInjectionStop(loc *Location) bool {
+func isCallInjectionStop(t *Target, thread Thread, loc *Location) bool {
 	if loc.Fn == nil {
 		return false
 	}
-	return strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) || strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2)
+	if !strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) && !strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2) {
+		return false
+	}
+	text, err := disassembleCurrentInstruction(t, thread, -1)
+	if err != nil || len(text) <= 0 {
+		return false
+	}
+	return text[0].IsHardBreak()
 }
 
 // callInjectionProtocol is the function called from Continue to progress
@@ -906,19 +962,16 @@ func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
 		if err != nil {
 			continue
 		}
-		if !isCallInjectionStop(loc) {
+		if !isCallInjectionStop(t, thread, loc) {
 			continue
 		}
 
-		g, err := GetG(thread)
+		g, callinj, err := findCallInjectionStateForThread(t, thread)
 		if err != nil {
-			return done, fmt.Errorf("could not determine running goroutine for thread %#x currently executing the function call injection protocol: %v", thread.ThreadID(), err)
+			return false, err
 		}
-		callinj := t.fncallForG[g.ID]
-		if callinj == nil || callinj.continueCompleted == nil {
-			return false, fmt.Errorf("could not recover call injection state for goroutine %d", g.ID)
-		}
-		fncallLog("step for injection on goroutine %d thread=%d (location %s)", g.ID, thread.ThreadID(), loc.Fn.Name)
+
+		fncallLog("step for injection on goroutine %d (current) thread=%d (location %s)", g.ID, thread.ThreadID(), loc.Fn.Name)
 		callinj.continueCompleted <- g
 		contReq, ok := <-callinj.continueRequest
 		if !contReq.cont {
@@ -930,4 +983,37 @@ func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
 		}
 	}
 	return done, nil
+}
+
+func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjection, error) {
+	g, err := GetG(thread)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not determine running goroutine for thread %#x currently executing the function call injection protocol: %v", thread.ThreadID(), err)
+	}
+	fncallLog("findCallInjectionStateForThread thread=%d goroutine=%d", thread.ThreadID(), g.ID)
+	notfound := func() error {
+		return fmt.Errorf("could not recover call injection state for goroutine %d (thread %d)", g.ID, thread.ThreadID())
+	}
+	callinj := t.fncallForG[g.ID]
+	if callinj != nil {
+		if callinj.continueCompleted == nil {
+			return nil, nil, notfound()
+		}
+		return g, callinj, nil
+	}
+
+	// In Go 1.15 and later the call injection protocol will switch to a
+	// different goroutine.
+	// Here we try to recover the injection goroutine by checking the injection
+	// thread.
+
+	for goid, callinj := range t.fncallForG {
+		if callinj != nil && callinj.continueCompleted != nil && callinj.startThreadID != 0 && callinj.startThreadID == thread.ThreadID() {
+			t.fncallForG[g.ID] = callinj
+			fncallLog("goroutine %d is the goroutine executing the call injection started in goroutine %d", g.ID, goid)
+			return g, callinj, nil
+		}
+	}
+
+	return nil, nil, notfound()
 }

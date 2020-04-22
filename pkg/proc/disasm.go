@@ -23,6 +23,7 @@ const (
 	CallInstruction
 	RetInstruction
 	JmpInstruction
+	HardBreakInstruction
 )
 
 // IsCall is true if instr is a call instruction.
@@ -38,6 +39,11 @@ func (instr *AsmInstruction) IsRet() bool {
 // IsJmp is true if instr is an unconditional jump instruction.
 func (instr *AsmInstruction) IsJmp() bool {
 	return instr.Kind == JmpInstruction
+}
+
+// IsHardBreak is true if instr is a hardcoded breakpoint instruction.
+func (instr *AsmInstruction) IsHardBreak() bool {
+	return instr.Kind == HardBreakInstruction
 }
 
 type archInst interface {
