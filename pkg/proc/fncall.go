@@ -257,7 +257,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		return nil, err
 	}
 	regs = regs.Copy()
-	if regs.SP()-256 <= scope.g.stacklo {
+	if regs.SP()-256 <= scope.g.stack.lo {
 		return nil, errNotEnoughStack
 	}
 	_, err = regs.Get(int(x86asm.RAX))
@@ -285,9 +285,9 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 	fncallLog("function call initiated %v frame size %d", fncall.fn, fncall.argFrameSize)
 
-	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stackhi)
-	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stackhi)
-	fboff := scope.Regs.FrameBase - int64(scope.g.stackhi)
+	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
+	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
+	fboff := scope.Regs.FrameBase - int64(scope.g.stack.hi)
 
 	for {
 		scope.g = scope.callCtx.doContinue()
@@ -303,10 +303,10 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 			}
 		}
 
-		scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(spoff + int64(scope.g.stackhi))
-		scope.Regs.Regs[scope.Regs.BPRegNum].Uint64Val = uint64(bpoff + int64(scope.g.stackhi))
-		scope.Regs.FrameBase = fboff + int64(scope.g.stackhi)
-		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stackhi)
+		scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(spoff + int64(scope.g.stack.hi))
+		scope.Regs.Regs[scope.Regs.BPRegNum].Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
+		scope.Regs.FrameBase = fboff + int64(scope.g.stack.hi)
+		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 
 		finished := funcCallStep(scope, &fncall)
 		if finished {
@@ -635,7 +635,7 @@ func escapeCheck(v *Variable, name string, g *G) error {
 }
 
 func escapeCheckPointer(addr uintptr, name string, g *G) error {
-	if uint64(addr) >= g.stacklo && uint64(addr) < g.stackhi {
+	if uint64(addr) >= g.stack.lo && uint64(addr) < g.stack.hi {
 		return fmt.Errorf("stack object passed to escaping pointer: %s", name)
 	}
 	return nil

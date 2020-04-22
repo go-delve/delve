@@ -195,8 +195,7 @@ type G struct {
 	Status    uint64
 	stkbarVar *Variable // stkbar field of g struct
 	stkbarPos int       // stkbarPos field of g struct
-	stackhi   uint64    // value of stack.hi
-	stacklo   uint64    // value of stack.lo
+	stack     stack     // value of stack
 
 	SystemStack bool // SystemStack is true if this goroutine is currently executing on a system stack.
 
@@ -211,6 +210,11 @@ type G struct {
 	Unreadable error // could not read the G struct
 
 	labels *map[string]string // G's pprof labels, computed on demand in Labels() method
+}
+
+// stack represents a stack span in the target process.
+type stack struct {
+	hi, lo uint64
 }
 
 // GetG returns information on the G (goroutine) that is executing on this thread.
@@ -862,8 +866,7 @@ func (v *Variable) parseG() (*G, error) {
 		variable:   v,
 		stkbarVar:  stkbarVar,
 		stkbarPos:  int(stkbarPos),
-		stackhi:    stackhi,
-		stacklo:    stacklo,
+		stack:      stack{hi: stackhi, lo: stacklo},
 	}
 	return g, nil
 }
