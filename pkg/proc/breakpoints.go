@@ -436,8 +436,8 @@ func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
 		return nil
 	}
 
-	oldFrameOffset := rbpi.frameOffset + int64(g.stackhi)
-	oldSP := uint64(rbpi.spOffset + int64(g.stackhi))
+	oldFrameOffset := rbpi.frameOffset + int64(g.stack.hi)
+	oldSP := uint64(rbpi.spOffset + int64(g.stack.hi))
 	err = fakeFunctionEntryScope(scope, rbpi.fn, oldFrameOffset, oldSP)
 	if err != nil {
 		return returnInfoError("could not read function entry", err, thread)
