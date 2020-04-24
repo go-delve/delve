@@ -64,6 +64,15 @@ type Debugger struct {
 	recordMutex   sync.Mutex
 }
 
+type ExecuteKind int
+
+const (
+	ExecutingExistingFile = ExecuteKind(iota)
+	ExecutingGeneratedFile
+	ExecutingGeneratedTest
+	ExecutingOther
+)
+
 // Config provides the configuration to start a Debugger.
 //
 // Only one of ProcessArgs or AttachPid should be specified. If ProcessArgs is
@@ -105,6 +114,9 @@ type Config struct {
 
 	// BuildFlags contains the flags passed to the compiler.
 	BuildFlags string
+
+	// ExecuteKind contains the kind of the executed program.
+	Kind ExecuteKind
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -397,16 +409,9 @@ func (d *Debugger) detach(kill bool) error {
 // If the target process is a recording it will restart it from the given
 // position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
 // event number. If resetArgs is true, newArgs will replace the process args.
-<<<<<<< HEAD
-func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error) {
+func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-=======
-// If rebuild is true, the process wil be build again.
-func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
-	d.processMutex.Lock()
-	defer d.processMutex.Unlock()
->>>>>>> terminal/command: Add 'reload' command
 
 	recorded, _ := d.target.Recorded()
 	if recorded && !rerecord {
@@ -436,8 +441,13 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	var p *proc.Target
 	var err error
 
-	// TODO executeKind from command.go
-	if rebuild && d.canRestart() {
+	if rebuild {
+		// We cannot restart processes that we don't know how to build. If
+		// d.config.Kind is different from ExecutingGeneratedFile that means we
+		// didn't build the binary and we are just running it
+		if d.config.Kind == ExecutingExistingFile {
+			return nil, fmt.Errorf("cannot restart process Delve did not create")
+		}
 		err := gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild process: %s", err)

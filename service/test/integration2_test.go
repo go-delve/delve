@@ -3,6 +3,7 @@ package service_test
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -74,6 +75,9 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 		Debugger: debugger.Config{
 			Backend:        testBackend,
 			CheckGoVersion: true,
+			Packages:       []string{fixture.Source},
+			BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
+			Kind:           debugger.ExecutingGeneratedTest,
 		},
 	})
 	if err := server.Run(); err != nil {
@@ -110,6 +114,7 @@ func TestRunWithInvalidPath(t *testing.T) {
 		APIVersion:  2,
 		Debugger: debugger.Config{
 			Backend: testBackend,
+			Kind:    debugger.ExecutingGeneratedTest,
 		},
 	})
 	if err := server.Run(); err == nil {
@@ -194,10 +199,69 @@ func TestRestart_duringStop(t *testing.T) {
 	})
 }
 
+// This source is a slightly modified version of
+// _fixtures/testenv.go. The only difference is that
+// the name of the environment variable we are trying to
+// read is named differently, so we can assert the code
+// was actually changed in the test.
+const modifiedSource = `package main
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+)
+
+func main() {
+	x := os.Getenv("SOMEMODIFIEDVAR")
+	runtime.Breakpoint()
+	fmt.Printf("SOMEMODIFIEDVAR=%s\n", x)
+}
+`
+
 func TestRestart_rebuild(t *testing.T) {
-	withTestClient2("continuetestprog", t, func(c service.Client) {
-		// TODO WIP
-		t.FailNow()
+	// In the original fixture file the env var tested for is SOMEVAR.
+	os.Setenv("SOMEVAR", "bah")
+
+	withTestClient2Extended("testenv", t, 0, func(c service.Client, f protest.Fixture) {
+		<-c.Continue()
+
+		var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "x", normalLoadConfig)
+		assertNoError(err, t, "EvalVariable")
+
+		if var1.Value != "bah" {
+			t.Fatalf("expected 'bah' got %q", var1.Value)
+		}
+
+		fi, err := os.Stat(f.Source)
+		assertNoError(err, t, "Stat fixture.Source")
+
+		originalSource, err := ioutil.ReadFile(f.Source)
+		assertNoError(err, t, "Reading original source")
+
+		// Ensure we write the original source code back after the test exits.
+		defer ioutil.WriteFile(f.Source, originalSource, fi.Mode())
+
+		// Write modified source code to the fixture file.
+		err = ioutil.WriteFile(f.Source, []byte(modifiedSource), fi.Mode())
+		assertNoError(err, t, "Writing modified source")
+
+		// First set our new env var and ensure later that the
+		// modified source code picks it up.
+		os.Setenv("SOMEMODIFIEDVAR", "foobar")
+
+		// Restart the program, rebuilding from source.
+		_, err = c.Restart(true)
+		assertNoError(err, t, "Restart(true)")
+
+		<-c.Continue()
+
+		var1, err = c.EvalVariable(api.EvalScope{GoroutineID: -1}, "x", normalLoadConfig)
+		assertNoError(err, t, "EvalVariable")
+
+		if var1.Value != "foobar" {
+			t.Fatalf("expected 'foobar' got %q", var1.Value)
+		}
 	})
 }
 
@@ -1582,6 +1646,7 @@ func TestAcceptMulticlient(t *testing.T) {
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend: testBackend,
+				Kind:    debugger.ExecutingGeneratedTest,
 			},
 		})
 		if err := server.Run(); err != nil {

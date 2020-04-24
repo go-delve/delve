@@ -18,6 +18,6 @@ require (
 	go.starlark.net v0.0.0-20190702223751-32f345186213
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 	golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb
-	golang.org/x/tools v0.0.0-20200415034506-5d8e1897c761
+	golang.org/x/tools v0.0.0-20191127201027-ecd32218bd7f
 	gopkg.in/yaml.v2 v2.2.1
 )

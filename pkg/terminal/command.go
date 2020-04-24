@@ -1079,7 +1079,10 @@ func (c *Commands) rebuild(t *Term, ctx callContext, args string) error {
 		return c.rewind(t, ctx, args)
 	}
 	defer t.onStop()
-	_, err := t.client.Restart(true)
+	discarded, err := t.client.Restart(true)
+	if len(discarded) > 0 {
+		fmt.Printf("Some of the breakpoints could not be recovered")
+	}
 	return err
 }
 
