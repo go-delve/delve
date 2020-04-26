@@ -264,13 +264,13 @@ to know what functions your process is executing.`,
 	coreCommand := &cobra.Command{
 		Use:   "core <executable> <core>",
 		Short: "Examine a core dump.",
-		Long: `Examine a core dump.
+		Long: `Examine a core dump (only supports linux and windows core dumps).
 
 The core command will open the specified core file and the associated
 executable and let you examine the state of the process when the
 core dump was taken.
 
-Currently supports linux/amd64 core files and windows/amd64 minidumps.`,
+Currently supports linux/amd64 and linux/arm64 core files and windows/amd64 minidumps.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return errors.New("you must provide a core file and an executable")

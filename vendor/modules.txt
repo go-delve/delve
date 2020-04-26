@@ -1,5 +1,7 @@
 # github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5
 github.com/cosiner/argv
+# github.com/cpuguy83/go-md2man v1.0.10
+github.com/cpuguy83/go-md2man/md2man
 # github.com/creack/pty v1.1.9
 github.com/creack/pty
 # github.com/google/go-dap v0.2.0
@@ -16,10 +18,13 @@ github.com/mattn/go-isatty
 github.com/peterh/liner
 # github.com/pkg/profile v0.0.0-20170413231811-06b906832ed0
 github.com/pkg/profile
+# github.com/russross/blackfriday v1.5.2
+github.com/russross/blackfriday
 # github.com/sirupsen/logrus v0.0.0-20180523074243-ea8897e79973
 github.com/sirupsen/logrus
 # github.com/spf13/cobra v0.0.0-20170417170307-b6cb39589372
 github.com/spf13/cobra
+github.com/spf13/cobra/doc
 # github.com/spf13/pflag v0.0.0-20170417173400-9e4c21054fa1
 github.com/spf13/pflag
 # go.starlark.net v0.0.0-20190702223751-32f345186213
