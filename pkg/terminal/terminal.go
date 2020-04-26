@@ -132,14 +132,14 @@ func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 			continue
 		}
 		if multiClient {
-			answer, err := t.line.Prompt("Would you like to [s]top the target or [q]uit this client, leaving the target running [s/q]? ")
+			answer, err := t.line.Prompt("Would you like to [p]ause the target (returning to Delve's prompt) or [q]uit this client (leaving the target running) [p/q]? ")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v", err)
 				continue
 			}
 			answer = strings.TrimSpace(answer)
 			switch answer {
-			case "s":
+			case "p":
 				_, err := t.client.Halt()
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%v", err)
