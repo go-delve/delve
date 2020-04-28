@@ -8,9 +8,7 @@ import (
 	"golang.org/x/arch/arm64/arm64asm"
 )
 
-// AsmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
-// It assumes that the Loc and AtPC fields of asmInst have already been filled.
-func (a *ARM64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
+func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
 	asmInst.Size = 4
 	asmInst.Bytes = mem[:asmInst.Size]
 
@@ -28,6 +26,8 @@ func (a *ARM64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, m
 		asmInst.Kind = CallInstruction
 	case arm64asm.RET, arm64asm.ERET:
 		asmInst.Kind = RetInstruction
+	case arm64asm.B, arm64asm.BR:
+		asmInst.Kind = JmpInstruction
 	}
 
 	asmInst.DestLoc = resolveCallArgARM64(&inst, asmInst.Loc.PC, asmInst.AtPC, regs, memrw, bi)
@@ -35,12 +35,11 @@ func (a *ARM64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, m
 	return nil
 }
 
-func (a *ARM64) Prologues() []opcodeSeq {
-	return prologuesARM64
-}
-
 func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
-	if inst.Op != arm64asm.BL && inst.Op != arm64asm.BLR {
+	switch inst.Op {
+	case arm64asm.BL, arm64asm.BLR, arm64asm.B, arm64asm.BR:
+		//ok
+	default:
 		return nil
 	}
 

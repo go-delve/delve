@@ -10,7 +10,7 @@ import (
 )
 
 // SetPC sets RIP to the value specified by 'pc'.
-func (thread *Thread) SetPC(pc uint64) error {
+func (thread *nativeThread) SetPC(pc uint64) error {
 	ir, err := registers(thread, false)
 	if err != nil {
 		return err
@@ -22,7 +22,7 @@ func (thread *Thread) SetPC(pc uint64) error {
 }
 
 // SetSP sets RSP to the value specified by 'sp'
-func (thread *Thread) SetSP(sp uint64) (err error) {
+func (thread *nativeThread) SetSP(sp uint64) (err error) {
 	var ir proc.Registers
 	ir, err = registers(thread, false)
 	if err != nil {
@@ -34,7 +34,7 @@ func (thread *Thread) SetSP(sp uint64) (err error) {
 	return
 }
 
-func (thread *Thread) SetDX(dx uint64) (err error) {
+func (thread *nativeThread) SetDX(dx uint64) (err error) {
 	var ir proc.Registers
 	ir, err = registers(thread, false)
 	if err != nil {
@@ -46,7 +46,7 @@ func (thread *Thread) SetDX(dx uint64) (err error) {
 	return
 }
 
-func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
 	var (
 		regs linutil.AMD64PtraceRegs
 		err  error
@@ -55,7 +55,7 @@ func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &linutil.AMD64Registers{&regs, nil, nil}
+	r := &linutil.AMD64Registers{Regs: &regs}
 	if floatingPoint {
 		var fpregset linutil.AMD64Xstate
 		r.Fpregs, fpregset, err = thread.fpRegisters()
@@ -77,8 +77,8 @@ const (
 	_XSAVE_SSE_REGION_LEN        = 416
 )
 
-func (thread *Thread) fpRegisters() (regs []proc.Register, fpregs linutil.AMD64Xstate, err error) {
-	thread.dbp.execPtraceFunc(func() { fpregs, err = PtraceGetRegset(thread.ID) })
+func (thread *nativeThread) fpRegisters() (regs []proc.Register, fpregs linutil.AMD64Xstate, err error) {
+	thread.dbp.execPtraceFunc(func() { fpregs, err = ptraceGetRegset(thread.ID) })
 	regs = fpregs.Decode()
 	if err != nil {
 		err = fmt.Errorf("could not get floating point registers: %v", err.Error())

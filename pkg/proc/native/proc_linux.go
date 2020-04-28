@@ -26,21 +26,21 @@ import (
 
 // Process statuses
 const (
-	StatusSleeping  = 'S'
-	StatusRunning   = 'R'
-	StatusTraceStop = 't'
-	StatusZombie    = 'Z'
+	statusSleeping  = 'S'
+	statusRunning   = 'R'
+	statusTraceStop = 't'
+	statusZombie    = 'Z'
 
 	// Kernel 2.6 has TraceStop as T
 	// TODO(derekparker) Since this means something different based on the
 	// version of the kernel ('T' is job control stop on modern 3.x+ kernels) we
 	// may want to differentiate at some point.
-	StatusTraceStopT = 'T'
+	statusTraceStopT = 'T'
 )
 
-// OSProcessDetails contains Linux specific
+// osProcessDetails contains Linux specific
 // process details.
-type OSProcessDetails struct {
+type osProcessDetails struct {
 	comm string
 }
 
@@ -49,15 +49,11 @@ type OSProcessDetails struct {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string) (*proc.Target, error) {
 	var (
 		process *exec.Cmd
 		err     error
 	)
-	// check that the argument to Launch is an executable file
-	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, proc.ErrNotExecutable
-	}
 
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
 		// exec.(*Process).Start will fail if we try to send a process to
@@ -65,16 +61,26 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 		foreground = false
 	}
 
-	dbp := New(0)
+	dbp := newProcess(0)
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
-		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true, Foreground: foreground}
+		process.SysProcAttr = &syscall.SysProcAttr{
+			Ptrace:     true,
+			Setpgid:    true,
+			Foreground: foreground,
+		}
 		if foreground {
 			signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
 			process.Stdin = os.Stdin
+		}
+		if tty != "" {
+			dbp.ctty, err = attachProcessToTTY(process, tty)
+			if err != nil {
+				return
+			}
 		}
 		if wd != "" {
 			process.Dir = wd
@@ -101,10 +107,10 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
 func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
-	dbp := New(pid)
+	dbp := newProcess(pid)
 
 	var err error
-	dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })
+	dbp.execPtraceFunc(func() { err = ptraceAttach(dbp.pid) })
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +119,12 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 		return nil, err
 	}
 
-	tgt, err := dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
+	execPath, err := findExecutable(pid)
+	if err != nil {
+		return nil, err
+	}
+
+	tgt, err := dbp.initialize(execPath, debugInfoDirs)
 	if err != nil {
 		dbp.Detach(false)
 		return nil, err
@@ -128,7 +139,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 	return tgt, nil
 }
 
-func initialize(dbp *Process) error {
+func initialize(dbp *nativeProcess) error {
 	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
 	if err == nil {
 		// removes newline character
@@ -156,7 +167,7 @@ func initialize(dbp *Process) error {
 }
 
 // kill kills the target process.
-func (dbp *Process) kill() (err error) {
+func (dbp *nativeProcess) kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
@@ -173,13 +184,13 @@ func (dbp *Process) kill() (err error) {
 	return
 }
 
-func (dbp *Process) requestManualStop() (err error) {
+func (dbp *nativeProcess) requestManualStop() (err error) {
 	return sys.Kill(dbp.pid, sys.SIGTRAP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
-func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
+func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error) {
 	if thread, ok := dbp.threads[tid]; ok {
 		return thread, nil
 	}
@@ -217,10 +228,10 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	dbp.threads[tid] = &Thread{
+	dbp.threads[tid] = &nativeThread{
 		ID:  tid,
 		dbp: dbp,
-		os:  new(OSSpecificDetails),
+		os:  new(osSpecificDetails),
 	}
 	if dbp.currentThread == nil {
 		dbp.currentThread = dbp.threads[tid]
@@ -228,7 +239,7 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 	return dbp.threads[tid], nil
 }
 
-func (dbp *Process) updateThreadList() error {
+func (dbp *nativeProcess) updateThreadList() error {
 	tids, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*", dbp.pid))
 	for _, tidpath := range tids {
 		tidstr := filepath.Base(tidpath)
@@ -243,14 +254,12 @@ func (dbp *Process) updateThreadList() error {
 	return linutil.ElfUpdateSharedObjects(dbp)
 }
 
-func findExecutable(path string, pid int) string {
-	if path == "" {
-		path = fmt.Sprintf("/proc/%d/exe", pid)
-	}
-	return path
+func findExecutable(pid int) (string, error) {
+	path := fmt.Sprintf("/proc/%d/exe", pid)
+	return filepath.EvalSymlinks(path)
 }
 
-func (dbp *Process) trapWait(pid int) (*Thread, error) {
+func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	return dbp.trapWaitInternal(pid, 0)
 }
 
@@ -261,7 +270,7 @@ const (
 	trapWaitNohang
 )
 
-func (dbp *Process) trapWaitInternal(pid int, options trapWaitOptions) (*Thread, error) {
+func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*nativeThread, error) {
 	halt := options&trapWaitHalt != 0
 	for {
 		wopt := 0
@@ -280,7 +289,7 @@ func (dbp *Process) trapWaitInternal(pid int, options trapWaitOptions) (*Thread,
 		}
 		th, ok := dbp.threads[wpid]
 		if ok {
-			th.Status = (*WaitStatus)(status)
+			th.Status = (*waitStatus)(status)
 		}
 		if status.Exited() {
 			if wpid == dbp.pid {
@@ -387,13 +396,13 @@ func status(pid int, comm string) rune {
 }
 
 // waitFast is like wait but does not handle process-exit correctly
-func (dbp *Process) waitFast(pid int) (int, *sys.WaitStatus, error) {
+func (dbp *nativeProcess) waitFast(pid int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
 	wpid, err := sys.Wait4(pid, &s, sys.WALL, nil)
 	return wpid, &s, err
 }
 
-func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
 	if (pid != dbp.pid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
@@ -418,18 +427,18 @@ func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
 		if wpid != 0 {
 			return wpid, &s, err
 		}
-		if status(pid, dbp.os.comm) == StatusZombie {
+		if status(pid, dbp.os.comm) == statusZombie {
 			return pid, nil, nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 }
 
-func (dbp *Process) exitGuard(err error) error {
+func (dbp *nativeProcess) exitGuard(err error) error {
 	if err != sys.ESRCH {
 		return err
 	}
-	if status(dbp.pid, dbp.os.comm) == StatusZombie {
+	if status(dbp.pid, dbp.os.comm) == statusZombie {
 		_, err := dbp.trapWaitInternal(-1, 0)
 		return err
 	}
@@ -437,7 +446,7 @@ func (dbp *Process) exitGuard(err error) error {
 	return err
 }
 
-func (dbp *Process) resume() error {
+func (dbp *nativeProcess) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {
@@ -457,7 +466,7 @@ func (dbp *Process) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
@@ -469,7 +478,10 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 
 	// check if any other thread simultaneously received a SIGTRAP
 	for {
-		th, _ := dbp.trapWaitInternal(-1, trapWaitNohang)
+		th, err := dbp.trapWaitInternal(-1, trapWaitNohang)
+		if err != nil {
+			return dbp.exitGuard(err)
+		}
 		if th == nil {
 			break
 		}
@@ -517,9 +529,9 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 	return nil
 }
 
-func (dbp *Process) detach(kill bool) error {
+func (dbp *nativeProcess) detach(kill bool) error {
 	for threadID := range dbp.threads {
-		err := PtraceDetach(threadID, 0)
+		err := ptraceDetach(threadID, 0)
 		if err != nil {
 			return err
 		}
@@ -540,7 +552,7 @@ func (dbp *Process) detach(kill bool) error {
 
 // EntryPoint will return the process entry point address, useful for
 // debugging PIEs.
-func (dbp *Process) EntryPoint() (uint64, error) {
+func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	auxvbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
 	if err != nil {
 		return 0, fmt.Errorf("could not read auxiliary vector: %v", err)

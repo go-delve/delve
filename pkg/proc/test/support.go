@@ -35,13 +35,13 @@ type Fixture struct {
 }
 
 // FixtureKey holds the name and builds flags used for a test fixture.
-type FixtureKey struct {
+type fixtureKey struct {
 	Name  string
 	Flags BuildFlags
 }
 
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
-var Fixtures = make(map[FixtureKey]Fixture)
+var fixtures = make(map[fixtureKey]Fixture)
 
 // PathsToRemove is a list of files and directories to remove after running all the tests
 var PathsToRemove []string
@@ -84,8 +84,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if !runningWithFixtures {
 		panic("RunTestsWithFixtures not called")
 	}
-	fk := FixtureKey{name, flags}
-	if f, ok := Fixtures[fk]; ok {
+	fk := fixtureKey{name, flags}
+	if f, ok := fixtures[fk]; ok {
 		return f
 	}
 
@@ -109,7 +109,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	buildFlags := []string{"build"}
 	var ver goversion.GoVersion
-	if ver, _ = goversion.Parse(runtime.Version()); runtime.GOOS == "windows" && ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver, _ = goversion.Parse(runtime.Version()); runtime.GOOS == "windows" && ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
@@ -139,7 +139,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&BuildModePlugin != 0 {
 		buildFlags = append(buildFlags, "-buildmode=plugin")
 	}
-	if ver.IsDevel() || ver.AfterOrEqual(goversion.GoVersion{1, 11, -1, 0, 0, ""}) {
+	if ver.IsDevel() || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 11, Rev: -1}) {
 		if flags&EnableDWZCompression != 0 {
 			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
 		}
@@ -180,8 +180,8 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	fixture := Fixture{Name: name, Path: tmpfile, Source: source, BuildDir: absdir}
 
-	Fixtures[fk] = fixture
-	return Fixtures[fk]
+	fixtures[fk] = fixture
+	return fixtures[fk]
 }
 
 // RunTestsWithFixtures will pre-compile test fixtures before running test
@@ -194,7 +194,7 @@ func RunTestsWithFixtures(m *testing.M) int {
 	status := m.Run()
 
 	// Remove the fixtures.
-	for _, f := range Fixtures {
+	for _, f := range fixtures {
 		os.Remove(f.Path)
 	}
 
@@ -315,6 +315,9 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" {
 		t.Skip("function call injection tests are failing on macOS on Travis-CI (see #1802)")
 	}
+	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
+		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
+	}
 }
 
 // DefaultTestBackend changes the value of testBackend to be the default
@@ -351,4 +354,18 @@ func WithPlugins(t *testing.T, flags BuildFlags, plugins ...string) []Fixture {
 		r[i] = BuildFixture(plugins[i], flags|BuildModePlugin)
 	}
 	return r
+}
+
+var hasCgo = func() bool {
+	out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
+	if err != nil {
+		panic(err)
+	}
+	return strings.TrimSpace(string(out)) == "1"
+}()
+
+func MustHaveCgo(t *testing.T) {
+	if !hasCgo {
+		t.Skip("Cgo not enabled")
+	}
 }

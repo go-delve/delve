@@ -8,14 +8,8 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
-// AsmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
-// It assumes that the Loc and AtPC fields of asmInst have already been filled.
-func (a *AMD64) AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
+func amd64AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
 	return x86AsmDecode(asmInst, mem, regs, memrw, bi, 64)
-}
-
-func (a *AMD64) Prologues() []opcodeSeq {
-	return prologuesAMD64
 }
 
 // Possible stacksplit prologues are inserted by stacksplit in

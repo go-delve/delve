@@ -13,7 +13,7 @@ import (
 )
 
 // autoLoadConfig is the load configuration used to automatically load more from a variable
-var autoLoadConfig = api.LoadConfig{false, 1, 1024, 64, -1}
+var autoLoadConfig = api.LoadConfig{MaxVariableRecurse: 1, MaxStringLen: 1024, MaxArrayValues: 64, MaxStructFields: -1}
 
 // interfaceToStarlarkValue converts an interface{} variable (produced by
 // decoding JSON) into a starlark.Value.
@@ -253,7 +253,7 @@ func (env *Env) variableValueToStarlarkValue(v *api.Variable, top bool) (starlar
 }
 
 func (env *Env) autoLoad(expr string) *api.Variable {
-	v, err := env.ctx.Client().EvalVariable(api.EvalScope{-1, 0, 0}, expr, autoLoadConfig)
+	v, err := env.ctx.Client().EvalVariable(api.EvalScope{GoroutineID: -1}, expr, autoLoadConfig)
 	if err != nil {
 		return &api.Variable{Unreadable: err.Error()}
 	}
@@ -654,14 +654,12 @@ func unmarshalStarlarkValueIntl(val starlark.Value, dst reflect.Value, path stri
 		if dst.Kind() != reflect.Slice {
 			return converr()
 		}
-		r := []reflect.Value{}
 		for i := 0; i < val.Len(); i++ {
 			cur := reflect.New(dst.Type().Elem())
 			err := unmarshalStarlarkValueIntl(val.Index(i), cur, path)
 			if err != nil {
 				return err
 			}
-			r = append(r, cur)
 		}
 	case *starlark.Dict:
 		if dst.Kind() != reflect.Struct {

@@ -13,14 +13,14 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 )
 
-type WaitStatus sys.WaitStatus
+type waitStatus sys.WaitStatus
 
-// OSSpecificDetails hold FreeBSD specific process details.
-type OSSpecificDetails struct {
+// osSpecificDetails hold FreeBSD specific process details.
+type osSpecificDetails struct {
 	registers sys.Reg
 }
 
-func (t *Thread) stop() (err error) {
+func (t *nativeThread) stop() (err error) {
 	_, err = C.thr_kill2(C.pid_t(t.dbp.pid), C.long(t.ID), C.int(sys.SIGSTOP))
 	if err != nil {
 		err = fmt.Errorf("stop err %s on thread %d", err, t.ID)
@@ -28,7 +28,7 @@ func (t *Thread) stop() (err error) {
 	}
 	// If the process is stopped, we must continue it so it can receive the
 	// signal
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.dbp.pid, 0) })
+	t.dbp.execPtraceFunc(func() { err = ptraceCont(t.dbp.pid, 0) })
 	if err != nil {
 		return err
 	}
@@ -40,22 +40,22 @@ func (t *Thread) stop() (err error) {
 	return
 }
 
-func (t *Thread) Stopped() bool {
+func (t *nativeThread) Stopped() bool {
 	state := status(t.dbp.pid)
-	return state == StatusStopped
+	return state == statusStopped
 }
 
-func (t *Thread) resume() error {
+func (t *nativeThread) resume() error {
 	return t.resumeWithSig(0)
 }
 
-func (t *Thread) resumeWithSig(sig int) (err error) {
-	t.dbp.execPtraceFunc(func() { err = PtraceCont(t.ID, sig) })
+func (t *nativeThread) resumeWithSig(sig int) (err error) {
+	t.dbp.execPtraceFunc(func() { err = ptraceCont(t.ID, sig) })
 	return
 }
 
-func (t *Thread) singleStep() (err error) {
-	t.dbp.execPtraceFunc(func() { err = PtraceSingleStep(t.ID) })
+func (t *nativeThread) singleStep() (err error) {
+	t.dbp.execPtraceFunc(func() { err = ptraceSingleStep(t.ID) })
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (t *Thread) singleStep() (err error) {
 		if th.ID == t.ID {
 			break
 		}
-		t.dbp.execPtraceFunc(func() { err = PtraceCont(th.ID, 0) })
+		t.dbp.execPtraceFunc(func() { err = ptraceCont(th.ID, 0) })
 		if err != nil {
 			return err
 		}
@@ -75,7 +75,7 @@ func (t *Thread) singleStep() (err error) {
 	return nil
 }
 
-func (t *Thread) Blocked() bool {
+func (t *nativeThread) Blocked() bool {
 	loc, err := t.Location()
 	if err != nil {
 		return false
@@ -86,7 +86,7 @@ func (t *Thread) Blocked() bool {
 	return false
 }
 
-func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
+func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	sr := savedRegs.(*fbsdutil.AMD64Registers)
 
 	var restoreRegistersErr error
@@ -110,7 +110,7 @@ func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
 	return restoreRegistersErr
 }
 
-func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
@@ -121,7 +121,7 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (written int, err error)
 	return written, err
 }
 
-func (t *Thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (t *nativeThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}

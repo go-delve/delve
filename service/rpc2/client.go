@@ -33,7 +33,7 @@ func NewClient(addr string) *RPCClient {
 
 func newFromRPCClient(client *rpc.Client) *RPCClient {
 	c := &RPCClient{client: client}
-	c.call("SetApiVersion", api.SetAPIVersionIn{2}, &api.SetAPIVersionOut{})
+	c.call("SetApiVersion", api.SetAPIVersionIn{APIVersion: 2}, &api.SetAPIVersionOut{})
 	return c
 }
 
@@ -92,6 +92,10 @@ func (c *RPCClient) Rewind() <-chan *api.DebuggerState {
 	return c.continueDir(api.Rewind)
 }
 
+func (c *RPCClient) DirectionCongruentContinue() <-chan *api.DebuggerState {
+	return c.continueDir(api.DirectionCongruentContinue)
+}
+
 func (c *RPCClient) continueDir(cmd string) <-chan *api.DebuggerState {
 	ch := make(chan *api.DebuggerState)
 	go func() {
@@ -136,15 +140,33 @@ func (c *RPCClient) Next() (*api.DebuggerState, error) {
 	return &out.State, err
 }
 
+func (c *RPCClient) ReverseNext() (*api.DebuggerState, error) {
+	var out CommandOut
+	err := c.call("Command", api.DebuggerCommand{Name: api.ReverseNext, ReturnInfoLoadConfig: c.retValLoadCfg}, &out)
+	return &out.State, err
+}
+
 func (c *RPCClient) Step() (*api.DebuggerState, error) {
 	var out CommandOut
 	err := c.call("Command", api.DebuggerCommand{Name: api.Step, ReturnInfoLoadConfig: c.retValLoadCfg}, &out)
 	return &out.State, err
 }
 
+func (c *RPCClient) ReverseStep() (*api.DebuggerState, error) {
+	var out CommandOut
+	err := c.call("Command", api.DebuggerCommand{Name: api.ReverseStep, ReturnInfoLoadConfig: c.retValLoadCfg}, &out)
+	return &out.State, err
+}
+
 func (c *RPCClient) StepOut() (*api.DebuggerState, error) {
 	var out CommandOut
 	err := c.call("Command", api.DebuggerCommand{Name: api.StepOut, ReturnInfoLoadConfig: c.retValLoadCfg}, &out)
+	return &out.State, err
+}
+
+func (c *RPCClient) ReverseStepOut() (*api.DebuggerState, error) {
+	var out CommandOut
+	err := c.call("Command", api.DebuggerCommand{Name: api.ReverseStepOut, ReturnInfoLoadConfig: c.retValLoadCfg}, &out)
 	return &out.State, err
 }
 
@@ -428,6 +450,10 @@ func (c *RPCClient) ExamineMemory(address uintptr, count int) ([]byte, error) {
 	}
 
 	return out.Mem, nil
+}
+
+func (c *RPCClient) StopRecording() error {
+	return c.call("StopRecording", StopRecordingIn{}, &StopRecordingOut{})
 }
 
 func (c *RPCClient) call(method string, args, reply interface{}) error {

@@ -21,6 +21,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
 )
@@ -154,7 +155,9 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{test.BuildFixture(name, buildFlags).Path},
-		Backend:     testBackend,
+		Debugger: debugger.Config{
+			Backend: testBackend,
+		},
 	})
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
@@ -183,23 +186,6 @@ func TestCommandDefault(t *testing.T) {
 	}
 
 	if err.Error() != "command not available" {
-		t.Fatal("wrong command output")
-	}
-}
-
-func TestCommandReplay(t *testing.T) {
-	cmds := DebugCommands(nil)
-	cmds.Register("foo", func(t *Term, ctx callContext, args string) error { return fmt.Errorf("registered command") }, "foo command")
-	cmd := cmds.Find("foo", noPrefix)
-
-	err := cmd(nil, callContext{}, "")
-	if err.Error() != "registered command" {
-		t.Fatal("wrong command output")
-	}
-
-	cmd = cmds.Find("", noPrefix)
-	err = cmd(nil, callContext{}, "")
-	if err.Error() != "registered command" {
 		t.Fatal("wrong command output")
 	}
 }
@@ -262,7 +248,9 @@ func TestExecuteFile(t *testing.T) {
 
 func TestIssue354(t *testing.T) {
 	printStack([]api.Stackframe{}, "", false)
-	printStack([]api.Stackframe{{api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil}, nil, nil, 0, 0, nil, true, ""}}, "", false)
+	printStack([]api.Stackframe{
+		{Location: api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil},
+			Bottom: true}}, "", false)
 }
 
 func TestIssue411(t *testing.T) {
@@ -404,7 +392,7 @@ func TestScopePrefix(t *testing.T) {
 
 		term.AssertExecError("frame", "not enough arguments")
 		term.AssertExecError(fmt.Sprintf("goroutine %d frame 10 locals", curgid), fmt.Sprintf("Frame 10 does not exist in goroutine %d", curgid))
-		term.AssertExecError("goroutine 9000 locals", "Unknown goroutine 9000")
+		term.AssertExecError("goroutine 9000 locals", "unknown goroutine 9000")
 
 		term.AssertExecError("print n", "could not find symbol value for n")
 		term.AssertExec("frame 1 print n", "3\n")
@@ -795,7 +783,7 @@ func TestConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error executing configureCmd(substitute-path a b): %v", err)
 	}
-	if len(term.conf.SubstitutePath) != 1 || (term.conf.SubstitutePath[0] != config.SubstitutePathRule{"a", "b"}) {
+	if len(term.conf.SubstitutePath) != 1 || (term.conf.SubstitutePath[0] != config.SubstitutePathRule{From: "a", To: "b"}) {
 		t.Fatalf("unexpected SubstitutePathRules after insert %v", term.conf.SubstitutePath)
 	}
 
@@ -901,7 +889,7 @@ func TestPrintContextParkedGoroutine(t *testing.T) {
 
 func TestStepOutReturn(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 10, -1, 0, 0, ""}) {
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		t.Skip("return variables aren't marked on 1.9 or earlier")
 	}
 	withTestTerminal("stepoutret", t, func(term *FakeTerminal) {

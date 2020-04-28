@@ -1,0 +1,49 @@
+# github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5
+github.com/cosiner/argv
+# github.com/creack/pty v1.1.9
+github.com/creack/pty
+# github.com/google/go-dap v0.2.0
+github.com/google/go-dap
+# github.com/hashicorp/golang-lru v0.5.4
+github.com/hashicorp/golang-lru/simplelru
+# github.com/inconshreveable/mousetrap v1.0.0
+github.com/inconshreveable/mousetrap
+# github.com/mattn/go-colorable v0.0.0-20170327083344-ded68f7a9561
+github.com/mattn/go-colorable
+# github.com/mattn/go-isatty v0.0.3
+github.com/mattn/go-isatty
+# github.com/peterh/liner v0.0.0-20170317030525-88609521dc4b
+github.com/peterh/liner
+# github.com/pkg/profile v0.0.0-20170413231811-06b906832ed0
+github.com/pkg/profile
+# github.com/sirupsen/logrus v0.0.0-20180523074243-ea8897e79973
+github.com/sirupsen/logrus
+# github.com/spf13/cobra v0.0.0-20170417170307-b6cb39589372
+github.com/spf13/cobra
+# github.com/spf13/pflag v0.0.0-20170417173400-9e4c21054fa1
+github.com/spf13/pflag
+# go.starlark.net v0.0.0-20190702223751-32f345186213
+go.starlark.net/internal/compile
+go.starlark.net/internal/spell
+go.starlark.net/resolve
+go.starlark.net/starlark
+go.starlark.net/syntax
+# golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
+golang.org/x/arch/arm64/arm64asm
+golang.org/x/arch/x86/x86asm
+# golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
+golang.org/x/crypto/ssh/terminal
+# golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# golang.org/x/tools v0.0.0-20191127201027-ecd32218bd7f
+golang.org/x/tools/go/gcexportdata
+golang.org/x/tools/go/internal/gcimporter
+golang.org/x/tools/go/internal/packagesdriver
+golang.org/x/tools/go/packages
+golang.org/x/tools/internal/fastwalk
+golang.org/x/tools/internal/gopathwalk
+golang.org/x/tools/internal/semver
+golang.org/x/tools/internal/span
+# gopkg.in/yaml.v2 v2.2.1
+gopkg.in/yaml.v2

@@ -72,13 +72,13 @@ func NewMakeCommands() *cobra.Command {
 
 Use the flags -s, -r and -b to specify which tests to run. Specifying nothing is equivalent to:
 
-	go run scripts/make.go test -s all -b default
-	go run scripts/make.go test -s basic -b lldb    # if lldb-server is installed and Go < 1.14
-	go run scripts/make.go test -s basic -b rr      # if rr is installed
+	go run _scripts/make.go test -s all -b default
+	go run _scripts/make.go test -s basic -b lldb    # if lldb-server is installed and Go < 1.14
+	go run _scripts/make.go test -s basic -b rr      # if rr is installed
 	
-	go run scripts/make.go test -s basic -m pie     # only on linux
-	go run scripts/make.go test -s core -m pie      # only on linux
-	go run scripts/make.go test -s 
+	go run _scripts/make.go test -s basic -m pie     # only on linux
+	go run _scripts/make.go test -s core -m pie      # only on linux
+	go run _scripts/make.go test -s 
 `,
 		Run: testCmd,
 	}
@@ -122,7 +122,7 @@ func checkCert() bool {
 		return true
 	}
 
-	x := exec.Command("scripts/gencert.sh")
+	x := exec.Command("_scripts/gencert.sh")
 	x.Stdout = os.Stdout
 	x.Stderr = os.Stderr
 	x.Env = os.Environ()
@@ -193,9 +193,11 @@ func getoutput(cmd string, args ...interface{}) string {
 	x.Env = os.Environ()
 	out, err := x.Output()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error executing %s %v\n", cmd, args)
 		log.Fatal(err)
 	}
 	if !x.ProcessState.Success() {
+		fmt.Fprintf(os.Stderr, "Error executing %s %v\n", cmd, args)
 		os.Exit(1)
 	}
 	return string(out)
@@ -275,11 +277,13 @@ func testFlags() []string {
 		testFlags = append(testFlags, "-v")
 	}
 	if NOTimeout {
-		testFlags = append(testFlags, "-timeout")
-		testFlags = append(testFlags, "0")
+		testFlags = append(testFlags, "-timeout", "0")
+	} else if os.Getenv("TRAVIS") == "true" {
+		// Make test timeout shorter than Travis' own timeout so that Go can report which test hangs.
+		testFlags = append(testFlags, "-timeout", "9m")
 	}
 	if runtime.GOOS == "darwin" {
-		testFlags = append(testFlags, "-exec="+wd+"/scripts/testsign")
+		testFlags = append(testFlags, "-exec="+wd+"/_scripts/testsign")
 	}
 	return testFlags
 }
@@ -417,9 +421,9 @@ func inpath(exe string) bool {
 
 func allPackages() []string {
 	r := []string{}
-	for _, dir := range strings.Split(getoutput("go", "list", "./..."), "\n") {
+	for _, dir := range strings.Split(getoutput("go", "list", "-mod=vendor", "./..."), "\n") {
 		dir = strings.TrimSpace(dir)
-		if dir == "" || strings.Contains(dir, "/vendor/") || strings.Contains(dir, "/scripts") {
+		if dir == "" || strings.Contains(dir, "/vendor/") || strings.Contains(dir, "/_scripts") {
 			continue
 		}
 		r = append(r, dir)
@@ -429,5 +433,6 @@ func allPackages() []string {
 }
 
 func main() {
+	allPackages() // checks that vendor directory is synced as a side effect
 	NewMakeCommands().Execute()
 }

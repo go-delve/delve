@@ -1,28 +1,9 @@
-freebsd_task:
-  env:
-    GOFLAGS: -mod=vendor
-  
-  freebsd_instance:
-    image: freebsd-11-2-release-amd64
+env:
+  GOFLAGS: -mod=vendor
 
+freebsd_instance:
+  image: freebsd-11-3-stable-amd64-v20200402
+
+test_task:
   install_script: pkg install -y go gcc git
   test_script: make test
-
-linux386_task:
-  container:
-    image: i386/ubuntu:18.04
-  env:
-    matrix:
-      - GOVERSION: 1.12
-      - GOVERSION: 1.13
-      - GOVERSION: 1.14
-  test_script:
-    -  apt-get -y update
-    -  apt-get -y install software-properties-common
-    -  apt-get -y install git
-    -  add-apt-repository ppa:longsleep/golang-backports
-    -  apt-get -y install golang-${GOVERSION}-go
-    -  export PATH=$PATH:/usr/lib/go-${GOVERSION}/bin
-    -  go version
-    -  uname -a
-    -  make test

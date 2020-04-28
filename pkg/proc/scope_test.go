@@ -19,12 +19,12 @@ import (
 )
 
 func TestScopeWithEscapedVariable(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 3, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1, Beta: 3}) {
 		return
 	}
 
 	withTestProcess("scopeescapevareval", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(proc.Continue(p), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue")
 
 		// On the breakpoint there are two 'a' variables in scope, the one that
 		// isn't shadowed is a variable that escapes to the heap and figures in
@@ -63,7 +63,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 //    every variable except the last one should be marked as shadowed
 // 2. EvalExpression should return the last one.
 func TestScope(t *testing.T) {
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		return
 	}
 
@@ -80,7 +80,7 @@ func TestScope(t *testing.T) {
 		t.Logf("%d breakpoints set", len(scopeChecks))
 
 		for {
-			if err := proc.Continue(p); err != nil {
+			if err := p.Continue(); err != nil {
 				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}

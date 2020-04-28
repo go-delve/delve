@@ -21,6 +21,7 @@ dlv debug [package]
 ```
       --continue        Continue the debugged process on start.
       --output string   Output path for the binary. (default "./__debug_bin")
+      --tty string      TTY to use for the target program
 ```
 
 ### Options inherited from parent commands

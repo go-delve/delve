@@ -77,9 +77,10 @@ const (
 
 // Extended opcodes
 const (
-	DW_LINE_end_sequence = 1
-	DW_LINE_set_address  = 2
-	DW_LINE_define_file  = 3
+	DW_LINE_end_sequence      = 1
+	DW_LINE_set_address       = 2
+	DW_LINE_define_file       = 3
+	DW_LINE_set_discriminator = 4
 )
 
 var standardopcodes = map[byte]opcodefn{
@@ -98,9 +99,10 @@ var standardopcodes = map[byte]opcodefn{
 }
 
 var extendedopcodes = map[byte]opcodefn{
-	DW_LINE_end_sequence: endsequence,
-	DW_LINE_set_address:  setaddress,
-	DW_LINE_define_file:  definefile,
+	DW_LINE_end_sequence:      endsequence,
+	DW_LINE_set_address:       setaddress,
+	DW_LINE_define_file:       definefile,
+	DW_LINE_set_discriminator: setdiscriminator,
 }
 
 func newStateMachine(dbl *DebugLineInfo, instructions []byte, ptrSize int) *StateMachine {
@@ -546,6 +548,10 @@ func setaddress(sm *StateMachine, buf *bytes.Buffer) {
 		panic(err)
 	}
 	sm.address = addr + sm.dbl.staticBase
+}
+
+func setdiscriminator(sm *StateMachine, buf *bytes.Buffer) {
+	_, _ = util.DecodeULEB128(buf)
 }
 
 func definefile(sm *StateMachine, buf *bytes.Buffer) {

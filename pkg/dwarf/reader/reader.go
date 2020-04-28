@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 )
 
@@ -30,37 +31,6 @@ func (reader *Reader) SeekToEntry(entry *dwarf.Entry) error {
 	// Consume the current entry so .Next works as intended
 	_, err := reader.Next()
 	return err
-}
-
-// SeekToFunctionEntry moves the reader to the function that includes the
-// specified program counter.
-func (reader *Reader) SeekToFunction(pc RelAddr) (*dwarf.Entry, error) {
-	reader.Seek(0)
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
-		if err != nil {
-			return nil, err
-		}
-
-		if entry.Tag != dwarf.TagSubprogram {
-			continue
-		}
-
-		lowpc, ok := entry.Val(dwarf.AttrLowpc).(uint64)
-		if !ok {
-			continue
-		}
-
-		highpc, ok := entry.Val(dwarf.AttrHighpc).(uint64)
-		if !ok {
-			continue
-		}
-
-		if lowpc <= uint64(pc) && highpc > uint64(pc) {
-			return entry, nil
-		}
-	}
-
-	return nil, fmt.Errorf("unable to find function context")
 }
 
 // Returns the address for the named entry.
@@ -320,79 +290,20 @@ func (reader *Reader) NextCompileUnit() (*dwarf.Entry, error) {
 	return nil, nil
 }
 
-// Entry represents a debug_info entry.
-// When calling Val, if the entry does not have the specified attribute, the
-// entry specified by DW_AT_abstract_origin will be searched recursively.
-type Entry interface {
-	Val(dwarf.Attr) interface{}
-}
-
-type compositeEntry []*dwarf.Entry
-
-func (ce compositeEntry) Val(attr dwarf.Attr) interface{} {
-	for _, e := range ce {
-		if r := e.Val(attr); r != nil {
-			return r
-		}
-	}
-	return nil
-}
-
-// LoadAbstractOrigin loads the entry corresponding to the
-// DW_AT_abstract_origin of entry and returns a combination of entry and its
-// abstract origin.
-func LoadAbstractOrigin(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.Offset) {
-	ao, ok := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
-	if !ok {
-		return entry, entry.Offset
-	}
-
-	r := []*dwarf.Entry{entry}
-
-	for {
-		aordr.Seek(ao)
-		e, _ := aordr.Next()
-		if e == nil {
-			break
-		}
-		r = append(r, e)
-
-		ao, ok = e.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
-		if !ok {
-			break
-		}
-	}
-
-	return compositeEntry(r), entry.Offset
-}
-
-// InlineStackReader provides a way to read the stack of inlined calls at a
-// specified PC address.
-type InlineStackReader struct {
-	dwarf  *dwarf.Data
-	reader *dwarf.Reader
-	pc     uint64
-	entry  *dwarf.Entry
-	err    error
-
-	// stack contains the list of DIEs that will be returned by Next.
-	stack []*dwarf.Entry
-}
-
-// InlineStack returns an InlineStackReader for the specified function and
-// PC address.
+// InlineStack returns the stack of inlined calls for the specified function
+// and PC address.
 // If pc is 0 then all inlined calls will be returned.
-func InlineStack(dw *dwarf.Data, fnoff dwarf.Offset, pc RelAddr) *InlineStackReader {
-	reader := dw.Reader()
-	reader.Seek(fnoff)
-	r := &InlineStackReader{dwarf: dw, reader: reader, pc: uint64(pc)}
-	r.precalcStack(nil)
-	return r
+func InlineStack(root *godwarf.Tree, pc uint64) []*godwarf.Tree {
+	v := []*godwarf.Tree{}
+	for _, child := range root.Children {
+		v = inlineStackInternal(v, child, pc)
+	}
+	return v
 }
 
-// precalcStack precalculates the inlined call stack for irdr.pc.
-// If irdr.pc == 0 then all inlined calls will be saved in irdr.stack.
-// Otherwise an inlined call will be saved in irdr.stack if its range, or
+// inlineStackInternal precalculates the inlined call stack for pc
+// If pc == 0 then all inlined calls will be returned
+// Otherwise an inlined call will be returned if its range, or
 // the range of one of its child entries contains irdr.pc.
 // The recursive calculation of range inclusion is necessary because
 // sometimes when doing midstack inlining the Go compiler emits the toplevel
@@ -403,77 +314,17 @@ func InlineStack(dw *dwarf.Data, fnoff dwarf.Offset, pc RelAddr) *InlineStackRea
 // ranges that do not cover the ranges of the inlined call to C.
 // This is probably a violation of the DWARF standard (it's unclear) but we
 // might as well support it as best as possible anyway.
-func (irdr *InlineStackReader) precalcStack(rentry *dwarf.Entry) bool {
-	var contains bool
-
-childLoop:
-	for {
-		if irdr.err != nil {
-			return contains
-		}
-		e2, err := irdr.reader.Next()
-		if e2 == nil || err != nil {
-			break
-		}
-
-		switch e2.Tag {
-		case 0:
-			break childLoop
-		case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram, dwarf.TagInlinedSubroutine:
-			if irdr.precalcStack(e2) {
-				contains = true
+func inlineStackInternal(stack []*godwarf.Tree, n *godwarf.Tree, pc uint64) []*godwarf.Tree {
+	switch n.Tag {
+	case dwarf.TagSubprogram, dwarf.TagInlinedSubroutine, dwarf.TagLexDwarfBlock:
+		if pc == 0 || n.ContainsPC(pc) {
+			for _, child := range n.Children {
+				stack = inlineStackInternal(stack, child, pc)
 			}
-		default:
-			irdr.reader.SkipChildren()
-		}
-		if rentry == nil {
-			break
-		}
-	}
-
-	if rentry != nil && rentry.Tag == dwarf.TagInlinedSubroutine {
-		if !contains {
-			if irdr.pc != 0 {
-				contains, irdr.err = entryRangesContains(irdr.dwarf, rentry, irdr.pc)
-			} else {
-				contains = true
+			if n.Tag == dwarf.TagInlinedSubroutine {
+				stack = append(stack, n)
 			}
 		}
-		if contains {
-			irdr.stack = append(irdr.stack, rentry)
-		}
 	}
-	return contains
-}
-
-// Next reads next inlined call in the stack, returns false if there aren't any.
-// Next reads the inlined stack of calls backwards, starting with the
-// deepest inlined call and moving back out, like a normal stacktrace works.
-func (irdr *InlineStackReader) Next() bool {
-	if irdr.err != nil {
-		return false
-	}
-
-	if len(irdr.stack) == 0 {
-		return false
-	}
-
-	irdr.entry = irdr.stack[0]
-	irdr.stack = irdr.stack[1:]
-	return true
-}
-
-// Entry returns the DIE for the current inlined call.
-func (irdr *InlineStackReader) Entry() *dwarf.Entry {
-	return irdr.entry
-}
-
-// Err returns an error, if any was encountered.
-func (irdr *InlineStackReader) Err() error {
-	return irdr.err
-}
-
-// SkipChildren skips all children of the current inlined call.
-func (irdr *InlineStackReader) SkipChildren() {
-	irdr.reader.SkipChildren()
+	return stack
 }

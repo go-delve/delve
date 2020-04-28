@@ -83,13 +83,15 @@ type RestartOut struct {
 }
 
 // Restart restarts program.
-func (s *RPCServer) Restart(arg RestartIn, out *RestartOut) error {
-	if s.config.AttachPid != 0 {
-		return errors.New("cannot restart process Delve did not create")
+func (s *RPCServer) Restart(arg RestartIn, cb service.RPCCallback) {
+	if s.config.Debugger.AttachPid != 0 {
+		cb.Return(nil, errors.New("cannot restart process Delve did not create"))
+		return
 	}
+	var out RestartOut
 	var err error
 	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Rerecord, arg.Position, arg.ResetArgs, arg.NewArgs)
-	return err
+	cb.Return(out, err)
 }
 
 type StateIn struct {
@@ -102,13 +104,15 @@ type StateOut struct {
 }
 
 // State returns the current debugger state.
-func (s *RPCServer) State(arg StateIn, out *StateOut) error {
+func (s *RPCServer) State(arg StateIn, cb service.RPCCallback) {
+	var out StateOut
 	st, err := s.debugger.State(arg.NonBlocking)
 	if err != nil {
-		return err
+		cb.Return(nil, err)
+		return
 	}
 	out.State = st
-	return nil
+	cb.Return(out, nil)
 }
 
 type CommandOut struct {
@@ -174,7 +178,7 @@ type StacktraceOut struct {
 func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	cfg := arg.Cfg
 	if cfg == nil && arg.Full {
-		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
+		cfg = &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	}
 	if arg.Defers {
 		arg.Opts |= api.StacktraceReadDefers
@@ -453,7 +457,7 @@ type EvalOut struct {
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {
-		cfg = &api.LoadConfig{true, 1, 64, 64, -1}
+		cfg = &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	}
 	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *api.LoadConfigToProc(cfg))
 	if err != nil {
@@ -567,7 +571,7 @@ type AttachedToExistingProcessOut struct {
 
 // AttachedToExistingProcess returns whether we attached to a running process or not
 func (c *RPCServer) AttachedToExistingProcess(arg AttachedToExistingProcessIn, out *AttachedToExistingProcessOut) error {
-	if c.config.AttachPid != 0 {
+	if c.config.Debugger.AttachPid != 0 {
 		out.Answer = true
 	}
 	return nil
@@ -777,4 +781,20 @@ func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) e
 
 	out.Mem = Mem
 	return nil
+}
+
+type StopRecordingIn struct {
+}
+
+type StopRecordingOut struct {
+}
+
+func (s *RPCServer) StopRecording(arg StopRecordingIn, cb service.RPCCallback) {
+	var out StopRecordingOut
+	err := s.debugger.StopRecording()
+	if err != nil {
+		cb.Return(nil, err)
+		return
+	}
+	cb.Return(out, nil)
 }

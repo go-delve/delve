@@ -51,7 +51,7 @@ func (ctx starlarkContext) CallCommand(cmdstr string) error {
 }
 
 func (ctx starlarkContext) Scope() api.EvalScope {
-	return api.EvalScope{-1, ctx.term.cmds.frame, 0}
+	return api.EvalScope{GoroutineID: -1, Frame: ctx.term.cmds.frame}
 }
 
 func (ctx starlarkContext) LoadConfig() api.LoadConfig {

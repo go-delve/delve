@@ -130,6 +130,8 @@ func configureSet(t *Term, args string) error {
 		case reflect.Bool:
 			v := rest == "true"
 			return reflect.ValueOf(&v), nil
+		case reflect.String:
+			return reflect.ValueOf(&rest), nil
 		default:
 			return reflect.ValueOf(nil), fmt.Errorf("unsupported type for configuration key %q", cfgname)
 		}
@@ -170,7 +172,7 @@ func configureSetSubstitutePath(t *Term, rest string) error {
 				return nil
 			}
 		}
-		t.conf.SubstitutePath = append(t.conf.SubstitutePath, config.SubstitutePathRule{argv[0], argv[1]})
+		t.conf.SubstitutePath = append(t.conf.SubstitutePath, config.SubstitutePathRule{From: argv[0], To: argv[1]})
 	default:
 		return fmt.Errorf("too many arguments to \"config substitute-path\"")
 	}

@@ -26,7 +26,7 @@ func getSuitableMethods(pkg *types.Package, typename string) []*types.Func {
 			continue
 		}
 
-		if fn.Name() == "Command" {
+		if fn.Name() == "Command" || fn.Name() == "Restart" || fn.Name() == "State" {
 			r = append(r, fn)
 			continue
 		}
@@ -120,8 +120,13 @@ func processServerMethods(serverMethods []*types.Func) []binding {
 		}
 
 		retType := sig.Params().At(1).Type().String()
-		if fn.Name() == "Command" {
+		switch fn.Name() {
+		case "Command":
 			retType = "rpc2.CommandOut"
+		case "Restart":
+			retType = "rpc2.RestartOut"
+		case "State":
+			retType = "rpc2.StateOut"
 		}
 
 		bindings[i] = binding{
@@ -147,7 +152,7 @@ func removePackagePath(typePath string) string {
 func genMapping(bindings []binding) []byte {
 	buf := bytes.NewBuffer([]byte{})
 
-	fmt.Fprintf(buf, "// DO NOT EDIT: auto-generated using scripts/gen-starlark-bindings.go\n\n")
+	fmt.Fprintf(buf, "// DO NOT EDIT: auto-generated using _scripts/gen-starlark-bindings.go\n\n")
 	fmt.Fprintf(buf, "package starbind\n\n")
 	fmt.Fprintf(buf, "import ( \"go.starlark.net/starlark\" \n \"github.com/go-delve/delve/service/api\" \n \"github.com/go-delve/delve/service/rpc2\" \n \"fmt\" )\n\n")
 	fmt.Fprintf(buf, "func (env *Env) starlarkPredeclare() starlark.StringDict {\n")

@@ -32,12 +32,20 @@ type Client interface {
 	Continue() <-chan *api.DebuggerState
 	// Rewind resumes process execution backwards.
 	Rewind() <-chan *api.DebuggerState
+	// DirecitonCongruentContinue resumes process execution, if a reverse next, step or stepout operation is in progress it will resume execution backward.
+	DirectionCongruentContinue() <-chan *api.DebuggerState
 	// Next continues to the next source line, not entering function calls.
 	Next() (*api.DebuggerState, error)
+	// ReverseNext continues backward to the previous line of source code, not entering function calls.
+	ReverseNext() (*api.DebuggerState, error)
 	// Step continues to the next source line, entering function calls.
 	Step() (*api.DebuggerState, error)
-	// StepOut continues to the return address of the current function
+	// ReverseStep continues backward to the previous line of source code, entering function calls.
+	ReverseStep() (*api.DebuggerState, error)
+	// StepOut continues to the return address of the current function.
 	StepOut() (*api.DebuggerState, error)
+	// ReverseStepOut continues backward to the calle rof the current function.
+	ReverseStepOut() (*api.DebuggerState, error)
 	// Call resumes process execution while making a function call.
 	Call(goroutineID int, expr string, unsafe bool) (*api.DebuggerState, error)
 
@@ -153,6 +161,9 @@ type Client interface {
 	// The amount of data to be read is specified by length which must be less than or equal to 1000.
 	// This function will return an error if it reads less than `length` bytes.
 	ExamineMemory(address uintptr, length int) ([]byte, error)
+
+	// StopRecording stops a recording if one is in progress.
+	StopRecording() error
 
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.

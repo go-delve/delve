@@ -21,48 +21,51 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/dap"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
 	"github.com/spf13/cobra"
 )
 
 var (
-	// Log is whether to log debug statements.
-	Log bool
-	// LogOutput is a comma separated list of components that should produce debug output.
-	LogOutput string
-	// LogDest is the file path or file descriptor where logs should go.
-	LogDest string
-	// Headless is whether to run without terminal.
-	Headless bool
-	// ContinueOnStart is whether to continue the process on startup
-	ContinueOnStart bool
-	// APIVersion is the requested API version while running headless
-	APIVersion int
-	// AcceptMulti allows multiple clients to connect to the same server
-	AcceptMulti bool
-	// Addr is the debugging server listen address.
-	Addr string
-	// InitFile is the path to initialization file.
-	InitFile string
-	// BuildFlags is the flags passed during compiler invocation.
-	BuildFlags string
-	// WorkingDir is the working directory for running the program.
-	WorkingDir string
-	// CheckLocalConnUser is true if the debugger should check that local
+	// log is whether to log debug statements.
+	log bool
+	// logOutput is a comma separated list of components that should produce debug output.
+	logOutput string
+	// logDest is the file path or file descriptor where logs should go.
+	logDest string
+	// headless is whether to run without terminal.
+	headless bool
+	// continueOnStart is whether to continue the process on startup
+	continueOnStart bool
+	// apiVersion is the requested API version while running headless
+	apiVersion int
+	// acceptMulti allows multiple clients to connect to the same server
+	acceptMulti bool
+	// addr is the debugging server listen address.
+	addr string
+	// initFile is the path to initialization file.
+	initFile string
+	// buildFlags is the flags passed during compiler invocation.
+	buildFlags string
+	// workingDir is the working directory for running the program.
+	workingDir string
+	// checkLocalConnUser is true if the debugger should check that local
 	// connections come from the same user that started the headless server
-	CheckLocalConnUser bool
+	checkLocalConnUser bool
+	// tty is used to provide an alternate TTY for the program you wish to debug.
+	tty string
 
-	// Backend selection
-	Backend string
+	// backend selection
+	backend string
 
-	// CheckGoVersion is true if the debugger should check the version of Go
+	// checkGoVersion is true if the debugger should check the version of Go
 	// used to compile the executable and refuse to work on incompatible
 	// versions.
-	CheckGoVersion bool
+	checkGoVersion bool
 
-	// RootCommand is the root of the command tree.
-	RootCommand *cobra.Command
+	// rootCommand is the root of the command tree.
+	rootCommand *cobra.Command
 
 	traceAttachPid  int
 	traceExecFile   string
@@ -90,34 +93,34 @@ func New(docCall bool) *cobra.Command {
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Installed()
-		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{1, 9, -1, 0, 0, ""}) {
+		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 			// Work-around for https://github.com/golang/go/issues/13154
 			buildFlagsDefault = "-ldflags='-linkmode internal'"
 		}
 	}
 
 	// Main dlv root command.
-	RootCommand = &cobra.Command{
+	rootCommand = &cobra.Command{
 		Use:   "dlv",
 		Short: "Delve is a debugger for the Go programming language.",
 		Long:  dlvCommandLongDesc,
 	}
 
-	RootCommand.PersistentFlags().StringVarP(&Addr, "listen", "l", "127.0.0.1:0", "Debugging server listen address.")
+	rootCommand.PersistentFlags().StringVarP(&addr, "listen", "l", "127.0.0.1:0", "Debugging server listen address.")
 
-	RootCommand.PersistentFlags().BoolVarP(&Log, "log", "", false, "Enable debugging server logging.")
-	RootCommand.PersistentFlags().StringVarP(&LogOutput, "log-output", "", "", `Comma separated list of components that should produce debug output (see 'dlv help log')`)
-	RootCommand.PersistentFlags().StringVarP(&LogDest, "log-dest", "", "", "Writes logs to the specified file or file descriptor (see 'dlv help log').")
+	rootCommand.PersistentFlags().BoolVarP(&log, "log", "", false, "Enable debugging server logging.")
+	rootCommand.PersistentFlags().StringVarP(&logOutput, "log-output", "", "", `Comma separated list of components that should produce debug output (see 'dlv help log')`)
+	rootCommand.PersistentFlags().StringVarP(&logDest, "log-dest", "", "", "Writes logs to the specified file or file descriptor (see 'dlv help log').")
 
-	RootCommand.PersistentFlags().BoolVarP(&Headless, "headless", "", false, "Run debug server only, in headless mode.")
-	RootCommand.PersistentFlags().BoolVarP(&AcceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections.")
-	RootCommand.PersistentFlags().IntVar(&APIVersion, "api-version", 1, "Selects API version when headless.")
-	RootCommand.PersistentFlags().StringVar(&InitFile, "init", "", "Init file, executed by the terminal client.")
-	RootCommand.PersistentFlags().StringVar(&BuildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
-	RootCommand.PersistentFlags().StringVar(&WorkingDir, "wd", ".", "Working directory for running the program.")
-	RootCommand.PersistentFlags().BoolVarP(&CheckGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
-	RootCommand.PersistentFlags().BoolVarP(&CheckLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
-	RootCommand.PersistentFlags().StringVar(&Backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
+	rootCommand.PersistentFlags().BoolVarP(&headless, "headless", "", false, "Run debug server only, in headless mode.")
+	rootCommand.PersistentFlags().BoolVarP(&acceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections.")
+	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects API version when headless.")
+	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
+	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
+	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", ".", "Working directory for running the program.")
+	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
+	rootCommand.PersistentFlags().BoolVarP(&checkLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
+	rootCommand.PersistentFlags().StringVar(&backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
@@ -137,7 +140,8 @@ option to let the process continue or kill it.
 		},
 		Run: attachCmd,
 	}
-	RootCommand.AddCommand(attachCommand)
+	attachCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
+	rootCommand.AddCommand(attachCommand)
 
 	// 'connect' subcommand.
 	connectCommand := &cobra.Command{
@@ -152,7 +156,7 @@ option to let the process continue or kill it.
 		},
 		Run: connectCmd,
 	}
-	RootCommand.AddCommand(connectCommand)
+	rootCommand.AddCommand(connectCommand)
 
 	// 'dap' subcommand.
 	dapCommand := &cobra.Command{
@@ -168,7 +172,7 @@ It does not yet support asynchronous request-response communication.
 The server does not accept multiple client connections.`,
 		Run: dapCmd,
 	}
-	RootCommand.AddCommand(dapCommand)
+	rootCommand.AddCommand(dapCommand)
 
 	// 'debug' subcommand.
 	debugCommand := &cobra.Command{
@@ -183,8 +187,9 @@ session.`,
 		Run: debugCmd,
 	}
 	debugCommand.Flags().String("output", "./__debug_bin", "Output path for the binary.")
-	debugCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
-	RootCommand.AddCommand(debugCommand)
+	debugCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
+	debugCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
+	rootCommand.AddCommand(debugCommand)
 
 	// 'exec' subcommand.
 	execCommand := &cobra.Command{
@@ -207,8 +212,9 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 			os.Exit(execute(0, args, conf, "", executingExistingFile))
 		},
 	}
-	execCommand.Flags().BoolVar(&ContinueOnStart, "continue", false, "Continue the debugged process on start.")
-	RootCommand.AddCommand(execCommand)
+	execCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
+	execCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
+	rootCommand.AddCommand(execCommand)
 
 	// Deprecated 'run' subcommand.
 	runCommand := &cobra.Command{
@@ -219,7 +225,7 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 			os.Exit(0)
 		},
 	}
-	RootCommand.AddCommand(runCommand)
+	rootCommand.AddCommand(runCommand)
 
 	// 'test' subcommand.
 	testCommand := &cobra.Command{
@@ -234,7 +240,7 @@ that package instead.`,
 		Run: testCmd,
 	}
 	testCommand.Flags().String("output", "debug.test", "Output path for the binary.")
-	RootCommand.AddCommand(testCommand)
+	rootCommand.AddCommand(testCommand)
 
 	// 'trace' subcommand.
 	traceCommand := &cobra.Command{
@@ -253,7 +259,7 @@ to know what functions your process is executing.`,
 	traceCommand.Flags().BoolVarP(&traceTestBinary, "test", "t", false, "Trace a test binary.")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
 	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
-	RootCommand.AddCommand(traceCommand)
+	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
 		Use:   "core <executable> <core>",
@@ -273,7 +279,7 @@ Currently supports linux/amd64 core files and windows/amd64 minidumps.`,
 		},
 		Run: coreCmd,
 	}
-	RootCommand.AddCommand(coreCommand)
+	rootCommand.AddCommand(coreCommand)
 
 	// 'version' subcommand.
 	versionCommand := &cobra.Command{
@@ -283,7 +289,7 @@ Currently supports linux/amd64 core files and windows/amd64 minidumps.`,
 			fmt.Printf("Delve Debugger\n%s\n", version.DelveVersion)
 		},
 	}
-	RootCommand.AddCommand(versionCommand)
+	rootCommand.AddCommand(versionCommand)
 
 	if path, _ := exec.LookPath("rr"); path != "" || docCall {
 		replayCommand := &cobra.Command{
@@ -301,14 +307,14 @@ https://github.com/mozilla/rr
 				return nil
 			},
 			Run: func(cmd *cobra.Command, args []string) {
-				Backend = "rr"
+				backend = "rr"
 				os.Exit(execute(0, []string{}, conf, args[0], executingOther))
 			},
 		}
-		RootCommand.AddCommand(replayCommand)
+		rootCommand.AddCommand(replayCommand)
 	}
 
-	RootCommand.AddCommand(&cobra.Command{
+	rootCommand.AddCommand(&cobra.Command{
 		Use:   "backend",
 		Short: "Help about the --backend flag.",
 		Long: `The --backend flag specifies which backend should be used, possible values
@@ -321,7 +327,7 @@ are:
 
 `})
 
-	RootCommand.AddCommand(&cobra.Command{
+	rootCommand.AddCommand(&cobra.Command{
 		Use:   "log",
 		Short: "Help about logging flags.",
 		Long: `Logging can be enabled by specifying the --log flag and using the
@@ -350,35 +356,35 @@ and dap modes.
 `,
 	})
 
-	RootCommand.DisableAutoGenTag = true
+	rootCommand.DisableAutoGenTag = true
 
-	return RootCommand
+	return rootCommand
 }
 
 func dapCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		if err := logflags.Setup(Log, LogOutput, LogDest); err != nil {
+		if err := logflags.Setup(log, logOutput, logDest); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
 		defer logflags.Close()
 
-		if Headless {
+		if headless {
 			fmt.Fprintf(os.Stderr, "Warning: headless mode not supported with dap\n")
 		}
-		if AcceptMulti {
+		if acceptMulti {
 			fmt.Fprintf(os.Stderr, "Warning: accept multiclient mode not supported with dap\n")
 		}
-		if InitFile != "" {
+		if initFile != "" {
 			fmt.Fprint(os.Stderr, "Warning: init file ignored with dap\n")
 		}
-		if ContinueOnStart {
+		if continueOnStart {
 			fmt.Fprintf(os.Stderr, "Warning: continue ignored with dap; specify via launch/attach request instead\n")
 		}
-		if BuildFlags != "" {
+		if buildFlags != "" {
 			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
 		}
-		if WorkingDir != "" {
+		if workingDir != "" {
 			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap; launch requests must specify full program path\n")
 		}
 		dlvArgs, targetArgs := splitArgs(cmd, args)
@@ -389,19 +395,22 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
 		}
 
-		listener, err := net.Listen("tcp", Addr)
+		listener, err := net.Listen("tcp", addr)
 		if err != nil {
 			fmt.Printf("couldn't start listener: %s\n", err)
 			return 1
 		}
 		disconnectChan := make(chan struct{})
 		server := dap.NewServer(&service.Config{
-			Listener:             listener,
-			Backend:              Backend,
-			Foreground:           true, // always headless
-			DebugInfoDirectories: conf.DebugInfoDirectories,
-			CheckGoVersion:       CheckGoVersion,
-			DisconnectChan:       disconnectChan,
+			Listener:       listener,
+			DisconnectChan: disconnectChan,
+			Debugger: debugger.Config{
+				Backend:              backend,
+				Foreground:           headless && tty == "",
+				DebugInfoDirectories: conf.DebugInfoDirectories,
+				CheckGoVersion:       checkGoVersion,
+				TTY:                  tty,
+			},
 		})
 		defer server.Stop()
 
@@ -421,7 +430,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 		}
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoBuild(debugname, dlvArgs, BuildFlags)
+		err = gobuild.GoBuild(debugname, dlvArgs, buildFlags)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
@@ -435,17 +444,17 @@ func debugCmd(cmd *cobra.Command, args []string) {
 
 func traceCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		err := logflags.Setup(Log, LogOutput, LogDest)
+		err := logflags.Setup(log, logOutput, logDest)
 		defer logflags.Close()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
 
-		if Headless {
+		if headless {
 			fmt.Fprintf(os.Stderr, "Warning: headless mode not supported with trace\n")
 		}
-		if AcceptMulti {
+		if acceptMulti {
 			fmt.Fprintf(os.Stderr, "Warning: accept multiclient mode not supported with trace")
 		}
 
@@ -477,12 +486,12 @@ func traceCmd(cmd *cobra.Command, args []string) {
 					return 1
 				}
 				if traceTestBinary {
-					if err := gobuild.GoTestBuild(debugname, dlvArgs, BuildFlags); err != nil {
+					if err := gobuild.GoTestBuild(debugname, dlvArgs, buildFlags); err != nil {
 						fmt.Fprintf(os.Stderr, "%v\n", err)
 						return 1
 					}
 				} else {
-					if err := gobuild.GoBuild(debugname, dlvArgs, BuildFlags); err != nil {
+					if err := gobuild.GoBuild(debugname, dlvArgs, buildFlags); err != nil {
 						fmt.Fprintf(os.Stderr, "%v\n", err)
 						return 1
 					}
@@ -499,13 +508,15 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 		// Create and start a debug server
 		server := rpccommon.NewServer(&service.Config{
-			Listener:       listener,
-			ProcessArgs:    processArgs,
-			AttachPid:      traceAttachPid,
-			APIVersion:     2,
-			WorkingDir:     WorkingDir,
-			Backend:        Backend,
-			CheckGoVersion: CheckGoVersion,
+			Listener:    listener,
+			ProcessArgs: processArgs,
+			APIVersion:  2,
+			Debugger: debugger.Config{
+				AttachPid:      traceAttachPid,
+				WorkingDir:     workingDir,
+				Backend:        backend,
+				CheckGoVersion: checkGoVersion,
+			},
 		})
 		if err := server.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -569,7 +580,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		}
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoTestBuild(debugname, dlvArgs, BuildFlags)
+		err = gobuild.GoTestBuild(debugname, dlvArgs, buildFlags)
 		if err != nil {
 			return 1
 		}
@@ -664,7 +675,7 @@ func connect(addr string, clientConn net.Conn, conf *config.Config, kind execute
 		}
 	}
 	term := terminal.New(client, conf)
-	term.InitFile = InitFile
+	term.InitFile = initFile
 	status, err := term.Run()
 	if err != nil {
 		fmt.Println(err)
@@ -682,31 +693,31 @@ const (
 )
 
 func execute(attachPid int, processArgs []string, conf *config.Config, coreFile string, kind executeKind) int {
-	if err := logflags.Setup(Log, LogOutput, LogDest); err != nil {
+	if err := logflags.Setup(log, logOutput, logDest); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return 1
 	}
 	defer logflags.Close()
 
-	if Headless && (InitFile != "") {
+	if headless && (initFile != "") {
 		fmt.Fprint(os.Stderr, "Warning: init file ignored with --headless\n")
 	}
-	if ContinueOnStart {
-		if !Headless {
+	if continueOnStart {
+		if !headless {
 			fmt.Fprint(os.Stderr, "Error: --continue only works with --headless; use an init file\n")
 			return 1
 		}
-		if !AcceptMulti {
+		if !acceptMulti {
 			fmt.Fprint(os.Stderr, "Error: --continue requires --accept-multiclient\n")
 			return 1
 		}
 	}
 
-	if !Headless && AcceptMulti {
+	if !headless && acceptMulti {
 		fmt.Fprint(os.Stderr, "Warning accept-multi: ignored\n")
-		// AcceptMulti won't work in normal (non-headless) mode because we always
+		// acceptMulti won't work in normal (non-headless) mode because we always
 		// call server.Stop after the terminal client exits.
-		AcceptMulti = false
+		acceptMulti = false
 	}
 
 	var listener net.Listener
@@ -714,8 +725,8 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	var err error
 
 	// Make a TCP listener
-	if Headless {
-		listener, err = net.Listen("tcp", Addr)
+	if headless {
+		listener, err = net.Listen("tcp", addr)
 	} else {
 		listener, clientConn = service.ListenerPipe()
 	}
@@ -730,26 +741,28 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	disconnectChan := make(chan struct{})
 
 	// Create and start a debugger server
-	switch APIVersion {
+	switch apiVersion {
 	case 1, 2:
 		server = rpccommon.NewServer(&service.Config{
-			Listener:             listener,
-			ProcessArgs:          processArgs,
-			AttachPid:            attachPid,
-			AcceptMulti:          AcceptMulti,
-			APIVersion:           APIVersion,
-			WorkingDir:           WorkingDir,
-			Backend:              Backend,
-			CoreFile:             coreFile,
-			Foreground:           Headless,
-			DebugInfoDirectories: conf.DebugInfoDirectories,
-			CheckGoVersion:       CheckGoVersion,
-			CheckLocalConnUser:   CheckLocalConnUser,
-
-			DisconnectChan: disconnectChan,
+			Listener:           listener,
+			ProcessArgs:        processArgs,
+			AcceptMulti:        acceptMulti,
+			APIVersion:         apiVersion,
+			CheckLocalConnUser: checkLocalConnUser,
+			DisconnectChan:     disconnectChan,
+			Debugger: debugger.Config{
+				AttachPid:            attachPid,
+				WorkingDir:           workingDir,
+				Backend:              backend,
+				CoreFile:             coreFile,
+				Foreground:           headless && tty == "",
+				DebugInfoDirectories: conf.DebugInfoDirectories,
+				CheckGoVersion:       checkGoVersion,
+				TTY:                  tty,
+			},
 		})
 	default:
-		fmt.Printf("Unknown API version: %d\n", APIVersion)
+		fmt.Printf("Unknown API version: %d\n", apiVersion)
 		return 1
 	}
 
@@ -771,10 +784,9 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	}
 
 	var status int
-	if Headless {
-		if ContinueOnStart {
-			var client *rpc2.RPCClient
-			client = rpc2.NewClient(listener.Addr().String())
+	if headless {
+		if continueOnStart {
+			client := rpc2.NewClient(listener.Addr().String())
 			client.Disconnect(true) // true = continue after disconnect
 		}
 		waitForDisconnectSignal(disconnectChan)

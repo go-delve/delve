@@ -10,9 +10,11 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
+// Opcode represent a DWARF stack program instruction.
+// See ./opcodes.go for a full list.
 type Opcode byte
 
-//go:generate go run ../../../scripts/gen-opcodes.go opcodes.table opcodes.go
+//go:generate go run ../../../_scripts/gen-opcodes.go opcodes.table opcodes.go
 
 type stackfn func(Opcode, *context) error
 
@@ -76,7 +78,7 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte, ptrSize int) 
 	return ctxt.stack[len(ctxt.stack)-1], nil, nil
 }
 
-// PrettyPrint prints instructions to out.
+// PrettyPrint prints the DWARF stack program instructions to `out`.
 func PrettyPrint(out io.Writer, instructions []byte) {
 	in := bytes.NewBuffer(instructions)
 

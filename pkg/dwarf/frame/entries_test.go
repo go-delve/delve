@@ -13,7 +13,7 @@ func ptrSizeByRuntimeArch() int {
 }
 
 func TestFDEForPC(t *testing.T) {
-	frames := NewFrameIndex()
+	frames := newFrameIndex()
 	frames = append(frames,
 		&FrameDescriptionEntry{begin: 10, size: 40},
 		&FrameDescriptionEntry{begin: 50, size: 50},

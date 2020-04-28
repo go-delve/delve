@@ -16,6 +16,7 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/dap/daptest"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
 )
 
@@ -42,8 +43,10 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	disconnectChan := make(chan struct{})
 	server := NewServer(&service.Config{
 		Listener:       listener,
-		Backend:        "default",
 		DisconnectChan: disconnectChan,
+		Debugger: debugger.Config{
+			Backend: "default",
+		},
 	})
 	server.Run()
 	// Give server time to start listening for clients
@@ -135,10 +138,10 @@ func TestStopOnEntry(t *testing.T) {
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
 		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.Reason != "entry" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
 		}
 		cdResp := client.ExpectConfigurationDoneResponse(t)
 		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {

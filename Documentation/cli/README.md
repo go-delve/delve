@@ -13,7 +13,8 @@ Command | Description
 [call](#call) | Resumes process, injecting a function call (EXPERIMENTAL!!!)
 [continue](#continue) | Run until breakpoint or program termination.
 [next](#next) | Step over to next source line.
-[restart](#restart) | Restart process from a checkpoint or event.
+[restart](#restart) | Restart process.
+[rev](#rev) | Reverses the execution of the target program for the command specified.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
 [step](#step) | Single step through program.
 [step-instruction](#step-instruction) | Single step a single cpu instruction.
@@ -38,6 +39,7 @@ Command | Description
 Command | Description
 --------|------------
 [args](#args) | Print function arguments.
+[display](#display) | Print value of an expression every time the program stops.
 [examinemem](#examinemem) | Examine memory:
 [locals](#locals) | Print local variables.
 [print](#print) | Evaluate an expression.
@@ -83,7 +85,6 @@ Command | Description
 [help](#help) | Prints the help message.
 [libraries](#libraries) | List loaded dynamic libraries
 [list](#list) | Show source code.
-[rev](#rev) | Reverses the execution of the target program for the command specified.
 [source](#source) | Executes a file containing a list of delve commands
 [sources](#sources) | Print list of source files.
 [types](#types) | Print list of types
@@ -225,6 +226,17 @@ If no argument is specified the function being executed in the selected stack fr
 
 Aliases: disass
 
+## display
+Print value of an expression every time the program stops.
+
+	display -a <expression>
+	display -d <number>
+
+The '-a' option adds an expression to the list of expression printed every time the program stops. The '-d' option removes the specified expression from the list.
+
+If display is called without arguments it will print the value of all expression in the list.
+
+
 ## down
 Move the current frame down.
 
@@ -246,7 +258,7 @@ Aliases: ed
 ## examinemem
 Examine memory:
 
-    examinemem [-fmt <format>] [-len <length>] <address>
+	examinemem [-fmt <format>] [-len <length>] <address>
 
 Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
@@ -301,7 +313,7 @@ Aliases: gr
 ## goroutines
 List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [ -t (stack trace)]
+	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [-t (stack trace)] [-l (labels)]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
@@ -384,9 +396,21 @@ Argument -a shows more registers.
 
 
 ## restart
-Restart process from a checkpoint or event.
+Restart process.
 
-  restart [event number or checkpoint id]
+For recorded targets the command takes the following forms:
+
+	restart				resets ot the start of the recording
+	restart [checkpoint]		resets the recording to the given checkpoint
+	restart -r [newargv...]		re-records the target process
+	
+For live targets the command takes the following forms:
+
+	restart [newargv...]		restarts the process
+
+If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
+If -noargs is specified instead, the argument vector is cleared.
+
 
 Aliases: r
 

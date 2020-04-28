@@ -17,31 +17,31 @@ import (
 	"github.com/go-delve/delve/pkg/proc/fbsdutil"
 )
 
-// PtraceAttach executes the sys.PtraceAttach call.
+// ptraceAttach executes the sys.PtraceAttach call.
 // pid must be a PID, not a LWPID
-func PtraceAttach(pid int) error {
+func ptraceAttach(pid int) error {
 	return sys.PtraceAttach(pid)
 }
 
-// PtraceDetach calls ptrace(PTRACE_DETACH).
-func PtraceDetach(pid int) error {
+// ptraceDetach calls ptrace(PTRACE_DETACH).
+func ptraceDetach(pid int) error {
 	return sys.PtraceDetach(pid)
 }
 
-// PtraceCont executes ptrace PTRACE_CONT
+// ptraceCont executes ptrace PTRACE_CONT
 // id may be a PID or an LWPID
-func PtraceCont(id, sig int) error {
+func ptraceCont(id, sig int) error {
 	return sys.PtraceCont(id, sig)
 }
 
-// PtraceSingleStep executes ptrace PTRACE_SINGLE_STEP.
+// ptraceSingleStep executes ptrace PTRACE_SINGLE_STEP.
 // id may be a PID or an LWPID
-func PtraceSingleStep(id int) error {
+func ptraceSingleStep(id int) error {
 	return sys.PtraceSingleStep(id)
 }
 
 // Get a list of the thread ids of a process
-func PtraceGetLwpList(pid int) (tids []int32) {
+func ptraceGetLwpList(pid int) (tids []int32) {
 	num_lwps, _ := C.ptrace_get_num_lwps(C.int(pid))
 	tids = make([]int32, num_lwps)
 	n, _ := C.ptrace_get_lwp_list(C.int(pid), (*C.int)(unsafe.Pointer(&tids[0])), C.size_t(num_lwps))
@@ -54,7 +54,7 @@ func ptraceGetLwpInfo(wpid int) (info sys.PtraceLwpInfoStruct, err error) {
 	return info, err
 }
 
-func PtraceGetRegset(id int) (regset fbsdutil.AMD64Xstate, err error) {
+func ptraceGetRegset(id int) (regset fbsdutil.AMD64Xstate, err error) {
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETFPREGS, uintptr(id), uintptr(unsafe.Pointer(&regset.AMD64PtraceFpRegs)), 0, 0, 0)
 	if err == syscall.Errno(0) || err == syscall.ENODEV {
 		var xsave_len C.size_t

@@ -10,16 +10,16 @@ import (
 	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
-// WaitStatus is a synonym for the platform-specific WaitStatus
-type WaitStatus sys.WaitStatus
+// waitStatus is a synonym for the platform-specific WaitStatus
+type waitStatus sys.WaitStatus
 
-// OSSpecificDetails holds information specific to the Windows
+// osSpecificDetails holds information specific to the Windows
 // operating system / kernel.
-type OSSpecificDetails struct {
+type osSpecificDetails struct {
 	hThread syscall.Handle
 }
 
-func (t *Thread) singleStep() error {
+func (t *nativeThread) singleStep() error {
 	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
@@ -101,7 +101,7 @@ func (t *Thread) singleStep() error {
 	return _SetThreadContext(t.os.hThread, context)
 }
 
-func (t *Thread) resume() error {
+func (t *nativeThread) resume() error {
 	var err error
 	t.dbp.execPtraceFunc(func() {
 		//TODO: Note that we are ignoring the thread we were asked to continue and are continuing the
@@ -111,7 +111,7 @@ func (t *Thread) resume() error {
 	return err
 }
 
-func (t *Thread) Blocked() bool {
+func (t *nativeThread) Blocked() bool {
 	// TODO: Probably incorrect - what are the runtime functions that
 	// indicate blocking on Windows?
 	regs, err := t.Registers(false)
@@ -133,11 +133,11 @@ func (t *Thread) Blocked() bool {
 
 // Stopped returns whether the thread is stopped at the operating system
 // level. On windows this always returns true.
-func (t *Thread) Stopped() bool {
+func (t *nativeThread) Stopped() bool {
 	return true
 }
 
-func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
@@ -154,7 +154,7 @@ func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
 
 var ErrShortRead = errors.New("short read")
 
-func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
+func (t *nativeThread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
@@ -169,6 +169,6 @@ func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	return int(count), err
 }
 
-func (t *Thread) restoreRegisters(savedRegs proc.Registers) error {
+func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	return _SetThreadContext(t.os.hThread, savedRegs.(*winutil.AMD64Registers).Context)
 }

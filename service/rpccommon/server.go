@@ -3,7 +3,6 @@ package rpccommon
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -72,7 +71,7 @@ func NewServer(config *service.Config) *ServerImpl {
 	if config.APIVersion < 2 {
 		logger.Info("Using API v1")
 	}
-	if config.Foreground {
+	if config.Debugger.Foreground {
 		// Print listener address
 		logflags.WriteAPIListeningMessage(config.Listener.Addr().String())
 		logger.Debug("API server pid = ", os.Getpid())
@@ -91,16 +90,8 @@ func (s *ServerImpl) Stop() error {
 		close(s.stopChan)
 		s.listener.Close()
 	}
-	kill := s.config.AttachPid == 0
+	kill := s.config.Debugger.AttachPid == 0
 	return s.debugger.Detach(kill)
-}
-
-// Restart restarts the debugger.
-func (s *ServerImpl) Restart() error {
-	if s.config.AttachPid != 0 {
-		return errors.New("cannot restart process Delve did not create")
-	}
-	return s.s2.Restart(rpc2.RestartIn{}, nil)
 }
 
 // Run starts a debugger and exposes it with an HTTP server. The debugger
@@ -117,16 +108,8 @@ func (s *ServerImpl) Run() error {
 	}
 
 	// Create and start the debugger
-	if s.debugger, err = debugger.New(&debugger.Config{
-		AttachPid:            s.config.AttachPid,
-		WorkingDir:           s.config.WorkingDir,
-		CoreFile:             s.config.CoreFile,
-		Backend:              s.config.Backend,
-		Foreground:           s.config.Foreground,
-		DebugInfoDirectories: s.config.DebugInfoDirectories,
-		CheckGoVersion:       s.config.CheckGoVersion,
-	},
-		s.config.ProcessArgs); err != nil {
+	config := s.config.Debugger
+	if s.debugger, err = debugger.New(&config, s.config.ProcessArgs); err != nil {
 		return err
 	}
 

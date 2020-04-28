@@ -127,7 +127,7 @@ func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
 		buf:           bytes.NewBuffer(initialInstructions),
 	}
 
-	frame.ExecuteDwarfProgram()
+	frame.executeDwarfProgram()
 	return frame
 }
 
@@ -142,7 +142,7 @@ func executeDwarfProgramUntilPC(fde *FrameDescriptionEntry, pc uint64) *FrameCon
 	return frame
 }
 
-func (frame *FrameContext) ExecuteDwarfProgram() {
+func (frame *FrameContext) executeDwarfProgram() {
 	for frame.buf.Len() > 0 {
 		executeDwarfInstruction(frame)
 	}

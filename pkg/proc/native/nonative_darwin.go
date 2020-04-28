@@ -12,24 +12,24 @@ import (
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
 
 // Launch returns ErrNativeBackendDisabled.
-func Launch(cmd []string, wd string, foreground bool, _ []string) (*proc.Target, error) {
+func Launch(_ []string, _ string, _ bool, _ []string, _ string) (*proc.Target, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
 // Attach returns ErrNativeBackendDisabled.
-func Attach(pid int, _ []string) (*proc.Target, error) {
+func Attach(_ int, _ []string) (*proc.Target, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
-// WaitStatus is a synonym for the platform-specific WaitStatus
-type WaitStatus struct{}
+// waitStatus is a synonym for the platform-specific WaitStatus
+type waitStatus struct{}
 
-// OSSpecificDetails holds information specific to the OSX/Darwin
+// osSpecificDetails holds information specific to the OSX/Darwin
 // operating system / kernel.
-type OSSpecificDetails struct{}
+type osSpecificDetails struct{}
 
-// OSProcessDetails holds Darwin specific information.
-type OSProcessDetails struct{}
+// osProcessDetails holds Darwin specific information.
+type osProcessDetails struct{}
 
 func findExecutable(path string, pid int) string {
 	panic(ErrNativeBackendDisabled)
@@ -39,94 +39,94 @@ func killProcess(pid int) error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func registers(thread *Thread, floatingPoint bool) (proc.Registers, error) {
+func registers(thread *nativeThread, floatingPoint bool) (proc.Registers, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) loadProcessInformation(wg *sync.WaitGroup) {
+func (dbp *nativeProcess) loadProcessInformation(wg *sync.WaitGroup) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) requestManualStop() (err error) {
+func (dbp *nativeProcess) requestManualStop() (err error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) resume() error {
+func (dbp *nativeProcess) resume() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) trapWait(pid int) (*Thread, error) {
+func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) updateThreadList() error {
+func (dbp *nativeProcess) updateThreadList() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) kill() (err error) {
+func (dbp *nativeProcess) kill() (err error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *Process) detach(kill bool) error {
+func (dbp *nativeProcess) detach(kill bool) error {
 	panic(ErrNativeBackendDisabled)
 }
 
 // EntryPoint returns the entry point for the process,
 // useful for PIEs.
-func (dbp *Process) EntryPoint() (uint64, error) {
+func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
 // Blocked returns true if the thread is blocked
-func (t *Thread) Blocked() bool {
+func (t *nativeThread) Blocked() bool {
 	panic(ErrNativeBackendDisabled)
 }
 
 // SetPC sets the value of the PC register.
-func (t *Thread) SetPC(pc uint64) error {
+func (t *nativeThread) SetPC(pc uint64) error {
 	panic(ErrNativeBackendDisabled)
 }
 
 // SetSP sets the value of the SP register.
-func (t *Thread) SetSP(sp uint64) error {
+func (t *nativeThread) SetSP(sp uint64) error {
 	panic(ErrNativeBackendDisabled)
 }
 
 // SetDX sets the value of the DX register.
-func (t *Thread) SetDX(dx uint64) error {
+func (t *nativeThread) SetDX(dx uint64) error {
 	panic(ErrNativeBackendDisabled)
 }
 
 // ReadMemory reads len(buf) bytes at addr into buf.
-func (t *Thread) ReadMemory(buf []byte, addr uintptr) (int, error) {
+func (t *nativeThread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
 // WriteMemory writes the contents of data at addr.
-func (t *Thread) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (int, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (t *Thread) resume() error {
+func (t *nativeThread) resume() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (t *Thread) singleStep() error {
+func (t *nativeThread) singleStep() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (t *Thread) restoreRegisters(sr proc.Registers) error {
+func (t *nativeThread) restoreRegisters(sr proc.Registers) error {
 	panic(ErrNativeBackendDisabled)
 }
 
 // Stopped returns whether the thread is stopped at
 // the operating system level.
-func (t *Thread) Stopped() bool {
+func (t *nativeThread) Stopped() bool {
 	panic(ErrNativeBackendDisabled)
 }
 
-func initialize(dbp *Process) error { return nil }
+func initialize(dbp *nativeProcess) error { return nil }

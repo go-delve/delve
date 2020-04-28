@@ -1,6 +1,7 @@
 package line
 
 import (
+	"compress/zlib"
 	"debug/elf"
 	"debug/macho"
 	"debug/pe"
@@ -341,4 +342,39 @@ func TestDebugLineC(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestDebugLineDwarf4(t *testing.T) {
+	p, err := filepath.Abs("../../../_fixtures/zdebug_line_dwarf4")
+	if err != nil {
+		t.Fatal("Could not find test data", p, err)
+	}
+	fh, err := os.Open(p)
+	if err != nil {
+		t.Fatal("Could not open test data", err)
+	}
+	defer fh.Close()
+	fh.Seek(12, 0) // skip "ZLIB" magic signature and length
+	r, err := zlib.NewReader(fh)
+	if err != nil {
+		t.Fatal("Could not open test data (zlib)", err)
+	}
+	data, err := ioutil.ReadAll(r)
+	if err != nil {
+		t.Fatal("Could not read test data", err)
+	}
+
+	debugLines := ParseAll(data, nil, 0, true, 8)
+
+	for _, dbl := range debugLines {
+		if dbl.Prologue.Version == 4 {
+			if dbl.Prologue.LineBase != -5 {
+				t.Errorf("Wrong LineBase %d\n", dbl.Prologue.LineBase)
+			}
+			if dbl.Prologue.LineRange != 14 {
+				t.Errorf("Wrong LineRange %d\n", dbl.Prologue.LineRange)
+			}
+		}
+	}
+
 }

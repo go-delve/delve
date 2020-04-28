@@ -186,7 +186,7 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 
 	contReq, ok := <-continueRequest
 	if contReq.cont {
-		return Continue(t)
+		return t.Continue()
 	}
 
 	return finishEvalExpressionWithCalls(t, g, contReq, ok)
@@ -520,17 +520,22 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
 	const CFA = 0x1000
-	vrdr := reader.Variables(fn.cu.image.dwarf, fn.offset, reader.ToRelAddr(fn.Entry, fn.cu.image.StaticBase), int(^uint(0)>>1), false, true)
+
+	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
+	if err != nil {
+		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
+	}
+
+	varEntries := reader.Variables(dwarfTree, fn.Entry, int(^uint(0)>>1), false, true)
 
 	trustArgOrder := bi.Producer() != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
 
 	// typechecks arguments, calculates argument frame size
-	for vrdr.Next() {
-		e := vrdr.Entry()
-		if e.Tag != dwarf.TagFormalParameter {
+	for _, entry := range varEntries {
+		if entry.Tag != dwarf.TagFormalParameter {
 			continue
 		}
-		entry, argname, typ, err := readVarEntry(e, fn.cu.image)
+		argname, typ, err := readVarEntry(entry.Tree, fn.cu.image)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -573,9 +578,6 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		if isret, _ := entry.Val(dwarf.AttrVarParam).(bool); !isret || includeRet {
 			formalArgs = append(formalArgs, funcCallArg{name: argname, typ: typ, off: off, isret: isret})
 		}
-	}
-	if err := vrdr.Err(); err != nil {
-		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
 	}
 
 	sort.Slice(formalArgs, func(i, j int) bool {

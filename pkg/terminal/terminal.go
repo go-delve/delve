@@ -54,6 +54,9 @@ type Term struct {
 	dumb     bool
 	stdout   io.Writer
 	InitFile string
+	displays []string
+
+	historyFile *os.File
 
 	starlarkEnv *starbind.Env
 
@@ -119,15 +122,24 @@ func (t *Term) Close() {
 func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 	for range ch {
 		t.starlarkEnv.Cancel()
+		state, err := t.client.GetStateNonBlocking()
+		if err == nil && state.Recording {
+			fmt.Printf("received SIGINT, stopping recording (will not forward signal)\n")
+			err := t.client.StopRecording()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+			}
+			continue
+		}
 		if multiClient {
-			answer, err := t.line.Prompt("Would you like to [s]top the target or [q]uit this client, leaving the target running [s/q]? ")
+			answer, err := t.line.Prompt("Would you like to [p]ause the target (returning to Delve's prompt) or [q]uit this client (leaving the target running) [p/q]? ")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v", err)
 				continue
 			}
 			answer = strings.TrimSpace(answer)
 			switch answer {
-			case "s":
+			case "p":
 				_, err := t.client.Halt()
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%v", err)
@@ -163,7 +175,7 @@ func (t *Term) Run() (int, error) {
 	multiClient := t.client.IsMulticlient()
 
 	// Send the debugger a halt command on SIGINT
-	ch := make(chan os.Signal)
+	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT)
 	go t.sigintGuard(ch, multiClient)
 
@@ -191,16 +203,14 @@ func (t *Term) Run() (int, error) {
 		fmt.Printf("Unable to load history file: %v.", err)
 	}
 
-	f, err := os.Open(fullHistoryFile)
+	t.historyFile, err = os.OpenFile(fullHistoryFile, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
-		f, err = os.Create(fullHistoryFile)
-		if err != nil {
-			fmt.Printf("Unable to open history file: %v. History will not be saved for this session.", err)
-		}
+		fmt.Printf("Unable to open history file: %v. History will not be saved for this session.", err)
+	}
+	if _, err := t.line.ReadHistory(t.historyFile); err != nil {
+		fmt.Printf("Unable to read history file: %v", err)
 	}
 
-	t.line.ReadHistory(f)
-	f.Close()
 	fmt.Println("Type 'help' for list of commands.")
 
 	if t.InitFile != "" {
@@ -213,6 +223,12 @@ func (t *Term) Run() (int, error) {
 		}
 	}
 
+	var lastCmd string
+
+	// Ensure that the target process is neither running nor recording by
+	// making a blocking call.
+	_, _ = t.client.GetState()
+
 	for {
 		cmdstr, err := t.promptForInput()
 		if err != nil {
@@ -222,6 +238,12 @@ func (t *Term) Run() (int, error) {
 			}
 			return 1, fmt.Errorf("Prompt for input failed.\n")
 		}
+
+		if strings.TrimSpace(cmdstr) == "" {
+			cmdstr = lastCmd
+		}
+
+		lastCmd = cmdstr
 
 		if err := t.cmds.Call(cmdstr, t); err != nil {
 			if _, ok := err.(ExitRequestError); ok {
@@ -332,16 +354,12 @@ func yesno(line *liner.State, question string) (bool, error) {
 }
 
 func (t *Term) handleExit() (int, error) {
-	fullHistoryFile, err := config.GetConfigFilePath(historyFile)
-	if err != nil {
-		fmt.Println("Error saving history file:", err)
-	} else {
-		if f, err := os.OpenFile(fullHistoryFile, os.O_RDWR, 0666); err == nil {
-			_, err = t.line.WriteHistory(f)
-			if err != nil {
-				fmt.Println("readline history error:", err)
-			}
-			f.Close()
+	if t.historyFile != nil {
+		if _, err := t.line.WriteHistory(t.historyFile); err != nil {
+			fmt.Println("readline history error:", err)
+		}
+		if err := t.historyFile.Close(); err != nil {
+			fmt.Printf("error closing history file: %s\n", err)
 		}
 	}
 
@@ -409,7 +427,7 @@ func (t *Term) handleExit() (int, error) {
 // loadConfig returns an api.LoadConfig with the parameterss specified in
 // the configuration file.
 func (t *Term) loadConfig() api.LoadConfig {
-	r := api.LoadConfig{true, 1, 64, 64, -1}
+	r := api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 
 	if t.conf != nil && t.conf.MaxStringLen != nil {
 		r.MaxStringLen = *t.conf.MaxStringLen
@@ -422,6 +440,50 @@ func (t *Term) loadConfig() api.LoadConfig {
 	}
 
 	return r
+}
+
+func (t *Term) removeDisplay(n int) error {
+	if n < 0 || n >= len(t.displays) {
+		return fmt.Errorf("%d is out of range", n)
+	}
+	t.displays[n] = ""
+	for i := len(t.displays) - 1; i >= 0; i-- {
+		if t.displays[i] != "" {
+			t.displays = t.displays[:i+1]
+			return nil
+		}
+	}
+	t.displays = t.displays[:0]
+	return nil
+}
+
+func (t *Term) addDisplay(expr string) {
+	t.displays = append(t.displays, expr)
+}
+
+func (t *Term) printDisplay(i int) {
+	expr := t.displays[i]
+	val, err := t.client.EvalVariable(api.EvalScope{GoroutineID: -1}, expr, ShortLoadConfig)
+	if err != nil {
+		if isErrProcessExited(err) {
+			return
+		}
+		fmt.Printf("%d: %s = error %v\n", i, expr, err)
+		return
+	}
+	fmt.Printf("%d: %s = %s\n", i, val.Name, val.SinglelineString())
+}
+
+func (t *Term) printDisplays() {
+	for i := range t.displays {
+		if t.displays[i] != "" {
+			t.printDisplay(i)
+		}
+	}
+}
+
+func (t *Term) onStop() {
+	t.printDisplays()
 }
 
 // isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited

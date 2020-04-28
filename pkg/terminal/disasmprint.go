@@ -10,7 +10,7 @@ import (
 	"github.com/go-delve/delve/service/api"
 )
 
-func DisasmPrint(dv api.AsmInstructions, out io.Writer) {
+func disasmPrint(dv api.AsmInstructions, out io.Writer) {
 	bw := bufio.NewWriter(out)
 	defer bw.Flush()
 	if len(dv) > 0 && dv[0].Loc.Function != nil {

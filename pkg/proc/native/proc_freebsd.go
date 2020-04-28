@@ -22,18 +22,18 @@ import (
 
 // Process statuses
 const (
-	StatusIdle     = 1
-	StatusRunning  = 2
-	StatusSleeping = 3
-	StatusStopped  = 4
-	StatusZombie   = 5
-	StatusWaiting  = 6
-	StatusLocked   = 7
+	statusIdle     = 1
+	statusRunning  = 2
+	statusSleeping = 3
+	statusStopped  = 4
+	statusZombie   = 5
+	statusWaiting  = 6
+	statusLocked   = 7
 )
 
-// OSProcessDetails contains FreeBSD specific
+// osProcessDetails contains FreeBSD specific
 // process details.
-type OSProcessDetails struct {
+type osProcessDetails struct {
 	comm string
 	tid  int
 }
@@ -43,15 +43,11 @@ type OSProcessDetails struct {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string) (*proc.Target, error) {
 	var (
 		process *exec.Cmd
 		err     error
 	)
-	// check that the argument to Launch is an executable file
-	if fi, staterr := os.Stat(cmd[0]); staterr == nil && (fi.Mode()&0111) == 0 {
-		return nil, proc.ErrNotExecutable
-	}
 
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
 		// exec.(*Process).Start will fail if we try to send a process to
@@ -59,16 +55,23 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 		foreground = false
 	}
 
-	dbp := New(0)
+	dbp := newProcess(0)
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
 		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true, Foreground: foreground}
+		process.Env = proc.DisableAsyncPreemptEnv()
 		if foreground {
 			signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
 			process.Stdin = os.Stdin
+		}
+		if tty != "" {
+			dbp.ctty, err = attachProcessToTTY(process, tty)
+			if err != nil {
+				return
+			}
 		}
 		if wd != "" {
 			process.Dir = wd
@@ -95,10 +98,10 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string) (*
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
 func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
-	dbp := New(pid)
+	dbp := newProcess(pid)
 
 	var err error
-	dbp.execPtraceFunc(func() { err = PtraceAttach(dbp.pid) })
+	dbp.execPtraceFunc(func() { err = ptraceAttach(dbp.pid) })
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +118,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 	return tgt, nil
 }
 
-func initialize(dbp *Process) error {
+func initialize(dbp *nativeProcess) error {
 	comm, _ := C.find_command_name(C.int(dbp.pid))
 	defer C.free(unsafe.Pointer(comm))
 	comm_str := C.GoString(comm)
@@ -124,11 +127,11 @@ func initialize(dbp *Process) error {
 }
 
 // kill kills the target process.
-func (dbp *Process) kill() (err error) {
+func (dbp *nativeProcess) kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
-	dbp.execPtraceFunc(func() { err = PtraceCont(dbp.pid, int(sys.SIGKILL)) })
+	dbp.execPtraceFunc(func() { err = ptraceCont(dbp.pid, int(sys.SIGKILL)) })
 	if err != nil {
 		return err
 	}
@@ -140,13 +143,13 @@ func (dbp *Process) kill() (err error) {
 }
 
 // Used by RequestManualStop
-func (dbp *Process) requestManualStop() (err error) {
+func (dbp *nativeProcess) requestManualStop() (err error) {
 	return sys.Kill(dbp.pid, sys.SIGTRAP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
-func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
+func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error) {
 	if thread, ok := dbp.threads[tid]; ok {
 		return thread, nil
 	}
@@ -159,10 +162,10 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 		}
 	}
 
-	dbp.threads[tid] = &Thread{
+	dbp.threads[tid] = &nativeThread{
 		ID:  tid,
 		dbp: dbp,
-		os:  new(OSSpecificDetails),
+		os:  new(osSpecificDetails),
 	}
 
 	if dbp.currentThread == nil {
@@ -173,9 +176,9 @@ func (dbp *Process) addThread(tid int, attach bool) (*Thread, error) {
 }
 
 // Used by initialize
-func (dbp *Process) updateThreadList() error {
+func (dbp *nativeProcess) updateThreadList() error {
 	var tids []int32
-	dbp.execPtraceFunc(func() { tids = PtraceGetLwpList(dbp.pid) })
+	dbp.execPtraceFunc(func() { tids = ptraceGetLwpList(dbp.pid) })
 	for _, tid := range tids {
 		if _, err := dbp.addThread(int(tid), false); err != nil {
 			return err
@@ -195,12 +198,12 @@ func findExecutable(path string, pid int) string {
 	return path
 }
 
-func (dbp *Process) trapWait(pid int) (*Thread, error) {
+func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	return dbp.trapWaitInternal(pid, false)
 }
 
 // Used by stop and trapWait
-func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
+func (dbp *nativeProcess) trapWaitInternal(pid int, halt bool) (*nativeThread, error) {
 	for {
 		wpid, status, err := dbp.wait(pid, 0)
 		if err != nil {
@@ -225,13 +228,13 @@ func (dbp *Process) trapWaitInternal(pid int, halt bool) (*Thread, error) {
 		pl_flags := int(info.Flags)
 		th, ok := dbp.threads[tid]
 		if ok {
-			th.Status = (*WaitStatus)(status)
+			th.Status = (*waitStatus)(status)
 		}
 
 		if status.StopSignal() == sys.SIGTRAP {
 			if pl_flags&sys.PL_FLAG_EXITED != 0 {
 				delete(dbp.threads, tid)
-				dbp.execPtraceFunc(func() { err = PtraceCont(tid, 0) })
+				dbp.execPtraceFunc(func() { err = ptraceCont(tid, 0) })
 				if err != nil {
 					return nil, err
 				}
@@ -287,25 +290,25 @@ func status(pid int) rune {
 
 // Used by stop and singleStep
 // waitFast is like wait but does not handle process-exit correctly
-func (dbp *Process) waitFast(pid int) (int, *sys.WaitStatus, error) {
+func (dbp *nativeProcess) waitFast(pid int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
 	wpid, err := sys.Wait4(pid, &s, 0, nil)
 	return wpid, &s, err
 }
 
 // Only used in this file
-func (dbp *Process) wait(pid, options int) (int, *sys.WaitStatus, error) {
+func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
 	wpid, err := sys.Wait4(pid, &s, options, nil)
 	return wpid, &s, err
 }
 
 // Only used in this file
-func (dbp *Process) exitGuard(err error) error {
+func (dbp *nativeProcess) exitGuard(err error) error {
 	if err != sys.ESRCH {
 		return err
 	}
-	if status(dbp.pid) == StatusZombie {
+	if status(dbp.pid) == statusZombie {
 		_, err := dbp.trapWaitInternal(-1, false)
 		return err
 	}
@@ -314,7 +317,7 @@ func (dbp *Process) exitGuard(err error) error {
 }
 
 // Used by ContinueOnce
-func (dbp *Process) resume() error {
+func (dbp *nativeProcess) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {
@@ -326,13 +329,13 @@ func (dbp *Process) resume() error {
 	}
 	// all threads are resumed
 	var err error
-	dbp.execPtraceFunc(func() { err = PtraceCont(dbp.pid, 0) })
+	dbp.execPtraceFunc(func() { err = ptraceCont(dbp.pid, 0) })
 	return err
 }
 
 // Used by ContinueOnce
 // stop stops all running threads and sets breakpoints
-func (dbp *Process) stop(trapthread *Thread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
@@ -348,13 +351,13 @@ func (dbp *Process) stop(trapthread *Thread) (err error) {
 }
 
 // Used by Detach
-func (dbp *Process) detach(kill bool) error {
-	return PtraceDetach(dbp.pid)
+func (dbp *nativeProcess) detach(kill bool) error {
+	return ptraceDetach(dbp.pid)
 }
 
 // Used by PostInitializationSetup
 // EntryPoint will return the process entry point address, useful for debugging PIEs.
-func (dbp *Process) EntryPoint() (uint64, error) {
+func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	ep, err := C.get_entry_point(C.int(dbp.pid))
 	return uint64(ep), err
 }

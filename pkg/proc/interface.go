@@ -40,7 +40,9 @@ type RecordingManipulation interface {
 	// to the trace directory.
 	Recorded() (recorded bool, tracedir string)
 	// Direction changes execution direction.
-	Direction(Direction) error
+	ChangeDirection(Direction) error
+	// GetDirection returns the current direction of execution.
+	GetDirection() Direction
 	// When returns current recording position.
 	When() (string, error)
 	// Checkpoint sets a checkpoint at the current position.
@@ -76,7 +78,7 @@ type Info interface {
 	ResumeNotify(chan<- struct{})
 	// Valid returns true if this Process can be used. When it returns false it
 	// also returns an error describing why the Process is invalid (either
-	// ErrProcessExited or ProcessDetachedError).
+	// ErrProcessExited or ErrProcessDetached).
 	Valid() (bool, error)
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)

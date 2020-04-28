@@ -7,10 +7,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/cosiner/argv"
-	"github.com/go-delve/delve/service"
-	"github.com/go-delve/delve/service/api"
-	"github.com/go-delve/delve/service/debugger"
 	"go/parser"
 	"go/scanner"
 	"io"
@@ -24,6 +20,11 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/cosiner/argv"
+	"github.com/go-delve/delve/service"
+	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/debugger"
 )
 
 const optimizedFunctionWarning = "Warning: debugging optimized function"
@@ -78,30 +79,29 @@ func (c command) match(cmdstr string) bool {
 
 // Commands represents the commands for Delve terminal process.
 type Commands struct {
-	cmds    []command
-	lastCmd cmdfunc
-	client  service.Client
-	frame   int // Current frame as set by frame/up/down commands.
+	cmds   []command
+	client service.Client
+	frame  int // Current frame as set by frame/up/down commands.
 }
 
 var (
-	// LongLoadConfig loads more information:
+	// longLoadConfig loads more information:
 	// * Follows pointers
 	// * Loads more array values
 	// * Does not limit struct fields
-	LongLoadConfig = api.LoadConfig{true, 1, 64, 64, -1}
+	longLoadConfig = api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	// ShortLoadConfig loads less information, not following pointers
 	// and limiting struct fields loaded to 3.
-	ShortLoadConfig = api.LoadConfig{false, 0, 64, 0, 3}
+	ShortLoadConfig = api.LoadConfig{MaxStringLen: 64, MaxStructFields: 3}
 )
 
-// ByFirstAlias will sort by the first
+// byFirstAlias will sort by the first
 // alias of a command.
-type ByFirstAlias []command
+type byFirstAlias []command
 
-func (a ByFirstAlias) Len() int           { return len(a) }
-func (a ByFirstAlias) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByFirstAlias) Less(i, j int) bool { return a[i].aliases[0] < a[j].aliases[0] }
+func (a byFirstAlias) Len() int           { return len(a) }
+func (a byFirstAlias) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byFirstAlias) Less(i, j int) bool { return a[i].aliases[0] < a[j].aliases[0] }
 
 // DebugCommands returns a Commands struct with default commands defined.
 func DebugCommands(client service.Client) *Commands {
@@ -142,16 +142,16 @@ For live targets the command takes the following forms:
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
 `},
-		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, helpMsg: "Run until breakpoint or program termination."},
-		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, helpMsg: "Single step through program."},
+		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, allowedPrefixes: revPrefix, helpMsg: "Run until breakpoint or program termination."},
+		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, allowedPrefixes: revPrefix, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
-		{aliases: []string{"next", "n"}, group: runCmds, cmdFn: c.next, helpMsg: `Step over to next source line.
+		{aliases: []string{"next", "n"}, group: runCmds, cmdFn: c.next, allowedPrefixes: revPrefix, helpMsg: `Step over to next source line.
 
 	 next [count]
 
 Optional [count] argument allows you to skip multiple lines.
 `},
-		{aliases: []string{"stepout", "so"}, group: runCmds, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
+		{aliases: []string{"stepout", "so"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, group: runCmds, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
 	
 	call [-unsafe] <function call expression>
@@ -182,7 +182,7 @@ Current limitations:
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.`},
 		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: goroutines, helpMsg: `List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [ -t (stack trace)]
+	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [-t (stack trace)] [-l (labels)]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
@@ -375,7 +375,7 @@ If locspec is omitted edit will open the current source file in the editor, othe
 
 		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
 
-    examinemem [-fmt <format>] [-len <length>] <address>
+	examinemem [-fmt <format>] [-len <length>] <address>
 
 Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
@@ -384,53 +384,66 @@ Address is the memory location of the target to examine.
 For example:
 
     x -fmt hex -len 20 0xc00008af38`},
+
+		{aliases: []string{"display"}, group: dataCmds, cmdFn: display, helpMsg: `Print value of an expression every time the program stops.
+
+	display -a <expression>
+	display -d <number>
+
+The '-a' option adds an expression to the list of expression printed every time the program stops. The '-d' option removes the specified expression from the list.
+
+If display is called without arguments it will print the value of all expression in the list.`},
 	}
 
-	if client == nil || client.Recorded() {
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"rewind", "rw"},
-			group:   runCmds,
-			cmdFn:   rewind,
-			helpMsg: "Run backwards until breakpoint or program termination.",
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"check", "checkpoint"},
-			cmdFn:   checkpoint,
-			helpMsg: `Creates a checkpoint at the current position.
-
-	checkpoint [note]
-
-The "note" is arbitrary text that can be used to identify the checkpoint, if it is not specified it defaults to the current filename:line position.`,
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"checkpoints"},
-			cmdFn:   checkpoints,
-			helpMsg: "Print out info for existing checkpoints.",
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"clear-checkpoint", "clearcheck"},
-			cmdFn:   clearCheckpoint,
-			helpMsg: `Deletes checkpoint.
-
-	clear-checkpoint <id>`,
-		})
-		c.cmds = append(c.cmds, command{
-			aliases: []string{"rev"},
-			cmdFn:   c.revCmd,
-			helpMsg: `Reverses the execution of the target program for the command specified.
-Currently, only the rev step-instruction command is supported.`,
-		})
-		for i := range c.cmds {
-			v := &c.cmds[i]
-			if v.match("restart") {
-				v.helpMsg = `Restart process from a checkpoint or event.
-
-  restart [event number or checkpoint id]`
+	addrecorded := client == nil
+	if !addrecorded {
+		if state, err := client.GetStateNonBlocking(); err == nil {
+			addrecorded = state.Recording
+			if !addrecorded {
+				addrecorded = client.Recorded()
 			}
 		}
 	}
 
-	sort.Sort(ByFirstAlias(c.cmds))
+	if addrecorded {
+		c.cmds = append(c.cmds,
+			command{
+				aliases: []string{"rewind", "rw"},
+				group:   runCmds,
+				cmdFn:   c.rewind,
+				helpMsg: "Run backwards until breakpoint or program termination.",
+			},
+			command{
+				aliases: []string{"check", "checkpoint"},
+				cmdFn:   checkpoint,
+				helpMsg: `Creates a checkpoint at the current position.
+
+	checkpoint [note]
+
+The "note" is arbitrary text that can be used to identify the checkpoint, if it is not specified it defaults to the current filename:line position.`,
+			},
+			command{
+				aliases: []string{"checkpoints"},
+				cmdFn:   checkpoints,
+				helpMsg: "Print out info for existing checkpoints.",
+			},
+			command{
+				aliases: []string{"clear-checkpoint", "clearcheck"},
+				cmdFn:   clearCheckpoint,
+				helpMsg: `Deletes checkpoint.
+
+	clear-checkpoint <id>`,
+			},
+			command{
+				aliases: []string{"rev"},
+				group:   runCmds,
+				cmdFn:   c.revCmd,
+				helpMsg: `Reverses the execution of the target program for the command specified.
+Currently, only the rev step-instruction command is supported.`,
+			})
+	}
+
+	sort.Sort(byFirstAlias(c.cmds))
 	return c
 }
 
@@ -453,9 +466,6 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 	// If <enter> use last command, if there was one.
 	if cmdstr == "" {
-		if c.lastCmd != nil {
-			return c.lastCmd
-		}
 		return nullCommand
 	}
 
@@ -464,7 +474,6 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
 				continue
 			}
-			c.lastCmd = v.cmdFn
 			return v.cmdFn
 		}
 	}
@@ -583,7 +592,7 @@ func threads(t *Term, ctx callContext, args string) error {
 		}
 		if th.Function != nil {
 			fmt.Printf("%sThread %d at %#v %s:%d %s\n",
-				prefix, th.ID, th.PC, ShortenFilePath(th.File),
+				prefix, th.ID, th.PC, shortenFilePath(th.File),
 				th.Line, th.Function.Name())
 		} else {
 			fmt.Printf("%sThread %s\n", prefix, formatThread(th))
@@ -816,7 +825,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	}
 	printcontext(t, state)
 	th := stack[frame]
-	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, ShortenFilePath(th.File), th.Line, th.PC)
+	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, shortenFilePath(th.File), th.Line, th.PC)
 	printfile(t, th.File, th.Line, true)
 	return nil
 }
@@ -854,7 +863,7 @@ func formatThread(th *api.Thread) string {
 	if th == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%d at %s:%d", th.ID, ShortenFilePath(th.File), th.Line)
+	return fmt.Sprintf("%d at %s:%d", th.ID, shortenFilePath(th.File), th.Line)
 }
 
 type formatGoroutineLoc int
@@ -867,7 +876,7 @@ const (
 )
 
 func formatLocation(loc api.Location) string {
-	return fmt.Sprintf("%s:%d %s (%#v)", ShortenFilePath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
+	return fmt.Sprintf("%s:%d %s (%#v)", shortenFilePath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
 }
 
 func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
@@ -983,6 +992,7 @@ func restartRecorded(t *Term, ctx callContext, args string) error {
 	}
 	printcontext(t, state)
 	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	t.onStop()
 	return nil
 }
 
@@ -1056,6 +1066,10 @@ func printcontextNoState(t *Term) {
 }
 
 func (c *Commands) cont(t *Term, ctx callContext, args string) error {
+	if ctx.Prefix == revPrefix {
+		return c.rewind(t, ctx, args)
+	}
+	defer t.onStop()
 	c.frame = 0
 	stateChan := t.client.Continue()
 	var state *api.DebuggerState
@@ -1071,6 +1085,7 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 }
 
 func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, shouldPrintFile bool) error {
+	defer t.onStop()
 	if !state.NextInProgress {
 		if shouldPrintFile {
 			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
@@ -1079,7 +1094,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 	}
 	for {
 		fmt.Printf("\tbreakpoint hit during %s, continuing...\n", op)
-		stateChan := t.client.Continue()
+		stateChan := t.client.DirectionCongruentContinue()
 		var state *api.DebuggerState
 		for state = range stateChan {
 			if state.Err != nil {
@@ -1117,7 +1132,11 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	c.frame = 0
-	state, err := exitedToError(t.client.Step())
+	stepfn := t.client.Step
+	if ctx.Prefix == revPrefix {
+		stepfn = t.client.ReverseStep
+	}
+	state, err := exitedToError(stepfn())
 	if err != nil {
 		printcontextNoState(t)
 		return err
@@ -1135,6 +1154,8 @@ func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error 
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
+
+	defer t.onStop()
 
 	var fn func() (*api.DebuggerState, error)
 	if ctx.Prefix == revPrefix {
@@ -1172,6 +1193,12 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
+
+	nextfn := t.client.Next
+	if ctx.Prefix == revPrefix {
+		nextfn = t.client.ReverseNext
+	}
+
 	var count int64
 	var err error
 	if count, err = parseOptionalCount(args); err != nil {
@@ -1180,7 +1207,7 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 		return errors.New("Invalid next count")
 	}
 	for ; count > 0; count-- {
-		state, err := exitedToError(t.client.Next())
+		state, err := exitedToError(nextfn())
 		if err != nil {
 			printcontextNoState(t)
 			return err
@@ -1204,7 +1231,13 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 	if c.frame != 0 {
 		return notOnFrameZeroErr
 	}
-	state, err := exitedToError(t.client.StepOut())
+
+	stepoutfn := t.client.StepOut
+	if ctx.Prefix == revPrefix {
+		stepoutfn = t.client.ReverseStepOut
+	}
+
+	state, err := exitedToError(stepoutfn())
 	if err != nil {
 		printcontextNoState(t)
 		return err
@@ -1292,19 +1325,19 @@ func clearAll(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-// ByID sorts breakpoints by ID.
-type ByID []*api.Breakpoint
+// byID sorts breakpoints by ID.
+type byID []*api.Breakpoint
 
-func (a ByID) Len() int           { return len(a) }
-func (a ByID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByID) Less(i, j int) bool { return a[i].ID < a[j].ID }
+func (a byID) Len() int           { return len(a) }
+func (a byID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
 func breakpoints(t *Term, ctx callContext, args string) error {
 	breakPoints, err := t.client.ListBreakpoints()
 	if err != nil {
 		return err
 	}
-	sort.Sort(ByID(breakPoints))
+	sort.Sort(byID(breakPoints))
 	for _, bp := range breakPoints {
 		fmt.Printf("%s at %v (%d)\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp), bp.TotalHitCount)
 
@@ -1319,14 +1352,14 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 			attrs = append(attrs, "\tgoroutine")
 		}
 		if bp.LoadArgs != nil {
-			if *(bp.LoadArgs) == LongLoadConfig {
+			if *(bp.LoadArgs) == longLoadConfig {
 				attrs = append(attrs, "\targs -v")
 			} else {
 				attrs = append(attrs, "\targs")
 			}
 		}
 		if bp.LoadLocals != nil {
-			if *(bp.LoadLocals) == LongLoadConfig {
+			if *(bp.LoadLocals) == longLoadConfig {
 				attrs = append(attrs, "\tlocals -v")
 			} else {
 				attrs = append(attrs, "\tlocals")
@@ -1881,6 +1914,18 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		rest = argv[1]
 	}
 
+	flavor := api.IntelFlavour
+	if t.conf != nil && t.conf.DisassembleFlavor != nil {
+		switch *t.conf.DisassembleFlavor {
+		case "go":
+			flavor = api.GoFlavour
+		case "gnu":
+			flavor = api.GNUFlavour
+		default:
+			flavor = api.IntelFlavour
+		}
+	}
+
 	var disasm api.AsmInstructions
 	var disasmErr error
 
@@ -1890,7 +1935,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if err != nil {
 			return err
 		}
-		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	case "-a":
 		v := split2PartsBySpace(rest)
 		if len(v) != 2 {
@@ -1904,7 +1949,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if err != nil {
 			return fmt.Errorf("wrong argument: %q is not a number", v[1])
 		}
-		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), flavor)
 	case "-l":
 		locs, err := t.client.FindLocation(ctx.Scope, rest, true)
 		if err != nil {
@@ -1913,7 +1958,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		if len(locs) != 1 {
 			return errors.New("expression specifies multiple locations")
 		}
-		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, api.IntelFlavour)
+		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	default:
 		return disasmUsageError
 	}
@@ -1922,7 +1967,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		return disasmErr
 	}
 
-	DisasmPrint(disasm, os.Stdout)
+	disasmPrint(disasm, os.Stdout)
 
 	return nil
 }
@@ -1971,7 +2016,7 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 			continue
 		}
 		fmt.Printf(fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
-		fmt.Printf("%sat %s:%d\n", s, ShortenFilePath(stack[i].File), stack[i].Line)
+		fmt.Printf("%sat %s:%d\n", s, shortenFilePath(stack[i].File), stack[i].Line)
 
 		if offsets {
 			fmt.Printf("%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
@@ -2051,7 +2096,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 }
 
 func printcontextLocation(loc api.Location) {
-	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), ShortenFilePath(loc.File), loc.Line, loc.PC)
+	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), shortenFilePath(loc.File), loc.Line, loc.PC)
 	if loc.Function != nil && loc.Function.Optimized {
 		fmt.Println(optimizedFunctionWarning)
 	}
@@ -2104,7 +2149,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			bpname,
 			fn.Name(),
 			args,
-			ShortenFilePath(th.File),
+			shortenFilePath(th.File),
 			th.Line,
 			th.GoroutineID,
 			hitCount,
@@ -2115,7 +2160,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			bpname,
 			fn.Name(),
 			args,
-			ShortenFilePath(th.File),
+			shortenFilePath(th.File),
 			th.Line,
 			th.Breakpoint.TotalHitCount,
 			th.PC)
@@ -2139,14 +2184,14 @@ func printcontextThread(t *Term, th *api.Thread) {
 		}
 
 		for _, v := range bpi.Locals {
-			if *bp.LoadLocals == LongLoadConfig {
+			if *bp.LoadLocals == longLoadConfig {
 				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
 			} else {
 				fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
 			}
 		}
 
-		if bp.LoadArgs != nil && *bp.LoadArgs == LongLoadConfig {
+		if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
 			for _, v := range bpi.Arguments {
 				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
 			}
@@ -2269,9 +2314,9 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 	return t.client.AmendBreakpoint(bp)
 }
 
-// ShortenFilePath take a full file path and attempts to shorten
+// shortenFilePath take a full file path and attempts to shorten
 // it by replacing the current directory to './'.
-func ShortenFilePath(fullPath string) string {
+func shortenFilePath(fullPath string) string {
 	workingDir, _ := os.Getwd()
 	return strings.Replace(fullPath, workingDir, ".", 1)
 }
@@ -2304,7 +2349,8 @@ func (c *Commands) executeFile(t *Term, name string) error {
 	return scanner.Err()
 }
 
-func rewind(t *Term, ctx callContext, args string) error {
+func (c *Commands) rewind(t *Term, ctx callContext, args string) error {
+	c.frame = 0
 	stateChan := t.client.Rewind()
 	var state *api.DebuggerState
 	for state = range stateChan {
@@ -2368,6 +2414,37 @@ func clearCheckpoint(t *Term, ctx callContext, args string) error {
 	return t.client.ClearCheckpoint(id)
 }
 
+func display(t *Term, ctx callContext, args string) error {
+	const (
+		addOption = "-a "
+		delOption = "-d "
+	)
+	switch {
+	case args == "":
+		t.printDisplays()
+
+	case strings.HasPrefix(args, addOption):
+		args = strings.TrimSpace(args[len(addOption):])
+		if args == "" {
+			return fmt.Errorf("not enough arguments")
+		}
+		t.addDisplay(args)
+		t.printDisplay(len(t.displays) - 1)
+
+	case strings.HasPrefix(args, delOption):
+		args = strings.TrimSpace(args[len(delOption):])
+		n, err := strconv.Atoi(args)
+		if err != nil {
+			return fmt.Errorf("%q is not a number", args)
+		}
+		return t.removeDisplay(n)
+
+	default:
+		return fmt.Errorf("wrong arguments")
+	}
+	return nil
+}
+
 func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	thing := "breakpoint"
 	if bp.Tracepoint {
@@ -2398,7 +2475,7 @@ func formatBreakpointLocation(bp *api.Breakpoint) string {
 		fmt.Fprintf(&out, "%#x", bp.Addr)
 	}
 	fmt.Fprintf(&out, " for ")
-	p := ShortenFilePath(bp.File)
+	p := shortenFilePath(bp.File)
 	if bp.FunctionName != "" {
 		fmt.Fprintf(&out, "%s() ", bp.FunctionName)
 	}
