@@ -165,15 +165,15 @@ func TestStopOnEntry(t *testing.T) {
 		// 8 >> stackTrace, << stackTrace
 		client.StackTraceRequest()
 		stResp := client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Message != "Unsupported command" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Message=\"Unsupported command\"", stResp)
+		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Message != "Not yet implemented" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Message=\"Not yet implemented\"", stResp)
 		}
 
 		// 9 >> stackTrace, << stackTrace
 		client.StackTraceRequest()
 		stResp = client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Message != "Unsupported command" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Message=\"Unsupported command\"", stResp)
+		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Message != "Not yet implemented" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Message=\"Not yet implemented\"", stResp)
 		}
 
 		// 10 >> continue, << continue, << terminated
@@ -363,165 +363,144 @@ func TestLaunchTestRequest(t *testing.T) {
 	})
 }
 
-// Test requests that are not supported and return empty responses.
-func TestNoopResponses(t *testing.T) {
-	var got, want dap.Message
+func TestUnupportedCommandResponses(t *testing.T) {
+	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		newResponse := func(reqSeq int, command string) dap.Response {
-			return dap.Response{
-				ProtocolMessage: dap.ProtocolMessage{Type: "response"},
-				RequestSeq:      reqSeq,
-				Success:         true,
-				Command:         command,
+		seqCnt := 1
+		expectUnsupportedCommand := func(cmd string) {
+			t.Helper()
+			got = client.ExpectUnsupportedCommandErrorResponse(t)
+			if got.RequestSeq != seqCnt || got.Command != cmd {
+				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
 			}
-		}
-
-		client.SetExceptionBreakpointsRequest()
-		got = client.ExpectSetExceptionBreakpointsResponse(t)
-		want = &dap.SetExceptionBreakpointsResponse{Response: newResponse(1, "setExceptionBreakpoints")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.TerminateRequest()
-		got = client.ExpectTerminateResponse(t)
-		want = &dap.TerminateResponse{Response: newResponse(2, "terminate")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.RestartRequest()
-		got = client.ExpectRestartResponse(t)
-		want = &dap.RestartResponse{Response: newResponse(3, "restart")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.SetFunctionBreakpointsRequest()
-		got = client.ExpectSetFunctionBreakpointsResponse(t)
-		want = &dap.SetFunctionBreakpointsResponse{Response: newResponse(4, "setFunctionBreakpoints")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.StepBackRequest()
-		got = client.ExpectStepBackResponse(t)
-		want = &dap.StepBackResponse{Response: newResponse(5, "stepBack")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.ReverseContinueRequest()
-		got = client.ExpectReverseContinueResponse(t)
-		want = &dap.ReverseContinueResponse{Response: newResponse(6, "reverseContinue")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
+			seqCnt++
 		}
 
 		client.RestartFrameRequest()
-		got = client.ExpectRestartFrameResponse(t)
-		want = &dap.RestartFrameResponse{Response: newResponse(7, "restartFrame")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("restartFrame")
 
-		client.SetExpressionRequest()
-		got = client.ExpectSetExpressionResponse(t)
-		want = &dap.SetExpressionResponse{Response: newResponse(8, "setExpression")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		client.GotoRequest()
+		expectUnsupportedCommand("goto")
+
+		client.SourceRequest()
+		expectUnsupportedCommand("source")
 
 		client.TerminateThreadsRequest()
-		got = client.ExpectTerminateThreadsResponse(t)
-		want = &dap.TerminateThreadsResponse{Response: newResponse(9, "terminateThreads")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("terminateThreads")
 
 		client.StepInTargetsRequest()
-		got = client.ExpectStepInTargetsResponse(t)
-		want = &dap.StepInTargetsResponse{Response: newResponse(10, "stepInTargets")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("stepInTargets")
 
 		client.GotoTargetsRequest()
-		got = client.ExpectGotoTargetsResponse(t)
-		want = &dap.GotoTargetsResponse{Response: newResponse(11, "gotoTargets")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("gotoTargets")
 
 		client.CompletionsRequest()
-		got = client.ExpectCompletionsResponse(t)
-		want = &dap.CompletionsResponse{Response: newResponse(12, "completions")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("completions")
 
 		client.ExceptionInfoRequest()
-		got = client.ExpectExceptionInfoResponse(t)
-		want = &dap.ExceptionInfoResponse{Response: newResponse(13, "exceptionInfo")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.LoadedSourcesRequest()
-		got = client.ExpectLoadedSourcesResponse(t)
-		want = &dap.LoadedSourcesResponse{Response: newResponse(14, "loadedSources")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("exceptionInfo")
 
 		client.DataBreakpointInfoRequest()
-		got = client.ExpectDataBreakpointInfoResponse(t)
-		want = &dap.DataBreakpointInfoResponse{Response: newResponse(15, "dataBreakpointInfo")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("dataBreakpointInfo")
 
 		client.SetDataBreakpointsRequest()
-		got = client.ExpectSetDataBreakpointsResponse(t)
-		want = &dap.SetDataBreakpointsResponse{Response: newResponse(16, "setDataBreakpoints")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.ReadMemoryRequest()
-		got = client.ExpectReadMemoryResponse(t)
-		want = &dap.ReadMemoryResponse{Response: newResponse(17, "readMemory")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.DisassembleRequest()
-		got = client.ExpectDisassembleResponse(t)
-		want = &dap.DisassembleResponse{Response: newResponse(18, "disassemble")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
-
-		client.CancelRequest()
-		got = client.ExpectCancelResponse(t)
-		want = &dap.CancelResponse{Response: newResponse(19, "cancel")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("setDataBreakpoints")
 
 		client.BreakpointLocationsRequest()
-		got = client.ExpectBreakpointLocationsResponse(t)
-		want = &dap.BreakpointLocationsResponse{Response: newResponse(20, "breakpointLocations")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
-		}
+		expectUnsupportedCommand("breakpointLocations")
 
 		client.ModulesRequest()
-		got = client.ExpectModulesResponse(t)
-		want = &dap.ModulesResponse{Response: newResponse(21, "modules")}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("\ngot  %#v\nwant %#v", got, want)
+		expectUnsupportedCommand("modules")
+	})
+}
+
+func TestRequiredNotYetImplementedResponses(t *testing.T) {
+	var got *dap.ErrorResponse
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		seqCnt := 1
+		expectNotYetImplemented := func(cmd string) {
+			t.Helper()
+			got = client.ExpectNotYetImplementedErrorResponse(t)
+			if got.RequestSeq != seqCnt || got.Command != cmd {
+				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
+			}
+			seqCnt++
 		}
+
+		client.AttachRequest()
+		expectNotYetImplemented("attach")
+
+		client.NextRequest()
+		expectNotYetImplemented("next")
+
+		client.StepInRequest()
+		expectNotYetImplemented("stepIn")
+
+		client.StepOutRequest()
+		expectNotYetImplemented("stepOut")
+
+		client.PauseRequest()
+		expectNotYetImplemented("pause")
+
+		client.StackTraceRequest()
+		expectNotYetImplemented("stackTrace")
+
+		client.ScopesRequest()
+		expectNotYetImplemented("scopes")
+
+		client.VariablesRequest()
+		expectNotYetImplemented("variables")
+
+		client.EvaluateRequest()
+		expectNotYetImplemented("evaluate")
+	})
+}
+
+func TestOptionalNotYetImplementedResponses(t *testing.T) {
+	var got *dap.ErrorResponse
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		seqCnt := 1
+		expectNotYetImplemented := func(cmd string) {
+			t.Helper()
+			got = client.ExpectNotYetImplementedErrorResponse(t)
+			if got.RequestSeq != seqCnt || got.Command != cmd {
+				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
+			}
+			seqCnt++
+		}
+
+		client.TerminateRequest()
+		expectNotYetImplemented("terminate")
+
+		client.RestartRequest()
+		expectNotYetImplemented("restart")
+
+		client.SetFunctionBreakpointsRequest()
+		expectNotYetImplemented("setFunctionBreakpoints")
+
+		client.StepBackRequest()
+		expectNotYetImplemented("stepBack")
+
+		client.ReverseContinueRequest()
+		expectNotYetImplemented("reverseContinue")
+
+		client.SetVariableRequest()
+		expectNotYetImplemented("setVariable")
+
+		client.SetExpressionRequest()
+		expectNotYetImplemented("setExpression")
+
+		client.LoadedSourcesRequest()
+		expectNotYetImplemented("loadedSources")
+
+		client.ReadMemoryRequest()
+		expectNotYetImplemented("readMemory")
+
+		client.DisassembleRequest()
+		expectNotYetImplemented("disassemble")
+
+		client.CancelRequest()
+		expectNotYetImplemented("cancel")
 	})
 }
 

@@ -59,14 +59,33 @@ func (c *Client) expectReadProtocolMessage(t *testing.T) dap.Message {
 	return m
 }
 
-func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.DisconnectResponse)
-}
-
 func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+}
+
+func (c *Client) expectErrorResponse(t *testing.T, id int, message string) *dap.ErrorResponse {
+	t.Helper()
+	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	if er.Body.Error.Id != id || er.Message != message {
+		t.Errorf("\ngot %#v\nwant Id=%d Message=%q", er, id, message)
+	}
+	return er
+}
+
+func (c *Client) ExpectNotYetImplementedErrorResponse(t *testing.T) *dap.ErrorResponse {
+	t.Helper()
+	return c.expectErrorResponse(t, 7777, "Not yet implemented")
+}
+
+func (c *Client) ExpectUnsupportedCommandErrorResponse(t *testing.T) *dap.ErrorResponse {
+	t.Helper()
+	return c.expectErrorResponse(t, 9999, "Unsupported command")
+}
+
+func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.DisconnectResponse)
 }
 
 func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
@@ -265,6 +284,13 @@ func (c *Client) LaunchRequestWithArgs(arguments map[string]interface{}) {
 	c.send(request)
 }
 
+// AttachRequest sends an 'attach' request.
+func (c *Client) AttachRequest() {
+	request := &dap.AttachRequest{Request: *c.newRequest("attach")}
+	// TODO(polina): populate meaningful arguments
+	c.send(request)
+}
+
 // DisconnectRequest sends a 'disconnect' request.
 func (c *Client) DisconnectRequest() {
 	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
@@ -307,6 +333,34 @@ func (c *Client) ContinueRequest(thread int) {
 	c.send(request)
 }
 
+// NextRequest sends a 'next' request.
+func (c *Client) NextRequest() {
+	request := &dap.NextRequest{Request: *c.newRequest("next")}
+	// TODO(polina): arguments
+	c.send(request)
+}
+
+// StepInRequest sends a 'stepIn' request.
+func (c *Client) StepInRequest() {
+	request := &dap.NextRequest{Request: *c.newRequest("stepIn")}
+	// TODO(polina): arguments
+	c.send(request)
+}
+
+// StepOutRequest sends a 'stepOut' request.
+func (c *Client) StepOutRequest() {
+	request := &dap.NextRequest{Request: *c.newRequest("stepOut")}
+	// TODO(polina): arguments
+	c.send(request)
+}
+
+// PauseRequest sends a 'pause' request.
+func (c *Client) PauseRequest() {
+	request := &dap.NextRequest{Request: *c.newRequest("pause")}
+	// TODO(polina): arguments
+	c.send(request)
+}
+
 // ThreadsRequest sends a 'threads' request.
 func (c *Client) ThreadsRequest() {
 	request := &dap.ThreadsRequest{Request: *c.newRequest("threads")}
@@ -316,6 +370,18 @@ func (c *Client) ThreadsRequest() {
 // StackTraceRequest sends a 'stackTrace' request.
 func (c *Client) StackTraceRequest() {
 	request := &dap.StackTraceRequest{Request: *c.newRequest("stackTrace")}
+	c.send(request)
+}
+
+// ScopesRequest sends a 'scopes' request.
+func (c *Client) ScopesRequest() {
+	request := &dap.ScopesRequest{Request: *c.newRequest("scopes")}
+	c.send(request)
+}
+
+// VariablesRequest sends a 'scopes' request.
+func (c *Client) VariablesRequest() {
+	request := &dap.ScopesRequest{Request: *c.newRequest("variables")}
 	c.send(request)
 }
 
@@ -344,9 +410,19 @@ func (c *Client) ReverseContinueRequest() {
 	c.send(&dap.ReverseContinueRequest{Request: *c.newRequest("reverseContinue")})
 }
 
+// SetVariableRequest sends a 'setVariable' request.
+func (c *Client) SetVariableRequest() {
+	c.send(&dap.ReverseContinueRequest{Request: *c.newRequest("setVariable")})
+}
+
 // RestartFrameRequest sends a 'restartFrame' request.
 func (c *Client) RestartFrameRequest() {
 	c.send(&dap.RestartFrameRequest{Request: *c.newRequest("restartFrame")})
+}
+
+// GotoRequest sends a 'goto' request.
+func (c *Client) GotoRequest() {
+	c.send(&dap.GotoRequest{Request: *c.newRequest("goto")})
 }
 
 // SetExpressionRequest sends a 'setExpression' request.
@@ -354,9 +430,19 @@ func (c *Client) SetExpressionRequest() {
 	c.send(&dap.SetExpressionRequest{Request: *c.newRequest("setExpression")})
 }
 
+// SourceRequest sends a 'source' request.
+func (c *Client) SourceRequest() {
+	c.send(&dap.SourceRequest{Request: *c.newRequest("source")})
+}
+
 // TerminateThreadsRequest sends a 'terminateThreads' request.
 func (c *Client) TerminateThreadsRequest() {
 	c.send(&dap.TerminateThreadsRequest{Request: *c.newRequest("terminateThreads")})
+}
+
+// EvaluateRequest sends a 'evaluate' request.
+func (c *Client) EvaluateRequest() {
+	c.send(&dap.EvaluateRequest{Request: *c.newRequest("evaluate")})
 }
 
 // StepInTargetsRequest sends a 'stepInTargets' request.

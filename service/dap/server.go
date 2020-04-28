@@ -194,85 +194,151 @@ func (s *Server) handleRequest(request dap.Message) {
 
 	switch request := request.(type) {
 	case *dap.InitializeRequest:
+		// Required
 		s.onInitializeRequest(request)
 	case *dap.LaunchRequest:
+		// Required
 		s.onLaunchRequest(request)
 	case *dap.AttachRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onAttachRequest(request)
 	case *dap.DisconnectRequest:
+		// Required
 		s.onDisconnectRequest(request)
 	case *dap.TerminateRequest:
+		// Optional (capability ‘supportsTerminateRequest‘)
+		// TODO: implement this request in V1
 		s.onTerminateRequest(request)
 	case *dap.RestartRequest:
+		// Optional (capability ‘supportsRestartRequest’)
+		// TODO: implement this request in V1
 		s.onRestartRequest(request)
 	case *dap.SetBreakpointsRequest:
+		// Required
 		s.onSetBreakpointsRequest(request)
 	case *dap.SetFunctionBreakpointsRequest:
+		// Optional (capability ‘supportsFunctionBreakpoints’)
+		// TODO: implement this request in V1
 		s.onSetFunctionBreakpointsRequest(request)
 	case *dap.SetExceptionBreakpointsRequest:
+		// Optional (capability ‘exceptionBreakpointFilters’)
 		s.onSetExceptionBreakpointsRequest(request)
 	case *dap.ConfigurationDoneRequest:
+		// Optional (capability ‘supportsConfigurationDoneRequest’)
+		// Supported by vscode-go
 		s.onConfigurationDoneRequest(request)
 	case *dap.ContinueRequest:
+		// Required
 		s.onContinueRequest(request)
 	case *dap.NextRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onNextRequest(request)
 	case *dap.StepInRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onStepInRequest(request)
 	case *dap.StepOutRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onStepOutRequest(request)
 	case *dap.StepBackRequest:
+		// Optional (capability ‘supportsStepBack’)
+		// TODO: implement this request in V1
 		s.onStepBackRequest(request)
 	case *dap.ReverseContinueRequest:
+		// Optional (capability ‘supportsStepBack’)
+		// TODO: implement this request in V1
 		s.onReverseContinueRequest(request)
 	case *dap.RestartFrameRequest:
-		s.onRestartFrameRequest(request)
+		// Optional (capability ’supportsRestartFrame’)
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.GotoRequest:
+		// Optional (capability ‘supportsGotoTargetsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.PauseRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onPauseRequest(request)
 	case *dap.StackTraceRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onStackTraceRequest(request)
 	case *dap.ScopesRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onScopesRequest(request)
 	case *dap.VariablesRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Required
+		// TODO: implement this request in V0
+		s.onVariablesRequest(request)
 	case *dap.SetVariableRequest:
-		s.sendUnsupportedErrorResponse(request.Request)
+		// Optional (capability ‘supportsSetVariable’)
+		// Supported by vscode-go
+		// TODO: implement this request in V0
+		s.onSetVariableRequest(request)
 	case *dap.SetExpressionRequest:
+		// Optional (capability ‘supportsSetExpression’)
+		// TODO: implement this request in V1
 		s.onSetExpressionRequest(request)
 	case *dap.SourceRequest:
+		// Required
+		// This does not make sense in the context of Go as
+		// the source cannot be a string eval'ed at runtime.
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.ThreadsRequest:
+		// Required
 		s.onThreadsRequest(request)
 	case *dap.TerminateThreadsRequest:
-		s.onTerminateThreadsRequest(request)
-	case *dap.EvaluateRequest:
+		// Optional (capability ‘supportsTerminateThreadsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
+	case *dap.EvaluateRequest:
+		// Required - TODO
+		// TODO: implement this request in V0
+		s.onEvaluateRequest(request)
 	case *dap.StepInTargetsRequest:
-		s.onStepInTargetsRequest(request)
+		// Optional (capability ‘supportsStepInTargetsRequest’)
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.GotoTargetsRequest:
-		s.onGotoTargetsRequest(request)
+		// Optional (capability ‘supportsGotoTargetsRequest’)
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.CompletionsRequest:
-		s.onCompletionsRequest(request)
+		// Optional (capability ‘supportsCompletionsRequest’)
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.ExceptionInfoRequest:
-		s.onExceptionInfoRequest(request)
+		// Optional (capability ‘supportsExceptionInfoRequest’)
+		// TODO: does this request make sense for delve?
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.LoadedSourcesRequest:
+		// Optional (capability ‘supportsLoadedSourcesRequest’)
+		// TODO: implement this request in V1
 		s.onLoadedSourcesRequest(request)
 	case *dap.DataBreakpointInfoRequest:
-		s.onDataBreakpointInfoRequest(request)
+		// Optional (capability ‘supportsDataBreakpoints’)
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.SetDataBreakpointsRequest:
-		s.onSetDataBreakpointsRequest(request)
+		// Optional (capability ‘supportsDataBreakpoints’)
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.ReadMemoryRequest:
+		// Optional (capability ‘supportsReadMemoryRequest‘)
+		// TODO: implement this request in V1
 		s.onReadMemoryRequest(request)
 	case *dap.DisassembleRequest:
+		// Optional (capability ‘supportsDisassembleRequest’)
+		// TODO: implement this request in V1
 		s.onDisassembleRequest(request)
 	case *dap.CancelRequest:
+		// Optional (capability ‘supportsCancelRequest’)
+		// TODO: does this request make sense for delve?
 		s.onCancelRequest(request)
 	case *dap.BreakpointLocationsRequest:
-		s.onBreakpointLocationsRequest(request)
+		// Optional (capability ‘supportsBreakpointLocationsRequest’)
+		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.ModulesRequest:
-		s.onModulesRequest(request)
+		// Optional (capability ‘supportsModulesRequest’)
+		// TODO: does this request make sense for delve?
+		s.sendUnsupportedErrorResponse(request.Request)
 	default:
 		// This is a DAP message that go-dap has a struct for, so
 		// decoding succeeded, but this function does not know how
@@ -293,6 +359,16 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsConfigurationDoneRequest = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
+	// TODO(polina): support these requests in addition to vscode-go feature parity
+	response.Body.SupportsTerminateRequest = false
+	response.Body.SupportsRestartRequest = false
+	response.Body.SupportsFunctionBreakpoints = false
+	response.Body.SupportsStepBack = false
+	response.Body.SupportsSetExpression = false
+	response.Body.SupportsLoadedSourcesRequest = false
+	response.Body.SupportsReadMemoryRequest = false
+	response.Body.SupportsDisassembleRequest = false
+	response.Body.SupportsCancelRequest = false
 	s.send(response)
 }
 
@@ -432,7 +508,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 
 func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreakpointsRequest) {
 	// Unlike what DAP documentation claims, this request is always sent
-	// even though we specified no filters at initializatin. Handle as no-op.
+	// even though we specified no filters at initialization. Handle as no-op.
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
@@ -498,153 +574,124 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	s.send(response)
 }
 
-//
-// The rest of the handlers below are no-ops because the adaptor
-// does not support these messages as communicated by the missing
-// capabilities in the 'initialize' response. We choose no-op over
-// an error response or leaving these out completely because that is
-// the default behavior in vscode-debugadapter-node that many other
-// adaptors, including vscode-go, inherit from.
-//
+// onAttachRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
 
-// onTerminateRequest is no-op because this adaptor does not support
-// the 'terminate' request (supportsTerminateRequest is absent in
-// 'initialize' response).
+// onNextRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onNextRequest(request *dap.NextRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onStepInRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onStepInRequest(request *dap.StepInRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onStepOutRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onStepOutRequest(request *dap.StepOutRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onPauseRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onPauseRequest(request *dap.PauseRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onStackTraceRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onScopesRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onScopesRequest(request *dap.ScopesRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onVariablesRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onVariablesRequest(request *dap.VariablesRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onEvaluateRequest sends a not-yet-implemented error response.
+// This is a mandatory request to support.
+func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// onTerminateRequest sends a not-yet-implemented error response.
+// Capability 'supportsTerminateRequest' is not set in 'initialize' response.
 func (s *Server) onTerminateRequest(request *dap.TerminateRequest) {
-	s.send(&dap.TerminateResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onRestartRequest is no-op because this adaptor does not support
-// the 'restart' request (supportsRestartRequest is absent in
-// 'initialize' response).
+// onRestartRequest sends a not-yet-implemented error response
+// Capability 'supportsRestartRequest' is not set in 'initialize' response.
 func (s *Server) onRestartRequest(request *dap.RestartRequest) {
-	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onSetFunctionBreakpointsRequest is no-op because this adaptor does not support
-// the 'setFunctionBreakpoints' request (supportsSetFunctionBreakpoints is absent in
-// 'initialize' response).
+// onSetFunctionBreakpointsRequest sends a not-yet-implemented error response.
+// Capability 'supportsFunctionBreakpoints' is not set 'initialize' response.
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	s.send(&dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onStepBackRequest is no-op because this adaptor does not support
-// the 'stepBack' request (supportsStepBack is absent in
-// 'initialize' response).
+// onStepBackRequest sends a not-yet-implemented error response.
+// Capability 'supportsStepBack' is not set 'initialize' response.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
-	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onReverseContinueRequest is no-op because this adaptor does not support
-// the 'reverseContinue' request (supportsStepBack is absent in
-// 'initialize' response).
+// onReverseContinueRequest sends a not-yet-implemented error response.
+// Capability 'supportsStepBack' is not set 'initialize' response.
 func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
-	s.send(&dap.ReverseContinueResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onRestartFrameRequest is no-op because this adaptor does not support
-// the 'restartFrame' request (supportsRestartFrame is absent in
-// 'initialize' response).
-func (s *Server) onRestartFrameRequest(request *dap.RestartFrameRequest) {
-	s.send(&dap.RestartFrameResponse{Response: *newResponse(request.Request)})
+// onSetVariableRequest sends a not-yet-implemented error response.
+// Capability 'supportsSetVariable' is not set 'initialize' response.
+func (s *Server) onSetVariableRequest(request *dap.SetVariableRequest) { // TODO V0
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onSetExpression is no-op because this adaptor does not support
-// the 'setExpression' request (supportsSetExpression is absent in
-// 'initialize' response).
+// onSetExpression sends a not-yet-implemented error response.
+// Capability 'supportsSetExpression' is not set 'initialize' response.
 func (s *Server) onSetExpressionRequest(request *dap.SetExpressionRequest) {
-	s.send(&dap.SetExpressionResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onTerminateThreadsRequest is no-op because this adaptor does not support
-// the 'terminateThreads' request (supportsTerminateThreadsRequest is absent in
-// 'initialize' response).
-func (s *Server) onTerminateThreadsRequest(request *dap.TerminateThreadsRequest) {
-	s.send(&dap.TerminateThreadsResponse{Response: *newResponse(request.Request)})
-}
-
-// onStepInTargetsRequest is no-op because this adaptor does not support
-// the 'stepInTargets' request (supportsStepInTargetsRequest is absent in
-// 'initialize' response).
-func (s *Server) onStepInTargetsRequest(request *dap.StepInTargetsRequest) {
-	s.send(&dap.StepInTargetsResponse{Response: *newResponse(request.Request)})
-}
-
-// onGotoTargetsRequest is no-op because this adaptor does not support
-// the 'gotoTargets' request (supportsGotoTargetsRequest is absent in
-// 'initialize' response).
-func (s *Server) onGotoTargetsRequest(request *dap.GotoTargetsRequest) {
-	s.send(&dap.GotoTargetsResponse{Response: *newResponse(request.Request)})
-}
-
-// onCompletionsRequest is no-op because this adaptor does not support
-// the 'completions' request (supportsCompletionsRequest is absent in
-// 'initialize' response).
-func (s *Server) onCompletionsRequest(request *dap.CompletionsRequest) {
-	s.send(&dap.CompletionsResponse{Response: *newResponse(request.Request)})
-}
-
-// onExceptionInfoRequest is no-op because this adaptor does not support
-// the 'exceptionInfo' request (supportsExceptionInfoRequest is absent in
-// 'initialize' response).
-func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
-	s.send(&dap.ExceptionInfoResponse{Response: *newResponse(request.Request)})
-}
-
-// onLoadedSourcesRequest is no-op because this adaptor does not support
-// the 'loadedSources' request (supportsLoadedSourcesRequest is absent in
-// 'initialize' response).
+// onLoadedSourcesRequest sends a not-yet-implemented error response.
+// Capability 'supportsLoadedSourcesRequest' is not set 'initialize' response.
 func (s *Server) onLoadedSourcesRequest(request *dap.LoadedSourcesRequest) {
-	s.send(&dap.LoadedSourcesResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onDataBreakpointInfoRequest is no-op because this adaptor does not support
-// the 'dataBreakpointInfo' request (supportsDataBreakpoints is absent in
-// 'initialize' response).
-func (s *Server) onDataBreakpointInfoRequest(request *dap.DataBreakpointInfoRequest) {
-	s.send(&dap.DataBreakpointInfoResponse{Response: *newResponse(request.Request)})
-}
-
-// onSetDataBreakpointsRequest is no-op because this adaptor does not support
-// the 'setDataBreakpoints' request (supportsDataBreakpoints is absent in
-// 'initialize' response).
-func (s *Server) onSetDataBreakpointsRequest(request *dap.SetDataBreakpointsRequest) {
-	s.send(&dap.SetDataBreakpointsResponse{Response: *newResponse(request.Request)})
-}
-
-// onReadMemoryRequest is no-op because this adaptor does not support
-// the 'readMemory' request (supportsReadMemoryRequest is absent in
-// 'initialize' response).
+// onReadMemoryRequest sends a not-yet-implemented error response.
+// Capability 'supportsReadMemoryRequest' is not set 'initialize' response.
 func (s *Server) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
-	s.send(&dap.ReadMemoryResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onDisassembleRequest is no-op because this adaptor does not support
-// the 'disassemble' request (supportsDisassembleRequest is absent in
-// 'initialize' response).
+// onDisassembleRequest sends a not-yet-implemented error response.
+// Capability 'supportsDisassembleRequest' is not set 'initialize' response.
 func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
-	s.send(&dap.DisassembleResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onCancelRequest is no-op because this adaptor does not support
-// the 'cancel' request (supportsCancelRequest is absent in
-// 'initialize' response).
+// onCancelRequest sends a not-yet-implemented error response.
+// Capability 'supportsCancelRequest' is not set 'initialize' response.
 func (s *Server) onCancelRequest(request *dap.CancelRequest) {
-	s.send(&dap.CancelResponse{Response: *newResponse(request.Request)})
-}
-
-// onBreakpointLocationsRequest is no-op because this adaptor does not support
-// the 'breakpointLocations' request (supportsBreakpointLocationsRequest is absent in
-// 'initialize' response).
-func (s *Server) onBreakpointLocationsRequest(request *dap.BreakpointLocationsRequest) {
-	s.send(&dap.BreakpointLocationsResponse{Response: *newResponse(request.Request)})
-}
-
-// onModulesRequest is no-op because this adaptor does not support
-// the 'modules' request (supportsModulesRequest is absent in
-// 'initialize' response).
-func (s *Server) onModulesRequest(request *dap.ModulesRequest) {
-	s.send(&dap.ModulesResponse{Response: *newResponse(request.Request)})
+	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
 func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, details string) {
@@ -677,6 +724,11 @@ func (s *Server) sendInternalErrorResponse(seq int, details string) {
 
 func (s *Server) sendUnsupportedErrorResponse(request dap.Request) {
 	s.sendErrorResponse(request, UnsupportedCommand, "Unsupported command",
+		fmt.Sprintf("cannot process '%s' request", request.Command))
+}
+
+func (s *Server) sendNotYetImplementedErrorResponse(request dap.Request) {
+	s.sendErrorResponse(request, NotYetImplemented, "Not yet implemented",
 		fmt.Sprintf("cannot process '%s' request", request.Command))
 }
 
