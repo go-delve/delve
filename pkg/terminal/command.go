@@ -25,6 +25,7 @@ import (
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/rpc2"
 )
 
 const optimizedFunctionWarning = "Warning: debugging optimized function"
@@ -668,7 +669,7 @@ func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, flags
 			if err != nil {
 				return err
 			}
-			printStack(stack, "\t", false)
+			printStack(os.Stdout, stack, "\t", false)
 		}
 	}
 	return nil
@@ -1415,9 +1416,14 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 			return err
 		}
 	}
+	var shouldSetReturnBreakpoints bool
 	for _, loc := range locs {
+		if loc.IsFunctionEntry {
+			shouldSetReturnBreakpoints = true
+		}
 		requestedBp.Addr = loc.PC
 		requestedBp.Addrs = loc.PCs
+		requestedBp.LoadArgs = &ShortLoadConfig
 
 		bp, err := t.client.CreateBreakpoint(requestedBp)
 		if err != nil {
@@ -1425,6 +1431,24 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 		}
 
 		fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
+	}
+
+	if tracepoint && shouldSetReturnBreakpoints && locs[0].Function != nil {
+		addrs, err := t.client.(*rpc2.RPCClient).FunctionReturnLocations(locs[0].Function.Name())
+		if err != nil {
+			return err
+		}
+		for i := range addrs {
+			_, err = t.client.CreateBreakpoint(&api.Breakpoint{
+				Addr:        addrs[i],
+				TraceReturn: true,
+				Line:        -1,
+				LoadArgs:    &ShortLoadConfig,
+			})
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -1726,7 +1750,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	printStack(stack, "", sa.offsets)
+	printStack(os.Stdout, stack, "", sa.offsets)
 	if sa.ancestors > 0 {
 		ancestors, err := t.client.Ancestors(ctx.Scope.GoroutineID, sa.ancestors, sa.ancestorDepth)
 		if err != nil {
@@ -1738,7 +1762,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 				fmt.Printf("\t%s\n", ancestor.Unreadable)
 				continue
 			}
-			printStack(ancestor.Stack, "\t", false)
+			printStack(os.Stdout, ancestor.Stack, "\t", false)
 		}
 	}
 	return nil
@@ -2000,7 +2024,7 @@ func digits(n int) int {
 
 const stacktraceTruncatedMessage = "(truncated)"
 
-func printStack(stack []api.Stackframe, ind string, offsets bool) {
+func printStack(out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
 	if len(stack) == 0 {
 		return
 	}
@@ -2019,42 +2043,42 @@ func printStack(stack []api.Stackframe, ind string, offsets bool) {
 
 	for i := range stack {
 		if stack[i].Err != "" {
-			fmt.Printf("%serror: %s\n", s, stack[i].Err)
+			fmt.Fprintf(out, "%serror: %s\n", s, stack[i].Err)
 			continue
 		}
-		fmt.Printf(fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
-		fmt.Printf("%sat %s:%d\n", s, shortenFilePath(stack[i].File), stack[i].Line)
+		fmt.Fprintf(out, fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
+		fmt.Fprintf(out, "%sat %s:%d\n", s, shortenFilePath(stack[i].File), stack[i].Line)
 
 		if offsets {
-			fmt.Printf("%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
+			fmt.Fprintf(out, "%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
 		}
 
 		for j, d := range stack[i].Defers {
 			deferHeader := fmt.Sprintf("%s    defer %d: ", s, j+1)
 			s2 := strings.Repeat(" ", len(deferHeader))
 			if d.Unreadable != "" {
-				fmt.Printf("%s(unreadable defer: %s)\n", deferHeader, d.Unreadable)
+				fmt.Fprintf(out, "%s(unreadable defer: %s)\n", deferHeader, d.Unreadable)
 				continue
 			}
-			fmt.Printf("%s%#016x in %s\n", deferHeader, d.DeferredLoc.PC, d.DeferredLoc.Function.Name())
-			fmt.Printf("%sat %s:%d\n", s2, d.DeferredLoc.File, d.DeferredLoc.Line)
-			fmt.Printf("%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), d.DeferLoc.File, d.DeferLoc.Line)
+			fmt.Fprintf(out, "%s%#016x in %s\n", deferHeader, d.DeferredLoc.PC, d.DeferredLoc.Function.Name())
+			fmt.Fprintf(out, "%sat %s:%d\n", s2, d.DeferredLoc.File, d.DeferredLoc.Line)
+			fmt.Fprintf(out, "%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), d.DeferLoc.File, d.DeferLoc.Line)
 		}
 
 		for j := range stack[i].Arguments {
-			fmt.Printf("%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString())
+			fmt.Fprintf(out, "%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString())
 		}
 		for j := range stack[i].Locals {
-			fmt.Printf("%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString())
+			fmt.Fprintf(out, "%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString())
 		}
 
 		if extranl {
-			fmt.Println()
+			fmt.Fprintln(out)
 		}
 	}
 
 	if len(stack) > 0 && !stack[len(stack)-1].Bottom {
-		fmt.Printf("%s"+stacktraceTruncatedMessage+"\n", ind)
+		fmt.Fprintf(out, "%s"+stacktraceTruncatedMessage+"\n", ind)
 	}
 }
 
@@ -2215,7 +2239,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 
 		if bpi.Stacktrace != nil {
 			fmt.Printf("\tStack:\n")
-			printStack(bpi.Stacktrace, "\t\t", false)
+			printStack(os.Stdout, bpi.Stacktrace, "\t\t", false)
 		}
 	}
 }
@@ -2237,7 +2261,7 @@ func printTracepoint(th *api.Thread, bpname string, fn *api.Function, args strin
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
 		if th.BreakpointInfo.Stacktrace != nil {
 			fmt.Fprintf(os.Stderr, "\tStack:\n")
-			printStack(th.BreakpointInfo.Stacktrace, "\t\t", false)
+			printStack(os.Stderr, th.BreakpointInfo.Stacktrace, "\t\t", false)
 		}
 	}
 }

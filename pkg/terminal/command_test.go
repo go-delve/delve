@@ -247,8 +247,8 @@ func TestExecuteFile(t *testing.T) {
 }
 
 func TestIssue354(t *testing.T) {
-	printStack([]api.Stackframe{}, "", false)
-	printStack([]api.Stackframe{
+	printStack(os.Stdout, []api.Stackframe{}, "", false)
+	printStack(os.Stdout, []api.Stackframe{
 		{Location: api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil},
 			Bottom: true}}, "", false)
 }
@@ -263,8 +263,63 @@ func TestIssue411(t *testing.T) {
 		term.MustExec("trace _fixtures/math.go:9")
 		term.MustExec("continue")
 		out := term.MustExec("next")
-		if !strings.HasPrefix(out, "> main.main()") {
+		if !strings.HasPrefix(out, "> goroutine(1): main.main()") {
 			t.Fatalf("Wrong output for next: <%s>", out)
+		}
+	})
+}
+
+func TestTrace(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
+	test.AllowRecording(t)
+	withTestTerminal("issue573", t, func(term *FakeTerminal) {
+		term.MustExec("trace foo")
+		out, _ := term.Exec("continue")
+		// The output here is a little strange, but we don't filter stdout vs stderr so it gets jumbled.
+		// Therefore we assert about the call and return values separately.
+		if !strings.Contains(out, "> goroutine(1): main.foo(99, 9801)") {
+			t.Fatalf("Wrong output for tracepoint: %s", out)
+		}
+		if !strings.Contains(out, "=> (9900)") {
+			t.Fatalf("Wrong output for tracepoint return value: %s", out)
+		}
+	})
+}
+
+func TestTraceWithName(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
+	test.AllowRecording(t)
+	withTestTerminal("issue573", t, func(term *FakeTerminal) {
+		term.MustExec("trace foobar foo")
+		out, _ := term.Exec("continue")
+		// The output here is a little strange, but we don't filter stdout vs stderr so it gets jumbled.
+		// Therefore we assert about the call and return values separately.
+		if !strings.Contains(out, "> goroutine(1): [foobar] main.foo(99, 9801)") {
+			t.Fatalf("Wrong output for tracepoint: %s", out)
+		}
+		if !strings.Contains(out, "=> (9900)") {
+			t.Fatalf("Wrong output for tracepoint return value: %s", out)
+		}
+	})
+}
+
+func TestTraceOnNonFunctionEntry(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
+	test.AllowRecording(t)
+	withTestTerminal("issue573", t, func(term *FakeTerminal) {
+		term.MustExec("trace foobar issue573.go:19")
+		out, _ := term.Exec("continue")
+		if !strings.Contains(out, "> goroutine(1): [foobar] main.foo(99, 9801)") {
+			t.Fatalf("Wrong output for tracepoint: %s", out)
+		}
+		if strings.Contains(out, "=> (9900)") {
+			t.Fatalf("Tracepoint on non-function locspec should not have return value:\n%s", out)
 		}
 	})
 }

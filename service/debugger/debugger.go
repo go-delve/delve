@@ -1447,6 +1447,14 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 
 	s, _ := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
 
+	var isFunctionLocation bool
+	switch t := loc.(type) {
+	case *locspec.NormalLocationSpec:
+		isFunctionLocation = t.LineOffset == -1 && t.FuncBase != nil
+	case *locspec.RegexLocationSpec:
+		isFunctionLocation = true
+	}
+
 	locs, err := loc.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines)
 	for i := range locs {
 		if locs[i].PC == 0 {
@@ -1456,6 +1464,7 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 		locs[i].File = file
 		locs[i].Line = line
 		locs[i].Function = api.ConvertFunction(fn)
+		locs[i].IsFunctionEntry = isFunctionLocation
 	}
 	return locs, err
 }
