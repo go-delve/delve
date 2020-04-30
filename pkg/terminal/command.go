@@ -2131,6 +2131,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	args := ""
+	var hasReturnValue bool
 	if th.BreakpointInfo != nil && th.Breakpoint.LoadArgs != nil && *th.Breakpoint.LoadArgs == ShortLoadConfig {
 		var arg []string
 		for _, ar := range th.BreakpointInfo.Arguments {
@@ -2142,6 +2143,9 @@ func printcontextThread(t *Term, th *api.Thread) {
 			if (ar.Flags & api.VariableArgument) != 0 {
 				arg = append(arg, ar.SinglelineString())
 			}
+			if (ar.Flags & api.VariableReturnArgument) != 0 {
+				hasReturnValue = true
+			}
 		}
 		args = strings.Join(arg, ", ")
 	}
@@ -2149,6 +2153,11 @@ func printcontextThread(t *Term, th *api.Thread) {
 	bpname := ""
 	if th.Breakpoint.Name != "" {
 		bpname = fmt.Sprintf("[%s] ", th.Breakpoint.Name)
+	}
+
+	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn {
+		printTracepoint(th, bpname, fn, args, hasReturnValue)
+		return
 	}
 
 	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
@@ -2207,6 +2216,28 @@ func printcontextThread(t *Term, th *api.Thread) {
 		if bpi.Stacktrace != nil {
 			fmt.Printf("\tStack:\n")
 			printStack(bpi.Stacktrace, "\t\t", false)
+		}
+	}
+}
+
+func printTracepoint(th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
+	if th.Breakpoint.Tracepoint {
+		fmt.Fprintf(os.Stderr, "> goroutine(%d): %s%s(%s)", th.GoroutineID, bpname, fn.Name(), args)
+		if !hasReturnValue {
+			fmt.Println()
+		}
+	}
+	if th.Breakpoint.TraceReturn {
+		retVals := make([]string, 0, len(th.ReturnValues))
+		for _, v := range th.ReturnValues {
+			retVals = append(retVals, v.SinglelineString())
+		}
+		fmt.Fprintf(os.Stderr, " => (%s)\n", strings.Join(retVals, ","))
+	}
+	if th.Breakpoint.TraceReturn || !hasReturnValue {
+		if th.BreakpointInfo.Stacktrace != nil {
+			fmt.Fprintf(os.Stderr, "\tStack:\n")
+			printStack(th.BreakpointInfo.Stacktrace, "\t\t", false)
 		}
 	}
 }

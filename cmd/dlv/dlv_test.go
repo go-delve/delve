@@ -23,7 +23,6 @@ import (
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/go-delve/delve/service/rpc2"
-
 	"golang.org/x/tools/go/packages"
 )
 
@@ -556,4 +555,83 @@ func TestDap(t *testing.T) {
 	}
 	client.Close()
 	cmd.Wait()
+}
+
+func TestTrace(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	expected := "> goroutine(1): main.foo(99, 9801) => (9900)\n"
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", filepath.Join(fixtures, "issue573.go"), "foo")
+	rdr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Start()
+	if err != nil {
+		t.Fatalf("error running trace: %v", err)
+	}
+	output, err := ioutil.ReadAll(rdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(output) != expected {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, string(output))
+	}
+	cmd.Wait()
+}
+
+func TestTraceBreakpointExists(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	fixtures := protest.FindFixturesDir()
+	// We always set breakpoints on some runtime functions at startup, so this would return with
+	// a breakpoints exists error.
+	// TODO: Perhaps we shouldn't be setting these default breakpoints in trace mode, however.
+	cmd := exec.Command(dlvbin, "trace", filepath.Join(fixtures, "issue573.go"), "runtime.*")
+	rdr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Start()
+	if err != nil {
+		t.Fatalf("error running trace: %v", err)
+	}
+	defer cmd.Wait()
+
+	output, err := ioutil.ReadAll(rdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(output, []byte("Breakpoint exists")) {
+		t.Fatal("Breakpoint exists errors should be ignored")
+	}
+}
+
+func TestTracePrintStack(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--stack", "2", filepath.Join(fixtures, "issue573.go"), "foo")
+	rdr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Start()
+	if err != nil {
+		t.Fatalf("error running trace: %v", err)
+	}
+	defer cmd.Wait()
+
+	output, err := ioutil.ReadAll(rdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output, []byte("Stack:")) && !bytes.Contains(output, []byte("main.main")) {
+		t.Fatal("stacktrace not printed")
+	}
 }
