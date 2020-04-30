@@ -252,7 +252,10 @@ that package instead.`,
 The trace sub command will set a tracepoint on every function matching the
 provided regular expression and output information when tracepoint is hit.  This
 is useful if you do not want to begin an entire debug session, but merely want
-to know what functions your process is executing.`,
+to know what functions your process is executing.
+
+The output of the trace sub command is printed to stderr, so if you would like to
+only see the output of the trace operations you can redirect stdout.`,
 		Run: traceCmd,
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
