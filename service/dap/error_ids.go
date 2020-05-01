@@ -4,6 +4,7 @@ package dap
 const (
 	UnsupportedCommand int = 9999
 	InternalError      int = 8888
+	NotYetImplemented  int = 7777
 
 	// The values below come from the vscode-go debug adaptor.
 	// Although the spec says they should be unique, the adaptor

@@ -168,15 +168,15 @@ func TestStopOnEntry(t *testing.T) {
 		// 8 >> stackTrace, << stackTrace
 		client.StackTraceRequest()
 		stResp := client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Message != "Unsupported command" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Message=\"Unsupported command\"", stResp)
+		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Message != "Not yet implemented" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Message=\"Not yet implemented\"", stResp)
 		}
 
 		// 9 >> stackTrace, << stackTrace
 		client.StackTraceRequest()
 		stResp = client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Message != "Unsupported command" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Message=\"Unsupported command\"", stResp)
+		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Message != "Not yet implemented" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Message=\"Not yet implemented\"", stResp)
 		}
 
 		// 10 >> continue, << continue, << terminated
@@ -363,6 +363,147 @@ func TestLaunchTestRequest(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "test", "program": testdir, "output": "__mytestdir"})
 		})
+	})
+}
+
+func TestUnupportedCommandResponses(t *testing.T) {
+	var got *dap.ErrorResponse
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		seqCnt := 1
+		expectUnsupportedCommand := func(cmd string) {
+			t.Helper()
+			got = client.ExpectUnsupportedCommandErrorResponse(t)
+			if got.RequestSeq != seqCnt || got.Command != cmd {
+				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
+			}
+			seqCnt++
+		}
+
+		client.RestartFrameRequest()
+		expectUnsupportedCommand("restartFrame")
+
+		client.GotoRequest()
+		expectUnsupportedCommand("goto")
+
+		client.SourceRequest()
+		expectUnsupportedCommand("source")
+
+		client.TerminateThreadsRequest()
+		expectUnsupportedCommand("terminateThreads")
+
+		client.StepInTargetsRequest()
+		expectUnsupportedCommand("stepInTargets")
+
+		client.GotoTargetsRequest()
+		expectUnsupportedCommand("gotoTargets")
+
+		client.CompletionsRequest()
+		expectUnsupportedCommand("completions")
+
+		client.ExceptionInfoRequest()
+		expectUnsupportedCommand("exceptionInfo")
+
+		client.DataBreakpointInfoRequest()
+		expectUnsupportedCommand("dataBreakpointInfo")
+
+		client.SetDataBreakpointsRequest()
+		expectUnsupportedCommand("setDataBreakpoints")
+
+		client.BreakpointLocationsRequest()
+		expectUnsupportedCommand("breakpointLocations")
+
+		client.ModulesRequest()
+		expectUnsupportedCommand("modules")
+	})
+}
+
+func TestRequiredNotYetImplementedResponses(t *testing.T) {
+	var got *dap.ErrorResponse
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		seqCnt := 1
+		expectNotYetImplemented := func(cmd string) {
+			t.Helper()
+			got = client.ExpectNotYetImplementedErrorResponse(t)
+			if got.RequestSeq != seqCnt || got.Command != cmd {
+				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
+			}
+			seqCnt++
+		}
+
+		client.AttachRequest()
+		expectNotYetImplemented("attach")
+
+		client.NextRequest()
+		expectNotYetImplemented("next")
+
+		client.StepInRequest()
+		expectNotYetImplemented("stepIn")
+
+		client.StepOutRequest()
+		expectNotYetImplemented("stepOut")
+
+		client.PauseRequest()
+		expectNotYetImplemented("pause")
+
+		client.StackTraceRequest()
+		expectNotYetImplemented("stackTrace")
+
+		client.ScopesRequest()
+		expectNotYetImplemented("scopes")
+
+		client.VariablesRequest()
+		expectNotYetImplemented("variables")
+
+		client.EvaluateRequest()
+		expectNotYetImplemented("evaluate")
+	})
+}
+
+func TestOptionalNotYetImplementedResponses(t *testing.T) {
+	var got *dap.ErrorResponse
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		seqCnt := 1
+		expectNotYetImplemented := func(cmd string) {
+			t.Helper()
+			got = client.ExpectNotYetImplementedErrorResponse(t)
+			if got.RequestSeq != seqCnt || got.Command != cmd {
+				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
+			}
+			seqCnt++
+		}
+
+		client.TerminateRequest()
+		expectNotYetImplemented("terminate")
+
+		client.RestartRequest()
+		expectNotYetImplemented("restart")
+
+		client.SetFunctionBreakpointsRequest()
+		expectNotYetImplemented("setFunctionBreakpoints")
+
+		client.StepBackRequest()
+		expectNotYetImplemented("stepBack")
+
+		client.ReverseContinueRequest()
+		expectNotYetImplemented("reverseContinue")
+
+		client.SetVariableRequest()
+		expectNotYetImplemented("setVariable")
+
+		client.SetExpressionRequest()
+		expectNotYetImplemented("setExpression")
+
+		client.LoadedSourcesRequest()
+		expectNotYetImplemented("loadedSources")
+
+		client.ReadMemoryRequest()
+		expectNotYetImplemented("readMemory")
+
+		client.DisassembleRequest()
+		expectNotYetImplemented("disassemble")
+
+		client.CancelRequest()
+		expectNotYetImplemented("cancel")
 	})
 }
 
