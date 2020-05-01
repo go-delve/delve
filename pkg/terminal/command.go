@@ -263,7 +263,14 @@ When connected to a headless instance started with the --accept-multiclient, pas
 
 	[goroutine <n>] [frame <m>] list [<linespec>]
 
-Show source around current point or provided linespec.`},
+Show source around current point or provided linespec.
+
+For example:
+
+	frame 1 list 69
+	list testvariables.go:10000
+	list main.main:30
+	list 40`},
 		{aliases: []string{"stack", "bt"}, allowedPrefixes: onPrefix, group: stackCmds, cmdFn: stackCommand, helpMsg: `Print stack trace.
 
 	[goroutine <n>] [frame <m>] stack [<depth>] [-full] [-offsets] [-defer] [-a <n>] [-adepth <depth>] [-mode <mode>]
