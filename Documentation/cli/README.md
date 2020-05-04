@@ -348,6 +348,13 @@ Show source code.
 
 Show source around current point or provided linespec.
 
+For example:
+
+	frame 1 list 69
+	list testvariables.go:10000
+	list main.main:30
+	list 40
+
 Aliases: ls l
 
 ## locals
