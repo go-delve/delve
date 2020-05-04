@@ -293,7 +293,8 @@ func TestGeneratedDoc(t *testing.T) {
 	defer protest.SafeRemoveAll(tempDir)
 	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
 	cmd.Dir = projectRoot()
-	cmd.Run()
+	err = cmd.Run()
+	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
 	entries, err := ioutil.ReadDir(tempDir)
 	assertNoError(err, t, "ReadDir")
 	for _, doc := range entries {
