@@ -561,14 +561,15 @@ func TestTrace(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := "> goroutine(1): main.foo(99, 9801) => (9900)\n"
+	expected := []byte("> goroutine(1): main.foo(99, 9801) => (9900)\n")
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", filepath.Join(fixtures, "issue573.go"), "foo")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
 	rdr, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
 	err = cmd.Start()
 	if err != nil {
 		t.Fatalf("error running trace: %v", err)
@@ -577,8 +578,8 @@ func TestTrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(output) != expected {
-		t.Fatalf("expected:\n%s\ngot:\n%s", expected, string(output))
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
 	cmd.Wait()
 }
@@ -591,11 +592,12 @@ func TestTraceBreakpointExists(t *testing.T) {
 	// We always set breakpoints on some runtime functions at startup, so this would return with
 	// a breakpoints exists error.
 	// TODO: Perhaps we shouldn't be setting these default breakpoints in trace mode, however.
-	cmd := exec.Command(dlvbin, "trace", filepath.Join(fixtures, "issue573.go"), "runtime.*")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "runtime.*")
 	rdr, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
 	err = cmd.Start()
 	if err != nil {
 		t.Fatalf("error running trace: %v", err)
@@ -616,11 +618,12 @@ func TestTracePrintStack(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", "--stack", "2", filepath.Join(fixtures, "issue573.go"), "foo")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), "--stack", "2", filepath.Join(fixtures, "issue573.go"), "foo")
 	rdr, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
 	err = cmd.Start()
 	if err != nil {
 		t.Fatalf("error running trace: %v", err)
