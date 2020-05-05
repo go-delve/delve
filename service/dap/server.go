@@ -434,13 +434,33 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	stop, ok := request.Arguments["stopOnEntry"]
 	s.stopOnEntry = ok && stop == true
 
-	// TODO(polina): support target args
-	s.config.ProcessArgs = []string{program}
+	var targetArgs []string
+	args, ok := request.Arguments["args"]
+	if ok {
+		argsParsed, ok := args.([]interface{})
+		if !ok {
+			s.sendErrorResponse(request.Request,
+				FailedToContinue, "Failed to launch",
+				fmt.Sprintf("'args' attribute '%v' in debug configuration is not an array.", args))
+			return
+		}
+		for _, arg := range argsParsed {
+			argParsed, ok := arg.(string)
+			if !ok {
+				s.sendErrorResponse(request.Request,
+					FailedToContinue, "Failed to launch",
+					fmt.Sprintf("value '%v' in 'args' attribute in debug configuration is not a string.", arg))
+				return
+			}
+			targetArgs = append(targetArgs, argParsed)
+		}
+	}
+
+	s.config.ProcessArgs = append([]string{program}, targetArgs...)
 	s.config.Debugger.WorkingDir = filepath.Dir(program)
 
-	config := s.config.Debugger
 	var err error
-	if s.debugger, err = debugger.New(&config, s.config.ProcessArgs); err != nil {
+	if s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs); err != nil {
 		s.sendErrorResponse(request.Request,
 			FailedToContinue, "Failed to launch", err.Error())
 		return
