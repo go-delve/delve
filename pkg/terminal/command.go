@@ -2091,7 +2091,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 
 	if th.File == "" {
 		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
-		t.Println("=>", "no source available")
+		t.Println("=>	no source available")
 		return
 	}
 
@@ -2240,9 +2240,10 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 		s = 1
 	}
 
+	var linesToPrint strings.Builder
 	for i := s; i <= l+5; i++ {
 		if !buf.Scan() {
-			return nil
+			break
 		}
 
 		var prefix string
@@ -2253,10 +2254,11 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 			}
 		}
 
-		prefix = fmt.Sprintf("%s%4d:\t", prefix, i)
-		t.Println(prefix, buf.Text())
+		linesToPrint.WriteString(fmt.Sprintf("%s%4d:\t%s\n", prefix, i, buf.Text()))
 	}
-	return nil
+
+	err = t.PrintHighlightedCode(linesToPrint.String())
+	return err
 }
 
 // ExitRequestError is returned when the user

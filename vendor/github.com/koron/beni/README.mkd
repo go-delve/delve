@@ -1,0 +1,38 @@
+# Beni code highlighter.
+
+Beni is **Pygments** compatible code highlighter, written by pure golang.
+And it refer **rouge** for Ruby.
+
+
+## Instruction
+
+### Install
+
+Build on working directory, it get ./beni executable.
+
+    $ go build ./cmd/beni
+
+Or you can install by `go get`
+
+    $ go get github.com/koron/beni/cmd/beni
+
+### Let's Try!
+
+Run this command on your xterm (256 colors enabled terminal).
+
+    $ ./beni ./cmd/beni/main.go
+
+or
+
+    $ ./beni /path/to/your/code
+
+You'll get colorful syntax highlighted codes.
+
+
+## Restriction
+
+*   Limited lexer (language) and buggy: only Go and Java
+*   Limited theme: only base16
+*   Limited formatter: only Terminal256 and HTML
+
+I'm glad and welcome your contributions!

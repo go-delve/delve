@@ -589,6 +589,13 @@ func TestIssue387(t *testing.T) {
 
 func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end int) {
 	outstr := term.MustExec(listcmd)
+
+	// If output string is in ANSI format, convert it
+	if strings.Contains(listcmd, "list") {
+		r := regexp.MustCompile(`(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]`)
+		outstr = r.ReplaceAllString(outstr, "")
+	}
+
 	lines := strings.Split(outstr, "\n")
 
 	t.Logf("%q: %q", listcmd, outstr)

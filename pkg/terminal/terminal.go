@@ -11,6 +11,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/koron/beni"
 	"github.com/peterh/liner"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -23,25 +24,6 @@ const (
 	historyFile                 string = ".dbg_history"
 	terminalHighlightEscapeCode string = "\033[%2dm"
 	terminalResetEscapeCode     string = "\033[0m"
-)
-
-const (
-	ansiBlack     = 30
-	ansiRed       = 31
-	ansiGreen     = 32
-	ansiYellow    = 33
-	ansiBlue      = 34
-	ansiMagenta   = 35
-	ansiCyan      = 36
-	ansiWhite     = 37
-	ansiBrBlack   = 90
-	ansiBrRed     = 91
-	ansiBrGreen   = 92
-	ansiBrYellow  = 93
-	ansiBrBlue    = 94
-	ansiBrMagenta = 95
-	ansiBrCyan    = 96
-	ansiBrWhite   = 97
 )
 
 // Term represents the terminal running dlv.
@@ -79,6 +61,10 @@ func New(client service.Client, conf *config.Config) *Term {
 		conf = &config.Config{}
 	}
 
+	if conf.SourceCodeStyle == "" {
+		conf.SourceCodeStyle = "base16"
+	}
+
 	var w io.Writer
 
 	dumb := strings.ToLower(os.Getenv("TERM")) == "dumb"
@@ -86,13 +72,6 @@ func New(client service.Client, conf *config.Config) *Term {
 		w = os.Stdout
 	} else {
 		w = getColorableWriter()
-	}
-
-	if (conf.SourceListLineColor > ansiWhite &&
-		conf.SourceListLineColor < ansiBrBlack) ||
-		conf.SourceListLineColor < ansiBlack ||
-		conf.SourceListLineColor > ansiBrWhite {
-		conf.SourceListLineColor = ansiBlue
 	}
 
 	t := &Term{
@@ -268,12 +247,13 @@ func (t *Term) Run() (int, error) {
 }
 
 // Println prints a line to the terminal.
-func (t *Term) Println(prefix, str string) {
-	if !t.dumb {
-		terminalColorEscapeCode := fmt.Sprintf(terminalHighlightEscapeCode, t.conf.SourceListLineColor)
-		prefix = fmt.Sprintf("%s%s%s", terminalColorEscapeCode, prefix, terminalResetEscapeCode)
-	}
-	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
+func (t *Term) Println(str string) {
+	fmt.Fprintf(t.stdout, "%s\n", str)
+}
+
+func (t *Term) PrintHighlightedCode(code string) error {
+	err := beni.Highlight(strings.NewReader(code), t.stdout, "Go", t.conf.SourceCodeStyle, "Terminal256")
+	return err
 }
 
 // Substitutes directory to source file.

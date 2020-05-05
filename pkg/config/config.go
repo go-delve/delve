@@ -53,9 +53,9 @@ type Config struct {
 	// expression for its argument.
 	ShowLocationExpr bool `yaml:"show-location-expr"`
 
-	// Source list line-number color (3/4 bit color codes as defined
-	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors)
-	SourceListLineColor int `yaml:"source-list-line-color"`
+	// Style to be used to highlight source code as defined
+	// here: https://godoc.org/github.com/alecthomas/chroma#Style
+	SourceCodeStyle string `yaml:"source-code-template"`
 
 	// DebugFileDirectories is the list of directories Delve will use
 	// in order to resolve external debug info files.
@@ -125,6 +125,10 @@ func LoadConfig() *Config {
 
 	if len(c.DebugInfoDirectories) == 0 {
 		c.DebugInfoDirectories = []string{"/usr/lib/debug/.build-id"}
+	}
+
+	if c.SourceCodeStyle == "" {
+		c.SourceCodeStyle = "base16"
 	}
 
 	return &c
@@ -199,10 +203,10 @@ func writeDefaultConfig(f *os.File) error {
 # This is the default configuration file. Available options are provided, but disabled.
 # Delete the leading hash mark to enable an item.
 
-# Uncomment the following line and set your preferred ANSI foreground color
-# for source line numbers in the (list) command (if unset, default is 34,
-# dark blue) See https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
-# source-list-line-color: 34
+# Uncomment the following line and set your preferred syntax highlight style
+# for printed source code on CLI. See https://godoc.org/github.com/alecthomas/chroma#Style
+# to see all available options.
+source-code-template: "base16"
 
 # Provided aliases will be added to the default aliases for a given command.
 aliases:

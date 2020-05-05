@@ -9,6 +9,7 @@ require (
 	github.com/google/go-dap v0.2.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/koron/beni v0.0.0-20150126044346-f85aa8e52ecf
 	github.com/mattn/go-colorable v0.0.0-20170327083344-ded68f7a9561
 	github.com/mattn/go-isatty v0.0.3
 	github.com/peterh/liner v0.0.0-20170317030525-88609521dc4b
