@@ -20,8 +20,6 @@ github.com/peterh/liner
 github.com/pkg/profile
 # github.com/russross/blackfriday v1.5.2
 github.com/russross/blackfriday
-# github.com/sirupsen/logrus v0.0.0-20180523074243-ea8897e79973
-github.com/sirupsen/logrus
 # github.com/spf13/cobra v0.0.0-20170417170307-b6cb39589372
 github.com/spf13/cobra
 github.com/spf13/cobra/doc
@@ -36,8 +34,6 @@ go.starlark.net/syntax
 # golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 golang.org/x/arch/arm64/arm64asm
 golang.org/x/arch/x86/x86asm
-# golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
-golang.org/x/crypto/ssh/terminal
 # golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb
 golang.org/x/sys/unix
 golang.org/x/sys/windows

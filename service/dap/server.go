@@ -24,7 +24,6 @@ import (
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
-	"github.com/sirupsen/logrus"
 )
 
 // Server implements a DAP server that can accept a single client for
@@ -51,7 +50,7 @@ type Server struct {
 	// debugger is the underlying debugger service.
 	debugger *debugger.Debugger
 	// log is used for structured logging.
-	log *logrus.Entry
+	log *logflags.Logger
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
 	// binaryToRemove is the compiled binary to be removed on disconnect.

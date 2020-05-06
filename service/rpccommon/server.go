@@ -22,7 +22,6 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc1"
 	"github.com/go-delve/delve/service/rpc2"
-	"github.com/sirupsen/logrus"
 )
 
 // ServerImpl implements a JSON-RPC server that can switch between two
@@ -42,7 +41,7 @@ type ServerImpl struct {
 	s2 *rpc2.RPCServer
 	// maps of served methods, one for each supported API.
 	methodMaps []map[string]*methodType
-	log        *logrus.Entry
+	log        *logflags.Logger
 }
 
 type RPCCallback struct {
@@ -183,7 +182,7 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 // two signatures:
 //  func (rcvr ReceiverType) Method(in InputType, out *ReplyType) error
 //  func (rcvr ReceiverType) Method(in InputType, cb service.RPCCallback)
-func suitableMethods(rcvr interface{}, methods map[string]*methodType, log *logrus.Entry) {
+func suitableMethods(rcvr interface{}, methods map[string]*methodType, log *logflags.Logger) {
 	typ := reflect.TypeOf(rcvr)
 	rcvrv := reflect.ValueOf(rcvr)
 	sname := reflect.Indirect(rcvrv).Type().Name()

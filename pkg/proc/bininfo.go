@@ -31,7 +31,6 @@ import (
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/hashicorp/golang-lru/simplelru"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -102,7 +101,7 @@ type BinaryInfo struct {
 	// function starts.
 	inlinedCallLines map[fileLine][]uint64
 
-	logger *logrus.Entry
+	logger *logflags.Logger
 }
 
 var (
@@ -1554,10 +1553,9 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 			if hasLineInfo && lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				var logfn func(string, ...interface{})
 				if logflags.DebugLineErrors() {
-					logger := logrus.New().WithFields(logrus.Fields{"layer": "dwarf-line"})
-					logger.Logger.Level = logrus.DebugLevel
+					logger := logflags.DebugLineErrorsLogger()
 					logfn = func(fmt string, args ...interface{}) {
-						logger.Printf(fmt, args)
+						logger.Infof(fmt, args)
 					}
 				}
 				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), logfn, image.StaticBase, bi.GOOS == "windows", bi.Arch.PtrSize())

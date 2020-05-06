@@ -11,9 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 var debugger = false
@@ -27,16 +26,11 @@ var minidump = false
 
 var logOut io.WriteCloser
 
-func makeLogger(flag bool, fields logrus.Fields) *logrus.Entry {
-	logger := logrus.New().WithFields(fields)
-	logger.Logger.Formatter = &textFormatter{}
-	if logOut != nil {
-		logger.Logger.Out = logOut
-	}
-	logger.Logger.Level = logrus.DebugLevel
-	if !flag {
-		logger.Logger.Level = logrus.ErrorLevel
-	}
+type Fields map[string]interface{}
+
+func MakeLogger(flag bool, fields Fields) *Logger {
+	logger := &Logger{fields: fields}
+	logger.everything = flag
 	return logger
 }
 
@@ -47,8 +41,8 @@ func GdbWire() bool {
 }
 
 // GdbWireLogger returns a configured logger for the gdbserial wire protocol.
-func GdbWireLogger() *logrus.Entry {
-	return makeLogger(gdbWire, logrus.Fields{"layer": "gdbconn"})
+func GdbWireLogger() *Logger {
+	return MakeLogger(gdbWire, Fields{"layer": "gdbconn"})
 }
 
 // Debugger returns true if the debugger package should log.
@@ -57,8 +51,13 @@ func Debugger() bool {
 }
 
 // DebuggerLogger returns a logger for the debugger package.
-func DebuggerLogger() *logrus.Entry {
-	return makeLogger(debugger, logrus.Fields{"layer": "debugger"})
+func DebuggerLogger() *Logger {
+	return MakeLogger(debugger, Fields{"layer": "debugger"})
+}
+
+// DebugLineErrorsLogger returns a logger for debug_line parsing
+func DebugLineErrorsLogger() *Logger {
+	return MakeLogger(debugLineErrors, Fields{"layer": "dwarf-line"})
 }
 
 // LLDBServerOutput returns true if the output of the LLDB server should be
@@ -79,8 +78,8 @@ func RPC() bool {
 }
 
 // RPCLogger returns a logger for RPC messages.
-func RPCLogger() *logrus.Entry {
-	return makeLogger(rpc, logrus.Fields{"layer": "rpc"})
+func RPCLogger() *Logger {
+	return MakeLogger(rpc, Fields{"layer": "rpc"})
 }
 
 // DAP returns true if dap package should log.
@@ -89,8 +88,8 @@ func DAP() bool {
 }
 
 // DAPLogger returns a logger for dap package.
-func DAPLogger() *logrus.Entry {
-	return makeLogger(dap, logrus.Fields{"layer": "dap"})
+func DAPLogger() *Logger {
+	return MakeLogger(dap, Fields{"layer": "dap"})
 }
 
 // FnCall returns true if the function call protocol should be logged.
@@ -98,8 +97,8 @@ func FnCall() bool {
 	return fnCall
 }
 
-func FnCallLogger() *logrus.Entry {
-	return makeLogger(fnCall, logrus.Fields{"layer": "proc", "kind": "fncall"})
+func FnCallLogger() *Logger {
+	return MakeLogger(fnCall, Fields{"layer": "proc", "kind": "fncall"})
 }
 
 // Minidump returns true if the minidump loader should be logged.
@@ -107,8 +106,8 @@ func Minidump() bool {
 	return minidump
 }
 
-func MinidumpLogger() *logrus.Entry {
-	return makeLogger(minidump, logrus.Fields{"layer": "core", "kind": "minidump"})
+func MinidumpLogger() *Logger {
+	return MakeLogger(minidump, Fields{"layer": "core", "kind": "minidump"})
 }
 
 // WriteDAPListeningMessage writes the "DAP server listening" message in dap mode.
@@ -122,7 +121,7 @@ func WriteAPIListeningMessage(addr string) {
 }
 
 func writeListeningMessage(server string, addr string) {
-        msg := fmt.Sprintf("%s server listening at: %s", server, addr)
+	msg := fmt.Sprintf("%s server listening at: %s", server, addr)
 	if logOut != nil {
 		fmt.Fprintln(logOut, msg)
 	} else {
@@ -194,38 +193,87 @@ func Close() {
 	}
 }
 
-// textFormatter is a simplified version of logrus.TextFormatter that
-// doesn't make logs unreadable when they are output to a text file or to a
-// terminal that doesn't support colors.
-type textFormatter struct {
+var bufferPool *sync.Pool = func() *sync.Pool {
+	return &sync.Pool{
+		New: func() interface{} {
+			return new(bytes.Buffer)
+		},
+	}
+}()
+
+type Logger struct {
+	fields     Fields
+	everything bool // there are only two log levels, everything or only errors
+	mu         sync.Mutex
 }
 
-func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	var b *bytes.Buffer
-	if entry.Buffer != nil {
-		b = entry.Buffer
-	} else {
-		b = &bytes.Buffer{}
+func (logger *Logger) Debugf(fmtstr string, args ...interface{}) {
+	if logger.everything {
+		logger.log("debug", true, fmtstr, args...)
 	}
+}
 
-	keys := make([]string, 0, len(entry.Data))
-	for k := range entry.Data {
+func (logger *Logger) Debug(args ...interface{}) {
+	if logger.everything {
+		logger.log("debug", false, "%v", args...) // the "%v" only exists to shut up 'go vet', it does nothing.
+	}
+}
+
+func (logger *Logger) Warnf(fmtstr string, args ...interface{}) {
+	if logger.everything {
+		logger.log("warning", true, fmtstr, args...)
+	}
+}
+
+func (logger *Logger) Warn(args ...interface{}) {
+	if logger.everything {
+		logger.log("warning", false, "%v", args...) // the "%v" only exists to shut up 'go vet', it does nothing.
+	}
+}
+
+func (logger *Logger) Infof(fmtstr string, args ...interface{}) {
+	if logger.everything {
+		logger.log("info", true, fmtstr, args...)
+	}
+}
+
+func (logger *Logger) Info(args ...interface{}) {
+	if logger.everything {
+		logger.log("info", false, "%v", args...) // the "%v" only exists to shut up 'go vet', it does nothing.
+	}
+}
+
+func (logger *Logger) Errorf(fmtstr string, args ...interface{}) {
+	logger.log("error", true, fmtstr, args...)
+}
+
+func (logger *Logger) Error(args ...interface{}) {
+	logger.log("error", false, "%v", args...) // the "%v" only exists to shut up 'go vet', it does nothing.
+}
+
+func (logger *Logger) log(level string, isfmt bool, fmtstr string, args ...interface{}) {
+	b := bufferPool.Get().(*bytes.Buffer)
+	defer bufferPool.Put(b)
+	b.Reset()
+
+	keys := make([]string, 0, len(logger.fields))
+	for k := range logger.fields {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	b.WriteString(entry.Time.Format(time.RFC3339))
+	b.WriteString(time.Now().Format(time.RFC3339))
 	b.WriteByte(' ')
-	b.WriteString(entry.Level.String())
+	b.WriteString(level)
 	b.WriteByte(' ')
 	for i, key := range keys {
 		b.WriteString(key)
 		b.WriteByte('=')
-		stringVal, ok := entry.Data[key].(string)
+		stringVal, ok := logger.fields[key].(string)
 		if !ok {
-			stringVal = fmt.Sprint(entry.Data[key])
+			stringVal = fmt.Sprint(logger.fields[key])
 		}
-		if f.needsQuoting(stringVal) {
+		if needsQuoting(stringVal) {
 			fmt.Fprintf(b, "%q", stringVal)
 		} else {
 			b.WriteString(stringVal)
@@ -236,12 +284,22 @@ func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 			b.WriteByte(' ')
 		}
 	}
-	b.WriteString(entry.Message)
+	if isfmt {
+		fmt.Fprintf(b, fmtstr, args...)
+	} else {
+		fmt.Fprint(b, args...)
+	}
 	b.WriteByte('\n')
-	return b.Bytes(), nil
+	logger.mu.Lock()
+	if logOut != nil {
+		_, _ = logOut.Write(b.Bytes())
+	} else {
+		_, _ = os.Stderr.Write(b.Bytes())
+	}
+	logger.mu.Unlock()
 }
 
-func (f *textFormatter) needsQuoting(text string) bool {
+func needsQuoting(text string) bool {
 	for _, ch := range text {
 		if !((ch >= 'a' && ch <= 'z') ||
 			(ch >= 'A' && ch <= 'Z') ||
