@@ -706,7 +706,7 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-func (s *Server) sendErrorResponse(request dap.Request, id int, summary string, details string) {
+func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details string) {
 	er := &dap.ErrorResponse{}
 	er.Type = "response"
 	er.Command = request.Command
