@@ -585,7 +585,7 @@ func TestOnPrefixLocals(t *testing.T) {
 	})
 }
 
-func countOccurrences(s string, needle string) int {
+func countOccurrences(s, needle string) int {
 	count := 0
 	for {
 		idx := strings.Index(s, needle)

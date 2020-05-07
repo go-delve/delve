@@ -1188,10 +1188,7 @@ func (c *Commands) revCmd(t *Term, ctx callContext, args string) error {
 	}
 
 	ctx.Prefix = revPrefix
-	if err := c.CallWithContext(args, t, ctx); err != nil {
-		return err
-	}
-	return nil
+	return c.CallWithContext(args, t, ctx)
 }
 
 func (c *Commands) next(t *Term, ctx callContext, args string) error {
@@ -1423,7 +1420,9 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 		}
 		requestedBp.Addr = loc.PC
 		requestedBp.Addrs = loc.PCs
-		requestedBp.LoadArgs = &ShortLoadConfig
+		if tracepoint {
+			requestedBp.LoadArgs = &ShortLoadConfig
+		}
 
 		bp, err := t.client.CreateBreakpoint(requestedBp)
 		if err != nil {
@@ -1434,19 +1433,24 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 	}
 
 	if tracepoint && shouldSetReturnBreakpoints && locs[0].Function != nil {
-		addrs, err := t.client.(*rpc2.RPCClient).FunctionReturnLocations(locs[0].Function.Name())
-		if err != nil {
-			return err
-		}
-		for i := range addrs {
-			_, err = t.client.CreateBreakpoint(&api.Breakpoint{
-				Addr:        addrs[i],
-				TraceReturn: true,
-				Line:        -1,
-				LoadArgs:    &ShortLoadConfig,
-			})
+		for i := range locs {
+			if locs[i].Function == nil {
+				continue
+			}
+			addrs, err := t.client.(*rpc2.RPCClient).FunctionReturnLocations(locs[0].Function.Name())
 			if err != nil {
 				return err
+			}
+			for j := range addrs {
+				_, err = t.client.CreateBreakpoint(&api.Breakpoint{
+					Addr:        addrs[j],
+					TraceReturn: true,
+					Line:        -1,
+					LoadArgs:    &ShortLoadConfig,
+				})
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -1552,7 +1556,7 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
-	fmt.Printf(api.PrettyExamineMemory(uintptr(address), memArea, priFmt))
+	fmt.Print(api.PrettyExamineMemory(uintptr(address), memArea, priFmt))
 	return nil
 }
 
@@ -2131,7 +2135,6 @@ func printcontextLocation(loc api.Location) {
 	if loc.Function != nil && loc.Function.Optimized {
 		fmt.Println(optimizedFunctionWarning)
 	}
-	return
 }
 
 func printReturnValues(th *api.Thread) {
