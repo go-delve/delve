@@ -1077,7 +1077,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 
 	funcs := []string{}
 	for _, f := range d.target.BinInfo().Functions {
-		if regex.Match([]byte(f.Name)) {
+		if regex.MatchString(f.Name) {
 			funcs = append(funcs, f.Name)
 		}
 	}

@@ -98,7 +98,7 @@ func Parse(locStr string) (LocationSpec, error) {
 		}
 
 	case '*':
-		return &AddrLocationSpec{rest[1:]}, nil
+		return &AddrLocationSpec{AddrExpr: rest[1:]}, nil
 
 	default:
 		return parseLocationSpecDefault(locStr, rest)
@@ -337,9 +337,8 @@ func partialPathMatch(expr, path string) bool {
 func partialPackageMatch(expr, path string) bool {
 	if len(expr) < len(path)-1 {
 		return strings.HasSuffix(path, expr) && (path[len(path)-len(expr)-1] == '/')
-	} else {
-		return expr == path
 	}
+	return expr == path
 }
 
 // AmbiguousLocationError is returned when the location spec
@@ -399,13 +398,13 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 	}
 
 	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 {
-		// if no result was found treat this locations string could be an
+		// if no result was found this locations string could be an
 		// expression that the user forgot to prefix with '*', try treating it as
 		// such.
-		addrSpec := &AddrLocationSpec{locStr}
+		addrSpec := &AddrLocationSpec{AddrExpr: locStr}
 		locs, err := addrSpec.Find(t, processArgs, scope, locStr, includeNonExecutableLines)
 		if err != nil {
-			return nil, fmt.Errorf("Location \"%s\" not found", locStr)
+			return nil, fmt.Errorf("location \"%s\" not found", locStr)
 		}
 		return locs, nil
 	} else if matching > 1 {
@@ -489,7 +488,7 @@ func regexFilterFuncs(filter string, allFuncs []proc.Function) ([]string, error)
 
 	funcs := []string{}
 	for _, f := range allFuncs {
-		if regex.Match([]byte(f.Name)) {
+		if regex.MatchString(f.Name) {
 			funcs = append(funcs, f.Name)
 		}
 	}
