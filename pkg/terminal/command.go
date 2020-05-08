@@ -22,9 +22,9 @@ import (
 	"text/tabwriter"
 
 	"github.com/cosiner/argv"
+	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
-	"github.com/go-delve/delve/service/debugger"
 )
 
 const optimizedFunctionWarning = "Warning: debugging optimized function"
@@ -1872,7 +1872,7 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 			return "", 0, false, err
 		}
 		if len(locs) > 1 {
-			return "", 0, false, debugger.AmbiguousLocationError{Location: args, CandidatesLocation: locs}
+			return "", 0, false, locspec.AmbiguousLocationError{Location: args, CandidatesLocation: locs}
 		}
 		loc := locs[0]
 		if showContext {
