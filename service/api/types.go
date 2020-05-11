@@ -141,9 +141,6 @@ type Location struct {
 	Line     int       `json:"line"`
 	Function *Function `json:"function,omitempty"`
 	PCs      []uint64  `json:"pcs,omitempty"`
-	// IsFunctionEntry is true if this location
-	// represents the location of a function.
-	IsFunctionEntry bool
 }
 
 // Stackframe describes one frame in a stack trace.

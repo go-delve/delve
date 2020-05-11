@@ -1384,40 +1384,36 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 	args := split2PartsBySpace(argstr)
 
 	requestedBp := &api.Breakpoint{}
-	locspec := ""
+	spec := ""
 	switch len(args) {
 	case 1:
-		locspec = argstr
+		spec = argstr
 	case 2:
 		if api.ValidBreakpointName(args[0]) == nil {
 			requestedBp.Name = args[0]
-			locspec = args[1]
+			spec = args[1]
 		} else {
-			locspec = argstr
+			spec = argstr
 		}
 	default:
 		return fmt.Errorf("address required")
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(ctx.Scope, locspec, true)
+	locs, err := t.client.FindLocation(ctx.Scope, spec, true)
 	if err != nil {
 		if requestedBp.Name == "" {
 			return err
 		}
 		requestedBp.Name = ""
-		locspec = argstr
+		spec = argstr
 		var err2 error
-		locs, err2 = t.client.FindLocation(ctx.Scope, locspec, true)
+		locs, err2 = t.client.FindLocation(ctx.Scope, spec, true)
 		if err2 != nil {
 			return err
 		}
 	}
-	var shouldSetReturnBreakpoints bool
 	for _, loc := range locs {
-		if loc.IsFunctionEntry {
-			shouldSetReturnBreakpoints = true
-		}
 		requestedBp.Addr = loc.PC
 		requestedBp.Addrs = loc.PCs
 		if tracepoint {
@@ -1432,6 +1428,17 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 		fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
 	}
 
+	var shouldSetReturnBreakpoints bool
+	loc, err := locspec.Parse(spec)
+	if err != nil {
+		return err
+	}
+	switch t := loc.(type) {
+	case *locspec.NormalLocationSpec:
+		shouldSetReturnBreakpoints = t.LineOffset == -1 && t.FuncBase != nil
+	case *locspec.RegexLocationSpec:
+		shouldSetReturnBreakpoints = true
+	}
 	if tracepoint && shouldSetReturnBreakpoints && locs[0].Function != nil {
 		for i := range locs {
 			if locs[i].Function == nil {
