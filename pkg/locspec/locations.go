@@ -17,32 +17,44 @@ import (
 
 const maxFindLocationCandidates = 5
 
+// LocationSpec is an interface that represents a parsed location spec string.
 type LocationSpec interface {
+	// Find returns all locations that match the location spec.
 	Find(t *proc.Target, processArgs []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error)
 }
 
+// NormalLocationSpec represents a basic location spec.
+// This can be a file:line or func:line.
 type NormalLocationSpec struct {
 	Base       string
 	FuncBase   *FuncLocationSpec
 	LineOffset int
 }
 
+// RegexLocationSpec represents a regular expression
+// location expression such as /^myfunc$/.
 type RegexLocationSpec struct {
 	FuncRegex string
 }
 
+// AddrLocationSpec represents an address when used
+// as a location spec.
 type AddrLocationSpec struct {
 	AddrExpr string
 }
 
+// OffsetLocationSpec represents a location spec that
+// is an offset of the current location (file:line).
 type OffsetLocationSpec struct {
 	Offset int
 }
 
+// LineLocationSpec represents a line number in the current file.
 type LineLocationSpec struct {
 	Line int
 }
 
+// FuncLocationSpec represents a function in the target program.
 type FuncLocationSpec struct {
 	PackageName           string
 	AbsolutePackage       bool
@@ -51,6 +63,7 @@ type FuncLocationSpec struct {
 	BaseName              string
 }
 
+// Parse will turn locStr into a parsed LocationSpec.
 func Parse(locStr string) (LocationSpec, error) {
 	rest := locStr
 
@@ -216,6 +229,7 @@ func stripReceiverDecoration(in string) string {
 	return in[2 : len(in)-1]
 }
 
+// Match will return whether the provided function matches the location spec.
 func (spec *FuncLocationSpec) Match(sym proc.Function, packageMap map[string][]string) bool {
 	if spec.BaseName != sym.BaseName() {
 		return false
@@ -251,6 +265,8 @@ func packageMatch(specPkg, symPkg string, packageMap map[string][]string) bool {
 	return partialPackageMatch(specPkg, symPkg)
 }
 
+// Find will search all functions in the target program and filter them via the
+// regex location spec. Only functions matching the regex will be returned.
 func (loc *RegexLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	funcs := scope.BinInfo.Functions
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
@@ -267,6 +283,7 @@ func (loc *RegexLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalS
 	return r, nil
 }
 
+// Find returns the locations specified via the address location spec.
 func (loc *AddrLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		addr, err := strconv.ParseInt(loc.AddrExpr, 0, 64)
@@ -274,31 +291,32 @@ func (loc *AddrLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalSc
 			return nil, fmt.Errorf("could not determine current location (scope is nil)")
 		}
 		return []api.Location{{PC: uint64(addr)}}, nil
-	} else {
-		v, err := scope.EvalExpression(loc.AddrExpr, proc.LoadConfig{FollowPointers: true})
+	}
+
+	v, err := scope.EvalExpression(loc.AddrExpr, proc.LoadConfig{FollowPointers: true})
+	if err != nil {
+		return nil, err
+	}
+	if v.Unreadable != nil {
+		return nil, v.Unreadable
+	}
+	switch v.Kind {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		addr, _ := constant.Uint64Val(v.Value)
+		return []api.Location{{PC: addr}}, nil
+	case reflect.Func:
+		fn := scope.BinInfo.PCToFunc(uint64(v.Base))
+		pc, err := proc.FirstPCAfterPrologue(t, fn, false)
 		if err != nil {
 			return nil, err
 		}
-		if v.Unreadable != nil {
-			return nil, v.Unreadable
-		}
-		switch v.Kind {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			addr, _ := constant.Uint64Val(v.Value)
-			return []api.Location{{PC: addr}}, nil
-		case reflect.Func:
-			fn := scope.BinInfo.PCToFunc(uint64(v.Base))
-			pc, err := proc.FirstPCAfterPrologue(t, fn, false)
-			if err != nil {
-				return nil, err
-			}
-			return []api.Location{{PC: pc}}, nil
-		default:
-			return nil, fmt.Errorf("wrong expression kind: %v", v.Kind)
-		}
+		return []api.Location{{PC: pc}}, nil
+	default:
+		return nil, fmt.Errorf("wrong expression kind: %v", v.Kind)
 	}
 }
 
+// FileMatch is true if the path matches the location spec.
 func (loc *NormalLocationSpec) FileMatch(path string) bool {
 	return partialPathMatch(loc.Base, path)
 }
@@ -324,6 +342,8 @@ func partialPackageMatch(expr, path string) bool {
 	}
 }
 
+// AmbiguousLocationError is returned when the location spec
+// should only return one location but returns multiple instead.
 type AmbiguousLocationError struct {
 	Location           string
 	CandidatesString   []string
@@ -343,6 +363,9 @@ func (ale AmbiguousLocationError) Error() string {
 	return fmt.Sprintf("Location \"%s\" ambiguous: %s…", ale.Location, strings.Join(candidates, ", "))
 }
 
+// Find will return a list of locations that match the given location spec.
+// This matches each other location spec that does not already have its own spec
+// implemented (such as regex, or addr).
 func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	limit := maxFindLocationCandidates
 	var candidateFiles []string
@@ -419,6 +442,7 @@ func addressesToLocation(addrs []uint64) api.Location {
 	return api.Location{PC: addrs[0], PCs: addrs}
 }
 
+// Find returns the location after adding the offset amount to the current line number.
 func (loc *OffsetLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, _ string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
@@ -439,6 +463,7 @@ func (loc *OffsetLocationSpec) Find(t *proc.Target, _ []string, scope *proc.Eval
 	return []api.Location{addressesToLocation(addrs)}, err
 }
 
+// Find will return the location at the given line in the current file.
 func (loc *LineLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, _ string, includeNonExecutableLines bool) ([]api.Location, error) {
 	if scope == nil {
 		return nil, fmt.Errorf("could not determine current location (scope is nil)")
