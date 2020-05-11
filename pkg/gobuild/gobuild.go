@@ -68,5 +68,6 @@ func gocommand(command string, args ...string) error {
 	allargs = append(allargs, args...)
 	goBuild := exec.Command("go", allargs...)
 	goBuild.Stderr = os.Stderr
+	goBuild.Stdout = os.Stdout
 	return goBuild.Run()
 }
