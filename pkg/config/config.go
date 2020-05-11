@@ -57,9 +57,22 @@ type Config struct {
 	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors)
 	SourceListLineColor int `yaml:"source-list-line-color"`
 
+	// number of lines to list above and below cursor when printfile() is
+	// called (i.e. when execution stops, listCommand is used, etc)
+	SourceListLineCount *int `yaml:"source-list-line-count,omitempty"`
+
 	// DebugFileDirectories is the list of directories Delve will use
 	// in order to resolve external debug info files.
 	DebugInfoDirectories []string `yaml:"debug-info-directories"`
+}
+
+func (c *Config) GetSourceListLineCount() int {
+	n := 5 // default value
+	lcp := c.SourceListLineCount
+	if lcp != nil && *lcp >= 0 {
+		n = *lcp
+	}
+	return n
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
@@ -203,6 +216,10 @@ func writeDefaultConfig(f *os.File) error {
 # for source line numbers in the (list) command (if unset, default is 34,
 # dark blue) See https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
 # source-list-line-color: 34
+
+# Uncomment to change the number of lines printed above and below cursor when
+# listing source code.
+# source-list-line-count: 5
 
 # Provided aliases will be added to the default aliases for a given command.
 aliases:

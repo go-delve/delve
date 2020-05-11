@@ -2227,20 +2227,22 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 		fmt.Println("Warning: listing may not match stale executable")
 	}
 
+	lineCount := t.conf.GetSourceListLineCount()
+
 	buf := bufio.NewScanner(file)
 	l := line
-	for i := 1; i < l-5; i++ {
+	for i := 1; i < l-lineCount; i++ {
 		if !buf.Scan() {
 			return nil
 		}
 	}
 
-	s := l - 5
+	s := l - lineCount
 	if s < 1 {
 		s = 1
 	}
 
-	for i := s; i <= l+5; i++ {
+	for i := s; i <= l+lineCount; i++ {
 		if !buf.Scan() {
 			return nil
 		}
