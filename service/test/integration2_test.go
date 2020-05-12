@@ -77,7 +77,7 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 			CheckGoVersion: true,
 			Packages:       []string{fixture.Source},
 			BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
-			Kind:           debugger.ExecutingGeneratedTest,
+			Kind:           debugger.ExecutingGeneratedFile,
 		},
 	})
 	if err := server.Run(); err != nil {
@@ -114,7 +114,7 @@ func TestRunWithInvalidPath(t *testing.T) {
 		APIVersion:  2,
 		Debugger: debugger.Config{
 			Backend: testBackend,
-			Kind:    debugger.ExecutingGeneratedTest,
+			Kind:    debugger.ExecutingGeneratedFile,
 		},
 	})
 	if err := server.Run(); err == nil {
