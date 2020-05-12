@@ -391,11 +391,11 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		if workingDir != "" {
 			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap; launch requests must specify full program path\n")
 		}
-		DlvArgs, TargetArgs := splitArgs(cmd, args)
-		if len(DlvArgs) > 0 {
+		dlvArgs, targetArgs := splitArgs(cmd, args)
+		if len(dlvArgs) > 0 {
 			fmt.Fprintf(os.Stderr, "Warning: debug arguments ignored with dap; specify via launch/attach request instead\n")
 		}
-		if len(TargetArgs) > 0 {
+		if len(targetArgs) > 0 {
 			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
 		}
 
