@@ -484,6 +484,10 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			}
 			createLogicalBreakpoint(p, addrs, oldBp)
 		} else {
+			// Avoid setting a breakpoint based on address when rebulding
+			if rebuild {
+				continue
+			}
 			newBp, err := p.SetBreakpoint(oldBp.Addr, proc.UserBreakpoint, nil)
 			if err != nil {
 				return nil, err
