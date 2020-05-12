@@ -61,6 +61,11 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 	argvSlice = append(argvSlice, nil)
 
 	dbp := newProcess(0)
+	defer func() {
+		if err != nil && dbp.pid != 0 {
+			_ = dbp.Detach(true)
+		}
+	}()
 	var pid int
 	dbp.execPtraceFunc(func() {
 		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
@@ -91,14 +96,12 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 				break
 			}
 			if err != couldNotGetThreadCount && err != couldNotGetThreadList {
-				_ = dbp.Detach(true)
 				return nil, err
 			}
 		}
 	}
 
 	if err := dbp.resume(); err != nil {
-		_ = dbp.Detach(true)
 		return nil, err
 	}
 
@@ -108,11 +111,9 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 
 	trapthread, err := dbp.trapWait(-1)
 	if err != nil {
-		_ = dbp.Detach(true)
 		return nil, err
 	}
 	if err := dbp.stop(nil); err != nil {
-		_ = dbp.Detach(true)
 		return nil, err
 	}
 
@@ -121,7 +122,6 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 
 	tgt, err := dbp.initialize(argv0Go, []string{})
 	if err != nil {
-		_ = dbp.Detach(true)
 		return nil, err
 	}
 

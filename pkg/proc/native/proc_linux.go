@@ -62,6 +62,11 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 	}
 
 	dbp := newProcess(0)
+	defer func() {
+		if err != nil && dbp.pid != 0 {
+			_ = dbp.Detach(true)
+		}
+	}()
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
@@ -94,12 +99,10 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 	dbp.childProcess = true
 	_, _, err = dbp.wait(process.Process.Pid, 0)
 	if err != nil {
-		_ = dbp.Detach(true)
 		return nil, fmt.Errorf("waiting for target execve failed: %s", err)
 	}
 	tgt, err := dbp.initialize(cmd[0], debugInfoDirs)
 	if err != nil {
-		_ = dbp.Detach(true)
 		return nil, err
 	}
 	return tgt, nil
