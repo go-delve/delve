@@ -442,7 +442,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	var err error
 
 	if rebuild {
-		// We cannot restart processes that we don't know how to build. If
+		// We cannot build processes that we don't know how to build. If
 		// d.config.Kind is different from ExecutingGeneratedFile that means we
 		// didn't build the binary and we are just running it
 		if d.config.Kind == ExecutingExistingFile {
