@@ -446,9 +446,10 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		// d.config.Kind is different from ExecutingGeneratedFile that means we
 		// didn't build the binary and we are just running it
 		if d.config.Kind == ExecutingExistingFile {
-			return nil, fmt.Errorf("cannot restart process Delve did not create")
+			err = gobuild.GoTestBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
+			return nil, err
 		}
-		err := gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
+		err = gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
 		if err != nil {
 			return nil, fmt.Errorf("could not rebuild process: %s", err)
 		}
