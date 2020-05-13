@@ -442,16 +442,21 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	var err error
 
 	if rebuild {
-		// We cannot build processes that we don't know how to build. If
-		// d.config.Kind is different from ExecutingGeneratedFile that means we
-		// didn't build the binary and we are just running it
-		if d.config.Kind == ExecutingExistingFile {
+		switch d.config.Kind {
+		case ExecutingGeneratedFile:
+			err = gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
+			if err != nil {
+				return nil, fmt.Errorf("could not rebuild process: %s", err)
+			}
+		case ExecutingGeneratedTest:
 			err = gobuild.GoTestBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
-			return nil, err
-		}
-		err = gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
-		if err != nil {
-			return nil, fmt.Errorf("could not rebuild process: %s", err)
+			if err != nil {
+				return nil, fmt.Errorf("could not rebuild process: %s", err)
+			}
+		default:
+			// We cannot build a process that we didn't start, because we don't know
+			// how it was build.
+			return nil, fmt.Errorf("cannot rebuild a binary")
 		}
 	}
 
