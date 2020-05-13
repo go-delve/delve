@@ -312,6 +312,20 @@ var arm64DwarfToHardware = map[int]arm64asm.Reg{
 	95: arm64asm.V31,
 }
 
+var arm64NameToDwarf = func() map[string]int {
+	r := make(map[string]int)
+	for i := 0; i <= 30; i++ {
+		r[fmt.Sprintf("x%d", i)] = i
+	}
+	r["pc"] = int(arm64DwarfIPRegNum)
+	r["lr"] = int(arm64DwarfLRRegNum)
+	r["sp"] = 31
+	for i := 0; i <= 31; i++ {
+		r[fmt.Sprintf("v%d", i)] = i + 64
+	}
+	return r
+}()
+
 func maxArm64DwarfRegister() int {
 	max := int(arm64DwarfIPRegNum)
 	for i := range arm64DwarfToHardware {
@@ -339,15 +353,9 @@ func arm64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfR
 		}
 	}
 
-	return op.DwarfRegisters{
-		StaticBase: staticBase,
-		Regs:       dregs,
-		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   arm64DwarfIPRegNum,
-		SPRegNum:   arm64DwarfSPRegNum,
-		BPRegNum:   arm64DwarfBPRegNum,
-		LRRegNum:   arm64DwarfLRRegNum,
-	}
+	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, arm64DwarfIPRegNum, arm64DwarfSPRegNum, arm64DwarfBPRegNum, arm64DwarfLRRegNum)
+	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, arm64NameToDwarf))
+	return *dr
 }
 
 func arm64AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
@@ -357,15 +365,7 @@ func arm64AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op
 	dregs[arm64DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
 	dregs[arm64DwarfLRRegNum] = op.DwarfRegisterFromUint64(lr)
 
-	return op.DwarfRegisters{
-		StaticBase: staticBase,
-		Regs:       dregs,
-		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   arm64DwarfIPRegNum,
-		SPRegNum:   arm64DwarfSPRegNum,
-		BPRegNum:   arm64DwarfBPRegNum,
-		LRRegNum:   arm64DwarfLRRegNum,
-	}
+	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, arm64DwarfIPRegNum, arm64DwarfSPRegNum, arm64DwarfBPRegNum, arm64DwarfLRRegNum)
 }
 
 func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {

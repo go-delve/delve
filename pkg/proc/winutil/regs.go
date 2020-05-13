@@ -41,7 +41,7 @@ type AMD64Registers struct {
 
 // NewAMD64Registers creates a new AMD64Registers struct from a CONTEXT
 // struct and the TEB base address of the thread.
-func NewAMD64Registers(context *CONTEXT, TebBaseAddress uint64, floatingPoint bool) *AMD64Registers {
+func NewAMD64Registers(context *CONTEXT, TebBaseAddress uint64) *AMD64Registers {
 	regs := &AMD64Registers{
 		rax:    uint64(context.Rax),
 		rbx:    uint64(context.Rbx),
@@ -67,16 +67,14 @@ func NewAMD64Registers(context *CONTEXT, TebBaseAddress uint64, floatingPoint bo
 		tls:    TebBaseAddress,
 	}
 
-	if floatingPoint {
-		regs.fltSave = &context.FltSave
-	}
+	regs.fltSave = &context.FltSave
 	regs.Context = context
 
 	return regs
 }
 
 // Slice returns the registers as a list of (name, value) pairs.
-func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
+func (r *AMD64Registers) Slice(floatingPoint bool) ([]proc.Register, error) {
 	var regs = []struct {
 		k string
 		v uint64
@@ -134,7 +132,7 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 			out = proc.AppendBytesRegister(out, fmt.Sprintf("XMM%d", i/16), r.fltSave.XmmRegisters[i:i+16])
 		}
 	}
-	return out
+	return out, nil
 }
 
 // PC returns the current program counter
@@ -325,13 +323,13 @@ func (r *AMD64Registers) Get(n int) (uint64, error) {
 }
 
 // Copy returns a copy of these registers that is guarenteed not to change.
-func (r *AMD64Registers) Copy() proc.Registers {
+func (r *AMD64Registers) Copy() (proc.Registers, error) {
 	var rr AMD64Registers
 	rr = *r
 	rr.Context = NewCONTEXT()
 	*(rr.Context) = *(r.Context)
 	rr.fltSave = &rr.Context.FltSave
-	return &rr
+	return &rr, nil
 }
 
 // M128A tracks the _M128A windows struct.

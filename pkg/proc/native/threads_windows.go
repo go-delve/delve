@@ -114,7 +114,7 @@ func (t *nativeThread) resume() error {
 func (t *nativeThread) Blocked() bool {
 	// TODO: Probably incorrect - what are the runtime functions that
 	// indicate blocking on Windows?
-	regs, err := t.Registers(false)
+	regs, err := t.Registers()
 	if err != nil {
 		return false
 	}

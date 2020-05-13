@@ -1439,7 +1439,7 @@ func setFileBreakpoint(p *proc.Target, t *testing.T, fixture protest.Fixture, li
 }
 
 func currentLocation(p *proc.Target, t *testing.T) (pc uint64, f string, ln int, fn *proc.Function) {
-	regs, err := p.CurrentThread().Registers(false)
+	regs, err := p.CurrentThread().Registers()
 	if err != nil {
 		t.Fatalf("Registers error: %v", err)
 	}

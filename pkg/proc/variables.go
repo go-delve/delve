@@ -422,7 +422,7 @@ func FindGoroutine(dbp *Target, gid int) (*G, error) {
 }
 
 func getGVariable(thread Thread) (*Variable, error) {
-	regs, err := thread.Registers(false)
+	regs, err := thread.Registers()
 	if err != nil {
 		return nil, err
 	}

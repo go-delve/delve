@@ -95,7 +95,7 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 	g, _ := GetG(thread)
 	if g == nil {
-		regs, err := thread.Registers(true)
+		regs, err := thread.Registers()
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +114,7 @@ func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 
 	bi := g.variable.bi
 	if g.Thread != nil {
-		regs, err := g.Thread.Registers(true)
+		regs, err := g.Thread.Registers()
 		if err != nil {
 			return nil, err
 		}
@@ -456,8 +456,8 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	}
 
 	if it.bi.Arch.Name == "arm64" {
-		if ret == 0 && it.regs.Regs[it.regs.LRRegNum] != nil {
-			ret = it.regs.Regs[it.regs.LRRegNum].Uint64Val
+		if ret == 0 && it.regs.Reg(it.regs.LRRegNum) != nil {
+			ret = it.regs.Reg(it.regs.LRRegNum).Uint64Val
 		}
 	}
 
@@ -666,7 +666,7 @@ func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
 	// the space occupied by pushing the return address on the stack during the
 	// CALL.
 	scope.Regs.CFA = (int64(d.variable.Addr) + d.variable.RealType.Common().ByteSize)
-	scope.Regs.Regs[scope.Regs.SPRegNum].Uint64Val = uint64(scope.Regs.CFA - int64(bi.Arch.PtrSize()))
+	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(scope.Regs.CFA - int64(bi.Arch.PtrSize()))
 
 	rdr := scope.Fn.cu.image.dwarfReader
 	rdr.Seek(scope.Fn.offset)

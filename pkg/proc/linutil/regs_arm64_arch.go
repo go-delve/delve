@@ -12,6 +12,12 @@ type ARM64Registers struct {
 	Regs     *ARM64PtraceRegs //general-purpose registers
 	Fpregs   []proc.Register  //Formatted floating point registers
 	Fpregset []byte           //holding all floating point register values
+
+	loadFpRegs func(*ARM64Registers) error
+}
+
+func NewARM64Registers(regs *ARM64PtraceRegs, loadFpRegs func(*ARM64Registers) error) *ARM64Registers {
+	return &ARM64Registers{Regs: regs, loadFpRegs: loadFpRegs}
 }
 
 // ARM64PtraceRegs is the struct used by the linux kernel to return the
@@ -25,7 +31,7 @@ type ARM64PtraceRegs struct {
 }
 
 // Slice returns the registers as a list of (name, value) pairs.
-func (r *ARM64Registers) Slice(floatingPoint bool) []proc.Register {
+func (r *ARM64Registers) Slice(floatingPoint bool) ([]proc.Register, error) {
 	var regs64 = []struct {
 		k string
 		v uint64
@@ -69,8 +75,15 @@ func (r *ARM64Registers) Slice(floatingPoint bool) []proc.Register {
 	for _, reg := range regs64 {
 		out = proc.AppendUint64Register(out, reg.k, reg.v)
 	}
-	out = append(out, r.Fpregs...)
-	return out
+	var floatLoadError error
+	if floatingPoint {
+		if r.loadFpRegs != nil {
+			floatLoadError = r.loadFpRegs(r)
+			r.loadFpRegs = nil
+		}
+		out = append(out, r.Fpregs...)
+	}
+	return out, floatLoadError
 }
 
 // PC returns the value of RIP register.
@@ -110,7 +123,14 @@ func (r *ARM64Registers) Get(n int) (uint64, error) {
 }
 
 // Copy returns a copy of these registers that is guarenteed not to change.
-func (r *ARM64Registers) Copy() proc.Registers {
+func (r *ARM64Registers) Copy() (proc.Registers, error) {
+	if r.loadFpRegs != nil {
+		err := r.loadFpRegs(r)
+		r.loadFpRegs = nil
+		if err != nil {
+			return nil, err
+		}
+	}
 	var rr ARM64Registers
 	rr.Regs = &ARM64PtraceRegs{}
 	*(rr.Regs) = *(r.Regs)
@@ -122,7 +142,7 @@ func (r *ARM64Registers) Copy() proc.Registers {
 		rr.Fpregset = make([]byte, len(r.Fpregset))
 		copy(rr.Fpregset, r.Fpregset)
 	}
-	return &rr
+	return &rr, nil
 }
 
 type ARM64PtraceFpRegs struct {

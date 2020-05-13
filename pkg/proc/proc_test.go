@@ -90,7 +90,7 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 }
 
 func getRegisters(p *proc.Target, t *testing.T) proc.Registers {
-	regs, err := p.CurrentThread().Registers(false)
+	regs, err := p.CurrentThread().Registers()
 	if err != nil {
 		t.Fatal("Registers():", err)
 	}
@@ -113,7 +113,7 @@ func assertNoError(err error, t testing.TB, s string) {
 }
 
 func currentPC(p *proc.Target, t *testing.T) uint64 {
-	regs, err := p.CurrentThread().Registers(false)
+	regs, err := p.CurrentThread().Registers()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestBreakpoint(t *testing.T) {
 		bp := setFunctionBreakpoint(p, t, "main.helloworld")
 		assertNoError(p.Continue(), t, "Continue()")
 
-		regs, err := p.CurrentThread().Registers(false)
+		regs, err := p.CurrentThread().Registers()
 		assertNoError(err, t, "Registers")
 		pc := regs.PC()
 
@@ -302,7 +302,7 @@ func TestBreakpointInSeparateGoRoutine(t *testing.T) {
 
 		assertNoError(p.Continue(), t, "Continue")
 
-		regs, err := p.CurrentThread().Registers(false)
+		regs, err := p.CurrentThread().Registers()
 		assertNoError(err, t, "Registers")
 		pc := regs.PC()
 
@@ -409,7 +409,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 		if traceTestseq2 {
 			t.Logf("initial breakpoint %v", bp)
 		}
-		regs, err := p.CurrentThread().Registers(false)
+		regs, err := p.CurrentThread().Registers()
 		assertNoError(err, t, "Registers")
 
 		f, ln := currentLineNumber(p, t)
@@ -474,7 +474,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 			}
 
 			f, ln = currentLineNumber(p, t)
-			regs, _ = p.CurrentThread().Registers(false)
+			regs, _ = p.CurrentThread().Registers()
 			pc := regs.PC()
 
 			if traceTestseq2 {
@@ -710,7 +710,7 @@ func TestRuntimeBreakpoint(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		regs, err := p.CurrentThread().Registers(false)
+		regs, err := p.CurrentThread().Registers()
 		assertNoError(err, t, "Registers")
 		pc := regs.PC()
 		f, l, _ := p.BinInfo().PCToLine(pc)
@@ -1770,7 +1770,7 @@ func TestIssue332_Part2(t *testing.T) {
 			}
 		}
 
-		regs, err := p.CurrentThread().Registers(false)
+		regs, err := p.CurrentThread().Registers()
 		assertNoError(err, t, "Registers()")
 		pc := regs.PC()
 		pcAfterPrologue := findFunctionLocation(p, t, "main.changeMe")
@@ -2502,7 +2502,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 			if ln != 10 {
 				break
 			}
-			regs, err := p.CurrentThread().Registers(false)
+			regs, err := p.CurrentThread().Registers()
 			assertNoError(err, t, "Registers()")
 			pc := regs.PC()
 			text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), pc, pc+uint64(p.BinInfo().Arch.MaxInstructionLength()))
@@ -3611,7 +3611,7 @@ func TestDisassembleGlobalVars(t *testing.T) {
 	}
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		mainfn := p.BinInfo().LookupFunc["main.main"]
-		regs, _ := p.CurrentThread().Registers(false)
+		regs, _ := p.CurrentThread().Registers()
 		text, err := proc.Disassemble(p.CurrentThread(), regs, p.Breakpoints(), p.BinInfo(), mainfn.Entry, mainfn.End)
 		assertNoError(err, t, "Disassemble")
 		found := false
@@ -4168,7 +4168,7 @@ func TestIssue1374(t *testing.T) {
 		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "getNum()", normalLoadConfig, true), t, "Call")
 		err := p.Continue()
 		if _, isexited := err.(proc.ErrProcessExited); !isexited {
-			regs, _ := p.CurrentThread().Registers(false)
+			regs, _ := p.CurrentThread().Registers()
 			f, l, _ := p.BinInfo().PCToLine(regs.PC())
 			t.Fatalf("expected process exited error got %v at %s:%d", err, f, l)
 		}

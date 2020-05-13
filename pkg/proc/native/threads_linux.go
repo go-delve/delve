@@ -72,7 +72,7 @@ func (t *nativeThread) singleStep() (err error) {
 }
 
 func (t *nativeThread) Blocked() bool {
-	regs, err := t.Registers(false)
+	regs, err := t.Registers()
 	if err != nil {
 		return false
 	}

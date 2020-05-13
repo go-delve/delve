@@ -154,21 +154,17 @@ type linuxARM64Thread struct {
 	t    *linuxPrStatusARM64
 }
 
-func (t *linuxAMD64Thread) registers(floatingPoint bool) (proc.Registers, error) {
+func (t *linuxAMD64Thread) registers() (proc.Registers, error) {
 	var r linutil.AMD64Registers
 	r.Regs = t.regs.Regs
-	if floatingPoint {
-		r.Fpregs = t.regs.Fpregs
-	}
+	r.Fpregs = t.regs.Fpregs
 	return &r, nil
 }
 
-func (t *linuxARM64Thread) registers(floatingPoint bool) (proc.Registers, error) {
+func (t *linuxARM64Thread) registers() (proc.Registers, error) {
 	var r linutil.ARM64Registers
 	r.Regs = t.regs.Regs
-	if floatingPoint {
-		r.Fpregs = t.regs.Fpregs
-	}
+	r.Fpregs = t.regs.Fpregs
 	return &r, nil
 }
 

@@ -12,18 +12,46 @@ type DwarfRegisters struct {
 	CFA       int64
 	FrameBase int64
 	ObjBase   int64
-	Regs      []*DwarfRegister
+	regs      []*DwarfRegister
 
 	ByteOrder binary.ByteOrder
 	PCRegNum  uint64
 	SPRegNum  uint64
 	BPRegNum  uint64
 	LRRegNum  uint64
+
+	FloatLoadError   error // error produced when loading floating point registers
+	loadMoreCallback func()
 }
 
 type DwarfRegister struct {
 	Uint64Val uint64
 	Bytes     []byte
+}
+
+// NewDwarfRegisters returns a new DwarfRegisters object.
+func NewDwarfRegisters(staticBase uint64, regs []*DwarfRegister, byteOrder binary.ByteOrder, pcRegNum, spRegNum, bpRegNum, lrRegNum uint64) *DwarfRegisters {
+	return &DwarfRegisters{
+		StaticBase: staticBase,
+		regs:       regs,
+		ByteOrder:  byteOrder,
+		PCRegNum:   pcRegNum,
+		SPRegNum:   spRegNum,
+		BPRegNum:   bpRegNum,
+		LRRegNum:   lrRegNum,
+	}
+}
+
+// SetLoadMoreCallback sets a callback function that will be called the
+// first time the user of regs tries to access an undefined register.
+func (regs *DwarfRegisters) SetLoadMoreCallback(fn func()) {
+	regs.loadMoreCallback = fn
+}
+
+// CurrentSize returns the current number of known registers. This number might be
+// wrong if loadMoreCallback has been set.
+func (regs *DwarfRegisters) CurrentSize() int {
+	return len(regs.regs)
 }
 
 // Uint64Val returns the uint64 value of register idx.
@@ -32,7 +60,7 @@ func (regs *DwarfRegisters) Uint64Val(idx uint64) uint64 {
 	if reg == nil {
 		return 0
 	}
-	return regs.Regs[idx].Uint64Val
+	return regs.regs[idx].Uint64Val
 }
 
 // Bytes returns the bytes value of register idx, nil if the register is not
@@ -50,12 +78,26 @@ func (regs *DwarfRegisters) Bytes(idx uint64) []byte {
 	return reg.Bytes
 }
 
+func (regs *DwarfRegisters) loadMore() {
+	if regs.loadMoreCallback == nil {
+		return
+	}
+	regs.loadMoreCallback()
+	regs.loadMoreCallback = nil
+}
+
 // Reg returns register idx or nil if the register is not defined.
 func (regs *DwarfRegisters) Reg(idx uint64) *DwarfRegister {
-	if idx >= uint64(len(regs.Regs)) {
-		return nil
+	if idx >= uint64(len(regs.regs)) {
+		regs.loadMore()
+		if idx >= uint64(len(regs.regs)) {
+			return nil
+		}
 	}
-	return regs.Regs[idx]
+	if regs.regs[idx] == nil {
+		regs.loadMore()
+	}
+	return regs.regs[idx]
 }
 
 func (regs *DwarfRegisters) PC() uint64 {
@@ -72,12 +114,20 @@ func (regs *DwarfRegisters) BP() uint64 {
 
 // AddReg adds register idx to regs.
 func (regs *DwarfRegisters) AddReg(idx uint64, reg *DwarfRegister) {
-	if idx >= uint64(len(regs.Regs)) {
+	if idx >= uint64(len(regs.regs)) {
 		newRegs := make([]*DwarfRegister, idx+1)
-		copy(newRegs, regs.Regs)
-		regs.Regs = newRegs
+		copy(newRegs, regs.regs)
+		regs.regs = newRegs
 	}
-	regs.Regs[idx] = reg
+	regs.regs[idx] = reg
+}
+
+// ClearRegisters clears all registers.
+func (regs *DwarfRegisters) ClearRegisters() {
+	regs.loadMoreCallback = nil
+	for regnum := range regs.regs {
+		regs.regs[regnum] = nil
+	}
 }
 
 func DwarfRegisterFromUint64(v uint64) *DwarfRegister {

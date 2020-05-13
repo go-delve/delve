@@ -345,21 +345,32 @@ func maxAmd64DwarfRegister() int {
 }
 
 func amd64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, maxAmd64DwarfRegister()+1)
+	dregs := initDwarfRegistersFromSlice(maxAmd64DwarfRegister(), regs, amd64NameToDwarf)
+	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, amd64DwarfIPRegNum, amd64DwarfSPRegNum, amd64DwarfBPRegNum, 0)
+	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, amd64NameToDwarf))
+	return *dr
+}
 
-	for _, reg := range regs.Slice(true) {
-		if dwarfReg, ok := amd64NameToDwarf[strings.ToLower(reg.Name)]; ok {
+func initDwarfRegistersFromSlice(maxRegs int, regs Registers, nameToDwarf map[string]int) []*op.DwarfRegister {
+	dregs := make([]*op.DwarfRegister, maxRegs+1)
+	regslice, _ := regs.Slice(false)
+	for _, reg := range regslice {
+		if dwarfReg, ok := nameToDwarf[strings.ToLower(reg.Name)]; ok {
 			dregs[dwarfReg] = reg.Reg
 		}
 	}
+	return dregs
+}
 
-	return op.DwarfRegisters{
-		StaticBase: staticBase,
-		Regs:       dregs,
-		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   amd64DwarfIPRegNum,
-		SPRegNum:   amd64DwarfSPRegNum,
-		BPRegNum:   amd64DwarfBPRegNum,
+func loadMoreDwarfRegistersFromSliceFunc(dr *op.DwarfRegisters, regs Registers, nameToDwarf map[string]int) func() {
+	return func() {
+		regslice, err := regs.Slice(true)
+		dr.FloatLoadError = err
+		for _, reg := range regslice {
+			if dwarfReg, ok := nameToDwarf[strings.ToLower(reg.Name)]; ok {
+				dr.AddReg(uint64(dwarfReg), reg.Reg)
+			}
+		}
 	}
 }
 
@@ -369,14 +380,7 @@ func amd64AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op
 	dregs[amd64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
 	dregs[amd64DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
 
-	return op.DwarfRegisters{
-		StaticBase: staticBase,
-		Regs:       dregs,
-		ByteOrder:  binary.LittleEndian,
-		PCRegNum:   amd64DwarfIPRegNum,
-		SPRegNum:   amd64DwarfSPRegNum,
-		BPRegNum:   amd64DwarfBPRegNum,
-	}
+	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, amd64DwarfIPRegNum, amd64DwarfSPRegNum, amd64DwarfBPRegNum, 0)
 }
 
 func amd64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {

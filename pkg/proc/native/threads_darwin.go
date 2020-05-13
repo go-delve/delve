@@ -87,7 +87,7 @@ func (t *nativeThread) resume() error {
 
 func (t *nativeThread) Blocked() bool {
 	// TODO(dp) cache the func pc to remove this lookup
-	regs, err := t.Registers(false)
+	regs, err := t.Registers()
 	if err != nil {
 		return false
 	}

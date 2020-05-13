@@ -16,6 +16,12 @@ type AMD64Registers struct {
 	Regs     *AMD64PtraceRegs
 	Fpregs   []proc.Register
 	Fpregset *AMD64Xstate
+
+	loadFpRegs func(*AMD64Registers) error
+}
+
+func NewAMD64Registers(regs *AMD64PtraceRegs, loadFpRegs func(*AMD64Registers) error) *AMD64Registers {
+	return &AMD64Registers{Regs: regs, loadFpRegs: loadFpRegs}
 }
 
 // AMD64PtraceRegs is the struct used by the linux kernel to return the
@@ -51,7 +57,7 @@ type AMD64PtraceRegs struct {
 }
 
 // Slice returns the registers as a list of (name, value) pairs.
-func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
+func (r *AMD64Registers) Slice(floatingPoint bool) ([]proc.Register, error) {
 	var regs = []struct {
 		k string
 		v uint64
@@ -88,10 +94,15 @@ func (r *AMD64Registers) Slice(floatingPoint bool) []proc.Register {
 	for _, reg := range regs {
 		out = proc.AppendUint64Register(out, reg.k, reg.v)
 	}
+	var floatLoadError error
 	if floatingPoint {
+		if r.loadFpRegs != nil {
+			floatLoadError = r.loadFpRegs(r)
+			r.loadFpRegs = nil
+		}
 		out = append(out, r.Fpregs...)
 	}
-	return out
+	return out, floatLoadError
 }
 
 // PC returns the value of RIP register.
@@ -278,7 +289,14 @@ func (r *AMD64Registers) Get(n int) (uint64, error) {
 }
 
 // Copy returns a copy of these registers that is guarenteed not to change.
-func (r *AMD64Registers) Copy() proc.Registers {
+func (r *AMD64Registers) Copy() (proc.Registers, error) {
+	if r.loadFpRegs != nil {
+		err := r.loadFpRegs(r)
+		r.loadFpRegs = nil
+		if err != nil {
+			return nil, err
+		}
+	}
 	var rr AMD64Registers
 	rr.Regs = &AMD64PtraceRegs{}
 	rr.Fpregset = &AMD64Xstate{}
@@ -290,7 +308,7 @@ func (r *AMD64Registers) Copy() proc.Registers {
 		rr.Fpregs = make([]proc.Register, len(r.Fpregs))
 		copy(rr.Fpregs, r.Fpregs)
 	}
-	return &rr
+	return &rr, nil
 }
 
 // AMD64PtraceFpRegs tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
