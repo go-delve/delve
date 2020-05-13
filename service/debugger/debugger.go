@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/core"
@@ -1069,7 +1070,18 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	return regexFilterFuncs(filter, d.target.BinInfo().Functions)
+	regex, err := regexp.Compile(filter)
+	if err != nil {
+		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
+	}
+
+	funcs := []string{}
+	for _, f := range d.target.BinInfo().Functions {
+		if regex.MatchString(f.Name) {
+			funcs = append(funcs, f.Name)
+		}
+	}
+	return funcs, nil
 }
 
 // Types returns all type information in the binary.
@@ -1095,21 +1107,6 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 	}
 
 	return r, nil
-}
-
-func regexFilterFuncs(filter string, allFuncs []proc.Function) ([]string, error) {
-	regex, err := regexp.Compile(filter)
-	if err != nil {
-		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
-	}
-
-	funcs := []string{}
-	for _, f := range allFuncs {
-		if regex.Match([]byte(f.Name)) {
-			funcs = append(funcs, f.Name)
-		}
-	}
-	return funcs, nil
 }
 
 // PackageVariables returns a list of package variables for the thread,
@@ -1443,14 +1440,14 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 		return nil, err
 	}
 
-	loc, err := parseLocationSpec(locStr)
+	loc, err := locspec.Parse(locStr)
 	if err != nil {
 		return nil, err
 	}
 
 	s, _ := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
 
-	locs, err := loc.Find(d, s, locStr, includeNonExecutableLines)
+	locs, err := loc.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines)
 	for i := range locs {
 		if locs[i].PC == 0 {
 			continue

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -251,7 +252,10 @@ that package instead.`,
 The trace sub command will set a tracepoint on every function matching the
 provided regular expression and output information when tracepoint is hit.  This
 is useful if you do not want to begin an entire debug session, but merely want
-to know what functions your process is executing.`,
+to know what functions your process is executing.
+
+The output of the trace sub command is printed to stderr, so if you would like to
+only see the output of the trace operations you can redirect stdout.`,
 		Run: traceCmd,
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
@@ -536,7 +540,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 				Stacktrace:   traceStackDepth,
 				LoadArgs:     &terminal.ShortLoadConfig,
 			})
-			if err != nil {
+			if err != nil && !isBreakpointExistsErr(err) {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			}
@@ -549,10 +553,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 				_, err = client.CreateBreakpoint(&api.Breakpoint{
 					Addr:        addrs[i],
 					TraceReturn: true,
+					Stacktrace:  traceStackDepth,
 					Line:        -1,
 					LoadArgs:    &terminal.ShortLoadConfig,
 				})
-				if err != nil {
+				if err != nil && !isBreakpointExistsErr(err) {
 					fmt.Fprintln(os.Stderr, err)
 					return 1
 				}
@@ -561,14 +566,14 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
 		defer t.Close()
-		err = cmds.Call("continue", t)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
+		cmds.Call("continue", t)
 		return 0
 	}()
 	os.Exit(status)
+}
+
+func isBreakpointExistsErr(err error) bool {
+	return strings.Contains(err.Error(), "Breakpoint exists")
 }
 
 func testCmd(cmd *cobra.Command, args []string) {

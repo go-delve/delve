@@ -36,8 +36,4 @@ type Config struct {
 
 	// DisconnectChan will be closed by the server when the client disconnects
 	DisconnectChan chan<- struct{}
-
-	// TTY is passed along to the target process on creation. Used to specify a
-	// TTY for that process.
-	TTY string
 }

@@ -252,8 +252,8 @@ type Variable struct {
 
 	Kind reflect.Kind `json:"kind"`
 
-	//Strings have their length capped at proc.maxArrayValues, use Len for the real length of a string
-	//Function variables will store the name of the function in this field
+	// Strings have their length capped at proc.maxArrayValues, use Len for the real length of a string
+	// Function variables will store the name of the function in this field
 	Value string `json:"value"`
 
 	// Number of elements in an array or a slice, number of keys for a map, number of struct members for a struct, length of strings

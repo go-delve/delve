@@ -1,11 +1,11 @@
-package debugger
+package locspec
 
 import (
 	"testing"
 )
 
 func parseLocationSpecNoError(t *testing.T, locstr string) LocationSpec {
-	spec, err := parseLocationSpec(locstr)
+	spec, err := Parse(locstr)
 	if err != nil {
 		t.Fatalf("Error parsing %q: %v", locstr, err)
 	}
