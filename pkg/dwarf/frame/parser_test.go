@@ -6,8 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
-
-	"github.com/pkg/profile"
 )
 
 func TestParseCIE(t *testing.T) {
@@ -42,7 +40,6 @@ func TestParseCIE(t *testing.T) {
 }
 
 func BenchmarkParse(b *testing.B) {
-	defer profile.Start(profile.CPUProfile).Stop()
 	f, err := os.Open("testdata/frame")
 	if err != nil {
 		b.Fatal(err)

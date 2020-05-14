@@ -18,8 +18,6 @@ github.com/mattn/go-colorable
 github.com/mattn/go-isatty
 # github.com/peterh/liner v0.0.0-20170317030525-88609521dc4b
 github.com/peterh/liner
-# github.com/pkg/profile v0.0.0-20170413231811-06b906832ed0
-github.com/pkg/profile
 # github.com/russross/blackfriday v1.5.2
 github.com/russross/blackfriday
 # github.com/sirupsen/logrus v1.6.0
