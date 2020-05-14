@@ -17,7 +17,6 @@ import (
 	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
-	"github.com/pkg/profile"
 )
 
 var userTestFile string
@@ -163,7 +162,6 @@ func TestDebugLinePrologueParser(t *testing.T) {
 }
 
 func BenchmarkLineParser(b *testing.B) {
-	defer profile.Start(profile.MemProfile).Stop()
 	p, err := filepath.Abs("../../../_fixtures/testnextprog")
 	if err != nil {
 		b.Fatal(err)
@@ -277,10 +275,8 @@ func runTestPCToLine(t testing.TB, lineInfos DebugLines, entries []pctolineEntry
 				t.Fatalf("Mismatch at PC %#x, expected %s:%d got %s:%d", pc, entries[i].file, entries[i].line, file, line)
 			}
 			i++
-		} else {
-			if !entries[i-1].match(file, line) {
-				t.Fatalf("Mismatch at PC %#x, expected %s:%d (from previous valid entry) got %s:%d", pc, entries[i-1].file, entries[i-1].line, file, line)
-			}
+		} else if !entries[i-1].match(file, line) {
+			t.Fatalf("Mismatch at PC %#x, expected %s:%d (from previous valid entry) got %s:%d", pc, entries[i-1].file, entries[i-1].line, file, line)
 		}
 	}
 }
