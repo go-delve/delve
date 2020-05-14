@@ -81,6 +81,12 @@ const (
 
 // BuildFixture will compile the fixture 'name' using the provided build flags.
 func BuildFixture(name string, flags BuildFlags) Fixture {
+	return BuildFixtureWithFlags(name, flags, "")
+}
+
+// BuildFixtureWithFlags will compile the fixture 'name' using the provided predefined
+// and custom build flags.
+func BuildFixtureWithFlags(name string, flags BuildFlags, andflags string) Fixture {
 	if !runningWithFixtures {
 		panic("RunTestsWithFixtures not called")
 	}
@@ -143,6 +149,9 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 		if flags&EnableDWZCompression != 0 {
 			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
 		}
+	}
+	if andflags != "" {
+		buildFlags = append(buildFlags, andflags)
 	}
 	if path != "" {
 		buildFlags = append(buildFlags, name+".go")

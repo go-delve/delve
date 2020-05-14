@@ -402,9 +402,16 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-		buildFlags, ok := request.Arguments["buildFlags"].(string)
-		if !ok {
-			buildFlags = ""
+		buildFlags := ""
+		buildFlagsArg, ok := request.Arguments["buildFlags"]
+		if ok {
+			buildFlags, ok = buildFlagsArg.(string)
+			if !ok {
+				s.sendErrorResponse(request.Request,
+					FailedToContinue, "Failed to launch",
+					fmt.Sprintf("'buildFlags' attribute '%v' in debug configuration is not a string.", buildFlagsArg))
+				return
+			}
 		}
 
 		switch mode {

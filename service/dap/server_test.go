@@ -376,6 +376,16 @@ func TestLaunchRequestWithArgs(t *testing.T) {
 	})
 }
 
+func TestLaunchRequestWithBuildFlags(t *testing.T) {
+	runTest(t, "buildflagtest", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source,
+				"buildFlags": "-ldflags '-X main.Hello=World'"})
+		})
+	})
+}
+
 func TestUnupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -586,6 +596,10 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: value '1' in 'args' attribute in debug configuration is not a string.")
 
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
+
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t))
@@ -595,6 +609,9 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "123"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
