@@ -56,6 +56,11 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 	}
 
 	dbp := newProcess(0)
+	defer func() {
+		if err != nil && dbp.pid != 0 {
+			_ = dbp.Detach(true)
+		}
+	}()
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd

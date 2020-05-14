@@ -61,6 +61,11 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 	argvSlice = append(argvSlice, nil)
 
 	dbp := newProcess(0)
+	defer func() {
+		if err != nil && dbp.pid != 0 {
+			_ = dbp.Detach(true)
+		}
+	}()
 	var pid int
 	dbp.execPtraceFunc(func() {
 		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
