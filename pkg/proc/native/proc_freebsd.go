@@ -58,7 +58,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 	dbp := newProcess(0)
 	defer func() {
 		if err != nil && dbp.pid != 0 {
-			_ = dbp.detach(true)
+			_ = dbp.Detach(true)
 		}
 	}()
 	dbp.execPtraceFunc(func() {
