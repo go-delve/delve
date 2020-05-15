@@ -366,6 +366,10 @@ func TestLaunchTestRequest(t *testing.T) {
 	})
 }
 
+// Tests that 'args' from LaunchRequest are parsed and passed to the target
+// program. The target program exits without an error on success, and
+// panics on error, causing an unexpected StoppedEvent instead of
+// Terminated Event.
 func TestLaunchRequestWithArgs(t *testing.T) {
 	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, func() {
@@ -376,6 +380,10 @@ func TestLaunchRequestWithArgs(t *testing.T) {
 	})
 }
 
+// Tests that 'buildFlags' from LaunchRequest are parsed and passed to the
+// compiler. The target program exits without an error on success, and
+// panics on error, causing an unexpected StoppedEvent instead of
+// TerminatedEvent.
 func TestLaunchRequestWithBuildFlags(t *testing.T) {
 	runTest(t, "buildflagtest", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, func() {

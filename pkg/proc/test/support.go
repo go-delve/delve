@@ -84,9 +84,10 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	return BuildFixtureWithFlags(name, flags, "")
 }
 
-// BuildFixtureWithFlags will compile the fixture 'name' using the provided predefined
-// and custom build flags.
-func BuildFixtureWithFlags(name string, flags BuildFlags, andflags string) Fixture {
+// BuildFixtureWithFlags will compile the fixture 'name' using the provided
+// a la carte build flags as well as additional freeform build flags specified as
+// a string to be passed as-is to the 'go' command.
+func BuildFixtureWithFlags(name string, flags BuildFlags, moreflags string) Fixture {
 	if !runningWithFixtures {
 		panic("RunTestsWithFixtures not called")
 	}
@@ -150,8 +151,8 @@ func BuildFixtureWithFlags(name string, flags BuildFlags, andflags string) Fixtu
 			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
 		}
 	}
-	if andflags != "" {
-		buildFlags = append(buildFlags, andflags)
+	if moreflags != "" {
+		buildFlags = append(buildFlags, moreflags)
 	}
 	if path != "" {
 		buildFlags = append(buildFlags, name+".go")
