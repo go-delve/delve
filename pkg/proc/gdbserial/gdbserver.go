@@ -1840,6 +1840,7 @@ func (r *gdbRegisters) FloatLoadError() error {
 
 // SetPC will set the value of the PC register to the given value.
 func (t *gdbThread) SetPC(pc uint64) error {
+	_, _ = t.Registers() // Registes must be loaded first
 	t.regs.setPC(pc)
 	if t.p.gcmdok {
 		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
@@ -1850,6 +1851,7 @@ func (t *gdbThread) SetPC(pc uint64) error {
 
 // SetSP will set the value of the SP register to the given value.
 func (t *gdbThread) SetSP(sp uint64) error {
+	_, _ = t.Registers() // Registes must be loaded first
 	t.regs.setSP(sp)
 	if t.p.gcmdok {
 		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
@@ -1860,6 +1862,7 @@ func (t *gdbThread) SetSP(sp uint64) error {
 
 // SetDX will set the value of the DX register to the given value.
 func (t *gdbThread) SetDX(dx uint64) error {
+	_, _ = t.Registers() // Registes must be loaded first
 	t.regs.setDX(dx)
 	if t.p.gcmdok {
 		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
