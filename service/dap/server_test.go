@@ -345,7 +345,8 @@ func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func())
 
 func TestLaunchDebugRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		// We reuse the harness that builds, but ignore the actual binary.
+		// We reuse the harness that builds, but ignore the built binary,
+		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
@@ -357,7 +358,8 @@ func TestLaunchDebugRequest(t *testing.T) {
 func TestLaunchTestRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, func() {
-			// We reuse the harness that builds, but ignore the actual binary.
+			// We reuse the harness that builds, but ignore the built binary,
+			// only relying on the source to be built in response to LaunchRequest.
 			fixtures := protest.FindFixturesDir()
 			testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
 			client.LaunchRequestWithArgs(map[string]interface{}{
@@ -387,6 +389,8 @@ func TestLaunchRequestWithArgs(t *testing.T) {
 func TestLaunchRequestWithBuildFlags(t *testing.T) {
 	runTest(t, "buildflagtest", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, func() {
+			// We reuse the harness that builds, but ignore the built binary,
+			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source,
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
