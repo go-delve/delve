@@ -345,7 +345,8 @@ func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func())
 
 func TestLaunchDebugRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		// We reuse the harness that builds, but ignore the actual binary.
+		// We reuse the harness that builds, but ignore the built binary,
+		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
@@ -357,7 +358,8 @@ func TestLaunchDebugRequest(t *testing.T) {
 func TestLaunchTestRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, func() {
-			// We reuse the harness that builds, but ignore the actual binary.
+			// We reuse the harness that builds, but ignore the built binary,
+			// only relying on the source to be built in response to LaunchRequest.
 			fixtures := protest.FindFixturesDir()
 			testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
 			client.LaunchRequestWithArgs(map[string]interface{}{
@@ -366,12 +368,32 @@ func TestLaunchTestRequest(t *testing.T) {
 	})
 }
 
+// Tests that 'args' from LaunchRequest are parsed and passed to the target
+// program. The target program exits without an error on success, and
+// panics on error, causing an unexpected StoppedEvent instead of
+// Terminated Event.
 func TestLaunchRequestWithArgs(t *testing.T) {
 	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "exec", "program": fixture.Path,
 				"args": []string{"test", "pass flag"}})
+		})
+	})
+}
+
+// Tests that 'buildFlags' from LaunchRequest are parsed and passed to the
+// compiler. The target program exits without an error on success, and
+// panics on error, causing an unexpected StoppedEvent instead of
+// TerminatedEvent.
+func TestLaunchRequestWithBuildFlags(t *testing.T) {
+	runTest(t, "buildflagtest", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, func() {
+			// We reuse the harness that builds, but ignore the built binary,
+			// only relying on the source to be built in response to LaunchRequest.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source,
+				"buildFlags": "-ldflags '-X main.Hello=World'"})
 		})
 	})
 }
@@ -586,6 +608,10 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: value '1' in 'args' attribute in debug configuration is not a string.")
 
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
+
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t))
@@ -595,6 +621,9 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "123"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
