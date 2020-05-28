@@ -22,7 +22,7 @@ names selected from this list:
 	minidump	Log minidump loading
 
 Additionally --log-dest can be used to specify where the logs should be
-written. 
+written.
 If the argument is a number it will be interpreted as a file descriptor,
 otherwise as a file path.
 This option will also redirect the "server listening at" message in headless
@@ -40,6 +40,7 @@ and dap modes.
       --check-go-version     Checks that the version of Go in use is compatible with Delve. (default true)
       --headless             Run debug server only, in headless mode.
       --init string          Init file, executed by the terminal client.
+      --keep-output          Keep output binary.
   -l, --listen string        Debugging server listen address. (default "127.0.0.1:0")
       --log                  Enable debugging server logging.
       --log-dest string      Writes logs to the specified file or file descriptor (see 'dlv help log').

@@ -51,8 +51,12 @@ var (
 	buildFlags string
 	// workingDir is the working directory for running the program.
 	workingDir string
+	// keepOutput tells the client not to delete the built binary. If no source
+	// files change, the go buildID will skip the build
+	keepOutput bool
 	// checkLocalConnUser is true if the debugger should check that local
 	// connections come from the same user that started the headless server
+
 	checkLocalConnUser bool
 	// tty is used to provide an alternate TTY for the program you wish to debug.
 	tty string
@@ -119,6 +123,7 @@ func New(docCall bool) *cobra.Command {
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", ".", "Working directory for running the program.")
+	rootCommand.PersistentFlags().BoolVarP(&keepOutput, "keep-output", "", false, "Keep output binary.")
 	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
 	rootCommand.PersistentFlags().BoolVarP(&checkLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
 	rootCommand.PersistentFlags().StringVar(&backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
@@ -351,7 +356,7 @@ names selected from this list:
 	minidump	Log minidump loading
 
 Additionally --log-dest can be used to specify where the logs should be
-written. 
+written.
 If the argument is a number it will be interpreted as a file descriptor,
 otherwise as a file path.
 This option will also redirect the "server listening at" message in headless
@@ -439,7 +444,9 @@ func debugCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
-		defer gobuild.Remove(debugname)
+		if !keepOutput {
+			defer gobuild.Remove(debugname)
+		}
 		processArgs := append([]string{debugname}, targetArgs...)
 		return execute(0, processArgs, conf, "", executingGeneratedFile)
 	}()
@@ -500,7 +507,9 @@ func traceCmd(cmd *cobra.Command, args []string) {
 						return 1
 					}
 				}
-				defer gobuild.Remove(debugname)
+				if !keepOutput {
+					defer gobuild.Remove(debugname)
+				}
 			}
 
 			processArgs = append([]string{debugname}, targetArgs...)
@@ -589,7 +598,9 @@ func testCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			return 1
 		}
-		defer gobuild.Remove(debugname)
+		if !keepOutput {
+			defer gobuild.Remove(debugname)
+		}
 		processArgs := append([]string{debugname}, targetArgs...)
 
 		return execute(0, processArgs, conf, "", executingGeneratedTest)

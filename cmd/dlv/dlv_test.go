@@ -117,7 +117,7 @@ func TestBuild(t *testing.T) {
 	cmd.Wait()
 }
 
-func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout, stderr []byte) {
+func testOutput(t *testing.T, dlvbin, output string, delveCmds []string, keepOutput bool) (stdout, stderr []byte) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 
@@ -130,6 +130,9 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 		} else {
 			debugbin = filepath.Join(buildtestdir, output)
 		}
+	}
+	if keepOutput {
+		c = append(c, "--keep-output")
 	}
 	cmd := exec.Command(c[0], c[1:]...)
 	cmd.Dir = buildtestdir
@@ -169,6 +172,12 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	stdout, stderr = stdoutBuf.Bytes(), stderrBuf.Bytes()
 
 	_, err = os.Stat(debugbin)
+	if keepOutput {
+		if err == nil || os.IsNotExist(err) {
+			return
+		}
+		t.Errorf("running %q: file %v still exists with -keep-output\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
+	}
 	if err == nil {
 		if strings.ToLower(os.Getenv("TRAVIS")) == "true" && runtime.GOOS == "windows" {
 			// Sometimes delve on Travis on Windows can't remove the built binary before
@@ -180,10 +189,12 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 		t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
 		return
 	}
+
 	if !os.IsNotExist(err) {
 		t.Errorf("running %q: %v\nstdout is %q, stderr is %q", delveCmds, err, stdout, stderr)
 		return
 	}
+
 	return
 }
 
@@ -207,14 +218,15 @@ func getDlvBin(t *testing.T) (string, string) {
 func TestOutput(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
+	for _, keepOutput := range []bool{false, true} {
+		for _, output := range []string{"", "myownname", filepath.Join(tmpdir, "absolute.path")} {
+			testOutput(t, dlvbin, output, []string{"exit"}, keepOutput)
 
-	for _, output := range []string{"", "myownname", filepath.Join(tmpdir, "absolute.path")} {
-		testOutput(t, dlvbin, output, []string{"exit"})
-
-		const hello = "hello world!"
-		stdout, _ := testOutput(t, dlvbin, output, []string{"continue", "exit"})
-		if !strings.Contains(string(stdout), hello) {
-			t.Errorf("stdout %q should contain %q", stdout, hello)
+			const hello = "hello world!"
+			stdout, _ := testOutput(t, dlvbin, output, []string{"continue", "exit"}, keepOutput)
+			if !strings.Contains(string(stdout), hello) {
+				t.Errorf("stdout %q should contain %q", stdout, hello)
+			}
 		}
 	}
 }
