@@ -115,7 +115,7 @@ func New(docCall bool) *cobra.Command {
 
 	rootCommand.PersistentFlags().BoolVarP(&headless, "headless", "", false, "Run debug server only, in headless mode.")
 	rootCommand.PersistentFlags().BoolVarP(&acceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections.")
-	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects API version when headless.")
+	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
 	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", ".", "Working directory for running the program.")

@@ -65,6 +65,17 @@ Delve will respond by sending a response packet that will look like this:
 {"id":27, "result": {"Breakpoint": {"id":3, "name":"", "addr":4538829, "file":"/User/you/some/file.go", "line":16, "functionName":"main.main", "Cond":"", "continue":false, "goroutine":false, "stacktrace":0, "LoadArgs":null, "LoadLocals":null, "hitCount":{}, "totalHitCount":0}}, "error":null}
 ```
 
+## Selecting the API version
+
+Delve currently supports two version of its API, APIv1 and APIv2. By default
+a headless instance of `dlv` will serve APIv1 for backward-compatibility
+with older clients, however new clients should use APIv2 as new features
+will only be made available through version 2. The preferred method of
+switching to APIv2 is to send the `RPCServer.SetApiVersion` command right
+after connecting to the backend.
+Alternatively the `--api-version=2` command line option can be used when
+spawning the backend.
+
 ## Diagnostics
 
 Just like any other program, both Delve and your client have bugs. To help
