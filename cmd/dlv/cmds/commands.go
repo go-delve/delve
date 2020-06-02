@@ -466,20 +466,19 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		var processArgs []string
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
+		var dlvArgsLen = len(dlvArgs)
+		if dlvArgsLen == 1 {
+			regexp = args[0]
+			dlvArgs = dlvArgs[0:0]
+		} else if dlvArgsLen >= 2 {
+			regexp = dlvArgs[dlvArgsLen-1]
+			dlvArgs = dlvArgs[:dlvArgsLen-1]
+		}
 
 		if traceAttachPid == 0 {
-			var dlvArgsLen = len(dlvArgs)
-
-			if dlvArgsLen == 1 {
-				regexp = args[0]
-				dlvArgs = dlvArgs[0:0]
-			} else if dlvArgsLen >= 2 {
-				if traceExecFile != "" {
-					fmt.Fprintln(os.Stderr, "Cannot specify package when using exec.")
-					return 1
-				}
-				regexp = dlvArgs[dlvArgsLen-1]
-				dlvArgs = dlvArgs[:dlvArgsLen-1]
+			if dlvArgsLen >= 2 && traceExecFile != "" {
+				fmt.Fprintln(os.Stderr, "Cannot specify package when using exec.")
+				return 1
 			}
 
 			debugname := traceExecFile
