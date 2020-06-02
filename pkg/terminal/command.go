@@ -143,7 +143,7 @@ For live targets the command takes the following forms:
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
 `},
-		{aliases: []string{"rebuild"}, group: runCmds, cmdFn: c.rebuild, allowedPrefixes: revPrefix, helpMsg: "Rebuild the code."},
+		{aliases: []string{"rebuild"}, group: runCmds, cmdFn: c.rebuild, allowedPrefixes: revPrefix, helpMsg: "Rebuild the target executable and restarts it. It does not work if the executable was not built by delve."},
 		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, allowedPrefixes: revPrefix, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, allowedPrefixes: revPrefix, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
@@ -1081,7 +1081,7 @@ func (c *Commands) rebuild(t *Term, ctx callContext, args string) error {
 	defer t.onStop()
 	discarded, err := t.client.Restart(true)
 	if len(discarded) > 0 {
-		fmt.Printf("Some of the breakpoints could not be recovered")
+		fmt.Printf("not all breakpoints could be restored.")
 	}
 	return err
 }

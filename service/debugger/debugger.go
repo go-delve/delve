@@ -454,8 +454,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 				return nil, fmt.Errorf("could not rebuild process: %s", err)
 			}
 		default:
-			// We cannot build a process that we didn't start, because we don't know
-			// how it was build.
+			// We cannot build a process that we didn't start, because we don't know how it was built.
 			return nil, fmt.Errorf("cannot rebuild a binary")
 		}
 	}
@@ -489,7 +488,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			}
 			createLogicalBreakpoint(p, addrs, oldBp)
 		} else {
-			// Avoid setting a breakpoint based on address when rebulding
+			// Avoid setting a breakpoint based on address when rebuilding
 			if rebuild {
 				continue
 			}
