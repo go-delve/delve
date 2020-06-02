@@ -257,7 +257,10 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 	if th != nil {
 		tid = th.ThreadID()
 	}
-	r := &Goroutine{
+	if g.Unreadable != nil {
+		return &Goroutine{Unreadable: g.Unreadable.Error()}
+	}
+	return &Goroutine{
 		ID:             g.ID,
 		CurrentLoc:     ConvertLocation(g.CurrentLoc),
 		UserCurrentLoc: ConvertLocation(g.UserCurrent()),
@@ -266,10 +269,6 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 		ThreadID:       tid,
 		Labels:         g.Labels(),
 	}
-	if g.Unreadable != nil {
-		r.Unreadable = g.Unreadable.Error()
-	}
-	return r
 }
 
 // ConvertLocation converts from proc.Location to api.Location.
