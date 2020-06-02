@@ -628,6 +628,52 @@ func TestTrace(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestTracePid(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
+			t.Logf("can not run TestAttachDetach: %v\n", bs)
+			return
+		}
+	}
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	expected := []byte("goroutine(1): main.A() => ()\n")
+
+	// make process run
+	fix := protest.BuildFixture("issue2023", 0)
+	targetCmd := exec.Command(fix.Path)
+	if err := targetCmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if targetCmd.Process == nil || targetCmd.Process.Pid == 0 {
+		t.Fatal("expected target process runninng")
+	}
+	defer targetCmd.Process.Kill()
+
+	// dlv attach the process by pid
+	cmd := exec.Command(dlvbin, "trace", "-p", strconv.Itoa(targetCmd.Process.Pid), "main.A")
+	rdr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Start()
+	if err != nil {
+		t.Fatalf("error running trace: %#v", err)
+	}
+	output, err := ioutil.ReadAll(rdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+
+	cmd.Wait()
+}
+
 func TestTraceBreakpointExists(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
