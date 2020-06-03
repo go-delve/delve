@@ -36,13 +36,4 @@ type Config struct {
 
 	// DisconnectChan will be closed by the server when the client disconnects
 	DisconnectChan chan<- struct{}
-
-	// Packages contains the packages that we are debugging.
-	Packages []string
-
-	// BuildFlags contains the flags passed to the compiler.
-	BuildFlags string
-
-	// Kind contains the kind of the executed program.
-	Kind debugger.ExecuteKind
 }
