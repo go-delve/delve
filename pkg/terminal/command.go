@@ -2269,7 +2269,7 @@ func printTracepoint(th *api.Thread, bpname string, fn *api.Function, args strin
 		fmt.Fprintf(os.Stderr, " => (%s)\n", strings.Join(retVals, ","))
 	}
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
-		if th.BreakpointInfo.Stacktrace != nil {
+		if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {
 			fmt.Fprintf(os.Stderr, "\tStack:\n")
 			printStack(os.Stderr, th.BreakpointInfo.Stacktrace, "\t\t", false)
 		}
