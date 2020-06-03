@@ -80,11 +80,10 @@ const (
 
 // NewTargetConfig contains the configuration for a new Target object,
 type NewTargetConfig struct {
-	Path                string            // path of the main executable
-	DebugInfoDirs       []string          // Directories to search for split debug info
-	WriteBreakpoint     WriteBreakpointFn // Function to write a breakpoint to the target process
-	DisableAsyncPreempt bool              // Go 1.14 asynchronous preemption should be disabled
-	StopReason          StopReason        // Initial stop reason
+	Path                string     // path of the main executable
+	DebugInfoDirs       []string   // Directories to search for split debug info
+	DisableAsyncPreempt bool       // Go 1.14 asynchronous preemption should be disabled
+	StopReason          StopReason // Initial stop reason
 }
 
 // DisableAsyncPreemptEnv returns a process environment (like os.Environ)
@@ -128,8 +127,8 @@ func NewTarget(p Process, cfg NewTargetConfig) (*Target, error) {
 	g, _ := GetG(p.CurrentThread())
 	t.selectedGoroutine = g
 
-	createUnrecoveredPanicBreakpoint(p, cfg.WriteBreakpoint)
-	createFatalThrowBreakpoint(p, cfg.WriteBreakpoint)
+	t.createUnrecoveredPanicBreakpoint()
+	t.createFatalThrowBreakpoint()
 
 	t.gcache.init(p.BinInfo())
 
@@ -216,8 +215,18 @@ func (p *Target) SwitchThread(tid int) error {
 // we were previously debugging.
 // If kill is true then the process will be killed when we detach.
 func (t *Target) Detach(kill bool) error {
-	if !kill && t.asyncPreemptChanged {
-		setAsyncPreemptOff(t, t.asyncPreemptOff)
+	if !kill {
+		if t.asyncPreemptChanged {
+			setAsyncPreemptOff(t, t.asyncPreemptOff)
+		}
+		for _, bp := range t.Breakpoints().M {
+			if bp != nil {
+				_, err := t.ClearBreakpoint(bp.Addr)
+				if err != nil {
+					return err
+				}
+			}
+		}
 	}
 	t.StopReason = StopUnknown
 	return t.proc.Detach(kill)
@@ -255,13 +264,13 @@ func setAsyncPreemptOff(p *Target, v int64) {
 }
 
 // createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
-func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	panicpcs, err := FindFunctionLocation(p, "runtime.startpanic", 0)
+func (t *Target) createUnrecoveredPanicBreakpoint() {
+	panicpcs, err := FindFunctionLocation(t.Process, "runtime.startpanic", 0)
 	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
-		panicpcs, err = FindFunctionLocation(p, "runtime.fatalpanic", 0)
+		panicpcs, err = FindFunctionLocation(t.Process, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(unrecoveredPanicID, panicpcs[0], writeBreakpoint)
+		bp, err := t.setBreakpointWithID(unrecoveredPanicID, panicpcs[0])
 		if err == nil {
 			bp.Name = UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}
@@ -270,10 +279,10 @@ func createUnrecoveredPanicBreakpoint(p Process, writeBreakpoint WriteBreakpoint
 }
 
 // createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
-func createFatalThrowBreakpoint(p Process, writeBreakpoint WriteBreakpointFn) {
-	fatalpcs, err := FindFunctionLocation(p, "runtime.fatalthrow", 0)
+func (t *Target) createFatalThrowBreakpoint() {
+	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.fatalthrow", 0)
 	if err == nil {
-		bp, err := p.Breakpoints().SetWithID(fatalThrowID, fatalpcs[0], writeBreakpoint)
+		bp, err := t.setBreakpointWithID(fatalThrowID, fatalpcs[0])
 		if err == nil {
 			bp.Name = FatalThrow
 		}

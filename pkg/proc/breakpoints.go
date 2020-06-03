@@ -237,21 +237,13 @@ func NewBreakpointMap() BreakpointMap {
 	}
 }
 
-// ResetBreakpointIDCounter resets the breakpoint ID counter of bpmap.
-func (bpmap *BreakpointMap) ResetBreakpointIDCounter() {
-	bpmap.breakpointIDCounter = 0
-}
-
-// WriteBreakpointFn is a type that represents a function to be used for
-// writting breakpoings into the target.
-type WriteBreakpointFn func(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
-
-type clearBreakpointFn func(*Breakpoint) error
-
-// Set creates a breakpoint at addr calling writeBreakpoint. Do not call this
-// function, call proc.Process.SetBreakpoint instead, this function exists
-// to implement proc.Process.SetBreakpoint.
-func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr, writeBreakpoint WriteBreakpointFn) (*Breakpoint, error) {
+// SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
+// break point table.
+func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+	if valid, err := t.Valid(); !valid {
+		return nil, err
+	}
+	bpmap := t.Breakpoints()
 	if bp, ok := bpmap.M[addr]; ok {
 		// We can overlap one internal breakpoint with one user breakpoint, we
 		// need to support this otherwise a conditional breakpoint can mask a
@@ -268,7 +260,7 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 		return bp, nil
 	}
 
-	f, l, fn, originalData, err := writeBreakpoint(addr)
+	f, l, fn, originalData, err := t.proc.WriteBreakpoint(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -303,9 +295,10 @@ func (bpmap *BreakpointMap) Set(addr uint64, kind BreakpointKind, cond ast.Expr,
 	return newBreakpoint, nil
 }
 
-// SetWithID creates a breakpoint at addr, with the specified logical ID.
-func (bpmap *BreakpointMap) SetWithID(id int, addr uint64, writeBreakpoint WriteBreakpointFn) (*Breakpoint, error) {
-	bp, err := bpmap.Set(addr, UserBreakpoint, nil, writeBreakpoint)
+// setBreakpointWithID creates a breakpoint at addr, with the specified logical ID.
+func (t *Target) setBreakpointWithID(id int, addr uint64) (*Breakpoint, error) {
+	bpmap := t.Breakpoints()
+	bp, err := t.SetBreakpoint(addr, UserBreakpoint, nil)
 	if err == nil {
 		bp.LogicalID = id
 		bpmap.breakpointIDCounter--
@@ -313,9 +306,12 @@ func (bpmap *BreakpointMap) SetWithID(id int, addr uint64, writeBreakpoint Write
 	return bp, err
 }
 
-// Clear clears the breakpoint at addr.
-// Do not call this function call proc.Process.ClearBreakpoint instead.
-func (bpmap *BreakpointMap) Clear(addr uint64, clearBreakpoint clearBreakpointFn) (*Breakpoint, error) {
+// ClearBreakpoint clears the breakpoint at addr.
+func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
+	if valid, err := t.Valid(); !valid {
+		return nil, err
+	}
+	bpmap := t.Breakpoints()
 	bp, ok := bpmap.M[addr]
 	if !ok {
 		return nil, NoBreakpointError{Addr: addr}
@@ -327,7 +323,7 @@ func (bpmap *BreakpointMap) Clear(addr uint64, clearBreakpoint clearBreakpointFn
 		return bp, nil
 	}
 
-	if err := clearBreakpoint(bp); err != nil {
+	if err := t.proc.EraseBreakpoint(bp); err != nil {
 		return nil, err
 	}
 
@@ -338,9 +334,9 @@ func (bpmap *BreakpointMap) Clear(addr uint64, clearBreakpoint clearBreakpointFn
 
 // ClearInternalBreakpoints removes all internal breakpoints from the map,
 // calling clearBreakpoint on each one.
-// Do not call this function, call proc.Process.ClearInternalBreakpoints
-// instead, this function is used to implement that.
-func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakpointFn) error {
+func (t *Target) ClearInternalBreakpoints() error {
+	bpmap := t.Breakpoints()
+	threads := t.ThreadList()
 	for addr, bp := range bpmap.M {
 		bp.Kind = bp.Kind & UserBreakpoint
 		bp.internalCond = nil
@@ -348,8 +344,13 @@ func (bpmap *BreakpointMap) ClearInternalBreakpoints(clearBreakpoint clearBreakp
 		if bp.Kind != 0 {
 			continue
 		}
-		if err := clearBreakpoint(bp); err != nil {
+		if err := t.proc.EraseBreakpoint(bp); err != nil {
 			return err
+		}
+		for _, thread := range threads {
+			if thread.Breakpoint().Breakpoint == bp {
+				thread.Breakpoint().Clear()
+			}
 		}
 		delete(bpmap.M, addr)
 	}

@@ -1,7 +1,6 @@
 package native
 
 import (
-	"go/ast"
 	"os"
 	"runtime"
 	"sync"
@@ -115,15 +114,6 @@ func (dbp *nativeProcess) Detach(kill bool) (err error) {
 		dbp.bi.Close()
 		return nil
 	}
-	// Clean up any breakpoints we've set.
-	for _, bp := range dbp.breakpoints.M {
-		if bp != nil {
-			_, err := dbp.ClearBreakpoint(bp.Addr)
-			if err != nil {
-				return err
-			}
-		}
-	}
 	dbp.execPtraceFunc(func() {
 		err = dbp.detach(kill)
 		if err != nil {
@@ -215,7 +205,7 @@ func (dbp *nativeProcess) CheckAndClearManualStopRequest() bool {
 	return msr
 }
 
-func (dbp *nativeProcess) writeBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
+func (dbp *nativeProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
 	f, l, fn := dbp.bi.PCToLine(uint64(addr))
 
 	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
@@ -230,18 +220,8 @@ func (dbp *nativeProcess) writeBreakpoint(addr uint64) (string, int, *proc.Funct
 	return f, l, fn, originalData, nil
 }
 
-// SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
-// break point table.
-func (dbp *nativeProcess) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return dbp.breakpoints.Set(addr, kind, cond, dbp.writeBreakpoint)
-}
-
-// ClearBreakpoint clears the breakpoint at addr.
-func (dbp *nativeProcess) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	if dbp.exited {
-		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
-	}
-	return dbp.breakpoints.Clear(addr, dbp.currentThread.ClearBreakpoint)
+func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
+	return dbp.currentThread.ClearBreakpoint(bp)
 }
 
 // ContinueOnce will continue the target until it stops.
@@ -305,25 +285,8 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 	return proc.NewTarget(dbp, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
-		WriteBreakpoint:     dbp.writeBreakpoint,
 		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd",
 		StopReason:          stopReason})
-}
-
-// ClearInternalBreakpoints will clear all non-user set breakpoints. These
-// breakpoints are set for internal operations such as 'next'.
-func (dbp *nativeProcess) ClearInternalBreakpoints() error {
-	return dbp.breakpoints.ClearInternalBreakpoints(func(bp *proc.Breakpoint) error {
-		if err := dbp.currentThread.ClearBreakpoint(bp); err != nil {
-			return err
-		}
-		for _, thread := range dbp.threads {
-			if thread.CurrentBreakpoint.Breakpoint == bp {
-				thread.CurrentBreakpoint.Clear()
-			}
-		}
-		return nil
-	})
 }
 
 func (dbp *nativeProcess) handlePtraceFuncs() {

@@ -3,7 +3,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"go/ast"
 	"io"
 
 	"github.com/go-delve/delve/pkg/proc"
@@ -216,7 +215,6 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 	return proc.NewTarget(p, proc.NewTargetConfig{
 		Path:                exePath,
 		DebugInfoDirs:       debugInfoDirs,
-		WriteBreakpoint:     p.writeBreakpoint,
 		DisableAsyncPreempt: false,
 		StopReason:          proc.StopAttached})
 }
@@ -231,9 +229,9 @@ func (p *process) EntryPoint() (uint64, error) {
 	return p.entryPoint, nil
 }
 
-// writeBreakpoint is a noop function since you
+// WriteBreakpoint is a noop function since you
 // cannot write breakpoints into core files.
-func (p *process) writeBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
+func (p *process) WriteBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
 	return "", 0, nil, nil, errors.New("cannot write a breakpoint to a core file")
 }
 
@@ -365,10 +363,10 @@ func (p *process) Breakpoints() *proc.BreakpointMap {
 	return &p.breakpoints
 }
 
-// ClearBreakpoint will always return an error as you cannot set or clear
+// EraseBreakpoint will always return an error as you cannot set or clear
 // breakpoints on core files.
-func (p *process) ClearBreakpoint(addr uint64) (*proc.Breakpoint, error) {
-	return nil, proc.NoBreakpointError{Addr: addr}
+func (p *process) EraseBreakpoint(bp *proc.Breakpoint) error {
+	return proc.NoBreakpointError{Addr: bp.Addr}
 }
 
 // ClearInternalBreakpoints will always return nil and have no
@@ -428,11 +426,6 @@ func (p *process) Pid() int {
 // ResumeNotify is a no-op on core files as we cannot
 // control execution.
 func (p *process) ResumeNotify(chan<- struct{}) {
-}
-
-// SetBreakpoint will always return an error for core files as you cannot write memory or control execution.
-func (p *process) SetBreakpoint(addr uint64, kind proc.BreakpointKind, cond ast.Expr) (*proc.Breakpoint, error) {
-	return nil, ErrWriteCore
 }
 
 // ThreadList will return a list of all threads currently in the process.
