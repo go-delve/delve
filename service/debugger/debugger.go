@@ -116,7 +116,7 @@ type Config struct {
 	BuildFlags string
 
 	// ExecuteKind contains the kind of the executed program.
-	Kind ExecuteKind
+	ExecuteKind ExecuteKind
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -442,7 +442,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	var err error
 
 	if rebuild {
-		switch d.config.Kind {
+		switch d.config.ExecuteKind {
 		case ExecutingGeneratedFile:
 			err = gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
 			if err != nil {

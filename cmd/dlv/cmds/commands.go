@@ -754,7 +754,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				Foreground:           headless && tty == "",
 				Packages:             dlvArgs,
 				BuildFlags:           buildFlags,
-				Kind:                 kind,
+				ExecuteKind:          kind,
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
 				TTY:                  tty,

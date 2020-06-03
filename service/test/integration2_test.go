@@ -77,7 +77,7 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 			CheckGoVersion: true,
 			Packages:       []string{fixture.Source},
 			BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
-			Kind:           debugger.ExecutingGeneratedFile,
+			ExecuteKind:    debugger.ExecutingGeneratedFile,
 		},
 	})
 	if err := server.Run(); err != nil {
@@ -113,8 +113,8 @@ func TestRunWithInvalidPath(t *testing.T) {
 		ProcessArgs: []string{"invalid_path"},
 		APIVersion:  2,
 		Debugger: debugger.Config{
-			Backend: testBackend,
-			Kind:    debugger.ExecutingGeneratedFile,
+			Backend:     testBackend,
+			ExecuteKind: debugger.ExecutingGeneratedFile,
 		},
 	})
 	if err := server.Run(); err == nil {
@@ -1645,8 +1645,8 @@ func TestAcceptMulticlient(t *testing.T) {
 			AcceptMulti:    true,
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
-				Backend: testBackend,
-				Kind:    debugger.ExecutingGeneratedTest,
+				Backend:     testBackend,
+				ExecuteKind: debugger.ExecutingGeneratedTest,
 			},
 		})
 		if err := server.Run(); err != nil {
