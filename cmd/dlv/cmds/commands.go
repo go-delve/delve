@@ -465,7 +465,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		var regexp string
 		var processArgs []string
 
-		dlvArgs, TargetArgs := splitArgs(cmd, args)
+		dlvArgs, targetArgs := splitArgs(cmd, args)
 
 		if traceAttachPid == 0 {
 			var dlvArgsLen = len(dlvArgs)
@@ -503,7 +503,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 				defer gobuild.Remove(debugname)
 			}
 
-			processArgs = append([]string{debugname}, TargetArgs...)
+			processArgs = append([]string{debugname}, targetArgs...)
 		}
 
 		// Make a local in-memory connection that client and server use to communicate
