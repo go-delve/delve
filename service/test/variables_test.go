@@ -1519,3 +1519,46 @@ func TestPluginVariables(t *testing.T) {
 		assertVariable(t, vb, varTest{"b", true, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.SomethingElse(*github.com/go-delve/delve/_fixtures/plugin2.asomethingelse) *{x: 1, y: 4}`, ``, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.SomethingElse`, nil})
 	})
 }
+
+func TestCgoEval(t *testing.T) {
+	testcases := []varTest{
+		{"s", true, `"a string"`, `"a string"`, "*char", nil},
+		{"longstring", true, `"averylongstring0123456789a0123456789b0123456789c0123456789d01234...+1 more"`, `"averylongstring0123456789a0123456789b0123456789c0123456789d01234...+1 more"`, "*const char", nil},
+		{"longstring[64:]", false, `"56789e0123456789f0123456789g0123456789h0123456789"`, `"56789e0123456789f0123456789g0123456789h0123456789"`, "*const char", nil},
+		{"s[3]", false, "116", "116", "char", nil},
+		{"v", true, "*0", "(*int)(…", "*int", nil},
+		{"v[1]", false, "1", "1", "int", nil},
+		{"v[90]", false, "90", "90", "int", nil},
+		{"v[:5]", false, "[]int len: 5, cap: 5, [0,1,2,3,4]", "[]int len: 5, cap: 5, [...]", "[]int", nil},
+		{"v_align_check", true, "*align_check {a: 0, b: 0}", "(*struct align_check)(…", "*struct align_check", nil},
+		{"v_align_check[1]", false, "align_check {a: 1, b: 1}", "align_check {a: 1, b: 1}", "align_check", nil},
+		{"v_align_check[90]", false, "align_check {a: 90, b: 90}", "align_check {a: 90, b: 90}", "align_check", nil},
+	}
+
+	protest.AllowRecording(t)
+	withTestProcess("testvariablescgo/", t, func(p *proc.Target, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue() returned an error")
+		for _, tc := range testcases {
+			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
+				// this type of eval is unsupported with the current version of Go.
+				continue
+			}
+			if tc.err == nil {
+				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+				assertVariable(t, variable, tc)
+				variable, err := evalVariable(p, tc.name, pshortLoadConfig)
+				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
+				assertVariable(t, variable, tc.alternateVarTest())
+			} else {
+				if err == nil {
+					t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+				}
+				if tc.err.Error() != err.Error() {
+					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+				}
+			}
+
+		}
+	})
+}
