@@ -13,6 +13,7 @@ Command | Description
 [call](#call) | Resumes process, injecting a function call (EXPERIMENTAL!!!)
 [continue](#continue) | Run until breakpoint or program termination.
 [next](#next) | Step over to next source line.
+[rebuild](#rebuild) | Rebuild the target executable and restarts it. It does not work if the executable was not built by delve.
 [restart](#restart) | Restart process.
 [rev](#rev) | Reverses the execution of the target program for the command specified.
 [rewind](#rewind) | Run backwards until breakpoint or program termination.
@@ -393,6 +394,10 @@ Evaluate an expression.
 See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
 
 Aliases: p
+
+## rebuild
+Rebuild the target executable and restarts it. It does not work if the executable was not built by delve.
+
 
 ## regs
 Print contents of CPU registers.

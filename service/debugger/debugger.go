@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -63,6 +64,15 @@ type Debugger struct {
 	recordMutex   sync.Mutex
 }
 
+type ExecuteKind int
+
+const (
+	ExecutingExistingFile = ExecuteKind(iota)
+	ExecutingGeneratedFile
+	ExecutingGeneratedTest
+	ExecutingOther
+)
+
 // Config provides the configuration to start a Debugger.
 //
 // Only one of ProcessArgs or AttachPid should be specified. If ProcessArgs is
@@ -98,6 +108,15 @@ type Config struct {
 	// TTY is passed along to the target process on creation. Used to specify a
 	// TTY for that process.
 	TTY string
+
+	// Packages contains the packages that we are debugging.
+	Packages []string
+
+	// BuildFlags contains the flags passed to the compiler.
+	BuildFlags string
+
+	// ExecuteKind contains the kind of the executed program.
+	ExecuteKind ExecuteKind
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -390,7 +409,7 @@ func (d *Debugger) detach(kill bool) error {
 // If the target process is a recording it will restart it from the given
 // position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
 // event number. If resetArgs is true, newArgs will replace the process args.
-func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error) {
+func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -421,6 +440,25 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 	var p *proc.Target
 	var err error
+
+	if rebuild {
+		switch d.config.ExecuteKind {
+		case ExecutingGeneratedFile:
+			err = gobuild.GoBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
+			if err != nil {
+				return nil, fmt.Errorf("could not rebuild process: %s", err)
+			}
+		case ExecutingGeneratedTest:
+			err = gobuild.GoTestBuild(d.processArgs[0], d.config.Packages, d.config.BuildFlags)
+			if err != nil {
+				return nil, fmt.Errorf("could not rebuild process: %s", err)
+			}
+		default:
+			// We cannot build a process that we didn't start, because we don't know how it was built.
+			return nil, fmt.Errorf("cannot rebuild a binary")
+		}
+	}
+
 	if recorded {
 		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false)
 		if err2 != nil {
@@ -450,6 +488,10 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			}
 			createLogicalBreakpoint(p, addrs, oldBp)
 		} else {
+			// Avoid setting a breakpoint based on address when rebuilding
+			if rebuild {
+				continue
+			}
 			newBp, err := p.SetBreakpoint(oldBp.Addr, proc.UserBreakpoint, nil)
 			if err != nil {
 				return nil, err

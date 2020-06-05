@@ -76,6 +76,9 @@ type RestartIn struct {
 
 	// When Rerecord is set the target will be rerecorded
 	Rerecord bool
+
+	// When Rebuild is set the process will be build again
+	Rebuild bool
 }
 
 type RestartOut struct {
@@ -90,7 +93,7 @@ func (s *RPCServer) Restart(arg RestartIn, cb service.RPCCallback) {
 	}
 	var out RestartOut
 	var err error
-	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Rerecord, arg.Position, arg.ResetArgs, arg.NewArgs)
+	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Rerecord, arg.Position, arg.ResetArgs, arg.NewArgs, arg.Rebuild)
 	cb.Return(out, err)
 }
 

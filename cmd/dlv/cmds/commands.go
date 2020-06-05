@@ -210,7 +210,7 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(execute(0, args, conf, "", executingExistingFile))
+			os.Exit(execute(0, args, conf, "", debugger.ExecutingExistingFile, args, buildFlags))
 		},
 	}
 	execCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
@@ -312,7 +312,7 @@ https://github.com/mozilla/rr
 			},
 			Run: func(cmd *cobra.Command, args []string) {
 				backend = "rr"
-				os.Exit(execute(0, []string{}, conf, args[0], executingOther))
+				os.Exit(execute(0, []string{}, conf, args[0], debugger.ExecutingOther, args, buildFlags))
 			},
 		}
 		rootCommand.AddCommand(replayCommand)
@@ -441,7 +441,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 		}
 		defer gobuild.Remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
-		return execute(0, processArgs, conf, "", executingGeneratedFile)
+		return execute(0, processArgs, conf, "", debugger.ExecutingGeneratedFile, dlvArgs, buildFlags)
 	}()
 	os.Exit(status)
 }
@@ -591,7 +591,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		defer gobuild.Remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
 
-		return execute(0, processArgs, conf, "", executingGeneratedTest)
+		return execute(0, processArgs, conf, "", debugger.ExecutingGeneratedTest, dlvArgs, buildFlags)
 	}()
 	os.Exit(status)
 }
@@ -602,11 +602,11 @@ func attachCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
 		os.Exit(1)
 	}
-	os.Exit(execute(pid, args[1:], conf, "", executingOther))
+	os.Exit(execute(pid, args[1:], conf, "", debugger.ExecutingOther, args, buildFlags))
 }
 
 func coreCmd(cmd *cobra.Command, args []string) {
-	os.Exit(execute(0, []string{args[0]}, conf, args[1], executingOther))
+	os.Exit(execute(0, []string{args[0]}, conf, args[1], debugger.ExecutingOther, args, buildFlags))
 }
 
 func connectCmd(cmd *cobra.Command, args []string) {
@@ -615,7 +615,7 @@ func connectCmd(cmd *cobra.Command, args []string) {
 		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
 		os.Exit(1)
 	}
-	os.Exit(connect(addr, nil, conf, executingOther))
+	os.Exit(connect(addr, nil, conf, debugger.ExecutingOther))
 }
 
 // waitForDisconnectSignal is a blocking function that waits for either
@@ -656,7 +656,7 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 	return args, []string{}
 }
 
-func connect(addr string, clientConn net.Conn, conf *config.Config, kind executeKind) int {
+func connect(addr string, clientConn net.Conn, conf *config.Config, kind debugger.ExecuteKind) int {
 	// Create and start a terminal - attach to running instance
 	var client *rpc2.RPCClient
 	if clientConn != nil {
@@ -687,16 +687,7 @@ func connect(addr string, clientConn net.Conn, conf *config.Config, kind execute
 	return status
 }
 
-type executeKind int
-
-const (
-	executingExistingFile = executeKind(iota)
-	executingGeneratedFile
-	executingGeneratedTest
-	executingOther
-)
-
-func execute(attachPid int, processArgs []string, conf *config.Config, coreFile string, kind executeKind) int {
+func execute(attachPid int, processArgs []string, conf *config.Config, coreFile string, kind debugger.ExecuteKind, dlvArgs []string, buildFlags string) int {
 	if err := logflags.Setup(log, logOutput, logDest); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return 1
@@ -760,6 +751,9 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				Backend:              backend,
 				CoreFile:             coreFile,
 				Foreground:           headless && tty == "",
+				Packages:             dlvArgs,
+				BuildFlags:           buildFlags,
+				ExecuteKind:          kind,
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
 				TTY:                  tty,
@@ -773,10 +767,10 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	if err := server.Run(); err != nil {
 		if err == api.ErrNotExecutable {
 			switch kind {
-			case executingGeneratedFile:
+			case debugger.ExecutingGeneratedFile:
 				fmt.Fprintln(os.Stderr, "Can not debug non-main package")
 				return 1
-			case executingExistingFile:
+			case debugger.ExecutingExistingFile:
 				fmt.Fprintf(os.Stderr, "%s is not executable\n", processArgs[0])
 				return 1
 			default:

@@ -18,10 +18,10 @@ type Client interface {
 	// Detach detaches the debugger, optionally killing the process.
 	Detach(killProcess bool) error
 
-	// Restarts program.
-	Restart() ([]api.DiscardedBreakpoint, error)
+	// Restarts program. Set true if you want to rebuild the process we are debugging.
+	Restart(rebuild bool) ([]api.DiscardedBreakpoint, error)
 	// Restarts program from the specified position.
-	RestartFrom(rerecord bool, pos string, resetArgs bool, newArgs []string) ([]api.DiscardedBreakpoint, error)
+	RestartFrom(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error)
 
 	// GetState returns the current debugger state.
 	GetState() (*api.DebuggerState, error)

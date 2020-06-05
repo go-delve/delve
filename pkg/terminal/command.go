@@ -143,6 +143,7 @@ For live targets the command takes the following forms:
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
 `},
+		{aliases: []string{"rebuild"}, group: runCmds, cmdFn: c.rebuild, allowedPrefixes: revPrefix, helpMsg: "Rebuild the target executable and restarts it. It does not work if the executable was not built by delve."},
 		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, allowedPrefixes: revPrefix, helpMsg: "Run until breakpoint or program termination."},
 		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, allowedPrefixes: revPrefix, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
@@ -1028,7 +1029,7 @@ func restartLive(t *Term, ctx callContext, args string) error {
 }
 
 func restartIntl(t *Term, rerecord bool, restartPos string, resetArgs bool, newArgv []string) error {
-	discarded, err := t.client.RestartFrom(rerecord, restartPos, resetArgs, newArgv)
+	discarded, err := t.client.RestartFrom(rerecord, restartPos, resetArgs, newArgv, false)
 	if err != nil {
 		return err
 	}
@@ -1071,6 +1072,18 @@ func printcontextNoState(t *Term) {
 		return
 	}
 	printcontext(t, state)
+}
+
+func (c *Commands) rebuild(t *Term, ctx callContext, args string) error {
+	if ctx.Prefix == revPrefix {
+		return c.rewind(t, ctx, args)
+	}
+	defer t.onStop()
+	discarded, err := t.client.Restart(true)
+	if len(discarded) > 0 {
+		fmt.Printf("not all breakpoints could be restored.")
+	}
+	return err
 }
 
 func (c *Commands) cont(t *Term, ctx callContext, args string) error {
