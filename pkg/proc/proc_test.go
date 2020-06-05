@@ -4272,10 +4272,23 @@ func TestDeadlockBreakpoint(t *testing.T) {
 	})
 }
 
+func findSource(source string, sources []string) bool {
+	for _, s := range sources {
+		if s == source {
+			return true
+		}
+	}
+	return false
+}
+
 func TestListImages(t *testing.T) {
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
 	withTestProcessArgs("plugintest", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
+		if !findSource(fixture.Source, p.BinInfo().Sources) {
+			t.Fatalf("could not find %s in sources: %q\n", fixture.Source, p.BinInfo().Sources)
+		}
+
 		assertNoError(p.Continue(), t, "first continue")
 		f, l := currentLineNumber(p, t)
 		plugin1Found := false
@@ -4288,6 +4301,10 @@ func TestListImages(t *testing.T) {
 		}
 		if !plugin1Found {
 			t.Fatalf("Could not find plugin1")
+		}
+		if !findSource(fixture.Source, p.BinInfo().Sources) {
+			// Source files for the base program must be available even after a plugin is loaded. Issue #2074.
+			t.Fatalf("could not find %s in sources (after loading plugin): %q\n", fixture.Source, p.BinInfo().Sources)
 		}
 		assertNoError(p.Continue(), t, "second continue")
 		f, l = currentLineNumber(p, t)

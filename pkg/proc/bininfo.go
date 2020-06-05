@@ -1599,7 +1599,6 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 		bi.LookupFunc[bi.Functions[i].Name] = &bi.Functions[i]
 	}
 
-	bi.Sources = []string{}
 	for _, cu := range image.compileUnits {
 		if cu.lineInfo != nil {
 			for _, fileEntry := range cu.lineInfo.FileNames {
