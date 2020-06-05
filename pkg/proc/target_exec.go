@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/token"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
@@ -146,10 +147,17 @@ func (dbp *Target) Continue() error {
 				}
 				if dbp.GetDirection() == Forward {
 					text, err := disassembleCurrentInstruction(dbp, curthread)
+					if err != nil {
+						return err
+					}
+					var fn *Function
+					if loc, _ := curthread.Location(); loc != nil {
+						fn = loc.Fn
+					}
 					// here we either set a breakpoint into the destination of the CALL
 					// instruction or we determined that the called function is hidden,
 					// either way we need to resume execution
-					if err = setStepIntoBreakpoint(dbp, text, sameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
+					if err = setStepIntoBreakpoint(dbp, fn, text, sameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
 						return err
 					}
 				} else {
@@ -513,7 +521,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	sameFrameCond := astutil.And(sameGCond, frameoffCondition(&topframe))
 
 	if stepInto && !backward {
-		err := setStepIntoBreakpoints(dbp, text, topframe, sameGCond)
+		err := setStepIntoBreakpoints(dbp, topframe.Current.Fn, text, topframe, sameGCond)
 		if err != nil {
 			return err
 		}
@@ -625,14 +633,14 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	return nil
 }
 
-func setStepIntoBreakpoints(dbp *Target, text []AsmInstruction, topframe Stackframe, sameGCond ast.Expr) error {
+func setStepIntoBreakpoints(dbp *Target, curfn *Function, text []AsmInstruction, topframe Stackframe, sameGCond ast.Expr) error {
 	for _, instr := range text {
 		if instr.Loc.File != topframe.Current.File || instr.Loc.Line != topframe.Current.Line || !instr.IsCall() {
 			continue
 		}
 
 		if instr.DestLoc != nil {
-			if err := setStepIntoBreakpoint(dbp, []AsmInstruction{instr}, sameGCond); err != nil {
+			if err := setStepIntoBreakpoint(dbp, curfn, []AsmInstruction{instr}, sameGCond); err != nil {
 				return err
 			}
 		} else {
@@ -708,10 +716,15 @@ func removePCsBetween(pcs []uint64, start, end uint64) []uint64 {
 	return out
 }
 
-func setStepIntoBreakpoint(dbp *Target, text []AsmInstruction, cond ast.Expr) error {
+func setStepIntoBreakpoint(dbp *Target, curfn *Function, text []AsmInstruction, cond ast.Expr) error {
 	if len(text) <= 0 {
 		return nil
 	}
+
+	// If the current function is already a runtime function then
+	// setStepIntoBreakpoint is allowed to step into unexported runtime
+	// functions.
+	stepIntoUnexportedRuntime := curfn != nil && strings.HasPrefix(curfn.Name, "runtime.")
 
 	instr := text[0]
 
@@ -724,7 +737,7 @@ func setStepIntoBreakpoint(dbp *Target, text []AsmInstruction, cond ast.Expr) er
 	fn := instr.DestLoc.Fn
 
 	// Skip unexported runtime functions
-	if fn != nil && fn.privateRuntime() {
+	if !stepIntoUnexportedRuntime && fn != nil && fn.privateRuntime() {
 		return nil
 	}
 
