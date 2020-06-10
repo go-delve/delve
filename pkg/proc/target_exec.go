@@ -71,6 +71,17 @@ func (dbp *Target) Continue() error {
 		trapthread, stopReason, err := dbp.proc.ContinueOnce()
 		dbp.StopReason = stopReason
 		if err != nil {
+			// Attempt to refresh status of current thread/current goroutine, see
+			// Issue #2078.
+			// Errors are ignored because depending on why ContinueOnce failed this
+			// might very well not work.
+			if valid, _ := dbp.Valid(); valid {
+				if trapthread != nil {
+					_ = dbp.SwitchThread(trapthread.ThreadID())
+				} else if curth := dbp.CurrentThread(); curth != nil {
+					dbp.selectedGoroutine, _ = GetG(curth)
+				}
+			}
 			return err
 		}
 		if dbp.StopReason == StopLaunched {

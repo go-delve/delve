@@ -4809,3 +4809,27 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 
 	}
 }
+
+func TestRefreshCurThreadSelGAfterContinueOnceError(t *testing.T) {
+	// Issue #2078:
+	// Tests that on macOS/lldb the current thread/selected goroutine are
+	// refreshed after ContinueOnce returns an error due to a segmentation
+	// fault.
+
+	if runtime.GOOS != "darwin" && testBackend != "lldb" {
+		t.Skip("not applicable")
+	}
+
+	withTestProcess("issue2078", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 4)
+		assertNoError(p.Continue(), t, "Continue() (first)")
+		if p.Continue() == nil {
+			t.Fatalf("Second continue did not return an error")
+		}
+		g := p.SelectedGoroutine()
+		if g.CurrentLoc.Line != 9 {
+			t.Fatalf("wrong current location %s:%d (expected :9)", g.CurrentLoc.File, g.CurrentLoc.Line)
+		}
+	})
+
+}
