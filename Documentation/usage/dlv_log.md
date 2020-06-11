@@ -34,7 +34,7 @@ and dap modes.
 
 ```
       --accept-multiclient   Allows a headless server to accept multiple client connections.
-      --api-version int      Selects API version when headless. (default 1)
+      --api-version int      Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md. (default 1)
       --backend string       Backend selection (see 'dlv help backend'). (default "default")
       --build-flags string   Build flags, to be passed to the compiler.
       --check-go-version     Checks that the version of Go in use is compatible with Delve. (default true)

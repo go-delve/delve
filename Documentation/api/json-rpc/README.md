@@ -8,7 +8,8 @@ Here is an (incomplete) [list of language implementations](http://json-rpc.org/w
 
 # API versions
 
-Delve currently supports two versions of its API. By default a headless instance of `dlv` will serve APIv1, however new clients should use APIv2 as new features will only be made available through version 2. To select APIv2 use `--api-version=2` command line argument.
+Delve currently supports two versions of its API. By default a headless instance of `dlv` will serve APIv1 for backward compatibility with old clients, however new clients should use APIv2 as new features will only be made available through version 2. To select APIv2 use `--api-version=2` command line argument. 
+Clients can also select APIv2 by sending a [SetApiVersion](https://godoc.org/github.com/go-delve/delve/service/rpccommon#RPCServer.SetApiVersion) request specifying `APIVersion = 2` after connecting to the headless instance.
 
 # API version 2 documentation
 
