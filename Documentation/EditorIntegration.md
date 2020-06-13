@@ -19,7 +19,7 @@ The following editor plugins for delve are available:
 * [LiteIDE](https://github.com/visualfc/liteide)
 
 **Vim**
-* [vim-go](https://github.com/fatih/vim-go) (only Vim, since 1.17)
+* [vim-go](https://github.com/fatih/vim-go) (both Vim and Neovim)
 * [vim-delve](https://github.com/sebdah/vim-delve) (both Vim and Neovim)
 * [vim-godebug](https://github.com/jodosha/vim-godebug) (only Neovim)
 
