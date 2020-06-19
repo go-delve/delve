@@ -761,13 +761,15 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 			// address of the function pointer itself.
 			thread.SetDX(fncall.closureAddr)
 		}
+		cfa := regs.SP()
+		oldpc := regs.PC()
 		callOP(bi, thread, regs, fncall.fn.Entry)
 
-		err := funcCallEvalArgs(callScope, fncall, regs.SP())
+		err := funcCallEvalArgs(callScope, fncall, cfa)
 		if err != nil {
 			// rolling back the call, note: this works because we called regs.Copy() above
-			thread.SetSP(regs.SP())
-			thread.SetPC(regs.PC())
+			thread.SetSP(cfa)
+			thread.SetPC(oldpc)
 			fncall.err = err
 			fncall.lateCallFailure = true
 			break

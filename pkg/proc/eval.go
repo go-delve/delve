@@ -229,7 +229,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			// skip variables that we can't parse yet
 			continue
 		}
-		if trustArgOrder && val.Unreadable != nil && val.Addr == 0 && entry.Tag == dwarf.TagFormalParameter {
+		if trustArgOrder && ((val.Unreadable != nil && val.Addr == 0) || val.Flags&VariableFakeAddress != 0) && entry.Tag == dwarf.TagFormalParameter {
 			addr := afterLastArgAddr(vars)
 			if addr == 0 {
 				addr = uintptr(scope.Regs.CFA)
