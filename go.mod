@@ -3,7 +3,7 @@ module github.com/go-delve/delve
 go 1.11
 
 require (
-	github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5
+	github.com/cosiner/argv v0.1.0
 	github.com/cpuguy83/go-md2man v1.0.10 // indirect
 	github.com/creack/pty v1.1.9
 	github.com/google/go-dap v0.2.0

@@ -1,17 +1,20 @@
 package argv
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"os"
+)
 
 type (
-	// ReverseQuoteParser parse strings quoted by '`' and return it's result. Commonly,
-	// it should run it os command.
-	ReverseQuoteParser func([]rune, map[string]string) ([]rune, error)
+	Expander func(string) (string, error)
 
 	// Parser take tokens from Scanner, and do syntax checking, and generate the splitted arguments array.
 	Parser struct {
-		s      *Scanner
-		tokbuf []Token
-		r      ReverseQuoteParser
+		s                 *Scanner
+		tokbuf            []Token
+		backQuoteExpander Expander
+		stringExpander    Expander
 
 		sections    [][]string
 		currSection []string
@@ -22,16 +25,23 @@ type (
 )
 
 // NewParser create a cmdline string parser.
-func NewParser(s *Scanner, r ReverseQuoteParser) *Parser {
-	if r == nil {
-		r = func(r []rune, env map[string]string) ([]rune, error) {
-			return r, nil
+func NewParser(s *Scanner, backQuoteExpander, stringExpander Expander) *Parser {
+	if backQuoteExpander == nil {
+		backQuoteExpander = func(r string) (string, error) {
+			return r, fmt.Errorf("back quote doesn't allowed")
+		}
+	}
+	if stringExpander == nil {
+		stringExpander = func(runes string) (string, error) {
+			s := os.ExpandEnv(string(runes))
+			return s, nil
 		}
 	}
 
 	return &Parser{
-		s: s,
-		r: r,
+		s:                 s,
+		backQuoteExpander: backQuoteExpander,
+		stringExpander:    stringExpander,
 	}
 }
 
@@ -61,7 +71,7 @@ func (p *Parser) unreadToken(tok Token) {
 //   Section = [Space] SpacedSection { SpacedSection }
 //   SpacedSection = MultipleUnit [Space]
 //   MultipleUnit = Unit {Unit}
-//   Unit = String | ReverseQuote
+//   Unit = String | BackQuote | SingleQuote | DoubleQuote
 func (p *Parser) Parse() ([][]string, error) {
 	err := p.cmdline()
 	if err != nil {
@@ -96,22 +106,25 @@ func (p *Parser) section() error {
 		return err
 	}
 
-	var isFirst = true
+	var hasUnit bool
 	for {
-		unit, err := p.spacedSection()
-		if isFirst {
-			isFirst = false
-		} else {
-			if err == ErrInvalidSyntax {
-				break
-			}
-		}
+		unit, ok, err := p.spacedSection()
 		if err != nil {
 			return err
 		}
+		if !ok {
+			break
+		}
+		hasUnit = true
 
-		p.appendUnit(leftSpace, unit)
+		err = p.appendUnit(leftSpace, unit)
+		if err != nil {
+			return err
+		}
 		leftSpace = unit.rightSpace
+	}
+	if !hasUnit {
+		return ErrInvalidSyntax
 	}
 	return nil
 }
@@ -121,47 +134,45 @@ type unit struct {
 	toks       []Token
 }
 
-func (p *Parser) spacedSection() (u unit, err error) {
-	u.toks, err = p.multipleUnit()
+func (p *Parser) spacedSection() (u unit, ok bool, err error) {
+	u.toks, ok, err = p.multipleUnit()
 	if err != nil {
 		return
+	}
+	if !ok {
+		return u, false, nil
 	}
 	u.rightSpace, err = p.optional(TokSpace)
 	return
 }
 
-func (p *Parser) multipleUnit() ([]Token, error) {
+func (p *Parser) multipleUnit() ([]Token, bool, error) {
 	var (
-		toks    []Token
-		isFirst = true
+		toks []Token
 	)
 	for {
-		tok, err := p.unit()
-		if isFirst {
-			isFirst = false
-		} else {
-			if err == ErrInvalidSyntax {
-				break
-			}
-		}
+		tok, ok, err := p.unit()
 		if err != nil {
-			return nil, err
+			return nil, false, err
+		}
+		if !ok {
+			break
 		}
 		toks = append(toks, tok)
 	}
-	return toks, nil
+	return toks, len(toks) > 0, nil
 }
 
-func (p *Parser) unit() (Token, error) {
+func (p *Parser) unit() (Token, bool, error) {
 	tok, err := p.nextToken()
 	if err != nil {
-		return tok, err
+		return tok, false, err
 	}
-	if p.accept(tok.Type, TokString, TokReversequote) {
-		return tok, nil
+	if p.accept(tok.Type, TokString, TokStringSingleQuote, TokStringDoubleQuote, TokBackQuote) {
+		return tok, true, nil
 	}
 	p.unreadToken(tok)
-	return tok, ErrInvalidSyntax
+	return tok, false, nil
 }
 
 func (p *Parser) optional(typ TokenType) (bool, error) {
@@ -190,14 +201,27 @@ func (p *Parser) appendUnit(leftSpace bool, u unit) error {
 		p.currStr = p.currStr[:0]
 	}
 	for _, tok := range u.toks {
-		if tok.Type == TokReversequote {
-			val, err := p.r(tok.Value, p.s.envs())
+		switch tok.Type {
+		case TokBackQuote:
+			expanded, err := p.backQuoteExpander(string(tok.Value))
 			if err != nil {
-				return err
+				return fmt.Errorf("expand string back quoted failed: %s, %w", string(tok.Value), err)
 			}
-			p.currStr = append(p.currStr, val...)
-		} else {
+			p.currStr = append(p.currStr, []rune(expanded)...)
+		case TokString:
+			expanded, err := p.stringExpander(string(tok.Value))
+			if err != nil {
+				return fmt.Errorf("expand string failed: %s, %w", string(tok.Value), err)
+			}
+			p.currStr = append(p.currStr, []rune(expanded)...)
+		case TokStringSingleQuote:
 			p.currStr = append(p.currStr, tok.Value...)
+		case TokStringDoubleQuote:
+			expanded, err := p.stringExpander(string(tok.Value))
+			if err != nil {
+				return fmt.Errorf("expand string double quoted failed: %s, %w", string(tok.Value), err)
+			}
+			p.currStr = append(p.currStr, []rune(expanded)...)
 		}
 	}
 	p.currStrValid = true

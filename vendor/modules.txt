@@ -1,4 +1,4 @@
-# github.com/cosiner/argv v0.0.0-20170225145430-13bacc38a0a5
+# github.com/cosiner/argv v0.1.0
 github.com/cosiner/argv
 # github.com/cpuguy83/go-md2man v1.0.10
 github.com/cpuguy83/go-md2man/md2man

@@ -1043,10 +1043,11 @@ func parseNewArgv(args string) (resetArgs bool, newArgv []string, err error) {
 	if args == "" {
 		return false, nil, nil
 	}
-	v, err := argv.Argv([]rune(args), argv.ParseEnv(os.Environ()),
-		func(s []rune, _ map[string]string) ([]rune, error) {
-			return nil, fmt.Errorf("Backtick not supported in '%s'", string(s))
-		})
+	v, err := argv.Argv(args,
+		func(s string) (string, error) {
+			return "", fmt.Errorf("Backtick not supported in '%s'", s)
+		},
+		nil)
 	if err != nil {
 		return false, nil, err
 	}
