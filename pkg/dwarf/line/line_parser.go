@@ -84,8 +84,13 @@ func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{})
 	dbl.normalizeBackslash = normalizeBackslash
 
 	parseDebugLinePrologue(dbl, buf)
-	parseIncludeDirs(dbl, buf)
-	parseFileEntries(dbl, buf)
+	if dbl.Prologue.Version >= 5 {
+		parseIncludeDirs5(dbl, buf)
+		parseFileEntries5(dbl, buf)
+	} else {
+		parseIncludeDirs2(dbl, buf)
+		parseFileEntries2(dbl, buf)
+	}
 
 	// Instructions size calculation breakdown:
 	//   - dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
@@ -101,6 +106,12 @@ func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 
 	p.UnitLength = binary.LittleEndian.Uint32(buf.Next(4))
 	p.Version = binary.LittleEndian.Uint16(buf.Next(2))
+	if p.Version >= 5 {
+		dbl.ptrSize = int(buf.Next(1)[0])  // address_size
+		dbl.ptrSize += int(buf.Next(1)[0]) // segment_selector_size
+	}
+
+	// Version 4 or earlier
 	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
 	p.MinInstrLength = uint8(buf.Next(1)[0])
 	if p.Version == 4 {
@@ -119,7 +130,8 @@ func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 	dbl.Prologue = p
 }
 
-func parseIncludeDirs(info *DebugLineInfo, buf *bytes.Buffer) {
+// parseIncludeDirs2 parses the directory table for DWARF version 2 through 4.
+func parseIncludeDirs2(info *DebugLineInfo, buf *bytes.Buffer) {
 	for {
 		str, _ := util.ParseString(buf)
 		if str == "" {
@@ -130,7 +142,33 @@ func parseIncludeDirs(info *DebugLineInfo, buf *bytes.Buffer) {
 	}
 }
 
-func parseFileEntries(info *DebugLineInfo, buf *bytes.Buffer) {
+// parseIncludeDirs5 parses the directory table for DWARF version 5.
+func parseIncludeDirs5(info *DebugLineInfo, buf *bytes.Buffer) {
+	dirEntryFormReader := readEntryFormat(buf, info.Logf)
+	dirCount, _ := util.DecodeULEB128(buf)
+	info.IncludeDirs = make([]string, 0, dirCount)
+	for i := uint64(0); i < dirCount; i++ {
+		dirEntryFormReader.reset()
+		for dirEntryFormReader.next(buf) {
+			switch dirEntryFormReader.contentType {
+			case _DW_LNCT_path:
+				if dirEntryFormReader.formCode != _DW_FORM_string {
+					info.IncludeDirs = append(info.IncludeDirs, dirEntryFormReader.str)
+				} else {
+					//TODO(aarzilli): support debug_string, debug_line_str
+					info.Logf("unsupported string form %#x", dirEntryFormReader.formCode)
+				}
+			case _DW_LNCT_directory_index:
+			case _DW_LNCT_timestamp:
+			case _DW_LNCT_size:
+			case _DW_LNCT_MD5:
+			}
+		}
+	}
+}
+
+// parseFileEntries2 parses the file table for DWARF 2 through 4
+func parseFileEntries2(info *DebugLineInfo, buf *bytes.Buffer) {
 	for {
 		entry := readFileEntry(info, buf, true)
 		if entry.Path == "" {
@@ -164,4 +202,44 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	}
 
 	return entry
+}
+
+// parseFileEntries5 parses the file table for DWARF 5
+func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) {
+	fileEntryFormReader := readEntryFormat(buf, info.Logf)
+	fileCount, _ := util.DecodeULEB128(buf)
+	info.FileNames = make([]*FileEntry, 0, fileCount)
+	for i := 0; i < int(fileCount); i++ {
+		fileEntryFormReader.reset()
+		for fileEntryFormReader.next(buf) {
+			entry := new(FileEntry)
+			var path string
+			var diridx int = -1
+
+			switch fileEntryFormReader.contentType {
+			case _DW_LNCT_path:
+				if fileEntryFormReader.formCode != _DW_FORM_string {
+					path = fileEntryFormReader.str
+				} else {
+					//TODO(aarzilli): support debug_string, debug_line_str
+					info.Logf("unsupported string form %#x", fileEntryFormReader.formCode)
+				}
+			case _DW_LNCT_directory_index:
+				diridx = int(fileEntryFormReader.u64)
+			case _DW_LNCT_timestamp:
+				entry.LastModTime = fileEntryFormReader.u64
+			case _DW_LNCT_size:
+				entry.Length = fileEntryFormReader.u64
+			case _DW_LNCT_MD5:
+				// not implemented
+			}
+
+			if diridx >= 0 && !filepath.IsAbs(path) && diridx < len(info.IncludeDirs) {
+				path = filepath.Join(info.IncludeDirs[diridx], path)
+			}
+			entry.Path = path
+			info.FileNames = append(info.FileNames, entry)
+			info.Lookup[entry.Path] = entry
+		}
+	}
 }

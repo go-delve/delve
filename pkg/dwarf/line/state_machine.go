@@ -501,10 +501,14 @@ func advanceline(sm *StateMachine, buf *bytes.Buffer) {
 
 func setfile(sm *StateMachine, buf *bytes.Buffer) {
 	i, _ := util.DecodeULEB128(buf)
-	if i-1 < uint64(len(sm.dbl.FileNames)) {
-		sm.file = sm.dbl.FileNames[i-1].Path
+	if sm.dbl.Prologue.Version < 5 {
+		// in DWARF v5 files are indexed starting from 0, in v4 and prior the index starts at 1
+		i--
+	}
+	if i < uint64(len(sm.dbl.FileNames)) {
+		sm.file = sm.dbl.FileNames[i].Path
 	} else {
-		j := (i - 1) - uint64(len(sm.dbl.FileNames))
+		j := i - uint64(len(sm.dbl.FileNames))
 		if j < uint64(len(sm.definedFiles)) {
 			sm.file = sm.definedFiles[j].Path
 		} else {
