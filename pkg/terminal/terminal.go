@@ -155,7 +155,7 @@ func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 					t.Close()
 				}
 			default:
-				fmt.Println("only s or q allowed")
+				fmt.Println("only p or q allowed")
 			}
 
 		} else {
