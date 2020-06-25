@@ -14,6 +14,6 @@ const (
 	// or if these codes can evolve.
 	FailedToContinue          = 3000
 	UnableToDisplayThreads    = 2003
-	UnableToProduceStacktrace = 2004
+	UnableToProduceStackTrace = 2004
 	// Add more codes as we support more requests
 )

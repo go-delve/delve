@@ -56,7 +56,7 @@ type Server struct {
 	stopOnEntry bool
 	// binaryToRemove is the compiled binary to be removed on disconnect.
 	binaryToRemove string
-	// Keep track of stack frame ids we create as unique across all goroutines.
+	// stackFrameHandles keep track of unique ids created across all goroutines.
 	stackFrameHandles *handles
 }
 
@@ -646,7 +646,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	locs, err := s.debugger.Stacktrace(goroutineID, depth, opts, api.LoadConfigToProc(cfg))
 	if err != nil {
 		// No need to show to the user via pop-up as the error will be in CALL STACK panel
-		s.sendErrorResponse(request.Request, UnableToProduceStacktrace, "Unable to produce stack trace", err.Error())
+		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
 	}
 
