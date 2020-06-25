@@ -1,33 +1,34 @@
 package dap
 
-// Based on
-// https://github.com/microsoft/vscode-debugadapter-node/blob/master/adapter/src/handles.ts
-
 const startHandle = 1000
 
-type handles struct {
-	nextHandle int
-	handleMap  map[int]interface{}
+// handlesMap maps arbitrary values to unique sequential ids.
+// This provides convenient abstraction of references, offer
+// opacity and allowing simplification of complex identifiers.
+// Based on
+// https://github.com/microsoft/vscode-debugadapter-node/blob/master/adapter/src/handles.ts
+type handlesMap struct {
+	nextHandle  int
+	handleToVal map[int]interface{}
 }
 
-func newHandles() *handles {
-	hs := handles{startHandle, make(map[int]interface{})}
-	return &hs
+func newHandlesMap() *handlesMap {
+	return &handlesMap{startHandle, make(map[int]interface{})}
 }
 
-func (hs *handles) reset() {
+func (hs *handlesMap) reset() {
 	hs.nextHandle = startHandle
-	hs.handleMap = make(map[int]interface{})
+	hs.handleToVal = make(map[int]interface{})
 }
 
-func (hs *handles) create(value interface{}) int {
+func (hs *handlesMap) create(value interface{}) int {
 	next := hs.nextHandle
 	hs.nextHandle++
-	hs.handleMap[next] = value
+	hs.handleToVal[next] = value
 	return next
 }
 
-func (hs *handles) get(handle int) (interface{}, bool) {
-	v, ok := hs.handleMap[handle]
+func (hs *handlesMap) get(handle int) (interface{}, bool) {
+	v, ok := hs.handleToVal[handle]
 	return v, ok
 }

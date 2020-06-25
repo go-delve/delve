@@ -57,7 +57,7 @@ type Server struct {
 	// binaryToRemove is the compiled binary to be removed on disconnect.
 	binaryToRemove string
 	// stackFrameHandles keep track of unique ids created across all goroutines.
-	stackFrameHandles *handles
+	stackFrameHandles *handlesMap
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -73,7 +73,7 @@ func NewServer(config *service.Config) *Server {
 		listener:          config.Listener,
 		stopChan:          make(chan struct{}),
 		log:               logger,
-		stackFrameHandles: newHandles(),
+		stackFrameHandles: newHandlesMap(),
 	}
 }
 
@@ -97,7 +97,6 @@ func (s *Server) Stop() {
 			s.log.Error(err)
 		}
 	}
-	s.stackFrameHandles.reset()
 }
 
 // signalDisconnect closes config.DisconnectChan if not nil, which
@@ -626,33 +625,35 @@ func (s *Server) onPauseRequest(request *dap.PauseRequest) { // TODO V0
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
+// stackFrame represents the index of a frame within
+// the context of a stack of a specific goroutine.
+type stackFrame struct {
+	goroutineID int
+	frameIndex  int
+}
+
 // onStackTraceRequest handles ‘stackTrace’ requests.
 // This is a mandatory request to support.
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	// TODO(polina): support depth and cfg via launch/attach args
 
 	goroutineID := request.Arguments.ThreadId
-	// For feature parity with vscode-go, get depth (length of the returned list of Stackframes)
-	// from 'stackTraceDepth' in launch/attach arguments or default to 50.
-	// https://github.com/golang/vscode-go/blob/b4a484b59c4e3fe0966ea1056ddaeb5b77a83da0/src/debugAdapter/goDebug.ts#L373
-	// TODO(polina): Figure out why vscode-go does not specify DAP 'startFrame' + 'levels' value instead,
-	depth := 50
-	// Never set by vscode-go.
-	opts := api.StacktraceOptions(0)
-	// For feature parity with vscode-go, match its config defaults, which actually came from
-	// the many hardcoded places in this codebase. TODO(polina): make this a constant?
+	// Borrow the defaults for the arguments from the original vscode-go adapter.
+	// TODO(polina): is 'startFrame'+'levels' a better alternative for depth?
+	depth := 50 // length of the returned list of Stackframes
+	// TODO(polina): this is hardcoded throughout the codebase - make this a constant?
 	cfg := &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	opts := api.StacktraceOptions(0)
 
 	locs, err := s.debugger.Stacktrace(goroutineID, depth, opts, api.LoadConfigToProc(cfg))
 	if err != nil {
-		// No need to show to the user via pop-up as the error will be in CALL STACK panel
 		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
 	}
 
 	stackFrames := make([]dap.StackFrame, len(locs))
 	for i, loc := range locs {
-		uniqueStackFrameID := s.stackFrameHandles.create(tuple{goroutineID, i})
+		uniqueStackFrameID := s.stackFrameHandles.create(stackFrame{goroutineID, i})
 		stackFrames[i] = dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line}
 		if loc.Function != nil {
 			stackFrames[i].Name = loc.Function.Name()
