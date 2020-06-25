@@ -3,7 +3,7 @@ package dap
 const startHandle = 1000
 
 // handlesMap maps arbitrary values to unique sequential ids.
-// This provides convenient abstraction of references, offer
+// This provides convenient abstraction of references, offering
 // opacity and allowing simplification of complex identifiers.
 // Based on
 // https://github.com/microsoft/vscode-debugadapter-node/blob/master/adapter/src/handles.ts
