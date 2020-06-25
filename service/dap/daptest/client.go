@@ -368,8 +368,11 @@ func (c *Client) ThreadsRequest() {
 }
 
 // StackTraceRequest sends a 'stackTrace' request.
-func (c *Client) StackTraceRequest() {
+func (c *Client) StackTraceRequest(threadID, startFrame, levels int) {
 	request := &dap.StackTraceRequest{Request: *c.newRequest("stackTrace")}
+	request.Arguments.ThreadId = threadID
+	request.Arguments.StartFrame = startFrame
+	request.Arguments.Levels = levels
 	c.send(request)
 }
 

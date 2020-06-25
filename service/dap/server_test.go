@@ -166,17 +166,17 @@ func TestStopOnEntry(t *testing.T) {
 		}
 
 		// 8 >> stackTrace, << stackTrace
-		client.StackTraceRequest()
+		client.StackTraceRequest(1, 0, 20)
 		stResp := client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Message != "Not yet implemented" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Message=\"Not yet implemented\"", stResp)
+		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
 		// 9 >> stackTrace, << stackTrace
-		client.StackTraceRequest()
+		client.StackTraceRequest(1, 0, 20)
 		stResp = client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Message != "Not yet implemented" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Message=\"Not yet implemented\"", stResp)
+		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != 2004 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=2004", stResp)
 		}
 
 		// 10 >> continue, << continue, << terminated
@@ -306,8 +306,139 @@ func TestSetBreakpoint(t *testing.T) {
 			}
 		}
 
+		client.StackTraceRequest(1, 0, 20)
+		stResp := client.ExpectStackTraceResponse(t)
+
+		if stResp.Body.TotalFrames != 6 {
+			t.Errorf("\ngot %#v\nwant TotalFrames=6", stResp.Body.TotalFrames)
+		}
+		if len(stResp.Body.StackFrames) != 6 {
+			t.Errorf("\ngot %#v\nwant len(StackFrames)=6", stResp.Body.StackFrames)
+		} else {
+			expectStackFrame := func(got dap.StackFrame, id int, name string, sourceName string, line int) {
+				t.Helper()
+				if got.Id != id || got.Name != name {
+					t.Errorf("\ngot  %#v\nwant id=%d name=%s", got, id, name)
+				}
+				if (sourceName != "" && got.Source.Name != sourceName) || (line > 0 && got.Line != line) {
+					t.Errorf("\ngot  %#v\nwant source.name=%s line=%d", got, sourceName, line)
+				}
+			}
+			expectStackFrame(stResp.Body.StackFrames[0], 1000, "main.Increment", "increment.go", 8)
+			expectStackFrame(stResp.Body.StackFrames[1], 1001, "main.Increment", "increment.go", 11)
+			expectStackFrame(stResp.Body.StackFrames[2], 1002, "main.Increment", "increment.go", 11)
+			expectStackFrame(stResp.Body.StackFrames[3], 1003, "main.main", "increment.go", 17)
+			expectStackFrame(stResp.Body.StackFrames[4], 1004, "runtime.main", "proc.go", -1)
+			expectStackFrame(stResp.Body.StackFrames[5], 1005, "runtime.goexit", "", -1)
+		}
+
 		// TODO(polina): add other status checking requests
-		// that are not yet supported (stackTrace, scopes, variables)
+		// that are not yet supported (scopes, variables)
+
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+		// "Continue" is triggered after the response is sent
+
+		client.ExpectTerminatedEvent(t)
+		client.DisconnectRequest()
+		client.ExpectDisconnectResponse(t)
+	})
+}
+
+// TestStackTraceRequest executes to a breakpoint (similarly to TestSetBreakpoint
+// that includes more thorough checking of that sequence) and tests different
+// good and bad configurations of 'stackTrace' requests.
+func TestStackTraceRequest(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		client.InitializeRequest()
+		client.ExpectInitializeResponse(t)
+
+		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+		client.ExpectInitializedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.SetBreakpointsRequest(fixture.Source, []int{8, 18})
+		client.ExpectSetBreakpointsResponse(t)
+
+		client.ConfigurationDoneRequest()
+		client.ExpectConfigurationDoneResponse(t)
+		// This triggers "continue"
+
+		var stResp *dap.StackTraceResponse
+		var expectFrames = func(wantStart int, wantFrames int, wantTotal int, wantLine int) {
+			t.Helper()
+			if stResp.Body.TotalFrames != wantTotal {
+				t.Errorf("\ngot  %#v\nwant TotalFrames=%d", stResp.Body.TotalFrames, wantTotal)
+			}
+			if len(stResp.Body.StackFrames) != wantFrames {
+				t.Errorf("\ngot  len=%d\nwant len=%d", len(stResp.Body.StackFrames), wantFrames)
+			} else {
+				for i := 0; i < wantFrames; i++ {
+					if stResp.Body.StackFrames[i].Id != wantStart+i {
+						t.Errorf("\ngot  %#v\nwant id=%d", stResp.Body.StackFrames[i], wantStart+i)
+					}
+				}
+				if wantFrames > 0 && wantLine > 0 && stResp.Body.StackFrames[0].Line != wantLine {
+					t.Errorf("\ngot  line=%d\nwant line=%d", stResp.Body.StackFrames[0].Line, wantLine)
+				}
+			}
+		}
+
+		client.ExpectStoppedEvent(t) // at line 8
+
+		client.StackTraceRequest(1, 0, 0)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1000, 6, 6, 8)
+
+		// Even though the stack frames are the same,
+		// repeated requests at the same breakpoint,
+		// would assign unique ids to them each time.
+		client.StackTraceRequest(1, -1, 0)
+		stResp = client.ExpectStackTraceResponse(t) // Or should this return an ErrorResponse?
+		expectFrames(1006, 6, 6, 8)
+
+		client.StackTraceRequest(1, 3, 0)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1015, 3, 6, 17)
+
+		client.StackTraceRequest(1, 6, 0)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(0, 0, 6, 0)
+
+		client.StackTraceRequest(1, 7, 0)
+		stResp = client.ExpectStackTraceResponse(t) // Or should this return an ErrorResponse?
+		expectFrames(0, 0, 6, 0)
+
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+		// "Continue" is triggered after the response is sent
+
+		client.ExpectStoppedEvent(t) // at line 18
+
+		// Frame ids get reset at each breakpoint.
+		client.StackTraceRequest(1, 0, 0)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1000, 3, 3, 18)
+
+		client.StackTraceRequest(1, 0, -1) // Or should this return an ErrorResponse?
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1003, 3, 3, 18)
+
+		client.StackTraceRequest(1, 0, 2)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1006, 2, 3, 18)
+
+		client.StackTraceRequest(1, 0, 3)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1009, 3, 3, 18)
+
+		client.StackTraceRequest(1, 0, 4)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1012, 3, 3, 18)
+
+		client.StackTraceRequest(1, 1, 2)
+		stResp = client.ExpectStackTraceResponse(t)
+		expectFrames(1016, 2, 3, -1) // Don't test for runtime line we don't control.
 
 		client.ContinueRequest(1)
 		client.ExpectContinueResponse(t)
@@ -476,9 +607,6 @@ func TestRequiredNotYetImplementedResponses(t *testing.T) {
 
 		client.PauseRequest()
 		expectNotYetImplemented("pause")
-
-		client.StackTraceRequest()
-		expectNotYetImplemented("stackTrace")
 
 		client.ScopesRequest()
 		expectNotYetImplemented("scopes")
