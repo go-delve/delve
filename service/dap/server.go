@@ -635,11 +635,10 @@ type stackFrame struct {
 // onStackTraceRequest handles ‘stackTrace’ requests.
 // This is a mandatory request to support.
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
-	// TODO(polina): support depth and cfg via launch/attach args
-
 	goroutineID := request.Arguments.ThreadId
 	// Borrow the defaults for the arguments from the original vscode-go adapter.
 	// TODO(polina): is 'startFrame'+'levels' a better alternative for depth?
+	// TODO(polina): support setting depth via launch/attach args
 	depth := 50 // length of the returned list of Stackframes
 	locs, err := s.debugger.Stacktrace(goroutineID, depth, 0, nil /*skip locals & args*/)
 	if err != nil {
