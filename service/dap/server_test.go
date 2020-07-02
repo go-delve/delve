@@ -318,10 +318,10 @@ func TestSetBreakpoint(t *testing.T) {
 			expectStackFrame := func(got dap.StackFrame, id int, name string, sourceName string, line int) {
 				t.Helper()
 				if got.Id != id || got.Name != name {
-					t.Errorf("\ngot  %#v\nwant id=%d name=%s", got, id, name)
+					t.Errorf("\ngot  %#v\nwant Id=%d Name=%s", got, id, name)
 				}
 				if (sourceName != "" && got.Source.Name != sourceName) || (line > 0 && got.Line != line) {
-					t.Errorf("\ngot  %#v\nwant source.name=%s line=%d", got, sourceName, line)
+					t.Errorf("\ngot  %#v\nwant Source.Name=%s Line=%d", got, sourceName, line)
 				}
 			}
 			expectStackFrame(stResp.Body.StackFrames[0], 1000, "main.Increment", "increment.go", 8)
@@ -345,115 +345,126 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+var expectFrames = func(t *testing.T, stResp *dap.StackTraceResponse, wantStart int, wantFrames int, wantTotal int, wantLine int) {
+	t.Helper()
+	if stResp.Body.TotalFrames != wantTotal {
+		t.Errorf("\ngot  %#v\nwant TotalFrames=%d", stResp.Body.TotalFrames, wantTotal)
+	}
+	if len(stResp.Body.StackFrames) != wantFrames {
+		t.Errorf("\ngot  len(StackFrames)=%d\nwant %d", len(stResp.Body.StackFrames), wantFrames)
+	} else {
+		for i := 0; i < wantFrames; i++ {
+			if stResp.Body.StackFrames[i].Id != wantStart+i {
+				t.Errorf("\ngot  %#v\nwant Id=%d", stResp.Body.StackFrames[i], wantStart+i)
+			}
+		}
+		if wantFrames > 0 && wantLine > 0 && stResp.Body.StackFrames[0].Line != wantLine {
+			t.Errorf("\ngot  Line=%d\nwant %d", stResp.Body.StackFrames[0].Line, wantLine)
+		}
+	}
+}
+
 // TestStackTraceRequest executes to a breakpoint (similarly to TestSetBreakpoint
 // that includes more thorough checking of that sequence) and tests different
 // good and bad configurations of 'stackTrace' requests.
 func TestStackTraceRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		client.InitializeRequest()
-		client.ExpectInitializeResponse(t)
-
-		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-		client.ExpectInitializedEvent(t)
-		client.ExpectLaunchResponse(t)
-
-		client.SetBreakpointsRequest(fixture.Source, []int{8, 18})
-		client.ExpectSetBreakpointsResponse(t)
-
-		client.ConfigurationDoneRequest()
-		client.ExpectConfigurationDoneResponse(t)
-		// This triggers "continue"
-
 		var stResp *dap.StackTraceResponse
-		var expectFrames = func(wantStart int, wantFrames int, wantTotal int, wantLine int) {
-			t.Helper()
-			if stResp.Body.TotalFrames != wantTotal {
-				t.Errorf("\ngot  %#v\nwant TotalFrames=%d", stResp.Body.TotalFrames, wantTotal)
-			}
-			if len(stResp.Body.StackFrames) != wantFrames {
-				t.Errorf("\ngot  len=%d\nwant len=%d", len(stResp.Body.StackFrames), wantFrames)
-			} else {
-				for i := 0; i < wantFrames; i++ {
-					if stResp.Body.StackFrames[i].Id != wantStart+i {
-						t.Errorf("\ngot  %#v\nwant id=%d", stResp.Body.StackFrames[i], wantStart+i)
-					}
-				}
-				if wantFrames > 0 && wantLine > 0 && stResp.Body.StackFrames[0].Line != wantLine {
-					t.Errorf("\ngot  line=%d\nwant line=%d", stResp.Body.StackFrames[0].Line, wantLine)
-				}
-			}
-		}
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{8, 18},
+			[]func(){
+				// Stop at line 8
+				func() {
+					t.Helper()
+					client.StackTraceRequest(1, 0, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1000, 6, 6, 8)
 
-		client.ExpectStoppedEvent(t) // at line 8
+					// Even though the stack frames are the same,
+					// repeated requests at the same breakpoint,
+					// would assign unique ids to them each time.
+					client.StackTraceRequest(1, -100, 0) // Negative startFrame is treated as 0
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1006, 6, 6, 8)
 
-		client.StackTraceRequest(1, 0, 0)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1000, 6, 6, 8)
+					client.StackTraceRequest(1, 3, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1015, 3, 6, 17)
 
-		// Even though the stack frames are the same,
-		// repeated requests at the same breakpoint,
-		// would assign unique ids to them each time.
-		client.StackTraceRequest(1, -1, 0)
-		stResp = client.ExpectStackTraceResponse(t) // Or should this return an ErrorResponse?
-		expectFrames(1006, 6, 6, 8)
+					client.StackTraceRequest(1, 6, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 0, 0, 6, 0)
 
-		client.StackTraceRequest(1, 3, 0)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1015, 3, 6, 17)
+					client.StackTraceRequest(1, 7, 0) // Out of bounds startFrame is capped at len
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 0, 0, 6, 0)
+				},
+				// Stop at line 18
+				func() {
+					t.Helper()
+					// Frame ids get reset at each breakpoint.
+					client.StackTraceRequest(1, 0, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1000, 3, 3, 18)
 
-		client.StackTraceRequest(1, 6, 0)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(0, 0, 6, 0)
+					client.StackTraceRequest(1, 0, -100) // Negative levels is treated as 0
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1003, 3, 3, 18)
 
-		client.StackTraceRequest(1, 7, 0)
-		stResp = client.ExpectStackTraceResponse(t) // Or should this return an ErrorResponse?
-		expectFrames(0, 0, 6, 0)
+					client.StackTraceRequest(1, 0, 2)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1006, 2, 3, 18)
 
-		client.ContinueRequest(1)
-		client.ExpectContinueResponse(t)
-		// "Continue" is triggered after the response is sent
+					client.StackTraceRequest(1, 0, 3)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1009, 3, 3, 18)
 
-		client.ExpectStoppedEvent(t) // at line 18
+					client.StackTraceRequest(1, 0, 4) // Out of bounds levels is capped at len
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1012, 3, 3, 18)
 
-		// Frame ids get reset at each breakpoint.
-		client.StackTraceRequest(1, 0, 0)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1000, 3, 3, 18)
-
-		client.StackTraceRequest(1, 0, -1) // Or should this return an ErrorResponse?
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1003, 3, 3, 18)
-
-		client.StackTraceRequest(1, 0, 2)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1006, 2, 3, 18)
-
-		client.StackTraceRequest(1, 0, 3)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1009, 3, 3, 18)
-
-		client.StackTraceRequest(1, 0, 4)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1012, 3, 3, 18)
-
-		client.StackTraceRequest(1, 1, 2)
-		stResp = client.ExpectStackTraceResponse(t)
-		expectFrames(1016, 2, 3, -1) // Don't test for runtime line we don't control.
-
-		client.ContinueRequest(1)
-		client.ExpectContinueResponse(t)
-		// "Continue" is triggered after the response is sent
-
-		client.ExpectTerminatedEvent(t)
-		client.DisconnectRequest()
-		client.ExpectDisconnectResponse(t)
+					client.StackTraceRequest(1, 1, 2)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1016, 2, 3, -1) // Don't test for runtime line we don't control
+				}})
 	})
 }
 
-// runDebugSesion is a helper for executing the standard init and shutdown
+// Tests that 'stackTraceDepth' from LaunchRequest is parsed and passed to
+// stacktrace requests handlers.
+func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		var stResp *dap.StackTraceResponse
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "stackTraceDepth": 1,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{8},
+			[]func(){
+				// Stop at line 8
+				func() {
+					t.Helper()
+					client.StackTraceRequest(1, 0, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectFrames(t, stResp, 1000, 2, 2, 8)
+				}})
+	})
+}
+
+// runDebugSesionWithBPs is a helper for executing the standard init and shutdown
 // sequences for a program that does not stop on entry
-// while specifying unique launch criteria via parameters.
-func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func()) {
+// while specifying breakpoints and unique launch criteria via parameters.
+func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, launchRequest func(), source string, breakpoints []int, onBreakpoints []func()) {
+	t.Helper()
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
@@ -461,17 +472,34 @@ func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func())
 	client.ExpectInitializedEvent(t)
 	client.ExpectLaunchResponse(t)
 
-	// Skip no-op setBreakpoints
+	client.SetBreakpointsRequest(source, breakpoints)
+	client.ExpectSetBreakpointsResponse(t)
+
 	// Skip no-op setExceptionBreakpoints
 
 	client.ConfigurationDoneRequest()
 	client.ExpectConfigurationDoneResponse(t)
 
-	// Program automatically continues to completion
+	// Program automatically continues to breakpoint or completion
+
+	for _, onBP := range onBreakpoints {
+		client.ExpectStoppedEvent(t)
+		onBP()
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+		// "Continue" is triggered after the response is sent
+	}
 
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequest()
 	client.ExpectDisconnectResponse(t)
+}
+
+// runDebugSesion is a helper for executing the standard init and shutdown
+// sequences for a program that does not stop on entry
+// while specifying unique launch criteria via parameters.
+func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func()) {
+	runDebugSessionWithBPs(t, client, launchRequest, "", nil, nil)
 }
 
 func TestLaunchDebugRequest(t *testing.T) {
