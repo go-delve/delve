@@ -1,5 +1,7 @@
 package dap
 
+import "github.com/go-delve/delve/pkg/proc"
+
 const startHandle = 1000
 
 // handlesMap maps arbitrary values to unique sequential ids.
@@ -31,4 +33,28 @@ func (hs *handlesMap) create(value interface{}) int {
 func (hs *handlesMap) get(handle int) (interface{}, bool) {
 	v, ok := hs.handleToVal[handle]
 	return v, ok
+}
+
+type variablesHandlesMap struct {
+	m *handlesMap
+}
+
+func newVariablesHandlesMap() *variablesHandlesMap {
+	return &variablesHandlesMap{newHandlesMap()}
+}
+
+func (hs *variablesHandlesMap) create(value *proc.Variable) int {
+	return hs.m.create(value)
+}
+
+func (hs *variablesHandlesMap) get(handle int) (*proc.Variable, bool) {
+	v, ok := hs.m.get(handle)
+	if !ok {
+		return nil, false
+	}
+	return v.(*proc.Variable), true
+}
+
+func (hs *variablesHandlesMap) reset() {
+	hs.m.reset()
 }

@@ -3,8 +3,11 @@ package rpc2
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -189,7 +192,11 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 		arg.Opts |= api.StacktraceReadDefers
 	}
 	var err error
-	out.Locations, err = s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Opts, api.LoadConfigToProc(cfg))
+	rawlocs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Opts)
+	if err != nil {
+		return err
+	}
+	out.Locations, err = s.debugger.ConvertStacktrace(rawlocs, api.LoadConfigToProc(cfg))
 	return err
 }
 
@@ -320,8 +327,14 @@ type ListThreadsOut struct {
 
 // ListThreads lists all threads.
 func (s *RPCServer) ListThreads(arg ListThreadsIn, out *ListThreadsOut) (err error) {
-	out.Threads, err = s.debugger.Threads()
-	return err
+	threads, err := s.debugger.Threads()
+	if err != nil {
+		return err
+	}
+	s.debugger.LockTarget()
+	defer s.debugger.UnlockTarget()
+	out.Threads = api.ConvertThreads(threads)
+	return nil
 }
 
 type GetThreadIn struct {
@@ -341,7 +354,9 @@ func (s *RPCServer) GetThread(arg GetThreadIn, out *GetThreadOut) error {
 	if t == nil {
 		return fmt.Errorf("no thread with id %d", arg.Id)
 	}
-	out.Thread = t
+	s.debugger.LockTarget()
+	defer s.debugger.UnlockTarget()
+	out.Thread = api.ConvertThread(t)
 	return nil
 }
 
@@ -370,7 +385,7 @@ func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsO
 	if err != nil {
 		return err
 	}
-	out.Variables = vars
+	out.Variables = api.ConvertVars(vars)
 	return nil
 }
 
@@ -397,11 +412,18 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 		arg.ThreadID = state.CurrentThread.ID
 	}
 
-	regs, err := s.debugger.Registers(arg.ThreadID, arg.Scope, arg.IncludeFp)
+	var regs *op.DwarfRegisters
+	var err error
+
+	if arg.Scope != nil {
+		regs, err = s.debugger.ScopeRegisters(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.IncludeFp)
+	} else {
+		regs, err = s.debugger.ThreadRegisters(arg.ThreadID, arg.IncludeFp)
+	}
 	if err != nil {
 		return err
 	}
-	out.Regs = regs
+	out.Regs = api.ConvertRegisters(regs, s.debugger.DwarfRegisterToString, arg.IncludeFp)
 	out.Registers = out.Regs.String()
 
 	return nil
@@ -418,11 +440,11 @@ type ListLocalVarsOut struct {
 
 // ListLocalVars lists all local variables in scope.
 func (s *RPCServer) ListLocalVars(arg ListLocalVarsIn, out *ListLocalVarsOut) error {
-	vars, err := s.debugger.LocalVariables(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
+	vars, err := s.debugger.LocalVariables(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
-	out.Variables = vars
+	out.Variables = api.ConvertVars(vars)
 	return nil
 }
 
@@ -437,11 +459,11 @@ type ListFunctionArgsOut struct {
 
 // ListFunctionArgs lists all arguments to the current function
 func (s *RPCServer) ListFunctionArgs(arg ListFunctionArgsIn, out *ListFunctionArgsOut) error {
-	vars, err := s.debugger.FunctionArguments(arg.Scope, *api.LoadConfigToProc(&arg.Cfg))
+	vars, err := s.debugger.FunctionArguments(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}
-	out.Args = vars
+	out.Args = api.ConvertVars(vars)
 	return nil
 }
 
@@ -464,11 +486,11 @@ func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	if cfg == nil {
 		cfg = &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	}
-	v, err := s.debugger.EvalVariableInScope(arg.Scope, arg.Expr, *api.LoadConfigToProc(cfg))
+	v, err := s.debugger.EvalVariableInScope(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Expr, *api.LoadConfigToProc(cfg))
 	if err != nil {
 		return err
 	}
-	out.Variable = v
+	out.Variable = api.ConvertVar(v)
 	return nil
 }
 
@@ -484,7 +506,7 @@ type SetOut struct {
 // Set sets the value of a variable. Only numerical types and
 // pointers are currently supported.
 func (s *RPCServer) Set(arg SetIn, out *SetOut) error {
-	return s.debugger.SetVariableInScope(arg.Scope, arg.Symbol, arg.Value)
+	return s.debugger.SetVariableInScope(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Symbol, arg.Value)
 }
 
 type ListSourcesIn struct {
@@ -562,7 +584,9 @@ func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut)
 	if err != nil {
 		return err
 	}
-	out.Goroutines = gs
+	s.debugger.LockTarget()
+	defer s.debugger.UnlockTarget()
+	out.Goroutines = api.ConvertGoroutines(gs)
 	out.Nextg = nextg
 	return nil
 }
@@ -607,7 +631,7 @@ type FindLocationOut struct {
 // NOTE: this function does not actually set breakpoints.
 func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {
 	var err error
-	out.Locations, err = c.debugger.FindLocation(arg.Scope, arg.Loc, arg.IncludeNonExecutableLines)
+	out.Locations, err = c.debugger.FindLocation(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Loc, arg.IncludeNonExecutableLines)
 	return err
 }
 
@@ -630,8 +654,15 @@ type DisassembleOut struct {
 // Disassemble will also try to calculate the destination address of an absolute indirect CALL if it happens to be the instruction the selected goroutine is stopped at.
 func (c *RPCServer) Disassemble(arg DisassembleIn, out *DisassembleOut) error {
 	var err error
-	out.Disassemble, err = c.debugger.Disassemble(arg.Scope.GoroutineID, arg.StartPC, arg.EndPC, arg.Flavour)
-	return err
+	insts, err := c.debugger.Disassemble(arg.Scope.GoroutineID, arg.StartPC, arg.EndPC)
+	if err != nil {
+		return err
+	}
+	out.Disassemble = make(api.AsmInstructions, len(insts))
+	for i := range insts {
+		out.Disassemble[i] = api.ConvertAsmInstruction(insts[i], c.debugger.AsmInstructionText(&insts[i], proc.AssemblyFlavour(arg.Flavour)))
+	}
+	return nil
 }
 
 type RecordedIn struct {
@@ -670,8 +701,15 @@ type ListCheckpointsOut struct {
 
 func (s *RPCServer) ListCheckpoints(arg ListCheckpointsIn, out *ListCheckpointsOut) error {
 	var err error
-	out.Checkpoints, err = s.debugger.Checkpoints()
-	return err
+	cps, err := s.debugger.Checkpoints()
+	if err != nil {
+		return err
+	}
+	out.Checkpoints = make([]api.Checkpoint, len(cps))
+	for i := range cps {
+		out.Checkpoints[i] = api.Checkpoint(cps[i])
+	}
+	return nil
 }
 
 type ClearCheckpointIn struct {
@@ -740,7 +778,11 @@ type ListDynamicLibrariesOut struct {
 }
 
 func (s *RPCServer) ListDynamicLibraries(in ListDynamicLibrariesIn, out *ListDynamicLibrariesOut) error {
-	out.List = s.debugger.ListDynamicLibraries()
+	imgs := s.debugger.ListDynamicLibraries()
+	out.List = make([]api.Image, 0, len(imgs))
+	for i := range imgs {
+		out.List[i] = api.ConvertImage(imgs[i])
+	}
 	return nil
 }
 
@@ -760,7 +802,26 @@ type ListPackagesBuildInfoOut struct {
 // Note that the directory path is a best guess and may be wrong is a tool
 // other than cmd/go is used to perform the build.
 func (s *RPCServer) ListPackagesBuildInfo(in ListPackagesBuildInfoIn, out *ListPackagesBuildInfoOut) error {
-	out.List = s.debugger.ListPackagesBuildInfo(in.IncludeFiles)
+	pkgs := s.debugger.ListPackagesBuildInfo(in.IncludeFiles)
+	out.List = make([]api.PackageBuildInfo, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		var files []string
+
+		if len(pkg.Files) > 0 {
+			files = make([]string, 0, len(pkg.Files))
+			for file := range pkg.Files {
+				files = append(files, file)
+			}
+		}
+
+		sort.Strings(files)
+
+		out.List = append(out.List, api.PackageBuildInfo{
+			ImportPath:    pkg.ImportPath,
+			DirectoryPath: pkg.DirectoryPath,
+			Files:         files,
+		})
+	}
 	return nil
 }
 
