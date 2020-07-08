@@ -261,13 +261,16 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			locationExpr := v.LocationExpr
 			declLine := v.DeclLine
 			v = v.maybeDereference()
-			if v.Addr == 0 {
+			if v.Addr == 0 && v.Unreadable == nil {
 				v.Unreadable = fmt.Errorf("no address for escaped variable")
 			}
 			v.Name = name[1:]
 			v.Flags |= VariableEscaped
-			locationExpr.isEscaped = true
-			v.LocationExpr = locationExpr
+			// See https://github.com/go-delve/delve/issues/2049 for details
+			if locationExpr != nil {
+				locationExpr.isEscaped = true
+				v.LocationExpr = locationExpr
+			}
 			v.DeclLine = declLine
 			vars[i] = v
 		}
