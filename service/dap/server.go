@@ -459,10 +459,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	stop, ok := request.Arguments["stopOnEntry"]
 	s.args.stopOnEntry = ok && stop == true
 
-	depth, ok := request.Arguments["stackTraceDepth"]
-	depthParsed, ok := depth.(float64)
-	if ok && depthParsed > 0 {
-		s.args.stackTraceDepth = int(depthParsed)
+	depth, ok := request.Arguments["stackTraceDepth"].(float64)
+	if ok && depth > 0 {
+		s.args.stackTraceDepth = int(depth)
 	}
 
 	var targetArgs []string

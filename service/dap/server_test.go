@@ -351,7 +351,7 @@ func TestSetBreakpoint(t *testing.T) {
 //     wantFrames - number of frames returned.
 //     wantTotalFrames - total number of stack frames (StackTraceResponse.Body.TotalFrames).
 func expectStackFrames(t *testing.T, got *dap.StackTraceResponse,
-	wantStartLine int, wantStartID int, wantFrames int, wantTotalFrames int) {
+	wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
 	t.Helper()
 	if got.Body.TotalFrames != wantTotalFrames {
 		t.Errorf("\ngot  %#v\nwant TotalFrames=%d", got.Body.TotalFrames, wantTotalFrames)
