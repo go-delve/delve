@@ -52,12 +52,27 @@ type Server struct {
 	debugger *debugger.Debugger
 	// log is used for structured logging.
 	log *logrus.Entry
-	// stopOnEntry is set to automatically stop the debugee after start.
-	stopOnEntry bool
 	// binaryToRemove is the compiled binary to be removed on disconnect.
 	binaryToRemove string
 	// stackFrameHandles keep track of unique ids created across all goroutines.
 	stackFrameHandles *handlesMap
+	// args tracks special settings for handling debug session requests.
+	args launchAttachArgs
+}
+
+// launchAttachArgs captures arguments from launch/attach request that
+// impact handling of subsequent requests.
+type launchAttachArgs struct {
+	// stopOnEntry is set to automatically stop the debugee after start.
+	stopOnEntry bool
+	// stackTraceDepth is the maximum length of the returned list of stack frames.
+	stackTraceDepth int
+}
+
+// defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
+var defaultArgs = launchAttachArgs{
+	stopOnEntry:     false,
+	stackTraceDepth: 50,
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -74,6 +89,7 @@ func NewServer(config *service.Config) *Server {
 		stopChan:          make(chan struct{}),
 		log:               logger,
 		stackFrameHandles: newHandlesMap(),
+		args:              defaultArgs,
 	}
 }
 
@@ -441,7 +457,12 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	stop, ok := request.Arguments["stopOnEntry"]
-	s.stopOnEntry = ok && stop == true
+	s.args.stopOnEntry = ok && stop == true
+
+	depth, ok := request.Arguments["stackTraceDepth"].(float64)
+	if ok && depth > 0 {
+		s.args.stackTraceDepth = int(depth)
+	}
 
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
@@ -534,7 +555,7 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 }
 
 func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest) {
-	if s.stopOnEntry {
+	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
 			Body:  dap.StoppedEventBody{Reason: "entry", ThreadId: 1, AllThreadsStopped: true},
@@ -542,7 +563,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 		s.send(e)
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
-	if !s.stopOnEntry {
+	if !s.args.stopOnEntry {
 		s.doContinue()
 	}
 }
@@ -636,11 +657,7 @@ type stackFrame struct {
 // This is a mandatory request to support.
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	goroutineID := request.Arguments.ThreadId
-	// Borrow the defaults for the arguments from the original vscode-go adapter.
-	// TODO(polina): is 'startFrame'+'levels' a better alternative for depth?
-	// TODO(polina): support setting depth via launch/attach args
-	depth := 50 // length of the returned list of Stackframes
-	locs, err := s.debugger.Stacktrace(goroutineID, depth, 0, nil /*skip locals & args*/)
+	locs, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0, nil /*skip locals & args*/)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
