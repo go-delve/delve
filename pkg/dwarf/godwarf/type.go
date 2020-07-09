@@ -1013,6 +1013,9 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 	if err != nil {
 		goto Error
 	}
+	if typ == nil {
+		goto Error
+	}
 
 	typ.Common().Offset = off
 
