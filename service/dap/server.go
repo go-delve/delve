@@ -399,7 +399,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	program, ok := request.Arguments["program"].(string)
 	if !ok || program == "" {
 		s.sendErrorResponse(request.Request,
-			FailedToContinue, "Failed to launch",
+			FailedToLaunch, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
@@ -426,7 +426,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			buildFlags, ok = buildFlagsArg.(string)
 			if !ok {
 				s.sendErrorResponse(request.Request,
-					FailedToContinue, "Failed to launch",
+					FailedToLaunch, "Failed to launch",
 					fmt.Sprintf("'buildFlags' attribute '%v' in debug configuration is not a string.", buildFlagsArg))
 				return
 			}
@@ -440,7 +440,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 		if err != nil {
 			s.sendErrorResponse(request.Request,
-				FailedToContinue, "Failed to launch",
+				FailedToLaunch, "Failed to launch",
 				fmt.Sprintf("Build error: %s", err.Error()))
 			return
 		}
@@ -451,7 +451,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// TODO(polina): support "remote" mode
 	if mode != "exec" && mode != "debug" && mode != "test" {
 		s.sendErrorResponse(request.Request,
-			FailedToContinue, "Failed to launch",
+			FailedToLaunch, "Failed to launch",
 			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
 		return
 	}
@@ -470,7 +470,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		argsParsed, ok := args.([]interface{})
 		if !ok {
 			s.sendErrorResponse(request.Request,
-				FailedToContinue, "Failed to launch",
+				FailedToLaunch, "Failed to launch",
 				fmt.Sprintf("'args' attribute '%v' in debug configuration is not an array.", args))
 			return
 		}
@@ -478,7 +478,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			argParsed, ok := arg.(string)
 			if !ok {
 				s.sendErrorResponse(request.Request,
-					FailedToContinue, "Failed to launch",
+					FailedToLaunch, "Failed to launch",
 					fmt.Sprintf("value '%v' in 'args' attribute in debug configuration is not a string.", arg))
 				return
 			}
@@ -492,7 +492,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	var err error
 	if s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs); err != nil {
 		s.sendErrorResponse(request.Request,
-			FailedToContinue, "Failed to launch", err.Error())
+			FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
 
