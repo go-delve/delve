@@ -1014,6 +1014,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		goto Error
 	}
 	if typ == nil {
+		err = fmt.Errorf("unexpected tag %v while reading type at offset %#x", e.Tag, e.Offset)
 		goto Error
 	}
 
