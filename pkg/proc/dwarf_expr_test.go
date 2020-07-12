@@ -323,3 +323,17 @@ func TestIssue1636_InlineWithoutOrigin(t *testing.T) {
 	dwb.TagClose()
 	fakeBinaryInfo(t, dwb)
 }
+
+func TestUnsupportedType(t *testing.T) {
+	// Tests that reading an unsupported type does not cause an error
+	dwb := dwarfbuilder.New()
+	dwb.AddCompileUnit("main", 0x0)
+	off := dwb.TagOpen(dwarf.TagReferenceType, "blah")
+	dwb.TagClose()
+	dwb.TagClose()
+	_, dw := fakeBinaryInfo(t, dwb)
+	_, err := godwarf.ReadType(dw, 0, off, make(map[dwarf.Offset]godwarf.Type))
+	if err != nil {
+		t.Errorf("unexpected error reading unsupported type: %#v", err)
+	}
+}

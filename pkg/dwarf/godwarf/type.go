@@ -513,6 +513,22 @@ func (t *ChanType) stringIntl(recCheck recCheck) string {
 	return "chan " + t.ElemType.String()
 }
 
+// An UnsupportedType is a placeholder returned in situations where we
+// encounter a type that isn't supported.
+type UnsupportedType struct {
+	CommonType
+	Tag dwarf.Tag
+}
+
+func (t *UnsupportedType) stringIntl(recCheck) string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return fmt.Sprintf("(unsupported type %s)", t.Tag.String())
+}
+
+func (t *UnsupportedType) String() string { return t.stringIntl(nil) }
+
 // Type reads the type at off in the DWARF ``info'' section.
 func ReadType(d *dwarf.Data, index int, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
 	typ, err := readType(d, "info", d.Reader(), off, typeCache, nil)
@@ -1007,6 +1023,16 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		t := new(UnspecifiedType)
 		typ = t
 		typeCache[off] = t
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
+
+	default:
+		// This is some other type DIE that we're currently not
+		// equipped to handle. Return an abstract "unsupported type"
+		// object in such cases.
+		t := new(UnsupportedType)
+		typ = t
+		typeCache[off] = t
+		t.Tag = e.Tag
 		t.Name, _ = e.Val(dwarf.AttrName).(string)
 	}
 
