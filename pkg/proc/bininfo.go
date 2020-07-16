@@ -1618,6 +1618,8 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContext, image *Image, reader *reader.Reader, cu *compileUnit) {
 	hasAttrGoPkgName := goversion.ProducerAfterOrEqual(cu.producer, 1, 13)
 
+	depth := 0
+
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
 		if err != nil {
 			image.setLoadError("error reading debug_info: %v", err)
@@ -1625,7 +1627,11 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 		}
 		switch entry.Tag {
 		case 0:
-			return
+			if depth == 0 {
+				return
+			} else {
+				depth--
+			}
 		case dwarf.TagImportedUnit:
 			bi.loadDebugInfoMapsImportedUnit(entry, ctxt, image, cu)
 			reader.SkipChildren()
@@ -1694,6 +1700,11 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 				} else {
 					bi.addConcreteSubprogram(entry, ctxt, reader, cu)
 				}
+			}
+
+		default:
+			if entry.Children {
+				depth++
 			}
 		}
 	}
