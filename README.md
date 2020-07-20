@@ -12,6 +12,7 @@ The GitHub issue tracker is for **bugs** only. Please use the [developer mailing
   - [Linux](Documentation/installation/linux/install.md)
   - [macOS](Documentation/installation/osx/install.md)
   - [Windows](Documentation/installation/windows/install.md)
+  - [FreeBSD](Documentation/installation/freebsd/install.md)
 - [Getting Started](Documentation/cli/getting_started.md)
 - [Documentation](Documentation)
   - [Command line options](Documentation/usage/dlv.md)
