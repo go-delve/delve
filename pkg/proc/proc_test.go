@@ -1815,7 +1815,15 @@ func TestIssue414(t *testing.T) {
 			pc := currentPC(p, t)
 			f, ln := currentLineNumber(p, t)
 			t.Logf("at %s:%d %#x\n", f, ln, pc)
-			err := p.Step()
+			var err error
+			// Stepping through the runtime is not generally safe so after we are out
+			// of main.main just use Next.
+			// See: https://github.com/go-delve/delve/pull/2082
+			if f == fixture.Source {
+				err = p.Step()
+			} else {
+				err = p.Next()
+			}
 			if err != nil {
 				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
