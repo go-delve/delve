@@ -147,6 +147,16 @@ func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse 
 	return c.expectReadProtocolMessage(t).(*dap.StackTraceResponse)
 }
 
+func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ScopesResponse)
+}
+
+func (c *Client) ExpectVariablesResponse(t *testing.T) *dap.VariablesResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.VariablesResponse)
+}
+
 func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.TerminateResponse)
@@ -377,14 +387,16 @@ func (c *Client) StackTraceRequest(threadID, startFrame, levels int) {
 }
 
 // ScopesRequest sends a 'scopes' request.
-func (c *Client) ScopesRequest() {
+func (c *Client) ScopesRequest(frameID int) {
 	request := &dap.ScopesRequest{Request: *c.newRequest("scopes")}
+	request.Arguments.FrameId = frameID
 	c.send(request)
 }
 
-// VariablesRequest sends a 'scopes' request.
-func (c *Client) VariablesRequest() {
-	request := &dap.ScopesRequest{Request: *c.newRequest("variables")}
+// VariablesRequest sends a 'variables' request.
+func (c *Client) VariablesRequest(variablesReference int) {
+	request := &dap.VariablesRequest{Request: *c.newRequest("variables")}
+	request.Arguments.VariablesReference = variablesReference
 	c.send(request)
 }
 

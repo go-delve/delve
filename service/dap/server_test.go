@@ -332,8 +332,33 @@ func TestSetBreakpoint(t *testing.T) {
 			expectFrame(stResp.Body.StackFrames[5], 1005, "runtime.goexit", "", -1)
 		}
 
-		// TODO(polina): add other status checking requests
-		// that are not yet supported (scopes, variables)
+		client.ScopesRequest(1000)
+		scResp := client.ExpectScopesResponse(t)
+		if len(scResp.Body.Scopes) != 2 {
+			t.Errorf("\ngot  %#v\nwant len(Scopes)=2", scResp.Body.Scopes)
+		} else {
+			expectScope := func(got dap.Scope, name string, varRef int) {
+				t.Helper()
+				if got.Name != name || got.VariablesReference != varRef || got.Expensive {
+					t.Errorf("\ngot  %#v\nwant Name=%q VariablesReference=%d Expensive=false", got, name, varRef)
+				}
+			}
+			expectScope(scResp.Body.Scopes[0], "Arguments", 1000)
+			expectScope(scResp.Body.Scopes[1], "Locals", 1001)
+		}
+
+		client.VariablesRequest(1000)
+		vResp := client.ExpectVariablesResponse(t)
+		if len(vResp.Body.Variables) != 2 {
+			t.Errorf("\ngot  %#v\nwant len(Variables)=2", vResp.Body.Variables)
+		} else {
+			if vResp.Body.Variables[0].Name != "y" {
+				t.Errorf("\ngot  %#v\nwant Variables[0].Name=\"y\"", vResp.Body.Variables[0])
+			}
+			if vResp.Body.Variables[1].Name != "~r1" {
+				t.Errorf("\ngot  %#v\nwant Variables[1].Name=\"y\"", vResp.Body.Variables[1])
+			}
+		}
 
 		client.ContinueRequest(1)
 		client.ExpectContinueResponse(t)
@@ -445,6 +470,8 @@ func TestStackTraceRequest(t *testing.T) {
 				}})
 	})
 }
+
+// TODO(polina): add a detailed VariablesRequest for different kinds of variables
 
 // Tests that 'stackTraceDepth' from LaunchRequest is parsed and passed to
 // stacktrace requests handlers.
@@ -653,12 +680,6 @@ func TestRequiredNotYetImplementedResponses(t *testing.T) {
 
 		client.PauseRequest()
 		expectNotYetImplemented("pause")
-
-		client.ScopesRequest()
-		expectNotYetImplemented("scopes")
-
-		client.VariablesRequest()
-		expectNotYetImplemented("variables")
 
 		client.EvaluateRequest()
 		expectNotYetImplemented("evaluate")
