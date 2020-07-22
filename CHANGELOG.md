@@ -3,6 +3,31 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.5.0] 2020-07-29
+
+### Added
+
+- Go 1.15 support (#2011, @aarzilli)
+- Added the `reload` command that restarts the debugging session after recompiling the program (#1971, @alexsaezm)
+- Better support for printing pointers in the C part of a cgo program (#1997, @aarzilli)
+- Some support for DWARFv5 (#2090, @aarzilli)
+
+### Fixed
+
+- Fixed trace subcommand when the `-p` option is used (#2069, @chainhelen)
+- Nil pointer dereference when printing tracepoints (#2071, @aarzilli)
+- Internal debugger error when printing the goroutine list of a corrupted or truncated core file (#2070, @aarzilli)
+- Do not corrupt the list of source files whenever a plugin (or dynamically loaded library) is loaded (#2075, @aarzilli)
+- Fixed current file/line reported after a segfault on macOS that was wrong under certain circumstances (#2081, @aarzilli)
+- Internal debugger error when reading global variables of types using unsupported debug_info features (#2105, #2106, #2110, @aarzilli, @b00f)
+
+### Changed
+
+- Support for stack trace requests in DAP and other DAP improvements (#2056, #2093, #2099, #2103, @polinasok)
+- Delve will step inside a private runtime function call when it is already inside the runtime package (#2061, @aarzilli)
+- Updated cosiner/argv dependency to v0.1.0 (#2088, @gadelkareem)
+- Improvements to documentation and error messages (#2068, #2084, #2091, @aarzilli, @bhcleek, @letientai299)
+
 ## [1.4.1] 2020-05-22
 
 ### Added
