@@ -55,9 +55,10 @@ type Server struct {
 	log *logrus.Entry
 	// binaryToRemove is the compiled binary to be removed on disconnect.
 	binaryToRemove string
-	// stackFrameHandles keep track of unique ids created across all goroutines.
+	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
 	stackFrameHandles *handlesMap
-	// variableHandles keep track of unique variable references.
+	// variableHandles maps compound variables to unique references within their stack frame.
+	// See also comment for convertVariable.
 	variableHandles *handlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
@@ -746,9 +747,12 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 
 	switch v.Kind {
 	case reflect.Map:
+		kvIndex := 0
 		for i := range v.Children {
-			// Process items in pairs: even indices are map keys, odd indices are values.
+			// A map will have twice as many children as there are elements.
+			// Process children in pairs: even indices are map keys, odd indices are values.
 			if i%2 == 0 {
+				kvIndex = i / 2
 				continue
 			}
 			key, keyref := s.convertVariable(v.Children[i-1])
@@ -758,17 +762,16 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
-					Name:               fmt.Sprintf("[key %d]", (i-1)/2),
+					Name:               fmt.Sprintf("[key %d]", kvIndex),
 					Value:              key,
 					VariablesReference: keyref,
 				}
 				valvar := dap.Variable{
-					Name:               fmt.Sprintf("[val %d]", (i-1)/2),
+					Name:               fmt.Sprintf("[val %d]", kvIndex),
 					Value:              val,
 					VariablesReference: valref,
 				}
-				children = append(children, keyvar)
-				children = append(children, valvar)
+				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
 				kvvar := dap.Variable{
 					Name:               key,
@@ -804,15 +807,22 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			}
 		}
 	}
-	// TODO(polina): support evaluteName
 	response := &dap.VariablesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.VariablesResponseBody{Variables: children},
+		// TODO(polina): support evaluateName field
 	}
 	s.send(response)
 }
 
-// convertVariable converts api.Variable to dap.Variable value and reference (if any).
+// convertVariable converts api.Variable to dap.Variable value and reference.
+// Variable reference is used to keep track of the children associated with each
+// variable. It is shared with the host via a scopes response and is an index to
+// the s.variableHandles map, so it can be referenced from a subsequent variables
+// request. A positive reference signals the host that another variables request
+// can be issued to get the elements of the compound variable. As a custom, a zero
+// reference, reminiscent of a zero pointer, is used to indicate that a scalar
+// variable can be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v api.Variable) (value string, variablesReference int) {
 	switch v.Kind {
 	case reflect.UnsafePointer:
