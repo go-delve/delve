@@ -202,6 +202,7 @@ func main() {
 	var mnil map[string]astruct = nil
 	m2 := map[int]*astruct{1: &astruct{10, 11}}
 	m3 := map[astruct]int{{1, 1}: 42, {2, 2}: 43}
+	m4 := map[astruct]astruct{{1, 1}: {11, 11}, {2, 2}: {22, 22}}
 	up1 := unsafe.Pointer(&i1)
 	i4 := 800
 	i5 := -3
@@ -260,6 +261,7 @@ func main() {
 	ni8 := int8(-5)
 	ni16 := int16(-5)
 	ni32 := int32(-5)
+	ni64 := int64(-5)
 
 	pinf := math.Inf(+1)
 	ninf := math.Inf(-1)
@@ -314,5 +316,5 @@ func main() {
 	}
 
 	runtime.Breakpoint()
-	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, errtypednil, emptyslice, emptymap, byteslice, runeslice, bytearray, runearray, longstr, nilstruct, as2, as2.NonPointerRecieverMethod, s4, iface2map, issue1578, ll)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, m4, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, ni64, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, errtypednil, emptyslice, emptymap, byteslice, runeslice, bytearray, runearray, longstr, nilstruct, as2, as2.NonPointerRecieverMethod, s4, iface2map, issue1578, ll)
 }

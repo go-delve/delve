@@ -736,7 +736,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	variable, ok := s.variableHandles.get(request.Arguments.VariablesReference)
 	if !ok {
-		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", string(request.Arguments.VariablesReference))
+		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", request.Arguments.VariablesReference))
 		return
 	}
 	v := variable.(api.Variable)
@@ -829,9 +829,12 @@ func (s *Server) convertVariable(v api.Variable) (value string, variablesReferen
 		} else if v.Children[0].Type == "void" {
 			value = "void"
 		} else {
-			value = fmt.Sprintf("(%s)(%#x)", v.Type, v.Children[0].Addr)
+			value = fmt.Sprintf("<%s>(%#x)", v.Type, v.Children[0].Addr)
 			variablesReference = s.variableHandles.create(v)
 		}
+	case reflect.Array:
+		value = "<" + v.Type + ">"
+		variablesReference = s.variableHandles.create(v)
 	case reflect.Slice:
 		if v.Base == 0 {
 			value = "nil <" + v.Type + ">"
@@ -846,9 +849,6 @@ func (s *Server) convertVariable(v api.Variable) (value string, variablesReferen
 			value = fmt.Sprintf("<%s> (length: %d)", v.Type, v.Len)
 			variablesReference = s.variableHandles.create(v)
 		}
-	case reflect.Array:
-		value = "<" + v.Type + ">"
-		variablesReference = s.variableHandles.create(v)
 	case reflect.String:
 		if v.Unreadable != "" {
 			value = "<" + v.Unreadable + ">"
@@ -860,7 +860,21 @@ func (s *Server) convertVariable(v api.Variable) (value string, variablesReferen
 			}
 			value = fmt.Sprintf("%q", vvalue)
 		}
-	default: // Structs, scalars
+	case reflect.Chan:
+		if len(v.Children) == 0 {
+			value = "nil <" + v.Type + ">"
+		} else {
+			value = "<" + v.Type + ">"
+			variablesReference = s.variableHandles.create(v)
+		}
+	case reflect.Interface:
+		if v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
+			value = "nil <" + v.Type + ">"
+		} else {
+			value = "<" + v.Type + ">"
+			variablesReference = s.variableHandles.create(v)
+		}
+	default: // Struct, complex, scalar
 		if v.Value != "" {
 			value = v.Value
 		} else {
