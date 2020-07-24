@@ -473,7 +473,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 
 		// Ignore errors trying to extract values
 		val, err := extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
-		if val.Kind == reflect.Invalid {
+		if val != nil && val.Kind == reflect.Invalid {
 			continue
 		}
 		if err != nil {
