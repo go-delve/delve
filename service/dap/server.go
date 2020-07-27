@@ -822,7 +822,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 // request. A positive reference signals the host that another variables request
 // can be issued to get the elements of the compound variable. As a custom, a zero
 // reference, reminiscent of a zero pointer, is used to indicate that a scalar
-// variable can be "dereferenced" to get its elements (as there are none).
+// variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v api.Variable) (value string, variablesReference int) {
 	switch v.Kind {
 	case reflect.UnsafePointer:

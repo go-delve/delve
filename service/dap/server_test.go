@@ -646,7 +646,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					// reflect.Kind == Interface - see testvariables2
 					// reflect.Kind == Map - see testvariables2
 					// reflect.Kind == Ptr
-					expectVarRegex(t, locals, 6, "a7", "\\<\\*main.FooBar\\>\\(0x[0-9a-f]+\\)", 1006)
+					expectVarRegex(t, locals, 6, "a7", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1006)
 					{
 						client.VariablesRequest(1006)
 						a7 := client.ExpectVariablesResponse(t)
@@ -690,9 +690,9 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						client.VariablesRequest(1010)
 						a13 := client.ExpectVariablesResponse(t)
 						expectVars(t, a13, "a13", 3)
-						expectVarRegex(t, a13, 0, "[0]", "\\<\\*main.FooBar\\>\\(0x[0-9a-f]+\\)", 1022)
-						expectVarRegex(t, a13, 1, "[1]", "\\<\\*main.FooBar\\>\\(0x[0-9a-f]+\\)", 1023)
-						expectVarRegex(t, a13, 2, "[2]", "\\<\\*main.FooBar\\>\\(0x[0-9a-f]+\\)", 1024)
+						expectVarRegex(t, a13, 0, "[0]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1022)
+						expectVarRegex(t, a13, 1, "[1]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1023)
+						expectVarRegex(t, a13, 2, "[2]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1024)
 						{
 							client.VariablesRequest(1024)
 							a13_2 := client.ExpectVariablesResponse(t)
@@ -867,7 +867,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(1012)
 						m2 := client.ExpectVariablesResponse(t)
 						expectVars(t, m2, "m2", 1)
-						expectVarRegex(t, m2, 0, "1", "\\<\\*main\\.astruct\\>\\(0x[0-9a-f]+\\)", 1065)
+						expectVarRegex(t, m2, 0, "1", "<\\*main\\.astruct>\\(0x[0-9a-f]+\\)", 1065)
 						{
 							client.VariablesRequest(1065)
 							m2_1 := client.ExpectVariablesResponse(t)
