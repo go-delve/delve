@@ -28,6 +28,8 @@ func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw M
 		asmInst.Kind = RetInstruction
 	case arm64asm.B, arm64asm.BR:
 		asmInst.Kind = JmpInstruction
+	case arm64asm.BRK:
+		asmInst.Kind = HardBreakInstruction
 	}
 
 	asmInst.DestLoc = resolveCallArgARM64(&inst, asmInst.Loc.PC, asmInst.AtPC, regs, memrw, bi)

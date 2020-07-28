@@ -215,7 +215,12 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 		return nil, err
 	}
 
-	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, true, false)
+	variablesFlags := reader.VariablesOnlyVisible
+	if scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 15) {
+		variablesFlags |= reader.VariablesTrustDeclLine
+	}
+
+	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, variablesFlags)
 	vars := make([]*Variable, 0, len(varEntries))
 	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {
@@ -224,7 +229,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 			// skip variables that we can't parse yet
 			continue
 		}
-		if trustArgOrder && val.Unreadable != nil && val.Addr == 0 && entry.Tag == dwarf.TagFormalParameter {
+		if trustArgOrder && ((val.Unreadable != nil && val.Addr == 0) || val.Flags&VariableFakeAddress != 0) && entry.Tag == dwarf.TagFormalParameter {
 			addr := afterLastArgAddr(vars)
 			if addr == 0 {
 				addr = uintptr(scope.Regs.CFA)
@@ -653,7 +658,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 			return v, nil
 		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uintptr:
 			b, _ := constant.Int64Val(argv.Value)
-			s := string(b)
+			s := string(rune(b))
 			v.Value = constant.MakeString(s)
 			v.Len = int64(len(s))
 			return v, nil

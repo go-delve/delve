@@ -28,10 +28,16 @@ func readAMD64Minidump(minidumpPath, exePath string) (*process, error) {
 		memory.Add(m, uintptr(m.Addr), uintptr(len(m.Data)))
 	}
 
+	entryPoint := uint64(0)
+	if len(mdmp.Modules) > 0 {
+		entryPoint = mdmp.Modules[0].BaseOfImage
+	}
+
 	p := &process{
 		mem:         memory,
 		Threads:     map[int]*thread{},
 		bi:          proc.NewBinaryInfo("windows", "amd64"),
+		entryPoint:  entryPoint,
 		breakpoints: proc.NewBreakpointMap(),
 		pid:         int(mdmp.Pid),
 	}

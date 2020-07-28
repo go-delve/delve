@@ -157,7 +157,7 @@ func (dbp *Target) Continue() error {
 					return err
 				}
 				if dbp.GetDirection() == Forward {
-					text, err := disassembleCurrentInstruction(dbp, curthread)
+					text, err := disassembleCurrentInstruction(dbp, curthread, 0)
 					if err != nil {
 						return err
 					}
@@ -248,12 +248,12 @@ func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
 	return dbp.SwitchThread(trapthread.ThreadID())
 }
 
-func disassembleCurrentInstruction(p Process, thread Thread) ([]AsmInstruction, error) {
+func disassembleCurrentInstruction(p Process, thread Thread, off int64) ([]AsmInstruction, error) {
 	regs, err := thread.Registers()
 	if err != nil {
 		return nil, err
 	}
-	pc := regs.PC()
+	pc := regs.PC() + uint64(off)
 	return disassemble(thread, regs, p.Breakpoints(), p.BinInfo(), pc, pc+uint64(p.BinInfo().Arch.MaxInstructionLength()), true)
 }
 
