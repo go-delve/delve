@@ -724,12 +724,12 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					}
 					// reflect.Kind == UnsafePointer - see testvariables2
 				},
-				// Stop at line 24
+				// Stop at line 25
 				func() {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					expectStackFrames(t, stack, 24, 1000, 5, 5)
+					expectStackFrames(t, stack, 25, 1000, 5, 5)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -749,7 +749,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectVars(t, locals, "Locals", 1)
-					expectVarExact(t, locals, 0, "a1", `""`, 0)
+					expectVarExact(t, locals, 0, "a1", `"bur"`, 0)
 
 					client.VariablesRequest(7777)
 					erres = client.ExpectErrorResponse(t)
