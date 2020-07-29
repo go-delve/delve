@@ -33,7 +33,6 @@ func TestMain(m *testing.M) {
 
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
-	t.Helper()
 	var buildFlags protest.BuildFlags
 	fixture := protest.BuildFixture(name, buildFlags)
 
@@ -457,7 +456,6 @@ func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, value
 // good and bad configurations of 'stackTrace' requests.
 func TestStackTraceRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		t.Helper()
 		var stResp *dap.StackTraceResponse
 		runDebugSessionWithBPs(t, client,
 			// Launch
@@ -469,7 +467,6 @@ func TestStackTraceRequest(t *testing.T) {
 			[]func(){
 				// Stop at line 8
 				func() {
-					t.Helper()
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
 					expectStackFrames(t, stResp, 8, 1000, 6, 6)
@@ -495,7 +492,6 @@ func TestStackTraceRequest(t *testing.T) {
 				},
 				// Stop at line 18
 				func() {
-					t.Helper()
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
@@ -528,7 +524,6 @@ func TestStackTraceRequest(t *testing.T) {
 // configurations of 'scopes' and 'variables' requests.
 func TestScopesAndVariablesRequests(t *testing.T) {
 	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
-		t.Helper()
 		runDebugSessionWithBPs(t, client,
 			// Launch
 			func() {
@@ -539,7 +534,6 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 			[]func(){
 				// Stop at line 62
 				func() {
-					t.Helper()
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 					expectStackFrames(t, stack, 62, 1000, 4, 4)
@@ -732,7 +726,6 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 				},
 				// Stop at line 24
 				func() {
-					t.Helper()
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
@@ -772,7 +765,6 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 // configurations of 'scopes' and 'variables' requests.
 func TestScopesAndVariablesRequests2(t *testing.T) {
 	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
-		t.Helper()
 		runDebugSessionWithBPs(t, client,
 			// Launch
 			func() {
@@ -783,7 +775,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 			[]func(){
 				// Stop at line 316
 				func() {
-					t.Helper()
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 					expectStackFrames(t, stack, 316, 1000, 3, 3)
@@ -964,7 +955,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				},
 				// Stop at line 321
 				func() {
-					t.Helper()
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
@@ -995,7 +985,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 // initialtization.
 func TestScopesAndVariablesRequests3(t *testing.T) {
 	runTest(t, "testvariables3", func(client *daptest.Client, fixture protest.Fixture) {
-		t.Helper()
 		runDebugSessionWithBPs(t, client,
 			// Launch
 			func() {
@@ -1005,7 +994,6 @@ func TestScopesAndVariablesRequests3(t *testing.T) {
 			[]func(){
 				// Stop at line 18
 				func() {
-					t.Helper()
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 					expectStackFrames(t, stack, 18, 1000, 3, 3)
@@ -1041,7 +1029,6 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 			[]func(){
 				// Stop at line 8
 				func() {
-					t.Helper()
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
 					expectStackFrames(t, stResp, 8, 1000, 2, 2)
@@ -1060,7 +1047,6 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 //                     These can be used to simulate additional editor-driven or
 //                     user-driven requests that could occur at each stopped breakpoint.
 func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, launchRequest func(), source string, breakpoints []int, onBreakpoints []func()) {
-	t.Helper()
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
@@ -1095,7 +1081,6 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, launchRequest 
 // sequences for a program that does not stop on entry
 // while specifying unique launch criteria via parameters.
 func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func()) {
-	t.Helper()
 	runDebugSessionWithBPs(t, client, launchRequest, "", nil, nil)
 }
 
