@@ -945,7 +945,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					}
 					expectVarExact(t, locals, 79, "emptyslice", "<[]string> (length: 0, cap: 0)", 0)
 					expectVarExact(t, locals, 17, "nilslice", "nil <[]int>", 0)
-					// nil slice
 					// reflect.Kind == String
 					expectVarExact(t, locals, 85, "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", 0)
 					// reflect.Kind == Struct
