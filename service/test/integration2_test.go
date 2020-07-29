@@ -548,7 +548,7 @@ func TestClientServer_infoLocals(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		fp := testProgPath(t, "testnextprog")
-		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 23})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 24})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -1770,6 +1770,9 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 func TestClientServerFunctionCallStacktrace(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		t.Skip("arm64 does not support FunctionCall for now")
+	}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+		t.Skip("Go 1.15 executes function calls in a different goroutine so the stack trace will not contain main.main or runtime.main")
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {

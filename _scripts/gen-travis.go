@@ -117,7 +117,12 @@ jobs:
 script: >-
     if [ $TRAVIS_OS_NAME = "linux" ] && [ $go_32_version ]; then
       docker pull i386/centos:7;
-      docker run -v $(pwd):/delve --privileged i386/centos:7 /bin/bash -c "set -x && \
+      docker run \
+      -v $(pwd):/delve \
+      --env TRAVIS=true \
+      --env CI=true \
+      --privileged i386/centos:7 \
+      /bin/bash -c "set -x && \
            cd delve && \
            yum -y update && yum -y upgrade && \
            yum -y install wget make git gcc && \

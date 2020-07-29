@@ -30,6 +30,8 @@ func x86AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw Mem
 		asmInst.Kind = CallInstruction
 	case x86asm.RET, x86asm.LRET:
 		asmInst.Kind = RetInstruction
+	case x86asm.INT:
+		asmInst.Kind = HardBreakInstruction
 	}
 
 	asmInst.DestLoc = resolveCallArgX86(&inst, asmInst.Loc.PC, asmInst.AtPC, regs, memrw, bi)

@@ -687,7 +687,7 @@ func TestListCmd(t *testing.T) {
 	withTestTerminal("testvariables", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
 		term.MustExec("continue")
-		listIsAt(t, term, "list", 24, 19, 29)
+		listIsAt(t, term, "list", 25, 20, 30)
 		listIsAt(t, term, "list 69", 69, 64, 70)
 		listIsAt(t, term, "frame 1 list", 62, 57, 67)
 		listIsAt(t, term, "frame 1 list 69", 69, 64, 70)
