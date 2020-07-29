@@ -824,6 +824,10 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 // reference, reminiscent of a zero pointer, is used to indicate that a scalar
 // variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v api.Variable) (value string, variablesReference int) {
+	if v.Unreadable != "" {
+		value = fmt.Sprintf("(unreadable %s)", v.Unreadable)
+		return
+	}
 	switch v.Kind {
 	case reflect.UnsafePointer:
 		if len(v.Children) == 0 {
@@ -844,20 +848,26 @@ func (s *Server) convertVariable(v api.Variable) (value string, variablesReferen
 		}
 	case reflect.Array:
 		value = "<" + v.Type + ">"
-		variablesReference = s.variableHandles.create(v)
+		if len(v.Children) > 0 {
+			variablesReference = s.variableHandles.create(v)
+		}
 	case reflect.Slice:
 		if v.Base == 0 {
 			value = "nil <" + v.Type + ">"
 		} else {
 			value = fmt.Sprintf("<%s> (length: %d, cap: %d)", v.Type, v.Len, v.Cap)
-			variablesReference = s.variableHandles.create(v)
+			if len(v.Children) > 0 {
+				variablesReference = s.variableHandles.create(v)
+			}
 		}
 	case reflect.Map:
 		if v.Base == 0 {
 			value = "nil <" + v.Type + ">"
 		} else {
 			value = fmt.Sprintf("<%s> (length: %d)", v.Type, v.Len)
-			variablesReference = s.variableHandles.create(v)
+			if len(v.Children) > 0 {
+				variablesReference = s.variableHandles.create(v)
+			}
 		}
 	case reflect.String:
 		if v.Unreadable != "" {
@@ -878,7 +888,7 @@ func (s *Server) convertVariable(v api.Variable) (value string, variablesReferen
 			variablesReference = s.variableHandles.create(v)
 		}
 	case reflect.Interface:
-		if v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
+		if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
 			value = "nil <" + v.Type + ">"
 		} else {
 			value = "<" + v.Type + ">"
