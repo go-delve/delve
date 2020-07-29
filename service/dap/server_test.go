@@ -953,6 +953,14 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					// TODO(polina): how do I test for unsafe.Pointer(nil)?
 					expectVarRegex(t, locals, 26, "upnil", "unsafe\\.Pointer\\(0x0\\)", 0)
 					expectVarRegex(t, locals, 27, "up1", "unsafe\\.Pointer\\(0x[0-9a-f]+\\)", 0)
+
+					// Test that variables are not yet loaded completely.
+					expectVarExact(t, locals, 21, "m1", "<map[string]main.astruct> (length: 66)", 1010)
+					{
+						client.VariablesRequest(1010)
+						m1 := client.ExpectVariablesResponse(t)
+						expectVars(t, m1, "m1", 64) // TODO(polina): should be 66.
+					}
 				},
 				// Stop at line 321
 				func() {
