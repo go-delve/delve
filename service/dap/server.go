@@ -721,9 +721,9 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	// TODO(polina): Annotate shadowed variables
 	// TODO(polina): Retrieve global variables
 
-	scopes := make([]dap.Scope, 0)
-	scopes = append(scopes, dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)})
-	scopes = append(scopes, dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)})
+	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
+	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
+	scopes := []dap.Scope{scopeArgs, scopeLocals}
 
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),

@@ -420,7 +420,7 @@ func expectVars(t *testing.T, got *dap.VariablesResponse, parentName string, num
 //     value - the value of the variable
 //     useExactMatch - true if value is to be compared to exactly, false if to be used as regex
 //     ref - reference to retrieve children of this variable
-func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name string, value string, useExactMatch bool, ref int) {
+func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch bool, ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d\nwant len>%d", len(got.Body.Variables), i)
@@ -441,13 +441,13 @@ func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name string, val
 }
 
 // expectVarExact is a helper like expectVar that matches value exactly.
-func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name string, value string, ref int) {
+func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, value string, ref int) {
 	t.Helper()
 	expectVar(t, got, i, name, value, true, ref)
 }
 
 // expectVarRegex is a helper like expectVar that treats value as a regex.
-func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name string, value string, ref int) {
+func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, value string, ref int) {
 	t.Helper()
 	expectVar(t, got, i, name, value, false, ref)
 }
