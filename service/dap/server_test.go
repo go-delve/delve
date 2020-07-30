@@ -423,6 +423,7 @@ func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value stri
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d\nwant len>%d", len(got.Body.Variables), i)
+		return
 	}
 	goti := got.Body.Variables[i]
 	if goti.Name != name || goti.VariablesReference != ref {
