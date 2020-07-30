@@ -1013,7 +1013,7 @@ func TestScopesAndVariablesRequests3(t *testing.T) {
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
 					expectVars(t, locals, "Locals", 1)
-					expectVarExact(t, locals, 0, "foo", "(unreadable invalid interface type: key not found)", 0)
+					expectVarRegex(t, locals, 0, "foo", "\\(unreadable invalid interface type: .+\\)", 0)
 				},
 				disconnect: false,
 			}})
