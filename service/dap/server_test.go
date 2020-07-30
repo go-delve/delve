@@ -465,63 +465,63 @@ func TestStackTraceRequest(t *testing.T) {
 			},
 			// Set breakpoints
 			fixture.Source, []int{8, 18},
-			[]onBreakpoint{
-				{ // Stop at line 8
-					execute: func() {
-						client.StackTraceRequest(1, 0, 0)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 8, 1000, 6, 6)
+			[]onBreakpoint{{
+				// Stop at line 8
+				execute: func() {
+					client.StackTraceRequest(1, 0, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 8, 1000, 6, 6)
 
-						// Even though the stack frames are the same,
-						// repeated requests at the same breakpoint,
-						// would assign unique ids to them each time.
-						client.StackTraceRequest(1, -100, 0) // Negative startFrame is treated as 0
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 8, 1006, 6, 6)
+					// Even though the stack frames are the same,
+					// repeated requests at the same breakpoint,
+					// would assign unique ids to them each time.
+					client.StackTraceRequest(1, -100, 0) // Negative startFrame is treated as 0
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 8, 1006, 6, 6)
 
-						client.StackTraceRequest(1, 3, 0)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 17, 1015, 3, 6)
+					client.StackTraceRequest(1, 3, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 17, 1015, 3, 6)
 
-						client.StackTraceRequest(1, 6, 0)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, -1, -1, 0, 6)
+					client.StackTraceRequest(1, 6, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, -1, -1, 0, 6)
 
-						client.StackTraceRequest(1, 7, 0) // Out of bounds startFrame is capped at len
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, -1, -1, 0, 6)
-					},
-					disconnect: false,
+					client.StackTraceRequest(1, 7, 0) // Out of bounds startFrame is capped at len
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, -1, -1, 0, 6)
 				},
-				{ // Stop at line 18
-					execute: func() {
-						// Frame ids get reset at each breakpoint.
-						client.StackTraceRequest(1, 0, 0)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 18, 1000, 3, 3)
+				disconnect: false,
+			}, {
+				// Stop at line 18
+				execute: func() {
+					// Frame ids get reset at each breakpoint.
+					client.StackTraceRequest(1, 0, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 18, 1000, 3, 3)
 
-						client.StackTraceRequest(1, 0, -100) // Negative levels is treated as 0
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 18, 1003, 3, 3)
+					client.StackTraceRequest(1, 0, -100) // Negative levels is treated as 0
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 18, 1003, 3, 3)
 
-						client.StackTraceRequest(1, 0, 2)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 18, 1006, 2, 3)
+					client.StackTraceRequest(1, 0, 2)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 18, 1006, 2, 3)
 
-						client.StackTraceRequest(1, 0, 3)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 18, 1009, 3, 3)
+					client.StackTraceRequest(1, 0, 3)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 18, 1009, 3, 3)
 
-						client.StackTraceRequest(1, 0, 4) // Out of bounds levels is capped at len
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 18, 1012, 3, 3)
+					client.StackTraceRequest(1, 0, 4) // Out of bounds levels is capped at len
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 18, 1012, 3, 3)
 
-						client.StackTraceRequest(1, 1, 2)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, -1, 1016, 2, 3) // Don't test for runtime line we don't control
-					},
-					disconnect: false,
-				}})
+					client.StackTraceRequest(1, 1, 2)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, -1, 1016, 2, 3) // Don't test for runtime line we don't control
+				},
+				disconnect: false,
+			}})
 	})
 }
 
@@ -536,236 +536,236 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 			},
 			// Breakpoints are set within the program
 			fixture.Source, []int{},
-			[]onBreakpoint{
-				{ // Stop at line 62
-					execute: func() {
-						client.StackTraceRequest(1, 0, 20)
-						stack := client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stack, 62, 1000, 4, 4)
+			[]onBreakpoint{{
+				// Stop at line 62
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 62, 1000, 4, 4)
 
-						client.ScopesRequest(1000)
-						scopes := client.ExpectScopesResponse(t)
-						expectScope(t, scopes, 0, "Arguments", 1000)
-						expectScope(t, scopes, 1, "Locals", 1001)
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
 
-						// Arguments
+					// Arguments
 
-						client.VariablesRequest(1000)
-						args := client.ExpectVariablesResponse(t)
-						expectVars(t, args, "Arguments", 2)
-						expectVarExact(t, args, 0, "baz", `"bazburzum"`, 0)
-						expectVarExact(t, args, 1, "bar", `<main.FooBar>`, 1002)
+					client.VariablesRequest(1000)
+					args := client.ExpectVariablesResponse(t)
+					expectVars(t, args, "Arguments", 2)
+					expectVarExact(t, args, 0, "baz", `"bazburzum"`, 0)
+					expectVarExact(t, args, 1, "bar", `<main.FooBar>`, 1002)
+					{
+						client.VariablesRequest(1002)
+						bar := client.ExpectVariablesResponse(t)
+						expectVars(t, bar, "bar", 2)
+						expectVarExact(t, bar, 0, "Baz", "10", 0)
+						expectVarExact(t, bar, 1, "Bur", `"lorem"`, 0)
+					}
+
+					// Locals
+
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					expectVars(t, locals, "Locals", 29)
+
+					// reflect.Kind == Bool
+					expectVarExact(t, locals, 13, "b1", "true", 0)
+					expectVarExact(t, locals, 14, "b2", "false", 0)
+					// reflect.Kind == Int
+					expectVarExact(t, locals, 1, "a2", "6", 0)
+					expectVarExact(t, locals, 15, "neg", "-1", 0)
+					// reflect.Kind == Int8
+					expectVarExact(t, locals, 16, "i8", "1", 0)
+					// reflect.Kind == Int16 - see testvariables2
+					// reflect.Kind == Int32 - see testvariables2
+					// reflect.Kind == Int64 - see testvariables2
+					// reflect.Kind == Uint
+					// reflect.Kind == Uint8
+					expectVarExact(t, locals, 17, "u8", "255", 0)
+					// reflect.Kind == Uint16
+					expectVarExact(t, locals, 18, "u16", "65535", 0)
+					// reflect.Kind == Uint32
+					expectVarExact(t, locals, 19, "u32", "4294967295", 0)
+					// reflect.Kind == Uint64
+					expectVarExact(t, locals, 20, "u64", "18446744073709551615", 0)
+					// reflect.Kind == Uintptr
+					expectVarExact(t, locals, 21, "up", "5", 0)
+					// reflect.Kind == Float32
+					expectVarExact(t, locals, 22, "f32", "1.2", 0)
+					// reflect.Kind == Float64
+					expectVarExact(t, locals, 2, "a3", "7.23", 0)
+					// reflect.Kind == Complex64
+					expectVarExact(t, locals, 23, "c64", "(1 + 2i)", 1011)
+					{
+						client.VariablesRequest(1011)
+						c64 := client.ExpectVariablesResponse(t)
+						expectVars(t, c64, "c64", 2)
+						expectVarExact(t, c64, 0, "real", "1", 0)
+						expectVarExact(t, c64, 1, "imaginary", "2", 0)
+					}
+					// reflect.Kind == Complex128
+					expectVarExact(t, locals, 24, "c128", "(2 + 3i)", 1012)
+					{
+						client.VariablesRequest(1012)
+						c128 := client.ExpectVariablesResponse(t)
+						expectVars(t, c128, "c128", 2)
+						expectVarExact(t, c128, 0, "real", "2", 0)
+						expectVarExact(t, c128, 1, "imaginary", "3", 0)
+					}
+					// reflect.Kind == Array
+					expectVarExact(t, locals, 3, "a4", "<[2]int>", 1003)
+					{
+						client.VariablesRequest(1003)
+						a4 := client.ExpectVariablesResponse(t)
+						expectVars(t, a4, "a4", 2)
+						expectVarExact(t, a4, 0, "[0]", "1", 0)
+						expectVarExact(t, a4, 1, "[1]", "2", 0)
+					}
+					expectVarExact(t, locals, 10, "a11", "<[3]main.FooBar>", 1008)
+					{
+						client.VariablesRequest(1008)
+						a11 := client.ExpectVariablesResponse(t)
+						expectVars(t, a11, "a11", 3)
+						expectVarExact(t, a11, 0, "[0]", "<main.FooBar>", 1016)
+						expectVarExact(t, a11, 1, "[1]", "<main.FooBar>", 1017)
 						{
-							client.VariablesRequest(1002)
-							bar := client.ExpectVariablesResponse(t)
-							expectVars(t, bar, "bar", 2)
-							expectVarExact(t, bar, 0, "Baz", "10", 0)
-							expectVarExact(t, bar, 1, "Bur", `"lorem"`, 0)
+							client.VariablesRequest(1017)
+							a11_1 := client.ExpectVariablesResponse(t)
+							expectVars(t, a11_1, "a11[1]", 2)
+							expectVarExact(t, a11_1, 0, "Baz", "2", 0)
+							expectVarExact(t, a11_1, 1, "Bur", `"b"`, 0)
+
 						}
+						expectVarExact(t, a11, 2, "[2]", "<main.FooBar>", 1018)
+					}
 
-						// Locals
-
-						client.VariablesRequest(1001)
-						locals := client.ExpectVariablesResponse(t)
-						expectVars(t, locals, "Locals", 29)
-
-						// reflect.Kind == Bool
-						expectVarExact(t, locals, 13, "b1", "true", 0)
-						expectVarExact(t, locals, 14, "b2", "false", 0)
-						// reflect.Kind == Int
-						expectVarExact(t, locals, 1, "a2", "6", 0)
-						expectVarExact(t, locals, 15, "neg", "-1", 0)
-						// reflect.Kind == Int8
-						expectVarExact(t, locals, 16, "i8", "1", 0)
-						// reflect.Kind == Int16 - see testvariables2
-						// reflect.Kind == Int32 - see testvariables2
-						// reflect.Kind == Int64 - see testvariables2
-						// reflect.Kind == Uint
-						// reflect.Kind == Uint8
-						expectVarExact(t, locals, 17, "u8", "255", 0)
-						// reflect.Kind == Uint16
-						expectVarExact(t, locals, 18, "u16", "65535", 0)
-						// reflect.Kind == Uint32
-						expectVarExact(t, locals, 19, "u32", "4294967295", 0)
-						// reflect.Kind == Uint64
-						expectVarExact(t, locals, 20, "u64", "18446744073709551615", 0)
-						// reflect.Kind == Uintptr
-						expectVarExact(t, locals, 21, "up", "5", 0)
-						// reflect.Kind == Float32
-						expectVarExact(t, locals, 22, "f32", "1.2", 0)
-						// reflect.Kind == Float64
-						expectVarExact(t, locals, 2, "a3", "7.23", 0)
-						// reflect.Kind == Complex64
-						expectVarExact(t, locals, 23, "c64", "(1 + 2i)", 1011)
+					// reflect.Kind == Chan - see testvariables2
+					// reflect.Kind == Func - see testvariables2
+					// reflect.Kind == Interface - see testvariables2
+					// reflect.Kind == Map - see testvariables2
+					// reflect.Kind == Ptr
+					expectVarRegex(t, locals, 6, "a7", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1006)
+					{
+						client.VariablesRequest(1006)
+						a7 := client.ExpectVariablesResponse(t)
+						expectVars(t, a7, "a7", 1)
+						expectVarExact(t, a7, 0, "", "<main.FooBar>", 1019)
 						{
-							client.VariablesRequest(1011)
-							c64 := client.ExpectVariablesResponse(t)
-							expectVars(t, c64, "c64", 2)
-							expectVarExact(t, c64, 0, "real", "1", 0)
-							expectVarExact(t, c64, 1, "imaginary", "2", 0)
+							client.VariablesRequest(1019)
+							a7val := client.ExpectVariablesResponse(t)
+							expectVars(t, a7val, "*a7", 2)
+							expectVarExact(t, a7val, 0, "Baz", "5", 0)
+							expectVarExact(t, a7val, 1, "Bur", `"strum"`, 0)
 						}
-						// reflect.Kind == Complex128
-						expectVarExact(t, locals, 24, "c128", "(2 + 3i)", 1012)
+					}
+					// TODO(polina): how to test for "nil" (without type) and "void"?
+					expectVarExact(t, locals, 8, "a9", "nil <*main.FooBar>", 0)
+					// reflect.Kind == Slice
+					expectVarExact(t, locals, 4, "a5", "<[]int> (length: 5, cap: 5)", 1004)
+					{
+						client.VariablesRequest(1004)
+						a5 := client.ExpectVariablesResponse(t)
+						expectVars(t, a5, "a5", 5)
+						expectVarExact(t, a5, 0, "[0]", "1", 0)
+						expectVarExact(t, a5, 4, "[4]", "5", 0)
+					}
+					expectVarExact(t, locals, 11, "a12", "<[]main.FooBar> (length: 2, cap: 2)", 1009)
+					{
+						client.VariablesRequest(1009)
+						a12 := client.ExpectVariablesResponse(t)
+						expectVars(t, a12, "a12", 2)
+						expectVarExact(t, a12, 0, "[0]", "<main.FooBar>", 1020)
+						expectVarExact(t, a12, 1, "[1]", "<main.FooBar>", 1021)
 						{
-							client.VariablesRequest(1012)
-							c128 := client.ExpectVariablesResponse(t)
-							expectVars(t, c128, "c128", 2)
-							expectVarExact(t, c128, 0, "real", "2", 0)
-							expectVarExact(t, c128, 1, "imaginary", "3", 0)
+							client.VariablesRequest(1021)
+							a12_1 := client.ExpectVariablesResponse(t)
+							expectVars(t, a12_1, "a12[1]", 2)
+							expectVarExact(t, a12_1, 0, "Baz", "5", 0)
+							expectVarExact(t, a12_1, 1, "Bur", `"e"`, 0)
 						}
-						// reflect.Kind == Array
-						expectVarExact(t, locals, 3, "a4", "<[2]int>", 1003)
+					}
+					expectVarExact(t, locals, 12, "a13", "<[]*main.FooBar> (length: 3, cap: 3)", 1010)
+					{
+						client.VariablesRequest(1010)
+						a13 := client.ExpectVariablesResponse(t)
+						expectVars(t, a13, "a13", 3)
+						expectVarRegex(t, a13, 0, "[0]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1022)
+						expectVarRegex(t, a13, 1, "[1]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1023)
+						expectVarRegex(t, a13, 2, "[2]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1024)
 						{
-							client.VariablesRequest(1003)
-							a4 := client.ExpectVariablesResponse(t)
-							expectVars(t, a4, "a4", 2)
-							expectVarExact(t, a4, 0, "[0]", "1", 0)
-							expectVarExact(t, a4, 1, "[1]", "2", 0)
-						}
-						expectVarExact(t, locals, 10, "a11", "<[3]main.FooBar>", 1008)
-						{
-							client.VariablesRequest(1008)
-							a11 := client.ExpectVariablesResponse(t)
-							expectVars(t, a11, "a11", 3)
-							expectVarExact(t, a11, 0, "[0]", "<main.FooBar>", 1016)
-							expectVarExact(t, a11, 1, "[1]", "<main.FooBar>", 1017)
+							client.VariablesRequest(1024)
+							a13_2 := client.ExpectVariablesResponse(t)
+							expectVars(t, a13_2, "a13[2]", 1)
+							expectVarExact(t, a13_2, 0, "", "<main.FooBar>", 1025)
 							{
-								client.VariablesRequest(1017)
-								a11_1 := client.ExpectVariablesResponse(t)
-								expectVars(t, a11_1, "a11[1]", 2)
-								expectVarExact(t, a11_1, 0, "Baz", "2", 0)
-								expectVarExact(t, a11_1, 1, "Bur", `"b"`, 0)
-
-							}
-							expectVarExact(t, a11, 2, "[2]", "<main.FooBar>", 1018)
-						}
-
-						// reflect.Kind == Chan - see testvariables2
-						// reflect.Kind == Func - see testvariables2
-						// reflect.Kind == Interface - see testvariables2
-						// reflect.Kind == Map - see testvariables2
-						// reflect.Kind == Ptr
-						expectVarRegex(t, locals, 6, "a7", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1006)
-						{
-							client.VariablesRequest(1006)
-							a7 := client.ExpectVariablesResponse(t)
-							expectVars(t, a7, "a7", 1)
-							expectVarExact(t, a7, 0, "", "<main.FooBar>", 1019)
-							{
-								client.VariablesRequest(1019)
-								a7val := client.ExpectVariablesResponse(t)
-								expectVars(t, a7val, "*a7", 2)
-								expectVarExact(t, a7val, 0, "Baz", "5", 0)
-								expectVarExact(t, a7val, 1, "Bur", `"strum"`, 0)
+								client.VariablesRequest(1025)
+								val := client.ExpectVariablesResponse(t)
+								expectVars(t, val, "*a13[2]", 2)
+								expectVarExact(t, val, 0, "Baz", "8", 0)
+								expectVarExact(t, val, 1, "Bur", `"h"`, 0)
 							}
 						}
-						// TODO(polina): how to test for "nil" (without type) and "void"?
-						expectVarExact(t, locals, 8, "a9", "nil <*main.FooBar>", 0)
-						// reflect.Kind == Slice
-						expectVarExact(t, locals, 4, "a5", "<[]int> (length: 5, cap: 5)", 1004)
-						{
-							client.VariablesRequest(1004)
-							a5 := client.ExpectVariablesResponse(t)
-							expectVars(t, a5, "a5", 5)
-							expectVarExact(t, a5, 0, "[0]", "1", 0)
-							expectVarExact(t, a5, 4, "[4]", "5", 0)
-						}
-						expectVarExact(t, locals, 11, "a12", "<[]main.FooBar> (length: 2, cap: 2)", 1009)
-						{
-							client.VariablesRequest(1009)
-							a12 := client.ExpectVariablesResponse(t)
-							expectVars(t, a12, "a12", 2)
-							expectVarExact(t, a12, 0, "[0]", "<main.FooBar>", 1020)
-							expectVarExact(t, a12, 1, "[1]", "<main.FooBar>", 1021)
-							{
-								client.VariablesRequest(1021)
-								a12_1 := client.ExpectVariablesResponse(t)
-								expectVars(t, a12_1, "a12[1]", 2)
-								expectVarExact(t, a12_1, 0, "Baz", "5", 0)
-								expectVarExact(t, a12_1, 1, "Bur", `"e"`, 0)
-							}
-						}
-						expectVarExact(t, locals, 12, "a13", "<[]*main.FooBar> (length: 3, cap: 3)", 1010)
-						{
-							client.VariablesRequest(1010)
-							a13 := client.ExpectVariablesResponse(t)
-							expectVars(t, a13, "a13", 3)
-							expectVarRegex(t, a13, 0, "[0]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1022)
-							expectVarRegex(t, a13, 1, "[1]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1023)
-							expectVarRegex(t, a13, 2, "[2]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", 1024)
-							{
-								client.VariablesRequest(1024)
-								a13_2 := client.ExpectVariablesResponse(t)
-								expectVars(t, a13_2, "a13[2]", 1)
-								expectVarExact(t, a13_2, 0, "", "<main.FooBar>", 1025)
-								{
-									client.VariablesRequest(1025)
-									val := client.ExpectVariablesResponse(t)
-									expectVars(t, val, "*a13[2]", 2)
-									expectVarExact(t, val, 0, "Baz", "8", 0)
-									expectVarExact(t, val, 1, "Bur", `"h"`, 0)
-								}
-							}
-						}
-						// reflect.Kind == String
-						expectVarExact(t, locals, 0, "a1", `"foofoofoofoofoofoo"`, 0)
-						expectVarExact(t, locals, 9, "a10", `"ofo"`, 0)
-						// reflect.Kind == Struct
-						expectVarExact(t, locals, 5, "a6", "<main.FooBar>", 1005)
-						{
-							client.VariablesRequest(1005)
-							a6 := client.ExpectVariablesResponse(t)
-							expectVars(t, a6, "a6", 2)
-							expectVarExact(t, a6, 0, "Baz", "8", 0)
-							expectVarExact(t, a6, 1, "Bur", `"word"`, 0)
-						}
-						expectVarExact(t, locals, 7, "a8", "<main.FooBar2>", 1007)
-						{
-							client.VariablesRequest(1007)
-							a8 := client.ExpectVariablesResponse(t)
-							expectVars(t, a8, "a8", 2)
-							expectVarExact(t, a8, 0, "Bur", "10", 0)
-							expectVarExact(t, a8, 1, "Baz", `"feh"`, 0)
-						}
-						// reflect.Kind == UnsafePointer - see testvariables2
-					},
-					disconnect: false,
+					}
+					// reflect.Kind == String
+					expectVarExact(t, locals, 0, "a1", `"foofoofoofoofoofoo"`, 0)
+					expectVarExact(t, locals, 9, "a10", `"ofo"`, 0)
+					// reflect.Kind == Struct
+					expectVarExact(t, locals, 5, "a6", "<main.FooBar>", 1005)
+					{
+						client.VariablesRequest(1005)
+						a6 := client.ExpectVariablesResponse(t)
+						expectVars(t, a6, "a6", 2)
+						expectVarExact(t, a6, 0, "Baz", "8", 0)
+						expectVarExact(t, a6, 1, "Bur", `"word"`, 0)
+					}
+					expectVarExact(t, locals, 7, "a8", "<main.FooBar2>", 1007)
+					{
+						client.VariablesRequest(1007)
+						a8 := client.ExpectVariablesResponse(t)
+						expectVars(t, a8, "a8", 2)
+						expectVarExact(t, a8, 0, "Bur", "10", 0)
+						expectVarExact(t, a8, 1, "Baz", `"feh"`, 0)
+					}
+					// reflect.Kind == UnsafePointer - see testvariables2
 				},
-				{ // Stop at line 25
-					execute: func() {
-						// Frame ids get reset at each breakpoint.
-						client.StackTraceRequest(1, 0, 20)
-						stack := client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stack, 25, 1000, 5, 5)
+				disconnect: false,
+			}, {
+				// Stop at line 25
+				execute: func() {
+					// Frame ids get reset at each breakpoint.
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 25, 1000, 5, 5)
 
-						client.ScopesRequest(1000)
-						scopes := client.ExpectScopesResponse(t)
-						expectScope(t, scopes, 0, "Arguments", 1000)
-						expectScope(t, scopes, 1, "Locals", 1001)
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
 
-						client.ScopesRequest(1111)
-						erres := client.ExpectErrorResponse(t)
-						if erres.Body.Error.Format != "Unable to list locals: unknown frame id 1111" {
-							t.Errorf("\ngot %#v\nwant Format=\"Unable to list locals: unknown frame id 1111\"", erres)
-						}
+					client.ScopesRequest(1111)
+					erres := client.ExpectErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to list locals: unknown frame id 1111" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to list locals: unknown frame id 1111\"", erres)
+					}
 
-						client.VariablesRequest(1000) // Arguments
-						args := client.ExpectVariablesResponse(t)
-						expectVars(t, args, "Arguments", 0)
+					client.VariablesRequest(1000) // Arguments
+					args := client.ExpectVariablesResponse(t)
+					expectVars(t, args, "Arguments", 0)
 
-						client.VariablesRequest(1001) // Locals
-						locals := client.ExpectVariablesResponse(t)
-						expectVars(t, locals, "Locals", 1)
-						expectVarExact(t, locals, 0, "a1", `"bur"`, 0)
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+					expectVars(t, locals, "Locals", 1)
+					expectVarExact(t, locals, 0, "a1", `"bur"`, 0)
 
-						client.VariablesRequest(7777)
-						erres = client.ExpectErrorResponse(t)
-						if erres.Body.Error.Format != "Unable to lookup variable: unknown reference 7777" {
-							t.Errorf("\ngot %#v\nwant Format=\"Unable to lookup variable: unknown reference 7777\"", erres)
-						}
-					},
-					disconnect: false,
-				}})
+					client.VariablesRequest(7777)
+					erres = client.ExpectErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to lookup variable: unknown reference 7777" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to lookup variable: unknown reference 7777\"", erres)
+					}
+				},
+				disconnect: false,
+			}})
 	})
 }
 
@@ -780,216 +780,211 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 			},
 			// Breakpoints are set within the program
 			fixture.Source, []int{},
-			[]onBreakpoint{
-				{ // Stop at line 316
-					execute: func() {
-						client.StackTraceRequest(1, 0, 20)
-						stack := client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stack, 316, 1000, 3, 3)
+			[]onBreakpoint{{
+				// Stop at line 316
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 316, 1000, 3, 3)
 
-						client.ScopesRequest(1000)
-						scopes := client.ExpectScopesResponse(t)
-						expectScope(t, scopes, 0, "Arguments", 1000)
-						expectScope(t, scopes, 1, "Locals", 1001)
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
 
-						// Arguments
+					// Arguments
 
-						client.VariablesRequest(1000)
-						args := client.ExpectVariablesResponse(t)
-						expectVars(t, args, "Arguments", 0)
+					client.VariablesRequest(1000)
+					args := client.ExpectVariablesResponse(t)
+					expectVars(t, args, "Arguments", 0)
 
-						// Locals
+					// Locals
 
-						client.VariablesRequest(1001)
-						locals := client.ExpectVariablesResponse(t)
-						expectVars(t, locals, "Locals", 93)
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					expectVars(t, locals, "Locals", 93)
 
-						// reflect.Kind == Bool - see testvariables
-						// reflect.Kind == Int - see testvariables
-						// reflect.Kind == Int8
-						expectVarExact(t, locals, 65, "ni8", "-5", 0)
-						// reflect.Kind == Int16
-						expectVarExact(t, locals, 66, "ni16", "-5", 0)
-						// reflect.Kind == Int32
-						expectVarExact(t, locals, 67, "ni32", "-5", 0)
-						// reflect.Kind == Int64
-						expectVarExact(t, locals, 68, "ni64", "-5", 0)
-						// reflect.Kind == Uint
-						// reflect.Kind == Uint8 - see testvariables
-						// reflect.Kind == Uint16 - see testvariables
-						// reflect.Kind == Uint32 - see testvariables
-						// reflect.Kind == Uint64 - see testvariables
-						// reflect.Kind == Uintptr - see testvariables
-						// reflect.Kind == Float32 - see testvariables
-						// reflect.Kind == Float64
-						expectVarExact(t, locals, 69, "pinf", "+Inf", 0)
-						expectVarExact(t, locals, 70, "ninf", "-Inf", 0)
-						expectVarExact(t, locals, 71, "nan", "NaN", 0)
-						// reflect.Kind == Complex64 - see testvariables
-						// reflect.Kind == Complex128 - see testvariables
-						// reflect.Kind == Array
-						expectVarExact(t, locals, 7, "a0", "<[0]int>", 0)
-						// reflect.Kind == Chan
-						expectVarExact(t, locals, 19, "ch1", "<chan int>", 1009)
+					// reflect.Kind == Bool - see testvariables
+					// reflect.Kind == Int - see testvariables
+					// reflect.Kind == Int8
+					expectVarExact(t, locals, 65, "ni8", "-5", 0)
+					// reflect.Kind == Int16
+					expectVarExact(t, locals, 66, "ni16", "-5", 0)
+					// reflect.Kind == Int32
+					expectVarExact(t, locals, 67, "ni32", "-5", 0)
+					// reflect.Kind == Int64
+					expectVarExact(t, locals, 68, "ni64", "-5", 0)
+					// reflect.Kind == Uint
+					// reflect.Kind == Uint8 - see testvariables
+					// reflect.Kind == Uint16 - see testvariables
+					// reflect.Kind == Uint32 - see testvariables
+					// reflect.Kind == Uint64 - see testvariables
+					// reflect.Kind == Uintptr - see testvariables
+					// reflect.Kind == Float32 - see testvariables
+					// reflect.Kind == Float64
+					expectVarExact(t, locals, 69, "pinf", "+Inf", 0)
+					expectVarExact(t, locals, 70, "ninf", "-Inf", 0)
+					expectVarExact(t, locals, 71, "nan", "NaN", 0)
+					// reflect.Kind == Complex64 - see testvariables
+					// reflect.Kind == Complex128 - see testvariables
+					// reflect.Kind == Array
+					expectVarExact(t, locals, 7, "a0", "<[0]int>", 0)
+					// reflect.Kind == Chan
+					expectVarExact(t, locals, 19, "ch1", "<chan int>", 1009)
+					{
+						client.VariablesRequest(1009)
+						ch1 := client.ExpectVariablesResponse(t)
+						expectVars(t, ch1, "ch1", 11)
+						expectVarExact(t, ch1, 0, "qcount", "4", 0)
+						expectVarExact(t, ch1, 10, "lock", "<runtime.mutex>", 1060)
+					}
+					expectVarExact(t, locals, 20, "chnil", "nil <chan int>", 0)
+					// reflect.Kind == Func
+					expectVarExact(t, locals, 15, "fn1", "main.afunc", 0)
+					expectVarExact(t, locals, 16, "fn2", "<main.functype>", 0)
+					// reflect.Kind == Interface
+					expectVarExact(t, locals, 40, "ifacenil", "nil <interface {}>", 0)
+					expectVarExact(t, locals, 37, "iface2", "<interface {}>", 1018)
+					{
+						client.VariablesRequest(1018)
+						iface2 := client.ExpectVariablesResponse(t)
+						expectVars(t, iface2, "iface2", 1)
+						expectVarExact(t, iface2, 0, "data", `"test"`, 0)
+					}
+					expectVarExact(t, locals, 39, "iface4", "<interface {}>", 1020)
+					{
+						client.VariablesRequest(1020)
+						iface4 := client.ExpectVariablesResponse(t)
+						expectVars(t, iface4, "iface4", 1)
+						expectVarExact(t, iface4, 0, "data", "<[]go/constant.Value> (length: 1, cap: 1)", 1061)
 						{
-							client.VariablesRequest(1009)
-							ch1 := client.ExpectVariablesResponse(t)
-							expectVars(t, ch1, "ch1", 11)
-							expectVarExact(t, ch1, 0, "qcount", "4", 0)
-							expectVarExact(t, ch1, 10, "lock", "<runtime.mutex>", 1060)
+							client.VariablesRequest(1061)
+							iface4data := client.ExpectVariablesResponse(t)
+							expectVars(t, iface4data, "iface4.data", 1)
+							expectVarExact(t, iface4data, 0, "[0]", "<go/constant.Value>", 1062)
+
 						}
-						expectVarExact(t, locals, 20, "chnil", "nil <chan int>", 0)
-						// reflect.Kind == Func
-						expectVarExact(t, locals, 15, "fn1", "main.afunc", 0)
-						expectVarExact(t, locals, 16, "fn2", "<main.functype>", 0)
-						// reflect.Kind == Interface
-						expectVarExact(t, locals, 40, "ifacenil", "nil <interface {}>", 0)
-						expectVarExact(t, locals, 37, "iface2", "<interface {}>", 1018)
+					}
+					// reflect.Kind == Map
+					expectVarExact(t, locals, 22, "mnil", "nil <map[string]main.astruct>", 0)
+					expectVarExact(t, locals, 23, "m2", "<map[int]*main.astruct> (length: 1)", 1011)
+					{
+						client.VariablesRequest(1011)
+						m2 := client.ExpectVariablesResponse(t)
+						expectVars(t, m2, "m2", 1)
+						expectVarRegex(t, m2, 0, "1", "<\\*main\\.astruct>\\(0x[0-9a-f]+\\)", 1063)
 						{
-							client.VariablesRequest(1018)
-							iface2 := client.ExpectVariablesResponse(t)
-							expectVars(t, iface2, "iface2", 1)
-							expectVarExact(t, iface2, 0, "data", `"test"`, 0)
-						}
-						expectVarExact(t, locals, 39, "iface4", "<interface {}>", 1020)
-						{
-							client.VariablesRequest(1020)
-							iface4 := client.ExpectVariablesResponse(t)
-							expectVars(t, iface4, "iface4", 1)
-							expectVarExact(t, iface4, 0, "data", "<[]go/constant.Value> (length: 1, cap: 1)", 1061)
+							client.VariablesRequest(1063)
+							m2_1 := client.ExpectVariablesResponse(t)
+							expectVars(t, m2_1, "m2[1]", 1)
+							expectVarExact(t, m2_1, 0, "", "<main.astruct>", 1064)
 							{
-								client.VariablesRequest(1061)
-								iface4data := client.ExpectVariablesResponse(t)
-								expectVars(t, iface4data, "iface4.data", 1)
-								expectVarExact(t, iface4data, 0, "[0]", "<go/constant.Value>", 1062)
-
+								client.VariablesRequest(1064)
+								m2_1val := client.ExpectVariablesResponse(t)
+								expectVars(t, m2_1val, "*m2[1]", 2)
+								expectVarExact(t, m2_1val, 0, "A", "10", 0)
+								expectVarExact(t, m2_1val, 1, "B", "11", 0)
 							}
 						}
-						// reflect.Kind == Map
-						expectVarExact(t, locals, 22, "mnil", "nil <map[string]main.astruct>", 0)
-						expectVarExact(t, locals, 23, "m2", "<map[int]*main.astruct> (length: 1)", 1011)
+					}
+					expectVarExact(t, locals, 24, "m3", "<map[main.astruct]int> (length: 2)", 1012)
+					{
+						client.VariablesRequest(1012)
+						m3 := client.ExpectVariablesResponse(t)
+						expectVars(t, m3, "m3", 2)
+						expectVarExact(t, m3, 0, "<main.astruct>", "42", 1065)
 						{
-							client.VariablesRequest(1011)
-							m2 := client.ExpectVariablesResponse(t)
-							expectVars(t, m2, "m2", 1)
-							expectVarRegex(t, m2, 0, "1", "<\\*main\\.astruct>\\(0x[0-9a-f]+\\)", 1063)
-							{
-								client.VariablesRequest(1063)
-								m2_1 := client.ExpectVariablesResponse(t)
-								expectVars(t, m2_1, "m2[1]", 1)
-								expectVarExact(t, m2_1, 0, "", "<main.astruct>", 1064)
-								{
-									client.VariablesRequest(1064)
-									m2_1val := client.ExpectVariablesResponse(t)
-									expectVars(t, m2_1val, "*m2[1]", 2)
-									expectVarExact(t, m2_1val, 0, "A", "10", 0)
-									expectVarExact(t, m2_1val, 1, "B", "11", 0)
-								}
-							}
+							client.VariablesRequest(1065)
+							m3_0 := client.ExpectVariablesResponse(t)
+							expectVars(t, m3_0, "m3[0]", 2)
+							expectVarExact(t, m3_0, 0, "A", "1", 0)
+							expectVarExact(t, m3_0, 1, "B", "1", 0)
 						}
-						expectVarExact(t, locals, 24, "m3", "<map[main.astruct]int> (length: 2)", 1012)
+						expectVarExact(t, m3, 1, "<main.astruct>", "43", 1066)
 						{
-							client.VariablesRequest(1012)
-							m3 := client.ExpectVariablesResponse(t)
-							expectVars(t, m3, "m3", 2)
-							expectVarExact(t, m3, 0, "<main.astruct>", "42", 1065)
-							{
-								client.VariablesRequest(1065)
-								m3_0 := client.ExpectVariablesResponse(t)
-								expectVars(t, m3_0, "m3[0]", 2)
-								expectVarExact(t, m3_0, 0, "A", "1", 0)
-								expectVarExact(t, m3_0, 1, "B", "1", 0)
-							}
-							expectVarExact(t, m3, 1, "<main.astruct>", "43", 1066)
-							{
-								client.VariablesRequest(1066)
-								m3_1 := client.ExpectVariablesResponse(t)
-								expectVars(t, m3_1, "m3[1]", 2)
-								expectVarExact(t, m3_1, 0, "A", "2", 0)
-								expectVarExact(t, m3_1, 1, "B", "2", 0)
-							}
+							client.VariablesRequest(1066)
+							m3_1 := client.ExpectVariablesResponse(t)
+							expectVars(t, m3_1, "m3[1]", 2)
+							expectVarExact(t, m3_1, 0, "A", "2", 0)
+							expectVarExact(t, m3_1, 1, "B", "2", 0)
 						}
-						expectVarExact(t, locals, 25, "m4", "<map[main.astruct]main.astruct> (length: 2)", 1013)
+					}
+					expectVarExact(t, locals, 25, "m4", "<map[main.astruct]main.astruct> (length: 2)", 1013)
+					{
+						client.VariablesRequest(1013)
+						m4 := client.ExpectVariablesResponse(t)
+						expectVars(t, m4, "m4", 4)
+						expectVarExact(t, m4, 0, "[key 0]", "<main.astruct>", 1067)
+						expectVarExact(t, m4, 1, "[val 0]", "<main.astruct>", 1068)
+						expectVarExact(t, m4, 2, "[key 1]", "<main.astruct>", 1069)
 						{
-							client.VariablesRequest(1013)
-							m4 := client.ExpectVariablesResponse(t)
-							expectVars(t, m4, "m4", 4)
-							expectVarExact(t, m4, 0, "[key 0]", "<main.astruct>", 1067)
-							expectVarExact(t, m4, 1, "[val 0]", "<main.astruct>", 1068)
-							expectVarExact(t, m4, 2, "[key 1]", "<main.astruct>", 1069)
-							{
-								client.VariablesRequest(1069)
-								m4_key1 := client.ExpectVariablesResponse(t)
-								expectVars(t, m4_key1, "m4_key1", 2)
-								expectVarExact(t, m4_key1, 0, "A", "2", 0)
-								expectVarExact(t, m4_key1, 1, "B", "2", 0)
-							}
-							expectVarExact(t, m4, 3, "[val 1]", "<main.astruct>", 1070)
-							{
-								client.VariablesRequest(1070)
-								m4_val1 := client.ExpectVariablesResponse(t)
-								expectVars(t, m4_val1, "m4_val1", 2)
-								expectVarExact(t, m4_val1, 0, "A", "22", 0)
-								expectVarExact(t, m4_val1, 1, "B", "22", 0)
-							}
+							client.VariablesRequest(1069)
+							m4_key1 := client.ExpectVariablesResponse(t)
+							expectVars(t, m4_key1, "m4_key1", 2)
+							expectVarExact(t, m4_key1, 0, "A", "2", 0)
+							expectVarExact(t, m4_key1, 1, "B", "2", 0)
 						}
-						expectVarExact(t, locals, 80, "emptymap", "<map[string]string> (length: 0)", 0)
-						// reflect.Kind == Ptr - see testvariables
-						// reflect.Kind == Slice
-						expectVarExact(t, locals, 76, "zsslice", "<[]struct {}> (length: 3, cap: 3)", 1045)
+						expectVarExact(t, m4, 3, "[val 1]", "<main.astruct>", 1070)
 						{
-							client.VariablesRequest(1045)
-							zsslice := client.ExpectVariablesResponse(t)
-							expectVars(t, zsslice, "zsslice", 3)
+							client.VariablesRequest(1070)
+							m4_val1 := client.ExpectVariablesResponse(t)
+							expectVars(t, m4_val1, "m4_val1", 2)
+							expectVarExact(t, m4_val1, 0, "A", "22", 0)
+							expectVarExact(t, m4_val1, 1, "B", "22", 0)
 						}
-						expectVarExact(t, locals, 79, "emptyslice", "<[]string> (length: 0, cap: 0)", 0)
-						expectVarExact(t, locals, 17, "nilslice", "nil <[]int>", 0)
-						// reflect.Kind == String
-						expectVarExact(t, locals, 85, "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", 0)
-						// reflect.Kind == Struct
-						expectVarExact(t, locals, 75, "zsvar", "<struct {}>", 0)
-						// reflect.Kind == UnsafePointer
-						// TODO(polina): how do I test for unsafe.Pointer(nil)?
-						expectVarRegex(t, locals, 26, "upnil", "unsafe\\.Pointer\\(0x0\\)", 0)
-						expectVarRegex(t, locals, 27, "up1", "unsafe\\.Pointer\\(0x[0-9a-f]+\\)", 0)
+					}
+					expectVarExact(t, locals, 80, "emptymap", "<map[string]string> (length: 0)", 0)
+					// reflect.Kind == Ptr - see testvariables
+					// reflect.Kind == Slice
+					expectVarExact(t, locals, 76, "zsslice", "<[]struct {}> (length: 3, cap: 3)", 1045)
+					{
+						client.VariablesRequest(1045)
+						zsslice := client.ExpectVariablesResponse(t)
+						expectVars(t, zsslice, "zsslice", 3)
+					}
+					expectVarExact(t, locals, 79, "emptyslice", "<[]string> (length: 0, cap: 0)", 0)
+					expectVarExact(t, locals, 17, "nilslice", "nil <[]int>", 0)
+					// reflect.Kind == String
+					expectVarExact(t, locals, 85, "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", 0)
+					// reflect.Kind == Struct
+					expectVarExact(t, locals, 75, "zsvar", "<struct {}>", 0)
+					// reflect.Kind == UnsafePointer
+					// TODO(polina): how do I test for unsafe.Pointer(nil)?
+					expectVarRegex(t, locals, 26, "upnil", "unsafe\\.Pointer\\(0x0\\)", 0)
+					expectVarRegex(t, locals, 27, "up1", "unsafe\\.Pointer\\(0x[0-9a-f]+\\)", 0)
 
-						// Test that variables are not yet loaded completely.
-						expectVarExact(t, locals, 21, "m1", "<map[string]main.astruct> (length: 66)", 1010)
-						{
-							client.VariablesRequest(1010)
-							m1 := client.ExpectVariablesResponse(t)
-							expectVars(t, m1, "m1", 64) // TODO(polina): should be 66.
-						}
-					},
-					disconnect: false,
+					// Test that variables are not yet loaded completely.
+					expectVarExact(t, locals, 21, "m1", "<map[string]main.astruct> (length: 66)", 1010)
+					{
+						client.VariablesRequest(1010)
+						m1 := client.ExpectVariablesResponse(t)
+						expectVars(t, m1, "m1", 64) // TODO(polina): should be 66.
+					}
 				},
-				{ // Stop at line 321
-					execute: func() {
-						// Frame ids get reset at each breakpoint.
-						client.StackTraceRequest(1, 0, 20)
-						stack := client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stack, 321, 1000, 3, 3)
+				disconnect: false,
+			}, {
+				// Stop at line 321
+				execute: func() {
+					// Frame ids get reset at each breakpoint.
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 321, 1000, 3, 3)
 
-						client.ScopesRequest(1000)
-						scopes := client.ExpectScopesResponse(t)
-						expectScope(t, scopes, 0, "Arguments", 1000)
-						expectScope(t, scopes, 1, "Locals", 1001)
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
 
-						client.VariablesRequest(1000) // Arguments
-						args := client.ExpectVariablesResponse(t)
-						expectVars(t, args, "Arguments", 0)
+					client.VariablesRequest(1000) // Arguments
+					args := client.ExpectVariablesResponse(t)
+					expectVars(t, args, "Arguments", 0)
 
-						client.VariablesRequest(1001) // Locals
-						locals := client.ExpectVariablesResponse(t)
-						expectVars(t, locals, "Locals", 92)
-
-						// There is stack overflow at the end of the program.
-						// Exist before that.
-						client.DisconnectRequest()
-						client.ExpectDisconnectResponse(t)
-					},
-					disconnect: true,
-				}})
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+					expectVars(t, locals, "Locals", 92)
+				},
+				disconnect: true,
+			}})
 	})
 }
 
@@ -1004,25 +999,24 @@ func TestScopesAndVariablesRequests3(t *testing.T) {
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 			},
 			fixture.Source, []int{18},
-			[]onBreakpoint{
-				{ // Stop at line 18
-					execute: func() {
-						client.StackTraceRequest(1, 0, 20)
-						stack := client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stack, 18, 1000, 3, 3)
+			[]onBreakpoint{{ // Stop at line 18
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 18, 1000, 3, 3)
 
-						client.ScopesRequest(1000)
-						scopes := client.ExpectScopesResponse(t)
-						expectScope(t, scopes, 0, "Arguments", 1000)
-						expectScope(t, scopes, 1, "Locals", 1001)
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
 
-						client.VariablesRequest(1001)
-						locals := client.ExpectVariablesResponse(t)
-						expectVars(t, locals, "Locals", 1)
-						expectVarExact(t, locals, 0, "foo", "(unreadable invalid interface type: key not found)", 0)
-					},
-					disconnect: false,
-				}})
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					expectVars(t, locals, "Locals", 1)
+					expectVarExact(t, locals, 0, "foo", "(unreadable invalid interface type: key not found)", 0)
+				},
+				disconnect: false,
+			}})
 	})
 }
 
@@ -1040,15 +1034,14 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 			},
 			// Set breakpoints
 			fixture.Source, []int{8},
-			[]onBreakpoint{
-				{ // Stop at line 8
-					execute: func() {
-						client.StackTraceRequest(1, 0, 0)
-						stResp = client.ExpectStackTraceResponse(t)
-						expectStackFrames(t, stResp, 8, 1000, 2, 2)
-					},
-					disconnect: false,
-				}})
+			[]onBreakpoint{{ // Stop at line 8
+				execute: func() {
+					client.StackTraceRequest(1, 0, 0)
+					stResp = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stResp, 8, 1000, 2, 2)
+				},
+				disconnect: false,
+			}})
 	})
 }
 
