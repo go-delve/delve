@@ -433,6 +433,8 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 		r.Arch = AMD64Arch(goos)
 	case "arm64":
 		r.Arch = ARM64Arch(goos)
+	case "arm":
+		r.Arch = ARMArch(goos)
 	}
 	return r
 }

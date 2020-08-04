@@ -35,6 +35,7 @@ const _NT_FPREGSET elf.NType = 0x2
 // Fetch architecture using exeELF.Machine from core file
 // Refer http://man7.org/linux/man-pages/man5/elf.5.html
 const (
+	_EM_ARM              = 40
 	_EM_AARCH64          = 183
 	_EM_X86_64           = 62
 	_ARM_FP_HEADER_START = 512
@@ -126,6 +127,8 @@ func readLinuxCore(corePath, exePath string) (*process, error) {
 		bi = proc.NewBinaryInfo("linux", "amd64")
 	case _EM_AARCH64:
 		bi = proc.NewBinaryInfo("linux", "arm64")
+	case _EM_ARM:
+		bi = proc.NewBinaryInfo("linux", "arm")
 	default:
 		return nil, fmt.Errorf("unsupported machine type")
 	}
@@ -247,6 +250,8 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 			note.Desc = &linuxPrStatusAMD64{}
 		} else if machineType == _EM_AARCH64 {
 			note.Desc = &linuxPrStatusARM64{}
+		} else if machineType == _EM_ARM {
+			note.Desc = &linuxPrStatusARM{}
 		} else {
 			return nil, fmt.Errorf("unsupported machine type")
 		}
@@ -288,6 +293,13 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 	case _NT_FPREGSET:
 		if machineType == _EM_AARCH64 {
 			fpregs := &linutil.ARM64PtraceFpRegs{}
+			rdr := bytes.NewReader(desc[:_ARM_FP_HEADER_START])
+			if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
+				return nil, err
+			}
+			note.Desc = fpregs
+		} else if machineType == _EM_ARM {
+			fpregs := &linutil.ARMPtraceFpRegs{}
 			rdr := bytes.NewReader(desc[:_ARM_FP_HEADER_START])
 			if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
 				return nil, err
@@ -402,6 +414,19 @@ type linuxPrStatusARM64 struct {
 	Pid, Ppid, Pgrp, Sid         int32
 	Utime, Stime, CUtime, CStime linuxCoreTimeval
 	Reg                          linutil.ARM64PtraceRegs
+	Fpvalid                      int32
+}
+
+// LinuxPrStatusARM is a copy of the prstatus kernel struct.
+type linuxPrStatusARM struct {
+	Siginfo                      linuxSiginfo
+	Cursig                       uint16
+	_                            [2]uint8
+	Sigpend                      uint64
+	Sighold                      uint64
+	Pid, Ppid, Pgrp, Sid         int32
+	Utime, Stime, CUtime, CStime linuxCoreTimeval
+	Reg                          linutil.ARMPtraceRegs
 	Fpvalid                      int32
 }
 
