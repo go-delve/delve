@@ -120,6 +120,7 @@ var (
 		elf.EM_X86_64:  true,
 		elf.EM_AARCH64: true,
 		elf.EM_386:     true,
+		elf.EM_ARM:     true,
 	}
 
 	supportedWindowsArch = map[PEMachine]bool{
