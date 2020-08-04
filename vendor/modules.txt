@@ -34,6 +34,7 @@ go.starlark.net/resolve
 go.starlark.net/starlark
 go.starlark.net/syntax
 # golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
+golang.org/x/arch/arm/armasm
 golang.org/x/arch/arm64/arm64asm
 golang.org/x/arch/x86/x86asm
 # golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae

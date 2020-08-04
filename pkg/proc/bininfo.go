@@ -121,6 +121,7 @@ var (
 		elf.EM_X86_64:  true,
 		elf.EM_AARCH64: true,
 		elf.EM_386:     true,
+		elf.EM_ARM:     true,
 	}
 
 	supportedWindowsArch = map[PEMachine]bool{
@@ -435,6 +436,8 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 		r.Arch = AMD64Arch(goos)
 	case "arm64":
 		r.Arch = ARM64Arch(goos)
+	case "arm":
+		r.Arch = ARMArch(goos)
 	}
 	return r
 }

@@ -113,6 +113,8 @@ jobs:
     -  os: linux
        services: docker
        env: go_32_version={{index .GoVersions 0}}.2 # Linux/i386 tests will fail on go1.15 prior to 1.15.2 (see issue #2134)
+    -  os: linux
+       env: arm_on_arm64=1
 
 script: >-
     if [ $TRAVIS_OS_NAME = "linux" ] && [ $go_32_version ]; then
@@ -132,6 +134,10 @@ script: >-
            go version && \
            uname -a && \
            make test";
+    elif [ $arm_on_arm64 ]; then
+      export GOARCH=arm
+      echo TESTING ARM ON ARM64
+      make test
     else
       make test;
     fi
