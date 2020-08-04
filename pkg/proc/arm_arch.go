@@ -235,10 +235,10 @@ func armSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 func armRegSize(regnum uint64) int {
 	// fp registers
 	if regnum >= 64 && regnum <= 95 {
-		return 16
+		return 8
 	}
 
-	return 8 // general registers
+	return 4 // general registers
 }
 
 // The mapping between hardware registers and DWARF registers is specified
@@ -356,14 +356,14 @@ func armAddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.D
 func armDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	// see armDwarfToHardware table for explanation
 	switch {
-	case i <= 30:
-		name = fmt.Sprintf("X%d", i)
-	case i == 31:
+	case i == 13:
 		name = "SP"
-	case i == 32:
+	case i == 15:
 		name = "PC"
+	case i <= 15:
+		name = fmt.Sprintf("R%d", i)
 	case i >= 64 && i <= 95:
-		name = fmt.Sprintf("V%d", i-64)
+		name = fmt.Sprintf("S%d", i-64)
 	default:
 		name = fmt.Sprintf("unknown%d", i)
 	}
@@ -372,38 +372,36 @@ func armDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floati
 		buf := bytes.NewReader(reg.Bytes)
 
 		var out bytes.Buffer
-		var vi [16]uint8
+		var vi [8]uint8
 		for i := range vi {
 			binary.Read(buf, binary.LittleEndian, &vi[i])
 		}
 
-		fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+		fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
 
-		fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+		fmt.Fprintf(&out, "\tv1_int={ %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
 
-		fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
+		fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4])
 
-		fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
+		fmt.Fprintf(&out, "\tv4_int={ %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6])
 
-		fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
+		fmt.Fprintf(&out, "\tv8_int={ %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7])
 
 		buf.Seek(0, io.SeekStart)
-		var v2 [2]float64
+		var v1 float64
+		binary.Read(buf, binary.LittleEndian, &v1)
+		fmt.Fprintf(&out, "\tv1_float={ %g }", v1)
+
+		buf.Seek(0, io.SeekStart)
+		var v2 [2]float32
 		for i := range v2 {
 			binary.Read(buf, binary.LittleEndian, &v2[i])
 		}
 		fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
 
-		buf.Seek(0, io.SeekStart)
-		var v4 [4]float32
-		for i := range v4 {
-			binary.Read(buf, binary.LittleEndian, &v4[i])
-		}
-		fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
-
 		return name, true, out.String()
-	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
-		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
+	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 8) {
+		return name, false, fmt.Sprintf("%#08x", reg.Uint64Val)
 	}
 	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }
