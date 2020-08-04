@@ -825,7 +825,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 // variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v api.Variable) (value string, variablesReference int) {
 	if v.Unreadable != "" {
-		value = fmt.Sprintf("(unreadable %s)", v.Unreadable)
+		value = fmt.Sprintf("unreadable <%s>", v.Unreadable)
 		return
 	}
 	switch v.Kind {
@@ -870,16 +870,12 @@ func (s *Server) convertVariable(v api.Variable) (value string, variablesReferen
 			}
 		}
 	case reflect.String:
-		if v.Unreadable != "" {
-			value = "<" + v.Unreadable + ">"
-		} else {
-			lenNotLoaded := v.Len - int64(len(v.Value))
-			vvalue := v.Value
-			if lenNotLoaded > 0 {
-				vvalue += fmt.Sprintf("...+%d more", lenNotLoaded)
-			}
-			value = fmt.Sprintf("%q", vvalue)
+		lenNotLoaded := v.Len - int64(len(v.Value))
+		vvalue := v.Value
+		if lenNotLoaded > 0 {
+			vvalue += fmt.Sprintf("...+%d more", lenNotLoaded)
 		}
+		value = fmt.Sprintf("%q", vvalue)
 	case reflect.Chan:
 		if len(v.Children) == 0 {
 			value = "nil <" + v.Type + ">"
