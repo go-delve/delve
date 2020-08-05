@@ -701,6 +701,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	scope := api.EvalScope{GoroutineID: sf.(stackFrame).goroutineID, Frame: sf.(stackFrame).frameIndex}
 	// TODO(polina): Support setting config via launch/attach args
 	cfg := &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	// TODO(aarzilli): call proc.EvalScope.Locals somehow and then use Flag to discriminate
 
 	// Retrieve arguments
 	args, err := s.debugger.FunctionArguments(scope, *api.LoadConfigToProc(cfg))
@@ -747,16 +748,12 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 
 	switch v.Kind {
 	case reflect.Map:
-		kvIndex := 0
-		for i := range v.Children {
-			// A map will have twice as many children as there are elements.
+		for i := 0; i < len(v.Children); i += 2 {
+			// A map will have twice as many children as there are key-value elements.
+			kvIndex := i/2
 			// Process children in pairs: even indices are map keys, odd indices are values.
-			if i%2 == 0 {
-				kvIndex = i / 2
-				continue
-			}
-			key, keyref := s.convertVariable(v.Children[i-1])
-			val, valref := s.convertVariable(v.Children[i])
+			key, keyref := s.convertVariable(v.Children[i])
+			val, valref := s.convertVariable(v.Children[i+1])
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.

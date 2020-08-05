@@ -403,7 +403,7 @@ func expectScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varR
 	}
 }
 
-// expectVars is a helper for verifying the number of variables withing a VariablesResponse.
+// expectVars is a helper for verifying the number of variables within a VariablesResponse.
 //      parentName - name of the enclosing variable or scope
 //      numChildren - number of variables/fields/elements of this variable
 func expectVars(t *testing.T, got *dap.VariablesResponse, parentName string, numChildren int) {
@@ -1059,6 +1059,10 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, launchRequest 
 
 	// Program automatically continues to breakpoint or completion
 
+	// TODO(polina): See if we can make this more like withTestProcessArgs in proc_test:
+	// a single function pointer gets called here and then if it wants to continue it calls
+	// client.ContinueRequest/client.ExpectContinueResponse/client.ExpectStoppedEvent
+	// (possibly using a helper function).
 	for _, onBP := range onBPs {
 		client.ExpectStoppedEvent(t)
 		onBP.execute()
