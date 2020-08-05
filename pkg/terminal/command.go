@@ -2234,37 +2234,59 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	printReturnValues(th)
+	printBreakpointInfo(th, false)
+}
 
-	if th.BreakpointInfo != nil {
-		bp := th.Breakpoint
-		bpi := th.BreakpointInfo
+func printBreakpointInfo(th *api.Thread, tracepointOnNewline bool) {
+	if th.BreakpointInfo == nil {
+		return
+	}
+	bp := th.Breakpoint
+	bpi := th.BreakpointInfo
 
-		if bpi.Goroutine != nil {
-			writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
+	if bp.TraceReturn {
+		return
+	}
+
+	didprintnl := tracepointOnNewline
+	tracepointnl := func() {
+		if !bp.Tracepoint || didprintnl {
+			return
 		}
+		didprintnl = true
+		fmt.Println()
+	}
 
-		for _, v := range bpi.Variables {
+	if bpi.Goroutine != nil {
+		tracepointnl()
+		writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
+	}
+
+	for _, v := range bpi.Variables {
+		tracepointnl()
+		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+	}
+
+	for _, v := range bpi.Locals {
+		tracepointnl()
+		if *bp.LoadLocals == longLoadConfig {
+			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+		} else {
+			fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
+		}
+	}
+
+	if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
+		for _, v := range bpi.Arguments {
+			tracepointnl()
 			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
 		}
+	}
 
-		for _, v := range bpi.Locals {
-			if *bp.LoadLocals == longLoadConfig {
-				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
-			} else {
-				fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
-			}
-		}
-
-		if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
-			for _, v := range bpi.Arguments {
-				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
-			}
-		}
-
-		if bpi.Stacktrace != nil {
-			fmt.Printf("\tStack:\n")
-			printStack(os.Stdout, bpi.Stacktrace, "\t\t", false)
-		}
+	if bpi.Stacktrace != nil {
+		tracepointnl()
+		fmt.Printf("\tStack:\n")
+		printStack(os.Stdout, bpi.Stacktrace, "\t\t", false)
 	}
 }
 
@@ -2274,6 +2296,7 @@ func printTracepoint(th *api.Thread, bpname string, fn *api.Function, args strin
 		if !hasReturnValue {
 			fmt.Println()
 		}
+		printBreakpointInfo(th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
 		retVals := make([]string, 0, len(th.ReturnValues))

@@ -1075,3 +1075,14 @@ func TestExamineMemoryCmd(t *testing.T) {
 		}
 	})
 }
+
+func TestPrintOnTracepoint(t *testing.T) {
+	withTestTerminal("increment", t, func(term *FakeTerminal) {
+		term.MustExec("trace main.Increment")
+		term.MustExec("on 1 print y+1")
+		out, _ := term.Exec("continue")
+		if !strings.Contains(out, "y+1: 4") || !strings.Contains(out, "y+1: 2") || !strings.Contains(out, "y+1: 1") {
+			t.Errorf("output did not contain breakpoint information: %q", out)
+		}
+	})
+}
