@@ -18,8 +18,8 @@ const (
 	armDwarfBPRegNum uint64 = 11
 )
 
-// bkpt #0
-var armBreakInstruction = []byte{0x70, 0x0, 0x20, 0xe1}
+// Undefined instruction
+var armBreakInstruction = []byte{0xe7, 0xf0, 0x01, 0xf0}
 
 // ARMArch returns an initialized ARM
 // struct.
