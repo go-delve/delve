@@ -422,7 +422,7 @@ func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string,
 //     useExactMatch - true if value is to be compared to exactly, false if to be used as regex
 //     hasRef - true if the variable should have children and therefore a non-0 variable reference
 //     ref - reference to retrieve children of this variable (0 if none)
-func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch bool, hasRef bool) (ref int){
+func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch, hasRef bool) (ref int){
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d\nwant len>%d", len(got.Body.Variables), i)
