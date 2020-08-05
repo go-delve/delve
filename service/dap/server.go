@@ -749,7 +749,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	case reflect.Map:
 		for i := 0; i < len(v.Children); i += 2 {
 			// A map will have twice as many children as there are key-value elements.
-			kvIndex := i/2
+			kvIndex := i / 2
 			// Process children in pairs: even indices are map keys, odd indices are values.
 			key, keyref := s.convertVariable(v.Children[i])
 			val, valref := s.convertVariable(v.Children[i+1])

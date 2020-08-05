@@ -422,7 +422,7 @@ func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string,
 //     useExactMatch - true if value is to be compared to exactly, false if to be used as regex
 //     hasRef - true if the variable should have children and therefore a non-0 variable reference
 //     ref - reference to retrieve children of this variable (0 if none)
-func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch, hasRef bool) (ref int){
+func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch, hasRef bool) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d\nwant len>%d", len(got.Body.Variables), i)
@@ -710,7 +710,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						expectVarRegex(t, a13, 0, "[0]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", hasChildren)
 						expectVarRegex(t, a13, 1, "[1]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", hasChildren)
 						ref = expectVarRegex(t, a13, 2, "[2]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", hasChildren)
-						if ref > 0 	{
+						if ref > 0 {
 							client.VariablesRequest(ref)
 							a13_2 := client.ExpectVariablesResponse(t)
 							expectChildren(t, a13_2, "a13[2]", 1)
@@ -808,6 +808,19 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					scopes := client.ExpectScopesResponse(t)
 					expectScope(t, scopes, 0, "Arguments", 1000)
 					expectScope(t, scopes, 1, "Locals", 1001)
+				},
+				disconnect: false,
+			}, {
+				// Stop at line 322
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 322, 1000, 3, 3)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
 
 					// Arguments
 
@@ -819,7 +832,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
-					expectChildren(t, locals, "Locals", 94)
+					expectChildren(t, locals, "Locals", 93)
 
 					// reflect.Kind == Bool - see testvariables
 					// reflect.Kind == Int - see testvariables
@@ -890,12 +903,12 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						m2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m2, "m2", 1)
 						ref = expectVarRegex(t, m2, 0, "1", "<\\*main\\.astruct>\\(0x[0-9a-f]+\\)", hasChildren)
-						if ref > 0 	{
+						if ref > 0 {
 							client.VariablesRequest(ref)
 							m2_1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m2_1, "m2[1]", 1)
 							ref = expectVarExact(t, m2_1, 0, "", "<main.astruct>", hasChildren)
-							if ref > 0 	{
+							if ref > 0 {
 								client.VariablesRequest(ref)
 								m2_1val := client.ExpectVariablesResponse(t)
 								expectChildren(t, m2_1val, "*m2[1]", 2)
@@ -910,7 +923,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						m3 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m3, "m3", 2)
 						ref = expectVarExact(t, m3, 0, "<main.astruct>", "42", hasChildren)
-						if ref > 0 	{
+						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_0 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m3_0, "m3[0]", 2)
@@ -918,7 +931,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							expectVarExact(t, m3_0, 1, "B", "1", noChildren)
 						}
 						ref = expectVarExact(t, m3, 1, "<main.astruct>", "43", hasChildren)
-						if ref > 0 	{
+						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m3_1, "m3[1]", 2)
@@ -934,7 +947,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						expectVarExact(t, m4, 0, "[key 0]", "<main.astruct>", hasChildren)
 						expectVarExact(t, m4, 1, "[val 0]", "<main.astruct>", hasChildren)
 						ref = expectVarExact(t, m4, 2, "[key 1]", "<main.astruct>", hasChildren)
-						if ref > 0 	{
+						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4_key1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m4_key1, "m4_key1", 2)
@@ -942,7 +955,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							expectVarExact(t, m4_key1, 1, "B", "2", noChildren)
 						}
 						ref = expectVarExact(t, m4, 3, "[val 1]", "<main.astruct>", hasChildren)
-						if ref > 0 	{
+						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4_val1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m4_val1, "m4_val1", 2)
@@ -986,28 +999,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						m1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m1, "m1", 64) // TODO(polina): should be 66.
 					}
-				},
-				disconnect: false,
-			}, {
-				// Stop at line 322
-				execute: func() {
-					// Frame ids get reset at each breakpoint.
-					client.StackTraceRequest(1, 0, 20)
-					stack := client.ExpectStackTraceResponse(t)
-					expectStackFrames(t, stack, 322, 1000, 3, 3)
-
-					client.ScopesRequest(1000)
-					scopes := client.ExpectScopesResponse(t)
-					expectScope(t, scopes, 0, "Arguments", 1000)
-					expectScope(t, scopes, 1, "Locals", 1001)
-
-					client.VariablesRequest(1000) // Arguments
-					args := client.ExpectVariablesResponse(t)
-					expectChildren(t, args, "Arguments", 0)
-
-					client.VariablesRequest(1001) // Locals
-					locals := client.ExpectVariablesResponse(t)
-					expectChildren(t, locals, "Locals", 93)
 				},
 				disconnect: true,
 			}})
