@@ -43,8 +43,8 @@ func (r *ARMRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 		{"R8", r.Regs.Uregs[8]},
 		{"R9", r.Regs.Uregs[9]},
 		{"R10", r.Regs.Uregs[10]},
-		{"FP", r.Regs.Uregs[11]},
-		{"IP", r.Regs.Uregs[12]},
+		{"BP", r.Regs.Uregs[11]},
+		{"R12", r.Regs.Uregs[12]},
 		{"SP", r.Regs.Uregs[13]},
 		{"LR", r.Regs.Uregs[14]},
 		{"PC", r.Regs.Uregs[15]},
@@ -91,11 +91,14 @@ func (r *ARMRegisters) GAddr() (uint64, bool) {
 	return uint64(r.Regs.Uregs[10]), true
 }
 
-// Get returns the value of the n-th register (in arm64asm order).
+// Get returns the value of the n-th register (in armasm order).
 func (r *ARMRegisters) Get(n int) (uint64, error) {
 	reg := armasm.Reg(n)
 
-	if reg >= armasm.R0 && reg <= armasm.R15 {
+	// 	SP = R13
+	//	LR = R14
+	//	PC = R15
+	if reg <= armasm.R15 {
 		return uint64(r.Regs.Uregs[reg-armasm.R0]), nil
 	}
 
@@ -135,7 +138,7 @@ const _ARM32_FP_REGS_LENGTH = 32
 func (fpregs *ARMPtraceFpRegs) Decode() (regs []proc.Register) {
 	// According to arch/arm/include/asm/ptrace.h, the length of fpregs is 8.
 	for i := 0; i < len(fpregs.Vregs); i += 8 {
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("D%d", i/8), fpregs.Vregs[i:i+8])
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("S%d", i/8), fpregs.Vregs[i:i+8])
 	}
 	return
 }

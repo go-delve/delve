@@ -25,11 +25,18 @@ func armAsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw Mem
 	case armasm.BL, armasm.BLX:
 		asmInst.Kind = CallInstruction
 	case armasm.LDR, armasm.ADD:
-		// We need to check for first args to be PC.
+		// We need to check for the first args to be PC.
 		if reg, ok := inst.Args[0].(armasm.Reg); ok && reg == armasm.PC {
 			asmInst.Kind = RetInstruction
 		}
-	case armasm.B, armasm.BX:
+	case armasm.BX:
+		// We need to check for the first args to be LR.
+		if reg, ok := inst.Args[0].(armasm.Reg); ok && reg == armasm.LR {
+			asmInst.Kind = RetInstruction
+		} else {
+			asmInst.Kind = JmpInstruction
+		}
+	case armasm.B:
 		asmInst.Kind = JmpInstruction
 	case armasm.BKPT:
 		asmInst.Kind = HardBreakInstruction

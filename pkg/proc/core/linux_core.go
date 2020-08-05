@@ -45,7 +45,8 @@ const elfErrorBadMagicNumber = "bad magic number"
 
 func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
 	var lastThreadAMD *linuxAMD64Thread
-	var lastThreadARM *linuxARM64Thread
+	var lastThreadARM64 *linuxARM64Thread
+	var lastThreadARM *linuxARMThread
 	for _, note := range notes {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
@@ -58,7 +59,14 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
 				}
 			} else if machineType == _EM_AARCH64 {
 				t := note.Desc.(*linuxPrStatusARM64)
-				lastThreadARM = &linuxARM64Thread{linutil.ARM64Registers{Regs: &t.Reg}, t}
+				lastThreadARM64 = &linuxARM64Thread{linutil.ARM64Registers{Regs: &t.Reg}, t}
+				p.Threads[int(t.Pid)] = &thread{lastThreadARM64, p, proc.CommonThread{}}
+				if p.currentThread == nil {
+					p.currentThread = p.Threads[int(t.Pid)]
+				}
+			} else if machineType == _EM_ARM {
+				t := note.Desc.(*linuxPrStatusARM)
+				lastThreadARM = &linuxARMThread{linutil.ARMRegisters{Regs: &t.Reg}, t}
 				p.Threads[int(t.Pid)] = &thread{lastThreadARM, p, proc.CommonThread{}}
 				if p.currentThread == nil {
 					p.currentThread = p.Threads[int(t.Pid)]
@@ -66,8 +74,12 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
 			}
 		case _NT_FPREGSET:
 			if machineType == _EM_AARCH64 {
+				if lastThreadARM64 != nil {
+					lastThreadARM64.regs.Fpregs = note.Desc.(*linutil.ARM64PtraceFpRegs).Decode()
+				}
+			} else if machineType == _EM_ARM {
 				if lastThreadARM != nil {
-					lastThreadARM.regs.Fpregs = note.Desc.(*linutil.ARM64PtraceFpRegs).Decode()
+					lastThreadARM.regs.Fpregs = note.Desc.(*linutil.ARMPtraceFpRegs).Decode()
 				}
 			}
 		case _NT_X86_XSTATE:
@@ -157,6 +169,11 @@ type linuxARM64Thread struct {
 	t    *linuxPrStatusARM64
 }
 
+type linuxARMThread struct {
+	regs linutil.ARMRegisters
+	t    *linuxPrStatusARM
+}
+
 func (t *linuxAMD64Thread) registers() (proc.Registers, error) {
 	var r linutil.AMD64Registers
 	r.Regs = t.regs.Regs
@@ -171,11 +188,22 @@ func (t *linuxARM64Thread) registers() (proc.Registers, error) {
 	return &r, nil
 }
 
+func (t *linuxARMThread) registers() (proc.Registers, error) {
+	var r linutil.ARMRegisters
+	r.Regs = t.regs.Regs
+	r.Fpregs = t.regs.Fpregs
+	return &r, nil
+}
+
 func (t *linuxAMD64Thread) pid() int {
 	return int(t.t.Pid)
 }
 
 func (t *linuxARM64Thread) pid() int {
+	return int(t.t.Pid)
+}
+
+func (t *linuxARMThread) pid() int {
 	return int(t.t.Pid)
 }
 

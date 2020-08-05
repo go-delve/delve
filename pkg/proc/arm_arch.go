@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"golang.org/x/arch/arm/armasm"
 )
 
 const (
@@ -132,9 +131,8 @@ func armFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryIn
 	return fctxt
 }
 
-const armCgocallSPOffsetSaveSlot = 0x8
-const armPrevG0schedSPOffsetSaveSlot = 0x10
-const armSpAlign = 16
+const armCgocallSPOffsetSaveSlot = 0x4
+const armPrevG0schedSPOffsetSaveSlot = 0x8
 
 func armSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn != nil {
@@ -147,13 +145,13 @@ func armSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 			return true
 		case "crosscall2":
 			//The offsets get from runtime/cgo/asm_arm.s:10
-			newsp, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
-			newbp, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+8*14), int64(it.bi.Arch.PtrSize()))
-			newlr, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+8*15), int64(it.bi.Arch.PtrSize()))
+			newsp, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+8*9+4*14), int64(it.bi.Arch.PtrSize()))
+			newbp, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+4*11), int64(it.bi.Arch.PtrSize()))
+			newlr, _ := readUintRaw(it.mem, uintptr(it.regs.SP()+4*13), int64(it.bi.Arch.PtrSize()))
 			if it.regs.Reg(it.regs.BPRegNum) != nil {
 				it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
 			} else {
-				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*14)
+				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+4*11)
 				it.regs.AddReg(it.regs.BPRegNum, reg)
 			}
 			it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
@@ -245,75 +243,76 @@ func armRegSize(regnum uint64) int {
 // in the DWARF for the ARM® Architecture page 7,
 // Table 1
 // http://infocenter.arm.com/help/topic/com.arm.doc.ihi0040b/IHI0040B_aadwarf.pdf
-var armDwarfToHardware = map[int]armasm.Reg{
-	0:  armasm.R0,
-	1:  armasm.R1,
-	2:  armasm.R2,
-	3:  armasm.R3,
-	4:  armasm.R4,
-	5:  armasm.R5,
-	6:  armasm.R6,
-	7:  armasm.R7,
-	8:  armasm.R8,
-	9:  armasm.R9,
-	10: armasm.R10,
-	11: armasm.R11,
-	12: armasm.R12,
-	13: armasm.R13,
-	14: armasm.R14,
-	15: armasm.R15,
+var armDwarfToName = map[int]string{
+	0:  "R0",
+	1:  "R1",
+	2:  "R2",
+	3:  "R3",
+	4:  "R4",
+	5:  "R5",
+	6:  "R6",
+	7:  "R7",
+	8:  "R8",
+	9:  "R9",
+	10: "R10",
+	11: "BP", // R11
+	12: "R12",
+	13: "SP", // R13
+	14: "LR", // R14
+	15: "PC", // R15
+	// No CPSR and ORIG_R0 in DWARF for the ARM architecture's Note.
 
-	64: armasm.S0,
-	65: armasm.S1,
-	66: armasm.S2,
-	67: armasm.S3,
-	68: armasm.S4,
-	69: armasm.S5,
-	70: armasm.S6,
-	71: armasm.S7,
-	72: armasm.S8,
-	73: armasm.S9,
-	74: armasm.S10,
-	75: armasm.S11,
-	76: armasm.S12,
-	77: armasm.S13,
-	78: armasm.S14,
-	79: armasm.S15,
-	80: armasm.S16,
-	81: armasm.S17,
-	82: armasm.S18,
-	83: armasm.S19,
-	84: armasm.S20,
-	85: armasm.S21,
-	86: armasm.S22,
-	87: armasm.S23,
-	88: armasm.S24,
-	89: armasm.S25,
-	90: armasm.S26,
-	91: armasm.S27,
-	92: armasm.S28,
-	93: armasm.S29,
-	94: armasm.S30,
-	95: armasm.S31,
+	64: "S0",
+	65: "S1",
+	66: "S2",
+	67: "S3",
+	68: "S4",
+	69: "S5",
+	70: "S6",
+	71: "S7",
+	72: "S8",
+	73: "S9",
+	74: "S10",
+	75: "S11",
+	76: "S12",
+	77: "S13",
+	78: "S14",
+	79: "S15",
+	80: "S16",
+	81: "S17",
+	82: "S18",
+	83: "S19",
+	84: "S20",
+	85: "S21",
+	86: "S22",
+	87: "S23",
+	88: "S24",
+	89: "S25",
+	90: "S26",
+	91: "S27",
+	92: "S28",
+	93: "S29",
+	94: "S30",
+	95: "S31",
 }
 
 var armNameToDwarf = func() map[string]int {
 	r := make(map[string]int)
-	for i := 0; i <= 30; i++ {
-		r[fmt.Sprintf("s%d", i)] = i
+	for regNum, regName := range armDwarfToName {
+		r[strings.ToLower(regName)] = regNum
 	}
-	r["pc"] = int(armDwarfPCRegNum)
-	r["lr"] = int(armDwarfLRRegNum)
-	r["sp"] = int(armDwarfSPRegNum)
-	for i := 0; i <= 31; i++ {
-		r[fmt.Sprintf("v%d", i)] = i + 64
-	}
+	// Alias the original name to that register, do we really need it?
+	r["r11"] = int(armDwarfBPRegNum)
+	r["r15"] = int(armDwarfPCRegNum)
+	r["r14"] = int(armDwarfLRRegNum)
+	r["r13"] = int(armDwarfSPRegNum)
+
 	return r
 }()
 
-func maxarmDwarfRegister() int {
+func maxArmDwarfRegister() int {
 	max := int(armDwarfPCRegNum)
-	for i := range armDwarfToHardware {
+	for i := range armDwarfToName {
 		if i > max {
 			max = i
 		}
@@ -322,22 +321,7 @@ func maxarmDwarfRegister() int {
 }
 
 func armRegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, maxarmDwarfRegister()+1)
-
-	dregs[armDwarfPCRegNum] = op.DwarfRegisterFromUint64(regs.PC())
-	dregs[armDwarfSPRegNum] = op.DwarfRegisterFromUint64(regs.SP())
-	dregs[armDwarfBPRegNum] = op.DwarfRegisterFromUint64(regs.BP())
-	if lr, err := regs.Get(int(armasm.LR)); err != nil {
-		dregs[armDwarfLRRegNum] = op.DwarfRegisterFromUint64(lr)
-	}
-
-	for dwarfReg, asmReg := range armDwarfToHardware {
-		v, err := regs.Get(int(asmReg))
-		if err == nil {
-			dregs[dwarfReg] = op.DwarfRegisterFromUint64(v)
-		}
-	}
-
+	dregs := initDwarfRegistersFromSlice(maxArmDwarfRegister(), regs, armNameToDwarf)
 	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, armDwarfPCRegNum, armDwarfSPRegNum, armDwarfBPRegNum, armDwarfLRRegNum)
 	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, armNameToDwarf))
 	return *dr
@@ -353,55 +337,53 @@ func armAddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.D
 	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, armDwarfPCRegNum, armDwarfSPRegNum, armDwarfBPRegNum, armDwarfLRRegNum)
 }
 
+func formatVPFReg(vfp []byte) string {
+	buf := bytes.NewReader(vfp)
+
+	var out bytes.Buffer
+	var vi [8]uint8
+	for i := range vi {
+		binary.Read(buf, binary.LittleEndian, &vi[i])
+	}
+
+	fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+
+	fmt.Fprintf(&out, "\tv1_int={ %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+
+	fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4])
+
+	fmt.Fprintf(&out, "\tv4_int={ %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6])
+
+	fmt.Fprintf(&out, "\tv8_int={ %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7])
+
+	buf.Seek(0, io.SeekStart)
+	var v1 float64
+	binary.Read(buf, binary.LittleEndian, &v1)
+	fmt.Fprintf(&out, "\tv1_float={ %g }", v1)
+
+	buf.Seek(0, io.SeekStart)
+	var v2 [2]float32
+	for i := range v2 {
+		binary.Read(buf, binary.LittleEndian, &v2[i])
+	}
+	fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
+
+	return out.String()
+}
+
 func armDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-	// see armDwarfToHardware table for explanation
-	switch {
-	case i == 13:
-		name = "SP"
-	case i == 15:
-		name = "PC"
-	case i <= 15:
-		name = fmt.Sprintf("R%d", i)
-	case i >= 64 && i <= 95:
-		name = fmt.Sprintf("S%d", i-64)
-	default:
+	// see armDwarfToName table for explanation
+	name, ok := armDwarfToName[i]
+	if !ok {
 		name = fmt.Sprintf("unknown%d", i)
 	}
 
-	if reg.Bytes != nil && name[0] == 'V' {
-		buf := bytes.NewReader(reg.Bytes)
-
-		var out bytes.Buffer
-		var vi [8]uint8
-		for i := range vi {
-			binary.Read(buf, binary.LittleEndian, &vi[i])
-		}
-
-		fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
-
-		fmt.Fprintf(&out, "\tv1_int={ %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
-
-		fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4])
-
-		fmt.Fprintf(&out, "\tv4_int={ %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6])
-
-		fmt.Fprintf(&out, "\tv8_int={ %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7])
-
-		buf.Seek(0, io.SeekStart)
-		var v1 float64
-		binary.Read(buf, binary.LittleEndian, &v1)
-		fmt.Fprintf(&out, "\tv1_float={ %g }", v1)
-
-		buf.Seek(0, io.SeekStart)
-		var v2 [2]float32
-		for i := range v2 {
-			binary.Read(buf, binary.LittleEndian, &v2[i])
-		}
-		fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
-
-		return name, true, out.String()
-	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 8) {
-		return name, false, fmt.Sprintf("%#08x", reg.Uint64Val)
+	if reg.Bytes != nil && name[0] == 'S' {
+		return name, true, formatVPFReg(reg.Bytes)
+	} else if reg.Bytes == nil {
+		// Those register is 32 bit.
+		return name, false, fmt.Sprintf("%#04x", reg.Uint64Val)
+	} else {
+		return name, false, fmt.Sprintf("%#x", reg.Bytes)
 	}
-	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }

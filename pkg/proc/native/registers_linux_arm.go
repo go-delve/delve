@@ -61,6 +61,7 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 		return err
 	}
 	r := ir.(*linutil.ARMRegisters)
+	// PC = R15
 	r.Regs.Uregs[15] = uint32(pc)
 	thread.dbp.execPtraceFunc(func() { err = ptraceSetGRegs(thread.ID, r.Regs) })
 	return err
@@ -74,6 +75,7 @@ func (thread *nativeThread) SetSP(sp uint64) (err error) {
 		return err
 	}
 	r := ir.(*linutil.ARMRegisters)
+	// SP = R13
 	r.Regs.Uregs[13] = uint32(sp)
 	thread.dbp.execPtraceFunc(func() { err = ptraceSetGRegs(thread.ID, r.Regs) })
 	return
