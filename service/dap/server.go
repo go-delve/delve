@@ -700,11 +700,10 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 
 	scope := api.EvalScope{GoroutineID: sf.(stackFrame).goroutineID, Frame: sf.(stackFrame).frameIndex}
 	// TODO(polina): Support setting config via launch/attach args
-	cfg := &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
-	// TODO(aarzilli): call proc.EvalScope.Locals somehow and then use Flag to discriminate
+	cfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 
 	// Retrieve arguments
-	args, err := s.debugger.FunctionArguments(scope, *api.LoadConfigToProc(cfg))
+	args, err := s.debugger.FunctionArguments(scope, cfg)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
@@ -712,7 +711,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	argScope := api.Variable{Name: "Arguments", Children: args}
 
 	// Retrieve local variables
-	locals, err := s.debugger.LocalVariables(scope, *api.LoadConfigToProc(cfg))
+	locals, err := s.debugger.LocalVariables(scope, cfg)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list local vars", err.Error())
 		return
