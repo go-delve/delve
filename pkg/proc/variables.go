@@ -388,6 +388,10 @@ func FindGoroutine(dbp *Target, gid int) (*G, error) {
 		return nil, fmt.Errorf("unknown goroutine %d", gid)
 	}
 
+	if g := dbp.gcache.partialGCache[gid]; g != nil {
+		return g, nil
+	}
+
 	// Calling GoroutinesInfo could be slow if there are many goroutines
 	// running, check if a running goroutine has been requested first.
 	for _, thread := range dbp.ThreadList() {
@@ -395,10 +399,6 @@ func FindGoroutine(dbp *Target, gid int) (*G, error) {
 		if g != nil && g.ID == gid {
 			return g, nil
 		}
-	}
-
-	if g := dbp.gcache.partialGCache[gid]; g != nil {
-		return g, nil
 	}
 
 	const goroutinesInfoLimit = 10
