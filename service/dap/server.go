@@ -770,13 +770,13 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
 				kvvar := dap.Variable{
-					Name:               key,
-					Value:              val,
-					VariablesReference: valref,
+					Name:  key,
+					Value: val,
 				}
-				if keyref != 0 {
+				if keyref != 0 { // key is a type to be expanded
+					kvvar.Name = fmt.Sprintf("%s[%d]", kvvar.Name, kvIndex) // Make the name unique
 					kvvar.VariablesReference = keyref
-				} else if valref != 0 {
+				} else if valref != 0 { // val is a type to be expanded
 					kvvar.VariablesReference = valref
 				}
 				children = append(children, kvvar)

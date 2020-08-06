@@ -922,7 +922,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m3, "m3", 2)
-						ref = expectVarExact(t, m3, 0, "<main.astruct>", "42", hasChildren)
+						ref = expectVarExact(t, m3, 0, "<main.astruct>[0]", "42", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_0 := client.ExpectVariablesResponse(t)
@@ -930,7 +930,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							expectVarExact(t, m3_0, 0, "A", "1", noChildren)
 							expectVarExact(t, m3_0, 1, "B", "1", noChildren)
 						}
-						ref = expectVarExact(t, m3, 1, "<main.astruct>", "43", hasChildren)
+						ref = expectVarExact(t, m3, 1, "<main.astruct>[1]", "43", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_1 := client.ExpectVariablesResponse(t)
