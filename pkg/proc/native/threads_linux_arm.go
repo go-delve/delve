@@ -160,13 +160,13 @@ func (t *nativeThread) singleStep() (err error) {
 		if err != nil {
 			return err
 		}
-		originalDatas := make([][]byte, len(nextPcs)+len(nops))
+		originalDatas := make(map[uintptr][]byte)
 		// Do in batch, first set breakpoint, then continue.
 		t.dbp.execPtraceFunc(func() {
 			breakpointInstr := t.BinInfo().Arch.BreakpointInstruction()
 			readWriteMem := func(i int, addr uintptr, instr []byte) error {
-				originalDatas[i] = make([]byte, len(breakpointInstr))
-				_, err = sys.PtracePeekData(t.ID, addr, originalDatas[i])
+				originalData := make([]byte, len(breakpointInstr))
+				_, err = sys.PtracePeekData(t.ID, addr, originalData)
 				if err != nil {
 					return err
 				}
@@ -174,6 +174,8 @@ func (t *nativeThread) singleStep() (err error) {
 				if err != nil {
 					return err
 				}
+				// Everything is ok, store originalData
+				originalDatas[addr] = originalData
 				return nil
 			}
 			for i, nextPc := range nextPcs {
@@ -195,9 +197,9 @@ func (t *nativeThread) singleStep() (err error) {
 		defer func() {
 			// Update err.
 			t.dbp.execPtraceFunc(func() {
-				for i, originalData := range originalDatas {
+				for addr, originalData := range originalDatas {
 					if originalData != nil {
-						_, err = sys.PtracePokeData(t.ID, uintptr(nextPcs[i]), originalData)
+						_, err = sys.PtracePokeData(t.ID, addr, originalData)
 					}
 				}
 			})
