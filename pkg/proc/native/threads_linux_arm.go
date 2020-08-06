@@ -108,7 +108,7 @@ func (t *nativeThread) singleStep() (err error) {
 				return err
 			}
 		}
-		t.dbp.execPtraceFunc(func() { err = sys.PtraceSyscall(t.ID, 0) })
+		t.dbp.execPtraceFunc(func() { err = ptraceCont(t.ID, 0) })
 		if err != nil {
 			return err
 		}
