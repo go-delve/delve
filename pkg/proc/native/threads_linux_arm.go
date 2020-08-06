@@ -42,3 +42,40 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	}
 	return restoreRegistersErr
 }
+
+func (t *nativeThread) singleStep() (err error) {
+	// Arm don't have ptrace singleStep implemented, so we use breakpoint to emulate it.
+	for {
+		pc, err := t.PC()
+		if err != nil {
+			return err
+		}
+		nextPc := pc + uint64(t.BinInfo().Arch.MaxInstructionLength())
+		_, _, _, originalData, err := t.dbp.WriteBreakpoint(nextPc)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_, _ = t.WriteMemory(uintptr(nextPc), originalData)
+		}()
+		t.dbp.execPtraceFunc(func() { err = ptraceCont(t.ID, 0) })
+		if err != nil {
+			return err
+		}
+		wpid, status, err := t.dbp.waitFast(t.ID)
+		if err != nil {
+			return err
+		}
+		if (status == nil || status.Exited()) && wpid == t.dbp.pid {
+			t.dbp.postExit()
+			rs := 0
+			if status != nil {
+				rs = status.ExitStatus()
+			}
+			return proc.ErrProcessExited{Pid: t.dbp.pid, Status: rs}
+		}
+		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
+			return nil
+		}
+	}
+}
