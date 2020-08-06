@@ -1,6 +1,7 @@
 package native
 
 import (
+	"bytes"
 	"debug/elf"
 	"fmt"
 	"golang.org/x/arch/arm/armasm"
@@ -61,13 +62,17 @@ func (t *nativeThread) singleStep() (err error) {
 			if err != nil {
 				return nil, err
 			}
+			nextPcs := []uint64{
+				regs.PC() + uint64(nextInstLen),
+			}
+			// If we found breakpoint, we just skip it.
+			if bytes.Equal(nextInstrBytes, t.BinInfo().Arch.BreakpointInstruction()) {
+				return nextPcs, nil
+			}
 			// Golang always use ARM mode.
 			nextInstr, err := armasm.Decode(nextInstrBytes, armasm.ModeARM)
 			if err != nil {
 				return nil, err
-			}
-			nextPcs := []uint64{
-				regs.PC() + uint64(nextInstLen),
 			}
 			switch nextInstr.Op {
 			case armasm.BL, armasm.BLX, armasm.B, armasm.BX:
