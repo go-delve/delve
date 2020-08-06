@@ -832,7 +832,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
-					expectChildren(t, locals, "Locals", 93)
 
 					// reflect.Kind == Bool - see testvariables
 					// reflect.Kind == Int - see testvariables
