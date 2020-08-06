@@ -15,6 +15,8 @@ func armAsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw Mem
 
 	// There is some thing special on ARM platform, we use UND as break instruction.
 	if bytes.Equal(asmInst.Bytes, armBreakInstruction) {
+		// So we have nil value of armArchInst type
+		asmInst.Inst = (*armArchInst)(nil)
 		asmInst.Kind = HardBreakInstruction
 		return nil
 	}
