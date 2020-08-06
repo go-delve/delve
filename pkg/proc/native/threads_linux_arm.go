@@ -53,7 +53,7 @@ func (t *nativeThread) singleStep() (err error) {
 		if err != nil {
 			return err
 		}
-		resolvePCs := func() ([]uint64, error) {
+		resolvePCs := func() ([]uint64, []uint64, error) {
 			// Use ptrace to get better performance.
 			nextInstrLen := t.BinInfo().Arch.MaxInstructionLength()
 			nextInstrBytes := make([]byte, nextInstrLen)
@@ -61,19 +61,20 @@ func (t *nativeThread) singleStep() (err error) {
 				_, err = sys.PtracePeekData(t.ID, uintptr(regs.PC()), nextInstrBytes)
 			})
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			nextPcs := []uint64{
 				regs.PC() + uint64(nextInstrLen),
 			}
 			// If we found breakpoint, we just skip it.
 			if bytes.Equal(nextInstrBytes, t.BinInfo().Arch.BreakpointInstruction()) {
-				return nextPcs, nil
+				// We need to nop breakPoints, otherwise we can't continue
+				return nextPcs, []uint64{regs.PC()}, nil
 			}
 			// Golang always use ARM mode.
 			nextInstr, err := armasm.Decode(nextInstrBytes, armasm.ModeARM)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			switch nextInstr.Op {
 			case armasm.BL, armasm.BLX, armasm.B, armasm.BX:
@@ -83,7 +84,7 @@ func (t *nativeThread) singleStep() (err error) {
 				case armasm.Reg:
 					pc, err := regs.Get(int(arg))
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					nextPcs = append(nextPcs, pc)
 				case armasm.PCRel:
@@ -93,7 +94,7 @@ func (t *nativeThread) singleStep() (err error) {
 				if regList, ok := nextInstr.Args[0].(armasm.RegList); ok && (regList&(1<<uint(armasm.PC)) != 0) {
 					pc, err := regs.Get(int(armasm.SP))
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					for i := 0; i < int(armasm.PC); i++ {
 						if regList&(1<<uint(i)) != 0 {
@@ -105,7 +106,7 @@ func (t *nativeThread) singleStep() (err error) {
 						_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
 					})
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
 				}
@@ -120,7 +121,7 @@ func (t *nativeThread) singleStep() (err error) {
 						case armasm.Reg:
 							regVal, err := regs.Get(int(arg))
 							if err != nil {
-								return nil, err
+								return nil, nil, err
 							}
 							pc += regVal
 						}
@@ -130,7 +131,7 @@ func (t *nativeThread) singleStep() (err error) {
 						_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
 					})
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
 				}
@@ -145,7 +146,7 @@ func (t *nativeThread) singleStep() (err error) {
 						case armasm.Reg:
 							regVal, err := regs.Get(int(arg))
 							if err != nil {
-								return nil, err
+								return nil, nil, err
 							}
 							pc += regVal
 						}
@@ -153,13 +154,43 @@ func (t *nativeThread) singleStep() (err error) {
 					nextPcs = append(nextPcs, pc)
 				}
 			}
-			return nextPcs, nil
+			return nextPcs, nil, nil
 		}
-		nextPcs, err := resolvePCs()
+		nextPcs, nops, err := resolvePCs()
 		if err != nil {
 			return err
 		}
-		originalDatas := make([][]byte, len(nextPcs))
+		originalDatas := make([][]byte, len(nextPcs)+len(nops))
+		// Do in batch, first set breakpoint, then continue.
+		t.dbp.execPtraceFunc(func() {
+			breakpointInstr := t.BinInfo().Arch.BreakpointInstruction()
+			readWriteMem := func(i int, addr uintptr, instr []byte) error {
+				originalDatas[i] = make([]byte, len(breakpointInstr))
+				_, err = sys.PtracePeekData(t.ID, addr, originalDatas[i])
+				if err != nil {
+					return err
+				}
+				_, err = sys.PtracePokeData(t.ID, addr, instr)
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+			for i, nextPc := range nextPcs {
+				err = readWriteMem(i, uintptr(nextPc), breakpointInstr)
+				if err != nil {
+					return
+				}
+			}
+			nopInstr := []byte{0x0, 0x0, 0x0, 0x0}
+			for i, nop := range nops {
+				err = readWriteMem(len(nextPcs)+i, uintptr(nop), nopInstr)
+				if err != nil {
+					return
+				}
+			}
+			err = ptraceCont(t.ID, 0)
+		})
 		// Make sure we restore before return.
 		defer func() {
 			// Update err.
@@ -171,13 +202,6 @@ func (t *nativeThread) singleStep() (err error) {
 				}
 			})
 		}()
-		for i, nextPc := range nextPcs {
-			_, _, _, originalDatas[i], err = t.dbp.WriteBreakpoint(nextPc)
-			if err != nil {
-				return err
-			}
-		}
-		t.dbp.execPtraceFunc(func() { err = ptraceCont(t.ID, 0) })
 		if err != nil {
 			return err
 		}
