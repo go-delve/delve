@@ -181,7 +181,8 @@ func (t *nativeThread) singleStep() (err error) {
 		if err != nil {
 			return err
 		}
-		wpid, status, err := t.dbp.waitFast(t.ID)
+		// To be able to catch process exit, we can only use wait instead of waitFast.
+		wpid, status, err := t.dbp.wait(t.ID, 0)
 		if err != nil {
 			return err
 		}
