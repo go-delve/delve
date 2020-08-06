@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"golang.org/x/arch/arm/armasm"
+	"math/bits"
 	"syscall"
 	"unsafe"
 
@@ -113,27 +114,46 @@ func (t *nativeThread) singleStep() (err error) {
 			case armasm.LDR:
 				// We need to check for the first args to be PC.
 				if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
-					var pc uint64
-					for _, argRaw := range nextInstr.Args[1:] {
-						switch arg := argRaw.(type) {
-						case armasm.Imm:
-							pc += uint64(arg)
-						case armasm.Reg:
-							regVal, err := regs.Get(int(arg))
-							if err != nil {
-								return nil, nil, err
-							}
-							pc += regVal
+					switch arg := nextInstr.Args[1].(type) {
+					case armasm.Mem:
+						pc, err := regs.Get(int(arg.Base))
+						if err != nil {
+							return nil, nil, err
 						}
+						if arg.Mode == armasm.AddrOffset || arg.Mode == armasm.AddrPreIndex {
+							if arg.Sign != 0 {
+								idx, err := regs.Get(int(arg.Index))
+								if err != nil {
+									return nil, nil, err
+								}
+								if arg.Shift != armasm.ShiftLeft || arg.Count != 0 {
+									switch arg.Shift {
+									case armasm.ShiftLeft:
+										idx <<= arg.Count
+									case armasm.ShiftRight, armasm.ShiftRightSigned:
+										idx >>= arg.Count
+									case armasm.RotateRight, armasm.RotateRightExt:
+										idx = bits.RotateLeft64(idx, int(-arg.Count))
+									}
+								}
+								if arg.Sign < 0 {
+									pc -= idx
+								} else {
+									pc += idx
+								}
+							} else {
+								pc = uint64(int64(pc) + int64(arg.Offset))
+							}
+						}
+						pcMem := make([]byte, nextInstrLen)
+						t.dbp.execPtraceFunc(func() {
+							_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
+						})
+						if err != nil {
+							return nil, nil, err
+						}
+						nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
 					}
-					pcMem := make([]byte, nextInstrLen)
-					t.dbp.execPtraceFunc(func() {
-						_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
-					})
-					if err != nil {
-						return nil, nil, err
-					}
-					nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
 				}
 			case armasm.MOV, armasm.ADD:
 				// We need to check for the first args to be PC.
