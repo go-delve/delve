@@ -19,7 +19,7 @@ const (
 )
 
 // Undefined instruction
-var armBreakInstruction = []byte{0xe7, 0xf0, 0x01, 0xf0}
+var armBreakInstruction = []byte{0xf0, 0x01, 0xf0, 0xe7}
 
 // ARMArch returns an initialized ARM
 // struct.
