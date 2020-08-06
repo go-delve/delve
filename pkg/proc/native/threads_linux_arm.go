@@ -3,6 +3,7 @@ package native
 import (
 	"bytes"
 	"debug/elf"
+	"encoding/binary"
 	"fmt"
 	"golang.org/x/arch/arm/armasm"
 	"syscall"
@@ -87,6 +88,53 @@ func (t *nativeThread) singleStep() (err error) {
 					nextPcs = append(nextPcs, pc)
 				case armasm.PCRel:
 					nextPcs = append(nextPcs, regs.PC()+uint64(arg))
+				}
+			case armasm.LDR:
+				// We need to check for the first args to be PC.
+				if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
+					var pc uint64
+					for _, argRaw := range nextInstr.Args[1:] {
+						switch arg := argRaw.(type) {
+						case armasm.Imm:
+							pc += uint64(arg)
+						case armasm.Reg:
+							regVal, err := regs.Get(int(arg))
+							if err != nil {
+								return nil, err
+							}
+							pc += regVal
+						}
+					}
+					pcMem := make([]byte, nextInstLen)
+					t.dbp.execPtraceFunc(func() {
+						_, err = sys.PtracePokeData(t.ID, uintptr(pc), pcMem)
+					})
+					if err != nil {
+						return nil, err
+					}
+					err = binary.Read(bytes.NewBuffer(pcMem), binary.LittleEndian, &pc)
+					if err != nil {
+						return nil, err
+					}
+					nextPcs = append(nextPcs, pc)
+				}
+			case armasm.ADD:
+				// We need to check for the first args to be PC.
+				if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
+					var pc uint64
+					for _, argRaw := range nextInstr.Args[1:] {
+						switch arg := argRaw.(type) {
+						case armasm.Imm:
+							pc += uint64(arg)
+						case armasm.Reg:
+							regVal, err := regs.Get(int(arg))
+							if err != nil {
+								return nil, err
+							}
+							pc += regVal
+						}
+					}
+					nextPcs = append(nextPcs, pc)
 				}
 			}
 			return nextPcs, nil
