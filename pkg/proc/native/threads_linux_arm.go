@@ -107,11 +107,7 @@ func (t *nativeThread) singleStep() (err error) {
 					if err != nil {
 						return nil, err
 					}
-					err = binary.Read(bytes.NewBuffer(pcMem), binary.LittleEndian, &pc)
-					if err != nil {
-						return nil, err
-					}
-					nextPcs = append(nextPcs, pc)
+					nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
 				}
 			case armasm.LDR:
 				// We need to check for the first args to be PC.
@@ -136,11 +132,7 @@ func (t *nativeThread) singleStep() (err error) {
 					if err != nil {
 						return nil, err
 					}
-					err = binary.Read(bytes.NewBuffer(pcMem), binary.LittleEndian, &pc)
-					if err != nil {
-						return nil, err
-					}
-					nextPcs = append(nextPcs, pc)
+					nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
 				}
 				fallthrough
 			case armasm.MOV, armasm.ADD:
