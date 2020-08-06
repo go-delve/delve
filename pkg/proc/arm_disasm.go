@@ -5,12 +5,19 @@
 package proc
 
 import (
+	"bytes"
 	"golang.org/x/arch/arm/armasm"
 )
 
 func armAsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
 	asmInst.Size = 4
 	asmInst.Bytes = mem[:asmInst.Size]
+
+	// There is some thing special on ARM platform, we use UND as break instruction.
+	if bytes.Equal(asmInst.Bytes, armBreakInstruction) {
+		asmInst.Kind = HardBreakInstruction
+		return nil
+	}
 
 	inst, err := armasm.Decode(mem, armasm.ModeARM)
 	if err != nil {
@@ -22,24 +29,20 @@ func armAsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw Mem
 	asmInst.Kind = OtherInstruction
 
 	switch inst.Op {
+	case armasm.B, armasm.BX:
+		asmInst.Kind = JmpInstruction
 	case armasm.BL, armasm.BLX:
 		asmInst.Kind = CallInstruction
-	case armasm.LDR, armasm.ADD:
+	case armasm.LDR, armasm.ADD, armasm.MOV:
 		// We need to check for the first args to be PC.
 		if reg, ok := inst.Args[0].(armasm.Reg); ok && reg == armasm.PC {
 			asmInst.Kind = RetInstruction
 		}
-	case armasm.BX:
-		// We need to check for the first args to be LR.
-		if reg, ok := inst.Args[0].(armasm.Reg); ok && reg == armasm.LR {
+	case armasm.POP:
+		// We need to check for the first args has PC in list.
+		if regList, ok := inst.Args[0].(armasm.RegList); ok && (regList&(1<<uint(armasm.PC)) != 0) {
 			asmInst.Kind = RetInstruction
-		} else {
-			asmInst.Kind = JmpInstruction
 		}
-	case armasm.B:
-		asmInst.Kind = JmpInstruction
-	case armasm.BKPT:
-		asmInst.Kind = HardBreakInstruction
 	}
 
 	asmInst.DestLoc = resolveCallArgARM(&inst, asmInst.Loc.PC, asmInst.AtPC, regs, memrw, bi)
@@ -70,7 +73,7 @@ func resolveCallArgARM(inst *armasm.Inst, instAddr uint64, currentGoroutine bool
 			return nil
 		}
 	case armasm.PCRel:
-		pc = uint64(instAddr) + uint64(arg)
+		pc = instAddr + uint64(arg)
 	default:
 		return nil
 	}
