@@ -102,7 +102,7 @@ func (t *nativeThread) singleStep() (err error) {
 					}
 					pcMem := make([]byte, nextInstrLen)
 					t.dbp.execPtraceFunc(func() {
-						_, err = sys.PtracePokeData(t.ID, uintptr(pc), pcMem)
+						_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
 					})
 					if err != nil {
 						return nil, err
@@ -127,7 +127,7 @@ func (t *nativeThread) singleStep() (err error) {
 					}
 					pcMem := make([]byte, nextInstrLen)
 					t.dbp.execPtraceFunc(func() {
-						_, err = sys.PtracePokeData(t.ID, uintptr(pc), pcMem)
+						_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
 					})
 					if err != nil {
 						return nil, err
