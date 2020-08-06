@@ -3,6 +3,7 @@ package native
 import (
 	"debug/elf"
 	"fmt"
+	"golang.org/x/arch/arm/armasm"
 	"syscall"
 	"unsafe"
 
@@ -12,10 +13,10 @@ import (
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
-func (thread *nativeThread) fpRegisters() ([]proc.Register, []byte, error) {
+func (t *nativeThread) fpRegisters() ([]proc.Register, []byte, error) {
 	var err error
 	var arm_fpregs linutil.ARM64PtraceFpRegs
-	thread.dbp.execPtraceFunc(func() { arm_fpregs.Vregs, err = ptraceGetFpRegset(thread.ID) })
+	t.dbp.execPtraceFunc(func() { arm_fpregs.Vregs, err = ptraceGetFpRegset(t.ID) })
 	fpregs := arm_fpregs.Decode()
 	if err != nil {
 		err = fmt.Errorf("could not get floating point registers: %v", err.Error())
@@ -46,19 +47,68 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 func (t *nativeThread) singleStep() (err error) {
 	// Arm don't have ptrace singleStep implemented, so we use breakpoint to emulate it.
 	for {
-		pc, err := t.PC()
+		regs, err := t.Registers()
 		if err != nil {
 			return err
 		}
-		nextPc := pc + uint64(t.BinInfo().Arch.MaxInstructionLength())
-		_, _, _, originalData, err := t.dbp.WriteBreakpoint(nextPc)
+		resolvePCs := func() ([]uint64, error) {
+			// Use ptrace to get better performance.
+			nextInstLen := t.BinInfo().Arch.MaxInstructionLength()
+			nextInstrBytes := make([]byte, nextInstLen)
+			t.dbp.execPtraceFunc(func() {
+				_, err = sys.PtracePeekData(t.ID, uintptr(regs.PC()), nextInstrBytes)
+			})
+			if err != nil {
+				return nil, err
+			}
+			// Golang always use ARM mode.
+			nextInstr, err := armasm.Decode(nextInstrBytes, armasm.ModeARM)
+			if err != nil {
+				return nil, err
+			}
+			nextPcs := []uint64{
+				regs.PC() + uint64(nextInstLen),
+			}
+			switch nextInstr.Op {
+			case armasm.BL, armasm.BLX, armasm.B, armasm.BX:
+				switch arg := nextInstr.Args[0].(type) {
+				case armasm.Imm:
+					nextPcs = append(nextPcs, uint64(arg))
+				case armasm.Reg:
+					pc, err := regs.Get(int(arg))
+					if err != nil {
+						return nil, err
+					}
+					nextPcs = append(nextPcs, pc)
+				case armasm.PCRel:
+					nextPcs = append(nextPcs, regs.PC()+uint64(arg))
+				}
+			}
+			return nextPcs, nil
+		}
+		nextPcs, err := resolvePCs()
 		if err != nil {
 			return err
 		}
+		originalDatas := make([][]byte, len(nextPcs))
+		// Make sure we restore before return.
 		defer func() {
-			_, _ = t.WriteMemory(uintptr(nextPc), originalData)
+			// Update err.
+			t.dbp.execPtraceFunc(func() {
+				for i, originalData := range originalDatas {
+					if originalData != nil {
+						_, err = sys.PtracePokeData(t.ID, uintptr(nextPcs[i]), originalData)
+					}
+				}
+			})
 		}()
-		t.dbp.execPtraceFunc(func() { err = ptraceCont(t.ID, 0) })
+		for i, nextPc := range nextPcs {
+			_, _, _, originalDatas[i], err = t.dbp.WriteBreakpoint(nextPc)
+			if err != nil {
+				return err
+			}
+		}
+		t.dbp.execPtraceFunc(func() { err = sys.PtraceSyscall(t.ID, 0) })
 		if err != nil {
 			return err
 		}
