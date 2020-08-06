@@ -29,7 +29,7 @@ func ARMArch(goos string) *Arch {
 		ptrSize:                          4,
 		maxInstructionLength:             4,
 		breakpointInstruction:            armBreakInstruction,
-		breakInstrMovesPC:                true,
+		breakInstrMovesPC:                false,
 		derefTLS:                         false,
 		prologues:                        prologuesARM,
 		fixFrameUnwindContext:            armFixFrameUnwindContext,
