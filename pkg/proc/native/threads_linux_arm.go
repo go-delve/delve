@@ -134,7 +134,6 @@ func (t *nativeThread) singleStep() (err error) {
 					}
 					nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
 				}
-				fallthrough
 			case armasm.MOV, armasm.ADD:
 				// We need to check for the first args to be PC.
 				if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
