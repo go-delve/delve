@@ -55,8 +55,8 @@ func (t *nativeThread) singleStep() (err error) {
 		}
 		resolvePCs := func() ([]uint64, error) {
 			// Use ptrace to get better performance.
-			nextInstLen := t.BinInfo().Arch.MaxInstructionLength()
-			nextInstrBytes := make([]byte, nextInstLen)
+			nextInstrLen := t.BinInfo().Arch.MaxInstructionLength()
+			nextInstrBytes := make([]byte, nextInstrLen)
 			t.dbp.execPtraceFunc(func() {
 				_, err = sys.PtracePeekData(t.ID, uintptr(regs.PC()), nextInstrBytes)
 			})
@@ -64,7 +64,7 @@ func (t *nativeThread) singleStep() (err error) {
 				return nil, err
 			}
 			nextPcs := []uint64{
-				regs.PC() + uint64(nextInstLen),
+				regs.PC() + uint64(nextInstrLen),
 			}
 			// If we found breakpoint, we just skip it.
 			if bytes.Equal(nextInstrBytes, t.BinInfo().Arch.BreakpointInstruction()) {
@@ -89,6 +89,30 @@ func (t *nativeThread) singleStep() (err error) {
 				case armasm.PCRel:
 					nextPcs = append(nextPcs, regs.PC()+uint64(arg))
 				}
+			case armasm.POP:
+				if regList, ok := nextInstr.Args[0].(armasm.RegList); ok && (regList&(1<<uint(armasm.PC)) != 0) {
+					pc, err := regs.Get(int(armasm.SP))
+					if err != nil {
+						return nil, err
+					}
+					for i := 0; i < int(armasm.PC); i++ {
+						if regList&(1<<uint(i)) != 0 {
+							pc += uint64(nextInstrLen)
+						}
+					}
+					pcMem := make([]byte, nextInstrLen)
+					t.dbp.execPtraceFunc(func() {
+						_, err = sys.PtracePokeData(t.ID, uintptr(pc), pcMem)
+					})
+					if err != nil {
+						return nil, err
+					}
+					err = binary.Read(bytes.NewBuffer(pcMem), binary.LittleEndian, &pc)
+					if err != nil {
+						return nil, err
+					}
+					nextPcs = append(nextPcs, pc)
+				}
 			case armasm.LDR:
 				// We need to check for the first args to be PC.
 				if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
@@ -105,7 +129,7 @@ func (t *nativeThread) singleStep() (err error) {
 							pc += regVal
 						}
 					}
-					pcMem := make([]byte, nextInstLen)
+					pcMem := make([]byte, nextInstrLen)
 					t.dbp.execPtraceFunc(func() {
 						_, err = sys.PtracePokeData(t.ID, uintptr(pc), pcMem)
 					})
