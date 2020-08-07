@@ -343,7 +343,7 @@ func formatVPFReg(vfp []byte) string {
 	var out bytes.Buffer
 	var vi [8]uint8
 	for i := range vi {
-		binary.Read(buf, binary.LittleEndian, &vi[i])
+		_ = binary.Read(buf, binary.LittleEndian, &vi[i])
 	}
 
 	fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
@@ -356,9 +356,9 @@ func formatVPFReg(vfp []byte) string {
 
 	fmt.Fprintf(&out, "\tv8_int={ %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7])
 
-	buf.Seek(0, io.SeekStart)
+	_, _ = buf.Seek(0, io.SeekStart)
 	var v1 float64
-	binary.Read(buf, binary.LittleEndian, &v1)
+	_ = binary.Read(buf, binary.LittleEndian, &v1)
 	fmt.Fprintf(&out, "\tv1_float={ %g }", v1)
 
 	buf.Seek(0, io.SeekStart)
