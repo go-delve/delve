@@ -361,10 +361,10 @@ func formatVPFReg(vfp []byte) string {
 	_ = binary.Read(buf, binary.LittleEndian, &v1)
 	fmt.Fprintf(&out, "\tv1_float={ %g }", v1)
 
-	buf.Seek(0, io.SeekStart)
+	_, _ = buf.Seek(0, io.SeekStart)
 	var v2 [2]float32
 	for i := range v2 {
-		binary.Read(buf, binary.LittleEndian, &v2[i])
+		_ = binary.Read(buf, binary.LittleEndian, &v2[i])
 	}
 	fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
 
