@@ -729,7 +729,16 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 		if maybePkg, ok := node.X.(*ast.Ident); ok {
 			if maybePkg.Name == "runtime" && node.Sel.Name == "curg" {
 				if scope.g == nil {
-					return nilVariable, nil
+					typ, err := scope.BinInfo.findType("runtime.g")
+					if err != nil {
+						return nil, fmt.Errorf("blah: %v", err)
+					}
+					gvar := newVariable("curg", fakeAddress, typ, scope.BinInfo, scope.Mem)
+					gvar.loaded = true
+					gvar.Flags = VariableFakeAddress
+					gvar.Children = append(gvar.Children, *newConstant(constant.MakeInt64(0), scope.Mem))
+					gvar.Children[0].Name = "goid"
+					return gvar, nil
 				}
 				return scope.g.variable.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
