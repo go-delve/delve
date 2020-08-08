@@ -1039,6 +1039,14 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		return v.clone(), nil
 	}
 	vname := v.Name
+	if v.loaded && (v.Flags&VariableFakeAddress) != 0 {
+		for i := range v.Children {
+			if v.Children[i].Name == memberName {
+				return &v.Children[i], nil
+			}
+		}
+		return nil, fmt.Errorf("%s has no member %s", vname, memberName)
+	}
 	switch v.Kind {
 	case reflect.Chan:
 		v = v.clone()

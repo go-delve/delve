@@ -196,7 +196,10 @@ func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
 	}
 	scope, err := GoroutineScope(thread)
 	if err != nil {
-		return true, err
+		scope, err = ThreadScope(thread)
+		if err != nil {
+			return true, err
+		}
 	}
 	v, err := scope.evalAST(cond)
 	if err != nil {

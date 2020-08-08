@@ -8,6 +8,7 @@ import (
 	"go/constant"
 	"go/token"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -1106,7 +1107,7 @@ func TestProcessReceivesSIGCHLD(t *testing.T) {
 func TestIssue239(t *testing.T) {
 	withTestProcess("is sue239", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 17)
-		assertNoError(p.Continue(), t, fmt.Sprintf("Continue()"))
+		assertNoError(p.Continue(), t, "Continue()")
 	})
 }
 
@@ -4936,5 +4937,83 @@ func TestRequestManualStopWhileStopped(t *testing.T) {
 		t.Logf("resuming sleep")
 		assertNoError(p.Continue(), t, "Continue() 3")
 		t.Logf("done")
+	})
+}
+
+func TestStepOutPreservesGoroutine(t *testing.T) {
+	// Checks that StepOut preserves the currently selected goroutine.
+	if runtime.GOOS == "freebsd" {
+		t.Skip("XXX - not working")
+	}
+	rand.Seed(time.Now().Unix())
+	withTestProcess("issue2113", t, func(p *proc.Target, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+
+		logState := func() {
+			g := p.SelectedGoroutine()
+			var goid int = -42
+			if g != nil {
+				goid = g.ID
+			}
+			pc := currentPC(p, t)
+			f, l, fn := p.BinInfo().PCToLine(pc)
+			var fnname string = "???"
+			if fn != nil {
+				fnname = fn.Name
+			}
+			t.Logf("goroutine %d at %s:%d in %s", goid, f, l, fnname)
+		}
+
+		logState()
+
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+		assertNoError(err, t, "GoroutinesInfo")
+		candg := []*proc.G{}
+		bestg := []*proc.G{}
+		for _, g := range gs {
+			frames, err := g.Stacktrace(20, 0)
+			assertNoError(err, t, "Stacktrace")
+			for _, frame := range frames {
+				if frame.Call.Fn != nil && frame.Call.Fn.Name == "main.coroutine" {
+					candg = append(candg, g)
+					if g.Thread != nil && frames[0].Call.Fn != nil && strings.HasPrefix(frames[0].Call.Fn.Name, "runtime.") {
+						bestg = append(bestg, g)
+					}
+					break
+				}
+			}
+		}
+		var pickg *proc.G
+		if len(bestg) > 0 {
+			pickg = bestg[rand.Intn(len(bestg))]
+			t.Logf("selected goroutine %d (best)\n", pickg.ID)
+		} else {
+			pickg = candg[rand.Intn(len(candg))]
+			t.Logf("selected goroutine %d\n", pickg.ID)
+
+		}
+		goid := pickg.ID
+		assertNoError(p.SwitchGoroutine(pickg), t, "SwitchGoroutine")
+
+		logState()
+
+		err = p.StepOut()
+		if err != nil {
+			_, isexited := err.(proc.ErrProcessExited)
+			if !isexited {
+				assertNoError(err, t, "StepOut()")
+			} else {
+				return
+			}
+		}
+
+		logState()
+
+		g2 := p.SelectedGoroutine()
+		if g2 == nil {
+			t.Fatalf("no selected goroutine after stepout")
+		} else if g2.ID != goid {
+			t.Fatalf("unexpected selected goroutine %d", g2.ID)
+		}
 	})
 }
