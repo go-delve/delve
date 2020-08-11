@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -54,8 +55,11 @@ type Server struct {
 	log *logrus.Entry
 	// binaryToRemove is the compiled binary to be removed on disconnect.
 	binaryToRemove string
-	// stackFrameHandles keep track of unique ids created across all goroutines.
+	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
 	stackFrameHandles *handlesMap
+	// variableHandles maps compound variables to unique references within their stack frame.
+	// See also comment for convertVariable.
+	variableHandles *handlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
 }
@@ -89,6 +93,7 @@ func NewServer(config *service.Config) *Server {
 		stopChan:          make(chan struct{}),
 		log:               logger,
 		stackFrameHandles: newHandlesMap(),
+		variableHandles:   newHandlesMap(),
 		args:              defaultArgs,
 	}
 }
@@ -285,11 +290,9 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.onStackTraceRequest(request)
 	case *dap.ScopesRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onScopesRequest(request)
 	case *dap.VariablesRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onVariablesRequest(request)
 	case *dap.SetVariableRequest:
 		// Optional (capability ‘supportsSetVariable’)
@@ -686,16 +689,214 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	s.send(response)
 }
 
-// onScopesRequest sends a not-yet-implemented error response.
+// onScopesRequest handles 'scopes' requests.
 // This is a mandatory request to support.
-func (s *Server) onScopesRequest(request *dap.ScopesRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
+	sf, ok := s.stackFrameHandles.get(request.Arguments.FrameId)
+	if !ok {
+		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", fmt.Sprintf("unknown frame id %d", request.Arguments.FrameId))
+		return
+	}
+
+	scope := api.EvalScope{GoroutineID: sf.(stackFrame).goroutineID, Frame: sf.(stackFrame).frameIndex}
+	// TODO(polina): Support setting config via launch/attach args
+	cfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+
+	// Retrieve arguments
+	args, err := s.debugger.FunctionArguments(scope, cfg)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
+		return
+	}
+	argScope := api.Variable{Name: "Arguments", Children: args}
+
+	// Retrieve local variables
+	locals, err := s.debugger.LocalVariables(scope, cfg)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list local vars", err.Error())
+		return
+	}
+	locScope := api.Variable{Name: "Locals", Children: locals}
+
+	// TODO(polina): Annotate shadowed variables
+	// TODO(polina): Retrieve global variables
+
+	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
+	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
+	scopes := []dap.Scope{scopeArgs, scopeLocals}
+
+	response := &dap.ScopesResponse{
+		Response: *newResponse(request.Request),
+		Body:     dap.ScopesResponseBody{Scopes: scopes},
+	}
+	s.send(response)
 }
 
-// onVariablesRequest sends a not-yet-implemented error response.
+// onVariablesRequest handles 'variables' requests.
 // This is a mandatory request to support.
-func (s *Server) onVariablesRequest(request *dap.VariablesRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
+	variable, ok := s.variableHandles.get(request.Arguments.VariablesReference)
+	if !ok {
+		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", request.Arguments.VariablesReference))
+		return
+	}
+	v := variable.(api.Variable)
+	children := make([]dap.Variable, 0)
+	// TODO(polina): check and handle if variable loaded incompletely
+	// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables
+
+	switch v.Kind {
+	case reflect.Map:
+		for i := 0; i < len(v.Children); i += 2 {
+			// A map will have twice as many children as there are key-value elements.
+			kvIndex := i / 2
+			// Process children in pairs: even indices are map keys, odd indices are values.
+			key, keyref := s.convertVariable(v.Children[i])
+			val, valref := s.convertVariable(v.Children[i+1])
+			// If key or value or both are scalars, we can use
+			// a single variable to represet key:value format.
+			// Otherwise, we must return separate variables for both.
+			if keyref > 0 && valref > 0 { // Both are not scalars
+				keyvar := dap.Variable{
+					Name:               fmt.Sprintf("[key %d]", kvIndex),
+					Value:              key,
+					VariablesReference: keyref,
+				}
+				valvar := dap.Variable{
+					Name:               fmt.Sprintf("[val %d]", kvIndex),
+					Value:              val,
+					VariablesReference: valref,
+				}
+				children = append(children, keyvar, valvar)
+			} else { // At least one is a scalar
+				kvvar := dap.Variable{
+					Name:  key,
+					Value: val,
+				}
+				if keyref != 0 { // key is a type to be expanded
+					kvvar.Name = fmt.Sprintf("%s[%d]", kvvar.Name, kvIndex) // Make the name unique
+					kvvar.VariablesReference = keyref
+				} else if valref != 0 { // val is a type to be expanded
+					kvvar.VariablesReference = valref
+				}
+				children = append(children, kvvar)
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		children = make([]dap.Variable, len(v.Children))
+		for i, c := range v.Children {
+			value, varref := s.convertVariable(c)
+			children[i] = dap.Variable{
+				Name:               fmt.Sprintf("[%d]", i),
+				Value:              value,
+				VariablesReference: varref,
+			}
+		}
+	default:
+		children = make([]dap.Variable, len(v.Children))
+		for i, c := range v.Children {
+			value, variablesReference := s.convertVariable(c)
+			children[i] = dap.Variable{
+				Name:               c.Name,
+				Value:              value,
+				VariablesReference: variablesReference,
+			}
+		}
+	}
+	response := &dap.VariablesResponse{
+		Response: *newResponse(request.Request),
+		Body:     dap.VariablesResponseBody{Variables: children},
+		// TODO(polina): support evaluateName field
+	}
+	s.send(response)
+}
+
+// convertVariable converts api.Variable to dap.Variable value and reference.
+// Variable reference is used to keep track of the children associated with each
+// variable. It is shared with the host via a scopes response and is an index to
+// the s.variableHandles map, so it can be referenced from a subsequent variables
+// request. A positive reference signals the host that another variables request
+// can be issued to get the elements of the compound variable. As a custom, a zero
+// reference, reminiscent of a zero pointer, is used to indicate that a scalar
+// variable cannot be "dereferenced" to get its elements (as there are none).
+func (s *Server) convertVariable(v api.Variable) (value string, variablesReference int) {
+	if v.Unreadable != "" {
+		value = fmt.Sprintf("unreadable <%s>", v.Unreadable)
+		return
+	}
+	switch v.Kind {
+	case reflect.UnsafePointer:
+		if len(v.Children) == 0 {
+			value = "unsafe.Pointer(nil)"
+		} else {
+			value = fmt.Sprintf("unsafe.Pointer(%#x)", v.Children[0].Addr)
+		}
+	case reflect.Ptr:
+		if v.Type == "" || len(v.Children) == 0 {
+			value = "nil"
+		} else if v.Children[0].Addr == 0 {
+			value = "nil <" + v.Type + ">"
+		} else if v.Children[0].Type == "void" {
+			value = "void"
+		} else {
+			value = fmt.Sprintf("<%s>(%#x)", v.Type, v.Children[0].Addr)
+			variablesReference = s.variableHandles.create(v)
+		}
+	case reflect.Array:
+		value = "<" + v.Type + ">"
+		if len(v.Children) > 0 {
+			variablesReference = s.variableHandles.create(v)
+		}
+	case reflect.Slice:
+		if v.Base == 0 {
+			value = "nil <" + v.Type + ">"
+		} else {
+			value = fmt.Sprintf("<%s> (length: %d, cap: %d)", v.Type, v.Len, v.Cap)
+			if len(v.Children) > 0 {
+				variablesReference = s.variableHandles.create(v)
+			}
+		}
+	case reflect.Map:
+		if v.Base == 0 {
+			value = "nil <" + v.Type + ">"
+		} else {
+			value = fmt.Sprintf("<%s> (length: %d)", v.Type, v.Len)
+			if len(v.Children) > 0 {
+				variablesReference = s.variableHandles.create(v)
+			}
+		}
+	case reflect.String:
+		lenNotLoaded := v.Len - int64(len(v.Value))
+		vvalue := v.Value
+		if lenNotLoaded > 0 {
+			vvalue += fmt.Sprintf("...+%d more", lenNotLoaded)
+		}
+		value = fmt.Sprintf("%q", vvalue)
+	case reflect.Chan:
+		if len(v.Children) == 0 {
+			value = "nil <" + v.Type + ">"
+		} else {
+			value = "<" + v.Type + ">"
+			variablesReference = s.variableHandles.create(v)
+		}
+	case reflect.Interface:
+		if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
+			value = "nil <" + v.Type + ">"
+		} else {
+			value = "<" + v.Type + ">"
+			variablesReference = s.variableHandles.create(v)
+		}
+	default: // Struct, complex, scalar
+		if v.Value != "" {
+			value = v.Value
+		} else {
+			value = "<" + v.Type + ">"
+		}
+		if len(v.Children) > 0 {
+			variablesReference = s.variableHandles.create(v)
+		}
+	}
+	return
 }
 
 // onEvaluateRequest sends a not-yet-implemented error response.
@@ -846,6 +1047,7 @@ func (s *Server) doContinue() {
 		return
 	}
 	s.stackFrameHandles.reset()
+	s.variableHandles.reset()
 	if state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
