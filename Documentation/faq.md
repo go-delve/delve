@@ -3,7 +3,7 @@
 #### I'm getting an error while compiling Delve / unsupported architectures and OSs
 
 The most likely cause of this is that you are running an unsupported Operating System or architecture.
-Currently Delve supports Linux, Windows and macOS on the amd64 architecture (also known as Intel 86x64).
+Currently Delve supports Linux, Windows and macOS on the amd64 (also known as Intel 86x64) architecture and Linux on the arm64 (also known as ARM AArch64) and i386 architectures.
 
 For example if you are getting the `undefined: ArchInst` error message while compiling Delve, that means that Delve doesn't currently support your processor architecture.
 
