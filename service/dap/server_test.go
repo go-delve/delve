@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -25,11 +26,14 @@ const stopOnEntry bool = true
 const hasChildren bool = true
 const noChildren bool = false
 
+var testBackend string
+
 func TestMain(m *testing.M) {
 	var logOutput string
 	flag.StringVar(&logOutput, "log-output", "", "configures log output")
 	flag.Parse()
 	logflags.Setup(logOutput != "", logOutput, "")
+	protest.DefaultTestBackend(&testBackend)
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
@@ -1028,7 +1032,53 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 	})
 }
 
+func TestNextAndStep(t *testing.T) {
+	runTest(t, "testinline", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{11},
+			[]onBreakpoint{{ // Stop at line 11
+				execute: func() {
+					handleStop(t, client, 1, 11)
+
+					expectStop := func(line int) {
+						t.Helper()
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "step" || se.Body.ThreadId != 1 || !se.Body.AllThreadsStopped {
+							t.Errorf("got %#v, want Reason=\"step\", ThreadId=1, AllThreadsStopped=true", se)
+						}
+						handleStop(t, client, 1, line)
+					}
+
+					client.StepOutRequest(1)
+					client.ExpectStepOutResponse(t)
+					expectStop(18)
+
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					expectStop(19)
+
+					client.StepInRequest(1)
+					client.ExpectStepInResponse(t)
+					expectStop(5)
+
+					client.NextRequest(-10000 /*this is ignored*/)
+					client.ExpectNextResponse(t)
+					expectStop(6)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 func TestBadAccess(t *testing.T) {
+	if runtime.GOOS != "darwin" || testBackend != "lldb" {
+		t.Skip("not applicable")
+	}
 	runTest(t, "issue2078", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client,
 			// Launch
@@ -1039,37 +1089,59 @@ func TestBadAccess(t *testing.T) {
 			fixture.Source, []int{4},
 			[]onBreakpoint{{ // Stop at line 4
 				execute: func() {
-					handleBreakpoint(t, client)
+					handleStop(t, client, 1, 4)
+
+					expectStoppedOnError := func(errorPrefix string) {
+						t.Helper()
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
+						}
+						oe := client.ExpectOutputEvent(t)
+						if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
+						}
+					}
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
+					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
-					se := client.ExpectStoppedEvent(t)
-					errorPrefix := "invalid memory address or nil pointer dereference"
-					if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s ...\"", se, errorPrefix)
-					}
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
-					oe := client.ExpectOutputEvent(t)
-					if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
-						t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
-					}
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					expectStoppedOnError("next while nexting")
+
+					client.StepInRequest(1)
+					client.ExpectStepInResponse(t)
+					expectStoppedOnError("next while nexting")
+
+					client.StepOutRequest(1)
+					client.ExpectStepOutResponse(t)
+					expectStoppedOnError("next while nexting")
 				},
 				disconnect: true,
 			}})
 	})
 }
 
-// handleBreakpoint covers the standard sequence of reqeusts issued by
-// a client at a breakpoint. The details have been tested by other tests,
+// handleStop covers the standard sequence of reqeusts issued by
+// a client at a breakpoint or another non-terminal stop event.
+// The details have been tested by other tests,
 // so this is just a sanity check.
-func handleBreakpoint(t *testing.T, client *daptest.Client) {
+func handleStop(t *testing.T, client *daptest.Client, thread int, line int) {
 	t.Helper()
 	client.ThreadsRequest()
 	client.ExpectThreadsResponse(t)
 
-	client.StackTraceRequest(1, 0, 20)
-	client.ExpectStackTraceResponse(t)
+	client.StackTraceRequest(thread, 0, 20)
+	st := client.ExpectStackTraceResponse(t)
+	if len(st.Body.StackFrames) < 1 || st.Body.StackFrames[0].Line != line {
+		t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
+	}
 
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
@@ -1267,15 +1339,6 @@ func TestRequiredNotYetImplementedResponses(t *testing.T) {
 
 		client.AttachRequest()
 		expectNotYetImplemented("attach")
-
-		client.NextRequest()
-		expectNotYetImplemented("next")
-
-		client.StepInRequest()
-		expectNotYetImplemented("stepIn")
-
-		client.StepOutRequest()
-		expectNotYetImplemented("stepOut")
 
 		client.PauseRequest()
 		expectNotYetImplemented("pause")

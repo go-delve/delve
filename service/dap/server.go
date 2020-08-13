@@ -257,15 +257,12 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.onContinueRequest(request)
 	case *dap.NextRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onNextRequest(request)
 	case *dap.StepInRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onStepInRequest(request)
 	case *dap.StepOutRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onStepOutRequest(request)
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
@@ -567,13 +564,13 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doContinue()
+		s.doCommand(api.Continue, "breakpoint")
 	}
 }
 
 func (s *Server) onContinueRequest(request *dap.ContinueRequest) {
 	s.send(&dap.ContinueResponse{Response: *newResponse(request.Request)})
-	s.doContinue()
+	s.doCommand(api.Continue, "breakpoint")
 }
 
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
@@ -625,22 +622,25 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onNextRequest sends a not-yet-implemented error response.
+// onNextRequest handles 'next' request.
 // This is a mandatory request to support.
-func (s *Server) onNextRequest(request *dap.NextRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onNextRequest(request *dap.NextRequest) {
+	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
+	s.doCommand(api.Next, "step")
 }
 
-// onStepInRequest sends a not-yet-implemented error response.
+// onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
-func (s *Server) onStepInRequest(request *dap.StepInRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onStepInRequest(request *dap.StepInRequest) {
+	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
+	s.doCommand(api.Step, "step")
 }
 
-// onStepOutRequest sends a not-yet-implemented error response.
+// onStepInRequest handles 'stepOut' request
 // This is a mandatory request to support.
-func (s *Server) onStepOutRequest(request *dap.StepOutRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
+	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
+	s.doCommand(api.StepOut, "step")
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
@@ -1031,15 +1031,17 @@ func newEvent(event string) *dap.Event {
 	}
 }
 
-func (s *Server) doContinue() {
+// doCommand runs a debugger command until it stops on
+// termination, error or expected stopOn reason.
+func (s *Server) doCommand(command string, stopOn string) {
 	if s.debugger == nil {
 		return
 	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Continue})
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command})
 	if err != nil {
 		s.handleStopOnError(err)
 	} else {
-		s.handleStop(state, "breakpoint")
+		s.handleStop(state, stopOn)
 	}
 }
 
@@ -1088,7 +1090,7 @@ func (s *Server) handleStopOnError(err error) {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
-				Output:   fmt.Sprintf("ERROR: %s", e.Body.Text),
+				Output:   fmt.Sprintf("ERROR: %s\n", e.Body.Text),
 				Category: "stderr",
 			}})
 	}
