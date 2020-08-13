@@ -1037,24 +1037,75 @@ func (s *Server) doContinue() {
 	}
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Continue})
 	if err != nil {
-		s.log.Error(err)
-		switch err.(type) {
-		case proc.ErrProcessExited:
-			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
-			s.send(e)
-		default:
-		}
-		return
+		s.handleStopOnError(err)
+	} else {
+		s.handleStop(state, "breakpoint")
 	}
+}
+
+func (s *Server) clearProcessStateHandles() {
 	s.stackFrameHandles.reset()
 	s.variableHandles.reset()
+}
+
+// handleStopOnError resets the stage for refreshing debuggee state
+// and sends an apropriate event to the client, followed by
+// an output event with the details of the error.
+func (s *Server) handleStopOnError(err error) {
+	s.log.Error("runtime error: ", err)
+	s.clearProcessStateHandles()
+
+	switch err.(type) {
+	case proc.ErrProcessExited:
+		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
+		s.send(e)
+	default:
+		e := &dap.StoppedEvent{Event: *newEvent("stopped")}
+
+		e.Body.AllThreadsStopped = true
+		e.Body.Reason = "runtime error"
+		e.Body.Text = err.Error()
+		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
+		if e.Body.Text == "bad access" {
+			e.Body.Text = fmt.Sprintf(
+				"%s\n%s",
+				"invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]",
+				"Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)")
+		}
+		state, err := s.debugger.State( /*nowait*/ true)
+		if err == nil {
+			e.Body.ThreadId = state.CurrentThread.GoroutineID
+		}
+		s.send(e)
+
+		// TODO(polina): according to the spec, the extra 'text' is supposed to show up in the UI (e.g. on hover),
+		// but so far I am unable to get this to work in vscode - see https://github.com/microsoft/vscode/issues/104475.
+		// Options to explore:
+		//   - supporting ExceptionInfo request
+		//   - virtual variable scope for Exception that shows the message (details here: https://github.com/microsoft/vscode/issues/3101)
+		// In the meantime, provide the extra details by outputing an error message.
+		// {"body":{"category":"stdout","output":"API server listening at: 127.0.0.1:11973\n"}}
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Output:   fmt.Sprintf("ERROR: %s", e.Body.Text),
+				Category: "stderr",
+			}})
+	}
+}
+
+// handleStop resets the stage for refreshing debuggee state
+// and sends an apropriate event to the client when execution stops
+// due to normal causes (termination, breakpoint, step, etc).
+func (s *Server) handleStop(state *api.DebuggerState, reason string) {
+	s.clearProcessStateHandles()
+
 	if state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
 	} else {
 		e := &dap.StoppedEvent{Event: *newEvent("stopped")}
-		// TODO(polina): differentiate between breakpoint and pause on halt.
-		e.Body.Reason = "breakpoint"
+		e.Body.Reason = reason
 		e.Body.AllThreadsStopped = true
 		e.Body.ThreadId = state.SelectedGoroutine.ID
 		s.send(e)

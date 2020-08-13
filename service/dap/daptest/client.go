@@ -132,6 +132,11 @@ func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 	return c.expectReadProtocolMessage(t).(*dap.StoppedEvent)
 }
 
+func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.OutputEvent)
+}
+
 func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.ConfigurationDoneResponse)

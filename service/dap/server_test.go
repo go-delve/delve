@@ -300,7 +300,6 @@ func TestSetBreakpoint(t *testing.T) {
 		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
 			t.Errorf("\ngot  %#v\nwant len(Threads)>1", tResp.Body.Threads)
 		}
-		// TODO(polina): can we reliably test for these values?
 		wantMain := dap.Thread{Id: 1, Name: "main.Increment"}
 		wantRuntime := dap.Thread{Id: 2, Name: "runtime.gopark"}
 		for _, got := range tResp.Body.Threads {
@@ -1027,6 +1026,58 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 				disconnect: false,
 			}})
 	})
+}
+
+func TestBadAccess(t *testing.T) {
+	runTest(t, "issue2078", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{4},
+			[]onBreakpoint{{ // Stop at line 4
+				execute: func() {
+					handleBreakpoint(t, client)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					errorPrefix := "invalid memory address or nil pointer dereference"
+					if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s ...\"", se, errorPrefix)
+					}
+
+					oe := client.ExpectOutputEvent(t)
+					if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
+						t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// handleBreakpoint covers the standard sequence of reqeusts issued by
+// a client at a breakpoint. The details have been tested by other tests,
+// so this is just a sanity check.
+func handleBreakpoint(t *testing.T, client *daptest.Client) {
+	t.Helper()
+	client.ThreadsRequest()
+	client.ExpectThreadsResponse(t)
+
+	client.StackTraceRequest(1, 0, 20)
+	client.ExpectStackTraceResponse(t)
+
+	client.ScopesRequest(1000)
+	client.ExpectScopesResponse(t)
+
+	client.VariablesRequest(1000) // Arguments
+	client.ExpectVariablesResponse(t)
+	client.VariablesRequest(1001) // Locals
+	client.ExpectVariablesResponse(t)
 }
 
 // onBreakpoint specifies what the test harness should simulate at
