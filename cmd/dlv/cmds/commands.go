@@ -1,6 +1,7 @@
 package cmds
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -118,7 +119,7 @@ func New(docCall bool) *cobra.Command {
 	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
-	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", ".", "Working directory for running the program.")
+	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", "", "Working directory for running the program.")
 	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
 	rootCommand.PersistentFlags().BoolVarP(&checkLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
 	rootCommand.PersistentFlags().StringVar(&backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
@@ -509,6 +510,10 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		listener, clientConn := service.ListenerPipe()
 		defer listener.Close()
 
+		if workingDir == "" {
+			workingDir = "."
+		}
+
 		// Create and start a debug server
 		server := rpccommon.NewServer(&service.Config{
 			Listener:    listener,
@@ -586,14 +591,39 @@ func testCmd(cmd *cobra.Command, args []string) {
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 		err = gobuild.GoTestBuild(debugname, dlvArgs, buildFlags)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
 		defer gobuild.Remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
 
+		if workingDir == "" {
+			if len(dlvArgs) == 1 {
+				workingDir = getPackageDir(dlvArgs[0])
+			} else {
+				workingDir = "."
+			}
+		}
+
 		return execute(0, processArgs, conf, "", debugger.ExecutingGeneratedTest, dlvArgs, buildFlags)
 	}()
 	os.Exit(status)
+}
+
+func getPackageDir(pkg string) string {
+	out, err := exec.Command("go", "list", "--json", pkg).CombinedOutput()
+	if err != nil {
+		return "."
+	}
+	type listOut struct {
+		Dir string `json:"Dir"`
+	}
+	var listout listOut
+	err = json.Unmarshal(out, &listout)
+	if err != nil {
+		return "."
+	}
+	return listout.Dir
 }
 
 func attachCmd(cmd *cobra.Command, args []string) {
@@ -734,6 +764,10 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	var server service.Server
 
 	disconnectChan := make(chan struct{})
+
+	if workingDir == "" {
+		workingDir = "."
+	}
 
 	// Create and start a debugger server
 	switch apiVersion {

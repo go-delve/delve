@@ -728,3 +728,23 @@ func TestTracePrintStack(t *testing.T) {
 		t.Fatal("stacktrace not printed")
 	}
 }
+
+func TestDlvTestChdir(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "test", filepath.Join(fixtures, "buildtest"), "--", "-test.v")
+	cmd.Stdin = strings.NewReader("continue\nexit\n")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("error executing Delve: %v", err)
+	}
+	t.Logf("output: %q", out)
+
+	p, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
+	tgt := "current directory: " + p
+	if !strings.Contains(string(out), tgt) {
+		t.Errorf("output did not contain expected string %q", tgt)
+	}
+}
