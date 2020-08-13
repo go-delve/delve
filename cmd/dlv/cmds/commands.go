@@ -586,6 +586,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 		err = gobuild.GoTestBuild(debugname, dlvArgs, buildFlags)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
 		defer gobuild.Remove(debugname)
