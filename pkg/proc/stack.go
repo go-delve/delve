@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go/constant"
+	"runtime"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -119,8 +120,12 @@ func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 			return nil, err
 		}
 		so := bi.PCToImage(regs.PC())
+		var mem MemoryReadWriter = g.Thread
+		if runtime.GOOS == "windows" && g.variable != nil {
+			mem = g.variable.mem
+		}
 		return newStackIterator(
-			bi, g.Thread,
+			bi, mem,
 			bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs),
 			g.stack.hi, stkbar, g.stkbarPos, g, opts), nil
 	}
