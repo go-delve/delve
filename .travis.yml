@@ -12,9 +12,9 @@ arch:
   - arm64
 
 go:
+  - 1.15.x
   - 1.14.x
   - 1.13.x
-  - 1.12.x
   - tip
 
 matrix:
@@ -26,17 +26,17 @@ matrix:
     - os: windows
       arch: arm64
     - os: windows
-      go: 1.13.x
+      go: 1.14.x
     - os: windows
-      go: 1.12.x
-    - os: osx
       go: 1.13.x
     - os: osx
-      go: 1.12.x
-    - arch: arm64
+      go: 1.14.x
+    - os: osx
       go: 1.13.x
     - arch: arm64
-      go: 1.12.x
+      go: 1.14.x
+    - arch: arm64
+      go: 1.13.x
     - os: windows
       go: tip
     - arch: arm64
@@ -53,7 +53,7 @@ jobs:
   include:
     -  os: linux
        services: docker
-       env: go_32_version=1.14
+       env: go_32_version=1.15
 
 script: >-
     if [ $TRAVIS_OS_NAME = "linux" ] && [ $go_32_version ]; then
