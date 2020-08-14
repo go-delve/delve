@@ -6,7 +6,7 @@ import (
 
 var (
 	MinSupportedVersionOfGoMajor = 1
-	MinSupportedVersionOfGoMinor = 12
+	MinSupportedVersionOfGoMinor = 13
 	MaxSupportedVersionOfGoMajor = 1
 	MaxSupportedVersionOfGoMinor = 15
 	goTooOldErr                  = fmt.Errorf("Version of Go is too old for this version of Delve (minimum supported version %d.%d, suppress this error with --check-go-version=false)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
