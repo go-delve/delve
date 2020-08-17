@@ -47,6 +47,131 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	return restoreRegistersErr
 }
 
+// resolvePCForArm is used to resolve all next PC for current instruction.
+func (t *nativeThread) resolvePC(regs proc.Registers) ([]uint64, []uint64, error) {
+	// Use ptrace to get better performance.
+	nextInstrLen := t.BinInfo().Arch.MaxInstructionLength()
+	nextInstrBytes := make([]byte, nextInstrLen)
+	var err error
+	t.dbp.execPtraceFunc(func() {
+		_, err = sys.PtracePeekData(t.ID, uintptr(regs.PC()), nextInstrBytes)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	nextPcs := []uint64{
+		regs.PC() + uint64(nextInstrLen),
+	}
+	// If we found breakpoint, we just skip it.
+	if bytes.Equal(nextInstrBytes, t.BinInfo().Arch.BreakpointInstruction()) {
+		// We need to nop breakPoints, otherwise we can't continue
+		return nextPcs, []uint64{regs.PC()}, nil
+	}
+	// Golang always use ARM mode.
+	nextInstr, err := armasm.Decode(nextInstrBytes, armasm.ModeARM)
+	if err != nil {
+		return nil, nil, err
+	}
+	switch nextInstr.Op {
+	case armasm.BL, armasm.BLX, armasm.B, armasm.BX:
+		switch arg := nextInstr.Args[0].(type) {
+		case armasm.Imm:
+			nextPcs = append(nextPcs, uint64(arg))
+		case armasm.Reg:
+			pc, err := regs.Get(int(arg))
+			if err != nil {
+				return nil, nil, err
+			}
+			nextPcs = append(nextPcs, pc)
+		case armasm.PCRel:
+			nextPcs = append(nextPcs, regs.PC()+uint64(arg))
+		}
+	case armasm.POP:
+		if regList, ok := nextInstr.Args[0].(armasm.RegList); ok && (regList&(1<<uint(armasm.PC)) != 0) {
+			pc, err := regs.Get(int(armasm.SP))
+			if err != nil {
+				return nil, nil, err
+			}
+			for i := 0; i < int(armasm.PC); i++ {
+				if regList&(1<<uint(i)) != 0 {
+					pc += uint64(nextInstrLen)
+				}
+			}
+			pcMem := make([]byte, nextInstrLen)
+			t.dbp.execPtraceFunc(func() {
+				_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
+		}
+	case armasm.LDR:
+		// We need to check for the first args to be PC.
+		if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
+			switch arg := nextInstr.Args[1].(type) {
+			case armasm.Mem:
+				pc, err := regs.Get(int(arg.Base))
+				if err != nil {
+					return nil, nil, err
+				}
+				if arg.Mode == armasm.AddrOffset || arg.Mode == armasm.AddrPreIndex {
+					if arg.Sign != 0 {
+						idx, err := regs.Get(int(arg.Index))
+						if err != nil {
+							return nil, nil, err
+						}
+						if arg.Shift != armasm.ShiftLeft || arg.Count != 0 {
+							switch arg.Shift {
+							case armasm.ShiftLeft:
+								idx <<= arg.Count
+							case armasm.ShiftRight, armasm.ShiftRightSigned:
+								idx >>= arg.Count
+							case armasm.RotateRight, armasm.RotateRightExt:
+								idx = bits.RotateLeft64(idx, int(-arg.Count))
+							}
+						}
+						if arg.Sign < 0 {
+							pc -= idx
+						} else {
+							pc += idx
+						}
+					} else {
+						pc = uint64(int64(pc) + int64(arg.Offset))
+					}
+				}
+				pcMem := make([]byte, nextInstrLen)
+				t.dbp.execPtraceFunc(func() {
+					_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
+				})
+				if err != nil {
+					return nil, nil, err
+				}
+				nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
+			}
+		}
+	case armasm.MOV, armasm.ADD:
+		// We need to check for the first args to be PC.
+		if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
+			var pc uint64
+			for _, argRaw := range nextInstr.Args[1:] {
+				switch arg := argRaw.(type) {
+				case armasm.Imm:
+					pc += uint64(arg)
+				case armasm.Reg:
+					regVal, err := regs.Get(int(arg))
+					if err != nil {
+						return nil, nil, err
+					}
+					pc += regVal
+				}
+			}
+			nextPcs = append(nextPcs, pc)
+		}
+	}
+	return nextPcs, nil, nil
+}
+
 func (t *nativeThread) singleStep() (err error) {
 	// Arm don't have ptrace singleStep implemented, so we use breakpoint to emulate it.
 	for {
@@ -54,129 +179,7 @@ func (t *nativeThread) singleStep() (err error) {
 		if err != nil {
 			return err
 		}
-		resolvePCs := func() ([]uint64, []uint64, error) {
-			// Use ptrace to get better performance.
-			nextInstrLen := t.BinInfo().Arch.MaxInstructionLength()
-			nextInstrBytes := make([]byte, nextInstrLen)
-			t.dbp.execPtraceFunc(func() {
-				_, err = sys.PtracePeekData(t.ID, uintptr(regs.PC()), nextInstrBytes)
-			})
-			if err != nil {
-				return nil, nil, err
-			}
-			nextPcs := []uint64{
-				regs.PC() + uint64(nextInstrLen),
-			}
-			// If we found breakpoint, we just skip it.
-			if bytes.Equal(nextInstrBytes, t.BinInfo().Arch.BreakpointInstruction()) {
-				// We need to nop breakPoints, otherwise we can't continue
-				return nextPcs, []uint64{regs.PC()}, nil
-			}
-			// Golang always use ARM mode.
-			nextInstr, err := armasm.Decode(nextInstrBytes, armasm.ModeARM)
-			if err != nil {
-				return nil, nil, err
-			}
-			switch nextInstr.Op {
-			case armasm.BL, armasm.BLX, armasm.B, armasm.BX:
-				switch arg := nextInstr.Args[0].(type) {
-				case armasm.Imm:
-					nextPcs = append(nextPcs, uint64(arg))
-				case armasm.Reg:
-					pc, err := regs.Get(int(arg))
-					if err != nil {
-						return nil, nil, err
-					}
-					nextPcs = append(nextPcs, pc)
-				case armasm.PCRel:
-					nextPcs = append(nextPcs, regs.PC()+uint64(arg))
-				}
-			case armasm.POP:
-				if regList, ok := nextInstr.Args[0].(armasm.RegList); ok && (regList&(1<<uint(armasm.PC)) != 0) {
-					pc, err := regs.Get(int(armasm.SP))
-					if err != nil {
-						return nil, nil, err
-					}
-					for i := 0; i < int(armasm.PC); i++ {
-						if regList&(1<<uint(i)) != 0 {
-							pc += uint64(nextInstrLen)
-						}
-					}
-					pcMem := make([]byte, nextInstrLen)
-					t.dbp.execPtraceFunc(func() {
-						_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
-					})
-					if err != nil {
-						return nil, nil, err
-					}
-					nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
-				}
-			case armasm.LDR:
-				// We need to check for the first args to be PC.
-				if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
-					switch arg := nextInstr.Args[1].(type) {
-					case armasm.Mem:
-						pc, err := regs.Get(int(arg.Base))
-						if err != nil {
-							return nil, nil, err
-						}
-						if arg.Mode == armasm.AddrOffset || arg.Mode == armasm.AddrPreIndex {
-							if arg.Sign != 0 {
-								idx, err := regs.Get(int(arg.Index))
-								if err != nil {
-									return nil, nil, err
-								}
-								if arg.Shift != armasm.ShiftLeft || arg.Count != 0 {
-									switch arg.Shift {
-									case armasm.ShiftLeft:
-										idx <<= arg.Count
-									case armasm.ShiftRight, armasm.ShiftRightSigned:
-										idx >>= arg.Count
-									case armasm.RotateRight, armasm.RotateRightExt:
-										idx = bits.RotateLeft64(idx, int(-arg.Count))
-									}
-								}
-								if arg.Sign < 0 {
-									pc -= idx
-								} else {
-									pc += idx
-								}
-							} else {
-								pc = uint64(int64(pc) + int64(arg.Offset))
-							}
-						}
-						pcMem := make([]byte, nextInstrLen)
-						t.dbp.execPtraceFunc(func() {
-							_, err = sys.PtracePeekData(t.ID, uintptr(pc), pcMem)
-						})
-						if err != nil {
-							return nil, nil, err
-						}
-						nextPcs = append(nextPcs, uint64(binary.LittleEndian.Uint32(pcMem)))
-					}
-				}
-			case armasm.MOV, armasm.ADD:
-				// We need to check for the first args to be PC.
-				if reg, ok := nextInstr.Args[0].(armasm.Reg); ok && reg == armasm.PC {
-					var pc uint64
-					for _, argRaw := range nextInstr.Args[1:] {
-						switch arg := argRaw.(type) {
-						case armasm.Imm:
-							pc += uint64(arg)
-						case armasm.Reg:
-							regVal, err := regs.Get(int(arg))
-							if err != nil {
-								return nil, nil, err
-							}
-							pc += regVal
-						}
-					}
-					nextPcs = append(nextPcs, pc)
-				}
-			}
-			return nextPcs, nil, nil
-		}
-		nextPcs, nops, err := resolvePCs()
+		nextPcs, nops, err := t.resolvePC(regs)
 		if err != nil {
 			return err
 		}
