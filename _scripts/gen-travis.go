@@ -112,7 +112,7 @@ jobs:
   include:
     -  os: linux
        services: docker
-       env: go_32_version={{index .GoVersions 0}}
+       env: go_32_version={{index .GoVersions 1}} # Linux/i386 tests held back to Go1.14 until issue #2134 is fixed
 
 script: >-
     if [ $TRAVIS_OS_NAME = "linux" ] && [ $go_32_version ]; then
