@@ -1293,9 +1293,23 @@ func TestFrameEvaluation(t *testing.T) {
 			found[vval] = true
 		}
 
+		firsterr := false
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+			// We try to make sure that all goroutines are stopped at a sensible place
+			// before reading their stacktrace, but due to the nature of the test
+			// program there is no guarantee that we always find them in a reasonable
+			// state.
+			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+			// unnecessary flakiness allow a single goroutine to be in a bad state.
+			firsterr = true
+		}
 		for i := range found {
 			if !found[i] {
-				t.Fatalf("Goroutine %d not found\n", i)
+				if firsterr {
+					firsterr = false
+				} else {
+					t.Fatalf("Goroutine %d not found\n", i)
+				}
 			}
 		}
 
