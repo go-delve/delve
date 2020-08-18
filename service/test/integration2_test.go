@@ -1363,6 +1363,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		t.Skip("test is valid only on AMD64")
 	}
 	regtests := []struct{ name, value string }{
+		// x87
 		{"ST(0)", "0x3fffe666660000000000"},
 		{"ST(1)", "0x3fffd9999a0000000000"},
 		{"ST(2)", "0x3fffcccccd0000000000"},
@@ -1371,6 +1372,8 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"ST(5)", "0x3fffa666666666666800"},
 		{"ST(6)", "0x3fff9999999999999800"},
 		{"ST(7)", "0x3fff8cccccccccccd000"},
+
+		// SSE
 		{"XMM0", "0x3ff33333333333333ff199999999999a	v2_int={ 3ff199999999999a 3ff3333333333333 }	v4_int={ 9999999a 3ff19999 33333333 3ff33333 }	v8_int={ 999a 9999 9999 3ff1 3333 3333 3333 3ff3 }	v16_int={ 9a 99 99 99 99 99 f1 3f 33 33 33 33 33 33 f3 3f }"},
 		{"XMM1", "0x3ff66666666666663ff4cccccccccccd"},
 		{"XMM2", "0x3fe666663fd9999a3fcccccd3fc00000"},
@@ -1380,22 +1383,68 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"XMM6", "0x4004cccccccccccc4003333333333334"},
 		{"XMM7", "0x40026666666666664002666666666666"},
 		{"XMM8", "0x4059999a404ccccd4059999a404ccccd"},
+
+		// AVX 2
+		{"XMM11", "0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM11", "…[YMM11h] 0x3ff66666666666663ff4cccccccccccd"},
+
+		// AVX 512
+		{"XMM12", "0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM12", "…[YMM12h] 0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM12", "…[ZMM12hl] 0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM12", "…[ZMM12hh] 0x3ff66666666666663ff4cccccccccccd"},
 	}
 	protest.AllowRecording(t)
 	withTestClient2("fputest/", t, func(c service.Client) {
-		<-c.Continue()
+		state := <-c.Continue()
+		t.Logf("state after continue: %#v", state)
+
+		boolvar := func(name string) bool {
+			scope := api.EvalScope{GoroutineID: -1}
+			if testBackend == "rr" {
+				scope.Frame = 2
+			}
+			v, err := c.EvalVariable(scope, name, normalLoadConfig)
+			if err != nil {
+				t.Fatalf("could not read %s variable", name)
+			}
+			t.Logf("%s variable: %#v", name, v)
+			return v.Value != "false"
+		}
+
+		avx2 := boolvar("avx2")
+		avx512 := boolvar("avx512")
+
+		if runtime.GOOS == "windows" {
+			// not supported
+			avx2 = false
+			avx512 = false
+		}
+
 		regs, err := c.ListThreadRegisters(0, true)
 		assertNoError(err, t, "ListThreadRegisters()")
 
 		t.Logf("%s", regs.String())
 
 		for _, regtest := range regtests {
+			if regtest.name == "XMM11" && !avx2 {
+				continue
+			}
+			if regtest.name == "XMM12" && !avx512 {
+				continue
+			}
 			found := false
 			for _, reg := range regs {
 				if reg.Name == regtest.name {
 					found = true
-					if !strings.HasPrefix(reg.Value, regtest.value) {
-						t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, reg.Value)
+					if strings.HasPrefix(regtest.value, "…") {
+						if !strings.Contains(reg.Value, regtest.value[len("…"):]) {
+							t.Fatalf("register %s expected to contain %q got %q", reg.Name, regtest.value, reg.Value)
+						}
+					} else {
+						if !strings.HasPrefix(reg.Value, regtest.value) {
+							t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, reg.Value)
+						}
 					}
 				}
 			}

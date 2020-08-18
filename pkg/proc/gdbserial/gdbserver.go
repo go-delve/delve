@@ -1903,7 +1903,11 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 
 		case reginfo.Bitsize == 128:
 			if floatingPoint {
-				r = proc.AppendBytesRegister(r, strings.ToUpper(reginfo.Name), regs.regs[reginfo.Name].value)
+				name := reginfo.Name
+				if last := name[len(name)-1]; last == 'h' || last == 'H' {
+					name = name[:len(name)-1]
+				}
+				r = proc.AppendBytesRegister(r, strings.ToUpper(name), regs.regs[reginfo.Name].value)
 			}
 
 		case reginfo.Bitsize == 256:

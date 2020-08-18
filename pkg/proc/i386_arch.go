@@ -284,7 +284,7 @@ func i386DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string, float
 
 	default:
 		if reg.Bytes != nil && strings.HasPrefix(n, "xmm") {
-			return name, true, formatSSEReg(reg.Bytes)
+			return name, true, formatSSEReg(name, reg.Bytes)
 		} else if reg.Bytes != nil && strings.HasPrefix(n, "st(") {
 			return name, true, formatX87Reg(reg.Bytes)
 		} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) <= 8) {
