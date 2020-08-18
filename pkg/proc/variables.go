@@ -35,6 +35,8 @@ const (
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 
 	maxMapBucketsFactor = 100 // Maximum numbers of map buckets to read for every requested map entry when loading variables through (*EvalScope).LocalVariables and (*EvalScope).FunctionArguments.
+
+	maxGoroutineUserCurrentDepth = 30 // Maximum depth used by (*G).UserCurrent to search its location
 )
 
 type floatSpecial uint8
@@ -487,7 +489,7 @@ func (g *G) UserCurrent() Location {
 	if err != nil {
 		return g.CurrentLoc
 	}
-	for it.Next() {
+	for count := 0; it.Next() && count < maxGoroutineUserCurrentDepth; count++ {
 		frame := it.Frame()
 		if frame.Call.Fn != nil {
 			name := frame.Call.Fn.Name
