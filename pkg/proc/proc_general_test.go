@@ -1,8 +1,12 @@
 package proc
 
 import (
+	"path/filepath"
+	"runtime"
 	"testing"
 	"unsafe"
+
+	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
 func ptrSizeByRuntimeArch() int {
@@ -91,6 +95,26 @@ func TestReadCStringValue(t *testing.T) {
 		}
 		if tc.base == 0x4fff && dm.reads[0].size != 1 {
 			t.Errorf("base=%#x first read in not of one byte", tc.base)
+		}
+	}
+}
+
+func assertNoError(err error, t testing.TB, s string) {
+	if err != nil {
+		_, file, line, _ := runtime.Caller(1)
+		fname := filepath.Base(file)
+		t.Fatalf("failed assertion at %s:%d: %s - %s\n", fname, line, s, err)
+	}
+}
+
+func TestDwarfVersion(t *testing.T) {
+	// Tests that we correctly read the version of compilation units
+	fixture := protest.BuildFixture("math", 0)
+	bi := NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
+	assertNoError(bi.LoadBinaryInfo(fixture.Path, 0, nil), t, "LoadBinaryInfo")
+	for _, cu := range bi.Images[0].compileUnits {
+		if cu.Version != 4 {
+			t.Errorf("compile unit %q at %#x has bad version %d", cu.name, cu.entry.Offset, cu.Version)
 		}
 	}
 }

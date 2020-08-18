@@ -80,13 +80,15 @@ type loadDebugInfoMapsContext struct {
 	ardr                *reader.Reader
 	abstractOriginTable map[dwarf.Offset]int
 	knownPackageVars    map[string]struct{}
+	offsetToVersion     map[dwarf.Offset]uint8
 }
 
-func newLoadDebugInfoMapsContext(bi *BinaryInfo, image *Image) *loadDebugInfoMapsContext {
+func newLoadDebugInfoMapsContext(bi *BinaryInfo, image *Image, offsetToVersion map[dwarf.Offset]uint8) *loadDebugInfoMapsContext {
 	ctxt := &loadDebugInfoMapsContext{}
 
 	ctxt.ardr = image.DwarfReader()
 	ctxt.abstractOriginTable = make(map[dwarf.Offset]int)
+	ctxt.offsetToVersion = offsetToVersion
 
 	ctxt.knownPackageVars = map[string]struct{}{}
 	for _, v := range bi.packageVars {

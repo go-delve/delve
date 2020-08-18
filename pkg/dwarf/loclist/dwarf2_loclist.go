@@ -2,33 +2,41 @@ package loclist
 
 import (
 	"encoding/binary"
+
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 )
 
-// Reader parses and presents DWARF loclist information.
-type Reader struct {
+// Reader represents a loclist reader.
+type Reader interface {
+	Find(off int, staticBase, base, pc uint64, debugAddr *godwarf.DebugAddr) (*Entry, error)
+	Empty() bool
+}
+
+// Dwarf2Reader parses and presents DWARF loclist information for DWARF versions 2 through 4.
+type Dwarf2Reader struct {
 	data  []byte
 	cur   int
 	ptrSz int
 }
 
-// New returns an initialized loclist Reader.
-func New(data []byte, ptrSz int) *Reader {
-	return &Reader{data: data, ptrSz: ptrSz}
+// NewDwarf2Reader returns an initialized loclist Reader for DWARF versions 2 through 4.
+func NewDwarf2Reader(data []byte, ptrSz int) *Dwarf2Reader {
+	return &Dwarf2Reader{data: data, ptrSz: ptrSz}
 }
 
 // Empty returns true if this reader has no data.
-func (rdr *Reader) Empty() bool {
+func (rdr *Dwarf2Reader) Empty() bool {
 	return rdr.data == nil
 }
 
 // Seek moves the data pointer to the specified offset.
-func (rdr *Reader) Seek(off int) {
+func (rdr *Dwarf2Reader) Seek(off int) {
 	rdr.cur = off
 }
 
 // Next advances the reader to the next loclist entry, returning
 // the entry and true if successful, or nil, false if not.
-func (rdr *Reader) Next(e *Entry) bool {
+func (rdr *Dwarf2Reader) Next(e *Entry) bool {
 	e.LowPC = rdr.oneAddr()
 	e.HighPC = rdr.oneAddr()
 
@@ -46,13 +54,31 @@ func (rdr *Reader) Next(e *Entry) bool {
 	return true
 }
 
-func (rdr *Reader) read(sz int) []byte {
+// Find returns the loclist entry for the specified PC address, inside the
+// loclist stating at off. Base is the base address of the compile unit and
+// staticBase is the static base at which the image is loaded.
+func (rdr *Dwarf2Reader) Find(off int, staticBase, base, pc uint64, debugAddr *godwarf.DebugAddr) (*Entry, error) {
+	rdr.Seek(off)
+	var e Entry
+	for rdr.Next(&e) {
+		if e.BaseAddressSelection() {
+			base = e.HighPC + staticBase
+			continue
+		}
+		if pc >= e.LowPC+base && pc < e.HighPC+base {
+			return &e, nil
+		}
+	}
+	return nil, nil
+}
+
+func (rdr *Dwarf2Reader) read(sz int) []byte {
 	r := rdr.data[rdr.cur : rdr.cur+sz]
 	rdr.cur += sz
 	return r
 }
 
-func (rdr *Reader) oneAddr() uint64 {
+func (rdr *Dwarf2Reader) oneAddr() uint64 {
 	switch rdr.ptrSz {
 	case 4:
 		addr := binary.LittleEndian.Uint32(rdr.read(rdr.ptrSz))
