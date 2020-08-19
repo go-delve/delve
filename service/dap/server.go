@@ -569,7 +569,9 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 }
 
 func (s *Server) onContinueRequest(request *dap.ContinueRequest) {
-	s.send(&dap.ContinueResponse{Response: *newResponse(request.Request)})
+	s.send(&dap.ContinueResponse{
+		Response: *newResponse(request.Request),
+		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
 	s.doCommand(api.Continue)
 }
 

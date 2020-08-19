@@ -189,8 +189,8 @@ func TestStopOnEntry(t *testing.T) {
 		// 10 >> continue, << continue, << terminated
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 10 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10", contResp)
+		if contResp.Seq != 0 || contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Body.AllThreadsContinued=true", contResp)
 		}
 		termEvent := client.ExpectTerminatedEvent(t)
 		if termEvent.Seq != 0 {
@@ -354,7 +354,10 @@ func TestSetBreakpoint(t *testing.T) {
 		expectChildren(t, locals, "Locals", 0)
 
 		client.ContinueRequest(1)
-		client.ExpectContinueResponse(t)
+		ctResp := client.ExpectContinueResponse(t)
+		if !ctResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot  %#v\nwant AllThreadsContinued=true", ctResp.Body)
+		}
 		// "Continue" is triggered after the response is sent
 
 		client.ExpectTerminatedEvent(t)
