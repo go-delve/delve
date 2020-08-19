@@ -17,6 +17,7 @@ type osProcessDetails struct {
 	hProcess    syscall.Handle
 	breakThread int
 	entryPoint  uint64
+	running     bool
 }
 
 // Launch creates and begins debugging a new process.
@@ -175,6 +176,10 @@ func (dbp *nativeProcess) kill() error {
 }
 
 func (dbp *nativeProcess) requestManualStop() error {
+	if !dbp.os.running {
+		return nil
+	}
+	dbp.os.running = false
 	return _DebugBreakProcess(dbp.os.hProcess)
 }
 
@@ -390,6 +395,7 @@ func (dbp *nativeProcess) resume() error {
 			return err
 		}
 	}
+	dbp.os.running = true
 
 	return nil
 }
@@ -399,6 +405,8 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
+
+	dbp.os.running = false
 
 	// While the debug event that stopped the target was being propagated
 	// other target threads could generate other debug events.

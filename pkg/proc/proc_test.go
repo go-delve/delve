@@ -4906,3 +4906,35 @@ func TestStepoutOneliner(t *testing.T) {
 		}
 	})
 }
+
+func TestRequestManualStopWhileStopped(t *testing.T) {
+	// Requesting a manual stop while stopped shouldn't cause problems (issue #2138).
+	withTestProcess("issue2138", t, func(p *proc.Target, fixture protest.Fixture) {
+		resumed := make(chan struct{})
+		setFileBreakpoint(p, t, fixture.Source, 8)
+		assertNoError(p.Continue(), t, "Continue() 1")
+		p.ResumeNotify(resumed)
+		go func() {
+			<-resumed
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+		}()
+		t.Logf("at time.Sleep call")
+		assertNoError(p.Continue(), t, "Continue() 2")
+		t.Logf("manually stopped")
+		p.RequestManualStop()
+		p.RequestManualStop()
+		p.RequestManualStop()
+
+		resumed = make(chan struct{})
+		p.ResumeNotify(resumed)
+		go func() {
+			<-resumed
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+		}()
+		t.Logf("resuming sleep")
+		assertNoError(p.Continue(), t, "Continue() 3")
+		t.Logf("done")
+	})
+}
