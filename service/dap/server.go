@@ -564,13 +564,13 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doCommand(api.Continue, "breakpoint")
+		s.doCommand(api.Continue)
 	}
 }
 
 func (s *Server) onContinueRequest(request *dap.ContinueRequest) {
 	s.send(&dap.ContinueResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.Continue, "breakpoint")
+	s.doCommand(api.Continue)
 }
 
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
@@ -626,21 +626,21 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest) {
 	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.Next, "step")
+	s.doCommand(api.Next)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest) {
 	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.Step, "step")
+	s.doCommand(api.Step)
 }
 
 // onStepInRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.StepOut, "step")
+	s.doCommand(api.StepOut)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
@@ -1032,53 +1032,51 @@ func newEvent(event string) *dap.Event {
 }
 
 // doCommand runs a debugger command until it stops on
-// termination, error or expected stopOn reason.
-func (s *Server) doCommand(command string, stopOn string) {
+// termination, error, breakpoint, etc, when an appropriate
+// event needs to be sent to the client.
+func (s *Server) doCommand(command string) {
 	if s.debugger == nil {
 		return
 	}
+
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command})
-	if err != nil {
-		s.handleStopOnError(err)
-	} else {
-		s.handleStop(state, stopOn)
-	}
-}
-
-func (s *Server) clearProcessStateHandles() {
-	s.stackFrameHandles.reset()
-	s.variableHandles.reset()
-}
-
-// handleStopOnError resets the stage for refreshing debuggee state
-// and sends an apropriate event to the client, followed by
-// an output event with the details of the error.
-func (s *Server) handleStopOnError(err error) {
-	s.log.Error("runtime error: ", err)
-	s.clearProcessStateHandles()
-
-	switch err.(type) {
-	case proc.ErrProcessExited:
+	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
-	default:
-		e := &dap.StoppedEvent{Event: *newEvent("stopped")}
+		return
+	}
 
-		e.Body.AllThreadsStopped = true
-		e.Body.Reason = "runtime error"
-		e.Body.Text = err.Error()
+	s.stackFrameHandles.reset()
+	s.variableHandles.reset()
+
+	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+	stopped.Body.AllThreadsStopped = true
+
+	if err == nil {
+		stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		switch command {
+		case api.Next, api.Step, api.StepOut:
+			stopped.Body.Reason = "step"
+		default:
+			stopped.Body.Reason = "breakpoint"
+		}
+		s.send(stopped)
+	} else {
+		s.log.Error("runtime error: ", err)
+		stopped.Body.Reason = "runtime error"
+		stopped.Body.Text = err.Error()
 		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
-		if e.Body.Text == "bad access" {
-			e.Body.Text = fmt.Sprintf(
+		if stopped.Body.Text == "bad access" {
+			stopped.Body.Text = fmt.Sprintf(
 				"%s\n%s",
 				"invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]",
 				"Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)")
 		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
-			e.Body.ThreadId = state.CurrentThread.GoroutineID
+			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
 		}
-		s.send(e)
+		s.send(stopped)
 
 		// TODO(polina): according to the spec, the extra 'text' is supposed to show up in the UI (e.g. on hover),
 		// but so far I am unable to get this to work in vscode - see https://github.com/microsoft/vscode/issues/104475.
@@ -1090,26 +1088,8 @@ func (s *Server) handleStopOnError(err error) {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
-				Output:   fmt.Sprintf("ERROR: %s\n", e.Body.Text),
+				Output:   fmt.Sprintf("ERROR: %s\n", stopped.Body.Text),
 				Category: "stderr",
 			}})
-	}
-}
-
-// handleStop resets the stage for refreshing debuggee state
-// and sends an apropriate event to the client when execution stops
-// due to normal causes (termination, breakpoint, step, etc).
-func (s *Server) handleStop(state *api.DebuggerState, reason string) {
-	s.clearProcessStateHandles()
-
-	if state.Exited {
-		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
-		s.send(e)
-	} else {
-		e := &dap.StoppedEvent{Event: *newEvent("stopped")}
-		e.Body.Reason = reason
-		e.Body.AllThreadsStopped = true
-		e.Body.ThreadId = state.SelectedGoroutine.ID
-		s.send(e)
 	}
 }
