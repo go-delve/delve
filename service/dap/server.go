@@ -638,7 +638,7 @@ func (s *Server) onStepInRequest(request *dap.StepInRequest) {
 	s.doCommand(api.Step)
 }
 
-// onStepInRequest handles 'stepOut' request
+// onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})

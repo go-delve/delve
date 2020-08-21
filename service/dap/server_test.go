@@ -1135,7 +1135,7 @@ func TestBadAccess(t *testing.T) {
 // a client at a breakpoint or another non-terminal stop event.
 // The details have been tested by other tests,
 // so this is just a sanity check.
-func handleStop(t *testing.T, client *daptest.Client, thread int, line int) {
+func handleStop(t *testing.T, client *daptest.Client, thread, line int) {
 	t.Helper()
 	client.ThreadsRequest()
 	client.ExpectThreadsResponse(t)
