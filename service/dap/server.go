@@ -627,6 +627,8 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest) {
+	// This ingores threadId argument to match the original vscode-go implementation.
+	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.Next)
 }
@@ -634,6 +636,8 @@ func (s *Server) onNextRequest(request *dap.NextRequest) {
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest) {
+	// This ingores threadId argument to match the original vscode-go implementation.
+	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.Step)
 }
@@ -641,6 +645,8 @@ func (s *Server) onStepInRequest(request *dap.StepInRequest) {
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
+	// This ingores threadId argument to match the original vscode-go implementation.
+	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.StepOut)
 }
@@ -1033,6 +1039,9 @@ func newEvent(event string) *dap.Event {
 	}
 }
 
+const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
+Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
+
 // doCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client.
@@ -1069,10 +1078,7 @@ func (s *Server) doCommand(command string) {
 		stopped.Body.Text = err.Error()
 		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
 		if stopped.Body.Text == "bad access" {
-			stopped.Body.Text = fmt.Sprintf(
-				"%s\n%s",
-				"invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]",
-				"Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)")
+			stopped.Body.Text = BetterBadAccessError
 		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
