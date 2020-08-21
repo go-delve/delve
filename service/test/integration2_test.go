@@ -54,12 +54,12 @@ func TestMain(m *testing.M) {
 }
 
 func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
-	withTestClient2Extended(name, t, 0, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended(name, t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
 		fn(c)
 	})
 }
 
-func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clientConn net.Conn, fixture protest.Fixture) {
+func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redirects [3]string) (clientConn net.Conn, fixture protest.Fixture) {
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
@@ -69,6 +69,11 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 		buildFlags |= protest.BuildModePIE
 	}
 	fixture = protest.BuildFixture(name, buildFlags)
+	for i := range redirects {
+		if redirects[i] != "" {
+			redirects[i] = filepath.Join(fixture.BuildDir, redirects[i])
+		}
+	}
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{fixture.Path},
@@ -78,6 +83,7 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 			Packages:       []string{fixture.Source},
 			BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
 			ExecuteKind:    debugger.ExecutingGeneratedFile,
+			Redirects:      redirects,
 		},
 	})
 	if err := server.Run(); err != nil {
@@ -86,8 +92,8 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 	return clientConn, fixture
 }
 
-func withTestClient2Extended(name string, t *testing.T, buildFlags protest.BuildFlags, fn func(c service.Client, fixture protest.Fixture)) {
-	clientConn, fixture := startServer(name, buildFlags, t)
+func withTestClient2Extended(name string, t *testing.T, buildFlags protest.BuildFlags, redirects [3]string, fn func(c service.Client, fixture protest.Fixture)) {
+	clientConn, fixture := startServer(name, buildFlags, t, redirects)
 	client := rpc2.NewClientFromConn(clientConn)
 	defer func() {
 		client.Detach(true)
@@ -223,7 +229,7 @@ func TestRestart_rebuild(t *testing.T) {
 	// In the original fixture file the env var tested for is SOMEVAR.
 	os.Setenv("SOMEVAR", "bah")
 
-	withTestClient2Extended("testenv", t, 0, func(c service.Client, f protest.Fixture) {
+	withTestClient2Extended("testenv", t, 0, [3]string{}, func(c service.Client, f protest.Fixture) {
 		<-c.Continue()
 
 		var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "x", normalLoadConfig)
@@ -772,7 +778,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 
-	withTestClient2Extended("locationsUpperCase", t, 0, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("locationsUpperCase", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
 		// Upper case
 		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
 
@@ -1895,7 +1901,7 @@ func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
 }
 
 func TestUnknownMethodCall(t *testing.T) {
-	clientConn, _ := startServer("continuetestprog", 0, t)
+	clientConn, _ := startServer("continuetestprog", 0, t, [3]string{})
 	client := &brokenRPCClient{jsonrpc.NewClient(clientConn)}
 	client.call("SetApiVersion", api.SetAPIVersionIn{APIVersion: 2}, &api.SetAPIVersionOut{})
 	defer client.Detach(true)
@@ -1950,7 +1956,7 @@ func TestRerecord(t *testing.T) {
 
 		t0 := gett()
 
-		_, err = c.RestartFrom(false, "", false, nil, false)
+		_, err = c.RestartFrom(false, "", false, nil, [3]string{}, false)
 		assertNoError(err, t, "First restart")
 		t1 := gett()
 
@@ -1960,7 +1966,7 @@ func TestRerecord(t *testing.T) {
 
 		time.Sleep(2 * time.Second) // make sure that we're not running inside the same second
 
-		_, err = c.RestartFrom(true, "", false, nil, false)
+		_, err = c.RestartFrom(true, "", false, nil, [3]string{}, false)
 		assertNoError(err, t, "Second restart")
 		t2 := gett()
 
@@ -2025,7 +2031,7 @@ func TestStopRecording(t *testing.T) {
 
 		// try rerecording
 		go func() {
-			c.RestartFrom(true, "", false, nil, false)
+			c.RestartFrom(true, "", false, nil, [3]string{}, false)
 		}()
 
 		time.Sleep(time.Second) // hopefully the re-recording started...
@@ -2039,7 +2045,7 @@ func TestClearLogicalBreakpoint(t *testing.T) {
 	// Clearing a logical breakpoint should clear all associated physical
 	// breakpoints.
 	// Issue #1955.
-	withTestClient2Extended("testinline", t, protest.EnableInlining, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("testinline", t, protest.EnableInlining, [3]string{}, func(c service.Client, fixture protest.Fixture) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.inlineThis"})
 		assertNoError(err, t, "CreateBreakpoint()")
 		t.Logf("breakpoint set at %#v", bp.Addrs)
@@ -2055,6 +2061,40 @@ func TestClearLogicalBreakpoint(t *testing.T) {
 				t.Errorf("logical breakpoint still exists: %#v", curbp)
 				break
 			}
+		}
+	})
+}
+
+func TestRedirects(t *testing.T) {
+	const (
+		infile  = "redirect-input.txt"
+		outfile = "redirect-output.txt"
+	)
+	protest.AllowRecording(t)
+	withTestClient2Extended("redirect", t, 0, [3]string{infile, outfile, ""}, func(c service.Client, fixture protest.Fixture) {
+		outpath := filepath.Join(fixture.BuildDir, outfile)
+		<-c.Continue()
+		buf, err := ioutil.ReadFile(outpath)
+		assertNoError(err, t, "Reading output file")
+		t.Logf("output %q", buf)
+		if !strings.HasPrefix(string(buf), "Redirect test") {
+			t.Fatalf("Wrong output %q", string(buf))
+		}
+		os.Remove(outpath)
+		if testBackend != "rr" {
+			_, err = c.Restart(false)
+			assertNoError(err, t, "Restart")
+			<-c.Continue()
+			buf2, err := ioutil.ReadFile(outpath)
+			t.Logf("output %q", buf2)
+			assertNoError(err, t, "Reading output file (second time)")
+			if !strings.HasPrefix(string(buf2), "Redirect test") {
+				t.Fatalf("Wrong output %q", string(buf2))
+			}
+			if string(buf2) == string(buf) {
+				t.Fatalf("Expected output change got %q and %q", string(buf), string(buf2))
+			}
+			os.Remove(outpath)
 		}
 	})
 }

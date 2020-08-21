@@ -320,3 +320,47 @@ func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uin
 	_, err := thread.WriteMemory(uintptr(addr), dbp.bi.Arch.BreakpointInstruction())
 	return err
 }
+
+func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+	toclose := []*os.File{}
+
+	if redirects[0] != "" {
+		stdin, err = os.Open(redirects[0])
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		toclose = append(toclose, stdin)
+	} else if foreground {
+		stdin = os.Stdin
+	}
+
+	create := func(path string, dflt *os.File) *os.File {
+		if path == "" {
+			return dflt
+		}
+		var f *os.File
+		f, err = os.Create(path)
+		if f != nil {
+			toclose = append(toclose, f)
+		}
+		return f
+	}
+
+	stdout = create(redirects[1], os.Stdout)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	stderr = create(redirects[2], os.Stderr)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	closefn = func() {
+		for _, f := range toclose {
+			_ = f.Close()
+		}
+	}
+
+	return stdin, stdout, stderr, closefn, nil
+}

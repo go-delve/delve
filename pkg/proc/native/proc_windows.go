@@ -21,7 +21,7 @@ type osProcessDetails struct {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, foreground bool, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -29,12 +29,17 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 
 	env := proc.DisableAsyncPreemptEnv()
 
+	stdin, stdout, stderr, closefn, err := openRedirects(redirects, true)
+	if err != nil {
+		return nil, err
+	}
+
 	var p *os.Process
 	dbp := newProcess(0)
 	dbp.execPtraceFunc(func() {
 		attr := &os.ProcAttr{
 			Dir:   wd,
-			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+			Files: []*os.File{stdin, stdout, stderr},
 			Sys: &syscall.SysProcAttr{
 				CreationFlags: _DEBUG_ONLY_THIS_PROCESS,
 			},
@@ -42,6 +47,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 		}
 		p, err = os.StartProcess(argv0Go, cmd, attr)
 	})
+	closefn()
 	if err != nil {
 		return nil, err
 	}
