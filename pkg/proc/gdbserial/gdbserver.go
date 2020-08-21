@@ -342,7 +342,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string) (*proc.Target, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -371,12 +371,32 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		ldEnvVars := getLdEnvVars()
 		args := make([]string, 0, len(cmd)+4+len(ldEnvVars))
 		args = append(args, ldEnvVars...)
-		if foreground {
-			args = append(args, "--stdio-path", "/dev/tty")
-		}
+
 		if tty != "" {
 			args = append(args, "--stdio-path", tty)
+		} else {
+			found := [3]bool{}
+			names := [3]string{"stdin", "stdout", "stderr"}
+			for i := range redirects {
+				if redirects[i] != "" {
+					found[i] = true
+					args = append(args, fmt.Sprintf("--%s-path", names[i]), redirects[i])
+				}
+			}
+
+			if foreground {
+				if !found[0] && !found[1] && !found[2] {
+					args = append(args, "--stdio-path", "/dev/tty")
+				} else {
+					for i := range found {
+						if !found[i] {
+							args = append(args, fmt.Sprintf("--%s-path", names[i]), "/dev/tty")
+						}
+					}
+				}
+			}
 		}
+
 		if logflags.LLDBServerOutput() {
 			args = append(args, "-g", "-l", "stdout")
 		}

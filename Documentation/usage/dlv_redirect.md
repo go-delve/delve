@@ -1,18 +1,21 @@
-## dlv backend
+## dlv redirect
 
-Help about the --backend flag.
+Help about file redirection.
 
 ### Synopsis
 
 
-The --backend flag specifies which backend should be used, possible values
-are:
+The standard file descriptors of the target process can be controlled using the '-r' and '--tty' arguments. 
 
-	default		Uses lldb on macOS, native everywhere else.
-	native		Native backend.
-	lldb		Uses lldb-server or debugserver.
-	rr		Uses mozilla rr (https://github.com/mozilla/rr).
+The --tty argument allows redirecting all standard descriptors to a terminal, specified as an argument to --tty.
 
+The syntax for '-r' argument is:
+
+		-r [source:]destination
+
+Where source is one of 'stdin', 'stdout' or 'stderr' and destination is the path to a file. If the source is omitted stdin is used implicitly.
+
+File redirects can also be changed using the 'restart' command.
 
 
 ### Options inherited from parent commands
