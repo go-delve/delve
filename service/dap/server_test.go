@@ -1105,7 +1105,41 @@ func TestLaunchRequestWithLoadConfig(t *testing.T) {
 						expectChildren(t, a6, "a6", 1) // 1 of 2 fields loaded
 						expectVarExact(t, a6, 0, "Baz", "8", noChildren)
 					}
-					// TODO(polina): test maxVariableRecurse
+				},
+				disconnect: true,
+			}})
+	})
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "dlvLoadConfig": map[string]interface{}{
+						"maxVariableRecurse": -1,
+					},
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute: func() {
+					client.StackTraceRequest(1, 0, 0)
+					client.ExpectStackTraceResponse(t)
+
+					client.ScopesRequest(1000)
+					client.ExpectScopesResponse(t)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+
+					// Test maxVariableRecurse
+					ref := expectVarExact(t, locals, -1, "iface6", "<interface {}>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						iface6 := client.ExpectVariablesResponse(t)
+						// TODO(polina): unloaded values should not be treated as nil
+						expectVarExact(t, iface6, 0, "data", "nil", noChildren) // not loaded
+					}
 				},
 				disconnect: true,
 			}})
