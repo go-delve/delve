@@ -71,12 +71,21 @@ type launchAttachArgs struct {
 	stopOnEntry bool
 	// stackTraceDepth is the maximum length of the returned list of stack frames.
 	stackTraceDepth int
+	// loadConfig controls how variables are loaded from the target's memory.
+	loadConfig proc.LoadConfig
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
 var defaultArgs = launchAttachArgs{
 	stopOnEntry:     false,
 	stackTraceDepth: 50,
+	loadConfig: proc.LoadConfig{
+		FollowPointers:     true,
+		MaxVariableRecurse: 1,
+		MaxStringLen:       64,
+		MaxArrayValues:     64,
+		MaxStructFields:    -1,
+	},
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -467,6 +476,30 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.args.stackTraceDepth = int(depth)
 	}
 
+	loadConfig, ok := request.Arguments["dlvLoadConfig"].(map[string]interface{})
+	if ok {
+		followPointers, ok := loadConfig["followPointers"].(bool)
+		if ok {
+			s.args.loadConfig.FollowPointers = followPointers
+		}
+		maxVariableRecurse, ok := loadConfig["maxVariableRecurse"].(float64)
+		if ok {
+			s.args.loadConfig.MaxVariableRecurse = int(maxVariableRecurse)
+		}
+		maxStringLen, ok := loadConfig["maxStringLen"].(float64)
+		if ok {
+			s.args.loadConfig.MaxStringLen = int(maxStringLen)
+		}
+		maxArrayValues, ok := loadConfig["maxArrayValues"].(float64)
+		if ok {
+			s.args.loadConfig.MaxArrayValues = int(maxArrayValues)
+		}
+		maxStructFields, ok := loadConfig["maxStructFields"].(float64)
+		if ok {
+			s.args.loadConfig.MaxStructFields = int(maxStructFields)
+		}
+	}
+
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
 	if ok {
@@ -699,11 +732,9 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	}
 
 	scope := api.EvalScope{GoroutineID: sf.(stackFrame).goroutineID, Frame: sf.(stackFrame).frameIndex}
-	// TODO(polina): Support setting config via launch/attach args
-	cfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 
 	// Retrieve arguments
-	args, err := s.debugger.FunctionArguments(scope, cfg)
+	args, err := s.debugger.FunctionArguments(scope, s.args.loadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
@@ -711,7 +742,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	argScope := api.Variable{Name: "Arguments", Children: args}
 
 	// Retrieve local variables
-	locals, err := s.debugger.LocalVariables(scope, cfg)
+	locals, err := s.debugger.LocalVariables(scope, s.args.loadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list local vars", err.Error())
 		return
