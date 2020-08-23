@@ -2,12 +2,14 @@ package api
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"reflect"
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"unsafe"
 )
 
 const (
@@ -360,13 +362,20 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, newlines bool, indent stri
 	fmt.Fprint(buf, "]")
 }
 
-func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
+// PrettyExamineMemory examine the memory and format data
+//
+// `format` specifies the data format (or data type), `size` specifies size of each data,
+// like 4byte integer, 1byte character, etc. `count` specifies the number of values.
+func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int) string {
 
 	var (
 		cols      int
 		colFormat string
-		addrLen   int
-		addrFmt   string
+		colBytes  = size
+		ptrSize   = int(unsafe.Sizeof(uintptr(0)))
+
+		addrLen int
+		addrFmt string
 	)
 
 	// Diffrent versions of golang output differently about '#'.
@@ -377,21 +386,25 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
 		colFormat = "%08b"
 	case 'o':
 		cols = 8
-		colFormat = "%04o" // Always keep one leading zero for octal.
+		colFormat = "0%03o" // Always keep one leading zero for octal.
 	case 'd':
 		cols = 8
 		colFormat = "%03d"
 	case 'x':
 		cols = 8
 		colFormat = "0x%02x" // Always keep one leading '0x' for hex.
+	case 'a':
+		cols = 4             // Print 4 address in one row.
+		colBytes = ptrSize   // Always parse `ptrSize` bytes as address.
+		colFormat = "0x%02x" // Always keep one leading '0x' for address.
 	default:
 		return fmt.Sprintf("not supprted format %q\n", string(format))
 	}
 	colFormat += "\t"
 
 	l := len(memArea)
-	rows := l / cols
-	if l%cols != 0 {
+	rows := l / (cols * colBytes)
+	if l%(cols*colBytes) != 0 {
 		rows++
 	}
 
@@ -403,14 +416,40 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
 
 	var b strings.Builder
 	w := tabwriter.NewWriter(&b, 0, 0, 3, ' ', 0)
+
 	for i := 0; i < rows; i++ {
 		fmt.Fprintf(w, addrFmt, address)
-		for j := 0; j < cols && i*cols+j < l; j++ {
-			fmt.Fprintf(w, colFormat, memArea[i*cols+j])
+
+		for j := 0; j < cols; j++ {
+			offset := i*(cols*colBytes) + j*colBytes
+			if offset+colBytes <= len(memArea) {
+				data := memArea[offset : offset+colBytes]
+				fmt.Fprintf(w, colFormat, byteArrayToUInt(data))
+			}
 		}
 		fmt.Fprintln(w, "")
 		address += uintptr(cols)
 	}
 	w.Flush()
 	return b.String()
+}
+
+func byteArrayToUInt(arr []byte) interface{} {
+	reverse(arr)
+	str := hex.EncodeToString(arr)
+	v, err := strconv.ParseUint(str, 16, 64)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+func reverse(buf []byte) {
+	n := len(buf)
+	if n <= 1 {
+		return
+	}
+	for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
+		buf[i], buf[j] = buf[j], buf[i]
+	}
 }

@@ -1093,7 +1093,7 @@ func TestExamineMemoryCmd(t *testing.T) {
 			t.Fatalf("could convert %s into int64, err %s", addressStr, err)
 		}
 
-		res := term.MustExec("examinemem  -len 52 -fmt hex " + addressStr)
+		res := term.MustExec("examinemem  -count 52 -fmt hex " + addressStr)
 		t.Logf("the result of examining memory \n%s", res)
 		// check first line
 		firstLine := fmt.Sprintf("%#x:   0x0a   0x0b   0x0c   0x0d   0x0e   0x0f   0x10   0x11", address)
@@ -1109,7 +1109,7 @@ func TestExamineMemoryCmd(t *testing.T) {
 
 		// second examining memory
 		term.MustExec("continue")
-		res = term.MustExec("x -len 52 -fmt bin " + addressStr)
+		res = term.MustExec("x -count 52 -fmt bin " + addressStr)
 		t.Logf("the second result of examining memory result \n%s", res)
 
 		// check first line
