@@ -2667,7 +2667,7 @@ func TestIssue664(t *testing.T) {
 	})
 }
 
-// Benchmarks (*Processs).Continue + (*Scope).FunctionArguments
+// Benchmarks (*Process).Continue + (*Scope).FunctionArguments
 func BenchmarkTrace(b *testing.B) {
 	withTestProcess("traceperf", b, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, b, "main.PerfCheck")
