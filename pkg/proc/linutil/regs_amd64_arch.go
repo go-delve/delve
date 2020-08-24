@@ -288,7 +288,7 @@ func (r *AMD64Registers) Get(n int) (uint64, error) {
 	return 0, proc.ErrUnknownRegister
 }
 
-// Copy returns a copy of these registers that is guarenteed not to change.
+// Copy returns a copy of these registers that is guaranteed not to change.
 func (r *AMD64Registers) Copy() (proc.Registers, error) {
 	if r.loadFpRegs != nil {
 		err := r.loadFpRegs(r)

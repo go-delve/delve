@@ -108,7 +108,7 @@ type BinaryInfo struct {
 
 var (
 	// ErrCouldNotDetermineRelocation is an error returned when Delve could not determine the base address of a
-	// position independant executable.
+	// position independent executable.
 	ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
 
 	// ErrNoDebugInfoFound is returned when Delve cannot open the debug_info

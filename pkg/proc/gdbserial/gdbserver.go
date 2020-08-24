@@ -840,7 +840,7 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 }
 
 // RequestManualStop will attempt to stop the process
-// without a breakpoint or signal having been recieved.
+// without a breakpoint or signal having been received.
 func (p *gdbProcess) RequestManualStop() error {
 	p.conn.manualStopMutex.Lock()
 	p.manualStopRequested = true
