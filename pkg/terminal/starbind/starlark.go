@@ -52,6 +52,7 @@ type Context interface {
 type Env struct {
 	env       starlark.StringDict
 	contextMu sync.Mutex
+	thread    *starlark.Thread
 	cancelfn  context.CancelFunc
 
 	ctx Context
@@ -184,6 +185,9 @@ func (env *Env) Cancel() {
 		env.cancelfn()
 		env.cancelfn = nil
 	}
+	if env.thread != nil {
+		env.thread.Cancel("user interrupt")
+	}
 	env.contextMu.Unlock()
 }
 
@@ -194,6 +198,7 @@ func (env *Env) newThread() *starlark.Thread {
 	env.contextMu.Lock()
 	var ctx context.Context
 	ctx, env.cancelfn = context.WithCancel(context.Background())
+	env.thread = thread
 	env.contextMu.Unlock()
 	thread.SetLocal(dlvContextName, ctx)
 	return thread
