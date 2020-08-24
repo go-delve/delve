@@ -20,7 +20,6 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
-	"unsafe"
 
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/locspec"
@@ -1565,7 +1564,6 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 	priFmt := byte('x')
 	count := 1
 	size := 1
-	ptrSize := int(unsafe.Sizeof(uintptr(0)))
 
 	for i := 0; i < len(v); i++ {
 		switch v[i] {
@@ -1583,8 +1581,6 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 				"decimal":     'd',
 				"bin":         'b',
 				"binary":      'b',
-				"addr":        'a',
-				"address":     'a',
 			}
 			priFmt, ok = fmtMapToPriFmt[v[i]]
 			if !ok {
@@ -1593,12 +1589,12 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 		case "-count", "-len":
 			i++
 			if i >= len(v) {
-				return fmt.Errorf("expected argument after -count")
+				return fmt.Errorf("expected argument after -count/-len")
 			}
 			var err error
 			count, err = strconv.Atoi(v[i])
 			if err != nil || count <= 0 {
-				return fmt.Errorf("count must be an positive integer")
+				return fmt.Errorf("count/len must be a positive integer")
 			}
 		case "-size":
 			i++
@@ -1607,8 +1603,8 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 			}
 			var err error
 			size, err = strconv.Atoi(v[i])
-			if err != nil || size <= 0 {
-				return fmt.Errorf("size must be an positive integer")
+			if err != nil || size <= 0 || size > 8 {
+				return fmt.Errorf("size must be a positive integer (<=8)")
 			}
 		default:
 			if i != len(v)-1 {
@@ -1620,13 +1616,6 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 				return fmt.Errorf("convert address into uintptr type failed, %s", err)
 			}
 		}
-	}
-
-	if priFmt == 'a' {
-		if size != 1 && size != ptrSize {
-			return fmt.Errorf("ptrsize on you mach is %d, not %d", ptrSize, size)
-		}
-		size = ptrSize
 	}
 
 	// TODO, maybe configured by user.

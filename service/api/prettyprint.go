@@ -2,7 +2,7 @@ package api
 
 import (
 	"bytes"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -372,7 +372,6 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int)
 		cols      int
 		colFormat string
 		colBytes  = size
-		ptrSize   = int(unsafe.Sizeof(uintptr(0)))
 
 		addrLen int
 		addrFmt string
@@ -393,10 +392,6 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int)
 	case 'x':
 		cols = 8
 		colFormat = "0x%02x" // Always keep one leading '0x' for hex.
-	case 'a':
-		cols = 4             // Print 4 address in one row.
-		colBytes = ptrSize   // Always parse `ptrSize` bytes as address.
-		colFormat = "0x%02x" // Always keep one leading '0x' for address.
 	default:
 		return fmt.Sprintf("not supprted format %q\n", string(format))
 	}
@@ -423,8 +418,11 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int)
 		for j := 0; j < cols; j++ {
 			offset := i*(cols*colBytes) + j*colBytes
 			if offset+colBytes <= len(memArea) {
-				data := memArea[offset : offset+colBytes]
-				fmt.Fprintf(w, colFormat, byteArrayToUInt(data))
+				n, err := byteArrayToUInt64(memArea[offset : offset+colBytes])
+				if err != nil {
+					panic(err) // Here shouldn't be reached
+				}
+				fmt.Fprintf(w, colFormat, n)
 			}
 		}
 		fmt.Fprintln(w, "")
@@ -434,22 +432,32 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int)
 	return b.String()
 }
 
-func byteArrayToUInt(arr []byte) interface{} {
-	reverse(arr)
-	str := hex.EncodeToString(arr)
-	v, err := strconv.ParseUint(str, 16, 64)
-	if err != nil {
-		panic(err)
+func byteArrayToUInt64(buf []byte) (uint64, error) {
+	if len(buf) == 0 {
+		return 0, errors.New("empty buf")
 	}
-	return v
+	var n uint64
+
+	if isLittleEndian() {
+		for i := len(buf) - 1; i >= 0; i-- {
+			n = n<<8 + uint64(buf[i])
+		}
+	} else {
+		for i := 0; i < len(buf); i++ {
+			n = n<<8 + uint64(buf[i])
+		}
+	}
+	return n, nil
 }
 
-func reverse(buf []byte) {
-	n := len(buf)
-	if n <= 1 {
-		return
-	}
-	for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
-		buf[i], buf[j] = buf[j], buf[i]
+const intSize = int(unsafe.Sizeof(0))
+
+func isLittleEndian() (ret bool) {
+	var i = 0x1
+	bs := (*[intSize]byte)(unsafe.Pointer(&i))
+	if bs[0] == 1 {
+		return true
+	} else {
+		return false
 	}
 }

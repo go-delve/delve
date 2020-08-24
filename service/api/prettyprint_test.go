@@ -2,7 +2,7 @@ package api
 
 import (
 	"fmt"
-	"reflect"
+	"math"
 	"strings"
 	"testing"
 )
@@ -34,22 +34,31 @@ func TestPrettyExamineMemory(t *testing.T) {
 	}
 }
 
-func Test_reverse(t *testing.T) {
+func Test_byteArrayToUInt64(t *testing.T) {
 	tests := []struct {
-		name string
-		args []byte
-		want []byte
+		name    string
+		args    []byte
+		want    uint64
+		wantErr bool
 	}{
-		{"case-1-byte", []byte{1}, []byte{1}},
-		{"case-2-bytes", []byte{1, 2}, []byte{2, 1}},
-		{"case-3-bytes", []byte{1, 2, 3}, []byte{3, 2, 1}},
-		{"case-4-bytes", []byte{1, 2, 3, 4}, []byte{4, 3, 2, 1}},
+		// TODO: Add test cases.
+		{"case-nil", nil, 0, true},
+		{"case-empty", []byte{}, 0, true},
+		{"case-1", []byte{0x1}, 1, false},
+		{"case-2", []byte{0x12}, 18, false},
+		{"case-3", []byte{0x1, 0x2}, 513, false},
+		{"case-4", []byte{0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x2}, 144397766876004609, false},
+		{"case-5", []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, math.MaxUint64, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reverse(tt.args)
-			if !reflect.DeepEqual(tt.args, tt.want) {
-				t.Errorf("reverse failed, want = %v, got = %v", tt.want, tt.args)
+			got, err := byteArrayToUInt64(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("byteArrayToUInt64() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("byteArrayToUInt64() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
