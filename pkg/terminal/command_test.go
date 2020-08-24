@@ -1130,3 +1130,11 @@ func TestPrintOnTracepoint(t *testing.T) {
 		}
 	})
 }
+
+func TestPrintCastToInterface(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+		out := term.MustExec(`p (*"interface {}")(uintptr(&iface2))`)
+		t.Logf("%q", out)
+	})
+}

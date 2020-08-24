@@ -846,6 +846,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 		n, _ := constant.Int64Val(argv.Value)
 
 		v.Children = []Variable{*(newVariable("", uintptr(n), ttyp.Type, scope.BinInfo, scope.Mem))}
+		v.Children[0].OnlyAddr = true
 		return v, nil
 
 	case *godwarf.UintType:
@@ -1348,6 +1349,7 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 
 	if len(xev.Children) == 1 {
 		// this branch is here to support pointers constructed with typecasts from ints
+		xev.Children[0].OnlyAddr = false
 		return &(xev.Children[0]), nil
 	}
 	rv := xev.maybeDereference()
