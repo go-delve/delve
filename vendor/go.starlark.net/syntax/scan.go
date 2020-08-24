@@ -276,6 +276,7 @@ func readSource(filename string, src interface{}) ([]byte, error) {
 		data, err := ioutil.ReadAll(src)
 		if err != nil {
 			err = &os.PathError{Op: "read", Path: filename, Err: err}
+			return nil, err
 		}
 		return data, nil
 	case nil:
@@ -804,13 +805,26 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 	start := sc.pos
 	triple := len(sc.rest) >= 3 && sc.rest[0] == byte(quote) && sc.rest[1] == byte(quote) && sc.rest[2] == byte(quote)
 	sc.readRune()
+
+	// String literals may contain escaped or unescaped newlines,
+	// causing them to span multiple lines (gulps) of REPL input;
+	// they are the only such token. Thus we cannot call endToken,
+	// as it assumes sc.rest is unchanged since startToken.
+	// Instead, buffer the token here.
+	// TODO(adonovan): opt: buffer only if we encounter a newline.
+	raw := new(strings.Builder)
+
+	// Copy the prefix, e.g. r' or " (see startToken).
+	raw.Write(sc.token[:len(sc.token)-len(sc.rest)])
+
 	if !triple {
-		// Precondition: startToken was already called.
+		// single-quoted string literal
 		for {
 			if sc.eof() {
 				sc.error(val.pos, "unexpected EOF in string")
 			}
 			c := sc.readRune()
+			raw.WriteRune(c)
 			if c == quote {
 				break
 			}
@@ -821,22 +835,16 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 				if sc.eof() {
 					sc.error(val.pos, "unexpected EOF in string")
 				}
-				sc.readRune()
+				c = sc.readRune()
+				raw.WriteRune(c)
 			}
 		}
-		sc.endToken(val)
 	} else {
 		// triple-quoted string literal
 		sc.readRune()
+		raw.WriteRune(quote)
 		sc.readRune()
-
-		// A triple-quoted string literal may span multiple
-		// gulps of REPL input; it is the only such token.
-		// Thus we must avoid {start,end}Token.
-		raw := new(strings.Builder)
-
-		// Copy the prefix, e.g. r''' or """ (see startToken).
-		raw.Write(sc.token[:len(sc.token)-len(sc.rest)])
+		raw.WriteRune(quote)
 
 		quoteCount := 0
 		for {
@@ -861,8 +869,8 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 				raw.WriteRune(c)
 			}
 		}
-		val.raw = raw.String()
 	}
+	val.raw = raw.String()
 
 	s, _, err := unquote(val.raw)
 	if err != nil {
@@ -1018,7 +1026,7 @@ func (sc *scanner) scanNumber(val *tokenValue, c rune) Token {
 			val.int, err = strconv.ParseInt(s, 0, 64)
 			if err != nil {
 				num := new(big.Int)
-				var ok bool = true
+				var ok bool
 				val.bigInt, ok = num.SetString(s, 0)
 				if ok {
 					err = nil

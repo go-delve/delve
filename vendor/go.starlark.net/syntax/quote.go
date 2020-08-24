@@ -40,13 +40,6 @@ var esc = [256]byte{
 	'"':  '"',
 }
 
-// notEsc is a list of characters that can follow a \ in a string value
-// without having to escape the \. That is, since ( is in this list, we
-// quote the Go string "foo\\(bar" as the Python literal "foo\(bar".
-// This really does happen in BUILD files, especially in strings
-// being used as shell arguments containing regular expressions.
-const notEsc = " !#$%&()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~"
-
 // unquote unquotes the quoted string, returning the actual
 // string value, whether the original was triple-quoted, and
 // an error describing invalid input.
@@ -127,17 +120,20 @@ func unquote(quoted string) (s string, triple bool, err error) {
 
 		switch quoted[1] {
 		default:
-			// In Python, if \z (for some byte z) is not a known escape sequence
-			// then it appears as literal text in the string.
-			buf.WriteString(quoted[:2])
-			quoted = quoted[2:]
+			// In Starlark, like Go, a backslash must escape something.
+			// (Python still treats unnecessary backslashes literally,
+			// but since 3.6 has emitted a deprecation warning.)
+			err = fmt.Errorf("invalid escape sequence \\%c", quoted[1])
+			return
 
 		case '\n':
 			// Ignore the escape and the line break.
 			quoted = quoted[2:]
 
 		case 'a', 'b', 'f', 'n', 'r', 't', 'v', '\\', '\'', '"':
-			// One-char escape
+			// One-char escape.
+			// Escapes are allowed for both kinds of quotation
+			// mark, not just the kind in use.
 			buf.WriteByte(unesc[quoted[1]])
 			quoted = quoted[2:]
 
@@ -226,18 +222,6 @@ func quote(unquoted string, triple bool) string {
 			// Can allow ' since we always use ".
 			buf.WriteByte(c)
 			continue
-		}
-		if c == '\\' {
-			if i+1 < len(unquoted) && indexByte(notEsc, unquoted[i+1]) >= 0 {
-				// Can pass \ through when followed by a byte that
-				// known not to be a valid escape sequence and also
-				// that does not trigger an escape sequence of its own.
-				// Use this, because various BUILD files do.
-				buf.WriteByte('\\')
-				buf.WriteByte(unquoted[i+1])
-				i++
-				continue
-			}
 		}
 		if esc[c] != 0 {
 			buf.WriteByte('\\')

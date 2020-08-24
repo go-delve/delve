@@ -122,7 +122,13 @@ var (
 // dependency upon starlark.Universe, not because users should ever need
 // to redefine it.
 func File(file *syntax.File, isPredeclared, isUniversal func(name string) bool) error {
-	r := newResolver(isPredeclared, isUniversal)
+	return REPLChunk(file, nil, isPredeclared, isUniversal)
+}
+
+// REPLChunk is a generalization of the File function that supports a
+// non-empty initial global block, as occurs in a REPL.
+func REPLChunk(file *syntax.File, isGlobal, isPredeclared, isUniversal func(name string) bool) error {
+	r := newResolver(isGlobal, isPredeclared, isUniversal)
 	r.stmts(file.Stmts)
 
 	r.env.resolveLocalUses()
@@ -148,7 +154,7 @@ func File(file *syntax.File, isPredeclared, isUniversal func(name string) bool) 
 //
 // The isPredeclared and isUniversal predicates behave as for the File function.
 func Expr(expr syntax.Expr, isPredeclared, isUniversal func(name string) bool) ([]*Binding, error) {
-	r := newResolver(isPredeclared, isUniversal)
+	r := newResolver(nil, isPredeclared, isUniversal)
 	r.expr(expr)
 	r.env.resolveLocalUses()
 	r.resolveNonLocalUses(r.env) // globals & universals
@@ -171,11 +177,12 @@ type Error struct {
 
 func (e Error) Error() string { return e.Pos.String() + ": " + e.Msg }
 
-func newResolver(isPredeclared, isUniversal func(name string) bool) *resolver {
+func newResolver(isGlobal, isPredeclared, isUniversal func(name string) bool) *resolver {
 	file := new(block)
 	return &resolver{
 		file:          file,
 		env:           file,
+		isGlobal:      isGlobal,
 		isPredeclared: isPredeclared,
 		isUniversal:   isUniversal,
 		globals:       make(map[string]*Binding),
@@ -202,10 +209,13 @@ type resolver struct {
 	predeclared map[string]*Binding
 
 	// These predicates report whether a name is
-	// pre-declared, either in this module or universally.
-	isPredeclared, isUniversal func(name string) bool
+	// pre-declared, either in this module or universally,
+	// or already declared in the module globals (as in a REPL).
+	// isGlobal may be nil.
+	isGlobal, isPredeclared, isUniversal func(name string) bool
 
-	loops int // number of enclosing for loops
+	loops   int // number of enclosing for/while loops
+	ifstmts int // number of enclosing if statements loops
 
 	errors ErrorList
 }
@@ -390,6 +400,15 @@ func (r *resolver) useToplevel(use use) (bind *Binding) {
 	} else if prev, ok := r.globals[id.Name]; ok {
 		// use of global declared by module
 		bind = prev
+	} else if r.isGlobal != nil && r.isGlobal(id.Name) {
+		// use of global defined in a previous REPL chunk
+		bind = &Binding{
+			First: id, // wrong: this is not even a binding use
+			Scope: Global,
+			Index: len(r.moduleGlobals),
+		}
+		r.globals[id.Name] = bind
+		r.moduleGlobals = append(r.moduleGlobals, bind)
 	} else if prev, ok := r.predeclared[id.Name]; ok {
 		// repeated use of predeclared or universal
 		bind = prev
@@ -433,7 +452,8 @@ func (r *resolver) spellcheck(use use) string {
 
 	// globals
 	//
-	// We have no way to enumerate predeclared/universe,
+	// We have no way to enumerate the sets whose membership
+	// tests are isPredeclared, isUniverse, and isGlobal,
 	// which includes prior names in the REPL session.
 	for _, bind := range r.moduleGlobals {
 		names = append(names, bind.First.Name)
@@ -478,8 +498,10 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 			r.errorf(stmt.If, "if statement not within a function")
 		}
 		r.expr(stmt.Cond)
+		r.ifstmts++
 		r.stmts(stmt.True)
 		r.stmts(stmt.False)
+		r.ifstmts--
 
 	case *syntax.AssignStmt:
 		r.expr(stmt.RHS)
@@ -532,8 +554,13 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 		}
 
 	case *syntax.LoadStmt:
+		// A load statement may not be nested in any other statement.
 		if r.container().function != nil {
 			r.errorf(stmt.Load, "load statement within a function")
+		} else if r.loops > 0 {
+			r.errorf(stmt.Load, "load statement within a loop")
+		} else if r.ifstmts > 0 {
+			r.errorf(stmt.Load, "load statement within a conditional")
 		}
 
 		for i, from := range stmt.From {
@@ -557,7 +584,7 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 		}
 
 	default:
-		log.Fatalf("unexpected stmt %T", stmt)
+		log.Panicf("unexpected stmt %T", stmt)
 	}
 }
 
@@ -578,9 +605,6 @@ func (r *resolver) assign(lhs syntax.Expr, isAugmented bool) {
 
 	case *syntax.TupleExpr:
 		// (x, y) = ...
-		if len(lhs.List) == 0 {
-			r.errorf(syntax.Start(lhs), "can't assign to ()")
-		}
 		if isAugmented {
 			r.errorf(syntax.Start(lhs), "can't use tuple expression in augmented assignment")
 		}
@@ -590,9 +614,6 @@ func (r *resolver) assign(lhs syntax.Expr, isAugmented bool) {
 
 	case *syntax.ListExpr:
 		// [x, y, z] = ...
-		if len(lhs.List) == 0 {
-			r.errorf(syntax.Start(lhs), "can't assign to []")
-		}
 		if isAugmented {
 			r.errorf(syntax.Start(lhs), "can't use list expression in augmented assignment")
 		}
@@ -782,7 +803,7 @@ func (r *resolver) expr(e syntax.Expr) {
 		r.expr(e.X)
 
 	default:
-		log.Fatalf("unexpected expr %T", e)
+		log.Panicf("unexpected expr %T", e)
 	}
 }
 
@@ -901,7 +922,7 @@ func lookupLocal(use use) *Binding {
 		if bind, ok := env.bindings[use.id.Name]; ok {
 			if bind.Scope == Free {
 				// shouldn't exist till later
-				log.Fatalf("%s: internal error: %s, %v", use.id.NamePos, use.id.Name, bind)
+				log.Panicf("%s: internal error: %s, %v", use.id.NamePos, use.id.Name, bind)
 			}
 			return bind // found
 		}
