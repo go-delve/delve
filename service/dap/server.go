@@ -257,15 +257,12 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.onContinueRequest(request)
 	case *dap.NextRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onNextRequest(request)
 	case *dap.StepInRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onStepInRequest(request)
 	case *dap.StepOutRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onStepOutRequest(request)
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
@@ -567,13 +564,15 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doContinue()
+		s.doCommand(api.Continue)
 	}
 }
 
 func (s *Server) onContinueRequest(request *dap.ContinueRequest) {
-	s.send(&dap.ContinueResponse{Response: *newResponse(request.Request)})
-	s.doContinue()
+	s.send(&dap.ContinueResponse{
+		Response: *newResponse(request.Request),
+		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
+	s.doCommand(api.Continue)
 }
 
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
@@ -625,22 +624,31 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onNextRequest sends a not-yet-implemented error response.
+// onNextRequest handles 'next' request.
 // This is a mandatory request to support.
-func (s *Server) onNextRequest(request *dap.NextRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onNextRequest(request *dap.NextRequest) {
+	// This ingores threadId argument to match the original vscode-go implementation.
+	// TODO(polina): use SwitchGoroutine to change the current goroutine.
+	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
+	s.doCommand(api.Next)
 }
 
-// onStepInRequest sends a not-yet-implemented error response.
+// onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
-func (s *Server) onStepInRequest(request *dap.StepInRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onStepInRequest(request *dap.StepInRequest) {
+	// This ingores threadId argument to match the original vscode-go implementation.
+	// TODO(polina): use SwitchGoroutine to change the current goroutine.
+	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
+	s.doCommand(api.Step)
 }
 
-// onStepOutRequest sends a not-yet-implemented error response.
+// onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
-func (s *Server) onStepOutRequest(request *dap.StepOutRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
+	// This ingores threadId argument to match the original vscode-go implementation.
+	// TODO(polina): use SwitchGoroutine to change the current goroutine.
+	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
+	s.doCommand(api.StepOut)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
@@ -1031,32 +1039,65 @@ func newEvent(event string) *dap.Event {
 	}
 }
 
-func (s *Server) doContinue() {
+const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
+Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
+
+// doCommand runs a debugger command until it stops on
+// termination, error, breakpoint, etc, when an appropriate
+// event needs to be sent to the client.
+func (s *Server) doCommand(command string) {
 	if s.debugger == nil {
 		return
 	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Continue})
-	if err != nil {
-		s.log.Error(err)
-		switch err.(type) {
-		case proc.ErrProcessExited:
-			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
-			s.send(e)
-		default:
-		}
-		return
-	}
-	s.stackFrameHandles.reset()
-	s.variableHandles.reset()
-	if state.Exited {
+
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command})
+	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
+		return
+	}
+
+	s.stackFrameHandles.reset()
+	s.variableHandles.reset()
+
+	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+	stopped.Body.AllThreadsStopped = true
+
+	if err == nil {
+		stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		switch command {
+		case api.Next, api.Step, api.StepOut:
+			stopped.Body.Reason = "step"
+		default:
+			stopped.Body.Reason = "breakpoint"
+		}
+		s.send(stopped)
 	} else {
-		e := &dap.StoppedEvent{Event: *newEvent("stopped")}
-		// TODO(polina): differentiate between breakpoint and pause on halt.
-		e.Body.Reason = "breakpoint"
-		e.Body.AllThreadsStopped = true
-		e.Body.ThreadId = state.SelectedGoroutine.ID
-		s.send(e)
+		s.log.Error("runtime error: ", err)
+		stopped.Body.Reason = "runtime error"
+		stopped.Body.Text = err.Error()
+		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
+		if stopped.Body.Text == "bad access" {
+			stopped.Body.Text = BetterBadAccessError
+		}
+		state, err := s.debugger.State( /*nowait*/ true)
+		if err == nil {
+			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
+		}
+		s.send(stopped)
+
+		// TODO(polina): according to the spec, the extra 'text' is supposed to show up in the UI (e.g. on hover),
+		// but so far I am unable to get this to work in vscode - see https://github.com/microsoft/vscode/issues/104475.
+		// Options to explore:
+		//   - supporting ExceptionInfo request
+		//   - virtual variable scope for Exception that shows the message (details here: https://github.com/microsoft/vscode/issues/3101)
+		// In the meantime, provide the extra details by outputing an error message.
+		// {"body":{"category":"stdout","output":"API server listening at: 127.0.0.1:11973\n"}}
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Output:   fmt.Sprintf("ERROR: %s\n", stopped.Body.Text),
+				Category: "stderr",
+			}})
 	}
 }
