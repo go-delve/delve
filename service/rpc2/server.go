@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
@@ -833,7 +834,8 @@ type ExamineMemoryIn struct {
 
 // ExaminedMemoryOut holds the return values of ExamineMemory
 type ExaminedMemoryOut struct {
-	Mem []byte
+	Mem            []byte
+	IsLittleEndian bool
 }
 
 func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) error {
@@ -846,6 +848,7 @@ func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) e
 	}
 
 	out.Mem = Mem
+	out.IsLittleEndian = isLittleEndian()
 	return nil
 }
 
@@ -863,4 +866,17 @@ func (s *RPCServer) StopRecording(arg StopRecordingIn, cb service.RPCCallback) {
 		return
 	}
 	cb.Return(out, nil)
+}
+
+const intSize = int(unsafe.Sizeof(0))
+
+func isLittleEndian() bool {
+	i := 0x1
+	bs := (*[intSize]byte)(unsafe.Pointer(&i))
+
+	if bs[0] == 1 {
+		return true
+	} else {
+		return false
+	}
 }

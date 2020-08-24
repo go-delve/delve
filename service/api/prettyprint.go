@@ -2,14 +2,12 @@ package api
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"reflect"
 	"strconv"
 	"strings"
 	"text/tabwriter"
-	"unsafe"
 )
 
 const (
@@ -366,7 +364,7 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, newlines bool, indent stri
 //
 // `format` specifies the data format (or data type), `size` specifies size of each data,
 // like 4byte integer, 1byte character, etc. `count` specifies the number of values.
-func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int) string {
+func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, format byte, size int) string {
 
 	var (
 		cols      int
@@ -418,10 +416,7 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int)
 		for j := 0; j < cols; j++ {
 			offset := i*(cols*colBytes) + j*colBytes
 			if offset+colBytes <= len(memArea) {
-				n, err := byteArrayToUInt64(memArea[offset : offset+colBytes])
-				if err != nil {
-					panic(err) // Here shouldn't be reached
-				}
+				n := byteArrayToUInt64(memArea[offset:offset+colBytes], isLittleEndian)
 				fmt.Fprintf(w, colFormat, n)
 			}
 		}
@@ -432,13 +427,9 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte, size int)
 	return b.String()
 }
 
-func byteArrayToUInt64(buf []byte) (uint64, error) {
-	if len(buf) == 0 {
-		return 0, errors.New("empty buf")
-	}
+func byteArrayToUInt64(buf []byte, isLittleEndian bool) uint64 {
 	var n uint64
-
-	if isLittleEndian() {
+	if isLittleEndian {
 		for i := len(buf) - 1; i >= 0; i-- {
 			n = n<<8 + uint64(buf[i])
 		}
@@ -447,17 +438,5 @@ func byteArrayToUInt64(buf []byte) (uint64, error) {
 			n = n<<8 + uint64(buf[i])
 		}
 	}
-	return n, nil
-}
-
-const intSize = int(unsafe.Sizeof(0))
-
-func isLittleEndian() (ret bool) {
-	var i = 0x1
-	bs := (*[intSize]byte)(unsafe.Pointer(&i))
-	if bs[0] == 1 {
-		return true
-	} else {
-		return false
-	}
+	return n
 }

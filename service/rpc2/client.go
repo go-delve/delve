@@ -441,15 +441,14 @@ func (c *RPCClient) ListDynamicLibraries() ([]api.Image, error) {
 	return out.List, nil
 }
 
-func (c *RPCClient) ExamineMemory(address uint64, count int) ([]byte, error) {
+func (c *RPCClient) ExamineMemory(address uintptr, count int) ([]byte, bool, error) {
 	out := &ExaminedMemoryOut{}
 
 	err := c.call("ExamineMemory", ExamineMemoryIn{Length: count, Address: address}, out)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-
-	return out.Mem, nil
+	return out.Mem, out.IsLittleEndian, nil
 }
 
 func (c *RPCClient) StopRecording() error {
