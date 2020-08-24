@@ -39,7 +39,11 @@ import (
 	"go.starlark.net/syntax"
 )
 
-const debug = false // TODO(adonovan): use a bitmap of options; and regexp to match files
+// Disassemble causes the assembly code for each function
+// to be printed to stderr as it is generated.
+var Disassemble = false
+
+const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
 const Version = 10
@@ -645,7 +649,7 @@ func (pcomp *pcomp) function(name string, pos syntax.Position, stmts []syntax.St
 	fn.MaxStack = maxstack
 
 	// Emit bytecode (and position table).
-	if debug {
+	if Disassemble {
 		fmt.Fprintf(os.Stderr, "Function %s: (%d blocks, %d bytes)\n", name, len(blocks), pc)
 	}
 	fcomp.generate(blocks, pc)
@@ -726,7 +730,7 @@ func (fcomp *fcomp) generate(blocks []*block, codelen uint32) {
 	}
 
 	for _, b := range blocks {
-		if debug {
+		if Disassemble {
 			fmt.Fprintf(os.Stderr, "%d:\n", b.index)
 		}
 		pc := b.addr
@@ -766,12 +770,12 @@ func (fcomp *fcomp) generate(blocks []*block, codelen uint32) {
 					}
 				}
 
-				if debug {
-					fmt.Fprintf(os.Stderr, "\t\t\t\t\t; %s %d\n",
-						filepath.Base(fcomp.fn.Pos.Filename()), insn.line)
+				if Disassemble {
+					fmt.Fprintf(os.Stderr, "\t\t\t\t\t; %s:%d:%d\n",
+						filepath.Base(fcomp.fn.Pos.Filename()), insn.line, insn.col)
 				}
 			}
-			if debug {
+			if Disassemble {
 				PrintOp(fcomp.fn, pc, insn.op, insn.arg)
 			}
 			code = append(code, byte(insn.op))
@@ -788,7 +792,7 @@ func (fcomp *fcomp) generate(blocks []*block, codelen uint32) {
 
 		if b.jmp != nil && b.jmp.index != b.index+1 {
 			addr := b.jmp.addr
-			if debug {
+			if Disassemble {
 				fmt.Fprintf(os.Stderr, "\t%d\tjmp\t\t%d\t; block %d\n",
 					pc, addr, b.jmp.index)
 			}
@@ -996,7 +1000,7 @@ func (fcomp *fcomp) set(id *syntax.Ident) {
 	case resolve.Global:
 		fcomp.emit1(SETGLOBAL, uint32(bind.Index))
 	default:
-		log.Fatalf("%s: set(%s): not global/local/cell (%d)", id.NamePos, id.Name, bind.Scope)
+		log.Panicf("%s: set(%s): not global/local/cell (%d)", id.NamePos, id.Name, bind.Scope)
 	}
 }
 
@@ -1024,7 +1028,7 @@ func (fcomp *fcomp) lookup(id *syntax.Ident) {
 	case resolve.Universal:
 		fcomp.emit1(UNIVERSAL, fcomp.pcomp.nameIndex(id.Name))
 	default:
-		log.Fatalf("%s: compiler.lookup(%s): scope = %d", id.NamePos, id.Name, bind.Scope)
+		log.Panicf("%s: compiler.lookup(%s): scope = %d", id.NamePos, id.Name, bind.Scope)
 	}
 }
 
@@ -1220,7 +1224,7 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 
 	default:
 		start, _ := stmt.Span()
-		log.Fatalf("%s: exec: unexpected statement %T", start, stmt)
+		log.Panicf("%s: exec: unexpected statement %T", start, stmt)
 	}
 }
 
@@ -1370,7 +1374,7 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		case syntax.TILDE:
 			fcomp.emit(TILDE)
 		default:
-			log.Fatalf("%s: unexpected unary op: %s", e.OpPos, e.Op)
+			log.Panicf("%s: unexpected unary op: %s", e.OpPos, e.Op)
 		}
 
 	case *syntax.BinaryExpr:
@@ -1432,7 +1436,7 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 
 	default:
 		start, _ := e.Span()
-		log.Fatalf("%s: unexpected expr %T", start, e)
+		log.Panicf("%s: unexpected expr %T", start, e)
 	}
 }
 
@@ -1615,7 +1619,7 @@ func (fcomp *fcomp) binop(pos syntax.Position, op syntax.Token) {
 		fcomp.emit(Opcode(op-syntax.EQL) + EQL)
 
 	default:
-		log.Fatalf("%s: unexpected binary op: %s", pos, op)
+		log.Panicf("%s: unexpected binary op: %s", pos, op)
 	}
 }
 
@@ -1774,7 +1778,7 @@ func (fcomp *fcomp) comprehension(comp *syntax.Comprehension, clauseIndex int) {
 	}
 
 	start, _ := clause.Span()
-	log.Fatalf("%s: unexpected comprehension clause %T", start, clause)
+	log.Panicf("%s: unexpected comprehension clause %T", start, clause)
 }
 
 func (fcomp *fcomp) function(f *resolve.Function) {

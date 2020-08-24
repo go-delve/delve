@@ -13,9 +13,11 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
+	"unsafe"
 
 	"go.starlark.net/internal/compile"
 	"go.starlark.net/internal/spell"
@@ -46,12 +48,50 @@ type Thread struct {
 	// See example_test.go for some example implementations of Load.
 	Load func(thread *Thread, module string) (StringDict, error)
 
+	// steps counts abstract computation steps executed by this thread.
+	steps, maxSteps uint64
+
+	// cancelReason records the reason from the first call to Cancel.
+	cancelReason *string
+
 	// locals holds arbitrary "thread-local" Go values belonging to the client.
 	// They are accessible to the client but not to any Starlark program.
 	locals map[string]interface{}
 
 	// proftime holds the accumulated execution time since the last profile event.
 	proftime time.Duration
+}
+
+// ExecutionSteps returns a count of abstract computation steps executed
+// by this thread. It is incremented by the interpreter. It may be used
+// as a measure of the approximate cost of Starlark execution, by
+// computing the difference in its value before and after a computation.
+//
+// The precise meaning of "step" is not specified and may change.
+func (thread *Thread) ExecutionSteps() uint64 {
+	return thread.steps
+}
+
+// SetMaxExecutionSteps sets a limit on the number of Starlark
+// computation steps that may be executed by this thread. If the
+// thread's step counter exceeds this limit, the interpreter calls
+// thread.Cancel("too many steps").
+func (thread *Thread) SetMaxExecutionSteps(max uint64) {
+	thread.maxSteps = max
+}
+
+// Cancel causes execution of Starlark code in the specified thread to
+// promptly fail with an EvalError that includes the specified reason.
+// There may be a delay before the interpreter observes the cancellation
+// if the thread is currently in a call to a built-in function.
+//
+// Cancellation cannot be undone.
+//
+// Unlike most methods of Thread, it is safe to call Cancel from any
+// goroutine, even if the thread is actively executing.
+func (thread *Thread) Cancel(reason string) {
+	// Atomically set cancelReason, preserving earlier reason if any.
+	atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&thread.cancelReason)), nil, unsafe.Pointer(&reason))
 }
 
 // SetLocal sets the thread-local value associated with the specified key.
@@ -190,6 +230,7 @@ func (stack CallStack) String() string {
 type EvalError struct {
 	Msg       string
 	CallStack CallStack
+	cause     error
 }
 
 // A CallFrame represents the function name and current
@@ -210,6 +251,7 @@ func (thread *Thread) evalError(err error) *EvalError {
 	return &EvalError{
 		Msg:       err.Error(),
 		CallStack: thread.CallStack(),
+		cause:     err,
 	}
 }
 
@@ -220,6 +262,8 @@ func (e *EvalError) Error() string { return e.Msg }
 func (e *EvalError) Backtrace() string {
 	return fmt.Sprintf("%sError: %s", e.CallStack, e.Msg)
 }
+
+func (e *EvalError) Unwrap() error { return e.cause }
 
 // A Program is a compiled Starlark program.
 //
@@ -362,6 +406,57 @@ func (prog *Program) Init(thread *Thread, predeclared StringDict) (StringDict, e
 	return toplevel.Globals(), err
 }
 
+// ExecREPLChunk compiles and executes file f in the specified thread
+// and global environment. This is a variant of ExecFile specialized to
+// the needs of a REPL, in which a sequence of input chunks, each
+// syntactically a File, manipulates the same set of module globals,
+// which are not frozen after execution.
+//
+// This function is intended to support only go.starlark.net/repl.
+// Its API stability is not guaranteed.
+func ExecREPLChunk(f *syntax.File, thread *Thread, globals StringDict) error {
+	var predeclared StringDict
+
+	// -- variant of FileProgram --
+
+	if err := resolve.REPLChunk(f, globals.Has, predeclared.Has, Universe.Has); err != nil {
+		return err
+	}
+
+	var pos syntax.Position
+	if len(f.Stmts) > 0 {
+		pos = syntax.Start(f.Stmts[0])
+	} else {
+		pos = syntax.MakePosition(&f.Path, 1, 1)
+	}
+
+	module := f.Module.(*resolve.Module)
+	compiled := compile.File(f.Stmts, pos, "<toplevel>", module.Locals, module.Globals)
+	prog := &Program{compiled}
+
+	// -- variant of Program.Init --
+
+	toplevel := makeToplevelFunction(prog.compiled, predeclared)
+
+	// Initialize module globals from parameter.
+	for i, id := range prog.compiled.Globals {
+		if v := globals[id.Name]; v != nil {
+			toplevel.module.globals[i] = v
+		}
+	}
+
+	_, err := Call(thread, toplevel, nil, nil)
+
+	// Reflect changes to globals back to parameter, even after an error.
+	for i, id := range prog.compiled.Globals {
+		if v := toplevel.module.globals[i]; v != nil {
+			globals[id.Name] = v
+		}
+	}
+
+	return err
+}
+
 func makeToplevelFunction(prog *compile.Program, predeclared StringDict) *Function {
 	// Create the Starlark value denoted by each program constant c.
 	constants := make([]Value, len(prog.Constants))
@@ -377,7 +472,7 @@ func makeToplevelFunction(prog *compile.Program, predeclared StringDict) *Functi
 		case float64:
 			v = Float(c)
 		default:
-			log.Fatalf("unexpected constant %T: %v", c, c)
+			log.Panicf("unexpected constant %T: %v", c, c)
 		}
 		constants[i] = v
 	}
@@ -972,7 +1067,8 @@ func tupleRepeat(elems Tuple, n Int) (Tuple, error) {
 	// Inv: i > 0, len > 0
 	sz := len(elems) * i
 	if sz < 0 || sz >= maxAlloc { // sz < 0 => overflow
-		return nil, fmt.Errorf("excessive repeat (%d elements)", sz)
+		// Don't print sz.
+		return nil, fmt.Errorf("excessive repeat (%d * %d elements)", len(elems), i)
 	}
 	res := make([]Value, sz)
 	// copy elems into res, doubling each time
@@ -998,7 +1094,8 @@ func stringRepeat(s String, n Int) (String, error) {
 	// Inv: i > 0, len > 0
 	sz := len(s) * i
 	if sz < 0 || sz >= maxAlloc { // sz < 0 => overflow
-		return "", fmt.Errorf("excessive repeat (%d elements)", sz)
+		// Don't print sz.
+		return "", fmt.Errorf("excessive repeat (%d * %d elements)", len(s), i)
 	}
 	return String(strings.Repeat(string(s), i)), nil
 }
@@ -1020,6 +1117,14 @@ func Call(thread *Thread, fn Value, args Tuple, kwargs []Tuple) (Value, error) {
 	if fr == nil {
 		fr = new(frame)
 	}
+
+	if thread.stack == nil {
+		// one-time initialization of thread
+		if thread.maxSteps == 0 {
+			thread.maxSteps-- // (MaxUint64)
+		}
+	}
+
 	thread.stack = append(thread.stack, fr) // push
 
 	fr.callable = c
