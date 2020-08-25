@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"time"
-	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
@@ -848,7 +847,8 @@ func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) e
 	}
 
 	out.Mem = Mem
-	out.IsLittleEndian = isLittleEndian()
+	out.IsLittleEndian = true //TODO: get byte order from debugger.target.BinInfo().Arch
+
 	return nil
 }
 
@@ -866,17 +866,4 @@ func (s *RPCServer) StopRecording(arg StopRecordingIn, cb service.RPCCallback) {
 		return
 	}
 	cb.Return(out, nil)
-}
-
-const intSize = int(unsafe.Sizeof(0))
-
-func isLittleEndian() bool {
-	i := 0x1
-	bs := (*[intSize]byte)(unsafe.Pointer(&i))
-
-	if bs[0] == 1 {
-		return true
-	} else {
-		return false
-	}
 }

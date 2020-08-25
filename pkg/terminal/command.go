@@ -1627,7 +1627,7 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 		return fmt.Errorf("no address specified")
 	}
 
-	memArea, isLittleEndian, err := t.client.ExamineMemory(uintptr(address), count*size)
+	memArea, isLittleEndian, err := t.client.ExamineMemory(address, count*size)
 	if err != nil {
 		return err
 	}

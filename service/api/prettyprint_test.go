@@ -40,7 +40,6 @@ func Test_byteArrayToUInt64(t *testing.T) {
 		args []byte
 		want uint64
 	}{
-		// TODO: Add test cases.
 		{"case-nil", nil, 0},
 		{"case-empty", []byte{}, 0},
 		{"case-1", []byte{0x1}, 1},

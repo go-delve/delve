@@ -380,16 +380,16 @@ func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, f
 	switch format {
 	case 'b':
 		cols = 4 // Avoid emitting rows that are too long when using binary format
-		colFormat = "%08b"
+		colFormat = fmt.Sprintf("%%0%db", colBytes*8)
 	case 'o':
 		cols = 8
-		colFormat = "0%03o" // Always keep one leading zero for octal.
+		colFormat = fmt.Sprintf("0%%0%do", colBytes*3) // Always keep one leading zero for octal.
 	case 'd':
 		cols = 8
-		colFormat = "%03d"
+		colFormat = fmt.Sprintf("%%0%dd", colBytes*3)
 	case 'x':
 		cols = 8
-		colFormat = "0x%02x" // Always keep one leading '0x' for hex.
+		colFormat = fmt.Sprintf("0x%%0%dx", colBytes*2) // Always keep one leading '0x' for hex.
 	default:
 		return fmt.Sprintf("not supprted format %q\n", string(format))
 	}
