@@ -1249,88 +1249,90 @@ func TestVariableEvaluation(t *testing.T) {
 
 func TestFrameEvaluation(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestProcess("goroutinestackprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.stacktraceme")
-		assertNoError(p.Continue(), t, "Continue()")
+	for i := 0; i < 100; i++ {
+		withTestProcess("goroutinestackprog", t, func(p *proc.Target, fixture protest.Fixture) {
+			setFunctionBreakpoint(p, t, "main.stacktraceme")
+			assertNoError(p.Continue(), t, "Continue()")
 
-		t.Logf("stopped on thread %d, goroutine: %#v", p.CurrentThread().ThreadID(), p.SelectedGoroutine())
+			t.Logf("stopped on thread %d, goroutine: %#v", p.CurrentThread().ThreadID(), p.SelectedGoroutine())
 
-		// Testing evaluation on goroutines
-		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
-		assertNoError(err, t, "GoroutinesInfo")
-		depth := 30
-		found := make([]bool, depth)
-		for _, g := range gs {
-			frame := -1
-			frames, err := g.Stacktrace(depth, 0)
-			if err != nil {
-				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
-				continue
+			// Testing evaluation on goroutines
+			gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+			assertNoError(err, t, "GoroutinesInfo")
+			depth := 30
+			found := make([]bool, depth)
+			for _, g := range gs {
+				frame := -1
+				frames, err := g.Stacktrace(depth, 0)
+				if err != nil {
+					t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
+					continue
+				}
+				t.Logf("Goroutine %d %#v", g.ID, g.Thread)
+				logStacktrace(t, p.BinInfo(), frames)
+				for i := range frames {
+					if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
+						frame = i
+						break
+					}
+				}
+
+				if frame < 0 {
+					t.Logf("Goroutine %d: could not find correct frame", g.ID)
+					continue
+				}
+
+				scope, err := proc.ConvertEvalScope(p, g.ID, frame, 0)
+				assertNoError(err, t, "ConvertEvalScope()")
+				t.Logf("scope = %v", scope)
+				v, err := scope.EvalVariable("i", normalLoadConfig)
+				t.Logf("v = %v", v)
+				if err != nil {
+					t.Logf("Goroutine %d: %v\n", g.ID, err)
+					continue
+				}
+				vval, _ := constant.Int64Val(v.Value)
+				found[vval] = true
 			}
-			t.Logf("Goroutine %d %#v", g.ID, g.Thread)
-			logStacktrace(t, p.BinInfo(), frames)
-			for i := range frames {
-				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
-					frame = i
-					break
+
+			firsterr := false
+			if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+				// We try to make sure that all goroutines are stopped at a sensible place
+				// before reading their stacktrace, but due to the nature of the test
+				// program there is no guarantee that we always find them in a reasonable
+				// state.
+				// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+				// unnecessary flakiness allow a single goroutine to be in a bad state.
+				firsterr = true
+			}
+			for i := range found {
+				if !found[i] {
+					if firsterr {
+						firsterr = false
+					} else {
+						t.Fatalf("Goroutine %d not found\n", i)
+					}
 				}
 			}
 
-			if frame < 0 {
-				t.Logf("Goroutine %d: could not find correct frame", g.ID)
-				continue
-			}
+			// Testing evaluation on frames
+			assertNoError(p.Continue(), t, "Continue() 2")
+			g, err := proc.GetG(p.CurrentThread())
+			assertNoError(err, t, "GetG()")
 
-			scope, err := proc.ConvertEvalScope(p, g.ID, frame, 0)
-			assertNoError(err, t, "ConvertEvalScope()")
-			t.Logf("scope = %v", scope)
-			v, err := scope.EvalVariable("i", normalLoadConfig)
-			t.Logf("v = %v", v)
-			if err != nil {
-				t.Logf("Goroutine %d: %v\n", g.ID, err)
-				continue
-			}
-			vval, _ := constant.Int64Val(v.Value)
-			found[vval] = true
-		}
-
-		firsterr := false
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-			// We try to make sure that all goroutines are stopped at a sensible place
-			// before reading their stacktrace, but due to the nature of the test
-			// program there is no guarantee that we always find them in a reasonable
-			// state.
-			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
-			// unnecessary flakiness allow a single goroutine to be in a bad state.
-			firsterr = true
-		}
-		for i := range found {
-			if !found[i] {
-				if firsterr {
-					firsterr = false
-				} else {
-					t.Fatalf("Goroutine %d not found\n", i)
+			for i := 0; i <= 3; i++ {
+				scope, err := proc.ConvertEvalScope(p, g.ID, i+1, 0)
+				assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
+				v, err := scope.EvalVariable("n", normalLoadConfig)
+				assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
+				n, _ := constant.Int64Val(v.Value)
+				t.Logf("frame %d n %d\n", i+1, n)
+				if n != int64(3-i) {
+					t.Fatalf("On frame %d value of n is %d (not %d)", i+1, n, 3-i)
 				}
 			}
-		}
-
-		// Testing evaluation on frames
-		assertNoError(p.Continue(), t, "Continue() 2")
-		g, err := proc.GetG(p.CurrentThread())
-		assertNoError(err, t, "GetG()")
-
-		for i := 0; i <= 3; i++ {
-			scope, err := proc.ConvertEvalScope(p, g.ID, i+1, 0)
-			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
-			v, err := scope.EvalVariable("n", normalLoadConfig)
-			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
-			n, _ := constant.Int64Val(v.Value)
-			t.Logf("frame %d n %d\n", i+1, n)
-			if n != int64(3-i) {
-				t.Fatalf("On frame %d value of n is %d (not %d)", i+1, n, 3-i)
-			}
-		}
-	})
+		})
+	}
 }
 
 func TestPointerSetting(t *testing.T) {
