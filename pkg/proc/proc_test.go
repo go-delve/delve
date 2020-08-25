@@ -1258,10 +1258,11 @@ func TestFrameEvaluation(t *testing.T) {
 		// Testing evaluation on goroutines
 		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 		assertNoError(err, t, "GoroutinesInfo")
-		found := make([]bool, 10)
+		depth := 30
+		found := make([]bool, depth)
 		for _, g := range gs {
 			frame := -1
-			frames, err := g.Stacktrace(10, 0)
+			frames, err := g.Stacktrace(depth, 0)
 			if err != nil {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
