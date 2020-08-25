@@ -37,7 +37,7 @@ The `--log-to-file` and `--log-to-fd` options can be used to redirect the "API s
 
 ## Controlling the backend
 
-Once you have a running headless instance you can connect to it and start sending commands. Delve's protocol is built on top of the [JSON-RPC](http://json-rpc.org) specification.
+Once you have a running headless instance you can connect to it and start sending commands. Delve's protocol is built on top of the [JSON-RPC specification](https://www.jsonrpc.org/specification).
 
 The methods of a `service/rpc2.RPCServer` are exposed through this connection, to find out which requests you can send see the documentation of RPCServer on [godoc](https://godoc.org/github.com/go-delve/Delve/service/rpc2#RPCServer). 
 
