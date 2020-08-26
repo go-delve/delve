@@ -1,6 +1,9 @@
 package main
 
-import "runtime"
+import (
+	"runtime"
+	"time"
+)
 
 const N = 10
 
@@ -26,6 +29,7 @@ func main() {
 		<-started
 	}
 	runtime.Gosched()
+	time.Sleep(time.Duration(1) * time.Second)
 	stacktraceme()
 	for i := 0; i < N; i++ {
 		<-done
