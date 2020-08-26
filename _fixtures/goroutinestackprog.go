@@ -28,8 +28,7 @@ func main() {
 	for i := 0; i < N; i++ {
 		<-started
 	}
-	runtime.Gosched()
-	time.Sleep(time.Duration(1) * time.Second)
+	runtime.Gosched();time.Sleep(time.Duration(1) * time.Second);
 	stacktraceme()
 	for i := 0; i < N; i++ {
 		<-done
