@@ -661,7 +661,7 @@ func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 		// step threads stopped at any breakpoint over their breakpoint
 		for _, thread := range p.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil {
-				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
+				if err := thread.StepInstruction(); err != nil {
 					return nil, proc.StopUnknown, err
 				}
 			}
@@ -1305,7 +1305,8 @@ func (t *gdbThread) Common() *proc.CommonThread {
 	return &t.common
 }
 
-func (t *gdbThread) stepInstruction(tu *threadUpdater) error {
+// StepInstruction will step exactly 1 CPU instruction.
+func (t *gdbThread) StepInstruction() error {
 	pc := t.regs.PC()
 	if _, atbp := t.p.breakpoints.M[pc]; atbp {
 		err := t.p.conn.clearBreakpoint(pc)
@@ -1317,12 +1318,7 @@ func (t *gdbThread) stepInstruction(tu *threadUpdater) error {
 	// Reset thread registers so the next call to
 	// Thread.Registers will not be cached.
 	t.regs.regs = nil
-	return t.p.conn.step(t.strID, tu, false)
-}
-
-// StepInstruction will step exactly 1 CPU instruction.
-func (t *gdbThread) StepInstruction() error {
-	return t.stepInstruction(&threadUpdater{p: t.p})
+	return t.p.conn.step(t.strID, &threadUpdater{p: t.p}, false)
 }
 
 // Blocked returns true if the thread is blocked in runtime or kernel code.
