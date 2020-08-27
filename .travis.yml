@@ -44,6 +44,7 @@ matrix:
 
 before_install:
   - export GOFLAGS=-mod=vendor
+  - export GODEBUG=asyncpreemptoff=1
   - if [ $TRAVIS_OS_NAME = "linux" ]; then sudo apt-get -qq update; sudo apt-get install -y dwz; echo "dwz version $(dwz --version)"; fi
   - if [ $TRAVIS_OS_NAME = "windows" ]; then choco install procdump make; fi
 
