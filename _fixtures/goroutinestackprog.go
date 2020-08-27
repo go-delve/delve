@@ -1,9 +1,6 @@
 package main
 
-import (
-	"runtime"
-	"time"
-)
+import "runtime"
 
 const N = 10
 
