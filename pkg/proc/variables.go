@@ -310,9 +310,6 @@ func GoroutinesInfo(dbp *Target, start, count int) ([]*G, int, error) {
 
 	threads := dbp.ThreadList()
 	for _, th := range threads {
-		if th.Blocked() {
-			continue
-		}
 		g, _ := GetG(th)
 		if g != nil {
 			threadg[g.ID] = g
