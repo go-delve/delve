@@ -367,8 +367,22 @@ func loadMoreDwarfRegistersFromSliceFunc(dr *op.DwarfRegisters, regs Registers, 
 		regslice, err := regs.Slice(true)
 		dr.FloatLoadError = err
 		for _, reg := range regslice {
-			if dwarfReg, ok := nameToDwarf[strings.ToLower(reg.Name)]; ok {
+			name := strings.ToLower(reg.Name)
+			if dwarfReg, ok := nameToDwarf[name]; ok {
 				dr.AddReg(uint64(dwarfReg), reg.Reg)
+			} else if reg.Reg.Bytes != nil && (strings.HasPrefix(name, "ymm") || strings.HasPrefix(name, "zmm")) {
+				xmmIdx, ok := nameToDwarf["x"+name[1:]]
+				if !ok {
+					continue
+				}
+				xmmReg := dr.Reg(uint64(xmmIdx))
+				if xmmReg == nil || xmmReg.Bytes == nil {
+					continue
+				}
+				nb := make([]byte, 0, len(xmmReg.Bytes)+len(reg.Reg.Bytes))
+				nb = append(nb, xmmReg.Bytes...)
+				nb = append(nb, reg.Reg.Bytes...)
+				xmmReg.Bytes = nb
 			}
 		}
 	}
@@ -404,7 +418,7 @@ func amd64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 
 	default:
 		if reg.Bytes != nil && strings.HasPrefix(n, "xmm") {
-			return name, true, formatSSEReg(reg.Bytes)
+			return name, true, formatSSEReg(name, reg.Bytes)
 		} else if reg.Bytes != nil && strings.HasPrefix(n, "st(") {
 			return name, true, formatX87Reg(reg.Bytes)
 		} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) <= 8) {
@@ -415,40 +429,59 @@ func amd64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 	}
 }
 
-func formatSSEReg(xmm []byte) string {
+func formatSSEReg(name string, reg []byte) string {
+	out := new(bytes.Buffer)
+	formatSSERegInternal(reg, out)
+	if len(reg) < 32 {
+		return out.String()
+	}
+
+	fmt.Fprintf(out, "\n\t[%sh] ", "Y"+name[1:])
+	formatSSERegInternal(reg[16:], out)
+
+	if len(reg) < 64 {
+		return out.String()
+	}
+
+	fmt.Fprintf(out, "\n\t[%shl] ", "Z"+name[1:])
+	formatSSERegInternal(reg[32:], out)
+	fmt.Fprintf(out, "\n\t[%shh] ", "Z"+name[1:])
+	formatSSERegInternal(reg[48:], out)
+
+	return out.String()
+}
+
+func formatSSERegInternal(xmm []byte, out *bytes.Buffer) {
 	buf := bytes.NewReader(xmm)
 
-	var out bytes.Buffer
 	var vi [16]uint8
 	for i := range vi {
 		binary.Read(buf, binary.LittleEndian, &vi[i])
 	}
 
-	fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+	fmt.Fprintf(out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
 
-	fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+	fmt.Fprintf(out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
 
-	fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
+	fmt.Fprintf(out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
 
-	fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
+	fmt.Fprintf(out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
 
-	fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
+	fmt.Fprintf(out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
 
 	buf.Seek(0, io.SeekStart)
 	var v2 [2]float64
 	for i := range v2 {
 		binary.Read(buf, binary.LittleEndian, &v2[i])
 	}
-	fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
+	fmt.Fprintf(out, "\tv2_float={ %g %g }", v2[0], v2[1])
 
 	buf.Seek(0, io.SeekStart)
 	var v4 [4]float32
 	for i := range v4 {
 		binary.Read(buf, binary.LittleEndian, &v4[i])
 	}
-	fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
-
-	return out.String()
+	fmt.Fprintf(out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
 }
 
 func formatX87Reg(b []byte) string {
