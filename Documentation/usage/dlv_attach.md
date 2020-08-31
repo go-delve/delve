@@ -37,7 +37,7 @@ dlv attach pid [executable]
       --log-dest string      Writes logs to the specified file or file descriptor (see 'dlv help log').
       --log-output string    Comma separated list of components that should produce debug output (see 'dlv help log')
       --only-same-user       Only connections from the same user that started this instance of Delve are allowed to connect. (default true)
-      --wd string            Working directory for running the program. (default ".")
+      --wd string            Working directory for running the program.
 ```
 
 ### SEE ALSO
