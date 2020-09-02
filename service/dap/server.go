@@ -15,8 +15,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -71,12 +73,15 @@ type launchAttachArgs struct {
 	stopOnEntry bool
 	// stackTraceDepth is the maximum length of the returned list of stack frames.
 	stackTraceDepth int
+	// loadGlobalVariables indicates if global package variables should be loaded.
+	loadGlobalVariables bool
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
 var defaultArgs = launchAttachArgs{
-	stopOnEntry:     false,
-	stackTraceDepth: 50,
+	stopOnEntry:         false,
+	stackTraceDepth:     50,
+	loadGlobalVariables: false,
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -464,6 +469,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.args.stackTraceDepth = int(depth)
 	}
 
+	globals, ok := request.Arguments["loadGlobalVariables"]
+	s.args.loadGlobalVariables = ok && globals == true
+
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
 	if ok {
@@ -721,17 +729,52 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(scope, cfg)
 	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list local vars", err.Error())
+		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
 	locScope := api.Variable{Name: "Locals", Children: locals}
 
 	// TODO(polina): Annotate shadowed variables
-	// TODO(polina): Retrieve global variables
 
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeArgs, scopeLocals}
+
+	if s.args.loadGlobalVariables {
+		state, err := s.debugger.State( /*nowait*/ true)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
+			return
+		}
+
+		// List global variables only for the current package only
+		currPkg := "??"
+		var globals []api.Variable
+		if state.CurrentThread != nil && state.CurrentThread.File != "" {
+			currDir := path.Dir(state.CurrentThread.File)
+			pkgInfo := s.debugger.ListPackagesBuildInfo( /*includeFiles*/ false)
+			for _, pkg := range pkgInfo {
+				if pkg.DirectoryPath == currDir {
+					currPkg = pkg.ImportPath
+					pkgFilter := fmt.Sprintf("^%s\\.", currPkg)
+					globals, err = s.debugger.PackageVariables(state.CurrentThread.ID, pkgFilter, cfg)
+					if err != nil {
+						s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
+						return
+					}
+					// Remove package prefix from the the variable names
+					for i, g := range globals {
+						globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
+					}
+					break
+				}
+			}
+		}
+		// TODO(polina): vscode-go adapter ignores initdone. Should we?
+		globScope := api.Variable{Name: fmt.Sprintf("Globals (package %s)", currPkg), Children: globals}
+		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
+		scopes = append(scopes, scopeGlobals)
+	}
 
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
