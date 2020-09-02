@@ -747,22 +747,35 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 			return
 		}
 
-		// List global variables only for the current package only
+		// Limit what global variables we will return to the current package only.
+		// TODO(polina): This is how vscode-go currently does it to make
+		// the amount of the returned data manageable. In fact, this is
+		// considered so expensive even with the package filter, that
+		// the default for showGlobalVariables was recently flipped to
+		// not displaying. If we delay loading of the globals until the
+		// corresponding entry is expanded, generating an explicit variable
+		// request, should we consider making all globals accessible by package?
 		currPkg := "??"
 		var globals []api.Variable
 		if state.CurrentThread != nil && state.CurrentThread.File != "" {
 			currDir := path.Dir(state.CurrentThread.File)
+			// Retrieve package-to-compiled-directory mapping, so we can match
+			// the directory of the current file with the breakpoint to the import
+			// path of its package. The import path can then be used to filter
+			// all global package variables returned by the debugger by default
+			// down to only the ones in the current package.
 			pkgInfo := s.debugger.ListPackagesBuildInfo( /*includeFiles*/ false)
 			for _, pkg := range pkgInfo {
 				if pkg.DirectoryPath == currDir {
 					currPkg = pkg.ImportPath
-					pkgFilter := fmt.Sprintf("^%s\\.", currPkg)
-					globals, err = s.debugger.PackageVariables(state.CurrentThread.ID, pkgFilter, cfg)
+					currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
+					globals, err = s.debugger.PackageVariables(state.CurrentThread.ID, currPkgFilter, cfg)
 					if err != nil {
 						s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
 						return
 					}
-					// Remove package prefix from the the variable names
+					// Remove package prefix from the variable names.
+					// We can include it once in the name of the scope.
 					for i, g := range globals {
 						globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
 					}
