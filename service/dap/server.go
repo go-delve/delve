@@ -774,8 +774,8 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 						s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
 						return
 					}
-					// Remove package prefix from the variable names.
-					// We can include it once in the name of the scope.
+					// Remove package prefix from the fully-qualified variable names.
+					// We will include the package info once in the name of the scope.
 					for i, g := range globals {
 						globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
 					}
