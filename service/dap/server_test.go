@@ -606,9 +606,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1002)
 					globals := client.ExpectVariablesResponse(t)
-					expectChildren(t, globals, "Globals", 2)
 					expectVarExact(t, globals, 0, "p1", "10", noChildren)
-					expectVarExact(t, globals, 1, ".inittask", "<runtime.initTask>", hasChildren)
 
 					// Locals
 
@@ -808,7 +806,6 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1002) // Globals
 					globals := client.ExpectVariablesResponse(t)
-					expectChildren(t, globals, "Globals", 2)
 					expectVarExact(t, globals, 0, "p1", "10", noChildren)
 
 					client.VariablesRequest(7777)
@@ -1072,9 +1069,11 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					expectScope(t, scopes, 2, "Globals (package main)", 1002)
 
 					client.VariablesRequest(1002)
-					globals := client.ExpectVariablesResponse(t)
-					expectChildren(t, globals, "Globals", 1)
-					expectVarExact(t, globals, 0, ".inittask", "<runtime.initTask>", hasChildren)
+					client.ExpectVariablesResponse(t)
+					// The program has no user-defined globals.
+					// Depending on the Go version, there might
+					// be some runtime globals (e.g. main..inittask)
+					// so testing for the total number is too fragile.
 
 					// Step into pkg.AnotherMethod()
 					client.StepInRequest(1)
@@ -1092,7 +1091,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					expectScope(t, scopes, 2, "Globals (package github.com/go-delve/delve/_fixtures/internal/dir0/pkg)", 1002)
 
 					client.VariablesRequest(1002)
-					globals = client.ExpectVariablesResponse(t)
+					globals := client.ExpectVariablesResponse(t)
 					expectChildren(t, globals, "Globals", 1)
 					ref := expectVarExact(t, globals, 0, "SomeVar", "<github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType>", hasChildren)
 
