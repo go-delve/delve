@@ -421,7 +421,7 @@ func expectScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varR
 func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string, numChildren int) {
 	t.Helper()
 	if len(got.Body.Variables) != numChildren {
-		t.Errorf("\ngot  len(%s)=%d\nwant %d", parentName, len(got.Body.Variables), numChildren)
+		t.Errorf("\ngot  len(%s)=%d (children=%#v)\nwant len=%d", parentName, len(got.Body.Variables), got.Body.Variables, numChildren)
 	}
 }
 
@@ -435,7 +435,7 @@ func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string,
 func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch, hasRef bool) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
-		t.Errorf("\ngot  len=%d\nwant len>%d", len(got.Body.Variables), i)
+		t.Errorf("\ngot  len=%d (children=%#v)\nwant len>%d", len(got.Body.Variables), got.Body.Variables, i)
 		return
 	}
 	if i < 0 {
@@ -809,7 +809,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.VariablesRequest(1002) // Globals
 					globals := client.ExpectVariablesResponse(t)
 					expectChildren(t, globals, "Globals", 2)
-					expectVarExact(t, globals, -1, "p1", "10", noChildren)
+					expectVarExact(t, globals, 0, "p1", "10", noChildren)
 
 					client.VariablesRequest(7777)
 					erres = client.ExpectErrorResponse(t)
