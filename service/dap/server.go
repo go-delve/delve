@@ -888,7 +888,14 @@ func (s *Server) convertVariable(v api.Variable) (value string, variablesReferen
 			variablesReference = s.variableHandles.create(v)
 		}
 	case reflect.Interface:
-		if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
+		if v.Addr == 0 {
+			// An escaped interface variable that points to nil, this shouldn't
+			// happen in normal code but can happen if the variable is out of scope,
+			// such as if an interface variable has been captured by a
+			// closure and replaced by a pointer to interface, and the pointer
+			// happens to contain 0.
+			value = "nil"
+		} else if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
 			value = "nil <" + v.Type + ">"
 		} else {
 			value = "<" + v.Type + ">"
