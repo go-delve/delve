@@ -73,15 +73,15 @@ type launchAttachArgs struct {
 	stopOnEntry bool
 	// stackTraceDepth is the maximum length of the returned list of stack frames.
 	stackTraceDepth int
-	// loadGlobalVariables indicates if global package variables should be loaded.
-	loadGlobalVariables bool
+	// showGlobalVariables indicates if global package variables should be loaded.
+	showGlobalVariables bool
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
 var defaultArgs = launchAttachArgs{
 	stopOnEntry:         false,
 	stackTraceDepth:     50,
-	loadGlobalVariables: false,
+	showGlobalVariables: false,
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -469,8 +469,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.args.stackTraceDepth = int(depth)
 	}
 
-	globals, ok := request.Arguments["loadGlobalVariables"]
-	s.args.loadGlobalVariables = ok && globals == true
+	globals, ok := request.Arguments["showGlobalVariables"]
+	s.args.showGlobalVariables = ok && globals == true
 
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
@@ -740,7 +740,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeArgs, scopeLocals}
 
-	if s.args.loadGlobalVariables {
+	if s.args.showGlobalVariables {
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())

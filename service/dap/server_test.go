@@ -560,7 +560,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 			// Launch
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
-					"mode": "exec", "program": fixture.Path, "loadGlobalVariables": true,
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
 				})
 			},
 			// Breakpoints are set within the program
@@ -1040,7 +1040,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 	})
 }
 
-// TestGlobalScopeAndVariables launches the program with loadGlobalVariables
+// TestGlobalScopeAndVariables launches the program with showGlobalVariables
 // arg set, executes to a breakpoint in the main package and tests that global
 // package main variables got loaded. It then steps into a function
 // in another package and tests that globals scope got updated to those vars.
@@ -1050,7 +1050,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 			// Launch
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
-					"mode": "exec", "program": fixture.Path, "loadGlobalVariables": true,
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
 				})
 			},
 			// Breakpoints are set within the program
