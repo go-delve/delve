@@ -785,7 +785,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 			}
 		}
 		if currPkg == "??" {
-			s.log.Errorf("Unable to determine package from state=%#v", state)
+			s.log.Errorf("Unable to determine package from current thread: %#v", state.CurrentThread)
 		} else {
 			// TODO(polina): vscode-go adapter ignores initdone. Should we?
 			globScope := api.Variable{Name: fmt.Sprintf("Globals (package %s)", currPkg), Children: globals}
