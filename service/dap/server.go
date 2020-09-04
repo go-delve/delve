@@ -752,13 +752,12 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		// the amount of the returned data manageable. In fact, this is
 		// considered so expensive even with the package filter, that
 		// the default for showGlobalVariables was recently flipped to
-		// not showing. If we delay loading of the globals until the
-		// corresponding entry is expanded, generating an explicit variable
-		// request, should we consider making all globals accessible by package?
+		// not showing. If we delay loading of the globals until the corresponding
+		// scope is expanded, generating an explicit variable request,
+		// should we consider making all globals accessible with a scope per package?
 		// Or users can just rely on watch variables.
-		currPkg := "??"
-		var globals []api.Variable
 		if state.CurrentThread != nil && state.CurrentThread.File != "" {
+			currPkg := "??"
 			currDir := path.Dir(filepath.ToSlash(state.CurrentThread.File)) // Normalized across OS
 			// Retrieve package-to-compiled-directory mapping, so we can match
 			// the directory of the current file with the breakpoint to the import
@@ -766,8 +765,9 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 			// all global package variables returned by the debugger by default
 			// down to only the ones in the current package.
 			pkgInfo := s.debugger.ListPackagesBuildInfo( /*includeFiles*/ false)
+			var globals []api.Variable
 			for _, pkg := range pkgInfo {
-				if pkg.DirectoryPath == currDir {
+				if filepath.ToSlash(pkg.DirectoryPath) == currDir { // Normalized across OS
 					currPkg = pkg.ImportPath
 					currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
 					globals, err = s.debugger.PackageVariables(state.CurrentThread.ID, currPkgFilter, cfg)
@@ -783,17 +783,16 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 					break
 				}
 			}
-		}
-		if currPkg == "??" {
-			s.log.Errorf("Unable to determine package from current thread: %#v", state.CurrentThread)
-		} else {
-			// TODO(polina): vscode-go adapter ignores initdone. Should we?
-			globScope := api.Variable{Name: fmt.Sprintf("Globals (package %s)", currPkg), Children: globals}
-			scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
-			scopes = append(scopes, scopeGlobals)
+			if currPkg == "??" {
+				s.log.Errorf("Unable to find current dir %q in pkg info: %#v", currDir, pkgInfo)
+			} else {
+				// TODO(polina): vscode-go adapter removes hides the initdone global from the users. Should we?
+				globScope := api.Variable{Name: fmt.Sprintf("Globals (package %s)", currPkg), Children: globals}
+				scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
+				scopes = append(scopes, scopeGlobals)
+			}
 		}
 	}
-
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ScopesResponseBody{Scopes: scopes},
