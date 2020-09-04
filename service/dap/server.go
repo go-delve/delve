@@ -784,10 +784,14 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 				}
 			}
 		}
-		// TODO(polina): vscode-go adapter ignores initdone. Should we?
-		globScope := api.Variable{Name: fmt.Sprintf("Globals (package %s)", currPkg), Children: globals}
-		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
-		scopes = append(scopes, scopeGlobals)
+		if currPkg == "??" {
+			s.log.Errorf("Unable to determine package from state=%#v", state)
+		} else {
+			// TODO(polina): vscode-go adapter ignores initdone. Should we?
+			globScope := api.Variable{Name: fmt.Sprintf("Globals (package %s)", currPkg), Children: globals}
+			scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
+			scopes = append(scopes, scopeGlobals)
+		}
 	}
 
 	response := &dap.ScopesResponse{
