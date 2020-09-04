@@ -752,13 +752,14 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		// the amount of the returned data manageable. In fact, this is
 		// considered so expensive even with the package filter, that
 		// the default for showGlobalVariables was recently flipped to
-		// not displaying. If we delay loading of the globals until the
+		// not showing. If we delay loading of the globals until the
 		// corresponding entry is expanded, generating an explicit variable
 		// request, should we consider making all globals accessible by package?
+		// Or users can just rely on watch variables.
 		currPkg := "??"
 		var globals []api.Variable
 		if state.CurrentThread != nil && state.CurrentThread.File != "" {
-			currDir := path.Dir(state.CurrentThread.File)
+			currDir := path.Dir(filepath.ToSlash(state.CurrentThread.File)) // Normalized across OS
 			// Retrieve package-to-compiled-directory mapping, so we can match
 			// the directory of the current file with the breakpoint to the import
 			// path of its package. The import path can then be used to filter
