@@ -7,8 +7,8 @@ import (
 
 // delve counterpart to runtime.moduledata
 type moduleData struct {
-	text, etext   uintptr
-	types, etypes uintptr
+	text, etext   uint64
+	types, etypes uint64
 	typemapVar    *Variable
 }
 
@@ -44,11 +44,11 @@ func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) 
 
 		var err error
 
-		touint := func(name string) (ret uintptr) {
+		touint := func(name string) (ret uint64) {
 			if err == nil {
 				var n uint64
 				n, err = vars[name].asUint()
-				ret = uintptr(n)
+				ret = n
 			}
 			return ret
 		}
@@ -71,7 +71,7 @@ func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) 
 	return r, nil
 }
 
-func findModuleDataForType(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, mem MemoryReadWriter) *moduleData {
+func findModuleDataForType(bi *BinaryInfo, mds []moduleData, typeAddr uint64, mem MemoryReadWriter) *moduleData {
 	for i := range mds {
 		if typeAddr >= mds[i].types && typeAddr < mds[i].etypes {
 			return &mds[i]
@@ -80,7 +80,7 @@ func findModuleDataForType(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, m
 	return nil
 }
 
-func resolveTypeOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uintptr, mem MemoryReadWriter) (*Variable, error) {
+func resolveTypeOff(bi *BinaryInfo, mds []moduleData, typeAddr, off uint64, mem MemoryReadWriter) (*Variable, error) {
 	// See runtime.(*_type).typeOff in $GOROOT/src/runtime/type.go
 	md := findModuleDataForType(bi, mds, typeAddr, mem)
 
@@ -96,19 +96,19 @@ func resolveTypeOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uint
 		}
 		v.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
 		addr, _ := constant.Int64Val(v.Value)
-		return v.newVariable(v.Name, uintptr(addr), rtyp, mem), nil
+		return v.newVariable(v.Name, uint64(addr), rtyp, mem), nil
 	}
 
 	if t, _ := md.typemapVar.mapAccess(newConstant(constant.MakeUint64(uint64(off)), mem)); t != nil {
 		return t, nil
 	}
 
-	res := md.types + uintptr(off)
+	res := md.types + off
 
-	return newVariable("", res, rtyp, bi, mem), nil
+	return newVariable("", uint64(res), rtyp, bi, mem), nil
 }
 
-func resolveNameOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uintptr, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
+func resolveNameOff(bi *BinaryInfo, mds []moduleData, typeAddr, off uint64, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	// See runtime.resolveNameOff in $GOROOT/src/runtime/type.go
 	for _, md := range mds {
 		if typeAddr >= md.types && typeAddr < md.etypes {
@@ -129,7 +129,7 @@ func resolveNameOff(bi *BinaryInfo, mds []moduleData, typeAddr uintptr, off uint
 	return loadName(bi, resv.Addr, mem)
 }
 
-func reflectOffsMapAccess(bi *BinaryInfo, off uintptr, mem MemoryReadWriter) (*Variable, error) {
+func reflectOffsMapAccess(bi *BinaryInfo, off uint64, mem MemoryReadWriter) (*Variable, error) {
 	scope := globalScope(bi, bi.Images[0], mem)
 	reflectOffs, err := scope.findGlobal("runtime", "reflectOffs")
 	if err != nil {
@@ -151,7 +151,7 @@ const (
 	nameflagHasPkg   = 1 << 2
 )
 
-func loadName(bi *BinaryInfo, addr uintptr, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
+func loadName(bi *BinaryInfo, addr uint64, mem MemoryReadWriter) (name, tag string, pkgpathoff int32, err error) {
 	off := addr
 	namedata := make([]byte, 3)
 	_, err = mem.ReadMemory(namedata, off)
@@ -164,7 +164,7 @@ func loadName(bi *BinaryInfo, addr uintptr, mem MemoryReadWriter) (name, tag str
 
 	rawstr := make([]byte, int(namelen))
 	_, err = mem.ReadMemory(rawstr, off)
-	off += uintptr(namelen)
+	off += uint64(namelen)
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -182,7 +182,7 @@ func loadName(bi *BinaryInfo, addr uintptr, mem MemoryReadWriter) (name, tag str
 
 		rawstr := make([]byte, int(taglen))
 		_, err = mem.ReadMemory(rawstr, off)
-		off += uintptr(taglen)
+		off += uint64(taglen)
 		if err != nil {
 			return "", "", 0, err
 		}

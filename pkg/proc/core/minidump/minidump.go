@@ -182,7 +182,7 @@ type MemoryRange struct {
 }
 
 // ReadMemory reads len(buf) bytes of memory starting at addr into buf from this memory region.
-func (m *MemoryRange) ReadMemory(buf []byte, addr uintptr) (int, error) {
+func (m *MemoryRange) ReadMemory(buf []byte, addr uint64) (int, error) {
 	if len(buf) == 0 {
 		return 0, nil
 	}

@@ -1555,7 +1555,7 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 	})
 
 	var (
-		address int64
+		address uint64
 		err     error
 		ok      bool
 	)
@@ -1604,7 +1604,7 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 				return fmt.Errorf("unknown option %q", v[i])
 			}
 			// TODO, maybe we can support expression.
-			address, err = strconv.ParseInt(v[len(v)-1], 0, 64)
+			address, err = strconv.ParseUint(v[len(v)-1], 0, 64)
 			if err != nil {
 				return fmt.Errorf("convert address into uintptr type failed, %s", err)
 			}
@@ -1615,7 +1615,7 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 		return fmt.Errorf("no address specified")
 	}
 
-	memArea, err := t.client.ExamineMemory(uintptr(address), length)
+	memArea, err := t.client.ExamineMemory(address, length)
 	if err != nil {
 		return err
 	}

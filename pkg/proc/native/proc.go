@@ -209,7 +209,7 @@ func (dbp *nativeProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Funct
 	f, l, fn := dbp.bi.PCToLine(uint64(addr))
 
 	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
-	_, err := dbp.currentThread.ReadMemory(originalData, uintptr(addr))
+	_, err := dbp.currentThread.ReadMemory(originalData, addr)
 	if err != nil {
 		return "", 0, nil, nil, err
 	}
@@ -317,7 +317,7 @@ func (dbp *nativeProcess) postExit() {
 }
 
 func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uint64) error {
-	_, err := thread.WriteMemory(uintptr(addr), dbp.bi.Arch.BreakpointInstruction())
+	_, err := thread.WriteMemory(addr, dbp.bi.Arch.BreakpointInstruction())
 	return err
 }
 

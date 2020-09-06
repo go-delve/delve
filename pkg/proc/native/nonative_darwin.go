@@ -102,12 +102,12 @@ func (t *nativeThread) SetDX(dx uint64) error {
 }
 
 // ReadMemory reads len(buf) bytes at addr into buf.
-func (t *nativeThread) ReadMemory(buf []byte, addr uintptr) (int, error) {
+func (t *nativeThread) ReadMemory(buf []byte, addr uint64) (int, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
 // WriteMemory writes the contents of data at addr.
-func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
 	panic(ErrNativeBackendDisabled)
 }
 

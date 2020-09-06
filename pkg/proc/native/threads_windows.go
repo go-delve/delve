@@ -137,7 +137,7 @@ func (t *nativeThread) Stopped() bool {
 	return true
 }
 
-func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
@@ -145,7 +145,7 @@ func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (int, error) {
 		return 0, nil
 	}
 	var count uintptr
-	err := _WriteProcessMemory(t.dbp.os.hProcess, addr, &data[0], uintptr(len(data)), &count)
+	err := _WriteProcessMemory(t.dbp.os.hProcess, uintptr(addr), &data[0], uintptr(len(data)), &count)
 	if err != nil {
 		return 0, err
 	}
@@ -154,7 +154,7 @@ func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (int, error) {
 
 var ErrShortRead = errors.New("short read")
 
-func (t *nativeThread) ReadMemory(buf []byte, addr uintptr) (int, error) {
+func (t *nativeThread) ReadMemory(buf []byte, addr uint64) (int, error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
@@ -162,7 +162,7 @@ func (t *nativeThread) ReadMemory(buf []byte, addr uintptr) (int, error) {
 		return 0, nil
 	}
 	var count uintptr
-	err := _ReadProcessMemory(t.dbp.os.hProcess, addr, &buf[0], uintptr(len(buf)), &count)
+	err := _ReadProcessMemory(t.dbp.os.hProcess, uintptr(addr), &buf[0], uintptr(len(buf)), &count)
 	if err == nil && count != uintptr(len(buf)) {
 		err = ErrShortRead
 	}

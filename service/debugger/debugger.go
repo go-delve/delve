@@ -1604,7 +1604,7 @@ func (d *Debugger) ListDynamicLibraries() []api.Image {
 // ExamineMemory returns the raw memory stored at the given address.
 // The amount of data to be read is specified by length.
 // This function will return an error if it reads less than `length` bytes.
-func (d *Debugger) ExamineMemory(address uintptr, length int) ([]byte, error) {
+func (d *Debugger) ExamineMemory(address uint64, length int) ([]byte, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 

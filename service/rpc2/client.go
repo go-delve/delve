@@ -441,7 +441,7 @@ func (c *RPCClient) ListDynamicLibraries() ([]api.Image, error) {
 	return out.List, nil
 }
 
-func (c *RPCClient) ExamineMemory(address uintptr, count int) ([]byte, error) {
+func (c *RPCClient) ExamineMemory(address uint64, count int) ([]byte, error) {
 	out := &ExaminedMemoryOut{}
 
 	err := c.call("ExamineMemory", ExamineMemoryIn{Length: count, Address: address}, out)
