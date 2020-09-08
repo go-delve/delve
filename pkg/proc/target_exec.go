@@ -529,7 +529,10 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		return err
 	}
 
-	sameFrameCond := astutil.And(sameGCond, frameoffCondition(&topframe))
+	var sameFrameCond ast.Expr
+	if sameGCond != nil {
+		sameFrameCond = astutil.And(sameGCond, frameoffCondition(&topframe))
+	}
 
 	if stepInto && !backward {
 		err := setStepIntoBreakpoints(dbp, topframe.Current.Fn, text, topframe, sameGCond)

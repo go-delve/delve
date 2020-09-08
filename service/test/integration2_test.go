@@ -2098,3 +2098,20 @@ func TestRedirects(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue2162(t *testing.T) {
+	if buildMode == "pie" || runtime.GOOS == "windows" {
+		t.Skip("skip it for stepping into one place where no source for pc when on pie mode or windows")
+	}
+	withTestClient2("issue2162", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		_, err = c.Step()
+		if err != nil {
+			assertNoError(err, t, "Step()")
+		}
+	})
+}
