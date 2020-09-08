@@ -125,7 +125,7 @@ func (dbp *Target) Continue() error {
 			case loc.Fn.Name == "runtime.breakpoint":
 				// In linux-arm64, PtraceSingleStep seems cannot step over BRK instruction
 				// (linux-arm64 feature or kernel bug maybe).
-				if arch.Name == "arm64" {
+				if !arch.BreakInstrMovesPC() {
 					curthread.SetPC(loc.PC + uint64(arch.BreakpointSize()))
 				}
 				// Single-step current thread until we exit runtime.breakpoint and
@@ -139,7 +139,7 @@ func (dbp *Target) Continue() error {
 				return conditionErrors(threads)
 			case g == nil || dbp.fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
-				if arch.Name == "arm64" {
+				if !arch.BreakInstrMovesPC() {
 					bpsize := arch.BreakpointSize()
 					bp := make([]byte, bpsize)
 					_, err = dbp.CurrentThread().ReadMemory(bp, uintptr(loc.PC))
