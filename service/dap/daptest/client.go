@@ -93,6 +93,21 @@ func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
 	return c.expectReadProtocolMessage(t).(*dap.ContinueResponse)
 }
 
+func (c *Client) ExpectNextResponse(t *testing.T) *dap.NextResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.NextResponse)
+}
+
+func (c *Client) ExpectStepInResponse(t *testing.T) *dap.StepInResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.StepInResponse)
+}
+
+func (c *Client) ExpectStepOutResponse(t *testing.T) *dap.StepOutResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.StepOutResponse)
+}
+
 func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.TerminatedEvent)
@@ -132,6 +147,11 @@ func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 	return c.expectReadProtocolMessage(t).(*dap.StoppedEvent)
 }
 
+func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.OutputEvent)
+}
+
 func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.ConfigurationDoneResponse)
@@ -145,6 +165,16 @@ func (c *Client) ExpectThreadsResponse(t *testing.T) *dap.ThreadsResponse {
 func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.StackTraceResponse)
+}
+
+func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.ScopesResponse)
+}
+
+func (c *Client) ExpectVariablesResponse(t *testing.T) *dap.VariablesResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.VariablesResponse)
 }
 
 func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
@@ -334,23 +364,23 @@ func (c *Client) ContinueRequest(thread int) {
 }
 
 // NextRequest sends a 'next' request.
-func (c *Client) NextRequest() {
+func (c *Client) NextRequest(thread int) {
 	request := &dap.NextRequest{Request: *c.newRequest("next")}
-	// TODO(polina): arguments
+	request.Arguments.ThreadId = thread
 	c.send(request)
 }
 
 // StepInRequest sends a 'stepIn' request.
-func (c *Client) StepInRequest() {
+func (c *Client) StepInRequest(thread int) {
 	request := &dap.NextRequest{Request: *c.newRequest("stepIn")}
-	// TODO(polina): arguments
+	request.Arguments.ThreadId = thread
 	c.send(request)
 }
 
 // StepOutRequest sends a 'stepOut' request.
-func (c *Client) StepOutRequest() {
+func (c *Client) StepOutRequest(thread int) {
 	request := &dap.NextRequest{Request: *c.newRequest("stepOut")}
-	// TODO(polina): arguments
+	request.Arguments.ThreadId = thread
 	c.send(request)
 }
 
@@ -377,14 +407,16 @@ func (c *Client) StackTraceRequest(threadID, startFrame, levels int) {
 }
 
 // ScopesRequest sends a 'scopes' request.
-func (c *Client) ScopesRequest() {
+func (c *Client) ScopesRequest(frameID int) {
 	request := &dap.ScopesRequest{Request: *c.newRequest("scopes")}
+	request.Arguments.FrameId = frameID
 	c.send(request)
 }
 
-// VariablesRequest sends a 'scopes' request.
-func (c *Client) VariablesRequest() {
-	request := &dap.ScopesRequest{Request: *c.newRequest("variables")}
+// VariablesRequest sends a 'variables' request.
+func (c *Client) VariablesRequest(variablesReference int) {
+	request := &dap.VariablesRequest{Request: *c.newRequest("variables")}
+	request.Arguments.VariablesReference = variablesReference
 	c.send(request)
 }
 

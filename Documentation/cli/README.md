@@ -412,16 +412,22 @@ Restart process.
 
 For recorded targets the command takes the following forms:
 
-	restart				resets ot the start of the recording
-	restart [checkpoint]		resets the recording to the given checkpoint
-	restart -r [newargv...]		re-records the target process
+	restart					resets ot the start of the recording
+	restart [checkpoint]			resets the recording to the given checkpoint
+	restart -r [newargv...]	[redirects...]	re-records the target process
 	
 For live targets the command takes the following forms:
 
-	restart [newargv...]		restarts the process
+	restart [newargv...] [redirects...]	restarts the process
 
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
+
+A list of file redirections can be specified after the new argument list to override the redirections defined using the '--redirect' command line option. A syntax similar to Unix shells is used:
+
+	<input.txt	redirects the standard input of the target process from input.txt
+	>output.txt	redirects the standard output of the target process to output.txt
+	2>error.txt	redirects the standard error of the target process to error.txt
 
 
 Aliases: r

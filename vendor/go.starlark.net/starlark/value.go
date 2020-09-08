@@ -42,9 +42,10 @@
 // implementation of the Go function may use UnpackArgs to make sense of
 // the positional and keyword arguments provided by the caller.
 //
-// Starlark's None value is not equal to Go's nil, but nil may be
-// assigned to a Starlark Value.  Be careful to avoid allowing Go nil
-// values to leak into Starlark data structures.
+// Starlark's None value is not equal to Go's nil. Go's nil is not a legal
+// Starlark value, but the compiler will not stop you from converting nil
+// to Value. Be careful to avoid allowing Go nil values to leak into
+// Starlark data structures.
 //
 // The Compare operation requires two arguments of the same
 // type, but this constraint cannot be expressed in Go's type system.
@@ -58,7 +59,7 @@
 // function evaluates a single expression.  All evaluator functions
 // require a Thread parameter which defines the "thread-local storage"
 // of a Starlark thread and may be used to plumb application state
-// through Sklyark code and into callbacks.  When evaluation fails it
+// through Starlark code and into callbacks.  When evaluation fails it
 // returns an EvalError from which the application may obtain a
 // backtrace of active Starlark calls.
 //
@@ -617,6 +618,9 @@ func (fn *Function) NumKwonlyParams() int      { return fn.funcode.NumKwonlyPara
 // The *args and **kwargs parameters are at the end
 // even if there were optional parameters after *args.
 func (fn *Function) Param(i int) (string, syntax.Position) {
+	if i >= fn.NumParams() {
+		panic(i)
+	}
 	id := fn.funcode.Locals[i]
 	return id.Name, id.Pos
 }

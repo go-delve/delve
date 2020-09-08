@@ -49,13 +49,18 @@ type osProcessDetails struct {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
 	var (
 		process *exec.Cmd
 		err     error
 	)
 
-	if !isatty.IsTerminal(os.Stdin.Fd()) {
+	stdin, stdout, stderr, closefn, err := openRedirects(redirects, foreground)
+	if err != nil {
+		return nil, err
+	}
+
+	if stdin == nil || !isatty.IsTerminal(stdin.Fd()) {
 		// exec.(*Process).Start will fail if we try to send a process to
 		// foreground but we are not attached to a terminal.
 		foreground = false
@@ -70,8 +75,9 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 	dbp.execPtraceFunc(func() {
 		process = exec.Command(cmd[0])
 		process.Args = cmd
-		process.Stdout = os.Stdout
-		process.Stderr = os.Stderr
+		process.Stdin = stdin
+		process.Stdout = stdout
+		process.Stderr = stderr
 		process.SysProcAttr = &syscall.SysProcAttr{
 			Ptrace:     true,
 			Setpgid:    true,
@@ -79,7 +85,6 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 		}
 		if foreground {
 			signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
-			process.Stdin = os.Stdin
 		}
 		if tty != "" {
 			dbp.ctty, err = attachProcessToTTY(process, tty)
@@ -92,6 +97,7 @@ func Launch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tt
 		}
 		err = process.Start()
 	})
+	closefn()
 	if err != nil {
 		return nil, err
 	}

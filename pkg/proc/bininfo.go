@@ -35,8 +35,9 @@ import (
 )
 
 const (
-	dwarfGoLanguage    = 22  // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
-	dwarfTreeCacheSize = 512 // size of the dwarfTree cache of each image
+	dwarfGoLanguage    = 22   // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
+	dwarfAttrAddrBase  = 0x74 // debug/dwarf.AttrAddrBase in Go 1.14, defined here for compatibility with Go < 1.14
+	dwarfTreeCacheSize = 512  // size of the dwarfTree cache of each image
 )
 
 // BinaryInfo holds information on the binaries being executed (this
@@ -107,7 +108,7 @@ type BinaryInfo struct {
 
 var (
 	// ErrCouldNotDetermineRelocation is an error returned when Delve could not determine the base address of a
-	// position independant executable.
+	// position independent executable.
 	ErrCouldNotDetermineRelocation = errors.New("could not determine the base address of a PIE")
 
 	// ErrNoDebugInfoFound is returned when Delve cannot open the debug_info
@@ -269,9 +270,10 @@ func (e *ErrUnsupportedArch) Error() string {
 }
 
 type compileUnit struct {
-	name   string // univocal name for non-go compile units
-	lowPC  uint64
-	ranges [][2]uint64
+	name    string // univocal name for non-go compile units
+	Version uint8  // DWARF version of this compile unit
+	lowPC   uint64
+	ranges  [][2]uint64
 
 	entry     *dwarf.Entry        // debug_info entry describing this compile unit
 	isgo      bool                // true if this is the go compile unit
@@ -650,7 +652,9 @@ type Image struct {
 
 	dwarf       *dwarf.Data
 	dwarfReader *dwarf.Reader
-	loclist     *loclist.Reader
+	loclist2    *loclist.Dwarf2Reader
+	loclist5    *loclist.Dwarf5Reader
+	debugAddr   *godwarf.DebugAddrSection
 
 	typeCache map[dwarf.Offset]godwarf.Type
 
@@ -810,14 +814,15 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0, bi.Arch.PtrSize())
 	}
 
-	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist2 = loclist.NewDwarf2Reader(debugLocBytes, bi.Arch.PtrSize())
 
-	bi.loadDebugInfoMaps(image, debugLineBytes, nil, nil)
+	bi.loadDebugInfoMaps(image, nil, debugLineBytes, nil, nil)
 
 	bi.Images = append(bi.Images, image)
 }
 
 func (bi *BinaryInfo) locationExpr(entry godwarf.Entry, attr dwarf.Attr, pc uint64) ([]byte, *locationExpr, error) {
+	//TODO(aarzilli): handle DW_FORM_loclistx attribute form new in DWARFv5
 	a := entry.Val(attr)
 	if a == nil {
 		return nil, nil, fmt.Errorf("no location attribute %s", attr)
@@ -883,17 +888,20 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 	if cu == nil {
 		return nil, errors.New("could not find compile unit")
 	}
+	if cu.Version >= 5 && cu.image.loclist5 != nil {
+		return nil, errors.New("LocationCovers does not support DWARFv5")
+	}
 
 	image := cu.image
 	base := cu.lowPC
-	if image == nil || image.loclist.Empty() {
+	if image == nil || image.loclist2.Empty() {
 		return nil, errors.New("malformed executable")
 	}
 
 	r := [][2]uint64{}
 	var e loclist.Entry
-	image.loclist.Seek(int(off))
-	for image.loclist.Next(&e) {
+	image.loclist2.Seek(int(off))
+	for image.loclist2.Next(&e) {
 		if e.BaseAddressSelection() {
 			base = e.HighPC
 			continue
@@ -921,24 +929,35 @@ func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, 
 func (bi *BinaryInfo) loclistEntry(off int64, pc uint64) []byte {
 	var base uint64
 	image := bi.Images[0]
-	if cu := bi.findCompileUnit(pc); cu != nil {
+	cu := bi.findCompileUnit(pc)
+	if cu != nil {
 		base = cu.lowPC
 		image = cu.image
 	}
-	if image == nil || image.loclist.Empty() {
+	if image == nil {
 		return nil
 	}
 
-	image.loclist.Seek(int(off))
-	var e loclist.Entry
-	for image.loclist.Next(&e) {
-		if e.BaseAddressSelection() {
-			base = e.HighPC
-			continue
+	var loclist loclist.Reader = image.loclist2
+	var debugAddr *godwarf.DebugAddr
+	if cu != nil && cu.Version >= 5 && image.loclist5 != nil {
+		loclist = image.loclist5
+		if addrBase, ok := cu.entry.Val(dwarfAttrAddrBase).(int64); ok {
+			debugAddr = image.debugAddr.GetSubsection(uint64(addrBase))
 		}
-		if pc >= e.LowPC+base+image.StaticBase && pc < e.HighPC+base+image.StaticBase {
-			return e.Instr
-		}
+	}
+
+	if loclist.Empty() {
+		return nil
+	}
+
+	e, err := loclist.Find(int(off), image.StaticBase, base, pc, debugAddr)
+	if err != nil {
+		bi.logger.Errorf("error reading loclist section: %v", err)
+		return nil
+	}
+	if e != nil {
+		return e.Instr
 	}
 
 	return nil
@@ -1117,6 +1136,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 
 	dwarfFile := elfFile
 
+	var debugInfoBytes []byte
 	image.dwarf, err = elfFile.DWARF()
 	if err != nil {
 		var sepFile *os.File
@@ -1132,6 +1152,11 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		}
 	}
 
+	debugInfoBytes, err = godwarf.GetDebugSectionElf(dwarfFile, "info")
+	if err != nil {
+		return err
+	}
+
 	image.dwarfReader = image.dwarf.Reader()
 
 	debugLineBytes, err := godwarf.GetDebugSectionElf(dwarfFile, "line")
@@ -1139,11 +1164,15 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "loc")
-	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist2 = loclist.NewDwarf2Reader(debugLocBytes, bi.Arch.PtrSize())
+	debugLoclistBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "loclists")
+	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
+	debugAddrBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "addr")
+	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
 
 	wg.Add(3)
-	go bi.parseDebugFrameElf(image, dwarfFile, wg)
-	go bi.loadDebugInfoMaps(image, debugLineBytes, wg, nil)
+	go bi.parseDebugFrameElf(image, dwarfFile, debugInfoBytes, wg)
+	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, nil)
 	go bi.loadSymbolName(image, elfFile, wg)
 	if image.index == 0 {
 		// determine g struct offset only when loading the executable file
@@ -1172,7 +1201,7 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	}
 }
 
-func (bi *BinaryInfo) parseDebugFrameElf(image *Image, exe *elf.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFrameElf(image *Image, exe *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameData, err := godwarf.GetDebugSectionElf(exe, "frame")
@@ -1180,13 +1209,8 @@ func (bi *BinaryInfo) parseDebugFrameElf(image *Image, exe *elf.File, wg *sync.W
 		image.setLoadError("could not get .debug_frame section: %v", err)
 		return
 	}
-	debugInfoData, err := godwarf.GetDebugSectionElf(exe, "info")
-	if err != nil {
-		image.setLoadError("could not get .debug_info section: %v", err)
-		return
-	}
 
-	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameData, frame.DwarfEndian(debugInfoData), image.StaticBase, bi.Arch.PtrSize()))
+	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameData, frame.DwarfEndian(debugInfoBytes), image.StaticBase, bi.Arch.PtrSize()))
 }
 
 func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.WaitGroup) {
@@ -1255,6 +1279,10 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 	if err != nil {
 		return err
 	}
+	debugInfoBytes, err := godwarf.GetDebugSectionPE(peFile, "info")
+	if err != nil {
+		return err
+	}
 
 	//TODO(aarzilli): actually test this when Go supports PIE buildmode on Windows.
 	opth := peFile.OptionalHeader.(*pe.OptionalHeader64)
@@ -1273,11 +1301,15 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionPE(peFile, "loc")
-	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist2 = loclist.NewDwarf2Reader(debugLocBytes, bi.Arch.PtrSize())
+	debugLoclistBytes, _ := godwarf.GetDebugSectionPE(peFile, "loclists")
+	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
+	debugAddrBytes, _ := godwarf.GetDebugSectionPE(peFile, "addr")
+	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
 
 	wg.Add(2)
-	go bi.parseDebugFramePE(image, peFile, wg)
-	go bi.loadDebugInfoMaps(image, debugLineBytes, wg, nil)
+	go bi.parseDebugFramePE(image, peFile, debugInfoBytes, wg)
+	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, nil)
 
 	// Use ArbitraryUserPointer (0x28) as pointer to pointer
 	// to G struct per:
@@ -1300,17 +1332,12 @@ func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {
 	return peFile, f, nil
 }
 
-func (bi *BinaryInfo) parseDebugFramePE(image *Image, exe *pe.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFramePE(image *Image, exe *pe.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameBytes, err := godwarf.GetDebugSectionPE(exe, "frame")
 	if err != nil {
 		image.setLoadError("could not get .debug_frame section: %v", err)
-		return
-	}
-	debugInfoBytes, err := godwarf.GetDebugSectionPE(exe, "info")
-	if err != nil {
-		image.setLoadError("could not get .debug_info section: %v", err)
 		return
 	}
 
@@ -1350,6 +1377,10 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	if err != nil {
 		return err
 	}
+	debugInfoBytes, err := godwarf.GetDebugSectionMacho(exe, "info")
+	if err != nil {
+		return err
+	}
 
 	image.dwarfReader = image.dwarf.Reader()
 
@@ -1358,11 +1389,15 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		return err
 	}
 	debugLocBytes, _ := godwarf.GetDebugSectionMacho(exe, "loc")
-	image.loclist = loclist.New(debugLocBytes, bi.Arch.PtrSize())
+	image.loclist2 = loclist.NewDwarf2Reader(debugLocBytes, bi.Arch.PtrSize())
+	debugLoclistBytes, _ := godwarf.GetDebugSectionMacho(exe, "loclists")
+	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
+	debugAddrBytes, _ := godwarf.GetDebugSectionMacho(exe, "addr")
+	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
 
 	wg.Add(2)
-	go bi.parseDebugFrameMacho(image, exe, wg)
-	go bi.loadDebugInfoMaps(image, debugLineBytes, wg, bi.setGStructOffsetMacho)
+	go bi.parseDebugFrameMacho(image, exe, debugInfoBytes, wg)
+	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, bi.setGStructOffsetMacho)
 	return nil
 }
 
@@ -1378,17 +1413,12 @@ func (bi *BinaryInfo) setGStructOffsetMacho() {
 	bi.gStructOffset = 0x8a0
 }
 
-func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	debugFrameBytes, err := godwarf.GetDebugSectionMacho(exe, "frame")
 	if err != nil {
 		image.setLoadError("could not get __debug_frame section: %v", err)
-		return
-	}
-	debugInfoBytes, err := godwarf.GetDebugSectionMacho(exe, "info")
-	if err != nil {
-		image.setLoadError("could not get .debug_info section: %v", err)
 		return
 	}
 
@@ -1502,7 +1532,7 @@ func (bi *BinaryInfo) registerTypeToPackageMap(entry *dwarf.Entry) {
 	bi.PackageMap[name] = []string{path}
 }
 
-func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg *sync.WaitGroup, cont func()) {
+func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineBytes []byte, wg *sync.WaitGroup, cont func()) {
 	if wg != nil {
 		defer wg.Done()
 	}
@@ -1522,7 +1552,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 
-	ctxt := newLoadDebugInfoMapsContext(bi, image)
+	ctxt := newLoadDebugInfoMapsContext(bi, image, util.ReadUnitVersions(debugInfoBytes))
 
 	reader := image.DwarfReader()
 
@@ -1537,6 +1567,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugLineBytes []byte, wg 
 			cu.image = image
 			cu.entry = entry
 			cu.offset = entry.Offset
+			cu.Version = ctxt.offsetToVersion[cu.offset]
 			if lang, _ := entry.Val(dwarf.AttrLanguage).(int64); lang == dwarfGoLanguage {
 				cu.isgo = true
 			}

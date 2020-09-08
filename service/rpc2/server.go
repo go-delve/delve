@@ -68,7 +68,7 @@ type RestartIn struct {
 	// otherwise it's an event number. Only valid for recorded targets.
 	Position string
 
-	// ResetArgs tell whether NewArgs should take effect.
+	// ResetArgs tell whether NewArgs and NewRedirects should take effect.
 	ResetArgs bool
 	// NewArgs are arguments to launch a new process.  They replace only the
 	// argv[1] and later. Argv[0] cannot be changed.
@@ -79,6 +79,8 @@ type RestartIn struct {
 
 	// When Rebuild is set the process will be build again
 	Rebuild bool
+
+	NewRedirects [3]string
 }
 
 type RestartOut struct {
@@ -93,7 +95,7 @@ func (s *RPCServer) Restart(arg RestartIn, cb service.RPCCallback) {
 	}
 	var out RestartOut
 	var err error
-	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Rerecord, arg.Position, arg.ResetArgs, arg.NewArgs, arg.Rebuild)
+	out.DiscardedBreakpoints, err = s.debugger.Restart(arg.Rerecord, arg.Position, arg.ResetArgs, arg.NewArgs, arg.NewRedirects, arg.Rebuild)
 	cb.Return(out, err)
 }
 

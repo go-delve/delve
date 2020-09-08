@@ -35,6 +35,8 @@ const (
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 
 	maxMapBucketsFactor = 100 // Maximum numbers of map buckets to read for every requested map entry when loading variables through (*EvalScope).LocalVariables and (*EvalScope).FunctionArguments.
+
+	maxGoroutineUserCurrentDepth = 30 // Maximum depth used by (*G).UserCurrent to search its location
 )
 
 type floatSpecial uint8
@@ -375,7 +377,7 @@ func FindGoroutine(dbp *Target, gid int) (*G, error) {
 		// 3. if the caller asks for gid == 0 and the selected goroutine is
 		//    either 0 or nil.
 		//    Goroutine 0 is special, it either means we have no current goroutine
-		//    (for example, running C code), or that we are running on a speical
+		//    (for example, running C code), or that we are running on a special
 		//    stack (system stack, signal handling stack) and we didn't properly
 		//    detect it.
 		//    Since there could be multiple goroutines '0' running simultaneously
@@ -388,6 +390,10 @@ func FindGoroutine(dbp *Target, gid int) (*G, error) {
 		return nil, fmt.Errorf("unknown goroutine %d", gid)
 	}
 
+	if g := dbp.gcache.partialGCache[gid]; g != nil {
+		return g, nil
+	}
+
 	// Calling GoroutinesInfo could be slow if there are many goroutines
 	// running, check if a running goroutine has been requested first.
 	for _, thread := range dbp.ThreadList() {
@@ -395,10 +401,6 @@ func FindGoroutine(dbp *Target, gid int) (*G, error) {
 		if g != nil && g.ID == gid {
 			return g, nil
 		}
-	}
-
-	if g := dbp.gcache.partialGCache[gid]; g != nil {
-		return g, nil
 	}
 
 	const goroutinesInfoLimit = 10
@@ -487,7 +489,7 @@ func (g *G) UserCurrent() Location {
 	if err != nil {
 		return g.CurrentLoc
 	}
-	for it.Next() {
+	for count := 0; it.Next() && count < maxGoroutineUserCurrentDepth; count++ {
 		frame := it.Frame()
 		if frame.Call.Fn != nil {
 			name := frame.Call.Fn.Name
@@ -1037,6 +1039,14 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		return v.clone(), nil
 	}
 	vname := v.Name
+	if v.loaded && (v.Flags&VariableFakeAddress) != 0 {
+		for i := range v.Children {
+			if v.Children[i].Name == memberName {
+				return &v.Children[i], nil
+			}
+		}
+		return nil, fmt.Errorf("%s has no member %s", vname, memberName)
+	}
 	switch v.Kind {
 	case reflect.Chan:
 		v = v.clone()

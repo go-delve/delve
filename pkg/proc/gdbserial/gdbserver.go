@@ -342,7 +342,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string) (*proc.Target, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -371,12 +371,32 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		ldEnvVars := getLdEnvVars()
 		args := make([]string, 0, len(cmd)+4+len(ldEnvVars))
 		args = append(args, ldEnvVars...)
-		if foreground {
-			args = append(args, "--stdio-path", "/dev/tty")
-		}
+
 		if tty != "" {
 			args = append(args, "--stdio-path", tty)
+		} else {
+			found := [3]bool{}
+			names := [3]string{"stdin", "stdout", "stderr"}
+			for i := range redirects {
+				if redirects[i] != "" {
+					found[i] = true
+					args = append(args, fmt.Sprintf("--%s-path", names[i]), redirects[i])
+				}
+			}
+
+			if foreground {
+				if !found[0] && !found[1] && !found[2] {
+					args = append(args, "--stdio-path", "/dev/tty")
+				} else {
+					for i := range found {
+						if !found[i] {
+							args = append(args, fmt.Sprintf("--%s-path", names[i]), "/dev/tty")
+						}
+					}
+				}
+			}
 		}
+
 		if logflags.LLDBServerOutput() {
 			args = append(args, "-g", "-l", "stdout")
 		}
@@ -661,7 +681,7 @@ func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 		// step threads stopped at any breakpoint over their breakpoint
 		for _, thread := range p.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil {
-				if err := thread.stepInstruction(&threadUpdater{p: p}); err != nil {
+				if err := thread.StepInstruction(); err != nil {
 					return nil, proc.StopUnknown, err
 				}
 			}
@@ -840,7 +860,7 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 }
 
 // RequestManualStop will attempt to stop the process
-// without a breakpoint or signal having been recieved.
+// without a breakpoint or signal having been received.
 func (p *gdbProcess) RequestManualStop() error {
 	p.conn.manualStopMutex.Lock()
 	p.manualStopRequested = true
@@ -1305,7 +1325,8 @@ func (t *gdbThread) Common() *proc.CommonThread {
 	return &t.common
 }
 
-func (t *gdbThread) stepInstruction(tu *threadUpdater) error {
+// StepInstruction will step exactly 1 CPU instruction.
+func (t *gdbThread) StepInstruction() error {
 	pc := t.regs.PC()
 	if _, atbp := t.p.breakpoints.M[pc]; atbp {
 		err := t.p.conn.clearBreakpoint(pc)
@@ -1317,12 +1338,7 @@ func (t *gdbThread) stepInstruction(tu *threadUpdater) error {
 	// Reset thread registers so the next call to
 	// Thread.Registers will not be cached.
 	t.regs.regs = nil
-	return t.p.conn.step(t.strID, tu, false)
-}
-
-// StepInstruction will step exactly 1 CPU instruction.
-func (t *gdbThread) StepInstruction() error {
-	return t.stepInstruction(&threadUpdater{p: t.p})
+	return t.p.conn.step(t.strID, &threadUpdater{p: t.p}, false)
 }
 
 // Blocked returns true if the thread is blocked in runtime or kernel code.
@@ -1903,7 +1919,11 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 
 		case reginfo.Bitsize == 128:
 			if floatingPoint {
-				r = proc.AppendBytesRegister(r, strings.ToUpper(reginfo.Name), regs.regs[reginfo.Name].value)
+				name := reginfo.Name
+				if last := name[len(name)-1]; last == 'h' || last == 'H' {
+					name = name[:len(name)-1]
+				}
+				r = proc.AppendBytesRegister(r, strings.ToUpper(name), regs.regs[reginfo.Name].value)
 			}
 
 		case reginfo.Bitsize == 256:

@@ -54,12 +54,12 @@ func TestMain(m *testing.M) {
 }
 
 func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
-	withTestClient2Extended(name, t, 0, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended(name, t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
 		fn(c)
 	})
 }
 
-func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clientConn net.Conn, fixture protest.Fixture) {
+func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redirects [3]string) (clientConn net.Conn, fixture protest.Fixture) {
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
@@ -69,6 +69,11 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 		buildFlags |= protest.BuildModePIE
 	}
 	fixture = protest.BuildFixture(name, buildFlags)
+	for i := range redirects {
+		if redirects[i] != "" {
+			redirects[i] = filepath.Join(fixture.BuildDir, redirects[i])
+		}
+	}
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
 		ProcessArgs: []string{fixture.Path},
@@ -78,6 +83,7 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 			Packages:       []string{fixture.Source},
 			BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
 			ExecuteKind:    debugger.ExecutingGeneratedFile,
+			Redirects:      redirects,
 		},
 	})
 	if err := server.Run(); err != nil {
@@ -86,8 +92,8 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T) (clie
 	return clientConn, fixture
 }
 
-func withTestClient2Extended(name string, t *testing.T, buildFlags protest.BuildFlags, fn func(c service.Client, fixture protest.Fixture)) {
-	clientConn, fixture := startServer(name, buildFlags, t)
+func withTestClient2Extended(name string, t *testing.T, buildFlags protest.BuildFlags, redirects [3]string, fn func(c service.Client, fixture protest.Fixture)) {
+	clientConn, fixture := startServer(name, buildFlags, t, redirects)
 	client := rpc2.NewClientFromConn(clientConn)
 	defer func() {
 		client.Detach(true)
@@ -223,7 +229,7 @@ func TestRestart_rebuild(t *testing.T) {
 	// In the original fixture file the env var tested for is SOMEVAR.
 	os.Setenv("SOMEVAR", "bah")
 
-	withTestClient2Extended("testenv", t, 0, func(c service.Client, f protest.Fixture) {
+	withTestClient2Extended("testenv", t, 0, [3]string{}, func(c service.Client, f protest.Fixture) {
 		<-c.Continue()
 
 		var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "x", normalLoadConfig)
@@ -772,7 +778,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 
-	withTestClient2Extended("locationsUpperCase", t, 0, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("locationsUpperCase", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
 		// Upper case
 		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
 
@@ -1363,6 +1369,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		t.Skip("test is valid only on AMD64")
 	}
 	regtests := []struct{ name, value string }{
+		// x87
 		{"ST(0)", "0x3fffe666660000000000"},
 		{"ST(1)", "0x3fffd9999a0000000000"},
 		{"ST(2)", "0x3fffcccccd0000000000"},
@@ -1371,6 +1378,8 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"ST(5)", "0x3fffa666666666666800"},
 		{"ST(6)", "0x3fff9999999999999800"},
 		{"ST(7)", "0x3fff8cccccccccccd000"},
+
+		// SSE
 		{"XMM0", "0x3ff33333333333333ff199999999999a	v2_int={ 3ff199999999999a 3ff3333333333333 }	v4_int={ 9999999a 3ff19999 33333333 3ff33333 }	v8_int={ 999a 9999 9999 3ff1 3333 3333 3333 3ff3 }	v16_int={ 9a 99 99 99 99 99 f1 3f 33 33 33 33 33 33 f3 3f }"},
 		{"XMM1", "0x3ff66666666666663ff4cccccccccccd"},
 		{"XMM2", "0x3fe666663fd9999a3fcccccd3fc00000"},
@@ -1380,22 +1389,68 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"XMM6", "0x4004cccccccccccc4003333333333334"},
 		{"XMM7", "0x40026666666666664002666666666666"},
 		{"XMM8", "0x4059999a404ccccd4059999a404ccccd"},
+
+		// AVX 2
+		{"XMM11", "0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM11", "…[YMM11h] 0x3ff66666666666663ff4cccccccccccd"},
+
+		// AVX 512
+		{"XMM12", "0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM12", "…[YMM12h] 0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM12", "…[ZMM12hl] 0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM12", "…[ZMM12hh] 0x3ff66666666666663ff4cccccccccccd"},
 	}
 	protest.AllowRecording(t)
 	withTestClient2("fputest/", t, func(c service.Client) {
-		<-c.Continue()
+		state := <-c.Continue()
+		t.Logf("state after continue: %#v", state)
+
+		boolvar := func(name string) bool {
+			scope := api.EvalScope{GoroutineID: -1}
+			if testBackend == "rr" {
+				scope.Frame = 2
+			}
+			v, err := c.EvalVariable(scope, name, normalLoadConfig)
+			if err != nil {
+				t.Fatalf("could not read %s variable", name)
+			}
+			t.Logf("%s variable: %#v", name, v)
+			return v.Value != "false"
+		}
+
+		avx2 := boolvar("avx2")
+		avx512 := boolvar("avx512")
+
+		if runtime.GOOS == "windows" {
+			// not supported
+			avx2 = false
+			avx512 = false
+		}
+
 		regs, err := c.ListThreadRegisters(0, true)
 		assertNoError(err, t, "ListThreadRegisters()")
 
 		t.Logf("%s", regs.String())
 
 		for _, regtest := range regtests {
+			if regtest.name == "XMM11" && !avx2 {
+				continue
+			}
+			if regtest.name == "XMM12" && !avx512 {
+				continue
+			}
 			found := false
 			for _, reg := range regs {
 				if reg.Name == regtest.name {
 					found = true
-					if !strings.HasPrefix(reg.Value, regtest.value) {
-						t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, reg.Value)
+					if strings.HasPrefix(regtest.value, "…") {
+						if !strings.Contains(reg.Value, regtest.value[len("…"):]) {
+							t.Fatalf("register %s expected to contain %q got %q", reg.Name, regtest.value, reg.Value)
+						}
+					} else {
+						if !strings.HasPrefix(reg.Value, regtest.value) {
+							t.Fatalf("register %s expected %q got %q", reg.Name, regtest.value, reg.Value)
+						}
 					}
 				}
 			}
@@ -1846,7 +1901,7 @@ func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
 }
 
 func TestUnknownMethodCall(t *testing.T) {
-	clientConn, _ := startServer("continuetestprog", 0, t)
+	clientConn, _ := startServer("continuetestprog", 0, t, [3]string{})
 	client := &brokenRPCClient{jsonrpc.NewClient(clientConn)}
 	client.call("SetApiVersion", api.SetAPIVersionIn{APIVersion: 2}, &api.SetAPIVersionOut{})
 	defer client.Detach(true)
@@ -1901,7 +1956,7 @@ func TestRerecord(t *testing.T) {
 
 		t0 := gett()
 
-		_, err = c.RestartFrom(false, "", false, nil, false)
+		_, err = c.RestartFrom(false, "", false, nil, [3]string{}, false)
 		assertNoError(err, t, "First restart")
 		t1 := gett()
 
@@ -1911,7 +1966,7 @@ func TestRerecord(t *testing.T) {
 
 		time.Sleep(2 * time.Second) // make sure that we're not running inside the same second
 
-		_, err = c.RestartFrom(true, "", false, nil, false)
+		_, err = c.RestartFrom(true, "", false, nil, [3]string{}, false)
 		assertNoError(err, t, "Second restart")
 		t2 := gett()
 
@@ -1976,7 +2031,7 @@ func TestStopRecording(t *testing.T) {
 
 		// try rerecording
 		go func() {
-			c.RestartFrom(true, "", false, nil, false)
+			c.RestartFrom(true, "", false, nil, [3]string{}, false)
 		}()
 
 		time.Sleep(time.Second) // hopefully the re-recording started...
@@ -1990,7 +2045,7 @@ func TestClearLogicalBreakpoint(t *testing.T) {
 	// Clearing a logical breakpoint should clear all associated physical
 	// breakpoints.
 	// Issue #1955.
-	withTestClient2Extended("testinline", t, protest.EnableInlining, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("testinline", t, protest.EnableInlining, [3]string{}, func(c service.Client, fixture protest.Fixture) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.inlineThis"})
 		assertNoError(err, t, "CreateBreakpoint()")
 		t.Logf("breakpoint set at %#v", bp.Addrs)
@@ -2006,6 +2061,40 @@ func TestClearLogicalBreakpoint(t *testing.T) {
 				t.Errorf("logical breakpoint still exists: %#v", curbp)
 				break
 			}
+		}
+	})
+}
+
+func TestRedirects(t *testing.T) {
+	const (
+		infile  = "redirect-input.txt"
+		outfile = "redirect-output.txt"
+	)
+	protest.AllowRecording(t)
+	withTestClient2Extended("redirect", t, 0, [3]string{infile, outfile, ""}, func(c service.Client, fixture protest.Fixture) {
+		outpath := filepath.Join(fixture.BuildDir, outfile)
+		<-c.Continue()
+		buf, err := ioutil.ReadFile(outpath)
+		assertNoError(err, t, "Reading output file")
+		t.Logf("output %q", buf)
+		if !strings.HasPrefix(string(buf), "Redirect test") {
+			t.Fatalf("Wrong output %q", string(buf))
+		}
+		os.Remove(outpath)
+		if testBackend != "rr" {
+			_, err = c.Restart(false)
+			assertNoError(err, t, "Restart")
+			<-c.Continue()
+			buf2, err := ioutil.ReadFile(outpath)
+			t.Logf("output %q", buf2)
+			assertNoError(err, t, "Reading output file (second time)")
+			if !strings.HasPrefix(string(buf2), "Redirect test") {
+				t.Fatalf("Wrong output %q", string(buf2))
+			}
+			if string(buf2) == string(buf) {
+				t.Fatalf("Expected output change got %q and %q", string(buf), string(buf2))
+			}
+			os.Remove(outpath)
 		}
 	})
 }

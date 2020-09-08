@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+// An Unpacker defines custom argument unpacking behavior.
+// See UnpackArgs.
+type Unpacker interface {
+	Unpack(v Value) error
+}
+
 // UnpackArgs unpacks the positional and keyword arguments into the
 // supplied parameter variables.  pairs is an alternating list of names
 // and pointers to variables.
@@ -21,13 +27,61 @@ import (
 // If the parameter name ends with "?",
 // it and all following parameters are optional.
 //
+// If the variable implements Unpacker, its Unpack argument
+// is called with the argument value, allowing an application
+// to define its own argument validation and conversion.
+//
 // If the variable implements Value, UnpackArgs may call
 // its Type() method while constructing the error message.
 //
-// Beware: an optional *List, *Dict, Callable, Iterable, or Value variable that is
-// not assigned is not a valid Starlark Value, so the caller must
-// explicitly handle such cases by interpreting nil as None or some
-// computed default.
+// Examples:
+//
+//      var (
+//          a Value
+//          b = MakeInt(42)
+//          c Value = starlark.None
+//      )
+//
+//      // 1. mixed parameters, like def f(a, b=42, c=None).
+//      err := UnpackArgs("f", args, kwargs, "a", &a, "b?", &b, "c?", &c)
+//
+//      // 2. keyword parameters only, like def f(*, a, b, c=None).
+//      if len(args) > 0 {
+//              return fmt.Errorf("f: unexpected positional arguments")
+//      }
+//      err := UnpackArgs("f", args, kwargs, "a", &a, "b?", &b, "c?", &c)
+//
+//      // 3. positional parameters only, like def f(a, b=42, c=None, /) in Python 3.8.
+//      err := UnpackPositionalArgs("f", args, kwargs, 1, &a, &b, &c)
+//
+// More complex forms such as def f(a, b=42, *args, c, d=123, **kwargs)
+// require additional logic, but their need in built-ins is exceedingly rare.
+//
+// In the examples above, the declaration of b with type Int causes UnpackArgs
+// to require that b's argument value, if provided, is also an int.
+// To allow arguments of any type, while retaining the default value of 42,
+// declare b as a Value:
+//
+//	var b Value = MakeInt(42)
+//
+// The zero value of a variable of type Value, such as 'a' in the
+// examples above, is not a valid Starlark value, so if the parameter is
+// optional, the caller must explicitly handle the default case by
+// interpreting nil as None or some computed default. The same is true
+// for the zero values of variables of type *List, *Dict, Callable, or
+// Iterable. For example:
+//
+//      // def myfunc(d=None, e=[], f={})
+//      var (
+//          d Value
+//          e *List
+//          f *Dict
+//      )
+//      err := UnpackArgs("myfunc", args, kwargs, "d?", &d, "e?", &e, "f?", &f)
+//      if d == nil { d = None; }
+//      if e == nil { e = new(List); }
+//      if f == nil { f = new(Dict); }
+//
 func UnpackArgs(fnname string, args Tuple, kwargs []Tuple, pairs ...interface{}) error {
 	nparams := len(pairs) / 2
 	var defined intset
@@ -97,6 +151,8 @@ kwloop:
 // UnpackPositionalArgs reports an error if the number of arguments is
 // less than min or greater than len(vars), if kwargs is nonempty, or if
 // any conversion fails.
+//
+// See UnpackArgs for general comments.
 func UnpackPositionalArgs(fnname string, args Tuple, kwargs []Tuple, min int, vars ...interface{}) error {
 	if len(kwargs) > 0 {
 		return fmt.Errorf("%s: unexpected keyword arguments", fnname)
@@ -127,6 +183,8 @@ func UnpackPositionalArgs(fnname string, args Tuple, kwargs []Tuple, min int, va
 func unpackOneArg(v Value, ptr interface{}) error {
 	// On failure, don't clobber *ptr.
 	switch ptr := ptr.(type) {
+	case Unpacker:
+		return ptr.Unpack(v)
 	case *Value:
 		*ptr = v
 	case *string:

@@ -46,7 +46,7 @@ func (s *RPCServer) Restart(arg1 interface{}, arg2 *int) error {
 	if s.config.Debugger.AttachPid != 0 {
 		return errors.New("cannot restart process Delve did not create")
 	}
-	_, err := s.debugger.Restart(false, "", false, nil, false)
+	_, err := s.debugger.Restart(false, "", false, nil, [3]string{}, false)
 	return err
 }
 

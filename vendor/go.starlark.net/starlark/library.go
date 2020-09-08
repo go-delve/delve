@@ -69,88 +69,81 @@ func init() {
 	}
 }
 
-type builtinMethod func(b *Builtin, args Tuple, kwargs []Tuple) (Value, error)
-
 // methods of built-in types
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#built-in-methods
 var (
-	dictMethods = map[string]builtinMethod{
-		"clear":      dict_clear,
-		"get":        dict_get,
-		"items":      dict_items,
-		"keys":       dict_keys,
-		"pop":        dict_pop,
-		"popitem":    dict_popitem,
-		"setdefault": dict_setdefault,
-		"update":     dict_update,
-		"values":     dict_values,
+	dictMethods = map[string]*Builtin{
+		"clear":      NewBuiltin("clear", dict_clear),
+		"get":        NewBuiltin("get", dict_get),
+		"items":      NewBuiltin("items", dict_items),
+		"keys":       NewBuiltin("keys", dict_keys),
+		"pop":        NewBuiltin("pop", dict_pop),
+		"popitem":    NewBuiltin("popitem", dict_popitem),
+		"setdefault": NewBuiltin("setdefault", dict_setdefault),
+		"update":     NewBuiltin("update", dict_update),
+		"values":     NewBuiltin("values", dict_values),
 	}
 
-	listMethods = map[string]builtinMethod{
-		"append": list_append,
-		"clear":  list_clear,
-		"extend": list_extend,
-		"index":  list_index,
-		"insert": list_insert,
-		"pop":    list_pop,
-		"remove": list_remove,
+	listMethods = map[string]*Builtin{
+		"append": NewBuiltin("append", list_append),
+		"clear":  NewBuiltin("clear", list_clear),
+		"extend": NewBuiltin("extend", list_extend),
+		"index":  NewBuiltin("index", list_index),
+		"insert": NewBuiltin("insert", list_insert),
+		"pop":    NewBuiltin("pop", list_pop),
+		"remove": NewBuiltin("remove", list_remove),
 	}
 
-	stringMethods = map[string]builtinMethod{
-		"capitalize":     string_capitalize,
-		"codepoint_ords": string_iterable,
-		"codepoints":     string_iterable, // sic
-		"count":          string_count,
-		"elem_ords":      string_iterable,
-		"elems":          string_iterable,   // sic
-		"endswith":       string_startswith, // sic
-		"find":           string_find,
-		"format":         string_format,
-		"index":          string_index,
-		"isalnum":        string_isalnum,
-		"isalpha":        string_isalpha,
-		"isdigit":        string_isdigit,
-		"islower":        string_islower,
-		"isspace":        string_isspace,
-		"istitle":        string_istitle,
-		"isupper":        string_isupper,
-		"join":           string_join,
-		"lower":          string_lower,
-		"lstrip":         string_strip, // sic
-		"partition":      string_partition,
-		"replace":        string_replace,
-		"rfind":          string_rfind,
-		"rindex":         string_rindex,
-		"rpartition":     string_partition, // sic
-		"rsplit":         string_split,     // sic
-		"rstrip":         string_strip,     // sic
-		"split":          string_split,
-		"splitlines":     string_splitlines,
-		"startswith":     string_startswith,
-		"strip":          string_strip,
-		"title":          string_title,
-		"upper":          string_upper,
+	stringMethods = map[string]*Builtin{
+		"capitalize":     NewBuiltin("capitalize", string_capitalize),
+		"codepoint_ords": NewBuiltin("codepoint_ords", string_iterable),
+		"codepoints":     NewBuiltin("codepoints", string_iterable), // sic
+		"count":          NewBuiltin("count", string_count),
+		"elem_ords":      NewBuiltin("elem_ords", string_iterable),
+		"elems":          NewBuiltin("elems", string_iterable),      // sic
+		"endswith":       NewBuiltin("endswith", string_startswith), // sic
+		"find":           NewBuiltin("find", string_find),
+		"format":         NewBuiltin("format", string_format),
+		"index":          NewBuiltin("index", string_index),
+		"isalnum":        NewBuiltin("isalnum", string_isalnum),
+		"isalpha":        NewBuiltin("isalpha", string_isalpha),
+		"isdigit":        NewBuiltin("isdigit", string_isdigit),
+		"islower":        NewBuiltin("islower", string_islower),
+		"isspace":        NewBuiltin("isspace", string_isspace),
+		"istitle":        NewBuiltin("istitle", string_istitle),
+		"isupper":        NewBuiltin("isupper", string_isupper),
+		"join":           NewBuiltin("join", string_join),
+		"lower":          NewBuiltin("lower", string_lower),
+		"lstrip":         NewBuiltin("lstrip", string_strip), // sic
+		"partition":      NewBuiltin("partition", string_partition),
+		"replace":        NewBuiltin("replace", string_replace),
+		"rfind":          NewBuiltin("rfind", string_rfind),
+		"rindex":         NewBuiltin("rindex", string_rindex),
+		"rpartition":     NewBuiltin("rpartition", string_partition), // sic
+		"rsplit":         NewBuiltin("rsplit", string_split),         // sic
+		"rstrip":         NewBuiltin("rstrip", string_strip),         // sic
+		"split":          NewBuiltin("split", string_split),
+		"splitlines":     NewBuiltin("splitlines", string_splitlines),
+		"startswith":     NewBuiltin("startswith", string_startswith),
+		"strip":          NewBuiltin("strip", string_strip),
+		"title":          NewBuiltin("title", string_title),
+		"upper":          NewBuiltin("upper", string_upper),
 	}
 
-	setMethods = map[string]builtinMethod{
-		"union": set_union,
+	setMethods = map[string]*Builtin{
+		"union": NewBuiltin("union", set_union),
 	}
 )
 
-func builtinAttr(recv Value, name string, methods map[string]builtinMethod) (Value, error) {
-	method := methods[name]
-	if method == nil {
+func builtinAttr(recv Value, name string, methods map[string]*Builtin) (Value, error) {
+	b := methods[name]
+	if b == nil {
 		return nil, nil // no such method
 	}
-
-	// Allocate a closure over 'method'.
-	impl := func(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-		return method(b, args, kwargs)
-	}
-	return NewBuiltin(name, impl).BindReceiver(recv), nil
+	return b.BindReceiver(recv), nil
 }
 
-func builtinAttrNames(methods map[string]builtinMethod) []string {
+func builtinAttrNames(methods map[string]*Builtin) []string {
 	names := make([]string, 0, len(methods))
 	for name := range methods {
 		names = append(names, name)
@@ -222,7 +215,7 @@ func chr(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 	if i > unicode.MaxRune {
 		return nil, fmt.Errorf("chr: Unicode code point U+%X out of range (>0x10FFFF)", i)
 	}
-	return String(string(i)), nil
+	return String(string(rune(i))), nil
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict
@@ -1067,7 +1060,7 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 // ---- methods of built-in types ---
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·get
-func dict_get(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_get(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var key, dflt Value
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &key, &dflt); err != nil {
 		return nil, err
@@ -1083,7 +1076,7 @@ func dict_get(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·clear
-func dict_clear(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1091,7 +1084,7 @@ func dict_clear(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·items
-func dict_items(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_items(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1104,7 +1097,7 @@ func dict_items(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·keys
-func dict_keys(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_keys(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1112,7 +1105,7 @@ func dict_keys(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·pop
-func dict_pop(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var k, d Value
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &k, &d); err != nil {
 		return nil, err
@@ -1128,7 +1121,7 @@ func dict_pop(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·popitem
-func dict_popitem(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_popitem(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1145,7 +1138,7 @@ func dict_popitem(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·setdefault
-func dict_setdefault(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_setdefault(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var key, dflt Value = nil, None
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &key, &dflt); err != nil {
 		return nil, err
@@ -1163,7 +1156,7 @@ func dict_setdefault(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·update
-func dict_update(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if len(args) > 1 {
 		return nil, fmt.Errorf("update: got %d arguments, want at most 1", len(args))
 	}
@@ -1174,7 +1167,7 @@ func dict_update(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#dict·update
-func dict_values(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_values(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1187,7 +1180,7 @@ func dict_values(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#list·append
-func list_append(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_append(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var object Value
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &object); err != nil {
 		return nil, err
@@ -1201,7 +1194,7 @@ func list_append(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#list·clear
-func list_clear(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1212,7 +1205,7 @@ func list_clear(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#list·extend
-func list_extend(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_extend(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(*List)
 	var iterable Iterable
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &iterable); err != nil {
@@ -1226,7 +1219,7 @@ func list_extend(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#list·index
-func list_index(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value, start_, end_ Value
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &value, &start_, &end_); err != nil {
 		return nil, err
@@ -1249,7 +1242,7 @@ func list_index(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#list·insert
-func list_insert(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_insert(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(*List)
 	var index int
 	var object Value
@@ -1279,7 +1272,7 @@ func list_insert(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#list·remove
-func list_remove(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_remove(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(*List)
 	var value Value
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &value); err != nil {
@@ -1300,7 +1293,7 @@ func list_remove(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#list·pop
-func list_pop(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver()
 	list := recv.(*List)
 	n := list.Len()
@@ -1324,7 +1317,7 @@ func list_pop(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·capitalize
-func string_capitalize(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_capitalize(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1347,7 +1340,7 @@ func string_capitalize(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 // - codepoints: successive substrings that encode a single Unicode code point.
 // - elem_ords: numeric values of successive bytes
 // - codepoint_ords: numeric values of successive Unicode code points
-func string_iterable(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_iterable(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1359,7 +1352,7 @@ func string_iterable(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·count
-func string_count(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var sub string
 	var start_, end_ Value
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &sub, &start_, &end_); err != nil {
@@ -1380,7 +1373,7 @@ func string_count(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·isalnum
-func string_isalnum(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isalnum(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1394,7 +1387,7 @@ func string_isalnum(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·isalpha
-func string_isalpha(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isalpha(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1408,7 +1401,7 @@ func string_isalpha(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·isdigit
-func string_isdigit(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isdigit(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1422,7 +1415,7 @@ func string_isdigit(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·islower
-func string_islower(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_islower(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1447,7 +1440,7 @@ func isCasedRune(r rune) bool {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·isspace
-func string_isspace(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isspace(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1461,7 +1454,7 @@ func string_isspace(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·istitle
-func string_istitle(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_istitle(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1494,7 +1487,7 @@ func string_istitle(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·isupper
-func string_isupper(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isupper(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1503,12 +1496,12 @@ func string_isupper(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·find
-func string_find(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_find(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, true, false)
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·format
-func string_format(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_format(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	format := string(b.Receiver().(String))
 	var auto, manual bool // kinds of positional indexing used
 	buf := new(strings.Builder)
@@ -1664,12 +1657,12 @@ func decimal(s string) (x int, ok bool) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·index
-func string_index(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, false, false)
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·join
-func string_join(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_join(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var iterable Iterable
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &iterable); err != nil {
@@ -1693,7 +1686,7 @@ func string_join(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·lower
-func string_lower(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_lower(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1701,7 +1694,7 @@ func string_lower(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·partition
-func string_partition(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_partition(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var sep string
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &sep); err != nil {
@@ -1730,7 +1723,7 @@ func string_partition(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·replace
-func string_replace(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_replace(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var old, new string
 	count := -1
@@ -1741,18 +1734,18 @@ func string_replace(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·rfind
-func string_rfind(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_rfind(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, true, true)
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·rindex
-func string_rindex(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_rindex(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, false, true)
 }
 
 // https://github.com/google/starlark-go/starlark/blob/master/doc/spec.md#string·startswith
 // https://github.com/google/starlark-go/starlark/blob/master/doc/spec.md#string·endswith
-func string_startswith(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_startswith(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var x Value
 	var start, end Value = None, None
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &x, &start, &end); err != nil {
@@ -1797,7 +1790,7 @@ func string_startswith(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·strip
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·lstrip
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·rstrip
-func string_strip(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_strip(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var chars string
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0, &chars); err != nil {
 		return nil, err
@@ -1828,7 +1821,7 @@ func string_strip(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·title
-func string_title(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_title(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1854,7 +1847,7 @@ func string_title(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·upper
-func string_upper(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_upper(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1863,7 +1856,7 @@ func string_upper(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·split
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·rsplit
-func string_split(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_split(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var sep_ Value
 	maxsplit := -1
@@ -1966,7 +1959,7 @@ func splitspace(s string, max int) []string {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·splitlines
-func string_splitlines(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_splitlines(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var keepends bool
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0, &keepends); err != nil {
 		return nil, err
@@ -1991,7 +1984,7 @@ func string_splitlines(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#set·union.
-func set_union(b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_union(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var iterable Iterable
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0, &iterable); err != nil {
 		return nil, err

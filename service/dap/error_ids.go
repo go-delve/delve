@@ -14,5 +14,9 @@ const (
 	FailedtoAttach            = 3001
 	UnableToDisplayThreads    = 2003
 	UnableToProduceStackTrace = 2004
+	UnableToListLocals        = 2005
+	UnableToListArgs          = 2006
+	UnableToListGlobals       = 2007
+	UnableToLookupVariable    = 2008
 	// Add more codes as we support more requests
 )

@@ -21,7 +21,7 @@ type Client interface {
 	// Restarts program. Set true if you want to rebuild the process we are debugging.
 	Restart(rebuild bool) ([]api.DiscardedBreakpoint, error)
 	// Restarts program from the specified position.
-	RestartFrom(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error)
+	RestartFrom(rerecord bool, pos string, resetArgs bool, newArgs []string, newRedirects [3]string, rebuild bool) ([]api.DiscardedBreakpoint, error)
 
 	// GetState returns the current debugger state.
 	GetState() (*api.DebuggerState, error)

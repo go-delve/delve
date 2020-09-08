@@ -8,6 +8,7 @@ import (
 	"go/constant"
 	"go/token"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -68,13 +69,13 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false, []string{}, "")
+		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false, []string{}, "", [3]string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false, []string{}, "")
+		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false, []string{}, "", [3]string{})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{})
+		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, [3]string{})
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
@@ -1106,7 +1107,7 @@ func TestProcessReceivesSIGCHLD(t *testing.T) {
 func TestIssue239(t *testing.T) {
 	withTestProcess("is sue239", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 17)
-		assertNoError(p.Continue(), t, fmt.Sprintf("Continue()"))
+		assertNoError(p.Continue(), t, "Continue()")
 	})
 }
 
@@ -1293,9 +1294,23 @@ func TestFrameEvaluation(t *testing.T) {
 			found[vval] = true
 		}
 
+		firsterr := false
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+			// We try to make sure that all goroutines are stopped at a sensible place
+			// before reading their stacktrace, but due to the nature of the test
+			// program there is no guarantee that we always find them in a reasonable
+			// state.
+			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+			// unnecessary flakiness allow a single goroutine to be in a bad state.
+			firsterr = true
+		}
 		for i := range found {
 			if !found[i] {
-				t.Fatalf("Goroutine %d not found\n", i)
+				if firsterr {
+					firsterr = false
+				} else {
+					t.Fatalf("Goroutine %d not found\n", i)
+				}
 			}
 		}
 
@@ -2087,9 +2102,9 @@ func TestUnsupportedArch(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{outfile}, ".", false, []string{}, "")
+		p, err = native.Launch([]string{outfile}, ".", false, []string{}, "", [3]string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", false, []string{}, "")
+		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", false, []string{}, "", [3]string{})
 	default:
 		t.Skip("test not valid for this backend")
 	}
@@ -2653,7 +2668,7 @@ func TestIssue664(t *testing.T) {
 	})
 }
 
-// Benchmarks (*Processs).Continue + (*Scope).FunctionArguments
+// Benchmarks (*Process).Continue + (*Scope).FunctionArguments
 func BenchmarkTrace(b *testing.B) {
 	withTestProcess("traceperf", b, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, b, "main.PerfCheck")
@@ -4889,6 +4904,116 @@ func TestStepoutOneliner(t *testing.T) {
 		assertNoError(p.StepOut(), t, "second StepOut()")
 		if fn := p.BinInfo().PCToFunc(currentPC(p, t)); fn == nil || fn.Name != "main.main" {
 			t.Fatalf("wrong fnuction after second stepout %#v", fn)
+		}
+	})
+}
+
+func TestRequestManualStopWhileStopped(t *testing.T) {
+	// Requesting a manual stop while stopped shouldn't cause problems (issue #2138).
+	withTestProcess("issue2138", t, func(p *proc.Target, fixture protest.Fixture) {
+		resumed := make(chan struct{})
+		setFileBreakpoint(p, t, fixture.Source, 8)
+		assertNoError(p.Continue(), t, "Continue() 1")
+		p.ResumeNotify(resumed)
+		go func() {
+			<-resumed
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+		}()
+		t.Logf("at time.Sleep call")
+		assertNoError(p.Continue(), t, "Continue() 2")
+		t.Logf("manually stopped")
+		p.RequestManualStop()
+		p.RequestManualStop()
+		p.RequestManualStop()
+
+		resumed = make(chan struct{})
+		p.ResumeNotify(resumed)
+		go func() {
+			<-resumed
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+		}()
+		t.Logf("resuming sleep")
+		assertNoError(p.Continue(), t, "Continue() 3")
+		t.Logf("done")
+	})
+}
+
+func TestStepOutPreservesGoroutine(t *testing.T) {
+	// Checks that StepOut preserves the currently selected goroutine.
+	if runtime.GOOS == "freebsd" {
+		t.Skip("XXX - not working")
+	}
+	rand.Seed(time.Now().Unix())
+	withTestProcess("issue2113", t, func(p *proc.Target, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+
+		logState := func() {
+			g := p.SelectedGoroutine()
+			var goid int = -42
+			if g != nil {
+				goid = g.ID
+			}
+			pc := currentPC(p, t)
+			f, l, fn := p.BinInfo().PCToLine(pc)
+			var fnname string = "???"
+			if fn != nil {
+				fnname = fn.Name
+			}
+			t.Logf("goroutine %d at %s:%d in %s", goid, f, l, fnname)
+		}
+
+		logState()
+
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+		assertNoError(err, t, "GoroutinesInfo")
+		candg := []*proc.G{}
+		bestg := []*proc.G{}
+		for _, g := range gs {
+			frames, err := g.Stacktrace(20, 0)
+			assertNoError(err, t, "Stacktrace")
+			for _, frame := range frames {
+				if frame.Call.Fn != nil && frame.Call.Fn.Name == "main.coroutine" {
+					candg = append(candg, g)
+					if g.Thread != nil && frames[0].Call.Fn != nil && strings.HasPrefix(frames[0].Call.Fn.Name, "runtime.") {
+						bestg = append(bestg, g)
+					}
+					break
+				}
+			}
+		}
+		var pickg *proc.G
+		if len(bestg) > 0 {
+			pickg = bestg[rand.Intn(len(bestg))]
+			t.Logf("selected goroutine %d (best)\n", pickg.ID)
+		} else {
+			pickg = candg[rand.Intn(len(candg))]
+			t.Logf("selected goroutine %d\n", pickg.ID)
+
+		}
+		goid := pickg.ID
+		assertNoError(p.SwitchGoroutine(pickg), t, "SwitchGoroutine")
+
+		logState()
+
+		err = p.StepOut()
+		if err != nil {
+			_, isexited := err.(proc.ErrProcessExited)
+			if !isexited {
+				assertNoError(err, t, "StepOut()")
+			} else {
+				return
+			}
+		}
+
+		logState()
+
+		g2 := p.SelectedGoroutine()
+		if g2 == nil {
+			t.Fatalf("no selected goroutine after stepout")
+		} else if g2.ID != goid {
+			t.Fatalf("unexpected selected goroutine %d", g2.ID)
 		}
 	})
 }

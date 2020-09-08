@@ -341,6 +341,20 @@ func TestScopePrefix(t *testing.T) {
 	const goroutinesLinePrefix = "  Goroutine "
 	const goroutinesCurLinePrefix = "* Goroutine "
 	test.AllowRecording(t)
+
+	tgtAgoroutineCount := 10
+
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+		// We try to make sure that all goroutines are stopped at a sensible place
+		// before reading their stacktrace, but due to the nature of the test
+		// program there is no guarantee that we always find them in a reasonable
+		// state.
+		// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+		// unnecessary flakiness reduce the target count to 9, allowing one
+		// goroutine to be in a bad state.
+		tgtAgoroutineCount = 9
+	}
+
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b stacktraceme")
 		term.MustExec("continue")
@@ -393,7 +407,7 @@ func TestScopePrefix(t *testing.T) {
 					}
 				}
 			}
-			if len(agoroutines)+extraAgoroutines < 10 {
+			if len(agoroutines)+extraAgoroutines < tgtAgoroutineCount {
 				t.Fatalf("Output of goroutines did not have 10 goroutines stopped on main.agoroutine (%d+%d found): %q", len(agoroutines), extraAgoroutines, goroutinesOut)
 			}
 		}
@@ -437,8 +451,12 @@ func TestScopePrefix(t *testing.T) {
 			seen[ival] = true
 		}
 
+		firsterr := tgtAgoroutineCount != 10
+
 		for i := range seen {
-			if !seen[i] {
+			if firsterr {
+				firsterr = false
+			} else if !seen[i] {
 				t.Fatalf("goroutine %d not found", i)
 			}
 		}
@@ -518,8 +536,21 @@ func TestOnPrefix(t *testing.T) {
 			}
 		}
 
+		firsterr := false
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+			// We try to make sure that all goroutines are stopped at a sensible place
+			// before reading their stacktrace, but due to the nature of the test
+			// program there is no guarantee that we always find them in a reasonable
+			// state.
+			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+			// unnecessary flakiness allow a single goroutine to be in a bad state.
+			firsterr = true
+		}
+
 		for i := range seen {
-			if !seen[i] {
+			if firsterr {
+				firsterr = false
+			} else if !seen[i] {
 				t.Fatalf("Goroutine %d not seen\n", i)
 			}
 		}
@@ -577,8 +608,21 @@ func TestOnPrefixLocals(t *testing.T) {
 			}
 		}
 
+		firsterr := false
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+			// We try to make sure that all goroutines are stopped at a sensible place
+			// before reading their stacktrace, but due to the nature of the test
+			// program there is no guarantee that we always find them in a reasonable
+			// state.
+			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+			// unnecessary flakiness allow a single goroutine to be in a bad state.
+			firsterr = true
+		}
+
 		for i := range seen {
-			if !seen[i] {
+			if firsterr {
+				firsterr = false
+			} else if !seen[i] {
 				t.Fatalf("Goroutine %d not seen\n", i)
 			}
 		}
@@ -1074,4 +1118,70 @@ func TestExamineMemoryCmd(t *testing.T) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
 	})
+}
+
+func TestPrintOnTracepoint(t *testing.T) {
+	withTestTerminal("increment", t, func(term *FakeTerminal) {
+		term.MustExec("trace main.Increment")
+		term.MustExec("on 1 print y+1")
+		out, _ := term.Exec("continue")
+		if !strings.Contains(out, "y+1: 4") || !strings.Contains(out, "y+1: 2") || !strings.Contains(out, "y+1: 1") {
+			t.Errorf("output did not contain breakpoint information: %q", out)
+		}
+	})
+}
+
+func TestPrintCastToInterface(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+		out := term.MustExec(`p (*"interface {}")(uintptr(&iface2))`)
+		t.Logf("%q", out)
+	})
+}
+
+func TestParseNewArgv(t *testing.T) {
+	testCases := []struct {
+		in       string
+		tgtargs  string
+		tgtredir string
+		tgterr   string
+	}{
+		{"-noargs", "", " |  | ", ""},
+		{"-noargs arg1", "", "", "too many arguments to restart"},
+		{"arg1 arg2", "arg1 | arg2", " |  | ", ""},
+		{"arg1 arg2 <input.txt", "arg1 | arg2", "input.txt |  | ", ""},
+		{"arg1 arg2 < input.txt", "arg1 | arg2", "input.txt |  | ", ""},
+		{"<input.txt", "", "input.txt |  | ", ""},
+		{"< input.txt", "", "input.txt |  | ", ""},
+		{"arg1 < input.txt > output.txt 2> error.txt", "arg1", "input.txt | output.txt | error.txt", ""},
+		{"< input.txt > output.txt 2> error.txt", "", "input.txt | output.txt | error.txt", ""},
+		{"arg1 <input.txt >output.txt 2>error.txt", "arg1", "input.txt | output.txt | error.txt", ""},
+		{"<input.txt >output.txt 2>error.txt", "", "input.txt | output.txt | error.txt", ""},
+		{"<input.txt <input2.txt", "", "", "redirect error: stdin redirected twice"},
+	}
+
+	for _, tc := range testCases {
+		resetArgs, newArgv, newRedirects, err := parseNewArgv(tc.in)
+		t.Logf("%q -> %q %q %v\n", tc.in, newArgv, newRedirects, err)
+		if tc.tgterr != "" {
+			if err == nil {
+				t.Errorf("Expected error %q, got no error", tc.tgterr)
+			} else if errstr := err.Error(); errstr != tc.tgterr {
+				t.Errorf("Expected error %q, got error %q", tc.tgterr, errstr)
+			}
+		} else {
+			if !resetArgs {
+				t.Errorf("parse error, resetArgs is false")
+				continue
+			}
+			argvstr := strings.Join(newArgv, " | ")
+			if argvstr != tc.tgtargs {
+				t.Errorf("Expected new arguments %q, got %q", tc.tgtargs, argvstr)
+			}
+			redirstr := strings.Join(newRedirects[:], " | ")
+			if redirstr != tc.tgtredir {
+				t.Errorf("Expected new redirects %q, got %q", tc.tgtredir, redirstr)
+			}
+		}
+	}
 }

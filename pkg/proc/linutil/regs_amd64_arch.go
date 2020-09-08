@@ -288,7 +288,7 @@ func (r *AMD64Registers) Get(n int) (uint64, error) {
 	return 0, proc.ErrUnknownRegister
 }
 
-// Copy returns a copy of these registers that is guarenteed not to change.
+// Copy returns a copy of these registers that is guaranteed not to change.
 func (r *AMD64Registers) Copy() (proc.Registers, error) {
 	if r.loadFpRegs != nil {
 		err := r.loadFpRegs(r)
@@ -331,9 +331,11 @@ type AMD64PtraceFpRegs struct {
 // Manual, Volume 1: Basic Architecture.
 type AMD64Xstate struct {
 	AMD64PtraceFpRegs
-	Xsave    []byte // raw xsave area
-	AvxState bool   // contains AVX state
-	YmmSpace [256]byte
+	Xsave       []byte // raw xsave area
+	AvxState    bool   // contains AVX state
+	YmmSpace    [256]byte
+	Avx512State bool // contains AVX512 state
+	ZmmSpace    [512]byte
 }
 
 // Decode decodes an XSAVE area to a list of name/value pairs of registers.
@@ -358,9 +360,13 @@ func (xsave *AMD64Xstate) Decode() (regs []proc.Register) {
 	regs = proc.AppendUint64Register(regs, "MXCSR_MASK", uint64(xsave.MxcrMask))
 
 	for i := 0; i < len(xsave.XmmSpace); i += 16 {
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", i/16), xsave.XmmSpace[i:i+16])
+		n := i / 16
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", n), xsave.XmmSpace[i:i+16])
 		if xsave.AvxState {
-			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("YMM%d", i/16), xsave.YmmSpace[i:i+16])
+			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("YMM%d", n), xsave.YmmSpace[i:i+16])
+			if xsave.Avx512State {
+				regs = proc.AppendBytesRegister(regs, fmt.Sprintf("ZMM%d", n), xsave.ZmmSpace[n*32:(n+1)*32])
+			}
 		}
 	}
 
@@ -368,10 +374,11 @@ func (xsave *AMD64Xstate) Decode() (regs []proc.Register) {
 }
 
 const (
-	_XSAVE_HEADER_START          = 512
-	_XSAVE_HEADER_LEN            = 64
-	_XSAVE_EXTENDED_REGION_START = 576
-	_XSAVE_SSE_REGION_LEN        = 416
+	_XSAVE_HEADER_START            = 512
+	_XSAVE_HEADER_LEN              = 64
+	_XSAVE_EXTENDED_REGION_START   = 576
+	_XSAVE_SSE_REGION_LEN          = 416
+	_XSAVE_AVX512_ZMM_REGION_START = 1152
 )
 
 // LinuxX86XstateRead reads a byte array containing an XSAVE area into regset.
@@ -406,6 +413,19 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate) er
 	avxstate := xstateargs[_XSAVE_EXTENDED_REGION_START:]
 	regset.AvxState = true
 	copy(regset.YmmSpace[:], avxstate[:len(regset.YmmSpace)])
+
+	if xstate_bv&(1<<6) == 0 {
+		// AVX512 state not present
+		return nil
+	}
+
+	avx512state := xstateargs[_XSAVE_AVX512_ZMM_REGION_START:]
+	regset.Avx512State = true
+	copy(regset.ZmmSpace[:], avx512state[:len(regset.ZmmSpace)])
+
+	// TODO(aarzilli): if xstate_bv&(1<<7) is set then xstateargs[1664:2688]
+	// contains ZMM16 through ZMM31, those aren't just the higher 256bits, it's
+	// the full register so each is 64 bytes (512bits)
 
 	return nil
 }

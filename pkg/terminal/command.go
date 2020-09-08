@@ -132,16 +132,22 @@ See also: "help on", "help cond" and "help clear"`},
 
 For recorded targets the command takes the following forms:
 
-	restart				resets ot the start of the recording
-	restart [checkpoint]		resets the recording to the given checkpoint
-	restart -r [newargv...]		re-records the target process
+	restart					resets ot the start of the recording
+	restart [checkpoint]			resets the recording to the given checkpoint
+	restart -r [newargv...]	[redirects...]	re-records the target process
 	
 For live targets the command takes the following forms:
 
-	restart [newargv...]		restarts the process
+	restart [newargv...] [redirects...]	restarts the process
 
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
+
+A list of file redirections can be specified after the new argument list to override the redirections defined using the '--redirect' command line option. A syntax similar to Unix shells is used:
+
+	<input.txt	redirects the standard input of the target process from input.txt
+	>output.txt	redirects the standard output of the target process to output.txt
+	2>error.txt	redirects the standard error of the target process to error.txt
 `},
 		{aliases: []string{"rebuild"}, group: runCmds, cmdFn: c.rebuild, allowedPrefixes: revPrefix, helpMsg: "Rebuild the target executable and restarts it. It does not work if the executable was not built by delve."},
 		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, allowedPrefixes: revPrefix, helpMsg: "Run until breakpoint or program termination."},
@@ -971,6 +977,7 @@ func restartRecorded(t *Term, ctx callContext, args string) error {
 	rerecord := false
 	resetArgs := false
 	newArgv := []string{}
+	newRedirects := [3]string{}
 	restartPos := ""
 
 	if len(v) > 0 {
@@ -978,7 +985,7 @@ func restartRecorded(t *Term, ctx callContext, args string) error {
 			rerecord = true
 			if len(v) == 2 {
 				var err error
-				resetArgs, newArgv, err = parseNewArgv(v[1])
+				resetArgs, newArgv, newRedirects, err = parseNewArgv(v[1])
 				if err != nil {
 					return err
 				}
@@ -991,7 +998,7 @@ func restartRecorded(t *Term, ctx callContext, args string) error {
 		}
 	}
 
-	if err := restartIntl(t, rerecord, restartPos, resetArgs, newArgv); err != nil {
+	if err := restartIntl(t, rerecord, restartPos, resetArgs, newArgv, newRedirects); err != nil {
 		return err
 	}
 
@@ -1015,12 +1022,12 @@ func parseOptionalCount(arg string) (int64, error) {
 }
 
 func restartLive(t *Term, ctx callContext, args string) error {
-	resetArgs, newArgv, err := parseNewArgv(args)
+	resetArgs, newArgv, newRedirects, err := parseNewArgv(args)
 	if err != nil {
 		return err
 	}
 
-	if err := restartIntl(t, false, "", resetArgs, newArgv); err != nil {
+	if err := restartIntl(t, false, "", resetArgs, newArgv, newRedirects); err != nil {
 		return err
 	}
 
@@ -1028,8 +1035,8 @@ func restartLive(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func restartIntl(t *Term, rerecord bool, restartPos string, resetArgs bool, newArgv []string) error {
-	discarded, err := t.client.RestartFrom(rerecord, restartPos, resetArgs, newArgv, false)
+func restartIntl(t *Term, rerecord bool, restartPos string, resetArgs bool, newArgv []string, newRedirects [3]string) error {
+	discarded, err := t.client.RestartFrom(rerecord, restartPos, resetArgs, newArgv, newRedirects, false)
 	if err != nil {
 		return err
 	}
@@ -1039,9 +1046,9 @@ func restartIntl(t *Term, rerecord bool, restartPos string, resetArgs bool, newA
 	return nil
 }
 
-func parseNewArgv(args string) (resetArgs bool, newArgv []string, err error) {
+func parseNewArgv(args string) (resetArgs bool, newArgv []string, newRedirects [3]string, err error) {
 	if args == "" {
-		return false, nil, nil
+		return false, nil, [3]string{}, nil
 	}
 	v, err := argv.Argv(args,
 		func(s string) (string, error) {
@@ -1049,22 +1056,58 @@ func parseNewArgv(args string) (resetArgs bool, newArgv []string, err error) {
 		},
 		nil)
 	if err != nil {
-		return false, nil, err
+		return false, nil, [3]string{}, err
 	}
 	if len(v) != 1 {
-		return false, nil, fmt.Errorf("Illegal commandline '%s'", args)
+		return false, nil, [3]string{}, fmt.Errorf("illegal commandline '%s'", args)
 	}
 	w := v[0]
 	if len(w) == 0 {
-		return false, nil, nil
+		return false, nil, [3]string{}, nil
 	}
 	if w[0] == "-noargs" {
 		if len(w) > 1 {
-			return false, nil, fmt.Errorf("Too many arguments to restart")
+			return false, nil, [3]string{}, fmt.Errorf("too many arguments to restart")
 		}
-		return true, nil, nil
+		return true, nil, [3]string{}, nil
 	}
-	return true, w, nil
+	redirs := [3]string{}
+	for len(w) > 0 {
+		var found bool
+		var err error
+		w, found, err = parseOneRedirect(w, &redirs)
+		if err != nil {
+			return false, nil, [3]string{}, err
+		}
+		if !found {
+			break
+		}
+	}
+	return true, w, redirs, nil
+}
+
+func parseOneRedirect(w []string, redirs *[3]string) ([]string, bool, error) {
+	prefixes := []string{"<", ">", "2>"}
+	names := []string{"stdin", "stdout", "stderr"}
+	if len(w) >= 2 {
+		for _, prefix := range prefixes {
+			if w[len(w)-2] == prefix {
+				w[len(w)-2] += w[len(w)-1]
+				w = w[:len(w)-1]
+				break
+			}
+		}
+	}
+	for i, prefix := range prefixes {
+		if strings.HasPrefix(w[len(w)-1], prefix) {
+			if redirs[i] != "" {
+				return nil, false, fmt.Errorf("redirect error: %s redirected twice", names[i])
+			}
+			redirs[i] = w[len(w)-1][len(prefix):]
+			return w[:len(w)-1], true, nil
+		}
+	}
+	return w, false, nil
 }
 
 func printcontextNoState(t *Term) {
@@ -2234,37 +2277,59 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	printReturnValues(th)
+	printBreakpointInfo(th, false)
+}
 
-	if th.BreakpointInfo != nil {
-		bp := th.Breakpoint
-		bpi := th.BreakpointInfo
+func printBreakpointInfo(th *api.Thread, tracepointOnNewline bool) {
+	if th.BreakpointInfo == nil {
+		return
+	}
+	bp := th.Breakpoint
+	bpi := th.BreakpointInfo
 
-		if bpi.Goroutine != nil {
-			writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
+	if bp.TraceReturn {
+		return
+	}
+
+	didprintnl := tracepointOnNewline
+	tracepointnl := func() {
+		if !bp.Tracepoint || didprintnl {
+			return
 		}
+		didprintnl = true
+		fmt.Println()
+	}
 
-		for _, v := range bpi.Variables {
+	if bpi.Goroutine != nil {
+		tracepointnl()
+		writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
+	}
+
+	for _, v := range bpi.Variables {
+		tracepointnl()
+		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+	}
+
+	for _, v := range bpi.Locals {
+		tracepointnl()
+		if *bp.LoadLocals == longLoadConfig {
+			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+		} else {
+			fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
+		}
+	}
+
+	if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
+		for _, v := range bpi.Arguments {
+			tracepointnl()
 			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
 		}
+	}
 
-		for _, v := range bpi.Locals {
-			if *bp.LoadLocals == longLoadConfig {
-				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
-			} else {
-				fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
-			}
-		}
-
-		if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
-			for _, v := range bpi.Arguments {
-				fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
-			}
-		}
-
-		if bpi.Stacktrace != nil {
-			fmt.Printf("\tStack:\n")
-			printStack(os.Stdout, bpi.Stacktrace, "\t\t", false)
-		}
+	if bpi.Stacktrace != nil {
+		tracepointnl()
+		fmt.Printf("\tStack:\n")
+		printStack(os.Stdout, bpi.Stacktrace, "\t\t", false)
 	}
 }
 
@@ -2274,6 +2339,7 @@ func printTracepoint(th *api.Thread, bpname string, fn *api.Function, args strin
 		if !hasReturnValue {
 			fmt.Println()
 		}
+		printBreakpointInfo(th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
 		retVals := make([]string, 0, len(th.ReturnValues))

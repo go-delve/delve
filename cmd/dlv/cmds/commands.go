@@ -1,6 +1,7 @@
 package cmds
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -25,6 +26,7 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -73,6 +75,11 @@ var (
 	traceTestBinary bool
 	traceStackDepth int
 
+	// redirect specifications for target process
+	redirects []string
+
+	allowNonTerminalInteractive bool
+
 	conf *config.Config
 )
 
@@ -118,10 +125,12 @@ func New(docCall bool) *cobra.Command {
 	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
-	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", ".", "Working directory for running the program.")
+	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", "", "Working directory for running the program.")
 	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
 	rootCommand.PersistentFlags().BoolVarP(&checkLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
 	rootCommand.PersistentFlags().StringVar(&backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
+	rootCommand.PersistentFlags().StringArrayVarP(&redirects, "redirect", "r", []string{}, "Specifies redirect rules for target process (see 'dlv help redirect')")
+	rootCommand.PersistentFlags().BoolVar(&allowNonTerminalInteractive, "allow-non-terminal-interactive", false, "Allows interactive sessions of Delve that don't have a terminal as stdin, stdout and stderr")
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
@@ -360,6 +369,23 @@ and dap modes.
 `,
 	})
 
+	rootCommand.AddCommand(&cobra.Command{
+		Use:   "redirect",
+		Short: "Help about file redirection.",
+		Long: `The standard file descriptors of the target process can be controlled using the '-r' and '--tty' arguments. 
+
+The --tty argument allows redirecting all standard descriptors to a terminal, specified as an argument to --tty.
+
+The syntax for '-r' argument is:
+
+		-r [source:]destination
+
+Where source is one of 'stdin', 'stdout' or 'stderr' and destination is the path to a file. If the source is omitted stdin is used implicitly.
+
+File redirects can also be changed using the 'restart' command.
+`,
+	})
+
 	rootCommand.DisableAutoGenTag = true
 
 	return rootCommand
@@ -509,6 +535,10 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		listener, clientConn := service.ListenerPipe()
 		defer listener.Close()
 
+		if workingDir == "" {
+			workingDir = "."
+		}
+
 		// Create and start a debug server
 		server := rpccommon.NewServer(&service.Config{
 			Listener:    listener,
@@ -586,14 +616,39 @@ func testCmd(cmd *cobra.Command, args []string) {
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 		err = gobuild.GoTestBuild(debugname, dlvArgs, buildFlags)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}
 		defer gobuild.Remove(debugname)
 		processArgs := append([]string{debugname}, targetArgs...)
 
+		if workingDir == "" {
+			if len(dlvArgs) == 1 {
+				workingDir = getPackageDir(dlvArgs[0])
+			} else {
+				workingDir = "."
+			}
+		}
+
 		return execute(0, processArgs, conf, "", debugger.ExecutingGeneratedTest, dlvArgs, buildFlags)
 	}()
 	os.Exit(status)
+}
+
+func getPackageDir(pkg string) string {
+	out, err := exec.Command("go", "list", "--json", pkg).CombinedOutput()
+	if err != nil {
+		return "."
+	}
+	type listOut struct {
+		Dir string `json:"Dir"`
+	}
+	var listout listOut
+	err = json.Unmarshal(out, &listout)
+	if err != nil {
+		return "."
+	}
+	return listout.Dir
 }
 
 func attachCmd(cmd *cobra.Command, args []string) {
@@ -715,9 +770,34 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		acceptMulti = false
 	}
 
+	if !headless && !allowNonTerminalInteractive {
+		for _, f := range []struct {
+			name string
+			file *os.File
+		}{{"Stdin", os.Stdin}, {"Stdout", os.Stdout}, {"Stderr", os.Stderr}} {
+			if f.file == nil {
+				continue
+			}
+			if !isatty.IsTerminal(f.file.Fd()) {
+				fmt.Fprintf(os.Stderr, "%s is not a terminal, use '-r' to specify redirects for the target process or --allow-non-terminal-interactive=true if you really want to specify a redirect for Delve\n", f.name)
+				return 1
+			}
+		}
+	}
+
+	if len(redirects) > 0 && tty != "" {
+		fmt.Fprintf(os.Stderr, "Can not use -r and --tty together\n")
+		return 1
+	}
+
+	redirects, err := parseRedirects(redirects)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
+
 	var listener net.Listener
 	var clientConn net.Conn
-	var err error
 
 	// Make a TCP listener
 	if headless {
@@ -734,6 +814,10 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	var server service.Server
 
 	disconnectChan := make(chan struct{})
+
+	if workingDir == "" {
+		workingDir = "."
+	}
 
 	// Create and start a debugger server
 	switch apiVersion {
@@ -757,6 +841,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
 				TTY:                  tty,
+				Redirects:            redirects,
 			},
 		})
 	default:
@@ -797,4 +882,25 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	}
 
 	return connect(listener.Addr().String(), clientConn, conf, kind)
+}
+
+func parseRedirects(redirects []string) ([3]string, error) {
+	r := [3]string{}
+	names := [3]string{"stdin", "stdout", "stderr"}
+	for _, redirect := range redirects {
+		idx := 0
+		for i, name := range names {
+			pfx := name + ":"
+			if strings.HasPrefix(redirect, pfx) {
+				idx = i
+				redirect = redirect[len(pfx):]
+				break
+			}
+		}
+		if r[idx] != "" {
+			return r, fmt.Errorf("redirect error: %s redirected twice", names[idx])
+		}
+		r[idx] = redirect
+	}
+	return r, nil
 }
