@@ -4,7 +4,7 @@ github.com/cosiner/argv
 github.com/cpuguy83/go-md2man/md2man
 # github.com/creack/pty v1.1.9
 github.com/creack/pty
-# github.com/google/go-dap v0.2.0
+# github.com/google/go-dap v0.3.0
 github.com/google/go-dap
 # github.com/hashicorp/golang-lru v0.5.4
 github.com/hashicorp/golang-lru/simplelru
