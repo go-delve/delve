@@ -64,7 +64,7 @@ func newFakeMemory(base uint64, contents ...interface{}) *fakeMemory {
 	return mem
 }
 
-func (mem *fakeMemory) ReadMemory(data []byte, addr uintptr) (int, error) {
+func (mem *fakeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
 	if uint64(addr) < mem.base {
 		return 0, fmt.Errorf("read out of bounds %d %#x", len(data), addr)
 	}
@@ -77,7 +77,7 @@ func (mem *fakeMemory) ReadMemory(data []byte, addr uintptr) (int, error) {
 	return len(data), nil
 }
 
-func (mem *fakeMemory) WriteMemory(uintptr, []byte) (int, error) {
+func (mem *fakeMemory) WriteMemory(uint64, []byte) (int, error) {
 	return 0, fmt.Errorf("not implemented")
 }
 

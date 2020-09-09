@@ -766,7 +766,7 @@ func (s *RPCServer) ListPackagesBuildInfo(in ListPackagesBuildInfoIn, out *ListP
 
 // ExamineMemoryIn holds the arguments of ExamineMemory
 type ExamineMemoryIn struct {
-	Address uintptr
+	Address uint64
 	Length  int
 }
 

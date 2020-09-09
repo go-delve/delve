@@ -93,7 +93,7 @@ type BinaryInfo struct {
 	// nameOfRuntimeType maps an address of a runtime._type struct to its
 	// decoded name. Used with versions of Go <= 1.10 to figure out the DIE of
 	// the concrete type of interfaces.
-	nameOfRuntimeType map[uintptr]nameOfRuntimeTypeEntry
+	nameOfRuntimeType map[uint64]nameOfRuntimeTypeEntry
 
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
@@ -425,7 +425,7 @@ type ElfDynamicSection struct {
 
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
 func NewBinaryInfo(goos, goarch string) *BinaryInfo {
-	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uintptr]nameOfRuntimeTypeEntry), logger: logflags.DebuggerLogger()}
+	r := &BinaryInfo{GOOS: goos, nameOfRuntimeType: make(map[uint64]nameOfRuntimeTypeEntry), logger: logflags.DebuggerLogger()}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info).
 	switch goarch {

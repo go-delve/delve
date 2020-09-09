@@ -125,7 +125,7 @@ func Disassemble(mem MemoryReadWriter, regs Registers, breakpoints *BreakpointMa
 
 func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64, singleInstr bool) ([]AsmInstruction, error) {
 	mem := make([]byte, int(endAddr-startAddr))
-	_, err := memrw.ReadMemory(mem, uintptr(startAddr))
+	_, err := memrw.ReadMemory(mem, startAddr)
 	if err != nil {
 		return nil, err
 	}

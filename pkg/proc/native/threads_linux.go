@@ -84,7 +84,7 @@ func (t *nativeThread) Blocked() bool {
 	return false
 }
 
-func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *nativeThread) WriteMemory(addr uint64, data []byte) (written int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
@@ -94,24 +94,24 @@ func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (written int, err 
 	// ProcessVmWrite can't poke read-only memory like ptrace, so don't
 	// even bother for small writes -- likely breakpoints and such.
 	if len(data) > sys.SizeofPtr {
-		written, _ = processVmWrite(t.ID, addr, data)
+		written, _ = processVmWrite(t.ID, uintptr(addr), data)
 	}
 	if written == 0 {
-		t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, addr, data) })
+		t.dbp.execPtraceFunc(func() { written, err = sys.PtracePokeData(t.ID, uintptr(addr), data) })
 	}
 	return
 }
 
-func (t *nativeThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (t *nativeThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return
 	}
-	n, _ = processVmRead(t.ID, addr, data)
+	n, _ = processVmRead(t.ID, uintptr(addr), data)
 	if n == 0 {
-		t.dbp.execPtraceFunc(func() { n, err = sys.PtracePeekData(t.ID, addr, data) })
+		t.dbp.execPtraceFunc(func() { n, err = sys.PtracePeekData(t.ID, uintptr(addr), data) })
 	}
 	return
 }

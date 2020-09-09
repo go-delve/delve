@@ -281,7 +281,7 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 	// If the stub doesn't support memory allocation reloadRegisters will
 	// overwrite some existing memory to store the MOV.
 	if addr, err := p.conn.allocMemory(256); err == nil {
-		if _, err := p.conn.writeMemory(uintptr(addr), p.loadGInstr()); err == nil {
+		if _, err := p.conn.writeMemory(addr, p.loadGInstr()); err == nil {
 			p.loadGInstrAddr = addr
 		}
 	}
@@ -1260,7 +1260,7 @@ func (p *gdbProcess) setCurrentBreakpoints() error {
 }
 
 // ReadMemory will read into 'data' memory at the address provided.
-func (t *gdbThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (t *gdbThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	err = t.p.conn.readMemory(data, addr)
 	if err != nil {
 		return 0, err
@@ -1269,7 +1269,7 @@ func (t *gdbThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 }
 
 // WriteMemory will write into the memory at 'addr' the data provided.
-func (t *gdbThread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *gdbThread) WriteMemory(addr uint64, data []byte) (written int, err error) {
 	return t.p.conn.writeMemory(addr, data)
 }
 
@@ -1517,18 +1517,18 @@ func (t *gdbThread) reloadGAtPC() error {
 	}
 
 	savedcode := make([]byte, len(movinstr))
-	_, err := t.ReadMemory(savedcode, uintptr(pc))
+	_, err := t.ReadMemory(savedcode, pc)
 	if err != nil {
 		return err
 	}
 
-	_, err = t.WriteMemory(uintptr(pc), movinstr)
+	_, err = t.WriteMemory(pc, movinstr)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		_, err0 := t.WriteMemory(uintptr(pc), savedcode)
+		_, err0 := t.WriteMemory(pc, savedcode)
 		if err == nil {
 			err = err0
 		}

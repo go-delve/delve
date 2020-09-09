@@ -110,24 +110,24 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	return restoreRegistersErr
 }
 
-func (t *nativeThread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *nativeThread) WriteMemory(addr uint64, data []byte) (written int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return 0, nil
 	}
-	t.dbp.execPtraceFunc(func() { written, err = ptraceWriteData(t.ID, addr, data) })
+	t.dbp.execPtraceFunc(func() { written, err = ptraceWriteData(t.ID, uintptr(addr), data) })
 	return written, err
 }
 
-func (t *nativeThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (t *nativeThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
 	}
 	if len(data) == 0 {
 		return 0, nil
 	}
-	t.dbp.execPtraceFunc(func() { n, err = ptraceReadData(t.ID, addr, data) })
+	t.dbp.execPtraceFunc(func() { n, err = ptraceReadData(t.ID, uintptr(addr), data) })
 	return n, err
 }

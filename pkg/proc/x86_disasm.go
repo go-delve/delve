@@ -110,7 +110,7 @@ func resolveCallArgX86(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool
 		if err1 != nil || err2 != nil {
 			return nil
 		}
-		addr := uintptr(int64(base) + int64(index*uint64(arg.Scale)) + arg.Disp)
+		addr := uint64(int64(base) + int64(index*uint64(arg.Scale)) + arg.Disp)
 		pc, err = readUintRaw(mem, addr, int64(inst.MemBytes))
 		if err != nil {
 			return nil

@@ -150,7 +150,7 @@ func (t *nativeThread) ThreadID() int {
 
 // ClearBreakpoint clears the specified breakpoint.
 func (t *nativeThread) ClearBreakpoint(bp *proc.Breakpoint) error {
-	if _, err := t.WriteMemory(uintptr(bp.Addr), bp.OriginalData); err != nil {
+	if _, err := t.WriteMemory(bp.Addr, bp.OriginalData); err != nil {
 		return fmt.Errorf("could not clear breakpoint %s", err)
 	}
 	return nil

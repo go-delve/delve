@@ -142,7 +142,7 @@ func (dbp *Target) Continue() error {
 				if !arch.BreakInstrMovesPC() {
 					bpsize := arch.BreakpointSize()
 					bp := make([]byte, bpsize)
-					_, err = dbp.CurrentThread().ReadMemory(bp, uintptr(loc.PC))
+					_, err = dbp.CurrentThread().ReadMemory(bp, loc.PC)
 					if bytes.Equal(bp, arch.BreakpointInstruction()) {
 						curthread.SetPC(loc.PC + uint64(bpsize))
 					}

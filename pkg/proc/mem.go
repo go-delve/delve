@@ -9,13 +9,13 @@ import (
 
 const cacheEnabled = true
 
-// MemoryReader is like io.ReaderAt, but the offset is a uintptr so that it
+// MemoryReader is like io.ReaderAt, but the offset is a uint64 so that it
 // can address all of 64-bit memory.
 // Redundant with memoryReadWriter but more easily suited to working with
 // the standard io package.
 type MemoryReader interface {
 	// ReadMemory is just like io.ReaderAt.ReadAt.
-	ReadMemory(buf []byte, addr uintptr) (n int, err error)
+	ReadMemory(buf []byte, addr uint64) (n int, err error)
 }
 
 // MemoryReadWriter is an interface for reading or writing to
@@ -23,21 +23,21 @@ type MemoryReader interface {
 // target memory or possibly a cache.
 type MemoryReadWriter interface {
 	MemoryReader
-	WriteMemory(addr uintptr, data []byte) (written int, err error)
+	WriteMemory(addr uint64, data []byte) (written int, err error)
 }
 
 type memCache struct {
 	loaded    bool
-	cacheAddr uintptr
+	cacheAddr uint64
 	cache     []byte
 	mem       MemoryReadWriter
 }
 
-func (m *memCache) contains(addr uintptr, size int) bool {
-	return addr >= m.cacheAddr && addr <= (m.cacheAddr+uintptr(len(m.cache)-size))
+func (m *memCache) contains(addr uint64, size int) bool {
+	return addr >= m.cacheAddr && addr <= (m.cacheAddr+uint64(len(m.cache)-size))
 }
 
-func (m *memCache) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (m *memCache) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	if m.contains(addr, len(data)) {
 		if !m.loaded {
 			_, err := m.mem.ReadMemory(m.cache, m.cacheAddr)
@@ -53,11 +53,11 @@ func (m *memCache) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 	return m.mem.ReadMemory(data, addr)
 }
 
-func (m *memCache) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+func (m *memCache) WriteMemory(addr uint64, data []byte) (written int, err error) {
 	return m.mem.WriteMemory(addr, data)
 }
 
-func cacheMemory(mem MemoryReadWriter, addr uintptr, size int) MemoryReadWriter {
+func cacheMemory(mem MemoryReadWriter, addr uint64, size int) MemoryReadWriter {
 	if !cacheEnabled {
 		return mem
 	}
@@ -112,23 +112,23 @@ func newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []o
 			cmem.data = append(cmem.data, reg[:sz]...)
 		} else {
 			buf := make([]byte, piece.Size)
-			mem.ReadMemory(buf, uintptr(piece.Addr))
+			mem.ReadMemory(buf, uint64(piece.Addr))
 			cmem.data = append(cmem.data, buf...)
 		}
 	}
 	return cmem, nil
 }
 
-func (mem *compositeMemory) ReadMemory(data []byte, addr uintptr) (int, error) {
+func (mem *compositeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
 	addr -= fakeAddress
-	if addr >= uintptr(len(mem.data)) || addr+uintptr(len(data)) > uintptr(len(mem.data)) {
+	if addr >= uint64(len(mem.data)) || addr+uint64(len(data)) > uint64(len(mem.data)) {
 		return 0, errors.New("read out of bounds")
 	}
-	copy(data, mem.data[addr:addr+uintptr(len(data))])
+	copy(data, mem.data[addr:addr+uint64(len(data))])
 	return len(data), nil
 }
 
-func (mem *compositeMemory) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
 	//TODO(aarzilli): implement
 	return 0, errors.New("can't write composite memory")
 }

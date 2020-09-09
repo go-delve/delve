@@ -24,7 +24,7 @@ func TestIssue554(t *testing.T) {
 	case 8:
 		addr = 0xffffffffffffffff
 	}
-	if mem.contains(uintptr(addr), 40) {
+	if mem.contains(addr, 40) {
 		t.Fatalf("should be false")
 	}
 }
@@ -41,7 +41,7 @@ type memRead struct {
 	size int
 }
 
-func (dm *dummyMem) ReadMemory(buf []byte, addr uintptr) (int, error) {
+func (dm *dummyMem) ReadMemory(buf []byte, addr uint64) (int, error) {
 	dm.t.Logf("read addr=%#x size=%#x\n", addr, len(buf))
 	dm.reads = append(dm.reads, memRead{uint64(addr), len(buf)})
 	a := int64(addr) - int64(dm.base)
@@ -55,7 +55,7 @@ func (dm *dummyMem) ReadMemory(buf []byte, addr uintptr) (int, error) {
 	return len(buf), nil
 }
 
-func (dm *dummyMem) WriteMemory(uintptr, []byte) (int, error) {
+func (dm *dummyMem) WriteMemory(uint64, []byte) (int, error) {
 	panic("not supported")
 }
 
@@ -80,7 +80,7 @@ func TestReadCStringValue(t *testing.T) {
 		t.Logf("base is %#x\n", tc.base)
 		dm.base = tc.base
 		dm.reads = dm.reads[:0]
-		out, done, err := readCStringValue(dm, uintptr(tc.base), LoadConfig{MaxStringLen: maxstrlen})
+		out, done, err := readCStringValue(dm, tc.base, LoadConfig{MaxStringLen: maxstrlen})
 		if err != nil {
 			t.Errorf("base=%#x readCStringValue: %v", tc.base, err)
 		}

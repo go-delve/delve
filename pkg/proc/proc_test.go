@@ -102,7 +102,7 @@ func getRegisters(p *proc.Target, t *testing.T) proc.Registers {
 
 func dataAtAddr(thread proc.MemoryReadWriter, addr uint64) ([]byte, error) {
 	data := make([]byte, 1)
-	_, err := thread.ReadMemory(data, uintptr(addr))
+	_, err := thread.ReadMemory(data, addr)
 	return data, err
 }
 

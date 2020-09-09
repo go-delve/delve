@@ -310,7 +310,7 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 				atbp := true
 				if thread, found := dbp.threads[tid]; found {
 					data := make([]byte, dbp.bi.Arch.BreakpointSize())
-					if _, err := thread.ReadMemory(data, exception.ExceptionRecord.ExceptionAddress); err == nil {
+					if _, err := thread.ReadMemory(data, uint64(exception.ExceptionRecord.ExceptionAddress)); err == nil {
 						instr := dbp.bi.Arch.BreakpointInstruction()
 						for i := range instr {
 							if data[i] != instr[i] {

@@ -516,7 +516,7 @@ func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, c
 
 func (it *stackIterator) readRegisterAt(regnum uint64, addr uint64) (*op.DwarfRegister, error) {
 	buf := make([]byte, it.bi.Arch.regSize(regnum))
-	_, err := it.mem.ReadMemory(buf, uintptr(addr))
+	_, err := it.mem.ReadMemory(buf, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -675,7 +675,7 @@ func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
 		return nil, fmt.Errorf("could not read DWARF function entry: %v", err)
 	}
 	scope.Regs.FrameBase, _, _, _ = bi.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
-	scope.Mem = cacheMemory(scope.Mem, uintptr(scope.Regs.CFA), int(d.argSz))
+	scope.Mem = cacheMemory(scope.Mem, uint64(scope.Regs.CFA), int(d.argSz))
 
 	return scope, nil
 }

@@ -50,13 +50,13 @@ func TestSplicedReader(t *testing.T) {
 
 	type region struct {
 		data   []byte
-		off    uintptr
-		length uintptr
+		off    uint64
+		length uint64
 	}
 	tests := []struct {
 		name     string
 		regions  []region
-		readAddr uintptr
+		readAddr uint64
 		readLen  int
 		want     []byte
 	}{
