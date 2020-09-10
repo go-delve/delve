@@ -1037,6 +1037,11 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 				continue
 			}
 			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
+		} else if strings.HasPrefix(image.Path, "/proc") {
+			path, err := filepath.EvalSymlinks(image.Path)
+			if err == nil {
+				potentialDebugFilePath = fmt.Sprintf("%s/%s.debug", dir, filepath.Base(path))
+			}
 		} else {
 			potentialDebugFilePath = fmt.Sprintf("%s/%s.debug", dir, filepath.Base(image.Path))
 		}
