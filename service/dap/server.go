@@ -461,16 +461,19 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	stop, ok := request.Arguments["stopOnEntry"]
-	s.args.stopOnEntry = ok && stop == true
-
+	// If user-specified, overwrite the defaults for optional args.
+	stop, ok := request.Arguments["stopOnEntry"].(bool)
+	if ok {
+		s.args.stopOnEntry = stop
+	}
 	depth, ok := request.Arguments["stackTraceDepth"].(float64)
 	if ok && depth > 0 {
 		s.args.stackTraceDepth = int(depth)
 	}
-
-	globals, ok := request.Arguments["showGlobalVariables"]
-	s.args.showGlobalVariables = ok && globals == true
+	globals, ok := request.Arguments["showGlobalVariables"].(bool)
+	if ok {
+		s.args.showGlobalVariables = globals
+	}
 
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
