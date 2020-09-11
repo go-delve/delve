@@ -390,15 +390,15 @@ If locspec is omitted edit will open the current source file in the editor, othe
 
 		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
 
-	examinemem [-fmt <format>] [-len <length>] <address>
+	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
 
-Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
+Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal), addr(address).
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
-Address is the memory location of the target to examine.
+Address is the memory location of the target to examine. Please note '-len' is deprecated by '-count and -size'.
 
 For example:
 
-    x -fmt hex -len 20 0xc00008af38`},
+    x -fmt hex -count 20 -size 1 0xc00008af38`},
 
 		{aliases: []string{"display"}, group: dataCmds, cmdFn: display, helpMsg: `Print value of an expression every time the program stops.
 
@@ -1562,7 +1562,8 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 
 	// Default value
 	priFmt := byte('x')
-	length := 1
+	count := 1
+	size := 1
 
 	for i := 0; i < len(v); i++ {
 		switch v[i] {
@@ -1585,19 +1586,25 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 			if !ok {
 				return fmt.Errorf("%q is not a valid format", v[i])
 			}
-		case "-len":
+		case "-count", "-len":
 			i++
 			if i >= len(v) {
-				return fmt.Errorf("expected argument after -len")
+				return fmt.Errorf("expected argument after -count/-len")
 			}
 			var err error
-			length, err = strconv.Atoi(v[i])
-			if err != nil || length <= 0 {
-				return fmt.Errorf("len must be an positive integer")
+			count, err = strconv.Atoi(v[i])
+			if err != nil || count <= 0 {
+				return fmt.Errorf("count/len must be a positive integer")
 			}
-			// TODO, maybe configured by user.
-			if length > 1000 {
-				return fmt.Errorf("len must be less than or equal to 1000")
+		case "-size":
+			i++
+			if i >= len(v) {
+				return fmt.Errorf("expected argument after -size")
+			}
+			var err error
+			size, err = strconv.Atoi(v[i])
+			if err != nil || size <= 0 || size > 8 {
+				return fmt.Errorf("size must be a positive integer (<=8)")
 			}
 		default:
 			if i != len(v)-1 {
@@ -1611,16 +1618,20 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 		}
 	}
 
+	// TODO, maybe configured by user.
+	if count*size > 1000 {
+		return fmt.Errorf("read memory range (count*size) must be less than or equal to 1000 bytes")
+	}
+
 	if address == 0 {
 		return fmt.Errorf("no address specified")
 	}
 
-	memArea, err := t.client.ExamineMemory(address, length)
+	memArea, isLittleEndian, err := t.client.ExamineMemory(address, count*size)
 	if err != nil {
 		return err
 	}
-
-	fmt.Print(api.PrettyExamineMemory(uintptr(address), memArea, priFmt))
+	fmt.Print(api.PrettyExamineMemory(uintptr(address), memArea, isLittleEndian, priFmt, size))
 	return nil
 }
 

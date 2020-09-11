@@ -833,7 +833,8 @@ type ExamineMemoryIn struct {
 
 // ExaminedMemoryOut holds the return values of ExamineMemory
 type ExaminedMemoryOut struct {
-	Mem []byte
+	Mem            []byte
+	IsLittleEndian bool
 }
 
 func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) error {
@@ -846,6 +847,8 @@ func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) e
 	}
 
 	out.Mem = Mem
+	out.IsLittleEndian = true //TODO: get byte order from debugger.target.BinInfo().Arch
+
 	return nil
 }
 

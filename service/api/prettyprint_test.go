@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 )
@@ -17,7 +18,7 @@ func TestPrettyExamineMemory(t *testing.T) {
 		"0x10007:   0151   0152   0153   0154   0155   0156   0157   0160   ",
 		"0x1000f:   0161   0162   0163   0164   0165   0166   0167   0170   ",
 		"0x10017:   0171   0172"}
-	res := strings.Split(strings.TrimSpace(PrettyExamineMemory(addr, memArea, format)), "\n")
+	res := strings.Split(strings.TrimSpace(PrettyExamineMemory(addr, memArea, true, format, 1)), "\n")
 
 	if len(display) != len(res) {
 		t.Fatalf("wrong lines return, expected %d but got %d", len(display), len(res))
@@ -30,5 +31,29 @@ func TestPrettyExamineMemory(t *testing.T) {
 			errInfo += fmt.Sprintf("but got:\n   %q\n", res[i])
 			t.Fatal(errInfo)
 		}
+	}
+}
+
+func Test_byteArrayToUInt64(t *testing.T) {
+	tests := []struct {
+		name string
+		args []byte
+		want uint64
+	}{
+		{"case-nil", nil, 0},
+		{"case-empty", []byte{}, 0},
+		{"case-1", []byte{0x1}, 1},
+		{"case-2", []byte{0x12}, 18},
+		{"case-3", []byte{0x1, 0x2}, 513},
+		{"case-4", []byte{0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x2}, 144397766876004609},
+		{"case-5", []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, math.MaxUint64},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := byteArrayToUInt64(tt.args, true)
+			if got != tt.want {
+				t.Errorf("byteArrayToUInt64() got = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

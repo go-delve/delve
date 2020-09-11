@@ -160,7 +160,7 @@ type Client interface {
 	// ExamineMemory returns the raw memory stored at the given address.
 	// The amount of data to be read is specified by length which must be less than or equal to 1000.
 	// This function will return an error if it reads less than `length` bytes.
-	ExamineMemory(address uint64, length int) ([]byte, error)
+	ExamineMemory(address uint64, length int) ([]byte, bool, error)
 
 	// StopRecording stops a recording if one is in progress.
 	StopRecording() error
