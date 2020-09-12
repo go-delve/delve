@@ -1084,14 +1084,14 @@ func (conn *gdbConn) recv(cmd []byte, context string, binary bool) (resp []byte,
 		}
 
 		// read checksum
-		_, err = conn.rdr.Read(conn.inbuf[:2])
+		_, err = io.ReadFull(conn.rdr, conn.inbuf[:2])
 		if err != nil {
 			return nil, err
 		}
 		if logflags.GdbWire() {
 			out := resp
 			partial := false
-			if idx := bytes.Index(out, []byte{'\n'}); idx >= 0 {
+			if idx := bytes.Index(out, []byte{'\n'}); idx >= 0 && !binary {
 				out = resp[:idx]
 				partial = true
 			}
@@ -1100,9 +1100,17 @@ func (conn *gdbConn) recv(cmd []byte, context string, binary bool) (resp []byte,
 				partial = true
 			}
 			if !partial {
-				conn.log.Debugf("-> %s%s", string(resp), string(conn.inbuf[:2]))
+				if binary {
+					conn.log.Debugf("-> %q%s", string(resp), string(conn.inbuf[:2]))
+				} else {
+					conn.log.Debugf("-> %s%s", string(resp), string(conn.inbuf[:2]))
+				}
 			} else {
-				conn.log.Debugf("-> %s...", string(out))
+				if binary {
+					conn.log.Debugf("-> %q...", string(out))
+				} else {
+					conn.log.Debugf("-> %s...", string(out))
+				}
 			}
 		}
 
@@ -1136,7 +1144,7 @@ func (conn *gdbConn) recv(cmd []byte, context string, binary bool) (resp []byte,
 		conn.inbuf, resp = wiredecode(resp, conn.inbuf)
 	}
 
-	if len(resp) == 0 || resp[0] == 'E' {
+	if len(resp) == 0 || (resp[0] == 'E' && !binary) || (resp[0] == 'E' && len(resp) == 3) {
 		cmdstr := ""
 		if cmd != nil {
 			cmdstr = string(cmd)
