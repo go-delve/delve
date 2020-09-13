@@ -17,10 +17,11 @@ type osProcessDetails struct {
 	hProcess    syscall.Handle
 	breakThread int
 	entryPoint  uint64
+	running     bool
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, foreground bool, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -28,12 +29,17 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 
 	env := proc.DisableAsyncPreemptEnv()
 
+	stdin, stdout, stderr, closefn, err := openRedirects(redirects, true)
+	if err != nil {
+		return nil, err
+	}
+
 	var p *os.Process
 	dbp := newProcess(0)
 	dbp.execPtraceFunc(func() {
 		attr := &os.ProcAttr{
 			Dir:   wd,
-			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+			Files: []*os.File{stdin, stdout, stderr},
 			Sys: &syscall.SysProcAttr{
 				CreationFlags: _DEBUG_ONLY_THIS_PROCESS,
 			},
@@ -41,6 +47,7 @@ func Launch(cmd []string, wd string, foreground bool, _ []string, _ string) (*pr
 		}
 		p, err = os.StartProcess(argv0Go, cmd, attr)
 	})
+	closefn()
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +182,10 @@ func (dbp *nativeProcess) kill() error {
 }
 
 func (dbp *nativeProcess) requestManualStop() error {
+	if !dbp.os.running {
+		return nil
+	}
+	dbp.os.running = false
 	return _DebugBreakProcess(dbp.os.hProcess)
 }
 
@@ -299,7 +310,7 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 				atbp := true
 				if thread, found := dbp.threads[tid]; found {
 					data := make([]byte, dbp.bi.Arch.BreakpointSize())
-					if _, err := thread.ReadMemory(data, exception.ExceptionRecord.ExceptionAddress); err == nil {
+					if _, err := thread.ReadMemory(data, uint64(exception.ExceptionRecord.ExceptionAddress)); err == nil {
 						instr := dbp.bi.Arch.BreakpointInstruction()
 						for i := range instr {
 							if data[i] != instr[i] {
@@ -390,6 +401,7 @@ func (dbp *nativeProcess) resume() error {
 			return err
 		}
 	}
+	dbp.os.running = true
 
 	return nil
 }
@@ -399,6 +411,8 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	if dbp.exited {
 		return &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
+
+	dbp.os.running = false
 
 	// While the debug event that stopped the target was being propagated
 	// other target threads could generate other debug events.

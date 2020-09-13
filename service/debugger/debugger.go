@@ -117,6 +117,9 @@ type Config struct {
 
 	// ExecuteKind contains the kind of the executed program.
 	ExecuteKind ExecuteKind
+
+	// Redirects specifies redirect rules for stdin, stdout and stderr
+	Redirects [3]string
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -221,16 +224,16 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 	}
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY)
+		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
 	case "rr":
 		if d.target != nil {
 			// restart should not call us if the backend is 'rr'
 			panic("internal error: call to Launch with rr backend and target already exists")
 		}
 
-		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false)
+		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false, d.config.Redirects)
 		if err != nil {
 			return nil, err
 		}
@@ -265,9 +268,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
 		}
-		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY)
+		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
@@ -409,7 +412,7 @@ func (d *Debugger) detach(kill bool) error {
 // If the target process is a recording it will restart it from the given
 // position. If pos starts with 'c' it's a checkpoint ID, otherwise it's an
 // event number. If resetArgs is true, newArgs will replace the process args.
-func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
+func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []string, newRedirects [3]string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -437,6 +440,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 	if resetArgs {
 		d.processArgs = append([]string{d.processArgs[0]}, newArgs...)
+		d.config.Redirects = newRedirects
 	}
 	var p *proc.Target
 	var err error
@@ -460,7 +464,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 
 	if recorded {
-		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false)
+		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false, d.config.Redirects)
 		if err2 != nil {
 			return nil, err2
 		}
@@ -548,7 +552,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		th := api.ConvertThread(thread)
 
 		if retLoadCfg != nil {
-			th.ReturnValues = convertVars(thread.Common().ReturnValues(*retLoadCfg))
+			th.ReturnValues = api.ConvertVars(thread.Common().ReturnValues(*retLoadCfg))
 		}
 
 		state.Threads = append(state.Threads, th)
@@ -821,7 +825,7 @@ func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
 }
 
 // Threads returns the threads of the target process.
-func (d *Debugger) Threads() ([]*api.Thread, error) {
+func (d *Debugger) Threads() ([]proc.Thread, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -829,15 +833,11 @@ func (d *Debugger) Threads() ([]*api.Thread, error) {
 		return nil, err
 	}
 
-	threads := []*api.Thread{}
-	for _, th := range d.target.ThreadList() {
-		threads = append(threads, api.ConvertThread(th))
-	}
-	return threads, nil
+	return d.target.ThreadList(), nil
 }
 
 // FindThread returns the thread for the given 'id'.
-func (d *Debugger) FindThread(id int) (*api.Thread, error) {
+func (d *Debugger) FindThread(id int) (proc.Thread, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -847,7 +847,7 @@ func (d *Debugger) FindThread(id int) (*api.Thread, error) {
 
 	for _, th := range d.target.ThreadList() {
 		if th.ThreadID() == id {
-			return api.ConvertThread(th), nil
+			return th, nil
 		}
 	}
 	return nil, nil
@@ -1075,12 +1075,12 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 		}
 		if bp.LoadArgs != nil {
 			if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {
-				bpi.Arguments = convertVars(vars)
+				bpi.Arguments = api.ConvertVars(vars)
 			}
 		}
 		if bp.LoadLocals != nil {
 			if locals, err := s.LocalVariables(*api.LoadConfigToProc(bp.LoadLocals)); err == nil {
-				bpi.Locals = convertVars(locals)
+				bpi.Locals = api.ConvertVars(locals)
 			}
 		}
 	}
@@ -1153,7 +1153,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 
 // PackageVariables returns a list of package variables for the thread,
 // optionally regexp filtered using regexp described in 'filter'.
-func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadConfig) ([]api.Variable, error) {
+func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadConfig) ([]*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1162,7 +1162,6 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	vars := []api.Variable{}
 	thread, found := d.target.FindThread(threadID)
 	if !found {
 		return nil, fmt.Errorf("couldn't find thread %d", threadID)
@@ -1175,146 +1174,93 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 	if err != nil {
 		return nil, err
 	}
-	for _, v := range pv {
-		if regex.Match([]byte(v.Name)) {
-			vars = append(vars, *api.ConvertVar(v))
+	pvr := pv[:0]
+	for i := range pv {
+		if regex.Match([]byte(pv[i].Name)) {
+			pvr = append(pvr, pv[i])
 		}
 	}
-	return vars, err
+	return pvr, nil
 }
 
-// Registers returns string representation of the CPU registers.
-func (d *Debugger) Registers(threadID int, scope *api.EvalScope, floatingPoint bool) (api.Registers, error) {
+// ThreadRegisters returns registers of the specified thread.
+func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfRegisters, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	var dregs op.DwarfRegisters
-
-	if scope != nil {
-		s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
-		if err != nil {
-			return nil, err
-		}
-		dregs = s.Regs
-	} else {
-		thread, found := d.target.FindThread(threadID)
-		if !found {
-			return nil, fmt.Errorf("couldn't find thread %d", threadID)
-		}
-		regs, err := thread.Registers()
-		if err != nil {
-			return nil, err
-		}
-		dregs = d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
+	thread, found := d.target.FindThread(threadID)
+	if !found {
+		return nil, fmt.Errorf("couldn't find thread %d", threadID)
 	}
-	r := api.ConvertRegisters(dregs, d.target.BinInfo().Arch, floatingPoint)
-	if floatingPoint && dregs.FloatLoadError != nil {
-		return nil, dregs.FloatLoadError
+	regs, err := thread.Registers()
+	if err != nil {
+		return nil, err
 	}
-	// Sort the registers in a canonical order we prefer, this is mostly
-	// because the DWARF register numbering for AMD64 is weird.
-	sort.Slice(r, func(i, j int) bool {
-		a, b := r[i], r[j]
-		an, aok := canonicalRegisterOrder[strings.ToLower(a.Name)]
-		bn, bok := canonicalRegisterOrder[strings.ToLower(b.Name)]
-		// Registers that don't appear in canonicalRegisterOrder sort after registers that do.
-		if !aok {
-			an = 1000
-		}
-		if !bok {
-			bn = 1000
-		}
-		if an == bn {
-			// keep registers that don't appear in canonicalRegisterOrder in DWARF order
-			return a.DwarfNumber < b.DwarfNumber
-		}
-		return an < bn
-
-	})
-	return r, nil
+	dregs := d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
+	return &dregs, nil
 }
 
-var canonicalRegisterOrder = map[string]int{
-	// amd64
-	"rip": 0,
-	"rsp": 1,
-	"rax": 2,
-	"rbx": 3,
-	"rcx": 4,
-	"rdx": 5,
+// ScopeRegisters returns registers for the specified scope.
+func (d *Debugger) ScopeRegisters(goid, frame, deferredCall int, floatingPoint bool) (*op.DwarfRegisters, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
-	// arm64
-	"pc": 0,
-	"sp": 1,
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+	return &s.Regs, nil
 }
 
-func convertVars(pv []*proc.Variable) []api.Variable {
-	if pv == nil {
-		return nil
-	}
-	vars := make([]api.Variable, 0, len(pv))
-	for _, v := range pv {
-		vars = append(vars, *api.ConvertVar(v))
-	}
-	return vars
+// DwarfRegisterToString returns the name and value representation of the given register.
+func (d *Debugger) DwarfRegisterToString(i int, reg *op.DwarfRegister) (string, bool, string) {
+	return d.target.BinInfo().Arch.DwarfRegisterToString(i, reg)
 }
 
 // LocalVariables returns a list of the local variables.
-func (d *Debugger) LocalVariables(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
+func (d *Debugger) LocalVariables(goid, frame, deferredCall int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 	if err != nil {
 		return nil, err
 	}
-	pv, err := s.LocalVariables(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return convertVars(pv), err
+	return s.LocalVariables(cfg)
 }
 
 // FunctionArguments returns the arguments to the current function.
-func (d *Debugger) FunctionArguments(scope api.EvalScope, cfg proc.LoadConfig) ([]api.Variable, error) {
+func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 	if err != nil {
 		return nil, err
 	}
-	pv, err := s.FunctionArguments(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return convertVars(pv), nil
+	return s.FunctionArguments(cfg)
 }
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
-func (d *Debugger) EvalVariableInScope(scope api.EvalScope, symbol string, cfg proc.LoadConfig) (*api.Variable, error) {
+func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 	if err != nil {
 		return nil, err
 	}
-	v, err := s.EvalVariable(symbol, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return api.ConvertVar(v), err
+	return s.EvalVariable(symbol, cfg)
 }
 
 // SetVariableInScope will set the value of the variable represented by
 // 'symbol' to the value given, in the given scope.
-func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string) error {
+func (d *Debugger) SetVariableInScope(goid, frame, deferredCall int, symbol, value string) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	s, err := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 	if err != nil {
 		return err
 	}
@@ -1322,25 +1268,16 @@ func (d *Debugger) SetVariableInScope(scope api.EvalScope, symbol, value string)
 }
 
 // Goroutines will return a list of goroutines in the target process.
-func (d *Debugger) Goroutines(start, count int) ([]*api.Goroutine, int, error) {
+func (d *Debugger) Goroutines(start, count int) ([]*proc.G, int, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-
-	goroutines := []*api.Goroutine{}
-	gs, nextg, err := proc.GoroutinesInfo(d.target, start, count)
-	if err != nil {
-		return nil, 0, err
-	}
-	for _, g := range gs {
-		goroutines = append(goroutines, api.ConvertGoroutine(g))
-	}
-	return goroutines, nextg, err
+	return proc.GoroutinesInfo(d.target, start, count)
 }
 
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.
-func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
+func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions) ([]proc.Stackframe, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1348,23 +1285,16 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions
 		return nil, err
 	}
 
-	var rawlocs []proc.Stackframe
-
 	g, err := proc.FindGoroutine(d.target, goroutineID)
 	if err != nil {
 		return nil, err
 	}
 
 	if g == nil {
-		rawlocs, err = proc.ThreadStacktrace(d.target.CurrentThread(), depth)
+		return proc.ThreadStacktrace(d.target.CurrentThread(), depth)
 	} else {
-		rawlocs, err = g.Stacktrace(depth, proc.StacktraceOptions(opts))
+		return g.Stacktrace(depth, proc.StacktraceOptions(opts))
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	return d.convertStacktrace(rawlocs, cfg)
 }
 
 // Ancestors returns the stacktraces for the ancestors of a goroutine.
@@ -1409,6 +1339,15 @@ func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancest
 	return r, nil
 }
 
+// ConvertStacktrace converts a slice of proc.Stackframe into a slice of
+// api.Stackframe, loading local variables and arguments of each frame if
+// cfg is not nil.
+func (d *Debugger) ConvertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.convertStacktrace(rawlocs, cfg)
+}
+
 func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadConfig) ([]api.Stackframe, error) {
 	locations := make([]api.Stackframe, 0, len(rawlocs))
 	for i := range rawlocs {
@@ -1437,8 +1376,8 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 				return nil, err
 			}
 
-			frame.Locals = convertVars(locals)
-			frame.Arguments = convertVars(arguments)
+			frame.Locals = api.ConvertVars(locals)
+			frame.Arguments = api.ConvertVars(arguments)
 		}
 		locations = append(locations, frame)
 	}
@@ -1477,7 +1416,7 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 }
 
 // FindLocation will find the location specified by 'locStr'.
-func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1490,7 +1429,7 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 		return nil, err
 	}
 
-	s, _ := proc.ConvertEvalScope(d.target, scope.GoroutineID, scope.Frame, scope.DeferredCall)
+	s, _ := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 
 	locs, err := loc.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines)
 	for i := range locs {
@@ -1507,7 +1446,7 @@ func (d *Debugger) FindLocation(scope api.EvalScope, locStr string, includeNonEx
 
 // Disassemble code between startPC and endPC.
 // if endPC == 0 it will find the function containing startPC and disassemble the whole function.
-func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
+func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64) ([]proc.AsmInstruction, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1535,17 +1474,13 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64, flavour api
 	}
 	regs, _ := curthread.Registers()
 
-	insts, err := proc.Disassemble(curthread, regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
-	if err != nil {
-		return nil, err
-	}
-	disass := make(api.AsmInstructions, len(insts))
+	return proc.Disassemble(curthread, regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
+}
 
-	for i := range insts {
-		disass[i] = api.ConvertAsmInstruction(insts[i], insts[i].Text(proc.AssemblyFlavour(flavour), d.target.BinInfo()))
-	}
-
-	return disass, nil
+func (d *Debugger) AsmInstructionText(inst *proc.AsmInstruction, flavour proc.AssemblyFlavour) string {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return inst.Text(flavour, d.target.BinInfo())
 }
 
 // Recorded returns true if the target is a recording.
@@ -1563,18 +1498,10 @@ func (d *Debugger) Checkpoint(where string) (int, error) {
 }
 
 // Checkpoints will return a list of checkpoints.
-func (d *Debugger) Checkpoints() ([]api.Checkpoint, error) {
+func (d *Debugger) Checkpoints() ([]proc.Checkpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	cps, err := d.target.Checkpoints()
-	if err != nil {
-		return nil, err
-	}
-	r := make([]api.Checkpoint, len(cps))
-	for i := range cps {
-		r[i] = api.ConvertCheckpoint(cps[i])
-	}
-	return r, nil
+	return d.target.Checkpoints()
 }
 
 // ClearCheckpoint will clear the checkpoint of the given ID.
@@ -1585,22 +1512,17 @@ func (d *Debugger) ClearCheckpoint(id int) error {
 }
 
 // ListDynamicLibraries returns a list of loaded dynamic libraries.
-func (d *Debugger) ListDynamicLibraries() []api.Image {
+func (d *Debugger) ListDynamicLibraries() []*proc.Image {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	bi := d.target.BinInfo()
-	r := make([]api.Image, 0, len(bi.Images)-1)
-	// skips the first image because it's the executable file
-	for i := range bi.Images[1:] {
-		r = append(r, api.ConvertImage(bi.Images[i+1]))
-	}
-	return r
+	return d.target.BinInfo().Images[1:] // skips the first image because it's the executable file
+
 }
 
 // ExamineMemory returns the raw memory stored at the given address.
 // The amount of data to be read is specified by length.
 // This function will return an error if it reads less than `length` bytes.
-func (d *Debugger) ExamineMemory(address uintptr, length int) ([]byte, error) {
+func (d *Debugger) ExamineMemory(address uint64, length int) ([]byte, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1648,30 +1570,10 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 // ListPackagesBuildInfo returns the list of packages used by the program along with
 // the directory where each package was compiled and optionally the list of
 // files constituting the package.
-func (d *Debugger) ListPackagesBuildInfo(includeFiles bool) []api.PackageBuildInfo {
+func (d *Debugger) ListPackagesBuildInfo(includeFiles bool) []*proc.PackageBuildInfo {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	pkgs := d.target.BinInfo().ListPackagesBuildInfo(includeFiles)
-	r := make([]api.PackageBuildInfo, 0, len(pkgs))
-	for _, pkg := range pkgs {
-		var files []string
-
-		if len(pkg.Files) > 0 {
-			files = make([]string, 0, len(pkg.Files))
-			for file := range pkg.Files {
-				files = append(files, file)
-			}
-		}
-
-		sort.Strings(files)
-
-		r = append(r, api.PackageBuildInfo{
-			ImportPath:    pkg.ImportPath,
-			DirectoryPath: pkg.DirectoryPath,
-			Files:         files,
-		})
-	}
-	return r
+	return d.target.BinInfo().ListPackagesBuildInfo(includeFiles)
 }
 
 // StopRecording stops a recording (if one is in progress)
@@ -1682,6 +1584,16 @@ func (d *Debugger) StopRecording() error {
 		return ErrNotRecording
 	}
 	return d.stopRecording()
+}
+
+// LockTarget acquires the target mutex.
+func (d *Debugger) LockTarget() {
+	d.targetMutex.Lock()
+}
+
+// UnlockTarget releases the target mutex.
+func (d *Debugger) UnlockTarget() {
+	d.targetMutex.Unlock()
 }
 
 func go11DecodeErrorCheck(err error) error {

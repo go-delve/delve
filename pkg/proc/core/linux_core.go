@@ -326,9 +326,9 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*note) proc.Me
 			for _, entry := range fileNote.entries {
 				r := &offsetReaderAt{
 					reader: exe,
-					offset: uintptr(entry.Start - (entry.FileOfs * fileNote.PageSize)),
+					offset: entry.Start - (entry.FileOfs * fileNote.PageSize),
 				}
-				memory.Add(r, uintptr(entry.Start), uintptr(entry.End-entry.Start))
+				memory.Add(r, entry.Start, entry.End-entry.Start)
 			}
 
 		}
@@ -344,9 +344,9 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*note) proc.Me
 				}
 				r := &offsetReaderAt{
 					reader: prog.ReaderAt,
-					offset: uintptr(prog.Vaddr),
+					offset: prog.Vaddr,
 				}
-				memory.Add(r, uintptr(prog.Vaddr), uintptr(prog.Filesz))
+				memory.Add(r, prog.Vaddr, prog.Filesz)
 			}
 		}
 	}

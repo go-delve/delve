@@ -281,7 +281,7 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 	// If the stub doesn't support memory allocation reloadRegisters will
 	// overwrite some existing memory to store the MOV.
 	if addr, err := p.conn.allocMemory(256); err == nil {
-		if _, err := p.conn.writeMemory(uintptr(addr), p.loadGInstr()); err == nil {
+		if _, err := p.conn.writeMemory(addr, p.loadGInstr()); err == nil {
 			p.loadGInstrAddr = addr
 		}
 	}
@@ -342,7 +342,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string) (*proc.Target, error) {
+func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -371,12 +371,32 @@ func LLDBLaunch(cmd []string, wd string, foreground bool, debugInfoDirs []string
 		ldEnvVars := getLdEnvVars()
 		args := make([]string, 0, len(cmd)+4+len(ldEnvVars))
 		args = append(args, ldEnvVars...)
-		if foreground {
-			args = append(args, "--stdio-path", "/dev/tty")
-		}
+
 		if tty != "" {
 			args = append(args, "--stdio-path", tty)
+		} else {
+			found := [3]bool{}
+			names := [3]string{"stdin", "stdout", "stderr"}
+			for i := range redirects {
+				if redirects[i] != "" {
+					found[i] = true
+					args = append(args, fmt.Sprintf("--%s-path", names[i]), redirects[i])
+				}
+			}
+
+			if foreground {
+				if !found[0] && !found[1] && !found[2] {
+					args = append(args, "--stdio-path", "/dev/tty")
+				} else {
+					for i := range found {
+						if !found[i] {
+							args = append(args, fmt.Sprintf("--%s-path", names[i]), "/dev/tty")
+						}
+					}
+				}
+			}
 		}
+
 		if logflags.LLDBServerOutput() {
 			args = append(args, "-g", "-l", "stdout")
 		}
@@ -1240,7 +1260,7 @@ func (p *gdbProcess) setCurrentBreakpoints() error {
 }
 
 // ReadMemory will read into 'data' memory at the address provided.
-func (t *gdbThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (t *gdbThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	err = t.p.conn.readMemory(data, addr)
 	if err != nil {
 		return 0, err
@@ -1249,7 +1269,7 @@ func (t *gdbThread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 }
 
 // WriteMemory will write into the memory at 'addr' the data provided.
-func (t *gdbThread) WriteMemory(addr uintptr, data []byte) (written int, err error) {
+func (t *gdbThread) WriteMemory(addr uint64, data []byte) (written int, err error) {
 	return t.p.conn.writeMemory(addr, data)
 }
 
@@ -1497,18 +1517,18 @@ func (t *gdbThread) reloadGAtPC() error {
 	}
 
 	savedcode := make([]byte, len(movinstr))
-	_, err := t.ReadMemory(savedcode, uintptr(pc))
+	_, err := t.ReadMemory(savedcode, pc)
 	if err != nil {
 		return err
 	}
 
-	_, err = t.WriteMemory(uintptr(pc), movinstr)
+	_, err = t.WriteMemory(pc, movinstr)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		_, err0 := t.WriteMemory(uintptr(pc), savedcode)
+		_, err0 := t.WriteMemory(pc, savedcode)
 		if err == nil {
 			err = err0
 		}
@@ -1899,7 +1919,11 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 
 		case reginfo.Bitsize == 128:
 			if floatingPoint {
-				r = proc.AppendBytesRegister(r, strings.ToUpper(reginfo.Name), regs.regs[reginfo.Name].value)
+				name := reginfo.Name
+				if last := name[len(name)-1]; last == 'h' || last == 'H' {
+					name = name[:len(name)-1]
+				}
+				r = proc.AppendBytesRegister(r, strings.ToUpper(name), regs.regs[reginfo.Name].value)
 			}
 
 		case reginfo.Bitsize == 256:

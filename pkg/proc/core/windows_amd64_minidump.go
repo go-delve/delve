@@ -25,7 +25,7 @@ func readAMD64Minidump(minidumpPath, exePath string) (*process, error) {
 
 	for i := range mdmp.MemoryRanges {
 		m := &mdmp.MemoryRanges[i]
-		memory.Add(m, uintptr(m.Addr), uintptr(len(m.Data)))
+		memory.Add(m, m.Addr, uint64(len(m.Data)))
 	}
 
 	entryPoint := uint64(0)

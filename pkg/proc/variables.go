@@ -86,7 +86,7 @@ const (
 // and the memory of the debugged process.
 // If OnlyAddr is true, the variables value has not been loaded.
 type Variable struct {
-	Addr      uintptr
+	Addr      uint64
 	OnlyAddr  bool
 	Name      string
 	DwarfType godwarf.Type
@@ -107,7 +107,7 @@ type Variable struct {
 	// Base address of the backing byte array for strings
 	// address of the struct backing chan and map variables
 	// address of the function entry point for function variables (0 for nil function pointers)
-	Base      uintptr
+	Base      uint64
 	stride    int64
 	fieldType godwarf.Type
 
@@ -328,7 +328,7 @@ func GoroutinesInfo(dbp *Target, start, count int) ([]*G, int, error) {
 		if count != 0 && len(allg) >= count {
 			return allg, int(i), nil
 		}
-		gvar, err := newGVariable(dbp.CurrentThread(), uintptr(allgptr+(i*uint64(dbp.BinInfo().Arch.PtrSize()))), true)
+		gvar, err := newGVariable(dbp.CurrentThread(), allgptr+(i*uint64(dbp.BinInfo().Arch.PtrSize())), true)
 		if err != nil {
 			allg = append(allg, &G{Unreadable: err})
 			continue
@@ -434,16 +434,16 @@ func getGVariable(thread Thread) (*Variable, error) {
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
 		var err error
-		gaddr, err = readUintRaw(thread, uintptr(regs.TLS()+thread.BinInfo().GStructOffset()), int64(thread.BinInfo().Arch.PtrSize()))
+		gaddr, err = readUintRaw(thread, regs.TLS()+thread.BinInfo().GStructOffset(), int64(thread.BinInfo().Arch.PtrSize()))
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return newGVariable(thread, uintptr(gaddr), thread.BinInfo().Arch.DerefTLS())
+	return newGVariable(thread, gaddr, thread.BinInfo().Arch.DerefTLS())
 }
 
-func newGVariable(thread Thread, gaddr uintptr, deref bool) (*Variable, error) {
+func newGVariable(thread Thread, gaddr uint64, deref bool) (*Variable, error) {
 	typ, err := thread.BinInfo().findType("runtime.g")
 	if err != nil {
 		return nil, err
@@ -567,15 +567,15 @@ func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope 
 	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, frameOffset: 0}
 }
 
-func newVariableFromThread(t Thread, name string, addr uintptr, dwarfType godwarf.Type) *Variable {
+func newVariableFromThread(t Thread, name string, addr uint64, dwarfType godwarf.Type) *Variable {
 	return newVariable(name, addr, dwarfType, t.BinInfo(), t)
 }
 
-func (v *Variable) newVariable(name string, addr uintptr, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
+func (v *Variable) newVariable(name string, addr uint64, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
 	return newVariable(name, addr, dwarfType, v.bi, mem)
 }
 
-func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryInfo, mem MemoryReadWriter) *Variable {
+func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInfo, mem MemoryReadWriter) *Variable {
 	if styp, isstruct := dwarfType.(*godwarf.StructType); isstruct && !strings.Contains(styp.Name, "<") && !strings.Contains(styp.Name, "{") {
 		// For named structs the compiler will emit a DW_TAG_structure_type entry
 		// and a DW_TAG_typedef entry.
@@ -625,8 +625,7 @@ func newVariable(name string, addr uintptr, dwarfType godwarf.Type, bi *BinaryIn
 				v.Kind = reflect.String
 			}
 			if v.Addr != 0 {
-				n, err := readUintRaw(v.mem, v.Addr, int64(v.bi.Arch.PtrSize()))
-				v.Base, v.Unreadable = uintptr(n), err
+				v.Base, v.Unreadable = readUintRaw(v.mem, v.Addr, int64(v.bi.Arch.PtrSize()))
 			}
 		}
 	case *godwarf.ChanType:
@@ -778,7 +777,7 @@ func (v *Variable) toField(field *godwarf.StructField) (*Variable, error) {
 			name = fmt.Sprintf("%s.%s", v.Name, field.Name)
 		}
 	}
-	return v.newVariable(name, uintptr(int64(v.Addr)+field.ByteOffset), field.Type, v.mem), nil
+	return v.newVariable(name, uint64(int64(v.Addr)+field.ByteOffset), field.Type, v.mem), nil
 }
 
 // ErrNoGoroutine returned when a G could not be found
@@ -800,7 +799,7 @@ func (v *Variable) parseG() (*G, error) {
 
 	if deref {
 		var err error
-		gaddr, err = readUintRaw(mem, uintptr(gaddr), int64(v.bi.Arch.PtrSize()))
+		gaddr, err = readUintRaw(mem, gaddr, int64(v.bi.Arch.PtrSize()))
 		if err != nil {
 			return nil, fmt.Errorf("error derefing *G %s", err)
 		}
@@ -1039,6 +1038,14 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		return v.clone(), nil
 	}
 	vname := v.Name
+	if v.loaded && (v.Flags&VariableFakeAddress) != 0 {
+		for i := range v.Children {
+			if v.Children[i].Name == memberName {
+				return &v.Children[i], nil
+			}
+		}
+		return nil, fmt.Errorf("%s has no member %s", vname, memberName)
+	}
 	switch v.Kind {
 	case reflect.Chan:
 		v = v.clone()
@@ -1140,7 +1147,7 @@ func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegister
 		}
 	}
 
-	v := newVariable(n, uintptr(addr), t, bi, mem)
+	v := newVariable(n, uint64(addr), t, bi, mem)
 	if pieces != nil {
 		v.Flags |= VariableFakeAddress
 	}
@@ -1164,8 +1171,8 @@ func (v *Variable) maybeDereference() *Variable {
 			// fake pointer variable constructed by casting an integer to a pointer type
 			return &v.Children[0]
 		}
-		ptrval, err := readUintRaw(v.mem, uintptr(v.Addr), t.ByteSize)
-		r := v.newVariable("", uintptr(ptrval), t.Type, DereferenceMemory(v.mem))
+		ptrval, err := readUintRaw(v.mem, v.Addr, t.ByteSize)
+		r := v.newVariable("", ptrval, t.Type, DereferenceMemory(v.mem))
 		if err != nil {
 			r.Unreadable = err
 		}
@@ -1333,14 +1340,14 @@ func convertToEface(srcv, dstv *Variable) error {
 	return dstv.writeEmptyInterface(typeAddr, srcv)
 }
 
-func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uintptr) (uintptr, int64, error) {
+func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uint64) (uint64, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
 
 	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
 
 	// read len
-	strlen, err := readIntRaw(mem, addr+uintptr(arch.PtrSize()), int64(arch.PtrSize()))
+	strlen, err := readIntRaw(mem, addr+uint64(arch.PtrSize()), int64(arch.PtrSize()))
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string len %s", err)
 	}
@@ -1349,18 +1356,17 @@ func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uintptr) (uintptr, in
 	}
 
 	// read addr
-	val, err := readUintRaw(mem, addr, int64(arch.PtrSize()))
+	addr, err = readUintRaw(mem, addr, int64(arch.PtrSize()))
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not read string pointer %s", err)
 	}
-	addr = uintptr(val)
 	if addr == 0 {
 		return 0, 0, nil
 	}
 	return addr, strlen, nil
 }
 
-func readStringValue(mem MemoryReadWriter, addr uintptr, strlen int64, cfg LoadConfig) (string, error) {
+func readStringValue(mem MemoryReadWriter, addr uint64, strlen int64, cfg LoadConfig) (string, error) {
 	if strlen == 0 {
 		return "", nil
 	}
@@ -1379,7 +1385,7 @@ func readStringValue(mem MemoryReadWriter, addr uintptr, strlen int64, cfg LoadC
 	return string(val), nil
 }
 
-func readCStringValue(mem MemoryReadWriter, addr uintptr, cfg LoadConfig) (string, bool, error) {
+func readCStringValue(mem MemoryReadWriter, addr uint64, cfg LoadConfig) (string, bool, error) {
 	buf := make([]byte, cfg.MaxStringLen) //
 	val := buf[:0]                        // part of the string we've already read
 
@@ -1391,7 +1397,7 @@ func readCStringValue(mem MemoryReadWriter, addr uintptr, cfg LoadConfig) (strin
 		// memory we don't even need.
 		// We don't know how big a page is but 1024 is a reasonable minimum common
 		// divisor for all architectures.
-		curaddr := addr + uintptr(len(val))
+		curaddr := addr + uint64(len(val))
 		maxsize := int(alignAddr(int64(curaddr+1), 1024) - int64(curaddr))
 		size := len(buf)
 		if size > maxsize {
@@ -1436,9 +1442,9 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 		switch f.Name {
 		case sliceArrayFieldName:
 			var base uint64
-			base, err = readUintRaw(v.mem, uintptr(int64(v.Addr)+f.ByteOffset), f.Type.Size())
+			base, err = readUintRaw(v.mem, uint64(int64(v.Addr)+f.ByteOffset), f.Type.Size())
 			if err == nil {
-				v.Base = uintptr(base)
+				v.Base = base
 				// Dereference array type to get value type
 				ptrType, ok := f.Type.(*godwarf.PtrType)
 				if !ok {
@@ -1552,7 +1558,7 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 	}
 
 	for i := int64(0); i < count; i++ {
-		fieldvar := v.newVariable("", uintptr(int64(v.Base)+(i*v.stride)), v.fieldType, mem)
+		fieldvar := v.newVariable("", uint64(int64(v.Base)+(i*v.stride)), v.fieldType, mem)
 		fieldvar.loadValueInternal(recurseLevel+1, cfg)
 
 		if fieldvar.Unreadable != nil {
@@ -1581,7 +1587,7 @@ func (v *Variable) readComplex(size int64) {
 	ftyp := &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: fs, Name: fmt.Sprintf("float%d", fs)}, BitSize: fs * 8, BitOffset: 0}}
 
 	realvar := v.newVariable("real", v.Addr, ftyp, v.mem)
-	imagvar := v.newVariable("imaginary", v.Addr+uintptr(fs), ftyp, v.mem)
+	imagvar := v.newVariable("imaginary", v.Addr+uint64(fs), ftyp, v.mem)
 	realvar.loadValue(loadSingleValue)
 	imagvar.loadValue(loadSingleValue)
 	v.Value = constant.BinaryOp(realvar.Value, token.ADD, constant.MakeImag(imagvar.Value))
@@ -1593,11 +1599,11 @@ func (v *Variable) writeComplex(real, imag float64, size int64) error {
 		return err
 	}
 	imagaddr := *v
-	imagaddr.Addr += uintptr(size / 2)
+	imagaddr.Addr += uint64(size / 2)
 	return imagaddr.writeFloatRaw(imag, int64(size/2))
 }
 
-func readIntRaw(mem MemoryReadWriter, addr uintptr, size int64) (int64, error) {
+func readIntRaw(mem MemoryReadWriter, addr uint64, size int64) (int64, error) {
 	var n int64
 
 	val := make([]byte, int(size))
@@ -1638,7 +1644,7 @@ func (v *Variable) writeUint(value uint64, size int64) error {
 	return err
 }
 
-func readUintRaw(mem MemoryReadWriter, addr uintptr, size int64) (uint64, error) {
+func readUintRaw(mem MemoryReadWriter, addr uint64, size int64) (uint64, error) {
 	var n uint64
 
 	val := make([]byte, int(size))
@@ -1723,7 +1729,7 @@ func (v *Variable) writeEmptyInterface(typeAddr uint64, data *Variable) error {
 	return nil
 }
 
-func (v *Variable) writeSlice(len, cap int64, base uintptr) error {
+func (v *Variable) writeSlice(len, cap int64, base uint64) error {
 	for _, f := range v.RealType.(*godwarf.SliceType).Field {
 		switch f.Name {
 		case sliceArrayFieldName:
@@ -1774,13 +1780,13 @@ func (v *Variable) readFunctionPtr() {
 		return
 	}
 
-	val, err := readUintRaw(v.mem, uintptr(v.closureAddr), int64(v.bi.Arch.PtrSize()))
+	val, err := readUintRaw(v.mem, v.closureAddr, int64(v.bi.Arch.PtrSize()))
 	if err != nil {
 		v.Unreadable = err
 		return
 	}
 
-	v.Base = uintptr(val)
+	v.Base = val
 	fn := v.bi.PCToFunc(uint64(v.Base))
 	if fn == nil {
 		v.Unreadable = fmt.Errorf("could not find function for %#v", v.Base)
@@ -1941,7 +1947,7 @@ func (it *mapIterator) nextBucket() bool {
 
 		for it.bidx < it.numbuckets {
 			it.b = it.buckets.clone()
-			it.b.Addr += uintptr(uint64(it.buckets.DwarfType.Size()) * it.bidx)
+			it.b.Addr += uint64(it.buckets.DwarfType.Size()) * it.bidx
 
 			if it.oldbuckets.Addr <= 0 {
 				break
@@ -1957,7 +1963,7 @@ func (it *mapIterator) nextBucket() bool {
 
 			oldbidx := it.bidx & it.oldmask
 			oldb := it.oldbuckets.clone()
-			oldb.Addr += uintptr(uint64(it.oldbuckets.DwarfType.Size()) * oldbidx)
+			oldb.Addr += uint64(it.oldbuckets.DwarfType.Size()) * oldbidx
 
 			if it.mapEvacuated(oldb) {
 				break

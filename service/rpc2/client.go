@@ -62,13 +62,13 @@ func (c *RPCClient) Detach(kill bool) error {
 
 func (c *RPCClient) Restart(rebuild bool) ([]api.DiscardedBreakpoint, error) {
 	out := new(RestartOut)
-	err := c.call("Restart", RestartIn{"", false, nil, false, rebuild}, out)
+	err := c.call("Restart", RestartIn{"", false, nil, false, rebuild, [3]string{}}, out)
 	return out.DiscardedBreakpoints, err
 }
 
-func (c *RPCClient) RestartFrom(rerecord bool, pos string, resetArgs bool, newArgs []string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
+func (c *RPCClient) RestartFrom(rerecord bool, pos string, resetArgs bool, newArgs []string, newRedirects [3]string, rebuild bool) ([]api.DiscardedBreakpoint, error) {
 	out := new(RestartOut)
-	err := c.call("Restart", RestartIn{pos, resetArgs, newArgs, rerecord, rebuild}, out)
+	err := c.call("Restart", RestartIn{pos, resetArgs, newArgs, rerecord, rebuild, newRedirects}, out)
 	return out.DiscardedBreakpoints, err
 }
 
@@ -441,15 +441,14 @@ func (c *RPCClient) ListDynamicLibraries() ([]api.Image, error) {
 	return out.List, nil
 }
 
-func (c *RPCClient) ExamineMemory(address uintptr, count int) ([]byte, error) {
+func (c *RPCClient) ExamineMemory(address uint64, count int) ([]byte, bool, error) {
 	out := &ExaminedMemoryOut{}
 
 	err := c.call("ExamineMemory", ExamineMemoryIn{Length: count, Address: address}, out)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-
-	return out.Mem, nil
+	return out.Mem, out.IsLittleEndian, nil
 }
 
 func (c *RPCClient) StopRecording() error {

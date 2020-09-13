@@ -259,15 +259,15 @@ Aliases: ed
 ## examinemem
 Examine memory:
 
-	examinemem [-fmt <format>] [-len <length>] <address>
+	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
 
-Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal),.
+Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal), addr(address).
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
-Address is the memory location of the target to examine.
+Address is the memory location of the target to examine. Please note '-len' is deprecated by '-count and -size'.
 
 For example:
 
-    x -fmt hex -len 20 0xc00008af38
+    x -fmt hex -count 20 -size 1 0xc00008af38
 
 Aliases: x
 
@@ -412,16 +412,22 @@ Restart process.
 
 For recorded targets the command takes the following forms:
 
-	restart				resets ot the start of the recording
-	restart [checkpoint]		resets the recording to the given checkpoint
-	restart -r [newargv...]		re-records the target process
+	restart					resets ot the start of the recording
+	restart [checkpoint]			resets the recording to the given checkpoint
+	restart -r [newargv...]	[redirects...]	re-records the target process
 	
 For live targets the command takes the following forms:
 
-	restart [newargv...]		restarts the process
+	restart [newargv...] [redirects...]	restarts the process
 
 If newargv is omitted the process is restarted (or re-recorded) with the same argument vector.
 If -noargs is specified instead, the argument vector is cleared.
+
+A list of file redirections can be specified after the new argument list to override the redirections defined using the '--redirect' command line option. A syntax similar to Unix shells is used:
+
+	<input.txt	redirects the standard input of the target process from input.txt
+	>output.txt	redirects the standard output of the target process to output.txt
+	2>error.txt	redirects the standard error of the target process to error.txt
 
 
 Aliases: r

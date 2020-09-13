@@ -123,7 +123,7 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 		maxaddr = uint64(frames[0].Regs.CFA)
 	}
 	if maxaddr > minaddr && maxaddr-minaddr < maxFramePrefetchSize {
-		thread = cacheMemory(thread, uintptr(minaddr), int(maxaddr-minaddr))
+		thread = cacheMemory(thread, minaddr, int(maxaddr-minaddr))
 	}
 
 	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
@@ -232,9 +232,9 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 		if trustArgOrder && ((val.Unreadable != nil && val.Addr == 0) || val.Flags&VariableFakeAddress != 0) && entry.Tag == dwarf.TagFormalParameter {
 			addr := afterLastArgAddr(vars)
 			if addr == 0 {
-				addr = uintptr(scope.Regs.CFA)
+				addr = uint64(scope.Regs.CFA)
 			}
-			addr = uintptr(alignAddr(int64(addr), val.DwarfType.Align()))
+			addr = uint64(alignAddr(int64(addr), val.DwarfType.Align()))
 			val = newVariable(val.Name, addr, val.DwarfType, scope.BinInfo, scope.Mem)
 		}
 		vars = append(vars, val)
@@ -288,11 +288,11 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	return vars, nil
 }
 
-func afterLastArgAddr(vars []*Variable) uintptr {
+func afterLastArgAddr(vars []*Variable) uint64 {
 	for i := len(vars) - 1; i >= 0; i-- {
 		v := vars[i]
 		if (v.Flags&VariableArgument != 0) || (v.Flags&VariableReturnArgument != 0) {
-			return v.Addr + uintptr(v.DwarfType.Size())
+			return v.Addr + uint64(v.DwarfType.Size())
 		}
 	}
 	return 0
@@ -520,9 +520,9 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 	for _, fn := range scope.BinInfo.Functions {
 		if fn.Name == name || strings.HasSuffix(fn.Name, "/"+name) {
 			//TODO(aarzilli): convert function entry into a function type?
-			r := newVariable(fn.Name, uintptr(fn.Entry), &godwarf.FuncType{}, scope.BinInfo, scope.Mem)
+			r := newVariable(fn.Name, fn.Entry, &godwarf.FuncType{}, scope.BinInfo, scope.Mem)
 			r.Value = constant.MakeString(fn.Name)
-			r.Base = uintptr(fn.Entry)
+			r.Base = fn.Entry
 			r.loaded = true
 			if fn.Entry == 0 {
 				r.Unreadable = fmt.Errorf("function %s is inlined", fn.Name)
@@ -626,7 +626,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 			return nil, converr
 		}
 		for i, ch := range []byte(constant.StringVal(argv.Value)) {
-			e := newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
+			e := newVariable("", argv.Addr+uint64(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
 			e.loaded = true
 			e.Value = constant.MakeInt64(int64(ch))
 			v.Children = append(v.Children, *e)
@@ -640,7 +640,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 			return nil, converr
 		}
 		for i, ch := range constant.StringVal(argv.Value) {
-			e := newVariable("", argv.Addr+uintptr(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
+			e := newVariable("", argv.Addr+uint64(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
 			e.loaded = true
 			e.Value = constant.MakeInt64(int64(ch))
 			v.Children = append(v.Children, *e)
@@ -729,7 +729,16 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 		if maybePkg, ok := node.X.(*ast.Ident); ok {
 			if maybePkg.Name == "runtime" && node.Sel.Name == "curg" {
 				if scope.g == nil {
-					return nilVariable, nil
+					typ, err := scope.BinInfo.findType("runtime.g")
+					if err != nil {
+						return nil, fmt.Errorf("blah: %v", err)
+					}
+					gvar := newVariable("curg", fakeAddress, typ, scope.BinInfo, scope.Mem)
+					gvar.loaded = true
+					gvar.Flags = VariableFakeAddress
+					gvar.Children = append(gvar.Children, *newConstant(constant.MakeInt64(0), scope.Mem))
+					gvar.Children[0].Name = "goid"
+					return gvar, nil
 				}
 				return scope.g.variable.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
@@ -845,7 +854,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 		n, _ := constant.Int64Val(argv.Value)
 
-		v.Children = []Variable{*(newVariable("", uintptr(n), ttyp.Type, scope.BinInfo, scope.Mem))}
+		v.Children = []Variable{*(newVariable("", uint64(n), ttyp.Type, scope.BinInfo, scope.Mem))}
 		v.Children[0].OnlyAddr = true
 		return v, nil
 
@@ -1876,7 +1885,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	if v.Kind != reflect.Array {
 		mem = DereferenceMemory(mem)
 	}
-	return v.newVariable("", v.Base+uintptr(int64(idx)*v.stride), v.fieldType, mem), nil
+	return v.newVariable("", v.Base+uint64(int64(idx)*v.stride), v.fieldType, mem), nil
 }
 
 func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
@@ -1929,7 +1938,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 
-	base := v.Base + uintptr(int64(low)*v.stride)
+	base := v.Base + uint64(int64(low)*v.stride)
 	len := high - low
 
 	if high-low < 0 {
@@ -2044,7 +2053,7 @@ func functionToVariable(fn *Function, bi *BinaryInfo, mem MemoryReadWriter) (*Va
 	v := newVariable(fn.Name, 0, typ, bi, mem)
 	v.Value = constant.MakeString(fn.Name)
 	v.loaded = true
-	v.Base = uintptr(fn.Entry)
+	v.Base = fn.Entry
 	return v, nil
 }
 

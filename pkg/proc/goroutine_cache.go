@@ -27,12 +27,12 @@ func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWrite
 	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {
 		return 0, 0, ErrNoRuntimeAllG
 	}
-	allglen, err := readUintRaw(mem, uintptr(gcache.allglenAddr), int64(bi.Arch.PtrSize()))
+	allglen, err := readUintRaw(mem, gcache.allglenAddr, int64(bi.Arch.PtrSize()))
 	if err != nil {
 		return 0, 0, err
 	}
-	
-	allgptr, err := readUintRaw(mem, uintptr(gcache.allgentryAddr), int64(bi.Arch.PtrSize()))
+
+	allgptr, err := readUintRaw(mem, gcache.allgentryAddr, int64(bi.Arch.PtrSize()))
 	if err != nil {
 		return 0, 0, err
 	}

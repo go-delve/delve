@@ -880,7 +880,7 @@ func (conn *gdbConn) appendThreadSelector(threadID string) {
 }
 
 // executes 'm' (read memory) command
-func (conn *gdbConn) readMemory(data []byte, addr uintptr) error {
+func (conn *gdbConn) readMemory(data []byte, addr uint64) error {
 	size := len(data)
 	data = data[:0]
 
@@ -894,7 +894,7 @@ func (conn *gdbConn) readMemory(data []byte, addr uintptr) error {
 		}
 		size = size - sz
 
-		fmt.Fprintf(&conn.outbuf, "$m%x,%x", addr+uintptr(len(data)), sz)
+		fmt.Fprintf(&conn.outbuf, "$m%x,%x", addr+uint64(len(data)), sz)
 		resp, err := conn.exec(conn.outbuf.Bytes(), "memory read")
 		if err != nil {
 			return err
@@ -915,7 +915,7 @@ func writeAsciiBytes(w io.Writer, data []byte) {
 }
 
 // executes 'M' (write memory) command
-func (conn *gdbConn) writeMemory(addr uintptr, data []byte) (written int, err error) {
+func (conn *gdbConn) writeMemory(addr uint64, data []byte) (written int, err error) {
 	if len(data) == 0 {
 		// LLDB can't parse requests for 0-length writes and hangs if we emit them
 		return 0, nil

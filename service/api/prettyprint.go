@@ -360,13 +360,19 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, newlines bool, indent stri
 	fmt.Fprint(buf, "]")
 }
 
-func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
+// PrettyExamineMemory examine the memory and format data
+//
+// `format` specifies the data format (or data type), `size` specifies size of each data,
+// like 4byte integer, 1byte character, etc. `count` specifies the number of values.
+func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, format byte, size int) string {
 
 	var (
 		cols      int
 		colFormat string
-		addrLen   int
-		addrFmt   string
+		colBytes  = size
+
+		addrLen int
+		addrFmt string
 	)
 
 	// Diffrent versions of golang output differently about '#'.
@@ -374,24 +380,24 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
 	switch format {
 	case 'b':
 		cols = 4 // Avoid emitting rows that are too long when using binary format
-		colFormat = "%08b"
+		colFormat = fmt.Sprintf("%%0%db", colBytes*8)
 	case 'o':
 		cols = 8
-		colFormat = "%04o" // Always keep one leading zero for octal.
+		colFormat = fmt.Sprintf("0%%0%do", colBytes*3) // Always keep one leading zero for octal.
 	case 'd':
 		cols = 8
-		colFormat = "%03d"
+		colFormat = fmt.Sprintf("%%0%dd", colBytes*3)
 	case 'x':
 		cols = 8
-		colFormat = "0x%02x" // Always keep one leading '0x' for hex.
+		colFormat = fmt.Sprintf("0x%%0%dx", colBytes*2) // Always keep one leading '0x' for hex.
 	default:
 		return fmt.Sprintf("not supprted format %q\n", string(format))
 	}
 	colFormat += "\t"
 
 	l := len(memArea)
-	rows := l / cols
-	if l%cols != 0 {
+	rows := l / (cols * colBytes)
+	if l%(cols*colBytes) != 0 {
 		rows++
 	}
 
@@ -403,14 +409,34 @@ func PrettyExamineMemory(address uintptr, memArea []byte, format byte) string {
 
 	var b strings.Builder
 	w := tabwriter.NewWriter(&b, 0, 0, 3, ' ', 0)
+
 	for i := 0; i < rows; i++ {
 		fmt.Fprintf(w, addrFmt, address)
-		for j := 0; j < cols && i*cols+j < l; j++ {
-			fmt.Fprintf(w, colFormat, memArea[i*cols+j])
+
+		for j := 0; j < cols; j++ {
+			offset := i*(cols*colBytes) + j*colBytes
+			if offset+colBytes <= len(memArea) {
+				n := byteArrayToUInt64(memArea[offset:offset+colBytes], isLittleEndian)
+				fmt.Fprintf(w, colFormat, n)
+			}
 		}
 		fmt.Fprintln(w, "")
 		address += uintptr(cols)
 	}
 	w.Flush()
 	return b.String()
+}
+
+func byteArrayToUInt64(buf []byte, isLittleEndian bool) uint64 {
+	var n uint64
+	if isLittleEndian {
+		for i := len(buf) - 1; i >= 0; i-- {
+			n = n<<8 + uint64(buf[i])
+		}
+	} else {
+		for i := 0; i < len(buf); i++ {
+			n = n<<8 + uint64(buf[i])
+		}
+	}
+	return n
 }

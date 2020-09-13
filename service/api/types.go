@@ -240,7 +240,7 @@ type Variable struct {
 	// Name of the variable or struct member
 	Name string `json:"name"`
 	// Address of the variable or struct member
-	Addr uintptr `json:"addr"`
+	Addr uint64 `json:"addr"`
 	// Only the address field is filled (result of evaluating expressions like &<expr>)
 	OnlyAddr bool `json:"onlyAddr"`
 	// Go type of the variable
@@ -272,7 +272,7 @@ type Variable struct {
 	// Base address of the backing byte array for strings
 	// address of the struct backing chan and map variables
 	// address of the function entry point for function variables (0 for nil function pointers)
-	Base uintptr `json:"base"`
+	Base uint64 `json:"base"`
 
 	// Unreadable addresses will have this field set
 	Unreadable string `json:"unreadable"`

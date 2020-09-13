@@ -26,13 +26,13 @@ type splicedMemory struct {
 }
 
 type readerEntry struct {
-	offset uintptr
-	length uintptr
+	offset uint64
+	length uint64
 	reader proc.MemoryReader
 }
 
 // Add adds a new region to the SplicedMemory, which may override existing regions.
-func (r *splicedMemory) Add(reader proc.MemoryReader, off, length uintptr) {
+func (r *splicedMemory) Add(reader proc.MemoryReader, off, length uint64) {
 	if length == 0 {
 		return
 	}
@@ -92,7 +92,7 @@ func (r *splicedMemory) Add(reader proc.MemoryReader, off, length uintptr) {
 }
 
 // ReadMemory implements MemoryReader.ReadMemory.
-func (r *splicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) {
+func (r *splicedMemory) ReadMemory(buf []byte, addr uint64) (n int, err error) {
 	started := false
 	for _, entry := range r.readers {
 		if entry.offset+entry.length < addr {
@@ -107,7 +107,7 @@ func (r *splicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) 
 
 		// Don't go past the region.
 		pb := buf
-		if addr+uintptr(len(buf)) > entry.offset+entry.length {
+		if addr+uint64(len(buf)) > entry.offset+entry.length {
 			pb = pb[:entry.offset+entry.length-addr]
 		}
 		pn, err := entry.reader.ReadMemory(pb, addr)
@@ -119,7 +119,7 @@ func (r *splicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) 
 			return n, nil
 		}
 		buf = buf[pn:]
-		addr += uintptr(pn)
+		addr += uint64(pn)
 		if len(buf) == 0 {
 			// Done, don't bother scanning the rest.
 			return n, nil
@@ -138,11 +138,11 @@ func (r *splicedMemory) ReadMemory(buf []byte, addr uintptr) (n int, err error) 
 // to return the results of a read in that part of the address space.
 type offsetReaderAt struct {
 	reader io.ReaderAt
-	offset uintptr
+	offset uint64
 }
 
 // ReadMemory will read the memory at addr-offset.
-func (r *offsetReaderAt) ReadMemory(buf []byte, addr uintptr) (n int, err error) {
+func (r *offsetReaderAt) ReadMemory(buf []byte, addr uint64) (n int, err error) {
 	return r.reader.ReadAt(buf, int64(addr-r.offset))
 }
 
@@ -262,7 +262,7 @@ func (p *process) ClearCheckpoint(int) error { return errors.New("checkpoint not
 // ReadMemory will return memory from the core file at the specified location and put the
 // read memory into `data`, returning the length read, and returning an error if
 // the length read is shorter than the length of the `data` buffer.
-func (t *thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
+func (t *thread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	n, err = t.p.mem.ReadMemory(data, addr)
 	if err == nil && n != len(data) {
 		err = ErrShortRead
@@ -272,7 +272,7 @@ func (t *thread) ReadMemory(data []byte, addr uintptr) (n int, err error) {
 
 // WriteMemory will only return an error for core files, you cannot write
 // to the memory of a core process.
-func (t *thread) WriteMemory(addr uintptr, data []byte) (int, error) {
+func (t *thread) WriteMemory(addr uint64, data []byte) (int, error) {
 	return 0, ErrWriteCore
 }
 

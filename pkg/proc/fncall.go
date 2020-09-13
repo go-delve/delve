@@ -407,7 +407,7 @@ func writePointer(bi *BinaryInfo, mem MemoryReadWriter, addr, val uint64) error 
 	default:
 		panic(fmt.Errorf("unsupported pointer size %d", len(ptrbuf)))
 	}
-	_, err := mem.WriteMemory(uintptr(addr), ptrbuf)
+	_, err := mem.WriteMemory(addr, ptrbuf)
 	return err
 }
 
@@ -555,7 +555,7 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 	//TODO(aarzilli): autmoatic wrapping in interfaces for cases not handled
 	// by convertToEface.
 
-	formalArgVar := newVariable(formalArg.name, uintptr(formalArg.off+int64(argFrameAddr)), formalArg.typ, scope.BinInfo, scope.Mem)
+	formalArgVar := newVariable(formalArg.name, uint64(formalArg.off+int64(argFrameAddr)), formalArg.typ, scope.BinInfo, scope.Mem)
 	if err := scope.setValue(formalArgVar, actualArg, actualArg.Name); err != nil {
 		return err
 	}
@@ -671,7 +671,7 @@ func escapeCheck(v *Variable, name string, stack stack) error {
 			}
 		}
 	case reflect.Func:
-		if err := escapeCheckPointer(uintptr(v.funcvalAddr()), name, stack); err != nil {
+		if err := escapeCheckPointer(v.funcvalAddr(), name, stack); err != nil {
 			return err
 		}
 	}
@@ -679,7 +679,7 @@ func escapeCheck(v *Variable, name string, stack stack) error {
 	return nil
 }
 
-func escapeCheckPointer(addr uintptr, name string, stack stack) error {
+func escapeCheckPointer(addr uint64, name string, stack stack) error {
 	if uint64(addr) >= stack.lo && uint64(addr) < stack.hi {
 		return fmt.Errorf("stack object passed to escaping pointer: %s", name)
 	}
@@ -856,7 +856,7 @@ func readTopstackVariable(thread Thread, regs Registers, typename string, loadCf
 	if err != nil {
 		return nil, err
 	}
-	v := newVariable("", uintptr(regs.SP()), typ, scope.BinInfo, scope.Mem)
+	v := newVariable("", regs.SP(), typ, scope.BinInfo, scope.Mem)
 	v.loadValue(loadCfg)
 	if v.Unreadable != nil {
 		return nil, v.Unreadable
@@ -932,7 +932,7 @@ func allocString(scope *EvalScope, v *Variable) error {
 	if len(mallocv.Children) != 1 {
 		return errors.New("internal error, could not interpret return value of mallocgc call")
 	}
-	v.Base = uintptr(mallocv.Children[0].Addr)
+	v.Base = mallocv.Children[0].Addr
 	_, err = scope.Mem.WriteMemory(v.Base, []byte(constant.StringVal(v.Value)))
 	return err
 }

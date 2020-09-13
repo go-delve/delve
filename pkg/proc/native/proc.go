@@ -209,7 +209,7 @@ func (dbp *nativeProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Funct
 	f, l, fn := dbp.bi.PCToLine(uint64(addr))
 
 	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
-	_, err := dbp.currentThread.ReadMemory(originalData, uintptr(addr))
+	_, err := dbp.currentThread.ReadMemory(originalData, addr)
 	if err != nil {
 		return "", 0, nil, nil, err
 	}
@@ -317,6 +317,50 @@ func (dbp *nativeProcess) postExit() {
 }
 
 func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uint64) error {
-	_, err := thread.WriteMemory(uintptr(addr), dbp.bi.Arch.BreakpointInstruction())
+	_, err := thread.WriteMemory(addr, dbp.bi.Arch.BreakpointInstruction())
 	return err
+}
+
+func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+	toclose := []*os.File{}
+
+	if redirects[0] != "" {
+		stdin, err = os.Open(redirects[0])
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		toclose = append(toclose, stdin)
+	} else if foreground {
+		stdin = os.Stdin
+	}
+
+	create := func(path string, dflt *os.File) *os.File {
+		if path == "" {
+			return dflt
+		}
+		var f *os.File
+		f, err = os.Create(path)
+		if f != nil {
+			toclose = append(toclose, f)
+		}
+		return f
+	}
+
+	stdout = create(redirects[1], os.Stdout)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	stderr = create(redirects[2], os.Stderr)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	closefn = func() {
+		for _, f := range toclose {
+			_ = f.Close()
+		}
+	}
+
+	return stdin, stdout, stderr, closefn, nil
 }

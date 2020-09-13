@@ -1,4 +1,4 @@
-TEXT ·fputestsetup(SB),$0-48
+TEXT ·fputestsetup(SB),$0-50
 	// setup x87 stack
 	FMOVD f64a+0(FP), F0
 	FMOVD f64b+8(FP), F0
@@ -55,5 +55,24 @@ TEXT ·fputestsetup(SB),$0-48
 
 	MOVAPS X1, X9
 	MOVAPS X2, X10
+	
+	CMPB avx2+48(FP), $0x0
+	JE done
+	//copy XMM1 to both halves of YMM11
+	VPERMQ $0x44, Y1, Y11
+	
+	CMPB avx512+49(FP), $0x0
+	JE done
+	//copy YMM11 to both halves of ZMM12
+	VSHUFF64X2 $0x44, Z11, Z11, Z12
 
+done:
+	RET
+
+TEXT ·getCPUID70(SB),$0
+	MOVQ $7, AX
+	MOVQ $0, CX
+	CPUID
+	MOVD BX, ret+0(FP)
+	MOVD CX, ret+4(FP)
 	RET

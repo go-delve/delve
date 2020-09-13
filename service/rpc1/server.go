@@ -46,7 +46,7 @@ func (s *RPCServer) Restart(arg1 interface{}, arg2 *int) error {
 	if s.config.Debugger.AttachPid != 0 {
 		return errors.New("cannot restart process Delve did not create")
 	}
-	_, err := s.debugger.Restart(false, "", false, nil, false)
+	_, err := s.debugger.Restart(false, "", false, nil, [3]string{}, false)
 	return err
 }
 
@@ -93,12 +93,12 @@ func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations
 	if args.Full {
 		loadcfg = &defaultLoadConfig
 	}
-	locs, err := s.debugger.Stacktrace(args.Id, args.Depth, 0, loadcfg)
+	locs, err := s.debugger.Stacktrace(args.Id, args.Depth, 0)
 	if err != nil {
 		return err
 	}
-	*locations = locs
-	return nil
+	*locations, err = s.debugger.ConvertStacktrace(locs, loadcfg)
+	return err
 }
 
 func (s *RPCServer) ListBreakpoints(arg interface{}, breakpoints *[]*api.Breakpoint) error {
@@ -147,8 +147,14 @@ func (s *RPCServer) AmendBreakpoint(amend *api.Breakpoint, unused *int) error {
 }
 
 func (s *RPCServer) ListThreads(arg interface{}, threads *[]*api.Thread) (err error) {
-	*threads, err = s.debugger.Threads()
-	return err
+	pthreads, err := s.debugger.Threads()
+	if err != nil {
+		return err
+	}
+	s.debugger.LockTarget()
+	defer s.debugger.UnlockTarget()
+	*threads = api.ConvertThreads(pthreads)
+	return nil
 }
 
 func (s *RPCServer) GetThread(id int, thread *api.Thread) error {
@@ -159,7 +165,9 @@ func (s *RPCServer) GetThread(id int, thread *api.Thread) error {
 	if t == nil {
 		return fmt.Errorf("no thread with id %d", id)
 	}
-	*thread = *t
+	s.debugger.LockTarget()
+	defer s.debugger.UnlockTarget()
+	*thread = *api.ConvertThread(t)
 	return nil
 }
 
@@ -178,7 +186,7 @@ func (s *RPCServer) ListPackageVars(filter string, variables *[]api.Variable) er
 	if err != nil {
 		return err
 	}
-	*variables = vars
+	*variables = api.ConvertVars(vars)
 	return nil
 }
 
@@ -200,7 +208,7 @@ func (s *RPCServer) ListThreadPackageVars(args *ThreadListArgs, variables *[]api
 	if err != nil {
 		return err
 	}
-	*variables = vars
+	*variables = api.ConvertVars(vars)
 	return nil
 }
 
@@ -210,29 +218,30 @@ func (s *RPCServer) ListRegisters(arg interface{}, registers *string) error {
 		return err
 	}
 
-	regs, err := s.debugger.Registers(state.CurrentThread.ID, nil, false)
+	dregs, err := s.debugger.ThreadRegisters(state.CurrentThread.ID, false)
 	if err != nil {
 		return err
 	}
+	regs := api.Registers(api.ConvertRegisters(dregs, s.debugger.DwarfRegisterToString, false))
 	*registers = regs.String()
 	return nil
 }
 
 func (s *RPCServer) ListLocalVars(scope api.EvalScope, variables *[]api.Variable) error {
-	vars, err := s.debugger.LocalVariables(scope, defaultLoadConfig)
+	vars, err := s.debugger.LocalVariables(scope.GoroutineID, scope.Frame, scope.DeferredCall, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
-	*variables = vars
+	*variables = api.ConvertVars(vars)
 	return nil
 }
 
 func (s *RPCServer) ListFunctionArgs(scope api.EvalScope, variables *[]api.Variable) error {
-	vars, err := s.debugger.FunctionArguments(scope, defaultLoadConfig)
+	vars, err := s.debugger.FunctionArguments(scope.GoroutineID, scope.Frame, scope.DeferredCall, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
-	*variables = vars
+	*variables = api.ConvertVars(vars)
 	return nil
 }
 
@@ -242,11 +251,11 @@ type EvalSymbolArgs struct {
 }
 
 func (s *RPCServer) EvalSymbol(args EvalSymbolArgs, variable *api.Variable) error {
-	v, err := s.debugger.EvalVariableInScope(args.Scope, args.Symbol, defaultLoadConfig)
+	v, err := s.debugger.EvalVariableInScope(args.Scope.GoroutineID, args.Scope.Frame, args.Scope.DeferredCall, args.Symbol, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
-	*variable = *v
+	*variable = *api.ConvertVar(v)
 	return nil
 }
 
@@ -258,7 +267,7 @@ type SetSymbolArgs struct {
 
 func (s *RPCServer) SetSymbol(args SetSymbolArgs, unused *int) error {
 	*unused = 0
-	return s.debugger.SetVariableInScope(args.Scope, args.Symbol, args.Value)
+	return s.debugger.SetVariableInScope(args.Scope.GoroutineID, args.Scope.Frame, args.Scope.DeferredCall, args.Symbol, args.Value)
 }
 
 func (s *RPCServer) ListSources(filter string, sources *[]string) error {
@@ -293,7 +302,9 @@ func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine
 	if err != nil {
 		return err
 	}
-	*goroutines = gs
+	s.debugger.LockTarget()
+	s.debugger.UnlockTarget()
+	*goroutines = api.ConvertGoroutines(gs)
 	return nil
 }
 
@@ -311,7 +322,7 @@ type FindLocationArgs struct {
 
 func (c *RPCServer) FindLocation(args FindLocationArgs, answer *[]api.Location) error {
 	var err error
-	*answer, err = c.debugger.FindLocation(args.Scope, args.Loc, false)
+	*answer, err = c.debugger.FindLocation(args.Scope.GoroutineID, args.Scope.Frame, args.Scope.DeferredCall, args.Loc, false)
 	return err
 }
 
@@ -323,6 +334,13 @@ type DisassembleRequest struct {
 
 func (c *RPCServer) Disassemble(args DisassembleRequest, answer *api.AsmInstructions) error {
 	var err error
-	*answer, err = c.debugger.Disassemble(args.Scope.GoroutineID, args.StartPC, args.EndPC, args.Flavour)
-	return err
+	insts, err := c.debugger.Disassemble(args.Scope.GoroutineID, args.StartPC, args.EndPC)
+	if err != nil {
+		return err
+	}
+	*answer = make(api.AsmInstructions, len(insts))
+	for i := range insts {
+		(*answer)[i] = api.ConvertAsmInstruction(insts[i], c.debugger.AsmInstructionText(&insts[i], proc.AssemblyFlavour(args.Flavour)))
+	}
+	return nil
 }

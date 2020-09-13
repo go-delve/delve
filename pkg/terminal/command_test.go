@@ -1093,7 +1093,7 @@ func TestExamineMemoryCmd(t *testing.T) {
 			t.Fatalf("could convert %s into int64, err %s", addressStr, err)
 		}
 
-		res := term.MustExec("examinemem  -len 52 -fmt hex " + addressStr)
+		res := term.MustExec("examinemem  -count 52 -fmt hex " + addressStr)
 		t.Logf("the result of examining memory \n%s", res)
 		// check first line
 		firstLine := fmt.Sprintf("%#x:   0x0a   0x0b   0x0c   0x0d   0x0e   0x0f   0x10   0x11", address)
@@ -1109,7 +1109,7 @@ func TestExamineMemoryCmd(t *testing.T) {
 
 		// second examining memory
 		term.MustExec("continue")
-		res = term.MustExec("x -len 52 -fmt bin " + addressStr)
+		res = term.MustExec("x -count 52 -fmt bin " + addressStr)
 		t.Logf("the second result of examining memory result \n%s", res)
 
 		// check first line
@@ -1137,4 +1137,51 @@ func TestPrintCastToInterface(t *testing.T) {
 		out := term.MustExec(`p (*"interface {}")(uintptr(&iface2))`)
 		t.Logf("%q", out)
 	})
+}
+
+func TestParseNewArgv(t *testing.T) {
+	testCases := []struct {
+		in       string
+		tgtargs  string
+		tgtredir string
+		tgterr   string
+	}{
+		{"-noargs", "", " |  | ", ""},
+		{"-noargs arg1", "", "", "too many arguments to restart"},
+		{"arg1 arg2", "arg1 | arg2", " |  | ", ""},
+		{"arg1 arg2 <input.txt", "arg1 | arg2", "input.txt |  | ", ""},
+		{"arg1 arg2 < input.txt", "arg1 | arg2", "input.txt |  | ", ""},
+		{"<input.txt", "", "input.txt |  | ", ""},
+		{"< input.txt", "", "input.txt |  | ", ""},
+		{"arg1 < input.txt > output.txt 2> error.txt", "arg1", "input.txt | output.txt | error.txt", ""},
+		{"< input.txt > output.txt 2> error.txt", "", "input.txt | output.txt | error.txt", ""},
+		{"arg1 <input.txt >output.txt 2>error.txt", "arg1", "input.txt | output.txt | error.txt", ""},
+		{"<input.txt >output.txt 2>error.txt", "", "input.txt | output.txt | error.txt", ""},
+		{"<input.txt <input2.txt", "", "", "redirect error: stdin redirected twice"},
+	}
+
+	for _, tc := range testCases {
+		resetArgs, newArgv, newRedirects, err := parseNewArgv(tc.in)
+		t.Logf("%q -> %q %q %v\n", tc.in, newArgv, newRedirects, err)
+		if tc.tgterr != "" {
+			if err == nil {
+				t.Errorf("Expected error %q, got no error", tc.tgterr)
+			} else if errstr := err.Error(); errstr != tc.tgterr {
+				t.Errorf("Expected error %q, got error %q", tc.tgterr, errstr)
+			}
+		} else {
+			if !resetArgs {
+				t.Errorf("parse error, resetArgs is false")
+				continue
+			}
+			argvstr := strings.Join(newArgv, " | ")
+			if argvstr != tc.tgtargs {
+				t.Errorf("Expected new arguments %q, got %q", tc.tgtargs, argvstr)
+			}
+			redirstr := strings.Join(newRedirects[:], " | ")
+			if redirstr != tc.tgtredir {
+				t.Errorf("Expected new redirects %q, got %q", tc.tgtredir, redirstr)
+			}
+		}
+	}
 }
