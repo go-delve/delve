@@ -407,9 +407,9 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads threads and sets breakpoints
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	dbp.os.running = false
@@ -424,15 +424,15 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	// call to _ContinueDebugEvent will resume execution of some of the
 	// target threads.
 
-	err = trapthread.SetCurrentBreakpoint(true)
+	err := trapthread.SetCurrentBreakpoint(true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, thread := range dbp.threads {
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -446,18 +446,18 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 			}
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if tid == 0 {
 			break
 		}
 		err = dbp.threads[tid].SetCurrentBreakpoint(true)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return trapthread, nil
 }
 
 func (dbp *nativeProcess) detach(kill bool) error {

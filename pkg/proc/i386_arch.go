@@ -24,6 +24,7 @@ func I386Arch(goos string) *Arch {
 		ptrSize:                          4,
 		maxInstructionLength:             15,
 		breakpointInstruction:            i386BreakInstruction,
+		altBreakpointInstruction:         []byte{0xcd, 0x03},
 		breakInstrMovesPC:                true,
 		derefTLS:                         false,
 		prologues:                        prologuesI386,

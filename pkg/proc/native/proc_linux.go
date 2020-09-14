@@ -486,9 +486,9 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	for _, th := range dbp.threads {
@@ -500,7 +500,7 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	for {
 		th, err := dbp.trapWaitInternal(-1, trapWaitNohang)
 		if err != nil {
-			return dbp.exitGuard(err)
+			return nil, dbp.exitGuard(err)
 		}
 		if th == nil {
 			break
@@ -511,7 +511,7 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 	for _, th := range dbp.threads {
 		if th.os.running {
 			if err := th.stop(); err != nil {
-				return dbp.exitGuard(err)
+				return nil, dbp.exitGuard(err)
 			}
 		}
 	}
@@ -530,23 +530,76 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
 		}
 		_, err := dbp.trapWaitInternal(-1, trapWaitHalt)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	if err := linutil.ElfUpdateSharedObjects(dbp); err != nil {
-		return err
+		return nil, err
 	}
+
+	switchTrapthread := false
 
 	// set breakpoints on SIGTRAP threads
 	for _, th := range dbp.threads {
 		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp {
 			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return err
+				return nil, err
+			}
+		}
+		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp && (th.Status != nil) && ((*sys.WaitStatus)(th.Status).StopSignal() == sys.SIGTRAP) && dbp.BinInfo().Arch.BreakInstrMovesPC() {
+			manualStop := false
+			if th.ThreadID() == trapthread.ThreadID() {
+				dbp.stopMu.Lock()
+				manualStop = dbp.manualStopRequested
+				dbp.stopMu.Unlock()
+			}
+			if !manualStop {
+				// Thread received a SIGTRAP but we don't have a breakpoint for it and
+				// it wasn't sent by a manual stop request. It's either a hardcoded
+				// breakpoint or a phantom breakpoint hit (a breakpoint that was hit but
+				// we have removed before we could receive its signal). Check if it is a
+				// hardcoded breakpoint, otherwise rewind the thread.
+				isHardcodedBreakpoint := false
+				pc, _ := th.PC()
+				for _, bpinstr := range [][]byte{
+					dbp.BinInfo().Arch.BreakpointInstruction(),
+					dbp.BinInfo().Arch.AltBreakpointInstruction()} {
+					if bpinstr == nil {
+						continue
+					}
+					buf := make([]byte, len(bpinstr))
+					_, _ = th.ReadMemory(buf, pc-uint64(len(buf)))
+					if bytes.Equal(buf, bpinstr) {
+						isHardcodedBreakpoint = true
+						break
+					}
+				}
+				if !isHardcodedBreakpoint {
+					// phantom breakpoint hit
+					_ = th.SetPC(pc - uint64(len(dbp.BinInfo().Arch.BreakpointInstruction())))
+					th.os.setbp = false
+					if trapthread.ThreadID() == th.ThreadID() {
+						// Will switch to a different thread for trapthread because we don't
+						// want pkg/proc to believe that this thread was stopped by a
+						// hardcoded breakpoint.
+						switchTrapthread = true
+					}
+				}
 			}
 		}
 	}
-	return nil
+
+	if switchTrapthread {
+		trapthread = nil
+		for _, th := range dbp.threads {
+			if th.os.setbp && th.ThreadID() != trapthread.ThreadID() {
+				return th, nil
+			}
+		}
+	}
+
+	return trapthread, nil
 }
 
 func (dbp *nativeProcess) detach(kill bool) error {

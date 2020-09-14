@@ -347,19 +347,19 @@ func (dbp *nativeProcess) resume() error {
 
 // Used by ContinueOnce
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	// set breakpoints on all threads
 	for _, th := range dbp.threads {
 		if th.CurrentBreakpoint.Breakpoint == nil {
 			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+	return trapthread, nil
 }
 
 // Used by Detach

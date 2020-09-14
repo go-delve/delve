@@ -9,13 +9,14 @@ import (
 type Arch struct {
 	Name string // architecture name
 
-	ptrSize               int
-	maxInstructionLength  int
-	prologues             []opcodeSeq
-	breakpointInstruction []byte
-	breakInstrMovesPC     bool
-	derefTLS              bool
-	usesLR                bool // architecture uses a link register, also called RA on some architectures
+	ptrSize                  int
+	maxInstructionLength     int
+	prologues                []opcodeSeq
+	breakpointInstruction    []byte
+	altBreakpointInstruction []byte
+	breakInstrMovesPC        bool
+	derefTLS                 bool
+	usesLR                   bool // architecture uses a link register, also called RA on some architectures
 
 	// asmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
 	// It assumes that the Loc and AtPC fields of asmInst have already been filled.
@@ -64,6 +65,11 @@ func (a *Arch) MaxInstructionLength() int {
 // the given architecture.
 func (a *Arch) BreakpointInstruction() []byte {
 	return a.breakpointInstruction
+}
+
+// AltBreakpointInstruction returns an alternate encoding for the breakpoint instruction.
+func (a *Arch) AltBreakpointInstruction() []byte {
+	return a.altBreakpointInstruction
 }
 
 // BreakInstrMovesPC is true if hitting the breakpoint instruction advances the

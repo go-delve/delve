@@ -59,7 +59,7 @@ func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
