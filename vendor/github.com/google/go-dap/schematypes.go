@@ -28,11 +28,34 @@ type Message interface {
 	GetSeq() int
 }
 
+// RequestMessage is an interface implemented by all Request-types.
+type RequestMessage interface {
+	Message
+	// GetRequest provides access to the embedded Request.
+	GetRequest() *Request
+}
+
+// ResponseMessage is an interface implemented by all Response-types.
+type ResponseMessage interface {
+	Message
+	// GetResponse provides access to the embedded Response.
+	GetResponse() *Response
+}
+
+// EventMessage is an interface implemented by all Event-types.
+type EventMessage interface {
+	Message
+	// GetEvent provides access to the embedded Event.
+	GetEvent() *Event
+}
+
 // ProtocolMessage: Base class of requests, responses, and events.
 type ProtocolMessage struct {
 	Seq  int    `json:"seq"`
 	Type string `json:"type"`
 }
+
+func (m *ProtocolMessage) GetSeq() int { return m.Seq }
 
 // Request: A client or debug adapter initiated request.
 type Request struct {
@@ -69,22 +92,31 @@ type ErrorResponseBody struct {
 	Error ErrorMessage `json:"error,omitempty"`
 }
 
-// CancelRequest: The 'cancel' request is used by the frontend to indicate that it is no longer interested in the result produced by a specific request issued earlier.
+func (r *ErrorResponse) GetResponse() *Response { return &r.Response }
+
+// CancelRequest: The 'cancel' request is used by the frontend in two situations:
+// - to indicate that it is no longer interested in the result produced by a specific request issued earlier
+// - to cancel a progress sequence. Clients should only call this request if the capability 'supportsCancelRequest' is true.
 // This request has a hint characteristic: a debug adapter can only be expected to make a 'best effort' in honouring this request but there are no guarantees.
 // The 'cancel' request may return an error if it could not cancel an operation but a frontend should refrain from presenting this error to end users.
 // A frontend client should only call this request if the capability 'supportsCancelRequest' is true.
-// The request that got canceled still needs to send a response back.
-// This can either be a normal result ('success' attribute true) or an error response ('success' attribute false and the 'message' set to 'cancelled').
+// The request that got canceled still needs to send a response back. This can either be a normal result ('success' attribute true)
+// or an error response ('success' attribute false and the 'message' set to 'cancelled').
 // Returning partial results from a cancelled request is possible but please note that a frontend client has no generic way for detecting that a response is partial or not.
+//  The progress that got cancelled still needs to send a 'progressEnd' event back.
+//  A client should not assume that progress just got cancelled after sending the 'cancel' request.
 type CancelRequest struct {
 	Request
 
 	Arguments CancelArguments `json:"arguments,omitempty"`
 }
 
+func (r *CancelRequest) GetRequest() *Request { return &r.Request }
+
 // CancelArguments: Arguments for 'cancel' request.
 type CancelArguments struct {
-	RequestId int `json:"requestId,omitempty"`
+	RequestId  int    `json:"requestId,omitempty"`
+	ProgressId string `json:"progressId,omitempty"`
 }
 
 // CancelResponse: Response to 'cancel' request. This is just an acknowledgement, so no body field is required.
@@ -92,12 +124,14 @@ type CancelResponse struct {
 	Response
 }
 
+func (r *CancelResponse) GetResponse() *Response { return &r.Response }
+
 // InitializedEvent: This event indicates that the debug adapter is ready to accept configuration requests (e.g. SetBreakpointsRequest, SetExceptionBreakpointsRequest).
 // A debug adapter is expected to send this event when it is ready to accept configuration requests (but not before the 'initialize' request has finished).
 // The sequence of events/requests is as follows:
 // - adapters sends 'initialized' event (after the 'initialize' request has returned)
 // - frontend sends zero or more 'setBreakpoints' requests
-// - frontend sends one 'setFunctionBreakpoints' request
+// - frontend sends one 'setFunctionBreakpoints' request (if capability 'supportsFunctionBreakpoints' is true)
 // - frontend sends a 'setExceptionBreakpoints' request if one or more 'exceptionBreakpointFilters' have been defined (or if 'supportsConfigurationDoneRequest' is not defined or false)
 // - frontend sends other future configuration requests
 // - frontend sends one 'configurationDone' request to indicate the end of the configuration.
@@ -105,8 +139,10 @@ type InitializedEvent struct {
 	Event
 }
 
+func (e *InitializedEvent) GetEvent() *Event { return &e.Event }
+
 // StoppedEvent: The event indicates that the execution of the debuggee has stopped due to some condition.
-// This can be caused by a break point previously set, a stepping action has completed, by executing a debugger statement etc.
+// This can be caused by a break point previously set, a stepping request has completed, by executing a debugger statement etc.
 type StoppedEvent struct {
 	Event
 
@@ -122,6 +158,8 @@ type StoppedEventBody struct {
 	AllThreadsStopped bool   `json:"allThreadsStopped,omitempty"`
 }
 
+func (e *StoppedEvent) GetEvent() *Event { return &e.Event }
+
 // ContinuedEvent: The event indicates that the execution of the debuggee has continued.
 // Please note: a debug adapter is not expected to send this event in response to a request that implies that execution continues, e.g. 'launch' or 'continue'.
 // It is only necessary to send a 'continued' event if there was no previous request that implied this.
@@ -136,6 +174,8 @@ type ContinuedEventBody struct {
 	AllThreadsContinued bool `json:"allThreadsContinued,omitempty"`
 }
 
+func (e *ContinuedEvent) GetEvent() *Event { return &e.Event }
+
 // ExitedEvent: The event indicates that the debuggee has exited and returns its exit code.
 type ExitedEvent struct {
 	Event
@@ -147,6 +187,8 @@ type ExitedEventBody struct {
 	ExitCode int `json:"exitCode"`
 }
 
+func (e *ExitedEvent) GetEvent() *Event { return &e.Event }
+
 // TerminatedEvent: The event indicates that debugging of the debuggee has terminated. This does **not** mean that the debuggee itself has exited.
 type TerminatedEvent struct {
 	Event
@@ -157,6 +199,8 @@ type TerminatedEvent struct {
 type TerminatedEventBody struct {
 	Restart interface{} `json:"restart,omitempty"`
 }
+
+func (e *TerminatedEvent) GetEvent() *Event { return &e.Event }
 
 // ThreadEvent: The event indicates that a thread has started or exited.
 type ThreadEvent struct {
@@ -170,6 +214,8 @@ type ThreadEventBody struct {
 	ThreadId int    `json:"threadId"`
 }
 
+func (e *ThreadEvent) GetEvent() *Event { return &e.Event }
+
 // OutputEvent: The event indicates that the target has produced some output.
 type OutputEvent struct {
 	Event
@@ -180,12 +226,15 @@ type OutputEvent struct {
 type OutputEventBody struct {
 	Category           string      `json:"category,omitempty"`
 	Output             string      `json:"output"`
+	Group              string      `json:"group,omitempty"`
 	VariablesReference int         `json:"variablesReference,omitempty"`
 	Source             Source      `json:"source,omitempty"`
 	Line               int         `json:"line,omitempty"`
 	Column             int         `json:"column,omitempty"`
 	Data               interface{} `json:"data,omitempty"`
 }
+
+func (e *OutputEvent) GetEvent() *Event { return &e.Event }
 
 // BreakpointEvent: The event indicates that some information about a breakpoint has changed.
 type BreakpointEvent struct {
@@ -199,6 +248,8 @@ type BreakpointEventBody struct {
 	Breakpoint Breakpoint `json:"breakpoint"`
 }
 
+func (e *BreakpointEvent) GetEvent() *Event { return &e.Event }
+
 // ModuleEvent: The event indicates that some information about a module has changed.
 type ModuleEvent struct {
 	Event
@@ -211,6 +262,8 @@ type ModuleEventBody struct {
 	Module Module `json:"module"`
 }
 
+func (e *ModuleEvent) GetEvent() *Event { return &e.Event }
+
 // LoadedSourceEvent: The event indicates that some source has been added, changed, or removed from the set of all loaded sources.
 type LoadedSourceEvent struct {
 	Event
@@ -222,6 +275,8 @@ type LoadedSourceEventBody struct {
 	Reason string `json:"reason"`
 	Source Source `json:"source"`
 }
+
+func (e *LoadedSourceEvent) GetEvent() *Event { return &e.Event }
 
 // ProcessEvent: The event indicates that the debugger has begun debugging a new process. Either one that it has launched, or one that it has attached to.
 type ProcessEvent struct {
@@ -238,6 +293,8 @@ type ProcessEventBody struct {
 	PointerSize     int    `json:"pointerSize,omitempty"`
 }
 
+func (e *ProcessEvent) GetEvent() *Event { return &e.Event }
+
 // CapabilitiesEvent: The event indicates that one or more capabilities have changed.
 // Since the capabilities are dependent on the frontend and its UI, it might not be possible to change that at random times (or too late).
 // Consequently this event has a hint characteristic: a frontend can only be expected to make a 'best effort' in honouring individual capabilities but there are no guarantees.
@@ -252,12 +309,71 @@ type CapabilitiesEventBody struct {
 	Capabilities Capabilities `json:"capabilities"`
 }
 
-// RunInTerminalRequest: This request is sent from the debug adapter to the client to run a command in a terminal. This is typically used to launch the debuggee in a terminal provided by the client.
+func (e *CapabilitiesEvent) GetEvent() *Event { return &e.Event }
+
+// ProgressStartEvent: The event signals that a long running operation is about to start and
+// provides additional information for the client to set up a corresponding progress and cancellation UI.
+// The client is free to delay the showing of the UI in order to reduce flicker.
+// This event should only be sent if the client has passed the value true for the 'supportsProgressReporting' capability of the 'initialize' request.
+type ProgressStartEvent struct {
+	Event
+
+	Body ProgressStartEventBody `json:"body"`
+}
+
+type ProgressStartEventBody struct {
+	ProgressId  string `json:"progressId"`
+	Title       string `json:"title"`
+	RequestId   int    `json:"requestId,omitempty"`
+	Cancellable bool   `json:"cancellable,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Percentage  int    `json:"percentage,omitempty"`
+}
+
+func (e *ProgressStartEvent) GetEvent() *Event { return &e.Event }
+
+// ProgressUpdateEvent: The event signals that the progress reporting needs to updated with a new message and/or percentage.
+// The client does not have to update the UI immediately, but the clients needs to keep track of the message and/or percentage values.
+// This event should only be sent if the client has passed the value true for the 'supportsProgressReporting' capability of the 'initialize' request.
+type ProgressUpdateEvent struct {
+	Event
+
+	Body ProgressUpdateEventBody `json:"body"`
+}
+
+type ProgressUpdateEventBody struct {
+	ProgressId string `json:"progressId"`
+	Message    string `json:"message,omitempty"`
+	Percentage int    `json:"percentage,omitempty"`
+}
+
+func (e *ProgressUpdateEvent) GetEvent() *Event { return &e.Event }
+
+// ProgressEndEvent: The event signals the end of the progress reporting with an optional final message.
+// This event should only be sent if the client has passed the value true for the 'supportsProgressReporting' capability of the 'initialize' request.
+type ProgressEndEvent struct {
+	Event
+
+	Body ProgressEndEventBody `json:"body"`
+}
+
+type ProgressEndEventBody struct {
+	ProgressId string `json:"progressId"`
+	Message    string `json:"message,omitempty"`
+}
+
+func (e *ProgressEndEvent) GetEvent() *Event { return &e.Event }
+
+// RunInTerminalRequest: This optional request is sent from the debug adapter to the client to run a command in a terminal.
+// This is typically used to launch the debuggee in a terminal provided by the client.
+// This request should only be called if the client has passed the value true for the 'supportsRunInTerminalRequest' capability of the 'initialize' request.
 type RunInTerminalRequest struct {
 	Request
 
 	Arguments RunInTerminalRequestArguments `json:"arguments"`
 }
+
+func (r *RunInTerminalRequest) GetRequest() *Request { return &r.Request }
 
 // RunInTerminalRequestArguments: Arguments for 'runInTerminal' request.
 type RunInTerminalRequestArguments struct {
@@ -280,14 +396,20 @@ type RunInTerminalResponseBody struct {
 	ShellProcessId int `json:"shellProcessId,omitempty"`
 }
 
-// InitializeRequest: The 'initialize' request is sent as the first request from the client to the debug adapter in order to configure it with client capabilities and to retrieve capabilities from the debug adapter.
-// Until the debug adapter has responded to with an 'initialize' response, the client must not send any additional requests or events to the debug adapter. In addition the debug adapter is not allowed to send any requests or events to the client until it has responded with an 'initialize' response.
+func (r *RunInTerminalResponse) GetResponse() *Response { return &r.Response }
+
+// InitializeRequest: The 'initialize' request is sent as the first request from the client to the debug adapter
+// in order to configure it with client capabilities and to retrieve capabilities from the debug adapter.
+// Until the debug adapter has responded to with an 'initialize' response, the client must not send any additional requests or events to the debug adapter.
+// In addition the debug adapter is not allowed to send any requests or events to the client until it has responded with an 'initialize' response.
 // The 'initialize' request may only be sent once.
 type InitializeRequest struct {
 	Request
 
 	Arguments InitializeRequestArguments `json:"arguments"`
 }
+
+func (r *InitializeRequest) GetRequest() *Request { return &r.Request }
 
 // InitializeRequestArguments: Arguments for 'initialize' request.
 type InitializeRequestArguments struct {
@@ -302,6 +424,7 @@ type InitializeRequestArguments struct {
 	SupportsVariablePaging       bool   `json:"supportsVariablePaging,omitempty"`
 	SupportsRunInTerminalRequest bool   `json:"supportsRunInTerminalRequest,omitempty"`
 	SupportsMemoryReferences     bool   `json:"supportsMemoryReferences,omitempty"`
+	SupportsProgressReporting    bool   `json:"supportsProgressReporting,omitempty"`
 }
 
 // InitializeResponse: Response to 'initialize' request.
@@ -311,12 +434,18 @@ type InitializeResponse struct {
 	Body Capabilities `json:"body,omitempty"`
 }
 
-// ConfigurationDoneRequest: The client of the debug protocol must send this request at the end of the sequence of configuration requests (which was started by the 'initialized' event).
+func (r *InitializeResponse) GetResponse() *Response { return &r.Response }
+
+// ConfigurationDoneRequest: This optional request indicates that the client has finished initialization of the debug adapter.
+// So it is the last request in the sequence of configuration requests (which was started by the 'initialized' event).
+// Clients should only call this request if the capability 'supportsConfigurationDoneRequest' is true.
 type ConfigurationDoneRequest struct {
 	Request
 
 	Arguments ConfigurationDoneArguments `json:"arguments,omitempty"`
 }
+
+func (r *ConfigurationDoneRequest) GetRequest() *Request { return &r.Request }
 
 // ConfigurationDoneArguments: Arguments for 'configurationDone' request.
 type ConfigurationDoneArguments struct {
@@ -327,24 +456,34 @@ type ConfigurationDoneResponse struct {
 	Response
 }
 
-// LaunchRequest: The launch request is sent from the client to the debug adapter to start the debuggee with or without debugging (if 'noDebug' is true). Since launching is debugger/runtime specific, the arguments for this request are not part of this specification.
+func (r *ConfigurationDoneResponse) GetResponse() *Response { return &r.Response }
+
+// LaunchRequest: This launch request is sent from the client to the debug adapter to start the debuggee with or without debugging (if 'noDebug' is true).
+// Since launching is debugger/runtime specific, the arguments for this request are not part of this specification.
 type LaunchRequest struct {
 	Request
 
 	Arguments map[string]interface{} `json:"arguments"`
 }
 
+func (r *LaunchRequest) GetRequest() *Request { return &r.Request }
+
 // LaunchResponse: Response to 'launch' request. This is just an acknowledgement, so no body field is required.
 type LaunchResponse struct {
 	Response
 }
 
-// AttachRequest: The attach request is sent from the client to the debug adapter to attach to a debuggee that is already running. Since attaching is debugger/runtime specific, the arguments for this request are not part of this specification.
+func (r *LaunchResponse) GetResponse() *Response { return &r.Response }
+
+// AttachRequest: The attach request is sent from the client to the debug adapter to attach to a debuggee that is already running.
+// Since attaching is debugger/runtime specific, the arguments for this request are not part of this specification.
 type AttachRequest struct {
 	Request
 
 	Arguments AttachRequestArguments `json:"arguments"`
 }
+
+func (r *AttachRequest) GetRequest() *Request { return &r.Request }
 
 // AttachRequestArguments: Arguments for 'attach' request. Additional attributes are implementation specific.
 type AttachRequestArguments struct {
@@ -356,15 +495,17 @@ type AttachResponse struct {
 	Response
 }
 
-// RestartRequest: Restarts a debug session. If the capability 'supportsRestartRequest' is missing or has the value false,
-// the client will implement 'restart' by terminating the debug adapter first and then launching it anew.
-// A debug adapter can override this default behaviour by implementing a restart request
-// and setting the capability 'supportsRestartRequest' to true.
+func (r *AttachResponse) GetResponse() *Response { return &r.Response }
+
+// RestartRequest: Restarts a debug session. Clients should only call this request if the capability 'supportsRestartRequest' is true.
+// If the capability is missing or has the value false, a typical client will emulate 'restart' by terminating the debug adapter first and then launching it anew.
 type RestartRequest struct {
 	Request
 
 	Arguments RestartArguments `json:"arguments,omitempty"`
 }
+
+func (r *RestartRequest) GetRequest() *Request { return &r.Request }
 
 // RestartArguments: Arguments for 'restart' request.
 type RestartArguments struct {
@@ -375,12 +516,20 @@ type RestartResponse struct {
 	Response
 }
 
-// DisconnectRequest: The 'disconnect' request is sent from the client to the debug adapter in order to stop debugging. It asks the debug adapter to disconnect from the debuggee and to terminate the debug adapter. If the debuggee has been started with the 'launch' request, the 'disconnect' request terminates the debuggee. If the 'attach' request was used to connect to the debuggee, 'disconnect' does not terminate the debuggee. This behavior can be controlled with the 'terminateDebuggee' argument (if supported by the debug adapter).
+func (r *RestartResponse) GetResponse() *Response { return &r.Response }
+
+// DisconnectRequest: The 'disconnect' request is sent from the client to the debug adapter in order to stop debugging.
+// It asks the debug adapter to disconnect from the debuggee and to terminate the debug adapter.
+// If the debuggee has been started with the 'launch' request, the 'disconnect' request terminates the debuggee.
+// If the 'attach' request was used to connect to the debuggee, 'disconnect' does not terminate the debuggee.
+// This behavior can be controlled with the 'terminateDebuggee' argument (if supported by the debug adapter).
 type DisconnectRequest struct {
 	Request
 
 	Arguments DisconnectArguments `json:"arguments,omitempty"`
 }
+
+func (r *DisconnectRequest) GetRequest() *Request { return &r.Request }
 
 // DisconnectArguments: Arguments for 'disconnect' request.
 type DisconnectArguments struct {
@@ -393,12 +542,17 @@ type DisconnectResponse struct {
 	Response
 }
 
+func (r *DisconnectResponse) GetResponse() *Response { return &r.Response }
+
 // TerminateRequest: The 'terminate' request is sent from the client to the debug adapter in order to give the debuggee a chance for terminating itself.
+// Clients should only call this request if the capability 'supportsTerminateRequest' is true.
 type TerminateRequest struct {
 	Request
 
 	Arguments TerminateArguments `json:"arguments,omitempty"`
 }
+
+func (r *TerminateRequest) GetRequest() *Request { return &r.Request }
 
 // TerminateArguments: Arguments for 'terminate' request.
 type TerminateArguments struct {
@@ -410,12 +564,17 @@ type TerminateResponse struct {
 	Response
 }
 
+func (r *TerminateResponse) GetResponse() *Response { return &r.Response }
+
 // BreakpointLocationsRequest: The 'breakpointLocations' request returns all possible locations for source breakpoints in a given range.
+// Clients should only call this request if the capability 'supportsBreakpointLocationsRequest' is true.
 type BreakpointLocationsRequest struct {
 	Request
 
 	Arguments BreakpointLocationsArguments `json:"arguments,omitempty"`
 }
+
+func (r *BreakpointLocationsRequest) GetRequest() *Request { return &r.Request }
 
 // BreakpointLocationsArguments: Arguments for 'breakpointLocations' request.
 type BreakpointLocationsArguments struct {
@@ -438,6 +597,8 @@ type BreakpointLocationsResponseBody struct {
 	Breakpoints []BreakpointLocation `json:"breakpoints"`
 }
 
+func (r *BreakpointLocationsResponse) GetResponse() *Response { return &r.Response }
+
 // SetBreakpointsRequest: Sets multiple breakpoints for a single source and clears all previous breakpoints in that source.
 // To clear all breakpoint for a source, specify an empty array.
 // When a breakpoint is hit, a 'stopped' event (with reason 'breakpoint') is generated.
@@ -446,6 +607,8 @@ type SetBreakpointsRequest struct {
 
 	Arguments SetBreakpointsArguments `json:"arguments"`
 }
+
+func (r *SetBreakpointsRequest) GetRequest() *Request { return &r.Request }
 
 // SetBreakpointsArguments: Arguments for 'setBreakpoints' request.
 type SetBreakpointsArguments struct {
@@ -470,14 +633,19 @@ type SetBreakpointsResponseBody struct {
 	Breakpoints []Breakpoint `json:"breakpoints"`
 }
 
+func (r *SetBreakpointsResponse) GetResponse() *Response { return &r.Response }
+
 // SetFunctionBreakpointsRequest: Replaces all existing function breakpoints with new function breakpoints.
 // To clear all function breakpoints, specify an empty array.
 // When a function breakpoint is hit, a 'stopped' event (with reason 'function breakpoint') is generated.
+// Clients should only call this request if the capability 'supportsFunctionBreakpoints' is true.
 type SetFunctionBreakpointsRequest struct {
 	Request
 
 	Arguments SetFunctionBreakpointsArguments `json:"arguments"`
 }
+
+func (r *SetFunctionBreakpointsRequest) GetRequest() *Request { return &r.Request }
 
 // SetFunctionBreakpointsArguments: Arguments for 'setFunctionBreakpoints' request.
 type SetFunctionBreakpointsArguments struct {
@@ -496,12 +664,18 @@ type SetFunctionBreakpointsResponseBody struct {
 	Breakpoints []Breakpoint `json:"breakpoints"`
 }
 
-// SetExceptionBreakpointsRequest: The request configures the debuggers response to thrown exceptions. If an exception is configured to break, a 'stopped' event is fired (with reason 'exception').
+func (r *SetFunctionBreakpointsResponse) GetResponse() *Response { return &r.Response }
+
+// SetExceptionBreakpointsRequest: The request configures the debuggers response to thrown exceptions.
+// If an exception is configured to break, a 'stopped' event is fired (with reason 'exception').
+// Clients should only call this request if the capability 'exceptionBreakpointFilters' returns one or more filters.
 type SetExceptionBreakpointsRequest struct {
 	Request
 
 	Arguments SetExceptionBreakpointsArguments `json:"arguments"`
 }
+
+func (r *SetExceptionBreakpointsRequest) GetRequest() *Request { return &r.Request }
 
 // SetExceptionBreakpointsArguments: Arguments for 'setExceptionBreakpoints' request.
 type SetExceptionBreakpointsArguments struct {
@@ -514,12 +688,17 @@ type SetExceptionBreakpointsResponse struct {
 	Response
 }
 
+func (r *SetExceptionBreakpointsResponse) GetResponse() *Response { return &r.Response }
+
 // DataBreakpointInfoRequest: Obtains information on a possible data breakpoint that could be set on an expression or variable.
+// Clients should only call this request if the capability 'supportsDataBreakpoints' is true.
 type DataBreakpointInfoRequest struct {
 	Request
 
 	Arguments DataBreakpointInfoArguments `json:"arguments"`
 }
+
+func (r *DataBreakpointInfoRequest) GetRequest() *Request { return &r.Request }
 
 // DataBreakpointInfoArguments: Arguments for 'dataBreakpointInfo' request.
 type DataBreakpointInfoArguments struct {
@@ -541,14 +720,19 @@ type DataBreakpointInfoResponseBody struct {
 	CanPersist  bool                       `json:"canPersist,omitempty"`
 }
 
+func (r *DataBreakpointInfoResponse) GetResponse() *Response { return &r.Response }
+
 // SetDataBreakpointsRequest: Replaces all existing data breakpoints with new data breakpoints.
 // To clear all data breakpoints, specify an empty array.
 // When a data breakpoint is hit, a 'stopped' event (with reason 'data breakpoint') is generated.
+// Clients should only call this request if the capability 'supportsDataBreakpoints' is true.
 type SetDataBreakpointsRequest struct {
 	Request
 
 	Arguments SetDataBreakpointsArguments `json:"arguments"`
 }
+
+func (r *SetDataBreakpointsRequest) GetRequest() *Request { return &r.Request }
 
 // SetDataBreakpointsArguments: Arguments for 'setDataBreakpoints' request.
 type SetDataBreakpointsArguments struct {
@@ -567,12 +751,46 @@ type SetDataBreakpointsResponseBody struct {
 	Breakpoints []Breakpoint `json:"breakpoints"`
 }
 
+func (r *SetDataBreakpointsResponse) GetResponse() *Response { return &r.Response }
+
+// SetInstructionBreakpointsRequest: Replaces all existing instruction breakpoints. Typically, instruction breakpoints would be set from a diassembly window.
+// To clear all instruction breakpoints, specify an empty array.
+// When an instruction breakpoint is hit, a 'stopped' event (with reason 'instruction breakpoint') is generated.
+// Clients should only call this request if the capability 'supportsInstructionBreakpoints' is true.
+type SetInstructionBreakpointsRequest struct {
+	Request
+
+	Arguments SetInstructionBreakpointsArguments `json:"arguments"`
+}
+
+func (r *SetInstructionBreakpointsRequest) GetRequest() *Request { return &r.Request }
+
+// SetInstructionBreakpointsArguments: Arguments for 'setInstructionBreakpoints' request
+type SetInstructionBreakpointsArguments struct {
+	Breakpoints []InstructionBreakpoint `json:"breakpoints"`
+}
+
+// SetInstructionBreakpointsResponse: Response to 'setInstructionBreakpoints' request
+type SetInstructionBreakpointsResponse struct {
+	Response
+
+	Body SetInstructionBreakpointsResponseBody `json:"body"`
+}
+
+type SetInstructionBreakpointsResponseBody struct {
+	Breakpoints []Breakpoint `json:"breakpoints"`
+}
+
+func (r *SetInstructionBreakpointsResponse) GetResponse() *Response { return &r.Response }
+
 // ContinueRequest: The request starts the debuggee to run again.
 type ContinueRequest struct {
 	Request
 
 	Arguments ContinueArguments `json:"arguments"`
 }
+
+func (r *ContinueRequest) GetRequest() *Request { return &r.Request }
 
 // ContinueArguments: Arguments for 'continue' request.
 type ContinueArguments struct {
@@ -587,8 +805,10 @@ type ContinueResponse struct {
 }
 
 type ContinueResponseBody struct {
-	AllThreadsContinued bool `json:"allThreadsContinued,omitempty"`
+	AllThreadsContinued bool `json:"allThreadsContinued"`
 }
+
+func (r *ContinueResponse) GetResponse() *Response { return &r.Response }
 
 // NextRequest: The request starts the debuggee to run again for one step.
 // The debug adapter first sends the response and then a 'stopped' event (with reason 'step') after the step has completed.
@@ -598,15 +818,20 @@ type NextRequest struct {
 	Arguments NextArguments `json:"arguments"`
 }
 
+func (r *NextRequest) GetRequest() *Request { return &r.Request }
+
 // NextArguments: Arguments for 'next' request.
 type NextArguments struct {
-	ThreadId int `json:"threadId"`
+	ThreadId    int                 `json:"threadId"`
+	Granularity SteppingGranularity `json:"granularity,omitempty"`
 }
 
 // NextResponse: Response to 'next' request. This is just an acknowledgement, so no body field is required.
 type NextResponse struct {
 	Response
 }
+
+func (r *NextResponse) GetResponse() *Response { return &r.Response }
 
 // StepInRequest: The request starts the debuggee to step into a function/method if possible.
 // If it cannot step into a target, 'stepIn' behaves like 'next'.
@@ -620,16 +845,21 @@ type StepInRequest struct {
 	Arguments StepInArguments `json:"arguments"`
 }
 
+func (r *StepInRequest) GetRequest() *Request { return &r.Request }
+
 // StepInArguments: Arguments for 'stepIn' request.
 type StepInArguments struct {
-	ThreadId int `json:"threadId"`
-	TargetId int `json:"targetId,omitempty"`
+	ThreadId    int                 `json:"threadId"`
+	TargetId    int                 `json:"targetId,omitempty"`
+	Granularity SteppingGranularity `json:"granularity,omitempty"`
 }
 
 // StepInResponse: Response to 'stepIn' request. This is just an acknowledgement, so no body field is required.
 type StepInResponse struct {
 	Response
 }
+
+func (r *StepInResponse) GetResponse() *Response { return &r.Response }
 
 // StepOutRequest: The request starts the debuggee to run again for one step.
 // The debug adapter first sends the response and then a 'stopped' event (with reason 'step') after the step has completed.
@@ -639,9 +869,12 @@ type StepOutRequest struct {
 	Arguments StepOutArguments `json:"arguments"`
 }
 
+func (r *StepOutRequest) GetRequest() *Request { return &r.Request }
+
 // StepOutArguments: Arguments for 'stepOut' request.
 type StepOutArguments struct {
-	ThreadId int `json:"threadId"`
+	ThreadId    int                 `json:"threadId"`
+	Granularity SteppingGranularity `json:"granularity,omitempty"`
 }
 
 // StepOutResponse: Response to 'stepOut' request. This is just an acknowledgement, so no body field is required.
@@ -649,17 +882,23 @@ type StepOutResponse struct {
 	Response
 }
 
+func (r *StepOutResponse) GetResponse() *Response { return &r.Response }
+
 // StepBackRequest: The request starts the debuggee to run one step backwards.
-// The debug adapter first sends the response and then a 'stopped' event (with reason 'step') after the step has completed. Clients should only call this request if the capability 'supportsStepBack' is true.
+// The debug adapter first sends the response and then a 'stopped' event (with reason 'step') after the step has completed.
+// Clients should only call this request if the capability 'supportsStepBack' is true.
 type StepBackRequest struct {
 	Request
 
 	Arguments StepBackArguments `json:"arguments"`
 }
 
+func (r *StepBackRequest) GetRequest() *Request { return &r.Request }
+
 // StepBackArguments: Arguments for 'stepBack' request.
 type StepBackArguments struct {
-	ThreadId int `json:"threadId"`
+	ThreadId    int                 `json:"threadId"`
+	Granularity SteppingGranularity `json:"granularity,omitempty"`
 }
 
 // StepBackResponse: Response to 'stepBack' request. This is just an acknowledgement, so no body field is required.
@@ -667,12 +906,17 @@ type StepBackResponse struct {
 	Response
 }
 
-// ReverseContinueRequest: The request starts the debuggee to run backward. Clients should only call this request if the capability 'supportsStepBack' is true.
+func (r *StepBackResponse) GetResponse() *Response { return &r.Response }
+
+// ReverseContinueRequest: The request starts the debuggee to run backward.
+// Clients should only call this request if the capability 'supportsStepBack' is true.
 type ReverseContinueRequest struct {
 	Request
 
 	Arguments ReverseContinueArguments `json:"arguments"`
 }
+
+func (r *ReverseContinueRequest) GetRequest() *Request { return &r.Request }
 
 // ReverseContinueArguments: Arguments for 'reverseContinue' request.
 type ReverseContinueArguments struct {
@@ -684,13 +928,18 @@ type ReverseContinueResponse struct {
 	Response
 }
 
+func (r *ReverseContinueResponse) GetResponse() *Response { return &r.Response }
+
 // RestartFrameRequest: The request restarts execution of the specified stackframe.
 // The debug adapter first sends the response and then a 'stopped' event (with reason 'restart') after the restart has completed.
+// Clients should only call this request if the capability 'supportsRestartFrame' is true.
 type RestartFrameRequest struct {
 	Request
 
 	Arguments RestartFrameArguments `json:"arguments"`
 }
+
+func (r *RestartFrameRequest) GetRequest() *Request { return &r.Request }
 
 // RestartFrameArguments: Arguments for 'restartFrame' request.
 type RestartFrameArguments struct {
@@ -702,15 +951,20 @@ type RestartFrameResponse struct {
 	Response
 }
 
+func (r *RestartFrameResponse) GetResponse() *Response { return &r.Response }
+
 // GotoRequest: The request sets the location where the debuggee will continue to run.
 // This makes it possible to skip the execution of code or to executed code again.
 // The code between the current location and the goto target is not executed but skipped.
 // The debug adapter first sends the response and then a 'stopped' event with reason 'goto'.
+// Clients should only call this request if the capability 'supportsGotoTargetsRequest' is true (because only then goto targets exist that can be passed as arguments).
 type GotoRequest struct {
 	Request
 
 	Arguments GotoArguments `json:"arguments"`
 }
+
+func (r *GotoRequest) GetRequest() *Request { return &r.Request }
 
 // GotoArguments: Arguments for 'goto' request.
 type GotoArguments struct {
@@ -723,6 +977,8 @@ type GotoResponse struct {
 	Response
 }
 
+func (r *GotoResponse) GetResponse() *Response { return &r.Response }
+
 // PauseRequest: The request suspends the debuggee.
 // The debug adapter first sends the response and then a 'stopped' event (with reason 'pause') after the thread has been paused successfully.
 type PauseRequest struct {
@@ -730,6 +986,8 @@ type PauseRequest struct {
 
 	Arguments PauseArguments `json:"arguments"`
 }
+
+func (r *PauseRequest) GetRequest() *Request { return &r.Request }
 
 // PauseArguments: Arguments for 'pause' request.
 type PauseArguments struct {
@@ -741,12 +999,16 @@ type PauseResponse struct {
 	Response
 }
 
+func (r *PauseResponse) GetResponse() *Response { return &r.Response }
+
 // StackTraceRequest: The request returns a stacktrace from the current execution state.
 type StackTraceRequest struct {
 	Request
 
 	Arguments StackTraceArguments `json:"arguments"`
 }
+
+func (r *StackTraceRequest) GetRequest() *Request { return &r.Request }
 
 // StackTraceArguments: Arguments for 'stackTrace' request.
 type StackTraceArguments struct {
@@ -768,12 +1030,16 @@ type StackTraceResponseBody struct {
 	TotalFrames int          `json:"totalFrames,omitempty"`
 }
 
+func (r *StackTraceResponse) GetResponse() *Response { return &r.Response }
+
 // ScopesRequest: The request returns the variable scopes for a given stackframe ID.
 type ScopesRequest struct {
 	Request
 
 	Arguments ScopesArguments `json:"arguments"`
 }
+
+func (r *ScopesRequest) GetRequest() *Request { return &r.Request }
 
 // ScopesArguments: Arguments for 'scopes' request.
 type ScopesArguments struct {
@@ -791,6 +1057,8 @@ type ScopesResponseBody struct {
 	Scopes []Scope `json:"scopes"`
 }
 
+func (r *ScopesResponse) GetResponse() *Response { return &r.Response }
+
 // VariablesRequest: Retrieves all child variables for the given variable reference.
 // An optional filter can be used to limit the fetched children to either named or indexed children.
 type VariablesRequest struct {
@@ -798,6 +1066,8 @@ type VariablesRequest struct {
 
 	Arguments VariablesArguments `json:"arguments"`
 }
+
+func (r *VariablesRequest) GetRequest() *Request { return &r.Request }
 
 // VariablesArguments: Arguments for 'variables' request.
 type VariablesArguments struct {
@@ -819,12 +1089,16 @@ type VariablesResponseBody struct {
 	Variables []Variable `json:"variables"`
 }
 
-// SetVariableRequest: Set the variable with the given name in the variable container to a new value.
+func (r *VariablesResponse) GetResponse() *Response { return &r.Response }
+
+// SetVariableRequest: Set the variable with the given name in the variable container to a new value. Clients should only call this request if the capability 'supportsSetVariable' is true.
 type SetVariableRequest struct {
 	Request
 
 	Arguments SetVariableArguments `json:"arguments"`
 }
+
+func (r *SetVariableRequest) GetRequest() *Request { return &r.Request }
 
 // SetVariableArguments: Arguments for 'setVariable' request.
 type SetVariableArguments struct {
@@ -849,12 +1123,16 @@ type SetVariableResponseBody struct {
 	IndexedVariables   int    `json:"indexedVariables,omitempty"`
 }
 
+func (r *SetVariableResponse) GetResponse() *Response { return &r.Response }
+
 // SourceRequest: The request retrieves the source code for a given source reference.
 type SourceRequest struct {
 	Request
 
 	Arguments SourceArguments `json:"arguments"`
 }
+
+func (r *SourceRequest) GetRequest() *Request { return &r.Request }
 
 // SourceArguments: Arguments for 'source' request.
 type SourceArguments struct {
@@ -874,10 +1152,14 @@ type SourceResponseBody struct {
 	MimeType string `json:"mimeType,omitempty"`
 }
 
+func (r *SourceResponse) GetResponse() *Response { return &r.Response }
+
 // ThreadsRequest: The request retrieves a list of all threads.
 type ThreadsRequest struct {
 	Request
 }
+
+func (r *ThreadsRequest) GetRequest() *Request { return &r.Request }
 
 // ThreadsResponse: Response to 'threads' request.
 type ThreadsResponse struct {
@@ -890,12 +1172,17 @@ type ThreadsResponseBody struct {
 	Threads []Thread `json:"threads"`
 }
 
+func (r *ThreadsResponse) GetResponse() *Response { return &r.Response }
+
 // TerminateThreadsRequest: The request terminates the threads with the given ids.
+// Clients should only call this request if the capability 'supportsTerminateThreadsRequest' is true.
 type TerminateThreadsRequest struct {
 	Request
 
 	Arguments TerminateThreadsArguments `json:"arguments"`
 }
+
+func (r *TerminateThreadsRequest) GetRequest() *Request { return &r.Request }
 
 // TerminateThreadsArguments: Arguments for 'terminateThreads' request.
 type TerminateThreadsArguments struct {
@@ -907,12 +1194,17 @@ type TerminateThreadsResponse struct {
 	Response
 }
 
-// ModulesRequest: Modules can be retrieved from the debug adapter with the ModulesRequest which can either return all modules or a range of modules to support paging.
+func (r *TerminateThreadsResponse) GetResponse() *Response { return &r.Response }
+
+// ModulesRequest: Modules can be retrieved from the debug adapter with this request which can either return all modules or a range of modules to support paging.
+// Clients should only call this request if the capability 'supportsModulesRequest' is true.
 type ModulesRequest struct {
 	Request
 
 	Arguments ModulesArguments `json:"arguments"`
 }
+
+func (r *ModulesRequest) GetRequest() *Request { return &r.Request }
 
 // ModulesArguments: Arguments for 'modules' request.
 type ModulesArguments struct {
@@ -932,12 +1224,17 @@ type ModulesResponseBody struct {
 	TotalModules int      `json:"totalModules,omitempty"`
 }
 
+func (r *ModulesResponse) GetResponse() *Response { return &r.Response }
+
 // LoadedSourcesRequest: Retrieves the set of all sources currently loaded by the debugged process.
+// Clients should only call this request if the capability 'supportsLoadedSourcesRequest' is true.
 type LoadedSourcesRequest struct {
 	Request
 
 	Arguments LoadedSourcesArguments `json:"arguments,omitempty"`
 }
+
+func (r *LoadedSourcesRequest) GetRequest() *Request { return &r.Request }
 
 // LoadedSourcesArguments: Arguments for 'loadedSources' request.
 type LoadedSourcesArguments struct {
@@ -954,6 +1251,8 @@ type LoadedSourcesResponseBody struct {
 	Sources []Source `json:"sources"`
 }
 
+func (r *LoadedSourcesResponse) GetResponse() *Response { return &r.Response }
+
 // EvaluateRequest: Evaluates the given expression in the context of the top most stack frame.
 // The expression has access to any variables and arguments that are in scope.
 type EvaluateRequest struct {
@@ -961,6 +1260,8 @@ type EvaluateRequest struct {
 
 	Arguments EvaluateArguments `json:"arguments"`
 }
+
+func (r *EvaluateRequest) GetRequest() *Request { return &r.Request }
 
 // EvaluateArguments: Arguments for 'evaluate' request.
 type EvaluateArguments struct {
@@ -987,13 +1288,18 @@ type EvaluateResponseBody struct {
 	MemoryReference    string                   `json:"memoryReference,omitempty"`
 }
 
+func (r *EvaluateResponse) GetResponse() *Response { return &r.Response }
+
 // SetExpressionRequest: Evaluates the given 'value' expression and assigns it to the 'expression' which must be a modifiable l-value.
 // The expressions have access to any variables and arguments that are in scope of the specified frame.
+// Clients should only call this request if the capability 'supportsSetExpression' is true.
 type SetExpressionRequest struct {
 	Request
 
 	Arguments SetExpressionArguments `json:"arguments"`
 }
+
+func (r *SetExpressionRequest) GetRequest() *Request { return &r.Request }
 
 // SetExpressionArguments: Arguments for 'setExpression' request.
 type SetExpressionArguments struct {
@@ -1019,14 +1325,19 @@ type SetExpressionResponseBody struct {
 	IndexedVariables   int                      `json:"indexedVariables,omitempty"`
 }
 
+func (r *SetExpressionResponse) GetResponse() *Response { return &r.Response }
+
 // StepInTargetsRequest: This request retrieves the possible stepIn targets for the specified stack frame.
 // These targets can be used in the 'stepIn' request.
 // The StepInTargets may only be called if the 'supportsStepInTargetsRequest' capability exists and is true.
+// Clients should only call this request if the capability 'supportsStepInTargetsRequest' is true.
 type StepInTargetsRequest struct {
 	Request
 
 	Arguments StepInTargetsArguments `json:"arguments"`
 }
+
+func (r *StepInTargetsRequest) GetRequest() *Request { return &r.Request }
 
 // StepInTargetsArguments: Arguments for 'stepInTargets' request.
 type StepInTargetsArguments struct {
@@ -1044,14 +1355,18 @@ type StepInTargetsResponseBody struct {
 	Targets []StepInTarget `json:"targets"`
 }
 
+func (r *StepInTargetsResponse) GetResponse() *Response { return &r.Response }
+
 // GotoTargetsRequest: This request retrieves the possible goto targets for the specified source location.
 // These targets can be used in the 'goto' request.
-// The GotoTargets request may only be called if the 'supportsGotoTargetsRequest' capability exists and is true.
+// Clients should only call this request if the capability 'supportsGotoTargetsRequest' is true.
 type GotoTargetsRequest struct {
 	Request
 
 	Arguments GotoTargetsArguments `json:"arguments"`
 }
+
+func (r *GotoTargetsRequest) GetRequest() *Request { return &r.Request }
 
 // GotoTargetsArguments: Arguments for 'gotoTargets' request.
 type GotoTargetsArguments struct {
@@ -1071,13 +1386,17 @@ type GotoTargetsResponseBody struct {
 	Targets []GotoTarget `json:"targets"`
 }
 
+func (r *GotoTargetsResponse) GetResponse() *Response { return &r.Response }
+
 // CompletionsRequest: Returns a list of possible completions for a given caret position and text.
-// The CompletionsRequest may only be called if the 'supportsCompletionsRequest' capability exists and is true.
+// Clients should only call this request if the capability 'supportsCompletionsRequest' is true.
 type CompletionsRequest struct {
 	Request
 
 	Arguments CompletionsArguments `json:"arguments"`
 }
+
+func (r *CompletionsRequest) GetRequest() *Request { return &r.Request }
 
 // CompletionsArguments: Arguments for 'completions' request.
 type CompletionsArguments struct {
@@ -1098,12 +1417,17 @@ type CompletionsResponseBody struct {
 	Targets []CompletionItem `json:"targets"`
 }
 
+func (r *CompletionsResponse) GetResponse() *Response { return &r.Response }
+
 // ExceptionInfoRequest: Retrieves the details of the exception that caused this event to be raised.
+// Clients should only call this request if the capability 'supportsExceptionInfoRequest' is true.
 type ExceptionInfoRequest struct {
 	Request
 
 	Arguments ExceptionInfoArguments `json:"arguments"`
 }
+
+func (r *ExceptionInfoRequest) GetRequest() *Request { return &r.Request }
 
 // ExceptionInfoArguments: Arguments for 'exceptionInfo' request.
 type ExceptionInfoArguments struct {
@@ -1124,12 +1448,17 @@ type ExceptionInfoResponseBody struct {
 	Details     ExceptionDetails   `json:"details,omitempty"`
 }
 
+func (r *ExceptionInfoResponse) GetResponse() *Response { return &r.Response }
+
 // ReadMemoryRequest: Reads bytes from memory at the provided location.
+// Clients should only call this request if the capability 'supportsReadMemoryRequest' is true.
 type ReadMemoryRequest struct {
 	Request
 
 	Arguments ReadMemoryArguments `json:"arguments"`
 }
+
+func (r *ReadMemoryRequest) GetRequest() *Request { return &r.Request }
 
 // ReadMemoryArguments: Arguments for 'readMemory' request.
 type ReadMemoryArguments struct {
@@ -1151,12 +1480,17 @@ type ReadMemoryResponseBody struct {
 	Data            string `json:"data,omitempty"`
 }
 
+func (r *ReadMemoryResponse) GetResponse() *Response { return &r.Response }
+
 // DisassembleRequest: Disassembles code stored at the provided location.
+// Clients should only call this request if the capability 'supportsDisassembleRequest' is true.
 type DisassembleRequest struct {
 	Request
 
 	Arguments DisassembleArguments `json:"arguments"`
 }
+
+func (r *DisassembleRequest) GetRequest() *Request { return &r.Request }
 
 // DisassembleArguments: Arguments for 'disassemble' request.
 type DisassembleArguments struct {
@@ -1177,6 +1511,8 @@ type DisassembleResponse struct {
 type DisassembleResponseBody struct {
 	Instructions []DisassembledInstruction `json:"instructions"`
 }
+
+func (r *DisassembleResponse) GetResponse() *Response { return &r.Response }
 
 // Capabilities: Information about the capabilities of a debug adapter.
 type Capabilities struct {
@@ -1212,6 +1548,9 @@ type Capabilities struct {
 	SupportsDisassembleRequest         bool                         `json:"supportsDisassembleRequest,omitempty"`
 	SupportsCancelRequest              bool                         `json:"supportsCancelRequest,omitempty"`
 	SupportsBreakpointLocationsRequest bool                         `json:"supportsBreakpointLocationsRequest,omitempty"`
+	SupportsClipboardContext           bool                         `json:"supportsClipboardContext,omitempty"`
+	SupportsSteppingGranularity        bool                         `json:"supportsSteppingGranularity,omitempty"`
+	SupportsInstructionBreakpoints     bool                         `json:"supportsInstructionBreakpoints,omitempty"`
 }
 
 // ExceptionBreakpointsFilter: An ExceptionBreakpointsFilter is shown in the UI as an option for configuring how exceptions are dealt with.
@@ -1253,7 +1592,8 @@ type Module struct {
 	AddressRange   string      `json:"addressRange,omitempty"`
 }
 
-// ColumnDescriptor: A ColumnDescriptor specifies what module attribute to show in a column of the ModulesView, how to format it, and what the column's label should be.
+// ColumnDescriptor: A ColumnDescriptor specifies what module attribute to show in a column of the ModulesView, how to format it,
+// and what the column's label should be.
 // It is only used if the underlying UI actually supports this level of customization.
 type ColumnDescriptor struct {
 	AttributeName string `json:"attributeName"`
@@ -1275,7 +1615,8 @@ type Thread struct {
 	Name string `json:"name"`
 }
 
-// Source: A Source is a descriptor for source code. It is returned from the debug adapter as part of a StackFrame and it is used by clients when specifying breakpoints.
+// Source: A Source is a descriptor for source code.
+// It is returned from the debug adapter as part of a StackFrame and it is used by clients when specifying breakpoints.
 type Source struct {
 	Name             string      `json:"name,omitempty"`
 	Path             string      `json:"path,omitempty"`
@@ -1376,17 +1717,30 @@ type DataBreakpoint struct {
 	HitCondition string                   `json:"hitCondition,omitempty"`
 }
 
-// Breakpoint: Information about a Breakpoint created in setBreakpoints or setFunctionBreakpoints.
-type Breakpoint struct {
-	Id        int    `json:"id,omitempty"`
-	Verified  bool   `json:"verified"`
-	Message   string `json:"message,omitempty"`
-	Source    Source `json:"source,omitempty"`
-	Line      int    `json:"line,omitempty"`
-	Column    int    `json:"column,omitempty"`
-	EndLine   int    `json:"endLine,omitempty"`
-	EndColumn int    `json:"endColumn,omitempty"`
+// InstructionBreakpoint: Properties of a breakpoint passed to the setInstructionBreakpoints request
+type InstructionBreakpoint struct {
+	InstructionReference string `json:"instructionReference"`
+	Offset               int    `json:"offset,omitempty"`
+	Condition            string `json:"condition,omitempty"`
+	HitCondition         string `json:"hitCondition,omitempty"`
 }
+
+// Breakpoint: Information about a Breakpoint created in setBreakpoints, setFunctionBreakpoints, setInstructionBreakpoints, or setDataBreakpoints.
+type Breakpoint struct {
+	Id                   int    `json:"id,omitempty"`
+	Verified             bool   `json:"verified"`
+	Message              string `json:"message,omitempty"`
+	Source               Source `json:"source,omitempty"`
+	Line                 int    `json:"line,omitempty"`
+	Column               int    `json:"column,omitempty"`
+	EndLine              int    `json:"endLine,omitempty"`
+	EndColumn            int    `json:"endColumn,omitempty"`
+	InstructionReference string `json:"instructionReference,omitempty"`
+	Offset               int    `json:"offset,omitempty"`
+}
+
+// SteppingGranularity: The granularity of one 'step' in the stepping requests 'next', 'stepIn', 'stepOut', and 'stepBack'.
+type SteppingGranularity string
 
 // StepInTarget: A StepInTarget can be used in the 'stepIn' request and determines into which single target the stepIn request should step.
 type StepInTarget struct {
@@ -1408,12 +1762,14 @@ type GotoTarget struct {
 
 // CompletionItem: CompletionItems are the suggestions returned from the CompletionsRequest.
 type CompletionItem struct {
-	Label    string             `json:"label"`
-	Text     string             `json:"text,omitempty"`
-	SortText string             `json:"sortText,omitempty"`
-	Type     CompletionItemType `json:"type,omitempty"`
-	Start    int                `json:"start,omitempty"`
-	Length   int                `json:"length,omitempty"`
+	Label           string             `json:"label"`
+	Text            string             `json:"text,omitempty"`
+	SortText        string             `json:"sortText,omitempty"`
+	Type            CompletionItemType `json:"type,omitempty"`
+	Start           int                `json:"start,omitempty"`
+	Length          int                `json:"length,omitempty"`
+	SelectionStart  int                `json:"selectionStart,omitempty"`
+	SelectionLength int                `json:"selectionLength,omitempty"`
 }
 
 // CompletionItemType: Some predefined types for the CompletionItem. Please note that not all clients have specific icons for all of them.
@@ -1459,7 +1815,9 @@ type ExceptionOptions struct {
 // userUnhandled: breaks if the exception is not handled by user code.
 type ExceptionBreakMode string
 
-// ExceptionPathSegment: An ExceptionPathSegment represents a segment in a path that is used to match leafs or nodes in a tree of exceptions. If a segment consists of more than one name, it matches the names provided if 'negate' is false or missing or it matches anything except the names provided if 'negate' is true.
+// ExceptionPathSegment: An ExceptionPathSegment represents a segment in a path that is used to match leafs or nodes in a tree of exceptions.
+// If a segment consists of more than one name, it matches the names provided if 'negate' is false or missing or
+// it matches anything except the names provided if 'negate' is true.
 type ExceptionPathSegment struct {
 	Negate bool     `json:"negate,omitempty"`
 	Names  []string `json:"names"`
@@ -1487,102 +1845,3 @@ type DisassembledInstruction struct {
 	EndLine          int    `json:"endLine,omitempty"`
 	EndColumn        int    `json:"endColumn,omitempty"`
 }
-
-func (m *Request) GetSeq() int                         { return m.Seq }
-func (m *Event) GetSeq() int                           { return m.Seq }
-func (m *Response) GetSeq() int                        { return m.Seq }
-func (m *ErrorResponse) GetSeq() int                   { return m.Seq }
-func (m *CancelRequest) GetSeq() int                   { return m.Seq }
-func (m *CancelResponse) GetSeq() int                  { return m.Seq }
-func (m *InitializedEvent) GetSeq() int                { return m.Seq }
-func (m *StoppedEvent) GetSeq() int                    { return m.Seq }
-func (m *ContinuedEvent) GetSeq() int                  { return m.Seq }
-func (m *ExitedEvent) GetSeq() int                     { return m.Seq }
-func (m *TerminatedEvent) GetSeq() int                 { return m.Seq }
-func (m *ThreadEvent) GetSeq() int                     { return m.Seq }
-func (m *OutputEvent) GetSeq() int                     { return m.Seq }
-func (m *BreakpointEvent) GetSeq() int                 { return m.Seq }
-func (m *ModuleEvent) GetSeq() int                     { return m.Seq }
-func (m *LoadedSourceEvent) GetSeq() int               { return m.Seq }
-func (m *ProcessEvent) GetSeq() int                    { return m.Seq }
-func (m *CapabilitiesEvent) GetSeq() int               { return m.Seq }
-func (m *RunInTerminalRequest) GetSeq() int            { return m.Seq }
-func (m *RunInTerminalResponse) GetSeq() int           { return m.Seq }
-func (m *InitializeRequest) GetSeq() int               { return m.Seq }
-func (m *InitializeResponse) GetSeq() int              { return m.Seq }
-func (m *ConfigurationDoneRequest) GetSeq() int        { return m.Seq }
-func (m *ConfigurationDoneResponse) GetSeq() int       { return m.Seq }
-func (m *LaunchRequest) GetSeq() int                   { return m.Seq }
-func (m *LaunchResponse) GetSeq() int                  { return m.Seq }
-func (m *AttachRequest) GetSeq() int                   { return m.Seq }
-func (m *AttachResponse) GetSeq() int                  { return m.Seq }
-func (m *RestartRequest) GetSeq() int                  { return m.Seq }
-func (m *RestartResponse) GetSeq() int                 { return m.Seq }
-func (m *DisconnectRequest) GetSeq() int               { return m.Seq }
-func (m *DisconnectResponse) GetSeq() int              { return m.Seq }
-func (m *TerminateRequest) GetSeq() int                { return m.Seq }
-func (m *TerminateResponse) GetSeq() int               { return m.Seq }
-func (m *BreakpointLocationsRequest) GetSeq() int      { return m.Seq }
-func (m *BreakpointLocationsResponse) GetSeq() int     { return m.Seq }
-func (m *SetBreakpointsRequest) GetSeq() int           { return m.Seq }
-func (m *SetBreakpointsResponse) GetSeq() int          { return m.Seq }
-func (m *SetFunctionBreakpointsRequest) GetSeq() int   { return m.Seq }
-func (m *SetFunctionBreakpointsResponse) GetSeq() int  { return m.Seq }
-func (m *SetExceptionBreakpointsRequest) GetSeq() int  { return m.Seq }
-func (m *SetExceptionBreakpointsResponse) GetSeq() int { return m.Seq }
-func (m *DataBreakpointInfoRequest) GetSeq() int       { return m.Seq }
-func (m *DataBreakpointInfoResponse) GetSeq() int      { return m.Seq }
-func (m *SetDataBreakpointsRequest) GetSeq() int       { return m.Seq }
-func (m *SetDataBreakpointsResponse) GetSeq() int      { return m.Seq }
-func (m *ContinueRequest) GetSeq() int                 { return m.Seq }
-func (m *ContinueResponse) GetSeq() int                { return m.Seq }
-func (m *NextRequest) GetSeq() int                     { return m.Seq }
-func (m *NextResponse) GetSeq() int                    { return m.Seq }
-func (m *StepInRequest) GetSeq() int                   { return m.Seq }
-func (m *StepInResponse) GetSeq() int                  { return m.Seq }
-func (m *StepOutRequest) GetSeq() int                  { return m.Seq }
-func (m *StepOutResponse) GetSeq() int                 { return m.Seq }
-func (m *StepBackRequest) GetSeq() int                 { return m.Seq }
-func (m *StepBackResponse) GetSeq() int                { return m.Seq }
-func (m *ReverseContinueRequest) GetSeq() int          { return m.Seq }
-func (m *ReverseContinueResponse) GetSeq() int         { return m.Seq }
-func (m *RestartFrameRequest) GetSeq() int             { return m.Seq }
-func (m *RestartFrameResponse) GetSeq() int            { return m.Seq }
-func (m *GotoRequest) GetSeq() int                     { return m.Seq }
-func (m *GotoResponse) GetSeq() int                    { return m.Seq }
-func (m *PauseRequest) GetSeq() int                    { return m.Seq }
-func (m *PauseResponse) GetSeq() int                   { return m.Seq }
-func (m *StackTraceRequest) GetSeq() int               { return m.Seq }
-func (m *StackTraceResponse) GetSeq() int              { return m.Seq }
-func (m *ScopesRequest) GetSeq() int                   { return m.Seq }
-func (m *ScopesResponse) GetSeq() int                  { return m.Seq }
-func (m *VariablesRequest) GetSeq() int                { return m.Seq }
-func (m *VariablesResponse) GetSeq() int               { return m.Seq }
-func (m *SetVariableRequest) GetSeq() int              { return m.Seq }
-func (m *SetVariableResponse) GetSeq() int             { return m.Seq }
-func (m *SourceRequest) GetSeq() int                   { return m.Seq }
-func (m *SourceResponse) GetSeq() int                  { return m.Seq }
-func (m *ThreadsRequest) GetSeq() int                  { return m.Seq }
-func (m *ThreadsResponse) GetSeq() int                 { return m.Seq }
-func (m *TerminateThreadsRequest) GetSeq() int         { return m.Seq }
-func (m *TerminateThreadsResponse) GetSeq() int        { return m.Seq }
-func (m *ModulesRequest) GetSeq() int                  { return m.Seq }
-func (m *ModulesResponse) GetSeq() int                 { return m.Seq }
-func (m *LoadedSourcesRequest) GetSeq() int            { return m.Seq }
-func (m *LoadedSourcesResponse) GetSeq() int           { return m.Seq }
-func (m *EvaluateRequest) GetSeq() int                 { return m.Seq }
-func (m *EvaluateResponse) GetSeq() int                { return m.Seq }
-func (m *SetExpressionRequest) GetSeq() int            { return m.Seq }
-func (m *SetExpressionResponse) GetSeq() int           { return m.Seq }
-func (m *StepInTargetsRequest) GetSeq() int            { return m.Seq }
-func (m *StepInTargetsResponse) GetSeq() int           { return m.Seq }
-func (m *GotoTargetsRequest) GetSeq() int              { return m.Seq }
-func (m *GotoTargetsResponse) GetSeq() int             { return m.Seq }
-func (m *CompletionsRequest) GetSeq() int              { return m.Seq }
-func (m *CompletionsResponse) GetSeq() int             { return m.Seq }
-func (m *ExceptionInfoRequest) GetSeq() int            { return m.Seq }
-func (m *ExceptionInfoResponse) GetSeq() int           { return m.Seq }
-func (m *ReadMemoryRequest) GetSeq() int               { return m.Seq }
-func (m *ReadMemoryResponse) GetSeq() int              { return m.Seq }
-func (m *DisassembleRequest) GetSeq() int              { return m.Seq }
-func (m *DisassembleResponse) GetSeq() int             { return m.Seq }
