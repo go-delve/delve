@@ -130,12 +130,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 		return nil, err
 	}
 
-	execPath, err := findExecutable(pid)
-	if err != nil {
-		return nil, err
-	}
-
-	tgt, err := dbp.initialize(execPath, debugInfoDirs)
+	tgt, err := dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
 	if err != nil {
 		_ = dbp.Detach(false)
 		return nil, err
@@ -265,9 +260,11 @@ func (dbp *nativeProcess) updateThreadList() error {
 	return linutil.ElfUpdateSharedObjects(dbp)
 }
 
-func findExecutable(pid int) (string, error) {
-	path := fmt.Sprintf("/proc/%d/exe", pid)
-	return filepath.EvalSymlinks(path)
+func findExecutable(path string, pid int) string {
+	if path == "" {
+		path = fmt.Sprintf("/proc/%d/exe", pid)
+	}
+	return path
 }
 
 func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
