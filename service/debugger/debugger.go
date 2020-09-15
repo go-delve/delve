@@ -1415,6 +1415,26 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 	return r
 }
 
+// CurrentPackage returns the fully qualified name of the
+// package corresponding to the function location of the
+// current thread.
+func (d *Debugger) CurrentPackage() (string, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	if _, err := d.target.Valid(); err != nil {
+		return "", err
+	}
+	loc, err := d.target.CurrentThread().Location()
+	if err != nil {
+		return "", err
+	}
+	if loc.Fn == nil {
+		return "", fmt.Errorf("unable to determine current package due to unspecified function location")
+	}
+	return loc.Fn.PackageName(), nil
+}
+
 // FindLocation will find the location specified by 'locStr'.
 func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
 	d.targetMutex.Lock()
@@ -1488,6 +1508,13 @@ func (d *Debugger) Recorded() (recorded bool, tracedir string) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 	return d.target.Recorded()
+}
+
+// CurrentThread returns the current thread.
+func (d *Debugger) CurrentThread() proc.Thread {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.target.CurrentThread()
 }
 
 // Checkpoint will set a checkpoint specified by the locspec.

@@ -16,7 +16,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -755,12 +754,6 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	scopes := []dap.Scope{scopeArgs, scopeLocals}
 
 	if s.args.showGlobalVariables {
-		state, err := s.debugger.State( /*nowait*/ true)
-		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
-			return
-		}
-
 		// Limit what global variables we will return to the current package only.
 		// TODO(polina): This is how vscode-go currently does it to make
 		// the amount of the returned data manageable. In fact, this is
@@ -770,44 +763,29 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		// scope is expanded, generating an explicit variable request,
 		// should we consider making all globals accessible with a scope per package?
 		// Or users can just rely on watch variables.
-		if state.CurrentThread != nil && state.CurrentThread.File != "" {
-			currPkg := "??"
-			currDir := path.Dir(filepath.ToSlash(state.CurrentThread.File)) // Normalized across OS
-			// Retrieve package-to-compiled-directory mapping, so we can match
-			// the directory of the current file with the breakpoint to the import
-			// path of its package. The import path can then be used to filter
-			// all global package variables returned by the debugger by default
-			// down to only the ones in the current package.
-			pkgInfo := s.debugger.ListPackagesBuildInfo( /*includeFiles*/ false)
-			var globals []*proc.Variable
-			for _, pkg := range pkgInfo {
-				if filepath.ToSlash(pkg.DirectoryPath) == currDir { // Normalized across OS
-					currPkg = pkg.ImportPath
-					currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
-					globals, err = s.debugger.PackageVariables(state.CurrentThread.ID, currPkgFilter, cfg)
-					if err != nil {
-						s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
-						return
-					}
-					// Remove package prefix from the fully-qualified variable names.
-					// We will include the package info once in the name of the scope.
-					for i, g := range globals {
-						globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
-					}
-					break
-				}
-			}
-			if currPkg == "??" {
-				s.log.Errorf("Unable to find current dir %q in pkg info: %#v", currDir, pkgInfo)
-			} else {
-				globScope := &proc.Variable{
-					Name:     fmt.Sprintf("Globals (package %s)", currPkg),
-					Children: slicePtrVarToSliceVar(globals),
-				}
-				scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
-				scopes = append(scopes, scopeGlobals)
-			}
+		currPkg, err := s.debugger.CurrentPackage()
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
+			return
 		}
+		currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
+		globals, err := s.debugger.PackageVariables(s.debugger.CurrentThread().ThreadID(), currPkgFilter, cfg)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
+			return
+		}
+		// Remove package prefix from the fully-qualified variable names.
+		// We will include the package info once in the name of the scope instead.
+		for i, g := range globals {
+			globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
+		}
+
+		globScope := &proc.Variable{
+			Name:     fmt.Sprintf("Globals (package %s)", currPkg),
+			Children: slicePtrVarToSliceVar(globals),
+		}
+		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
+		scopes = append(scopes, scopeGlobals)
 	}
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
