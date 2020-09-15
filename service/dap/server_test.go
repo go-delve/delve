@@ -341,6 +341,9 @@ func TestSetBreakpoint(t *testing.T) {
 
 		client.ScopesRequest(1000)
 		scopes := client.ExpectScopesResponse(t)
+		if len(scopes.Body.Scopes) > 2 {
+			t.Errorf("\ngot  %#v\nwant len(Scopes)=2 (Arguments & Locals)", scopes)
+		}
 		expectScope(t, scopes, 0, "Arguments", 1000)
 		expectScope(t, scopes, 1, "Locals", 1001)
 
@@ -413,12 +416,12 @@ func expectScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varR
 }
 
 // expectChildren is a helper for verifying the number of variables within a VariablesResponse.
-//      parentName - name of the enclosing variable or scope
+//      parentName - pseudoname of the enclosing variable or scope (used for error message only)
 //      numChildren - number of variables/fields/elements of this variable
 func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string, numChildren int) {
 	t.Helper()
 	if len(got.Body.Variables) != numChildren {
-		t.Errorf("\ngot  len(%s)=%d\nwant %d", parentName, len(got.Body.Variables), numChildren)
+		t.Errorf("\ngot  len(%s)=%d (children=%#v)\nwant len=%d", parentName, len(got.Body.Variables), got.Body.Variables, numChildren)
 	}
 }
 
@@ -432,7 +435,7 @@ func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string,
 func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch, hasRef bool) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
-		t.Errorf("\ngot  len=%d\nwant len>%d", len(got.Body.Variables), i)
+		t.Errorf("\ngot  len=%d (children=%#v)\nwant len>%d", len(got.Body.Variables), got.Body.Variables, i)
 		return
 	}
 	if i < 0 {
@@ -556,7 +559,9 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 		runDebugSessionWithBPs(t, client,
 			// Launch
 			func() {
-				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
 			},
 			// Breakpoints are set within the program
 			fixture.Source, []int{},
@@ -580,6 +585,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					scopes := client.ExpectScopesResponse(t)
 					expectScope(t, scopes, 0, "Arguments", 1000)
 					expectScope(t, scopes, 1, "Locals", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
 
 					// Arguments
 
@@ -595,6 +601,12 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						expectVarExact(t, bar, 0, "Baz", "10", noChildren)
 						expectVarExact(t, bar, 1, "Bur", `"lorem"`, noChildren)
 					}
+
+					// Globals
+
+					client.VariablesRequest(1002)
+					globals := client.ExpectVariablesResponse(t)
+					expectVarExact(t, globals, 0, "p1", "10", noChildren)
 
 					// Locals
 
@@ -775,6 +787,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					scopes := client.ExpectScopesResponse(t)
 					expectScope(t, scopes, 0, "Arguments", 1000)
 					expectScope(t, scopes, 1, "Locals", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
 
 					client.ScopesRequest(1111)
 					erres := client.ExpectErrorResponse(t)
@@ -790,6 +803,10 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 1)
 					expectVarExact(t, locals, -1, "a1", `"bur"`, noChildren)
+
+					client.VariablesRequest(1002) // Globals
+					globals := client.ExpectVariablesResponse(t)
+					expectVarExact(t, globals, 0, "p1", "10", noChildren)
 
 					client.VariablesRequest(7777)
 					erres = client.ExpectErrorResponse(t)
@@ -835,6 +852,9 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
+					if len(scopes.Body.Scopes) > 2 {
+						t.Errorf("\ngot  %#v\nwant len(scopes)=2 (Argumes & Locals)", scopes)
+					}
 					expectScope(t, scopes, 0, "Arguments", 1000)
 					expectScope(t, scopes, 1, "Locals", 1001)
 
@@ -964,18 +984,18 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						ref = expectVarExact(t, m4, 2, "[key 1]", "<main.astruct>", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
-							m4_key1 := client.ExpectVariablesResponse(t)
-							expectChildren(t, m4_key1, "m4_key1", 2)
-							expectVarExact(t, m4_key1, 0, "A", "2", noChildren)
-							expectVarExact(t, m4_key1, 1, "B", "2", noChildren)
+							m4Key1 := client.ExpectVariablesResponse(t)
+							expectChildren(t, m4Key1, "m4Key1", 2)
+							expectVarExact(t, m4Key1, 0, "A", "2", noChildren)
+							expectVarExact(t, m4Key1, 1, "B", "2", noChildren)
 						}
 						ref = expectVarExact(t, m4, 3, "[val 1]", "<main.astruct>", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
-							m4_val1 := client.ExpectVariablesResponse(t)
-							expectChildren(t, m4_val1, "m4_val1", 2)
-							expectVarExact(t, m4_val1, 0, "A", "22", noChildren)
-							expectVarExact(t, m4_val1, 1, "B", "22", noChildren)
+							m4Val1 := client.ExpectVariablesResponse(t)
+							expectChildren(t, m4Val1, "m4Val1", 2)
+							expectVarExact(t, m4Val1, 0, "A", "22", noChildren)
+							expectVarExact(t, m4Val1, 1, "B", "22", noChildren)
 						}
 					}
 					expectVarExact(t, locals, -1, "emptymap", "<map[string]string> (length: 0)", noChildren)
@@ -1016,6 +1036,73 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					}
 				},
 				disconnect: true,
+			}})
+	})
+}
+
+// TestGlobalScopeAndVariables launches the program with showGlobalVariables
+// arg set, executes to a breakpoint in the main package and tests that global
+// package main variables got loaded. It then steps into a function
+// in another package and tests that globals scope got updated to those vars.
+func TestGlobalScopeAndVariables(t *testing.T) {
+	runTest(t, "consts", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at line 36
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 36, 1000, 3, 3)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+
+					client.VariablesRequest(1002)
+					client.ExpectVariablesResponse(t)
+					// The program has no user-defined globals.
+					// Depending on the Go version, there might
+					// be some runtime globals (e.g. main..inittask)
+					// so testing for the total number is too fragile.
+
+					// Step into pkg.AnotherMethod()
+					client.StepInRequest(1)
+					client.ExpectStepInResponse(t)
+					client.ExpectStoppedEvent(t)
+
+					client.StackTraceRequest(1, 0, 20)
+					stack = client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, 14, 1000, 4, 4)
+
+					client.ScopesRequest(1000)
+					scopes = client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
+					expectScope(t, scopes, 2, "Globals (package github.com/go-delve/delve/_fixtures/internal/dir0/pkg)", 1002)
+
+					client.VariablesRequest(1002)
+					globals := client.ExpectVariablesResponse(t)
+					expectChildren(t, globals, "Globals", 1)
+					ref := expectVarExact(t, globals, 0, "SomeVar", "<github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType>", hasChildren)
+
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						somevar := client.ExpectVariablesResponse(t)
+						expectChildren(t, somevar, "SomeVar", 1)
+						expectVarExact(t, somevar, 0, "X", "0", noChildren)
+					}
+				},
+				disconnect: false,
 			}})
 	})
 }

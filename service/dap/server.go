@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -72,12 +73,15 @@ type launchAttachArgs struct {
 	stopOnEntry bool
 	// stackTraceDepth is the maximum length of the returned list of stack frames.
 	stackTraceDepth int
+	// showGlobalVariables indicates if global package variables should be loaded.
+	showGlobalVariables bool
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
 var defaultArgs = launchAttachArgs{
-	stopOnEntry:     false,
-	stackTraceDepth: 50,
+	stopOnEntry:         false,
+	stackTraceDepth:     50,
+	showGlobalVariables: false,
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -457,12 +461,18 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	stop, ok := request.Arguments["stopOnEntry"]
-	s.args.stopOnEntry = ok && stop == true
-
+	// If user-specified, overwrite the defaults for optional args.
+	stop, ok := request.Arguments["stopOnEntry"].(bool)
+	if ok {
+		s.args.stopOnEntry = stop
+	}
 	depth, ok := request.Arguments["stackTraceDepth"].(float64)
 	if ok && depth > 0 {
 		s.args.stackTraceDepth = int(depth)
+	}
+	globals, ok := request.Arguments["showGlobalVariables"].(bool)
+	if ok {
+		s.args.showGlobalVariables = globals
 	}
 
 	var targetArgs []string
@@ -732,18 +742,51 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, cfg)
 	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list local vars", err.Error())
+		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
 	locScope := &proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}
 
 	// TODO(polina): Annotate shadowed variables
-	// TODO(polina): Retrieve global variables
 
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeArgs, scopeLocals}
 
+	if s.args.showGlobalVariables {
+		// Limit what global variables we will return to the current package only.
+		// TODO(polina): This is how vscode-go currently does it to make
+		// the amount of the returned data manageable. In fact, this is
+		// considered so expensive even with the package filter, that
+		// the default for showGlobalVariables was recently flipped to
+		// not showing. If we delay loading of the globals until the corresponding
+		// scope is expanded, generating an explicit variable request,
+		// should we consider making all globals accessible with a scope per package?
+		// Or users can just rely on watch variables.
+		currPkg, err := s.debugger.CurrentPackage()
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
+			return
+		}
+		currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
+		globals, err := s.debugger.PackageVariables(s.debugger.CurrentThread().ThreadID(), currPkgFilter, cfg)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
+			return
+		}
+		// Remove package prefix from the fully-qualified variable names.
+		// We will include the package info once in the name of the scope instead.
+		for i, g := range globals {
+			globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
+		}
+
+		globScope := &proc.Variable{
+			Name:     fmt.Sprintf("Globals (package %s)", currPkg),
+			Children: slicePtrVarToSliceVar(globals),
+		}
+		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
+		scopes = append(scopes, scopeGlobals)
+	}
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ScopesResponseBody{Scopes: scopes},
