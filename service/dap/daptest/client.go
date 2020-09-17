@@ -61,7 +61,20 @@ func (c *Client) expectReadProtocolMessage(t *testing.T) dap.Message {
 
 func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	if er.Body.Error.ShowUser {
+		t.Errorf("\ngot %#v\nwant ShowUser=false", er)
+	}
+	return er
+}
+
+func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
+	t.Helper()
+	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	if !er.Body.Error.ShowUser {
+		t.Errorf("\ngot %#v\nwant ShowUser=true", er)
+	}
+	return er
 }
 
 func (c *Client) expectErrorResponse(t *testing.T, id int, message string) *dap.ErrorResponse {
@@ -175,6 +188,11 @@ func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
 func (c *Client) ExpectVariablesResponse(t *testing.T) *dap.VariablesResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.VariablesResponse)
+}
+
+func (c *Client) ExpectEvaluateResponse(t *testing.T) *dap.EvaluateResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.EvaluateResponse)
 }
 
 func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
@@ -476,8 +494,12 @@ func (c *Client) TerminateThreadsRequest() {
 }
 
 // EvaluateRequest sends a 'evaluate' request.
-func (c *Client) EvaluateRequest() {
-	c.send(&dap.EvaluateRequest{Request: *c.newRequest("evaluate")})
+func (c *Client) EvaluateRequest(expr string, fid int, context string) {
+	request := &dap.EvaluateRequest{Request: *c.newRequest("evaluate")}
+	request.Arguments.Expression = expr
+	request.Arguments.FrameId = fid
+	request.Arguments.Context = context
+	c.send(request)
 }
 
 // StepInTargetsRequest sends a 'stepInTargets' request.

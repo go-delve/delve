@@ -317,8 +317,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// Optional (capability ‘supportsTerminateThreadsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.EvaluateRequest:
-		// Required - TODO
-		// TODO: implement this request in V0
+		// Required
 		s.onEvaluateRequest(request)
 	case *dap.StepInTargetsRequest:
 		// Optional (capability ‘supportsStepInTargetsRequest’)
@@ -642,7 +641,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest) {
-	// This ingores threadId argument to match the original vscode-go implementation.
+	// This ignores threadId argument to match the original vscode-go implementation.
 	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.Next)
@@ -651,7 +650,7 @@ func (s *Server) onNextRequest(request *dap.NextRequest) {
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest) {
-	// This ingores threadId argument to match the original vscode-go implementation.
+	// This ignores threadId argument to match the original vscode-go implementation.
 	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.Step)
@@ -660,7 +659,7 @@ func (s *Server) onStepInRequest(request *dap.StepInRequest) {
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
-	// This ingores threadId argument to match the original vscode-go implementation.
+	// This ignores threadId argument to match the original vscode-go implementation.
 	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.StepOut)
@@ -993,10 +992,36 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 	return
 }
 
-// onEvaluateRequest sends a not-yet-implemented error response.
+// onEvaluateRequest handles 'evalute' requests.
 // This is a mandatory request to support.
-func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
+	showErrorToUser := request.Arguments.Context != "watch"
+	if s.debugger == nil {
+		s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "debugger is nil", showErrorToUser)
+		return
+	}
+	// Default to the topmost stack frame of the current goroutine in case
+	// no frame is specified (e.g. when stopped on entry or no call stack frame is expanded)
+	goid, frame := -1, 0
+	sf, ok := s.stackFrameHandles.get(request.Arguments.FrameId)
+	if ok {
+		goid = sf.(stackFrame).goroutineID
+		frame = sf.(stackFrame).frameIndex
+	}
+	// TODO(polina): Support setting config via launch/attach args
+	cfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+
+	exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, cfg)
+	if err != nil {
+		s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+		return
+	}
+	exprVal, exprRef := s.convertVariable(exprVar)
+	response := &dap.EvaluateResponse{
+		Response: *newResponse(request.Request),
+		Body:     dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef},
+	}
+	s.send(response)
 }
 
 // onTerminateRequest sends a not-yet-implemented error response.
@@ -1065,7 +1090,9 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details string) {
+// sendERrorResponseWithOpts offers configuration options.
+//   showUser - if true, the error will be shown to the user (e.g. via a visible pop-up)
+func (s *Server) sendErrorResponseWithOpts(request dap.Request, id int, summary, details string, showUser bool) {
 	er := &dap.ErrorResponse{}
 	er.Type = "response"
 	er.Command = request.Command
@@ -1074,8 +1101,14 @@ func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details
 	er.Message = summary
 	er.Body.Error.Id = id
 	er.Body.Error.Format = fmt.Sprintf("%s: %s", summary, details)
+	er.Body.Error.ShowUser = showUser
 	s.log.Error(er.Body.Error.Format)
 	s.send(er)
+}
+
+// sendErrorResponse sends an error response with default visibility settings.
+func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details string) {
+	s.sendErrorResponseWithOpts(request, id, summary, details, false /*showUser*/)
 }
 
 // sendInternalErrorResponse sends an "internal error" response back to the client.

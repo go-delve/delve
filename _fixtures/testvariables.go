@@ -1,7 +1,9 @@
 package main
 
-import "fmt"
-import "runtime"
+import (
+	"fmt"
+	"runtime"
+)
 
 type FooBar struct {
 	Baz int
@@ -56,11 +58,12 @@ func foobar(baz string, bar FooBar) {
 		f    = barfoo
 		ms   = Nest{0, &Nest{1, &Nest{2, &Nest{3, &Nest{4, nil}}}}} // Test recursion capping
 		ba   = make([]int, 200, 200)                                // Test array size capping
+		mp   = map[int]interface{}{1: 42, 2: 43}
 	)
 
 	runtime.Breakpoint()
 	barfoo()
-	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, c64, c128, i32, bar, f, ms, ba, p1)
+	fmt.Println(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, b1, b2, baz, neg, i8, u8, u16, u32, u64, up, f32, c64, c128, i32, bar, f, ms, ba, p1, mp)
 }
 
 var p1 = 10

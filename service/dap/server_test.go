@@ -98,14 +98,18 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 //                                 :  7 >> threads
 //                                 :  7 << threads (Dummy)
 //                                 :  8 >> stackTrace
-//                                 :  8 << stackTrace (Unable to produce stack trace)
+//                                 :  8 << error (Unable to produce stack trace)
 //                                 :  9 >> stackTrace
-//                                 :  9 << stackTrace (Unable to produce stack trace)
-// - User selects "Continue"       : 10 >> continue
-//                                 : 10 << continue
+//                                 :  9 << error(Unable to produce stack trace)
+// - User evaluates bad expression : 10 >> evaluate
+//                                 : 10 << error (unable to find function context)
+// - User evaluates good expression: 11 >> evaluate
+//                                 : 11 << evaluate
+// - User selects "Continue"       : 12 >> continue
+//                                 : 12 << continue
 // - Program runs to completion    :    << terminated event
-//                                 : 11 >> disconnect
-//                                 : 11 << disconnect
+//                                 : 13 >> disconnect
+//                                 : 13 << disconnect
 // This test exhaustively tests Seq and RequestSeq on all messages from the
 // server. Other tests do not necessarily need to repeat all these checks.
 func TestStopOnEntry(t *testing.T) {
@@ -173,36 +177,50 @@ func TestStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=1", tResp)
 		}
 
-		// 8 >> stackTrace, << stackTrace
+		// 8 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp := client.ExpectErrorResponse(t)
 		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
-		// 9 >> stackTrace, << stackTrace
+		// 9 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp = client.ExpectErrorResponse(t)
 		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != 2004 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=2004", stResp)
 		}
 
-		// 10 >> continue, << continue, << terminated
+		// 10 >> evaluate, << evaluate (error)
+		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
+		erResp := client.ExpectVisibleErrorResponse(t)
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Format != "Unable to evaluate expression: unable to find function context" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Format=\"Unable to evaluate expression: unable to find function context\"", erResp)
+		}
+
+		// 11 >> evaluate, << evaluate
+		client.EvaluateRequest("1+1", 0 /*no frame specified*/, "repl")
+		evResp := client.ExpectEvaluateResponse(t)
+		if evResp.Seq != 0 || evResp.RequestSeq != 11 || evResp.Body.Result != "2" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Result=2", evResp)
+		}
+
+		// 12 >> continue, << continue, << terminated
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Body.AllThreadsContinued=true", contResp)
+		if contResp.Seq != 0 || contResp.RequestSeq != 12 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12 Body.AllThreadsContinued=true", contResp)
 		}
 		termEvent := client.ExpectTerminatedEvent(t)
 		if termEvent.Seq != 0 {
 			t.Errorf("\ngot %#v\nwant Seq=0", termEvent)
 		}
 
-		// 11 >> disconnect, << disconnect
+		// 13 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 11 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=11", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
 		}
 	})
 }
@@ -566,17 +584,17 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 			// Breakpoints are set within the program
 			fixture.Source, []int{},
 			[]onBreakpoint{{
-				// Stop at line 62
+				// Stop at first breakpoint
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 
-					startLineno := 62
+					startLineno := 65
 					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 						// Go1.15 on windows inserts a NOP after the call to
-						// runtime.Breakpoint and marks it as line 61 (same as the
+						// runtime.Breakpoint and marks it as line 64 (same as the
 						// runtime.Breakpoint call).
-						startLineno = 61
+						startLineno = 64
 					}
 
 					expectStackFrames(t, stack, startLineno, 1000, 4, 4)
@@ -612,7 +630,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
-					expectChildren(t, locals, "Locals", 29)
+					expectChildren(t, locals, "Locals", 30)
 
 					// reflect.Kind == Bool
 					expectVarExact(t, locals, -1, "b1", "true", noChildren)
@@ -776,12 +794,12 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 				},
 				disconnect: false,
 			}, {
-				// Stop at line 25
+				// Stop at second breakpoint
 				execute: func() {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					expectStackFrames(t, stack, 25, 1000, 5, 5)
+					expectStackFrames(t, stack, 27, 1000, 5, 5)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1132,6 +1150,155 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 	})
 }
 
+// expectEval is a helper for verifying the values within an EvaluateResponse.
+//     value - the value of the evaluated expression
+//     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
+//     ref - reference to retrieve children of this evaluated expression (0 if none)
+func expectEval(t *testing.T, got *dap.EvaluateResponse, value string, hasRef bool) (ref int) {
+	t.Helper()
+	if got.Body.Result != value || (got.Body.VariablesReference > 0) != hasRef {
+		t.Errorf("\ngot  %#v\nwant Result=%q hasRef=%t", got, value, hasRef)
+	}
+	return got.Body.VariablesReference
+}
+
+func TestEvaluateRequest(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{}, // Breakpoint set in the program
+			[]onBreakpoint{{ // Stop at first breakpoint
+				execute: func() {
+					handleStop(t, client, 1, 65)
+
+					// Variable lookup
+					client.EvaluateRequest("a2", 1000, "this context will be ignored")
+					got := client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "6", noChildren)
+
+					client.EvaluateRequest("a5", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref := expectEval(t, got, "<[]int> (length: 5, cap: 5)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						a5 := client.ExpectVariablesResponse(t)
+						expectChildren(t, a5, "a5", 5)
+						expectVarExact(t, a5, 0, "[0]", "1", noChildren)
+						expectVarExact(t, a5, 4, "[4]", "5", noChildren)
+					}
+
+					// All (binary and unary) on basic types except <-, ++ and --
+					client.EvaluateRequest("1+1", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", noChildren)
+
+					// Comparison operators on any type
+					client.EvaluateRequest("1<2", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "true", noChildren)
+
+					// Type casts between numeric types
+					client.EvaluateRequest("int(2.3)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", noChildren)
+
+					// Type casts of integer constants into any pointer type and vice versa
+					client.EvaluateRequest("(*int)(2)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<*int>(0x2)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						expr := client.ExpectVariablesResponse(t)
+						expectChildren(t, expr, "(*int)(2)", 1)
+						// TODO(polina): should this be printed as (unknown int) instead?
+						expectVarExact(t, expr, 0, "", "<int>", noChildren)
+					}
+					// Type casts between string, []byte and []rune
+					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					// TODO(polina): this is a bug (in vscode-go too). dlv cli prints
+					// []uint8 len: 6, cap: 6, [65,66,67,226,130,172]
+					expectEval(t, got, "nil <[]uint8>", noChildren)
+
+					// Struct member access (i.e. somevar.memberfield)
+					client.EvaluateRequest("ms.Nest.Level", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "1", noChildren)
+
+					// Slicing and indexing operators on arrays, slices and strings
+					client.EvaluateRequest("a5[4]", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "5", noChildren)
+
+					// Map access
+					client.EvaluateRequest("mp[1]", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<interface {}>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						expr := client.ExpectVariablesResponse(t)
+						expectChildren(t, expr, "mp[1]", 1)
+						expectVarExact(t, expr, 0, "data", "42", noChildren)
+					}
+
+					// Pointer dereference
+					client.EvaluateRequest("*ms.Nest", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<main.Nest>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						expr := client.ExpectVariablesResponse(t)
+						expectChildren(t, expr, "*ms.Nest", 2)
+						expectVarExact(t, expr, 0, "Level", "1", noChildren)
+					}
+
+					// Calls to builtin functions: cap, len, complex, imag and real
+					client.EvaluateRequest("len(a5)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "5", noChildren)
+
+					// Type assertion on interface variables (i.e. somevar.(concretetype))
+					client.EvaluateRequest("mp[1].(int)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "42", noChildren)
+				},
+				disconnect: false,
+			}, { // Stop at second breakpoint
+				execute: func() {
+					handleStop(t, client, 1, 27)
+
+					// Top-most frame
+					client.EvaluateRequest("a1", 1000, "this context will be ignored")
+					got := client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"bur\"", noChildren)
+					// No frame defaults to top-most frame
+					client.EvaluateRequest("a1", 0, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"bur\"", noChildren)
+					// Next frame
+					client.EvaluateRequest("a1", 1001, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"foofoofoofoofoofoo\"", noChildren)
+					// Next frame
+					client.EvaluateRequest("a1", 1002, "any context but watch")
+					erres := client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
+					client.EvaluateRequest("a1", 1002, "watch")
+					erres = client.ExpectErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 func TestNextAndStep(t *testing.T) {
 	runTest(t, "testinline", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client,
@@ -1442,9 +1609,6 @@ func TestRequiredNotYetImplementedResponses(t *testing.T) {
 
 		client.PauseRequest()
 		expectNotYetImplemented("pause")
-
-		client.EvaluateRequest()
-		expectNotYetImplemented("evaluate")
 	})
 }
 
