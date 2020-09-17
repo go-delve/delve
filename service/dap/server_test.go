@@ -100,7 +100,7 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 //                                 :  8 >> stackTrace
 //                                 :  8 << error (Unable to produce stack trace)
 //                                 :  9 >> stackTrace
-//                                 :  9 << error(Unable to produce stack trace)
+//                                 :  9 << error (Unable to produce stack trace)
 // - User evaluates bad expression : 10 >> evaluate
 //                                 : 10 << error (unable to find function context)
 // - User evaluates good expression: 11 >> evaluate
@@ -191,11 +191,11 @@ func TestStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=2004", stResp)
 		}
 
-		// 10 >> evaluate, << evaluate (error)
+		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectVisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Format != "Unable to evaluate expression: unable to find function context" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Format=\"Unable to evaluate expression: unable to find function context\"", erResp)
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
 
 		// 11 >> evaluate, << evaluate

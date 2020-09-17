@@ -687,6 +687,7 @@ func TestIssue387(t *testing.T) {
 }
 
 func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end int) {
+	t.Helper()
 	outstr := term.MustExec(listcmd)
 	lines := strings.Split(outstr, "\n")
 
@@ -731,10 +732,10 @@ func TestListCmd(t *testing.T) {
 	withTestTerminal("testvariables", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
 		term.MustExec("continue")
-		listIsAt(t, term, "list", 25, 20, 30)
-		listIsAt(t, term, "list 69", 69, 64, 70)
-		listIsAt(t, term, "frame 1 list", 62, 57, 67)
-		listIsAt(t, term, "frame 1 list 69", 69, 64, 70)
+		listIsAt(t, term, "list", 27, 22, 32)
+		listIsAt(t, term, "list 69", 69, 64, 73)
+		listIsAt(t, term, "frame 1 list", 65, 60, 70)
+		listIsAt(t, term, "frame 1 list 69", 69, 64, 73)
 		_, err := term.Exec("frame 50 list")
 		if err == nil {
 			t.Fatalf("Expected error requesting 50th frame")
