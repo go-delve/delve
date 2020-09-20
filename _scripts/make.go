@@ -429,6 +429,11 @@ func allPackages() []string {
 }
 
 func main() {
+	out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("CGO_ENABLED=%s\n", string(out))
 	allPackages() // checks that vendor directory is synced as a side effect
 	NewMakeCommands().Execute()
 }
