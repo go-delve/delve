@@ -3,16 +3,20 @@
 #### I'm getting an error while compiling Delve / unsupported architectures and OSs
 
 The most likely cause of this is that you are running an unsupported Operating System or architecture.
-Currently Delve supports Linux, Windows and macOS on the amd64 (also known as Intel 86x64) architecture and Linux on the arm64 (also known as ARM AArch64) and i386 architectures.
-
-For example if you are getting the `undefined: ArchInst` error message while compiling Delve, that means that Delve doesn't currently support your processor architecture.
+Currently Delve supports (GOOS / GOARCH):
+* linux / amd64 (86x64)
+* linux / arm64 (AARCH64)
+* linux / 386
+* windows / amd64
+* darwin (macOS) / amd64
 
 There is no planned ETA for support of other architectures or operating systems. Bugs tracking requested support are:
 
-- [i386 support](https://github.com/go-delve/delve/issues/20)
-- [ARM support](https://github.com/go-delve/delve/issues/118)
+- [32bit ARM support](https://github.com/go-delve/delve/issues/328)
 - [PowerPC support](https://github.com/go-delve/delve/issues/1564)
-- [FreeBSD support](https://github.com/go-delve/delve/issues/213)
+- [OpenBSD](https://github.com/go-delve/delve/issues/1477)
+
+See also: [backend test health](backend_test_health.md).
 
 #### How do I use Delve with Docker?
 
