@@ -371,17 +371,7 @@ type ListPackageVarsOut struct {
 
 // ListPackageVars lists all package variables in the context of the current thread.
 func (s *RPCServer) ListPackageVars(arg ListPackageVarsIn, out *ListPackageVarsOut) error {
-	state, err := s.debugger.State(false)
-	if err != nil {
-		return err
-	}
-
-	current := state.CurrentThread
-	if current == nil {
-		return fmt.Errorf("no current thread")
-	}
-
-	vars, err := s.debugger.PackageVariables(current.ID, arg.Filter, *api.LoadConfigToProc(&arg.Cfg))
+	vars, err := s.debugger.PackageVariables(arg.Filter, *api.LoadConfigToProc(&arg.Cfg))
 	if err != nil {
 		return err
 	}

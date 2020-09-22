@@ -1153,7 +1153,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 
 // PackageVariables returns a list of package variables for the thread,
 // optionally regexp filtered using regexp described in 'filter'.
-func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadConfig) ([]*proc.Variable, error) {
+func (d *Debugger) PackageVariables(filter string, cfg proc.LoadConfig) ([]*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1162,11 +1162,7 @@ func (d *Debugger) PackageVariables(threadID int, filter string, cfg proc.LoadCo
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	thread, found := d.target.FindThread(threadID)
-	if !found {
-		return nil, fmt.Errorf("couldn't find thread %d", threadID)
-	}
-	scope, err := proc.ThreadScope(thread)
+	scope, err := proc.ThreadScope(d.target.CurrentThread())
 	if err != nil {
 		return nil, err
 	}
@@ -1508,13 +1504,6 @@ func (d *Debugger) Recorded() (recorded bool, tracedir string) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 	return d.target.Recorded()
-}
-
-// CurrentThread returns the current thread.
-func (d *Debugger) CurrentThread() proc.Thread {
-	d.targetMutex.Lock()
-	defer d.targetMutex.Unlock()
-	return d.target.CurrentThread()
 }
 
 // Checkpoint will set a checkpoint specified by the locspec.

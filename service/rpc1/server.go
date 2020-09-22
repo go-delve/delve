@@ -172,17 +172,7 @@ func (s *RPCServer) GetThread(id int, thread *api.Thread) error {
 }
 
 func (s *RPCServer) ListPackageVars(filter string, variables *[]api.Variable) error {
-	state, err := s.debugger.State(false)
-	if err != nil {
-		return err
-	}
-
-	current := state.CurrentThread
-	if current == nil {
-		return fmt.Errorf("no current thread")
-	}
-
-	vars, err := s.debugger.PackageVariables(current.ID, filter, defaultLoadConfig)
+	vars, err := s.debugger.PackageVariables(filter, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
@@ -196,15 +186,7 @@ type ThreadListArgs struct {
 }
 
 func (s *RPCServer) ListThreadPackageVars(args *ThreadListArgs, variables *[]api.Variable) error {
-	thread, err := s.debugger.FindThread(args.Id)
-	if err != nil {
-		return err
-	}
-	if thread == nil {
-		return fmt.Errorf("no thread with id %d", args.Id)
-	}
-
-	vars, err := s.debugger.PackageVariables(args.Id, args.Filter, defaultLoadConfig)
+	vars, err := s.debugger.PackageVariables(args.Filter, defaultLoadConfig)
 	if err != nil {
 		return err
 	}
