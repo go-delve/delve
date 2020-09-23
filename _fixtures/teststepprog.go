@@ -2,12 +2,12 @@ package main
 
 var n = 0
 
-func CallFn2() {
+func CallFn2(x int) {
 	n++
 }
 
-func CallFn(fn func()) {
-	fn()
+func CallFn(x int, fn func(x int)) {
+	fn(x + 1)
 }
 
 func CallEface(eface interface{}) {
@@ -17,6 +17,6 @@ func CallEface(eface interface{}) {
 }
 
 func main() {
-	CallFn(CallFn2)
+	CallFn(0, CallFn2)
 	CallEface(n)
 }
