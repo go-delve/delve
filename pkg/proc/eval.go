@@ -51,6 +51,11 @@ type EvalScope struct {
 	// The goroutine executing the expression evaluation shall signal that the
 	// evaluation is complete by closing the continueRequest channel.
 	callCtx *callContext
+
+	// If trustArgOrder is true function arguments that don't have an address
+	// will have one assigned by looking at their position in the argument
+	// list.
+	trustArgOrder bool
 }
 
 // ConvertEvalScope returns a new EvalScope in the context of the
@@ -208,7 +213,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 		return nil, errors.New("unable to find function context")
 	}
 
-	trustArgOrder := scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12)
+	trustArgOrder := scope.trustArgOrder && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
 
 	dwarfTree, err := scope.image().getDwarfTree(scope.Fn.offset)
 	if err != nil {
