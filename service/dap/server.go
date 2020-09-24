@@ -769,7 +769,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 			return
 		}
 		currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
-		globals, err := s.debugger.PackageVariables(s.debugger.CurrentThread().ThreadID(), currPkgFilter, cfg)
+		globals, err := s.debugger.PackageVariables(currPkgFilter, cfg)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
 			return
