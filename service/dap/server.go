@@ -1150,12 +1150,35 @@ func (s *Server) doCommand(command string) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
-		stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		if state.SelectedGoroutine != nil {
+			stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		} else {
+			// If there is no selectedGoroutine, get the list of goroutines and select the first one.
+			// TODO(polina): validate the assumption in this code that the first goroutine
+			// is the current one. So far it appears to me that this is always the main goroutine
+			// with id 1.
+			gs, _, err := s.debugger.Goroutines(0, 1)
+			if err != nil {
+				s.log.Error(err)
+			}
+			if len(gs) > 0 {
+				stopped.Body.ThreadId = gs[0].ID
+			}
+		}
+
 		switch command {
 		case api.Next, api.Step, api.StepOut:
 			stopped.Body.Reason = "step"
 		default:
 			stopped.Body.Reason = "breakpoint"
+			if state.CurrentThread.Breakpoint != nil {
+				switch state.CurrentThread.Breakpoint.Name {
+				case proc.FatalThrow:
+					stopped.Body.Reason = "fatal error"
+				case proc.UnrecoveredPanic:
+					stopped.Body.Reason = "panic"
+				}
+			}
 		}
 		s.send(stopped)
 	} else {

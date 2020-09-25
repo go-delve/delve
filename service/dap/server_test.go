@@ -1228,6 +1228,58 @@ func TestBadAccess(t *testing.T) {
 	})
 }
 
+func TestPanicBreakpoint(t *testing.T) {
+	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{5},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 5)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"panic\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestFatalThrowBreakpoint(t *testing.T) {
+	runTest(t, "testdeadlock", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{3},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 3)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "fatal error" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"fatal error\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 // handleStop covers the standard sequence of reqeusts issued by
 // a client at a breakpoint or another non-terminal stop event.
 // The details have been tested by other tests,
