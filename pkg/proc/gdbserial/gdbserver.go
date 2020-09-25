@@ -576,7 +576,7 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 			return nil, err
 		}
 	}
-	tgt, err := proc.NewTarget(p, proc.NewTargetConfig{
+	tgt, err := proc.NewTarget(p, p.currentThread, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "darwin",
@@ -649,15 +649,9 @@ func (p *gdbProcess) ThreadList() []proc.Thread {
 	return r
 }
 
-// CurrentThread returns the current active
-// selected thread.
-func (p *gdbProcess) CurrentThread() proc.Thread {
-	return p.currentThread
-}
-
-// SetCurrentThread is used internally by proc.Target to change the current thread.
-func (p *gdbProcess) SetCurrentThread(th proc.Thread) {
-	p.currentThread = th.(*gdbThread)
+// Memory returns the process memory.
+func (p *gdbProcess) Memory() proc.MemoryReadWriter {
+	return p
 }
 
 const (
@@ -775,6 +769,7 @@ continueLoop:
 		// the signals that are reported here can not be propagated back to the target process.
 		trapthread.sig = 0
 	}
+	p.currentThread = trapthread
 	return trapthread, stopReason, err
 }
 
@@ -937,9 +932,9 @@ func (p *gdbProcess) Detach(kill bool) error {
 }
 
 // Restart will restart the process from the given position.
-func (p *gdbProcess) Restart(pos string) error {
+func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 	if p.tracedir == "" {
-		return proc.ErrNotRecorded
+		return nil, proc.ErrNotRecorded
 	}
 
 	p.exited = false
@@ -952,19 +947,19 @@ func (p *gdbProcess) Restart(pos string) error {
 
 	err := p.conn.restart(pos)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// for some reason we have to send a vCont;c after a vRun to make rr behave
 	// properly, because that's what gdb does.
 	_, _, err = p.conn.resume(nil, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = p.updateThreadList(&threadUpdater{p: p})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p.clearThreadSignals()
 	p.clearThreadRegisters()
@@ -973,7 +968,7 @@ func (p *gdbProcess) Restart(pos string) error {
 		p.conn.setBreakpoint(addr)
 	}
 
-	return p.setCurrentBreakpoints()
+	return p.currentThread, p.setCurrentBreakpoints()
 }
 
 // When executes the 'when' command for the Mozilla RR backend.
@@ -1265,8 +1260,8 @@ func (p *gdbProcess) setCurrentBreakpoints() error {
 }
 
 // ReadMemory will read into 'data' memory at the address provided.
-func (t *gdbThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
-	err = t.p.conn.readMemory(data, addr)
+func (p *gdbProcess) ReadMemory(data []byte, addr uint64) (n int, err error) {
+	err = p.conn.readMemory(data, addr)
 	if err != nil {
 		return 0, err
 	}
@@ -1274,8 +1269,12 @@ func (t *gdbThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 }
 
 // WriteMemory will write into the memory at 'addr' the data provided.
-func (t *gdbThread) WriteMemory(addr uint64, data []byte) (written int, err error) {
-	return t.p.conn.writeMemory(addr, data)
+func (p *gdbProcess) WriteMemory(addr uint64, data []byte) (written int, err error) {
+	return p.conn.writeMemory(addr, data)
+}
+
+func (t *gdbThread) ProcessMemory() proc.MemoryReadWriter {
+	return t.p
 }
 
 // Location returns the current location of this thread.
@@ -1522,18 +1521,18 @@ func (t *gdbThread) reloadGAtPC() error {
 	}
 
 	savedcode := make([]byte, len(movinstr))
-	_, err := t.ReadMemory(savedcode, pc)
+	_, err := t.p.ReadMemory(savedcode, pc)
 	if err != nil {
 		return err
 	}
 
-	_, err = t.WriteMemory(pc, movinstr)
+	_, err = t.p.WriteMemory(pc, movinstr)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		_, err0 := t.WriteMemory(pc, savedcode)
+		_, err0 := t.p.WriteMemory(pc, savedcode)
 		if err == nil {
 			err = err0
 		}

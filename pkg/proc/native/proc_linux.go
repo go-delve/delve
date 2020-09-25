@@ -253,8 +253,8 @@ func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error)
 		dbp: dbp,
 		os:  new(osSpecificDetails),
 	}
-	if dbp.currentThread == nil {
-		dbp.currentThread = dbp.threads[tid]
+	if dbp.memthread == nil {
+		dbp.memthread = dbp.threads[tid]
 	}
 	return dbp.threads[tid], nil
 }

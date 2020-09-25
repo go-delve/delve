@@ -13,6 +13,9 @@ type Process interface {
 	RecordingManipulation
 
 	Breakpoints() *BreakpointMap
+
+	// Memory returns a memory read/writer for this process's memory.
+	Memory() MemoryReadWriter
 }
 
 // ProcessInternal holds a set of methods that are not meant to be called by
@@ -21,12 +24,12 @@ type Process interface {
 // the `proc` package.
 // This is temporary and in support of an ongoing refactor.
 type ProcessInternal interface {
-	SetCurrentThread(Thread)
 	// Restart restarts the recording from the specified position, or from the
 	// last checkpoint if pos == "".
 	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
 	// number.
-	Restart(pos string) error
+	// Returns the new current thread after the restart has completed.
+	Restart(pos string) (Thread, error)
 	Detach(bool) error
 	ContinueOnce() (trapthread Thread, stopReason StopReason, err error)
 
@@ -91,7 +94,6 @@ type Info interface {
 type ThreadInfo interface {
 	FindThread(threadID int) (Thread, bool)
 	ThreadList() []Thread
-	CurrentThread() Thread
 }
 
 // ProcessManipulation is an interface for changing the execution state of a process.

@@ -928,23 +928,9 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			}
 		}
 
-		firsterr := false
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-			// We try to make sure that all goroutines are stopped at a sensible place
-			// before reading their stacktrace, but due to the nature of the test
-			// program there is no guarantee that we always find them in a reasonable
-			// state.
-			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
-			// unnecessary flakiness allow a single goroutine to be in a bad state.
-			firsterr = true
-		}
 		for i := range found {
 			if !found[i] {
-				if firsterr {
-					firsterr = false
-				} else {
-					t.Fatalf("Goroutine %d not found", i)
-				}
+				t.Fatalf("Goroutine %d not found", i)
 			}
 		}
 
@@ -2092,14 +2078,19 @@ func TestIssue2162(t *testing.T) {
 		t.Skip("skip it for stepping into one place where no source for pc when on pie mode or windows")
 	}
 	withTestClient2("issue2162", t, func(c service.Client) {
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
+		state, err := c.GetState()
+		assertNoError(err, t, "GetState()")
+		if state.CurrentThread.Function == nil {
+			// Can't call Step if we don't have the source code of the current function
+			return
+		}
+
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
 		_, err = c.Step()
-		if err != nil {
-			assertNoError(err, t, "Step()")
-		}
+		assertNoError(err, t, "Step()")
 	})
 }

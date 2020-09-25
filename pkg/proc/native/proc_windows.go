@@ -206,8 +206,8 @@ func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach
 	}
 	thread.os.hThread = hThread
 	dbp.threads[threadID] = thread
-	if dbp.currentThread == nil {
-		dbp.currentThread = dbp.threads[threadID]
+	if dbp.memthread == nil {
+		dbp.memthread = dbp.threads[threadID]
 	}
 	if suspendNewThreads {
 		_, err := _SuspendThread(thread.os.hThread)

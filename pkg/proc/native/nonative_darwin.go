@@ -81,11 +81,6 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-// Blocked returns true if the thread is blocked
-func (t *nativeThread) Blocked() bool {
-	panic(ErrNativeBackendDisabled)
-}
-
 // SetPC sets the value of the PC register.
 func (t *nativeThread) SetPC(pc uint64) error {
 	panic(ErrNativeBackendDisabled)

@@ -309,7 +309,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		return nil, err
 	}
 	// write the desired argument frame size at SP-(2*pointer_size) (the extra pointer is the saved PC)
-	if err := writePointer(bi, thread, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
+	if err := writePointer(bi, scope.Mem, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
 		return nil, err
 	}
 
@@ -422,7 +422,7 @@ func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) erro
 	if err := thread.SetSP(sp); err != nil {
 		return err
 	}
-	if err := writePointer(bi, thread, sp, regs.PC()); err != nil {
+	if err := writePointer(bi, thread.ProcessMemory(), sp, regs.PC()); err != nil {
 		return err
 	}
 	return thread.SetPC(callAddr)

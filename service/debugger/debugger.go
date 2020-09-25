@@ -381,9 +381,8 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	}
 
 	var regs proc.Registers
-	var mem proc.MemoryReadWriter = p.CurrentThread()
+	mem := p.Memory()
 	if g != nil && g.Thread != nil {
-		mem = g.Thread
 		regs, _ = g.Thread.Registers()
 	}
 	instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
@@ -1374,7 +1373,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 		}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
-			scope := proc.FrameToScope(d.target.BinInfo(), d.target.CurrentThread(), nil, rawlocs[i:]...)
+			scope := proc.FrameToScope(d.target.BinInfo(), d.target.Memory(), nil, rawlocs[i:]...)
 			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {
 				return nil, err
@@ -1502,7 +1501,7 @@ func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64) ([]proc.Asm
 	}
 	regs, _ := curthread.Registers()
 
-	return proc.Disassemble(curthread, regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
+	return proc.Disassemble(d.target.Memory(), regs, d.target.Breakpoints(), d.target.BinInfo(), addr1, addr2)
 }
 
 func (d *Debugger) AsmInstructionText(inst *proc.AsmInstruction, flavour proc.AssemblyFlavour) string {
@@ -1554,9 +1553,9 @@ func (d *Debugger) ExamineMemory(address uint64, length int) ([]byte, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	thread := d.target.CurrentThread()
+	mem := d.target.Memory()
 	data := make([]byte, length)
-	n, err := thread.ReadMemory(data, address)
+	n, err := mem.ReadMemory(data, address)
 	if err != nil {
 		return nil, err
 	}

@@ -85,25 +85,6 @@ func (t *nativeThread) resume() error {
 	return nil
 }
 
-func (t *nativeThread) Blocked() bool {
-	// TODO(dp) cache the func pc to remove this lookup
-	regs, err := t.Registers()
-	if err != nil {
-		return false
-	}
-	pc := regs.PC()
-	fn := t.BinInfo().PCToFunc(pc)
-	if fn == nil {
-		return false
-	}
-	switch fn.Name {
-	case "runtime.kevent", "runtime.mach_semaphore_wait", "runtime.usleep", "runtime.mach_semaphore_timedwait":
-		return true
-	default:
-		return false
-	}
-}
-
 // Stopped returns whether the thread is stopped at
 // the operating system level.
 func (t *nativeThread) Stopped() bool {

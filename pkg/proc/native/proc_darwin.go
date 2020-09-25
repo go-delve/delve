@@ -118,7 +118,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	}
 
 	dbp.os.initialized = true
-	dbp.currentThread = trapthread
+	dbp.memthread = trapthread
 
 	tgt, err := dbp.initialize(argv0Go, []string{})
 	if err != nil {
@@ -188,7 +188,7 @@ func (dbp *nativeProcess) kill() (err error) {
 func (dbp *nativeProcess) requestManualStop() (err error) {
 	var (
 		task          = C.mach_port_t(dbp.os.task)
-		thread        = C.mach_port_t(dbp.currentThread.os.threadAct)
+		thread        = C.mach_port_t(dbp.memthread.os.threadAct)
 		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
 	)
 	dbp.os.halt = true
@@ -267,8 +267,8 @@ func (dbp *nativeProcess) addThread(port int, attach bool) (*nativeThread, error
 	}
 	dbp.threads[port] = thread
 	thread.os.threadAct = C.thread_act_t(port)
-	if dbp.currentThread == nil {
-		dbp.currentThread = thread
+	if dbp.memthread == nil {
+		dbp.memthread = thread
 	}
 	return thread, nil
 }
