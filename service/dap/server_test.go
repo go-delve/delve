@@ -1299,6 +1299,90 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
+func TestEvaluateCallRequest(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("arm64 does not support FunctionCall for now")
+	}
+	runTest(t, "fncall", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{},
+			[]onBreakpoint{{ // Stop at runtime.Breakpoint
+				execute: func() {
+					handleStop(t, client, 1, 192)
+
+					// No return values
+					client.EvaluateRequest("call call0(1, 2)", 1000, "this context will be ignored")
+					got := client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "", noChildren)
+					// One unnamed return value
+					client.EvaluateRequest("call call1(one, two)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref := expectEval(t, got, "3", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rv := client.ExpectVariablesResponse(t)
+						expectChildren(t, rv, "rv", 1)
+						expectVarExact(t, rv, 0, "~r2", "3", noChildren)
+					}
+					// One named return value
+					// Panic doesn't panic, but instead returns the error as a named return variable
+					client.EvaluateRequest("call callpanic()", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<interface {}>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rv := client.ExpectVariablesResponse(t)
+						expectChildren(t, rv, "rv", 1)
+						ref = expectVarExact(t, rv, 0, "~panic", "<interface {}>", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							p := client.ExpectVariablesResponse(t)
+							expectChildren(t, p, "~panic", 1)
+							expectVarExact(t, p, 0, "data", "\"callpanic panicked\"", noChildren)
+						}
+					}
+					// Multiple return values
+					client.EvaluateRequest("call call2(one, two)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "1, 2", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rvs := client.ExpectVariablesResponse(t)
+						expectChildren(t, rvs, "rvs", 2)
+						expectVarExact(t, rvs, 0, "~r2", "1", noChildren)
+						expectVarExact(t, rvs, 1, "~r3", "2", noChildren)
+					}
+					// No frame defaults to top-most frame
+					client.EvaluateRequest("call call1(one, two)", 0, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "3", hasChildren)
+					// Extra spaces don't matter
+					client.EvaluateRequest(" call  call1(one, one) ", 0, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", hasChildren)
+					// Just 'call', even with extra space, is treated as {expression}
+					client.EvaluateRequest("call ", 1000, "watch")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"this is a variable named `call`\"", noChildren)
+					// Call error
+					client.EvaluateRequest("call call1(one)", 1000, "watch")
+					erres := client.ExpectErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
+					}
+					// Call can exit
+					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
+					client.ExpectTerminatedEvent(t)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestNextAndStep(t *testing.T) {
 	runTest(t, "testinline", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client,

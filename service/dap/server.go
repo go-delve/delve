@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -881,15 +882,32 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	s.send(response)
 }
 
-// convertVariable converts api.Variable to dap.Variable value and reference.
+// convertVariable converts proc.Variable to dap.Variable value and reference.
 // Variable reference is used to keep track of the children associated with each
-// variable. It is shared with the host via a scopes response and is an index to
-// the s.variableHandles map, so it can be referenced from a subsequent variables
-// request. A positive reference signals the host that another variables request
-// can be issued to get the elements of the compound variable. As a custom, a zero
-// reference, reminiscent of a zero pointer, is used to indicate that a scalar
-// variable cannot be "dereferenced" to get its elements (as there are none).
+// variable. It is shared with the host via scopes or evaluate response and is an index
+// into the s.variableHandles map, used to look up variables and their children on
+// subsequent variables requests. A positive reference signals the host that another
+// variables request can be issued to get the elements of the compound variable. As a
+// custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
+// a scalar variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v *proc.Variable) (value string, variablesReference int) {
+	return s.convertVariableWithOpts(v, false)
+}
+
+func (s *Server) convertVariableToString(v *proc.Variable) string {
+	val, _ := s.convertVariableWithOpts(v, true)
+	return val
+}
+
+// convertVarialbeWithOpts allows to skip reference generation in case all we need is
+// a string representation of the variable.
+func (s *Server) convertVariableWithOpts(v *proc.Variable, skipRef bool) (value string, variablesReference int) {
+	maybeCreateVariableHandle := func(v *proc.Variable) int {
+		if skipRef {
+			return 0
+		}
+		return s.variableHandles.create(v)
+	}
 	if v.Unreadable != nil {
 		value = fmt.Sprintf("unreadable <%v>", v.Unreadable)
 		return
@@ -911,12 +929,12 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "void"
 		} else {
 			value = fmt.Sprintf("<%s>(%#x)", typeName, v.Children[0].Addr)
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Array:
 		value = "<" + typeName + ">"
 		if len(v.Children) > 0 {
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Slice:
 		if v.Base == 0 {
@@ -924,7 +942,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 		} else {
 			value = fmt.Sprintf("<%s> (length: %d, cap: %d)", typeName, v.Len, v.Cap)
 			if len(v.Children) > 0 {
-				variablesReference = s.variableHandles.create(v)
+				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
 	case reflect.Map:
@@ -933,7 +951,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 		} else {
 			value = fmt.Sprintf("<%s> (length: %d)", typeName, v.Len)
 			if len(v.Children) > 0 {
-				variablesReference = s.variableHandles.create(v)
+				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
 	case reflect.String:
@@ -948,11 +966,11 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "nil <" + typeName + ">"
 		} else {
 			value = "<" + typeName + ">"
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Interface:
 		if v.Addr == 0 {
-			// An escaped interface variable that points to nil, this shouldn't
+			// An escaped interface variable that points to nil: this shouldn't
 			// happen in normal code but can happen if the variable is out of scope,
 			// such as if an interface variable has been captured by a
 			// closure and replaced by a pointer to interface, and the pointer
@@ -962,7 +980,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "nil <" + typeName + ">"
 		} else {
 			value = "<" + typeName + ">"
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Complex64, reflect.Complex128:
 		v.Children = make([]proc.Variable, 2)
@@ -986,7 +1004,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "<" + typeName + ">"
 		}
 		if len(v.Children) > 0 {
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
 	return
@@ -994,6 +1012,12 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 
 // onEvaluateRequest handles 'evalute' requests.
 // This is a mandatory request to support.
+// Support the following expressions:
+// -- {expression} - evaluates the expression and returns the result as a variable
+// -- call {function} - injects a function call and returns the result as a variable
+// TODO(polina): users have complained about having to click to expand multi-level
+// variables, so consider also adding the following:
+// -- print {expression} - return the result as a string like from dlv cli
 func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 	showErrorToUser := request.Arguments.Context != "watch"
 	if s.debugger == nil {
@@ -1003,23 +1027,56 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 	// Default to the topmost stack frame of the current goroutine in case
 	// no frame is specified (e.g. when stopped on entry or no call stack frame is expanded)
 	goid, frame := -1, 0
-	sf, ok := s.stackFrameHandles.get(request.Arguments.FrameId)
-	if ok {
+	if sf, ok := s.stackFrameHandles.get(request.Arguments.FrameId); ok {
 		goid = sf.(stackFrame).goroutineID
 		frame = sf.(stackFrame).frameIndex
 	}
-	// TODO(polina): Support setting config via launch/attach args
-	cfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	// TODO(polina): Support config settings via launch/attach args vs auto-loading?
+	apiCfg := &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	prcCfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 
-	exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, cfg)
-	if err != nil {
-		s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
-		return
-	}
-	exprVal, exprRef := s.convertVariable(exprVar)
-	response := &dap.EvaluateResponse{
-		Response: *newResponse(request.Request),
-		Body:     dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef},
+	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
+	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
+	if err == nil && isCall { // call {expression}
+		state, err := s.debugger.Command(&api.DebuggerCommand{
+			Name:                 api.Call,
+			ReturnInfoLoadConfig: apiCfg,
+			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
+			UnsafeCall:           false,
+			GoroutineID:          goid,
+		})
+		if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
+			s.send(e)
+			return
+		}
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+			return
+		}
+		retVars := s.debugger.ReturnValues(&prcCfg)
+		if retVars != nil && len(retVars) > 0 {
+			// Package one or more return values in a single scope-like nameless variable
+			// that preserves their names.
+			retVarsAsVar := &proc.Variable{Children: slicePtrVarToSliceVar(retVars)}
+			// As a shortcut also express the return values as a single string.
+			retVarsAsStr := ""
+			for _, v := range retVars {
+				retVarsAsStr += s.convertVariableToString(v) + ", "
+			}
+			response.Body = dap.EvaluateResponseBody{
+				Result:             strings.TrimRight(retVarsAsStr, ", "),
+				VariablesReference: s.variableHandles.create(retVarsAsVar),
+			}
+		}
+	} else { // {expression}
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, prcCfg)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+			return
+		}
+		exprVal, exprRef := s.convertVariable(exprVar)
+		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)
 }

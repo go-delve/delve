@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 )
+
+var call = "this is a variable named `call`"
 
 func callstacktrace() (stacktrace string) {
 	for skip := 0; ; skip++ {
@@ -18,9 +21,23 @@ func callstacktrace() (stacktrace string) {
 	return stacktrace
 }
 
+func call0(a, b int) {
+	fmt.Printf("call0: first: %d second: %d\n", a, b)
+}
+
 func call1(a, b int) int {
 	fmt.Printf("first: %d second: %d\n", a, b)
 	return a + b
+}
+
+func call2(a, b int) (int, int) {
+	fmt.Printf("call2: first: %d second: %d\n", a, b)
+	return a, b
+}
+
+func callexit() {
+	fmt.Printf("about to exit\n")
+	os.Exit(0)
 }
 
 func callpanic() {
@@ -178,5 +195,5 @@ func main() {
 	d.Method()
 	d.Base.Method()
 	x.CallMe()
-	fmt.Println(one, two, zero, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5))
+	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5))
 }

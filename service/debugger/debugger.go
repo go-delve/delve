@@ -1517,6 +1517,16 @@ func (d *Debugger) CurrentThread() proc.Thread {
 	return d.target.CurrentThread()
 }
 
+// ReturnValues returns the return values of the function we just stepped out of.
+func (d *Debugger) ReturnValues(retLoadCfg *proc.LoadConfig) []*proc.Variable {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	if retLoadCfg != nil && d.target.CurrentThread() != nil {
+		return d.target.CurrentThread().Common().ReturnValues(*retLoadCfg)
+	}
+	return nil
+}
+
 // Checkpoint will set a checkpoint specified by the locspec.
 func (d *Debugger) Checkpoint(where string) (int, error) {
 	d.targetMutex.Lock()
