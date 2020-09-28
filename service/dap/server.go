@@ -1178,7 +1178,6 @@ func (s *Server) doCommand(command string) {
 		//   - supporting ExceptionInfo request
 		//   - virtual variable scope for Exception that shows the message (details here: https://github.com/microsoft/vscode/issues/3101)
 		// In the meantime, provide the extra details by outputing an error message.
-		// {"body":{"category":"stdout","output":"API server listening at: 127.0.0.1:11973\n"}}
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
