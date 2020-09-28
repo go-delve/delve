@@ -1506,13 +1506,6 @@ func (d *Debugger) Recorded() (recorded bool, tracedir string) {
 	return d.target.Recorded()
 }
 
-// CurrentThread returns the current thread.
-func (d *Debugger) CurrentThread() proc.Thread {
-	d.targetMutex.Lock()
-	defer d.targetMutex.Unlock()
-	return d.target.CurrentThread()
-}
-
 // ReturnValues returns the return values of the function we just stepped out of.
 func (d *Debugger) ReturnValues(retLoadCfg *proc.LoadConfig) []*proc.Variable {
 	d.targetMutex.Lock()
