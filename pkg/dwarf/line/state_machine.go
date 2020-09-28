@@ -182,7 +182,7 @@ func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64, excludeFile stri
 		if (sm.address > end) && (end >= sm.lastAddress) {
 			break
 		}
-		if sm.address >= begin && sm.address <= end && sm.address > lastaddr && sm.isStmt && ((sm.file != excludeFile) || (sm.line != excludeLine)) {
+		if sm.address >= begin && sm.address <= end && sm.address > lastaddr && sm.isStmt && !sm.endSeq && ((sm.file != excludeFile) || (sm.line != excludeLine)) {
 			lastaddr = sm.address
 			pcs = append(pcs, sm.address)
 		}

@@ -806,6 +806,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 
 		// pretend we are still inside the function we called
 		fakeFunctionEntryScope(retScope, fncall.fn, int64(regs.SP()), regs.SP()-uint64(bi.Arch.PtrSize()))
+		retScope.trustArgOrder = true
 
 		fncall.retvars, err = retScope.Locals()
 		if err != nil {
