@@ -963,6 +963,20 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "nil <" + typeName + ">"
 		} else {
 			value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
+			// TODO(polina): should we remove one level of indirection and skip "data"?
+			// Then we will have:
+			// Before:
+			//   i: <interface{}(int)>
+			//      data: 123
+			// After:
+			//   i: <interface{}(int)> 123
+			// Before:
+			//   i: <interface{}(main.MyStruct)>
+			//      data: <main.MyStruct>
+			//         field1: ...
+			// After:
+			//   i: <interface{}(main.MyStruct)>
+			//      field1: ...
 			variablesReference = s.variableHandles.create(v)
 		}
 	case reflect.Complex64, reflect.Complex128:
