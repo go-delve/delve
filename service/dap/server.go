@@ -962,7 +962,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 		} else if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
 			value = "nil <" + typeName + ">"
 		} else {
-			value = "<" + typeName + ">"
+			value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
 			variablesReference = s.variableHandles.create(v)
 		}
 	case reflect.Complex64, reflect.Complex128:
