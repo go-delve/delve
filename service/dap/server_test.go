@@ -1228,7 +1228,7 @@ func TestBadAccess(t *testing.T) {
 	})
 }
 
-func TestPanicBreakpoint(t *testing.T) {
+func TestPanicBreakpointOnContinue(t *testing.T) {
 	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client,
 			// Launch
@@ -1243,6 +1243,32 @@ func TestPanicBreakpoint(t *testing.T) {
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"panic\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestPanicBreakpointOnNext(t *testing.T) {
+	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{5},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 5)
+
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
@@ -1271,8 +1297,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"fatal error\"", se)
+					if se.Body.Reason != "fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"fatal error\"", se)
 					}
 				},
 				disconnect: true,
