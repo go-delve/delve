@@ -1602,6 +1602,15 @@ func (d *Debugger) StopRecording() error {
 	return d.stopRecording()
 }
 
+// StopReason returns the reason the reason why the target process is stopped.
+// A process could be stopped for multiple simultaneous reasons, in which
+// case only one will be reported.
+func (d *Debugger) StopReason() proc.StopReason {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.target.StopReason
+}
+
 // LockTarget acquires the target mutex.
 func (d *Debugger) LockTarget() {
 	d.targetMutex.Lock()
