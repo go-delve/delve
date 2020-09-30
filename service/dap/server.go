@@ -380,6 +380,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	// TODO(polina): Respond with an error if debug session is in progress?
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
+	response.Body.SupportsConditionalBreakpoints = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
@@ -535,9 +536,44 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 }
 
 func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
+	// TODO(polina): handle this while running by halting first.
+
 	if request.Arguments.Source.Path == "" {
-		s.log.Error("ERROR: Unable to set breakpoint for empty file path")
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "empty file path")
+		return
 	}
+
+	// According to the spec we should "set multiple breakpoints for a single source
+	// and clear all previous breakpoints in that source." The simplest way is
+	// to clear all and then set all.
+	//
+	// TODO(polina): should we optimize this as follows?
+	// See https://github.com/golang/vscode-go/issues/163 for details.
+	// If a breakpoint:
+	// -- exists and not in request => ClearBreakpoint
+	// -- exists and in request => AmendBreakpoint
+	// -- doesn't exist and in request => SetBreakpoint
+
+	// Clear all existing breakpoints in the file.
+	existing := s.debugger.Breakpoints()
+	for _, bp := range existing {
+		// Skip special breakpoints such as for panic.
+		if bp.ID < 0 {
+			continue
+		}
+		// Skip other source files.
+		// TODO(polina): should this be normalized because of different OSes?
+		if bp.File != request.Arguments.Source.Path {
+			continue
+		}
+		_, err := s.debugger.ClearBreakpoint(bp)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+			return
+		}
+	}
+
+	// Set all requested breakpoints.
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	// Only verified breakpoints will be set and reported back in the
@@ -546,9 +582,9 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	i := 0
 	for _, b := range request.Arguments.Breakpoints {
 		bp, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{File: request.Arguments.Source.Path, Line: b.Line})
+			&api.Breakpoint{File: request.Arguments.Source.Path, Line: b.Line, Cond: b.Condition})
 		if err != nil {
-			s.log.Error("ERROR:", err)
+			s.log.Error("ERROR: ", err)
 			continue
 		}
 		response.Body.Breakpoints[i].Verified = true
