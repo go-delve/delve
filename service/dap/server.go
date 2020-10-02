@@ -576,22 +576,17 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	// Set all requested breakpoints.
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
-	// Only verified breakpoints will be set and reported back in the
-	// response. All breakpoints resulting in errors (e.g. duplicates
-	// or lines that do not have statements) will be skipped.
-	i := 0
-	for _, b := range request.Arguments.Breakpoints {
-		bp, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{File: request.Arguments.Source.Path, Line: b.Line, Cond: b.Condition})
+	for i, want := range request.Arguments.Breakpoints {
+		got, err := s.debugger.CreateBreakpoint(
+			&api.Breakpoint{File: request.Arguments.Source.Path, Line: want.Line, Cond: want.Condition})
+		response.Body.Breakpoints[i].Verified = (err == nil)
 		if err != nil {
-			s.log.Error("ERROR: ", err)
-			continue
+			response.Body.Breakpoints[i].Line = want.Line
+			response.Body.Breakpoints[i].Message = err.Error()
+		} else {
+			response.Body.Breakpoints[i].Line = got.Line
 		}
-		response.Body.Breakpoints[i].Verified = true
-		response.Body.Breakpoints[i].Line = bp.Line
-		i++
 	}
-	response.Body.Breakpoints = response.Body.Breakpoints[:i]
 	s.send(response)
 }
 
