@@ -329,6 +329,11 @@ func (c *Client) DisconnectRequest() {
 
 // SetBreakpointsRequest sends a 'setBreakpoints' request.
 func (c *Client) SetBreakpointsRequest(file string, lines []int) {
+	c.SetConditionalBreakpointsRequest(file, lines, nil)
+}
+
+// SetBreakpointsRequest sends a 'setBreakpoints' request with conditions.
+func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, conditions map[int]string) {
 	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
 	request.Arguments = dap.SetBreakpointsArguments{
 		Source: dap.Source{
@@ -340,6 +345,10 @@ func (c *Client) SetBreakpointsRequest(file string, lines []int) {
 	}
 	for i, l := range lines {
 		request.Arguments.Breakpoints[i].Line = l
+		cond, ok := conditions[l]
+		if ok {
+			request.Arguments.Breakpoints[i].Condition = cond
+		}
 	}
 	c.send(request)
 }
