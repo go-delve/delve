@@ -1173,13 +1173,13 @@ func (s *Server) doCommand(command string) {
 			stopped.Body.Reason = "step"
 		default:
 			stopped.Body.Reason = "breakpoint"
-			if state.CurrentThread.Breakpoint != nil {
-				switch state.CurrentThread.Breakpoint.Name {
-				case proc.FatalThrow:
-					stopped.Body.Reason = "fatal error"
-				case proc.UnrecoveredPanic:
-					stopped.Body.Reason = "panic"
-				}
+		}
+		if state.CurrentThread.Breakpoint != nil {
+			switch state.CurrentThread.Breakpoint.Name {
+			case proc.FatalThrow:
+				stopped.Body.Reason = "fatal error"
+			case proc.UnrecoveredPanic:
+				stopped.Body.Reason = "panic"
 			}
 		}
 		s.send(stopped)
