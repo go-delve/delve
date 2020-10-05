@@ -41,6 +41,8 @@ var (
 	headless bool
 	// continueOnStart is whether to continue the process on startup
 	continueOnStart bool
+	// exitOnProcExited is whether to terminate debugger when the process on of application gone
+	exitOnProcExited bool
 	// apiVersion is the requested API version while running headless
 	apiVersion int
 	// acceptMulti allows multiple clients to connect to the same server
@@ -124,6 +126,7 @@ func New(docCall bool) *cobra.Command {
 
 	rootCommand.PersistentFlags().BoolVarP(&headless, "headless", "", false, "Run debug server only, in headless mode.")
 	rootCommand.PersistentFlags().BoolVarP(&acceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections.")
+	rootCommand.PersistentFlags().BoolVarP(&exitOnProcExited, "exit-on-proc-exited", "", false, "Debugger exit when the debugged process exited.")
 	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler.")
@@ -830,6 +833,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			ProcessArgs:        processArgs,
 			AcceptMulti:        acceptMulti,
 			APIVersion:         apiVersion,
+			ExitOnProcExited:   exitOnProcExited,
 			CheckLocalConnUser: checkLocalConnUser,
 			DisconnectChan:     disconnectChan,
 			Debugger: debugger.Config{

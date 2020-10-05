@@ -27,6 +27,9 @@ type Config struct {
 	// Note that the server API is not reentrant and clients will have to coordinate.
 	AcceptMulti bool
 
+	// ExitOnProcExited exit debugger when application exited
+	ExitOnProcExited bool
+
 	// APIVersion selects which version of the API to serve (default: 1).
 	APIVersion int
 

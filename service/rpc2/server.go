@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"syscall"
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -137,6 +138,10 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 	var out CommandOut
 	out.State = *st
 	cb.Return(out, nil)
+	if st.Exited && s.config.ExitOnProcExited {
+		time.Sleep(500 * time.Millisecond)
+		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+	}
 }
 
 type GetBreakpointIn struct {
