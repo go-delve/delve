@@ -1257,6 +1257,12 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 }
 
 func TestPanicBreakpointOnNext(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+		// In Go 1.13, 'next' will step into the defer in the runtime
+		// main function, instead of the next line in the main program.
+		t.SkipNow()
+	}
+
 	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client,
 			// Launch
@@ -1269,31 +1275,13 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 				execute: func() {
 					handleStop(t, client, 1, 5)
 
-					// Send a next request until the panic breakpoint is hit.
-					// We expect to hit the unrecovered panic breakpoint and
-					// return a "panic" stopped event.
-					// In Go 1.13, 'next' will step into the defer in the runtime
-					// main function. This will take multiple steps to reach the
-					// unrecovered panic breakpoint.
-					for {
-						client.NextRequest(1)
-						client.ExpectNextResponse(t)
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
 
-						m, err := client.ReadMessage()
-						if err != nil {
-							t.Error(err)
-						}
-						if se, ok := m.(*dap.StoppedEvent); ok {
-							if se.Body.ThreadId == 1 && se.Body.Reason == "panic" {
-								// Successfully reached the unrecovered panic breakpoint.
-								break
-							} else if se.Body.ThreadId != 1 || se.Body.Reason != "step" {
-								t.Errorf("\ngot  %#v\nexpected ThreadId=1 Reason=\"panic\" or ThreadId=1 Reason=\"step\"", se)
-							}
-						} else if _, ok := m.(*dap.TerminatedEvent); ok {
-							t.Errorf("\nended program without \"panic\" event.")
-							break
-						}
+					se := client.ExpectStoppedEvent(t)
+
+					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
+						t.Errorf("\ngot  %#v\nexpected ThreadId=1 Reason=\"panic\"", se)
 					}
 				},
 				disconnect: true,
