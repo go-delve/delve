@@ -1327,6 +1327,91 @@ func TestBadAccess(t *testing.T) {
 	})
 }
 
+func TestPanicBreakpointOnContinue(t *testing.T) {
+	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{5},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 5)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"panic\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestPanicBreakpointOnNext(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+		// In Go 1.13, 'next' will step into the defer in the runtime
+		// main function, instead of the next line in the main program.
+		t.SkipNow()
+	}
+
+	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{5},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 5)
+
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+
+					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
+						t.Errorf("\ngot  %#v\nexpected ThreadId=1 Reason=\"panic\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestFatalThrowBreakpoint(t *testing.T) {
+	runTest(t, "testdeadlock", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{3},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 3)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"fatal error\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 // handleStop covers the standard sequence of reqeusts issued by
 // a client at a breakpoint or another non-terminal stop event.
 // The details have been tested by other tests,

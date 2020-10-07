@@ -1195,12 +1195,23 @@ func (s *Server) doCommand(command string) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
-		stopped.Body.ThreadId = state.SelectedGoroutine.ID
-		switch command {
-		case api.Next, api.Step, api.StepOut:
+		if state.SelectedGoroutine != nil {
+			stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		}
+
+		switch s.debugger.StopReason() {
+		case proc.StopNextFinished:
 			stopped.Body.Reason = "step"
 		default:
 			stopped.Body.Reason = "breakpoint"
+		}
+		if state.CurrentThread.Breakpoint != nil {
+			switch state.CurrentThread.Breakpoint.Name {
+			case proc.FatalThrow:
+				stopped.Body.Reason = "fatal error"
+			case proc.UnrecoveredPanic:
+				stopped.Body.Reason = "panic"
+			}
 		}
 		s.send(stopped)
 	} else {
