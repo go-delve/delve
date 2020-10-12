@@ -53,3 +53,26 @@ the terminal TTY.
 1. Assign the process its own TTY. This can be done on UNIX systems via the `--tty` flag for the 
 `dlv debug` and `dlv exec` commands. For the best experience, you should create your own PTY and 
 assign it as the TTY. This can be done via [ptyme](https://github.com/derekparker/ptyme).
+
+#### How can I use Delve for remote debugging?
+
+It is best not to use remote debugging on a public network. If you have to do this, we recommend using ssh tunnels or a vpn connection.  
+
+##### ```Example ``` 
+
+Remote server:
+```
+dlv exec --headless --listen localhost:4040 /path/to/executable
+```
+
+Local client:
+1. connect to the server and start a local port forward
+
+```
+ssh -NL 4040:localhost:4040 user@remote.ip
+```
+
+2. connect local port
+```
+dlv connect :4040
+```
