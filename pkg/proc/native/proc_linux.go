@@ -276,6 +276,7 @@ type trapWaitOptions uint8
 const (
 	trapWaitHalt trapWaitOptions = 1 << iota
 	trapWaitNohang
+	trapWaitDontCallExitGuard
 )
 
 func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*nativeThread, error) {
@@ -371,11 +372,10 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			th.os.running = false
 			return th, nil
 		} else if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
-			if err == sys.ESRCH {
-				dbp.postExit()
-				return nil, proc.ErrProcessExited{Pid: dbp.pid}
+			if options&trapWaitDontCallExitGuard != 0 {
+				return nil, err
 			}
-			return nil, err
+			return nil, dbp.exitGuard(err)
 		}
 	}
 }
@@ -445,7 +445,7 @@ func (dbp *nativeProcess) exitGuard(err error) error {
 		return err
 	}
 	if status(dbp.pid, dbp.os.comm) == statusZombie {
-		_, err := dbp.trapWaitInternal(-1, 0)
+		_, err := dbp.trapWaitInternal(-1, trapWaitDontCallExitGuard)
 		return err
 	}
 
