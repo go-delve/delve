@@ -204,7 +204,7 @@ func (s *RPCServer) ListRegisters(arg interface{}, registers *string) error {
 	if err != nil {
 		return err
 	}
-	regs := api.Registers(api.ConvertRegisters(dregs, s.debugger.DwarfRegisterToString, false))
+	regs := api.Registers(api.ConvertRegisters(dregs, s.debugger.RegsToStr, false))
 	*registers = regs.String()
 	return nil
 }

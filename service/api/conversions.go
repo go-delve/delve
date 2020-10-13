@@ -379,19 +379,10 @@ var canonicalRegisterOrder = map[string]int{
 }
 
 // ConvertRegisters converts proc.Register to api.Register for a slice.
-func ConvertRegisters(in *op.DwarfRegisters, dwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string), floatingPoint bool) (out []Register) {
+func ConvertRegisters(in *op.DwarfRegisters, GetRegs func(*op.DwarfRegisters, *[]Register, bool), floatingPoint bool) (out []Register) {
 	out = make([]Register, 0, in.CurrentSize())
-	for i := 0; i < in.CurrentSize(); i++ {
-		reg := in.Reg(uint64(i))
-		if reg == nil {
-			continue
-		}
-		name, fp, repr := dwarfRegisterToString(i, reg)
-		if !floatingPoint && fp {
-			continue
-		}
-		out = append(out, Register{name, repr, i})
-	}
+	GetRegs(in, &out, floatingPoint)
+
 	// Sort the registers in a canonical order we prefer, this is mostly
 	// because the DWARF register numbering for AMD64 is weird.
 	sort.Slice(out, func(i, j int) bool {

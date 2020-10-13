@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"math/big"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -38,6 +39,11 @@ func ARM64Arch(goos string) *Arch {
 		RegistersToDwarfRegisters:        arm64RegistersToDwarfRegisters,
 		addrAndStackRegsToDwarfRegisters: arm64AddrAndStackRegsToDwarfRegisters,
 		DwarfRegisterToString:            arm64DwarfRegisterToString,
+		QDwarfRegisterToString:           arm64qDwarfRegisterToString,
+		DDwarfRegisterToString:           arm64dDwarfRegisterToString,
+		SDwarfRegisterToString:           arm64sDwarfRegisterToString,
+		HDwarfRegisterToString:           arm64hDwarfRegisterToString,
+		BDwarfRegisterToString:           arm64bDwarfRegisterToString,
 		inhibitStepInto:                  func(*BinaryInfo, uint64) bool { return false },
 		asmDecode:                        arm64AsmDecode,
 	}
@@ -391,34 +397,205 @@ func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 		for i := range vi {
 			binary.Read(buf, binary.LittleEndian, &vi[i])
 		}
+        //D
+		fmt.Fprintf(&out, " {\n\tD = {u = {0x%02x%02x%02x%02x%02x%02x%02x%02x,", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+		fmt.Fprintf(&out, " 0x%02x%02x%02x%02x%02x%02x%02x%02x},", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+		fmt.Fprintf(&out, " s = {0x%02x%02x%02x%02x%02x%02x%02x%02x,", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+		fmt.Fprintf(&out, " 0x%02x%02x%02x%02x%02x%02x%02x%02x}},", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
 
-		fmt.Fprintf(&out, "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8], vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+		//S
+		fmt.Fprintf(&out, " \n\tS = {u = {0x%02x%02x%02x%02x,0x%02x%02x%02x%02x,", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4])
+		fmt.Fprintf(&out, " 0x%02x%02x%02x%02x,0x%02x%02x%02x%02x},", vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
+		fmt.Fprintf(&out, " s = {0x%02x%02x%02x%02x,0x%02x%02x%02x%02x,", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4])
+		fmt.Fprintf(&out, " 0x%02x%02x%02x%02x,0x%02x%02x%02x%02x}},", vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
 
-		fmt.Fprintf(&out, "\tv2_int={ %02x%02x%02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x%02x%02x }", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0], vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+		//H
+		fmt.Fprintf(&out, " \n\tH = {u = {0x%02x%02x,0x%02x%02x,0x%02x%02x,0x%02x%02x,", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6])
+		fmt.Fprintf(&out, " 0x%02x%02x,0x%02x%02x,0x%02x%02x,0x%02x%02x},", vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
+		fmt.Fprintf(&out, " s = {0x%02x%02x,0x%02x%02x,0x%02x%02x,0x%02x%02x,", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6])
+		fmt.Fprintf(&out, " 0x%02x%02x,0x%02x%02x,0x%02x%02x,0x%02x%02x}},", vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
 
-		fmt.Fprintf(&out, "\tv4_int={ %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x }", vi[3], vi[2], vi[1], vi[0], vi[7], vi[6], vi[5], vi[4], vi[11], vi[10], vi[9], vi[8], vi[15], vi[14], vi[13], vi[12])
+		//B
+		fmt.Fprintf(&out, " \n\tB = {u = {0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7])
+		fmt.Fprintf(&out, " 0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x},", vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
+		fmt.Fprintf(&out, " s = {0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7])
+		fmt.Fprintf(&out, " 0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,0x%02x}}", vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
 
-		fmt.Fprintf(&out, "\tv8_int={ %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x }", vi[1], vi[0], vi[3], vi[2], vi[5], vi[4], vi[7], vi[6], vi[9], vi[8], vi[11], vi[10], vi[13], vi[12], vi[15], vi[14])
-
-		fmt.Fprintf(&out, "\tv16_int={ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x }", vi[0], vi[1], vi[2], vi[3], vi[4], vi[5], vi[6], vi[7], vi[8], vi[9], vi[10], vi[11], vi[12], vi[13], vi[14], vi[15])
-
-		buf.Seek(0, io.SeekStart)
-		var v2 [2]float64
-		for i := range v2 {
-			binary.Read(buf, binary.LittleEndian, &v2[i])
-		}
-		fmt.Fprintf(&out, "\tv2_float={ %g %g }", v2[0], v2[1])
-
-		buf.Seek(0, io.SeekStart)
-		var v4 [4]float32
-		for i := range v4 {
-			binary.Read(buf, binary.LittleEndian, &v4[i])
-		}
-		fmt.Fprintf(&out, "\tv4_float={ %g %g %g %g }", v4[0], v4[1], v4[2], v4[3])
+		//Q
+		fmt.Fprintf(&out, " \n\tQ = {u = {0x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+		fmt.Fprintf(&out, "%02x%02x%02x%02x%02x%02x%02x%02x},", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
+		fmt.Fprintf(&out, " s = {0x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
+		fmt.Fprintf(&out, "%02x%02x%02x%02x%02x%02x%02x%02x}}\n\t}", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
 
 		return name, true, out.String()
 	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
 		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 	}
 	return name, false, fmt.Sprintf("%#x", reg.Bytes)
+}
+
+//get Q registers
+func arm64qDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+
+	name = fmt.Sprintf("Q%d", i-64)
+	buf := bytes.NewReader(reg.Bytes)
+
+	var out bytes.Buffer
+	var vi [4]uint32
+	for i := range vi {
+		binary.Read(buf, binary.LittleEndian, &vi[i])
+	}
+
+	UnsignRegscat := arm64UnsignBigRegsCate(int64(vi[3]), int64(vi[2]), int64(vi[1]), int64(vi[0]))
+	SignRegscat := arm64SignBigRegsCate(int64(vi[3]), int64(vi[2]), int64(vi[1]), int64(vi[0]))
+
+	fmt.Fprintf(&out, " {u = 0x%x%x%x%x, s = 0x%x%x%x%x}", vi[3], vi[2], vi[1], vi[0], vi[3], vi[2], vi[1], vi[0])
+	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegscat, SignRegscat)
+	buf.Seek(0, io.SeekStart)
+
+	return name, true, out.String()
+}
+
+//get D registers
+func arm64dDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+
+	name = fmt.Sprintf("D%d", i-64)
+	buf := bytes.NewReader(reg.Bytes)
+
+	var out bytes.Buffer
+	var vi [2]uint64
+	for i := range vi {
+		binary.Read(buf, binary.LittleEndian, &vi[i])
+	}
+
+	UnsignRegsCat := vi[0]
+	SignRegsCat := int64(UnsignRegsCat)
+
+	fmt.Fprintf(&out, " {u = 0x%x s = 0x%x}", vi[0], vi[0])
+	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
+	buf.Seek(0, io.SeekStart)
+
+	return name, true, out.String()
+}
+
+//get S registers
+func arm64sDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+
+	name = fmt.Sprintf("S%d", i-64)
+	buf := bytes.NewReader(reg.Bytes)
+
+	var out bytes.Buffer
+	var vi [4]uint32
+	for i := range vi {
+		binary.Read(buf, binary.LittleEndian, &vi[i])
+	}
+	UnsignRegsCat := vi[0]
+	SignRegsCat := int32(UnsignRegsCat)
+
+	fmt.Fprintf(&out, " {u = 0x%x, s =0x%x}", vi[0], vi[0])
+	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
+	buf.Seek(0, io.SeekStart)
+
+	return name, true, out.String()
+}
+
+//get H registers
+func arm64hDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+
+	name = fmt.Sprintf("H%d", i-64)
+	buf := bytes.NewReader(reg.Bytes)
+
+	var out bytes.Buffer
+	var vi [8]uint16
+	for i := range vi {
+		binary.Read(buf, binary.LittleEndian, &vi[i])
+	}
+
+	RegNum := vi[0]
+	SignedRegNum := int16(RegNum)
+
+	fmt.Fprintf(&out, " {u = 0x%x, s = 0x%x}", vi[0], vi[0])
+	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", RegNum, SignedRegNum)
+	buf.Seek(0, io.SeekStart)
+
+	return name, true, out.String()
+}
+
+//get B registers
+func arm64bDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+
+	name = fmt.Sprintf("B%d", i-64)
+	buf := bytes.NewReader(reg.Bytes)
+
+	var out bytes.Buffer
+	var vi [16]uint8
+
+	binary.Read(buf, binary.LittleEndian, &vi[0])
+	RegNum := vi[0]
+	SignedRegNum := int8(RegNum)
+
+	fmt.Fprintf(&out, " {u = 0x%02x, s = 0x%02x}", vi[0], vi[0])
+	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", RegNum, SignedRegNum)
+	buf.Seek(0, io.SeekStart)
+
+	return name, true, out.String()
+}
+
+//catenate regs1,regs2,regs3,regs4 to be a unsigned number
+func arm64UnsignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big.Int) {
+	BigInter1 := big.NewInt(vi1)
+	BigInter2 := big.NewInt(vi2)
+	BigInter3 := big.NewInt(vi3)
+	BigInter4 := big.NewInt(vi4)
+	BigInter := big.NewInt(0)
+
+	BigInter1.Lsh(BigInter1, 96)
+	BigInter2.Lsh(BigInter2, 64)
+	BigInter3.Lsh(BigInter3, 32)
+
+	BigInter.Add(BigInter1, BigInter2).Add(BigInter, BigInter3).Add(BigInter, BigInter4)
+
+	return BigInter
+}
+
+//catenate regs1,regs2,regs3,regs4 to be a signed number
+func arm64SignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big.Int) {
+	//	var IsNegativenum bool
+	var ClearHigh int64 = 0x7FFFFFFF
+	var ClearLow int64 = 0xFFFFFFFF
+	var SignJudge int64 = 0x80000000
+	BigClear := big.NewInt(0)
+	NumOne := big.NewInt(1)
+
+	if (vi1 & SignJudge) == SignJudge { //negative
+		BigClearHigh := big.NewInt(ClearHigh)
+		BigClearLow1 := big.NewInt(ClearLow)
+		BigClearLow2 := big.NewInt(ClearLow)
+		BigClearLow3 := big.NewInt(ClearLow)
+		BigClearHigh.Lsh(BigClearHigh, 96)
+		BigClearLow1.Lsh(BigClearLow1, 64)
+		BigClearLow2.Lsh(BigClearLow2, 32)
+		BigClear.Add(BigClearHigh, BigClearLow1).Add(BigClear, BigClearLow2).Add(BigClear, BigClearLow3)
+
+		vi1 &= ClearHigh
+		BigInter1 := big.NewInt(vi1)
+		BigInter2 := big.NewInt(vi2)
+		BigInter3 := big.NewInt(vi3)
+		BigInter4 := big.NewInt(vi4)
+		BigInter := big.NewInt(0)
+
+		BigInter1.Lsh(BigInter1, 96)
+		BigInter2.Lsh(BigInter2, 64)
+		BigInter3.Lsh(BigInter3, 32)
+
+		BigInter.Add(BigInter1, BigInter2).Add(BigInter, BigInter3).Add(BigInter, BigInter4)
+
+		BigInter.Sub(BigInter, NumOne)
+		BigInter.Not(BigInter)
+		BigInter.And(BigInter, BigClear)
+		BigInter.Neg(BigInter)
+		return BigInter
+	} else {
+		return arm64UnsignBigRegsCate(vi1, vi2, vi3, vi4)
+	}
 }

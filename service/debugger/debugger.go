@@ -1208,9 +1208,63 @@ func (d *Debugger) ScopeRegisters(goid, frame, deferredCall int, floatingPoint b
 	return &s.Regs, nil
 }
 
-// DwarfRegisterToString returns the name and value representation of the given register.
-func (d *Debugger) DwarfRegisterToString(i int, reg *op.DwarfRegister) (string, bool, string) {
-	return d.target.BinInfo().Arch.DwarfRegisterToString(i, reg)
+// RegsToStr returns the registers of amd64 or arm64.
+func (d *Debugger) RegsToStr(in *op.DwarfRegisters, pout *[]api.Register,  FloatingPoint bool)  {
+	if d.target.BinInfo().Arch.Name == "amd64"{
+		for i := 0; i < in.CurrentSize(); i++ {
+			reg := in.Reg(uint64(i))
+			if reg == nil {
+				continue
+			}
+			name, fp, repr := d.target.BinInfo().Arch.DwarfRegisterToString(i, reg)
+			if !FloatingPoint && fp {
+				continue
+			}
+			*pout = append(*pout, api.Register{name, repr, i})
+		}
+	}else if d.target.BinInfo().Arch.Name == "arm64"{
+		for FloatRegType := 0; FloatRegType < 6; FloatRegType++ {
+			GetAllRegs(d.target.BinInfo().Arch, in, FloatRegType, pout, FloatingPoint)
+		}
+	}
+}
+
+//GetAllRegs gets all floating-point registers containing Q,D,S,H,B of arm64 
+func GetAllRegs(ArchReg *proc.Arch, In *op.DwarfRegisters, RegsType int, pout *[]api.Register, FloatingPoint bool) {
+	var RegsToString func(int, *op.DwarfRegister) (string, bool, string)
+	var adder int = 0
+	if RegsType == 0 {
+		adder = 0
+	} else {
+		adder = 65 + 32*(RegsType-1)
+	}
+	switch {
+	case RegsType == 0:
+		RegsToString = ArchReg.DwarfRegisterToString
+	case RegsType == 1:
+		RegsToString = ArchReg.QDwarfRegisterToString
+	case RegsType == 2:
+		RegsToString = ArchReg.DDwarfRegisterToString
+	case RegsType == 3:
+		RegsToString = ArchReg.SDwarfRegisterToString
+	case RegsType == 4:
+		RegsToString = ArchReg.HDwarfRegisterToString
+	case RegsType == 5:
+		RegsToString = ArchReg.BDwarfRegisterToString
+	}
+	for i := 0; i < In.CurrentSize(); i++ {
+		reg := In.Reg(uint64(i))
+		if reg == nil {
+			continue
+		}
+		if RegsType == 0 || i >= 64 {
+			RegName, FP, RegRepr := RegsToString(i, reg)
+			if !FloatingPoint && FP {
+				continue
+			}
+			*pout = append(*pout, api.Register{RegName, RegRepr, i + adder})
+		}
+	}
 }
 
 // LocalVariables returns a list of the local variables.
