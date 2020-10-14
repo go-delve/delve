@@ -394,7 +394,10 @@ func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 		var out bytes.Buffer
 		var vi [16]uint8
 		for i := range vi {
-			binary.Read(buf, binary.LittleEndian, &vi[i])
+			err := binary.Read(buf, binary.LittleEndian, &vi[i])
+			if err != nil {
+				fmt.Println("binary.Read failed:", err)
+			}
 		}
 		//D
 		fmt.Fprintf(&out, " {\n\tD = {u = {0x%02x%02x%02x%02x%02x%02x%02x%02x,", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
@@ -445,7 +448,10 @@ func arm64qDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 		var vi [4]uint32
 		var vi64 [4]int64
 		for i := range vi {
-			binary.Read(buf, binary.LittleEndian, &vi[i])
+			err := binary.Read(buf, binary.LittleEndian, &vi[i])
+			if err != nil {
+				fmt.Println("binary.Read failed:", err)
+			}
 		}
 		for i := range vi {
 			vi64[3-i] = int64(vi[i])
@@ -474,7 +480,10 @@ func arm64dDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 		var out bytes.Buffer
 		var vi [2]uint64
 		for i := range vi {
-			binary.Read(buf, binary.LittleEndian, &vi[i])
+			err := binary.Read(buf, binary.LittleEndian, &vi[i])
+			if err != nil {
+				fmt.Println("binary.Read failed:", err)
+			}
 		}
 
 		UnsignRegsCat := vi[0]
@@ -500,7 +509,10 @@ func arm64sDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 		var out bytes.Buffer
 		var vi [4]uint32
 		for i := range vi {
-			binary.Read(buf, binary.LittleEndian, &vi[i])
+			err := binary.Read(buf, binary.LittleEndian, &vi[i])
+			if err != nil {
+				fmt.Println("binary.Read failed:", err)
+			}
 		}
 		UnsignRegsCat := vi[0]
 		SignRegsCat := int32(UnsignRegsCat)
@@ -526,7 +538,10 @@ func arm64hDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 		var out bytes.Buffer
 		var vi [8]uint16
 		for i := range vi {
-			binary.Read(buf, binary.LittleEndian, &vi[i])
+			err := binary.Read(buf, binary.LittleEndian, &vi[i])
+			if err != nil {
+				fmt.Println("binary.Read failed:", err)
+			}
 		}
 
 		RegNum := vi[0]
@@ -553,7 +568,11 @@ func arm64bDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 		var out bytes.Buffer
 		var vi [16]uint8
 
-		binary.Read(buf, binary.LittleEndian, &vi[0])
+		err := binary.Read(buf, binary.LittleEndian, &vi[0])
+		if err != nil {
+			fmt.Println("binary.Read failed:", err)
+		}
+		
 		RegNum := vi[0]
 		SignedRegNum := int8(RegNum)
 
