@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
-	"strings"
 	"math/big"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -397,7 +396,7 @@ func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 		for i := range vi {
 			binary.Read(buf, binary.LittleEndian, &vi[i])
 		}
-        //D
+		//D
 		fmt.Fprintf(&out, " {\n\tD = {u = {0x%02x%02x%02x%02x%02x%02x%02x%02x,", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
 		fmt.Fprintf(&out, " 0x%02x%02x%02x%02x%02x%02x%02x%02x},", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
 		fmt.Fprintf(&out, " s = {0x%02x%02x%02x%02x%02x%02x%02x%02x,", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
@@ -438,115 +437,144 @@ func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 func arm64qDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 
 	name = fmt.Sprintf("Q%d", i-64)
-	buf := bytes.NewReader(reg.Bytes)
+	if reg.Bytes != nil && name[0] == 'Q' {
 
-	var out bytes.Buffer
-	var vi [4]uint32
-	for i := range vi {
-		binary.Read(buf, binary.LittleEndian, &vi[i])
+		buf := bytes.NewReader(reg.Bytes)
+
+		var out bytes.Buffer
+		var vi [4]uint32
+		var vi64 [4]int64
+		for i := range vi {
+			binary.Read(buf, binary.LittleEndian, &vi[i])
+		}
+		for i := range vi {
+			vi64[3-i] = int64(vi[i])
+		}
+
+		UnsignRegscat := arm64UnsignBigRegsCate(vi64)
+		SignRegscat := arm64SignBigRegsCate(vi64)
+
+		fmt.Fprintf(&out, " {u = 0x%x%x%x%x, s = 0x%x%x%x%x}", vi[3], vi[2], vi[1], vi[0], vi[3], vi[2], vi[1], vi[0])
+		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegscat, SignRegscat)
+
+		return name, true, out.String()
+
+	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
+		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 	}
-
-	UnsignRegscat := arm64UnsignBigRegsCate(int64(vi[3]), int64(vi[2]), int64(vi[1]), int64(vi[0]))
-	SignRegscat := arm64SignBigRegsCate(int64(vi[3]), int64(vi[2]), int64(vi[1]), int64(vi[0]))
-
-	fmt.Fprintf(&out, " {u = 0x%x%x%x%x, s = 0x%x%x%x%x}", vi[3], vi[2], vi[1], vi[0], vi[3], vi[2], vi[1], vi[0])
-	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegscat, SignRegscat)
-	buf.Seek(0, io.SeekStart)
-
-	return name, true, out.String()
+	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }
 
 //get D registers
 func arm64dDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-
 	name = fmt.Sprintf("D%d", i-64)
-	buf := bytes.NewReader(reg.Bytes)
+	if reg.Bytes != nil && name[0] == 'D' {
+		buf := bytes.NewReader(reg.Bytes)
 
-	var out bytes.Buffer
-	var vi [2]uint64
-	for i := range vi {
-		binary.Read(buf, binary.LittleEndian, &vi[i])
+		var out bytes.Buffer
+		var vi [2]uint64
+		for i := range vi {
+			binary.Read(buf, binary.LittleEndian, &vi[i])
+		}
+
+		UnsignRegsCat := vi[0]
+		SignRegsCat := int64(UnsignRegsCat)
+
+		fmt.Fprintf(&out, " {u = 0x%x s = 0x%x}", vi[0], vi[0])
+		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
+
+		return name, true, out.String()
+
+	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
+		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 	}
-
-	UnsignRegsCat := vi[0]
-	SignRegsCat := int64(UnsignRegsCat)
-
-	fmt.Fprintf(&out, " {u = 0x%x s = 0x%x}", vi[0], vi[0])
-	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
-	buf.Seek(0, io.SeekStart)
-
-	return name, true, out.String()
+	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }
 
 //get S registers
 func arm64sDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-
 	name = fmt.Sprintf("S%d", i-64)
-	buf := bytes.NewReader(reg.Bytes)
+	if reg.Bytes != nil && name[0] == 'S' {
+		buf := bytes.NewReader(reg.Bytes)
 
-	var out bytes.Buffer
-	var vi [4]uint32
-	for i := range vi {
-		binary.Read(buf, binary.LittleEndian, &vi[i])
+		var out bytes.Buffer
+		var vi [4]uint32
+		for i := range vi {
+			binary.Read(buf, binary.LittleEndian, &vi[i])
+		}
+		UnsignRegsCat := vi[0]
+		SignRegsCat := int32(UnsignRegsCat)
+
+		fmt.Fprintf(&out, " {u = 0x%x, s =0x%x}", vi[0], vi[0])
+		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
+
+		return name, true, out.String()
+
+	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
+		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 	}
-	UnsignRegsCat := vi[0]
-	SignRegsCat := int32(UnsignRegsCat)
-
-	fmt.Fprintf(&out, " {u = 0x%x, s =0x%x}", vi[0], vi[0])
-	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
-	buf.Seek(0, io.SeekStart)
-
-	return name, true, out.String()
+	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }
 
 //get H registers
 func arm64hDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-
 	name = fmt.Sprintf("H%d", i-64)
-	buf := bytes.NewReader(reg.Bytes)
+	if reg.Bytes != nil && name[0] == 'H' {
 
-	var out bytes.Buffer
-	var vi [8]uint16
-	for i := range vi {
-		binary.Read(buf, binary.LittleEndian, &vi[i])
+		buf := bytes.NewReader(reg.Bytes)
+
+		var out bytes.Buffer
+		var vi [8]uint16
+		for i := range vi {
+			binary.Read(buf, binary.LittleEndian, &vi[i])
+		}
+
+		RegNum := vi[0]
+		SignedRegNum := int16(RegNum)
+
+		fmt.Fprintf(&out, " {u = 0x%x, s = 0x%x}", vi[0], vi[0])
+		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", RegNum, SignedRegNum)
+
+		return name, true, out.String()
+
+	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
+		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
 	}
-
-	RegNum := vi[0]
-	SignedRegNum := int16(RegNum)
-
-	fmt.Fprintf(&out, " {u = 0x%x, s = 0x%x}", vi[0], vi[0])
-	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", RegNum, SignedRegNum)
-	buf.Seek(0, io.SeekStart)
-
-	return name, true, out.String()
+	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }
 
 //get B registers
 func arm64bDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-
 	name = fmt.Sprintf("B%d", i-64)
-	buf := bytes.NewReader(reg.Bytes)
+	if reg.Bytes != nil && name[0] == 'B' {
 
-	var out bytes.Buffer
-	var vi [16]uint8
+		buf := bytes.NewReader(reg.Bytes)
 
-	binary.Read(buf, binary.LittleEndian, &vi[0])
-	RegNum := vi[0]
-	SignedRegNum := int8(RegNum)
+		var out bytes.Buffer
+		var vi [16]uint8
 
-	fmt.Fprintf(&out, " {u = 0x%02x, s = 0x%02x}", vi[0], vi[0])
-	fmt.Fprintf(&out, "\n       {u = %d, s = %d}", RegNum, SignedRegNum)
-	buf.Seek(0, io.SeekStart)
+		binary.Read(buf, binary.LittleEndian, &vi[0])
+		RegNum := vi[0]
+		SignedRegNum := int8(RegNum)
 
-	return name, true, out.String()
+		fmt.Fprintf(&out, " {u = 0x%02x, s = 0x%02x}", vi[0], vi[0])
+		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", RegNum, SignedRegNum)
+
+		return name, true, out.String()
+
+	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
+		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
+	}
+	return name, false, fmt.Sprintf("%#x", reg.Bytes)
+
 }
 
 //catenate regs1,regs2,regs3,regs4 to be a unsigned number
-func arm64UnsignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big.Int) {
-	BigInter1 := big.NewInt(vi1)
-	BigInter2 := big.NewInt(vi2)
-	BigInter3 := big.NewInt(vi3)
-	BigInter4 := big.NewInt(vi4)
+func arm64UnsignBigRegsCate(vi [4]int64) (Vis *big.Int) {
+	BigInter1 := big.NewInt(vi[0])
+	BigInter2 := big.NewInt(vi[1])
+	BigInter3 := big.NewInt(vi[2])
+	BigInter4 := big.NewInt(vi[3])
 	BigInter := big.NewInt(0)
 
 	BigInter1.Lsh(BigInter1, 96)
@@ -559,7 +587,7 @@ func arm64UnsignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big
 }
 
 //catenate regs1,regs2,regs3,regs4 to be a signed number
-func arm64SignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big.Int) {
+func arm64SignBigRegsCate(vi [4]int64) (Vis *big.Int) {
 	//	var IsNegativenum bool
 	var ClearHigh int64 = 0x7FFFFFFF
 	var ClearLow int64 = 0xFFFFFFFF
@@ -567,7 +595,7 @@ func arm64SignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big.I
 	BigClear := big.NewInt(0)
 	NumOne := big.NewInt(1)
 
-	if (vi1 & SignJudge) == SignJudge { //negative
+	if (vi[0] & SignJudge) == SignJudge { //negative
 		BigClearHigh := big.NewInt(ClearHigh)
 		BigClearLow1 := big.NewInt(ClearLow)
 		BigClearLow2 := big.NewInt(ClearLow)
@@ -577,11 +605,11 @@ func arm64SignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big.I
 		BigClearLow2.Lsh(BigClearLow2, 32)
 		BigClear.Add(BigClearHigh, BigClearLow1).Add(BigClear, BigClearLow2).Add(BigClear, BigClearLow3)
 
-		vi1 &= ClearHigh
-		BigInter1 := big.NewInt(vi1)
-		BigInter2 := big.NewInt(vi2)
-		BigInter3 := big.NewInt(vi3)
-		BigInter4 := big.NewInt(vi4)
+		vi[0] &= ClearHigh
+		BigInter1 := big.NewInt(vi[0])
+		BigInter2 := big.NewInt(vi[1])
+		BigInter3 := big.NewInt(vi[2])
+		BigInter4 := big.NewInt(vi[3])
 		BigInter := big.NewInt(0)
 
 		BigInter1.Lsh(BigInter1, 96)
@@ -596,6 +624,6 @@ func arm64SignBigRegsCate(vi1 int64, vi2 int64, vi3 int64, vi4 int64) (vi *big.I
 		BigInter.Neg(BigInter)
 		return BigInter
 	} else {
-		return arm64UnsignBigRegsCate(vi1, vi2, vi3, vi4)
+		return arm64UnsignBigRegsCate(vi)
 	}
 }

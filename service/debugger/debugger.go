@@ -1209,8 +1209,8 @@ func (d *Debugger) ScopeRegisters(goid, frame, deferredCall int, floatingPoint b
 }
 
 // RegsToStr returns the registers of amd64 or arm64.
-func (d *Debugger) RegsToStr(in *op.DwarfRegisters, pout *[]api.Register,  FloatingPoint bool)  {
-	if d.target.BinInfo().Arch.Name == "amd64"{
+func (d *Debugger) RegsToStr(in *op.DwarfRegisters, pout *[]api.Register, FloatingPoint bool) {
+	if d.target.BinInfo().Arch.Name == "amd64" {
 		for i := 0; i < in.CurrentSize(); i++ {
 			reg := in.Reg(uint64(i))
 			if reg == nil {
@@ -1220,16 +1220,16 @@ func (d *Debugger) RegsToStr(in *op.DwarfRegisters, pout *[]api.Register,  Float
 			if !FloatingPoint && fp {
 				continue
 			}
-			*pout = append(*pout, api.Register{name, repr, i})
+			*pout = append(*pout, api.Register{Name: name, Value: repr, DwarfNumber: i})
 		}
-	}else if d.target.BinInfo().Arch.Name == "arm64"{
+	} else if d.target.BinInfo().Arch.Name == "arm64" {
 		for FloatRegType := 0; FloatRegType < 6; FloatRegType++ {
 			GetAllRegs(d.target.BinInfo().Arch, in, FloatRegType, pout, FloatingPoint)
 		}
 	}
 }
 
-//GetAllRegs gets all floating-point registers containing Q,D,S,H,B of arm64 
+//GetAllRegs gets all floating-point registers containing Q,D,S,H,B of arm64
 func GetAllRegs(ArchReg *proc.Arch, In *op.DwarfRegisters, RegsType int, pout *[]api.Register, FloatingPoint bool) {
 	var RegsToString func(int, *op.DwarfRegister) (string, bool, string)
 	var adder int = 0
@@ -1262,7 +1262,7 @@ func GetAllRegs(ArchReg *proc.Arch, In *op.DwarfRegisters, RegsType int, pout *[
 			if !FloatingPoint && FP {
 				continue
 			}
-			*pout = append(*pout, api.Register{RegName, RegRepr, i + adder})
+			*pout = append(*pout, api.Register{Name: RegName, Value: RegRepr, DwarfNumber: (i + adder)})
 		}
 	}
 }

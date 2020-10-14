@@ -404,7 +404,7 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 
 	var regs *op.DwarfRegisters
 	var err error
-	
+
 	if arg.Scope != nil {
 		regs, err = s.debugger.ScopeRegisters(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.IncludeFp)
 	} else {
@@ -412,7 +412,7 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 	}
 	if err != nil {
 		return err
-	}   
+	}
 	out.Regs = api.ConvertRegisters(regs, s.debugger.RegsToStr, arg.IncludeFp)
 	out.Registers = out.Regs.String()
 
