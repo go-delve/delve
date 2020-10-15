@@ -12,7 +12,7 @@ import (
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
 
 // Launch returns ErrNativeBackendDisabled.
-func Launch(_ []string, _ string, _ bool, _ []string, _ string, _ [3]string) (*proc.Target, error) {
+func Launch(_ []string, _ string, _ proc.LaunchFlags, _ []string, _ string, _ [3]string) (*proc.Target, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
