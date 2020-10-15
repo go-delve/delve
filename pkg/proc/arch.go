@@ -34,16 +34,6 @@ type Arch struct {
 	addrAndStackRegsToDwarfRegisters func(uint64, uint64, uint64, uint64, uint64) op.DwarfRegisters
 	// DwarfRegisterToString returns the name and value representation of the given register.
 	DwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
-	//QDwarfRegisterToString returns the Q registers
-	QDwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
-	//DDwarfRegisterToString returns the D registers
-	DDwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
-	//SDwarfRegisterToString returns the S registers
-	SDwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
-	//HDwarfRegisterToString returns the H registers
-	HDwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
-	//BDwarfRegisterToString returns the B registers
-	BDwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
 	// inhibitStepInto returns whether StepBreakpoint can be set at pc.
 	inhibitStepInto func(bi *BinaryInfo, pc uint64) bool
 

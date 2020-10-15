@@ -20,6 +20,7 @@ const (
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
+var arm64RegsType = 0
 
 // ARM64Arch returns an initialized ARM64
 // struct.
@@ -38,11 +39,6 @@ func ARM64Arch(goos string) *Arch {
 		RegistersToDwarfRegisters:        arm64RegistersToDwarfRegisters,
 		addrAndStackRegsToDwarfRegisters: arm64AddrAndStackRegsToDwarfRegisters,
 		DwarfRegisterToString:            arm64DwarfRegisterToString,
-		QDwarfRegisterToString:           arm64qDwarfRegisterToString,
-		DDwarfRegisterToString:           arm64dDwarfRegisterToString,
-		SDwarfRegisterToString:           arm64sDwarfRegisterToString,
-		HDwarfRegisterToString:           arm64hDwarfRegisterToString,
-		BDwarfRegisterToString:           arm64bDwarfRegisterToString,
 		inhibitStepInto:                  func(*BinaryInfo, uint64) bool { return false },
 		asmDecode:                        arm64AsmDecode,
 	}
@@ -374,7 +370,24 @@ func arm64AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op
 }
 
 func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-	// see arm64DwarfToHardware table for explanation
+	switch{
+	case arm64RegsType == 0:
+		return arm64VRegistersToString(i, reg)
+	case arm64RegsType == 1:
+		return arm64QRegistersToString(i, reg)
+	case arm64RegsType == 2:
+		return arm64DRegistersToString(i, reg)
+	case arm64RegsType == 3:
+		return arm64SRegistersToString(i, reg)
+	case arm64RegsType == 4:
+		return arm64HRegistersToString(i, reg)
+	case arm64RegsType == 5:
+		return arm64BRegistersToString(i, reg)
+	}
+	return name, floatingPoint, repr
+}
+
+func arm64VRegistersToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	switch {
 	case i <= 30:
 		name = fmt.Sprintf("X%d", i)
@@ -428,7 +441,9 @@ func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 		fmt.Fprintf(&out, "%02x%02x%02x%02x%02x%02x%02x%02x},", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
 		fmt.Fprintf(&out, " s = {0x%02x%02x%02x%02x%02x%02x%02x%02x", vi[15], vi[14], vi[13], vi[12], vi[11], vi[10], vi[9], vi[8])
 		fmt.Fprintf(&out, "%02x%02x%02x%02x%02x%02x%02x%02x}}\n\t}", vi[7], vi[6], vi[5], vi[4], vi[3], vi[2], vi[1], vi[0])
-
+		if i == 95 {
+			arm64RegsType = 1
+		}
 		return name, true, out.String()
 	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
 		return name, false, fmt.Sprintf("%#016x", reg.Uint64Val)
@@ -436,8 +451,9 @@ func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floa
 	return name, false, fmt.Sprintf("%#x", reg.Bytes)
 }
 
+
 //get Q registers
-func arm64qDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+func arm64QRegistersToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 
 	name = fmt.Sprintf("Q%d", i-64)
 	if reg.Bytes != nil && name[0] == 'Q' {
@@ -462,7 +478,9 @@ func arm64qDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 
 		fmt.Fprintf(&out, " {u = 0x%x%x%x%x, s = 0x%x%x%x%x}", vi[3], vi[2], vi[1], vi[0], vi[3], vi[2], vi[1], vi[0])
 		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegscat, SignRegscat)
-
+		if i == 95 {
+			arm64RegsType = 2
+		}
 		return name, true, out.String()
 
 	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
@@ -472,7 +490,7 @@ func arm64qDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 }
 
 //get D registers
-func arm64dDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+func arm64DRegistersToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	name = fmt.Sprintf("D%d", i-64)
 	if reg.Bytes != nil && name[0] == 'D' {
 		buf := bytes.NewReader(reg.Bytes)
@@ -491,7 +509,9 @@ func arm64dDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 
 		fmt.Fprintf(&out, " {u = 0x%x s = 0x%x}", vi[0], vi[0])
 		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
-
+		if i == 95 {
+			arm64RegsType = 3
+		}
 		return name, true, out.String()
 
 	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
@@ -501,7 +521,7 @@ func arm64dDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 }
 
 //get S registers
-func arm64sDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+func arm64SRegistersToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	name = fmt.Sprintf("S%d", i-64)
 	if reg.Bytes != nil && name[0] == 'S' {
 		buf := bytes.NewReader(reg.Bytes)
@@ -519,7 +539,9 @@ func arm64sDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 
 		fmt.Fprintf(&out, " {u = 0x%x, s =0x%x}", vi[0], vi[0])
 		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", UnsignRegsCat, SignRegsCat)
-
+		if i == 95 {
+			arm64RegsType = 4
+		}
 		return name, true, out.String()
 
 	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
@@ -529,7 +551,7 @@ func arm64sDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 }
 
 //get H registers
-func arm64hDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+func arm64HRegistersToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	name = fmt.Sprintf("H%d", i-64)
 	if reg.Bytes != nil && name[0] == 'H' {
 
@@ -549,7 +571,9 @@ func arm64hDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 
 		fmt.Fprintf(&out, " {u = 0x%x, s = 0x%x}", vi[0], vi[0])
 		fmt.Fprintf(&out, "\n       {u = %d, s = %d}", RegNum, SignedRegNum)
-
+		if i == 95 {
+			arm64RegsType = 5
+		}
 		return name, true, out.String()
 
 	} else if reg.Bytes == nil || (reg.Bytes != nil && len(reg.Bytes) < 16) {
@@ -559,7 +583,7 @@ func arm64hDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 }
 
 //get B registers
-func arm64bDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
+func arm64BRegistersToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
 	name = fmt.Sprintf("B%d", i-64)
 	if reg.Bytes != nil && name[0] == 'B' {
 
@@ -572,7 +596,7 @@ func arm64bDwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, flo
 		if err != nil {
 			fmt.Println("binary.Read failed:", err)
 		}
-		
+
 		RegNum := vi[0]
 		SignedRegNum := int8(RegNum)
 
