@@ -207,8 +207,10 @@ const (
 	targetCmd          = "target extended-remote "
 )
 
-func rrStderrParser(stderr io.Reader, initch chan<- rrInit, quiet bool) {
+func rrStderrParser(stderr io.ReadCloser, initch chan<- rrInit, quiet bool) {
 	rd := bufio.NewReader(stderr)
+	defer stderr.Close()
+
 	for {
 		line, err := rd.ReadString('\n')
 		if err != nil {
