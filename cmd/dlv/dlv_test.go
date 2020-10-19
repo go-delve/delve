@@ -93,7 +93,9 @@ func TestBuild(t *testing.T) {
 	cmd.Dir = buildtestdir
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
-	cmd.Start()
+	defer stderr.Close()
+
+	assertNoError(cmd.Start(), t, "dlv debug")
 
 	scan := bufio.NewScanner(stderr)
 	// wait for the debugger to start
@@ -134,15 +136,13 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	cmd := exec.Command(c[0], c[1:]...)
 	cmd.Dir = buildtestdir
 	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "stdin pipe")
+	defer stdin.Close()
+
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(cmd.Start(), t, "dlv debug with output")
 
 	// Give delve some time to compile and write the binary.
 	foundIt := false
@@ -231,9 +231,9 @@ func TestContinue(t *testing.T) {
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stderr pipe")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("could not start headless instance: %v", err)
-	}
+	defer stdout.Close()
+
+	assertNoError(cmd.Start(), t, "start headless instance")
 
 	scan := bufio.NewScanner(stdout)
 	// wait for the debugger to start
@@ -276,9 +276,9 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 	cmd := exec.Command("ps", "-aux")
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stderr pipe")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("`ps -aux` failed: %v", err)
-	}
+	defer stdout.Close()
+
+	assertNoError(cmd.Start(), t, "start `ps -aux`")
 
 	var foundFlag bool
 	scan := bufio.NewScanner(stdout)
@@ -570,11 +570,12 @@ func TestDap(t *testing.T) {
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--listen", listenAddr)
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("could not start dap instance: %v", err)
-	}
+	defer stderr.Close()
+
+	assertNoError(cmd.Start(), t, "start dap instance")
 
 	scanOut := bufio.NewScanner(stdout)
 	scanErr := bufio.NewScanner(stderr)
@@ -611,18 +612,16 @@ func TestTrace(t *testing.T) {
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
 	rdr, err := cmd.StderrPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
-	err = cmd.Start()
-	if err != nil {
-		t.Fatalf("error running trace: %v", err)
-	}
+
+	assertNoError(cmd.Start(), t, "running trace")
+
 	output, err := ioutil.ReadAll(rdr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "ReadAll")
+
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
@@ -646,9 +645,8 @@ func TestTracePid(t *testing.T) {
 	// make process run
 	fix := protest.BuildFixture("issue2023", 0)
 	targetCmd := exec.Command(fix.Path)
-	if err := targetCmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(targetCmd.Start(), t, "execute issue2023")
+
 	if targetCmd.Process == nil || targetCmd.Process.Pid == 0 {
 		t.Fatal("expected target process runninng")
 	}
@@ -657,17 +655,14 @@ func TestTracePid(t *testing.T) {
 	// dlv attach the process by pid
 	cmd := exec.Command(dlvbin, "trace", "-p", strconv.Itoa(targetCmd.Process.Pid), "main.A")
 	rdr, err := cmd.StderrPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = cmd.Start()
-	if err != nil {
-		t.Fatalf("error running trace: %#v", err)
-	}
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
 	output, err := ioutil.ReadAll(rdr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "ReadAll")
+
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
@@ -685,20 +680,18 @@ func TestTraceBreakpointExists(t *testing.T) {
 	// TODO: Perhaps we shouldn't be setting these default breakpoints in trace mode, however.
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "runtime.*")
 	rdr, err := cmd.StderrPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
-	err = cmd.Start()
-	if err != nil {
-		t.Fatalf("error running trace: %v", err)
-	}
+
+	assertNoError(cmd.Start(), t, "running trace")
+
 	defer cmd.Wait()
 
 	output, err := ioutil.ReadAll(rdr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "ReadAll")
+
 	if bytes.Contains(output, []byte("Breakpoint exists")) {
 		t.Fatal("Breakpoint exists errors should be ignored")
 	}
@@ -711,20 +704,17 @@ func TestTracePrintStack(t *testing.T) {
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), "--stack", "2", filepath.Join(fixtures, "issue573.go"), "foo")
 	rdr, err := cmd.StderrPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
-	err = cmd.Start()
-	if err != nil {
-		t.Fatalf("error running trace: %v", err)
-	}
+	assertNoError(cmd.Start(), t, "running trace")
+
 	defer cmd.Wait()
 
 	output, err := ioutil.ReadAll(rdr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoError(err, t, "ReadAll")
+
 	if !bytes.Contains(output, []byte("Stack:")) && !bytes.Contains(output, []byte("main.main")) {
 		t.Fatal("stacktrace not printed")
 	}

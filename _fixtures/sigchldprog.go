@@ -13,12 +13,13 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	defer reader.Close()
+
 	scanner := bufio.NewScanner(reader)
 	go func() {
 		for scanner.Scan() {
 			fmt.Println(scanner.Text())
 		}
-		reader.Close()
 	}()
 	cmd.Start()
 	cmd.Wait()
