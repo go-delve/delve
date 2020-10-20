@@ -2109,9 +2109,12 @@ func TestIssue2162(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
+		state, err := c.GetState()
+		assertNoError(err, t, "GetState()")
+
+		t.Logf("state: %#v", state)
+
 		_, err = c.Step()
-		if err != nil {
-			assertNoError(err, t, "Step()")
-		}
+		assertNoError(err, t, "Step()")
 	})
 }
