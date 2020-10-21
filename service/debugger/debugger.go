@@ -120,6 +120,9 @@ type Config struct {
 
 	// Redirects specifies redirect rules for stdin, stdout and stderr
 	Redirects [3]string
+
+	// DisableASLR disables ASLR
+	DisableASLR bool
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -222,11 +225,20 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 	if err := verifyBinaryFormat(processArgs[0]); err != nil {
 		return nil, err
 	}
+
+	launchFlags := proc.LaunchFlags(0)
+	if d.config.Foreground {
+		launchFlags |= proc.LaunchForeground
+	}
+	if d.config.DisableASLR {
+		launchFlags |= proc.LaunchDisableASLR
+	}
+
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
 	case "rr":
 		if d.target != nil {
 			// restart should not call us if the backend is 'rr'
@@ -268,9 +280,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
 		}
-		return native.Launch(processArgs, wd, d.config.Foreground, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}

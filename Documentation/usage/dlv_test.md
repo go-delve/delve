@@ -31,6 +31,7 @@ dlv test [package]
       --backend string                   Backend selection (see 'dlv help backend'). (default "default")
       --build-flags string               Build flags, to be passed to the compiler.
       --check-go-version                 Checks that the version of Go in use is compatible with Delve. (default true)
+      --disable-aslr                     Disables address space randomization
       --headless                         Run debug server only, in headless mode.
       --init string                      Init file, executed by the terminal client.
   -l, --listen string                    Debugging server listen address. (default "127.0.0.1:0")

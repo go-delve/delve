@@ -58,6 +58,8 @@ var (
 	checkLocalConnUser bool
 	// tty is used to provide an alternate TTY for the program you wish to debug.
 	tty string
+	// disableASLR is used to disable ASLR
+	disableASLR bool
 
 	// backend selection
 	backend string
@@ -131,6 +133,7 @@ func New(docCall bool) *cobra.Command {
 	rootCommand.PersistentFlags().StringVar(&backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
 	rootCommand.PersistentFlags().StringArrayVarP(&redirects, "redirect", "r", []string{}, "Specifies redirect rules for target process (see 'dlv help redirect')")
 	rootCommand.PersistentFlags().BoolVar(&allowNonTerminalInteractive, "allow-non-terminal-interactive", false, "Allows interactive sessions of Delve that don't have a terminal as stdin, stdout and stderr")
+	rootCommand.PersistentFlags().BoolVar(&disableASLR, "disable-aslr", false, "Disables address space randomization")
 
 	// 'attach' subcommand.
 	attachCommand := &cobra.Command{
@@ -842,6 +845,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				CheckGoVersion:       checkGoVersion,
 				TTY:                  tty,
 				Redirects:            redirects,
+				DisableASLR:          disableASLR,
 			},
 		})
 	default:
