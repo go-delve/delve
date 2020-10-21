@@ -40,6 +40,7 @@ func ARM64Arch(goos string) *Arch {
 		DwarfRegisterToString:            arm64DwarfRegisterToString,
 		inhibitStepInto:                  func(*BinaryInfo, uint64) bool { return false },
 		asmDecode:                        arm64AsmDecode,
+		usesLR:                           true,
 	}
 }
 
