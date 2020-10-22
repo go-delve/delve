@@ -1052,6 +1052,16 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
 	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
 	if err == nil && isCall { // call {expression}
+		// This call might be evaluated in the context of the frame that is not topmost
+		// if the editor is set to view the variables for one of the parent frames.
+		// If the call expression refers to any of these variables, unlike regular
+		// expressions, it will evaluate them in the context of the topmost frame,
+		// and the user will get an unexpected result or an unexpected symbol error.
+		// We prevent this but disallowing any frames other than topmost.
+		if frame > 0 {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "call is only supported with topmost stack frame", showErrorToUser)
+			return
+		}
 		state, err := s.debugger.Command(&api.DebuggerCommand{
 			Name:                 api.Call,
 			ReturnInfoLoadConfig: apiCfg,
@@ -1069,7 +1079,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			return
 		}
 		retVars := s.debugger.ReturnValues(&prcCfg)
-		if retVars != nil && len(retVars) > 0 {
+		if len(retVars) > 0 {
 			// Package one or more return values in a single scope-like nameless variable
 			// that preserves their names.
 			retVarsAsVar := &proc.Variable{Children: slicePtrVarToSliceVar(retVars)}

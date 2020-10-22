@@ -1305,14 +1305,35 @@ func TestEvaluateCallRequest(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		t.Skip("arm64 does not support FunctionCall for now")
 	}
+	protest.MustSupportFunctionCalls(t, testBackend)
 	runTest(t, "fncall", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client,
 			// Launch
 			func() {
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 			},
-			fixture.Source, []int{},
-			[]onBreakpoint{{ // Stop at runtime.Breakpoint
+			fixture.Source, []int{83},
+			[]onBreakpoint{{ // Stop in makeclos()
+				execute: func() {
+					handleStop(t, client, 1, 83)
+
+					// Topmost frame: both types of expressions should work
+					client.EvaluateRequest("callstacktrace", 1000, "this context will be ignored")
+					client.ExpectEvaluateResponse(t)
+					client.EvaluateRequest("call callstacktrace()", 1000, "this context will be ignored")
+					client.ExpectEvaluateResponse(t)
+
+					// Next frame: only regular expressions will work
+					client.EvaluateRequest("callstacktrace", 1001, "this context will be ignored")
+					client.ExpectEvaluateResponse(t)
+					client.EvaluateRequest("call callstacktrace()", 1001, "this context will be ignored")
+					erres := client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: call is only supported with topmost stack frame" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call is only supported with topmost stack frame\"", erres)
+					}
+				},
+				disconnect: false,
+			}, { // Stop at runtime breakpoint
 				execute: func() {
 					handleStop(t, client, 1, 192)
 
