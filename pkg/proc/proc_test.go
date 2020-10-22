@@ -97,9 +97,9 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, false, []string{}, "", [3]string{})
+		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, false, []string{}, "", [3]string{})
+		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
@@ -2108,9 +2108,9 @@ func TestUnsupportedArch(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{outfile}, ".", false, []string{}, "", [3]string{})
+		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", [3]string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", false, []string{}, "", [3]string{})
+		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", [3]string{})
 	default:
 		t.Skip("test not valid for this backend")
 	}
@@ -4519,6 +4519,8 @@ func TestIssue1615(t *testing.T) {
 
 func TestCgoStacktrace2(t *testing.T) {
 	skipOn(t, "upstream issue", "windows")
+	skipOn(t, "broken", "386")
+	skipOn(t, "broken", "arm64")
 	protest.MustHaveCgo(t)
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
@@ -4527,7 +4529,10 @@ func TestCgoStacktrace2(t *testing.T) {
 		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
 		assertNoError(err, t, "Stacktrace()")
 		logStacktrace(t, p.BinInfo(), frames)
-		stacktraceCheck(t, []string{"C.sigsegv", "C.testfn", "main.main"}, frames)
+		m := stacktraceCheck(t, []string{"C.sigsegv", "C.testfn", "main.main"}, frames)
+		if m == nil {
+			t.Fatal("see previous loglines")
+		}
 	})
 }
 

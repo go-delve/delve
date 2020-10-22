@@ -23,6 +23,13 @@ var (
 	ErrProcessDetached = errors.New("detached from the process")
 )
 
+type LaunchFlags uint8
+
+const (
+	LaunchForeground LaunchFlags = 1 << iota
+	LaunchDisableASLR
+)
+
 // Target represents the process being debugged.
 type Target struct {
 	Process

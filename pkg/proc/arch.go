@@ -59,12 +59,6 @@ func (a *Arch) MaxInstructionLength() int {
 	return a.maxInstructionLength
 }
 
-// Prologues returns a list of stack split prologues
-// that are inserted at function entry.
-func (a *Arch) Prologues() []opcodeSeq {
-	return a.prologues
-}
-
 // BreakpointInstruction is the instruction that will trigger a breakpoint trap for
 // the given architecture.
 func (a *Arch) BreakpointInstruction() []byte {

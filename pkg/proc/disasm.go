@@ -83,7 +83,7 @@ func firstPCAfterPrologueDisassembly(p Process, fn *Function, sameline bool) (ui
 		return fn.Entry, nil
 	}
 
-	for _, prologue := range p.BinInfo().Arch.Prologues() {
+	for _, prologue := range p.BinInfo().Arch.prologues {
 		if len(prologue) >= len(text) {
 			continue
 		}

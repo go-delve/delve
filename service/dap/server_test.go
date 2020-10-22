@@ -279,9 +279,9 @@ func TestContinueOnEntry(t *testing.T) {
 	})
 }
 
-// TestSetBreakpoint corresponds to a debug session that is configured to
+// TestPreSetBreakpoint corresponds to a debug session that is configured to
 // continue on entry with a pre-set breakpoint.
-func TestSetBreakpoint(t *testing.T) {
+func TestPreSetBreakpoint(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
 		client.ExpectInitializeResponse(t)
@@ -290,7 +290,7 @@ func TestSetBreakpoint(t *testing.T) {
 		client.ExpectInitializedEvent(t)
 		client.ExpectLaunchResponse(t)
 
-		client.SetBreakpointsRequest(fixture.Source, []int{8, 100})
+		client.SetBreakpointsRequest(fixture.Source, []int{8})
 		sResp := client.ExpectSetBreakpointsResponse(t)
 		if len(sResp.Body.Breakpoints) != 1 {
 			t.Errorf("got %#v, want len(Breakpoints)=1", sResp)
@@ -497,8 +497,7 @@ func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, value
 	return expectVar(t, got, i, name, value, false, hasRef)
 }
 
-// TestStackTraceRequest executes to a breakpoint (similarly to TestSetBreakpoint
-// that includes more thorough checking of that sequence) and tests different
+// TestStackTraceRequest executes to a breakpoint and tests different
 // good and bad configurations of 'stackTrace' requests.
 func TestStackTraceRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -1152,6 +1151,104 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 	})
 }
 
+// TestSetBreakpoint executes to a breakpoint and tests different
+// configurations of setBreakpoint requests.
+func TestSetBreakpoint(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 16)
+
+					type Breakpoint struct {
+						line      int
+						verified  bool
+						msgPrefix string
+					}
+					expectSetBreakpointsResponse := func(bps []Breakpoint) {
+						t.Helper()
+						got := client.ExpectSetBreakpointsResponse(t)
+						if len(got.Body.Breakpoints) != len(bps) {
+							t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
+							return
+						}
+						for i, bp := range got.Body.Breakpoints {
+							if bp.Line != bps[i].line || bp.Verified != bps[i].verified ||
+								!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
+								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+							}
+						}
+					}
+
+					// Set two breakpoints at the next two lines in main
+					client.SetBreakpointsRequest(fixture.Source, []int{17, 18})
+					expectSetBreakpointsResponse([]Breakpoint{{17, true, ""}, {18, true, ""}})
+
+					// Clear 17, reset 18
+					client.SetBreakpointsRequest(fixture.Source, []int{18})
+					expectSetBreakpointsResponse([]Breakpoint{{18, true, ""}})
+
+					// Skip 17, continue to 18
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, 18)
+
+					// Set another breakpoint inside the loop in loop(), twice to trigger error
+					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
+					expectSetBreakpointsResponse([]Breakpoint{{8, true, ""}, {8, false, "Breakpoint exists"}})
+
+					// Continue into the loop
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, 8)
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals, 0, "i", "0", noChildren) // i == 0
+
+					// Edit the breakpoint to add a condition
+					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
+					expectSetBreakpointsResponse([]Breakpoint{{8, true, ""}})
+
+					// Continue until condition is hit
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, 8)
+					client.VariablesRequest(1001) // Locals
+					locals = client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals, 0, "i", "3", noChildren) // i == 3
+
+					// Edit the breakpoint to remove a condition
+					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
+					expectSetBreakpointsResponse([]Breakpoint{{8, true, ""}})
+
+					// Continue for one more loop iteration
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, 8)
+					client.VariablesRequest(1001) // Locals
+					locals = client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals, 0, "i", "4", noChildren) // i == 4
+
+					// Set at a line without a statement
+					client.SetBreakpointsRequest(fixture.Source, []int{1000})
+					expectSetBreakpointsResponse([]Breakpoint{{1000, false, "could not find statement"}}) // all cleared, none set
+				},
+				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
 // expectEval is a helper for verifying the values within an EvaluateResponse.
 //     value - the value of the evaluated expression
 //     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
@@ -1502,6 +1599,91 @@ func TestBadAccess(t *testing.T) {
 	})
 }
 
+func TestPanicBreakpointOnContinue(t *testing.T) {
+	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{5},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 5)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"panic\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestPanicBreakpointOnNext(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+		// In Go 1.13, 'next' will step into the defer in the runtime
+		// main function, instead of the next line in the main program.
+		t.SkipNow()
+	}
+
+	runTest(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{5},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 5)
+
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+
+					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
+						t.Errorf("\ngot  %#v\nexpected ThreadId=1 Reason=\"panic\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestFatalThrowBreakpoint(t *testing.T) {
+	runTest(t, "testdeadlock", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{3},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, 3)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"fatal error\"", se)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 // handleStop covers the standard sequence of reqeusts issued by
 // a client at a breakpoint or another non-terminal stop event.
 // The details have been tested by other tests,
@@ -1585,11 +1767,11 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, launchRequest 
 	client.ExpectDisconnectResponse(t)
 }
 
-// runDebugSesion is a helper for executing the standard init and shutdown
+// runDebugSession is a helper for executing the standard init and shutdown
 // sequences for a program that does not stop on entry
 // while specifying unique launch criteria via parameters.
-func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func()) {
-	runDebugSessionWithBPs(t, client, launchRequest, "", nil, nil)
+func runDebugSession(t *testing.T, client *daptest.Client, launchRequest func(), source string) {
+	runDebugSessionWithBPs(t, client, launchRequest, source, nil, nil)
 }
 
 func TestLaunchDebugRequest(t *testing.T) {
@@ -1600,7 +1782,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source})
-		})
+		}, fixture.Source)
 	})
 }
 
@@ -1613,7 +1795,7 @@ func TestLaunchTestRequest(t *testing.T) {
 			testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "test", "program": testdir, "output": "__mytestdir"})
-		})
+		}, fixture.Source)
 	})
 }
 
@@ -1627,7 +1809,7 @@ func TestLaunchRequestWithArgs(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "exec", "program": fixture.Path,
 				"args": []string{"test", "pass flag"}})
-		})
+		}, fixture.Source)
 	})
 }
 
@@ -1643,7 +1825,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source,
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
-		})
+		}, fixture.Source)
 	})
 }
 
