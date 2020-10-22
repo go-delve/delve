@@ -127,7 +127,7 @@ func WriteAPIListeningMessage(addr string) {
 	writeListeningMessage("API", addr)
 }
 
-func writeListeningMessage(server string, addr string) {
+func writeListeningMessage(server, addr string) {
 	msg := fmt.Sprintf("%s server listening at: %s", server, addr)
 	if logOut != nil {
 		fmt.Fprintln(logOut, msg)
@@ -141,7 +141,7 @@ var errLogstrWithoutLog = errors.New("--log-output specified without --log")
 // Setup sets debugger flags based on the contents of logstr.
 // If logDest is not empty logs will be redirected to the file descriptor or
 // file path specified by logDest.
-func Setup(logFlag bool, logstr string, logDest string) error {
+func Setup(logFlag bool, logstr, logDest string) error {
 	if logDest != "" {
 		n, err := strconv.Atoi(logDest)
 		if err == nil {
