@@ -4160,7 +4160,6 @@ func TestNextUnknownInstr(t *testing.T) {
 }
 
 func TestReadDeferArgs(t *testing.T) {
-	skipOn(t, "broken - reading defers", "arm64")
 	var tests = []struct {
 		frame, deferCall int
 		a, b             int64
