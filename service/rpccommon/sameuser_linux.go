@@ -11,6 +11,8 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 // for testing
@@ -108,7 +110,11 @@ func canAccept(listenAddr, remoteAddr net.Addr) bool {
 		log.Printf("cannot check remote address: %v", err)
 	}
 	if !same {
-		log.Printf("closing connection from different user (%v): connections to localhost are only accepted from the same UNIX user for security reasons", addr)
+		if logflags.Any() {
+			log.Printf("closing connection from different user (%v): connections to localhost are only accepted from the same UNIX user for security reasons", addr)
+		} else {
+			fmt.Fprintf(os.Stderr, "closing connection from different user (%v): connections to localhost are only accepted from the same UNIX user for security reasons", addr)
+		}
 		return false
 	}
 	return true
