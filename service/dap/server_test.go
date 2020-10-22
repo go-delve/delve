@@ -927,14 +927,14 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					expectVarExact(t, locals, -1, "fn2", "<main.functype>", noChildren)
 					// reflect.Kind == Interface
 					expectVarExact(t, locals, -1, "ifacenil", "nil <interface {}>", noChildren)
-					ref = expectVarExact(t, locals, -1, "iface2", "<interface {}>", hasChildren)
+					ref = expectVarExact(t, locals, -1, "iface2", "<interface {}(string)>", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, iface2, "iface2", 1)
 						expectVarExact(t, iface2, 0, "data", `"test"`, noChildren)
 					}
-					ref = expectVarExact(t, locals, -1, "iface4", "<interface {}>", hasChildren)
+					ref = expectVarExact(t, locals, -1, "iface4", "<interface {}([]go/constant.Value)>", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface4 := client.ExpectVariablesResponse(t)
@@ -944,10 +944,12 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							client.VariablesRequest(ref)
 							iface4data := client.ExpectVariablesResponse(t)
 							expectChildren(t, iface4data, "iface4.data", 1)
-							expectVarExact(t, iface4data, 0, "[0]", "<go/constant.Value>", hasChildren)
+							expectVarExact(t, iface4data, 0, "[0]", "<go/constant.Value(go/constant.int64Val)>", hasChildren)
 
 						}
 					}
+					expectVarExact(t, locals, -1, "errnil", "nil <error>", noChildren)
+					expectVarExact(t, locals, -1, "err1", "<error(*main.astruct)>", hasChildren)
 					// reflect.Kind == Map
 					expectVarExact(t, locals, -1, "mnil", "nil <map[string]main.astruct>", noChildren)
 					ref = expectVarExact(t, locals, -1, "m2", "<map[int]*main.astruct> (length: 1)", hasChildren)
@@ -1236,7 +1238,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Map access
 					client.EvaluateRequest("mp[1]", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					ref = expectEval(t, got, "<interface {}>", hasChildren)
+					ref = expectEval(t, got, "<interface {}(int)>", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						expr := client.ExpectVariablesResponse(t)
@@ -1332,12 +1334,12 @@ func TestEvaluateCallRequest(t *testing.T) {
 					// Panic doesn't panic, but instead returns the error as a named return variable
 					client.EvaluateRequest("call callpanic()", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					ref = expectEval(t, got, "<interface {}>", hasChildren)
+					ref = expectEval(t, got, "<interface {}(string)>", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						expectChildren(t, rv, "rv", 1)
-						ref = expectVarExact(t, rv, 0, "~panic", "<interface {}>", hasChildren)
+						ref = expectVarExact(t, rv, 0, "~panic", "<interface {}(string)>", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							p := client.ExpectVariablesResponse(t)
