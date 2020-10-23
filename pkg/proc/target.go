@@ -73,6 +73,32 @@ func (pe ErrProcessExited) Error() string {
 // case only one will be reported.
 type StopReason uint8
 
+// String maps StopReason to string representation.
+func (sr StopReason) String() string {
+	switch sr {
+	case StopUnknown:
+		return "unkown"
+	case StopLaunched:
+		return "launched"
+	case StopAttached:
+		return "attached"
+	case StopExited:
+		return "exited"
+	case StopBreakpoint:
+		return "breakpoint"
+	case StopHardcodedBreakpoint:
+		return "hardcoded breakpoint"
+	case StopManual:
+		return "manual"
+	case StopNextFinished:
+		return "next finished"
+	case StopCallReturned:
+		return "call returned"
+	default:
+		return ""
+	}
+}
+
 const (
 	StopUnknown             StopReason = iota
 	StopLaunched                       // The process was just launched
