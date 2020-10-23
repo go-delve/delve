@@ -1095,6 +1095,11 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "call is only supported with topmost stack frame", showErrorToUser)
 			return
 		}
+		stateBeforeCall, err := s.debugger.State( /*nowait*/ true)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+			return
+		}
 		state, err := s.debugger.Command(&api.DebuggerCommand{
 			Name:                 api.Call,
 			ReturnInfoLoadConfig: apiCfg,
@@ -1111,6 +1116,30 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
+		// If we made it this far, then there must be a selected goroutine.
+		// Otherwise we would have gotten errNoGoroutine from Command(Call),
+		// but just in case, let's be explicit.
+		if state.SelectedGoroutine == nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "no goroutine selected", showErrorToUser)
+			return
+		}
+		// We can tell if the call got interrupted by a stop (e.g. breakpoint in called function or
+		// in another goroutine), by checking if the selected goroutine changed.
+		// If the call completes, we should return to the original state of the goroutine.
+		// TODO(polina): Is this true? Can I rely on goroutine equality to detect completed calls?
+		if !reflect.DeepEqual(stateBeforeCall.SelectedGoroutine, state.SelectedGoroutine) {
+			s.resetHandlesForStop()
+			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+			stopped.Body.ThreadId = state.SelectedGoroutine.ID
+			stopped.Body.AllThreadsStopped = true
+			stopped.Body.Reason = s.debugger.StopReason().String()
+			s.send(stopped)
+			// TODO(polina): once this is asynchronous, we could wait to reply until the user
+			// continues, call ends, original stop point is hit and return values are available.
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "call stopped", showErrorToUser)
+			return
+		}
+		// The call completed and we can reply with its return values (if any)
 		retVars := s.debugger.ReturnValues(&prcCfg)
 		if len(retVars) > 0 {
 			// Package one or more return values in a single scope-like nameless variable
