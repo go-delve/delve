@@ -45,6 +45,11 @@ func callpanic() {
 	panic("callpanic panicked")
 }
 
+func callbreak() {
+	fmt.Printf("about to break")
+	runtime.Breakpoint()
+}
+
 func stringsJoin(v []string, sep string) string {
 	// This is needed because strings.Join is in an optimized package and
 	// because of a bug in the compiler arguments of optimized functions don't
@@ -195,5 +200,5 @@ func main() {
 	d.Method()
 	d.Base.Method()
 	x.CallMe()
-	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5))
+	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5))
 }

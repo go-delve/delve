@@ -1409,10 +1409,10 @@ func TestEvaluateCallRequest(t *testing.T) {
 			func() {
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 			},
-			fixture.Source, []int{83},
+			fixture.Source, []int{88},
 			[]onBreakpoint{{ // Stop in makeclos()
 				execute: func() {
-					handleStop(t, client, 1, 83)
+					handleStop(t, client, 1, 88)
 
 					// Topmost frame: both types of expressions should work
 					client.EvaluateRequest("callstacktrace", 1000, "this context will be ignored")
@@ -1423,16 +1423,40 @@ func TestEvaluateCallRequest(t *testing.T) {
 					// Next frame: only regular expressions will work
 					client.EvaluateRequest("callstacktrace", 1001, "this context will be ignored")
 					client.ExpectEvaluateResponse(t)
-					client.EvaluateRequest("call callstacktrace()", 1001, "this context will be ignored")
+					client.EvaluateRequest("call callstacktrace()", 1001, "not watch")
 					erres := client.ExpectVisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to evaluate expression: call is only supported with topmost stack frame" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call is only supported with topmost stack frame\"", erres)
 					}
+
+					// A call can stop on a breakpoint
+					client.EvaluateRequest("call callbreak()", 1000, "not watch")
+					s := client.ExpectStoppedEvent(t)
+					if s.Body.Reason != "hardcoded breakpoint" {
+						t.Errorf("\ngot %#v\nwant Reason=\"hardcoded breakpoint\"", s)
+					}
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
+					}
+
+					// A call during a call causes an error
+					client.EvaluateRequest("call callstacktrace()", 1001, "not watch")
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: cannot call function while another function call is already in progress" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: cannot call function while another function call is already in progress\"", erres)
+					}
+
+					// Complete the call and get back to original breakpoint
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, 88)
 				},
 				disconnect: false,
 			}, { // Stop at runtime breakpoint
 				execute: func() {
-					handleStop(t, client, 1, 192)
+					handleStop(t, client, 1, 197)
 
 					// No return values
 					client.EvaluateRequest("call call0(1, 2)", 1000, "this context will be ignored")
