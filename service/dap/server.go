@@ -59,8 +59,10 @@ type Server struct {
 	// binaryToRemove is the compiled binary to be removed on disconnect.
 	binaryToRemove string
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
+	// Reset at every stop.
 	stackFrameHandles *handlesMap
 	// variableHandles maps compound variables to unique references within their stack frame.
+	// Reset at every stop.
 	// See also comment for convertVariable.
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
@@ -1273,6 +1275,11 @@ func newEvent(event string) *dap.Event {
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
 
+func (s *Server) resetHandlesForStop() {
+	s.stackFrameHandles.reset()
+	s.variableHandles.reset()
+}
+
 // doCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client.
@@ -1288,9 +1295,7 @@ func (s *Server) doCommand(command string) {
 		return
 	}
 
-	s.stackFrameHandles.reset()
-	s.variableHandles.reset()
-
+	s.resetHandlesForStop()
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true
 
