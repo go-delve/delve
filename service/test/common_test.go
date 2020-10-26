@@ -80,7 +80,7 @@ type locationFinder1 interface {
 }
 
 type locationFinder2 interface {
-	FindLocation(api.EvalScope, string, bool) ([]api.Location, error)
+	FindLocation(api.EvalScope, string, bool, [][2]string) ([]api.Location, error)
 }
 
 func findLocationHelper(t *testing.T, c interface{}, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
@@ -91,7 +91,7 @@ func findLocationHelper(t *testing.T, c interface{}, loc string, shouldErr bool,
 	case locationFinder1:
 		locs, err = c.FindLocation(api.EvalScope{GoroutineID: -1}, loc)
 	case locationFinder2:
-		locs, err = c.FindLocation(api.EvalScope{GoroutineID: -1}, loc, false)
+		locs, err = c.FindLocation(api.EvalScope{GoroutineID: -1}, loc, false, nil)
 	default:
 		t.Errorf("unexpected type %T passed to findLocationHelper", c)
 	}

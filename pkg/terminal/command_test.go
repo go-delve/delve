@@ -247,8 +247,8 @@ func TestExecuteFile(t *testing.T) {
 }
 
 func TestIssue354(t *testing.T) {
-	printStack(os.Stdout, []api.Stackframe{}, "", false)
-	printStack(os.Stdout, []api.Stackframe{
+	printStack(&Term{}, os.Stdout, []api.Stackframe{}, "", false)
+	printStack(&Term{}, os.Stdout, []api.Stackframe{
 		{Location: api.Location{PC: 0, File: "irrelevant.go", Line: 10, Function: nil},
 			Bottom: true}}, "", false)
 }

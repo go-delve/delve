@@ -304,7 +304,7 @@ type FindLocationArgs struct {
 
 func (c *RPCServer) FindLocation(args FindLocationArgs, answer *[]api.Location) error {
 	var err error
-	*answer, err = c.debugger.FindLocation(args.Scope.GoroutineID, args.Scope.Frame, args.Scope.DeferredCall, args.Loc, false)
+	*answer, err = c.debugger.FindLocation(args.Scope.GoroutineID, args.Scope.Frame, args.Scope.DeferredCall, args.Loc, false, nil)
 	return err
 }
 

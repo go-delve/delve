@@ -1443,7 +1443,7 @@ func (d *Debugger) CurrentPackage() (string, error) {
 }
 
 // FindLocation will find the location specified by 'locStr'.
-func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, includeNonExecutableLines bool) ([]api.Location, error) {
+func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1458,7 +1458,7 @@ func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, in
 
 	s, _ := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 
-	locs, err := loc.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines)
+	locs, err := loc.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
 	for i := range locs {
 		if locs[i].PC == 0 {
 			continue

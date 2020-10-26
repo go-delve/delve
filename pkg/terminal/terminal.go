@@ -6,7 +6,6 @@ import (
 	"net/rpc"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -14,6 +13,7 @@ import (
 	"github.com/peterh/liner"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/terminal/starbind"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -59,6 +59,8 @@ type Term struct {
 	historyFile *os.File
 
 	starlarkEnv *starbind.Env
+
+	substitutePathRulesCache [][2]string
 
 	// quitContinue is set to true by exitCommand to signal that the process
 	// should be resumed before quitting.
@@ -287,40 +289,33 @@ func (t *Term) Println(prefix, str string) {
 // in the order they are defined, first rule that matches is used for
 // substitution.
 func (t *Term) substitutePath(path string) string {
-	path = crossPlatformPath(path)
 	if t.conf == nil {
 		return path
 	}
-
-	// On windows paths returned from headless server are as c:/dir/dir
-	// though os.PathSeparator is '\\'
-
-	separator := "/"                     //make it default
-	if strings.Index(path, "\\") != -1 { //dependent on the path
-		separator = "\\"
-	}
-	for _, r := range t.conf.SubstitutePath {
-		from := crossPlatformPath(r.From)
-		to := r.To
-
-		if !strings.HasSuffix(from, separator) {
-			from = from + separator
-		}
-		if !strings.HasSuffix(to, separator) {
-			to = to + separator
-		}
-		if strings.HasPrefix(path, from) {
-			return strings.Replace(path, from, to, 1)
-		}
-	}
-	return path
+	return locspec.SubstitutePath(path, t.substitutePathRules())
 }
 
-func crossPlatformPath(path string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(path)
+func (t *Term) substitutePathRules() [][2]string {
+	if t.substitutePathRulesCache != nil {
+		return t.substitutePathRulesCache
 	}
-	return path
+	if t.conf == nil || t.conf.SubstitutePath == nil {
+		return nil
+	}
+	spr := make([][2]string, 0, len(t.conf.SubstitutePath))
+	for _, r := range t.conf.SubstitutePath {
+		spr = append(spr, [2]string{r.From, r.To})
+	}
+	t.substitutePathRulesCache = spr
+	return spr
+}
+
+// formatPath applies path substitution rules and shortens the resulting
+// path by replacing the current directory with './'
+func (t *Term) formatPath(path string) string {
+	path = t.substitutePath(path)
+	workingDir, _ := os.Getwd()
+	return strings.Replace(path, workingDir, ".", 1)
 }
 
 func (t *Term) promptForInput() (string, error) {
