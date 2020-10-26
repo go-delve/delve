@@ -607,10 +607,10 @@ func threads(t *Term, ctx callContext, args string) error {
 		}
 		if th.Function != nil {
 			fmt.Printf("%sThread %d at %#v %s:%d %s\n",
-				prefix, th.ID, th.PC, shortenFilePath(th.File),
+				prefix, th.ID, th.PC, t.formatPath(th.File),
 				th.Line, th.Function.Name())
 		} else {
-			fmt.Printf("%sThread %s\n", prefix, formatThread(th))
+			fmt.Printf("%sThread %s\n", prefix, t.formatThread(th))
 		}
 	}
 	return nil
@@ -667,7 +667,7 @@ func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, flags
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = "* "
 		}
-		fmt.Printf("%sGoroutine %s\n", prefix, formatGoroutine(g, fgl))
+		fmt.Printf("%sGoroutine %s\n", prefix, t.formatGoroutine(g, fgl))
 		if flags&printGoroutinesLabels != 0 {
 			writeGoroutineLabels(os.Stdout, g, "\t")
 		}
@@ -676,7 +676,7 @@ func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, flags
 			if err != nil {
 				return err
 			}
-			printStack(os.Stdout, stack, "\t", false)
+			printStack(t, os.Stdout, stack, "\t", false)
 		}
 	}
 	return nil
@@ -840,7 +840,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	}
 	printcontext(t, state)
 	th := stack[frame]
-	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, shortenFilePath(th.File), th.Line, th.PC)
+	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, t.formatPath(th.File), th.Line, th.PC)
 	printfile(t, th.File, th.Line, true)
 	return nil
 }
@@ -867,18 +867,18 @@ func printscope(t *Term) error {
 		return err
 	}
 
-	fmt.Printf("Thread %s\n", formatThread(state.CurrentThread))
+	fmt.Printf("Thread %s\n", t.formatThread(state.CurrentThread))
 	if state.SelectedGoroutine != nil {
-		writeGoroutineLong(os.Stdout, state.SelectedGoroutine, "")
+		writeGoroutineLong(t, os.Stdout, state.SelectedGoroutine, "")
 	}
 	return nil
 }
 
-func formatThread(th *api.Thread) string {
+func (t *Term) formatThread(th *api.Thread) string {
 	if th == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%d at %s:%d", th.ID, shortenFilePath(th.File), th.Line)
+	return fmt.Sprintf("%d at %s:%d", th.ID, t.formatPath(th.File), th.Line)
 }
 
 type formatGoroutineLoc int
@@ -890,11 +890,11 @@ const (
 	fglStart
 )
 
-func formatLocation(loc api.Location) string {
-	return fmt.Sprintf("%s:%d %s (%#v)", shortenFilePath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
+func (t *Term) formatLocation(loc api.Location) string {
+	return fmt.Sprintf("%s:%d %s (%#v)", t.formatPath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
 }
 
-func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
+func (t *Term) formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 	if g == nil {
 		return "<nil>"
 	}
@@ -921,16 +921,16 @@ func formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
 	if g.ThreadID != 0 {
 		thread = fmt.Sprintf(" (thread %d)", g.ThreadID)
 	}
-	return fmt.Sprintf("%d - %s: %s%s", g.ID, locname, formatLocation(loc), thread)
+	return fmt.Sprintf("%d - %s: %s%s", g.ID, locname, t.formatLocation(loc), thread)
 }
 
-func writeGoroutineLong(w io.Writer, g *api.Goroutine, prefix string) {
+func writeGoroutineLong(t *Term, w io.Writer, g *api.Goroutine, prefix string) {
 	fmt.Fprintf(w, "%sGoroutine %d:\n%s\tRuntime: %s\n%s\tUser: %s\n%s\tGo: %s\n%s\tStart: %s\n",
 		prefix, g.ID,
-		prefix, formatLocation(g.CurrentLoc),
-		prefix, formatLocation(g.UserCurrentLoc),
-		prefix, formatLocation(g.GoStatementLoc),
-		prefix, formatLocation(g.StartLoc))
+		prefix, t.formatLocation(g.CurrentLoc),
+		prefix, t.formatLocation(g.UserCurrentLoc),
+		prefix, t.formatLocation(g.GoStatementLoc),
+		prefix, t.formatLocation(g.StartLoc))
 	writeGoroutineLabels(w, g, prefix+"\t")
 }
 
@@ -1041,7 +1041,7 @@ func restartIntl(t *Term, rerecord bool, restartPos string, resetArgs bool, newA
 		return err
 	}
 	for i := range discarded {
-		fmt.Printf("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
+		fmt.Printf("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), t.formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
 	}
 	return nil
 }
@@ -1342,7 +1342,7 @@ func clear(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
+	fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	return nil
 }
 
@@ -1354,7 +1354,7 @@ func clearAll(t *Term, ctx callContext, args string) error {
 
 	var locPCs map[uint64]struct{}
 	if args != "" {
-		locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args, true)
+		locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args, true, t.substitutePathRules())
 		if err != nil {
 			return err
 		}
@@ -1380,9 +1380,9 @@ func clearAll(t *Term, ctx callContext, args string) error {
 
 		_, err := t.client.ClearBreakpoint(bp.ID)
 		if err != nil {
-			fmt.Printf("Couldn't delete %s at %s: %s\n", formatBreakpointName(bp, false), formatBreakpointLocation(bp), err)
+			fmt.Printf("Couldn't delete %s at %s: %s\n", formatBreakpointName(bp, false), t.formatBreakpointLocation(bp), err)
 		}
-		fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
+		fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	}
 	return nil
 }
@@ -1401,7 +1401,7 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 	}
 	sort.Sort(byID(breakPoints))
 	for _, bp := range breakPoints {
-		fmt.Printf("%s at %v (%d)\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp), bp.TotalHitCount)
+		fmt.Printf("%s at %v (%d)\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp), bp.TotalHitCount)
 
 		var attrs []string
 		if bp.Cond != "" {
@@ -1457,7 +1457,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(ctx.Scope, spec, true)
+	locs, err := t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
 	if err != nil {
 		if requestedBp.Name == "" {
 			return err
@@ -1465,7 +1465,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 		requestedBp.Name = ""
 		spec = argstr
 		var err2 error
-		locs, err2 = t.client.FindLocation(ctx.Scope, spec, true)
+		locs, err2 = t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
 		if err2 != nil {
 			return err
 		}
@@ -1482,7 +1482,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 			return err
 		}
 
-		fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), formatBreakpointLocation(bp))
+		fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	}
 
 	var shouldSetReturnBreakpoints bool
@@ -1829,7 +1829,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	printStack(os.Stdout, stack, "", sa.offsets)
+	printStack(t, os.Stdout, stack, "", sa.offsets)
 	if sa.ancestors > 0 {
 		ancestors, err := t.client.Ancestors(ctx.Scope.GoroutineID, sa.ancestors, sa.ancestorDepth)
 		if err != nil {
@@ -1841,7 +1841,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 				fmt.Printf("\t%s\n", ancestor.Unreadable)
 				continue
 			}
-			printStack(os.Stdout, ancestor.Stack, "\t", false)
+			printStack(t, os.Stdout, ancestor.Stack, "\t", false)
 		}
 	}
 	return nil
@@ -1970,7 +1970,7 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 		return loc.File, loc.Line, true, nil
 
 	default:
-		locs, err := t.client.FindLocation(ctx.Scope, args, false)
+		locs, err := t.client.FindLocation(ctx.Scope, args, false, t.substitutePathRules())
 		if err != nil {
 			return "", 0, false, err
 		}
@@ -2041,7 +2041,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 
 	switch cmd {
 	case "":
-		locs, err := t.client.FindLocation(ctx.Scope, "+0", true)
+		locs, err := t.client.FindLocation(ctx.Scope, "+0", true, t.substitutePathRules())
 		if err != nil {
 			return err
 		}
@@ -2061,7 +2061,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		}
 		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), flavor)
 	case "-l":
-		locs, err := t.client.FindLocation(ctx.Scope, rest, true)
+		locs, err := t.client.FindLocation(ctx.Scope, rest, true, t.substitutePathRules())
 		if err != nil {
 			return err
 		}
@@ -2103,7 +2103,7 @@ func digits(n int) int {
 
 const stacktraceTruncatedMessage = "(truncated)"
 
-func printStack(out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
+func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
 	if len(stack) == 0 {
 		return
 	}
@@ -2126,7 +2126,7 @@ func printStack(out io.Writer, stack []api.Stackframe, ind string, offsets bool)
 			continue
 		}
 		fmt.Fprintf(out, fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
-		fmt.Fprintf(out, "%sat %s:%d\n", s, shortenFilePath(stack[i].File), stack[i].Line)
+		fmt.Fprintf(out, "%sat %s:%d\n", s, t.formatPath(stack[i].File), stack[i].Line)
 
 		if offsets {
 			fmt.Fprintf(out, "%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
@@ -2140,8 +2140,8 @@ func printStack(out io.Writer, stack []api.Stackframe, ind string, offsets bool)
 				continue
 			}
 			fmt.Fprintf(out, "%s%#016x in %s\n", deferHeader, d.DeferredLoc.PC, d.DeferredLoc.Function.Name())
-			fmt.Fprintf(out, "%sat %s:%d\n", s2, d.DeferredLoc.File, d.DeferredLoc.Line)
-			fmt.Fprintf(out, "%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), d.DeferLoc.File, d.DeferLoc.Line)
+			fmt.Fprintf(out, "%sat %s:%d\n", s2, t.formatPath(d.DeferredLoc.File), d.DeferredLoc.Line)
+			fmt.Fprintf(out, "%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), t.formatPath(d.DeferLoc.File), d.DeferLoc.Line)
 		}
 
 		for j := range stack[i].Arguments {
@@ -2187,7 +2187,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 			}
 		}
 		if th == nil {
-			printcontextLocation(state.SelectedGoroutine.CurrentLoc)
+			printcontextLocation(t, state.SelectedGoroutine.CurrentLoc)
 			return
 		}
 	}
@@ -2205,8 +2205,8 @@ func printcontext(t *Term, state *api.DebuggerState) {
 	}
 }
 
-func printcontextLocation(loc api.Location) {
-	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), shortenFilePath(loc.File), loc.Line, loc.PC)
+func printcontextLocation(t *Term, loc api.Location) {
+	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), t.formatPath(loc.File), loc.Line, loc.PC)
 	if loc.Function != nil && loc.Function.Optimized {
 		fmt.Println(optimizedFunctionWarning)
 	}
@@ -2227,7 +2227,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	fn := th.Function
 
 	if th.Breakpoint == nil {
-		printcontextLocation(api.Location{PC: th.PC, File: th.File, Line: th.Line, Function: th.Function})
+		printcontextLocation(t, api.Location{PC: th.PC, File: th.File, Line: th.Line, Function: th.Function})
 		printReturnValues(th)
 		return
 	}
@@ -2258,7 +2258,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn {
-		printTracepoint(th, bpname, fn, args, hasReturnValue)
+		printTracepoint(t, th, bpname, fn, args, hasReturnValue)
 		return
 	}
 
@@ -2267,7 +2267,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			bpname,
 			fn.Name(),
 			args,
-			shortenFilePath(th.File),
+			t.formatPath(th.File),
 			th.Line,
 			th.GoroutineID,
 			hitCount,
@@ -2278,7 +2278,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			bpname,
 			fn.Name(),
 			args,
-			shortenFilePath(th.File),
+			t.formatPath(th.File),
 			th.Line,
 			th.Breakpoint.TotalHitCount,
 			th.PC)
@@ -2288,10 +2288,10 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	printReturnValues(th)
-	printBreakpointInfo(th, false)
+	printBreakpointInfo(t, th, false)
 }
 
-func printBreakpointInfo(th *api.Thread, tracepointOnNewline bool) {
+func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	if th.BreakpointInfo == nil {
 		return
 	}
@@ -2313,7 +2313,7 @@ func printBreakpointInfo(th *api.Thread, tracepointOnNewline bool) {
 
 	if bpi.Goroutine != nil {
 		tracepointnl()
-		writeGoroutineLong(os.Stdout, bpi.Goroutine, "\t")
+		writeGoroutineLong(t, os.Stdout, bpi.Goroutine, "\t")
 	}
 
 	for _, v := range bpi.Variables {
@@ -2340,17 +2340,17 @@ func printBreakpointInfo(th *api.Thread, tracepointOnNewline bool) {
 	if bpi.Stacktrace != nil {
 		tracepointnl()
 		fmt.Printf("\tStack:\n")
-		printStack(os.Stdout, bpi.Stacktrace, "\t\t", false)
+		printStack(t, os.Stdout, bpi.Stacktrace, "\t\t", false)
 	}
 }
 
-func printTracepoint(th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
+func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
 	if th.Breakpoint.Tracepoint {
 		fmt.Fprintf(os.Stderr, "> goroutine(%d): %s%s(%s)", th.GoroutineID, bpname, fn.Name(), args)
 		if !hasReturnValue {
 			fmt.Println()
 		}
-		printBreakpointInfo(th, !hasReturnValue)
+		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
 		retVals := make([]string, 0, len(th.ReturnValues))
@@ -2362,7 +2362,7 @@ func printTracepoint(th *api.Thread, bpname string, fn *api.Function, args strin
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
 		if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {
 			fmt.Fprintf(os.Stderr, "\tStack:\n")
-			printStack(os.Stderr, th.BreakpointInfo.Stacktrace, "\t\t", false)
+			printStack(t, os.Stderr, th.BreakpointInfo.Stacktrace, "\t\t", false)
 		}
 	}
 }
@@ -2477,13 +2477,6 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 	bp.Cond = args[1]
 
 	return t.client.AmendBreakpoint(bp)
-}
-
-// shortenFilePath take a full file path and attempts to shorten
-// it by replacing the current directory to './'.
-func shortenFilePath(fullPath string) string {
-	workingDir, _ := os.Getwd()
-	return strings.Replace(fullPath, workingDir, ".", 1)
 }
 
 func (c *Commands) executeFile(t *Term, name string) error {
@@ -2625,7 +2618,7 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	return fmt.Sprintf("%s %s", thing, id)
 }
 
-func formatBreakpointLocation(bp *api.Breakpoint) string {
+func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 	var out bytes.Buffer
 	if len(bp.Addrs) > 0 {
 		for i, addr := range bp.Addrs {
@@ -2640,7 +2633,7 @@ func formatBreakpointLocation(bp *api.Breakpoint) string {
 		fmt.Fprintf(&out, "%#x", bp.Addr)
 	}
 	fmt.Fprintf(&out, " for ")
-	p := shortenFilePath(bp.File)
+	p := t.formatPath(bp.File)
 	if bp.FunctionName != "" {
 		fmt.Fprintf(&out, "%s() ", bp.FunctionName)
 	}
