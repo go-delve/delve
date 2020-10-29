@@ -161,7 +161,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		it.top = false
 		return true
 
-	case "runtime.cgocallback_gofunc":
+	case "runtime.cgocallback_gofunc", "runtime.cgocallback":
 		// For a detailed description of how this works read the long comment at
 		// the start of $GOROOT/src/runtime/cgocall.go and the source code of
 		// runtime.cgocallback_gofunc in $GOROOT/src/runtime/asm_amd64.s

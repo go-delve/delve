@@ -139,7 +139,7 @@ const spAlign = 16
 func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn != nil {
 		switch it.frame.Current.Fn.Name {
-		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.sigpanic":
+		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.sigpanic", "runtime.cgocallback":
 			//do nothing
 		case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
 			// Look for "top of stack" functions.
@@ -202,7 +202,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = uint64(int64(newsp))
 		return false
 
-	case "runtime.cgocallback_gofunc":
+	case "runtime.cgocallback_gofunc", "runtime.cgocallback":
 		// For a detailed description of how this works read the long comment at
 		// the start of $GOROOT/src/runtime/cgocall.go and the source code of
 		// runtime.cgocallback_gofunc in $GOROOT/src/runtime/asm_arm64.s
