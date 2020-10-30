@@ -1124,10 +1124,12 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			return
 		}
 		// We can tell if the call got interrupted by a stop (e.g. breakpoint in called function or
-		// in another goroutine), by checking if the selected goroutine changed.
-		// If the call completes, we should return to the original state of the goroutine.
-		// TODO(polina): Is this true? Can I rely on goroutine equality to detect completed calls?
-		if !reflect.DeepEqual(stateBeforeCall.SelectedGoroutine, state.SelectedGoroutine) {
+		// in another goroutine), by checking the state of the selected goroutine and return values.
+		// If the call completes, we should return to the original state with non-nil return values.
+		// TODO(polina): Consider iterating over the thread list and checking if one has the
+		// stateBeforeCall.SelectedGoroutine.ID and ReturnValues != nil instead.
+		retVars := s.debugger.ReturnValues(&prcCfg)
+		if !reflect.DeepEqual(stateBeforeCall.SelectedGoroutine, state.SelectedGoroutine) || retVars == nil {
 			s.resetHandlesForStop()
 			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 			stopped.Body.ThreadId = state.SelectedGoroutine.ID
@@ -1140,7 +1142,6 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			return
 		}
 		// The call completed and we can reply with its return values (if any)
-		retVars := s.debugger.ReturnValues(&prcCfg)
 		if len(retVars) > 0 {
 			// Package one or more return values in a single scope-like nameless variable
 			// that preserves their names.

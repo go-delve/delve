@@ -1399,9 +1399,6 @@ func TestEvaluateRequest(t *testing.T) {
 }
 
 func TestEvaluateCallRequest(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
-	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	runTest(t, "fncall", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client,
@@ -1420,7 +1417,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.EvaluateRequest("call callstacktrace()", 1000, "this context will be ignored")
 					client.ExpectEvaluateResponse(t)
 
-					// Next frame: only regular expressions will work
+					// Next frame: only non-call expressions will work
 					client.EvaluateRequest("callstacktrace", 1001, "this context will be ignored")
 					client.ExpectEvaluateResponse(t)
 					client.EvaluateRequest("call callstacktrace()", 1001, "not watch")
@@ -1441,13 +1438,32 @@ func TestEvaluateCallRequest(t *testing.T) {
 					}
 
 					// A call during a call causes an error
-					client.EvaluateRequest("call callstacktrace()", 1001, "not watch")
+					client.EvaluateRequest("call callstacktrace()", 1000, "not watch")
 					erres = client.ExpectVisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to evaluate expression: cannot call function while another function call is already in progress" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: cannot call function while another function call is already in progress\"", erres)
 					}
 
-					// Complete the call and get back to original breakpoint
+					// Complete the call and get back to original breakpoint in makeclos()
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, 88)
+
+					// Inject a call for the same function that is stopped at breakpoint:
+					// it will stop at the exact same breakpoint on the same goroutine,
+					// but we should still detect that its an injected call that stopped
+					// and not the return to the original point of injection after it
+					// completed.
+					client.EvaluateRequest("call makeclos(nil)", 1000, "not watch")
+					client.ExpectStoppedEvent(t)
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
+					}
+					handleStop(t, client, 1, 88)
+
+					// Complete the call and get back to original breakpoint in makeclos()
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
