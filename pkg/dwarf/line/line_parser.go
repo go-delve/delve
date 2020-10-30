@@ -3,7 +3,7 @@ package line
 import (
 	"bytes"
 	"encoding/binary"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/util"
@@ -193,19 +193,35 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	}
 
 	if info.normalizeBackslash {
-		entry.Path = strings.Replace(entry.Path, "\\", "/", -1)
+		entry.Path = strings.ReplaceAll(entry.Path, "\\", "/")
 	}
 
 	entry.DirIdx, _ = util.DecodeULEB128(buf)
 	entry.LastModTime, _ = util.DecodeULEB128(buf)
 	entry.Length, _ = util.DecodeULEB128(buf)
-	if !filepath.IsAbs(entry.Path) {
+	if !pathIsAbs(entry.Path) {
 		if entry.DirIdx >= 0 && entry.DirIdx < uint64(len(info.IncludeDirs)) {
-			entry.Path = filepath.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
+			entry.Path = path.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
 		}
 	}
 
 	return entry
+}
+
+// pathIsAbs returns true if this is an absolute path.
+// We can not use path.IsAbs because it will not recognize windows paths as
+// absolute. We also can not use filepath.Abs because we want this
+// processing to be independent of the host operating system (we could be
+// reading an executable file produced on windows on a unix machine or vice
+// versa).
+func pathIsAbs(s string) bool {
+	if len(s) >= 1 && s[0] == '/' {
+		return true
+	}
+	if len(s) >= 2 && s[1] == ':' && (('a' <= s[0] && s[0] <= 'z') || ('A' <= s[0] && s[0] <= 'Z')) {
+		return true
+	}
+	return false
 }
 
 // parseFileEntries5 parses the file table for DWARF 5
@@ -217,13 +233,13 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) {
 		fileEntryFormReader.reset()
 		for fileEntryFormReader.next(buf) {
 			entry := new(FileEntry)
-			var path string
+			var p string
 			var diridx int = -1
 
 			switch fileEntryFormReader.contentType {
 			case _DW_LNCT_path:
 				if fileEntryFormReader.formCode != _DW_FORM_string {
-					path = fileEntryFormReader.str
+					p = fileEntryFormReader.str
 				} else {
 					//TODO(aarzilli): support debug_string, debug_line_str
 					info.Logf("unsupported string form %#x", fileEntryFormReader.formCode)
@@ -238,10 +254,14 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) {
 				// not implemented
 			}
 
-			if diridx >= 0 && !filepath.IsAbs(path) && diridx < len(info.IncludeDirs) {
-				path = filepath.Join(info.IncludeDirs[diridx], path)
+			if info.normalizeBackslash {
+				p = strings.ReplaceAll(p, "\\", "/")
 			}
-			entry.Path = path
+
+			if diridx >= 0 && !pathIsAbs(p) && diridx < len(info.IncludeDirs) {
+				p = path.Join(info.IncludeDirs[diridx], p)
+			}
+			entry.Path = p
 			info.FileNames = append(info.FileNames, entry)
 			info.Lookup[entry.Path] = entry
 		}

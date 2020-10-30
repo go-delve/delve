@@ -131,6 +131,7 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 		}
 
 		for _, n := range dbl.FileNames {
+			t.Logf("file %s\n", n.Path)
 			if strings.Contains(n.Path, "/_fixtures/testnextprog.go") {
 				mainFileFound = true
 				break
