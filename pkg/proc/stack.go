@@ -660,13 +660,23 @@ func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
 	}
 
 	// The arguments are stored immediately after the defer header struct, i.e.
-	// addr+sizeof(_defer). Since CFA in go is always the address of the first
-	// argument, that's what we use for the value of CFA.
-	// For SP we use CFA minus the size of one pointer because that would be
-	// the space occupied by pushing the return address on the stack during the
-	// CALL.
-	scope.Regs.CFA = (int64(d.variable.Addr) + d.variable.RealType.Common().ByteSize)
-	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(scope.Regs.CFA - int64(bi.Arch.PtrSize()))
+	// addr+sizeof(_defer).
+
+	if !bi.Arch.usesLR {
+		// On architectures that don't have a link register CFA is always the address of the first
+		// argument, that's what we use for the value of CFA.
+		// For SP we use CFA minus the size of one pointer because that would be
+		// the space occupied by pushing the return address on the stack during the
+		// CALL.
+		scope.Regs.CFA = (int64(d.variable.Addr) + d.variable.RealType.Common().ByteSize)
+		scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(scope.Regs.CFA - int64(bi.Arch.PtrSize()))
+	} else {
+		// On architectures that have a link register CFA and SP have the same
+		// value but the address of the first argument is at CFA+ptrSize so we set
+		// CFA to the start of the argument frame minus one pointer size.
+		scope.Regs.CFA = int64(d.variable.Addr) + d.variable.RealType.Common().ByteSize - int64(bi.Arch.PtrSize())
+		scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(scope.Regs.CFA)
+	}
 
 	rdr := scope.Fn.cu.image.dwarfReader
 	rdr.Seek(scope.Fn.offset)

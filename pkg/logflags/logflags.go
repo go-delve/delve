@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var any = false
 var debugger = false
 var gdbWire = false
 var lldbServerOutput = false
@@ -38,6 +39,11 @@ func makeLogger(flag bool, fields logrus.Fields) *logrus.Entry {
 		logger.Logger.Level = logrus.ErrorLevel
 	}
 	return logger
+}
+
+// Any returns true if any logging is enabled.
+func Any() bool {
+	return any
 }
 
 // GdbWire returns true if the gdbserial package should log all the packets
@@ -121,8 +127,8 @@ func WriteAPIListeningMessage(addr string) {
 	writeListeningMessage("API", addr)
 }
 
-func writeListeningMessage(server string, addr string) {
-        msg := fmt.Sprintf("%s server listening at: %s", server, addr)
+func writeListeningMessage(server, addr string) {
+	msg := fmt.Sprintf("%s server listening at: %s", server, addr)
 	if logOut != nil {
 		fmt.Fprintln(logOut, msg)
 	} else {
@@ -135,7 +141,7 @@ var errLogstrWithoutLog = errors.New("--log-output specified without --log")
 // Setup sets debugger flags based on the contents of logstr.
 // If logDest is not empty logs will be redirected to the file descriptor or
 // file path specified by logDest.
-func Setup(logFlag bool, logstr string, logDest string) error {
+func Setup(logFlag bool, logstr, logDest string) error {
 	if logDest != "" {
 		n, err := strconv.Atoi(logDest)
 		if err == nil {
@@ -159,6 +165,7 @@ func Setup(logFlag bool, logstr string, logDest string) error {
 	if logstr == "" {
 		logstr = "debugger"
 	}
+	any = true
 	v := strings.Split(logstr, ",")
 	for _, logcmd := range v {
 		// If adding another value, do make sure to

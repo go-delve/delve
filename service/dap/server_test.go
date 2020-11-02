@@ -591,9 +591,9 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					startLineno := 65
 					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 						// Go1.15 on windows inserts a NOP after the call to
-						// runtime.Breakpoint and marks it as line 64 (same as the
-						// runtime.Breakpoint call).
-						startLineno = 64
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
 					}
 
 					expectStackFrames(t, stack, startLineno, 1000, 4, 4)
