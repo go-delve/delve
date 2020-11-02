@@ -1116,24 +1116,34 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
-		// If we made it this far, then there must be a selected goroutine.
-		// Otherwise we would have gotten errNoGoroutine from Command(Call),
-		// but just in case, let's be explicit.
-		if state.SelectedGoroutine == nil {
-			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "no goroutine selected", showErrorToUser)
-			return
+		// After the call is done, the goroutine where we injected the call should
+		// return to the original stopped line with return values. However,
+		// it is not guaranteed to be selected due to the possibility of the
+		// of simultaenous breakpoints. Therefore, we check all threads.
+		var retVars []*proc.Variable
+		for _, t := range state.Threads {
+			if t.GoroutineID != stateBeforeCall.SelectedGoroutine.ID {
+				continue
+			}
+			if t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.ReturnValues != nil {
+				// The call completed. Get the return values.
+				proct, _ := s.debugger.FindThread(t.ID)
+				if err != nil {
+					s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+					return
+				}
+				retVars = proct.Common().ReturnValues(prcCfg)
+			}
 		}
-		// We can tell if the call got interrupted by a stop (e.g. breakpoint in called function or
-		// in another goroutine), by checking the state of the selected goroutine and return values.
-		// If the call completes, we should return to the original state with non-nil return values.
-		// TODO(polina): Consider iterating over the thread list and checking if one has the
-		// stateBeforeCall.SelectedGoroutine.ID and ReturnValues != nil instead.
-		retVars := s.debugger.ReturnValues(&prcCfg)
-		if !reflect.DeepEqual(stateBeforeCall.SelectedGoroutine, state.SelectedGoroutine) || retVars == nil {
+		if retVars == nil {
+			// The call got interrupted by a stop (e.g. breakpoint in injected
+			// function call or in another goroutine)
 			s.resetHandlesForStop()
 			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
-			stopped.Body.ThreadId = state.SelectedGoroutine.ID
 			stopped.Body.AllThreadsStopped = true
+			if state.SelectedGoroutine != nil {
+				stopped.Body.ThreadId = state.SelectedGoroutine.ID
+			}
 			stopped.Body.Reason = s.debugger.StopReason().String()
 			s.send(stopped)
 			// TODO(polina): once this is asynchronous, we could wait to reply until the user
