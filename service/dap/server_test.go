@@ -1461,7 +1461,8 @@ func TestEvaluateCallRequest(t *testing.T) {
 					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
 					}
-					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) && (runtime.GOOS == "linux" || runtime.GOOS == "windows") {
+					if (goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) && (runtime.GOOS == "linux" || runtime.GOOS == "windows")) ||
+						runtime.GOOS == "freebsd" {
 						handleStop(t, client, 1, "runtime.debugCallWrap", -1)
 					} else {
 						handleStop(t, client, 1, "main.makeclos", 88)
