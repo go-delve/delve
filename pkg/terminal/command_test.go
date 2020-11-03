@@ -1065,9 +1065,6 @@ func findStarFile(name string) string {
 }
 
 func TestIssue1598(t *testing.T) {
-	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
-		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
-	}
 	test.MustSupportFunctionCalls(t, testBackend)
 	withTestTerminal("issue1598", t, func(term *FakeTerminal) {
 		term.MustExec("break issue1598.go:5")
