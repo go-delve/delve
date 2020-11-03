@@ -113,7 +113,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	if err != nil {
 		return nil, err
 	}
-	if err := dbp.stop(nil); err != nil {
+	if _, err := dbp.stop(nil); err != nil {
 		return nil, err
 	}
 
@@ -422,35 +422,35 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (err error) {
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	for _, th := range dbp.threads {
 		if !th.Stopped() {
 			if err := th.stop(); err != nil {
-				return dbp.exitGuard(err)
+				return nil, dbp.exitGuard(err)
 			}
 		}
 	}
 
 	ports, err := dbp.waitForStop()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !dbp.os.initialized {
-		return nil
+		return nil, nil
 	}
 	trapthread.SetCurrentBreakpoint(true)
 	for _, port := range ports {
 		if th, ok := dbp.threads[port]; ok {
 			err := th.SetCurrentBreakpoint(true)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+	return trapthread, nil
 }
 
 func (dbp *nativeProcess) detach(kill bool) error {

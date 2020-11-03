@@ -231,27 +231,33 @@ func (dbp *nativeProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 		return nil, proc.StopExited, &proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
-	if err := dbp.resume(); err != nil {
-		return nil, proc.StopUnknown, err
-	}
+	for {
 
-	for _, th := range dbp.threads {
-		th.CurrentBreakpoint.Clear()
-	}
+		if err := dbp.resume(); err != nil {
+			return nil, proc.StopUnknown, err
+		}
 
-	if dbp.resumeChan != nil {
-		close(dbp.resumeChan)
-		dbp.resumeChan = nil
-	}
+		for _, th := range dbp.threads {
+			th.CurrentBreakpoint.Clear()
+		}
 
-	trapthread, err := dbp.trapWait(-1)
-	if err != nil {
-		return nil, proc.StopUnknown, err
+		if dbp.resumeChan != nil {
+			close(dbp.resumeChan)
+			dbp.resumeChan = nil
+		}
+
+		trapthread, err := dbp.trapWait(-1)
+		if err != nil {
+			return nil, proc.StopUnknown, err
+		}
+		trapthread, err = dbp.stop(trapthread)
+		if err != nil {
+			return nil, proc.StopUnknown, err
+		}
+		if trapthread != nil {
+			return trapthread, proc.StopUnknown, nil
+		}
 	}
-	if err := dbp.stop(trapthread); err != nil {
-		return nil, proc.StopUnknown, err
-	}
-	return trapthread, proc.StopUnknown, err
 }
 
 // FindBreakpoint finds the breakpoint for the given pc.
