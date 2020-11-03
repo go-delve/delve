@@ -1730,9 +1730,6 @@ func mustHaveDebugCalls(t *testing.T, c service.Client) {
 }
 
 func TestClientServerFunctionCall(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
-	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
@@ -1764,9 +1761,6 @@ func TestClientServerFunctionCall(t *testing.T) {
 }
 
 func TestClientServerFunctionCallBadPos(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
-	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
 		t.Skip("this is a safe point for Go 1.12")
@@ -1794,9 +1788,6 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 }
 
 func TestClientServerFunctionCallPanic(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
-	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		mustHaveDebugCalls(t, c)
@@ -1823,9 +1814,6 @@ func TestClientServerFunctionCallPanic(t *testing.T) {
 }
 
 func TestClientServerFunctionCallStacktrace(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("arm64 does not support FunctionCall for now")
-	}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 		t.Skip("Go 1.15 executes function calls in a different goroutine so the stack trace will not contain main.main or runtime.main")
 	}
