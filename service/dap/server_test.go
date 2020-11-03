@@ -1164,7 +1164,7 @@ func TestSetBreakpoint(t *testing.T) {
 			fixture.Source, []int{16}, // b main.main
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 16)
+					handleStop(t, client, 1, "main.main", 16)
 
 					type Breakpoint struct {
 						line      int
@@ -1198,7 +1198,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, fixture.Name, 18)
+					handleStop(t, client, 1, "main.main", 18)
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
@@ -1208,7 +1208,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, fixture.Name, 8)
+					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectVarExact(t, locals, 0, "i", "0", noChildren) // i == 0
@@ -1221,7 +1221,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, fixture.Name, 8)
+					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
 					expectVarExact(t, locals, 0, "i", "3", noChildren) // i == 3
@@ -1234,7 +1234,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, fixture.Name, 8)
+					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
 					expectVarExact(t, locals, 0, "i", "4", noChildren) // i == 4
@@ -1271,7 +1271,7 @@ func TestEvaluateRequest(t *testing.T) {
 			fixture.Source, []int{}, // Breakpoint set in the program
 			[]onBreakpoint{{ // Stop at first breakpoint
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 65)
+					handleStop(t, client, 1, "main.foobar", 65)
 
 					// Variable lookup
 					client.EvaluateRequest("a2", 1000, "this context will be ignored")
@@ -1367,7 +1367,7 @@ func TestEvaluateRequest(t *testing.T) {
 				disconnect: false,
 			}, { // Stop at second breakpoint
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 27)
+					handleStop(t, client, 1, "main.barfoo", 27)
 
 					// Top-most frame
 					client.EvaluateRequest("a1", 1000, "this context will be ignored")
@@ -1409,7 +1409,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 			fixture.Source, []int{88},
 			[]onBreakpoint{{ // Stop in makeclos()
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 88)
+					handleStop(t, client, 1, "main.makeclos", 88)
 
 					// Topmost frame: both types of expressions should work
 					client.EvaluateRequest("callstacktrace", 1000, "this context will be ignored")
@@ -1448,7 +1448,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, fixture.Name, 88)
+					handleStop(t, client, 1, "main.makeclos", 88)
 
 					// Inject a call for the same function that is stopped at breakpoint:
 					// it might stop at the exact same breakpoint on the same goroutine,
@@ -1462,23 +1462,21 @@ func TestEvaluateCallRequest(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
 					}
 					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) && (runtime.GOOS == "linux" || runtime.GOOS == "windows") {
-						// stacktrace = {runtime.debugCallWrap, runtime.debugCallV1, main.makeclos, ...}
-						handleStop(t, client, 1, "debugcall.go", -1)
+						handleStop(t, client, 1, "runtime.debugCallWrap", -1)
 					} else {
-						// stacktrace = {main.makeclos, ...}
-						handleStop(t, client, 1, fixture.Name, 88)
+						handleStop(t, client, 1, "main.makeclos", 88)
 					}
 
 					// Complete the call and get back to original breakpoint in makeclos()
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, fixture.Name, 88)
+					handleStop(t, client, 1, "main.makeclos", 88)
 				},
 				disconnect: false,
 			}, { // Stop at runtime breakpoint
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 197)
+					handleStop(t, client, 1, "main.main", 197)
 
 					// No return values
 					client.EvaluateRequest("call call0(1, 2)", 1000, "this context will be ignored")
@@ -1560,32 +1558,32 @@ func TestNextAndStep(t *testing.T) {
 			fixture.Source, []int{11},
 			[]onBreakpoint{{ // Stop at line 11
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 11)
+					handleStop(t, client, 1, "main.initialize", 11)
 
-					expectStop := func(line int) {
+					expectStop := func(fun string, line int) {
 						t.Helper()
 						se := client.ExpectStoppedEvent(t)
 						if se.Body.Reason != "step" || se.Body.ThreadId != 1 || !se.Body.AllThreadsStopped {
 							t.Errorf("got %#v, want Reason=\"step\", ThreadId=1, AllThreadsStopped=true", se)
 						}
-						handleStop(t, client, 1, fixture.Name, line)
+						handleStop(t, client, 1, fun, line)
 					}
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
-					expectStop(18)
+					expectStop("main.main", 18)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					expectStop(19)
+					expectStop("main.main", 19)
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					expectStop(5)
+					expectStop("main.inlineThis", 5)
 
 					client.NextRequest(-10000 /*this is ignored*/)
 					client.ExpectNextResponse(t)
-					expectStop(6)
+					expectStop("main.inlineThis", 6)
 				},
 				disconnect: false,
 			}})
@@ -1606,7 +1604,7 @@ func TestBadAccess(t *testing.T) {
 			fixture.Source, []int{4},
 			[]onBreakpoint{{ // Stop at line 4
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 4)
+					handleStop(t, client, 1, "main.main", 4)
 
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
@@ -1656,7 +1654,7 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 			fixture.Source, []int{5},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 5)
+					handleStop(t, client, 1, "main.main", 5)
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -1688,7 +1686,7 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 			fixture.Source, []int{5},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 5)
+					handleStop(t, client, 1, "main.main", 5)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
@@ -1715,7 +1713,7 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 			fixture.Source, []int{3},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, fixture.Name, 3)
+					handleStop(t, client, 1, "main.main", 3)
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -1735,7 +1733,7 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 // The details have been tested by other tests,
 // so this is just a sanity check.
 // Skips line check if line is -1.
-func handleStop(t *testing.T, client *daptest.Client, thread int, source string, line int) {
+func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
 	t.Helper()
 	client.ThreadsRequest()
 	client.ExpectThreadsResponse(t)
@@ -1746,10 +1744,10 @@ func handleStop(t *testing.T, client *daptest.Client, thread int, source string,
 		t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
 	} else {
 		if line != -1 && st.Body.StackFrames[0].Line != line {
-			t.Errorf("\ngot  %#v\nwant Source.Line=%d", st, line)
+			t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
 		}
-		if st.Body.StackFrames[0].Source.Name == source {
-			t.Errorf("\ngot  %#v\nwant Source.Name=%q", st, source)
+		if st.Body.StackFrames[0].Name != name {
+			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
 		}
 	}
 
