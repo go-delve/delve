@@ -1122,17 +1122,15 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		// of simultaenous breakpoints. Therefore, we check all threads.
 		var retVars []*proc.Variable
 		for _, t := range state.Threads {
-			if t.GoroutineID != stateBeforeCall.SelectedGoroutine.ID {
-				continue
-			}
-			if t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.ReturnValues != nil {
+			if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
+				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.ReturnValues != nil {
 				// The call completed. Get the return values.
-				proct, _ := s.debugger.FindThread(t.ID)
+				retVars, err = s.debugger.FindThreadReturnValues(t.ID, prcCfg)
 				if err != nil {
 					s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 					return
 				}
-				retVars = proct.Common().ReturnValues(prcCfg)
+				break
 			}
 		}
 		if retVars == nil {
