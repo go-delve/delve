@@ -71,7 +71,7 @@ func registers(thread *nativeThread) (proc.Registers, error) {
 }
 
 const (
-	_X86_XSTATE_MAX_SIZE = 2688
+	_X86_XSTATE_MAX_SIZE = 2696
 	_NT_X86_XSTATE       = 0x202
 
 	_XSAVE_HEADER_START          = 512
