@@ -66,6 +66,9 @@ type Term struct {
 	// should be resumed before quitting.
 	quitContinue bool
 
+	longCommandMu         sync.Mutex
+	longCommandCancelFlag bool
+
 	quittingMutex sync.Mutex
 	quitting      bool
 }
@@ -123,6 +126,7 @@ func (t *Term) Close() {
 
 func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 	for range ch {
+		t.longCommandCancel()
 		t.starlarkEnv.Cancel()
 		state, err := t.client.GetStateNonBlocking()
 		if err == nil && state.Recording {
@@ -479,6 +483,24 @@ func (t *Term) printDisplays() {
 
 func (t *Term) onStop() {
 	t.printDisplays()
+}
+
+func (t *Term) longCommandCancel() {
+	t.longCommandMu.Lock()
+	defer t.longCommandMu.Unlock()
+	t.longCommandCancelFlag = true
+}
+
+func (t *Term) longCommandStart() {
+	t.longCommandMu.Lock()
+	defer t.longCommandMu.Unlock()
+	t.longCommandCancelFlag = false
+}
+
+func (t *Term) longCommandCanceled() bool {
+	t.longCommandMu.Lock()
+	defer t.longCommandMu.Unlock()
+	return t.longCommandCancelFlag
 }
 
 // isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited
