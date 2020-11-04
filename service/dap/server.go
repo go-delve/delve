@@ -1123,7 +1123,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		var retVars []*proc.Variable
 		for _, t := range state.Threads {
 			if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
-				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.ReturnValues != nil {
+				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.CallReturn {
 				// The call completed. Get the return values.
 				retVars, err = s.debugger.FindThreadReturnValues(t.ID, prcCfg)
 				if err != nil {

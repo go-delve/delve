@@ -49,6 +49,7 @@ type Location struct {
 // CommonThread contains fields used by this package, common to all
 // implementations of the Thread interface.
 type CommonThread struct {
+	CallReturn   bool // returnValues are the return values of a call injection
 	returnValues []*Variable
 	g            *G // cached g for this thread
 }

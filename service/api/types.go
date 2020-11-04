@@ -128,6 +128,8 @@ type Thread struct {
 
 	// ReturnValues contains the return values of the function we just stepped out of
 	ReturnValues []Variable
+	// CallReturn is true if ReturnValues are the return values of an injected call.
+	CallReturn bool
 }
 
 // Location holds program location information.

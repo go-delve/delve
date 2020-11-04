@@ -204,6 +204,7 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 
 func finishEvalExpressionWithCalls(t *Target, g *G, contReq continueRequest, ok bool) error {
 	fncallLog("stashing return values for %d in thread=%d", g.ID, g.Thread.ThreadID())
+	g.Thread.Common().CallReturn = true
 	var err error
 	if !ok {
 		err = errors.New("internal error EvalExpressionWithCalls didn't return anything")
