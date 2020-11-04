@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
@@ -73,7 +74,7 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) p
 		case _NT_X86_XSTATE:
 			if machineType == _EM_X86_64 {
 				if lastThreadAMD != nil {
-					lastThreadAMD.regs.Fpregs = note.Desc.(*linutil.AMD64Xstate).Decode()
+					lastThreadAMD.regs.Fpregs = note.Desc.(*amd64util.AMD64Xstate).Decode()
 				}
 			}
 		case elf.NT_PRPSINFO:
@@ -279,8 +280,8 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 		note.Desc = data
 	case _NT_X86_XSTATE:
 		if machineType == _EM_X86_64 {
-			var fpregs linutil.AMD64Xstate
-			if err := linutil.AMD64XstateRead(desc, true, &fpregs); err != nil {
+			var fpregs amd64util.AMD64Xstate
+			if err := amd64util.AMD64XstateRead(desc, true, &fpregs); err != nil {
 				return nil, err
 			}
 			note.Desc = &fpregs

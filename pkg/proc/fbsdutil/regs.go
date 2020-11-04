@@ -4,7 +4,7 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/proc/linutil"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
 
 // AMD64Registers implements the proc.Registers interface for the native/freebsd
@@ -12,7 +12,7 @@ import (
 type AMD64Registers struct {
 	Regs     *AMD64PtraceRegs
 	Fpregs   []proc.Register
-	Fpregset *AMD64Xstate
+	Fpregset *amd64util.AMD64Xstate
 	Fsbase   uint64
 
 	loadFpRegs func(*AMD64Registers) error
@@ -323,7 +323,7 @@ func (r *AMD64Registers) Copy() (proc.Registers, error) {
 	}
 	var rr AMD64Registers
 	rr.Regs = &AMD64PtraceRegs{}
-	rr.Fpregset = &AMD64Xstate{}
+	rr.Fpregset = &amd64util.AMD64Xstate{}
 	*(rr.Regs) = *(r.Regs)
 	if r.Fpregset != nil {
 		*(rr.Fpregset) = *(r.Fpregset)
@@ -333,14 +333,4 @@ func (r *AMD64Registers) Copy() (proc.Registers, error) {
 		copy(rr.Fpregs, r.Fpregs)
 	}
 	return &rr, nil
-}
-
-type AMD64Xstate linutil.AMD64Xstate
-
-func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate) error {
-	return linutil.AMD64XstateRead(xstateargs, readLegacy, (*linutil.AMD64Xstate)(regset))
-}
-
-func (xsave *AMD64Xstate) Decode() (regs []proc.Register) {
-	return (*linutil.AMD64Xstate).Decode((*linutil.AMD64Xstate)(xsave))
 }

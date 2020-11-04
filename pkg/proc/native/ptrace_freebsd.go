@@ -14,7 +14,7 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
-	"github.com/go-delve/delve/pkg/proc/fbsdutil"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
 
 // ptraceAttach executes the sys.PtraceAttach call.
@@ -54,7 +54,7 @@ func ptraceGetLwpInfo(wpid int) (info sys.PtraceLwpInfoStruct, err error) {
 	return info, err
 }
 
-func ptraceGetRegset(id int) (regset fbsdutil.AMD64Xstate, err error) {
+func ptraceGetRegset(id int) (regset amd64util.AMD64Xstate, err error) {
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETFPREGS, uintptr(id), uintptr(unsafe.Pointer(&regset.AMD64PtraceFpRegs)), 0, 0, 0)
 	if err == syscall.Errno(0) || err == syscall.ENODEV {
 		var xsave_len C.size_t
@@ -62,7 +62,7 @@ func ptraceGetRegset(id int) (regset fbsdutil.AMD64Xstate, err error) {
 		defer C.free(unsafe.Pointer(xsave))
 		if xsave != nil {
 			xsave_sl := C.GoBytes(unsafe.Pointer(xsave), C.int(xsave_len))
-			err = fbsdutil.AMD64XstateRead(xsave_sl, false, &regset)
+			err = amd64util.AMD64XstateRead(xsave_sl, false, &regset)
 		}
 	}
 	return

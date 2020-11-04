@@ -1,11 +1,10 @@
 package linutil
 
 import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
-	"github.com/go-delve/delve/pkg/proc"
 	"golang.org/x/arch/x86/x86asm"
+
+	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
 
 // I386Registers implements the proc.Registers interface for the native/linux
@@ -13,7 +12,7 @@ import (
 type I386Registers struct {
 	Regs     *I386PtraceRegs
 	Fpregs   []proc.Register
-	Fpregset *I386Xstate
+	Fpregset *amd64util.AMD64Xstate
 	Tls      uint64
 
 	loadFpRegs func(*I386Registers) error
@@ -199,7 +198,7 @@ func (r *I386Registers) Copy() (proc.Registers, error) {
 	}
 	var rr I386Registers
 	rr.Regs = &I386PtraceRegs{}
-	rr.Fpregset = &I386Xstate{}
+	rr.Fpregset = &amd64util.AMD64Xstate{}
 	*(rr.Regs) = *(r.Regs)
 	if r.Fpregset != nil {
 		*(rr.Fpregset) = *(r.Fpregset)
@@ -209,96 +208,4 @@ func (r *I386Registers) Copy() (proc.Registers, error) {
 		copy(rr.Fpregs, r.Fpregs)
 	}
 	return &rr, nil
-}
-
-// I386PtraceFpRegs tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
-type I386PtraceFpRegs struct {
-	Cwd      uint16
-	Swd      uint16
-	Ftw      uint16
-	Fop      uint16
-	Rip      uint64
-	Rdp      uint64
-	Mxcsr    uint32
-	MxcrMask uint32
-	StSpace  [32]uint32
-	XmmSpace [256]byte
-	Padding  [24]uint32
-}
-
-// I386Xstate represents amd64 XSAVE area. See Section 13.1 (and
-// following) of Intel® 64 and IA-32 Architectures Software Developer’s
-// Manual, Volume 1: Basic Architecture.
-type I386Xstate struct {
-	I386PtraceFpRegs
-	Xsave    []byte // raw xsave area
-	AvxState bool   // contains AVX state
-	YmmSpace [256]byte
-}
-
-// Decode decodes an XSAVE area to a list of name/value pairs of registers.
-func (xsave *I386Xstate) Decode() (regs []proc.Register) {
-	// x87 registers
-	regs = proc.AppendUint64Register(regs, "CW", uint64(xsave.Cwd))
-	regs = proc.AppendUint64Register(regs, "SW", uint64(xsave.Swd))
-	regs = proc.AppendUint64Register(regs, "TW", uint64(xsave.Ftw))
-	regs = proc.AppendUint64Register(regs, "FOP", uint64(xsave.Fop))
-	regs = proc.AppendUint64Register(regs, "FIP", uint64(xsave.Rip))
-	regs = proc.AppendUint64Register(regs, "FDP", uint64(xsave.Rdp))
-
-	for i := 0; i < len(xsave.StSpace); i += 4 {
-		var buf bytes.Buffer
-		binary.Write(&buf, binary.LittleEndian, uint64(xsave.StSpace[i+1])<<32|uint64(xsave.StSpace[i]))
-		binary.Write(&buf, binary.LittleEndian, uint16(xsave.StSpace[i+2]))
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("ST(%d)", i/4), buf.Bytes())
-	}
-
-	// SSE registers
-	regs = proc.AppendUint64Register(regs, "MXCSR", uint64(xsave.Mxcsr))
-	regs = proc.AppendUint64Register(regs, "MXCSR_MASK", uint64(xsave.MxcrMask))
-
-	for i := 0; i < len(xsave.XmmSpace); i += 16 {
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", i/16), xsave.XmmSpace[i:i+16])
-		if xsave.AvxState {
-			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("YMM%d", i/16), xsave.YmmSpace[i:i+16])
-		}
-	}
-
-	return
-}
-
-// LinuxX86XstateRead reads a byte array containing an XSAVE area into regset.
-// If readLegacy is true regset.PtraceFpRegs will be filled with the
-// contents of the legacy region of the XSAVE area.
-// See Section 13.1 (and following) of Intel® 64 and IA-32 Architectures
-// Software Developer’s Manual, Volume 1: Basic Architecture.
-func I386XstateRead(xstateargs []byte, readLegacy bool, regset *I386Xstate) error {
-	if _XSAVE_HEADER_START+_XSAVE_HEADER_LEN >= len(xstateargs) {
-		return nil
-	}
-	if readLegacy {
-		rdr := bytes.NewReader(xstateargs[:_XSAVE_HEADER_START])
-		if err := binary.Read(rdr, binary.LittleEndian, &regset.I386PtraceFpRegs); err != nil {
-			return err
-		}
-	}
-	xsaveheader := xstateargs[_XSAVE_HEADER_START : _XSAVE_HEADER_START+_XSAVE_HEADER_LEN]
-	xstate_bv := binary.LittleEndian.Uint64(xsaveheader[0:8])
-	xcomp_bv := binary.LittleEndian.Uint64(xsaveheader[8:16])
-
-	if xcomp_bv&(1<<63) != 0 {
-		// compact format not supported
-		return nil
-	}
-
-	if xstate_bv&(1<<2) == 0 {
-		// AVX state not present
-		return nil
-	}
-
-	avxstate := xstateargs[_XSAVE_EXTENDED_REGION_START:]
-	regset.AvxState = true
-	copy(regset.YmmSpace[:], avxstate[:len(regset.YmmSpace)])
-
-	return nil
 }
