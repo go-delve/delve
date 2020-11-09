@@ -155,11 +155,18 @@ func Installed() (GoVersion, bool) {
 // or go version) is major.minor or a later version, or a development
 // version.
 func VersionAfterOrEqual(version string, major, minor int) bool {
+	return VersionAfterOrEqualRev(version, major, minor, -1)
+}
+
+// VersionAfterOrEqualRev checks that version (as returned by runtime.Version()
+// or go version) is major.minor or a later version, or a development
+// version.
+func VersionAfterOrEqualRev(version string, major, minor, rev int) bool {
 	ver, _ := Parse(version)
 	if ver.IsDevel() {
 		return true
 	}
-	return ver.AfterOrEqual(GoVersion{major, minor, -1, 0, 0, ""})
+	return ver.AfterOrEqual(GoVersion{major, minor, rev, 0, 0, ""})
 }
 
 const producerVersionPrefix = "Go cmd/compile "

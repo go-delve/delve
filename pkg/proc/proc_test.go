@@ -4804,7 +4804,7 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 		{contStepout, 29}})
 
 	// same test but with next instead of stepout
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) && runtime.GOARCH != "386" {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) && runtime.GOARCH != "386" && !goversion.VersionAfterOrEqualRev(runtime.Version(), 1, 15, 4) {
 		testseq2(t, "ifaceembcall", "", []seqTest{
 			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
 			{contStep, 18},     // main.(*A).PtrReceiver
