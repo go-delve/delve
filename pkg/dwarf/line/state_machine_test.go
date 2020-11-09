@@ -236,7 +236,7 @@ func TestMultipleSequences(t *testing.T) {
 		{0x600004, 13},
 	} {
 		sm := newStateMachine(lines, lines.Instructions, lines.ptrSize)
-		file, curline, ok := sm.PCToLine(testCase.pc)
+		file, curline, ok := sm.PCToLine(testCase.pc, true)
 		if !ok {
 			t.Fatalf("Could not find %#x", testCase.pc)
 		}

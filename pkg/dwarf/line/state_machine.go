@@ -203,7 +203,7 @@ func (lineInfo *DebugLineInfo) stateMachineForEntry(basePC uint64) (sm *StateMac
 	sm = lineInfo.stateMachineCache[basePC]
 	if sm == nil {
 		sm = newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
-		sm.PCToLine(basePC)
+		sm.PCToLine(basePC, true)
 		lineInfo.stateMachineCache[basePC] = sm
 	}
 	sm = sm.copy()
@@ -225,7 +225,7 @@ func (lineInfo *DebugLineInfo) PCToLine(basePC, pc uint64) (string, int) {
 
 	sm := lineInfo.stateMachineFor(basePC, pc)
 
-	file, line, _ := sm.PCToLine(pc)
+	file, line, _ := sm.PCToLine(pc, false)
 	return file, line
 }
 
@@ -247,7 +247,7 @@ func (lineInfo *DebugLineInfo) stateMachineFor(basePC, pc uint64) *StateMachine 
 	return sm
 }
 
-func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
+func (sm *StateMachine) PCToLine(pc uint64, firstExactMatch bool) (string, int, bool) {
 	if !sm.started {
 		if err := sm.next(); err != nil {
 			if sm.dbl.Logf != nil {
@@ -259,13 +259,20 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 	if sm.lastAddress > pc && sm.lastAddress != ^uint64(0) {
 		return "", 0, false
 	}
+	exactMatchFile, exactMatchLine := "", 0
 	for {
 		if sm.valid {
 			if (sm.address > pc) && (pc >= sm.lastAddress) {
 				return sm.lastFile, sm.lastLine, true
 			}
 			if sm.address == pc {
-				return sm.file, sm.line, true
+				exactMatchFile = sm.file
+				exactMatchLine = sm.line
+				if firstExactMatch {
+					return sm.file, sm.line, true
+				}
+			} else if exactMatchFile != "" {
+				return exactMatchFile, exactMatchLine, true
 			}
 		}
 		if err := sm.next(); err != nil {
