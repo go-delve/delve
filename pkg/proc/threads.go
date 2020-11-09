@@ -6,7 +6,6 @@ import (
 
 // Thread represents a thread.
 type Thread interface {
-	MemoryReadWriter
 	Location() (*Location, error)
 	// Breakpoint will return the breakpoint that this thread is stopped at or
 	// nil if the thread is not stopped at any breakpoint.
@@ -24,9 +23,9 @@ type Thread interface {
 	// RestoreRegisters restores saved registers
 	RestoreRegisters(Registers) error
 	BinInfo() *BinaryInfo
+	// ProcessMemory returns the process memory.
+	ProcessMemory() MemoryReadWriter
 	StepInstruction() error
-	// Blocked returns true if the thread is blocked
-	Blocked() bool
 	// SetCurrentBreakpoint updates the current breakpoint of this thread, if adjustPC is true also checks for breakpoints that were just hit (this should only be passed true after a thread resume)
 	SetCurrentBreakpoint(adjustPC bool) error
 	// Common returns the CommonThread structure for this thread
@@ -45,14 +44,6 @@ type Location struct {
 	File string
 	Line int
 	Fn   *Function
-}
-
-// ErrThreadBlocked is returned when the thread
-// is blocked in the scheduler.
-type ErrThreadBlocked struct{}
-
-func (tbe ErrThreadBlocked) Error() string {
-	return "thread blocked"
 }
 
 // CommonThread contains fields used by this package, common to all
@@ -75,9 +66,6 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 	var err error
 
 	if g == nil {
-		if thread.Blocked() {
-			return Stackframe{}, Stackframe{}, ErrThreadBlocked{}
-		}
 		frames, err = ThreadStacktrace(thread, 1)
 	} else {
 		frames, err = g.Stacktrace(1, StacktraceReadDefers)

@@ -22,8 +22,8 @@ type nativeProcess struct {
 	// List of threads mapped as such: pid -> *Thread
 	threads map[int]*nativeThread
 
-	// Active thread
-	currentThread *nativeThread
+	// Thread used to read and write memory
+	memthread *nativeThread
 
 	os                  *osProcessDetails
 	firstStart          bool
@@ -72,7 +72,7 @@ func (dbp *nativeProcess) Recorded() (bool, string) { return false, "" }
 
 // Restart will always return an error in the native proc backend, only for
 // recorded traces.
-func (dbp *nativeProcess) Restart(string) error { return proc.ErrNotRecorded }
+func (dbp *nativeProcess) Restart(string) (proc.Thread, error) { return nil, proc.ErrNotRecorded }
 
 // ChangeDirection will always return an error in the native proc backend, only for
 // recorded traces.
@@ -166,14 +166,9 @@ func (dbp *nativeProcess) FindThread(threadID int) (proc.Thread, bool) {
 	return th, ok
 }
 
-// CurrentThread returns the current selected, active thread.
-func (dbp *nativeProcess) CurrentThread() proc.Thread {
-	return dbp.currentThread
-}
-
-// SetCurrentThread is used internally by proc.Target to change the current thread.
-func (p *nativeProcess) SetCurrentThread(th proc.Thread) {
-	p.currentThread = th.(*nativeThread)
+// Memory returns the process memory.
+func (dbp *nativeProcess) Memory() proc.MemoryReadWriter {
+	return dbp.memthread
 }
 
 // Breakpoints returns a list of breakpoints currently set.
@@ -209,11 +204,11 @@ func (dbp *nativeProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Funct
 	f, l, fn := dbp.bi.PCToLine(uint64(addr))
 
 	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
-	_, err := dbp.currentThread.ReadMemory(originalData, addr)
+	_, err := dbp.memthread.ReadMemory(originalData, addr)
 	if err != nil {
 		return "", 0, nil, nil, err
 	}
-	if err := dbp.writeSoftwareBreakpoint(dbp.currentThread, addr); err != nil {
+	if err := dbp.writeSoftwareBreakpoint(dbp.memthread, addr); err != nil {
 		return "", 0, nil, nil, err
 	}
 
@@ -221,7 +216,7 @@ func (dbp *nativeProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Funct
 }
 
 func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
-	return dbp.currentThread.ClearBreakpoint(bp)
+	return dbp.memthread.ClearBreakpoint(bp)
 }
 
 // ContinueOnce will continue the target until it stops.
@@ -255,6 +250,7 @@ func (dbp *nativeProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 			return nil, proc.StopUnknown, err
 		}
 		if trapthread != nil {
+			dbp.memthread = trapthread
 			return trapthread, proc.StopUnknown, nil
 		}
 	}
@@ -288,7 +284,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 	if !dbp.childProcess {
 		stopReason = proc.StopAttached
 	}
-	return proc.NewTarget(dbp, proc.NewTargetConfig{
+	return proc.NewTarget(dbp, dbp.memthread, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd",

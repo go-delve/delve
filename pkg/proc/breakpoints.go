@@ -422,11 +422,11 @@ func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
 
 	g, err := GetG(thread)
 	if err != nil {
-		return returnInfoError("could not get g", err, thread)
+		return returnInfoError("could not get g", err, thread.ProcessMemory())
 	}
 	scope, err := GoroutineScope(thread)
 	if err != nil {
-		return returnInfoError("could not get scope", err, thread)
+		return returnInfoError("could not get scope", err, thread.ProcessMemory())
 	}
 	v, err := scope.evalAST(rbpi.retFrameCond)
 	if err != nil || v.Unreadable != nil || v.Kind != reflect.Bool {
@@ -444,12 +444,12 @@ func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
 	oldSP := uint64(rbpi.spOffset + int64(g.stack.hi))
 	err = fakeFunctionEntryScope(scope, rbpi.fn, oldFrameOffset, oldSP)
 	if err != nil {
-		return returnInfoError("could not read function entry", err, thread)
+		return returnInfoError("could not read function entry", err, thread.ProcessMemory())
 	}
 
 	vars, err := scope.Locals()
 	if err != nil {
-		return returnInfoError("could not evaluate return variables", err, thread)
+		return returnInfoError("could not evaluate return variables", err, thread.ProcessMemory())
 	}
 	vars = filterVariables(vars, func(v *Variable) bool {
 		return (v.Flags & VariableReturnArgument) != 0

@@ -175,3 +175,8 @@ func (t *nativeThread) PC() (uint64, error) {
 	}
 	return regs.PC(), nil
 }
+
+// ProcessMemory returns this thread's process memory.
+func (t *nativeThread) ProcessMemory() proc.MemoryReadWriter {
+	return t.dbp.Memory()
+}

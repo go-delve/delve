@@ -74,13 +74,6 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 		return ThreadScope(ct)
 	}
 
-	var thread MemoryReadWriter
-	if g.Thread == nil {
-		thread = ct
-	} else {
-		thread = g.Thread
-	}
-
 	var opts StacktraceOptions
 	if deferCall > 0 {
 		opts = StacktraceReadDefers
@@ -108,7 +101,7 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 		return d.EvalScope(ct)
 	}
 
-	return FrameToScope(dbp.BinInfo(), thread, g, locs[frame:]...), nil
+	return FrameToScope(dbp.BinInfo(), dbp.Memory(), g, locs[frame:]...), nil
 }
 
 // FrameToScope returns a new EvalScope for frames[0].
@@ -145,7 +138,7 @@ func ThreadScope(thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return FrameToScope(thread.BinInfo(), thread, nil, locations...), nil
+	return FrameToScope(thread.BinInfo(), thread.ProcessMemory(), nil, locations...), nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on the given thread.
@@ -161,7 +154,7 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return FrameToScope(thread.BinInfo(), thread, g, locations...), nil
+	return FrameToScope(thread.BinInfo(), thread.ProcessMemory(), g, locations...), nil
 }
 
 // EvalExpression returns the value of the given expression.

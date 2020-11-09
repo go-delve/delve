@@ -154,9 +154,8 @@ type process struct {
 
 	entryPoint uint64
 
-	bi            *proc.BinaryInfo
-	breakpoints   proc.BreakpointMap
-	currentThread *thread
+	bi          *proc.BinaryInfo
+	breakpoints proc.BreakpointMap
 }
 
 var _ proc.ProcessInternal = &process{}
@@ -188,7 +187,7 @@ var (
 	ErrChangeRegisterCore = errors.New("can not change register values of core process")
 )
 
-type openFn func(string, string) (*process, error)
+type openFn func(string, string) (*process, proc.Thread, error)
 
 var openFns = []openFn{readLinuxCore, readAMD64Minidump}
 
@@ -201,9 +200,10 @@ var ErrUnrecognizedFormat = errors.New("unrecognized core format")
 // for external debug files in the directories passed in.
 func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, error) {
 	var p *process
+	var currentThread proc.Thread
 	var err error
 	for _, openFn := range openFns {
-		p, err = openFn(corePath, exePath)
+		p, currentThread, err = openFn(corePath, exePath)
 		if err != ErrUnrecognizedFormat {
 			break
 		}
@@ -212,7 +212,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, err
 	}
 
-	return proc.NewTarget(p, proc.NewTargetConfig{
+	return proc.NewTarget(p, currentThread, proc.NewTargetConfig{
 		Path:                exePath,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: false,
@@ -239,7 +239,7 @@ func (p *process) WriteBreakpoint(addr uint64) (file string, line int, fn *proc.
 func (p *process) Recorded() (bool, string) { return true, "" }
 
 // Restart will only return an error for core files, as they are not executing.
-func (p *process) Restart(string) error { return ErrContinueCore }
+func (p *process) Restart(string) (proc.Thread, error) { return nil, ErrContinueCore }
 
 // ChangeDirection will only return an error as you cannot continue a core process.
 func (p *process) ChangeDirection(proc.Direction) error { return ErrContinueCore }
@@ -262,8 +262,8 @@ func (p *process) ClearCheckpoint(int) error { return errors.New("checkpoint not
 // ReadMemory will return memory from the core file at the specified location and put the
 // read memory into `data`, returning the length read, and returning an error if
 // the length read is shorter than the length of the `data` buffer.
-func (t *thread) ReadMemory(data []byte, addr uint64) (n int, err error) {
-	n, err = t.p.mem.ReadMemory(data, addr)
+func (p *process) ReadMemory(data []byte, addr uint64) (n int, err error) {
+	n, err = p.mem.ReadMemory(data, addr)
 	if err == nil && n != len(data) {
 		err = ErrShortRead
 	}
@@ -272,8 +272,13 @@ func (t *thread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 
 // WriteMemory will only return an error for core files, you cannot write
 // to the memory of a core process.
-func (t *thread) WriteMemory(addr uint64, data []byte) (int, error) {
+func (p *process) WriteMemory(addr uint64, data []byte) (int, error) {
 	return 0, ErrWriteCore
+}
+
+// ProcessMemory returns the memory of this thread's process.
+func (t *thread) ProcessMemory() proc.MemoryReadWriter {
+	return t.p
 }
 
 // Location returns the location of this thread based on
@@ -400,9 +405,9 @@ func (p *process) CheckAndClearManualStopRequest() bool {
 	return false
 }
 
-// CurrentThread returns the current active thread.
-func (p *process) CurrentThread() proc.Thread {
-	return p.currentThread
+// Memory returns the process memory.
+func (p *process) Memory() proc.MemoryReadWriter {
+	return p
 }
 
 // Detach will always return nil and have no
@@ -441,9 +446,4 @@ func (p *process) ThreadList() []proc.Thread {
 func (p *process) FindThread(threadID int) (proc.Thread, bool) {
 	t, ok := p.Threads[threadID]
 	return t, ok
-}
-
-// SetCurrentThread is used internally by proc.Target to change the current thread.
-func (p *process) SetCurrentThread(th proc.Thread) {
-	p.currentThread = th.(*thread)
 }

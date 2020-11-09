@@ -342,19 +342,6 @@ func TestScopePrefix(t *testing.T) {
 	const goroutinesCurLinePrefix = "* Goroutine "
 	test.AllowRecording(t)
 
-	tgtAgoroutineCount := 10
-
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-		// We try to make sure that all goroutines are stopped at a sensible place
-		// before reading their stacktrace, but due to the nature of the test
-		// program there is no guarantee that we always find them in a reasonable
-		// state.
-		// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
-		// unnecessary flakiness reduce the target count to 9, allowing one
-		// goroutine to be in a bad state.
-		tgtAgoroutineCount = 9
-	}
-
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b stacktraceme")
 		term.MustExec("continue")
@@ -407,7 +394,7 @@ func TestScopePrefix(t *testing.T) {
 					}
 				}
 			}
-			if len(agoroutines)+extraAgoroutines < tgtAgoroutineCount {
+			if len(agoroutines)+extraAgoroutines < 10 {
 				t.Fatalf("Output of goroutines did not have 10 goroutines stopped on main.agoroutine (%d+%d found): %q", len(agoroutines), extraAgoroutines, goroutinesOut)
 			}
 		}
@@ -451,12 +438,8 @@ func TestScopePrefix(t *testing.T) {
 			seen[ival] = true
 		}
 
-		firsterr := tgtAgoroutineCount != 10
-
 		for i := range seen {
-			if firsterr {
-				firsterr = false
-			} else if !seen[i] {
+			if !seen[i] {
 				t.Fatalf("goroutine %d not found", i)
 			}
 		}
@@ -536,21 +519,8 @@ func TestOnPrefix(t *testing.T) {
 			}
 		}
 
-		firsterr := false
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-			// We try to make sure that all goroutines are stopped at a sensible place
-			// before reading their stacktrace, but due to the nature of the test
-			// program there is no guarantee that we always find them in a reasonable
-			// state.
-			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
-			// unnecessary flakiness allow a single goroutine to be in a bad state.
-			firsterr = true
-		}
-
 		for i := range seen {
-			if firsterr {
-				firsterr = false
-			} else if !seen[i] {
+			if !seen[i] {
 				t.Fatalf("Goroutine %d not seen\n", i)
 			}
 		}
@@ -608,21 +578,8 @@ func TestOnPrefixLocals(t *testing.T) {
 			}
 		}
 
-		firsterr := false
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-			// We try to make sure that all goroutines are stopped at a sensible place
-			// before reading their stacktrace, but due to the nature of the test
-			// program there is no guarantee that we always find them in a reasonable
-			// state.
-			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
-			// unnecessary flakiness allow a single goroutine to be in a bad state.
-			firsterr = true
-		}
-
 		for i := range seen {
-			if firsterr {
-				firsterr = false
-			} else if !seen[i] {
+			if !seen[i] {
 				t.Fatalf("Goroutine %d not seen\n", i)
 			}
 		}

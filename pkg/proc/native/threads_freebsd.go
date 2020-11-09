@@ -75,17 +75,6 @@ func (t *nativeThread) singleStep() (err error) {
 	return nil
 }
 
-func (t *nativeThread) Blocked() bool {
-	loc, err := t.Location()
-	if err != nil {
-		return false
-	}
-	if loc.Fn != nil && ((loc.Fn.Name == "runtime.futex") || (loc.Fn.Name == "runtime.usleep") || (loc.Fn.Name == "runtime.clone")) {
-		return true
-	}
-	return false
-}
-
 func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	sr := savedRegs.(*fbsdutil.AMD64Registers)
 

@@ -310,16 +310,13 @@ func GoroutinesInfo(dbp *Target, start, count int) ([]*G, int, error) {
 
 	threads := dbp.ThreadList()
 	for _, th := range threads {
-		if th.Blocked() {
-			continue
-		}
 		g, _ := GetG(th)
 		if g != nil {
 			threadg[g.ID] = g
 		}
 	}
 
-	allgptr, allglen, err := dbp.gcache.getRuntimeAllg(dbp.BinInfo(), dbp.CurrentThread())
+	allgptr, allglen, err := dbp.gcache.getRuntimeAllg(dbp.BinInfo(), dbp.Memory())
 	if err != nil {
 		return nil, -1, err
 	}
@@ -434,7 +431,7 @@ func getGVariable(thread Thread) (*Variable, error) {
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
 		var err error
-		gaddr, err = readUintRaw(thread, regs.TLS()+thread.BinInfo().GStructOffset(), int64(thread.BinInfo().Arch.PtrSize()))
+		gaddr, err = readUintRaw(thread.ProcessMemory(), regs.TLS()+thread.BinInfo().GStructOffset(), int64(thread.BinInfo().Arch.PtrSize()))
 		if err != nil {
 			return nil, err
 		}
@@ -568,7 +565,7 @@ func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope 
 }
 
 func newVariableFromThread(t Thread, name string, addr uint64, dwarfType godwarf.Type) *Variable {
-	return newVariable(name, addr, dwarfType, t.BinInfo(), t)
+	return newVariable(name, addr, dwarfType, t.BinInfo(), t.ProcessMemory())
 }
 
 func (v *Variable) newVariable(name string, addr uint64, dwarfType godwarf.Type, mem MemoryReadWriter) *Variable {
@@ -922,7 +919,7 @@ var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
 func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.CurrentThread())
+	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.Memory())
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)

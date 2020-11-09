@@ -42,7 +42,8 @@ const (
 
 const elfErrorBadMagicNumber = "bad magic number"
 
-func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
+func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) proc.Thread {
+	var currentThread proc.Thread
 	var lastThreadAMD *linuxAMD64Thread
 	var lastThreadARM *linuxARM64Thread
 	for _, note := range notes {
@@ -52,15 +53,15 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
 				t := note.Desc.(*linuxPrStatusAMD64)
 				lastThreadAMD = &linuxAMD64Thread{linutil.AMD64Registers{Regs: &t.Reg}, t}
 				p.Threads[int(t.Pid)] = &thread{lastThreadAMD, p, proc.CommonThread{}}
-				if p.currentThread == nil {
-					p.currentThread = p.Threads[int(t.Pid)]
+				if currentThread == nil {
+					currentThread = p.Threads[int(t.Pid)]
 				}
 			} else if machineType == _EM_AARCH64 {
 				t := note.Desc.(*linuxPrStatusARM64)
 				lastThreadARM = &linuxARM64Thread{linutil.ARM64Registers{Regs: &t.Reg}, t}
 				p.Threads[int(t.Pid)] = &thread{lastThreadARM, p, proc.CommonThread{}}
-				if p.currentThread == nil {
-					p.currentThread = p.Threads[int(t.Pid)]
+				if currentThread == nil {
+					currentThread = p.Threads[int(t.Pid)]
 				}
 			}
 		case _NT_FPREGSET:
@@ -79,6 +80,7 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
 			p.pid = int(note.Desc.(*linuxPrPsInfo).Pid)
 		}
 	}
+	return currentThread
 }
 
 // readLinuxCore reads a core file from corePath corresponding to the executable at
@@ -87,35 +89,35 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) {
 // http://uhlo.blogspot.fr/2012/05/brief-look-into-core-dumps.html,
 // elf_core_dump in http://lxr.free-electrons.com/source/fs/binfmt_elf.c,
 // and, if absolutely desperate, readelf.c from the binutils source.
-func readLinuxCore(corePath, exePath string) (*process, error) {
+func readLinuxCore(corePath, exePath string) (*process, proc.Thread, error) {
 	coreFile, err := elf.Open(corePath)
 	if err != nil {
 		if _, isfmterr := err.(*elf.FormatError); isfmterr && (strings.Contains(err.Error(), elfErrorBadMagicNumber) || strings.Contains(err.Error(), " at offset 0x0: too short")) {
 			// Go >=1.11 and <1.11 produce different errors when reading a non-elf file.
-			return nil, ErrUnrecognizedFormat
+			return nil, nil, ErrUnrecognizedFormat
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	exe, err := os.Open(exePath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	exeELF, err := elf.NewFile(exe)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if coreFile.Type != elf.ET_CORE {
-		return nil, fmt.Errorf("%v is not a core file", coreFile)
+		return nil, nil, fmt.Errorf("%v is not a core file", coreFile)
 	}
 	if exeELF.Type != elf.ET_EXEC && exeELF.Type != elf.ET_DYN {
-		return nil, fmt.Errorf("%v is not an exe file", exeELF)
+		return nil, nil, fmt.Errorf("%v is not an exe file", exeELF)
 	}
 
 	machineType := exeELF.Machine
 	notes, err := readNotes(coreFile, machineType)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	memory := buildMemory(coreFile, exeELF, exe, notes)
 
@@ -127,7 +129,7 @@ func readLinuxCore(corePath, exePath string) (*process, error) {
 	case _EM_AARCH64:
 		bi = proc.NewBinaryInfo("linux", "arm64")
 	default:
-		return nil, fmt.Errorf("unsupported machine type")
+		return nil, nil, fmt.Errorf("unsupported machine type")
 	}
 
 	entryPoint := findEntryPoint(notes, bi.Arch.PtrSize())
@@ -140,8 +142,8 @@ func readLinuxCore(corePath, exePath string) (*process, error) {
 		breakpoints: proc.NewBreakpointMap(),
 	}
 
-	linuxThreadsFromNotes(p, notes, machineType)
-	return p, nil
+	currentThread := linuxThreadsFromNotes(p, notes, machineType)
+	return p, currentThread, nil
 }
 
 type linuxAMD64Thread struct {
