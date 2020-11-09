@@ -1586,6 +1586,16 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			if len(cu.ranges) >= 1 {
 				cu.lowPC = cu.ranges[0][0]
 			}
+			cu.producer, _ = entry.Val(dwarf.AttrProducer).(string)
+			if cu.isgo && cu.producer != "" {
+				semicolon := strings.Index(cu.producer, ";")
+				if semicolon < 0 {
+					cu.optimized = goversion.ProducerAfterOrEqual(cu.producer, 1, 10)
+				} else {
+					cu.optimized = !strings.Contains(cu.producer[semicolon:], "-N") || !strings.Contains(cu.producer[semicolon:], "-l")
+					cu.producer = cu.producer[:semicolon]
+				}
+			}
 			lineInfoOffset, hasLineInfo := entry.Val(dwarf.AttrStmtList).(int64)
 			if hasLineInfo && lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				var logfn func(string, ...interface{})
@@ -1596,17 +1606,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 						logger.Printf(fmt, args)
 					}
 				}
-				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), logfn, image.StaticBase, bi.GOOS == "windows", bi.Arch.PtrSize())
-			}
-			cu.producer, _ = entry.Val(dwarf.AttrProducer).(string)
-			if cu.isgo && cu.producer != "" {
-				semicolon := strings.Index(cu.producer, ";")
-				if semicolon < 0 {
-					cu.optimized = goversion.ProducerAfterOrEqual(cu.producer, 1, 10)
-				} else {
-					cu.optimized = !strings.Contains(cu.producer[semicolon:], "-N") || !strings.Contains(cu.producer[semicolon:], "-l")
-					cu.producer = cu.producer[:semicolon]
-				}
+				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), logfn, image.StaticBase, bi.GOOS == "windows", !goversion.ProducerAfterOrEqual(cu.producer, 1, 15), bi.Arch.PtrSize())
 			}
 			gopkg, _ := entry.Val(godwarf.AttrGoPackageName).(string)
 			if cu.isgo && gopkg != "" {

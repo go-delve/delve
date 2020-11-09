@@ -225,7 +225,7 @@ func (lineInfo *DebugLineInfo) PCToLine(basePC, pc uint64) (string, int) {
 
 	sm := lineInfo.stateMachineFor(basePC, pc)
 
-	file, line, _ := sm.PCToLine(pc, false)
+	file, line, _ := sm.PCToLine(pc, lineInfo.firstExactMatch)
 	return file, line
 }
 

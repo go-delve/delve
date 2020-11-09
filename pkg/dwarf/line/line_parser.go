@@ -43,6 +43,8 @@ type DebugLineInfo struct {
 	// if normalizeBackslash is true all backslashes (\) will be converted into forward slashes (/)
 	normalizeBackslash bool
 	ptrSize            int
+
+	firstExactMatch bool
 }
 
 type FileEntry struct {
@@ -63,7 +65,7 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 	// We have to parse multiple file name tables here.
 	for buf.Len() > 0 {
-		lines = append(lines, Parse("", buf, logfn, staticBase, normalizeBackslash, ptrSize))
+		lines = append(lines, Parse("", buf, logfn, staticBase, normalizeBackslash, false, ptrSize))
 	}
 
 	return lines
@@ -71,7 +73,7 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 // Parse parses a single debug_line segment from buf. Compdir is the
 // DW_AT_comp_dir attribute of the associated compile unit.
-func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
+func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash, firstExactMatch bool, ptrSize int) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
 	dbl.Logf = logfn
 	dbl.staticBase = staticBase
@@ -82,6 +84,7 @@ func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{})
 	dbl.stateMachineCache = make(map[uint64]*StateMachine)
 	dbl.lastMachineCache = make(map[uint64]*StateMachine)
 	dbl.normalizeBackslash = normalizeBackslash
+	dbl.firstExactMatch = firstExactMatch
 
 	parseDebugLinePrologue(dbl, buf)
 	if dbl.Prologue.Version >= 5 {
