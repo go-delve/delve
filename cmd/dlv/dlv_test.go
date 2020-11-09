@@ -296,6 +296,38 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 	}
 }
 
+// TestRedirect verifies that redirecting stdin works
+func TestRedirect(t *testing.T) {
+	const listenAddr = "127.0.0.1:40573"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	catfixture := filepath.Join(protest.FindFixturesDir(), "cat.go")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr, "-r", catfixture, catfixture)
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer stdout.Close()
+
+	assertNoError(cmd.Start(), t, "start headless instance")
+
+	scan := bufio.NewScanner(stdout)
+	// wait for the debugger to start
+	for scan.Scan() {
+		t.Log(scan.Text())
+		if scan.Text() == "read \"}\"" {
+			break
+		}
+	}
+
+	// and detach from and kill the headless instance
+	client := rpc2.NewClient(listenAddr)
+	if err := client.Detach(true); err != nil {
+		t.Fatalf("error detaching from headless instance: %v", err)
+	}
+	cmd.Wait()
+}
+
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
 	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
 

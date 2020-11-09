@@ -349,20 +349,13 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 
 	foreground := flags&proc.LaunchForeground != 0
 
-	if foreground {
-		// Disable foregrounding if we can't open /dev/tty or debugserver will
-		// crash. See issue #1215.
-		if !isatty.IsTerminal(os.Stdin.Fd()) {
-			foreground = false
-		}
-	}
-
 	var (
 		isDebugserver bool
 		listener      net.Listener
 		port          string
 		process       *exec.Cmd
 		err           error
+		hasRedirects  bool
 	)
 
 	if debugserverExecutable := getDebugServerAbsolutePath(); debugserverExecutable != "" {
@@ -382,18 +375,15 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 			for i := range redirects {
 				if redirects[i] != "" {
 					found[i] = true
+					hasRedirects = true
 					args = append(args, fmt.Sprintf("--%s-path", names[i]), redirects[i])
 				}
 			}
 
-			if foreground {
-				if !found[0] && !found[1] && !found[2] {
-					args = append(args, "--stdio-path", "/dev/tty")
-				} else {
-					for i := range found {
-						if !found[i] {
-							args = append(args, fmt.Sprintf("--%s-path", names[i]), "/dev/tty")
-						}
+			if foreground || hasRedirects {
+				for i := range found {
+					if !found[i] {
+						args = append(args, fmt.Sprintf("--%s-path", names[i]), "/dev/"+names[i])
 					}
 				}
 			}
@@ -423,19 +413,23 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 		process = commandLogger("lldb-server", args...)
 	}
 
-	if logflags.LLDBServerOutput() || logflags.GdbWire() || foreground {
+	if logflags.LLDBServerOutput() || logflags.GdbWire() || foreground || hasRedirects {
 		process.Stdout = os.Stdout
 		process.Stderr = os.Stderr
 	}
-	if foreground {
-		foregroundSignalsIgnore()
+	if foreground || hasRedirects {
+		if isatty.IsTerminal(os.Stdin.Fd()) {
+			foregroundSignalsIgnore()
+		}
 		process.Stdin = os.Stdin
 	}
 	if wd != "" {
 		process.Dir = wd
 	}
 
-	process.SysProcAttr = sysProcAttr(foreground)
+	if isatty.IsTerminal(os.Stdin.Fd()) {
+		process.SysProcAttr = sysProcAttr(foreground)
+	}
 
 	if runtime.GOOS == "darwin" {
 		process.Env = proc.DisableAsyncPreemptEnv()
