@@ -543,7 +543,7 @@ func fixedadvancepc(sm *StateMachine, buf *bytes.Buffer) {
 
 func endsequence(sm *StateMachine, buf *bytes.Buffer) {
 	sm.endSeq = true
-	sm.valid = true
+	sm.valid = sm.dbl.endSeqIsValid
 }
 
 func setaddress(sm *StateMachine, buf *bytes.Buffer) {
