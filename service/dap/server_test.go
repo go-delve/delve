@@ -98,14 +98,18 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 //                                 :  7 >> threads
 //                                 :  7 << threads (Dummy)
 //                                 :  8 >> stackTrace
-//                                 :  8 << stackTrace (Unable to produce stack trace)
+//                                 :  8 << error (Unable to produce stack trace)
 //                                 :  9 >> stackTrace
-//                                 :  9 << stackTrace (Unable to produce stack trace)
-// - User selects "Continue"       : 10 >> continue
-//                                 : 10 << continue
+//                                 :  9 << error (Unable to produce stack trace)
+// - User evaluates bad expression : 10 >> evaluate
+//                                 : 10 << error (unable to find function context)
+// - User evaluates good expression: 11 >> evaluate
+//                                 : 11 << evaluate
+// - User selects "Continue"       : 12 >> continue
+//                                 : 12 << continue
 // - Program runs to completion    :    << terminated event
-//                                 : 11 >> disconnect
-//                                 : 11 << disconnect
+//                                 : 13 >> disconnect
+//                                 : 13 << disconnect
 // This test exhaustively tests Seq and RequestSeq on all messages from the
 // server. Other tests do not necessarily need to repeat all these checks.
 func TestStopOnEntry(t *testing.T) {
@@ -173,36 +177,50 @@ func TestStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=1", tResp)
 		}
 
-		// 8 >> stackTrace, << stackTrace
+		// 8 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp := client.ExpectErrorResponse(t)
 		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
-		// 9 >> stackTrace, << stackTrace
+		// 9 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp = client.ExpectErrorResponse(t)
 		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != 2004 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=2004", stResp)
 		}
 
-		// 10 >> continue, << continue, << terminated
+		// 10 >> evaluate, << error
+		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
+		erResp := client.ExpectVisibleErrorResponse(t)
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
+		}
+
+		// 11 >> evaluate, << evaluate
+		client.EvaluateRequest("1+1", 0 /*no frame specified*/, "repl")
+		evResp := client.ExpectEvaluateResponse(t)
+		if evResp.Seq != 0 || evResp.RequestSeq != 11 || evResp.Body.Result != "2" {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Result=2", evResp)
+		}
+
+		// 12 >> continue, << continue, << terminated
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Body.AllThreadsContinued=true", contResp)
+		if contResp.Seq != 0 || contResp.RequestSeq != 12 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12 Body.AllThreadsContinued=true", contResp)
 		}
 		termEvent := client.ExpectTerminatedEvent(t)
 		if termEvent.Seq != 0 {
 			t.Errorf("\ngot %#v\nwant Seq=0", termEvent)
 		}
 
-		// 11 >> disconnect, << disconnect
+		// 13 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 11 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=11", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
 		}
 	})
 }
@@ -565,12 +583,12 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 			// Breakpoints are set within the program
 			fixture.Source, []int{},
 			[]onBreakpoint{{
-				// Stop at line 62
+				// Stop at first breakpoint
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 
-					startLineno := 62
+					startLineno := 65
 					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 						// Go1.15 on windows inserts a NOP after the call to
 						// runtime.Breakpoint and marks it same line as the
@@ -611,7 +629,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
-					expectChildren(t, locals, "Locals", 29)
+					expectChildren(t, locals, "Locals", 30)
 
 					// reflect.Kind == Bool
 					expectVarExact(t, locals, -1, "b1", "true", noChildren)
@@ -775,12 +793,12 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 				},
 				disconnect: false,
 			}, {
-				// Stop at line 25
+				// Stop at second breakpoint
 				execute: func() {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					expectStackFrames(t, stack, 25, 1000, 5, 5)
+					expectStackFrames(t, stack, 27, 1000, 5, 5)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1146,7 +1164,7 @@ func TestSetBreakpoint(t *testing.T) {
 			fixture.Source, []int{16}, // b main.main
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, 16)
+					handleStop(t, client, 1, "main.main", 16)
 
 					type Breakpoint struct {
 						line      int
@@ -1180,7 +1198,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, 18)
+					handleStop(t, client, 1, "main.main", 18)
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
@@ -1190,7 +1208,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, 8)
+					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectVarExact(t, locals, 0, "i", "0", noChildren) // i == 0
@@ -1203,7 +1221,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, 8)
+					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
 					expectVarExact(t, locals, 0, "i", "3", noChildren) // i == 3
@@ -1216,7 +1234,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, 8)
+					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
 					expectVarExact(t, locals, 0, "i", "4", noChildren) // i == 4
@@ -1226,6 +1244,305 @@ func TestSetBreakpoint(t *testing.T) {
 					expectSetBreakpointsResponse([]Breakpoint{{1000, false, "could not find statement"}}) // all cleared, none set
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
+// expectEval is a helper for verifying the values within an EvaluateResponse.
+//     value - the value of the evaluated expression
+//     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
+//     ref - reference to retrieve children of this evaluated expression (0 if none)
+func expectEval(t *testing.T, got *dap.EvaluateResponse, value string, hasRef bool) (ref int) {
+	t.Helper()
+	if got.Body.Result != value || (got.Body.VariablesReference > 0) != hasRef {
+		t.Errorf("\ngot  %#v\nwant Result=%q hasRef=%t", got, value, hasRef)
+	}
+	return got.Body.VariablesReference
+}
+
+func TestEvaluateRequest(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{}, // Breakpoint set in the program
+			[]onBreakpoint{{ // Stop at first breakpoint
+				execute: func() {
+					handleStop(t, client, 1, "main.foobar", 65)
+
+					// Variable lookup
+					client.EvaluateRequest("a2", 1000, "this context will be ignored")
+					got := client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "6", noChildren)
+
+					client.EvaluateRequest("a5", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref := expectEval(t, got, "<[]int> (length: 5, cap: 5)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						a5 := client.ExpectVariablesResponse(t)
+						expectChildren(t, a5, "a5", 5)
+						expectVarExact(t, a5, 0, "[0]", "1", noChildren)
+						expectVarExact(t, a5, 4, "[4]", "5", noChildren)
+					}
+
+					// All (binary and unary) on basic types except <-, ++ and --
+					client.EvaluateRequest("1+1", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", noChildren)
+
+					// Comparison operators on any type
+					client.EvaluateRequest("1<2", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "true", noChildren)
+
+					// Type casts between numeric types
+					client.EvaluateRequest("int(2.3)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", noChildren)
+
+					// Type casts of integer constants into any pointer type and vice versa
+					client.EvaluateRequest("(*int)(2)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<*int>(0x2)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						expr := client.ExpectVariablesResponse(t)
+						expectChildren(t, expr, "(*int)(2)", 1)
+						// TODO(polina): should this be printed as (unknown int) instead?
+						expectVarExact(t, expr, 0, "", "<int>", noChildren)
+					}
+					// Type casts between string, []byte and []rune
+					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					// TODO(polina): this is a bug (in vscode-go too). dlv cli prints
+					// []uint8 len: 6, cap: 6, [65,66,67,226,130,172]
+					expectEval(t, got, "nil <[]uint8>", noChildren)
+
+					// Struct member access (i.e. somevar.memberfield)
+					client.EvaluateRequest("ms.Nest.Level", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "1", noChildren)
+
+					// Slicing and indexing operators on arrays, slices and strings
+					client.EvaluateRequest("a5[4]", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "5", noChildren)
+
+					// Map access
+					client.EvaluateRequest("mp[1]", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<interface {}(int)>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						expr := client.ExpectVariablesResponse(t)
+						expectChildren(t, expr, "mp[1]", 1)
+						expectVarExact(t, expr, 0, "data", "42", noChildren)
+					}
+
+					// Pointer dereference
+					client.EvaluateRequest("*ms.Nest", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<main.Nest>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						expr := client.ExpectVariablesResponse(t)
+						expectChildren(t, expr, "*ms.Nest", 2)
+						expectVarExact(t, expr, 0, "Level", "1", noChildren)
+					}
+
+					// Calls to builtin functions: cap, len, complex, imag and real
+					client.EvaluateRequest("len(a5)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "5", noChildren)
+
+					// Type assertion on interface variables (i.e. somevar.(concretetype))
+					client.EvaluateRequest("mp[1].(int)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "42", noChildren)
+				},
+				disconnect: false,
+			}, { // Stop at second breakpoint
+				execute: func() {
+					handleStop(t, client, 1, "main.barfoo", 27)
+
+					// Top-most frame
+					client.EvaluateRequest("a1", 1000, "this context will be ignored")
+					got := client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"bur\"", noChildren)
+					// No frame defaults to top-most frame
+					client.EvaluateRequest("a1", 0, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"bur\"", noChildren)
+					// Next frame
+					client.EvaluateRequest("a1", 1001, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"foofoofoofoofoofoo\"", noChildren)
+					// Next frame
+					client.EvaluateRequest("a1", 1002, "any context but watch")
+					erres := client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
+					client.EvaluateRequest("a1", 1002, "watch")
+					erres = client.ExpectErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
+				},
+				disconnect: false,
+			}})
+	})
+}
+
+func TestEvaluateCallRequest(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+	runTest(t, "fncall", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client,
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{88},
+			[]onBreakpoint{{ // Stop in makeclos()
+				execute: func() {
+					handleStop(t, client, 1, "main.makeclos", 88)
+
+					// Topmost frame: both types of expressions should work
+					client.EvaluateRequest("callstacktrace", 1000, "this context will be ignored")
+					client.ExpectEvaluateResponse(t)
+					client.EvaluateRequest("call callstacktrace()", 1000, "this context will be ignored")
+					client.ExpectEvaluateResponse(t)
+
+					// Next frame: only non-call expressions will work
+					client.EvaluateRequest("callstacktrace", 1001, "this context will be ignored")
+					client.ExpectEvaluateResponse(t)
+					client.EvaluateRequest("call callstacktrace()", 1001, "not watch")
+					erres := client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: call is only supported with topmost stack frame" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call is only supported with topmost stack frame\"", erres)
+					}
+
+					// A call can stop on a breakpoint
+					client.EvaluateRequest("call callbreak()", 1000, "not watch")
+					s := client.ExpectStoppedEvent(t)
+					if s.Body.Reason != "hardcoded breakpoint" {
+						t.Errorf("\ngot %#v\nwant Reason=\"hardcoded breakpoint\"", s)
+					}
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
+					}
+
+					// A call during a call causes an error
+					client.EvaluateRequest("call callstacktrace()", 1000, "not watch")
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: cannot call function while another function call is already in progress" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: cannot call function while another function call is already in progress\"", erres)
+					}
+
+					// Complete the call and get back to original breakpoint in makeclos()
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, "main.makeclos", 88)
+
+					// Inject a call for the same function that is stopped at breakpoint:
+					// it might stop at the exact same breakpoint on the same goroutine,
+					// but we should still detect that its an injected call that stopped
+					// and not the return to the original point of injection after it
+					// completed.
+					client.EvaluateRequest("call makeclos(nil)", 1000, "not watch")
+					client.ExpectStoppedEvent(t)
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
+					}
+					if (goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) && (runtime.GOOS == "linux" || runtime.GOOS == "windows")) ||
+						runtime.GOOS == "freebsd" {
+						handleStop(t, client, 1, "runtime.debugCallWrap", -1)
+					} else {
+						handleStop(t, client, 1, "main.makeclos", 88)
+					}
+
+					// Complete the call and get back to original breakpoint in makeclos()
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, "main.makeclos", 88)
+				},
+				disconnect: false,
+			}, { // Stop at runtime breakpoint
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 197)
+
+					// No return values
+					client.EvaluateRequest("call call0(1, 2)", 1000, "this context will be ignored")
+					got := client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "", noChildren)
+					// One unnamed return value
+					client.EvaluateRequest("call call1(one, two)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref := expectEval(t, got, "3", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rv := client.ExpectVariablesResponse(t)
+						expectChildren(t, rv, "rv", 1)
+						expectVarExact(t, rv, 0, "~r2", "3", noChildren)
+					}
+					// One named return value
+					// Panic doesn't panic, but instead returns the error as a named return variable
+					client.EvaluateRequest("call callpanic()", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "<interface {}(string)>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rv := client.ExpectVariablesResponse(t)
+						expectChildren(t, rv, "rv", 1)
+						ref = expectVarExact(t, rv, 0, "~panic", "<interface {}(string)>", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							p := client.ExpectVariablesResponse(t)
+							expectChildren(t, p, "~panic", 1)
+							expectVarExact(t, p, 0, "data", "\"callpanic panicked\"", noChildren)
+						}
+					}
+					// Multiple return values
+					client.EvaluateRequest("call call2(one, two)", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "1, 2", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rvs := client.ExpectVariablesResponse(t)
+						expectChildren(t, rvs, "rvs", 2)
+						expectVarExact(t, rvs, 0, "~r2", "1", noChildren)
+						expectVarExact(t, rvs, 1, "~r3", "2", noChildren)
+					}
+					// No frame defaults to top-most frame
+					client.EvaluateRequest("call call1(one, two)", 0, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "3", hasChildren)
+					// Extra spaces don't matter
+					client.EvaluateRequest(" call  call1(one, one) ", 0, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", hasChildren)
+					// Just 'call', even with extra space, is treated as {expression}
+					client.EvaluateRequest("call ", 1000, "watch")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "\"this is a variable named `call`\"", noChildren)
+					// Call error
+					client.EvaluateRequest("call call1(one)", 1000, "watch")
+					erres := client.ExpectErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
+					}
+					// Call can exit
+					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
+					client.ExpectTerminatedEvent(t)
+				},
 				disconnect: true,
 			}})
 	})
@@ -1242,32 +1559,32 @@ func TestNextAndStep(t *testing.T) {
 			fixture.Source, []int{11},
 			[]onBreakpoint{{ // Stop at line 11
 				execute: func() {
-					handleStop(t, client, 1, 11)
+					handleStop(t, client, 1, "main.initialize", 11)
 
-					expectStop := func(line int) {
+					expectStop := func(fun string, line int) {
 						t.Helper()
 						se := client.ExpectStoppedEvent(t)
 						if se.Body.Reason != "step" || se.Body.ThreadId != 1 || !se.Body.AllThreadsStopped {
 							t.Errorf("got %#v, want Reason=\"step\", ThreadId=1, AllThreadsStopped=true", se)
 						}
-						handleStop(t, client, 1, line)
+						handleStop(t, client, 1, fun, line)
 					}
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
-					expectStop(18)
+					expectStop("main.main", 18)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					expectStop(19)
+					expectStop("main.main", 19)
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					expectStop(5)
+					expectStop("main.inlineThis", 5)
 
 					client.NextRequest(-10000 /*this is ignored*/)
 					client.ExpectNextResponse(t)
-					expectStop(6)
+					expectStop("main.inlineThis", 6)
 				},
 				disconnect: false,
 			}})
@@ -1288,7 +1605,7 @@ func TestBadAccess(t *testing.T) {
 			fixture.Source, []int{4},
 			[]onBreakpoint{{ // Stop at line 4
 				execute: func() {
-					handleStop(t, client, 1, 4)
+					handleStop(t, client, 1, "main.main", 4)
 
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
@@ -1338,7 +1655,7 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 			fixture.Source, []int{5},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, 5)
+					handleStop(t, client, 1, "main.main", 5)
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -1370,7 +1687,7 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 			fixture.Source, []int{5},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, 5)
+					handleStop(t, client, 1, "main.main", 5)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
@@ -1397,7 +1714,7 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 			fixture.Source, []int{3},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, 3)
+					handleStop(t, client, 1, "main.main", 3)
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -1416,15 +1733,23 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 // a client at a breakpoint or another non-terminal stop event.
 // The details have been tested by other tests,
 // so this is just a sanity check.
-func handleStop(t *testing.T, client *daptest.Client, thread, line int) {
+// Skips line check if line is -1.
+func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
 	t.Helper()
 	client.ThreadsRequest()
 	client.ExpectThreadsResponse(t)
 
 	client.StackTraceRequest(thread, 0, 20)
 	st := client.ExpectStackTraceResponse(t)
-	if len(st.Body.StackFrames) < 1 || st.Body.StackFrames[0].Line != line {
-		t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
+	if len(st.Body.StackFrames) < 1 {
+		t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
+	} else {
+		if line != -1 && st.Body.StackFrames[0].Line != line {
+			t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
+		}
+		if st.Body.StackFrames[0].Name != name {
+			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
+		}
 	}
 
 	client.ScopesRequest(1000)
@@ -1626,9 +1951,6 @@ func TestRequiredNotYetImplementedResponses(t *testing.T) {
 
 		client.PauseRequest()
 		expectNotYetImplemented("pause")
-
-		client.EvaluateRequest()
-		expectNotYetImplemented("evaluate")
 	})
 }
 

@@ -1517,6 +1517,24 @@ func (d *Debugger) Recorded() (recorded bool, tracedir string) {
 	return d.target.Recorded()
 }
 
+// FindThreadReturnValues returns the return values of the function that
+// the thread of the given 'id' just stepped out of.
+func (d *Debugger) FindThreadReturnValues(id int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
+	}
+
+	thread, found := d.target.FindThread(id)
+	if !found {
+		return nil, fmt.Errorf("could not find thread %d", id)
+	}
+
+	return thread.Common().ReturnValues(cfg), nil
+}
+
 // Checkpoint will set a checkpoint specified by the locspec.
 func (d *Debugger) Checkpoint(where string) (int, error) {
 	d.targetMutex.Lock()

@@ -442,6 +442,7 @@ func TestLocalVariables(t *testing.T) {
 				{"f32", true, "1.2", "", "float32", nil},
 				{"i32", true, "[2]int32 [1,2]", "", "[2]int32", nil},
 				{"i8", true, "1", "", "int8", nil},
+				{"mp", true, "map[int]interface {} [1: 42, 2: 43, ]", "", "map[int]interface {}", nil},
 				{"ms", true, "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *(*main.Nest)…", "", "main.Nest", nil},
 				{"neg", true, "-1", "", "int", nil},
 				{"u16", true, "65535", "", "uint16", nil},

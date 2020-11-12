@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -58,8 +59,10 @@ type Server struct {
 	// binaryToRemove is the compiled binary to be removed on disconnect.
 	binaryToRemove string
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
+	// Reset at every stop.
 	stackFrameHandles *handlesMap
 	// variableHandles maps compound variables to unique references within their stack frame.
+	// Reset at every stop.
 	// See also comment for convertVariable.
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
@@ -317,8 +320,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// Optional (capability ‘supportsTerminateThreadsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.EvaluateRequest:
-		// Required - TODO
-		// TODO: implement this request in V0
+		// Required
 		s.onEvaluateRequest(request)
 	case *dap.StepInTargetsRequest:
 		// Optional (capability ‘supportsStepInTargetsRequest’)
@@ -673,7 +675,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest) {
-	// This ingores threadId argument to match the original vscode-go implementation.
+	// This ignores threadId argument to match the original vscode-go implementation.
 	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.Next)
@@ -682,7 +684,7 @@ func (s *Server) onNextRequest(request *dap.NextRequest) {
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest) {
-	// This ingores threadId argument to match the original vscode-go implementation.
+	// This ignores threadId argument to match the original vscode-go implementation.
 	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.Step)
@@ -691,7 +693,7 @@ func (s *Server) onStepInRequest(request *dap.StepInRequest) {
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
-	// This ingores threadId argument to match the original vscode-go implementation.
+	// This ignores threadId argument to match the original vscode-go implementation.
 	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.StepOut)
@@ -913,15 +915,32 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	s.send(response)
 }
 
-// convertVariable converts api.Variable to dap.Variable value and reference.
+// convertVariable converts proc.Variable to dap.Variable value and reference.
 // Variable reference is used to keep track of the children associated with each
-// variable. It is shared with the host via a scopes response and is an index to
-// the s.variableHandles map, so it can be referenced from a subsequent variables
-// request. A positive reference signals the host that another variables request
-// can be issued to get the elements of the compound variable. As a custom, a zero
-// reference, reminiscent of a zero pointer, is used to indicate that a scalar
-// variable cannot be "dereferenced" to get its elements (as there are none).
+// variable. It is shared with the host via scopes or evaluate response and is an index
+// into the s.variableHandles map, used to look up variables and their children on
+// subsequent variables requests. A positive reference signals the host that another
+// variables request can be issued to get the elements of the compound variable. As a
+// custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
+// a scalar variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v *proc.Variable) (value string, variablesReference int) {
+	return s.convertVariableWithOpts(v, false)
+}
+
+func (s *Server) convertVariableToString(v *proc.Variable) string {
+	val, _ := s.convertVariableWithOpts(v, true)
+	return val
+}
+
+// convertVarialbeWithOpts allows to skip reference generation in case all we need is
+// a string representation of the variable.
+func (s *Server) convertVariableWithOpts(v *proc.Variable, skipRef bool) (value string, variablesReference int) {
+	maybeCreateVariableHandle := func(v *proc.Variable) int {
+		if skipRef {
+			return 0
+		}
+		return s.variableHandles.create(v)
+	}
 	if v.Unreadable != nil {
 		value = fmt.Sprintf("unreadable <%v>", v.Unreadable)
 		return
@@ -943,12 +962,12 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "void"
 		} else {
 			value = fmt.Sprintf("<%s>(%#x)", typeName, v.Children[0].Addr)
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Array:
 		value = "<" + typeName + ">"
 		if len(v.Children) > 0 {
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Slice:
 		if v.Base == 0 {
@@ -956,7 +975,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 		} else {
 			value = fmt.Sprintf("<%s> (length: %d, cap: %d)", typeName, v.Len, v.Cap)
 			if len(v.Children) > 0 {
-				variablesReference = s.variableHandles.create(v)
+				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
 	case reflect.Map:
@@ -965,7 +984,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 		} else {
 			value = fmt.Sprintf("<%s> (length: %d)", typeName, v.Len)
 			if len(v.Children) > 0 {
-				variablesReference = s.variableHandles.create(v)
+				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
 	case reflect.String:
@@ -980,11 +999,11 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "nil <" + typeName + ">"
 		} else {
 			value = "<" + typeName + ">"
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Interface:
 		if v.Addr == 0 {
-			// An escaped interface variable that points to nil, this shouldn't
+			// An escaped interface variable that points to nil: this shouldn't
 			// happen in normal code but can happen if the variable is out of scope,
 			// such as if an interface variable has been captured by a
 			// closure and replaced by a pointer to interface, and the pointer
@@ -1008,7 +1027,7 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			// After:
 			//   i: <interface{}(main.MyStruct)>
 			//      field1: ...
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Complex64, reflect.Complex128:
 		v.Children = make([]proc.Variable, 2)
@@ -1032,16 +1051,129 @@ func (s *Server) convertVariable(v *proc.Variable) (value string, variablesRefer
 			value = "<" + typeName + ">"
 		}
 		if len(v.Children) > 0 {
-			variablesReference = s.variableHandles.create(v)
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
 	return
 }
 
-// onEvaluateRequest sends a not-yet-implemented error response.
+// onEvaluateRequest handles 'evalute' requests.
 // This is a mandatory request to support.
-func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+// Support the following expressions:
+// -- {expression} - evaluates the expression and returns the result as a variable
+// -- call {function} - injects a function call and returns the result as a variable
+// TODO(polina): users have complained about having to click to expand multi-level
+// variables, so consider also adding the following:
+// -- print {expression} - return the result as a string like from dlv cli
+func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
+	showErrorToUser := request.Arguments.Context != "watch"
+	if s.debugger == nil {
+		s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "debugger is nil", showErrorToUser)
+		return
+	}
+	// Default to the topmost stack frame of the current goroutine in case
+	// no frame is specified (e.g. when stopped on entry or no call stack frame is expanded)
+	goid, frame := -1, 0
+	if sf, ok := s.stackFrameHandles.get(request.Arguments.FrameId); ok {
+		goid = sf.(stackFrame).goroutineID
+		frame = sf.(stackFrame).frameIndex
+	}
+	// TODO(polina): Support config settings via launch/attach args vs auto-loading?
+	apiCfg := &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	prcCfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+
+	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
+	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
+	if err == nil && isCall { // call {expression}
+		// This call might be evaluated in the context of the frame that is not topmost
+		// if the editor is set to view the variables for one of the parent frames.
+		// If the call expression refers to any of these variables, unlike regular
+		// expressions, it will evaluate them in the context of the topmost frame,
+		// and the user will get an unexpected result or an unexpected symbol error.
+		// We prevent this but disallowing any frames other than topmost.
+		if frame > 0 {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "call is only supported with topmost stack frame", showErrorToUser)
+			return
+		}
+		stateBeforeCall, err := s.debugger.State( /*nowait*/ true)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+			return
+		}
+		state, err := s.debugger.Command(&api.DebuggerCommand{
+			Name:                 api.Call,
+			ReturnInfoLoadConfig: apiCfg,
+			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
+			UnsafeCall:           false,
+			GoroutineID:          goid,
+		})
+		if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
+			s.send(e)
+			return
+		}
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+			return
+		}
+		// After the call is done, the goroutine where we injected the call should
+		// return to the original stopped line with return values. However,
+		// it is not guaranteed to be selected due to the possibility of the
+		// of simultaenous breakpoints. Therefore, we check all threads.
+		var retVars []*proc.Variable
+		for _, t := range state.Threads {
+			if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
+				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.ReturnValues != nil {
+				// The call completed. Get the return values.
+				retVars, err = s.debugger.FindThreadReturnValues(t.ID, prcCfg)
+				if err != nil {
+					s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+					return
+				}
+				break
+			}
+		}
+		if retVars == nil {
+			// The call got interrupted by a stop (e.g. breakpoint in injected
+			// function call or in another goroutine)
+			s.resetHandlesForStop()
+			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+			stopped.Body.AllThreadsStopped = true
+			if state.SelectedGoroutine != nil {
+				stopped.Body.ThreadId = state.SelectedGoroutine.ID
+			}
+			stopped.Body.Reason = s.debugger.StopReason().String()
+			s.send(stopped)
+			// TODO(polina): once this is asynchronous, we could wait to reply until the user
+			// continues, call ends, original stop point is hit and return values are available.
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "call stopped", showErrorToUser)
+			return
+		}
+		// The call completed and we can reply with its return values (if any)
+		if len(retVars) > 0 {
+			// Package one or more return values in a single scope-like nameless variable
+			// that preserves their names.
+			retVarsAsVar := &proc.Variable{Children: slicePtrVarToSliceVar(retVars)}
+			// As a shortcut also express the return values as a single string.
+			retVarsAsStr := ""
+			for _, v := range retVars {
+				retVarsAsStr += s.convertVariableToString(v) + ", "
+			}
+			response.Body = dap.EvaluateResponseBody{
+				Result:             strings.TrimRight(retVarsAsStr, ", "),
+				VariablesReference: s.variableHandles.create(retVarsAsVar),
+			}
+		}
+	} else { // {expression}
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, prcCfg)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
+			return
+		}
+		exprVal, exprRef := s.convertVariable(exprVar)
+		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
+	}
+	s.send(response)
 }
 
 // onTerminateRequest sends a not-yet-implemented error response.
@@ -1110,7 +1242,9 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details string) {
+// sendERrorResponseWithOpts offers configuration options.
+//   showUser - if true, the error will be shown to the user (e.g. via a visible pop-up)
+func (s *Server) sendErrorResponseWithOpts(request dap.Request, id int, summary, details string, showUser bool) {
 	er := &dap.ErrorResponse{}
 	er.Type = "response"
 	er.Command = request.Command
@@ -1119,8 +1253,14 @@ func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details
 	er.Message = summary
 	er.Body.Error.Id = id
 	er.Body.Error.Format = fmt.Sprintf("%s: %s", summary, details)
+	er.Body.Error.ShowUser = showUser
 	s.log.Error(er.Body.Error.Format)
 	s.send(er)
+}
+
+// sendErrorResponse sends an error response with default visibility settings.
+func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details string) {
+	s.sendErrorResponseWithOpts(request, id, summary, details, false /*showUser*/)
 }
 
 // sendInternalErrorResponse sends an "internal error" response back to the client.
@@ -1173,6 +1313,11 @@ func newEvent(event string) *dap.Event {
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
 
+func (s *Server) resetHandlesForStop() {
+	s.stackFrameHandles.reset()
+	s.variableHandles.reset()
+}
+
 // doCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client.
@@ -1188,9 +1333,7 @@ func (s *Server) doCommand(command string) {
 		return
 	}
 
-	s.stackFrameHandles.reset()
-	s.variableHandles.reset()
-
+	s.resetHandlesForStop()
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true
 
