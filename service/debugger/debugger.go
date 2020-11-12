@@ -895,7 +895,7 @@ func (d *Debugger) isRunning() bool {
 }
 
 // Command handles commands which control the debugger lifecycle
-func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, error) {
+func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struct{}) (*api.DebuggerState, error) {
 	var err error
 
 	if command.Name == api.Halt {
@@ -917,6 +917,12 @@ func (d *Debugger) Command(command *api.DebuggerCommand) (*api.DebuggerState, er
 
 	d.setRunning(true)
 	defer d.setRunning(false)
+
+	if command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && command.Name != api.Halt {
+		d.target.ResumeNotify(resumeNotify)
+	} else if resumeNotify != nil {
+		close(resumeNotify)
+	}
 
 	switch command.Name {
 	case api.Continue:

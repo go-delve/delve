@@ -549,7 +549,7 @@ func isValidLaunchMode(launchMode interface{}) bool {
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	if s.debugger != nil {
-		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt})
+		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 		if err != nil {
 			s.log.Error(err)
 		}
@@ -1255,7 +1255,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
 			UnsafeCall:           false,
 			GoroutineID:          goid,
-		})
+		}, nil)
 		if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 			s.send(e)
@@ -1477,7 +1477,7 @@ func (s *Server) doCommand(command string) {
 		return
 	}
 
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command})
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, nil)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)

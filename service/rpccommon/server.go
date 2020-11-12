@@ -46,11 +46,14 @@ type ServerImpl struct {
 }
 
 type RPCCallback struct {
-	s       *ServerImpl
-	sending *sync.Mutex
-	codec   rpc.ServerCodec
-	req     rpc.Request
+	s         *ServerImpl
+	sending   *sync.Mutex
+	codec     rpc.ServerCodec
+	req       rpc.Request
+	setupDone chan struct{}
 }
+
+var _ service.RPCCallback = &RPCCallback{}
 
 // RPCServer implements the RPC method calls common to all versions of the API.
 type RPCServer struct {
@@ -328,7 +331,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 				s.log.Debugf("(async %d) <- %s(%T%s)", req.Seq, req.ServiceMethod, argv.Interface(), argvbytes)
 			}
 			function := mtype.method.Func
-			ctl := &RPCCallback{s, sending, codec, req}
+			ctl := &RPCCallback{s, sending, codec, req, make(chan struct{})}
 			go func() {
 				defer func() {
 					if ierr := recover(); ierr != nil {
@@ -337,6 +340,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 				}()
 				function.Call([]reflect.Value{mtype.Rcvr, argv, reflect.ValueOf(ctl)})
 			}()
+			<-ctl.setupDone
 		}
 	}
 	codec.Close()
@@ -363,6 +367,12 @@ func (s *ServerImpl) sendResponse(sending *sync.Mutex, req *rpc.Request, resp *r
 }
 
 func (cb *RPCCallback) Return(out interface{}, err error) {
+	select {
+	case <-cb.setupDone:
+		// already closed
+	default:
+		close(cb.setupDone)
+	}
 	errmsg := ""
 	if err != nil {
 		errmsg = err.Error()
@@ -373,6 +383,10 @@ func (cb *RPCCallback) Return(out interface{}, err error) {
 		cb.s.log.Debugf("(async %d) -> %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
 	}
 	cb.s.sendResponse(cb.sending, &cb.req, &resp, out, cb.codec, errmsg)
+}
+
+func (cb *RPCCallback) SetupDoneChan() chan struct{} {
+	return cb.setupDone
 }
 
 // GetVersion returns the version of delve as well as the API version
