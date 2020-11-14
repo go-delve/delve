@@ -98,6 +98,7 @@ type ThreadInfo interface {
 
 // ProcessManipulation is an interface for changing the execution state of a process.
 type ProcessManipulation interface {
+	// RequestManualStop attempts to stop all the process' threads.
 	RequestManualStop() error
 	// CheckAndClearManualStopRequest returns true the first time it's called
 	// after a call to RequestManualStop.
