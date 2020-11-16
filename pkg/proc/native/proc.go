@@ -27,11 +27,14 @@ type nativeProcess struct {
 
 	os                  *osProcessDetails
 	firstStart          bool
-	stopMu              sync.Mutex
 	resumeChan          chan<- struct{}
 	ptraceChan          chan func()
 	ptraceDoneChan      chan interface{}
 	childProcess        bool // this process was launched, not attached to
+	stopMu              sync.Mutex // protects manualStopRequested
+	// manualStopRequested is set if all the threads in the process were
+	// signalled to stop as a result of a Halt API call. Used to disambiguate
+	// why a thread is found to have stopped.
 	manualStopRequested bool
 
 	// Controlling terminal file descriptor for
@@ -176,7 +179,7 @@ func (dbp *nativeProcess) Breakpoints() *proc.BreakpointMap {
 	return &dbp.breakpoints
 }
 
-// RequestManualStop sets the `halt` flag and
+// RequestManualStop sets the `manualStopRequested` flag and
 // sends SIGSTOP to all threads.
 func (dbp *nativeProcess) RequestManualStop() error {
 	if dbp.exited {
