@@ -107,25 +107,18 @@ var debugserverExecutablePaths = []string{
 			return ""
 		}
 
-		cmd := exec.Command("xcode-select", "--print-path")
-		cmd.Stdout = &bytes.Buffer{}
-
-		if err := cmd.Run(); err != nil {
+		stdout, err := exec.Command("xcode-select", "--print-path").Output()
+		if err != nil {
 			return ""
 		}
 
-		if stdout, ok := cmd.Stdout.(*bytes.Buffer); ok {
-			xcodePath := strings.TrimSpace(stdout.String())
-
-			if xcodePath == "" {
-				return ""
-			}
-
-			// xcode-select prints the path to the active Developer directory, which is typically a sibling to SharedFrameworks.
-			return filepath.Join(xcodePath, "..", debugserverXcodeRelativeExecutablePath)
+		xcodePath := strings.TrimSpace(string(stdout))
+		if xcodePath == "" {
+			return ""
 		}
 
-		return ""
+		// xcode-select prints the path to the active Developer directory, which is typically a sibling to SharedFrameworks.
+		return filepath.Join(xcodePath, "..", debugserverXcodeRelativeExecutablePath)
 	}(),
 }
 
