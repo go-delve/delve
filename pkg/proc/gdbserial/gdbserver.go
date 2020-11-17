@@ -70,6 +70,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -93,10 +94,32 @@ const (
 
 const heartbeatInterval = 10 * time.Second
 
+// Relative to $(xcode-select --print-path)/../
+// xcode-select typically returns the path to the Developer directory, which is a sibling to SharedFrameworks.
+var debugserverXcodeRelativeExecutablePath = "SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
+
 var debugserverExecutablePaths = []string{
 	"debugserver",
 	"/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver",
-	"/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver",
+	// Function returns the active developer directory provided by xcode-select to compute a debugserver path.
+	func() string {
+		if _, err := exec.LookPath("xcode-select"); err != nil {
+			return ""
+		}
+
+		stdout, err := exec.Command("xcode-select", "--print-path").Output()
+		if err != nil {
+			return ""
+		}
+
+		xcodePath := strings.TrimSpace(string(stdout))
+		if xcodePath == "" {
+			return ""
+		}
+
+		// xcode-select prints the path to the active Developer directory, which is typically a sibling to SharedFrameworks.
+		return filepath.Join(xcodePath, "..", debugserverXcodeRelativeExecutablePath)
+	}(),
 }
 
 // ErrDirChange is returned when trying to change execution direction
@@ -308,6 +331,9 @@ func unusedPort() string {
 // found in the system path ($PATH), the Xcode bundle or the standalone CLT location.
 func getDebugServerAbsolutePath() string {
 	for _, debugServerPath := range debugserverExecutablePaths {
+		if debugServerPath == "" {
+			continue
+		}
 		if _, err := exec.LookPath(debugServerPath); err == nil {
 			return debugServerPath
 		}
