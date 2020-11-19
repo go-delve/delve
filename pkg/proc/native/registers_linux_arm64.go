@@ -8,6 +8,8 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
@@ -64,8 +66,8 @@ func ptraceGetFpRegset(tid int) (fpregset []byte, err error) {
 	return fpregset, err
 }
 
-// SetPC sets PC to the value specified by 'pc'.
-func (thread *nativeThread) SetPC(pc uint64) error {
+// setPC sets PC to the value specified by 'pc'.
+func (thread *nativeThread) setPC(pc uint64) error {
 	ir, err := registers(thread)
 	if err != nil {
 		return err
@@ -76,21 +78,26 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 	return err
 }
 
-// SetSP sets RSP to the value specified by 'sp'
-func (thread *nativeThread) SetSP(sp uint64) (err error) {
-	var ir proc.Registers
-	ir, err = registers(thread)
+func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
+	ir, err := registers(thread)
 	if err != nil {
 		return err
 	}
 	r := ir.(*linutil.ARM64Registers)
-	r.Regs.Sp = sp
-	thread.dbp.execPtraceFunc(func() { err = ptraceSetGRegs(thread.ID, r.Regs) })
-	return
-}
 
-func (thread *nativeThread) SetDX(dx uint64) (err error) {
-	return fmt.Errorf("not supported")
+	switch regNum {
+	case regnum.ARM64_PC:
+		r.Regs.Pc = reg.Uint64Val
+	case regnum.ARM64_SP:
+		r.Regs.Sp = reg.Uint64Val
+	default:
+		//TODO(aarzilli): when the register calling convention is adopted by Go on
+		// arm64 this should be implemented.
+		return fmt.Errorf("changing register %d not implemented", regNum)
+	}
+
+	thread.dbp.execPtraceFunc(func() { err = ptraceSetGRegs(thread.ID, r.Regs) })
+	return err
 }
 
 func registers(thread *nativeThread) (proc.Registers, error) {

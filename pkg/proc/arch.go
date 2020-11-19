@@ -17,6 +17,10 @@ type Arch struct {
 	breakInstrMovesPC        bool
 	derefTLS                 bool
 	usesLR                   bool // architecture uses a link register, also called RA on some architectures
+	PCRegNum                 uint64
+	SPRegNum                 uint64
+	BPRegNum                 uint64
+	ContextRegNum            uint64 // register used to pass a closure context when calling a function pointer
 
 	// asmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
 	// It assumes that the Loc and AtPC fields of asmInst have already been filled.
@@ -34,7 +38,9 @@ type Arch struct {
 	// addrAndStackRegsToDwarfRegisters returns DWARF registers from the passed in
 	// PC, SP, and BP registers in the format used by the DWARF expression interpreter.
 	addrAndStackRegsToDwarfRegisters func(uint64, uint64, uint64, uint64, uint64) op.DwarfRegisters
-	// DwarfRegisterToString returns the name and value representation of the given register.
+	// DwarfRegisterToString returns the name and value representation of the
+	// given register, the register value can be nil in which case only the
+	// register name will be returned.
 	DwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
 	// inhibitStepInto returns whether StepBreakpoint can be set at pc.
 	inhibitStepInto func(bi *BinaryInfo, pc uint64) bool

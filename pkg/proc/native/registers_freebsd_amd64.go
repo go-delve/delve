@@ -5,13 +5,15 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/fbsdutil"
 )
 
 // SetPC sets RIP to the value specified by 'pc'.
-func (thread *nativeThread) SetPC(pc uint64) error {
+func (thread *nativeThread) setPC(pc uint64) error {
 	ir, err := registers(thread)
 	if err != nil {
 		return err
@@ -22,27 +24,23 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 	return err
 }
 
-// SetSP sets RSP to the value specified by 'sp'
-func (thread *nativeThread) SetSP(sp uint64) (err error) {
-	var ir proc.Registers
-	ir, err = registers(thread)
+// SetReg changes the value of the specified register.
+func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) (err error) {
+	ir, err := registers(thread)
 	if err != nil {
 		return err
 	}
 	r := ir.(*fbsdutil.AMD64Registers)
-	r.Regs.Rsp = int64(sp)
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, (*sys.Reg)(r.Regs)) })
-	return
-}
-
-func (thread *nativeThread) SetDX(dx uint64) (err error) {
-	var ir proc.Registers
-	ir, err = registers(thread)
-	if err != nil {
-		return err
+	switch regNum {
+	case regnum.AMD64_Rip:
+		r.Regs.Rip = int64(reg.Uint64Val)
+	case regnum.AMD64_Rsp:
+		r.Regs.Rsp = int64(reg.Uint64Val)
+	case regnum.AMD64_Rdx:
+		r.Regs.Rdx = int64(reg.Uint64Val)
+	default:
+		return fmt.Errorf("changing register %d not implemented", regNum)
 	}
-	r := ir.(*fbsdutil.AMD64Registers)
-	r.Regs.Rdx = int64(dx)
 	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, (*sys.Reg)(r.Regs)) })
 	return
 }

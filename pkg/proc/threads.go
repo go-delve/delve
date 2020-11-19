@@ -2,6 +2,8 @@ package proc
 
 import (
 	"errors"
+
+	"github.com/go-delve/delve/pkg/dwarf/op"
 )
 
 // Thread represents a thread.
@@ -31,9 +33,10 @@ type Thread interface {
 	// Common returns the CommonThread structure for this thread
 	Common() *CommonThread
 
-	SetPC(uint64) error
-	SetSP(uint64) error
-	SetDX(uint64) error
+	// SetReg changes the value of the specified register. A minimal
+	// implementation of this interface can support just setting the PC
+	// register.
+	SetReg(uint64, *op.DwarfRegister) error
 }
 
 // Location represents the location of a thread.
@@ -82,4 +85,16 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 	default:
 		return frames[0], frames[1], nil
 	}
+}
+
+func setPC(thread Thread, newPC uint64) error {
+	return thread.SetReg(thread.BinInfo().Arch.PCRegNum, op.DwarfRegisterFromUint64(newPC))
+}
+
+func setSP(thread Thread, newSP uint64) error {
+	return thread.SetReg(thread.BinInfo().Arch.SPRegNum, op.DwarfRegisterFromUint64(newSP))
+}
+
+func setClosureReg(thread Thread, newClosureReg uint64) error {
+	return thread.SetReg(thread.BinInfo().Arch.ContextRegNum, op.DwarfRegisterFromUint64(newClosureReg))
 }

@@ -325,7 +325,7 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 						}
 					}
 					if !atbp {
-						thread.SetPC(uint64(exception.ExceptionRecord.ExceptionAddress))
+						thread.setPC(uint64(exception.ExceptionRecord.ExceptionAddress))
 					}
 				}
 

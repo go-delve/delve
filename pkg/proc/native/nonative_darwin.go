@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -82,17 +83,12 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 }
 
 // SetPC sets the value of the PC register.
-func (t *nativeThread) SetPC(pc uint64) error {
+func (t *nativeThread) setPC(pc uint64) error {
 	panic(ErrNativeBackendDisabled)
 }
 
-// SetSP sets the value of the SP register.
-func (t *nativeThread) SetSP(sp uint64) error {
-	panic(ErrNativeBackendDisabled)
-}
-
-// SetDX sets the value of the DX register.
-func (t *nativeThread) SetDX(dx uint64) error {
+// SetReg changes the value of the specified register.
+func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 	panic(ErrNativeBackendDisabled)
 }
 

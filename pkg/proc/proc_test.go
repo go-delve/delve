@@ -2,6 +2,7 @@ package proc_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -5166,6 +5167,75 @@ func TestDump(t *testing.T) {
 			c2 := makeDump(p, corePathPlatIndep, fixture.Path, proc.DumpPlatformIndependent)
 			defer os.Remove(corePathPlatIndep)
 			testDump(p, c2)
+		}
+	})
+}
+
+func TestCompositeMemoryWrite(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("only valid on amd64")
+	}
+	skipOn(t, "not implemented", "freebsd")
+	withTestProcess("fputest/", t, func(p *proc.Target, fixture protest.Fixture) {
+		getregs := func() (pc, rax, xmm1 uint64) {
+			regs, err := p.CurrentThread().Registers()
+			assertNoError(err, t, "Registers")
+			fmtregs, err := regs.Slice(true)
+			assertNoError(err, t, "register slice")
+
+			var xmm1buf []byte
+
+			for _, reg := range fmtregs {
+				switch strings.ToLower(reg.Name) {
+				case "rax":
+					rax = reg.Reg.Uint64Val
+				case "xmm1":
+					xmm1buf = reg.Reg.Bytes
+				}
+			}
+
+			xmm1 = binary.LittleEndian.Uint64(xmm1buf[:8])
+
+			return regs.PC(), rax, xmm1
+		}
+
+		getmem := func(mem proc.MemoryReader) uint64 {
+			buf := make([]byte, 8)
+			_, err := mem.ReadMemory(buf, 0xbeef0000)
+			assertNoError(err, t, "ReadMemory")
+			return binary.LittleEndian.Uint64(buf)
+		}
+
+		assertNoError(p.Continue(), t, "Continue()")
+		oldPc, oldRax, oldXmm1 := getregs()
+		t.Logf("PC %#x AX %#x XMM1 %#x", oldPc, oldRax, oldXmm1)
+
+		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 0, IsRegister: true}})
+		assertNoError(err, t, "NewCompositeMemory (rax)")
+		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 18, IsRegister: true}})
+		assertNoError(err, t, "NewCompositeMemory (xmm1)")
+
+		if memRax := getmem(memRax); memRax != oldRax {
+			t.Errorf("reading rax memory, expected %#x got %#x", oldRax, memRax)
+		}
+		if memXmm1 := getmem(memXmm1); memXmm1 != oldXmm1 {
+			t.Errorf("reading xmm1 memory, expected %#x got %#x", oldXmm1, memXmm1)
+		}
+
+		_, err = memRax.WriteMemory(0xbeef0000, []byte{0xef, 0xbe, 0x0d, 0xf0, 0xef, 0xbe, 0x0d, 0xf0})
+		assertNoError(err, t, "WriteMemory (rax)")
+		_, err = memXmm1.WriteMemory(0xbeef0000, []byte{0xef, 0xbe, 0x0d, 0xf0, 0xef, 0xbe, 0x0d, 0xf0})
+		assertNoError(err, t, "WriteMemory (xmm1)")
+
+		newPc, newRax, newXmm1 := getregs()
+		t.Logf("PC %#x AX %#x XMM1 %#x", newPc, newRax, newXmm1)
+
+		const tgt = 0xf00dbeeff00dbeef
+		if newRax != tgt {
+			t.Errorf("reading rax register, expected %#x, got %#x", uint64(tgt), newRax)
+		}
+		if newXmm1 != tgt {
+			t.Errorf("reading xmm1 register, expected %#x, got %#x", uint64(tgt), newXmm1)
 		}
 	})
 }

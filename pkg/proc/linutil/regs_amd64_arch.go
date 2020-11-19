@@ -1,8 +1,12 @@
 package linutil
 
 import (
+	"fmt"
+
 	"golang.org/x/arch/x86/x86asm"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
@@ -306,4 +310,72 @@ func (r *AMD64Registers) Copy() (proc.Registers, error) {
 		copy(rr.Fpregs, r.Fpregs)
 	}
 	return &rr, nil
+}
+
+func (r *AMD64Registers) SetReg(regNum uint64, reg *op.DwarfRegister) (bool, error) {
+	var p *uint64
+	switch regNum {
+	case regnum.AMD64_Rax:
+		p = &r.Regs.Rax
+	case regnum.AMD64_Rbx:
+		p = &r.Regs.Rbx
+	case regnum.AMD64_Rcx:
+		p = &r.Regs.Rcx
+	case regnum.AMD64_Rdx:
+		p = &r.Regs.Rdx
+	case regnum.AMD64_Rsi:
+		p = &r.Regs.Rsi
+	case regnum.AMD64_Rdi:
+		p = &r.Regs.Rdi
+	case regnum.AMD64_Rbp:
+		p = &r.Regs.Rbp
+	case regnum.AMD64_Rsp:
+		p = &r.Regs.Rsp
+	case regnum.AMD64_R8:
+		p = &r.Regs.R8
+	case regnum.AMD64_R9:
+		p = &r.Regs.R9
+	case regnum.AMD64_R10:
+		p = &r.Regs.R10
+	case regnum.AMD64_R11:
+		p = &r.Regs.R11
+	case regnum.AMD64_R12:
+		p = &r.Regs.R12
+	case regnum.AMD64_R13:
+		p = &r.Regs.R13
+	case regnum.AMD64_R14:
+		p = &r.Regs.R14
+	case regnum.AMD64_R15:
+		p = &r.Regs.R15
+	case regnum.AMD64_Rip:
+		p = &r.Regs.Rip
+	}
+
+	if p != nil {
+		if reg.Bytes != nil && len(reg.Bytes) != 8 {
+			return false, fmt.Errorf("wrong number of bytes for register %s (%d)", regnum.AMD64ToName(regNum), len(reg.Bytes))
+		}
+		*p = reg.Uint64Val
+		return false, nil
+	}
+
+	if r.loadFpRegs != nil {
+		err := r.loadFpRegs(r)
+		if err != nil {
+			return false, err
+		}
+		r.loadFpRegs = nil
+	}
+
+	if regNum < regnum.AMD64_XMM0 || regNum > regnum.AMD64_XMM0+15 {
+		return false, fmt.Errorf("can not set %s", regnum.AMD64ToName(regNum))
+	}
+
+	reg.FillBytes()
+
+	err := r.Fpregset.SetXmmRegister(int(regNum-regnum.AMD64_XMM0), reg.Bytes)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
