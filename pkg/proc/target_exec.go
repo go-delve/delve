@@ -125,10 +125,6 @@ func (dbp *Target) Continue() error {
 		switch {
 		case curbp.Breakpoint == nil:
 			// runtime.Breakpoint, manual stop or debugCallV1-related stop
-			recorded, _ := dbp.Recorded()
-			if recorded {
-				return conditionErrors(threads)
-			}
 
 			loc, err := curthread.Location()
 			if err != nil || loc.Fn == nil {
@@ -139,6 +135,9 @@ func (dbp *Target) Continue() error {
 
 			switch {
 			case loc.Fn.Name == "runtime.breakpoint":
+				if recorded, _ := dbp.Recorded(); recorded {
+					return conditionErrors(threads)
+				}
 				// In linux-arm64, PtraceSingleStep seems cannot step over BRK instruction
 				// (linux-arm64 feature or kernel bug maybe).
 				if !arch.BreakInstrMovesPC() {
