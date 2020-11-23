@@ -11,12 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 var userTestFile string
@@ -113,8 +115,10 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 			}
 		}
 
-		if len(dbl.IncludeDirs) != 1 {
-			t.Fatal("Include dirs not parsed correctly")
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+			if len(dbl.IncludeDirs) != 1 {
+				t.Fatal("Include dirs not parsed correctly")
+			}
 		}
 
 		for _, ln := range dbl.Lookup {
