@@ -193,7 +193,7 @@ func main() {
 
 	d := &Derived{3, Base{4}}
 
-	runtime.Breakpoint()
+	runtime.Breakpoint() // breakpoint here
 	call1(one, two)
 	fn2clos(2)
 	strings.LastIndexByte(stringslice[1], 'w')
