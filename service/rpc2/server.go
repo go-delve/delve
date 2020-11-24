@@ -139,7 +139,6 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 	out.State = *st
 	cb.Return(out, nil)
 	if st.Exited && s.config.ExitOnProcExited {
-		time.Sleep(500 * time.Millisecond)
 		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}
 }

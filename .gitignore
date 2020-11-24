@@ -1,4 +1,3 @@
-.vscode/
 **/*.test
 .tags*
 tags
