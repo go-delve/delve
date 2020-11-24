@@ -322,7 +322,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
 			t.Errorf("\ngot  %#v\nwant len(Threads)>1", tResp.Body.Threads)
 		}
-		reMain, _ := regexp.Compile("\\* \\[Go 1\\] main.Increment (Thread [0-9]+)")
+		reMain, _ := regexp.Compile(`\* \[Go 1\] main.Increment \(Thread [0-9]+\)`)
 		wantMain := dap.Thread{Id: 1, Name: "* [Go 1] main.Increment (Thread ...)"}
 		wantRuntime := dap.Thread{Id: 2, Name: "[Go 2] runtime.gopark"}
 		for _, got := range tResp.Body.Threads {
