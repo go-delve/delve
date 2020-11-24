@@ -139,7 +139,9 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 	out.State = *st
 	cb.Return(out, nil)
 	if s.config.ExitOnProcExited && st.Exited {
-		syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		if err := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); err != nil {
+			panic(fmt.Sprintf("unexpected error when sending SIGTERM to my self: %v", err))
+		}
 	}
 }
 
