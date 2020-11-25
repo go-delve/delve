@@ -925,19 +925,20 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 		for _, g := range gs {
 			frames, err := c.Stacktrace(g.ID, 10, 0, &normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
+			t.Logf("goroutine %d", g.ID)
 			for i, frame := range frames {
+				t.Logf("\tframe %d off=%#x bpoff=%#x pc=%#x %s:%d %s", i, frame.FrameOffset, frame.FramePointerOffset, frame.PC, frame.File, frame.Line, frame.Function.Name())
 				if frame.Function == nil {
 					continue
 				}
 				if frame.Function.Name() != "main.agoroutine" {
 					continue
 				}
-				t.Logf("frame %d: %v", i, frame)
 				for _, arg := range frame.Arguments {
 					if arg.Name != "i" {
 						continue
 					}
-					t.Logf("frame %v, variable i is %v\n", frame, arg)
+					t.Logf("\tvariable i is %+v\n", arg)
 					argn, err := strconv.Atoi(arg.Value)
 					if err == nil {
 						found[argn] = true
@@ -952,6 +953,8 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			}
 		}
 
+		t.Logf("continue")
+
 		state = <-c.Continue()
 		if state.Err != nil {
 			t.Fatalf("Continue(): %v\n", state.Err)
@@ -962,10 +965,10 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 
 		cur := 3
 		for i, frame := range frames {
+			t.Logf("\tframe %d off=%#x bpoff=%#x pc=%#x %s:%d %s", i, frame.FrameOffset, frame.FramePointerOffset, frame.PC, frame.File, frame.Line, frame.Function.Name())
 			if i == 0 {
 				continue
 			}
-			t.Logf("frame %d: %v", i, frame)
 			v := frame.Var("n")
 			if v == nil {
 				t.Fatalf("Could not find value of variable n in frame %d", i)
