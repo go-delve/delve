@@ -383,6 +383,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
 	response.Body.SupportsConditionalBreakpoints = true
+	response.Body.SupportsDelayedStackTraceLoading = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
@@ -737,6 +738,11 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		}
 		stackFrames[i].Column = 0
 	}
+	// Since the backend doesn't support paging, we load all frames up to
+	// pre-configured depth every time and then slice them here per
+	// `supportsDelayedStackTraceLoading` capability.
+	// TODO(polina): consider optimizing this, so subsequent stack requests
+	// slice already loaded frames and handles instead of reloading every time.
 	if request.Arguments.StartFrame > 0 {
 		stackFrames = stackFrames[min(request.Arguments.StartFrame, len(stackFrames)):]
 	}
