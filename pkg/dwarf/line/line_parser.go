@@ -43,6 +43,7 @@ type DebugLineInfo struct {
 	// if normalizeBackslash is true all backslashes (\) will be converted into forward slashes (/)
 	normalizeBackslash bool
 	ptrSize            int
+	endSeqIsValid      bool
 }
 
 type FileEntry struct {

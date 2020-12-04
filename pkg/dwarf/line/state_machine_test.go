@@ -80,6 +80,7 @@ func TestGrafana(t *testing.T) {
 		cuname, _ := e.Val(dwarf.AttrName).(string)
 
 		lineInfo := Parse(e.Val(dwarf.AttrCompDir).(string), debugLineBuffer, t.Logf, 0, false, 8)
+		lineInfo.endSeqIsValid = true
 		sm := newStateMachine(lineInfo, lineInfo.Instructions, 8)
 
 		lnrdr, err := data.LineReader(e)
