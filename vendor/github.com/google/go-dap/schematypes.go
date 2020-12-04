@@ -49,6 +49,16 @@ type EventMessage interface {
 	GetEvent() *Event
 }
 
+// LaunchAttachRequest is an interface implemented by
+// LaunchRequest and AttachRequest as they contain shared
+// implementation specific arguments that are not part of
+// the specification.
+type LaunchAttachRequest interface {
+	RequestMessage
+	// GetArguments provides access to the Arguments map.
+	GetArguments() map[string]interface{}
+}
+
 // ProtocolMessage: Base class of requests, responses, and events.
 type ProtocolMessage struct {
 	Seq  int    `json:"seq"`
@@ -466,7 +476,8 @@ type LaunchRequest struct {
 	Arguments map[string]interface{} `json:"arguments"`
 }
 
-func (r *LaunchRequest) GetRequest() *Request { return &r.Request }
+func (r *LaunchRequest) GetRequest() *Request                 { return &r.Request }
+func (r *LaunchRequest) GetArguments() map[string]interface{} { return r.Arguments }
 
 // LaunchResponse: Response to 'launch' request. This is just an acknowledgement, so no body field is required.
 type LaunchResponse struct {
@@ -480,15 +491,11 @@ func (r *LaunchResponse) GetResponse() *Response { return &r.Response }
 type AttachRequest struct {
 	Request
 
-	Arguments AttachRequestArguments `json:"arguments"`
+	Arguments map[string]interface{} `json:"arguments"`
 }
 
-func (r *AttachRequest) GetRequest() *Request { return &r.Request }
-
-// AttachRequestArguments: Arguments for 'attach' request. Additional attributes are implementation specific.
-type AttachRequestArguments struct {
-	Restart interface{} `json:"__restart,omitempty"`
-}
+func (r *AttachRequest) GetRequest() *Request                 { return &r.Request }
+func (r *AttachRequest) GetArguments() map[string]interface{} { return r.Arguments }
 
 // AttachResponse: Response to 'attach' request. This is just an acknowledgement, so no body field is required.
 type AttachResponse struct {
