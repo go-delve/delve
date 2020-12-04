@@ -19,6 +19,7 @@ const DelveMainPackagePath = "github.com/go-delve/delve/cmd/dlv"
 
 var Verbose bool
 var NOTimeout bool
+var TestIncludePIE bool
 var TestSet, TestRegex, TestBackend, TestBuildMode string
 
 func NewMakeCommands() *cobra.Command {
@@ -94,6 +95,7 @@ This option can only be specified if testset is basic or a single package.`)
 	pie		PIE buildmode
 	
 This option can only be specified if testset is basic or a single package.`)
+	test.PersistentFlags().BoolVarP(&TestIncludePIE, "pie", "", true, "Standard testing should include PIE")
 
 	RootCommand.AddCommand(test)
 
@@ -332,7 +334,7 @@ func testStandard() {
 		fmt.Println("\nTesting RR backend")
 		testCmdIntl("basic", "", "rr", "normal")
 	}
-	if runtime.GOOS == "linux" || (runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15)) {
+	if TestIncludePIE && (runtime.GOOS == "linux" || (runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15))) {
 		fmt.Println("\nTesting PIE buildmode, default backend")
 		testCmdIntl("basic", "", "default", "pie")
 		testCmdIntl("core", "", "default", "pie")

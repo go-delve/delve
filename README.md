@@ -3,6 +3,7 @@
 [![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/go-delve/delve/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/go-delve/delve?status.svg)](https://godoc.org/github.com/go-delve/delve)
 [![Build Status](https://travis-ci.org/go-delve/delve.svg?branch=master)](https://travis-ci.org/go-delve/delve)
+[![Build status](https://ci.appveyor.com/api/projects/status/0v8r99smxost466s/branch/master?svg=true)](https://ci.appveyor.com/project/derekparker/delve-facy3/branch/master)
 
 The GitHub issue tracker is for **bugs** only. Please use the [developer mailing list](https://groups.google.com/forum/#!forum/delve-dev) for any feature proposals and discussions.
 
