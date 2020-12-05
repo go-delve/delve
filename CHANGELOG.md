@@ -3,6 +3,35 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.5.1] 2020-12-09
+
+### Added
+- DAP: Scope and variable requests, including call injection (#2111, #2158, #2160, #2184, #2185, @polinasok)
+- DAP: Support removing breakpoints and breakpoint conditions (#2188, @polinasok)
+- DAP: Support next, stepIn, stepOut requests (#2143, @polinasok)
+- DAP: Miscellaneous improvements (#2167, #2186, #2238, #2233, #2248, @eliben, @suzmue, @polinasok)
+- Command line flag `-r` to redirect standard file descriptors of the target process (#2146, #2222, @aarzilli)
+- `-size` flag for `examinemem` command (##2147, @hitzhangjie)
+- Command line flag to disable ASLR (#2202, @aarzilli)
+- Support for DWARFv5 loclists (#2097, @aarzilli)
+
+### Fixed
+- Support for Go version >= 1.15.4 (#2235, @aarzilli)
+- Fix displaying AVX registers (#2139, @aarzilli)
+- Panic during `next`, `step` when there is no current goroutine (#2164, @chainhelen)
+- Reading a deferred call's arguments on linux/arm64 (#2210, @aarzilli)
+- Miscellaneous bug fixes (#2135, #2131, #2142, #2140, #2127, #2113, #2172, #2181, #2195, #2193, #2220, #2179, #2206, #2223, @aarzilli)
+
+### Changed
+- `dlv test` switches to the package directory like `go test` does (#2128, @aarzilli)
+- Delve will no longer resolve symbolic links when searching for split debug_info if the executable path is not /proc/pid/exe (#2170, @aarzilli)
+- Starlark scripts can now be interrupted using Ctrl-C even if they are not making any API calls (#2149, @aarzilli)
+- An error message will be displayed more prominently if a connection is rejected due to the `--only-same-user` flag (which is enabled by default) (#2211, @aarzilli)
+- Substitute path rules are applied to the argument of `break` and `trace` (#2213, @aarzilli)
+- The output of `xcode-select --print-path` will be used to determine the location of `debugserver` instead of a hardcoded path (#2229, @aaronsky)
+- Improvements to documentation and error messages (#2148, #2154, #2196, #2228, @aurkenb, @pohzipohzi, @chainhelen, @andreimatei)
+
+
 ## [1.5.0] 2020-07-29
 
 ### Added
