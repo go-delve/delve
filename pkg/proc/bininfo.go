@@ -129,6 +129,7 @@ var (
 
 	supportedDarwinArch = map[macho.Cpu]bool{
 		macho.CpuAmd64: true,
+		macho.CpuArm64: true,
 	}
 )
 
@@ -1368,9 +1369,19 @@ func findPESymbol(f *pe.File, name string) (*pe.Symbol, error) {
 // loadBinaryInfoMacho specifically loads information from a Mach-O binary.
 func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	exe, err := macho.Open(path)
+
 	if err != nil {
 		return err
 	}
+
+	if entryPoint != 0 {
+		// This is a little bit hacky. We use the entryPoint variable, but it
+		// actually holds the address of the mach-o header. We can use this
+		// to calculate the offset to the non-aslr location of the mach-o header
+		// (which is 0x100000000)
+		image.StaticBase = entryPoint - 0x100000000
+	}
+
 	image.closer = exe
 	if !supportedDarwinArch[exe.Cpu] {
 		return &ErrUnsupportedArch{os: "darwin", cpuArch: exe.Cpu}
