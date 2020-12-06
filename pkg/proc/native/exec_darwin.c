@@ -3,112 +3,77 @@
 #include "exec_darwin.h"
 #include "stdio.h"
 
-extern char** environ;
+extern char **environ;
+
+#ifndef POSIX_SPAWN_DISABLE_ASLR
+#define POSIX_SPAWN_DISABLE_ASLR 0x0100
+#endif
 
 int
-close_exec_pipe(int fd[2]) {
-	if (pipe(fd) < 0) return -1;
-	if (fcntl(fd[0], F_SETFD, FD_CLOEXEC) < 0) return -1;
-	if (fcntl(fd[1], F_SETFD, FD_CLOEXEC) < 0) return -1;
-	return 0;
-}
+spawn(char *argv0, char **argv, int size,
+	  char *wd,
+	  task_t *task,
+	  mach_port_t *port_set,
+	  mach_port_t *exception_port,
+	  mach_port_t *notification_port,
+	  int disable_aslr,
+	  int fd_stdin,
+	  int fd_stdout,
+	  int fd_stderr) {
+	kern_return_t kret = 0;
 
-int
-fork_exec(char *argv0, char **argv, int size,
-		char *wd,
-		task_t *task,
-		mach_port_t *port_set,
-		mach_port_t *exception_port,
-		mach_port_t *notification_port)
-{
-	// Since we're using mach exceptions instead of signals,
-	// we need to coordinate between parent and child via pipes
-	// to ensure that the parent has set the exception ports on
-	// the child task before it execs.
-	int fd[2];
-	if (close_exec_pipe(fd) < 0) return -1;
+	posix_spawn_file_actions_t file_actions;
+	posix_spawnattr_t attributes;
 
-	// Create another pipe to signal the parent on exec.
-	int efd[2];
-	if (close_exec_pipe(efd) < 0) return -1;
+	// TODO: check error
+	posix_spawnattr_init(&attributes);
 
-	kern_return_t kret;
-	pid_t pid = fork();
-	if (pid > 0) {
-		// In parent.
-		close(fd[0]);
-		close(efd[1]);
-		kret = acquire_mach_task(pid, task, port_set, exception_port, notification_port);
-		if (kret != KERN_SUCCESS) return -1;
+	sigset_t no_signals;
+	sigset_t all_signals;
+	sigemptyset(&no_signals);
+	sigfillset(&all_signals);
 
-		char msg = 'c';
-		write(fd[1], &msg, 1);
-		close(fd[1]);
+	posix_spawnattr_setsigmask(&attributes, &no_signals);
+	posix_spawnattr_setsigdefault(&attributes, &all_signals);
 
-		char w;
-		size_t n = read(efd[0], &w, 1);
-		close(efd[0]);
-		if (n != 0) {
-			// Child died, reap it.
-			waitpid(pid, NULL, 0);
-			return -1;
-		}
-		return pid;
+	short flags = POSIX_SPAWN_START_SUSPENDED | POSIX_SPAWN_SETSIGDEF |
+				  POSIX_SPAWN_SETSIGMASK;
+
+	if (disable_aslr) {
+		flags |= POSIX_SPAWN_DISABLE_ASLR;
 	}
 
-	// Fork succeeded, we are in the child.
-	int pret, cret;
-	char sig;
+	posix_spawnattr_setflags(&attributes, flags);
 
-	close(fd[1]);
-	read(fd[0], &sig, 1);
-	close(fd[0]);
+	posix_spawn_file_actions_init(&file_actions);
 
-	// Create a new process group.
-	if (setpgid(0, 0) < 0) {
-		perror("setpgid");
-		exit(1);
-	}
-
-	// Set errno to zero before a call to ptrace.
-	// It is documented that ptrace can return -1 even
-	// for successful calls.
-	errno = 0;
-	pret = ptrace(PT_TRACE_ME, 0, 0, 0);
-	if (pret != 0 && errno != 0) {
-		perror("ptrace");
-		exit(1);
-	}
+	posix_spawn_file_actions_adddup2(&file_actions, fd_stdin, STDIN_FILENO); 
+	posix_spawn_file_actions_adddup2(&file_actions, fd_stdout, STDOUT_FILENO); 
+	posix_spawn_file_actions_adddup2(&file_actions, fd_stderr, STDERR_FILENO); 
 
 	// Change working directory if wd is not empty.
 	if (wd && wd[0]) {
-		errno = 0;
-		cret = chdir(wd);
-		if (cret != 0 && errno != 0) {
-			char *error_msg;
-			asprintf(&error_msg, "%s '%s'", "chdir", wd);
-			perror(error_msg);
-			exit(1);
-		}
+		posix_spawn_file_actions_addchdir_np(&file_actions, wd);
 	}
 
-	errno = 0;
-	pret = ptrace(PT_SIGEXC, 0, 0, 0);
-	if (pret != 0 && errno != 0) {
+	pid_t pid;
+
+	posix_spawnp(&pid, argv0, &file_actions, &attributes,
+				 argv,
+				 environ);
+
+	kret = acquire_mach_task(pid, task, port_set, exception_port, notification_port);
+	if (kret != KERN_SUCCESS) {
+		return -1;
+	}
+
+	int err = ptrace(PT_ATTACHEXC, pid, 0, 0);
+	if (err != 0) {
 		perror("ptrace");
-		exit(1);
+		return -1;
 	}
 
-	sleep(1);
+	posix_spawnattr_destroy(&attributes);
 
-	// Create the child process.
-	execve(argv0, argv, environ);
-
-	// We should never reach here, but if we did something went wrong.
-	// Write a message to parent to alert that exec failed.
-	char msg = 'd';
-	write(efd[1], &msg, 1);
-	close(efd[1]);
-
-	exit(1);
+	return pid;
 }

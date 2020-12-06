@@ -12,11 +12,19 @@ write_memory(task_t, mach_vm_address_t, void *, mach_msg_type_number_t);
 int
 read_memory(task_t, mach_vm_address_t, void *, mach_msg_type_number_t);
 
+#if defined(__arm64__)
+kern_return_t
+get_registers(mach_port_name_t, arm_thread_state64_t*);
+#else
 kern_return_t
 get_registers(mach_port_name_t, x86_thread_state64_t*);
+#endif
 
+#if defined(__arm64__)
+#else
 kern_return_t
 get_fpu_registers(mach_port_name_t, x86_float_state64_t *);
+#endif
 
 kern_return_t
 set_pc(thread_act_t, uint64_t);
@@ -30,8 +38,13 @@ clear_trap_flag(thread_act_t);
 kern_return_t
 resume_thread(thread_act_t);
 
+#if defined(__arm64__)
+kern_return_t
+set_registers(mach_port_name_t, arm_thread_state64_t*);
+#else
 kern_return_t
 set_registers(mach_port_name_t, x86_thread_state64_t*);
+#endif
 
 kern_return_t
 get_identity(mach_port_name_t, thread_identifier_info_data_t *);

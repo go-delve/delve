@@ -1,11 +1,18 @@
 //+build darwin,macnative
 
 #include <sys/types.h>
+#include <sys/ptrace.h>
 #include <libproc.h>
+#include <errno.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
+#if defined(__arm64__)
+#include <mach/arm/exception.h>
+#else
+#include <mach/i386/exception.h>
+#endif
+#include <stdio.h>
 #include "mach_exc.h"
-#include "exc.h"
 
 #ifdef	mig_external
 mig_external
@@ -54,3 +61,6 @@ get_task_for_pid(int pid);
 
 int
 task_is_valid(task_t task);
+
+mach_vm_address_t
+get_macho_header_offset(task_t task);

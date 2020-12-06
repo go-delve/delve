@@ -114,6 +114,7 @@ func New(docCall bool) *cobra.Command {
 	// server is started so that the "server listening at" message is always
 	// the first thing emitted. Also logflags hasn't been setup yet at this point.
 	buildFlagsDefault := ""
+
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Installed()
 		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
