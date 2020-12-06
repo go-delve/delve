@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <spawn.h>
+#include <signal.h>
 
 int
-fork_exec(char *, char **, int, char *, task_t*, mach_port_t*, mach_port_t*, mach_port_t*);
+spawn(char *, char **, int, char *, task_t*, mach_port_t*, mach_port_t*, mach_port_t*, int, int, int, int);

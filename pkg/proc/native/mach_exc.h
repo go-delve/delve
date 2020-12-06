@@ -12,7 +12,7 @@
 #include <mach/message.h>
 #include <mach/mig_errors.h>
 #include <mach/port.h>
-
+	
 /* BEGIN VOUCHER CODE */
 
 #ifndef KERNEL
@@ -34,8 +34,31 @@ extern "C" {
 #endif // __has_include(<mach/mach_voucher_types.h>)
 #endif // __has_include
 #endif // !KERNEL
-
+	
 /* END VOUCHER CODE */
+
+	
+/* BEGIN MIG_STRNCPY_ZEROFILL CODE */
+
+#if defined(__has_include)
+#if __has_include(<mach/mig_strncpy_zerofill_support.h>)
+#ifndef USING_MIG_STRNCPY_ZEROFILL
+#define USING_MIG_STRNCPY_ZEROFILL
+#endif
+#ifndef __MIG_STRNCPY_ZEROFILL_FORWARD_TYPE_DECLS__
+#define __MIG_STRNCPY_ZEROFILL_FORWARD_TYPE_DECLS__
+#ifdef __cplusplus
+extern "C" {
+#endif
+	extern int mig_strncpy_zerofill(char *dest, const char *src, int len) __attribute__((weak_import));
+#ifdef __cplusplus
+}
+#endif
+#endif /* __MIG_STRNCPY_ZEROFILL_FORWARD_TYPE_DECLS__ */
+#endif /* __has_include(<mach/mig_strncpy_zerofill_support.h>) */
+#endif /* __has_include */
+	
+/* END MIG_STRNCPY_ZEROFILL CODE */
 
 
 #ifdef AUTOTEST
@@ -142,7 +165,7 @@ __END_DECLS
 #define __Request__mach_exc_subsystem__defined
 
 #ifdef  __MigPackStructs
-#pragma pack(4)
+#pragma pack(push, 4)
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
@@ -155,13 +178,13 @@ __END_DECLS
 		exception_type_t exception;
 		mach_msg_type_number_t codeCnt;
 		int64_t code[2];
-	} __Request__mach_exception_raise_t;
+	} __Request__mach_exception_raise_t __attribute__((unused));
 #ifdef  __MigPackStructs
-#pragma pack()
+#pragma pack(pop)
 #endif
 
 #ifdef  __MigPackStructs
-#pragma pack(4)
+#pragma pack(push, 4)
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
@@ -171,14 +194,14 @@ __END_DECLS
 		int64_t code[2];
 		int flavor;
 		mach_msg_type_number_t old_stateCnt;
-		natural_t old_state[224];
-	} __Request__mach_exception_raise_state_t;
+		natural_t old_state[1296];
+	} __Request__mach_exception_raise_state_t __attribute__((unused));
 #ifdef  __MigPackStructs
-#pragma pack()
+#pragma pack(pop)
 #endif
 
 #ifdef  __MigPackStructs
-#pragma pack(4)
+#pragma pack(push, 4)
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
@@ -193,10 +216,10 @@ __END_DECLS
 		int64_t code[2];
 		int flavor;
 		mach_msg_type_number_t old_stateCnt;
-		natural_t old_state[224];
-	} __Request__mach_exception_raise_state_identity_t;
+		natural_t old_state[1296];
+	} __Request__mach_exception_raise_state_identity_t __attribute__((unused));
 #ifdef  __MigPackStructs
-#pragma pack()
+#pragma pack(pop)
 #endif
 #endif /* !__Request__mach_exc_subsystem__defined */
 
@@ -216,19 +239,19 @@ union __RequestUnion__mach_exc_subsystem {
 #define __Reply__mach_exc_subsystem__defined
 
 #ifdef  __MigPackStructs
-#pragma pack(4)
+#pragma pack(push, 4)
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
 		NDR_record_t NDR;
 		kern_return_t RetCode;
-	} __Reply__mach_exception_raise_t;
+	} __Reply__mach_exception_raise_t __attribute__((unused));
 #ifdef  __MigPackStructs
-#pragma pack()
+#pragma pack(pop)
 #endif
 
 #ifdef  __MigPackStructs
-#pragma pack(4)
+#pragma pack(push, 4)
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
@@ -236,14 +259,14 @@ union __RequestUnion__mach_exc_subsystem {
 		kern_return_t RetCode;
 		int flavor;
 		mach_msg_type_number_t new_stateCnt;
-		natural_t new_state[224];
-	} __Reply__mach_exception_raise_state_t;
+		natural_t new_state[1296];
+	} __Reply__mach_exception_raise_state_t __attribute__((unused));
 #ifdef  __MigPackStructs
-#pragma pack()
+#pragma pack(pop)
 #endif
 
 #ifdef  __MigPackStructs
-#pragma pack(4)
+#pragma pack(push, 4)
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
@@ -251,10 +274,10 @@ union __RequestUnion__mach_exc_subsystem {
 		kern_return_t RetCode;
 		int flavor;
 		mach_msg_type_number_t new_stateCnt;
-		natural_t new_state[224];
-	} __Reply__mach_exception_raise_state_identity_t;
+		natural_t new_state[1296];
+	} __Reply__mach_exception_raise_state_identity_t __attribute__((unused));
 #ifdef  __MigPackStructs
-#pragma pack()
+#pragma pack(pop)
 #endif
 #endif /* !__Reply__mach_exc_subsystem__defined */
 
@@ -271,9 +294,9 @@ union __ReplyUnion__mach_exc_subsystem {
 
 #ifndef subsystem_to_name_map_mach_exc
 #define subsystem_to_name_map_mach_exc \
-    { "mach_exception_raise", 2401 },\
-    { "mach_exception_raise_state", 2402 },\
-    { "mach_exception_raise_state_identity", 2403 }
+    { "mach_exception_raise", 2405 },\
+    { "mach_exception_raise_state", 2406 },\
+    { "mach_exception_raise_state_identity", 2407 }
 #endif
 
 #ifdef __AfterMigUserHeader

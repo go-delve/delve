@@ -336,7 +336,7 @@ func DefaultTestBackend(testBackend *string) {
 	if *testBackend != "" {
 		return
 	}
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 		*testBackend = "lldb"
 	} else {
 		*testBackend = "native"

@@ -1,4 +1,4 @@
-//+build darwin,macnative
+//+build darwin,amd64,macnative
 
 package native
 

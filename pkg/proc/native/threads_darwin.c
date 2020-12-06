@@ -11,11 +11,11 @@ write_memory(task_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_
 	mach_port_t objname;
 
 	if (len == 1) l = 2;
-	kret = mach_vm_region((vm_map_t)task, &(mach_vm_address_t){addr}, (mach_vm_size_t*)&l, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &objname);
+	kret = mach_vm_region((vm_map_t)task, &(mach_vm_address_t){addr}, (mach_vm_size_t *)&l, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &objname);
 	if (kret != KERN_SUCCESS) return -1;
 
 	// Set permissions to enable writting to this memory location
-	kret = mach_vm_protect(task, addr, len, FALSE, VM_PROT_WRITE|VM_PROT_COPY|VM_PROT_READ);
+	kret = mach_vm_protect(task, addr, len, FALSE, VM_PROT_WRITE | VM_PROT_COPY | VM_PROT_READ);
 	if (kret != KERN_SUCCESS) return -1;
 
 	kret = mach_vm_write((vm_map_t)task, addr, (vm_offset_t)d, len);
@@ -44,6 +44,15 @@ read_memory(task_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_t
 	return count;
 }
 
+#if defined(__arm64__)
+kern_return_t
+get_registers(mach_port_name_t task, arm_thread_state64_t *state) {
+	kern_return_t kret;
+	mach_msg_type_number_t stateCount = ARM_THREAD_STATE64_COUNT;
+	// TODO(dp) - possible memory leak - vm_deallocate state
+	return thread_get_state(task, ARM_THREAD_STATE64, (thread_state_t)state, &stateCount);
+}
+#else
 kern_return_t
 get_registers(mach_port_name_t task, x86_thread_state64_t *state) {
 	kern_return_t kret;
@@ -51,13 +60,17 @@ get_registers(mach_port_name_t task, x86_thread_state64_t *state) {
 	// TODO(dp) - possible memory leak - vm_deallocate state
 	return thread_get_state(task, x86_THREAD_STATE64, (thread_state_t)state, &stateCount);
 }
+#endif
 
+#if defined(__arm64__)
+#else
 kern_return_t
 get_fpu_registers(mach_port_name_t task, x86_float_state64_t *state) {
 	kern_return_t kret;
 	mach_msg_type_number_t stateCount = x86_FLOAT_STATE64_COUNT;
 	return thread_get_state(task, x86_FLOAT_STATE64, (thread_state_t)state, &stateCount);
 }
+#endif
 
 kern_return_t
 get_identity(mach_port_name_t task, thread_identifier_info_data_t *idinfo) {
@@ -65,12 +78,34 @@ get_identity(mach_port_name_t task, thread_identifier_info_data_t *idinfo) {
 	return thread_info(task, THREAD_IDENTIFIER_INFO, (thread_info_t)idinfo, &idinfoCount);
 }
 
+#if defined(__arm64__)
+kern_return_t
+set_registers(mach_port_name_t task, arm_thread_state64_t *state) {
+	mach_msg_type_number_t stateCount = ARM_THREAD_STATE64_COUNT;
+	return thread_set_state(task, ARM_THREAD_STATE64, (thread_state_t)state, stateCount);
+}
+#else
 kern_return_t
 set_registers(mach_port_name_t task, x86_thread_state64_t *state) {
 	mach_msg_type_number_t stateCount = x86_THREAD_STATE64_COUNT;
 	return thread_set_state(task, x86_THREAD_STATE64, (thread_state_t)state, stateCount);
 }
+#endif
 
+#if defined(__arm64__)
+kern_return_t
+set_pc(thread_act_t task, uint64_t pc) {
+	kern_return_t kret;
+	arm_thread_state64_t state;
+	mach_msg_type_number_t stateCount = ARM_THREAD_STATE64_COUNT;
+
+	kret = thread_get_state(task, ARM_THREAD_STATE64, (thread_state_t)&state, &stateCount);
+	if (kret != KERN_SUCCESS) return kret;
+	state.__pc = pc;
+
+	return thread_set_state(task, ARM_THREAD_STATE64, (thread_state_t)&state, stateCount);
+}
+#else
 kern_return_t
 set_pc(thread_act_t task, uint64_t pc) {
 	kern_return_t kret;
@@ -83,7 +118,27 @@ set_pc(thread_act_t task, uint64_t pc) {
 
 	return thread_set_state(task, x86_THREAD_STATE64, (thread_state_t)&state, stateCount);
 }
+#endif
 
+#if defined(__arm64__)
+kern_return_t
+single_step(thread_act_t thread) {
+	kern_return_t kret;
+	arm_debug_state64_t dbg;
+	mach_msg_type_number_t count = ARM_DEBUG_STATE64_COUNT;
+
+	kret = thread_get_state(thread, ARM_DEBUG_STATE64, (thread_state_t)&dbg, &count);
+	if (kret != KERN_SUCCESS) return kret;
+
+	// Unable software step bit in MDSCR_EL1
+	dbg.__mdscr_el1 |= 0x0001u;
+
+	kret = thread_set_state(thread, ARM_DEBUG_STATE64, (thread_state_t)&dbg, count);
+	if (kret != KERN_SUCCESS) return kret;
+
+	return resume_thread(thread);
+}
+#else
 kern_return_t
 single_step(thread_act_t thread) {
 	kern_return_t kret;
@@ -101,6 +156,7 @@ single_step(thread_act_t thread) {
 
 	return resume_thread(thread);
 }
+#endif
 
 kern_return_t
 resume_thread(thread_act_t thread) {
@@ -118,6 +174,22 @@ resume_thread(thread_act_t thread) {
 	return KERN_SUCCESS;
 }
 
+#if defined(__arm64__)
+kern_return_t
+clear_trap_flag(thread_act_t thread) {
+	kern_return_t kret;
+	arm_debug_state64_t dbg;
+	mach_msg_type_number_t count = ARM_DEBUG_STATE64_COUNT;
+
+	kret = thread_get_state(thread, ARM_DEBUG_STATE64, (thread_state_t)&dbg, &count);
+	if (kret != KERN_SUCCESS) return kret;
+
+	// Disable software step bit in MDSCR_EL1
+	dbg.__mdscr_el1 &= ~0x0001u;
+
+	return thread_set_state(thread, ARM_DEBUG_STATE64, (thread_state_t)&dbg, count);
+}
+#else
 kern_return_t
 clear_trap_flag(thread_act_t thread) {
 	kern_return_t kret;
@@ -132,6 +204,7 @@ clear_trap_flag(thread_act_t thread) {
 
 	return thread_set_state(thread, x86_THREAD_STATE64, (thread_state_t)&regs, count);
 }
+#endif
 
 int
 thread_blocked(thread_act_t thread) {
@@ -172,7 +245,7 @@ num_running_threads(task_t task) {
 		}
 	}
 
-	kret = vm_deallocate(mach_task_self(), (vm_address_t) list, count * sizeof(list[0]));
+	kret = vm_deallocate(mach_task_self(), (vm_address_t)list, count * sizeof(list[0]));
 	if (kret != KERN_SUCCESS) return -kret;
 
 	return n;

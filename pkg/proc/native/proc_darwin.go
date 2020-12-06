@@ -6,6 +6,7 @@ package native
 // #include "threads_darwin.h"
 // #include "exec_darwin.h"
 // #include <stdlib.h>
+// #include <libproc.h>
 import "C"
 import (
 	"errors"
@@ -28,16 +29,17 @@ type osProcessDetails struct {
 	initialized      bool
 	halt             bool
 
+	entryPoint uint64
+
 	// the main port we use, will return messages from both the
 	// exception and notification ports.
 	portSet C.mach_port_t
 }
 
 // Launch creates and begins debugging a new process. Uses a
-// custom fork/exec process in order to take advantage of
-// PT_SIGEXC on Darwin which will turn Unix signals into
-// Mach exceptions.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, _ [3]string) (*proc.Target, error) {
+// POSIX-style spawn in combination with PT_ATTACHEXC on Darwin
+// which will turn Unix signals into Mach exceptions.
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -60,6 +62,16 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	// argv array must be null terminated.
 	argvSlice = append(argvSlice, nil)
 
+	disableASLR := 0
+	if flags&proc.LaunchDisableASLR != 0 {
+		disableASLR = 1
+	}
+
+	stdin, stdout, stderr, closefn, err := openRedirects(redirects, false)
+	if err != nil {
+		return nil, err
+	}
+
 	dbp := newProcess(0)
 	defer func() {
 		if err != nil && dbp.pid != 0 {
@@ -68,14 +80,21 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	}()
 	var pid int
 	dbp.execPtraceFunc(func() {
-		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
+		ret := C.spawn(argv0, &argvSlice[0], C.int(len(argvSlice)),
 			C.CString(wd),
 			&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
-			&dbp.os.notificationPort)
+			&dbp.os.notificationPort,
+			C.int(disableASLR),
+			C.int(stdin.Fd()),
+			C.int(stdout.Fd()),
+			C.int(stderr.Fd()),
+		)
 		pid = int(ret)
 	})
+	closefn()
+
 	if pid <= 0 {
-		return nil, fmt.Errorf("could not fork/exec")
+		return nil, fmt.Errorf("could not spawn: %d", pid)
 	}
 	dbp.pid = pid
 	dbp.childProcess = true
@@ -83,42 +102,26 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 		C.free(unsafe.Pointer(argvSlice[i]))
 	}
 
-	// Initialize enough of the Process state so that we can use resume and
-	// trapWait to wait until the child process calls execve.
-
-	for {
-		task := C.get_task_for_pid(C.int(dbp.pid))
-		// The task_for_pid call races with the fork call. This can
-		// result in the parent task being returned instead of the child.
-		if task != dbp.os.task {
-			err = dbp.updateThreadListForTask(task)
-			if err == nil {
-				break
-			}
-			if err != couldNotGetThreadCount && err != couldNotGetThreadList {
-				return nil, err
-			}
-		}
-	}
-
-	if err := dbp.resume(); err != nil {
-		return nil, err
-	}
-
-	for _, th := range dbp.threads {
-		th.CurrentBreakpoint.Clear()
-	}
-
-	trapthread, err := dbp.trapWait(-1)
+	// Catch the SIGSTOP signal, otherwise things go out of sync, if the SIGSTOP
+	// signal is caught at a later point in time, i.e. in the first breakpoint
+	_, err = dbp.waitForStop()
 	if err != nil {
 		return nil, err
 	}
-	if _, err := dbp.stop(nil); err != nil {
+
+	task := C.get_task_for_pid(C.int(dbp.pid))
+
+	err = dbp.updateThreadListForTask(task)
+	if err != nil {
 		return nil, err
 	}
 
 	dbp.os.initialized = true
-	dbp.memthread = trapthread
+
+	// This is a bit hacky. This is technically not the entrypoint,
+	// but rather we use the variable to points at the mach-o header,
+	// so we can get the offset in bininfo
+	dbp.os.entryPoint = uint64(C.get_macho_header_offset(dbp.os.task))
 
 	tgt, err := dbp.initialize(argv0Go, []string{})
 	if err != nil {
@@ -143,21 +146,43 @@ func Attach(pid int, _ []string) (*proc.Target, error) {
 	dbp.os.initialized = true
 
 	var err error
-	dbp.execPtraceFunc(func() { err = ptraceAttach(dbp.pid) })
+	dbp.execPtraceFunc(func() {
+		err = ptraceAttach(dbp.pid)
+	})
 	if err != nil {
 		return nil, err
 	}
+
 	_, _, err = dbp.wait(dbp.pid, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	tgt, err := dbp.initialize("", []string{})
+	// TODO: Find out, if the target is actually using ASLR or not
+	// This is a bit hacky. This is technically not the entrypoint,
+	// but rather we use the variable to points at the mach-o header,
+	// so we can get the offset in bininfo
+	dbp.os.entryPoint = uint64(C.get_macho_header_offset(dbp.os.task))
+
+	tgt, err := dbp.initialize(findExecutable("", dbp.pid), []string{})
 	if err != nil {
 		dbp.Detach(false)
 		return nil, err
 	}
+
 	return tgt, nil
+}
+
+func findExecutable(path string, pid int) string {
+	if path == "" {
+		cs := C.CString(string(make([]byte, C.PROC_PIDPATHINFO_MAXSIZE)))
+		defer C.free(unsafe.Pointer(cs))
+
+		C.proc_pidpath(C.int(pid), unsafe.Pointer(cs), C.PROC_PIDPATHINFO_MAXSIZE)
+
+		path = C.GoString(cs)
+	}
+	return path
 }
 
 // Kill kills the process.
@@ -165,15 +190,15 @@ func (dbp *nativeProcess) kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
-	err = sys.Kill(-dbp.pid, sys.SIGKILL)
+	err = sys.Kill(dbp.pid, sys.SIGKILL)
 	if err != nil {
 		return errors.New("could not deliver signal: " + err.Error())
 	}
-	for port := range dbp.threads {
+	/*for port := range dbp.threads {
 		if C.thread_resume(C.thread_act_t(port)) != C.KERN_SUCCESS {
 			return errors.New("could not resume task")
 		}
-	}
+	}*/
 	for {
 		var task C.task_t
 		port := C.mach_port_wait(dbp.os.portSet, &task, C.int(0))
@@ -191,11 +216,21 @@ func (dbp *nativeProcess) requestManualStop() (err error) {
 		thread        = C.mach_port_t(dbp.memthread.os.threadAct)
 		exceptionPort = C.mach_port_t(dbp.os.exceptionPort)
 	)
-	dbp.os.halt = true
-	kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)
-	if kret != C.KERN_SUCCESS {
-		return fmt.Errorf("could not raise mach exception")
+
+	n := C.num_running_threads(dbp.os.task)
+
+	// Only raise the exception, if we are not already halted. Otherwise
+	// we will run into a deadlock, since we are paused and cannot handle
+	// the exception
+	if n != 0 {
+		dbp.os.halt = true
+
+		kret := C.raise_exception(task, thread, exceptionPort, C.EXC_BREAKPOINT)
+		if kret != C.KERN_SUCCESS {
+			return fmt.Errorf("could not raise mach exception")
+		}
 	}
+
 	return nil
 }
 
@@ -228,6 +263,7 @@ func (dbp *nativeProcess) updateThreadListForTask(task C.task_t) error {
 			break
 		}
 	}
+
 	if kret != C.KERN_SUCCESS {
 		return couldNotGetThreadList
 	}
@@ -273,18 +309,10 @@ func (dbp *nativeProcess) addThread(port int, attach bool) (*nativeThread, error
 	return thread, nil
 }
 
-func findExecutable(path string, pid int) string {
-	if path == "" {
-		path = C.GoString(C.find_executable(C.int(pid)))
-	}
-	return path
-}
-
 func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	for {
 		task := dbp.os.task
 		port := C.mach_port_wait(dbp.os.portSet, &task, C.int(0))
-
 		switch port {
 		case dbp.os.notificationPort:
 			// on macOS >= 10.12.1 the task_t changes after an execve, we could
@@ -354,6 +382,7 @@ func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 			}
 			continue
 		}
+
 		return th, nil
 	}
 }
@@ -412,6 +441,7 @@ func (dbp *nativeProcess) resume() error {
 			thread.CurrentBreakpoint.Clear()
 		}
 	}
+
 	// everything is resumed
 	for _, thread := range dbp.threads {
 		if err := thread.resume(); err != nil {
@@ -458,8 +488,9 @@ func (dbp *nativeProcess) detach(kill bool) error {
 }
 
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
-	//TODO(aarzilli): implement this
-	return 0, nil
+	return dbp.os.entryPoint, nil
 }
 
-func initialize(dbp *nativeProcess) error { return nil }
+func initialize(dbp *nativeProcess) error {
+	return nil
+}

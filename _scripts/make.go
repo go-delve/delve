@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/goversion"
@@ -17,6 +16,7 @@ import (
 
 const DelveMainPackagePath = "github.com/go-delve/delve/cmd/dlv"
 
+var Output string
 var Verbose bool
 var NOTimeout bool
 var TestIncludePIE bool
@@ -34,17 +34,19 @@ func NewMakeCommands() *cobra.Command {
 		Run:   checkCertCmd,
 	})
 
-	RootCommand.AddCommand(&cobra.Command{
+	build := &cobra.Command{
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
 			tagFlag := prepareMacnative()
-			execute("go", "build", tagFlag, buildFlags(), DelveMainPackagePath)
+			execute("go", "build", tagFlag, buildFlags(), "-o", Output, DelveMainPackagePath)
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
-				codesign("./dlv")
+				codesign(Output)
 			}
 		},
-	})
+	}
+	build.PersistentFlags().StringVarP(&Output, "output", "o", "dlv", "The output binary")
+	RootCommand.AddCommand(build)
 
 	RootCommand.AddCommand(&cobra.Command{
 		Use:   "install",
@@ -116,7 +118,7 @@ func checkCert() bool {
 		return true
 	}
 
-	x := exec.Command("_scripts/gencert.sh")
+	/*x := exec.Command("_scripts/gencert.sh")
 	x.Stdout = os.Stdout
 	x.Stderr = os.Stderr
 	x.Env = os.Environ()
@@ -128,8 +130,9 @@ func checkCert() bool {
 	if err != nil {
 		fmt.Printf("An error occoured when generating and installing a new certificate: %v\n", err)
 		return false
-	}
-	os.Setenv("CERT", "dlv-cert")
+	}*/
+	// use ad-hoc certificate
+	os.Setenv("CERT", "-")
 	return true
 }
 
@@ -198,7 +201,7 @@ func getoutput(cmd string, args ...interface{}) string {
 }
 
 func codesign(path string) {
-	execute("codesign", "-s", os.Getenv("CERT"), path)
+	execute("codesign", "--force", "-s", os.Getenv("CERT"), "--entitlements", "_scripts/entitlements.plist", path)
 }
 
 func installedExecutablePath() string {
@@ -220,7 +223,7 @@ func canMacnative() bool {
 		return false
 	}
 
-	macOSVersion := strings.Split(strings.TrimSpace(getoutput("/usr/bin/sw_vers", "-productVersion")), ".")
+	/*macOSVersion := strings.Split(strings.TrimSpace(getoutput("/usr/bin/sw_vers", "-productVersion")), ".")
 
 	major, err := strconv.ParseInt(macOSVersion[0], 10, 64)
 	if err != nil {
@@ -238,7 +241,7 @@ func canMacnative() bool {
 	_, err = os.Stat(typesHeader)
 	if err != nil {
 		return false
-	}
+	}*/
 	return true
 }
 
@@ -263,6 +266,7 @@ func buildFlags() []string {
 	if runtime.GOOS == "darwin" {
 		ldFlags = "-s " + ldFlags
 	}
+
 	return []string{fmt.Sprintf("-ldflags=%s", ldFlags)}
 }
 
@@ -275,6 +279,7 @@ func testFlags() []string {
 	if Verbose {
 		testFlags = append(testFlags, "-v")
 	}
+
 	if NOTimeout {
 		testFlags = append(testFlags, "-timeout", "0")
 	} else if os.Getenv("TRAVIS") == "true" {
@@ -286,6 +291,7 @@ func testFlags() []string {
 	}
 	if runtime.GOOS == "darwin" {
 		testFlags = append(testFlags, "-exec="+wd+"/_scripts/testsign")
+		testFlags = append(testFlags, prepareMacnative())
 	}
 	return testFlags
 }
@@ -333,10 +339,14 @@ func testCmd(cmd *cobra.Command, args []string) {
 
 func testStandard() {
 	fmt.Println("Testing default backend")
+
 	testCmdIntl("all", "", "default", "normal")
 	if inpath("lldb-server") && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-		fmt.Println("\nTesting LLDB backend")
-		testCmdIntl("basic", "", "lldb", "normal")
+		// do not test lldb on darwin/arm64 for now
+		if !(runtime.GOOS == "darwin" && runtime.GOARCH == "arm64") {
+			fmt.Println("\nTesting LLDB backend")
+			testCmdIntl("basic", "", "lldb", "normal")
+		}
 	}
 	if inpath("rr") {
 		fmt.Println("\nTesting RR backend")
@@ -414,9 +424,10 @@ func testSetToPackages(testSet string) []string {
 }
 
 func defaultBackend() string {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 		return "lldb"
 	}
+
 	return "native"
 }
 

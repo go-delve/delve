@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
-codesign -s $CERT $1
+scripts_folder=$(dirname $0)
+CERT=-
+codesign -v --force -s $CERT --entitlements ${scripts_folder}/entitlements.plist $1
 exec "$@"

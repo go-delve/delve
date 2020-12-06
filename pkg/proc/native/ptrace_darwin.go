@@ -5,8 +5,9 @@ package native
 import sys "golang.org/x/sys/unix"
 
 // ptraceAttach executes the sys.PtraceAttach call.
-func ptraceAttach(pid int) error {
-	return sys.PtraceAttach(pid)
+func ptraceAttach(tid int) error {
+	//return sys.PtraceAttach(pid)
+	return ptrace(sys.PT_ATTACH, tid, 1, 0)
 }
 
 // ptraceDetach executes the PT_DETACH ptrace call.
@@ -25,6 +26,11 @@ func ptraceSingleStep(tid int) error {
 }
 
 func ptrace(request, pid int, addr uintptr, data uintptr) (err error) {
-	_, _, err = sys.Syscall6(sys.SYS_PTRACE, uintptr(request), uintptr(pid), uintptr(addr), uintptr(data), 0, 0)
+	_, _, errno := sys.Syscall6(sys.SYS_PTRACE, uintptr(request), uintptr(pid), uintptr(addr), uintptr(data), 0, 0)
+
+	if errno != 0 {
+		err = errno
+	}
+
 	return
 }

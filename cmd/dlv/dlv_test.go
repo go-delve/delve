@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 		testBackend = os.Getenv("PROCTEST")
 		if testBackend == "" {
 			testBackend = "native"
-			if runtime.GOOS == "darwin" {
+			if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 				testBackend = "lldb"
 			}
 		}
@@ -194,9 +194,12 @@ func getDlvBin(t *testing.T) (string, string) {
 	}
 
 	dlvbin := filepath.Join(tmpdir, "dlv.exe")
-	out, err := exec.Command("go", "build", "-o", dlvbin, "github.com/go-delve/delve/cmd/dlv").CombinedOutput()
+	cmd := exec.Command("go", "run", "_scripts/make.go", "build", "-o", dlvbin)
+	cmd.Dir = projectRoot()
+	out, err := cmd.CombinedOutput()
+
 	if err != nil {
-		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
+		t.Fatalf("go run _scripts/make.go build -o %v: %v\n%s", dlvbin, err, string(out))
 	}
 
 	return dlvbin, tmpdir

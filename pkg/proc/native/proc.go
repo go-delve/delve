@@ -286,7 +286,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 	tgt, err := proc.NewTarget(dbp, dbp.memthread, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
-		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd",
+		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd" || runtime.GOOS == "darwin",
 		StopReason:          stopReason,
 		CanDump:             runtime.GOOS == "linux"})
 	if err != nil {

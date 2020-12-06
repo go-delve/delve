@@ -294,7 +294,7 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 		return nil, nil
 
 	case "default":
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
 		}
 		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
@@ -338,7 +338,7 @@ func (d *Debugger) Attach(pid int, path string) (*proc.Target, error) {
 	case "lldb":
 		return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, d.config.DebugInfoDirectories))
 	case "default":
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 			return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, d.config.DebugInfoDirectories))
 		}
 		return native.Attach(pid, d.config.DebugInfoDirectories)
@@ -1701,7 +1701,7 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 		}
 	} else {
 		if d.config.Backend == "default" {
-			if runtime.GOOS == "darwin" {
+			if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 				out.Backend = "lldb"
 			} else {
 				out.Backend = "native"
