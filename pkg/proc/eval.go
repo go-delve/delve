@@ -200,7 +200,7 @@ func isAssignment(err error) (int, bool) {
 	return 0, false
 }
 
-// Locals fetches all variables of a specific type in the current function scope.
+// Locals returns all variables in 'scope'.
 func (scope *EvalScope) Locals() ([]*Variable, error) {
 	if scope.Fn == nil {
 		return nil, errors.New("unable to find function context")

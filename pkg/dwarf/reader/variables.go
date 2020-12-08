@@ -8,6 +8,11 @@ import (
 
 type Variable struct {
 	*godwarf.Tree
+	// Depth represents the depth of the lexical block in which this variable
+	// was declared, relative to a root scope (e.g. a function) passed to
+	// Variables(). The depth is used to figure out if a variable is shadowed at
+	// a particular pc by another one with the same name declared in an inner
+	// block.
 	Depth int
 }
 
@@ -21,12 +26,16 @@ const (
 )
 
 // Variables returns a list of variables contained inside 'root'.
-// If onlyVisible is true only variables visible at pc will be returned.
-// If skipInlinedSubroutines is true inlined subroutines will be skipped
+//
+// If the VariablesOnlyVisible flag is set, only variables visible at 'pc' will be
+// returned. If the VariablesSkipInlinedSubroutines is set, variables from
+// inlined subroutines will be skipped.
 func Variables(root *godwarf.Tree, pc uint64, line int, flags VariablesFlags) []Variable {
 	return variablesInternal(nil, root, 0, pc, line, flags)
 }
 
+// variablesInternal appends to 'v' variables from 'root'. The function calls
+// itself with an incremented scope for all sub-blocks in 'root'.
 func variablesInternal(v []Variable, root *godwarf.Tree, depth int, pc uint64, line int, flags VariablesFlags) []Variable {
 	switch root.Tag {
 	case dwarf.TagInlinedSubroutine:
@@ -35,6 +44,8 @@ func variablesInternal(v []Variable, root *godwarf.Tree, depth int, pc uint64, l
 		}
 		fallthrough
 	case dwarf.TagLexDwarfBlock, dwarf.TagSubprogram:
+		// Recurse into blocks and functions, if the respective block contains
+		// pc (or if we don't care about visibility).
 		if (flags&VariablesOnlyVisible == 0) || root.ContainsPC(pc) {
 			for _, child := range root.Children {
 				v = variablesInternal(v, child, depth+1, pc, line, flags)
