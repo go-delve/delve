@@ -74,6 +74,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/arch/x86/x86asm"
@@ -90,6 +91,8 @@ const (
 
 	maxTransmitAttempts    = 3    // number of retransmission attempts on failed checksum
 	initialInputBufferSize = 2048 // size of the input buffer for gdbConn
+
+	debugServerEnvVar = "DELVE_DEBUGSERVER_PATH" // use this environment variable to override the path to debugserver used by Launch/Attach
 )
 
 const heartbeatInterval = 10 * time.Second
@@ -125,6 +128,9 @@ var debugserverExecutablePaths = []string{
 // ErrDirChange is returned when trying to change execution direction
 // while there are still internal breakpoints set.
 var ErrDirChange = errors.New("direction change with internal breakpoints")
+
+var checkCanUnmaskSignalsOnce sync.Once
+var canUnmaskSignalsCached bool
 
 // gdbProcess implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
@@ -330,6 +336,9 @@ func unusedPort() string {
 // getDebugServerAbsolutePath returns a string of the absolute path to the debugserver binary IFF it is
 // found in the system path ($PATH), the Xcode bundle or the standalone CLT location.
 func getDebugServerAbsolutePath() string {
+	if path := os.Getenv(debugServerEnvVar); path != "" {
+		return path
+	}
 	for _, debugServerPath := range debugserverExecutablePaths {
 		if debugServerPath == "" {
 			continue
@@ -339,6 +348,14 @@ func getDebugServerAbsolutePath() string {
 		}
 	}
 	return ""
+}
+
+func canUnmaskSignals(debugServerExecutable string) bool {
+	checkCanUnmaskSignalsOnce.Do(func() {
+		buf, _ := exec.Command(debugServerExecutable, "--unmask-singals").CombinedOutput()
+		canUnmaskSignalsCached = !strings.Contains(string(buf), "unrecognized option")
+	})
+	return canUnmaskSignalsCached
 }
 
 // commandLogger is a wrapper around the exec.Command() function to log the arguments prior to
@@ -421,6 +438,9 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 		if flags&proc.LaunchDisableASLR != 0 {
 			args = append(args, "-D")
 		}
+		if canUnmaskSignals(debugserverExecutable) {
+			args = append(args, "--unmask-signals")
+		}
 		args = append(args, "-F", "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--")
 		args = append(args, cmd...)
 
@@ -500,7 +520,11 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 		if err != nil {
 			return nil, err
 		}
-		process = commandLogger(debugserverExecutable, "-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach="+strconv.Itoa(pid))
+		args := []string{"-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach=" + strconv.Itoa(pid)}
+		if canUnmaskSignals(debugserverExecutable) {
+			args = append(args, "--unmask-signals")
+		}
+		process = commandLogger(debugserverExecutable, args...)
 	} else {
 		if _, err = exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
