@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go/constant"
+	"io/ioutil"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -1269,6 +1270,9 @@ func TestCallFunction(t *testing.T) {
 		if err != nil {
 			t.Skip("function calls not supported on this version of go")
 		}
+
+		testCallFunctionSetBreakpoint(t, p, fixture)
+
 		assertNoError(p.Continue(), t, "Continue()")
 		for _, tc := range testcases {
 			testCallFunction(t, p, tc)
@@ -1300,6 +1304,17 @@ func TestCallFunction(t *testing.T) {
 		// LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
 		testCallFunction(t, p, testCaseCallFunction{"-unsafe escapeArg(&a2)", nil, nil})
 	})
+}
+
+func testCallFunctionSetBreakpoint(t *testing.T, p *proc.Target, fixture protest.Fixture) {
+	buf, err := ioutil.ReadFile(fixture.Source)
+	assertNoError(err, t, "ReadFile")
+	for i, line := range strings.Split(string(buf), "\n") {
+		if strings.Contains(line, "// breakpoint here") {
+			setFileBreakpoint(p, t, fixture, i+1)
+			return
+		}
+	}
 }
 
 func testCallFunction(t *testing.T, p *proc.Target, tc testCaseCallFunction) {

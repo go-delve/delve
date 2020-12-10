@@ -316,6 +316,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 	fncallLog("function call initiated %v frame size %d goroutine %d (thread %d)", fncall.fn, fncall.argFrameSize, scope.g.ID, thread.ThreadID())
 
+	thread.Breakpoint().Clear() // since we moved address in PC the thread is no longer stopped at a breakpoint, leaving the breakpoint set will confuse Continue
 	p.fncallForG[scope.g.ID].startThreadID = thread.ThreadID()
 
 	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
@@ -944,6 +945,10 @@ func isCallInjectionStop(t *Target, thread Thread, loc *Location) bool {
 		return false
 	}
 	if !strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix1) && !strings.HasPrefix(loc.Fn.Name, debugCallFunctionNamePrefix2) {
+		return false
+	}
+	if loc.PC == loc.Fn.Entry {
+		// call injection just started, did not make any progress before being interrupted by a concurrent breakpoint.
 		return false
 	}
 	text, err := disassembleCurrentInstruction(t, thread, -1)
