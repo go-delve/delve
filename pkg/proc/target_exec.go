@@ -50,6 +50,7 @@ func (dbp *Target) Continue() error {
 		return err
 	}
 	for _, thread := range dbp.ThreadList() {
+		thread.Common().CallReturn = false
 		thread.Common().returnValues = nil
 	}
 	dbp.CheckAndClearManualStopRequest()

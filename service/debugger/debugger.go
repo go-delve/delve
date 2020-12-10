@@ -562,6 +562,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	for _, thread := range d.target.ThreadList() {
 		th := api.ConvertThread(thread)
 
+		th.CallReturn = thread.Common().CallReturn
 		if retLoadCfg != nil {
 			th.ReturnValues = api.ConvertVars(thread.Common().ReturnValues(*retLoadCfg))
 		}
