@@ -106,6 +106,23 @@ func NewServer(config *service.Config) *Server {
 	}
 }
 
+// If user-specified options are provided via Launch/AttachRequest,
+// we override the defaults for optional args.
+func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) {
+	stop, ok := request.GetArguments()["stopOnEntry"].(bool)
+	if ok {
+		s.args.stopOnEntry = stop
+	}
+	depth, ok := request.GetArguments()["stackTraceDepth"].(float64)
+	if ok && depth > 0 {
+		s.args.stackTraceDepth = int(depth)
+	}
+	globals, ok := request.GetArguments()["showGlobalVariables"].(bool)
+	if ok {
+		s.args.showGlobalVariables = globals
+	}
+}
+
 // Stop stops the DAP debugger service, closes the listener and the client
 // connection. It shuts down the underlying debugger and kills the target
 // process if it was launched by it. This method mustn't be called more than
@@ -233,7 +250,6 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.onLaunchRequest(request)
 	case *dap.AttachRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onAttachRequest(request)
 	case *dap.DisconnectRequest:
 		// Required
@@ -384,6 +400,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsConfigurationDoneRequest = true
 	response.Body.SupportsConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
+	response.Body.SupportTerminateDebuggee = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
@@ -465,19 +482,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	// If user-specified, overwrite the defaults for optional args.
-	stop, ok := request.Arguments["stopOnEntry"].(bool)
-	if ok {
-		s.args.stopOnEntry = stop
-	}
-	depth, ok := request.Arguments["stackTraceDepth"].(float64)
-	if ok && depth > 0 {
-		s.args.stackTraceDepth = int(depth)
-	}
-	globals, ok := request.Arguments["showGlobalVariables"].(bool)
-	if ok {
-		s.args.showGlobalVariables = globals
-	}
+	s.setLaunchAttachArgs(request)
 
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
@@ -528,7 +533,14 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 		if err != nil {
 			s.log.Error(err)
 		}
+		// We always kill launched programs
 		kill := s.config.Debugger.AttachPid == 0
+		// In case of attach, we leave the program
+		// running but default, which can be
+		// overridden by an explicit request to terminate.
+		if request.Arguments.TerminateDebuggee {
+			kill = true
+		}
 		err = s.debugger.Detach(kill)
 		if err != nil {
 			s.log.Error(err)
@@ -685,10 +697,41 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	s.send(response)
 }
 
-// onAttachRequest sends a not-yet-implemented error response.
+// onAttachRequest handles 'attach' request.
 // This is a mandatory request to support.
-func (s *Server) onAttachRequest(request *dap.AttachRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onAttachRequest(request *dap.AttachRequest) {
+	mode, ok := request.Arguments["mode"]
+	if !ok || mode == "" {
+		mode = "local"
+	}
+	if mode == "local" {
+		pid, ok := request.Arguments["processId"].(float64)
+		if !ok || pid == 0 {
+			s.sendErrorResponse(request.Request,
+				FailedToAttach, "Failed to attach",
+				"The 'processId' attribute is missing in debug configuration")
+			return
+		}
+		s.config.Debugger.AttachPid = int(pid)
+		s.setLaunchAttachArgs(request)
+		var err error
+		if s.debugger, err = debugger.New(&s.config.Debugger, nil); err != nil {
+			s.sendErrorResponse(request.Request,
+				FailedToAttach, "Failed to attach", err.Error())
+			return
+		}
+	} else {
+		// TODO(polina): support 'remote' mode with 'host' and 'port'
+		s.sendErrorResponse(request.Request,
+			FailedToAttach, "Failed to attach",
+			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration", mode))
+		return
+	}
+	// Notify the client that the debugger is ready to start accepting
+	// configuration requests for setting breakpoints, etc. The client
+	// will end the configuration sequence with 'configurationDone'.
+	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
+	s.send(&dap.AttachResponse{Response: *newResponse(request.Request)})
 }
 
 // onNextRequest handles 'next' request.
