@@ -407,7 +407,9 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 func (d *Debugger) Detach(kill bool) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-
+	if ok, _ := d.target.Valid(); !ok {
+		return nil
+	}
 	return d.detach(kill)
 }
 

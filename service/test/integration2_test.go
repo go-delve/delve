@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -2110,4 +2111,56 @@ func TestIssue2162(t *testing.T) {
 		_, err = c.Step()
 		assertNoError(err, t, "Step()")
 	})
+}
+
+func TestDetachLeaveRunning(t *testing.T) {
+	// See https://github.com/go-delve/delve/issues/2259
+	if testBackend == "rr" {
+		return
+	}
+
+	listener, clientConn := service.ListenerPipe()
+	defer listener.Close()
+	var buildFlags protest.BuildFlags
+	if buildMode == "pie" {
+		buildFlags |= protest.BuildModePIE
+	}
+	fixture := protest.BuildFixture("testnextnethttp", buildFlags)
+
+	cmd := exec.Command(fixture.Path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	assertNoError(cmd.Start(), t, "starting fixture")
+	defer cmd.Process.Kill()
+
+	// wait for testnextnethttp to start listening
+	t0 := time.Now()
+	for {
+		conn, err := net.Dial("tcp", "127.0.0.1:9191")
+		if err == nil {
+			conn.Close()
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+		if time.Since(t0) > 10*time.Second {
+			t.Fatal("fixture did not start")
+		}
+	}
+
+	server := rpccommon.NewServer(&service.Config{
+		Listener:   listener,
+		APIVersion: 2,
+		Debugger: debugger.Config{
+			AttachPid:  cmd.Process.Pid,
+			WorkingDir: ".",
+			Backend:    testBackend,
+		},
+	})
+	if err := server.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	client := rpc2.NewClientFromConn(clientConn)
+	defer server.Stop()
+	assertNoError(client.Detach(false), t, "Detach")
 }
