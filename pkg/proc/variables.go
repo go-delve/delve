@@ -201,6 +201,9 @@ type G struct {
 	stkbarPos int       // stkbarPos field of g struct
 	stack     stack     // value of stack
 
+	WaitSince  int64
+	WaitReason int64
+
 	SystemStack bool // SystemStack is true if this goroutine is currently executing on a system stack.
 
 	// Information on goroutine location
@@ -846,6 +849,8 @@ func (v *Variable) parseG() (*G, error) {
 	id := loadInt64Maybe("goid")
 	gopc := loadInt64Maybe("gopc")
 	startpc := loadInt64Maybe("startpc")
+	waitSince := loadInt64Maybe("waitsince")
+	waitReason := loadInt64Maybe("waitreason")
 	var stackhi, stacklo uint64
 	if stackVar := v.loadFieldNamed("stack"); stackVar != nil {
 		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
@@ -882,6 +887,8 @@ func (v *Variable) parseG() (*G, error) {
 		BP:         uint64(bp),
 		LR:         uint64(lr),
 		Status:     uint64(status),
+		WaitSince:  waitSince,
+		WaitReason: waitReason,
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
 		variable:   v,
 		stkbarVar:  stkbarVar,
