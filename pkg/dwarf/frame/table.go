@@ -8,6 +8,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
+// DWRule wrapper of rule defined for register values.
 type DWRule struct {
 	Rule       Rule
 	Offset     int64
@@ -15,6 +16,7 @@ type DWRule struct {
 	Expression []byte
 }
 
+// FrameContext wrapper of FDE context
 type FrameContext struct {
 	loc           uint64
 	order         binary.ByteOrder
@@ -62,7 +64,7 @@ const (
 	DW_CFA_restore            = (0x3 << 6) // High 2 bits: 0x3, low 6: register
 )
 
-// Rules defined for register values.
+// Rule rule defined for register values.
 type Rule byte
 
 const (
@@ -148,7 +150,7 @@ func (frame *FrameContext) executeDwarfProgram() {
 	}
 }
 
-// Execute dwarf instructions.
+// ExecuteUntilPC execute dwarf instructions.
 func (frame *FrameContext) ExecuteUntilPC(instructions []byte) {
 	frame.buf.Truncate(0)
 	frame.buf.Write(instructions)

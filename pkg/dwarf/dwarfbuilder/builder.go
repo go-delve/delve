@@ -9,6 +9,7 @@ import (
 	"fmt"
 )
 
+// Builder dwarf builder
 type Builder struct {
 	info     bytes.Buffer
 	loc      bytes.Buffer

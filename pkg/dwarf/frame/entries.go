@@ -6,7 +6,7 @@ import (
 	"sort"
 )
 
-// Represents a Common Information Entry in
+// CommonInformationEntry represents a Common Information Entry in
 // the Dwarf .debug_frame section.
 type CommonInformationEntry struct {
 	Length                uint32
@@ -20,7 +20,7 @@ type CommonInformationEntry struct {
 	staticBase            uint64
 }
 
-// Represents a Frame Descriptor Entry in the
+// FrameDescriptionEntry represents a Frame Descriptor Entry in the
 // Dwarf .debug_frame section.
 type FrameDescriptionEntry struct {
 	Length       uint32
@@ -30,23 +30,23 @@ type FrameDescriptionEntry struct {
 	order        binary.ByteOrder
 }
 
-// Returns whether or not the given address is within the
+// Cover returns whether or not the given address is within the
 // bounds of this frame.
 func (fde *FrameDescriptionEntry) Cover(addr uint64) bool {
 	return (addr - fde.begin) < fde.size
 }
 
-// Address of first location for this frame.
+// Begin returns address of first location for this frame.
 func (fde *FrameDescriptionEntry) Begin() uint64 {
 	return fde.begin
 }
 
-// Address of last location for this frame.
+// End returns address of last location for this frame.
 func (fde *FrameDescriptionEntry) End() uint64 {
 	return fde.begin + fde.size
 }
 
-// Set up frame for the given PC.
+// EstablishFrame set up frame for the given PC.
 func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
 	return executeDwarfProgramUntilPC(fde, pc)
 }
@@ -57,6 +57,7 @@ func newFrameIndex() FrameDescriptionEntries {
 	return make(FrameDescriptionEntries, 0, 1000)
 }
 
+// ErrNoFDEForPC FDE for PC not found error
 type ErrNoFDEForPC struct {
 	PC uint64
 }
@@ -65,7 +66,7 @@ func (err *ErrNoFDEForPC) Error() string {
 	return fmt.Sprintf("could not find FDE for PC %#v", err.PC)
 }
 
-// Returns the Frame Description Entry for the given PC.
+// FDEForPC returns the Frame Description Entry for the given PC.
 func (fdes FrameDescriptionEntries) FDEForPC(pc uint64) (*FrameDescriptionEntry, error) {
 	idx := sort.Search(len(fdes), func(i int) bool {
 		return fdes[i].Cover(pc) || fdes[i].Begin() >= pc
