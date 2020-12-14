@@ -6,6 +6,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
@@ -56,7 +57,7 @@ func registers(thread *nativeThread) (proc.Registers, error) {
 		return nil, err
 	}
 	r := linutil.NewAMD64Registers(&regs, func(r *linutil.AMD64Registers) error {
-		var fpregset linutil.AMD64Xstate
+		var fpregset amd64util.AMD64Xstate
 		var floatLoadError error
 		r.Fpregs, fpregset, floatLoadError = thread.fpRegisters()
 		r.Fpregset = &fpregset
@@ -65,17 +66,9 @@ func registers(thread *nativeThread) (proc.Registers, error) {
 	return r, nil
 }
 
-const (
-	_X86_XSTATE_MAX_SIZE = 2696
-	_NT_X86_XSTATE       = 0x202
+const _NT_X86_XSTATE = 0x202
 
-	_XSAVE_HEADER_START          = 512
-	_XSAVE_HEADER_LEN            = 64
-	_XSAVE_EXTENDED_REGION_START = 576
-	_XSAVE_SSE_REGION_LEN        = 416
-)
-
-func (thread *nativeThread) fpRegisters() (regs []proc.Register, fpregs linutil.AMD64Xstate, err error) {
+func (thread *nativeThread) fpRegisters() (regs []proc.Register, fpregs amd64util.AMD64Xstate, err error) {
 	thread.dbp.execPtraceFunc(func() { fpregs, err = ptraceGetRegset(thread.ID) })
 	regs = fpregs.Decode()
 	if err != nil {
