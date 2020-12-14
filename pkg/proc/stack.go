@@ -407,9 +407,15 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 	return append(frames, frame)
 }
 
-// advanceRegs calculates it.callFrameRegs using it.regs and the frame
-// descriptor entry for the current stack frame.
-// it.regs.CallFrameCFA is updated.
+// advanceRegs calculates the DwarfRegisters for a next stack frame
+// (corresponding to it.pc).
+//
+// The computation uses the registers for the current stack frame (it.regs) and
+// the corresponding Frame Descriptor Entry (FDE) retrieved from the DWARF info.
+//
+// The new set of registers is returned. it.regs is not updated, except for
+// it.regs.CFA; the caller has to eventually switch it.regs when the iterator
+// advances to the next frame.
 func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64) {
 	fde, err := it.bi.frameEntries.FDEForPC(it.pc)
 	var framectx *frame.FrameContext
