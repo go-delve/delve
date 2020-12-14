@@ -295,6 +295,8 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 		GoStatementLoc: ConvertLocation(g.Go()),
 		StartLoc:       ConvertLocation(g.StartLoc()),
 		ThreadID:       tid,
+		WaitSince:      g.WaitSince,
+		WaitReason:     g.WaitReason,
 		Labels:         g.Labels(),
 	}
 }
