@@ -157,7 +157,8 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLines(f string, m map[int][]uint64) 
 
 var NoSourceError = errors.New("no source available")
 
-// AllPCsBetween returns all PC addresses between begin and end (including both begin and end) that have the is_stmt flag set and do not belong to excludeFile:excludeLine
+// AllPCsBetween returns all PC addresses between begin and end (including both begin and end)
+// that have the is_stmt flag set and do not belong to excludeFile:excludeLine.
 func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64, excludeFile string, excludeLine int) ([]uint64, error) {
 	if lineInfo == nil {
 		return nil, NoSourceError

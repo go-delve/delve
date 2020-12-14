@@ -23,9 +23,9 @@ type parseContext struct {
 	ptrSize int
 }
 
-// Parse takes in data (a byte slice) and returns a slice of
-// commonInformationEntry structures. Each commonInformationEntry
-// has a slice of frameDescriptionEntry structures.
+// Parse takes in data (a byte slice) and returns FrameDescriptionEntries,
+// which is a slice of FrameDescriptionEntry. Each FrameDescriptionEntry
+// has a pointer to CommonInformationEntry.
 func Parse(data []byte, order binary.ByteOrder, staticBase uint64, ptrSize int) FrameDescriptionEntries {
 	var (
 		buf  = bytes.NewBuffer(data)

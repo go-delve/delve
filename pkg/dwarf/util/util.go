@@ -119,6 +119,7 @@ func EncodeSLEB128(out io.ByteWriter, x int64) {
 	}
 }
 
+// ParseString reads a null-terminated string from data.
 func ParseString(data *bytes.Buffer) (string, uint32) {
 	str, err := data.ReadString(0x0)
 	if err != nil {
