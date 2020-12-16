@@ -314,12 +314,18 @@ type Goroutine struct {
 	StartLoc Location `json:"startLoc"`
 	// ID of the associated thread for running goroutines
 	ThreadID   int    `json:"threadID"`
+	Status     uint64 `json:"status"`
 	WaitSince  int64  `json:"waitSince"`
 	WaitReason int64  `json:"waitReason"`
 	Unreadable string `json:"unreadable"`
 	// Goroutine's pprof labels
 	Labels map[string]string `json:"labels,omitempty"`
 }
+
+const (
+	GoroutineWaiting = proc.Gwaiting
+	GoroutineSyscall = proc.Gsyscall
+)
 
 // DebuggerCommand is a command which changes the debugger's execution state.
 type DebuggerCommand struct {
