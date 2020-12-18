@@ -202,6 +202,9 @@ func TestCore(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return
 	}
+	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
+		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
+	}
 	p := withCoreFile(t, "panic", "")
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
@@ -348,6 +351,9 @@ func TestCoreFpRegisters(t *testing.T) {
 func TestCoreWithEmptyString(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return
+	}
+	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
+		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
 	}
 	p := withCoreFile(t, "coreemptystring", "")
 

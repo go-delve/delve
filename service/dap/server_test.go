@@ -1462,17 +1462,12 @@ func TestEvaluateCallRequest(t *testing.T) {
 					// and not the return to the original point of injection after it
 					// completed.
 					client.EvaluateRequest("call makeclos(nil)", 1000, "not watch")
-					client.ExpectStoppedEvent(t)
+					stopped := client.ExpectStoppedEvent(t)
 					erres = client.ExpectVisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
 					}
-					if (goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) && (runtime.GOOS == "linux" || runtime.GOOS == "windows")) ||
-						runtime.GOOS == "freebsd" {
-						handleStop(t, client, 1, "runtime.debugCallWrap", -1)
-					} else {
-						handleStop(t, client, 1, "main.makeclos", 88)
-					}
+					handleStop(t, client, stopped.Body.ThreadId, "main.makeclos", 88)
 
 					// Complete the call and get back to original breakpoint in makeclos()
 					client.ContinueRequest(1)
