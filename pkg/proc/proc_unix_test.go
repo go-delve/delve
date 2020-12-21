@@ -54,6 +54,8 @@ func TestIssue419(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		err := <-errChan
 
+		t.Logf("error %T %#v\n", err, err)
+
 		if v, ok := err.(errIssue419); ok {
 			assertNoError(v.err, t, "syscall.Kill")
 			continue

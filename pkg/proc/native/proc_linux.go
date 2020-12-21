@@ -187,21 +187,33 @@ func initialize(dbp *nativeProcess) error {
 }
 
 // kill kills the target process.
-func (dbp *nativeProcess) kill() (err error) {
+func (dbp *nativeProcess) kill() error {
 	if dbp.exited {
 		return nil
 	}
 	if !dbp.threads[dbp.pid].Stopped() {
 		return errors.New("process must be stopped in order to kill it")
 	}
-	if err = sys.Kill(-dbp.pid, sys.SIGKILL); err != nil {
+	if err := sys.Kill(-dbp.pid, sys.SIGKILL); err != nil {
 		return errors.New("could not deliver signal " + err.Error())
 	}
-	if _, _, err = dbp.wait(dbp.pid, 0); err != nil {
-		return
+	// wait for other threads first or the thread group leader (dbp.pid) will never exit.
+	for threadID := range dbp.threads {
+		if threadID != dbp.pid {
+			dbp.wait(threadID, 0)
+		}
 	}
-	dbp.postExit()
-	return
+	for {
+		wpid, status, err := dbp.wait(dbp.pid, 0)
+		if err != nil {
+			return err
+		}
+		if wpid == dbp.pid && status != nil && status.Signaled() && status.Signal() == sys.SIGKILL {
+			dbp.postExit()
+			return err
+		}
+	}
+	return nil
 }
 
 func (dbp *nativeProcess) requestManualStop() (err error) {
