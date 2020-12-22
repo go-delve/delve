@@ -227,6 +227,9 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 // TestAttachStopOnEntry is like TestLaunchStopOnEntry, but with attach request.
 func TestAttachStopOnEntry(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
 		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
@@ -2020,6 +2023,9 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 }
 
 func TestAttachRequest(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
 		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
