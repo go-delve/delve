@@ -6,7 +6,7 @@ func loop() {
 	i := 0
 	for {
 		i++
-		if (i % 100000000) == 0 {
+		if (i % 100000) == 0 {
 			fmt.Println(i)
 		}
 	}
