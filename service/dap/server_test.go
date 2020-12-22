@@ -2320,8 +2320,8 @@ func TestBadAttachRequest(t *testing.T) {
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"processId": 1}) // defaults to "local"
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
-			"Failed to attach: could not attach to pid 1: stub exited while waiting for connection: exit status 0")
+		// The exact message varies on different systems, so skip that check
+		expectFailedToAttach(client.ExpectErrorResponse(t)) // could not attach to pid 1
 
 		// This will make debugger.(*Debugger) panic, which we will catch as an internal error.
 		client.AttachRequest(map[string]interface{}{"processId": -1}) // defaults to "local"
