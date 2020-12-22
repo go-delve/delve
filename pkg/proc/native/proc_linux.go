@@ -398,10 +398,15 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			th.os.running = false
 			return th, nil
 		} else if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
-			if options&trapWaitDontCallExitGuard != 0 {
+			if err != sys.ESRCH {
 				return nil, err
 			}
-			return nil, dbp.exitGuard(err)
+			// do the same thing we do if a thread quit
+			if wpid == dbp.pid {
+				dbp.postExit()
+				return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
+			}
+			delete(dbp.threads, wpid)
 		}
 	}
 }
