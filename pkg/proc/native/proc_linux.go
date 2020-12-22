@@ -591,9 +591,10 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	}
 
 	if switchTrapthread {
+		trapthreadID := trapthread.ID
 		trapthread = nil
 		for _, th := range dbp.threads {
-			if th.os.setbp && th.ThreadID() != trapthread.ThreadID() {
+			if th.os.setbp && th.ThreadID() != trapthreadID {
 				return th, nil
 			}
 		}
