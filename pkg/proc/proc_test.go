@@ -2816,6 +2816,9 @@ func TestAttachDetach(t *testing.T) {
 	if testBackend == "rr" {
 		return
 	}
+	if os.Getenv("CI") == "true" {
+		t.Skip("disabled on Github actions")
+	}
 	var buildFlags protest.BuildFlags
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
