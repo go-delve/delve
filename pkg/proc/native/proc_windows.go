@@ -85,9 +85,11 @@ func initialize(dbp *nativeProcess) error {
 	// Suspend all threads so that the call to _ContinueDebugEvent will
 	// not resume the target.
 	for _, thread := range dbp.threads {
-		_, err := _SuspendThread(thread.os.hThread)
-		if err != nil {
-			return err
+		if !thread.os.dbgUiRemoteBreakIn {
+			_, err := _SuspendThread(thread.os.hThread)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -195,7 +197,7 @@ func (dbp *nativeProcess) updateThreadList() error {
 	return nil
 }
 
-func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach, suspendNewThreads bool) (*nativeThread, error) {
+func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach, suspendNewThreads bool, dbgUiRemoteBreakIn bool) (*nativeThread, error) {
 	if thread, ok := dbp.threads[threadID]; ok {
 		return thread, nil
 	}
@@ -204,12 +206,13 @@ func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach
 		dbp: dbp,
 		os:  new(osSpecificDetails),
 	}
+	thread.os.dbgUiRemoteBreakIn = dbgUiRemoteBreakIn
 	thread.os.hThread = hThread
 	dbp.threads[threadID] = thread
 	if dbp.memthread == nil {
 		dbp.memthread = dbp.threads[threadID]
 	}
-	if suspendNewThreads {
+	if suspendNewThreads && !dbgUiRemoteBreakIn {
 		_, err := _SuspendThread(thread.os.hThread)
 		if err != nil {
 			return nil, err
@@ -261,14 +264,16 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 			}
 			dbp.os.entryPoint = uint64(debugInfo.BaseOfImage)
 			dbp.os.hProcess = debugInfo.Process
-			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false, flags&waitSuspendNewThreads != 0)
+			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false,
+				flags&waitSuspendNewThreads != 0, debugInfo.StartAddress == dbgUiRemoteBreakin.Addr())
 			if err != nil {
 				return 0, 0, err
 			}
 			break
 		case _CREATE_THREAD_DEBUG_EVENT:
 			debugInfo := (*_CREATE_THREAD_DEBUG_INFO)(unionPtr)
-			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false, flags&waitSuspendNewThreads != 0)
+			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false,
+				flags&waitSuspendNewThreads != 0, debugInfo.StartAddress == dbgUiRemoteBreakin.Addr())
 			if err != nil {
 				return 0, 0, err
 			}
@@ -430,9 +435,11 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	}
 
 	for _, thread := range dbp.threads {
-		_, err := _SuspendThread(thread.os.hThread)
-		if err != nil {
-			return nil, err
+		if !thread.os.dbgUiRemoteBreakIn {
+			_, err := _SuspendThread(thread.os.hThread)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

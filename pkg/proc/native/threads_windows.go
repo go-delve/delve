@@ -16,7 +16,8 @@ type waitStatus sys.WaitStatus
 // osSpecificDetails holds information specific to the Windows
 // operating system / kernel.
 type osSpecificDetails struct {
-	hThread syscall.Handle
+	hThread            syscall.Handle
+	dbgUiRemoteBreakIn bool // whether thread is an auxiliary DbgUiRemoteBreakIn thread created by Windows
 }
 
 func (t *nativeThread) singleStep() error {
@@ -77,9 +78,11 @@ func (t *nativeThread) singleStep() error {
 	}
 
 	for i := 0; i < suspendcnt; i++ {
-		_, err = _SuspendThread(t.os.hThread)
-		if err != nil {
-			return err
+		if !t.os.dbgUiRemoteBreakIn {
+			_, err = _SuspendThread(t.os.hThread)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
