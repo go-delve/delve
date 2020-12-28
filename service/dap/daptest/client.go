@@ -145,6 +145,11 @@ func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
 	return c.expectReadProtocolMessage(t).(*dap.LaunchResponse)
 }
 
+func (c *Client) ExpectAttachResponse(t *testing.T) *dap.AttachResponse {
+	t.Helper()
+	return c.expectReadProtocolMessage(t).(*dap.AttachResponse)
+}
+
 func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExceptionBreakpointsResponse {
 	t.Helper()
 	return c.expectReadProtocolMessage(t).(*dap.SetExceptionBreakpointsResponse)
@@ -332,16 +337,25 @@ func (c *Client) LaunchRequestWithArgs(arguments map[string]interface{}) {
 	c.send(request)
 }
 
-// AttachRequest sends an 'attach' request.
-func (c *Client) AttachRequest() {
+// AttachRequest sends an 'attach' request with the specified
+// arguments.
+func (c *Client) AttachRequest(arguments map[string]interface{}) {
 	request := &dap.AttachRequest{Request: *c.newRequest("attach")}
-	// TODO(polina): populate meaningful arguments
+	request.Arguments = arguments
 	c.send(request)
 }
 
 // DisconnectRequest sends a 'disconnect' request.
 func (c *Client) DisconnectRequest() {
 	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
+	c.send(request)
+}
+
+// DisconnectRequest sends a 'disconnect' request with an option to specify
+// `terminateDebuggee`.
+func (c *Client) DisconnectRequestWithKillOption(kill bool) {
+	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
+	request.Arguments.TerminateDebuggee = kill
 	c.send(request)
 }
 
