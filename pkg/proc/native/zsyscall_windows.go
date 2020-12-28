@@ -14,6 +14,7 @@ var (
 	modkernel32 = syscall.NewLazyDLL("kernel32.dll")
 
 	procNtQueryInformationThread   = modntdll.NewProc("NtQueryInformationThread")
+	dbgUiRemoteBreakin             = modntdll.NewProc("DbgUiRemoteBreakin")
 	procGetThreadContext           = modkernel32.NewProc("GetThreadContext")
 	procSetThreadContext           = modkernel32.NewProc("SetThreadContext")
 	procSuspendThread              = modkernel32.NewProc("SuspendThread")
