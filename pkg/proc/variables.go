@@ -850,7 +850,10 @@ func (v *Variable) parseG() (*G, error) {
 	gopc := loadInt64Maybe("gopc")
 	startpc := loadInt64Maybe("startpc")
 	waitSince := loadInt64Maybe("waitsince")
-	waitReason := loadInt64Maybe("waitreason")
+	waitReason := int64(0)
+	if producer := v.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 11) {
+		waitReason = loadInt64Maybe("waitreason")
+	}
 	var stackhi, stacklo uint64
 	if stackVar := v.loadFieldNamed("stack"); stackVar != nil {
 		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
