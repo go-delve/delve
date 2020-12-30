@@ -54,7 +54,7 @@ type Term struct {
 	cmds         *Commands
 	stdout       io.Writer
 	InitFile     string
-	displays     []string
+	displays     []displayEntry
 	colorEscapes map[colorize.Style]string
 
 	historyFile *os.File
@@ -72,6 +72,11 @@ type Term struct {
 
 	quittingMutex sync.Mutex
 	quitting      bool
+}
+
+type displayEntry struct {
+	expr   string
+	fmtstr string
 }
 
 // New returns a new Term.
@@ -456,9 +461,9 @@ func (t *Term) removeDisplay(n int) error {
 	if n < 0 || n >= len(t.displays) {
 		return fmt.Errorf("%d is out of range", n)
 	}
-	t.displays[n] = ""
+	t.displays[n] = displayEntry{"", ""}
 	for i := len(t.displays) - 1; i >= 0; i-- {
-		if t.displays[i] != "" {
+		if t.displays[i].expr != "" {
 			t.displays = t.displays[:i+1]
 			return nil
 		}
@@ -467,12 +472,12 @@ func (t *Term) removeDisplay(n int) error {
 	return nil
 }
 
-func (t *Term) addDisplay(expr string) {
-	t.displays = append(t.displays, expr)
+func (t *Term) addDisplay(expr, fmtstr string) {
+	t.displays = append(t.displays, displayEntry{expr: expr, fmtstr: fmtstr})
 }
 
 func (t *Term) printDisplay(i int) {
-	expr := t.displays[i]
+	expr, fmtstr := t.displays[i].expr, t.displays[i].fmtstr
 	val, err := t.client.EvalVariable(api.EvalScope{GoroutineID: -1}, expr, ShortLoadConfig)
 	if err != nil {
 		if isErrProcessExited(err) {
@@ -481,12 +486,12 @@ func (t *Term) printDisplay(i int) {
 		fmt.Printf("%d: %s = error %v\n", i, expr, err)
 		return
 	}
-	fmt.Printf("%d: %s = %s\n", i, val.Name, val.SinglelineString())
+	fmt.Printf("%d: %s = %s\n", i, val.Name, val.SinglelineStringFormatted(fmtstr))
 }
 
 func (t *Term) printDisplays() {
 	for i := range t.displays {
-		if t.displays[i] != "" {
+		if t.displays[i].expr != "" {
 			t.printDisplay(i)
 		}
 	}

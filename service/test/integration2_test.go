@@ -1441,7 +1441,7 @@ func TestIssue406(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 		v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
-		vs := v.MultilineString("")
+		vs := v.MultilineString("", "")
 		t.Logf("cfgtree formats to: %s\n", vs)
 	})
 }
