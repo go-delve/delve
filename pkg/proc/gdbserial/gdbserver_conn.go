@@ -624,7 +624,7 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 	}
 }
 
-var threadBlockedError = errors.New("thread blocked")
+var errThreadBlocked = errors.New("thread blocked")
 
 func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threadUpdater) (string, uint8, error) {
 	count := 0
@@ -647,7 +647,7 @@ func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threa
 			}
 			count++
 		} else if failed {
-			return "", 0, threadBlockedError
+			return "", 0, errThreadBlocked
 		} else if err != nil {
 			return "", 0, err
 		} else {
@@ -1260,7 +1260,10 @@ func checksumok(packet, checksumBuf []byte) bool {
 	if err != nil {
 		return false
 	}
-	return sum == uint8(tgt)
+
+	tgt8 := uint8(tgt)
+
+	return sum == tgt8
 }
 
 func checksum(packet []byte) (sum uint8) {

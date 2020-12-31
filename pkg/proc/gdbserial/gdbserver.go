@@ -567,7 +567,7 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 // debugging PIEs.
 func (p *gdbProcess) EntryPoint() (uint64, error) {
 	var entryPoint uint64
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
 		// There is no auxv on darwin, however, we can get the location of the mach-o
 		// header from the debugserver by going through the loaded libraries, which includes
 		// the exe itself
@@ -581,13 +581,11 @@ func (p *gdbProcess) EntryPoint() (uint64, error) {
 				break
 			}
 		}
-	} else {
-		if auxv, err := p.conn.readAuxv(); err == nil {
-			// If we can't read the auxiliary vector it just means it's not supported
-			// by the OS or by the stub. If we are debugging a PIE and the entry point
-			// is needed proc.LoadBinaryInfo will complain about it.
-			entryPoint = linutil.EntryPointFromAuxv(auxv, p.BinInfo().Arch.PtrSize())
-		}
+	} else if auxv, err := p.conn.readAuxv(); err == nil {
+		// If we can't read the auxiliary vector it just means it's not supported
+		// by the OS or by the stub. If we are debugging a PIE and the entry point
+		// is needed proc.LoadBinaryInfo will complain about it.
+		entryPoint = linutil.EntryPointFromAuxv(auxv, p.BinInfo().Arch.PtrSize())
 	}
 
 	return entryPoint, nil
@@ -1623,7 +1621,7 @@ func (t *gdbThread) reloadGAtPC() error {
 
 	err = t.p.conn.step(t.strID, nil, true)
 	if err != nil {
-		if err == threadBlockedError {
+		if err == errThreadBlocked {
 			t.regs.tls = 0
 			t.regs.gaddr = 0
 			t.regs.hasgaddr = true
@@ -1676,7 +1674,7 @@ func (t *gdbThread) reloadGAlloc() error {
 
 	err = t.p.conn.step(t.strID, nil, true)
 	if err != nil {
-		if err == threadBlockedError {
+		if err == errThreadBlocked {
 			t.regs.tls = 0
 			t.regs.gaddr = 0
 			t.regs.hasgaddr = true
@@ -1785,13 +1783,14 @@ func (regs *gdbRegisters) byName(name string) uint64 {
 }
 
 func (regs *gdbRegisters) Get(n int) (uint64, error) {
+	const (
+		mask8  = 0x000f
+		mask16 = 0x00ff
+		mask32 = 0xffff
+	)
+
 	if runtime.GOARCH == "arm64" {
 		reg := arm64asm.Reg(n)
-		const (
-			mask8  = 0x000f
-			mask16 = 0x00ff
-			mask32 = 0xffff
-		)
 
 		switch reg {
 		// 64-bit
@@ -2001,11 +2000,6 @@ func (regs *gdbRegisters) Get(n int) (uint64, error) {
 		}
 	} else {
 		reg := x86asm.Reg(n)
-		const (
-			mask8  = 0x000f
-			mask16 = 0x00ff
-			mask32 = 0xffff
-		)
 
 		switch reg {
 		// 8-bit
