@@ -98,6 +98,16 @@ func newLoadDebugInfoMapsContext(bi *BinaryInfo, image *Image, offsetToVersion m
 	return ctxt
 }
 
+func (ctxt *loadDebugInfoMapsContext) lookupAbstractOrigin(bi *BinaryInfo, off dwarf.Offset) int {
+	r, ok := ctxt.abstractOriginTable[off]
+	if !ok {
+		bi.Functions = append(bi.Functions, Function{})
+		r = len(bi.Functions) - 1
+		ctxt.abstractOriginTable[off] = r
+	}
+	return r
+}
+
 // runtimeTypeToDIE returns the DIE corresponding to the runtime._type.
 // This is done in three different ways depending on the version of go.
 // * Before go1.7 the type name is retrieved directly from the runtime._type

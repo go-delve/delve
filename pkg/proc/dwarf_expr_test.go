@@ -353,3 +353,43 @@ func TestNestedCompileUnts(t *testing.T) {
 		t.Errorf("expected 2 variables, got %d", n)
 	}
 }
+
+func TestAbstractOriginDefinedAfterUse(t *testing.T) {
+	// Tests that an abstract origin entry can appear after its uses.
+	dwb := dwarfbuilder.New()
+	dwb.AddCompileUnit("main", 0x0)
+
+	// Concrete implementation
+	dwb.TagOpen(dwarf.TagSubprogram, "")
+	originRef1 := dwb.Attr(dwarf.AttrAbstractOrigin, dwarf.Offset(0))
+	dwb.Attr(dwarf.AttrLowpc, dwarfbuilder.Address(0x40100))
+	dwb.Attr(dwarf.AttrHighpc, dwarfbuilder.Address(0x41000))
+	dwb.TagClose()
+
+	// Inlined call
+	dwb.AddSubprogram("callingFn", 0x41100, 0x42000)
+	dwb.TagOpen(dwarf.TagInlinedSubroutine, "")
+	originRef2 := dwb.Attr(dwarf.AttrAbstractOrigin, dwarf.Offset(0))
+	dwb.Attr(dwarf.AttrLowpc, dwarfbuilder.Address(0x41150))
+	dwb.Attr(dwarf.AttrHighpc, dwarfbuilder.Address(0x41155))
+	dwb.Attr(dwarf.AttrCallFile, uint8(1))
+	dwb.Attr(dwarf.AttrCallLine, uint8(1))
+	dwb.TagClose()
+	dwb.TagClose()
+
+	// Abstract origin
+	abstractOriginOff := dwb.TagOpen(dwarf.TagSubprogram, "inlinedFn")
+	dwb.Attr(dwarf.AttrInline, uint8(1))
+	dwb.TagClose()
+
+	dwb.TagClose()
+
+	dwb.PatchOffset(originRef1, abstractOriginOff)
+	dwb.PatchOffset(originRef2, abstractOriginOff)
+
+	bi, _ := fakeBinaryInfo(t, dwb)
+	fn := bi.PCToFunc(0x40100)
+	if fn == nil {
+		t.Fatalf("could not find concrete instance of inlined function")
+	}
+}
