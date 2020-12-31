@@ -39,6 +39,7 @@ func AMD64Arch(goos string) *Arch {
 		BPRegNum:                         regnum.AMD64_Rbp,
 		ContextRegNum:                    regnum.AMD64_Rdx,
 		asmRegisters:                     amd64AsmRegisters,
+		RegisterNameToDwarf:              nameToDwarfFunc(regnum.AMD64NameToDwarf),
 	}
 }
 

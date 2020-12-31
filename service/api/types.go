@@ -239,6 +239,12 @@ const (
 	// the variable is the return value of a function call and allocated on a
 	// frame that no longer exists)
 	VariableFakeAddress
+
+	// VariableCPrt means the variable is a C pointer
+	VariableCPtr
+
+	// VariableCPURegister means this variable is a CPU register.
+	VariableCPURegister
 )
 
 // Variable describes a variable.

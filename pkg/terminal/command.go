@@ -278,7 +278,7 @@ If regex is specified only package variables with a name matching it will be ret
 
 	regs [-a]
 
-Argument -a shows more registers.`},
+Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: `Exit the debugger.
 		
 	exit [-c]
@@ -1830,6 +1830,10 @@ func whatisCommand(t *Term, ctx callContext, args string) error {
 	val, err := t.client.EvalVariable(ctx.Scope, args, ShortLoadConfig)
 	if err != nil {
 		return err
+	}
+	if val.Flags&api.VariableCPURegister != 0 {
+		fmt.Println("CPU Register")
+		return nil
 	}
 	if val.Type != "" {
 		fmt.Println(val.Type)

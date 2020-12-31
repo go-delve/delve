@@ -11,6 +11,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -76,6 +77,8 @@ const (
 	VariableFakeAddress
 	// VariableCPrt means the variable is a C pointer
 	VariableCPtr
+	// VariableCPURegister means this variable is a CPU register.
+	VariableCPURegister
 )
 
 // Variable represents a variable. It contains the address, name,
@@ -94,6 +97,7 @@ type Variable struct {
 
 	Value        constant.Value
 	FloatSpecial floatSpecial
+	reg          *op.DwarfRegister // contains the value of this variable if VariableCPURegister flag is set and loaded is false
 
 	Len int64
 	Cap int64
@@ -1241,9 +1245,8 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 	case reflect.String:
 		var val string
-		if v.Flags&VariableCPtr == 0 {
-			val, v.Unreadable = readStringValue(DereferenceMemory(v.mem), v.Base, v.Len, cfg)
-		} else {
+		switch {
+		case v.Flags&VariableCPtr != 0:
 			var done bool
 			val, done, v.Unreadable = readCStringValue(DereferenceMemory(v.mem), v.Base, cfg)
 			if v.Unreadable == nil {
@@ -1252,6 +1255,19 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 					v.Len++
 				}
 			}
+
+		case v.Flags&VariableCPURegister != 0:
+			val = fmt.Sprintf("%x", v.reg.Bytes)
+			s := v.Base - fakeAddress
+			if s < uint64(len(val)) {
+				val = val[s:]
+				if v.Len >= 0 && v.Len < int64(len(val)) {
+					val = val[:v.Len]
+				}
+			}
+
+		default:
+			val, v.Unreadable = readStringValue(DereferenceMemory(v.mem), v.Base, v.Len, cfg)
 		}
 		v.Value = constant.MakeString(val)
 
@@ -1287,10 +1303,13 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		val, v.Unreadable = readIntRaw(v.mem, v.Addr, v.RealType.(*godwarf.IntType).ByteSize)
 		v.Value = constant.MakeInt64(val)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		var val uint64
-		val, v.Unreadable = readUintRaw(v.mem, v.Addr, v.RealType.(*godwarf.UintType).ByteSize)
-		v.Value = constant.MakeUint64(val)
-
+		if v.Flags&VariableCPURegister != 0 {
+			v.Value = constant.MakeUint64(v.reg.Uint64Val)
+		} else {
+			var val uint64
+			val, v.Unreadable = readUintRaw(v.mem, v.Addr, v.RealType.(*godwarf.UintType).ByteSize)
+			v.Value = constant.MakeUint64(val)
+		}
 	case reflect.Bool:
 		val := make([]byte, 1)
 		_, err := v.mem.ReadMemory(val, v.Addr)
@@ -2226,6 +2245,72 @@ func (v *Variable) ConstDescr() string {
 		return ctyp.describe(n)
 	}
 	return ""
+}
+
+// registerVariableTypeConv implements type conversions for CPU register variables (REGNAME.int8, etc)
+func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
+	var n int = 0
+	for i := 0; i < len(v.reg.Bytes); i += n {
+		var child *Variable
+		switch newtyp {
+		case "int8":
+			child = newConstant(constant.MakeInt64(int64(int8(v.reg.Bytes[i]))), v.mem)
+			n = 1
+		case "int16":
+			child = newConstant(constant.MakeInt64(int64(int16(binary.LittleEndian.Uint16(v.reg.Bytes[i:])))), v.mem)
+			n = 2
+		case "int32":
+			child = newConstant(constant.MakeInt64(int64(int32(binary.LittleEndian.Uint32(v.reg.Bytes[i:])))), v.mem)
+			n = 4
+		case "int64":
+			child = newConstant(constant.MakeInt64(int64(binary.LittleEndian.Uint64(v.reg.Bytes[i:]))), v.mem)
+			n = 8
+		case "uint8":
+			child = newConstant(constant.MakeUint64(uint64(v.reg.Bytes[i])), v.mem)
+			n = 1
+		case "uint16":
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint16(v.reg.Bytes[i:]))), v.mem)
+			n = 2
+		case "uint32":
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint32(v.reg.Bytes[i:]))), v.mem)
+			n = 4
+		case "uint64":
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint64(v.reg.Bytes[i:]))), v.mem)
+			n = 8
+		case "float32":
+			a := binary.LittleEndian.Uint32(v.reg.Bytes[i:])
+			x := *(*float32)(unsafe.Pointer(&a))
+			child = newConstant(constant.MakeFloat64(float64(x)), v.mem)
+			n = 4
+		case "float64":
+			a := binary.LittleEndian.Uint64(v.reg.Bytes[i:])
+			x := *(*float64)(unsafe.Pointer(&a))
+			child = newConstant(constant.MakeFloat64(x), v.mem)
+			n = 8
+		default:
+			if n == 0 {
+				for _, pfx := range []string{"uint", "int"} {
+					if strings.HasPrefix(newtyp, pfx) {
+						n, _ = strconv.Atoi(newtyp[len(pfx):])
+						break
+					}
+				}
+				if n == 0 || popcnt(uint64(n)) != 1 {
+					return nil, fmt.Errorf("unknown CPU register type conversion to %q", newtyp)
+				}
+				n = n / 8
+			}
+			child = newConstant(constant.MakeString(fmt.Sprintf("%x", v.reg.Bytes[i:][:n])), v.mem)
+		}
+		v.Children = append(v.Children, *child)
+	}
+
+	v.loaded = true
+	v.Kind = reflect.Array
+	v.Len = int64(len(v.Children))
+	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
+	v.RealType = v.DwarfType
+	return v, nil
 }
 
 // popcnt is the number of bits set to 1 in x.
