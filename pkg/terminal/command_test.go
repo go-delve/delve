@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -1191,4 +1192,91 @@ func TestHitCondBreakpoint(t *testing.T) {
 			t.Fatalf("wrong value of i")
 		}
 	})
+}
+
+func TestBreakpointEditing(t *testing.T) {
+	term := &FakeTerminal{
+		t:    t,
+		Term: New(nil, &config.Config{}),
+	}
+	_ = term
+
+	var testCases = []struct {
+		inBp    *api.Breakpoint
+		inBpStr string
+		edit    string
+		outBp   *api.Breakpoint
+	}{
+		{ // tracepoint -> breakpoint
+			&api.Breakpoint{Tracepoint: true},
+			"trace",
+			"",
+			&api.Breakpoint{}},
+		{ // breakpoint -> tracepoint
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print a\ntrace",
+			&api.Breakpoint{Tracepoint: true, Variables: []string{"a"}}},
+		{ // add print var
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print b\nprint a\n",
+			&api.Breakpoint{Variables: []string{"b", "a"}}},
+		{ // add goroutine flag
+			&api.Breakpoint{},
+			"",
+			"goroutine",
+			&api.Breakpoint{Goroutine: true}},
+		{ // remove goroutine flag
+			&api.Breakpoint{Goroutine: true},
+			"goroutine",
+			"",
+			&api.Breakpoint{}},
+		{ // add stack directive
+			&api.Breakpoint{},
+			"",
+			"stack 10",
+			&api.Breakpoint{Stacktrace: 10}},
+		{ // remove stack directive
+			&api.Breakpoint{Stacktrace: 20},
+			"stack 20",
+			"print a",
+			&api.Breakpoint{Variables: []string{"a"}}},
+		{ // add condition
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print a\ncond a < b",
+			&api.Breakpoint{Variables: []string{"a"}, Cond: "a < b"}},
+		{ // remove condition
+			&api.Breakpoint{Cond: "a < b"},
+			"cond a < b",
+			"",
+			&api.Breakpoint{}},
+		{ // change condition
+			&api.Breakpoint{Cond: "a < b"},
+			"cond a < b",
+			"cond a < 5",
+			&api.Breakpoint{Cond: "a < 5"}},
+		{ // change hitcount condition
+			&api.Breakpoint{HitCond: "% 2"},
+			"cond -hitcount % 2",
+			"cond -hitcount = 2",
+			&api.Breakpoint{HitCond: "= 2"}},
+	}
+
+	for _, tc := range testCases {
+		bp := *tc.inBp
+		bpStr := strings.Join(formatBreakpointAttrs("", &bp, true), "\n")
+		if bpStr != tc.inBpStr {
+			t.Errorf("Expected %q got %q for:\n%#v", tc.inBpStr, bpStr, tc.inBp)
+		}
+		ctx := callContext{Prefix: onPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: 0, DeferredCall: 0}, Breakpoint: &bp}
+		err := term.cmds.parseBreakpointAttrs(nil, ctx, strings.NewReader(tc.edit))
+		if err != nil {
+			t.Errorf("Unexpected error during edit %q", tc.edit)
+		}
+		if !reflect.DeepEqual(bp, *tc.outBp) {
+			t.Errorf("mismatch after edit\nexpected: %#v\ngot: %#v", tc.outBp, bp)
+		}
+	}
 }

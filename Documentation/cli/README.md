@@ -464,9 +464,18 @@ Aliases: n
 ## on
 Executes a command when a breakpoint is hit.
 
-	on <breakpoint name or id> <command>.
+	on <breakpoint name or id> <command>
+	on <breakpoint name or id> -edit
+	
 
-Supported commands: print, stack and goroutine)
+Supported commands: print, stack, goroutine, trace and cond. 
+To convert a breakpoint into a tracepoint use:
+	
+	on <breakpoint name or id> trace
+
+The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
+
+The command 'on x -edit' can be used to edit the list of commands executes when the breakpoint is hit.
 
 
 ## print
