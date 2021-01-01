@@ -193,6 +193,7 @@ type gdbRegisters struct {
 	gaddr    uint64
 	hasgaddr bool
 	buf      []byte
+	arch     *proc.Arch
 }
 
 type gdbRegister struct {
@@ -309,7 +310,7 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 		return nil, err
 	}
 
-	if runtime.GOARCH != "arm64" {
+	if p.bi.Arch.Name != "arm64" {
 		// None of the stubs we support returns the value of fs_base or gs_base
 		// along with the registers, therefore we have to resort to executing a MOV
 		// instruction on the inferior to find out where the G struct of a given
@@ -567,7 +568,7 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 // debugging PIEs.
 func (p *gdbProcess) EntryPoint() (uint64, error) {
 	var entryPoint uint64
-	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+	if p.bi.GOOS == "darwin" && p.bi.Arch.Name == "arm64" {
 		// There is no auxv on darwin, however, we can get the location of the mach-o
 		// header from the debugserver by going through the loaded libraries, which includes
 		// the exe itself
@@ -1461,7 +1462,8 @@ func (p *gdbProcess) loadGInstr() []byte {
 	return buf.Bytes()
 }
 
-func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo) {
+func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo, arch *proc.Arch) {
+	regs.arch = arch
 	regs.regs = make(map[string]gdbRegister)
 	regs.regsInfo = regsInfo
 
@@ -1483,7 +1485,7 @@ func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo) {
 // the stub can allocate memory, or reloadGAtPC, if the stub can't.
 func (t *gdbThread) reloadRegisters() error {
 	if t.regs.regs == nil {
-		t.regs.init(t.p.conn.regsInfo)
+		t.regs.init(t.p.conn.regsInfo, t.p.bi.Arch)
 	}
 
 	if t.p.gcmdok {
@@ -1513,16 +1515,21 @@ func (t *gdbThread) reloadRegisters() error {
 		}
 	}
 
-	if runtime.GOARCH == "arm64" {
+	if t.p.bi.Arch.Name == "arm64" {
 		// no need to play around with the GInstr on ARM64 because
 		// the G addr is stored in a register
-		return nil
+
+		t.regs.gaddr = t.regs.byName("x28")
+		t.regs.hasgaddr = true
+		t.regs.tls = 0
 	} else {
 		if t.p.loadGInstrAddr > 0 {
 			return t.reloadGAlloc()
 		}
 		return t.reloadGAtPC()
 	}
+
+	return nil
 }
 
 func (t *gdbThread) writeSomeRegisters(regNames ...string) error {
@@ -1741,9 +1748,7 @@ func (regs *gdbRegisters) setSP(value uint64) {
 }
 
 func (regs *gdbRegisters) setDX(value uint64) {
-	if runtime.GOARCH != "arm64" {
-		binary.LittleEndian.PutUint64(regs.regs[regnameDX].value, value)
-	}
+	binary.LittleEndian.PutUint64(regs.regs[regnameDX].value, value)
 }
 
 func (regs *gdbRegisters) BP() uint64 {
@@ -1759,18 +1764,10 @@ func (regs *gdbRegisters) setCX(value uint64) {
 }
 
 func (regs *gdbRegisters) TLS() uint64 {
-	if runtime.GOARCH == "arm64" {
-		return 0
-	}
-
 	return regs.tls
 }
 
 func (regs *gdbRegisters) GAddr() (uint64, bool) {
-	if runtime.GOARCH == "arm64" {
-		// on ARM64, the G addr is constantly stored at register x28
-		return regs.byName("x28"), true
-	}
 	return regs.gaddr, regs.hasgaddr
 }
 
@@ -1784,12 +1781,12 @@ func (regs *gdbRegisters) byName(name string) uint64 {
 
 func (regs *gdbRegisters) Get(n int) (uint64, error) {
 	const (
-		mask8  = 0x000f
-		mask16 = 0x00ff
-		mask32 = 0xffff
+		mask8  = 0xff
+		mask16 = 0xffff
+		mask32 = 0xffffffff
 	)
 
-	if runtime.GOARCH == "arm64" {
+	if regs.arch.Name == "arm64" {
 		reg := arm64asm.Reg(n)
 
 		switch reg {
@@ -2179,7 +2176,7 @@ func (t *gdbThread) SetSP(sp uint64) error {
 
 // SetDX will set the value of the DX register to the given value.
 func (t *gdbThread) SetDX(dx uint64) error {
-	if runtime.GOARCH == "arm64" {
+	if t.p.bi.Arch.Name == "arm64" {
 		return fmt.Errorf("not supported")
 	}
 
@@ -2247,7 +2244,7 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 
 func (regs *gdbRegisters) Copy() (proc.Registers, error) {
 	savedRegs := &gdbRegisters{}
-	savedRegs.init(regs.regsInfo)
+	savedRegs.init(regs.regsInfo, regs.arch)
 	copy(savedRegs.buf, regs.buf)
 	return savedRegs, nil
 }
