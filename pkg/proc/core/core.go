@@ -231,8 +231,8 @@ func (p *process) EntryPoint() (uint64, error) {
 
 // WriteBreakpoint is a noop function since you
 // cannot write breakpoints into core files.
-func (p *process) WriteBreakpoint(addr uint64) (file string, line int, fn *proc.Function, originalData []byte, err error) {
-	return "", 0, nil, nil, errors.New("cannot write a breakpoint to a core file")
+func (p *process) WriteBreakpoint(*proc.Breakpoint) error {
+	return errors.New("cannot write a breakpoint to a core file")
 }
 
 // Recorded returns whether this is a live or recorded process. Always returns true for core files.
