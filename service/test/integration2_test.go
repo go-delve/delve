@@ -1467,7 +1467,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 
 func TestClientServer_RestartBreakpointPosition(t *testing.T) {
 	protest.AllowRecording(t)
-	if buildMode == "pie" {
+	if buildMode == "pie" || (runtime.GOOS == "darwin" && runtime.GOARCH == "arm64") {
 		t.Skip("not meaningful in PIE mode")
 	}
 	withTestClient2("locationsprog2", t, func(c service.Client) {

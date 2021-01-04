@@ -48,16 +48,6 @@ type gdbConn struct {
 	log *logrus.Entry
 }
 
-const (
-	regnamePC     = "rip"
-	regnameCX     = "rcx"
-	regnameSP     = "rsp"
-	regnameDX     = "rdx"
-	regnameBP     = "rbp"
-	regnameFsBase = "fs_base"
-	regnameGsBase = "gs_base"
-)
-
 var ErrTooManyAttempts = errors.New("too many transmit attempts")
 
 // GdbProtocolError is an error response (Exx) of Gdb Remote Serial Protocol
@@ -261,6 +251,7 @@ func (conn *gdbConn) readTargetXml() (err error) {
 		}
 		regnum++
 	}
+
 	if !pcFound {
 		return errors.New("could not find RIP register")
 	}
@@ -270,6 +261,7 @@ func (conn *gdbConn) readTargetXml() (err error) {
 	if !cxFound {
 		return errors.New("could not find RCX register")
 	}
+
 	return nil
 }
 
@@ -412,18 +404,18 @@ func (conn *gdbConn) qXfer(kind, annex string, binary bool) ([]byte, error) {
 	return out, nil
 }
 
-// setBreakpoint executes a 'Z' (insert breakpoint) command of type '0' and kind '1'
+// setBreakpoint executes a 'Z' (insert breakpoint) command of type '0' and kind '1' or '4'
 func (conn *gdbConn) setBreakpoint(addr uint64) error {
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$Z0,%x,1", addr)
+	fmt.Fprintf(&conn.outbuf, "$Z0,%x,%d", addr, breakpointKind)
 	_, err := conn.exec(conn.outbuf.Bytes(), "set breakpoint")
 	return err
 }
 
-// clearBreakpoint executes a 'z' (remove breakpoint) command of type '0' and kind '1'
+// clearBreakpoint executes a 'z' (remove breakpoint) command of type '0' and kind '1' or '4'
 func (conn *gdbConn) clearBreakpoint(addr uint64) error {
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$z0,%x,1", addr)
+	fmt.Fprintf(&conn.outbuf, "$z0,%x,%d", addr, breakpointKind)
 	_, err := conn.exec(conn.outbuf.Bytes(), "clear breakpoint")
 	return err
 }
@@ -632,7 +624,7 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 	}
 }
 
-var threadBlockedError = errors.New("thread blocked")
+var errThreadBlocked = errors.New("thread blocked")
 
 func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threadUpdater) (string, uint8, error) {
 	count := 0
@@ -655,7 +647,7 @@ func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threa
 			}
 			count++
 		} else if failed {
-			return "", 0, threadBlockedError
+			return "", 0, errThreadBlocked
 		} else if err != nil {
 			return "", 0, err
 		} else {
@@ -999,8 +991,9 @@ type imageList struct {
 }
 
 type imageDescription struct {
-	Pathname   string     `json:"pathname"`
-	MachHeader machHeader `json:"mach_header"`
+	LoadAddress uint64     `json:"load_address"`
+	Pathname    string     `json:"pathname"`
+	MachHeader  machHeader `json:"mach_header"`
 }
 
 type machHeader struct {
@@ -1267,7 +1260,10 @@ func checksumok(packet, checksumBuf []byte) bool {
 	if err != nil {
 		return false
 	}
-	return sum == uint8(tgt)
+
+	tgt8 := uint8(tgt)
+
+	return sum == tgt8
 }
 
 func checksum(packet []byte) (sum uint8) {

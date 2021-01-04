@@ -77,6 +77,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/arch/arm64/arm64asm"
 	"golang.org/x/arch/x86/x86asm"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -192,6 +193,7 @@ type gdbRegisters struct {
 	gaddr    uint64
 	hasgaddr bool
 	buf      []byte
+	arch     *proc.Arch
 }
 
 type gdbRegister struct {
@@ -292,6 +294,13 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 					p.gcmdok = false
 					break
 				}
+
+				// Workaround for darwin arm64. Apple's debugserver seems to have a problem
+				// with not selecting the correct thread in the 'g' command and the returned
+				// registers are empty / an E74 error is thrown.
+				if v[len("version:"):] == "1200" && p.bi.Arch.Name == "arm64" {
+					p.gcmdok = false
+				}
 			}
 		}
 	}
@@ -301,17 +310,19 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 		return nil, err
 	}
 
-	// None of the stubs we support returns the value of fs_base or gs_base
-	// along with the registers, therefore we have to resort to executing a MOV
-	// instruction on the inferior to find out where the G struct of a given
-	// thread is located.
-	// Here we try to allocate some memory on the inferior which we will use to
-	// store the MOV instruction.
-	// If the stub doesn't support memory allocation reloadRegisters will
-	// overwrite some existing memory to store the MOV.
-	if addr, err := p.conn.allocMemory(256); err == nil {
-		if _, err := p.conn.writeMemory(addr, p.loadGInstr()); err == nil {
-			p.loadGInstrAddr = addr
+	if p.bi.Arch.Name != "arm64" {
+		// None of the stubs we support returns the value of fs_base or gs_base
+		// along with the registers, therefore we have to resort to executing a MOV
+		// instruction on the inferior to find out where the G struct of a given
+		// thread is located.
+		// Here we try to allocate some memory on the inferior which we will use to
+		// store the MOV instruction.
+		// If the stub doesn't support memory allocation reloadRegisters will
+		// overwrite some existing memory to store the MOV.
+		if addr, err := p.conn.allocMemory(256); err == nil {
+			if _, err := p.conn.writeMemory(addr, p.loadGInstr()); err == nil {
+				p.loadGInstrAddr = addr
+			}
 		}
 	}
 
@@ -557,12 +568,27 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 // debugging PIEs.
 func (p *gdbProcess) EntryPoint() (uint64, error) {
 	var entryPoint uint64
-	if auxv, err := p.conn.readAuxv(); err == nil {
+	if p.bi.GOOS == "darwin" && p.bi.Arch.Name == "arm64" {
+		// There is no auxv on darwin, however, we can get the location of the mach-o
+		// header from the debugserver by going through the loaded libraries, which includes
+		// the exe itself
+		images, _ := p.conn.getLoadedDynamicLibraries()
+		for _, image := range images {
+			if image.MachHeader.FileType == macho.TypeExec {
+				// This is a bit hacky. This is technically not the entrypoint,
+				// but rather we use the variable to points at the mach-o header,
+				// so we can get the offset in bininfo
+				entryPoint = image.LoadAddress
+				break
+			}
+		}
+	} else if auxv, err := p.conn.readAuxv(); err == nil {
 		// If we can't read the auxiliary vector it just means it's not supported
 		// by the OS or by the stub. If we are debugging a PIE and the entry point
 		// is needed proc.LoadBinaryInfo will complain about it.
 		entryPoint = linutil.EntryPointFromAuxv(auxv, p.BinInfo().Arch.PtrSize())
 	}
+
 	return entryPoint, nil
 }
 
@@ -1436,7 +1462,8 @@ func (p *gdbProcess) loadGInstr() []byte {
 	return buf.Bytes()
 }
 
-func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo) {
+func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo, arch *proc.Arch) {
+	regs.arch = arch
 	regs.regs = make(map[string]gdbRegister)
 	regs.regsInfo = regsInfo
 
@@ -1458,7 +1485,7 @@ func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo) {
 // the stub can allocate memory, or reloadGAtPC, if the stub can't.
 func (t *gdbThread) reloadRegisters() error {
 	if t.regs.regs == nil {
-		t.regs.init(t.p.conn.regsInfo)
+		t.regs.init(t.p.conn.regsInfo, t.p.bi.Arch)
 	}
 
 	if t.p.gcmdok {
@@ -1488,10 +1515,21 @@ func (t *gdbThread) reloadRegisters() error {
 		}
 	}
 
-	if t.p.loadGInstrAddr > 0 {
-		return t.reloadGAlloc()
+	if t.p.bi.Arch.Name == "arm64" {
+		// no need to play around with the GInstr on ARM64 because
+		// the G addr is stored in a register
+
+		t.regs.gaddr = t.regs.byName("x28")
+		t.regs.hasgaddr = true
+		t.regs.tls = 0
+	} else {
+		if t.p.loadGInstrAddr > 0 {
+			return t.reloadGAlloc()
+		}
+		return t.reloadGAtPC()
 	}
-	return t.reloadGAtPC()
+
+	return nil
 }
 
 func (t *gdbThread) writeSomeRegisters(regNames ...string) error {
@@ -1590,7 +1628,7 @@ func (t *gdbThread) reloadGAtPC() error {
 
 	err = t.p.conn.step(t.strID, nil, true)
 	if err != nil {
-		if err == threadBlockedError {
+		if err == errThreadBlocked {
 			t.regs.tls = 0
 			t.regs.gaddr = 0
 			t.regs.hasgaddr = true
@@ -1643,7 +1681,7 @@ func (t *gdbThread) reloadGAlloc() error {
 
 	err = t.p.conn.step(t.strID, nil, true)
 	if err != nil {
-		if err == threadBlockedError {
+		if err == errThreadBlocked {
 			t.regs.tls = 0
 			t.regs.gaddr = 0
 			t.regs.hasgaddr = true
@@ -1742,157 +1780,369 @@ func (regs *gdbRegisters) byName(name string) uint64 {
 }
 
 func (regs *gdbRegisters) Get(n int) (uint64, error) {
-	reg := x86asm.Reg(n)
 	const (
-		mask8  = 0x000f
-		mask16 = 0x00ff
-		mask32 = 0xffff
+		mask8  = 0xff
+		mask16 = 0xffff
+		mask32 = 0xffffffff
 	)
 
-	switch reg {
-	// 8-bit
-	case x86asm.AL:
-		return regs.byName("rax") & mask8, nil
-	case x86asm.CL:
-		return regs.byName("rcx") & mask8, nil
-	case x86asm.DL:
-		return regs.byName("rdx") & mask8, nil
-	case x86asm.BL:
-		return regs.byName("rbx") & mask8, nil
-	case x86asm.AH:
-		return (regs.byName("rax") >> 8) & mask8, nil
-	case x86asm.CH:
-		return (regs.byName("rcx") >> 8) & mask8, nil
-	case x86asm.DH:
-		return (regs.byName("rdx") >> 8) & mask8, nil
-	case x86asm.BH:
-		return (regs.byName("rbx") >> 8) & mask8, nil
-	case x86asm.SPB:
-		return regs.byName("rsp") & mask8, nil
-	case x86asm.BPB:
-		return regs.byName("rbp") & mask8, nil
-	case x86asm.SIB:
-		return regs.byName("rsi") & mask8, nil
-	case x86asm.DIB:
-		return regs.byName("rdi") & mask8, nil
-	case x86asm.R8B:
-		return regs.byName("r8") & mask8, nil
-	case x86asm.R9B:
-		return regs.byName("r9") & mask8, nil
-	case x86asm.R10B:
-		return regs.byName("r10") & mask8, nil
-	case x86asm.R11B:
-		return regs.byName("r11") & mask8, nil
-	case x86asm.R12B:
-		return regs.byName("r12") & mask8, nil
-	case x86asm.R13B:
-		return regs.byName("r13") & mask8, nil
-	case x86asm.R14B:
-		return regs.byName("r14") & mask8, nil
-	case x86asm.R15B:
-		return regs.byName("r15") & mask8, nil
+	if regs.arch.Name == "arm64" {
+		reg := arm64asm.Reg(n)
 
-	// 16-bit
-	case x86asm.AX:
-		return regs.byName("rax") & mask16, nil
-	case x86asm.CX:
-		return regs.byName("rcx") & mask16, nil
-	case x86asm.DX:
-		return regs.byName("rdx") & mask16, nil
-	case x86asm.BX:
-		return regs.byName("rbx") & mask16, nil
-	case x86asm.SP:
-		return regs.byName("rsp") & mask16, nil
-	case x86asm.BP:
-		return regs.byName("rbp") & mask16, nil
-	case x86asm.SI:
-		return regs.byName("rsi") & mask16, nil
-	case x86asm.DI:
-		return regs.byName("rdi") & mask16, nil
-	case x86asm.R8W:
-		return regs.byName("r8") & mask16, nil
-	case x86asm.R9W:
-		return regs.byName("r9") & mask16, nil
-	case x86asm.R10W:
-		return regs.byName("r10") & mask16, nil
-	case x86asm.R11W:
-		return regs.byName("r11") & mask16, nil
-	case x86asm.R12W:
-		return regs.byName("r12") & mask16, nil
-	case x86asm.R13W:
-		return regs.byName("r13") & mask16, nil
-	case x86asm.R14W:
-		return regs.byName("r14") & mask16, nil
-	case x86asm.R15W:
-		return regs.byName("r15") & mask16, nil
+		switch reg {
+		// 64-bit
+		case arm64asm.X0:
+			return regs.byName("x0"), nil
+		case arm64asm.X1:
+			return regs.byName("x1"), nil
+		case arm64asm.X2:
+			return regs.byName("x2"), nil
+		case arm64asm.X3:
+			return regs.byName("x3"), nil
+		case arm64asm.X4:
+			return regs.byName("x4"), nil
+		case arm64asm.X5:
+			return regs.byName("x5"), nil
+		case arm64asm.X6:
+			return regs.byName("x6"), nil
+		case arm64asm.X7:
+			return regs.byName("x7"), nil
+		case arm64asm.X8:
+			return regs.byName("x8"), nil
+		case arm64asm.X9:
+			return regs.byName("x9"), nil
+		case arm64asm.X10:
+			return regs.byName("x10"), nil
+		case arm64asm.X11:
+			return regs.byName("x11"), nil
+		case arm64asm.X12:
+			return regs.byName("x12"), nil
+		case arm64asm.X13:
+			return regs.byName("x13"), nil
+		case arm64asm.X14:
+			return regs.byName("x14"), nil
+		case arm64asm.X15:
+			return regs.byName("x15"), nil
+		case arm64asm.X16:
+			return regs.byName("x16"), nil
+		case arm64asm.X17:
+			return regs.byName("x17"), nil
+		case arm64asm.X18:
+			return regs.byName("x18"), nil
+		case arm64asm.X19:
+			return regs.byName("x19"), nil
+		case arm64asm.X20:
+			return regs.byName("x20"), nil
+		case arm64asm.X21:
+			return regs.byName("x21"), nil
+		case arm64asm.X22:
+			return regs.byName("x22"), nil
+		case arm64asm.X23:
+			return regs.byName("x23"), nil
+		case arm64asm.X24:
+			return regs.byName("x24"), nil
+		case arm64asm.X25:
+			return regs.byName("x25"), nil
+		case arm64asm.X26:
+			return regs.byName("x26"), nil
+		case arm64asm.X27:
+			return regs.byName("x27"), nil
+		case arm64asm.X28:
+			return regs.byName("x28"), nil
+		case arm64asm.X29:
+			return regs.byName("fp"), nil
+		case arm64asm.X30:
+			return regs.byName("lr"), nil
+		case arm64asm.SP:
+			return regs.byName("sp"), nil
+		}
 
-	// 32-bit
-	case x86asm.EAX:
-		return regs.byName("rax") & mask32, nil
-	case x86asm.ECX:
-		return regs.byName("rcx") & mask32, nil
-	case x86asm.EDX:
-		return regs.byName("rdx") & mask32, nil
-	case x86asm.EBX:
-		return regs.byName("rbx") & mask32, nil
-	case x86asm.ESP:
-		return regs.byName("rsp") & mask32, nil
-	case x86asm.EBP:
-		return regs.byName("rbp") & mask32, nil
-	case x86asm.ESI:
-		return regs.byName("rsi") & mask32, nil
-	case x86asm.EDI:
-		return regs.byName("rdi") & mask32, nil
-	case x86asm.R8L:
-		return regs.byName("r8") & mask32, nil
-	case x86asm.R9L:
-		return regs.byName("r9") & mask32, nil
-	case x86asm.R10L:
-		return regs.byName("r10") & mask32, nil
-	case x86asm.R11L:
-		return regs.byName("r11") & mask32, nil
-	case x86asm.R12L:
-		return regs.byName("r12") & mask32, nil
-	case x86asm.R13L:
-		return regs.byName("r13") & mask32, nil
-	case x86asm.R14L:
-		return regs.byName("r14") & mask32, nil
-	case x86asm.R15L:
-		return regs.byName("r15") & mask32, nil
+		// 64-bit
+		switch reg {
+		case arm64asm.W0:
+			return regs.byName("w0"), nil
+		case arm64asm.W1:
+			return regs.byName("w1"), nil
+		case arm64asm.W2:
+			return regs.byName("w2"), nil
+		case arm64asm.W3:
+			return regs.byName("w3"), nil
+		case arm64asm.W4:
+			return regs.byName("w4"), nil
+		case arm64asm.W5:
+			return regs.byName("w5"), nil
+		case arm64asm.W6:
+			return regs.byName("w6"), nil
+		case arm64asm.W7:
+			return regs.byName("w7"), nil
+		case arm64asm.W8:
+			return regs.byName("w8"), nil
+		case arm64asm.W9:
+			return regs.byName("w9"), nil
+		case arm64asm.W10:
+			return regs.byName("w10"), nil
+		case arm64asm.W11:
+			return regs.byName("w11"), nil
+		case arm64asm.W12:
+			return regs.byName("w12"), nil
+		case arm64asm.W13:
+			return regs.byName("w13"), nil
+		case arm64asm.W14:
+			return regs.byName("w14"), nil
+		case arm64asm.W15:
+			return regs.byName("w15"), nil
+		case arm64asm.W16:
+			return regs.byName("w16"), nil
+		case arm64asm.W17:
+			return regs.byName("w17"), nil
+		case arm64asm.W18:
+			return regs.byName("w18"), nil
+		case arm64asm.W19:
+			return regs.byName("w19"), nil
+		case arm64asm.W20:
+			return regs.byName("w20"), nil
+		case arm64asm.W21:
+			return regs.byName("w21"), nil
+		case arm64asm.W22:
+			return regs.byName("w22"), nil
+		case arm64asm.W23:
+			return regs.byName("w23"), nil
+		case arm64asm.W24:
+			return regs.byName("w24"), nil
+		case arm64asm.W25:
+			return regs.byName("w25"), nil
+		case arm64asm.W26:
+			return regs.byName("w26"), nil
+		case arm64asm.W27:
+			return regs.byName("w27"), nil
+		case arm64asm.W28:
+			return regs.byName("w28"), nil
+			// TODO: not sure about these ones, they are not returned by debugserver
+			// probably need to take the x-register and bitmask them
+			/*case arm64asm.W29:
+				return regs.byName("w29"), nil
+			case arm64asm.W30:
+				return regs.byName("w30"), nil
+				/*case arm64asm.WSP:
+				return regs.byName("wsp"), nil*/
+		}
 
-	// 64-bit
-	case x86asm.RAX:
-		return regs.byName("rax"), nil
-	case x86asm.RCX:
-		return regs.byName("rcx"), nil
-	case x86asm.RDX:
-		return regs.byName("rdx"), nil
-	case x86asm.RBX:
-		return regs.byName("rbx"), nil
-	case x86asm.RSP:
-		return regs.byName("rsp"), nil
-	case x86asm.RBP:
-		return regs.byName("rbp"), nil
-	case x86asm.RSI:
-		return regs.byName("rsi"), nil
-	case x86asm.RDI:
-		return regs.byName("rdi"), nil
-	case x86asm.R8:
-		return regs.byName("r8"), nil
-	case x86asm.R9:
-		return regs.byName("r9"), nil
-	case x86asm.R10:
-		return regs.byName("r10"), nil
-	case x86asm.R11:
-		return regs.byName("r11"), nil
-	case x86asm.R12:
-		return regs.byName("r12"), nil
-	case x86asm.R13:
-		return regs.byName("r13"), nil
-	case x86asm.R14:
-		return regs.byName("r14"), nil
-	case x86asm.R15:
-		return regs.byName("r15"), nil
+		// vector registers
+		// 64-bit
+		switch reg {
+		case arm64asm.V0:
+			return regs.byName("v0"), nil
+		case arm64asm.V1:
+			return regs.byName("v1"), nil
+		case arm64asm.V2:
+			return regs.byName("v2"), nil
+		case arm64asm.V3:
+			return regs.byName("v3"), nil
+		case arm64asm.V4:
+			return regs.byName("v4"), nil
+		case arm64asm.V5:
+			return regs.byName("v5"), nil
+		case arm64asm.V6:
+			return regs.byName("v6"), nil
+		case arm64asm.V7:
+			return regs.byName("v7"), nil
+		case arm64asm.V8:
+			return regs.byName("v8"), nil
+		case arm64asm.V9:
+			return regs.byName("v9"), nil
+		case arm64asm.V10:
+			return regs.byName("v10"), nil
+		case arm64asm.V11:
+			return regs.byName("v11"), nil
+		case arm64asm.V12:
+			return regs.byName("v12"), nil
+		case arm64asm.V13:
+			return regs.byName("v13"), nil
+		case arm64asm.V14:
+			return regs.byName("v14"), nil
+		case arm64asm.V15:
+			return regs.byName("v15"), nil
+		case arm64asm.V16:
+			return regs.byName("v16"), nil
+		case arm64asm.V17:
+			return regs.byName("v17"), nil
+		case arm64asm.V18:
+			return regs.byName("v18"), nil
+		case arm64asm.V19:
+			return regs.byName("v19"), nil
+		case arm64asm.V20:
+			return regs.byName("v20"), nil
+		case arm64asm.V21:
+			return regs.byName("v21"), nil
+		case arm64asm.V22:
+			return regs.byName("v22"), nil
+		case arm64asm.V23:
+			return regs.byName("v23"), nil
+		case arm64asm.V24:
+			return regs.byName("v24"), nil
+		case arm64asm.V25:
+			return regs.byName("v25"), nil
+		case arm64asm.V26:
+			return regs.byName("v26"), nil
+		case arm64asm.V27:
+			return regs.byName("v27"), nil
+		case arm64asm.V28:
+			return regs.byName("v28"), nil
+		case arm64asm.V29:
+			return regs.byName("v29"), nil
+		case arm64asm.V30:
+			return regs.byName("v30"), nil
+		case arm64asm.V31:
+			return regs.byName("v31"), nil
+		}
+	} else {
+		reg := x86asm.Reg(n)
+
+		switch reg {
+		// 8-bit
+		case x86asm.AL:
+			return regs.byName("rax") & mask8, nil
+		case x86asm.CL:
+			return regs.byName("rcx") & mask8, nil
+		case x86asm.DL:
+			return regs.byName("rdx") & mask8, nil
+		case x86asm.BL:
+			return regs.byName("rbx") & mask8, nil
+		case x86asm.AH:
+			return (regs.byName("rax") >> 8) & mask8, nil
+		case x86asm.CH:
+			return (regs.byName("rcx") >> 8) & mask8, nil
+		case x86asm.DH:
+			return (regs.byName("rdx") >> 8) & mask8, nil
+		case x86asm.BH:
+			return (regs.byName("rbx") >> 8) & mask8, nil
+		case x86asm.SPB:
+			return regs.byName("rsp") & mask8, nil
+		case x86asm.BPB:
+			return regs.byName("rbp") & mask8, nil
+		case x86asm.SIB:
+			return regs.byName("rsi") & mask8, nil
+		case x86asm.DIB:
+			return regs.byName("rdi") & mask8, nil
+		case x86asm.R8B:
+			return regs.byName("r8") & mask8, nil
+		case x86asm.R9B:
+			return regs.byName("r9") & mask8, nil
+		case x86asm.R10B:
+			return regs.byName("r10") & mask8, nil
+		case x86asm.R11B:
+			return regs.byName("r11") & mask8, nil
+		case x86asm.R12B:
+			return regs.byName("r12") & mask8, nil
+		case x86asm.R13B:
+			return regs.byName("r13") & mask8, nil
+		case x86asm.R14B:
+			return regs.byName("r14") & mask8, nil
+		case x86asm.R15B:
+			return regs.byName("r15") & mask8, nil
+
+		// 16-bit
+		case x86asm.AX:
+			return regs.byName("rax") & mask16, nil
+		case x86asm.CX:
+			return regs.byName("rcx") & mask16, nil
+		case x86asm.DX:
+			return regs.byName("rdx") & mask16, nil
+		case x86asm.BX:
+			return regs.byName("rbx") & mask16, nil
+		case x86asm.SP:
+			return regs.byName("rsp") & mask16, nil
+		case x86asm.BP:
+			return regs.byName("rbp") & mask16, nil
+		case x86asm.SI:
+			return regs.byName("rsi") & mask16, nil
+		case x86asm.DI:
+			return regs.byName("rdi") & mask16, nil
+		case x86asm.R8W:
+			return regs.byName("r8") & mask16, nil
+		case x86asm.R9W:
+			return regs.byName("r9") & mask16, nil
+		case x86asm.R10W:
+			return regs.byName("r10") & mask16, nil
+		case x86asm.R11W:
+			return regs.byName("r11") & mask16, nil
+		case x86asm.R12W:
+			return regs.byName("r12") & mask16, nil
+		case x86asm.R13W:
+			return regs.byName("r13") & mask16, nil
+		case x86asm.R14W:
+			return regs.byName("r14") & mask16, nil
+		case x86asm.R15W:
+			return regs.byName("r15") & mask16, nil
+
+		// 32-bit
+		case x86asm.EAX:
+			return regs.byName("rax") & mask32, nil
+		case x86asm.ECX:
+			return regs.byName("rcx") & mask32, nil
+		case x86asm.EDX:
+			return regs.byName("rdx") & mask32, nil
+		case x86asm.EBX:
+			return regs.byName("rbx") & mask32, nil
+		case x86asm.ESP:
+			return regs.byName("rsp") & mask32, nil
+		case x86asm.EBP:
+			return regs.byName("rbp") & mask32, nil
+		case x86asm.ESI:
+			return regs.byName("rsi") & mask32, nil
+		case x86asm.EDI:
+			return regs.byName("rdi") & mask32, nil
+		case x86asm.R8L:
+			return regs.byName("r8") & mask32, nil
+		case x86asm.R9L:
+			return regs.byName("r9") & mask32, nil
+		case x86asm.R10L:
+			return regs.byName("r10") & mask32, nil
+		case x86asm.R11L:
+			return regs.byName("r11") & mask32, nil
+		case x86asm.R12L:
+			return regs.byName("r12") & mask32, nil
+		case x86asm.R13L:
+			return regs.byName("r13") & mask32, nil
+		case x86asm.R14L:
+			return regs.byName("r14") & mask32, nil
+		case x86asm.R15L:
+			return regs.byName("r15") & mask32, nil
+
+		// 64-bit
+		case x86asm.RAX:
+			return regs.byName("rax"), nil
+		case x86asm.RCX:
+			return regs.byName("rcx"), nil
+		case x86asm.RDX:
+			return regs.byName("rdx"), nil
+		case x86asm.RBX:
+			return regs.byName("rbx"), nil
+		case x86asm.RSP:
+			return regs.byName("rsp"), nil
+		case x86asm.RBP:
+			return regs.byName("rbp"), nil
+		case x86asm.RSI:
+			return regs.byName("rsi"), nil
+		case x86asm.RDI:
+			return regs.byName("rdi"), nil
+		case x86asm.R8:
+			return regs.byName("r8"), nil
+		case x86asm.R9:
+			return regs.byName("r9"), nil
+		case x86asm.R10:
+			return regs.byName("r10"), nil
+		case x86asm.R11:
+			return regs.byName("r11"), nil
+		case x86asm.R12:
+			return regs.byName("r12"), nil
+		case x86asm.R13:
+			return regs.byName("r13"), nil
+		case x86asm.R14:
+			return regs.byName("r14"), nil
+		case x86asm.R15:
+			return regs.byName("r15"), nil
+		}
 	}
 
 	return 0, proc.ErrUnknownRegister
@@ -1926,6 +2176,10 @@ func (t *gdbThread) SetSP(sp uint64) error {
 
 // SetDX will set the value of the DX register to the given value.
 func (t *gdbThread) SetDX(dx uint64) error {
+	if t.p.bi.Arch.Name == "arm64" {
+		return fmt.Errorf("not supported")
+	}
+
 	_, _ = t.Registers() // Registes must be loaded first
 	t.regs.setDX(dx)
 	if t.p.gcmdok {
@@ -1990,7 +2244,7 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 
 func (regs *gdbRegisters) Copy() (proc.Registers, error) {
 	savedRegs := &gdbRegisters{}
-	savedRegs.init(regs.regsInfo)
+	savedRegs.init(regs.regsInfo, regs.arch)
 	copy(savedRegs.buf, regs.buf)
 	return savedRegs, nil
 }
