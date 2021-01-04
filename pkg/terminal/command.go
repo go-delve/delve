@@ -723,7 +723,12 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 		gslen = 0
 		gs    []*api.Goroutine
 	)
+	t.longCommandStart()
 	for start >= 0 {
+		if t.longCommandCanceled() {
+			fmt.Printf("interrupted\n")
+			return nil
+		}
 		gs, start, err = t.client.ListGoroutines(start, goroutineBatchSize)
 		if err != nil {
 			return err
