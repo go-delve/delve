@@ -253,6 +253,7 @@ that package instead.`,
 		Run: testCmd,
 	}
 	testCommand.Flags().String("output", "debug.test", "Output path for the binary.")
+	testCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
 	rootCommand.AddCommand(testCommand)
 
 	// 'trace' subcommand.
