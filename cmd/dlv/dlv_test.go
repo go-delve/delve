@@ -322,9 +322,7 @@ func TestRedirect(t *testing.T) {
 
 	// and detach from and kill the headless instance
 	client := rpc2.NewClient(listenAddr)
-	if err := client.Detach(true); err != nil {
-		t.Fatalf("error detaching from headless instance: %v", err)
-	}
+	_ = client.Detach(true)
 	cmd.Wait()
 }
 

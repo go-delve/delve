@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/locspec"
@@ -922,11 +923,58 @@ func (t *Term) formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string 
 		locname = "Start"
 		loc = g.StartLoc
 	}
-	thread := ""
+
+	buf := new(strings.Builder)
+	fmt.Fprintf(buf, "%d - %s: %s", g.ID, locname, t.formatLocation(loc))
 	if g.ThreadID != 0 {
-		thread = fmt.Sprintf(" (thread %d)", g.ThreadID)
+		fmt.Fprintf(buf, " (thread %d)", g.ThreadID)
 	}
-	return fmt.Sprintf("%d - %s: %s%s", g.ID, locname, t.formatLocation(loc), thread)
+
+	if (g.Status == api.GoroutineWaiting || g.Status == api.GoroutineSyscall) && g.WaitReason != 0 {
+		var wr string
+		if g.WaitReason > 0 && g.WaitReason < int64(len(waitReasonStrings)) {
+			wr = waitReasonStrings[g.WaitReason]
+		} else {
+			wr = fmt.Sprintf("unknown wait reason %d", g.WaitReason)
+		}
+		fmt.Fprintf(buf, " [%s", wr)
+		if g.WaitSince > 0 {
+			fmt.Fprintf(buf, " %s", time.Since(time.Unix(0, g.WaitSince)).String())
+		}
+		fmt.Fprintf(buf, "]")
+	}
+
+	return buf.String()
+}
+
+var waitReasonStrings = [...]string{
+	"",
+	"GC assist marking",
+	"IO wait",
+	"chan receive (nil chan)",
+	"chan send (nil chan)",
+	"dumping heap",
+	"garbage collection",
+	"garbage collection scan",
+	"panicwait",
+	"select",
+	"select (no cases)",
+	"GC assist wait",
+	"GC sweep wait",
+	"GC scavenge wait",
+	"chan receive",
+	"chan send",
+	"finalizer wait",
+	"force gc (idle)",
+	"semacquire",
+	"sleep",
+	"sync.Cond.Wait",
+	"timer goroutine (idle)",
+	"trace reader (blocked)",
+	"wait for GC cycle",
+	"GC worker (idle)",
+	"preempted",
+	"debug call",
 }
 
 func writeGoroutineLong(t *Term, w io.Writer, g *api.Goroutine, prefix string) {

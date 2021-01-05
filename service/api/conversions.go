@@ -298,6 +298,7 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 		WaitSince:      g.WaitSince,
 		WaitReason:     g.WaitReason,
 		Labels:         g.Labels(),
+		Status:         g.Status,
 	}
 }
 
