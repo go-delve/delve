@@ -1,6 +1,7 @@
 package dap
 
 import (
+	"bufio"
 	"flag"
 	"io"
 	"net"
@@ -232,12 +233,22 @@ func TestAttachStopOnEntry(t *testing.T) {
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
-		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
 		cmd := exec.Command(fixture.Path)
-		cmd.Stdout = os.Stdout
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
+		}
+		// Wait for output.
+		// This will give the target process time to initialize the runtime before we attach,
+		// so we can rely on having goroutines when they are requested on attach.
+		scanOut := bufio.NewScanner(stdout)
+		scanOut.Scan()
+		if scanOut.Text() != "past main" {
+			t.Errorf("expected loopprog.go to output \"past main\"")
 		}
 
 		// 1 >> initialize, << initialize
@@ -247,7 +258,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
 
-		// 2 >> attach, << initialized, << launch
+		// 2 >> attach, << initialized, << attach
 		client.AttachRequest(
 			map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": true})
 		initEvent := client.ExpectInitializedEvent(t)
@@ -290,33 +301,22 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
-		}
-		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
-			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
+		// Expect main goroutine plus runtime at this point.
+		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) < 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)>1", tResp)
 		}
 
 		// 7 >> threads, << threads
 		client.ThreadsRequest()
-		tResp = client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=1", tResp)
-		}
+		client.ExpectThreadsResponse(t)
 
-		// 8 >> stackTrace, << error
+		// 8 >> stackTrace, << response
 		client.StackTraceRequest(1, 0, 20)
-		stResp := client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
-		}
+		client.ExpectStackTraceResponse(t)
 
-		// 9 >> stackTrace, << error
+		// 9 >> stackTrace, << response
 		client.StackTraceRequest(1, 0, 20)
-		stResp = client.ExpectErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != 2004 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=2004", stResp)
-		}
+		client.ExpectStackTraceResponse(t)
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
