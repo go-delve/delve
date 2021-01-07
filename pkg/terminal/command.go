@@ -130,6 +130,21 @@ See also: "help on", "help cond" and "help clear"`},
 A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"`},
+		{aliases: []string{"watch"}, group: breakCmds, cmdFn: watchpoint, helpMsg: `Set watchpoint.
+	
+	watch [-r|-w|-rw] <expr>
+	
+	-r	stops when the memory location is read
+	-w	stops when the memory location is written
+	-rw	stops when the memory location is read or written
+
+The memory location is specified with the same expression language used by 'print', for example:
+
+	watch v
+
+will watch the address of variable 'v'.
+
+See also: "help print".`},
 		{aliases: []string{"restart", "r"}, group: runCmds, cmdFn: restart, helpMsg: `Restart process.
 
 For recorded targets the command takes the following forms:
@@ -1664,6 +1679,30 @@ func edit(t *Term, ctx callContext, args string) error {
 	return cmd.Run()
 }
 
+func watchpoint(t *Term, ctx callContext, args string) error {
+	v := strings.SplitN(args, " ", 2)
+	if len(v) != 2 {
+		return errors.New("wrong number of arguments: watch [-r|-w|-rw] <expr>")
+	}
+	var wtype api.WatchType
+	switch v[0] {
+	case "-r":
+		wtype = api.WatchRead
+	case "-w":
+		wtype = api.WatchWrite
+	case "-rw":
+		wtype = api.WatchRead | api.WatchWrite
+	default:
+		return fmt.Errorf("wrong argument %q to watch", v[0])
+	}
+	bp, err := t.client.CreateWatchpoint(ctx.Scope, v[1], wtype)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+	return nil
+}
+
 func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
 	var (
 		address uint64
@@ -2432,7 +2471,9 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	bpname := ""
-	if th.Breakpoint.Name != "" {
+	if th.Breakpoint.WatchExpr != "" {
+		bpname = fmt.Sprintf("watchpoint on [%s] ", th.Breakpoint.WatchExpr)
+	} else if th.Breakpoint.Name != "" {
 		bpname = fmt.Sprintf("[%s] ", th.Breakpoint.Name)
 	}
 
@@ -2794,12 +2835,18 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	if bp.Tracepoint {
 		thing = "tracepoint"
 	}
+	if bp.WatchExpr != "" {
+		thing = "watchpoint"
+	}
 	if upcase {
 		thing = strings.Title(thing)
 	}
 	id := bp.Name
 	if id == "" {
 		id = strconv.Itoa(bp.ID)
+	}
+	if bp.WatchExpr != "" && bp.WatchExpr != bp.Name {
+		return fmt.Sprintf("%s %s on [%s]", thing, id, bp.WatchExpr)
 	}
 	state := "(enabled)"
 	if bp.Disabled {
@@ -2822,11 +2869,13 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 		// In case we are connecting to an older version of delve that does not return the Addrs field.
 		fmt.Fprintf(&out, "%#x", bp.Addr)
 	}
-	fmt.Fprintf(&out, " for ")
-	p := t.formatPath(bp.File)
-	if bp.FunctionName != "" {
-		fmt.Fprintf(&out, "%s() ", bp.FunctionName)
+	if bp.WatchExpr == "" {
+		fmt.Fprintf(&out, " for ")
+		p := t.formatPath(bp.File)
+		if bp.FunctionName != "" {
+			fmt.Fprintf(&out, "%s() ", bp.FunctionName)
+		}
+		fmt.Fprintf(&out, "%s:%d", p, bp.Line)
 	}
-	fmt.Fprintf(&out, "%s:%d", p, bp.Line)
 	return out.String()
 }

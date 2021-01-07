@@ -517,7 +517,9 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		if oldBp.ID > maxID {
 			maxID = oldBp.ID
 		}
-		if len(oldBp.File) > 0 {
+		if oldBp.WatchExpr != "" {
+			discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: "can not recreate watchpoints on restart"})
+		} else if len(oldBp.File) > 0 {
 			addrs, err := proc.FindFileLocation(p, oldBp.File, oldBp.Line)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
@@ -527,6 +529,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		} else {
 			// Avoid setting a breakpoint based on address when rebuilding
 			if rebuild {
+				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: "can not recreate address breakpoints on restart"})
 				continue
 			}
 			newBp, err := p.SetBreakpointWithID(oldBp.ID, oldBp.Addr)
@@ -730,6 +733,11 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	defer d.targetMutex.Unlock()
 
 	originals := d.findBreakpoint(amend.ID)
+
+	if len(originals) > 0 && originals[0].WatchExpr != "" && amend.Disabled {
+		return errors.New("can not disable watchpoints")
+	}
+
 	_, disabled := d.disabledBreakpoints[amend.ID]
 	if originals == nil && !disabled {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
@@ -936,6 +944,22 @@ func (d *Debugger) findDisabledBreakpointByName(name string) *api.Breakpoint {
 		}
 	}
 	return nil
+}
+
+// CreateWatchpoint creates a watchpoint on the specified expression.
+func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+	bp, err := d.target.SetWatchpoint(s, expr, proc.WatchType(wtype), nil)
+	if err != nil {
+		return nil, err
+	}
+	if api.ValidBreakpointName(expr) == nil && d.findBreakpointByName(expr) == nil {
+		bp.Name = expr
+	}
+	return api.ConvertBreakpoint(bp), nil
 }
 
 // Threads returns the threads of the target process.
@@ -1889,6 +1913,9 @@ func (v breakpointsByLogicalID) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
 
 func (v breakpointsByLogicalID) Less(i, j int) bool {
 	if v[i].LogicalID == v[j].LogicalID {
+		if v[i].WatchType != v[j].WatchType {
+			return v[i].WatchType > v[j].WatchType // if a logical breakpoint contains a watchpoint let the watchpoint sort first
+		}
 		return v[i].Addr < v[j].Addr
 	}
 	return v[i].LogicalID < v[j].LogicalID
