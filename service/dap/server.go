@@ -915,7 +915,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			// A map will have twice as many children as there are key-value elements.
 			kvIndex := i / 2
 			// Process children in pairs: even indices are map keys, odd indices are values.
-			key, keyref := s.convertVariable(&v.Children[i])
+			keyv := &v.Children[i]
+			key, keyref := s.convertVariable(keyv)
 			val, valref := s.convertVariable(&v.Children[i+1])
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
@@ -938,7 +939,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 					Value: val,
 				}
 				if keyref != 0 { // key is a type to be expanded
-					kvvar.Name = fmt.Sprintf("%s[%d]", kvvar.Name, kvIndex) // Make the name unique
+					kvvar.Name = fmt.Sprintf("%s(%#x)", kvvar.Name, keyv.Addr) // Make the name unique
 					kvvar.VariablesReference = keyref
 				} else if valref != 0 { // val is a type to be expanded
 					kvvar.VariablesReference = valref

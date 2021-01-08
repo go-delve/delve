@@ -604,16 +604,22 @@ func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value stri
 	}
 
 	goti := got.Body.Variables[i]
-	if goti.Name != name || (goti.VariablesReference > 0) != hasRef {
+	matchedName := false
+	if useExactMatch {
+		matchedName = (goti.Name == name)
+	} else {
+		matchedName, _ = regexp.MatchString(name, goti.Name)
+	}
+	if !matchedName || (goti.VariablesReference > 0) != hasRef {
 		t.Errorf("\ngot  %#v\nwant Name=%q hasRef=%t", goti, name, hasRef)
 	}
-	matched := false
+	matchedValue := false
 	if useExactMatch {
-		matched = (goti.Value == value)
+		matchedValue = (goti.Value == value)
 	} else {
-		matched, _ = regexp.MatchString(value, goti.Value)
+		matchedValue, _ = regexp.MatchString(value, goti.Value)
 	}
-	if !matched {
+	if !matchedValue {
 		t.Errorf("\ngot  %s=%q\nwant %q", name, goti.Value, value)
 	}
 	return goti.VariablesReference
@@ -1106,7 +1112,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m3, "m3", 2)
-						ref = expectVarExact(t, m3, 0, "<main.astruct>[0]", "42", hasChildren)
+						ref = expectVarRegex(t, m3, 0, "<main\\.astruct>\\(0x[0-9a-f]+\\)", "42", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_0 := client.ExpectVariablesResponse(t)
@@ -1114,7 +1120,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							expectVarExact(t, m3_0, 0, "A", "1", noChildren)
 							expectVarExact(t, m3_0, 1, "B", "1", noChildren)
 						}
-						ref = expectVarExact(t, m3, 1, "<main.astruct>[1]", "43", hasChildren)
+						ref = expectVarRegex(t, m3, 1, "<main\\.astruct>\\(0x[0-9a-f]+\\)", "43", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_1 := client.ExpectVariablesResponse(t)
