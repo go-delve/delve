@@ -581,7 +581,7 @@ func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string,
 //     i - index of the variable within VariablesRespose.Body.Variables array (-1 will search all vars for a match)
 //     name - name of the variable
 //     value - the value of the variable
-//     useExactMatch - true if value is to be compared to exactly, false if to be used as regex
+//     useExactMatch - true if name and value are to be compared to exactly, false if to be used as regex
 //     hasRef - true if the variable should have children and therefore a non-0 variable reference
 //     ref - reference to retrieve children of this variable (0 if none)
 func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, value string, useExactMatch, hasRef bool) (ref int) {
@@ -631,7 +631,7 @@ func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, value
 	return expectVar(t, got, i, name, value, true, hasRef)
 }
 
-// expectVarRegex is a helper like expectVar that treats value as a regex.
+// expectVarRegex is a helper like expectVar that treats name and value as a regex.
 func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, value string, hasRef bool) (ref int) {
 	t.Helper()
 	return expectVar(t, got, i, name, value, false, hasRef)
@@ -843,7 +843,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					// reflect.Kind == Interface - see testvariables2
 					// reflect.Kind == Map - see testvariables2
 					// reflect.Kind == Ptr
-					ref = expectVarRegex(t, locals, -1, "a7", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", hasChildren)
+					ref = expectVarRegex(t, locals, -1, "a7", `<\*main\.FooBar>\(0x[0-9a-f]+\)`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a7 := client.ExpectVariablesResponse(t)
@@ -888,9 +888,9 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						client.VariablesRequest(ref)
 						a13 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a13, "a13", 3)
-						expectVarRegex(t, a13, 0, "[0]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", hasChildren)
-						expectVarRegex(t, a13, 1, "[1]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", hasChildren)
-						ref = expectVarRegex(t, a13, 2, "[2]", "<\\*main\\.FooBar>\\(0x[0-9a-f]+\\)", hasChildren)
+						expectVarRegex(t, a13, 0, `\[0\]`, `<\*main\.FooBar>\(0x[0-9a-f]+\)`, hasChildren)
+						expectVarRegex(t, a13, 1, `\[1\]`, `<\*main\.FooBar>\(0x[0-9a-f]+\)`, hasChildren)
+						ref = expectVarRegex(t, a13, 2, `\[2\]`, `<\*main\.FooBar>\(0x[0-9a-f]+\)`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a13_2 := client.ExpectVariablesResponse(t)
@@ -1092,7 +1092,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m2, "m2", 1)
-						ref = expectVarRegex(t, m2, 0, "1", "<\\*main\\.astruct>\\(0x[0-9a-f]+\\)", hasChildren)
+						ref = expectVarRegex(t, m2, 0, "1", `<\*main\.astruct>\(0x[0-9a-f]+\)`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m2_1 := client.ExpectVariablesResponse(t)
@@ -1112,7 +1112,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m3, "m3", 2)
-						ref = expectVarRegex(t, m3, 0, "<main\\.astruct>\\(0x[0-9a-f]+\\)", "42", hasChildren)
+						ref = expectVarRegex(t, m3, 0, `<main\.astruct>\(0x[0-9a-f]+\)`, "42", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_0 := client.ExpectVariablesResponse(t)
@@ -1120,7 +1120,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							expectVarExact(t, m3_0, 0, "A", "1", noChildren)
 							expectVarExact(t, m3_0, 1, "B", "1", noChildren)
 						}
-						ref = expectVarRegex(t, m3, 1, "<main\\.astruct>\\(0x[0-9a-f]+\\)", "43", hasChildren)
+						ref = expectVarRegex(t, m3, 1, `<main\.astruct>\(0x[0-9a-f]+\)`, "43", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3_1 := client.ExpectVariablesResponse(t)
@@ -1170,8 +1170,8 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					expectVarExact(t, locals, -1, "zsvar", "<struct {}>", noChildren)
 					// reflect.Kind == UnsafePointer
 					// TODO(polina): how do I test for unsafe.Pointer(nil)?
-					expectVarRegex(t, locals, -1, "upnil", "unsafe\\.Pointer\\(0x0\\)", noChildren)
-					expectVarRegex(t, locals, -1, "up1", "unsafe\\.Pointer\\(0x[0-9a-f]+\\)", noChildren)
+					expectVarRegex(t, locals, -1, "upnil", `unsafe\.Pointer\(0x0\)`, noChildren)
+					expectVarRegex(t, locals, -1, "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, noChildren)
 
 					// Test unreadable variable
 					ref = expectVarExact(t, locals, -1, "unread", "<*int>(0x3039)", hasChildren)
