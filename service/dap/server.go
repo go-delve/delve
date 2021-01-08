@@ -832,7 +832,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &proc.Variable{Name: "Arguments", Children: slicePtrVarToSliceVar(args)}
+	argScope := &fullyQualifiedVariable{&proc.Variable{Name: "Arguments", Children: slicePtrVarToSliceVar(args)}, ""}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, cfg)
@@ -840,7 +840,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}, ""}
 
 	// TODO(polina): Annotate shadowed variables
 
@@ -875,10 +875,10 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 			globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
 		}
 
-		globScope := &proc.Variable{
+		globScope := &fullyQualifiedVariable{&proc.Variable{
 			Name:     fmt.Sprintf("Globals (package %s)", currPkg),
 			Children: slicePtrVarToSliceVar(globals),
-		}
+		}, ""}
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
@@ -915,27 +915,45 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			// A map will have twice as many children as there are key-value elements.
 			kvIndex := i / 2
 			// Process children in pairs: even indices are map keys, odd indices are values.
-			key, keyref := s.convertVariable(&v.Children[i])
-			val, valref := s.convertVariable(&v.Children[i+1])
+			keyv, valv := &v.Children[i], &v.Children[i+1]
+			keyexpr := fmt.Sprintf("(*(*%q)(%#x))", keyv.TypeString(), keyv.Addr)
+			valexpr := fmt.Sprintf("%s[%s]", v.fullyQualifiedNameOrExpr, keyexpr)
+			switch keyv.Kind {
+			// For value expression, use the key value, not the corresponding expression if the key is a scalar.
+			case reflect.Bool, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
+				reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+				valexpr = fmt.Sprintf("%s[%s]", v.fullyQualifiedNameOrExpr, api.VariableValueAsString(keyv))
+			case reflect.String:
+				if key := constant.StringVal(keyv.Value); keyv.Len == int64(len(key)) { // fully loaded
+					valexpr = fmt.Sprintf("%s[%q]", v.fullyQualifiedNameOrExpr, key)
+				}
+				// TODO(polina): use nil for nil keys of different types
+			}
+			key, keyref := s.convertVariable(keyv, keyexpr)
+			val, valref := s.convertVariable(valv, valexpr)
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
 					Name:               fmt.Sprintf("[key %d]", kvIndex),
+					EvaluateName:       keyexpr,
 					Value:              key,
 					VariablesReference: keyref,
 				}
 				valvar := dap.Variable{
 					Name:               fmt.Sprintf("[val %d]", kvIndex),
+					EvaluateName:       valexpr,
 					Value:              val,
 					VariablesReference: valref,
 				}
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
 				kvvar := dap.Variable{
-					Name:  key,
-					Value: val,
+					Name:         key,
+					EvaluateName: valexpr,
+					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
 					kvvar.Name = fmt.Sprintf("%s[%d]", kvvar.Name, kvIndex) // Make the name unique
@@ -949,10 +967,11 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	case reflect.Slice, reflect.Array:
 		children = make([]dap.Variable, len(v.Children))
 		for i := range v.Children {
-			c := &v.Children[i]
-			value, varref := s.convertVariable(c)
+			fqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, i)
+			value, varref := s.convertVariable(&v.Children[i], fqname)
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", i),
+				EvaluateName:       fqname,
 				Value:              value,
 				VariablesReference: varref,
 			}
@@ -961,23 +980,34 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		children = make([]dap.Variable, len(v.Children))
 		for i := range v.Children {
 			c := &v.Children[i]
-			value, variablesReference := s.convertVariable(c)
+			fqname := fmt.Sprintf("%s.%s", v.fullyQualifiedNameOrExpr, c.Name)
+			if v.fullyQualifiedNameOrExpr == "" { // v represents scope
+				fqname = c.Name
+			} else if v.Kind == reflect.Interface {
+				fqname = fmt.Sprintf("%s.(%s)", v.fullyQualifiedNameOrExpr, c.Name) // c is data
+			} else if v.Kind == reflect.Ptr {
+				fqname = fmt.Sprintf("(*%v)", v.fullyQualifiedNameOrExpr) // c is the nameless pointer value
+			} else if v.Kind == reflect.Complex64 || v.Kind == reflect.Complex128 {
+				fqname = "" // complex children are not struct fields and can't be accessed directly
+			}
+			value, varref := s.convertVariable(c, fqname)
 			children[i] = dap.Variable{
 				Name:               c.Name,
+				EvaluateName:       fqname,
 				Value:              value,
-				VariablesReference: variablesReference,
+				VariablesReference: varref,
 			}
 		}
 	}
 	response := &dap.VariablesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.VariablesResponseBody{Variables: children},
-		// TODO(polina): support evaluateName field
 	}
 	s.send(response)
 }
 
-// convertVariable converts proc.Variable to dap.Variable value and reference.
+// convertVariable converts proc.Variable to dap.Variable value and reference
+// while keeping track of the full qualified name or load expression.
 // Variable reference is used to keep track of the children associated with each
 // variable. It is shared with the host via scopes or evaluate response and is an index
 // into the s.variableHandles map, used to look up variables and their children on
@@ -985,23 +1015,23 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 // variables request can be issued to get the elements of the compound variable. As a
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
-func (s *Server) convertVariable(v *proc.Variable) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, false)
+func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
 }
 
 func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, true)
+	val, _ := s.convertVariableWithOpts(v, "", true)
 	return val
 }
 
-// convertVarialbeWithOpts allows to skip reference generation in case all we need is
+// convertVariableWithOpts allows to skip reference generation in case all we need is
 // a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, skipRef bool) (value string, variablesReference int) {
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		if skipRef {
 			return 0
 		}
-		return s.variableHandles.create(v)
+		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr})
 	}
 	if v.Unreadable != nil {
 		value = fmt.Sprintf("unreadable <%v>", v.Unreadable)
@@ -1223,7 +1253,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 			response.Body = dap.EvaluateResponseBody{
 				Result:             strings.TrimRight(retVarsAsStr, ", "),
-				VariablesReference: s.variableHandles.create(retVarsAsVar),
+				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, request.Arguments.Expression}),
 			}
 		}
 	} else { // {expression}
@@ -1232,7 +1262,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
-		exprVal, exprRef := s.convertVariable(exprVar)
+		exprVal, exprRef := s.convertVariable(exprVar, request.Arguments.Expression)
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)

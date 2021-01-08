@@ -14,6 +14,15 @@ type handlesMap struct {
 	handleToVal map[int]interface{}
 }
 
+type fullyQualifiedVariable struct {
+	*proc.Variable
+	// A way to load this variable by either using all names in the hierarchic
+	// sequence above this variable (most readable when referenced by the UI)
+	// if available or a special expression based on:
+	// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#loading-more-of-a-variable
+	fullyQualifiedNameOrExpr string
+}
+
 func newHandlesMap() *handlesMap {
 	return &handlesMap{startHandle, make(map[int]interface{})}
 }
@@ -43,16 +52,16 @@ func newVariablesHandlesMap() *variablesHandlesMap {
 	return &variablesHandlesMap{newHandlesMap()}
 }
 
-func (hs *variablesHandlesMap) create(value *proc.Variable) int {
+func (hs *variablesHandlesMap) create(value *fullyQualifiedVariable) int {
 	return hs.m.create(value)
 }
 
-func (hs *variablesHandlesMap) get(handle int) (*proc.Variable, bool) {
+func (hs *variablesHandlesMap) get(handle int) (*fullyQualifiedVariable, bool) {
 	v, ok := hs.m.get(handle)
 	if !ok {
 		return nil, false
 	}
-	return v.(*proc.Variable), true
+	return v.(*fullyQualifiedVariable), true
 }
 
 func (hs *variablesHandlesMap) reset() {
