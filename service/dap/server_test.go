@@ -1704,7 +1704,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						expectChildren(t, rv, "rv", 1)
-						ref = expectVarExact(t, rv, 0, "~panic", "", "<interface {}(string)>", hasChildren) // >>>>> ????
+						ref = expectVarExact(t, rv, 0, "~panic", "", "<interface {}(string)>", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							p := client.ExpectVariablesResponse(t)
