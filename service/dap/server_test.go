@@ -1125,7 +1125,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 								client.VariablesRequest(ref)
 								iface4data0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, iface4data0, "iface4.data[0]", 1)
-								ref = expectVarExact(t, iface4data0, 0, "data", "iface4.(data)[0].(data)", "4", noChildren)
+								expectVarExact(t, iface4data0, 0, "data", "iface4.(data)[0].(data)", "4", noChildren)
 								validateEvaluateName(t, client, iface4data0, 0)
 							}
 						}
