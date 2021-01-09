@@ -147,6 +147,34 @@ func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.LogicalID, bp.Addr, bp.File, bp.Line)
 }
 
+// VerboseDescr returns a string describing parts of the breakpoint struct
+// that aren't otherwise user visible, for debugging purposes.
+func (bp *Breakpoint) VerboseDescr() []string {
+	r := []string{}
+
+	r = append(r, fmt.Sprintf("OriginalData=%#x", bp.OriginalData))
+
+	if bp.WatchType != 0 {
+		r = append(r, fmt.Sprintf("HWBreakIndex=%#x", bp.HWBreakIndex))
+	}
+
+	for _, breaklet := range bp.Breaklets {
+		switch breaklet.Kind {
+		case UserBreakpoint:
+			r = append(r, fmt.Sprintf("User Cond=%q HitCond=%v", exprToString(breaklet.Cond), breaklet.HitCond))
+		case NextBreakpoint:
+			r = append(r, fmt.Sprintf("Next Cond=%q", exprToString(breaklet.Cond)))
+		case NextDeferBreakpoint:
+			r = append(r, fmt.Sprintf("NextDefer Cond=%q DeferReturns=%#x", exprToString(breaklet.Cond), breaklet.DeferReturns))
+		case StepBreakpoint:
+			r = append(r, fmt.Sprintf("Step Cond=%q", exprToString(breaklet.Cond)))
+		default:
+			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
+		}
+	}
+	return r
+}
+
 // BreakpointExistsError is returned when trying to set a breakpoint at
 // an address that already has a breakpoint set for it.
 type BreakpointExistsError struct {

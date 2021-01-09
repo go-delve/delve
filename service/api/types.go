@@ -93,6 +93,8 @@ type Breakpoint struct {
 	WatchExpr string
 	WatchType WatchType
 
+	VerboseDescr []string `json:"VerboseDescr,omitempty"`
+
 	// number of times a breakpoint has been reached in a certain goroutine
 	HitCount map[string]uint64 `json:"hitCount"`
 	// number of times a breakpoint has been reached

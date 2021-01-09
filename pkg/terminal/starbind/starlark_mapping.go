@@ -792,6 +792,24 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		var rpcArgs rpc2.ListBreakpointsIn
 		var rpcRet rpc2.ListBreakpointsOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.All, "All")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "All":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.All, "All")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		err := env.ctx.Client().CallAPI("ListBreakpoints", &rpcArgs, &rpcRet)
 		if err != nil {
 			return starlark.None, err

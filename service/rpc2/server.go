@@ -215,6 +215,7 @@ func (s *RPCServer) Ancestors(arg AncestorsIn, out *AncestorsOut) error {
 }
 
 type ListBreakpointsIn struct {
+	All bool
 }
 
 type ListBreakpointsOut struct {
@@ -223,7 +224,7 @@ type ListBreakpointsOut struct {
 
 // ListBreakpoints gets all breakpoints.
 func (s *RPCServer) ListBreakpoints(arg ListBreakpointsIn, out *ListBreakpointsOut) error {
-	out.Breakpoints = s.debugger.Breakpoints()
+	out.Breakpoints = s.debugger.Breakpoints(arg.All)
 	return nil
 }
 

@@ -40,7 +40,7 @@ get_breakpoint(Id, Name) | Equivalent to API call [GetBreakpoint](https://godoc.
 get_thread(Id) | Equivalent to API call [GetThread](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.GetThread)
 is_multiclient() | Equivalent to API call [IsMulticlient](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.IsMulticlient)
 last_modified() | Equivalent to API call [LastModified](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.LastModified)
-breakpoints() | Equivalent to API call [ListBreakpoints](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListBreakpoints)
+breakpoints(All) | Equivalent to API call [ListBreakpoints](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListBreakpoints)
 checkpoints() | Equivalent to API call [ListCheckpoints](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListCheckpoints)
 dynamic_libraries() | Equivalent to API call [ListDynamicLibraries](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListDynamicLibraries)
 function_args(Scope, Cfg) | Equivalent to API call [ListFunctionArgs](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListFunctionArgs)

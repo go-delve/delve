@@ -242,9 +242,9 @@ func (c *RPCClient) CreateWatchpoint(scope api.EvalScope, expr string, wtype api
 	return out.Breakpoint, err
 }
 
-func (c *RPCClient) ListBreakpoints() ([]*api.Breakpoint, error) {
+func (c *RPCClient) ListBreakpoints(all bool) ([]*api.Breakpoint, error) {
 	var out ListBreakpointsOut
-	err := c.call("ListBreakpoints", ListBreakpointsIn{}, &out)
+	err := c.call("ListBreakpoints", ListBreakpointsIn{all}, &out)
 	return out.Breakpoints, err
 }
 

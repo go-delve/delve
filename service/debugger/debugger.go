@@ -939,11 +939,21 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 }
 
 // Breakpoints returns the list of current breakpoints.
-func (d *Debugger) Breakpoints() []*api.Breakpoint {
+func (d *Debugger) Breakpoints(all bool) []*api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	bps := api.ConvertBreakpoints(d.breakpoints())
+	var bps []*api.Breakpoint
+
+	if !all {
+		bps = api.ConvertBreakpoints(d.breakpoints())
+	} else {
+		for _, bp := range d.target.Breakpoints().M {
+			abp := api.ConvertBreakpoint(bp)
+			abp.VerboseDescr = bp.VerboseDescr()
+			bps = append(bps, abp)
+		}
+	}
 
 	for _, bp := range d.disabledBreakpoints {
 		bps = append(bps, bp)
