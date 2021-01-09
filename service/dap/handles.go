@@ -20,7 +20,10 @@ type fullyQualifiedVariable struct {
 	// sequence above this variable (most readable when referenced by the UI)
 	// if available or a special expression based on:
 	// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#loading-more-of-a-variable
+	// Empty if the variable cannot or should not be reloaded.
 	fullyQualifiedNameOrExpr string
+	// True if this represents variable scope
+	isScope bool
 }
 
 func newHandlesMap() *handlesMap {
