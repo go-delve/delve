@@ -2027,6 +2027,9 @@ func TestAttachRequest(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
+	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
 		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
