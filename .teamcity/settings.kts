@@ -35,10 +35,13 @@ version = "2020.2"
 
 val targets = arrayOf(
         "linux/386/1.15.2",
+        "linux/386/1.16beta1",
         "linux/386/latest",
         "linux/amd64/1.15.3",
+        "linux/amd64/1.16beta1",
         "linux/amd64/latest",
         "windows/amd64/1.15.3",
+        "windows/amd64/1.16beta1",
         "windows/amd64/latest"
 )
 
