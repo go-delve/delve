@@ -98,7 +98,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
                     token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
                 }
             }
-            param("github_oauth_user", "artspb")
+            param("github_oauth_user", "derekparker")
         }
     }
 })
