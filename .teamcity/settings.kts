@@ -81,24 +81,16 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
     }
 
     features {
-        pullRequests {
-            vcsRootExtId = "${DslContext.settingsRoot.id}"
-            provider = github {
-                authType = token {
-                    token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
-                }
-                filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
-            }
-        }
+        enablePullRequests()
         commitStatusPublisher {
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             publisher = github {
                 githubUrl = "https://api.github.com"
                 authType = personalToken {
-                    token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
+                    token = "credentialsJSON:48af6e38-536d-4acb-ae2d-2fba57b6f3db"
                 }
             }
-            param("github_oauth_user", "derekparker")
+            param("github_oauth_user", "")
         }
     }
 })
@@ -194,8 +186,21 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
     }
 
     features {
+        enablePullRequests()
         golang {
             testFormat = "json"
         }
     }
 })
+
+fun enablePullRequests() {
+    pullRequests {
+        vcsRootExtId = "${DslContext.settingsRoot.id}"
+        provider = github {
+            authType = token {
+                token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
+            }
+            filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
+        }
+    }
+}
