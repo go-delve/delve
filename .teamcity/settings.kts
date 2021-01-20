@@ -81,15 +81,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
     }
 
     features {
-        pullRequests {
-            vcsRootExtId = "${DslContext.settingsRoot.id}"
-            provider = github {
-                authType = token {
-                    token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
-                }
-                filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
-            }
-        }
+        enablePullRequests()
         commitStatusPublisher {
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             publisher = github {
@@ -194,8 +186,21 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
     }
 
     features {
+        enablePullRequests()
         golang {
             testFormat = "json"
         }
     }
 })
+
+fun enablePullRequests() {
+    pullRequests {
+        vcsRootExtId = "${DslContext.settingsRoot.id}"
+        provider = github {
+            authType = token {
+                token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
+            }
+            filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
+        }
+    }
+}
