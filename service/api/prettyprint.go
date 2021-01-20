@@ -421,7 +421,7 @@ func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, f
 			}
 		}
 		fmt.Fprintln(w, "")
-		address += uintptr(cols)
+		address += uintptr(cols * colBytes)
 	}
 	w.Flush()
 	return b.String()
