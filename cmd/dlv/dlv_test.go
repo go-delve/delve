@@ -329,6 +329,8 @@ func TestRedirect(t *testing.T) {
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
 	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
 
+	generated = bytes.ReplaceAll(generated, []byte{'\r'}, []byte{})
+
 	if len(saved) != len(generated) {
 		t.Fatalf("%s: needs to be regenerated; run %s", filename, gencommand)
 	}
