@@ -87,10 +87,10 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
             publisher = github {
                 githubUrl = "https://api.github.com"
                 authType = personalToken {
-                    token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
+                    token = "credentialsJSON:48af6e38-536d-4acb-ae2d-2fba57b6f3db"
                 }
             }
-            param("github_oauth_user", "derekparker")
+            param("github_oauth_user", "")
         }
     }
 })
