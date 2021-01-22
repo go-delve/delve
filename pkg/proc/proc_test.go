@@ -4965,3 +4965,31 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue2319(t *testing.T) {
+	// Check to make sure we don't crash on startup when the target is
+	// a binary with a mix of DWARF-5 C++ compilation units and
+	// DWARF-4 Go compilation units.
+
+	// Require CGO, since we need to use the external linker for this test.
+	protest.MustHaveCgo(t)
+
+	// The test fixture uses linux/amd64 assembly and a *.syso file
+	// that is linux/amd64, so skip for other architectures.
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skipf("skipping since not linux/amd64")
+	}
+
+	// Skip unless on 1.14 or later. The test fixture uses a *.syso
+	// file, which in 1.13 is not loaded unless we're in internal
+	// linking mode (we need external linking here).
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+		t.Skip("test contains fixture that is specific to go 1.14+")
+	}
+
+	fixture := protest.BuildFixture("issue2319/", protest.BuildModeExternalLinker)
+
+	// Load up the binary and make sure there are no crashes.
+	bi := proc.NewBinaryInfo("linux", "amd64")
+	assertNoError(bi.LoadBinaryInfo(fixture.Path, 0, nil), t, "LoadBinaryInfo")
+}

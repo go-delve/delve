@@ -64,7 +64,7 @@ func FindFixturesDir() string {
 type BuildFlags uint32
 
 const (
-	// LinkStrip enables '-ldflas="-s"'.
+	// LinkStrip enables '-ldflags="-s"'.
 	LinkStrip BuildFlags = 1 << iota
 	// EnableCGOOptimization will build CGO code with optimizations.
 	EnableCGOOptimization
@@ -76,6 +76,7 @@ const (
 	EnableDWZCompression
 	BuildModePIE
 	BuildModePlugin
+	BuildModeExternalLinker
 	AllNonOptimized
 )
 
@@ -140,6 +141,9 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	}
 	if flags&BuildModePlugin != 0 {
 		buildFlags = append(buildFlags, "-buildmode=plugin")
+	}
+	if flags&BuildModeExternalLinker != 0 {
+		buildFlags = append(buildFlags, "-ldflags=-linkmode=external")
 	}
 	if ver.IsDevel() || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 11, Rev: -1}) {
 		if flags&EnableDWZCompression != 0 {

@@ -1,19 +1,19 @@
 Tests skipped by each supported backend:
 
-* 386 skipped = 2.1% (3/145)
+* 386 skipped = 2.1% (3/146)
 	* 1 broken
 	* 2 broken - cgo stacktraces
-* arm64 skipped = 2.1% (3/145)
+* arm64 skipped = 2.1% (3/146)
 	* 2 broken
 	* 1 broken - global variable symbolication
-* darwin/lldb skipped = 0.69% (1/145)
+* darwin/lldb skipped = 0.68% (1/146)
 	* 1 upstream issue
-* freebsd skipped = 7.6% (11/145)
+* freebsd skipped = 7.5% (11/146)
 	* 11 broken
-* linux/386/pie skipped = 0.69% (1/145)
+* linux/386/pie skipped = 0.68% (1/146)
 	* 1 broken
-* pie skipped = 0.69% (1/145)
+* pie skipped = 0.68% (1/146)
 	* 1 upstream issue - https://github.com/golang/go/issues/29322
-* windows skipped = 1.4% (2/145)
+* windows skipped = 1.4% (2/146)
 	* 1 broken
 	* 1 upstream issue

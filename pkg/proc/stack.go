@@ -377,7 +377,9 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		if !okname || !okfileidx || !okline {
 			break
 		}
-		if fileidx-1 < 0 || fileidx-1 >= int64(len(frame.Current.Fn.cu.lineInfo.FileNames)) {
+		var e *dwarf.Entry
+		filepath, fileErr := frame.Current.Fn.cu.filePath(int(fileidx), e)
+		if fileErr != nil {
 			break
 		}
 
@@ -400,7 +402,7 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 			lastpc:      frame.lastpc,
 		})
 
-		frame.Call.File = frame.Current.Fn.cu.lineInfo.FileNames[fileidx-1].Path
+		frame.Call.File = filepath
 		frame.Call.Line = int(line)
 	}
 
