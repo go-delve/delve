@@ -36,8 +36,6 @@ type EvalScope struct {
 
 	frameOffset int64
 
-	aordr *dwarf.Reader // extra reader to load DW_AT_abstract_origin entries, do not initialize
-
 	// When the following pointer is not nil this EvalScope was created
 	// by CallFunction and the expression evaluation is executing on a
 	// different goroutine from the debugger's main goroutine.
@@ -556,14 +554,6 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 // image returns the image containing the current function.
 func (scope *EvalScope) image() *Image {
 	return scope.BinInfo.funcToImage(scope.Fn)
-}
-
-// globalFor returns a global scope for 'image' with the register values of 'scope'.
-func (scope *EvalScope) globalFor(image *Image) *EvalScope {
-	r := *scope
-	r.Regs.StaticBase = image.StaticBase
-	r.Fn = &Function{cu: &compileUnit{image: image}}
-	return &r
 }
 
 // DwarfReader returns the DwarfReader containing the

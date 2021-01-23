@@ -24,9 +24,6 @@ const (
 
 	maxArrayStridePrefetch = 1024 // Maximum size of array stride for which we will prefetch the array contents
 
-	chanRecv = "chan receive"
-	chanSend = "chan send"
-
 	hashTophashEmptyZero = 0 // used by map reading code, indicates an empty cell
 	hashTophashEmptyOne  = 1 // used by map reading code, indicates an empty cell in Go 1.12 and later
 	hashMinTopHashGo111  = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
