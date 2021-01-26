@@ -37,7 +37,7 @@ val targets = arrayOf(
 	"linux/amd64/1.13",
 	"linux/amd64/1.14",
         "linux/amd64/1.15",
-        "linux/amd64/1.16"
+        "linux/amd64/1.16",
         "linux/amd64/tip",
 
         "linux/386/1.15",
