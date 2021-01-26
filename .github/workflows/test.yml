@@ -10,10 +10,6 @@ jobs:
         include:
           - go: 1.15
             os: macos-latest
-          - go: 1.14
-            os: ubuntu-latest
-          - go: 1.13
-            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v1
