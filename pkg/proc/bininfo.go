@@ -1787,18 +1787,15 @@ func (bi *BinaryInfo) addAbstractSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 		return
 	}
 
-	fn := Function{
-		Name:   name,
-		offset: entry.Offset,
-		cu:     cu,
-	}
-
 	if entry.Children {
 		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
 	}
 
-	bi.Functions = append(bi.Functions, fn)
-	ctxt.abstractOriginTable[entry.Offset] = len(bi.Functions) - 1
+	originIdx := ctxt.lookupAbstractOrigin(bi, entry.Offset)
+	fn := &bi.Functions[originIdx]
+	fn.Name = name
+	fn.offset = entry.Offset
+	fn.cu = cu
 }
 
 // addConcreteInlinedSubprogram adds the concrete entry of a subprogram that was also inlined.
@@ -1812,15 +1809,7 @@ func (bi *BinaryInfo) addConcreteInlinedSubprogram(entry *dwarf.Entry, originOff
 		return
 	}
 
-	originIdx, ok := ctxt.abstractOriginTable[originOffset]
-	if !ok {
-		bi.logger.Warnf("reading debug_info: could not find abstract origin of concrete inlined subprogram at %#x (origin offset %#x)", entry.Offset, originOffset)
-		if entry.Children {
-			reader.SkipChildren()
-		}
-		return
-	}
-
+	originIdx := ctxt.lookupAbstractOrigin(bi, originOffset)
 	fn := &bi.Functions[originIdx]
 	fn.offset = entry.Offset
 	fn.Entry = lowpc
@@ -1905,12 +1894,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 				continue
 			}
 
-			originIdx, ok := ctxt.abstractOriginTable[originOffset]
-			if !ok {
-				bi.logger.Warnf("reading debug_info: could not find abstract origin (%#x) of inlined call at %#x", originOffset, entry.Offset)
-				reader.SkipChildren()
-				continue
-			}
+			originIdx := ctxt.lookupAbstractOrigin(bi, originOffset)
 			fn := &bi.Functions[originIdx]
 
 			lowpc, highpc, ok := subprogramEntryRange(entry, cu.image)

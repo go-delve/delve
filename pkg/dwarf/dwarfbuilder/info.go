@@ -123,10 +123,11 @@ func (b *Builder) TagClose() {
 }
 
 // Attr adds an attribute to the current DIE.
-func (b *Builder) Attr(attr dwarf.Attr, val interface{}) {
+func (b *Builder) Attr(attr dwarf.Attr, val interface{}) dwarf.Offset {
 	if len(b.tagStack) < 0 {
 		panic("Attr with no open tags")
 	}
+	off := dwarf.Offset(b.info.Len())
 	tag := b.tagStack[len(b.tagStack)-1]
 	if tag.children {
 		panic("Can't add attributes after adding children")
@@ -179,6 +180,16 @@ func (b *Builder) Attr(attr dwarf.Attr, val interface{}) {
 	default:
 		panic("unknown value type")
 	}
+
+	return off
+}
+
+// PatchOffset writes the offset 'patch' at offset patchedOffset.
+func (b *Builder) PatchOffset(patchedOffset, patch dwarf.Offset) {
+	infoBytes := b.info.Bytes()
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, patch)
+	copy(infoBytes[patchedOffset:], buf.Bytes())
 }
 
 func sameTagDescr(a, b tagDescr) bool {
