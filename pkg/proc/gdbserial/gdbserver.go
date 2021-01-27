@@ -1171,14 +1171,8 @@ func (p *gdbProcess) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	return nil, false
 }
 
-func (p *gdbProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
-	f, l, fn := p.bi.PCToLine(uint64(addr))
-
-	if err := p.conn.setBreakpoint(addr); err != nil {
-		return "", 0, nil, nil, err
-	}
-
-	return f, l, fn, nil, nil
+func (p *gdbProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
+	return p.conn.setBreakpoint(bp.Addr)
 }
 
 func (p *gdbProcess) EraseBreakpoint(bp *proc.Breakpoint) error {

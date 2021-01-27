@@ -33,7 +33,7 @@ type ProcessInternal interface {
 	Detach(bool) error
 	ContinueOnce() (trapthread Thread, stopReason StopReason, err error)
 
-	WriteBreakpoint(addr uint64) (file string, line int, fn *Function, originalData []byte, err error)
+	WriteBreakpoint(*Breakpoint) error
 	EraseBreakpoint(*Breakpoint) error
 }
 

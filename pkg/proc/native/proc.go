@@ -203,19 +203,13 @@ func (dbp *nativeProcess) CheckAndClearManualStopRequest() bool {
 	return msr
 }
 
-func (dbp *nativeProcess) WriteBreakpoint(addr uint64) (string, int, *proc.Function, []byte, error) {
-	f, l, fn := dbp.bi.PCToLine(uint64(addr))
-
-	originalData := make([]byte, dbp.bi.Arch.BreakpointSize())
-	_, err := dbp.memthread.ReadMemory(originalData, addr)
+func (dbp *nativeProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
+	bp.OriginalData = make([]byte, dbp.bi.Arch.BreakpointSize())
+	_, err := dbp.memthread.ReadMemory(bp.OriginalData, bp.Addr)
 	if err != nil {
-		return "", 0, nil, nil, err
+		return err
 	}
-	if err := dbp.writeSoftwareBreakpoint(dbp.memthread, addr); err != nil {
-		return "", 0, nil, nil, err
-	}
-
-	return f, l, fn, originalData, nil
+	return dbp.writeSoftwareBreakpoint(dbp.memthread, bp.Addr)
 }
 
 func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {

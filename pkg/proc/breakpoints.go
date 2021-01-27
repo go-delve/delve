@@ -263,10 +263,7 @@ func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) 
 		return bp, nil
 	}
 
-	f, l, fn, originalData, err := t.proc.WriteBreakpoint(addr)
-	if err != nil {
-		return nil, err
-	}
+	f, l, fn := t.BinInfo().PCToLine(uint64(addr))
 
 	fnName := ""
 	if fn != nil {
@@ -279,8 +276,12 @@ func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) 
 		Line:         l,
 		Addr:         addr,
 		Kind:         kind,
-		OriginalData: originalData,
 		HitCount:     map[int]uint64{},
+	}
+
+	err := t.proc.WriteBreakpoint(newBreakpoint)
+	if err != nil {
+		return nil, err
 	}
 
 	if kind != UserBreakpoint {
