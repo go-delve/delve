@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.6.0] 2021-01-28
+
+### Added
+
+- Support for debugging darwin/arm64 (i.e. macOS on Apple Silicon) (#2285, @oxisto)
+- Support for debugging Go1.16 (#2214, @aarzilli)
+- DAP: support for attaching to a local process (#2260, @polinasok)
+- DAP: fill the `evaluateName` field when returning variables, enabling "Add to Watch" and "Copy as Expression" features of VSCode (#2292, @polinasok)
+- Added WaitSince, WaitReason to `service/api.Goroutine` and to the `goroutines` command (#2264, #2283, #2270, @dlsniper, @nd, @aarzilli)
+- Syntax highlighting for Go code (#2294, @aarzilli)
+- Added flag `CallReturn` to `service/api.Thread` to distinguish return values filled by a `stepOut` command from the ones filled by a `call` command (#2230, @aarzilli)
+
+### Fixed
+
+- Fix occasional "Access is denied" error when debugging on Windows (#2281, @nd)
+- Register formatting on ARM64 (#2289, @dujinze)
+- Miscellaneous bug fixes (#2232, #2255, #2280, #2286, #2291, #2309, #2293, @aarzilli, @polinasok, @hitzhangjie)
+
+### Changed
+
+- The `goroutines` command can be interrupted by pressing Ctrl-C (#2278, @aarzilli)
+- Using a TeamCity instance provided by JetBrains for Continuous Integration (#2298, #2307, #2311, #2315, #2326, @artspb, @nd, @aarzilli, @derekparker)
+- Improvements to documentation and error messages (#2266, #2265, #2273, #2299, @andreimatei, @hitzhangjie, @zamai, @polinasok)
+
 ## [1.5.1] 2020-12-09
 
 ### Added
