@@ -54,8 +54,24 @@ type Config struct {
 	ShowLocationExpr bool `yaml:"show-location-expr"`
 
 	// Source list line-number color (3/4 bit color codes as defined
-	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors)
-	SourceListLineColor int `yaml:"source-list-line-color"`
+	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors),
+	// or a string containing a terminal escape sequence.
+	SourceListLineColor interface{} `yaml:"source-list-line-color"`
+
+	// Source list arrow color, as a terminal escape sequence.
+	SourceListArrowColor string `yaml:"source-list-arrow-color"`
+
+	// Source list keyword color, as a terminal escape sequence.
+	SourceListKeywordColor string `yaml:"source-list-keyword-color"`
+
+	// Source list string color, as a terminal escape sequence.
+	SourceListStringColor string `yaml:"source-list-string-color"`
+
+	// Source list number color, as a terminal escape sequence.
+	SourceListNumberColor string `yaml:"source-list-number-color"`
+
+	// Source list comment color, as a terminal escape sequence.
+	SourceListCommentColor string `yaml:"source-list-comment-color"`
 
 	// number of lines to list above and below cursor when printfile() is
 	// called (i.e. when execution stops, listCommand is used, etc)
@@ -215,7 +231,15 @@ func writeDefaultConfig(f *os.File) error {
 # Uncomment the following line and set your preferred ANSI foreground color
 # for source line numbers in the (list) command (if unset, default is 34,
 # dark blue) See https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
+# Alternatively a string containing an escape sequence can also be used.
 # source-list-line-color: 34
+
+# Uncomment the following lines to change the colors used by syntax highlighting.
+# source-list-keyword-color: "\x1b[0m"
+# source-list-string-color: "\x1b[92m"
+# source-list-number-color: "\x1b[0m"
+# source-list-comment-color: "\x1b[95m"
+# source-list-arrow-color: "\x1b[93m"
 
 # Uncomment to change the number of lines printed above and below cursor when
 # listing source code.

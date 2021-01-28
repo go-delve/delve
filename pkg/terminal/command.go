@@ -24,6 +24,7 @@ import (
 
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/locspec"
+	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -2247,7 +2248,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 
 	if th.File == "" {
 		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
-		t.Println("=>", "no source available")
+		_ = colorize.Print(t.stdout, "", bytes.NewReader([]byte("no source available")), 1, 10, 1, nil)
 		return
 	}
 
@@ -2424,6 +2425,13 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 	if filename == "" {
 		return nil
 	}
+
+	lineCount := t.conf.GetSourceListLineCount()
+	arrowLine := 0
+	if showArrow {
+		arrowLine = line
+	}
+
 	file, err := os.Open(t.substitutePath(filename))
 	if err != nil {
 		return err
@@ -2436,38 +2444,7 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 		fmt.Println("Warning: listing may not match stale executable")
 	}
 
-	lineCount := t.conf.GetSourceListLineCount()
-
-	buf := bufio.NewScanner(file)
-	l := line
-	for i := 1; i < l-lineCount; i++ {
-		if !buf.Scan() {
-			return nil
-		}
-	}
-
-	s := l - lineCount
-	if s < 1 {
-		s = 1
-	}
-
-	for i := s; i <= l+lineCount; i++ {
-		if !buf.Scan() {
-			return nil
-		}
-
-		var prefix string
-		if showArrow {
-			prefix = "  "
-			if i == l {
-				prefix = "=>"
-			}
-		}
-
-		prefix = fmt.Sprintf("%s%4d:\t", prefix, i)
-		t.Println(prefix, buf.Text())
-	}
-	return nil
+	return colorize.Print(t.stdout, file.Name(), file, line-lineCount, line+lineCount+1, arrowLine, t.colorEscapes)
 }
 
 // ExitRequestError is returned when the user

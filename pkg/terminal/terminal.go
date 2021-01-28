@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
+	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/pkg/terminal/starbind"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -46,15 +47,15 @@ const (
 
 // Term represents the terminal running dlv.
 type Term struct {
-	client   service.Client
-	conf     *config.Config
-	prompt   string
-	line     *liner.State
-	cmds     *Commands
-	dumb     bool
-	stdout   io.Writer
-	InitFile string
-	displays []string
+	client       service.Client
+	conf         *config.Config
+	prompt       string
+	line         *liner.State
+	cmds         *Commands
+	stdout       io.Writer
+	InitFile     string
+	displays     []string
+	colorEscapes map[colorize.Style]string
 
 	historyFile *os.File
 
@@ -84,30 +85,41 @@ func New(client service.Client, conf *config.Config) *Term {
 		conf = &config.Config{}
 	}
 
-	var w io.Writer
-
-	dumb := strings.ToLower(os.Getenv("TERM")) == "dumb"
-	if dumb {
-		w = os.Stdout
-	} else {
-		w = getColorableWriter()
-	}
-
-	if (conf.SourceListLineColor > ansiWhite &&
-		conf.SourceListLineColor < ansiBrBlack) ||
-		conf.SourceListLineColor < ansiBlack ||
-		conf.SourceListLineColor > ansiBrWhite {
-		conf.SourceListLineColor = ansiBlue
-	}
-
 	t := &Term{
 		client: client,
 		conf:   conf,
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		cmds:   cmds,
-		dumb:   dumb,
-		stdout: w,
+		stdout: os.Stdout,
+	}
+
+	if strings.ToLower(os.Getenv("TERM")) != "dumb" {
+		t.stdout = getColorableWriter()
+		t.colorEscapes = make(map[colorize.Style]string)
+		t.colorEscapes[colorize.NormalStyle] = terminalResetEscapeCode
+		wd := func(s string, defaultCode int) string {
+			if s == "" {
+				return fmt.Sprintf(terminalHighlightEscapeCode, defaultCode)
+			}
+			return s
+		}
+		t.colorEscapes[colorize.KeywordStyle] = conf.SourceListKeywordColor
+		t.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiBrGreen)
+		t.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
+		t.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
+		t.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiBrYellow)
+		switch x := conf.SourceListLineColor.(type) {
+		case string:
+			t.colorEscapes[colorize.LineNoStyle] = x
+		case int:
+			if (x > ansiWhite && x < ansiBrBlack) || x < ansiBlack || x > ansiBrWhite {
+				x = ansiBlue
+			}
+			t.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, x)
+		case nil:
+			t.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, ansiBlue)
+		}
 	}
 
 	if client != nil {
@@ -271,15 +283,6 @@ func (t *Term) Run() (int, error) {
 			}
 		}
 	}
-}
-
-// Println prints a line to the terminal.
-func (t *Term) Println(prefix, str string) {
-	if !t.dumb {
-		terminalColorEscapeCode := fmt.Sprintf(terminalHighlightEscapeCode, t.conf.SourceListLineColor)
-		prefix = fmt.Sprintf("%s%s%s", terminalColorEscapeCode, prefix, terminalResetEscapeCode)
-	}
-	fmt.Fprintf(t.stdout, "%s%s\n", prefix, str)
 }
 
 // Substitutes directory to source file.
