@@ -106,6 +106,38 @@ type List struct {
 	Next *List
 }
 
+type T struct {
+	F string
+}
+
+type W1 struct {
+	T
+}
+
+func (*W1) M() {}
+
+type I interface{ M() }
+
+type W2 struct {
+	W1
+	T
+}
+
+type W3 struct {
+	I
+	T
+}
+
+type W4 struct {
+	I
+}
+
+type W5 struct {
+	*W5
+}
+
+var _ I = (*W2)(nil)
+
 func main() {
 	i1 := 1
 	i2 := 2
@@ -312,6 +344,12 @@ func main() {
 	ll := &List{0, &List{1, &List{2, &List{3, &List{4, nil}}}}}
 	unread := (*int)(unsafe.Pointer(uintptr(12345)))
 
+	w2 := &W2{W1{T{"T-inside-W1"}}, T{"T-inside-W2"}}
+	w3 := &W3{&W1{T{"T-inside-W1"}}, T{"T-inside-W3"}}
+	w4 := &W4{&W1{T{"T-inside-W1"}}}
+	w5 := &W5{nil}
+	w5.W5 = w5
+
 	var amb1 = 1
 	runtime.Breakpoint()
 	for amb1 := 0; amb1 < 10; amb1++ {
@@ -319,5 +357,5 @@ func main() {
 	}
 
 	runtime.Breakpoint()
-	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a0, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, m4, upnil, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, ni64, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, errtypednil, emptyslice, emptymap, byteslice, runeslice, bytearray, runearray, longstr, nilstruct, as2, as2.NonPointerRecieverMethod, s4, iface2map, issue1578, ll, unread)
+	fmt.Println(i1, i2, i3, p1, amb1, s1, s3, a0, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, m4, upnil, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, ni64, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, errtypednil, emptyslice, emptymap, byteslice, runeslice, bytearray, runearray, longstr, nilstruct, as2, as2.NonPointerRecieverMethod, s4, iface2map, issue1578, ll, unread, w2, w3, w4, w5)
 }

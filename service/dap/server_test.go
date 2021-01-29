@@ -1026,7 +1026,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					expectStackFrames(t, stack, "main.main", 317, 1000, 3, 3)
+					expectStackFrames(t, stack, "main.main", -1, 1000, 3, 3)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1039,7 +1039,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					expectStackFrames(t, stack, "main.main", 322, 1000, 3, 3)
+					expectStackFrames(t, stack, "main.main", -1, 1000, 3, 3)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)

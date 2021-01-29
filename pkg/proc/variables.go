@@ -1060,59 +1060,61 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 			v = &v.Children[0]
 		}
 	}
-	structVar := v.maybeDereference()
-	structVar.Name = v.Name
-	if structVar.Unreadable != nil {
-		return structVar, nil
-	}
 
-	switch t := structVar.RealType.(type) {
-	case *godwarf.StructType:
-		for _, field := range t.Field {
-			if field.Name != memberName {
-				continue
-			}
-			return structVar.toField(field)
+	queue := []*Variable{v}
+	seen := map[string]struct{}{} // prevent infinite loops
+	first := true
+
+	for len(queue) > 0 {
+		v := queue[0]
+		queue = append(queue[:0], queue[1:]...)
+		if _, isseen := seen[v.RealType.String()]; isseen {
+			continue
 		}
-		// Check for embedded field only if field was
-		// not a regular struct member
-		for _, field := range t.Field {
-			isEmbeddedStructMember :=
-				field.Embedded ||
-					(field.Type.Common().Name == field.Name) ||
-					(len(field.Name) > 1 &&
-						field.Name[0] == '*' &&
-						field.Type.Common().Name[1:] == field.Name[1:])
-			if !isEmbeddedStructMember {
-				continue
-			}
-			// Check for embedded field referenced by type name
-			parts := strings.Split(field.Name, ".")
-			if len(parts) > 1 && parts[1] == memberName {
+		seen[v.RealType.String()] = struct{}{}
+
+		structVar := v.maybeDereference()
+		structVar.Name = v.Name
+		if structVar.Unreadable != nil {
+			return structVar, nil
+		}
+
+		switch t := structVar.RealType.(type) {
+		case *godwarf.StructType:
+			for _, field := range t.Field {
+				if field.Name == memberName {
+					return structVar.toField(field)
+				}
+				isEmbeddedStructMember :=
+					field.Embedded ||
+						(field.Type.Common().Name == field.Name) ||
+						(len(field.Name) > 1 &&
+							field.Name[0] == '*' &&
+							field.Type.Common().Name[1:] == field.Name[1:])
+				if !isEmbeddedStructMember {
+					continue
+				}
 				embeddedVar, err := structVar.toField(field)
 				if err != nil {
 					return nil, err
 				}
-				return embeddedVar, nil
+				// Check for embedded field referenced by type name
+				parts := strings.Split(field.Name, ".")
+				if len(parts) > 1 && parts[1] == memberName {
+					return embeddedVar, nil
+				}
+				embeddedVar.Name = structVar.Name
+				queue = append(queue, embeddedVar)
 			}
-			// Recursively check for promoted fields on the embedded field
-			embeddedVar, err := structVar.toField(field)
-			if err != nil {
-				return nil, err
-			}
-			embeddedVar.Name = structVar.Name
-			embeddedField, _ := embeddedVar.structMember(memberName)
-			if embeddedField != nil {
-				return embeddedField, nil
+		default:
+			if first {
+				return nil, fmt.Errorf("%s (type %s) is not a struct", vname, structVar.TypeString())
 			}
 		}
-		return nil, fmt.Errorf("%s has no member %s", vname, memberName)
-	default:
-		if v.Name == "" {
-			return nil, fmt.Errorf("type %s is not a struct", structVar.TypeString())
-		}
-		return nil, fmt.Errorf("%s (type %s) is not a struct", vname, structVar.TypeString())
+		first = false
 	}
+
+	return nil, fmt.Errorf("%s has no member %s", vname, memberName)
 }
 
 func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.Type, err error) {

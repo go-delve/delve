@@ -504,6 +504,20 @@ func TestEmbeddedStruct(t *testing.T) {
 			{"b.C.s", true, "\"hello\"", "\"hello\"", "string", nil},
 			{"b.s", true, "\"hello\"", "\"hello\"", "string", nil},
 			{"b2", true, "main.B {A: main.A {val: 42}, C: *main.C nil, a: main.A {val: 47}, ptr: *main.A nil}", "main.B {A: (*main.A)(0x…", "main.B", nil},
+
+			// Issue 2316: field promotion is breadth first and embedded interfaces never get promoted
+			{"w2.W1.T.F", true, `"T-inside-W1"`, `"T-inside-W1"`, "string", nil},
+			{"w2.W1.F", true, `"T-inside-W1"`, `"T-inside-W1"`, "string", nil},
+			{"w2.T.F", true, `"T-inside-W2"`, `"T-inside-W2"`, "string", nil},
+			{"w2.F", true, `"T-inside-W2"`, `"T-inside-W2"`, "string", nil},
+			{"w3.I.T.F", false, `"T-inside-W1"`, `"T-inside-W1"`, "string", nil},
+			{"w3.I.F", false, `"T-inside-W1"`, `"T-inside-W1"`, "string", nil},
+			{"w3.T.F", true, `"T-inside-W3"`, `"T-inside-W3"`, "string", nil},
+			{"w3.F", true, `"T-inside-W3"`, `"T-inside-W3"`, "string", nil},
+			{"w4.I.T.F", false, `"T-inside-W1"`, `"T-inside-W1"`, "string", nil},
+			{"w4.I.F", false, `"T-inside-W1"`, `"T-inside-W1"`, "string", nil},
+			{"w4.F", false, ``, ``, "", errors.New("w4 has no member F")},
+			{"w5.F", false, ``, ``, "", errors.New("w5 has no member F")},
 		}
 		assertNoError(p.Continue(), t, "Continue()")
 

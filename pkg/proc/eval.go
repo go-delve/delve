@@ -1963,73 +1963,79 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 		return v.Children[0].findMethod(mname)
 	}
 
-	typ := v.DwarfType
-	ptyp, isptr := typ.(*godwarf.PtrType)
-	if isptr {
-		typ = ptyp.Type
-	}
+	queue := []*Variable{v}
+	seen := map[string]struct{}{}
 
-	typePath := typ.Common().Name
-	dot := strings.LastIndex(typePath, ".")
-	if dot < 0 {
-		// probably just a C type
-		return nil, nil
-	}
-
-	pkg := typePath[:dot]
-	receiver := typePath[dot+1:]
-
-	if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; ok {
-		r, err := functionToVariable(fn, v.bi, v.mem)
-		if err != nil {
-			return nil, err
+	for len(queue) > 0 {
+		v := queue[0]
+		queue = append(queue[:0], queue[1:]...)
+		if _, isseen := seen[v.RealType.String()]; isseen {
+			continue
 		}
+		seen[v.RealType.String()] = struct{}{}
+
+		typ := v.DwarfType
+		ptyp, isptr := typ.(*godwarf.PtrType)
 		if isptr {
-			r.Children = append(r.Children, *(v.maybeDereference()))
-		} else {
-			r.Children = append(r.Children, *v)
+			typ = ptyp.Type
 		}
-		return r, nil
-	}
 
-	if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.(*%s).%s", pkg, receiver, mname)]; ok {
-		r, err := functionToVariable(fn, v.bi, v.mem)
-		if err != nil {
-			return nil, err
+		typePath := typ.Common().Name
+		dot := strings.LastIndex(typePath, ".")
+		if dot < 0 {
+			// probably just a C type
+			continue
 		}
-		if isptr {
-			r.Children = append(r.Children, *v)
-		} else {
-			r.Children = append(r.Children, *(v.pointerToVariable()))
-		}
-		return r, nil
-	}
-	return v.tryFindMethodInEmbeddedFields(mname)
-}
 
-func (v *Variable) tryFindMethodInEmbeddedFields(mname string) (*Variable, error) {
-	structVar := v.maybeDereference()
-	structVar.Name = v.Name
-	if structVar.Unreadable != nil {
-		return structVar, nil
-	}
-	switch t := structVar.RealType.(type) {
-	case *godwarf.StructType:
-		for _, field := range t.Field {
-			if field.Embedded {
-				// Recursively check for promoted fields on the embedded field
-				embeddedVar, err := structVar.toField(field)
-				if err != nil {
-					return nil, err
-				}
-				if embeddedMethod, err := embeddedVar.findMethod(mname); err != nil {
-					return nil, err
-				} else if embeddedMethod != nil {
-					return embeddedMethod, nil
+		pkg := typePath[:dot]
+		receiver := typePath[dot+1:]
+
+		if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; ok {
+			r, err := functionToVariable(fn, v.bi, v.mem)
+			if err != nil {
+				return nil, err
+			}
+			if isptr {
+				r.Children = append(r.Children, *(v.maybeDereference()))
+			} else {
+				r.Children = append(r.Children, *v)
+			}
+			return r, nil
+		}
+
+		if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.(*%s).%s", pkg, receiver, mname)]; ok {
+			r, err := functionToVariable(fn, v.bi, v.mem)
+			if err != nil {
+				return nil, err
+			}
+			if isptr {
+				r.Children = append(r.Children, *v)
+			} else {
+				r.Children = append(r.Children, *(v.pointerToVariable()))
+			}
+			return r, nil
+		}
+
+		// queue embedded fields for search
+		structVar := v.maybeDereference()
+		structVar.Name = v.Name
+		if structVar.Unreadable != nil {
+			return structVar, nil
+		}
+		switch t := structVar.RealType.(type) {
+		case *godwarf.StructType:
+			for _, field := range t.Field {
+				if field.Embedded {
+					embeddedVar, err := structVar.toField(field)
+					if err != nil {
+						return nil, err
+					}
+					queue = append(queue, embeddedVar)
 				}
 			}
 		}
 	}
+
 	return nil, nil
 }
 
