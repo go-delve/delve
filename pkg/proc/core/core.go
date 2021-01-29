@@ -95,7 +95,7 @@ func (r *splicedMemory) Add(reader proc.MemoryReader, off, length uint64) {
 func (r *splicedMemory) ReadMemory(buf []byte, addr uint64) (n int, err error) {
 	started := false
 	for _, entry := range r.readers {
-		if entry.offset+entry.length < addr {
+		if entry.offset+entry.length <= addr {
 			if !started {
 				continue
 			}
