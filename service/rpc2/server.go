@@ -864,3 +864,48 @@ func (s *RPCServer) StopRecording(arg StopRecordingIn, cb service.RPCCallback) {
 	}
 	cb.Return(out, nil)
 }
+
+type DumpStartIn struct {
+	Destination string
+}
+
+type DumpStartOut struct {
+	State api.DumpState
+}
+
+// DumpStart starts a core dump to arg.Destination.
+func (s *RPCServer) DumpStart(arg DumpStartIn, out *DumpStartOut) error {
+	err := s.debugger.DumpStart(arg.Destination)
+	if err != nil {
+		return err
+	}
+	out.State = *api.ConvertDumpState(s.debugger.DumpWait(0))
+	return nil
+}
+
+type DumpWaitIn struct {
+	Wait int
+}
+
+type DumpWaitOut struct {
+	State api.DumpState
+}
+
+// DumpWait waits for the core dump to finish or for arg.Wait milliseconds.
+// Wait == 0 means return immediately.
+// Returns the core dump status
+func (s *RPCServer) DumpWait(arg DumpWaitIn, out *DumpWaitOut) error {
+	out.State = *api.ConvertDumpState(s.debugger.DumpWait(time.Duration(arg.Wait) * time.Millisecond))
+	return nil
+}
+
+type DumpCancelIn struct {
+}
+
+type DumpCancelOut struct {
+}
+
+// DumpCancel cancels the core dump.
+func (s *RPCServer) DumpCancel(arg DumpCancelIn, out *DumpCancelOut) error {
+	return s.debugger.DumpCancel()
+}

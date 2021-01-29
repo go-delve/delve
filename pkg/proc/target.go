@@ -41,6 +41,9 @@ type Target struct {
 	// case only one will be reported.
 	StopReason StopReason
 
+	// CanDump is true if core dumping is supported.
+	CanDump bool
+
 	// currentThread is the thread that will be used by next/step/stepout and to evaluate variables if no goroutine is selected.
 	currentThread Thread
 
@@ -120,6 +123,7 @@ type NewTargetConfig struct {
 	DebugInfoDirs       []string   // Directories to search for split debug info
 	DisableAsyncPreempt bool       // Go 1.14 asynchronous preemption should be disabled
 	StopReason          StopReason // Initial stop reason
+	CanDump             bool       // Can create core dumps (must implement ProcessInternal.MemoryMap)
 }
 
 // DisableAsyncPreemptEnv returns a process environment (like os.Environ)
@@ -159,6 +163,7 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 		fncallForG:    make(map[int]*callInjection),
 		StopReason:    cfg.StopReason,
 		currentThread: currentThread,
+		CanDump:       cfg.CanDump,
 	}
 
 	g, _ := GetG(currentThread)

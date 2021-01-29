@@ -165,6 +165,13 @@ type Client interface {
 	// StopRecording stops a recording if one is in progress.
 	StopRecording() error
 
+	// CoreDumpStart starts creating a core dump to the specified file
+	CoreDumpStart(dest string) (api.DumpState, error)
+	// CoreDumpWait waits for the core dump to finish, or for the specified amount of milliseconds
+	CoreDumpWait(msec int) api.DumpState
+	// CoreDumpCancel cancels a core dump in progress
+	CoreDumpCancel() error
+
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error

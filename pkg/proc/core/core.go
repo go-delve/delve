@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/proc"
 )
+
+// ErrNoThreads core file did not contain any threads.
+var ErrNoThreads = errors.New("no threads found in core file")
 
 // A splicedMemory represents a memory space formed from multiple regions,
 // each of which may override previously regions. For example, in the following
@@ -189,7 +193,7 @@ var (
 
 type openFn func(string, string) (*process, proc.Thread, error)
 
-var openFns = []openFn{readLinuxCore, readAMD64Minidump}
+var openFns = []openFn{readLinuxOrPlatformIndependentCore, readAMD64Minidump}
 
 // ErrUnrecognizedFormat is returned when the core file is not recognized as
 // any of the supported formats.
@@ -212,11 +216,16 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, err
 	}
 
+	if currentThread == nil {
+		return nil, ErrNoThreads
+	}
+
 	return proc.NewTarget(p, currentThread, proc.NewTargetConfig{
 		Path:                exePath,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: false,
-		StopReason:          proc.StopAttached})
+		StopReason:          proc.StopAttached,
+		CanDump:             false})
 }
 
 // BinInfo will return the binary info.
@@ -446,4 +455,12 @@ func (p *process) ThreadList() []proc.Thread {
 func (p *process) FindThread(threadID int) (proc.Thread, bool) {
 	t, ok := p.Threads[threadID]
 	return t, ok
+}
+
+func (p *process) MemoryMap() ([]proc.MemoryMapEntry, error) {
+	return nil, proc.ErrMemoryMapNotSupported
+}
+
+func (p *process) DumpProcessNotes(notes []elfwriter.Note, threadDone func()) (threadsDone bool, out []elfwriter.Note, err error) {
+	return false, notes, nil
 }

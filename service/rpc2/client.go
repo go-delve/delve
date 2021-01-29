@@ -455,6 +455,23 @@ func (c *RPCClient) StopRecording() error {
 	return c.call("StopRecording", StopRecordingIn{}, &StopRecordingOut{})
 }
 
+func (c *RPCClient) CoreDumpStart(dest string) (api.DumpState, error) {
+	out := &DumpStartOut{}
+	err := c.call("DumpStart", DumpStartIn{Destination: dest}, out)
+	return out.State, err
+}
+
+func (c *RPCClient) CoreDumpWait(msec int) api.DumpState {
+	out := &DumpWaitOut{}
+	_ = c.call("DumpWait", DumpWaitIn{Wait: msec}, out)
+	return out.State
+}
+
+func (c *RPCClient) CoreDumpCancel() error {
+	out := &DumpCancelOut{}
+	return c.call("DumpCancel", DumpCancelIn{}, out)
+}
+
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }
