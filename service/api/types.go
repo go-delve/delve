@@ -24,6 +24,8 @@ type DebuggerState struct {
 	// sending a StopRecording request will halt the recording, every other
 	// request will block until the process has been recorded.
 	Recording bool
+	// Core dumping currently in progress.
+	CoreDumping bool
 	// CurrentThread is the currently selected debugger thread.
 	CurrentThread *Thread `json:"currentThread,omitempty"`
 	// SelectedGoroutine is the currently selected goroutine
@@ -543,4 +545,15 @@ type PackageBuildInfo struct {
 	ImportPath    string
 	DirectoryPath string
 	Files         []string
+}
+
+// DumpState describes the state of a core dump in progress
+type DumpState struct {
+	Dumping bool
+	AllDone bool
+
+	ThreadsDone, ThreadsTotal int
+	MemDone, MemTotal         uint64
+
+	Err string
 }

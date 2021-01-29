@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/linutil"
@@ -84,13 +85,14 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) p
 	return currentThread
 }
 
-// readLinuxCore reads a core file from corePath corresponding to the executable at
-// exePath. For details on the Linux ELF core format, see:
+// readLinuxOrPlatformIndependentCore reads a core file from corePath
+// corresponding to the executable at exePath. For details on the Linux ELF
+// core format, see:
 // http://www.gabriel.urdhr.fr/2015/05/29/core-file/,
 // http://uhlo.blogspot.fr/2012/05/brief-look-into-core-dumps.html,
 // elf_core_dump in http://lxr.free-electrons.com/source/fs/binfmt_elf.c,
 // and, if absolutely desperate, readelf.c from the binutils source.
-func readLinuxCore(corePath, exePath string) (*process, proc.Thread, error) {
+func readLinuxOrPlatformIndependentCore(corePath, exePath string) (*process, proc.Thread, error) {
 	coreFile, err := elf.Open(corePath)
 	if err != nil {
 		if _, isfmterr := err.(*elf.FormatError); isfmterr && (strings.Contains(err.Error(), elfErrorBadMagicNumber) || strings.Contains(err.Error(), " at offset 0x0: too short")) {
@@ -99,38 +101,54 @@ func readLinuxCore(corePath, exePath string) (*process, proc.Thread, error) {
 		}
 		return nil, nil, err
 	}
+
+	if coreFile.Type != elf.ET_CORE {
+		return nil, nil, fmt.Errorf("%v is not a core file", coreFile)
+	}
+
+	machineType := coreFile.Machine
+	notes, platformIndependentDelveCore, err := readNotes(coreFile, machineType)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	exe, err := os.Open(exePath)
 	if err != nil {
 		return nil, nil, err
 	}
 	exeELF, err := elf.NewFile(exe)
 	if err != nil {
-		return nil, nil, err
+		if !platformIndependentDelveCore {
+			return nil, nil, err
+		}
+	} else {
+		if exeELF.Machine != machineType {
+			return nil, nil, fmt.Errorf("architecture mismatch between core file (%#x) and executable file (%#x)", machineType, exeELF.Machine)
+		}
+		if exeELF.Type != elf.ET_EXEC && exeELF.Type != elf.ET_DYN {
+			return nil, nil, fmt.Errorf("%v is not an exe file", exeELF)
+		}
 	}
 
-	if coreFile.Type != elf.ET_CORE {
-		return nil, nil, fmt.Errorf("%v is not a core file", coreFile)
-	}
-	if exeELF.Type != elf.ET_EXEC && exeELF.Type != elf.ET_DYN {
-		return nil, nil, fmt.Errorf("%v is not an exe file", exeELF)
-	}
-
-	machineType := exeELF.Machine
-	notes, err := readNotes(coreFile, machineType)
-	if err != nil {
-		return nil, nil, err
-	}
 	memory := buildMemory(coreFile, exeELF, exe, notes)
 
 	// TODO support 386
 	var bi *proc.BinaryInfo
-	switch machineType {
-	case _EM_X86_64:
-		bi = proc.NewBinaryInfo("linux", "amd64")
-	case _EM_AARCH64:
-		bi = proc.NewBinaryInfo("linux", "arm64")
-	default:
-		return nil, nil, fmt.Errorf("unsupported machine type")
+	if platformIndependentDelveCore {
+		goos, goarch, err := platformFromNotes(notes)
+		if err != nil {
+			return nil, nil, err
+		}
+		bi = proc.NewBinaryInfo(goos, goarch)
+	} else {
+		switch machineType {
+		case _EM_X86_64:
+			bi = proc.NewBinaryInfo("linux", "amd64")
+		case _EM_AARCH64:
+			bi = proc.NewBinaryInfo("linux", "arm64")
+		default:
+			return nil, nil, fmt.Errorf("unsupported machine type")
+		}
 	}
 
 	entryPoint := findEntryPoint(notes, bi.Arch.PtrSize())
@@ -141,6 +159,11 @@ func readLinuxCore(corePath, exePath string) (*process, proc.Thread, error) {
 		entryPoint:  entryPoint,
 		bi:          bi,
 		breakpoints: proc.NewBreakpointMap(),
+	}
+
+	if platformIndependentDelveCore {
+		currentThread, err := threadsFromDelveNotes(p, notes)
+		return p, currentThread, err
 	}
 
 	currentThread := linuxThreadsFromNotes(p, notes, machineType)
@@ -193,7 +216,7 @@ type note struct {
 }
 
 // readNotes reads all the notes from the notes prog in core.
-func readNotes(core *elf.File, machineType elf.Machine) ([]*note, error) {
+func readNotes(core *elf.File, machineType elf.Machine) ([]*note, bool, error) {
 	var notesProg *elf.Prog
 	for _, prog := range core.Progs {
 		if prog.Type == elf.PT_NOTE {
@@ -203,6 +226,9 @@ func readNotes(core *elf.File, machineType elf.Machine) ([]*note, error) {
 	}
 
 	r := notesProg.Open()
+	hasDelveThread := false
+	hasDelveHeader := false
+	hasElfPrStatus := false
 	notes := []*note{}
 	for {
 		note, err := readNote(r, machineType)
@@ -210,12 +236,20 @@ func readNotes(core *elf.File, machineType elf.Machine) ([]*note, error) {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, false, err
+		}
+		switch note.Type {
+		case elfwriter.DelveHeaderNoteType:
+			hasDelveHeader = true
+		case elfwriter.DelveThreadNodeType:
+			hasDelveThread = true
+		case elf.NT_PRSTATUS:
+			hasElfPrStatus = true
 		}
 		notes = append(notes, note)
 	}
 
-	return notes, nil
+	return notes, hasDelveThread && hasDelveHeader && !hasElfPrStatus, nil
 }
 
 // readNote reads a single note from r, decoding the descriptor if possible.
@@ -286,7 +320,7 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 			}
 			note.Desc = &fpregs
 		}
-	case _NT_AUXV:
+	case _NT_AUXV, elfwriter.DelveHeaderNoteType, elfwriter.DelveThreadNodeType:
 		note.Desc = desc
 	case _NT_FPREGSET:
 		if machineType == _EM_AARCH64 {
@@ -340,6 +374,9 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*note) proc.Me
 	// Load memory segments from exe and then from the core file,
 	// allowing the corefile to overwrite previously loaded segments
 	for _, elfFile := range []*elf.File{exeELF, core} {
+		if elfFile == nil {
+			continue
+		}
 		for _, prog := range elfFile.Progs {
 			if prog.Type == elf.PT_LOAD {
 				if prog.Filesz == 0 {

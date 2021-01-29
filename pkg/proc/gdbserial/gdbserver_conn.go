@@ -44,6 +44,7 @@ type gdbConn struct {
 	maxTransmitAttempts   int  // maximum number of transmit or receive attempts when bad checksums are read
 	threadSuffixSupported bool // thread suffix supported by stub
 	isDebugserver         bool // true if the stub is debugserver
+	xcmdok                bool // x command can be used to transfer memory
 
 	log *logrus.Entry
 }
@@ -161,6 +162,10 @@ func (conn *gdbConn) handshake() error {
 		if gdberr.code != "" {
 			return err
 		}
+	}
+
+	if resp, err := conn.exec([]byte("$x0,0"), "init"); err == nil && string(resp) == "OK" {
+		conn.xcmdok = true
 	}
 
 	return nil
@@ -871,8 +876,15 @@ func (conn *gdbConn) appendThreadSelector(threadID string) {
 	fmt.Fprintf(&conn.outbuf, ";thread:%s;", threadID)
 }
 
-// executes 'm' (read memory) command
 func (conn *gdbConn) readMemory(data []byte, addr uint64) error {
+	if conn.xcmdok && len(data) > conn.packetSize {
+		return conn.readMemoryBinary(data, addr)
+	}
+	return conn.readMemoryHex(data, addr)
+}
+
+// executes 'm' (read memory) command
+func (conn *gdbConn) readMemoryHex(data []byte, addr uint64) error {
 	size := len(data)
 	data = data[:0]
 
@@ -896,6 +908,29 @@ func (conn *gdbConn) readMemory(data []byte, addr uint64) error {
 			n, _ := strconv.ParseUint(string(resp[i:i+2]), 16, 8)
 			data = append(data, uint8(n))
 		}
+	}
+	return nil
+}
+
+// executes 'x' (binary read memory) command
+func (conn *gdbConn) readMemoryBinary(data []byte, addr uint64) error {
+	size := len(data)
+	data = data[:0]
+
+	for len(data) < size {
+		conn.outbuf.Reset()
+
+		sz := size - len(data)
+
+		fmt.Fprintf(&conn.outbuf, "$x%x,%x", addr+uint64(len(data)), sz)
+		if err := conn.send(conn.outbuf.Bytes()); err != nil {
+			return err
+		}
+		resp, err := conn.recv(conn.outbuf.Bytes(), "binary memory read", true)
+		if err != nil {
+			return err
+		}
+		data = append(data, resp...)
 	}
 	return nil
 }
@@ -1014,6 +1049,87 @@ func (conn *gdbConn) getLoadedDynamicLibraries() ([]imageDescription, error) {
 	var images imageList
 	err = json.Unmarshal(resp, &images)
 	return images.Images, err
+}
+
+type memoryRegionInfo struct {
+	start       uint64
+	size        uint64
+	permissions string
+	name        string
+}
+
+func decodeHexString(in []byte) (string, bool) {
+	out := make([]byte, 0, len(in)/2)
+	for i := 0; i < len(in); i += 2 {
+		v, err := strconv.ParseUint(string(in[i:i+2]), 16, 8)
+		if err != nil {
+			return "", false
+		}
+		out = append(out, byte(v))
+	}
+	return string(out), true
+}
+
+func (conn *gdbConn) memoryRegionInfo(addr uint64) (*memoryRegionInfo, error) {
+	conn.outbuf.Reset()
+	fmt.Fprintf(&conn.outbuf, "$qMemoryRegionInfo:%x", addr)
+	resp, err := conn.exec(conn.outbuf.Bytes(), "qMemoryRegionInfo")
+	if err != nil {
+		return nil, err
+	}
+
+	mri := &memoryRegionInfo{}
+
+	buf := resp
+	for len(buf) > 0 {
+		colon := bytes.Index(buf, []byte{':'})
+		if colon < 0 {
+			break
+		}
+		key := buf[:colon]
+		buf = buf[colon+1:]
+
+		semicolon := bytes.Index(buf, []byte{';'})
+		var value []byte
+		if semicolon < 0 {
+			value = buf
+			buf = nil
+		} else {
+			value = buf[:semicolon]
+			buf = buf[semicolon+1:]
+		}
+
+		switch string(key) {
+		case "start":
+			start, err := strconv.ParseUint(string(value), 16, 64)
+			if err != nil {
+				return nil, fmt.Errorf("malformed qMemoryRegionInfo response packet (start): %v in %s", err, string(resp))
+			}
+			mri.start = start
+		case "size":
+			size, err := strconv.ParseUint(string(value), 16, 64)
+			if err != nil {
+				return nil, fmt.Errorf("malformed qMemoryRegionInfo response packet (size): %v in %s", err, string(resp))
+			}
+			mri.size = size
+		case "permissions":
+			mri.permissions = string(value)
+		case "name":
+			namestr, ok := decodeHexString(value)
+			if !ok {
+				return nil, fmt.Errorf("malformed qMemoryRegionInfo response packet (name): %s", string(resp))
+			}
+			mri.name = namestr
+		case "error":
+			errstr, ok := decodeHexString(value)
+			if !ok {
+				return nil, fmt.Errorf("malformed qMemoryRegionInfo response packet (error): %s", string(resp))
+			}
+			return nil, fmt.Errorf("qMemoryRegionInfo error: %s", errstr)
+		}
+	}
+
+	return mri, nil
 }
 
 // exec executes a message to the stub and reads a response.

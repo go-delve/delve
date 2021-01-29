@@ -149,6 +149,14 @@ func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 			}
 			continue
 		}
+		if err == nil && state.CoreDumping {
+			fmt.Printf("received SIGINT, stopping dump\n")
+			err := t.client.CoreDumpCancel()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+			}
+			continue
+		}
 		if multiClient {
 			answer, err := t.line.Prompt("Would you like to [p]ause the target (returning to Delve's prompt) or [q]uit this client (leaving the target running) [p/q]? ")
 			if err != nil {

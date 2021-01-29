@@ -23,12 +23,15 @@ import (
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/core"
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/go-delve/delve/pkg/proc/native"
 	protest "github.com/go-delve/delve/pkg/proc/test"
+	"github.com/go-delve/delve/service/api"
 )
 
 var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
@@ -1302,9 +1305,23 @@ func TestFrameEvaluation(t *testing.T) {
 			found[vval] = true
 		}
 
+		firsterr := false
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
+			// We try to make sure that all goroutines are stopped at a sensible place
+			// before reading their stacktrace, but due to the nature of the test
+			// program there is no guarantee that we always find them in a reasonable
+			// state.
+			// Asynchronous preemption in Go 1.14 exacerbates this problem, to avoid
+			// unnecessary flakiness allow a single goroutine to be in a bad state.
+			firsterr = true
+		}
 		for i := range found {
 			if !found[i] {
-				t.Fatalf("Goroutine %d not found\n", i)
+				if firsterr {
+					firsterr = false
+				} else {
+					t.Fatalf("Goroutine %d not found\n", i)
+				}
 			}
 		}
 
@@ -4992,4 +5009,164 @@ func TestIssue2319(t *testing.T) {
 	// Load up the binary and make sure there are no crashes.
 	bi := proc.NewBinaryInfo("linux", "amd64")
 	assertNoError(bi.LoadBinaryInfo(fixture.Path, 0, nil), t, "LoadBinaryInfo")
+}
+
+func TestDump(t *testing.T) {
+	if runtime.GOOS == "freebsd" || (runtime.GOOS == "darwin" && testBackend == "native") {
+		t.Skip("not supported")
+	}
+
+	convertRegisters := func(arch *proc.Arch, dregs op.DwarfRegisters) string {
+		dregs.Reg(^uint64(0))
+		buf := new(bytes.Buffer)
+		for i := 0; i < dregs.CurrentSize(); i++ {
+			reg := dregs.Reg(uint64(i))
+			if reg == nil {
+				continue
+			}
+			name, _, repr := arch.DwarfRegisterToString(i, reg)
+			fmt.Fprintf(buf, " %s=%s", name, repr)
+		}
+		return buf.String()
+	}
+
+	convertThread := func(thread proc.Thread) string {
+		regs, err := thread.Registers()
+		assertNoError(err, t, fmt.Sprintf("Thread registers %d", thread.ThreadID()))
+		arch := thread.BinInfo().Arch
+		dregs := arch.RegistersToDwarfRegisters(0, regs)
+		return fmt.Sprintf("%08d %s", thread.ThreadID(), convertRegisters(arch, dregs))
+	}
+
+	convertThreads := func(threads []proc.Thread) []string {
+		r := make([]string, len(threads))
+		for i := range threads {
+			r[i] = convertThread(threads[i])
+		}
+		sort.Strings(r)
+		return r
+	}
+
+	convertGoroutine := func(g *proc.G) string {
+		threadID := 0
+		if g.Thread != nil {
+			threadID = g.Thread.ThreadID()
+		}
+		return fmt.Sprintf("%d pc=%#x sp=%#x bp=%#x lr=%#x gopc=%#x startpc=%#x systemstack=%v thread=%d", g.ID, g.PC, g.SP, g.BP, g.LR, g.GoPC, g.StartPC, g.SystemStack, threadID)
+	}
+
+	convertFrame := func(arch *proc.Arch, frame *proc.Stackframe) string {
+		return fmt.Sprintf("currentPC=%#x callPC=%#x frameOff=%#x\n", frame.Current.PC, frame.Call.PC, frame.FrameOffset())
+	}
+
+	makeDump := func(p *proc.Target, corePath, exePath string, flags proc.DumpFlags) *proc.Target {
+		fh, err := os.Create(corePath)
+		assertNoError(err, t, "Create()")
+		var state proc.DumpState
+		p.Dump(fh, flags, &state)
+		assertNoError(state.Err, t, "Dump()")
+		if state.ThreadsDone != state.ThreadsTotal || state.MemDone != state.MemTotal || !state.AllDone || state.Dumping || state.Canceled {
+			t.Fatalf("bad DumpState %#v", &state)
+		}
+		c, err := core.OpenCore(corePath, exePath, nil)
+		assertNoError(err, t, "OpenCore()")
+		return c
+	}
+
+	testDump := func(p, c *proc.Target) {
+		if p.Pid() != c.Pid() {
+			t.Errorf("Pid mismatch %x %x", p.Pid(), c.Pid())
+		}
+
+		threads := convertThreads(p.ThreadList())
+		cthreads := convertThreads(c.ThreadList())
+
+		if len(threads) != len(cthreads) {
+			t.Errorf("Thread number mismatch %d %d", len(threads), len(cthreads))
+		}
+
+		for i := range threads {
+			if threads[i] != cthreads[i] {
+				t.Errorf("Thread mismatch\nlive:\t%s\ncore:\t%s", threads[i], cthreads[i])
+			}
+		}
+
+		gos, _, err := proc.GoroutinesInfo(p, 0, 0)
+		assertNoError(err, t, "GoroutinesInfo() - live process")
+		cgos, _, err := proc.GoroutinesInfo(c, 0, 0)
+		assertNoError(err, t, "GoroutinesInfo() - core dump")
+
+		if len(gos) != len(cgos) {
+			t.Errorf("Goroutine number mismatch %d %d", len(gos), len(cgos))
+		}
+
+		var scope, cscope *proc.EvalScope
+
+		for i := range gos {
+			if convertGoroutine(gos[i]) != convertGoroutine(cgos[i]) {
+				t.Errorf("Goroutine mismatch\nlive:\t%s\ncore:\t%s", convertGoroutine(gos[i]), convertGoroutine(cgos[i]))
+			}
+
+			frames, err := gos[i].Stacktrace(20, 0)
+			assertNoError(err, t, fmt.Sprintf("Stacktrace for goroutine %d - live process", gos[i].ID))
+			cframes, err := cgos[i].Stacktrace(20, 0)
+			assertNoError(err, t, fmt.Sprintf("Stacktrace for goroutine %d - core dump", gos[i].ID))
+
+			if len(frames) != len(cframes) {
+				t.Errorf("Frame number mismatch for goroutine %d: %d %d", gos[i].ID, len(frames), len(cframes))
+			}
+
+			for j := range frames {
+				if convertFrame(p.BinInfo().Arch, &frames[j]) != convertFrame(p.BinInfo().Arch, &cframes[j]) {
+					t.Errorf("Frame mismatch %d.%d\nlive:\t%s\ncore:\t%s", gos[i].ID, j, convertFrame(p.BinInfo().Arch, &frames[j]), convertFrame(p.BinInfo().Arch, &cframes[j]))
+				}
+				if frames[j].Call.Fn != nil && frames[j].Call.Fn.Name == "main.main" {
+					scope = proc.FrameToScope(p.BinInfo(), p.Memory(), gos[i], frames[j:]...)
+					cscope = proc.FrameToScope(c.BinInfo(), c.Memory(), cgos[i], cframes[j:]...)
+				}
+			}
+		}
+
+		vars, err := scope.LocalVariables(normalLoadConfig)
+		assertNoError(err, t, "LocalVariables - live process")
+		cvars, err := cscope.LocalVariables(normalLoadConfig)
+		assertNoError(err, t, "LocalVariables - core dump")
+
+		if len(vars) != len(cvars) {
+			t.Errorf("Variable number mismatch %d %d", len(vars), len(cvars))
+		}
+
+		for i := range vars {
+			varstr := vars[i].Name + "=" + api.ConvertVar(vars[i]).SinglelineString()
+			cvarstr := cvars[i].Name + "=" + api.ConvertVar(cvars[i]).SinglelineString()
+			if strings.Contains(varstr, "(unreadable") {
+				// errors reading from unmapped memory differ between live process and core
+				continue
+			}
+			if varstr != cvarstr {
+				t.Errorf("Variable mismatch %s %s", varstr, cvarstr)
+			}
+		}
+	}
+
+	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+		corePath := filepath.Join(fixture.BuildDir, "coredump")
+		corePathPlatIndep := filepath.Join(fixture.BuildDir, "coredump-indep")
+
+		t.Logf("testing normal dump")
+
+		c := makeDump(p, corePath, fixture.Path, 0)
+		defer os.Remove(corePath)
+		testDump(p, c)
+
+		if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+			// No reason to do this test on other goos/goarch because they use the
+			// platform-independent format anyway.
+			t.Logf("testing platform-independent dump")
+			c2 := makeDump(p, corePathPlatIndep, fixture.Path, proc.DumpPlatformIndependent)
+			defer os.Remove(corePathPlatIndep)
+			testDump(p, c2)
+		}
+	})
 }

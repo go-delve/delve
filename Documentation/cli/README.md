@@ -80,6 +80,7 @@ Command | Description
 [clear-checkpoint](#clear-checkpoint) | Deletes checkpoint.
 [config](#config) | Changes configuration parameters.
 [disassemble](#disassemble) | Disassembler.
+[dump](#dump) | Creates a core dump from the current process state
 [edit](#edit) | Open where you are in $DELVE_EDITOR or $EDITOR
 [exit](#exit) | Exit the debugger.
 [funcs](#funcs) | Print list of functions.
@@ -245,6 +246,14 @@ Move the current frame down.
 	down [<m>] <command>
 
 Move the current frame down by <m>. The second form runs the command on the given frame.
+
+
+## dump
+Creates a core dump from the current process state
+
+	dump <output file>
+
+The core dump is always written in ELF, even on systems (windows, macOS) where this is not customary. For environments other than linux/amd64 threads and registers are dumped in a format that only Delve can read back.
 
 
 ## edit

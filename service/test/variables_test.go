@@ -1548,6 +1548,8 @@ func TestPluginVariables(t *testing.T) {
 }
 
 func TestCgoEval(t *testing.T) {
+	protest.MustHaveCgo(t)
+
 	testcases := []varTest{
 		{"s", true, `"a string"`, `"a string"`, "*char", nil},
 		{"longstring", true, `"averylongstring0123456789a0123456789b0123456789c0123456789d01234...+1 more"`, `"averylongstring0123456789a0123456789b0123456789c0123456789d01234...+1 more"`, "*const char", nil},

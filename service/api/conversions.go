@@ -421,3 +421,20 @@ func ConvertRegisters(in *op.DwarfRegisters, dwarfRegisterToString func(int, *op
 func ConvertImage(image *proc.Image) Image {
 	return Image{Path: image.Path, Address: image.StaticBase}
 }
+
+func ConvertDumpState(dumpState *proc.DumpState) *DumpState {
+	dumpState.Mutex.Lock()
+	defer dumpState.Mutex.Unlock()
+	r := &DumpState{
+		Dumping:      dumpState.Dumping,
+		AllDone:      dumpState.AllDone,
+		ThreadsDone:  dumpState.ThreadsDone,
+		ThreadsTotal: dumpState.ThreadsTotal,
+		MemDone:      dumpState.MemDone,
+		MemTotal:     dumpState.MemTotal,
+	}
+	if dumpState.Err != nil {
+		r.Err = dumpState.Err.Error()
+	}
+	return r
+}

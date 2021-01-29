@@ -37,6 +37,12 @@ var (
 	// ErrNotRecording is returned when StopRecording is called while the
 	// debugger is not recording the target.
 	ErrNotRecording = errors.New("debugger is not recording")
+
+	// ErrCoreDumpInProgress is returned when a core dump is already in progress.
+	ErrCoreDumpInProgress = errors.New("core dump in progress")
+
+	// ErrCoreDumpNotSupported is returned when core dumping is not supported
+	ErrCoreDumpNotSupported = errors.New("core dumping not supported")
 )
 
 // Debugger service.
@@ -62,6 +68,8 @@ type Debugger struct {
 
 	stopRecording func() error
 	recordMutex   sync.Mutex
+
+	dumpState proc.DumpState
 }
 
 type ExecuteKind int
@@ -531,6 +539,12 @@ func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
 	if d.isRecording() && nowait {
 		return &api.DebuggerState{Recording: true}, nil
 	}
+
+	d.dumpState.Mutex.Lock()
+	if d.dumpState.Dumping && nowait {
+		return &api.DebuggerState{CoreDumping: true}, nil
+	}
+	d.dumpState.Mutex.Unlock()
 
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
@@ -1651,6 +1665,77 @@ func (d *Debugger) LockTarget() {
 // UnlockTarget releases the target mutex.
 func (d *Debugger) UnlockTarget() {
 	d.targetMutex.Unlock()
+}
+
+// DumpStart starts a core dump to dest.
+func (d *Debugger) DumpStart(dest string) error {
+	d.targetMutex.Lock()
+	// targetMutex will only be unlocked when the dump is done
+
+	if !d.target.CanDump {
+		d.targetMutex.Unlock()
+		return ErrCoreDumpNotSupported
+	}
+
+	d.dumpState.Mutex.Lock()
+	defer d.dumpState.Mutex.Unlock()
+
+	if d.dumpState.Dumping {
+		d.targetMutex.Unlock()
+		return ErrCoreDumpInProgress
+	}
+
+	fh, err := os.Create(dest)
+	if err != nil {
+		d.targetMutex.Unlock()
+		return err
+	}
+
+	d.dumpState.Dumping = true
+	d.dumpState.AllDone = false
+	d.dumpState.Canceled = false
+	d.dumpState.DoneChan = make(chan struct{})
+	d.dumpState.ThreadsDone = 0
+	d.dumpState.ThreadsTotal = 0
+	d.dumpState.MemDone = 0
+	d.dumpState.MemTotal = 0
+	d.dumpState.Err = nil
+	go func() {
+		defer d.targetMutex.Unlock()
+		d.target.Dump(fh, 0, &d.dumpState)
+	}()
+
+	return nil
+}
+
+// DumpWait waits for the dump to finish, or for the duration of wait.
+// Returns the state of the dump.
+// If wait == 0 returns immediately.
+func (d *Debugger) DumpWait(wait time.Duration) *proc.DumpState {
+	d.dumpState.Mutex.Lock()
+	if !d.dumpState.Dumping {
+		d.dumpState.Mutex.Unlock()
+		return &d.dumpState
+	}
+	d.dumpState.Mutex.Unlock()
+
+	if wait > 0 {
+		alarm := time.After(wait)
+		select {
+		case <-alarm:
+		case <-d.dumpState.DoneChan:
+		}
+	}
+
+	return &d.dumpState
+}
+
+// DumpCancel canels a dump in progress
+func (d *Debugger) DumpCancel() error {
+	d.dumpState.Mutex.Lock()
+	d.dumpState.Canceled = true
+	d.dumpState.Mutex.Unlock()
+	return nil
 }
 
 func go11DecodeErrorCheck(err error) error {

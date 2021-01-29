@@ -410,6 +410,12 @@ For example:
 The '-a' option adds an expression to the list of expression printed every time the program stops. The '-d' option removes the specified expression from the list.
 
 If display is called without arguments it will print the value of all expression in the list.`},
+
+		{aliases: []string{"dump"}, cmdFn: dump, helpMsg: `Creates a core dump from the current process state
+
+	dump <output file>
+
+The core dump is always written in ELF, even on systems (windows, macOS) where this is not customary. For environments other than linux/amd64 threads and registers are dumped in a format that only Delve can read back.`},
 	}
 
 	addrecorded := client == nil
@@ -2629,6 +2635,33 @@ func display(t *Term, ctx callContext, args string) error {
 
 	default:
 		return fmt.Errorf("wrong arguments")
+	}
+	return nil
+}
+
+func dump(t *Term, ctx callContext, args string) error {
+	dumpState, err := t.client.CoreDumpStart(args)
+	if err != nil {
+		return err
+	}
+	for {
+		if dumpState.ThreadsDone != dumpState.ThreadsTotal {
+			fmt.Printf("\rDumping threads %d / %d...", dumpState.ThreadsDone, dumpState.ThreadsTotal)
+		} else {
+			fmt.Printf("\rDumping memory %d / %d...", dumpState.MemDone, dumpState.MemTotal)
+		}
+		if !dumpState.Dumping {
+			break
+		}
+		dumpState = t.client.CoreDumpWait(1000)
+	}
+	fmt.Printf("\n")
+	if dumpState.Err != "" {
+		fmt.Printf("error dumping: %s\n", dumpState.Err)
+	} else if !dumpState.AllDone {
+		fmt.Printf("canceled\n")
+	} else if dumpState.MemDone != dumpState.MemTotal {
+		fmt.Printf("Core dump could be incomplete\n")
 	}
 	return nil
 }

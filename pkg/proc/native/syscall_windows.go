@@ -70,6 +70,17 @@ type _EXCEPTION_RECORD struct {
 	ExceptionInformation [_EXCEPTION_MAXIMUM_PARAMETERS]uintptr
 }
 
+type _MEMORY_BASIC_INFORMATION struct {
+	BaseAddress       uintptr
+	AllocationBase    uintptr
+	AllocationProtect uint32
+	PartitionId       uint16
+	RegionSize        uint64
+	State             uint32
+	Protect           uint32
+	Type              uint32
+}
+
 const (
 	_ThreadBasicInformation = 0
 
@@ -93,6 +104,20 @@ const (
 	_EXCEPTION_SINGLE_STEP = 0x80000004
 
 	_EXCEPTION_MAXIMUM_PARAMETERS = 15
+
+	_MEM_FREE    = 0x10000
+	_MEM_RESERVE = 0x2000
+
+	_PAGE_EXECUTE           = 0x10
+	_PAGE_EXECUTE_READ      = 0x20
+	_PAGE_EXECUTE_READWRITE = 0x40
+	_PAGE_EXECUTE_WRITECOPY = 0x80
+	_PAGE_NOACCESS          = 0x01
+	_PAGE_READONLY          = 0x02
+	_PAGE_READWRITE         = 0x04
+	_PAGE_WRITECOPY         = 0x08
+
+	_PAGE_GUARD = 0x100
 )
 
 func _NT_SUCCESS(x _NTSTATUS) bool {
@@ -117,3 +142,5 @@ type _CONTEXT = winutil.CONTEXT
 //sys	_DebugActiveProcess(processid uint32) (err error) = kernel32.DebugActiveProcess
 //sys	_DebugActiveProcessStop(processid uint32) (err error) = kernel32.DebugActiveProcessStop
 //sys	_QueryFullProcessImageName(process syscall.Handle, flags uint32, exename *uint16, size *uint32) (err error) = kernel32.QueryFullProcessImageNameW
+//sys   _VirtualQueryEx(process syscall.Handle, addr uintptr, buffer *_MEMORY_BASIC_INFORMATION, length uintptr) (lengthOut uintptr) = kernel32.VirtualQueryEx
+//sys   _IsWow64Process(process syscall.Handle, wow64process *uint32) (ok uint32) = kernel32.IsWow64Process

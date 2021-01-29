@@ -25,13 +25,13 @@ type nativeProcess struct {
 	// Thread used to read and write memory
 	memthread *nativeThread
 
-	os                  *osProcessDetails
-	firstStart          bool
-	resumeChan          chan<- struct{}
-	ptraceChan          chan func()
-	ptraceDoneChan      chan interface{}
-	childProcess        bool // this process was launched, not attached to
-	stopMu              sync.Mutex // protects manualStopRequested
+	os             *osProcessDetails
+	firstStart     bool
+	resumeChan     chan<- struct{}
+	ptraceChan     chan func()
+	ptraceDoneChan chan interface{}
+	childProcess   bool       // this process was launched, not attached to
+	stopMu         sync.Mutex // protects manualStopRequested
 	// manualStopRequested is set if all the threads in the process were
 	// signalled to stop as a result of a Halt API call. Used to disambiguate
 	// why a thread is found to have stopped.
@@ -285,7 +285,8 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd",
-		StopReason:          stopReason})
+		StopReason:          stopReason,
+		CanDump:             runtime.GOOS == "linux"})
 }
 
 func (dbp *nativeProcess) handlePtraceFuncs() {
