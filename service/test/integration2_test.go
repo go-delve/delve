@@ -923,7 +923,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 		assertNoError(err, t, "GoroutinesInfo()")
 		found := make([]bool, 10)
 		for _, g := range gs {
-			frames, err := c.Stacktrace(g.ID, 10, 0, &normalLoadConfig)
+			frames, err := c.Stacktrace(g.ID, 40, 0, &normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
 			t.Logf("goroutine %d", g.ID)
 			for i, frame := range frames {
