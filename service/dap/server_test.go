@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -146,7 +147,6 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
 		}
-
 		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
@@ -2040,6 +2040,10 @@ func runDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdReques
 }
 
 func TestLaunchDebugRequest(t *testing.T) {
+	rescueStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
@@ -2049,6 +2053,17 @@ func TestLaunchDebugRequest(t *testing.T) {
 				"mode": "debug", "program": fixture.Source})
 		}, fixture.Source)
 	})
+	// Wait for the test to finish to capture all stderr
+	time.Sleep(100 * time.Millisecond)
+
+	w.Close()
+	err, _ := ioutil.ReadAll(r)
+	os.Stderr = rescueStderr
+
+	exitSuccess, _ := regexp.Compile(`[0-9T\-:]+ error layer=dap Process [0-9]+ has exited with status 0\n$`)
+	if !exitSuccess.Match(err) {
+		t.Fatalf("Test server stderr is not empty:\n%s", string(err))
+	}
 }
 
 func TestLaunchTestRequest(t *testing.T) {

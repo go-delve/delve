@@ -171,6 +171,7 @@ func (s *Server) signalDisconnect() {
 	}
 	if s.binaryToRemove != "" {
 		gobuild.Remove(s.binaryToRemove)
+		s.binaryToRemove = ""
 	}
 }
 
