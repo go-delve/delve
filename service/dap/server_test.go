@@ -147,6 +147,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
 		}
+
 		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
