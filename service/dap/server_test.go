@@ -1255,6 +1255,27 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						m1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m1, "m1", 64) // TODO(polina): should be 66.
 					}
+
+					ref = expectVarExact(t, locals, -1, "c1", "c1", "<main.cstruct>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						c1 := client.ExpectVariablesResponse(t)
+						expectChildren(t, c1, "c1", 2)
+						ref = expectVarExact(t, c1, 1, "sa", "c1.sa", "<[]*main.astruct> (length: 3, cap: 3)", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							c1sa := client.ExpectVariablesResponse(t)
+							expectChildren(t, c1sa, "c1.sa", 3)
+							ref = expectVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `<\*main\.astruct>\(0x[0-9a-f]+\)`, hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								c1sa0 := client.ExpectVariablesResponse(t)
+								expectChildren(t, c1sa0, "c1.sa[0]", 1)
+								// TODO(polina): there should a child here once we support auto loading
+								expectVarExact(t, c1sa0, 0, "", "(*c1.sa[0])", "<main.astruct>", noChildren)
+							}
+						}
+					}
 				},
 				disconnect: true,
 			}})
