@@ -2061,7 +2061,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 	err, _ := ioutil.ReadAll(r)
 	os.Stderr = rescueStderr
 
-	exitSuccess, _ := regexp.Compile(`[0-9T\-:]+ error layer=dap Process [0-9]+ has exited with status 0\n$`)
+	exitSuccess, _ := regexp.Compile(`error layer=dap Process [0-9]+ has exited with status 0\n$`)
 	if !exitSuccess.Match(err) {
 		t.Fatalf("Test server stderr is not empty:\n%s", string(err))
 	}
