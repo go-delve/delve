@@ -24,7 +24,7 @@ The following editor plugins for delve are available:
 * [vim-godebug](https://github.com/jodosha/vim-godebug) (only Neovim)
 
 **VisualStudio Code**
-* [Go for Visual Studio Code](https://github.com/Microsoft/vscode-go)
+* [Go for Visual Studio Code](https://github.com/golang/vscode-go)
 
 **Sublime**
 * [Go Debugger for Sublime](https://github.com/dishmaev/GoDebug)
