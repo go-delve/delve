@@ -41,6 +41,8 @@ type nativeProcess struct {
 	// this process.
 	ctty *os.File
 
+	iscgo bool
+
 	exited, detached bool
 }
 
@@ -281,12 +283,19 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 	if !dbp.childProcess {
 		stopReason = proc.StopAttached
 	}
-	return proc.NewTarget(dbp, dbp.memthread, proc.NewTargetConfig{
+	tgt, err := proc.NewTarget(dbp, dbp.memthread, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd",
 		StopReason:          stopReason,
 		CanDump:             runtime.GOOS == "linux"})
+	if err != nil {
+		return nil, err
+	}
+	if dbp.bi.Arch.Name == "arm64" {
+		dbp.iscgo = tgt.IsCgo()
+	}
+	return tgt, nil
 }
 
 func (dbp *nativeProcess) handlePtraceFuncs() {

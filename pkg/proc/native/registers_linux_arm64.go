@@ -15,11 +15,21 @@ import (
 const (
 	_AARCH64_GREGS_SIZE  = 34 * 8
 	_AARCH64_FPREGS_SIZE = 32*16 + 8
+	_NT_ARM_TLS          = 0x401 // used in PTRACE_GETREGSET on ARM64 to retrieve the value of TPIDR_EL0, see source/include/uapi/linux/elf.h and source/arch/arm64/kernel/ptrace.c
 )
 
 func ptraceGetGRegs(pid int, regs *linutil.ARM64PtraceRegs) (err error) {
 	iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(regs)), Len: _AARCH64_GREGS_SIZE}
 	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETREGSET, uintptr(pid), uintptr(elf.NT_PRSTATUS), uintptr(unsafe.Pointer(&iov)), 0, 0)
+	if err == syscall.Errno(0) {
+		err = nil
+	}
+	return
+}
+
+func ptraceGetTpidr_el0(pid int, tpidr_el0 *uint64) (err error) {
+	iov := sys.Iovec{Base: (*byte)(unsafe.Pointer(tpidr_el0)), Len: uint64(unsafe.Sizeof(*tpidr_el0))}
+	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETREGSET, uintptr(pid), uintptr(_NT_ARM_TLS), uintptr(unsafe.Pointer(&iov)), 0, 0)
 	if err == syscall.Errno(0) {
 		err = nil
 	}
@@ -92,7 +102,14 @@ func registers(thread *nativeThread) (proc.Registers, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := linutil.NewARM64Registers(&regs, func(r *linutil.ARM64Registers) error {
+	var tpidr_el0 uint64
+	if thread.dbp.iscgo {
+		thread.dbp.execPtraceFunc(func() { err = ptraceGetTpidr_el0(thread.ID, &tpidr_el0) })
+		if err != nil {
+			return nil, err
+		}
+	}
+	r := linutil.NewARM64Registers(&regs, thread.dbp.iscgo, tpidr_el0, func(r *linutil.ARM64Registers) error {
 		var floatLoadError error
 		r.Fpregs, r.Fpregset, floatLoadError = thread.fpRegisters()
 		return floatLoadError

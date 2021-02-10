@@ -1227,19 +1227,9 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	// - Otherwise, Go asks the external linker to place the G pointer by
 	//   emitting runtime.tlsg, a TLS symbol, which is relocated to the chosen
 	//   offset in libc's TLS block.
-	symbols, err := exe.Symbols()
-	if err != nil {
-		image.setLoadError("could not parse ELF symbols: %v", err)
-		return
-	}
-	var tlsg *elf.Symbol
-	for _, symbol := range symbols {
-		if symbol.Name == "runtime.tlsg" {
-			s := symbol
-			tlsg = &s
-			break
-		}
-	}
+	// - On ARM64 (but really, any architecture other than i386 and 86x64) the
+	//   offset is calculate using runtime.tls_g and the formula is different.
+
 	var tls *elf.Prog
 	for _, prog := range exe.Progs {
 		if prog.Type == elf.PT_TLS {
@@ -1247,20 +1237,54 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 			break
 		}
 	}
-	if tlsg == nil || tls == nil {
-		bi.gStructOffset = ^uint64(bi.Arch.PtrSize()) + 1 //-ptrSize
-		return
+
+	switch exe.Machine {
+	case elf.EM_X86_64, elf.EM_386:
+		tlsg := getSymbol(image, exe, "runtime.tlsg")
+		if tlsg == nil || tls == nil {
+			bi.gStructOffset = ^uint64(bi.Arch.PtrSize()) + 1 //-ptrSize
+			return
+		}
+
+		// According to https://reviews.llvm.org/D61824, linkers must pad the actual
+		// size of the TLS segment to ensure that (tlsoffset%align) == (vaddr%align).
+		// This formula, copied from the lld code, matches that.
+		// https://github.com/llvm-mirror/lld/blob/9aef969544981d76bea8e4d1961d3a6980980ef9/ELF/InputSection.cpp#L643
+		memsz := tls.Memsz + (-tls.Vaddr-tls.Memsz)&(tls.Align-1)
+
+		// The TLS register points to the end of the TLS block, which is
+		// tls.Memsz long. runtime.tlsg is an offset from the beginning of that block.
+		bi.gStructOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
+
+	case elf.EM_AARCH64:
+		tlsg := getSymbol(image, exe, "runtime.tls_g")
+		if tlsg == nil || tls == nil {
+			bi.gStructOffset = 2 * uint64(bi.Arch.PtrSize())
+			return
+		}
+
+		bi.gStructOffset = tlsg.Value + uint64(bi.Arch.PtrSize()*2) + ((tls.Vaddr - uint64(bi.Arch.PtrSize()*2)) & (tls.Align - 1))
+
+	default:
+		// we should never get here
+		panic("architecture not supported")
+	}
+}
+
+func getSymbol(image *Image, exe *elf.File, name string) *elf.Symbol {
+	symbols, err := exe.Symbols()
+	if err != nil {
+		image.setLoadError("could not parse ELF symbols: %v", err)
+		return nil
 	}
 
-	// According to https://reviews.llvm.org/D61824, linkers must pad the actual
-	// size of the TLS segment to ensure that (tlsoffset%align) == (vaddr%align).
-	// This formula, copied from the lld code, matches that.
-	// https://github.com/llvm-mirror/lld/blob/9aef969544981d76bea8e4d1961d3a6980980ef9/ELF/InputSection.cpp#L643
-	memsz := tls.Memsz + (-tls.Vaddr-tls.Memsz)&(tls.Align-1)
-
-	// The TLS register points to the end of the TLS block, which is
-	// tls.Memsz long. runtime.tlsg is an offset from the beginning of that block.
-	bi.gStructOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
+	for _, symbol := range symbols {
+		if symbol.Name == name {
+			s := symbol
+			return &s
+		}
+	}
+	return nil
 }
 
 // PE ////////////////////////////////////////////////////////////////
