@@ -56,7 +56,7 @@ type AssemblyFlavour int
 
 const (
 	// GNUFlavour will display GNU assembly syntax.
-	GNUFlavour = AssemblyFlavour(iota)
+	GNUFlavour AssemblyFlavour = iota
 	// IntelFlavour will display Intel assembly syntax.
 	IntelFlavour
 	// GoFlavour will display Go assembly syntax.
