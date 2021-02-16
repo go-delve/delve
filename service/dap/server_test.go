@@ -1139,6 +1139,20 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						expectVarRegex(t, err1, 0, "data", `err1\.\(data\)`, `<\*main\.astruct>\(0x[0-9a-f]+\)`, hasChildren)
 						validateEvaluateName(t, client, err1, 0)
 					}
+					ref = expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						ptrinf_val := client.ExpectVariablesResponse(t)
+						expectChildren(t, ptrinf_val, "*ptrinf", 1)
+						ref = expectVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "<interface {}(**interface {})>", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							ptrinf_val_data := client.ExpectVariablesResponse(t)
+							expectChildren(t, ptrinf_val_data, "(*ptrinf).data", 1)
+							ref = expectVarRegex(t, ptrinf_val_data, 0, "data", `\(\*ptrinf\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+							validateEvaluateName(t, client, ptrinf_val_data, 0)
+						}
+					}
 					// reflect.Kind == Map
 					expectVarExact(t, locals, -1, "mnil", "mnil", "nil <map[string]main.astruct>", noChildren)
 					// key - scalar, value - compound
