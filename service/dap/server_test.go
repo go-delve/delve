@@ -1217,7 +1217,21 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						}
 					}
 					expectVarExact(t, locals, -1, "emptymap", "emptymap", "<map[string]string> (length: 0)", noChildren)
-					// reflect.Kind == Ptr - see testvariables
+					// reflect.Kind == Ptr
+					ref = expectVarRegex(t, locals, -1, "pp1", "pp1", `<\*\*int>\(0x[0-9a-f]+\)`, hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						pp1val := client.ExpectVariablesResponse(t)
+						expectChildren(t, pp1val, "*pp1", 1)
+						ref = expectVarRegex(t, pp1val, 0, "", `\(\*pp1\)`, `<\*int>\(0x[0-9a-f]+\)`, hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							pp1valval := client.ExpectVariablesResponse(t)
+							expectChildren(t, pp1valval, "*(*pp1)", 1)
+							ref = expectVarExact(t, pp1valval, 0, "", "(*(*pp1))", "1", noChildren)
+							validateEvaluateName(t, client, pp1valval, 0)
+						}
+					}
 					// reflect.Kind == Slice
 					ref = expectVarExact(t, locals, -1, "zsslice", "zsslice", "<[]struct {}> (length: 3, cap: 3)", hasChildren)
 					if ref > 0 {
