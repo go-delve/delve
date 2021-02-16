@@ -143,7 +143,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		// switches from the goroutine stack to the system stack.
 		// Since we are unwinding the stack from callee to caller we have to switch
 		// from the system stack to the goroutine stack.
-		off, _ := readIntRaw(it.mem, uint64(it.regs.SP()+amd64cgocallSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize())) // reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
+		off, _ := readIntRaw(it.mem, it.regs.SP()+amd64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize())) // reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
 		oldsp := it.regs.SP()
 		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(int64(it.stackhi) - off)
 
