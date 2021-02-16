@@ -200,6 +200,9 @@ Current limitations:
 	clearall [<linespec>]
 
 If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.`},
+		{aliases: []string{"toggle"}, group: breakCmds, cmdFn: toggle, helpMsg: `Toggles on or off a breakpoint.
+
+toggle <breakpoint name or id>`},
 		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: goroutines, helpMsg: `List program goroutines.
 
 	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [-t (stack trace)] [-l (labels)]
@@ -1470,6 +1473,24 @@ func clearAll(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
+func toggle(t *Term, ctx callContext, args string) error {
+	if args == "" {
+		return fmt.Errorf("not enough arguments")
+	}
+	id, err := strconv.Atoi(args)
+	var bp *api.Breakpoint
+	if err == nil {
+		bp, err = t.client.ToggleBreakpoint(id)
+	} else {
+		bp, err = t.client.ToggleBreakpointByName(args)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s toggled at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+	return nil
+}
+
 // byID sorts breakpoints by ID.
 type byID []*api.Breakpoint
 
@@ -2708,7 +2729,11 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	if id == "" {
 		id = strconv.Itoa(bp.ID)
 	}
-	return fmt.Sprintf("%s %s", thing, id)
+	state := "(enabled)"
+	if bp.Disabled {
+		state = "(disabled)"
+	}
+	return fmt.Sprintf("%s %s %s", thing, id, state)
 }
 
 func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {

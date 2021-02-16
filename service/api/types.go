@@ -87,6 +87,8 @@ type Breakpoint struct {
 	HitCount map[string]uint64 `json:"hitCount"`
 	// number of times a breakpoint has been reached
 	TotalHitCount uint64 `json:"totalHitCount"`
+	// Disabled flag, signifying the state of the breakpoint
+	Disabled bool `json:"disabled"`
 }
 
 // ValidBreakpointName returns an error if

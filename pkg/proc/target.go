@@ -334,7 +334,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 		panicpcs, err = FindFunctionLocation(t.Process, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
-		bp, err := t.setBreakpointWithID(unrecoveredPanicID, panicpcs[0])
+		bp, err := t.SetBreakpointWithID(unrecoveredPanicID, panicpcs[0])
 		if err == nil {
 			bp.Name = UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}
@@ -346,7 +346,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 func (t *Target) createFatalThrowBreakpoint() {
 	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.fatalthrow", 0)
 	if err == nil {
-		bp, err := t.setBreakpointWithID(fatalThrowID, fatalpcs[0])
+		bp, err := t.SetBreakpointWithID(fatalThrowID, fatalpcs[0])
 		if err == nil {
 			bp.Name = FatalThrow
 		}

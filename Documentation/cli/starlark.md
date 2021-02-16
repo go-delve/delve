@@ -58,6 +58,7 @@ restart(Position, ResetArgs, NewArgs, Rerecord, Rebuild, NewRedirects) | Equival
 set_expr(Scope, Symbol, Value) | Equivalent to API call [Set](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Set)
 stacktrace(Id, Depth, Full, Defers, Opts, Cfg) | Equivalent to API call [Stacktrace](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Stacktrace)
 state(NonBlocking) | Equivalent to API call [State](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.State)
+toggle_breakpoint(Id, Name) | Equivalent to API call [ToggleBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ToggleBreakpoint)
 dlv_command(command) | Executes the specified command as if typed at the dlv_prompt
 read_file(path) | Reads the file as a string
 write_file(path, contents) | Writes string to a file

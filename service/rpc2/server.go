@@ -294,6 +294,38 @@ func (s *RPCServer) ClearBreakpoint(arg ClearBreakpointIn, out *ClearBreakpointO
 	return nil
 }
 
+type ToggleBreakpointIn struct {
+	Id   int
+	Name string
+}
+
+type ToggleBreakpointOut struct {
+	Breakpoint *api.Breakpoint
+}
+
+// ToggleBreakpoint toggles on or off a breakpoint by Name (if Name is not an
+// empty string) or by ID.
+func (s *RPCServer) ToggleBreakpoint(arg ToggleBreakpointIn, out *ToggleBreakpointOut) error {
+	var bp *api.Breakpoint
+	if arg.Name != "" {
+		bp = s.debugger.FindBreakpointByName(arg.Name)
+		if bp == nil {
+			return fmt.Errorf("no breakpoint with name %s", arg.Name)
+		}
+	} else {
+		bp = s.debugger.FindBreakpoint(arg.Id)
+		if bp == nil {
+			return fmt.Errorf("no breakpoint with id %d", arg.Id)
+		}
+	}
+	toggled, err := s.debugger.ToggleBreakpoint(bp)
+	if err != nil {
+		return err
+	}
+	out.Breakpoint = toggled
+	return nil
+}
+
 type AmendBreakpointIn struct {
 	Breakpoint api.Breakpoint
 }

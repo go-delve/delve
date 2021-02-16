@@ -32,6 +32,7 @@ Command | Description
 [clearall](#clearall) | Deletes multiple breakpoints.
 [condition](#condition) | Set breakpoint condition.
 [on](#on) | Executes a command when a breakpoint is hit.
+[toggle](#toggle) | Toggles on or off a breakpoint.
 [trace](#trace) | Set tracepoint.
 
 
@@ -529,6 +530,12 @@ Aliases: tr
 
 ## threads
 Print out info for every traced thread.
+
+
+## toggle
+Toggles on or off a breakpoint.
+
+toggle <breakpoint name or id>
 
 
 ## trace
