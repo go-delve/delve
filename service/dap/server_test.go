@@ -1321,11 +1321,26 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 								aas0aas := client.ExpectVariablesResponse(t)
 								expectChildren(t, aas0aas, "aas[0].aas", 1)
 								// TODO(polina): there should a child here once we support auto loading - test for "aas[0].aas[0].aas"
-								ref = expectVarExact(t, aas0aas, 0, "[0]", "aas[0].aas[0]", "<main.a>", noChildren)
+								expectVarExact(t, aas0aas, 0, "[0]", "aas[0].aas[0]", "<main.a>", noChildren)
 							}
 						}
 					}
 
+					//tm.v[0][“gutters”]
+					ref = expectVarExact(t, locals, -1, "tm", "tm", "<main.truncatedMap>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						tm := client.ExpectVariablesResponse(t)
+						expectChildren(t, tm, "tm", 1)
+						ref = expectVarExact(t, tm, 0, "v", "tm.v", "<[]map[string]main.astruct> (length: 1, cap: 1)", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							tm_v := client.ExpectVariablesResponse(t)
+							expectChildren(t, tm_v, "tm.v", 1)
+							// TODO(polina): there should children here once we support auto loading - test for "tm.v[0]["gutters"]"
+							expectVarExact(t, tm_v, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66)", noChildren)
+						}
+					}
 				},
 				disconnect: true,
 			}})
