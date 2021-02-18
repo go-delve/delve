@@ -599,7 +599,9 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 			response.Body.Breakpoints[i].Line = want.Line
 			response.Body.Breakpoints[i].Message = err.Error()
 		} else {
+			response.Body.Breakpoints[i].Id = got.ID
 			response.Body.Breakpoints[i].Line = got.Line
+			response.Body.Breakpoints[i].Source = dap.Source{Name: request.Arguments.Source.Name, Path: request.Arguments.Source.Path}
 		}
 	}
 	s.send(response)
