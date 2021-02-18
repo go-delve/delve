@@ -4,6 +4,7 @@ import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.commitStatusPu
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.golang
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.pullRequests
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.dockerCommand
+import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.exec
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.powerShell
 import jetbrains.buildServer.configs.kotlin.v2019_2.failureConditions.BuildFailureOnMetric
 import jetbrains.buildServer.configs.kotlin.v2019_2.failureConditions.failOnMetricChange
@@ -42,7 +43,9 @@ val targets = arrayOf(
         "linux/386/1.16",
 
         "windows/amd64/1.16",
-        "windows/amd64/tip"
+        "windows/amd64/tip",
+
+        "mac/amd64/1.16",
 )
 
 project {
@@ -181,6 +184,13 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
                     param("jetbrains_powershell_scriptArguments", "-version ${"go$version"} -arch $arch")
                 }
             }
+            "mac" -> {
+                exec {
+                    name = "Test"
+                    path = "_scripts/tests_mac.sh"
+                    arguments = "${"go$version"} $arch %system.teamcity.build.tempDir%"
+                }
+            }
         }
     }
 
@@ -191,6 +201,13 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
             }
             "windows" -> {
                 matches("teamcity.agent.jvm.os.family", "Windows")
+            }
+            "mac" -> {
+                matches("teamcity.agent.jvm.os.family", "Mac OS")
+                when (arch) {
+                    "amd64" -> equals("teamcity.agent.jvm.os.arch", "x86_64")
+                    "arm64" -> equals("teamcity.agent.jvm.os.arch", "aarch64")
+                }
             }
         }
     }
