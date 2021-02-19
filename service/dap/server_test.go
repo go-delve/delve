@@ -2051,7 +2051,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 		runDebugSession(t, client, "launch", func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source})
+				"mode": "debug", "program": fixture.Source, "output": "__mydir"})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
@@ -2106,6 +2106,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source,
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
+			// will write to default output dir __debug_bin
 		}, fixture.Source)
 	})
 }
