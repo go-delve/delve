@@ -2059,11 +2059,13 @@ func TestLaunchDebugRequest(t *testing.T) {
 
 	w.Close()
 	err, _ := ioutil.ReadAll(r)
+	t.Log(string(err))
 	os.Stderr = rescueStderr
 
-	exitSuccess, _ := regexp.Compile(`error layer=dap Process [0-9]+ has exited with status 0\n$`)
-	if !exitSuccess.Match(err) {
-		t.Fatalf("Test server stderr is not empty:\n%s", string(err))
+	rmErrRe, _ := regexp.Compile(`could not remove .*\n`)
+	rmErr := rmErrRe.FindString(string(err))
+	if rmErr != "" {
+		t.Fatalf("Binary removal failure: %s\n", rmErr)
 	}
 }
 
