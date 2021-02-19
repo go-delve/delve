@@ -195,6 +195,10 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
     }
 
     requirements {
+        when (arch) {
+            "amd64" -> equals("teamcity.agent.jvm.os.arch", if (os == "mac") "x86_64" else "amd64")
+            "arm64" -> equals("teamcity.agent.jvm.os.arch", "aarch64")
+        }
         when (os) {
             "linux" -> {
                 matches("teamcity.agent.jvm.os.family", "Linux")
@@ -204,10 +208,6 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
             }
             "mac" -> {
                 matches("teamcity.agent.jvm.os.family", "Mac OS")
-                when (arch) {
-                    "amd64" -> equals("teamcity.agent.jvm.os.arch", "x86_64")
-                    "arm64" -> equals("teamcity.agent.jvm.os.arch", "aarch64")
-                }
             }
         }
     }
