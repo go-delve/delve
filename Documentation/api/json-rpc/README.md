@@ -1,6 +1,6 @@
 # JSON-RPC interface
 
-Delve exposes a [JSON-RPC](https://www.jsonrpc.org/) API interface. 
+Delve exposes a [JSON-RPC](https://www.jsonrpc.org/specification_v1) API interface. 
 
 Note that this JSON-RPC interface is served over a streaming socket, *not* over HTTP.
 
