@@ -2065,7 +2065,13 @@ func TestLaunchDebugRequest(t *testing.T) {
 	rmErrRe, _ := regexp.Compile(`could not remove .*\n`)
 	rmErr := rmErrRe.FindString(string(err))
 	if rmErr != "" {
-		t.Fatalf("Binary removal failure: %s\n", rmErr)
+		// On Windows, a file in use cannot be removed.
+		// When the process exits, Delve releases the binary by calling
+		// BinaryInfo.Close(), but it appears that it is still in use (by Windows?)
+		// shortly after, so this check can get flaky. Skip access errors on Windows.
+		if runtime.GOOS != "windows" || !strings.Contains(rmErr, "Access is denied") {
+			t.Fatalf("Binary removal failure: %s\n", rmErr)
+		}
 	}
 }
 
