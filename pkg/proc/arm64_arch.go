@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"strings"
-
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/regnum"
@@ -152,24 +150,12 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			it.regs = callFrameRegs
 			it.systemstack = true
 			return true
-		case "runtime.asmcgocall", "runtime.systemstack_switch":
+		case "runtime.asmcgocall", "runtime.mstart", "crosscall2":
 			if !it.systemstack {
 				return false
 			}
 			it.switchToGoroutineStack()
 			return true
-		default:
-			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
-				// The runtime switches to the system stack in multiple places.
-				// This usually happens through a call to runtime.systemstack but there
-				// are functions that switch to the system stack manually (for example
-				// runtime.morestack).
-				// Since we are only interested in printing the system stack for cgo
-				// calls we switch directly to the goroutine stack if we detect that the
-				// function at the top of the stack is a runtime function.
-				it.switchToGoroutineStack()
-				return true
-			}
 		}
 	}
 
@@ -178,7 +164,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		return false
 	}
 	switch fn.Name {
-	case "runtime.asmcgocall", "runtime.systemstack_switch":
+	case "runtime.asmcgocall":
 		if !it.systemstack {
 			return false
 		}
