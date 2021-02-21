@@ -1410,7 +1410,7 @@ func newEvent(event string) *dap.Event {
 }
 
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
-Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
+Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
 
 func (s *Server) resetHandlesForStop() {
 	s.stackFrameHandles.reset()
