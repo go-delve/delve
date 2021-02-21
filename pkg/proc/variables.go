@@ -1140,7 +1140,7 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 		return nil, err
 	}
 
-	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs)
+	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs, mem)
 	if pieces != nil {
 		var cmem *compositeMemory
 		if tgt != nil {

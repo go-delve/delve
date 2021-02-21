@@ -936,12 +936,16 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, *locationExpr, error) {
+func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters, mem MemoryReadWriter) (int64, []op.Piece, *locationExpr, error) {
 	instr, descr, err := bi.locationExpr(entry, attr, pc)
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize())
+	readMemory := op.ReadMemoryFunc(nil)
+	if mem != nil {
+		readMemory = mem.ReadMemory
+	}
+	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize(), readMemory)
 	return addr, pieces, descr, err
 }
 
