@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
+	"time"
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -15,6 +17,12 @@ import (
 // This can be used to remove the temporary binary generated for the session.
 func Remove(path string) {
 	err := os.Remove(path)
+	// Open files can be removed on Unix, but not on Windows, where there also appears
+	// to be a delay in releasing the binary when the process exits. So we try again.
+	if err != nil && runtime.GOOS == "windows" {
+		time.Sleep(10 * time.Microsecond)
+		err = os.Remove(path)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)
 	}
