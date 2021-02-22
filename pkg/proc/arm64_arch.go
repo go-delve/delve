@@ -113,6 +113,9 @@ const arm64cgocallSPOffsetSaveSlot = 0x8
 const prevG0schedSPOffsetSaveSlot = 0x10
 
 func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
+	if it.frame.Current.Fn == nil {
+		return false
+	}
 	if it.frame.Current.Fn != nil {
 		switch it.frame.Current.Fn.Name {
 		case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
@@ -150,7 +153,26 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			it.regs = callFrameRegs
 			it.systemstack = true
 			return true
-		case "runtime.asmcgocall", "runtime.mstart", "crosscall2":
+		case "runtime.mstart":
+			// Calls to runtime.systemstack will switch to the systemstack then:
+			// 1. alter the goroutine stack so that it looks like systemstack_switch
+			//    was called
+			// 2. alter the system stack so that it looks like the bottom-most frame
+			//    belongs to runtime.mstart
+			// If we find a runtime.mstart frame on the system stack of a goroutine
+			// parked on runtime.systemstack_switch we assume runtime.systemstack was
+			// called and continue tracing from the parked position.
+
+			if it.top || !it.systemstack || it.g == nil {
+				return false
+			}
+			if fn := it.bi.PCToFunc(it.g.PC); fn == nil || fn.Name != "runtime.systemstack_switch" {
+				return false
+			}
+
+			it.switchToGoroutineStack()
+			return true
+		case "runtime.asmcgocall", "crosscall2":
 			if !it.systemstack {
 				return false
 			}
