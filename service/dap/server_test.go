@@ -420,8 +420,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 			t.Errorf("got %#v, want len(Breakpoints)=1", sResp)
 		}
 		bkpt0 := sResp.Body.Breakpoints[0]
-		if !bkpt0.Verified || bkpt0.Line != 8 {
-			t.Errorf("got breakpoints[0] = %#v, want Verified=true, Line=8", bkpt0)
+		if !bkpt0.Verified || bkpt0.Line != 8 || bkpt0.Id != 1 || bkpt0.Source.Name != filepath.Base(fixture.Source) || bkpt0.Source.Path != fixture.Source {
+			t.Errorf("got breakpoints[0] = %#v, want Verified=true, Line=8, Id=1, Path=%q", bkpt0, fixture.Source)
 		}
 
 		client.SetExceptionBreakpointsRequest()
@@ -1140,6 +1140,20 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						expectVarRegex(t, err1, 0, "data", `err1\.\(data\)`, `<\*main\.astruct>\(0x[0-9a-f]+\)`, hasChildren)
 						validateEvaluateName(t, client, err1, 0)
 					}
+					ref = expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						ptrinf_val := client.ExpectVariablesResponse(t)
+						expectChildren(t, ptrinf_val, "*ptrinf", 1)
+						ref = expectVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "<interface {}(**interface {})>", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							ptrinf_val_data := client.ExpectVariablesResponse(t)
+							expectChildren(t, ptrinf_val_data, "(*ptrinf).data", 1)
+							expectVarRegex(t, ptrinf_val_data, 0, "data", `\(\*ptrinf\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+							validateEvaluateName(t, client, ptrinf_val_data, 0)
+						}
+					}
 					// reflect.Kind == Map
 					expectVarExact(t, locals, -1, "mnil", "mnil", "nil <map[string]main.astruct>", noChildren)
 					// key - scalar, value - compound
@@ -1218,7 +1232,21 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						}
 					}
 					expectVarExact(t, locals, -1, "emptymap", "emptymap", "<map[string]string> (length: 0)", noChildren)
-					// reflect.Kind == Ptr - see testvariables
+					// reflect.Kind == Ptr
+					ref = expectVarRegex(t, locals, -1, "pp1", "pp1", `<\*\*int>\(0x[0-9a-f]+\)`, hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						pp1val := client.ExpectVariablesResponse(t)
+						expectChildren(t, pp1val, "*pp1", 1)
+						ref = expectVarRegex(t, pp1val, 0, "", `\(\*pp1\)`, `<\*int>\(0x[0-9a-f]+\)`, hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							pp1valval := client.ExpectVariablesResponse(t)
+							expectChildren(t, pp1valval, "*(*pp1)", 1)
+							expectVarExact(t, pp1valval, 0, "", "(*(*pp1))", "1", noChildren)
+							validateEvaluateName(t, client, pp1valval, 0)
+						}
+					}
 					// reflect.Kind == Slice
 					ref = expectVarExact(t, locals, -1, "zsslice", "zsslice", "<[]struct {}> (length: 3, cap: 3)", hasChildren)
 					if ref > 0 {
@@ -1255,6 +1283,63 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m1, "m1", 64) // TODO(polina): should be 66.
+					}
+
+					ref = expectVarExact(t, locals, -1, "c1", "c1", "<main.cstruct>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						c1 := client.ExpectVariablesResponse(t)
+						expectChildren(t, c1, "c1", 2)
+						ref = expectVarExact(t, c1, 1, "sa", "c1.sa", "<[]*main.astruct> (length: 3, cap: 3)", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							c1sa := client.ExpectVariablesResponse(t)
+							expectChildren(t, c1sa, "c1.sa", 3)
+							ref = expectVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `<\*main\.astruct>\(0x[0-9a-f]+\)`, hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								c1sa0 := client.ExpectVariablesResponse(t)
+								expectChildren(t, c1sa0, "c1.sa[0]", 1)
+								// TODO(polina): there should be a child here once we support auto loading
+								expectVarExact(t, c1sa0, 0, "", "(*c1.sa[0])", "<main.astruct>", noChildren)
+							}
+						}
+					}
+
+					ref = expectVarExact(t, locals, -1, "aas", "aas", "<[]main.a> (length: 1, cap: 1)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						aas := client.ExpectVariablesResponse(t)
+						expectChildren(t, aas, "aas", 1)
+						ref = expectVarExact(t, aas, 0, "[0]", "aas[0]", "<main.a>", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							aas0 := client.ExpectVariablesResponse(t)
+							expectChildren(t, aas0, "aas[0]", 1)
+							ref = expectVarExact(t, aas0, 0, "aas", "aas[0].aas", "<[]main.a> (length: 1, cap: 1)", hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								aas0aas := client.ExpectVariablesResponse(t)
+								expectChildren(t, aas0aas, "aas[0].aas", 1)
+								// TODO(polina): there should be a child here once we support auto loading - test for "aas[0].aas[0].aas"
+								expectVarExact(t, aas0aas, 0, "[0]", "aas[0].aas[0]", "<main.a>", noChildren)
+							}
+						}
+					}
+
+					ref = expectVarExact(t, locals, -1, "tm", "tm", "<main.truncatedMap>", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						tm := client.ExpectVariablesResponse(t)
+						expectChildren(t, tm, "tm", 1)
+						ref = expectVarExact(t, tm, 0, "v", "tm.v", "<[]map[string]main.astruct> (length: 1, cap: 1)", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							tm_v := client.ExpectVariablesResponse(t)
+							expectChildren(t, tm_v, "tm.v", 1)
+							// TODO(polina): there should be children here once we support auto loading - test for "tm.v[0]["gutters"]"
+							expectVarExact(t, tm_v, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66)", noChildren)
+						}
 					}
 				},
 				disconnect: true,
@@ -1372,6 +1457,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					type Breakpoint struct {
 						line      int
+						path      string
 						verified  bool
 						msgPrefix string
 					}
@@ -1383,7 +1469,7 @@ func TestSetBreakpoint(t *testing.T) {
 							return
 						}
 						for i, bp := range got.Body.Breakpoints {
-							if bp.Line != bps[i].line || bp.Verified != bps[i].verified ||
+							if bp.Line != bps[i].line || bp.Verified != bps[i].verified || bp.Source.Path != bps[i].path ||
 								!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
 								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
 							}
@@ -1392,11 +1478,11 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set two breakpoints at the next two lines in main
 					client.SetBreakpointsRequest(fixture.Source, []int{17, 18})
-					expectSetBreakpointsResponse([]Breakpoint{{17, true, ""}, {18, true, ""}})
+					expectSetBreakpointsResponse([]Breakpoint{{17, fixture.Source, true, ""}, {18, fixture.Source, true, ""}})
 
 					// Clear 17, reset 18
 					client.SetBreakpointsRequest(fixture.Source, []int{18})
-					expectSetBreakpointsResponse([]Breakpoint{{18, true, ""}})
+					expectSetBreakpointsResponse([]Breakpoint{{18, fixture.Source, true, ""}})
 
 					// Skip 17, continue to 18
 					client.ContinueRequest(1)
@@ -1406,7 +1492,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
-					expectSetBreakpointsResponse([]Breakpoint{{8, true, ""}, {8, false, "Breakpoint exists"}})
+					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}, {8, "", false, "Breakpoint exists"}})
 
 					// Continue into the loop
 					client.ContinueRequest(1)
@@ -1419,7 +1505,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Edit the breakpoint to add a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
-					expectSetBreakpointsResponse([]Breakpoint{{8, true, ""}})
+					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue until condition is hit
 					client.ContinueRequest(1)
@@ -1432,7 +1518,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Edit the breakpoint to remove a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
-					expectSetBreakpointsResponse([]Breakpoint{{8, true, ""}})
+					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue for one more loop iteration
 					client.ContinueRequest(1)
@@ -1445,7 +1531,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set at a line without a statement
 					client.SetBreakpointsRequest(fixture.Source, []int{1000})
-					expectSetBreakpointsResponse([]Breakpoint{{1000, false, "could not find statement"}}) // all cleared, none set
+					expectSetBreakpointsResponse([]Breakpoint{{1000, "", false, "could not find statement"}}) // all cleared, none set
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
 				disconnect: true,

@@ -600,7 +600,9 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 			response.Body.Breakpoints[i].Line = want.Line
 			response.Body.Breakpoints[i].Message = err.Error()
 		} else {
+			response.Body.Breakpoints[i].Id = got.ID
 			response.Body.Breakpoints[i].Line = got.Line
+			response.Body.Breakpoints[i].Source = dap.Source{Name: request.Arguments.Source.Name, Path: request.Arguments.Source.Path}
 		}
 	}
 	s.send(response)
@@ -1411,7 +1413,7 @@ func newEvent(event string) *dap.Event {
 }
 
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
-Unable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
+Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
 
 func (s *Server) resetHandlesForStop() {
 	s.stackFrameHandles.reset()

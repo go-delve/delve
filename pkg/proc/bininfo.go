@@ -123,8 +123,8 @@ var (
 		elf.EM_386:     true,
 	}
 
-	supportedWindowsArch = map[PEMachine]bool{
-		IMAGE_FILE_MACHINE_AMD64: true,
+	supportedWindowsArch = map[_PEMachine]bool{
+		_IMAGE_FILE_MACHINE_AMD64: true,
 	}
 
 	supportedDarwinArch = map[macho.Cpu]bool{
@@ -227,19 +227,19 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 	return pc, nil
 }
 
-// CpuArch is a stringer interface representing CPU architectures.
-type CpuArch interface {
+// cpuArch is a stringer interface representing CPU architectures.
+type cpuArch interface {
 	String() string
 }
 
 // ErrUnsupportedArch is returned when attempting to debug a binary compiled for an unsupported architecture.
 type ErrUnsupportedArch struct {
 	os      string
-	cpuArch CpuArch
+	cpuArch cpuArch
 }
 
 func (e *ErrUnsupportedArch) Error() string {
-	var supportArchs []CpuArch
+	var supportArchs []cpuArch
 	switch e.os {
 	case "linux":
 		for linuxArch, _ := range supportedLinuxArch {
@@ -1185,8 +1185,8 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	return nil
 }
 
-//  STT_FUNC is a code object, see /usr/include/elf.h for a full definition.
-const STT_FUNC = 2
+//  _STT_FUNC is a code object, see /usr/include/elf.h for a full definition.
+const _STT_FUNC = 2
 
 func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -1196,7 +1196,7 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	symSecs, _ := file.Symbols()
 	if symSecs != nil {
 		for _, symSec := range symSecs {
-			if symSec.Info == STT_FUNC { // TODO(chainhelen), need to parse others types.
+			if symSec.Info == _STT_FUNC { // TODO(chainhelen), need to parse others types.
 				s := symSec
 				bi.SymNames[symSec.Value+image.StaticBase] = &s
 			}
@@ -1274,7 +1274,7 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 		return err
 	}
 	image.closer = closer
-	cpuArch := PEMachine(peFile.Machine)
+	cpuArch := _PEMachine(peFile.Machine)
 	if !supportedWindowsArch[cpuArch] {
 		return &ErrUnsupportedArch{os: "windows", cpuArch: cpuArch}
 	}
