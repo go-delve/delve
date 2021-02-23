@@ -154,7 +154,13 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
     steps {
         when (os) {
             "linux" -> {
-                val dockerArch = if (arch == "386") "i$arch" else arch
+                val dockerArch = when (arch) {
+                    "386" -> "i386"
+                    "arm64" -> "arm64v8"
+                    else -> {
+                        arch
+                    }
+                }
                 dockerCommand {
                     name = "Pull Ubuntu"
                     commandType = other {
