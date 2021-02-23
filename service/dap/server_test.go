@@ -1718,7 +1718,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Type casts of integer constants into any pointer type and vice versa
 					client.EvaluateRequest("(*int)(2)", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					ref = expectEval(t, got, "<*int>(0x2) (value not loaded)", noChildren)
+					expectEval(t, got, "<*int>(0x2) (value not loaded)", noChildren)
 
 					// Type casts between string, []byte and []rune
 					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
