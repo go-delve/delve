@@ -9,15 +9,17 @@ import (
 
 // Regs is a wrapper for sys.PtraceRegs.
 type ARM64Registers struct {
-	Regs     *ARM64PtraceRegs //general-purpose registers
-	Fpregs   []proc.Register  //Formatted floating point registers
-	Fpregset []byte           //holding all floating point register values
+	Regs      *ARM64PtraceRegs //general-purpose registers
+	iscgo     bool
+	tpidr_el0 uint64
+	Fpregs    []proc.Register //Formatted floating point registers
+	Fpregset  []byte          //holding all floating point register values
 
 	loadFpRegs func(*ARM64Registers) error
 }
 
-func NewARM64Registers(regs *ARM64PtraceRegs, loadFpRegs func(*ARM64Registers) error) *ARM64Registers {
-	return &ARM64Registers{Regs: regs, loadFpRegs: loadFpRegs}
+func NewARM64Registers(regs *ARM64PtraceRegs, iscgo bool, tpidr_el0 uint64, loadFpRegs func(*ARM64Registers) error) *ARM64Registers {
+	return &ARM64Registers{Regs: regs, iscgo: iscgo, tpidr_el0: tpidr_el0, loadFpRegs: loadFpRegs}
 }
 
 // ARM64PtraceRegs is the struct used by the linux kernel to return the
@@ -102,13 +104,16 @@ func (r *ARM64Registers) BP() uint64 {
 
 // TLS returns the address of the thread local storage memory segment.
 func (r *ARM64Registers) TLS() uint64 {
-	return 0
+	if !r.iscgo {
+		return 0
+	}
+	return r.tpidr_el0
 }
 
 // GAddr returns the address of the G variable if it is known, 0 and false
 // otherwise.
 func (r *ARM64Registers) GAddr() (uint64, bool) {
-	return r.Regs.Regs[28], true
+	return r.Regs.Regs[28], !r.iscgo
 }
 
 // Get returns the value of the n-th register (in arm64asm order).

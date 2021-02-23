@@ -61,6 +61,7 @@ type Target struct {
 	// have read and parsed from the targets memory.
 	// This must be cleared whenever the target is resumed.
 	gcache goroutineCache
+	iscgo  *bool
 }
 
 // ErrProcessExited indicates that the process has exited and contains both
@@ -179,6 +180,24 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 	}
 
 	return t, nil
+}
+
+// IsCgo returns the value of runtime.iscgo
+func (t *Target) IsCgo() bool {
+	if t.iscgo != nil {
+		return *t.iscgo
+	}
+	scope := globalScope(t.BinInfo(), t.BinInfo().Images[0], t.Memory())
+	iscgov, err := scope.findGlobal("runtime", "iscgo")
+	if err == nil {
+		iscgov.loadValue(loadFullValue)
+		if iscgov.Unreadable == nil {
+			t.iscgo = new(bool)
+			*t.iscgo = constant.BoolVal(iscgov.Value)
+			return constant.BoolVal(iscgov.Value)
+		}
+	}
+	return false
 }
 
 // SupportsFunctionCalls returns whether or not the backend supports
