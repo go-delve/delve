@@ -189,7 +189,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
             "mac" -> {
                 exec {
                     name = "Test"
-                    path = "_scripts/tests_mac.sh"
+                    path = "_scripts/test_mac.sh"
                     arguments = "${"go$version"} $arch %system.teamcity.build.tempDir%"
                 }
             }
