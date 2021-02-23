@@ -1022,7 +1022,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 			// Breakpoints are set within the program
 			fixture.Source, []int{},
 			[]onBreakpoint{{
-				// Stop at line 317
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
@@ -1035,7 +1034,6 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				},
 				disconnect: false,
 			}, {
-				// Stop at line 322
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
@@ -1275,15 +1273,77 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						expectVarRegex(t, val, 0, "^$", `\(\*unread\)`, "unreadable <.+>", noChildren)
 						validateEvaluateName(t, client, val, 0)
 					}
+				},
+				disconnect: true,
+			}})
+	})
+}
 
-					// Test that variables are not yet loaded completely.
-					ref = expectVarExact(t, locals, -1, "m1", "m1", "<map[string]main.astruct> (length: 66)", hasChildren)
+// TestVariablesLoading exposes test cases where variables might be partiall or
+// fully unloaded.
+func TestVariablesLoading(t *testing.T) {
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute:    func() {},
+				disconnect: false,
+			}, {
+				execute: func() {
+					// Change default config values to trigger certain unloaded corner cases
+					DefaultLoadConfig.MaxStructFields = 5
+					defer func() { DefaultLoadConfig.MaxStructFields = -1 }()
+
+					client.StackTraceRequest(1, 0, 0)
+					client.ExpectStackTraceResponse(t)
+
+					client.ScopesRequest(1000)
+					client.ExpectScopesResponse(t)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+
+					// String partially missing based on LoadConfig.MaxStringLen
+					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", noChildren)
+
+					// Array partially missing based on LoadConfig.MaxArrayValues
+					ref := expectVarExact(t, locals, -1, "longarr", "longarr", "<[100]int> (length: 100, loaded: 64)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						longarr := client.ExpectVariablesResponse(t)
+						expectChildren(t, longarr, "longarr", 64)
+					}
+
+					// Slice partially missing based on LoadConfig.MaxArrayValues
+					ref = expectVarExact(t, locals, -1, "longslice", "longslice", "<[]int> (length: 100, cap: 100, loaded: 64)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						longarr := client.ExpectVariablesResponse(t)
+						expectChildren(t, longarr, "longslice", 64)
+					}
+
+					// Map partially missing based on LoadConfig.MaxArrayValues
+					ref = expectVarExact(t, locals, -1, "m1", "m1", "<map[string]main.astruct> (length: 66, loaded: 64)", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
-						expectChildren(t, m1, "m1", 64) // TODO(polina): should be 66.
+						expectChildren(t, m1, "m1", 64)
 					}
 
+					// Struct partially missing based on LoadConfig.MaxStructFields
+					ref = expectVarExact(t, locals, -1, "sd", "sd", "<main.D> (fields: 6, loaded: 5)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						sd := client.ExpectVariablesResponse(t)
+						expectChildren(t, sd, "sd", 5)
+					}
+
+					// Struct fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluateName)
 					ref = expectVarExact(t, locals, -1, "c1", "c1", "<main.cstruct>", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -1299,12 +1359,13 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 								client.VariablesRequest(ref)
 								c1sa0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, c1sa0, "c1.sa[0]", 1)
-								// TODO(polina): there should be a child here once we support auto loading
-								expectVarExact(t, c1sa0, 0, "", "(*c1.sa[0])", "<main.astruct>", noChildren)
+								// TODO(polina): there should be children here once we support auto loading
+								expectVarExact(t, c1sa0, 0, "", "(*c1.sa[0])", "<main.astruct> (fields: 2, loaded: 0)", noChildren)
 							}
 						}
 					}
 
+					// Struct fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluteName)
 					ref = expectVarExact(t, locals, -1, "aas", "aas", "<[]main.a> (length: 1, cap: 1)", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -1321,11 +1382,12 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 								aas0aas := client.ExpectVariablesResponse(t)
 								expectChildren(t, aas0aas, "aas[0].aas", 1)
 								// TODO(polina): there should be a child here once we support auto loading - test for "aas[0].aas[0].aas"
-								expectVarExact(t, aas0aas, 0, "[0]", "aas[0].aas[0]", "<main.a>", noChildren)
+								expectVarExact(t, aas0aas, 0, "[0]", "aas[0].aas[0]", "<main.a> (fields: 1, loaded: 0)", noChildren)
 							}
 						}
 					}
 
+					// Map fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluateName)
 					ref = expectVarExact(t, locals, -1, "tm", "tm", "<main.truncatedMap>", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -1337,9 +1399,62 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							tm_v := client.ExpectVariablesResponse(t)
 							expectChildren(t, tm_v, "tm.v", 1)
 							// TODO(polina): there should be children here once we support auto loading - test for "tm.v[0]["gutters"]"
-							expectVarExact(t, tm_v, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66)", noChildren)
+							expectVarExact(t, tm_v, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66, loaded: 0)", noChildren)
 						}
 					}
+
+					// Interface fully missing due to hitting LoadConfig.MaxVariableRecurse
+					ref = expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						ptrinf := client.ExpectVariablesResponse(t)
+						ref = expectVarExact(t, ptrinf, 0, "", "(*ptrinf)", "<interface {}(**interface {})>", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							ptrinfVal := client.ExpectVariablesResponse(t)
+							ref = expectVarRegex(t, ptrinfVal, 0, "", `\(\*ptrinf\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								ptrinfValData := client.ExpectVariablesResponse(t)
+								ref = expectVarRegex(t, ptrinfValData, 0, "", `\(\*\(\*ptrinf\)\.\(data\)\)`, `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+								if ref > 0 {
+									client.VariablesRequest(ref)
+									iface6dataValVal := client.ExpectVariablesResponse(t)
+									expectVarExact(t, iface6dataValVal, 0, "", "(*(*(*ptrinf).(data)))", "<interface {}(**interface {})> (data not loaded)", noChildren)
+								}
+							}
+						}
+					}
+
+					// Pointer fully missing - see below
+				},
+				disconnect: true,
+			}})
+	})
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute: func() {
+					DefaultLoadConfig.FollowPointers = false
+					defer func() { DefaultLoadConfig.FollowPointers = true }()
+
+					client.StackTraceRequest(1, 0, 0)
+					client.ExpectStackTraceResponse(t)
+
+					client.ScopesRequest(1000)
+					client.ExpectScopesResponse(t)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+
+					// Pointer value not loaded
+					expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\) \(value not loaded\)`, noChildren)
 				},
 				disconnect: true,
 			}})
@@ -1580,6 +1695,11 @@ func TestEvaluateRequest(t *testing.T) {
 						validateEvaluateName(t, client, a5, 4)
 					}
 
+					// Variable lookup that's not fully loaded
+					client.EvaluateRequest("ba", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "<[]int> (length: 200, cap: 200, loaded: 64)", hasChildren)
+
 					// All (binary and unary) on basic types except <-, ++ and --
 					client.EvaluateRequest("1+1", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
@@ -1598,14 +1718,8 @@ func TestEvaluateRequest(t *testing.T) {
 					// Type casts of integer constants into any pointer type and vice versa
 					client.EvaluateRequest("(*int)(2)", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					ref = expectEval(t, got, "<*int>(0x2)", hasChildren)
-					if ref > 0 {
-						client.VariablesRequest(ref)
-						expr := client.ExpectVariablesResponse(t)
-						expectChildren(t, expr, "(*int)(2)", 1)
-						// TODO(polina): should this be printed as (unknown int) instead?
-						expectVarExact(t, expr, 0, "", "(*((*int)(2)))", "<int>", noChildren)
-					}
+					expectEval(t, got, "<*int>(0x2) (value not loaded)", noChildren)
+
 					// Type casts between string, []byte and []rune
 					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)

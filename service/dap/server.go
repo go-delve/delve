@@ -87,6 +87,17 @@ var defaultArgs = launchAttachArgs{
 	showGlobalVariables: false,
 }
 
+// DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
+// default value from the original vscode-go debug adapter and rpc server.
+// TODO(polina): Support setting config via launch/attach args or only rely on on-demand loading?
+var DefaultLoadConfig = proc.LoadConfig{
+	FollowPointers:     true,
+	MaxVariableRecurse: 1,
+	MaxStringLen:       64,
+	MaxArrayValues:     64,
+	MaxStructFields:    -1,
+}
+
 // NewServer creates a new DAP Server. It takes an opened Listener
 // via config and assumes its ownership. config.disconnectChan has to be set;
 // it will be closed by the server when the client disconnects or requests
@@ -825,11 +836,9 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 
 	goid := sf.(stackFrame).goroutineID
 	frame := sf.(stackFrame).frameIndex
-	// TODO(polina): Support setting config via launch/attach args
-	cfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 
 	// Retrieve arguments
-	args, err := s.debugger.FunctionArguments(goid, frame, 0, cfg)
+	args, err := s.debugger.FunctionArguments(goid, frame, 0, DefaultLoadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
@@ -837,7 +846,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	argScope := &fullyQualifiedVariable{&proc.Variable{Name: "Arguments", Children: slicePtrVarToSliceVar(args)}, "", true}
 
 	// Retrieve local variables
-	locals, err := s.debugger.LocalVariables(goid, frame, 0, cfg)
+	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
@@ -866,7 +875,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 			return
 		}
 		currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
-		globals, err := s.debugger.PackageVariables(currPkgFilter, cfg)
+		globals, err := s.debugger.PackageVariables(currPkgFilter, DefaultLoadConfig)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
 			return
@@ -908,8 +917,6 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		return
 	}
 	children := make([]dap.Variable, 0)
-	// TODO(polina): check and handle if variable loaded incompletely
-	// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables
 
 	switch v.Kind {
 	case reflect.Map:
@@ -1045,6 +1052,11 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		return
 	}
 	typeName := api.PrettyTypeName(v.DwarfType)
+
+	// As per https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables,
+	// some of the types might be fully or partially not loaded based on LoadConfig. For now, clearly
+	// communicate when values are not fully loaded. TODO(polina): look into loading on demand.
+
 	switch v.Kind {
 	case reflect.UnsafePointer:
 		if len(v.Children) == 0 {
@@ -1061,10 +1073,20 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			value = "void"
 		} else {
 			value = fmt.Sprintf("<%s>(%#x)", typeName, v.Children[0].Addr)
-			variablesReference = maybeCreateVariableHandle(v)
+			if v.Children[0].OnlyAddr { // Not fully loaded
+				value += " (value not loaded)"
+				// Since child is not fully loaded, don't provide a reference to view it.
+			} else {
+				value = fmt.Sprintf("<%s>(%#x)", typeName, v.Children[0].Addr)
+				variablesReference = maybeCreateVariableHandle(v)
+			}
 		}
 	case reflect.Array:
-		value = "<" + typeName + ">"
+		if v.Len > int64(len(v.Children)) { // Not fully loaded
+			value = fmt.Sprintf("<%s> (length: %d, loaded: %d)", typeName, v.Len, len(v.Children))
+		} else {
+			value = fmt.Sprintf("<%s>", typeName)
+		}
 		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}
@@ -1072,7 +1094,11 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Base == 0 {
 			value = "nil <" + typeName + ">"
 		} else {
-			value = fmt.Sprintf("<%s> (length: %d, cap: %d)", typeName, v.Len, v.Cap)
+			if v.Len > int64(len(v.Children)) { // Not fully loaded
+				value = fmt.Sprintf("<%s> (length: %d, cap: %d, loaded: %d)", typeName, v.Len, v.Cap, len(v.Children))
+			} else {
+				value = fmt.Sprintf("<%s> (length: %d, cap: %d)", typeName, v.Len, v.Cap)
+			}
 			if len(v.Children) > 0 {
 				variablesReference = maybeCreateVariableHandle(v)
 			}
@@ -1081,7 +1107,11 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Base == 0 {
 			value = "nil <" + typeName + ">"
 		} else {
-			value = fmt.Sprintf("<%s> (length: %d)", typeName, v.Len)
+			if v.Len > int64(len(v.Children)/2) { // Not fully loaded
+				value = fmt.Sprintf("<%s> (length: %d, loaded: %d)", typeName, v.Len, len(v.Children)/2)
+			} else {
+				value = fmt.Sprintf("<%s> (length: %d)", typeName, v.Len)
+			}
 			if len(v.Children) > 0 {
 				variablesReference = maybeCreateVariableHandle(v)
 			}
@@ -1089,7 +1119,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 	case reflect.String:
 		vvalue := constant.StringVal(v.Value)
 		lenNotLoaded := v.Len - int64(len(vvalue))
-		if lenNotLoaded > 0 {
+		if lenNotLoaded > 0 { // Not fully loaded
 			vvalue += fmt.Sprintf("...+%d more", lenNotLoaded)
 		}
 		value = fmt.Sprintf("%q", vvalue)
@@ -1111,21 +1141,35 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		} else if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
 			value = "nil <" + typeName + ">"
 		} else {
-			value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
-			// TODO(polina): should we remove one level of indirection and skip "data"?
-			// Then we will have:
-			// Before:
-			//   i: <interface{}(int)>
-			//      data: 123
-			// After:
-			//   i: <interface{}(int)> 123
-			// Before:
-			//   i: <interface{}(main.MyStruct)>
-			//      data: <main.MyStruct>
-			//         field1: ...
-			// After:
-			//   i: <interface{}(main.MyStruct)>
-			//      field1: ...
+			if v.Children[0].OnlyAddr { // Not fully loaded
+				value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">" + " (data not loaded)"
+				// Since child is not fully loaded, don't provide a reference to view it.
+			} else {
+				value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
+				// TODO(polina): should we remove one level of indirection and skip "data"?
+				// Then we will have:
+				//   Before:
+				//     i: <interface{}(int)>
+				//        data: 123
+				//   After:
+				//     i: <interface{}(int)> 123
+				//   Before:
+				//     i: <interface{}(main.MyStruct)>
+				//        data: <main.MyStruct>
+				//           field1: ...
+				//   After:
+				//     i: <interface{}(main.MyStruct)>
+				//        field1: ...
+				variablesReference = maybeCreateVariableHandle(v)
+			}
+		}
+	case reflect.Struct:
+		if v.Len > int64(len(v.Children)) { // Not fully loaded
+			value = fmt.Sprintf("<%s> (fields: %d, loaded: %d)", typeName, v.Len, len(v.Children))
+		} else {
+			value = fmt.Sprintf("<%s>", typeName)
+		}
+		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Complex64, reflect.Complex128:
@@ -1142,7 +1186,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			v.Children[1].Kind = reflect.Float64
 		}
 		fallthrough
-	default: // Struct, complex, scalar
+	default: // complex, scalar
 		vvalue := api.VariableValueAsString(v)
 		if vvalue != "" {
 			value = vvalue
@@ -1177,9 +1221,6 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		goid = sf.(stackFrame).goroutineID
 		frame = sf.(stackFrame).frameIndex
 	}
-	// TODO(polina): Support config settings via launch/attach args vs auto-loading?
-	apiCfg := &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
-	prcCfg := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
 	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
@@ -1201,7 +1242,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 		state, err := s.debugger.Command(&api.DebuggerCommand{
 			Name:                 api.Call,
-			ReturnInfoLoadConfig: apiCfg,
+			ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
 			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
 			UnsafeCall:           false,
 			GoroutineID:          goid,
@@ -1224,7 +1265,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
 				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.CallReturn {
 				// The call completed. Get the return values.
-				retVars, err = s.debugger.FindThreadReturnValues(t.ID, prcCfg)
+				retVars, err = s.debugger.FindThreadReturnValues(t.ID, DefaultLoadConfig)
 				if err != nil {
 					s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 					return
@@ -1264,7 +1305,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 	} else { // {expression}
-		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, prcCfg)
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, DefaultLoadConfig)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
