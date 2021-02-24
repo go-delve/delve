@@ -106,6 +106,10 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
             param("github_oauth_user", "")
         }
     }
+
+    failureConditions {
+        executionTimeoutMin = 60
+    }
 })
 
 class OSProject(os: String, tests: List<TestBuild>) : Project({
