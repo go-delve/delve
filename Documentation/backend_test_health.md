@@ -1,10 +1,11 @@
 Tests skipped by each supported backend:
 
-* 386 skipped = 2% (3/147)
+* 386 skipped = 2.7% (4/147)
 	* 1 broken
-	* 2 broken - cgo stacktraces
-* arm64 skipped = 2% (3/147)
+	* 3 broken - cgo stacktraces
+* arm64 skipped = 2.7% (4/147)
 	* 2 broken
+	* 1 broken - cgo stacktraces
 	* 1 broken - global variable symbolication
 * darwin/lldb skipped = 0.68% (1/147)
 	* 1 upstream issue

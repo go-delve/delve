@@ -3289,9 +3289,8 @@ func TestCgoStacktrace(t *testing.T) {
 		}
 	}
 
-	if runtime.GOARCH == "386" {
-		t.Skip("cgo stacktraces not supported on i386 for now")
-	}
+	skipOn(t, "broken - cgo stacktraces", "386")
+	skipOn(t, "broken - cgo stacktraces", "arm64")
 	protest.MustHaveCgo(t)
 
 	// Tests that:
