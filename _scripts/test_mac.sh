@@ -15,7 +15,7 @@ if [ "$GOVERSION" = "gotip" ]; then
     cd -
 else
     cd $TMPDIR
-    curl -sSL "https://storage.googleapis.com/golang/go$GOVERSION.darwin-$ARCH.tar.gz" | tar -vxz
+    curl -sSL "https://storage.googleapis.com/golang/$GOVERSION.darwin-$ARCH.tar.gz" | tar -vxz
     cd -
 fi
 
