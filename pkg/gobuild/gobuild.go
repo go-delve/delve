@@ -20,7 +20,7 @@ func Remove(path string) {
 	// Open files can be removed on Unix, but not on Windows, where there also appears
 	// to be a delay in releasing the binary when the process exits. So we try again.
 	if err != nil && runtime.GOOS == "windows" {
-		time.Sleep(10 * time.Microsecond)
+		time.Sleep(100 * time.Microsecond)
 		err = os.Remove(path)
 	}
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -2240,15 +2241,37 @@ func runDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdReques
 }
 
 func TestLaunchDebugRequest(t *testing.T) {
+	rescueStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source})
+				"mode": "debug", "program": fixture.Source, "output": "__mydir"})
 		}, fixture.Source)
 	})
+	// Wait for the test to finish to capture all stderr
+	time.Sleep(100 * time.Millisecond)
+
+	w.Close()
+	err, _ := ioutil.ReadAll(r)
+	t.Log(string(err))
+	os.Stderr = rescueStderr
+
+	rmErrRe, _ := regexp.Compile(`could not remove .*\n`)
+	rmErr := rmErrRe.FindString(string(err))
+	if rmErr != "" {
+		// On Windows, a file in use cannot be removed, resulting in "Access is denied".
+		// When the process exits, Delve releases the binary by calling
+		// BinaryInfo.Close(), but it appears that it is still in use (by Windows?)
+		// shortly after. gobuild.Remove has a delay to address this.
+		// If this test becomes flaky, see if the delay needs adjusting.
+		t.Fatalf("Binary removal failure:\n%s\n", rmErr)
+	}
 }
 
 func TestLaunchTestRequest(t *testing.T) {
@@ -2290,6 +2313,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source,
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
+			// will write to default output dir __debug_bin
 		}, fixture.Source)
 	})
 }

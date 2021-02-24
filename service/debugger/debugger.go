@@ -413,6 +413,7 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 // If `kill` is true we will kill the process after
 // detaching.
 func (d *Debugger) Detach(kill bool) error {
+	d.log.Debug("detaching")
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 	if ok, _ := d.target.Valid(); !ok {
