@@ -3,6 +3,7 @@ package dap
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -1654,6 +1655,41 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+// TestWorkingDir executes to a breakpoint and tests that the specified
+// working directory is the one used to run the program.
+func TestWorkingDir(t *testing.T) {
+	runTest(t, "workdir", func(client *daptest.Client, fixture protest.Fixture) {
+		fixtureWorkingDir, err := filepath.Abs(filepath.Join(protest.FindFixturesDir(), "buildtest"))
+		if err != nil {
+			t.Fatalf("failed to get working directory: %e", err)
+		}
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":        "exec",
+					"program":     fixture.Path,
+					"stopOnEntry": false,
+					"cwd":         fixtureWorkingDir,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{10}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 10)
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+					expectChildren(t, locals, "Locals", 2)
+					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf(`"%s"`, fixtureWorkingDir), noChildren)
+					expectVarExact(t, locals, 1, "err", "err", "nil <error>", noChildren)
+
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 // expectEval is a helper for verifying the values within an EvaluateResponse.
 //     value - the value of the evaluated expression
 //     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
@@ -2545,6 +2581,10 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'cwd' attribute '123' in debug configuration is not a string.")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
