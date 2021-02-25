@@ -1149,24 +1149,26 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 					value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
 				} else {
 					v.Children = vLoaded.Children
-					variablesReference = maybeCreateVariableHandle(v)
 				}
 			}
-			// TODO(polina): should we remove one level of indirection and skip "data"?
-			// Then we will have:
-			//   Before:
-			//     i: <interface{}(int)>
-			//        data: 123
-			//   After:
-			//     i: <interface{}(int)> 123
-			//   Before:
-			//     i: <interface{}(main.MyStruct)>
-			//        data: <main.MyStruct>
-			//           field1: ...
-			//   After:
-			//     i: <interface{}(main.MyStruct)>
-			//        field1: ...
-			variablesReference = maybeCreateVariableHandle(v)
+			// Provide a reference to the child only if it fully loaded
+			if !v.Children[0].OnlyAddr {
+				// TODO(polina): should we remove one level of indirection and skip "data"?
+				// Then we will have:
+				//   Before:
+				//     i: <interface{}(int)>
+				//        data: 123
+				//   After:
+				//     i: <interface{}(int)> 123
+				//   Before:
+				//     i: <interface{}(main.MyStruct)>
+				//        data: <main.MyStruct>
+				//           field1: ...
+				//   After:
+				//     i: <interface{}(main.MyStruct)>
+				//        field1: ...
+				variablesReference = maybeCreateVariableHandle(v)
+			}
 		}
 	case reflect.Struct:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
