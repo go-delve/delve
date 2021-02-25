@@ -1696,13 +1696,7 @@ func TestAttachSubstitutePath(t *testing.T) {
 		debuggerDirPath := filepath.Dir(fixture.Source)
 
 		// Start the program to attach to
-		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
-		cmd := exec.Command(fixture.Path)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		cmd := execFixture(t, fixture)
 
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach
@@ -1719,6 +1713,20 @@ func TestAttachSubstitutePath(t *testing.T) {
 				disconnect: true,
 			}})
 	})
+}
+
+// execFixture runs the binary fixture.Path and hooks up stdout and stderr
+// to os.Stdout and os.Stderr.
+func execFixture(t *testing.T, fixture protest.Fixture) *exec.Cmd {
+	t.Helper()
+	// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
+	cmd := exec.Command(fixture.Path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd
 }
 
 // expectEval is a helper for verifying the values within an EvaluateResponse.
@@ -2394,13 +2402,7 @@ func TestAttachRequest(t *testing.T) {
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
-		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
-		cmd := exec.Command(fixture.Path)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		cmd := execFixture(t, fixture)
 
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach
