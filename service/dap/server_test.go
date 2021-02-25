@@ -1412,15 +1412,21 @@ func TestVariablesLoading(t *testing.T) {
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							ptrinfVal := client.ExpectVariablesResponse(t)
-							ref = expectVarRegex(t, ptrinfVal, 0, "", `\(\*ptrinf\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+							ref = expectVarRegex(t, ptrinfVal, 0, "data", `\(\*ptrinf\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								ptrinfValData := client.ExpectVariablesResponse(t)
 								ref = expectVarRegex(t, ptrinfValData, 0, "", `\(\*\(\*ptrinf\)\.\(data\)\)`, `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
 								if ref > 0 {
+									// Auto-loading happens here
 									client.VariablesRequest(ref)
 									iface6dataValVal := client.ExpectVariablesResponse(t)
-									expectVarExact(t, iface6dataValVal, 0, "", "(*(*(*ptrinf).(data)))", "<interface {}(**interface {})> (data not loaded)", noChildren)
+									ref = expectVarExact(t, iface6dataValVal, 0, "", "(*(*(*ptrinf).(data)))", "<interface {}(**interface {})>", hasChildren)
+									if ref > 0 {
+										client.VariablesRequest(ref)
+										iface6dataValValData := client.ExpectVariablesResponse(t)
+										ref = expectVarRegex(t, iface6dataValValData, 0, "data", `\(\*\(\*\(\*ptrinf\)\.\(data\)\)\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
+									}
 								}
 							}
 						}

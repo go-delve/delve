@@ -1141,27 +1141,32 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		} else if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
 			value = "nil <" + typeName + ">"
 		} else {
+			value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
 			if v.Children[0].OnlyAddr { // Not fully loaded
-				value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">" + " (data not loaded)"
-				// Since child is not fully loaded, don't provide a reference to view it.
-			} else {
-				value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
-				// TODO(polina): should we remove one level of indirection and skip "data"?
-				// Then we will have:
-				//   Before:
-				//     i: <interface{}(int)>
-				//        data: 123
-				//   After:
-				//     i: <interface{}(int)> 123
-				//   Before:
-				//     i: <interface{}(main.MyStruct)>
-				//        data: <main.MyStruct>
-				//           field1: ...
-				//   After:
-				//     i: <interface{}(main.MyStruct)>
-				//        field1: ...
-				variablesReference = maybeCreateVariableHandle(v)
+				s.log.Debug("loading ", qualifiedNameOrExpr)
+				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, qualifiedNameOrExpr, DefaultLoadConfig)
+				if err != nil {
+					value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
+				} else {
+					v.Children = vLoaded.Children
+					variablesReference = maybeCreateVariableHandle(v)
+				}
 			}
+			// TODO(polina): should we remove one level of indirection and skip "data"?
+			// Then we will have:
+			//   Before:
+			//     i: <interface{}(int)>
+			//        data: 123
+			//   After:
+			//     i: <interface{}(int)> 123
+			//   Before:
+			//     i: <interface{}(main.MyStruct)>
+			//        data: <main.MyStruct>
+			//           field1: ...
+			//   After:
+			//     i: <interface{}(main.MyStruct)>
+			//        field1: ...
+			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Struct:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
