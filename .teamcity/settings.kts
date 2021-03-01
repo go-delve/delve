@@ -49,6 +49,7 @@ val targets = arrayOf(
         "windows/amd64/tip",
 
         "mac/amd64/1.16",
+        "mac/amd64/tip"
 )
 
 project {
