@@ -2249,7 +2249,6 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source, "output": "__mydir"})
 		}, fixture.Source)
@@ -2272,6 +2271,31 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// If this test becomes flaky, see if the delay needs adjusting.
 		t.Fatalf("Binary removal failure:\n%s\n", rmErr)
 	}
+}
+
+// TestLaunchRequestDefaults tests defaults for launch attribute that are explicit in other tests.
+func TestLaunchRequestDefaults(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mydir"})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mydir"})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source})
+			// writes to default output dir __debug_bin
+		}, fixture.Source)
+	})
 }
 
 func TestLaunchTestRequest(t *testing.T) {
@@ -2311,9 +2335,8 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			// We reuse the harness that builds, but ignore the built binary,
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source,
+				"mode": "debug", "program": fixture.Source, "output": "__mydir",
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
-			// will write to default output dir __debug_bin
 		}, fixture.Source)
 	})
 }
@@ -2338,7 +2361,8 @@ func TestAttachRequest(t *testing.T) {
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach
 			func() {
-				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": false})
+				client.AttachRequest(map[string]interface{}{
+					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false})
 			},
 			// Set breakpoints
 			fixture.Source, []int{8},
@@ -2506,18 +2530,20 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"program": 12345})
+		// Bad "program"
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": 12345})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"program": nil})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": nil})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug"})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
+		// Bad "mode"
 		client.LaunchRequest("remote", fixture.Path, stopOnEntry)
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"remote\" in debug configuration.")
@@ -2530,6 +2556,15 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value %!q(float64=12345) in debug configuration.")
 
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // empty mode defaults to "debug" (not an error)
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: The program attribute is missing in debug configuration.")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{}) // missing mode defaults to "debug" (not an error)
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: The program attribute is missing in debug configuration.")
+
+		// Bad "args"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": nil})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'args' attribute '<nil>' in debug configuration is not an array.")
@@ -2542,6 +2577,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: value '1' in 'args' attribute in debug configuration is not a string.")
 
+		// Bad "buildFlags"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
@@ -2556,7 +2592,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "123"})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "bad flags"})
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
 
 		// We failed to launch the program. Make sure shutdown still works.
@@ -2596,6 +2632,7 @@ func TestBadAttachRequest(t *testing.T) {
 			}
 		}
 
+		// Bad "mode"
 		client.AttachRequest(map[string]interface{}{"mode": "remote"})
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value \"remote\" in debug configuration")
@@ -2608,28 +2645,37 @@ func TestBadAttachRequest(t *testing.T) {
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value %!q(float64=123) in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"mode": ""}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": ""}) // empty mode defaults to "local" (not an error)
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{}) // no mode defaults to "local" (not an error)
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"processId": 0}) // defaults to "local"
+		// Bad "processId"
+		client.AttachRequest(map[string]interface{}{"mode": "local"})
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"processId": "1"}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": nil})
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"processId": 1}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 0})
+		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": "1"})
+		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1})
 		// The exact message varies on different systems, so skip that check
 		expectFailedToAttach(client.ExpectErrorResponse(t)) // could not attach to pid 1
 
 		// This will make debugger.(*Debugger) panic, which we will catch as an internal error.
-		client.AttachRequest(map[string]interface{}{"processId": -1}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": -1})
 		er := client.ExpectErrorResponse(t)
 		if er.RequestSeq != seqCnt {
 			t.Errorf("RequestSeq got %d, want %d", seqCnt, er.RequestSeq)
