@@ -762,6 +762,111 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
+	if mode == "record" {
+		backend, ok := request.Arguments["backend"].(string)
+		if !ok || backend == "" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The backend attribute is missing debug configuration.")
+			return
+		}
+
+		// Replay only works on rr trace directories
+		if backend != "rr" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration.", backend))
+			return
+		}
+
+		traceDirectory, ok := request.Arguments["traceDirectory"].(string)
+		if !ok || traceDirectory == "" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The traceDirectory attribute is missing in debug configuration.")
+			return
+		}
+		if _, err := os.Stat(traceDirectory); os.IsNotExist(err) {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The traceDirectory attribute points to an directory that does not exist.")
+			return
+		}
+
+		buildFlags := ""
+		buildFlagsArg, ok := request.Arguments["buildFlags"]
+		if ok {
+			buildFlags, ok = buildFlagsArg.(string)
+			if !ok {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					fmt.Sprintf("'buildFlags' attribute '%v' in debug configuration is not a string.", buildFlagsArg))
+				return
+			}
+		}
+
+		output, ok := request.Arguments["output"].(string)
+		if !ok || output == "" {
+			output = debugBinary
+		}
+		debugname, err := filepath.Abs(output)
+		err = gobuild.GoBuild(debugname, []string{program}, buildFlags)
+
+		if err != nil {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to build recording target",
+				fmt.Sprintf("Build error: %s", err.Error()))
+			return
+		}
+	}
+
+	if mode == "replay" {
+		backend, ok := request.Arguments["backend"].(string)
+		if !ok || backend == "" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The backend attribute is missing debug configuration.")
+			return
+		}
+
+		// Replay only works on rr trace directories
+		if backend != "rr" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration.", backend))
+			return
+		}
+
+		// Validate trace directory
+		traceDirectory, ok := request.Arguments["traceDirectory"].(string)
+		if !ok || traceDirectory == "" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The traceDirectory attribute is missing in debug configuration.")
+			return
+		}
+		if _, err := os.Stat(traceDirectory); os.IsNotExist(err) {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The traceDirectory attribute points to an directory that does not exist.")
+			return
+		}
+
+		// Validate trace file
+		traceProgram, ok := request.Arguments["traceProgram"].(string)
+		if !ok || traceProgram == "" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The traceProgram attribute is missing in debug configuration.")
+			return
+		}
+		if _, err := os.Stat(traceProgram); os.IsNotExist(err) {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The traceProgram attribute points to a file that does not exist.")
+			return
+		}
+
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
@@ -955,6 +1060,7 @@ func (s *Server) stopNoDebugProcess() {
 // Launch debug sessions support the following modes:
 // -- [DEFAULT] "debug" - builds and launches debugger for specified program (similar to 'dlv debug')
 //      Required args: program
+	case "exec", "debug", "test", "record", "replay", "coredump":
 //      Optional args with default: output, cwd, noDebug
 //      Optional args: buildFlags, args
 // -- "test" - builds and launches debugger for specified test (similar to 'dlv test')
@@ -966,9 +1072,10 @@ func (s *Server) stopNoDebugProcess() {
 // TODO(pull/2367): add "replay", "core"
 func isValidLaunchMode(mode interface{}) bool {
 	switch mode {
-	case "exec", "debug", "test":
+
 		return true
 	}
+
 	return false
 }
 
@@ -1499,6 +1606,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
+
 	}
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
@@ -2413,10 +2521,18 @@ func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onReverseContinueRequest sends a not-yet-implemented error response.
-// Capability 'supportsStepBack' is not set 'initialize' response.
+// onReverseContinueRequest performs a rewind command call upt to the previous
+// breakpoint or exiting the program, as defined per the rewind() spec
 func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	state, _ := s.debugger.State(true)
+	s.debugger.Command(&api.DebuggerCommand{
+		Name:                 api.Rewind,
+		ThreadID:             state.CurrentThread.ID,
+		GoroutineID:          request.Arguments.ThreadId,
+		ReturnInfoLoadConfig: nil,
+		Expr:                 "",
+		UnsafeCall:           false,
+	})
 }
 
 // computeEvaluateName finds the named child, and computes its evaluate name.
@@ -2586,6 +2702,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		case proc.FatalThrow:
 			body.ExceptionId = "fatal error"
 			body.Description, err = s.throwReason(goroutineID)
+
 			if err != nil {
 				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
 				// This is not currently working for Go 1.16.
@@ -2594,11 +2711,13 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
 			}
+
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
 			// Attempt to get the value of the panic message.
 			body.Description, err = s.panicReason(goroutineID)
 			if err != nil {
+
 				body.Description = fmt.Sprintf("Error getting panic message: %s", err.Error())
 			}
 		}
