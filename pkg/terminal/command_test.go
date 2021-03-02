@@ -690,9 +690,9 @@ func TestListCmd(t *testing.T) {
 		term.MustExec("continue")
 		term.MustExec("continue")
 		listIsAt(t, term, "list", 27, 22, 32)
-		listIsAt(t, term, "list 69", 69, 64, 73)
-		listIsAt(t, term, "frame 1 list", 65, 60, 70)
-		listIsAt(t, term, "frame 1 list 69", 69, 64, 73)
+		listIsAt(t, term, "list 69", 69, 64, 74)
+		listIsAt(t, term, "frame 1 list", 66, 61, 71)
+		listIsAt(t, term, "frame 1 list 69", 69, 64, 74)
 		_, err := term.Exec("frame 50 list")
 		if err == nil {
 			t.Fatalf("Expected error requesting 50th frame")

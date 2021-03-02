@@ -750,7 +750,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 
-					startLineno := 65
+					startLineno := 66
 					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 						// Go1.15 on windows inserts a NOP after the call to
 						// runtime.Breakpoint and marks it same line as the
@@ -793,7 +793,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
-					expectChildren(t, locals, "Locals", 30)
+					expectChildren(t, locals, "Locals", 31)
 
 					// reflect.Kind == Bool
 					expectVarExact(t, locals, -1, "b1", "b1", "true", noChildren)
@@ -1396,48 +1396,17 @@ func TestVariablesLoading(t *testing.T) {
 						ref = expectVarExact(t, tm, 0, "v", "tm.v", "<[]map[string]main.astruct> (length: 1, cap: 1)", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
-							tm_v := client.ExpectVariablesResponse(t)
-							expectChildren(t, tm_v, "tm.v", 1)
+							tmV := client.ExpectVariablesResponse(t)
+							expectChildren(t, tmV, "tm.v", 1)
 							// TODO(polina): there should be children here once we support auto loading - test for "tm.v[0]["gutters"]"
-							expectVarExact(t, tm_v, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66, loaded: 0)", noChildren)
+							expectVarExact(t, tmV, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66, loaded: 0)", noChildren)
 						}
 					}
-
-					// Interface fully missing due to hitting LoadConfig.MaxVariableRecurse
-					ref = expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
-					if ref > 0 {
-						client.VariablesRequest(ref)
-						ptrinf := client.ExpectVariablesResponse(t)
-						ref = expectVarExact(t, ptrinf, 0, "", "(*ptrinf)", "<interface {}(**interface {})>", hasChildren)
-						if ref > 0 {
-							client.VariablesRequest(ref)
-							ptrinfVal := client.ExpectVariablesResponse(t)
-							ref = expectVarRegex(t, ptrinfVal, 0, "data", `\(\*ptrinf\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
-							if ref > 0 {
-								client.VariablesRequest(ref)
-								ptrinfValData := client.ExpectVariablesResponse(t)
-								ref = expectVarRegex(t, ptrinfValData, 0, "", `\(\*\(\*ptrinf\)\.\(data\)\)`, `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
-								if ref > 0 {
-									// Auto-loading happens here with MaxVariableRecurse=1
-									client.VariablesRequest(ref)
-									iface6dataValVal := client.ExpectVariablesResponse(t)
-									ref = expectVarExact(t, iface6dataValVal, 0, "", "(*(*(*ptrinf).(data)))", "<interface {}(**interface {})>", hasChildren)
-									if ref > 0 {
-										client.VariablesRequest(ref)
-										iface6dataValValData := client.ExpectVariablesResponse(t)
-										expectVarRegex(t, iface6dataValValData, 0, "data", `\(\*\(\*\(\*ptrinf\)\.\(data\)\)\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
-									}
-								}
-							}
-						}
-					}
-
-					// Pointer fully missing - see below
 				},
 				disconnect: true,
 			}})
 	})
-	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
@@ -1453,14 +1422,54 @@ func TestVariablesLoading(t *testing.T) {
 					client.StackTraceRequest(1, 0, 0)
 					client.ExpectStackTraceResponse(t)
 
-					client.ScopesRequest(1000)
-					client.ExpectScopesResponse(t)
+					var loadvars = func(frame int) {
+						client.ScopesRequest(frame)
+						scopes := client.ExpectScopesResponse(t)
+						localsRef := 0
+						for _, s := range scopes.Body.Scopes {
+							if s.Name == "Locals" {
+								localsRef = s.VariablesReference
+							}
+						}
 
-					client.VariablesRequest(1001) // Locals
-					locals := client.ExpectVariablesResponse(t)
+						client.VariablesRequest(localsRef)
+						locals := client.ExpectVariablesResponse(t)
 
-					// Pointer value not loaded
-					expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\) \(value not loaded\)`, noChildren)
+						// Interface auto-loaded when hitting LoadConfig.MaxVariableRecurse=1
+
+						ref := expectVarExact(t, locals, -1, "ni", "ni", "<struct { main.i1 interface {} }>", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							ni := client.ExpectVariablesResponse(t)
+							ref = expectVarExact(t, ni, 0, "i1", "ni.i1", "<interface {}(struct { main.i2 interface {} })>", hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								niI1 := client.ExpectVariablesResponse(t)
+								ref = expectVarExact(t, niI1, 0, "data", "ni.i1.(data)", "<struct { main.i2 interface {} }>", hasChildren)
+								if ref > 0 {
+									// Auto-loading happens here
+									client.VariablesRequest(ref)
+									niI1Data := client.ExpectVariablesResponse(t)
+									ref = expectVarExact(t, niI1Data, 0, "i2", "ni.i1.(data).i2", "<interface {}(int)>", hasChildren)
+									if ref > 0 {
+										client.VariablesRequest(ref)
+										niI1DataI2 := client.ExpectVariablesResponse(t)
+										expectVarExact(t, niI1DataI2, 0, "data", "ni.i1.(data).i2.(data)", "123", noChildren)
+									}
+								}
+							}
+						}
+
+						// Pointer value not loaded with LoadConfig.FollowPointers=false
+						expectVarRegex(t, locals, -1, "a7", "a7", `<\*main.FooBar>\(0x[0-9a-f]+\) \(value not loaded\)`, noChildren)
+					}
+					loadvars(1000 /*first topmost frame*/)
+					// step into another function
+					client.StepInRequest(1)
+					client.ExpectStepInResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, "main.barfoo", 24)
+					loadvars(1001 /*second frame here is same as topmost above*/)
 				},
 				disconnect: true,
 			}})
@@ -1681,7 +1690,7 @@ func TestEvaluateRequest(t *testing.T) {
 			fixture.Source, []int{}, // Breakpoint set in the program
 			[]onBreakpoint{{ // Stop at first breakpoint
 				execute: func() {
-					handleStop(t, client, 1, "main.foobar", 65)
+					handleStop(t, client, 1, "main.foobar", 66)
 
 					// Variable lookup
 					client.EvaluateRequest("a2", 1000, "this context will be ignored")

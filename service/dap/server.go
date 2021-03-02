@@ -1143,8 +1143,11 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		} else {
 			value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
 			if v.Children[0].OnlyAddr { // Not fully loaded
-				s.log.Debug("loading ", qualifiedNameOrExpr)
-				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, qualifiedNameOrExpr, DefaultLoadConfig)
+				loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
+				// We might be loading variables from the frame that's not topmost, so use
+				// frame-independent address-based expression.
+				s.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
+				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, DefaultLoadConfig)
 				if err != nil {
 					value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
 				} else {
