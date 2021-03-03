@@ -1437,24 +1437,24 @@ func TestVariablesLoading(t *testing.T) {
 
 						// Interface auto-loaded when hitting LoadConfig.MaxVariableRecurse=1
 
-						ref := expectVarExact(t, locals, -1, "ni", "ni", "<struct { main.i1 interface {} }>", hasChildren)
+						ref := expectVarExact(t, locals, -1, "ni", "ni", "<[]interface {}> (length: 1, cap: 1)", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							ni := client.ExpectVariablesResponse(t)
-							ref = expectVarExact(t, ni, 0, "i1", "ni.i1", "<interface {}(struct { main.i2 interface {} })>", hasChildren)
+							ref = expectVarExact(t, ni, 0, "[0]", "ni[0]", "<interface {}([]interface {})>", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								niI1 := client.ExpectVariablesResponse(t)
-								ref = expectVarExact(t, niI1, 0, "data", "ni.i1.(data)", "<struct { main.i2 interface {} }>", hasChildren)
+								ref = expectVarExact(t, niI1, 0, "data", "ni[0].(data)", "<[]interface {}> (length: 1, cap: 1)", hasChildren)
 								if ref > 0 {
 									// Auto-loading happens here
 									client.VariablesRequest(ref)
 									niI1Data := client.ExpectVariablesResponse(t)
-									ref = expectVarExact(t, niI1Data, 0, "i2", "ni.i1.(data).i2", "<interface {}(int)>", hasChildren)
+									ref = expectVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "<interface {}(int)>", hasChildren)
 									if ref > 0 {
 										client.VariablesRequest(ref)
 										niI1DataI2 := client.ExpectVariablesResponse(t)
-										expectVarExact(t, niI1DataI2, 0, "data", "ni.i1.(data).i2.(data)", "123", noChildren)
+										expectVarExact(t, niI1DataI2, 0, "data", "ni[0].(data)[0].(data)", "123", noChildren)
 									}
 								}
 							}

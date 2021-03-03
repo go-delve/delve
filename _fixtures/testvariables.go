@@ -56,9 +56,9 @@ func foobar(baz string, bar FooBar) {
 		c128 = complex(float64(2), float64(3))
 		i32  = [2]int32{1, 2}
 		f    = barfoo
-		ms   = Nest{0, &Nest{1, &Nest{2, &Nest{3, &Nest{4, nil}}}}}    // Test recursion capping on structs
-		ni   = struct{ i1 interface{} }{struct{ i2 interface{} }{123}} // Test recursion capping on interfaces
-		ba   = make([]int, 200, 200)                                   // Test array size capping
+		ms   = Nest{0, &Nest{1, &Nest{2, &Nest{3, &Nest{4, nil}}}}} // Test recursion capping on structs
+		ni   = []interface{}([]interface{}{[]interface{}{123}})     // Test recursion capping on interfaces
+		ba   = make([]int, 200, 200)                                // Test array size capping
 		mp   = map[int]interface{}{1: 42, 2: 43}
 	)
 
