@@ -122,9 +122,14 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			return false
 		}
 
-		off, _ := readIntRaw(it.mem, it.regs.SP()+amd64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize())) // reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
+		//it.switchToGoroutineStack()
+		//return true
+
+		// reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
+		off, _ := readIntRaw(it.mem, it.regs.SP()+arm64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
 		oldsp := it.regs.SP()
 		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(int64(it.stackhi) - off)
+		fmt.Printf("off=%#v, oldsp=%#v, newsp=%#v\n", off, oldsp, it.regs.Reg(it.regs.SPRegNum).Uint64Val)
 
 		// runtime.asmcgocall can also be called from inside the system stack,
 		// in that case no stack switch actually happens
@@ -136,6 +141,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		// advances to the next frame in the call stack
 		it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()))
 		it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+		it.frame.Ret = it.regs.Reg(it.regs.LRRegNum).Uint64Val
 		it.regs.AddReg(it.regs.LRRegNum, op.DwarfRegisterFromUint64(it.frame.Ret))
 		it.pc = it.frame.Ret
 

@@ -3159,7 +3159,10 @@ func logStacktrace(t *testing.T, bi *proc.BinaryInfo, frames []proc.Stackframe) 
 			name = fmt.Sprintf("%s inlined in %s", frames[j].Call.Fn.Name, frames[j].Current.Fn.Name)
 		}
 
-		t.Logf("\t%#x %#x %#x %s at %s:%d\n", frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
+		t.Logf("\tCallPC=%#x FrameOffset=%#x FramePointerOffset=%#x %s at %s:%d\n",
+			frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name,
+			filepath.Base(frames[j].Call.File), frames[j].Call.Line)
+
 		if frames[j].TopmostDefer != nil {
 			f, l, fn := bi.PCToLine(frames[j].TopmostDefer.DeferredPC)
 			fnname := ""
