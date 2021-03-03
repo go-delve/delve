@@ -124,7 +124,33 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		it.atend = true
 		return true
 	case "runtime.asmcgocall":
-		// do nothing
+		if it.top || !it.systemstack {
+			return false
+		}
+		// This function is called by a goroutine to execute a C function and
+		// switches from the goroutine stack to the system stack.
+		// Since we are unwinding the stack from callee to caller we have to switch
+		// from the system stack to the goroutine stack.
+
+		// Reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
+		off, _ := readIntRaw(it.mem, it.regs.SP()+arm64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
+		oldsp := it.regs.SP()
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(int64(it.stackhi) - off)
+
+		// runtime.asmcgocall can also be called from inside the system stack,
+		// in that case no stack switch actually happens
+		if it.regs.SP() == oldsp {
+			return false
+		}
+		it.systemstack = false
+
+		// advances to the next frame in the call stack
+		it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()))
+		it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+		it.pc = it.frame.Ret
+
+		it.top = false
+		return true
 	case "runtime.cgocallback_gofunc", "runtime.cgocallback":
 		// do nothing
 	case "crosscall2":

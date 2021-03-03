@@ -477,11 +477,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	}
 
 	if it.bi.Arch.Name == "arm64" {
-		fmt.Println("RET", ret)
 		it.regs.AddReg(it.regs.LRRegNum, op.DwarfRegisterFromUint64(ret))
-		if ret == 0 && it.regs.Reg(it.regs.LRRegNum) != nil {
-			ret = it.regs.Reg(it.regs.LRRegNum).Uint64Val
-		}
 	}
 
 	return callFrameRegs, ret, retaddr
