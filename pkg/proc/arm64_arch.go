@@ -116,82 +116,42 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 	if it.frame.Current.Fn == nil {
 		return false
 	}
-	if it.frame.Current.Fn != nil {
-		switch it.frame.Current.Fn.Name {
-		case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
-			// Look for "top of stack" functions.
-			it.atend = true
-			return true
-		case "runtime.cgocallback_gofunc", "runtime.cgocallback":
-			// For a detailed description of how this works read the long comment at
-			// the start of $GOROOT/src/runtime/cgocall.go and the source code of
-			// runtime.cgocallback_gofunc in $GOROOT/src/runtime/asm_arm64.s
-			//
-			// When a C functions calls back into go it will eventually call into
-			// runtime.cgocallback_gofunc which is the function that does the stack
-			// switch from the system stack back into the goroutine stack
-			// Since we are going backwards on the stack here we see the transition
-			// as goroutine stack -> system stack.
-
-			if it.top || it.systemstack {
-				return false
-			}
-
-			it.loadG0SchedSP()
-			if it.g0_sched_sp <= 0 {
-				return false
-			}
-			// entering the system stack
-			it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g0_sched_sp
-			// reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack
-			it.g0_sched_sp, _ = readUintRaw(it.mem, it.regs.SP(), int64(it.bi.Arch.PtrSize()))
-			it.top = false
-			callFrameRegs, ret, retaddr := it.advanceRegs()
-			frameOnSystemStack := it.newStackframe(ret, retaddr)
-			it.regs.AddReg(it.regs.LRRegNum, op.DwarfRegisterFromUint64(frameOnSystemStack.Ret))
-			it.pc = frameOnSystemStack.Ret
-			it.regs = callFrameRegs
-			it.systemstack = true
-			return true
-		case "runtime.mstart":
-			// Calls to runtime.systemstack will switch to the systemstack then:
-			// 1. alter the goroutine stack so that it looks like systemstack_switch
-			//    was called
-			// 2. alter the system stack so that it looks like the bottom-most frame
-			//    belongs to runtime.mstart
-			// If we find a runtime.mstart frame on the system stack of a goroutine
-			// parked on runtime.systemstack_switch we assume runtime.systemstack was
-			// called and continue tracing from the parked position.
-
-			if it.top || !it.systemstack || it.g == nil {
-				return false
-			}
-			if fn := it.bi.PCToFunc(it.g.PC); fn == nil || fn.Name != "runtime.systemstack_switch" {
-				return false
-			}
-
-			it.switchToGoroutineStack()
-			return true
-		case "runtime.asmcgocall", "crosscall2":
-			if !it.systemstack {
-				return false
-			}
-			it.switchToGoroutineStack()
-			return true
-		}
-	}
-
-	fn := it.bi.PCToFunc(it.frame.Ret)
-	if fn == nil {
-		return false
-	}
-	switch fn.Name {
+	switch it.frame.Current.Fn.Name {
 	case "runtime.asmcgocall":
-		if !it.systemstack {
+		if it.top || !it.systemstack {
 			return false
 		}
-		it.switchToGoroutineStack()
+
+		off, _ := readIntRaw(it.mem, it.regs.SP()+amd64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize())) // reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
+		oldsp := it.regs.SP()
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(int64(it.stackhi) - off)
+
+		// runtime.asmcgocall can also be called from inside the system stack,
+		// in that case no stack switch actually happens
+		if it.regs.SP() == oldsp {
+			return false
+		}
+		it.systemstack = false
+
+		// advances to the next frame in the call stack
+		it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()))
+		it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+		it.regs.AddReg(it.regs.LRRegNum, op.DwarfRegisterFromUint64(it.frame.Ret))
+		it.pc = it.frame.Ret
+
+		it.top = false
 		return true
+
+		// reads "offset of SP from StackHi" from where runtime.asmcgocall saved it
+		//off, _ := readIntRaw(it.mem, it.frame.Regs.SP()+amd64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
+
+		// runtime.asmcgocall can also be called from inside the system stack,
+		// in that case no stack switch actually happens
+		//if uint64(int64(it.stackhi) - off) == it.g.SP {
+			it.switchToGoroutineStack()
+			return true
+		//}
+		return false
 	}
 
 	return false

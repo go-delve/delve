@@ -3291,6 +3291,7 @@ func TestCgoStacktrace(t *testing.T) {
 				}
 			}
 
+			fmt.Printf("iteration step %d\n", itidx)
 			frames, err := g.Stacktrace(100, 0)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
 

@@ -251,6 +251,7 @@ func (it *stackIterator) Next() bool {
 
 	if it.opts&StacktraceSimple == 0 {
 		if it.bi.Arch.switchStack(it, &callFrameRegs) {
+			fmt.Printf("post stack switch it.pc=%#v\n", it.pc)
 			return true
 		}
 	}
@@ -263,6 +264,7 @@ func (it *stackIterator) Next() bool {
 	it.top = false
 	it.pc = it.frame.Ret
 	it.regs = callFrameRegs
+	fmt.Printf("it.pc=%#v\n", it.pc)
 	return true
 }
 
@@ -274,7 +276,6 @@ func (it *stackIterator) switchToGoroutineStack() {
 	it.regs.AddReg(it.regs.BPRegNum, op.DwarfRegisterFromUint64(it.g.BP))
 	if it.bi.Arch.Name == "arm64" {
 		it.regs.AddReg(it.regs.LRRegNum, op.DwarfRegisterFromUint64(it.g.LR))
-		//it.regs.Reg(it.regs.LRRegNum).Uint64Val = it.g.LR
 	}
 }
 
